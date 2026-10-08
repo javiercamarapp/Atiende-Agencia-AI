@@ -72,6 +72,19 @@ describe("cliente del CFO", () => {
     expect(JSON.parse(f.mock.calls[0]![1].body as string)).toEqual({ costos: [{ propertyId: null, mes: "2026-09-01", concepto: "renta", montoCentavos: 800_000, pct: null, nota: null }] });
     expect(JSON.parse(f.mock.calls[1]![1].body as string)).toEqual({ ivaPct: 8, comisionTerminalPct: null });
   });
+  it("404/503 en una lectura dice «El CFO todavía no está disponible» (no el texto de voz); en una escritura es un error con mensaje propio", async () => {
+    const { ctx } = api({ "/resumen": { status: 503 }, "/costos": { status: 503 }, "/config": { status: 404, cuerpo: { message: "No existe." } } });
+    const lectura = (await fetchResumen(ctx, F, "impacto").catch((e: unknown) => e)) as Error;
+    expect(lectura).toBeInstanceOf(VozNoDisponibleError);
+    expect(lectura.message).toContain("El CFO todavía no está disponible");
+    expect(lectura.message).not.toContain("voz");
+    const costos = (await guardarCostos(ctx, []).catch((e: unknown) => e)) as Error;
+    expect(costos).not.toBeInstanceOf(VozNoDisponibleError);
+    expect(costos.message).toContain("La captura del CFO todavía no está disponible");
+    const config = (await guardarConfig(ctx, { ivaPct: 8 }).catch((e: unknown) => e)) as Error;
+    expect(config).not.toBeInstanceOf(VozNoDisponibleError);
+    expect(config.message).toContain("No existe.");
+  });
   it("403 al ESCRIBIR conserva el mensaje del servidor (el rol ve el CFO pero no puede capturar eso); en una lectura es «sin acceso»", async () => {
     const { ctx } = api({ "/costos": { status: 403, cuerpo: { message: "Solo el dueño o un administrador de toda la organización puede capturar costos de la organización." } } });
     const err = (await guardarCostos(ctx, []).catch((e: unknown) => e)) as Error;

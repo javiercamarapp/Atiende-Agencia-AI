@@ -171,9 +171,12 @@ export function CfoEstadoResultados(props: CfoPaginaProps) {
   const [granularidad, setGranularidad] = useState<Granularidad>("mes");
   const [captura, setCaptura] = useState<{ readonly concepto?: ConceptoCosto; readonly ambito?: string } | null>(null);
   const [ajustes, setAjustes] = useState(false);
-  const puedeCapturar = puedeEn(role, "cfo.capturar");
   const clave = `${filtros.desde}|${filtros.hasta}|${filtros.sucursales?.join(",") ?? ""}|${filtros.comparar}`;
   const { carga, recargando, recargar } = useCargaCfo(() => cargarConComparativo(props, granularidad), [clave, granularidad, api.propertyId, api.token]);
+  const carga0 = carga;
+  // Sin la migración de captura (bloques.captura === false) no hay dónde guardar: la acción se retira en vez de fallar al guardar.
+  const capturaDisponible = carga0.estado !== "listo" || carga0.datos.d.bloques.captura;
+  const puedeCapturar = puedeEn(role, "cfo.capturar") && capturaDisponible;
 
   return (
     <PageContainer padding="none" aria-busy={recargando} data-testid="cfo-pyl">

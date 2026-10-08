@@ -14,8 +14,8 @@ import { fetchPedidos, type ContextoCfo } from "./cfo-client.ts";
 import { describirFiltro } from "./contexto.ts";
 import { etiquetaCanal, etiquetaFormaPago, etiquetaSource, entero, minutos, pesosExactos, SIN_DATO } from "./formato.ts";
 import { etiquetaRango, type FiltrosCfo } from "./filtros-url.ts";
-import { MENSAJE_SIN_ACCESO_CFO, CfoSinAccesoError } from "./cfo-client.ts";
-import { VozNoDisponibleError } from "../lib/voz-client.ts";
+import { MENSAJE_SIN_ACCESO_CFO, CfoNoDisponibleError, CfoSinAccesoError } from "./cfo-client.ts";
+
 
 export interface PedidosDrillProps {
   readonly abierto: boolean;
@@ -49,7 +49,7 @@ export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedi
         const v = await fetchPedidos(api, filtros, { filtro: filtroPedidos, cursor });
         setEstado((e) => ({ filas: reiniciar ? v.pedidos : [...e.filas, ...v.pedidos], cursor: v.cursor, cargando: false, error: null, avisos: v.avisos }));
       } catch (err) {
-        const mensaje = err instanceof CfoSinAccesoError ? MENSAJE_SIN_ACCESO_CFO : err instanceof VozNoDisponibleError ? "La lista de pedidos del CFO aún no está disponible en este negocio." : err instanceof Error ? err.message : "No se pudieron cargar los pedidos.";
+        const mensaje = err instanceof CfoSinAccesoError ? MENSAJE_SIN_ACCESO_CFO : err instanceof CfoNoDisponibleError ? "La lista de pedidos del CFO aún no está disponible en este negocio." : err instanceof Error ? err.message : "No se pudieron cargar los pedidos.";
         setEstado((e) => ({ ...e, cargando: false, error: mensaje }));
       }
     },

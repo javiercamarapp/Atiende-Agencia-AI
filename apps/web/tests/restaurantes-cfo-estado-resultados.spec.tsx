@@ -229,6 +229,52 @@ describe("<CfoEstadoResultados /> · confianza, variación y avisos", () => {
   });
 });
 
+describe("<CfoEstadoResultados /> · base sin migrar en la captura (M1)", () => {
+  it.each([503, 404])("PUT /costos con %s: el diálogo muestra un texto del CFO, NUNCA el del servicio de voz, y no da nada por guardado", async (status) => {
+    const api = crearApiCfo({ "PUT /costos": { status } });
+    await pintar(api, { filtros: T3 });
+    await listo();
+    click(botonEn(linea("nomina"), "Capturar costos: nómina")!);
+    await esperarHasta(() => doc("[data-testid=captura-costos]") !== null, "diálogo");
+    changeValue(doc("[data-testid=captura-valor]") as HTMLInputElement, "1000");
+    await esperarHasta(() => !botonEn(document.body, "Guardar costo")!.disabled, "válido");
+    click(botonEn(document.body, "Guardar costo")!);
+    await esperarHasta(() => document.body.textContent!.includes("La captura del CFO todavía no está disponible"), "mensaje del CFO");
+    expect(document.body.textContent).not.toContain("servicio de voz");
+    expect(doc("[data-testid=captura-costos]")).not.toBeNull();
+    expect(linea("nomina").textContent).toContain("Captura pendiente");
+  });
+
+  it("el mensaje del servidor manda sobre el texto genérico en un 503 de escritura", async () => {
+    const api = crearApiCfo({ "PUT /costos": { status: 503, cuerpo: { message: "Falta aplicar la actualización 083." } } });
+    await pintar(api, { filtros: T3 });
+    await listo();
+    click(botonEn(linea("nomina"), "Capturar costos: nómina")!);
+    await esperarHasta(() => doc("[data-testid=captura-costos]") !== null, "diálogo");
+    changeValue(doc("[data-testid=captura-valor]") as HTMLInputElement, "1000");
+    await esperarHasta(() => !botonEn(document.body, "Guardar costo")!.disabled, "válido");
+    click(botonEn(document.body, "Guardar costo")!);
+    await esperarHasta(() => document.body.textContent!.includes("Falta aplicar la actualización 083."), "mensaje del servidor");
+  });
+
+  it("el historial con 404 no dice «voz» y con bloques.captura=false se retiran todos los botones «Capturar costos»", async () => {
+    const base = await respuestaBase<EstadoResultadosVista>("/estado-resultados", { sucursales: IDS.T3, granularidad: "mes" });
+    await pintar(crearApiCfo({ "GET /estado-resultados": { status: 200, cuerpo: { ...base, bloques: { ...base.bloques, captura: false } } } }), { filtros: T3 });
+    await listo();
+    expect(linea("nomina").textContent).toContain("Captura pendiente");
+    expect(qa("button").some((b) => b.textContent?.includes("Capturar costos") || b.getAttribute("aria-label")?.startsWith("Capturar costos"))).toBe(false);
+    expect(q("[data-testid=abrir-ajustes]")).not.toBeNull();
+    rendered?.unmount();
+    document.body.innerHTML = "";
+    const api = crearApiCfo({ "GET /costos/historial": { status: 404 } });
+    await pintar(api, { filtros: T3 });
+    await listo();
+    click(botonEn(linea("nomina"), "Capturar costos: nómina")!);
+    await esperarHasta(() => doc("[data-testid=captura-historial]")?.textContent?.includes("El CFO todavía no está disponible") === true, "historial sin voz");
+    expect(document.body.textContent).not.toContain("servicio de voz");
+  });
+});
+
 describe("<AjustesCfoDialogo /> · Ajustes del CFO", () => {
   async function abrirAjustes(api: ReturnType<typeof crearApiCfo>) {
     await pintar(api, { filtros: T3 });

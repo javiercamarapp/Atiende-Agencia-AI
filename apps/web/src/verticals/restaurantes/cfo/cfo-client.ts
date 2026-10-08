@@ -33,6 +33,14 @@ export type { ArchivoExportado };
 
 export const MENSAJE_SIN_ACCESO_CFO = "Tu rol no tiene acceso al CFO";
 
+/** Base sin migrar (404/503 o `disponible: false`) en una LECTURA del CFO. Hereda de VozNoDisponibleError (los estados «no disponible» la reconocen) pero con texto propio del CFO. */
+export class CfoNoDisponibleError extends VozNoDisponibleError {
+  constructor(status: number) {
+    super(status);
+    this.message = "El CFO todavía no está disponible en este negocio: falta aplicar la actualización de base de datos.";
+  }
+}
+
 /** 403 del API: el rol no puede ver el CFO (o el alcance pedido). */
 export class CfoSinAccesoError extends Error {
   constructor() {
@@ -62,7 +70,9 @@ async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, 
   // Una LECTURA con 403 = el rol no puede ver el CFO. Una ESCRITURA con 403 = el rol lo ve pero no puede capturar eso (p. ej. costos de la organización
   // siendo un admin acotado): el mensaje del servidor explica por qué y se muestra tal cual en el diálogo.
   if (res.status === 403 && init.method === "GET") throw new CfoSinAccesoError();
-  if (res.status === 404 || res.status === 503) throw new VozNoDisponibleError(res.status);
+  if ((res.status === 404 || res.status === 503) && init.method === "GET") throw new CfoNoDisponibleError(res.status);
+  // Escritura sobre una base sin migrar: el mensaje del servidor, o un texto propio del CFO (nunca el del servicio de voz).
+  if ((res.status === 404 || res.status === 503) && init.method !== "GET") throw new RestaurantesAdminError(await readWriteErrorMessage(res, "La captura del CFO todavía no está disponible: falta aplicar la actualización de base de datos."));
   if (!res.ok) {
     const fallback = `No se pudo completar la solicitud al CFO (${res.status}).`;
     throw new RestaurantesAdminError(init.method === "GET" ? await readErrorMessage(res, fallback) : await readWriteErrorMessage(res, fallback));
@@ -73,7 +83,7 @@ async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, 
 /** Lectura con la convención `disponible: false` = base sin migrar. */
 async function leer<T extends { readonly disponible?: boolean }>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
   const w = await pedirCfo<T>(fetchImpl, url, token, { method: "GET" });
-  if (w.disponible === false) throw new VozNoDisponibleError(503);
+  if (w.disponible === false) throw new CfoNoDisponibleError(503);
   return w;
 }
 
