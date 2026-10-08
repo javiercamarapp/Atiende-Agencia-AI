@@ -66,7 +66,7 @@ export function aplicarDrill(sp: URLSearchParams, filtro: FiltroPedidosDetalle):
 }
 
 const DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"] as const;
-const ESTADOS: Readonly<Record<string, string>> = { cancelado: "Cancelados", entregado: "Entregados", completado: "Completados" };
+const ESTADOS: Readonly<Record<string, string>> = { cancelado: "Cancelados", entregado: "Entregados", completado: "Completados", no_recogido: "No recogidos" };
 
 /** Texto legible de cada llave activa del filtro (para el encabezado de la lista de pedidos). */
 export function describirFiltro(f: FiltroPedidosDetalle): string[] {

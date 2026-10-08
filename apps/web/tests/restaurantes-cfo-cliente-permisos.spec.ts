@@ -137,6 +137,7 @@ describe("registro de pestañas y enlaces de «Lo más importante»", () => {
     // Llaves que el API no admite se ignoran.
     expect(filtroDeParams(new URLSearchParams("pedidos=1&customer_name=Ana&hora_local=99&dow_negocio=3"))).toEqual({ dow_negocio: 3 });
     expect(describirFiltro({ status: "cancelado", dow_negocio: 6, hora_local: 14 })).toEqual(["Cancelados", "Día: sábado", "Hora: 14 h"]);
+    expect(describirFiltro({ status: "no_recogido" })).toEqual(["No recogidos"]);
   });
 });
 
