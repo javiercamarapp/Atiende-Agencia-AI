@@ -25,7 +25,7 @@ function vf(p: Partial<FilaVentasDiarias> = {}): FilaVentasDiarias {
 function ag(p: Partial<FilaAgenteDiario> = {}): FilaAgenteDiario {
   return {
     propertyId: A, diaNegocio: "2026-09-15", waConversacionesNuevas: 10000, waConPedido: 5000, waConHandoff: 0, waHandoffs: 0, vozLlamadas: 0, vozPedidoCreado: 0, vozEscalado: 0, vozAbandonado: 0,
-    costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: 0, costoLlmMicroUsd: 0, costoVozCentavos: 1, costoTelefoniaCentavos: 0, costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0, ...p,
+    costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: null, costoLlmMicroUsd: null, costoVozCentavos: 1, costoTelefoniaCentavos: 0, costoMetaCentavos: null, costoLlmCentavos: null, metaEventos: 0, mxnPorUsd: null, ...p,
   };
 }
 function sana(id = A, p: Partial<MetricasSucursalHallazgos> = {}): MetricasSucursalHallazgos {

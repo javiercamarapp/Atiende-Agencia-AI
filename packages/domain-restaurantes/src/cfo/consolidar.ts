@@ -24,6 +24,9 @@ export const COLUMNAS_NO_ADITIVAS: ReadonlySet<string> = new Set([
   "recuperados",
   "recuperadosPorCampana",
   "multiSucursal",
+  "clientesVariasSucursales",
+  "activosAlInicio",
+  "pasanAPerdidos",
   "clientes",
   // razones y promedios (se recalculan desde sumas)
   "netaTop10pctCentavos",
@@ -214,6 +217,8 @@ export interface ClientesConsolidado {
   readonly conjunto: FilaClientesResumen | null;
   /** Σ clientes_con_pedido de las sucursales − clientes únicos del conjunto. null si no hay conjunto. */
   readonly multiSucursal: number | null;
+  /** Clientes distintos con pedido en 2 o más sucursales (conteo exacto de la SQL; si no viene, el cálculo Σ − conjunto). */
+  readonly clientesVariasSucursales: number | null;
   /** Σ de las sucursales (SOLO informativo para la prueba: NO es el total de clientes). */
   readonly sumaClientesPorSucursal: number;
   readonly texto: string | null;
@@ -233,7 +238,7 @@ export function consolidarClientes(filas: readonly FilaClientesResumen[]): Clien
   if (conjuntos.length > 1) throw new Error("cfo_clientes_resumen: más de un renglón de conjunto");
   const suma = porSucursal.reduce((s, f) => s + f.clientesConPedido, 0);
   // Con una sola sucursal, sus clientes únicos SON el conjunto. Con varias y sin renglón de conjunto no se inventa: se queda null.
-  const conjunto: FilaClientesResumen | null = conjuntos[0] ?? (porSucursal.length === 1 ? { ...porSucursal[0]!, alcance: "conjunto", propertyId: null, multiSucursal: 0 } : null);
+  const conjunto: FilaClientesResumen | null = conjuntos[0] ?? (porSucursal.length === 1 ? { ...porSucursal[0]!, alcance: "conjunto", propertyId: null, multiSucursal: 0, clientesVariasSucursales: 0 } : null);
   const multi = conjunto ? suma - conjunto.clientesConPedido : null;
   if (conjunto && conjunto.multiSucursal != null && multi !== conjunto.multiSucursal) {
     throw new ErrorAditividad([{ columna: "multiSucursal", total: conjunto.multiSucursal, sumaSucursales: multi ?? 0, noAsignado: 0 }]);
@@ -241,5 +246,7 @@ export function consolidarClientes(filas: readonly FilaClientesResumen[]): Clien
   if (multi != null && multi < 0) {
     throw new ErrorAditividad([{ columna: "clientesConPedido", total: conjunto?.clientesConPedido ?? null, sumaSucursales: suma, noAsignado: 0 }]);
   }
-  return { porSucursal, conjunto, multiSucursal: multi, sumaClientesPorSucursal: suma, texto: textoMultiSucursal(multi) };
+  // El texto usa el conteo exacto de clientes en 2+ sucursales; `multi` (Σ − conjunto) cuenta k−1 por cliente que compró en 3 o más.
+  const exactos = conjunto?.clientesVariasSucursales ?? null;
+  return { porSucursal, conjunto, multiSucursal: multi, clientesVariasSucursales: exactos ?? multi, sumaClientesPorSucursal: suma, texto: textoMultiSucursal(exactos ?? multi) };
 }

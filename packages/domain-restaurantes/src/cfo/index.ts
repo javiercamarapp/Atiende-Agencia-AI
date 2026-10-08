@@ -24,4 +24,10 @@ export {
   formatoMinutos,
   fechaLocal,
   expandirDias,
+  // Contrato con la SQL (CFO-05): node-postgres entrega bigint/numeric como string; minutos en centésimas enteras.
+  numericoSql,
+  centesimas,
+  sumaDecimal2,
+  promedioMin1,
+  difFraccionesGE,
 } from "./util.ts";

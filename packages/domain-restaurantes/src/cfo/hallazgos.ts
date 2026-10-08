@@ -117,6 +117,19 @@ export function promediarSumasAgente(lista: readonly SumasAgente[]): SumasAgente
 
 // ---- Utilidades --------------------------------------------------------------------------------------------------------------------------
 
+/**
+ * ¿Está agotado ahora? La SQL (`cfo_agotados`) solo lista agotados vigentes. `disponible: false` es agotado aunque no tenga fecha de regreso
+ * (`agotadoHasta: null` = agotado INDEFINIDAMENTE; antes ese caso nunca alertaba). Con `disponible: true` solo cuenta un agotado programado cuya
+ * fecha aún no llega: una fecha `YYYY-MM-DD` viene ya filtrada por la SQL contra el día de negocio de la sucursal (no se compara aquí contra
+ * un instante UTC); una fecha con hora (ISO) se compara contra `ahora`.
+ */
+export function agotadoAhora(p: Pick<FilaAgotado, "disponible" | "agotadoHasta">, ahoraMs: number): boolean {
+  if (!p.disponible) return true;
+  if (p.agotadoHasta == null) return false;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(p.agotadoHasta)) return true;
+  return Date.parse(p.agotadoHasta) > ahoraMs;
+}
+
 export function rutaCfo(pestana: string, params: Readonly<Record<string, string | undefined>> = {}): string {
   const q = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== "")
@@ -357,7 +370,7 @@ export function detectarHallazgos(entrada: EntradaHallazgos, config: CfoConfig):
 
     // 10) agotado_estrella: producto del top 20 agotado hoy
     const hoyMs = entrada.ahora.getTime();
-    const estrellas = m.agotados.filter((p) => p.rankingUnidades != null && p.rankingUnidades <= 20 && p.agotadoHasta != null && Date.parse(p.agotadoHasta) > hoyMs);
+    const estrellas = m.agotados.filter((p) => p.rankingUnidades != null && p.rankingUnidades <= 20 && agotadoAhora(p, hoyMs));
     if (estrellas.length > 0) {
       const riesgo = estrellas.reduce((s, p) => s + (ventaEnRiesgoAgotado({ unidades28d: p.unidades28d, precioListaCentavos: p.precioListaCentavos, diasAgotado: 1 }).valor ?? 0), 0);
       const nombres = [...estrellas].sort((x, y) => (x.rankingUnidades ?? 99) - (y.rankingUnidades ?? 99) || cmp(x.productId, y.productId)).map((p) => p.nombre);

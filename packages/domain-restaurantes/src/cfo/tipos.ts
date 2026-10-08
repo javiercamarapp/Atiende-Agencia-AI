@@ -182,14 +182,23 @@ export interface FilaClientesResumen {
   readonly dormidos: number;
   readonly perdidos: number;
   readonly frecuentes: number;
-  /** Solo en el renglón del conjunto. */
+  /** Solo en el renglón del conjunto: Σ clientes de las sucursales − clientes únicos del conjunto (lo que `consolidarClientes` verifica). */
   readonly multiSucursal: number | null;
+  /** Solo en el renglón del conjunto: clientes distintos con pedido en 2 o más sucursales (conteo exacto; `multiSucursal` cuenta k−1 por cliente). */
+  readonly clientesVariasSucursales: number | null;
   readonly recuperados: number;
   readonly recuperadosPorCampana: number;
+  /** Clientes cuyo último pedido ANTERIOR al rango fue hace ≤ activo_dias (base del churn). */
+  readonly activosAlInicio: number;
+  /** De esos, los que al cierre del rango llevan más de perdido_dias sin pedir. */
+  readonly pasanAPerdidos: number;
   readonly diasEntrePedidosMediana: number | null;
   readonly netaTop10pctCentavos: number;
   readonly netaTotalCentavos: number;
   readonly pedidosPorCliente12mPromedio: number | null;
+  /** Pedidos de venta con cliente identificado / sin él (los segundos no entran a ninguna métrica de clientes). */
+  readonly pedidosConCliente: number;
+  readonly pedidosSinCliente: number;
 }
 
 export interface FilaClientesCohorte {
@@ -200,6 +209,10 @@ export interface FilaClientesCohorte {
   readonly conRecompra30: number;
   readonly conRecompra60: number;
   readonly conRecompra90: number;
+  /** Clientes cuya ventana de N días ya terminó: la tasa honesta es `conRecompraN / observablesN`. */
+  readonly observables30: number;
+  readonly observables60: number;
+  readonly observables90: number;
 }
 
 export interface FilaClientesAltas {
@@ -223,9 +236,10 @@ export interface FilaAgenteDiario {
   readonly vozAbandonado: number;
   readonly costoVozMicroUsd: number;
   readonly costoTelefoniaMicroUsd: number;
-  readonly costoMetaMicroUsd: number;
-  /** Solo en el renglón no asignado (LLM de texto, es de la organización). */
-  readonly costoLlmMicroUsd: number;
+  /** null = 0 eventos de Meta: «no medido», NUNCA $0. */
+  readonly costoMetaMicroUsd: number | null;
+  /** Solo en el renglón no asignado (LLM de texto, es de la organización). null en organizaciones demo. */
+  readonly costoLlmMicroUsd: number | null;
   /** null = no hubo `core.fx_rate` para convertir. NO es 0. */
   readonly costoVozCentavos: number | null;
   readonly costoTelefoniaCentavos: number | null;
@@ -233,6 +247,8 @@ export interface FilaAgenteDiario {
   readonly costoLlmCentavos: number | null;
   /** 0 eventos ⇒ el costo de Meta es «no medido» (nunca $0). */
   readonly metaEventos: number;
+  /** Tipo de cambio MXN por USD con el que se convirtió el renglón. null = no hubo `core.fx_rate`. */
+  readonly mxnPorUsd: number | null;
 }
 
 export interface FilaEscalacionHora {
@@ -255,6 +271,9 @@ export interface FilaEntregas {
 /** Percentiles de entrega: NO aditivos (por sucursal y del conjunto, calculado aparte). */
 export interface FilaEntregaPercentiles {
   readonly propertyId: string | null;
+  /** `conjunto` = percentil sobre todas las entregas del alcance (no se obtiene de los de cada sucursal). */
+  readonly alcance: "sucursal" | "conjunto";
+  readonly entregados: number;
   readonly p50Min: number | null;
   readonly p90Min: number | null;
 }
@@ -278,6 +297,7 @@ export interface FilaColonia {
   readonly minSuma: number;
   readonly clientes: number;
   readonly sucursalCercanaId: string | null;
+  readonly distanciaKm: number | null;
 }
 
 /** `cfo_comandas_pos`. */
@@ -304,7 +324,12 @@ export interface FilaAgotado {
   readonly propertyId: string;
   readonly productId: string;
   readonly nombre: string;
-  /** ISO 8601 o null (disponible). */
+  /**
+   * false = agotado. Con `agotadoHasta: null` y `disponible: false` el producto está agotado INDEFINIDAMENTE (la SQL solo lista
+   * agotados vigentes). `disponible: true` con `agotadoHasta` es un agotado programado.
+   */
+  readonly disponible: boolean;
+  /** `YYYY-MM-DD` (de la SQL) o ISO 8601; null = sin fecha de regreso. */
   readonly agotadoHasta: string | null;
   readonly unidades28d: number;
   readonly diasConVenta28d: number;

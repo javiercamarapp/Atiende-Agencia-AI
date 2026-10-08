@@ -21,8 +21,8 @@ function venta(p: Partial<FilaVentasDiarias> = {}): FilaVentasDiarias {
 function agente(p: Partial<FilaAgenteDiario> = {}): FilaAgenteDiario {
   return {
     propertyId: A, diaNegocio: "2026-09-01", waConversacionesNuevas: 10, waConPedido: 4, waConHandoff: 0, waHandoffs: 0, vozLlamadas: 0, vozPedidoCreado: 0, vozEscalado: 0, vozAbandonado: 0,
-    costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: 0, costoLlmMicroUsd: 0, costoVozCentavos: 1000, costoTelefoniaCentavos: 200, costoMetaCentavos: null, costoLlmCentavos: null,
-    metaEventos: 0, ...p,
+    costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoMetaMicroUsd: null, costoLlmMicroUsd: null, costoVozCentavos: 1000, costoTelefoniaCentavos: 200, costoMetaCentavos: null, costoLlmCentavos: null,
+    metaEventos: 0, mxnPorUsd: null, ...p,
   };
 }
 function cap(concepto: FilaCostoCaptura["concepto"], monto: number | null, p: Partial<FilaCostoCaptura> = {}): FilaCostoCaptura {
