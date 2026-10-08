@@ -201,50 +201,69 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     for (const p of previas) expect(JSON.stringify(p.cuerpo)).not.toMatch(/9991112222|9993334444|Tel[eé]fono/);
   });
 
-  it("un valor con forma de teléfono en la columna mapeada a folio bloquea la revisión con un aviso claro y no llama al API", async () => {
+  it("un teléfono con formato en la columna mapeada a folio no se envía: aviso con el renglón y el campo (sin el valor) y una casilla para confirmar que es un folio", async () => {
     const api = crearApiCfo();
     await b.pintar(CfoSoftRestaurant, api);
     await cargado();
-    const csv = ["Referencia,Fecha,Total", "999 111 2222,21/09/2026,$120.00", "999 333 4444,22/09/2026,$300.00"].join("\n");
+    const csv = ["Referencia,Fecha,Total", "999-111-2222,21/09/2026,$120.00", "999-333-4444,22/09/2026,$300.00"].join("\n");
     const d = await importarCsv(csv, "referencias.csv");
     changeValue(selector(d, "sr-tipo"), "cuentas");
     await esperarAcciones();
     changeValue(selector(d, "sr-mapeo-folio"), "0");
     await esperarAcciones();
-    expect(d.querySelector("[data-testid=sr-valor-personal]")!.textContent).toContain("parece un teléfono");
-    expect(botonDe(d, "Revisar vista previa").disabled).toBe(true);
-    expect(api.peticiones("POST", "/softrestaurant/importar/vista-previa")).toHaveLength(0);
-    // Salida clara: confirmar que la columna es el folio (solo para el folio, nunca para columnas con encabezado personal).
+    const errores = d.querySelector("[data-testid=sr-errores-locales]")!.textContent!;
+    expect(errores).toContain("2 renglones no se enviarán");
+    expect(errores).toContain("Renglón 2, «Folio de la cuenta»");
+    expect(errores).toContain("el valor no se muestra");
+    expect(errores).not.toMatch(/999-111-2222|999-333-4444/);
+    click(botonDe(d, "Revisar vista previa"));
+    await esperarAcciones();
+    for (const p of api.peticiones("POST", "/softrestaurant/importar/vista-previa")) expect(JSON.stringify(p.cuerpo)).not.toMatch(/999-111-2222|999-333-4444/);
+    // Salida clara: confirmar que la columna es el folio (solo el folio, nunca columnas con encabezado personal ni correos o tarjetas).
     click(d.querySelector("[data-testid=sr-confirmar-folio]") as HTMLElement);
     await esperarAcciones();
-    expect(d.querySelector("[data-testid=sr-valor-personal]")).toBeNull();
-    expect(botonDe(d, "Revisar vista previa").disabled).toBe(false);
+    expect(d.querySelector("[data-testid=sr-errores-locales] [role=alert]")).toBeNull();
     expect(d.querySelector("[data-testid=sr-confirmar-folio]")).not.toBeNull(); // sigue visible para poder deshacerlo
+    // Cambiar el renglón de encabezados o el tipo de reporte pierde la confirmación.
+    changeValue(selector(d, "sr-tipo"), "resumen_servicio");
+    await esperarAcciones();
+    expect(d.querySelector("[data-testid=sr-confirmar-folio]")).toBeNull();
   });
 
-  it("folios de 10 dígitos (2026092101) no bloquean la importación", async () => {
+  it("una columna excluida por la ayuda de UX se puede recuperar con la casilla, y sus valores siguen sometidos al parser del campo", async () => {
     const api = crearApiCfo();
     await b.pintar(CfoSoftRestaurant, api);
     await cargado();
-    const csv = ["Folio,Fecha,Total", "2026092101,21/09/2026,$120.00", "2026092102,22/09/2026,$300.00"].join("\n");
-    const d = await importarCsv(csv, "folios-largos.csv");
-    expect(d.querySelector("[data-testid=sr-valor-personal]")).toBeNull();
-    expect(botonDe(d, "Revisar vista previa").disabled).toBe(false);
+    const csv = ["Folio,Fecha,Total,Colonia", "T2-1,21/09/2026,$120.00,Colonia Centro"].join("\n");
+    const d = await importarCsv(csv, "con-colonia.csv");
+    expect(d.querySelector("[data-testid=sr-columnas-excluidas]")!.textContent).toContain("Colonia");
+    for (const o of d.querySelectorAll("#sr-mapeo-forma_pago option")) expect(o.textContent).not.toContain("Colonia");
+    click(d.querySelector("[data-testid=sr-incluir-3]") as HTMLElement);
+    await esperarAcciones();
+    expect([...d.querySelectorAll("#sr-mapeo-forma_pago option")].some((o) => o.textContent?.includes("Colonia"))).toBe(true);
+    // Mapeada a forma de pago, «Colonia Centro» no viaja como texto libre: sale «otro».
+    changeValue(selector(d, "sr-mapeo-forma_pago"), "3");
+    await esperarAcciones();
+    click(botonDe(d, "Revisar vista previa"));
+    await esperarAcciones();
+    expect(JSON.stringify(api.peticiones("POST", "/softrestaurant/importar/vista-previa")[0]!.cuerpo)).not.toContain("Colonia Centro");
   });
 
-  it("la vista previa muestra los errores por renglón con la numeración del archivo", async () => {
+  it("los valores que no pasan el parser de su campo se informan por renglón y campo (sin el valor) y no viajan; el resto se previsualiza", async () => {
     const api = crearApiCfo();
     await b.pintar(CfoSoftRestaurant, api);
     await cargado();
     const csv = [ETIQUETA_SINTETICO, "Folio,Fecha,Tipo de servicio,Total", "T2-1,21/09/2026,A domicilio,$120.00", "T2-2,22/09/2026,Comedor,abc", "T2-3,fecha mala,Comedor,$50.00"].join("\n");
     const d = await importarCsv(csv, "con-errores.csv");
+    const locales = d.querySelector("[data-testid=sr-errores-locales]")!.textContent!;
+    expect(locales).toContain("2 renglones no se enviarán");
+    expect(locales).toContain("Renglón 4, «Total»: se esperaba un monto");
+    expect(locales).toContain("Renglón 5, «Fecha»: se esperaba una fecha");
+    expect(locales).not.toContain("abc");
     click(botonDe(d, "Revisar vista previa"));
     await esperarAcciones();
-    const errores = d.querySelector("[data-testid=sr-errores]")!;
-    expect(errores.textContent).toContain("2 errores por renglón");
-    expect(errores.textContent).toContain("Renglón 4, total: monto inválido");
-    expect(errores.textContent).toContain("Renglón 5, fecha: fecha inválida");
-    expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/1 renglón aceptado y 2 rechazados/);
+    expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/1 renglón aceptado y 0 rechazados/);
+    expect(JSON.stringify(api.peticiones("POST", "/softrestaurant/importar/vista-previa")[0]!.cuerpo)).not.toMatch(/abc|fecha mala/);
   });
 
   it("un .xls antiguo se rechaza con el mensaje de la casa y no se llama al API", async () => {

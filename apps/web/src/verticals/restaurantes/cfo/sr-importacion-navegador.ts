@@ -1,13 +1,13 @@
 // CFO-08 · importación de reportes de SoftRestaurant EN EL NAVEGADOR: detecta la fila de encabezados, sugiere el mapeo de columnas con los alias
 // INFERIDOS del dominio (`ALIAS_SR_INFERIDOS`, no se copian), EXCLUYE las columnas de datos personales y arma la tabla que recibe la API.
 //
-// Privacidad (diseño §3.7): solo viajan las columnas que la persona mapeó. Una columna de cliente (nombre, teléfono, correo, dirección, RFC…)
-// nunca se manda: se marca como personal si CUALQUIER renglón con forma de encabezado (hasta el renglón elegido o entre los primeros 15) trae una palabra
-// personal en esa posición, así que elegir otro renglón como encabezado no la libera. Como defensa extra, antes de armar la tabla se revisan los valores
-// de los campos de texto mapeados (folio, tipo de servicio, forma de pago, cancelada): si alguno parece un teléfono o un correo, no se envía nada.
-// El servidor además rechaza un archivo con encabezados personales, pero solo ve los encabezados que le llegan ya renombrados: la barrera real es esta.
+// Privacidad (diseño §3.7): la barrera es una LISTA BLANCA POR TIPO DE VALOR, no el encabezado. Solo viajan las columnas que la persona mapeó a un campo
+// conocido y cada celda pasa por el parser estricto de ese campo (dinero, fecha, hora, entero pequeño, sí/no, enumerado cerrado, folio): lo que no pasa no viaja
+// (el renglón entero se deja en blanco y se informa como error por renglón, sin mostrar el valor). Un nombre, un teléfono en cualquier formato, un correo, un RFC o un
+// número de tarjeta no entran por ningún campo. La detección de columnas personales por encabezado (`esColumnaPersonal`) es solo ayuda de UX: oculta esas
+// columnas de los selectores y las lista (solo nombre o posición); la persona puede recuperarlas con una casilla y siguen sometidas al parser de su campo.
 // La lectura del archivo (CSV/XLSX, tope de 5 MB, huella) es la de `lib/clientes-importacion.ts`; aquí no se vuelve a escribir.
-import { ALIAS_SR_INFERIDOS, esColumnaPersonal, normalizarEncabezado } from "@atiende/domain-restaurantes/cfo";
+import { ALIAS_SR_INFERIDOS, esColumnaPersonal, normalizarEncabezado, normalizarTipoServicio, parsearFechaSr, parsearMontoCentavos } from "@atiende/domain-restaurantes/cfo";
 import type { TipoLayoutSr } from "@atiende/domain-restaurantes/cfo";
 
 export { ArchivoImportacionError, IMPORTACION_MAX_BYTES, leerArchivoClientes as leerArchivoSr } from "../lib/clientes-importacion.ts";
@@ -78,96 +78,130 @@ export function sugerirTipo(encabezados: readonly string[]): TipoLayoutSr {
   return ALIAS_SR_INFERIDOS.cuentas.folio.some((a) => norm.has(a)) ? "cuentas" : "resumen_servicio";
 }
 
-/**
- * Índices de las columnas de datos personales (nombre, teléfono, correo, dirección, RFC…): se EXCLUYEN siempre. Una columna es personal si en esa posición
- * una fila con forma de encabezado tiene un encabezado personal. Solo cuentan las filas HASTA la elegida (los renglones de datos de abajo no son encabezados,
- * así que «Calle 60 #123» bajo «Domicilio» o «Crédito cliente» en forma de pago no excluyen nada), de modo que cambiar el renglón de encabezados a uno de
- * datos no libera la columna que un renglón de arriba ya delató.
- */
-export function columnasPersonales(filas: readonly (readonly string[])[], filaEncabezado: number): number[] {
-  return [...nombresPersonales(filas, filaEncabezado).keys()];
-}
-
 const esEtiqueta = (c: string): boolean => c.trim().endsWith(":");
+const llenas = (fila: readonly string[]): number => fila.filter((c) => c.trim() !== "").length;
 
-/**
- * ¿Los renglones de arriba del encabezado elegido son encabezados (de grupo) y no títulos? Con 3 o más celdas llenas sí. Con menos: un par «etiqueta: valor»
- * (`R.F.C.:,XAXX…`, `Dirección:,Calle 60…`) es un dato del negocio y se ignora entero, y un título suelto en la columna 1 también; una celda sola en otra
- * columna (`,,,Teléfono`) SÍ es un encabezado de grupo y cuenta.
- */
-function celdasDeEncabezado(fila: readonly string[], esElegida: boolean): Array<[number, string]> {
-  const llenas = fila.map((c, i) => [i, c.trim()] as [number, string]).filter(([, c]) => c !== "");
-  if (esElegida) return llenas.filter(([, c]) => !esEtiqueta(c));
-  if (llenas.length >= 3) return llenas.filter(([, c]) => !esEtiqueta(c));
-  if (llenas.some(([, c]) => esEtiqueta(c))) return [];
-  if (llenas.length === 1 && llenas[0]![0] === 0) return [];
-  return llenas.filter(([i]) => i > 0);
+/** Renglones que cuentan como encabezado para la ayuda de UX: el elegido, el que detecta `detectarFilaEncabezado` y, arriba del elegido, los de la misma tabla (mismo ancho ±1, sin pares «etiqueta:»). */
+function filasDeEncabezado(filas: readonly (readonly string[])[], filaEncabezado: number): number[] {
+  const elegidas = new Set<number>([filaEncabezado, detectarFilaEncabezado(filas)]);
+  const ancho = llenas(filas[filaEncabezado] ?? []);
+  for (let r = 0; r < filaEncabezado; r++) {
+    const f = filas[r] ?? [];
+    if (!f.some(esEtiqueta) && Math.abs(llenas(f) - ancho) <= 1 && llenas(f) >= 2) elegidas.add(r);
+  }
+  return [...elegidas].filter((r) => r >= 0 && r < filas.length).sort((a, b) => a - b);
 }
 
-/** Columna personal -> cómo mostrarla: el encabezado si parece un nombre (sin dígitos) y, si no, solo su posición. Nunca un valor de datos. */
+/**
+ * Columna sospechosa de ser de clientes -> cómo mostrarla (el encabezado si parece un nombre, sin dígitos; si no, solo su posición: nunca un valor de datos).
+ * SOLO AYUDA DE UX: no es la barrera de privacidad (esa es el parser de valores por campo).
+ */
 export function nombresPersonales(filas: readonly (readonly string[])[], filaEncabezado: number): Map<number, string> {
-  const hasta = Math.min(filas.length - 1, filaEncabezado);
   const out = new Map<number, string>();
-  for (let r = 0; r <= hasta; r++) {
-    for (const [i, h] of celdasDeEncabezado(filas[r] ?? [], r === filaEncabezado)) {
-      if (esColumnaPersonal(h) && !out.has(i)) out.set(i, /\d/.test(h) || h.length > 30 ? `Columna ${i + 1}` : h);
-    }
+  for (const r of filasDeEncabezado(filas, filaEncabezado)) {
+    (filas[r] ?? []).forEach((h, i) => {
+      if (h.trim() !== "" && esColumnaPersonal(h) && !out.has(i)) out.set(i, /\d/.test(h) || h.length > 30 ? `Columna ${i + 1}` : h.trim());
+    });
   }
   return new Map([...out.entries()].sort((x, y) => x[0] - y[0]));
 }
 
-const CAMPOS_NUMERICOS = ["total", "subtotal", "descuento", "propina", "impuesto", "cancelado", "tickets"] as const;
+export function columnasPersonales(filas: readonly (readonly string[])[], filaEncabezado: number): number[] {
+  return [...nombresPersonales(filas, filaEncabezado).keys()];
+}
+
+// ---- Parsers estrictos por tipo de valor (la barrera) ------------------------------------------------------------------------------------------
+
+type Tipo = "dinero" | "fecha" | "hora" | "entero" | "booleano" | "servicio" | "forma_pago" | "folio";
+const TIPO_DE_CAMPO: Readonly<Record<string, Tipo>> = {
+  folio: "folio", fecha: "fecha", hora: "hora", servicio: "servicio", total: "dinero", subtotal: "dinero", descuento: "dinero", propina: "dinero", impuesto: "dinero",
+  cancelado: "dinero", forma_pago: "forma_pago", cancelada: "booleano", tickets: "entero",
+};
+const ESPERADO: Readonly<Record<Tipo, string>> = {
+  dinero: "un monto como $1,234.50 (sin letras ni espacios)",
+  fecha: "una fecha como 21/09/2026 o 2026-09-21 (años 2000 a 2100)",
+  hora: "una hora como 14:30",
+  entero: "un número entero de hasta 6 dígitos",
+  booleano: "Sí o No (o cancelada / activa)",
+  servicio: "un tipo de servicio (comedor, para llevar, domicilio, rápido)",
+  forma_pago: "una forma de pago (efectivo, tarjeta, transferencia…)",
+  folio: "un folio de hasta 24 caracteres con letras, números y guiones, sin espacios y con al menos un número",
+};
+
 const RE_CORREO = /[^\s@]+@[^\s@]+\.[^\s@]+/;
-/** Con separadores o +52: 10 dígitos en grupos de teléfono (2-3 / 3-4 / 4) o con prefijo 52 / 521. «1234-567-890» no es un teléfono. */
+const RE_DINERO = [/^[-(]?\$?(\d{1,3}(,\d{3})+|\d+)(\.\d{1,6})?\)?$/, /^-?\$?\d+,\d{1,2}$/, /^-?\$?\d{1,3}(\.\d{3})+,\d{1,2}$/];
+const RE_RFC = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i;
+const RE_CURP = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/i;
+/** Teléfono con formato (separadores, paréntesis o +52) en grupos de teléfono: en el folio pide confirmación; «1234-567-890» no lo es. */
 const RE_TEL_CON_FORMATO = /^(\+?5?2?1?[\s.-]?)?(\(\d{2,3}\)|\d{2,3})[\s.-]?\d{3,4}[\s.-]?\d{4}$/;
 
-/** Teléfono: con formato (separadores, paréntesis o +52) o, sin separadores, 10 dígitos que no empiezan con 0 (un folio relleno con ceros no lo es) o 12/13 con prefijo 52/521. */
-export function pareceTelefono(valor: string, opciones: { readonly sinFormato?: boolean } = {}): boolean {
+/** Número de tarjeta: solo dígitos, espacios o guiones y entre 13 y 19 dígitos (defensa PCI barata, en todos los campos). */
+export function pareceTarjeta(v: string): boolean {
+  const t = v.trim();
+  const d = t.replace(/\D/g, "").length;
+  return /^[\d\s-]+$/.test(t) && d >= 13 && d <= 19;
+}
+
+/** Teléfono con formato: separadores, paréntesis o +52 y 10 dígitos (12/13 con 52/521) que no empiezan con 0. */
+export function pareceTelefono(valor: string): boolean {
   const v = valor.trim();
-  if (!/^\+?[\d\s().-]{10,20}$/.test(v)) return false;
-  const digitos = v.replace(/\D/g, "");
-  const conFormato = /[\s().+-]/.test(v);
-  if (conFormato) {
-    if (digitos.length === 10) return !digitos.startsWith("0") && RE_TEL_CON_FORMATO.test(v);
-    return (digitos.length === 12 && digitos.startsWith("52") || digitos.length === 13 && digitos.startsWith("521")) && RE_TEL_CON_FORMATO.test(v);
-  }
-  if (opciones.sinFormato === false) return false;
-  if (digitos.length === 10) return !digitos.startsWith("0");
-  return (digitos.length === 12 && digitos.startsWith("52")) || (digitos.length === 13 && digitos.startsWith("521"));
+  if (!/^\+?[\d\s().-]{10,20}$/.test(v) || !/[\s().+-]/.test(v)) return false;
+  const d = v.replace(/\D/g, "");
+  const largo = d.length === 10 ? !d.startsWith("0") : (d.length === 12 && d.startsWith("52")) || (d.length === 13 && d.startsWith("521"));
+  return largo && RE_TEL_CON_FORMATO.test(v);
 }
 
-export interface DatoPersonalDetectado {
-  readonly campo: string;
-  /** Renglón del archivo (1 = primero). */
-  readonly renglon: number;
-  readonly motivo: "correo" | "telefono" | "numero_largo";
+function dineroValido(v: string): boolean {
+  if (!RE_DINERO.some((r) => r.test(v)) || parsearMontoCentavos(v) === null) return false;
+  const limpio = v.replace(/[-()$]/g, "");
+  const sinDecimales = /^\d+$/.test(limpio) || /^\d{1,3}(,\d{3})+$/.test(limpio);
+  return !(sinDecimales && limpio.replace(/\D/g, "").length >= 10);
 }
 
-export interface OpcionesValorPersonal {
-  /** La persona confirmó que la columna del folio no trae teléfonos: se omite la regla de teléfono con formato SOLO para el folio (el correo nunca se omite). */
-  readonly confirmarFolio?: boolean;
-}
+const FORMAS_PAGO: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\befectivo\b/, "efectivo"], [/\b(tarjeta|credito|debito|visa|mastercard|amex)\b/, "tarjeta"], [/\b(transferencia|spei)\b/, "transferencia"], [/\bvales?\b/, "vales"], [/\bcheque\b/, "cheque"],
+];
+const SERVICIO_ETIQUETA: Readonly<Record<string, string>> = { comedor: "Comedor", para_llevar: "Para llevar", domicilio: "Domicilio", rapido: "Rápido", otro: "Otro" };
+const SI = new Set(["si", "s", "1", "true", "verdadero", "x", "yes", "cancelada", "cancelado"]);
+const NO = new Set(["no", "n", "0", "false", "falso", "activa", "activo", "pagada", "pagado", "abierta", "cerrada", "cerrado", "vigente"]);
 
-/**
- * Primer valor con forma de dato personal en una columna mapeada, de CUALQUIER campo: un correo (siempre), un teléfono (en un folio solo con formato:
- * 2026092101 es un folio normal) y, en los campos de monto o cantidad, un entero sin decimales de 10 dígitos o más (no es un monto realista: es un teléfono mapeado a «propina»).
- */
-export function valorPersonalEnMapeo(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr, opciones: OpcionesValorPersonal = {}): DatoPersonalDetectado | null {
-  const activos = camposDeTipo(tipo).filter((c) => mapeo[c.campo] !== null && mapeo[c.campo] !== undefined);
-  for (let r = filaEncabezado + 1; r < filas.length; r++) {
-    for (const c of activos) {
-      const v = (filas[r]?.[mapeo[c.campo] as number] ?? "").trim();
-      if (v === "") continue;
-      if (RE_CORREO.test(v)) return { campo: c.campo, renglon: r + 1, motivo: "correo" };
-      if (c.campo === "folio") {
-        if (!opciones.confirmarFolio && pareceTelefono(v, { sinFormato: false })) return { campo: c.campo, renglon: r + 1, motivo: "telefono" };
-        continue;
-      }
-      if (pareceTelefono(v)) return { campo: c.campo, renglon: r + 1, motivo: "telefono" };
-      if ((CAMPOS_NUMERICOS as readonly string[]).includes(c.campo) && /^\$?\d{10,}$/.test(v)) return { campo: c.campo, renglon: r + 1, motivo: "numero_largo" };
+export type ResultadoCelda = { readonly ok: true; readonly valor: string | null } | { readonly ok: false; readonly esperado: string; readonly confirmable?: boolean };
+
+/** Valida y normaliza UNA celda según el tipo de su campo. Texto libre nunca pasa: los enumerados salen de una lista cerrada. */
+export function parsearCeldaSr(campo: string, valor: string, opciones: { readonly confirmarFolio?: boolean } = {}): ResultadoCelda {
+  const v = valor.trim();
+  if (v === "") return { ok: true, valor: null };
+  const tipo = TIPO_DE_CAMPO[campo];
+  if (!tipo) return { ok: false, esperado: "un dato conocido" };
+  const no = (confirmable = false): ResultadoCelda => ({ ok: false, esperado: ESPERADO[tipo], ...(confirmable ? { confirmable: true } : {}) });
+  if (RE_CORREO.test(v) || pareceTarjeta(v)) return no();
+  const digitos = v.replace(/\D/g, "").length;
+  switch (tipo) {
+    case "dinero":
+      return dineroValido(v) ? { ok: true, valor: v } : no();
+    case "fecha":
+      return v.length <= 30 && parsearFechaSr(v) !== null ? { ok: true, valor: v } : no();
+    case "hora":
+      return /^\d{1,2}:\d{2}(:\d{2})?(\s?[ap]\.?\s?m\.?)?$/i.test(v) ? { ok: true, valor: v } : no();
+    case "entero":
+      return /^\d{1,6}$/.test(v) ? { ok: true, valor: v } : no();
+    case "booleano": {
+      const n = normalizarEncabezado(v);
+      return SI.has(n) ? { ok: true, valor: "Sí" } : NO.has(n) ? { ok: true, valor: "No" } : no();
+    }
+    case "servicio":
+      return digitos >= 7 ? no() : { ok: true, valor: SERVICIO_ETIQUETA[normalizarTipoServicio(v)] ?? "Otro" };
+    case "forma_pago": {
+      if (digitos >= 7) return no();
+      const n = normalizarEncabezado(v);
+      return { ok: true, valor: FORMAS_PAGO.find(([re]) => re.test(n))?.[1] ?? "otro" };
+    }
+    case "folio": {
+      if (!/^[A-Za-z0-9][A-Za-z0-9\-_/]{0,23}$/.test(v) || !/\d/.test(v) || RE_RFC.test(v) || RE_CURP.test(v)) return no();
+      if (pareceTelefono(v) && !opciones.confirmarFolio) return no(true);
+      return { ok: true, valor: v };
     }
   }
-  return null;
 }
 
 /** Sugiere la columna de cada campo con los alias inferidos (en su orden de prioridad); una columna se usa una sola vez y nunca una personal. */
@@ -208,36 +242,52 @@ export function camposRepetidos(mapeo: MapeoSr): string[] {
   return repetidos;
 }
 
-export const MENSAJE_VALOR_PERSONAL = (d: DatoPersonalDetectado): string =>
-  `El renglón ${d.renglon} trae algo que parece ${d.motivo === "correo" ? "un correo" : d.motivo === "numero_largo" ? "un teléfono (un número de 10 dígitos o más sin decimales)" : "un teléfono"} en la columna elegida para «${d.campo}». No se sube nada: revisa el mapeo (no subimos datos de tus clientes).`;
+export interface ErrorLocalSr {
+  /** Renglón del archivo (1 = primero). */
+  readonly renglon: number;
+  readonly campo: string;
+  /** Etiqueta legible del campo («Forma de pago»). */
+  readonly etiqueta: string;
+  readonly esperado: string;
+  /** Un folio con forma de teléfono con formato: la persona puede confirmar que es un folio. */
+  readonly confirmable: boolean;
+}
+
+/** «Renglón 5, «Total»: se esperaba un monto… (el valor no se muestra). Corrige esa celda o quita ese renglón del archivo; mientras tanto no se envía.» */
+export const MENSAJE_ERROR_LOCAL = (e: ErrorLocalSr): string => `Renglón ${e.renglon}, «${e.etiqueta}»: se esperaba ${e.esperado} (el valor no se muestra). Corrige esa celda o elige otra columna; ese renglón no se envía.`;
 
 export interface TablaSr {
   readonly tabla: Array<Array<string | null>>;
   /** Cuántas columnas del archivo viajan. */
   readonly columnasEnviadas: number;
-  /** Encabezados de las columnas de datos personales que NO se suben. */
-  readonly excluidas: readonly string[];
+  /** Celdas que no pasaron su parser: el renglón completo se deja en blanco y no viaja. */
+  readonly errores: readonly ErrorLocalSr[];
 }
 
+const MAX_ERRORES_LOCALES = 200;
+
 /**
- * Tabla para la API: conserva el número de cada renglón del archivo (los de arriba del encabezado van vacíos y los errores del servidor apuntan al
- * renglón real), renombra las columnas mapeadas al alias canónico del dominio y NO incluye ninguna otra. Si el mapeo toca una columna personal, falla.
+ * Tabla para la API: conserva el número de cada renglón del archivo (los de arriba del encabezado van vacíos), renombra las columnas mapeadas al alias canónico
+ * del dominio y NO incluye ninguna otra. Cada celda pasa por el parser de su campo; si una falla, el renglón completo va en blanco (no viaja) y queda en `errores`.
  */
-export function construirTablaSr(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr, opciones: OpcionesValorPersonal = {}): TablaSr {
-  const personales = new Set(columnasPersonales(filas, filaEncabezado));
+export function construirTablaSr(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr, opciones: { readonly confirmarFolio?: boolean } = {}): TablaSr {
   const campos = camposDeTipo(tipo).filter((c) => mapeo[c.campo] !== null && mapeo[c.campo] !== undefined);
-  for (const c of campos) {
-    if (personales.has(mapeo[c.campo] as number)) throw new Error("La columna elegida trae datos personales de tus clientes y no se sube.");
-  }
-  const hallado = valorPersonalEnMapeo(filas, filaEncabezado, tipo, mapeo, opciones);
-  if (hallado) throw new Error(MENSAJE_VALOR_PERSONAL(hallado));
+  const errores: ErrorLocalSr[] = [];
   const tabla = filas.map((fila, i): Array<string | null> => {
     if (i < filaEncabezado) return [];
     if (i === filaEncabezado) return campos.map((c) => aliasDe(tipo, c.campo)[0] ?? c.campo);
-    return campos.map((c) => {
-      const v = fila[mapeo[c.campo] as number];
-      return v === undefined || v === "" ? null : v;
-    });
+    const celdas: Array<string | null> = [];
+    let rechazado = false;
+    for (const c of campos) {
+      const r = parsearCeldaSr(c.campo, fila[mapeo[c.campo] as number] ?? "", opciones);
+      if (!r.ok) {
+        rechazado = true;
+        if (errores.length < MAX_ERRORES_LOCALES) errores.push({ renglon: i + 1, campo: c.campo, etiqueta: c.etiqueta, esperado: r.esperado, confirmable: r.confirmable === true });
+        break;
+      }
+      celdas.push(r.valor);
+    }
+    return rechazado ? [] : celdas;
   });
-  return { tabla, columnasEnviadas: campos.length, excluidas: [...nombresPersonales(filas, filaEncabezado).values()] };
+  return { tabla, columnasEnviadas: campos.length, errores };
 }

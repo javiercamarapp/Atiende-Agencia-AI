@@ -1,7 +1,7 @@
 // CFO-08 · «Importar reporte de SoftRestaurant»: sucursal -> tipo de reporte -> archivo (.csv o .xlsx, máx. 5 MB) -> mapeo asistido -> vista previa
 // (aceptados, rechazados y errores por renglón, sin escribir nada) -> confirmar. La importación es idempotente: el mismo archivo con el mismo mapeo responde
 // «Este archivo ya estaba cargado». Las columnas de cliente NO se suben (se excluyen en el navegador y el servidor las vuelve a rechazar).
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { MAX_RENGLONES_SR } from "@atiende/domain-restaurantes/cfo";
 import type { AlcanceVista, ImportacionSrVista, TipoLayoutSr, VistaPreviaSr } from "@atiende/domain-restaurantes/cfo";
@@ -16,8 +16,7 @@ import {
   camposRepetidos,
   columnasPersonales,
   nombresPersonales,
-  valorPersonalEnMapeo,
-  MENSAJE_VALOR_PERSONAL,
+  MENSAJE_ERROR_LOCAL,
   construirTablaSr,
   detectarFilaEncabezado,
   leerArchivoSr,
@@ -54,6 +53,8 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmarFolio, setConfirmarFolio] = useState(false);
+  /** Columnas que la ayuda de UX excluyó y la persona recuperó («Esta columna NO es de clientes»): siguen sometidas al parser de su campo. */
+  const [incluidas, setIncluidas] = useState<ReadonlySet<number>>(new Set());
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   function reiniciar() {
@@ -64,23 +65,28 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
     setResultado(null);
     setError(null);
     setConfirmarFolio(false);
+    setIncluidas(new Set());
     if (inputRef.current) inputRef.current.value = "";
   }
 
   const encabezados = archivo ? (archivo.filas[filaEnc] ?? []) : [];
   const nombresPers = archivo ? nombresPersonales(archivo.filas, filaEnc) : new Map<number, string>();
-  const personales = new Set(nombresPers.keys());
-  const excluidas = [...nombresPers.values()];
-  const valorPersonal = archivo ? valorPersonalEnMapeo(archivo.filas, filaEnc, tipo, mapeo, { confirmarFolio }) : null;
+  const personales = new Set([...nombresPers.keys()].filter((i) => !incluidas.has(i)));
   const filasDatos = archivo ? Math.max(0, archivo.filas.length - filaEnc - 1) : 0;
   const maximo = MAX_RENGLONES_SR[tipo];
   const excedeTope = filasDatos > maximo;
   const mapeoListo = archivo !== null && camposFaltantes(tipo, mapeo).length === 0 && camposRepetidos(mapeo).length === 0;
-  const puedeRevisar = propertyId !== "" && mapeoListo && !excedeTope && !trabajando && valorPersonal === null;
+  // Cada celda pasa por el parser de su campo: lo que no pasa no viaja (el renglón va en blanco) y se informa sin mostrar el valor.
+  const construida = useMemo(() => (archivo && mapeoListo ? construirTablaSr(archivo.filas, filaEnc, tipo, mapeo, { confirmarFolio }) : null), [archivo, mapeoListo, filaEnc, tipo, mapeo, confirmarFolio]);
+  const erroresLocales = construida?.errores ?? [];
+  const puedeRevisar = propertyId !== "" && mapeoListo && !excedeTope && !trabajando;
 
   function sugerir(filas: readonly (readonly string[])[], f: number, t: TipoLayoutSr) {
     setMapeo(sugerirMapeoSr(filas[f] ?? [], t, new Set(columnasPersonales(filas, f))));
     setVista(null);
+    // Otro renglón de encabezados u otro tipo de reporte es otro análisis: se pierden las confirmaciones.
+    setConfirmarFolio(false);
+    setIncluidas(new Set());
   }
 
   async function elegirArchivo(file: File | undefined) {
@@ -256,21 +262,28 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
             <p className="m-0 text-xs text-muted-foreground">
               {archivo.nombre}: {entero(filasDatos)} {filasDatos === 1 ? "renglón" : "renglones"} de datos.
             </p>
-            {(valorPersonal || confirmarFolio) && (
-              <div className="flex flex-col gap-1.5">
-                {valorPersonal && (
-                  <p role="alert" className="m-0 text-sm text-destructive" data-testid="sr-valor-personal">
-                    {MENSAJE_VALOR_PERSONAL(valorPersonal)}
-                  </p>
+            {(erroresLocales.length > 0 || confirmarFolio) && (
+              <div className="flex flex-col gap-1.5" data-testid="sr-errores-locales">
+                {erroresLocales.length > 0 && (
+                  <>
+                    <p role="alert" className="m-0 text-sm font-semibold text-destructive">
+                      {entero(erroresLocales.length)} {erroresLocales.length === 1 ? "renglón no se enviará" : "renglones no se enviarán"}: un valor no tiene la forma que espera su campo
+                    </p>
+                    <ul className="m-0 max-h-32 list-disc overflow-auto pl-5 text-xs text-foreground">
+                      {erroresLocales.slice(0, 20).map((e) => (
+                        <li key={`${e.renglon}-${e.campo}`}>{MENSAJE_ERROR_LOCAL(e)}</li>
+                      ))}
+                    </ul>
+                  </>
                 )}
-                {(confirmarFolio || (valorPersonal?.campo === "folio" && valorPersonal.motivo === "telefono")) && (
+                {(confirmarFolio || erroresLocales.some((e) => e.confirmable)) && (
                   <Checkbox
                     checked={confirmarFolio}
                     onChange={(e) => {
                       setConfirmarFolio(e.target.checked);
                       setVista(null);
                     }}
-                    label="Confirmo que esta columna es el folio de la cuenta y no un teléfono"
+                    label="Confirmo que la columna del folio es el folio de la cuenta y no un teléfono"
                     wrapperClassName="text-sm"
                     data-testid="sr-confirmar-folio"
                   />
@@ -293,7 +306,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                   sugerir(archivo.filas, f, tipo);
                 }}
               >
-                {archivo.filas.slice(0, 15).map((f, i) => (
+                {archivo.filas.slice(0, 40).map((f, i) => (
                   <option key={i} value={i}>
                     {`Renglón ${i + 1}: ${f.filter((c) => c.trim() !== "").slice(0, 3).join(" · ").slice(0, 60) || "(vacío)"}`}
                   </option>
@@ -304,7 +317,17 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
               tipo={tipo}
               encabezados={encabezados}
               personales={personales}
-              excluidas={excluidas}
+              excluidas={[...nombresPers.entries()].map(([indice, nombre]) => ({ indice, nombre, incluida: incluidas.has(indice) }))}
+              onIncluir={(indice, incluir) => {
+                setIncluidas((prev) => {
+                  const sig = new Set(prev);
+                  if (incluir) sig.add(indice);
+                  else sig.delete(indice);
+                  return sig;
+                });
+                if (!incluir) setMapeo((m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v === indice ? null : v])));
+                setVista(null);
+              }}
               mapeo={mapeo}
               onCambiar={(campo, indice) => {
                 setMapeo((m) => ({ ...m, [campo]: indice }));
