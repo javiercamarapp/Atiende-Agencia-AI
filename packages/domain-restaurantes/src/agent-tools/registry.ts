@@ -1386,8 +1386,8 @@ async function dispatchTool(
         throw err;
       }
       if (grandeAprobable.error) {
-        // D31 (QA-PM-R5-voz-19): un pedido grande SIEMPRE pasa por la sucursal. Con el autopiloto el pedido queda `por_aprobar` y la solicitud llega al panel, pero en voz no
-        // quedaba ningun aviso (callback) para la persona de la sucursal; en WhatsApp lo hacia el aviso `escalada:pedido_grande`. Se registra en el SERVIDOR, en el mismo SAVEPOINT
+        // D31 (QA-PM-R5-voz-19): un pedido grande SIEMPRE pasa por la sucursal. Con el autopiloto el pedido queda `por_aprobar` y la solicitud llega al panel, pero ni en voz ni en WhatsApp
+        // quedaba ningun aviso (callback) para la persona de la sucursal (solo sin autopiloto lo dejaba `escalada:pedido_grande`). Se registra en el SERVIDOR, en el mismo SAVEPOINT
         // que el pedido: si el aviso no se puede dejar, se revierte tambien el pedido (nunca queda un pedido grande retenido sin que nadie en la sucursal lo sepa).
         await avisarPedidoGrandeASucursal(repo, ctx, createInput, grandeAprobable.error, order.propertyId, order.orderNumber ? `Pedido #${order.orderNumber} creado en estado por_aprobar; ` : "Pedido creado en estado por_aprobar; ");
         const result = {

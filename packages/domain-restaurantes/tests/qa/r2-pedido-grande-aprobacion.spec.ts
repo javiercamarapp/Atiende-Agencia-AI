@@ -90,6 +90,19 @@ describe("WhatsApp (T7, PM): el pedido grande queda por_aprobar con su solicitud
     expect(r.escalated).toBeFalsy();
   });
 
+  // A24 (ronda 5) con autopiloto: numero nuevo + efectivo + $2,700 (> $2,500) queda por_aprobar Y deja el aviso pedido_grande para la sucursal; antes (con autopiloto) no quedaba aviso.
+  it("A24 con autopiloto: numero nuevo + efectivo + $2,700 -> por_aprobar con su solicitud y el aviso escalada:pedido_grande (sin falla_sistema)", async () => {
+    const t = await bancoConAutopiloto();
+    const items = [item(t.b.pid("Pastor — 2 kg"), "Pastor — 2 kg", 1), item(t.b.pid("Pastor — 1 kg"), "Pastor — 1 kg", 1)];
+    const r = await cotizarYConfirmar(t.b, "+5219990000124", items, "efectivo");
+    expect(r.orderId).toBeTruthy();
+    expect(t.retenerLlamadas[0]).toMatchObject({ motivo: "sin_historial_efectivo", pago: "efectivo" });
+    const avisos = t.b.callbacks();
+    expect(avisos.filter((c) => c.reason === "escalada:pedido_grande")).toHaveLength(1);
+    expect(avisos.some((c) => (c.reason ?? "").includes("falla_sistema"))).toBe(false);
+    expect(t.comandas).toHaveLength(0);
+  });
+
   it("un pedido bajo los umbrales sigue su camino normal: comanda encolada, sin solicitud", async () => {
     const t = await bancoConAutopiloto();
     const items = [item(t.b.pid("Pastor — 1 kg"), "Pastor — 1 kg", 1)];

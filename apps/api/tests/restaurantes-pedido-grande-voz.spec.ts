@@ -130,6 +130,41 @@ describe("POST /orders de voz: pedido grande de PM", () => {
     expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(1);
   });
 
+  // D31 (revision de #530): el aviso corre en el mismo SAVEPOINT que el pedido. Con un repositorio que SI revierte (aqui: copia y restaura las filas de pedidos), si el aviso no se puede dejar el
+  // pedido por aprobar NO queda: nunca hay un pedido grande retenido sin que nadie en la sucursal lo sepa.
+  it("D31: si el aviso de pedido grande falla, el SAVEPOINT revierte tambien el pedido por_aprobar", async () => {
+    const base = await buildTestDeps();
+    const { restaurantesRepo, organizationId, products } = base;
+    await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const auto = new InMemoryAutopilotoRepository();
+    const retener = auto.retenerPedidoGrande.bind(auto);
+    auto.retenerPedidoGrande = async (org, orderId, detalle) => {
+      const o = await restaurantesRepo.findOrderById(org, orderId);
+      if (o) auto.pedidos.set(o.id, { id: o.id, organizationId: o.organizationId, propertyId: o.propertyId, status: "pending", total: o.total, clienteNombre: o.customerName, telefono: o.customerPhone, canal: "recoger", numero: o.orderNumber ?? 1, renglones: [] });
+      return retener(org, orderId, detalle);
+    };
+    const repo = restaurantesRepo as unknown as { orders: unknown[]; runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> };
+    repo.runWithRowSavepoint = async <T,>(fn: () => Promise<T>): Promise<T> => {
+      const copia = [...repo.orders];
+      try {
+        return await fn();
+      } catch (err) {
+        repo.orders.splice(0, repo.orders.length, ...copia);
+        throw err;
+      }
+    };
+    restaurantesRepo.createCallbackRequest = async () => {
+      throw new Error("no se pudo dejar el aviso");
+    };
+    const app = buildApp({ ...base.deps, autopilotoRepo: () => auto });
+    const res = await app.request(
+      `/v1/restaurantes/${ORG_SLUG}/orders`,
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230021", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo", canal: "recoger" }, TOOL_SECRET_HEADERS),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(0);
+  });
+
   it("VZ19 (negativo): un pedido bajo los umbrales con autopiloto NO registra aviso de pedido grande", async () => {
     const base = await buildTestDeps();
     const { restaurantesRepo, organizationId, products } = base;
