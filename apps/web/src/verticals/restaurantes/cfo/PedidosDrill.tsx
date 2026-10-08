@@ -54,7 +54,6 @@ export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedi
       }
     },
     // `filtros` y `filtroPedidos` se resumen en sus claves: el objeto cambia de identidad en cada render de la página.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [api.apiBaseUrl, api.propertyId, api.token, api.fetchImpl, claveFiltros, claveFiltro],
   );
 

@@ -101,7 +101,6 @@ function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: Co
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     setValores(Object.fromEntries(campos.map((c) => [c.llave, textoDe(config.config[c.llave])])));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
   const lectura = !config.puedeGuardar;

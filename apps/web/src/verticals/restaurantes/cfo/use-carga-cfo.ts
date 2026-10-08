@@ -56,7 +56,6 @@ export function useCargaCfo<T>(cargar: () => Promise<T>, claves: readonly unknow
     return () => {
       cancelado = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...claves, version]);
 
   return { carga, recargando, recargar };

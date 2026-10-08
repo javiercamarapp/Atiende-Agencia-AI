@@ -77,7 +77,6 @@ export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puede
     setValor("");
     setNota("");
     setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, mesInicial, conceptoInicial, ambitoInicial]);
 
   const mesValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes);
