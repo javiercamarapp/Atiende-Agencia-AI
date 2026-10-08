@@ -651,6 +651,13 @@ function porcentajeDePropina(valor: unknown): number | null {
   return n > 0 && n <= PROPINA_PORCENTAJE_MAX ? n : null;
 }
 
+/** 0, "0", "0%" o vacio = "sin propina" (el modelo rellena asi el campo cuando no hay propina: QA-PM-R5-reglas-01). Solo se rechazan negativos, > maximo y no numericos. */
+function esSinPropina(valor: unknown): boolean {
+  if (valor === undefined || valor === null || valor === 0) return true;
+  if (typeof valor !== "string") return false;
+  return /^\s*(?:0+(?:[.,]0+)?\s*(?:%|por\s*ciento)?)?\s*$/i.test(valor);
+}
+
 function esSalsaBasicaIncluida(valor: unknown): boolean {
   return typeof valor === "string" && (DEFAULT_COMPLEMENTS as readonly string[]).includes(valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, "_"));
 }
@@ -666,12 +673,12 @@ function assertEntradasReconocidas(input: Record<string, unknown>): void {
     }
   }
   const pctCrudo = input.propina_porcentaje;
-  if (pctCrudo !== undefined && pctCrudo !== null && pctCrudo !== "" && porcentajeDePropina(pctCrudo) === null) {
+  if (!esSinPropina(pctCrudo) && porcentajeDePropina(pctCrudo) === null) {
     throw new OrderValidationError(`propina_porcentaje debe ser un número entre 1 y ${PROPINA_PORCENTAJE_MAX} (por ejemplo 10 para el 10 %). Si el cliente dio pesos, mande propina en pesos.`);
   }
   const propina = input.propina;
-  if (propina !== undefined && propina !== null && propina !== "" && typeof propina === "string" && porcentajeDePropina(propina) !== null) return;
-  if (propina !== undefined && propina !== null && propina !== "" && (typeof propina !== "number" || !Number.isFinite(propina))) {
+  if (typeof propina === "string" && porcentajeDePropina(propina) !== null) return;
+  if (!esSinPropina(propina) && (typeof propina !== "number" || !Number.isFinite(propina))) {
     throw new OrderValidationError("La propina debe ser un monto numérico en pesos (por ejemplo 20). Pregúntele al cliente cuánto desea dejar y vuelva a mandarla como número.");
   }
 }
@@ -710,7 +717,8 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
     ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
-    propina: typeof input.propina === "number" ? input.propina : undefined,
+    // Un 0 es "sin propina" (el modelo lo manda junto con propina_porcentaje): no debe tapar el porcentaje, que solo se convierte cuando propina es undefined.
+    propina: typeof input.propina === "number" && input.propina !== 0 ? input.propina : undefined,
     ...(typeof input.propina !== "number" || input.propina === 0
       ? (() => {
           const pct = porcentajeDePropina(input.propina_porcentaje) ?? (typeof input.propina === "string" ? porcentajeDePropina(input.propina) : null);
