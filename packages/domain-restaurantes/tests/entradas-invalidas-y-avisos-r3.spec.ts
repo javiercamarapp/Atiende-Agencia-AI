@@ -42,3 +42,11 @@ describe("guacamole extra", () => {
     expect(conRoja.result).not.toHaveProperty("aviso_guacamole");
   });
 });
+
+describe("cotizacion sin promocion (QA-PM-R3-reglas-03)", () => {
+  it("sin promocion aplicada ni sugerida la herramienta avisa que no hay cortesias", async () => {
+    const s = setup("voz");
+    const q = await invokeAgentTool(s.f.repo, s.ctx, "cotizar_pedido", { branch_slug: "fco-montejo", items: s.items, canal: "recoger" });
+    expect((q.result as { sin_cortesias?: string }).sin_cortesias).toMatch(/NO incluye ninguna cortesía/);
+  });
+});

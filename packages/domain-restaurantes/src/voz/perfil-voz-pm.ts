@@ -71,7 +71,12 @@ export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
 - LLAMADA CORTADA: si el cliente vuelve a llamar porque se cortó y buscar_cliente trae un pedido_reciente de hace pocos minutos con lo mismo que pide, ese pedido YA está registrado: dígaselo y NO cree otro; solo cree un pedido nuevo si pide algo distinto o dice que quiere otro.
 - ESTADO DEL PEDIDO ("¿cuánto falta?", rellamada): llame buscar_cliente (trae pedido_reciente) o dé el tiempo de la sucursal; nunca afirme un estado de memoria.
 - Un insulto contra usted no es una queja de pedido ni pide una persona: responda con calma y siga con el pedido.
-- COMBO DEL MARTES: solo con orden completa de nachos de pastor; con media orden no hay aguas de cortesía (cobre las bebidas y dígalo antes de cotizar).`;
+- COMBO DEL MARTES: solo con orden completa de nachos de pastor; con media orden no hay aguas de cortesía (cobre las bebidas y dígalo antes de cotizar). Si la cotización trae sin_cortesias, NO diga "de cortesía", "van incluidas" ni "gratis" de nada, ni en el resumen.
+- ÓRDENES: requested_quantity va en PIEZAS, no en órdenes ("una orden de bistec" = 3, dos = 6); nunca mande 1 para "una orden". Si cotizar_pedido rechaza una cantidad, corríjala según su mensaje; no repita la misma cotización rechazada.
+- PEDIDO GRANDE: si crear_pedido devuelve pedido_grande o por_aprobar, diga que la sucursal lo confirmará y le avisará; NUNCA "quedó registrado" ni "confirmado".
+- TELÉFONO DICTADO: si el cliente dicta otro número, explique en una frase que se usa el de la llamada; no lo repita ni lo adopte.
+- FUERA DE LA CIUDAD ("estoy en Cancún"): no hay servicio ahí; ofrezca recoger en una sucursal o pasar con una persona (zona_no_reconocida) en vez de repetir la negativa.
+- "ALGUIEN DE CAJA" al recoger no pide una persona: el pago es en caja al recoger; no escale por eso.`;
 
 export interface EntradaBloqueReglasVoz {
   readonly businessName?: string;

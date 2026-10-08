@@ -772,6 +772,9 @@ const SIGUIENTE_PASO_COTIZACION_REPETIDA =
 const AVISO_DOBLE_GUACAMOLERA =
   "Ojo: doble_salsas lleva salsa_guacamolera (la doble porción de la SALSA, un extra de pocos pesos). Si el cliente pidió GUACAMOLE extra (para ponerle a los tacos), eso es el producto Extra Guacamole: búsquelo con buscar_producto, agréguelo como renglón, quite salsa_guacamolera de doble_salsas y vuelva a cotizar antes de decir el total. Si pidió doble de la salsa guacamolera, deje la cotización tal cual.";
 
+const SIN_CORTESIAS_AVISO =
+  "Esta cotización NO incluye ninguna cortesía, promoción ni descuento: no los prometa ni los mencione (ni \"van de cortesía\", ni \"incluyo\", ni \"gratis\"); el cliente paga exactamente el total.";
+
 const YA_REGISTRADO_AVISO =
   "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
 
@@ -1160,7 +1163,15 @@ async function dispatchTool(
       // QA-PM-R3-voz-03: "guacamole extra" se cobraba como la doble salsa guacamolera ($19) y no como Extra Guacamole ($49). El servidor no puede saber que dijo el
       // cliente, pero si el modelo uso la doble salsa guacamolera se lo hace revisar antes de decir el total.
       const dobleGuacamole = (toDoubleSalsas(input.doble_salsas) ?? []).includes("salsa_guacamolera");
-      return { result: { quote: quoteToWire(quote), ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}) }, raw: quote, orderId: null, propertyId: null };
+      // QA-PM-R3-reglas-03: por voz el agente prometia las 2 aguas de cortesia del combo del martes con MEDIA orden de nachos aunque el servidor cobraba las bebidas. Si la
+      // cotizacion no aplica ni sugiere ninguna promocion, se lo dice la propia herramienta (el cliente solo debe oir lo que el total incluye).
+      const sinPromocion = !quote.promocionAplicada && (quote.promocionesSugeridas?.length ?? 0) === 0;
+      return {
+        result: { quote: quoteToWire(quote), ...(sinPromocion ? { sin_cortesias: SIN_CORTESIAS_AVISO } : {}), ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}) },
+        raw: quote,
+        orderId: null,
+        propertyId: null,
+      };
     }
     case "confirmar_resumen": {
       // Sin maquina de estados activa (camino legado): no hay nada que registrar.
