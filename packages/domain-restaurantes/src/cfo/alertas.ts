@@ -6,8 +6,10 @@
 // Garantías:
 //  - Idempotencia: la clave de dedupe es `<tipo>-<sucursal|org>-<día de negocio>`. Repetir el tick (o el reintento `?dias=N`) no repite la alerta;
 //    el top-5 se elige de forma determinista, así que la segunda llamada vuelve a apuntar a las mismas claves.
-//  - Tope: como máximo `TOPE_ALERTAS_POR_ORG_DIA` (5) alertas por organización y día, contando lo ya emitido ese día (se lee de `core.notification` por
-//    prefijo de la clave de dedupe; si esa lectura no es posible vale 0 y el tope se aplica por llamada); el resto se cuenta en `omitidasPorTope`.
+//  - Tope: como máximo `TOPE_ALERTAS_POR_ORG_DIA` (5) alertas por organización y día POR LLAMADA (se eligen las 5 primeras, de forma determinista, así que repetir
+//    el tick apunta a las mismas claves); el resto se cuenta en `omitidasPorTope`. HUECO conocido: dos ticks el mismo día con datos distintos podrían
+//    sumar más de 5. Contar lo ya emitido exige una función definer o una columna/índice en la base (el rol authenticated no puede leer
+//    core.notification): F2.
 //  - Día de negocio: la zona de la organización es la de su(s) sucursal(es) (la más común; empate = la primera). El día que cerró es AYER en esa
 //    zona si ya pasó el corte del día de negocio (el MÁS TARDÍO de sus sucursales, `cobertura.corte`; 01:00 por omisión) y ANTEPASADO si todavía no
 //    (una sucursal que cierra a las 03:00, o una re-ejecución manual a las 00:30). Nunca se usa la fecha UTC.
@@ -18,7 +20,7 @@
 //  - Canal externo (WhatsApp/correo): HUECO F2. Hoy solo existe la campana. Si un llamador pasa `canalExterno`, solo se invoca dentro del
 //    horario del negocio (8:00 a 21:00 hora local) y nunca para alertas que no sean nuevas. En producción no se conecta ninguno (jamás se
 //    envían mensajes reales desde aquí).
-import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { diaLocalSucursal } from "../voz/kpi.ts";
 import type { Hallazgo } from "./hallazgos.ts";
@@ -151,26 +153,6 @@ function corteAMinutos(corte: string | null): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-/** Alertas de hallazgos que la organizacion ya tiene ese dia de negocio (claves distintas). Mejor esfuerzo: cualquier fallo de lectura (RLS, base sin migrar) vale 0. */
-async function yaEmitidasDelDia(db: TenantDbSession, organizationId: string, dia: string): Promise<number> {
-  try {
-    return await runWithSavepointFallback<number>({
-      session: db,
-      primary: async () => {
-        const { rows } = await db.query<{ n: number | string | null }>(
-          `select count(distinct dedupe_key)::int as n from core.notification where organization_id = $1::uuid and tipo like 'restaurantes.cfo.hallazgo%' and dedupe_key like $2;`,
-          [organizationId, `restaurantes.cfo.hallazgo%-${dia}`],
-        );
-        return Number(rows[0]?.n ?? 0) || 0;
-      },
-      isRecoverable: () => true,
-      fallback: async () => 0,
-    });
-  } catch {
-    return 0;
-  }
-}
-
 export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: string, ahora: Date, opciones: OpcionesAlertasCfo): Promise<ResultadoAlertasCfo> {
   const vacio = { organizationId, dia: null, zonaHoraria: null, evaluados: 0, candidatos: 0, emitidas: 0, sinNuevas: 0, omitidasPorTope: 0, externasEnviadas: 0, externasFueraDeHorario: 0, fallos: [] as string[] };
   const zona = zonaDeOrganizacion(opciones.sucursales);
@@ -200,9 +182,6 @@ export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: s
 
   const todas = seleccionarAlertas(vista.hallazgos, dia, opciones.umbralCentavos);
   const tope = opciones.tope ?? TOPE_ALERTAS_POR_ORG_DIA;
-  // Capacidad restante del dia: lo ya emitido (aunque con otros datos) cuenta contra el tope. Se intentan solo las `tope` primeras (con 0 ya emitidas
-  // son las mismas de siempre: repetir el tick no cambia nada) y se corta al llenar la capacidad.
-  const capacidad = Math.max(0, tope - (await yaEmitidasDelDia(db, organizationId, dia)));
   const elegidas = todas.slice(0, tope);
   const fallos: string[] = [];
   let emitidas = 0;
@@ -212,7 +191,6 @@ export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: s
   let noDisponible = false;
 
   for (const a of elegidas) {
-    if (emitidas >= capacidad) break;
     const h = a.hallazgo;
     try {
       const r =
@@ -248,7 +226,7 @@ export async function alertarHallazgosCfo(db: TenantDbSession, organizationId: s
     candidatos: todas.length,
     emitidas,
     sinNuevas,
-    omitidasPorTope: Math.max(0, todas.length - emitidas - sinNuevas),
+    omitidasPorTope: Math.max(0, todas.length - elegidas.length),
     externasEnviadas,
     externasFueraDeHorario,
     fallos,

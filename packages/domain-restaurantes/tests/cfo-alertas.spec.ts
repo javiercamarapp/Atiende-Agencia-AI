@@ -112,11 +112,8 @@ class SesionEmisiones implements TenantDbSession {
   readonly vistas = new Set<string>();
   falla: ((dedupe: string) => boolean) | null = null;
   async query<T>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
-    if (/count\(distinct dedupe_key\)/.test(sql)) {
-      // Lo que la base ya tiene de ese dia: claves `restaurantes.cfo.hallazgo...:<tipo>-<sucursal>-<dia>` (el LIKE del llamador, hecho a mano).
-      const sufijo = String(params[1]).replace("restaurantes.cfo.hallazgo%", "");
-      return { rows: [{ n: [...this.vistas].filter((k) => k.startsWith("restaurantes.cfo.hallazgo") && k.endsWith(sufijo)).length } as T] };
-    }
+    // El tick NUNCA lee core.notification (el rol authenticated no tiene permiso): cualquier lectura falla el test.
+    if (/from core\.notification/i.test(sql)) throw new Error("lectura prohibida de core.notification");
     if (!/core\.emit_notification/.test(sql)) return { rows: [] };
     const dedupe = String(params[10]);
     if (this.falla?.(dedupe)) throw Object.assign(new Error("fallo simulado de la base"), { code: "XX000" });
@@ -260,29 +257,14 @@ describe("alertarHallazgosCfo", () => {
     expect(despues.dia).toBe("2026-09-30"); // 03:05 locales
   });
 
-  it("el tope cuenta lo ya emitido ese día: dos ticks con datos distintos no suman 5 + 5", async () => {
+  it("el tope es POR LLAMADA (hueco declarado: contar lo ya emitido exige una función definer) y no lee core.notification", async () => {
     const db = new SesionEmisiones();
     const r1 = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo(), umbralCentavos: 1 });
     expect(r1.emitidas).toBe(5);
-    // Segundo tick el mismo dia con OTROS datos (sin SoftRestaurant: cambian los candidatos).
-    const r2 = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo({}, { srResumen: [] }), umbralCentavos: 1 });
+    expect(r1.fallos).toEqual([]);
+    const r2 = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo(), umbralCentavos: 1 });
     expect(r2.emitidas).toBe(0);
-    expect(new Set(db.emisiones.map((e) => e.dedupe)).size).toBe(5);
-    // Otro dia de negocio tiene su propio tope.
-    const r3 = await alertarHallazgosCfo(db, ORG, new Date("2026-10-02T08:20:00Z"), { sucursales: SUCURSALES, repo: repo(), umbralCentavos: 1 });
-    expect(r3.dia).toBe("2026-10-01");
-  });
-
-  it("si la lectura de lo ya emitido falla, el tope se aplica por llamada (no se rompe el tick)", async () => {
-    const db = new SesionEmisiones();
-    const original = db.query.bind(db);
-    db.query = (async (sql: string, params?: unknown[]) => {
-      if (/count\(distinct dedupe_key\)/.test(sql)) throw Object.assign(new Error("rls"), { code: "42501" });
-      return original(sql, params);
-    }) as typeof db.query;
-    const r = await alertarHallazgosCfo(db, ORG, TICK, { sucursales: SUCURSALES, repo: repo(), umbralCentavos: 1 });
-    expect(r.emitidas).toBe(5);
-    expect(r.fallos).toEqual([]);
+    expect(r2.sinNuevas).toBe(5);
   });
 
   it("el texto de la notificación usa un código legible del tipo y el impacto en pesos con '$'", async () => {
