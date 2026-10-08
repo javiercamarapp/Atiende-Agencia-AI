@@ -21,10 +21,14 @@ export interface SaludMetaDeps {
   readonly lectorTurnos?: (db: TenantDbSession) => LectorTurnosAgente;
   readonly reloj?: () => Date;
   readonly opcionesAgente?: OpcionesTimeoutsAgente;
+  /** Tope (ms) de la lectura del token en Meta; por omision LIMITE_LECTURA_TOKEN_MS. Un Graph colgado nunca retrasa el despacho. */
+  readonly limiteLecturaTokenMs?: number;
 }
 
 /** Solo el primer tick de cada hora consulta el token (el cron corre cada 5 min). */
 export const MINUTOS_TICK_TOKEN = 5;
+/** Tope por omision de la consulta `debug_token` (el lector de Graph no trae timeout propio). */
+export const LIMITE_LECTURA_TOKEN_MS = 5000;
 
 interface RespuestaDebugToken {
   readonly data?: { readonly is_valid?: unknown; readonly expires_at?: unknown };
@@ -69,7 +73,18 @@ export async function vigilarSaludMetaBestEffort(deps: AppDeps): Promise<Resulta
   // El token vence en dias: basta mirarlo una vez por hora (el primer tick de cada hora, minutos 0-4 UTC) en vez de llamar a Meta cada 5 minutos.
   if (lectorToken && ahora.getUTCMinutes() < MINUTOS_TICK_TOKEN) {
     try {
-      const r = await deps.engine.withAppSession({ userId: null }, (db) => vigilarTokenMeta(db, lectorToken, ahora));
+      const limiteMs = cfg?.limiteLecturaTokenMs ?? LIMITE_LECTURA_TOKEN_MS;
+      const conTope: LectorEstadoTokenMeta = {
+        leer: () =>
+          new Promise<EstadoTokenMeta>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("lectura del token de Meta excedio su tope")), limiteMs);
+            lectorToken.leer().then(
+              (v) => { clearTimeout(timer); resolve(v); },
+              (e: unknown) => { clearTimeout(timer); reject(e); },
+            );
+          }),
+      };
+      const r = await deps.engine.withAppSession({ userId: null }, (db) => vigilarTokenMeta(db, conTope, ahora));
       token = r.estado;
     } catch {
       token = "error";

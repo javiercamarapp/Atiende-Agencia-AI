@@ -317,6 +317,43 @@ describe("POST /internal/whatsapp/dispatch: salud de Meta y del agente", () => {
     expect(llamadas).toBe(1);
   });
 
+  it("si withAppSession RECHAZA durante la vigilancia (token y agente), la respuesta del cron no cambia", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const normal = await (await request(base.deps)).json();
+    let sesionesVigilancia = 0;
+    const engine = {
+      withAppSession: (claims: never, fn: (s: never) => Promise<unknown>) => {
+        // las sesiones de la vigilancia se reconocen porque se piden DESPUES del despacho: las rechazamos todas desde que se activa la bandera
+        if (sesionesVigilancia >= 0 && vigilando) { sesionesVigilancia += 1; return Promise.reject(new Error("base caida")); }
+        return base.deps.engine.withAppSession(claims, fn as never);
+      },
+    } as unknown as AppDeps["engine"];
+    let vigilando = false;
+    const deps: AppDeps = {
+      ...base.deps,
+      engine,
+      saludMeta: {
+        lectorToken: { leer: async () => { vigilando = true; return { valido: true, expiraEn: new Date(AHORA.getTime() + DIA) }; } },
+        lectorTurnos: () => { vigilando = true; return { leer: async () => turnos(100, 5) }; },
+        reloj: () => { vigilando = true; return AHORA; },
+      },
+    };
+    const res = await request(deps);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(normal);
+    expect(sesionesVigilancia).toBeGreaterThanOrEqual(2);
+  });
+
+  it("un Graph colgado (debug_token que nunca responde) no bloquea el despacho: corta por su tope y la respuesta es la normal", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const normal = await (await request(base.deps)).json();
+    const { deps } = conEmisiones({ ...base.deps, saludMeta: { lectorToken: { leer: () => new Promise<{ valido: boolean | null; expiraEn: Date | null }>(() => undefined) }, limiteLecturaTokenMs: 30, lectorTurnos: () => ({ leer: async () => [] }), reloj: () => AHORA } });
+    const t0 = Date.now();
+    const res = await request(deps);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(await res.json()).toEqual(normal);
+  });
+
   it("sin saludMeta configurado (sin token) el cron se comporta como antes: ninguna llamada a Meta y la base sin migrar no rompe", async () => {
     const ctx = buildDispatchTestContext({ withDispatcher: true });
     const res = await request(ctx.deps);

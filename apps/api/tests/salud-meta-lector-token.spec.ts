@@ -14,6 +14,14 @@ describe("crearLectorTokenMetaGraph", () => {
     expect(llamadas).toEqual([["GET", `/debug_token?input_token=${TOKEN_FALSO}`]]);
   });
 
+  it("el token con caracteres especiales viaja codificado en la consulta (sin esto, + / = y espacios corrompen el parametro)", async () => {
+    const raro = "EAA+/=x y&z";
+    const rutas: string[] = [];
+    const lector = crearLectorTokenMetaGraph({ solicitar: async (_m, r) => { rutas.push(r); return { data: { is_valid: true } }; } }, raro);
+    await lector.leer();
+    expect(rutas).toEqual(["/debug_token?input_token=EAA%2B%2F%3Dx%20y%26z"]);
+  });
+
   it("expires_at 0 o ausente = token permanente: sin fecha, no es un error", async () => {
     for (const data of [{ is_valid: true, expires_at: 0 }, { is_valid: true }, { is_valid: true, expires_at: "no" }]) {
       const lector = crearLectorTokenMetaGraph({ solicitar: async () => ({ data }) }, TOKEN_FALSO);

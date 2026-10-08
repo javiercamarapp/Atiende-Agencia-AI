@@ -410,7 +410,8 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
       }
 
       // Salud de Meta/agente (token por vencer, timeouts, fallos seguidos): best-effort en sesiones de sistema propias; jamas altera esta respuesta.
-      await vigilarSaludMetaBestEffort(deps);
+      const salud = await vigilarSaludMetaBestEffort(deps);
+      logEvent(c, salud.token === "error" || salud.agente === "error" ? "error" : "info", "whatsapp_dispatch_salud_meta", { token: salud.token, agente: salud.agente });
 
       return c.json({ ok: !anyFailure, results });
     })();
