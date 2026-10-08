@@ -332,8 +332,16 @@ function escribirEstadoResultados(h: Hoja, columnas: readonly ColumnaPyl[], fila
       if (col.clave === "total" && desde >= 0) {
         const suma = columnas.reduce((a, cc, j) => (j >= desde && j <= hasta && cc.clave !== "total" ? a + (lineaDe(cc, id).valor ?? 0) : a), 0);
         // Solo se citan celdas NUMÉRICAS (una celda «—» es texto): SUM(B9,C9,D9), nunca un rango que cruce texto.
-        const citadas = columnas.map((cc, j) => (j >= desde && j <= hasta && cc.clave !== "total" && lineaDe(cc, id).valor !== null ? h.ref(fila, col0 + j) : null)).filter((x): x is string => x !== null);
-        if (suma === val && citadas.length > 0) return h.formula(fila, celda, `SUM(${citadas.join(",")})`, val / 100, "moneda", est);
+        const idx = columnas.map((cc, j) => (j >= desde && j <= hasta && cc.clave !== "total" && lineaDe(cc, id).valor !== null ? j : -1)).filter((j) => j >= 0);
+        // Tramos contiguos como rango (B9:D9): Excel admite máximo 255 argumentos por función y el alcance llega a 500 sucursales.
+        const tramos: string[] = [];
+        for (let a = 0; a < idx.length; ) {
+          let b = a;
+          while (b + 1 < idx.length && idx[b + 1] === idx[b]! + 1) b += 1;
+          tramos.push(b > a ? `${h.ref(fila, col0 + idx[a]!)}:${h.ref(fila, col0 + idx[b]!)}` : h.ref(fila, col0 + idx[a]!));
+          a = b + 1;
+        }
+        if (suma === val && tramos.length > 0 && tramos.length <= 250) return h.formula(fila, celda, `SUM(${tramos.join(",")})`, val / 100, "moneda", est);
       }
       // (2) Subtotal: resta de las líneas de la misma columna cuando la resta reproduce la cifra (todas las piezas con dato).
       const resta = RESTAS.find((r) => r[0] === id);
@@ -796,8 +804,14 @@ function hojaSoftRestaurant(est: Estilos, usados: Set<string>, c: CuadreSrVista)
   return h;
 }
 
+/** «Suc <nombre>» ya saneado, cortado a 31 y SIN apóstrofos ni espacios en los bordes (se recorta DESPUÉS de cortar; Excel repara un nombre que termina en «'»). */
+function nombreBaseSucursal(nombre: string): string {
+  const limpio = `Suc ${nombre}`.replace(/[[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31);
+  return limpio.replace(/^['\s]+|['\s]+$/g, "") || "Suc";
+}
+
 function hojaSucursal(est: Estilos, usados: Set<string>, nombre: string, propertyId: string, v: VistasCfo): Hoja {
-  const h = new Hoja(nombreHojaSeguro(`Suc ${nombre.replace(/^'+|'+$/g, "")}`, usados), est).ancho([38, 22, 22]);
+  const h = new Hoja(nombreHojaSeguro(nombreBaseSucursal(nombre), usados), est).ancho([38, 22, 22]);
   h.titulo(`Sucursal: ${nombre}`);
   const kpis = v.resumen?.kpis.porSucursal.find((s) => s.propertyId === propertyId);
   if (kpis) {
