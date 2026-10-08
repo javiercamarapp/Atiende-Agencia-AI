@@ -54,18 +54,36 @@ export function detectArcoConfirmation(message: string): ArcoConfirmationIntent 
 
 // Mención de datos personales / privacidad: exigida para NO confundir "cancelar mi
 // pedido" o "actualizar mi dirección de entrega" con una solicitud ARCO.
-const PERSONAL_DATA_RE = /\b(datos personales|mis datos|mi informacion personal|informacion personal|mis datos personales|aviso de privacidad|privacidad|arco)\b/;
+const PERSONAL_DATA_RE = /\b(datos personales|mis datos|datos (?:tienen )?mios|mi informacion personal|informacion personal|mis datos personales|aviso de privacidad|privacidad|arco|mi info|de su sistema|base de datos)\b/;
 const PERSONAL_DATA_EXPLICIT_RE = /\b(datos personales|mis datos personales|mi informacion personal|informacion personal|aviso de privacidad|privacidad|arco)\b/;
 const FACTURA_O_PEDIDO_RE = /\b(factur\w*|rfc|ticket|recibo|comprobante|pedido|orden|ya (te|le|les) (pase|mande|envie|di|dije)|te (pase|mande|envie)|le (pase|mande|envie))\b/;
 const THIRD_PARTY_RE =
   /\b(de|del) (mi|su|otro|otra|un|una|el|la) (esposa|esposo|pareja|mama|papa|madre|padre|hij[oa]|hermano|hermana|amig[oa]|cliente|paciente|vecin[oa]|persona|jefe|jefa|ex|novio|novia|senor|senora|familiar)\b|\bde (otra persona|alguien mas|un tercero|terceros)\b/;
 
+// Objeto de un verbo de supresion: SOLO datos/info/numero/direccion/cuenta (no "borren la salsa de mi pedido" ni "cancelen mi pedido").
+const OBJETO_DATOS = "(?:todos?\\s+)?(?:(?:mis|mi|los|las|sus|tus)\\s+)?(?:datos|informacion|info|numero|direccion|telefono|correo|cuenta|nombre)";
 const RIGHT_PATTERNS: ReadonlyArray<{ readonly right: DataRightType; readonly re: RegExp }> = [
-  { right: "cancelacion", re: /\b(cancelar|cancelacion de|eliminar|elimina|eliminen|borrar|borren|borra|cancelen|suprimir|supresion|olvidar|olviden|dar de baja|darme de baja)\b/ },
-  { right: "oposicion", re: /\b(oponer|oponerme|oposicion|me opongo|revoco|revocar|revocacion|no quiero que (usen|traten|utilicen|compartan)|dejen de (usar|tratar|utilizar|compartir)|no (los |lo )?(usen|compartan|traten|utilicen))\b/ },
-  { right: "rectificacion", re: /\b(rectificar|rectificacion|corregir|correccion|corrijan|actualizar|actualicen|modificar|modifiquen|estan mal|incorrectos|erroneos|equivocados)\b/ },
-  { right: "acceso", re: /\b(acceso|acceder|conocer|saber|ver|consultar|copia|obtener|que datos|cuales datos|entreguen|envien)\b/ },
+  {
+    right: "cancelacion",
+    re: new RegExp(
+      [
+        `\\b(?:borr|elimin|suprim|quit|olvid)\\w*\\s+(?:me\\s+)?${OBJETO_DATOS}\\b`, // borren mis datos, eliminen mi info
+        "\\b(?:borr|elimin|suprim)\\w*(?:los|las|lo)\\b", // borralos, borrenlos, eliminenlos
+        "\\bque\\s+(?:los|las|lo)\\s+(?:borr|elimin|suprim)\\w*", // que los borren
+        `\\bcancel\\w*\\s+(?:de\\s+)?${OBJETO_DATOS}\\b`, // cancelen mis datos (NO cancelen el pedido)
+        "\\b(?:cancelacion de|supresion|suprimir|olvidar|olviden|olvidenme)\\b",
+        "\\bde baja\\b", // dar de baja, den de baja, denme de baja, darme de baja
+        "\\bsaquen(?:me)?\\b",
+        "\\bno quiero que (?:los |me |mis )?(?:guarden|tengan|conserven|almacenen)\\b",
+      ].join("|"),
+    ),
+  },
+  { right: "oposicion", re: /\b(oponer|oponerme|oposicion|me opongo|revoco|revocar|revocacion|no autorizo|no consiento|no quiero que (?:los |mis )?(usen|traten|utilicen|compartan|vendan)|dejen de (usar|tratar|utilizar|compartir)|no (los |lo )?(usen|compartan|traten|utilicen|vendan))\b/ },
+  { right: "rectificacion", re: /\b(rectificar|rectificacion|corregir|correccion|corrij\w*|actualizar|actualicen|modificar|modifiquen|estan mal|incorrectos|erroneos|equivocados)\b/ },
+  { right: "acceso", re: /\b(acceso|acceder|conocer|saber|ver|consultar|copia|obtener|que datos|cuales datos|entreguen|envien|mandenme|denme|pasenme|muestren\w*|que (?:hacen|hicieron) con|tienen guardados)\b/ },
 ];
+/** Peticion de acceso inequivoca: no la anula una mencion de pedido/factura ("quiero ver mis datos, ya les hice un pedido"). */
+const ACCESO_DIRECTO_RE = /\b(?:(?:ver|saber|conocer|consultar|obtener|copia de|mandenme|denme|pasenme|muestren\w*|envienme|entreguen\w*|manden\w*|envien\w*)\s+(?:todos\s+)?(?:mis|los)\s+datos|que\s+(?:hacen|hicieron)\s+con\s+mis\s+datos|que\s+datos\s+(?:tienen|guardan|manejan))\b/;
 
 export type ArcoIntent =
   | { readonly kind: "request"; readonly right: DataRightType }
@@ -86,9 +104,8 @@ export function detectArcoIntent(message: string): ArcoIntent | null {
   // cancelar, oponerse, dar de baja, rectificar o corregir, la solicitud de privacidad se registra aunque el mensaje hable de un pedido o factura.
   if (!PERSONAL_DATA_EXPLICIT_RE.test(normalized)) {
     const derechos = RIGHT_PATTERNS.filter(({ re }) => re.test(normalized));
-    if (derechos.length === 0) return null;
     const soloAcceso = derechos.every(({ right }) => right === "acceso");
-    if (soloAcceso && FACTURA_O_PEDIDO_RE.test(normalized)) return null;
+    if (soloAcceso && FACTURA_O_PEDIDO_RE.test(normalized) && !ACCESO_DIRECTO_RE.test(normalized)) return null;
   }
 
   if (THIRD_PARTY_RE.test(normalized)) return { kind: "third_party" };

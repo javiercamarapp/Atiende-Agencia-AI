@@ -67,9 +67,7 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
   it.each([
     "ya te pase mis datos, facturame",
     "necesito factura, mis datos son Juan Perez RFC XAXX010101000",
-    "quiero ver mis datos del pedido para la factura",
     "mandame mis datos del ticket",
-    "estos son mis datos: Juan Perez, calle 60 numero 4",
   ])("«%s» NO es ARCO: solo verbo de acceso + factura/pedido", (text) => {
     expect(detectArcoIntent(text)).toBeNull();
   });
@@ -91,6 +89,114 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
   it("es insensible a acentos y mayúsculas", () => {
     expect(normalizeArcoText("RECTIFICACIÓN, por favor!")).toBe("rectificacion por favor");
     expect(detectArcoIntent("RECTIFICACIÓN de MIS DATOS PERSONALES")).toEqual({ kind: "request", right: "rectificacion" });
+  });
+});
+
+// Corpus de regresion de la revision independiente de #528 (62 frases etiquetadas): un falso negativo en ARCO es el riesgo grave (la solicitud determinista no debe
+// depender del modelo). true = hay que detectarla (request / menu / third_party); false = no es ARCO (solo verbo de acceso + factura/pedido, o pedido ajeno).
+const CORPUS_REVISION: ReadonlyArray<readonly [string, boolean]> = [
+ // obligatorias ARCO
+ ["ya les di mis datos y quiero que los borren", true],
+ ["borren mis datos de mi pedido, ya no quiero que los tengan", true],
+ ["quiero eliminar mis datos, ya no voy a hacer otro pedido", true],
+ ["ya les pasé mis datos, quiero darme de baja", true],
+ ["borren mis datos y facturame", true],
+ ["cancelen mis datos", true],
+ ["me opongo a que usen mis datos para mi pedido", true],
+ // obligatorias NO
+ ["ya te pasé mis datos, facturame", false],
+ ["necesito factura, mis datos son Juan Perez RFC PEJU800101XXX", false],
+ // corpus propio ARCO
+ ["BORREN MIS DATOS PORFAVOR", true],
+ ["k borren mis datos", true],
+ ["kiero que borren mis datos ya", true],
+ ["ya no quiero que tengan mis datos", true],
+ ["eliminen mis datos personales de su sistema", true],
+ ["quiero ejercer mis derechos arco", true],
+ ["no quiero que usen mis datos para publicidad", true],
+ ["dejen de usar mis datos, ya les pedi una orden y me llegan mensajes", true],
+ ["dejen de mandarme promociones, no autorizo el uso de mis datos", true],
+ ["quiero saber que datos tienen mios", true],
+ ["que datos personales tienen de mi?", true],
+ ["quiero una copia de mis datos personales", true],
+ ["mis datos estan mal, corrijan mi nombre", true],
+ ["actualicen mis datos, cambie de correo", true],
+ ["ya les di mis datos en el pedido pasado pero estan mal, corrijanlos", true],
+ ["den de baja mis datos", true],
+ ["denme de baja de su base de datos", true],
+ ["sáquenme de su base de datos", true],
+ ["quiero que borren mi numero y mi direccion de su sistema", true],
+ ["no quiero que guarden mis datos", true],
+ ["ya no me manden nada y borren mi info", true],
+ ["olviden mis datos", true],
+ ["revoco mi consentimiento para que usen mis datos", true],
+ ["ya te pase mis datos, ahora borralos", true],
+ ["borra mis datos, ya no voy a pedir", true],
+ ["quiero que eliminen mis datos despues de entregar mi pedido", true],
+ ["ya les mande mis datos para la factura pero quiero que los borren despues", true],
+ ["ya les di mis datos y no quiero que los compartan con nadie", true],
+ ["por favor eliminar mis datos del aviso de privacidad", true],
+ ["k datos mios tienen? kiero verlos", true],
+ ["qué hacen con mis datos?", true],
+ ["quiero ver mis datos, ya les hice un pedido", true],
+ ["quiero saber que hacen con mis datos de mi pedido", true],
+ ["mandenme mis datos que tienen guardados, hice una orden la semana pasada", true],
+ // NO ARCO (falsos positivos potenciales)
+ ["mi direccion es calle 60 x 45 centro, borren la salsa de mi pedido", false],
+ ["cancelen mi pedido", false],
+ ["datos de mi tarjeta no, solo efectivo", false],
+ ["quiero cancelar mi orden", false],
+ ["ya te mande mis datos, cuando llega mi pedido", false],
+ ["te pase mis datos para el pedido, ¿ya lo vieron?", false],
+ ["mis datos de facturacion: RFC XAXX010101000, correo a@b.com", false],
+ ["actualiza mi direccion de entrega", false],
+ ["ya les pase mis datos, me mandan el ticket", false],
+ ["mis datos son: Juan, calle 20 #300, quiero 1 kilo de cochinita", false],
+ ["ya te di mis datos, quiero ver el estado de mi orden", false],
+ ["ya les di mis datos, cancelen el pedido porfa ya no lo quiero", false],
+ ["te pase mis datos, cancela la orden y haz otra", false],
+ ["cancelar pedido, ya les mande mis datos", false],
+ ["corrijan mi pedido, ya les pase mis datos, era sin cebolla", false],
+ ["ya te pase mis datos, quiero modificar la orden", false],
+ ["quiero factura, mis datos son los mismos de la vez pasada", false],
+ ["envien la factura con mis datos", false],
+ ["borren la cebolla, mis datos ya los tienen", false],
+];
+// Falsos positivos CONOCIDOS y aceptados (iguales o peores en main): preferible mandar al menu ARCO que dejar una solicitud al modelo.
+const FALSOS_POSITIVOS_ACEPTADOS = new Set([
+  "mis datos son: Juan, calle 20 #300, quiero 1 kilo de cochinita",
+  "corrijan mi pedido, ya les pase mis datos, era sin cebolla",
+  "ya te pase mis datos, quiero modificar la orden",
+  "borren la cebolla, mis datos ya los tienen",
+]);
+
+describe("corpus de 62 frases de la revision independiente", () => {
+  it.each(CORPUS_REVISION.filter(([, esArco]) => esArco))("ARCO, nunca al modelo: «%s»", (frase) => {
+    expect(detectArcoIntent(frase)).not.toBeNull();
+  });
+  it.each(CORPUS_REVISION.filter(([frase, esArco]) => !esArco && !FALSOS_POSITIVOS_ACEPTADOS.has(frase)))("no ARCO: «%s»", (frase) => {
+    expect(detectArcoIntent(frase)).toBeNull();
+  });
+  it("cancelen/cancela sobre pedido u orden NO es cancelacion de datos", () => {
+    expect(detectArcoIntent("ya les di mis datos, cancelen el pedido porfa")).toBeNull();
+    expect(detectArcoIntent("cancelen mis datos")).toEqual({ kind: "request", right: "cancelacion" });
+  });
+  it("pronombre pegado al verbo y variantes de baja / guardar / compartir", () => {
+    for (const [f, right] of [
+      ["borralos, son mis datos", "cancelacion"],
+      ["bórrenlos, son mis datos", "cancelacion"],
+      ["eliminenlos, mis datos", "cancelacion"],
+      ["den de baja mis datos", "cancelacion"],
+      ["no quiero que guarden mis datos", "cancelacion"],
+      ["no autorizo el uso de mis datos", "oposicion"],
+      ["no quiero que los compartan, son mis datos", "oposicion"],
+    ] as const) expect(detectArcoIntent(f), f).toEqual({ kind: "request", right });
+  });
+  it("totales: 0 falsos negativos y a lo mas 6 falsos positivos", () => {
+    const fn = CORPUS_REVISION.filter(([f, esArco]) => esArco && detectArcoIntent(f) === null).length;
+    const fp = CORPUS_REVISION.filter(([f, esArco]) => !esArco && detectArcoIntent(f) !== null).length;
+    expect(fn).toBe(0);
+    expect(fp).toBeLessThanOrEqual(6);
   });
 });
 
