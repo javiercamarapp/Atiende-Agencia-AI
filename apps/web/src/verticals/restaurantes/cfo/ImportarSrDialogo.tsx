@@ -15,6 +15,9 @@ import {
   camposFaltantes,
   camposRepetidos,
   columnasPersonales,
+  nombresPersonales,
+  valorPersonalEnMapeo,
+  MENSAJE_VALOR_PERSONAL,
   construirTablaSr,
   detectarFilaEncabezado,
   leerArchivoSr,
@@ -63,16 +66,18 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   }
 
   const encabezados = archivo ? (archivo.filas[filaEnc] ?? []) : [];
-  const personales = new Set(columnasPersonales(encabezados));
-  const excluidas = [...personales].map((i) => encabezados[i] ?? "");
+  const nombresPers = archivo ? nombresPersonales(archivo.filas, filaEnc) : new Map<number, string>();
+  const personales = new Set(nombresPers.keys());
+  const excluidas = [...nombresPers.values()];
+  const valorPersonal = archivo ? valorPersonalEnMapeo(archivo.filas, filaEnc, tipo, mapeo) : null;
   const filasDatos = archivo ? Math.max(0, archivo.filas.length - filaEnc - 1) : 0;
   const maximo = MAX_RENGLONES_SR[tipo];
   const excedeTope = filasDatos > maximo;
   const mapeoListo = archivo !== null && camposFaltantes(tipo, mapeo).length === 0 && camposRepetidos(mapeo).length === 0;
-  const puedeRevisar = propertyId !== "" && mapeoListo && !excedeTope && !trabajando;
+  const puedeRevisar = propertyId !== "" && mapeoListo && !excedeTope && !trabajando && valorPersonal === null;
 
   function sugerir(filas: readonly (readonly string[])[], f: number, t: TipoLayoutSr) {
-    setMapeo(sugerirMapeoSr(filas[f] ?? [], t));
+    setMapeo(sugerirMapeoSr(filas[f] ?? [], t, new Set(columnasPersonales(filas, f))));
     setVista(null);
   }
 
@@ -249,6 +254,11 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
             <p className="m-0 text-xs text-muted-foreground">
               {archivo.nombre}: {entero(filasDatos)} {filasDatos === 1 ? "renglón" : "renglones"} de datos.
             </p>
+            {valorPersonal && (
+              <p role="alert" className="m-0 text-sm text-destructive" data-testid="sr-valor-personal">
+                {MENSAJE_VALOR_PERSONAL(valorPersonal)}
+              </p>
+            )}
             {excedeTope && (
               <p role="alert" className="m-0 text-sm text-destructive">
                 El archivo tiene más de {entero(maximo)} renglones: divídelo por periodos e impórtalo en partes.
@@ -290,7 +300,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
         {vista && !resultado && (
           <div className="flex flex-col gap-2" data-testid="sr-vista-previa">
             <p className="m-0 text-sm text-foreground">
-              <strong>{entero(vista.aceptados)}</strong> renglones aceptados y <strong>{entero(vista.rechazados)}</strong> rechazados
+              <strong>{entero(vista.aceptados)}</strong> {vista.aceptados === 1 ? "renglón aceptado" : "renglones aceptados"} y <strong>{entero(vista.rechazados)}</strong> {vista.rechazados === 1 ? "rechazado" : "rechazados"}
               {vista.omitidos > 0 ? ` (${entero(vista.omitidos)} renglones de totales se omiten)` : ""}
               {vista.fechaMin && vista.fechaMax ? `, del ${vista.fechaMin} al ${vista.fechaMax}` : ""}.
             </p>

@@ -180,6 +180,42 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     expect(enviado).not.toMatch(/Tel[eé]fono/i);
   });
 
+  it("BLOQUEANTE de PII: elegir un renglón de datos como encabezado no libera la columna «Teléfono»: sigue excluida y no viaja", async () => {
+    const api = crearApiCfo();
+    await b.pintar(CfoSoftRestaurant, api);
+    await cargado();
+    const csv = ["Folio,Fecha,Total,Teléfono", "T2-1,21/09/2026,$120.00,9991112222", "T2-2,22/09/2026,$300.00,9993334444"].join("\n");
+    const d = await importarCsv(csv, "tel-al-final.csv");
+    changeValue(selector(d, "sr-fila-encabezado"), "1");
+    await esperarAcciones();
+    expect(d.querySelector("[data-testid=sr-columnas-excluidas]")!.textContent).toContain("Teléfono");
+    expect(d.textContent).not.toContain("9991112222");
+    for (const o of d.querySelectorAll("select[id^=sr-mapeo-] option")) expect(o.textContent).not.toContain("Columna 4");
+    // Forzar el teléfono (columna 4) como folio ya no es posible desde la interfaz; el mapeo sano lo deja fuera.
+    changeValue(selector(d, "sr-mapeo-folio"), "0");
+    changeValue(selector(d, "sr-mapeo-fecha"), "1");
+    changeValue(selector(d, "sr-mapeo-total"), "2");
+    click(botonDe(d, "Revisar vista previa"));
+    await esperarAcciones();
+    const previas = api.peticiones("POST", "/softrestaurant/importar/vista-previa");
+    for (const p of previas) expect(JSON.stringify(p.cuerpo)).not.toMatch(/9991112222|9993334444|Tel[eé]fono/);
+  });
+
+  it("un valor con forma de teléfono en la columna mapeada a folio bloquea la revisión con un aviso claro y no llama al API", async () => {
+    const api = crearApiCfo();
+    await b.pintar(CfoSoftRestaurant, api);
+    await cargado();
+    const csv = ["Referencia,Fecha,Total", "9991112222,21/09/2026,$120.00", "9993334444,22/09/2026,$300.00"].join("\n");
+    const d = await importarCsv(csv, "referencias.csv");
+    changeValue(selector(d, "sr-tipo"), "cuentas");
+    await esperarAcciones();
+    changeValue(selector(d, "sr-mapeo-folio"), "0");
+    await esperarAcciones();
+    expect(d.querySelector("[data-testid=sr-valor-personal]")!.textContent).toContain("parece un teléfono o un correo");
+    expect(botonDe(d, "Revisar vista previa").disabled).toBe(true);
+    expect(api.peticiones("POST", "/softrestaurant/importar/vista-previa")).toHaveLength(0);
+  });
+
   it("la vista previa muestra los errores por renglón con la numeración del archivo", async () => {
     const api = crearApiCfo();
     await b.pintar(CfoSoftRestaurant, api);
@@ -192,7 +228,7 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     expect(errores.textContent).toContain("2 errores por renglón");
     expect(errores.textContent).toContain("Renglón 4, total: monto inválido");
     expect(errores.textContent).toContain("Renglón 5, fecha: fecha inválida");
-    expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/1 renglones aceptados y 2 rechazados/);
+    expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/1 renglón aceptado y 2 rechazados/);
   });
 
   it("un .xls antiguo se rechaza con el mensaje de la casa y no se llama al API", async () => {
