@@ -259,6 +259,23 @@ export function porcentajePropinaDichoPorElCliente(mensajeDelCliente: string | u
 /** Tope razonable de una propina en porcentaje (validacion de entrada y relleno del servidor). */
 export const PROPINA_PORCENTAJE_MAX = 30;
 
+/**
+ * T7-044 (ronda 5): el cliente pidio «1 guacamole» (el platillo) y la cotizacion llevaba «Extra Guacamole», tomado de «lo de siempre» del cliente: el total salio $93 por debajo
+ * del real. Los dos productos existen a proposito (T-AM06/X26: el cliente elige), asi que el servidor no adivina: si la cotizacion trae Extra Guacamole sin el platillo y NINGUN mensaje del
+ * cliente dice «extra / doble / adicional / otro / mas guacamole», devuelve el texto que el agente debe aclarar con el cliente; si no, `null`. Pura. Sin mensajes del cliente (voz, camino
+ * legado) no opina. «guacamolera» (la salsa incluida) no cuenta como el platillo.
+ */
+export function aclararGuacamoleExtra(nombresDeRenglones: readonly string[], mensajesDelCliente: readonly string[] | undefined): string | null {
+  if (!mensajesDelCliente || mensajesDelCliente.length === 0) return null;
+  const nombres = nombresDeRenglones.map((n) => normalizarParaClasificar(n).trim());
+  if (!nombres.some((n) => n === "extra guacamole") || nombres.some((n) => n === "guacamole")) return null;
+  const textos = mensajesDelCliente.map((m) => normalizarParaClasificar(m));
+  const EXTRA = /\b(?:extra|doble|adicional|otro|otra|mas|segundo)\s+(?:de\s+)?(?:un\s+|una\s+|el\s+|la\s+)?guacamole\b|\bguacamole\s+(?:extra|doble|adicional|de\s+mas)\b/;
+  if (textos.some((t) => EXTRA.test(t))) return null;
+  if (!textos.some((t) => /\bguacamole\b/.test(t))) return null;
+  return "El cliente dijo «guacamole» sin decir «extra»: el platillo Guacamole y el Extra Guacamole (agregado para los tacos) son productos distintos y de distinto precio. No cotice Extra Guacamole por su cuenta ni por «lo de siempre»: pregúntele cuál quiere («¿el guacamole como platillo o un extra para sus tacos?») y vuelva a cotizar con el que elija.";
+}
+
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
 export function quitarAfirmacionDeAviso(reply: string): string {
   const sinFrase = reply
