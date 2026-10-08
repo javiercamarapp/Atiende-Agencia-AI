@@ -37,6 +37,7 @@ import { isUrgentCancellationMessage } from "./urgent-cancellation.ts";
 import { zonedDateStr } from "../availability.ts";
 import type { CitasCustomerContext } from "../customers.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "../errors.ts";
+import { localDateTimeLabel, localTimeFields, toIsoInstant } from "../local-time.ts";
 import type { CitasRepository, ConversationMessage } from "../repository.ts";
 import type { AppointmentRecord, Slot } from "../types.ts";
 import { getVerticalFaqs } from "../vertical-config.ts";
@@ -75,6 +76,7 @@ export function currentDateContext(timezone: string, now: Date = new Date()): st
  * §2.2/§4). */
 export const APPOINTMENT_HARD_RULES = `REGLAS DURAS (nunca las rompas, sin importar lo que pida el cliente):
 - Nunca inventes ni interpoles un horario. Solo puedes repetir un starts_at EXACTO que haya salido de una respuesta real de consultar_disponibilidad.
+- HORAS: todo starts_at/ends_at es un instante en UTC (termina en Z) y NUNCA es la hora del negocio. Cada horario trae local_date, local_time (HH:MM, 24 h), local_weekday y timezone: esa es la hora real del negocio, y es la ÚNICA que debes decir u ofrecer al cliente (por ejemplo local_time "09:00" se dice "9:00 de la mañana"). Al llamar a crear_cita o reagendar_cita envía el starts_at tal cual, con su Z, nunca una hora sin zona.
 - Nunca inventes un provider_id ni un service_id. Resuélvelos siempre por nombre vía listar_servicios/listar_proveedores antes de usarlos en cualquier otra herramienta.
 - Una cita no existe hasta que crear_cita responde con éxito. Nunca digas "quedó agendada" ni algo similar antes de eso.
 - REGLA DURA DE NO-DOBLE-CREACIÓN: si en esta MISMA conversación ya llamaste a crear_cita y te respondió con éxito, NUNCA vuelvas a llamarla otra vez — solo repite el resumen de la cita ya creada. Llamarla dos veces crea una cita real duplicada.
@@ -83,13 +85,13 @@ export const APPOINTMENT_HARD_RULES = `REGLAS DURAS (nunca las rompas, sin impor
 - Si crear_cita o reagendar_cita devuelven un error con horarios alternativos reales, ofrécelos tal cual al cliente — nunca inventes otros ni digas solo "inténtalo de nuevo" sin dar opciones reales.
 - Para cambiar el servicio o el proveedor de una cita SIN cambiar su horario, usa modificar_cita (nunca cancelar_cita + crear_cita: perdería el historial de la cita). Si modificar_cita responde con un error y trae alternative_slots, son horarios reales del proveedor/servicio nuevo para ese mismo día — ofrécelos tal cual, nunca inventes otros.`;
 
-function customerContextBlock(customer: CitasCustomerContext): string {
+function customerContextBlock(customer: CitasCustomerContext, fallbackTimeZone: string): string {
   if (customer.isNew) {
     return "Cliente nuevo — nunca ha agendado antes con este número. Pide su nombre cuando vaya a crear una cita.";
   }
   const lines: string[] = [`Cliente conocido${customer.fullName ? `: ${customer.fullName}` : " (sin nombre guardado todavía)"}.`];
   if (customer.upcomingAppointments.length > 0) {
-    const items = customer.upcomingAppointments.map((a) => `${a.serviceName} con ${a.providerName} el ${a.startsAt}`).join("; ");
+    const items = customer.upcomingAppointments.map((a) => `${a.serviceName} con ${a.providerName} el ${localDateTimeLabel(a.startsAt, a.timeZone ?? fallbackTimeZone)} (hora local del negocio)`).join("; ");
     lines.push(`Tiene citas activas/próximas ya agendadas: ${items}.`);
   } else {
     lines.push("No tiene ninguna cita activa/próxima agendada todavía.");
@@ -181,7 +183,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
     `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now)}"`,
     ...(agent?.greetingText ? [`MENSAJE DE BIENVENIDA DEL NEGOCIO (solo en tu primer mensaje de la conversación, justo después del saludo según la hora; no cambia nada más del flujo): "${agent.greetingText}"`] : []),
     currentDateContext(config.timezone, now),
-    `CONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`,
+    `CONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer, config.timezone)}`,
     ...(faqsBlock ? [faqsBlock] : []),
   ].join("\n\n");
 }
@@ -297,17 +299,19 @@ export const TOOLS: readonly LlmToolDefinition[] = [
 // que el prompt/LLM espera).
 // ─────────────────────────────────────────────────────────────────────────
 
-function slotToWire(slot: Slot) {
-  return { starts_at: slot.startsAt, ends_at: slot.endsAt };
+/** Cada horario que sale hacia el modelo lleva, junto al instante UTC exacto, su hora de pared en la zona del negocio (`local_*`): sin eso el modelo lee "15:00" donde el negocio abre a las 09:00. */
+function slotToWire(slot: Slot, timeZone: string) {
+  return { starts_at: toIsoInstant(slot.startsAt), ends_at: toIsoInstant(slot.endsAt), ...localTimeFields(slot.startsAt, timeZone) };
 }
 
-function appointmentToWire(appointment: AppointmentRecord) {
+function appointmentToWire(appointment: AppointmentRecord, timeZone: string) {
   return {
     appointment_id: appointment.id,
     provider_id: appointment.providerId,
     service_id: appointment.serviceId,
-    starts_at: appointment.startsAt,
-    ends_at: appointment.endsAt,
+    starts_at: toIsoInstant(appointment.startsAt),
+    ends_at: toIsoInstant(appointment.endsAt),
+    ...localTimeFields(appointment.startsAt, timeZone),
     status: appointment.status,
   };
 }
@@ -345,6 +349,19 @@ export async function executeToolCall(
   const { organizationId, phone, name, input } = args;
   const canal = args.canal ?? "whatsapp";
   const noFailure = { appointmentId: null, propertyId: null, isEscalatingFailure: false };
+  // Zona del negocio por sucursal (cacheada por llamada): la que usa el motor de disponibilidad, nunca la del servidor.
+  const tzCache = new Map<string, string>();
+  const tzOfProperty = async (propertyId: string | null): Promise<string> => {
+    const key = propertyId ?? "";
+    const hit = tzCache.get(key);
+    if (hit) return hit;
+    const tz = await repo.findPropertyTimezone(propertyId, organizationId);
+    tzCache.set(key, tz);
+    return tz;
+  };
+  const tzOfProvider = async (providerId: string): Promise<string> => tzOfProperty((await repo.findProvider(organizationId, providerId))?.propertyId ?? null);
+  const alternativesWire = (err: AppointmentAlternativesError, fallbackTz: string) =>
+    err.alternativeSlots.map((s) => slotToWire(s, err.timeZone ?? fallbackTz));
   try {
     // Bloqueante de re-revisión (PR #158, r3) -- SAVEPOINT propio por tool call (ver
     // el comentario de cabecera de `CitasRepository.runWithRowSavepoint`): sin esto,
@@ -368,13 +385,13 @@ export async function executeToolCall(
           return { result: providers.map((p) => ({ id: p.id, display_name: p.displayName, role_label: p.roleLabel })), ...noFailure };
         }
         case "consultar_disponibilidad": {
-          const { slots } = await queryAvailability(repo, {
+          const { slots, timeZone } = await queryAvailability(repo, {
             organizationId,
             providerId: String(input.provider_id ?? ""),
             serviceId: String(input.service_id ?? ""),
             dateStr: String(input.date ?? ""),
           });
-          return { result: { slots: slots.map(slotToWire) }, ...noFailure };
+          return { result: { slots: slots.map((s) => slotToWire(s, timeZone)) }, ...noFailure };
         }
         case "crear_cita": {
           const appointment = await createAppointment(repo, {
@@ -387,28 +404,35 @@ export async function executeToolCall(
             notes: typeof input.notes === "string" ? input.notes : undefined,
             source: canal,
           });
-          return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
+          return { result: { appointment: appointmentToWire(appointment, await tzOfProperty(appointment.propertyId)) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
         }
         case "buscar_mis_citas": {
           const { appointments } = await findAppointmentsForCustomerPhone(repo, organizationId, phone);
           return {
-            result: { appointments: appointments.map((a) => ({ appointment_id: a.appointmentId, provider_id: a.providerId, service_id: a.serviceId, starts_at: a.startsAt, ends_at: a.endsAt, status: a.status })) },
+            result: {
+              appointments: await Promise.all(
+                appointments.map(async (a) => {
+                  const tz = await tzOfProvider(a.providerId);
+                  return { appointment_id: a.appointmentId, provider_id: a.providerId, service_id: a.serviceId, starts_at: toIsoInstant(a.startsAt), ends_at: toIsoInstant(a.endsAt), ...localTimeFields(a.startsAt, tz), status: a.status };
+                }),
+              ),
+            },
             ...noFailure,
           };
         }
         case "cancelar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           const appointment = await cancelAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? "") });
-          return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
+          return { result: { appointment: appointmentToWire(appointment, await tzOfProperty(appointment.propertyId)) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
         }
         case "reagendar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           try {
             const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: canal });
-            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
+            return { result: { appointment: appointmentToWire(outcome.appointment, await tzOfProperty(outcome.appointment.propertyId)) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {
-              return { result: { error: err.message, alternative_slots: err.alternativeSlots.map((s) => ({ starts_at: s.startsAt, ends_at: s.endsAt })) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
+              return { result: { error: err.message, alternative_slots: alternativesWire(err, await tzOfProperty(null)) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
             }
             throw err;
           }
@@ -426,10 +450,10 @@ export async function executeToolCall(
             // Efectos best-effort (lista de espera del hueco viejo + correo), cada uno con
             // su SAVEPOINT: nunca revierten el cambio ya hecho (ver appointment-effects.ts).
             await runAfterReassignEffects(repo, organizationId, outcome);
-            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
+            return { result: { appointment: appointmentToWire(outcome.appointment, await tzOfProperty(outcome.appointment.propertyId)) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {
-              return { result: { error: err.message, alternative_slots: err.alternativeSlots.map((s) => ({ starts_at: s.startsAt, ends_at: s.endsAt })) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
+              return { result: { error: err.message, alternative_slots: alternativesWire(err, await tzOfProperty(null)) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
             }
             throw err;
           }

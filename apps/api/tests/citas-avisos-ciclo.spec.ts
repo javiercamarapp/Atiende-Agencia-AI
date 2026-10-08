@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { zonedDateStr } from "@atiende/domain-citas";
 import type { CitasRepository } from "@atiende/domain-citas";
 import { buildApp } from "../src/app.ts";
 import { emitirAvisosDeCitas } from "../src/routes/verticals/citas/avisos-ciclo.ts";
@@ -35,7 +36,7 @@ describe("barrido de avisos de citas (cron de recordatorios)", () => {
     const mias = emisiones.filter((e) => e.organizationId === ctx.organizationId && e.evento === "citas.cita.por_confirmar");
     expect(mias).toHaveLength(1);
     expect(mias[0]).toMatchObject({ categoria: "operacion", severidad: "atencion", titulo: "Citas por confirmar en las próximas 48 horas", cuerpo: "Por confirmar: 2.", enlace: "/citas/{orgSlug}/avisos", roles: ["staff"] });
-    expect(mias[0]!.dedupeKey).toBe(`citas.cita.por_confirmar:${ctx.organizationId}:${new Date().toISOString().slice(0, 10)}`);
+    expect(mias[0]!.dedupeKey).toBe(`citas.cita.por_confirmar:${ctx.organizationId}:${zonedDateStr(new Date(), "America/Merida")}`);
     expect(JSON.stringify(mias[0])).not.toMatch(/Cliente Privado|99800/);
   });
 

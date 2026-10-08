@@ -4,6 +4,7 @@
 // firma que restaurantes/hoteles ya aplicaron a su lógica equivalente). Un solo
 // lugar para "qué es una cita válida" — ver diseño Fase 1 §3.2.
 import { createHash } from "node:crypto";
+import { isIsoInstantWithZone } from "./local-time.ts";
 import { computeAvailableSlots, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentForbiddenError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
 import type { CitasRepository, RetryCalendarSyncResult } from "./repository.ts";
@@ -21,6 +22,8 @@ export const BUSY_APPOINTMENT_STATUSES = ["pending", "confirmed", "completed"] a
  * reagendarse — mismo conjunto que ya usa cancel_appointment_idempotent/
  * cancel_appointment_from_panel. */
 const LIFECYCLE_EDITABLE_STATUSES = ["pending", "confirmed"] as const;
+
+const STARTS_AT_SIN_ZONA_MENSAJE = "El horario debe ser un ISO 8601 con zona (por ejemplo 2027-09-13T16:00:00.000Z), tal cual salió de consultar_disponibilidad: una hora sin zona es ambigua.";
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -178,7 +181,7 @@ export interface QueryAvailabilityInput {
  * `AppointmentValidationError` si el proveedor no ofrece el servicio — se deja
  * propagar tal cual, mismo mapeo 400 que ya usan las rutas existentes.
  */
-export async function queryAvailability(repo: CitasRepository, input: QueryAvailabilityInput): Promise<{ readonly slots: readonly Slot[] }> {
+export async function queryAvailability(repo: CitasRepository, input: QueryAvailabilityInput): Promise<{ readonly slots: readonly Slot[]; readonly timeZone: string }> {
   if (typeof input.dateStr !== "string" || !isValidDateStr(input.dateStr)) {
     throw new AppointmentValidationError("date debe tener formato YYYY-MM-DD válido");
   }
@@ -197,7 +200,7 @@ export async function queryAvailability(repo: CitasRepository, input: QueryAvail
     busy,
     now: input.now,
   });
-  return { slots };
+  return { slots, timeZone };
 }
 
 // ============================================================================
@@ -224,6 +227,7 @@ export function validateCreateAppointmentPayload(raw: CreateAppointmentPayload):
   ) {
     throw new AppointmentValidationError("providerId, serviceId, customerName, customerPhone y startsAt (ISO 8601 válido) son requeridos");
   }
+  if (!isIsoInstantWithZone(raw.startsAt)) throw new AppointmentValidationError(STARTS_AT_SIN_ZONA_MENSAJE);
   if (
     raw.providerId.length > 64 ||
     raw.serviceId.length > 64 ||
@@ -387,6 +391,7 @@ export async function createAppointmentFromPanel(repo: CitasRepository, payload:
   if (!payload.customerPhone?.trim()) throw new AppointmentValidationError("customer_phone es requerido");
   if (!isUsablePhone(payload.customerPhone)) throw new AppointmentValidationError("customer_phone debe ser un teléfono válido (entre 7 y 15 dígitos)");
   if (payload.customerEmail?.trim() && !isUsableEmail(payload.customerEmail.trim())) throw new AppointmentValidationError("customer_email no tiene un formato de correo válido");
+  if (!isIsoInstantWithZone(payload.startsAt)) throw new AppointmentValidationError(STARTS_AT_SIN_ZONA_MENSAJE);
   const startsAt = new Date(payload.startsAt);
   if (Number.isNaN(startsAt.getTime())) throw new AppointmentValidationError("starts_at debe ser una fecha ISO 8601 válida");
 
@@ -596,6 +601,7 @@ export function validateRescheduleAppointmentPayload(raw: RescheduleAppointmentP
   ) {
     throw new AppointmentValidationError("appointmentId y newStartsAt (ISO 8601 válido) son requeridos");
   }
+  if (!isIsoInstantWithZone(raw.newStartsAt)) throw new AppointmentValidationError(STARTS_AT_SIN_ZONA_MENSAJE);
   if (raw.actorChannel !== undefined && !["voice", "whatsapp", "web", "manual", "panel"].includes(raw.actorChannel)) {
     throw new AppointmentValidationError("actorChannel inválido");
   }
@@ -663,6 +669,7 @@ export async function prepareRescheduleAppointment(repo: CitasRepository, rawPay
     throw new AppointmentAlternativesError(
       "El nuevo horario solicitado no está dentro de la disponibilidad real del proveedor. Vuelve a consultar disponibilidad y ofrece exactamente uno de esos horarios.",
       alternatives,
+      timeZone,
     );
   }
 
@@ -691,7 +698,7 @@ export async function rescheduleAppointment(repo: CitasRepository, rawPayload: R
     // la autoridad final anti-traslape — encontró que alguien más tomó ese hueco
     // justo antes que nosotros. Mismas alternativas reales, recalculadas ahora.
     const alternatives = await computeAlternativeSlots(repo, payload.organizationId, appointment.providerId, appointment.serviceId, newStartsAt, timeZone, appointment.id);
-    throw new AppointmentAlternativesError("Ese horario ya no está disponible para este proveedor — alguien más lo tomó primero. Vuelve a consultar disponibilidad.", alternatives);
+    throw new AppointmentAlternativesError("Ese horario ya no está disponible para este proveedor — alguien más lo tomó primero. Vuelve a consultar disponibilidad.", alternatives, timeZone);
   }
   if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
   if (result.outcome === "conflict_invalid_status") {
@@ -789,6 +796,7 @@ export async function prepareReassignAppointment(repo: CitasRepository, rawPaylo
     throw new AppointmentAlternativesError(
       "El proveedor/servicio solicitado no tiene disponibilidad real a la hora actual de la cita. Elige uno de estos horarios o conserva el proveedor/servicio original.",
       alternatives,
+      timeZone,
     );
   }
 
@@ -819,7 +827,7 @@ export async function reassignAppointment(repo: CitasRepository, rawPayload: Rea
     // de arriba pasó, pero el EXCLUDE USING gist real (autoridad final anti-
     // traslape) encontró que el proveedor final ya tiene otra cita en ese hueco.
     const alternatives = await computeAlternativeSlots(repo, payload.organizationId, finalProviderId, finalServiceId, startsAt, timeZone, appointment.id);
-    throw new AppointmentAlternativesError("Ese proveedor ya tiene otra cita en ese horario — alguien más lo tomó primero.", alternatives);
+    throw new AppointmentAlternativesError("Ese proveedor ya tiene otra cita en ese horario — alguien más lo tomó primero.", alternatives, timeZone);
   }
   if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
   if (result.outcome === "conflict_invalid_status") {

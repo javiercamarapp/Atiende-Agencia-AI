@@ -10,29 +10,31 @@ export function formatMoneyFromCents(cents: number | null): string {
   return `$${formatMoney(cents / 100)}`;
 }
 
-// NOTA (revisión de PR #164, "no bloqueante" #3): `formatDateLong` la usa
-// `Agenda.tsx` para DOS cosas de naturaleza distinta -- el encabezado de un día
-// real de citas (`dayAppointments[0]!.startsAt`, un timestamp real) Y la etiqueta
-// "Semana del ..." (`from.toISOString()`, un valor de solo-FECHA anclado a
-// medianoche UTC, mismo criterio que `parseFechaSolo` de `formato-fecha.ts`).
-// Fijar aquí una sola `timeZone` serviría a un caso y rompería el otro (una fecha
-// anclada a UTC formateada en `America/Mexico_City` se corre un día, el MISMO bug
-// que se busca arreglar) -- por eso el fix real vive en el call site de Agenda.tsx
-// (`computeRange`), NO aquí: no toca estos formatters compartidos.
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const DATE_FORMATTER = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long" });
-const TIME_FORMATTER = new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" });
-
-export function formatDateTime(iso: string): string {
-  return DATE_TIME_FORMATTER.format(new Date(iso));
+// Cada formateador acepta la zona IANA del NEGOCIO: la Agenda la pasa siempre (una cita a las 10:00 de Merida se ve 10:00 aunque el navegador este en
+// Tijuana). Sin `timeZone` conserva el comportamiento de siempre (zona del navegador) para las pantallas que aun no la conocen. La etiqueta de rango
+// "Semana del ..." NO usa estos formateadores (es un valor de solo-fecha anclado a UTC; ver lib/agenda-rango.ts).
+const cacheFormatos = new Map<string, Intl.DateTimeFormat>();
+function formato(clave: string, opciones: Intl.DateTimeFormatOptions, timeZone?: string): Intl.DateTimeFormat {
+  const k = `${clave}|${timeZone ?? ""}`;
+  let f = cacheFormatos.get(k);
+  if (!f) {
+    f = new Intl.DateTimeFormat("es-MX", { ...opciones, ...(timeZone ? { timeZone } : {}) });
+    cacheFormatos.set(k, f);
+  }
+  return f;
 }
 
-export function formatDateLong(iso: string): string {
-  return DATE_FORMATTER.format(new Date(iso));
+export function formatDateTime(iso: string, timeZone?: string): string {
+  return formato("dt", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }, timeZone).format(new Date(iso));
 }
 
-export function formatTimeRange(startsAtIso: string, endsAtIso: string): string {
-  return `${TIME_FORMATTER.format(new Date(startsAtIso))} – ${TIME_FORMATTER.format(new Date(endsAtIso))}`;
+export function formatDateLong(iso: string, timeZone?: string): string {
+  return formato("dl", { weekday: "long", day: "numeric", month: "long" }, timeZone).format(new Date(iso));
+}
+
+export function formatTimeRange(startsAtIso: string, endsAtIso: string, timeZone?: string): string {
+  const f = formato("t", { hour: "2-digit", minute: "2-digit" }, timeZone);
+  return `${f.format(new Date(startsAtIso))} – ${f.format(new Date(endsAtIso))}`;
 }
 
 export const DAY_NAMES: readonly string[] = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
