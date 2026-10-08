@@ -3,7 +3,6 @@
 // SERVIDOR aplica solo el codigo emitido a ESE telefono (el del contexto del canal) en cotizar_pedido y crear_pedido. El uso se cuenta y no se reutiliza.
 import { describe, expect, it } from "vitest";
 import { invokeAgentTool, AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
-import { esCodigoDeCompensacion, assertWebOrderRules, previewPromotion } from "../src/storefront.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const CODIGO = "GRACIAS-AB12CD34";
@@ -73,30 +72,5 @@ describe.each(["whatsapp", "voz"] as const)("canje del codigo de compensacion po
 
   it("un promo_code que mande el modelo se ignora en WhatsApp: no existe en el esquema de las tools", () => {
     for (const t of AGENT_TOOL_DEFINITIONS) expect(Object.keys(t.parameters.properties).join(","), t.name).not.toMatch(/promo|descuento|discount/i);
-  });
-});
-
-describe("checkout web: codigo de compensacion a domicilio", () => {
-  const base = { organizationId: "o", items: [{ productId: "p", quantity: 1 }], customerPhone: "9991234567", paymentMethod: "efectivo" as const, customerAddress: "Calle 1", canal: "domicilio" as const };
-
-  it("esCodigoDeCompensacion reconoce solo la forma que emite el sistema", () => {
-    expect(esCodigoDeCompensacion(" gracias-ab12cd34 ")).toBe(true);
-    expect(esCodigoDeCompensacion("GRACIAS-123")).toBe(false);
-    expect(esCodigoDeCompensacion("LUNES2X1")).toBe(false);
-    expect(esCodigoDeCompensacion("GRACIAS-AB12CD34X")).toBe(false);
-  });
-
-  it("el checkout acepta el codigo de compensacion a domicilio, pero sigue rechazando una promocion normal", () => {
-    expect(() => assertWebOrderRules({ ...base, branchSlug: "x", customerName: "A", source: "web", promoCode: CODIGO } as never)).not.toThrow();
-    expect(() => assertWebOrderRules({ ...base, branchSlug: "x", customerName: "A", source: "web", promoCode: "LUNES2X1" } as never)).toThrow(/solo aplican para pedidos que recoges/);
-  });
-
-  it("la vista previa del carrito a domicilio valida el codigo de compensacion y rechaza una promocion normal", async () => {
-    const f = buildRestaurantFixture();
-    await f.repo.createPromotion(f.organizationId, { code: CODIGO, name: "c", type: "percentage", value: 10, maxUses: 1, isActive: true });
-    const prev = await previewPromotion(f.repo, { organizationId: f.organizationId, propertyId: f.propertyId, rawCode: CODIGO, canal: "domicilio", total: 200, items: [] });
-    expect(prev).toMatchObject({ valida: true, descuento: 20, totalConDescuento: 180 });
-    const normal = await previewPromotion(f.repo, { organizationId: f.organizationId, propertyId: f.propertyId, rawCode: "OTRA", canal: "domicilio", total: 200, items: [] });
-    expect(normal.valida).toBe(false);
   });
 });

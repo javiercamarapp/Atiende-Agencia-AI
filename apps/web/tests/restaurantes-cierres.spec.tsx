@@ -61,6 +61,16 @@ async function pintar(fetchMock: ReturnType<typeof stub>, role = "owner") {
 const texto = () => rendered!.container.textContent ?? "";
 
 describe("<CierresPage />", () => {
+  it("el canal web se muestra como «Pedido en línea (histórico)» solo si tiene datos; sin datos la línea no aparece", async () => {
+    await pintar(stub({ [`GET ${BASE}?tipo=dia`]: { status: 200, body: lista() } }));
+    expect(texto()).toContain("Pedido en línea (histórico)");
+    rendered?.unmount();
+    const sinWeb = CANALES.map((c) => (c.canal === "web" ? { ...c, pedidos: 0, ventasCentavos: 0, cancelados: 0 } : c));
+    await pintar(stub({ [`GET ${BASE}?tipo=dia`]: { status: 200, body: lista({ cierres: [cierre({ porCanal: sinWeb })] }) } }));
+    expect(texto()).not.toContain("Pedido en línea");
+    expect(texto()).toContain("WhatsApp");
+  });
+
   it("muestra las cifras reales del cierre, la variación contra el comparativo y los tiempos con su base", async () => {
     await pintar(stub({ [`GET ${BASE}?tipo=dia`]: { status: 200, body: lista() } }));
     const t = texto();

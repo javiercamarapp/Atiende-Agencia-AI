@@ -1,4 +1,4 @@
-// H-30 (P1) -- superficie PUBLICA de privacidad del huesped de hoteles, SIN login. Igual que el storefront publico de restaurantes,
+// H-30 (P1) -- superficie PUBLICA de privacidad del huesped de hoteles, SIN login. Superficie publica sin login,
 // este grupo se monta sin `authMiddleware` y abre su propia sesion de SISTEMA (`userId: null`); su defensa es CORS por origen,
 // limite de tasa por IP / referencia / contacto (consumido en una sesion APARTE para que un rechazo no revierta el conteo),
 // honeypot, validacion estricta y un modelo de datos que solo expone funciones `security definer` solo-sistema (migracion 042).

@@ -8,16 +8,16 @@ interface Regla {
   readonly source: string;
   readonly headers: readonly { readonly key: string; readonly value: string }[];
 }
-const config = JSON.parse(readFileSync(resolve(__dirname, "../../../vercel.json"), "utf8")) as { headers?: Regla[] };
+const config = JSON.parse(readFileSync(resolve(__dirname, "../../../vercel.json"), "utf8")) as { headers?: Regla[]; redirects?: unknown; rewrites?: unknown };
 const reglas = config.headers ?? [];
-// Reglas globales (todas las rutas); la unica excepcion declarada es /pedir/* (ver abajo).
+// Reglas globales (todas las rutas); sin excepciones por ruta.
 const reglasGlobales = reglas.filter((r) => r.source === "/(.*)");
 const todas = new Map(reglasGlobales.flatMap((r) => r.headers.map((h) => [h.key.toLowerCase(), h.value] as const)));
 
 describe("vercel.json headers", () => {
-  it("aplica a todas las rutas, salvo la excepcion de /pedir/*", () => {
+  it("aplica a todas las rutas: ya no hay excepciones por ruta (la tienda /pedir/* se eliminó)", () => {
     expect(reglasGlobales.length).toBeGreaterThan(0);
-    expect(reglas.filter((r) => r.source !== "/(.*)").map((r) => r.source)).toEqual(["/pedir/(.*)"]);
+    expect(reglas.filter((r) => r.source !== "/(.*)").map((r) => r.source)).toEqual([]);
   });
 
   it("el microfono es self en la regla global (una SPA no relee la cabecera al navegar): nunca *, y lo demas sigue denegado", () => {
@@ -27,13 +27,14 @@ describe("vercel.json headers", () => {
     for (const d of ["camera=()", "geolocation=()", "payment=()", "usb=()"]) expect(valor).toContain(d);
   });
 
-  it("geolocation esta deshabilitada en todo el sitio y solo /pedir/* la permite a su propia pagina, sin tocar nada mas", () => {
+  it("geolocation esta deshabilitada en todo el sitio, sin excepcion", () => {
     expect(todas.get("permissions-policy")).toContain("geolocation=()");
-    const pedir = reglas.find((r) => r.source === "/pedir/(.*)")!;
-    expect(pedir.headers.map((h) => h.key)).toEqual(["Permissions-Policy"]);
-    expect(pedir.headers[0]!.value).toContain("geolocation=(self)");
-    expect(pedir.headers[0]!.value).toContain("camera=()");
-    expect(pedir.headers[0]!.value).toContain("microphone=()");
+  });
+
+  it("/pedir/* (tienda eliminada) redirige (permanent:true, Vercel responde 308) a la raiz y ya no se reescribe a la API", () => {
+    const cfg = config as { redirects?: { source: string; destination: string; permanent?: boolean }[]; rewrites?: { source: string; destination: string }[] };
+    expect(cfg.redirects).toEqual([{ source: "/pedir/:path*", destination: "/", permanent: true }]);
+    expect((cfg.rewrites ?? []).filter((r) => r.source.startsWith("/pedir"))).toEqual([]);
   });
 
   it("HSTS, nosniff, anti-framing, Referrer-Policy, Permissions-Policy y COOP van enforcing", () => {

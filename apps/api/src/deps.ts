@@ -119,9 +119,6 @@ export interface AppDeps {
   /** Public marketing sandbox: no tenant records or mutation tools. */
   readonly publicDemoAgents?: DemoAgentsDeps;
   readonly env: ApiEnv;
-  /** `index.html` del panel para las meta de vista previa de `/pedir/*` (storefront-meta.ts). OPCIONAL: ausente =
-   * el embebido en el build o el del CDN; los tests lo inyectan. */
-  readonly storefrontIndexHtml?: () => Promise<string | null>;
   readonly coreRepo: CoreRepository;
   /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
    * `@atiende/db::CoreStaffRepository`. A DIFERENCIA de `coreRepo` (objeto fijo,

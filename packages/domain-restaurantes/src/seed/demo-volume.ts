@@ -569,7 +569,7 @@ export async function* generarVolumenDemo(repoBase: RestaurantesRepository, opti
         ? rng.chance(DEMO_PERFIL_T7.fraccionDomicilio) ? "domicilio" : "recoger"
         : rng.chance(RECOGER_POR_SUCURSAL[sucursal.slug] ?? 0.3) ? "recoger" : "domicilio";
       // En el perfil T7 TODO entra por WhatsApp (asi es la muestra real).
-      const source = slot ? ("whatsapp" as const) : rng.weighted(["whatsapp", "web", "admin"] as const, (s) => (s === "whatsapp" ? 0.6 : s === "web" ? 0.3 : 0.1));
+      const source = slot ? ("whatsapp" as const) : rng.weighted(["whatsapp", "admin"] as const, (s) => (s === "whatsapp" ? 0.9 : 0.1));
       const paymentMethod = slot ? (rng.chance(DEMO_PERFIL_T7.fraccionTarjeta) ? "tarjeta" : "efectivo") : rng.chance(0.38) ? "tarjeta" : "efectivo";
       consecutivo += 1;
       const clave = slot ? `demo-volumen-t7:${seed}:${consecutivo}` : `demo-volumen:${seed}:${consecutivo}`;

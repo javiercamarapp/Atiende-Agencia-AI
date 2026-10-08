@@ -91,7 +91,7 @@ function sucursal(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
 
 // ---------- Avisos y cierres: forma de apps/web/src/verticals/restaurantes/lib/{avisos,cierres}-client.ts ----------
 const EVENTOS_AVISO_MOCK = [
-  { tipo: "restaurantes.pedido.nuevo", etiqueta: "Pedido nuevo", descripcion: "Entra un pedido por WhatsApp, voz o la tienda en línea.", sonidoAplica: true },
+  { tipo: "restaurantes.pedido.nuevo", etiqueta: "Pedido nuevo", descripcion: "Entra un pedido por WhatsApp o voz.", sonidoAplica: true },
   { tipo: "restaurantes.handoff.solicitado", etiqueta: "Cliente pide a una persona", descripcion: "El agente deriva una conversación a atención humana.", sonidoAplica: false },
   { tipo: "restaurantes.pedido.entrega_tardia", etiqueta: "Entrega tardía", descripcion: "Un pedido pasó de su hora prometida y sigue sin entregarse.", sonidoAplica: false },
 ];
@@ -349,8 +349,6 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     manejador: (p) => ({ customer: p.params["customerId"] === "cli-1" ? { isNew: false, name: "Marisol Pech", orderCount: 9, addresses: [{ address: "Calle 60 #412, Centro", label: "Casa", isDefault: true }], lastOrderItems: [{ name: "Tacos al pastor (orden)", quantity: 2 }], frequentItems: [{ name: "Horchata", quantity: 7 }], tier: "GOLD", agentNotes: ["Prefiere sin cebolla"] } : { isNew: true } }),
   },
 
-  // ---------- Sitio publico (R-38): la pantalla de Configuracion lo pide al abrir ----------
-  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false }) },
 
   // ---------- Sucursales ----------
   { metodo: "GET", patron: `${B}/sucursales`, manejador: (p) => ({ branches: [sucursal(p)] }) },
@@ -459,9 +457,6 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "PUT", patron: `${B}/config/whatsapp`, roles: ["owner", "admin"], manejador: (p) => { const v = String(((p.cuerpo ?? {}) as { phoneNumberId?: string }).phoneNumberId ?? ""); p.estado.guardar("rest.wa", v); return { phoneNumberId: v }; } },
   { metodo: "GET", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => ({ zonaHoraria: p.estado.obtener<string | null>("rest.tz", () => "America/Merida") }) },
   { metodo: "PATCH", patron: `${B}/config/zona-horaria`, roles: ["owner", "admin"], manejador: (p) => { const v = ((p.cuerpo ?? {}) as { zona_horaria?: string | null }).zona_horaria ?? null; p.estado.guardar("rest.tz", v); return { zonaHoraria: v }; } },
-  // Sitio publico (Configuracion > Sitio publico): sin esta ruta la seccion pintaba un segundo EstadoError en el recorrido de errores.
-  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.sitio", () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false })) },
-  { metodo: "PUT", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => { const r = { marca: (p.cuerpo ?? {}) as Record<string, unknown>, guardada: true }; p.estado.guardar("rest.sitio", r); return r; } },
   { metodo: "GET", patron: `${B}/config/zonas`, roles: ["owner", "admin"], manejador: (p) => ({ zonas: lista(p, "rest.zonas", ZONAS_SEMILLA) }) },
   {
     metodo: "POST",
@@ -486,27 +481,6 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
       if (i < 0) return fallo(404, "Esa zona no existe");
       zonas.splice(i, 1);
       return { ok: true };
-    },
-  },
-
-  // ---------- Sitio publico (marca del storefront, R-38) ----------
-  {
-    metodo: "GET",
-    patron: `${B}/config/sitio-publico`,
-    roles: ["owner", "admin"],
-    manejador: (p) => {
-      const marca = p.estado.obtener<Record<string, unknown> | null>("rest.marca", () => null);
-      return { marca: marca ?? { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, updatedAt: null }, guardada: marca !== null };
-    },
-  },
-  {
-    metodo: "PUT",
-    patron: `${B}/config/sitio-publico`,
-    roles: ["owner", "admin"],
-    manejador: (p) => {
-      const marca = { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null, ...((p.cuerpo ?? {}) as Record<string, unknown>), updatedAt: new Date().toISOString() };
-      p.estado.guardar("rest.marca", marca);
-      return { marca, guardada: true };
     },
   },
 
@@ -545,9 +519,6 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "GET", patron: `${B}/turnos`, manejador: (p) => ({ disponible: true, turnos: p.estado.obtener("rest.turnos", () => [{ id: "turno-1", nombre: "Comida", dias: [1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "01:00", miembros: [{ userId: "usr-1", nombre: "Lucia Xool", orden: 1 }] }]), cobertura: COBERTURA }) },
   { metodo: "PUT", patron: `${B}/turnos`, manejador: (p) => { const t = ((p.cuerpo ?? {}) as { turnos?: unknown[] }).turnos ?? []; p.estado.guardar("rest.turnos", t); return { disponible: true }; } },
 
-  // ---------- Sitio publico (R-38): la seccion de Configuracion la lee al montar; sin esta fixture la pagina mostraba un EstadoError ajeno a lo que se prueba ----------
-  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.sitio-publico", () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false })) },
-  { metodo: "PUT", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: (p) => { const v = { marca: { ...((p.cuerpo ?? {}) as object) }, guardada: true }; p.estado.guardar("rest.sitio-publico", v); return v; } },
 
   // ---------- Conocimiento del negocio e interruptor del agente de WhatsApp (053; solo owner/admin como la API real) ----------
   // Replica del servidor lo que la SPA debe ver: el validador rechaza precios (`$` + numero) con el mismo mensaje y una entrada nueva nace publicada.

@@ -15,7 +15,7 @@ async function setup() {
   // El tercero (dueño real del numero) ya pidio antes: nombre, direccion y pedido en la base.
   await app.request(
     `/v1/restaurantes/${ORG}/orders`,
-    jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Tercera Persona", customer_phone: AJENO, customer_address: "Calle Secreta 123", canal: "domicilio", payment_method: "efectivo", items: [{ product_id: ctx.products.cocaCola, requested_quantity: 1 }], source: "web" }),
+    jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Tercera Persona", customer_phone: AJENO, customer_address: "Calle Secreta 123", canal: "domicilio", payment_method: "efectivo", items: [{ product_id: ctx.products.cocaCola, requested_quantity: 1 }], source: "voice" }, { "x-atiende-tool-secret": "test-voice-tool-secret" }),
   );
   const mint = async (callId: string, declarado: boolean) => {
     const res = await app.request(`/v1/restaurantes/${ORG}/voice/call-token`, jsonRequestInit({ call_id: callId, caller_phone: AJENO, branch_slug: "fco-montejo", ...(declarado ? { telefono_declarado: true } : {}) }, LEGACY));

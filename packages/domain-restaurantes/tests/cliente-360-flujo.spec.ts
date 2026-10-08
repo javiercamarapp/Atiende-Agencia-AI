@@ -281,24 +281,6 @@ describe("reincidencia de no recogido y pedido falso", () => {
     await w.repo.saveCustomerPolicy(w.organizationId, { umbralNoRecogidos: 0, ventanaDias: 90 });
     expect((await crear(w)).orderId).not.toBeNull();
   });
-
-  it("el checkout web no se retiene (solo agentes de WhatsApp y voz)", async () => {
-    const w = nuevoMundo();
-    const base = await w.pedir();
-    noRecogidoReciente(w, base.customerId!, 10);
-    noRecogidoReciente(w, base.customerId!, 20);
-    const lookup = conocido(await lookupCustomer(w.repo, w.organizationId, PHONE));
-    expect(lookup.requiereConfirmacionSucursal).toBe(true);
-    const out = await invokeAgentTool(w.repo, { organizationId: w.organizationId, channel: "web", phone: null }, "crear_pedido", {
-      branch_slug: "fco-montejo",
-      customer_name: "Ana",
-      customer_phone: PHONE,
-      customer_address: "Calle 9 #1",
-      items: [{ product_id: w.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }],
-      payment_method: "efectivo",
-    });
-    expect(out.orderId).not.toBeNull();
-  });
 });
 
 describe("base SIN migrar (migracion 049 pendiente)", () => {

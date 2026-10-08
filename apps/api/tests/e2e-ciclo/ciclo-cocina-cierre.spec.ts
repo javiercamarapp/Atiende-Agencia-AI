@@ -1,13 +1,13 @@
-// R-23: de la cocina al cierre del dia. Pedidos creados por WhatsApp / voz / storefront con el motor real; el panel avanza cada
+// R-23: de la cocina al cierre del dia. Pedidos creados por WhatsApp / voz con el motor real; el panel avanza cada
 // estado y el comensal recibe UN aviso por estado (outbox -> Graph API simulada); cancelacion antes de cocina; un pedido para recoger
-// no sale "en_camino"; saltos de estado invalidos se rechazan; el mismo comensal por tres canales es UN cliente; y el cierre del dia
+// no sale "en_camino"; saltos de estado invalidos se rechazan; el mismo comensal por dos canales es UN cliente; y el cierre del dia
 // se genera (una vez) cuando el dia ya termino. Los agregados del cierre los calcula SQL real (scripts/verify-restaurantes-cierre-dia):
 // aqui `calcular` se alimenta de los pedidos que dejo el ciclo para comprobar el cableado (periodo, idempotencia, aviso, auditoria).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DATOS_VACIOS, InMemoryCierreRepository } from "@atiende/domain-restaurantes";
 import { buildApp } from "../../src/app.ts";
 import { authedGet, authedJson } from "../restaurantes-admin-kpis-fixtures.ts";
-import { ORG_SLUG, call, say, startCicloStack, startVoiceCall } from "../support/e2e-ciclo-restaurantes.ts";
+import { call, say, startCicloStack, startVoiceCall } from "../support/e2e-ciclo-restaurantes.ts";
 import type { CicloStack } from "../support/e2e-ciclo-restaurantes.ts";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -138,7 +138,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     expect(stack.pos.comandas, "una comanda de un pedido cancelado llego al POS").toHaveLength(0);
   });
 
-  it("un mismo comensal por WhatsApp, voz y storefront es UN cliente con 3 pedidos y 3 comandas; el dia se cierra una sola vez", async () => {
+  it("un mismo comensal por WhatsApp y voz es UN cliente con 2 pedidos y 2 comandas; el dia se cierra una sola vez", async () => {
     stack = await startCicloStack();
     const repo = stack.ctx.restaurantesRepo;
     const wa = "5219991230210"; // = 9991230210 en los otros canales
@@ -154,40 +154,29 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     const porVoz = await llamada.tool("crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Diana Omni", payment_method: "efectivo", items: itemsVoz });
     expect(porVoz.status).toBe(200);
     expect((porVoz.body as Json).order).toMatchObject({ source: "voice", customerPhone: "9991230210", total: 135 });
-    // 3) Storefront web (telefono con espacios)
-    const post = (p: string, body: unknown) => {
-      const raw = JSON.stringify(body);
-      return fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront${p}`), { method: "POST", headers: { "content-type": "application/json", "content-length": String(new TextEncoder().encode(raw).byteLength), origin: "http://localhost:5173" }, body: raw });
-    };
-    const web = { session_id: "sesion-omni-0123456789abcdef", items: [{ product_id: stack.products.coca, requested_quantity: 1 }], canal: "recoger" };
-    const q = (await (await post("/fco-montejo/quote", web)).json()) as Json;
-    expect((await post("/fco-montejo/confirm", { session_id: web.session_id, quote_hash: q.quote_hash })).status).toBe(200);
-    const porWeb = await post("/fco-montejo/orders", { ...web, acepta_aviso_privacidad: true, customer_name: "Diana Omni", customer_phone: "999 123 0210", payment_method: "efectivo", quote_hash: q.quote_hash });
-    expect(porWeb.status).toBe(200);
-
-    // Un solo cliente; los tres pedidos ligados a el, uno por canal, cada uno con su comanda.
+    // Un solo cliente; los dos pedidos ligados a el, uno por canal, cada uno con su comanda.
     const todos = await pedidos();
-    expect(todos.map((o) => o.source).sort()).toEqual(["voice", "web", "whatsapp"]);
+    expect(todos.map((o) => o.source).sort()).toEqual(["voice", "whatsapp"]);
     expect(new Set(todos.map((o) => o.customerPhone))).toEqual(new Set(["9991230210"]));
     const cliente = await repo.findCustomerByPhone(stack.ctx.organizationId, "9991230210");
     expect(cliente?.name).toBe("Diana Omni");
     await vi.waitFor(async () => {
       await stack.dispatchPos();
-      expect(stack.pos.comandas).toHaveLength(3);
+      expect(stack.pos.comandas).toHaveLength(2);
     });
-    expect(new Set(stack.comandas.todas().map((c) => c.orderId)).size).toBe(3);
-    // El cliente de WhatsApp se reconoce por voz: historial de 3 pedidos (web, whatsapp y voz) al momento de la llamada del dia siguiente.
+    expect(new Set(stack.comandas.todas().map((c) => c.orderId)).size).toBe(2);
+    // El cliente de WhatsApp se reconoce por voz: historial de 2 pedidos (whatsapp y voz) al momento de la llamada del dia siguiente.
     const otra = await startVoiceCall(stack, "9991230210", "call-omni-2");
-    expect((await otra.tool("buscar_cliente", {})).body).toMatchObject({ isNew: false, name: "Diana Omni", orderCount: 3 });
+    expect((await otra.tool("buscar_cliente", {})).body).toMatchObject({ isNew: false, name: "Diana Omni", orderCount: 2 });
 
-    // Cocina: dos se entregan; uno (el de la web) se cancela antes de cocina.
-    const porWeb2 = todos.find((o) => o.source === "web")!;
-    for (const o of [porWa, todos.find((x) => x.source === "voice")!]) {
+    // Cocina: el de voz se entrega; el de WhatsApp se cancela antes de cocina.
+    const cancelado = todos.find((o) => o.id === porWa.id)!;
+    for (const o of [todos.find((x) => x.source === "voice")!]) {
       for (const s of ["preparando", "listo_para_recoger", "entregado"]) expect((await patchStatus(o.id, s)).status, `${o.source} -> ${s}`).toBe(200);
     }
-    expect((await patchStatus(porWeb2.id, "cancelado")).status).toBe(200);
+    expect((await patchStatus(cancelado.id, "cancelado")).status).toBe(200);
     const final = await pedidos();
-    expect(final.filter((o) => o.status === "entregado")).toHaveLength(2);
+    expect(final.filter((o) => o.status === "entregado")).toHaveLength(1);
     expect(final.filter((o) => o.status === "cancelado")).toHaveLength(1);
 
     // Cierre del dia: solo cuando el dia ya termino (hoy martes 6, cierre del martes 6 se rechaza; del 7 de oct en adelante, si).
@@ -196,7 +185,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
       sucursales: [{ organizationId: stack.ctx.organizationId, propertyId: stack.propertyId, zonaHoraria: "America/Merida" }],
       calcular: (_p, _t, inicio) =>
         inicio === "2026-10-06"
-          ? { ...DATOS_VACIOS, pedidos: final.length, ventasCentavos: entregados.reduce((s, o) => s + Math.round(o.total * 100), 0), cancelados: 1, canceladosCentavos: Math.round(porWeb2.total * 100), cancelacionPct: Math.round((100 / final.length) * 10) / 10 }
+          ? { ...DATOS_VACIOS, pedidos: final.length, ventasCentavos: entregados.reduce((s, o) => s + Math.round(o.total * 100), 0), cancelados: 1, canceladosCentavos: Math.round(cancelado.total * 100), cancelacionPct: Math.round((100 / final.length) * 10) / 10 }
           : null,
     });
     const appCierre = buildApp({ ...stack.deps, cierreRepo: () => cierreRepo });
@@ -211,7 +200,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     const primero = await generar("2026-10-06", ownerManana);
     expect(primero.status).toBe(201);
     const c1 = ((await primero.json()) as Json).cierre;
-    expect(c1).toMatchObject({ fechaInicio: "2026-10-06", pedidos: 3, cancelados: 1, ventasCentavos: 22500 });
+    expect(c1).toMatchObject({ fechaInicio: "2026-10-06", pedidos: 2, cancelados: 1, ventasCentavos: 13500 });
     const segundo = await generar("2026-10-06", ownerManana);
     expect(segundo.status).toBe(200);
     expect(((await segundo.json()) as Json).estado).toBe("existente");

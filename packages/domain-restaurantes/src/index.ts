@@ -1,8 +1,5 @@
-export { buildStorefrontDirectorio, enlaceComoLlegar, type StorefrontDirectorioItem } from "./storefront.ts";
+export type { StorefrontCatalogRow } from "./types.ts";
 export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
-export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
-export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
-export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
 export type {
   Branch,
   BranchPolicy,
@@ -177,17 +174,6 @@ export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJ
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
-export {
-  EVENTO_LIMITES,
-  MARCA_LIMITES,
-  MARCA_VACIA,
-  StorefrontValidationError,
-  buildStorefrontPromociones,
-  enlaceWhatsapp,
-  validarMarca,
-  validarSolicitudEvento,
-} from "./storefront-marca.ts";
-export type { SolicitudEventoValidada, StorefrontPromocionView } from "./storefront-marca.ts";
 
 export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
 export type { NearestBranchResult } from "./nearest-branch.ts";
@@ -387,7 +373,6 @@ export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedo
 export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
 export * from "./mezcla-de-pago.ts";
-export * from "./sucursal-sugerida.ts";
 // Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
 export * from "./ajustes-agente/index.ts";
 

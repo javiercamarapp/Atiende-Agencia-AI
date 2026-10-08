@@ -72,11 +72,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
-  StorefrontMarca,
-  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
-  StorefrontTrackingResult,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -324,7 +321,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly cliente360 = new Cliente360Store();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
-  private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
   private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
   /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
@@ -593,31 +589,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       });
     }
     return rows.sort((a, b) => a.categoryDisplayOrder - b.categoryDisplayOrder || (a.categoryName ?? "~").localeCompare(b.categoryName ?? "~") || a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
-  }
-
-  /** Solo pruebas: simula una base sin la migracion 032 (`findStorefrontOrderTracking` -> no disponible). */
-  simulateStorefrontTrackingUnavailable(): void {
-    this.storefrontTrackingUnavailable = true;
-  }
-  private storefrontTrackingUnavailable = false;
-
-  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
-    if (this.storefrontTrackingUnavailable) return { disponible: false, pedido: null };
-    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
-    if (!order) return { disponible: true, pedido: null };
-    const notes = order.notes ?? "";
-    return {
-      disponible: true,
-      pedido: {
-        status: order.status,
-        branch: order.branch,
-        total: order.total,
-        paymentMethod: order.paymentMethod,
-        canal: notes.includes("Canal: recoger en sucursal.") ? "recoger" : "domicilio",
-        createdAt: order.createdAt,
-        items: order.items.map((i) => ({ name: i.name, quantity: i.quantity, tortilla: i.tortilla ?? null })),
-      },
-    };
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
@@ -2316,16 +2287,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
     return { phoneNumberId };
-  }
-
-  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
-    return this.storefrontMarcas.get(organizationId) ?? null;
-  }
-
-  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
-    const guardada: StorefrontMarca = { ...input, updatedAt: new Date().toISOString() };
-    this.storefrontMarcas.set(organizationId, guardada);
-    return guardada;
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
