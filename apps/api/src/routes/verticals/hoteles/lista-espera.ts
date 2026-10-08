@@ -40,6 +40,7 @@ import {
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { programarMensajesHuesped } from "./mensajes-huesped.ts";
 
 const QUOTE_CODE_STATUS: Record<string, number> = {
   estadia_invalida: 400,
@@ -216,6 +217,8 @@ export function hotelesListaEsperaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (sinCupo.length > 0) throw new ApiError(409, "sin_disponibilidad", `Aun no hay habitaciones libres en: ${sinCupo.join(", ")}.`);
 
     const ofrecida = await guarded(() => repo.ofrecer(propertyId, e.id, new Date(Date.now() + horas * 3_600_000)));
+    // H-P3-03: la oferta le llega al huesped (WhatsApp o correo) con su vigencia; despues del commit, acotado a esta entrada.
+    programarMensajesHuesped(deps, c, { propertyId, refId: e.id });
     return c.json(serializeEntrada(ofrecida, null));
   });
 

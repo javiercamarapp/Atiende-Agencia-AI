@@ -253,6 +253,11 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   // Voz sobre voice-core: estado honesto de la escalera y sesion de vista previa. owner/gm (ADMIN_ROLES); no llevan secretos.
   "GET /voz/estado": ["owner", "gm"],
   "POST /voz/preview/sesion": ["owner", "gm"],
+  "GET /mensajes-huesped": ["owner", "gm", "frontdesk", "reservations", "accountant"],
+  "GET /mensajes-huesped/historial": ["owner", "gm", "frontdesk", "reservations", "accountant"],
+  "PUT /mensajes-huesped/:evento": ["owner", "gm"],
+  "PUT /mensajes-huesped/:evento/plantilla": ["owner", "gm"],
+  "DELETE /mensajes-huesped/:evento/plantilla": ["owner", "gm"],
   "GET /conversaciones": ["owner", "gm", "frontdesk", "reservations"],
   "GET /conversaciones/:id": ["owner", "gm", "frontdesk", "reservations"],
   "POST /conversaciones/:id/leer": ["owner", "gm", "frontdesk", "reservations"],

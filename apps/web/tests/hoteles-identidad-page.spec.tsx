@@ -571,6 +571,33 @@ describe("IdentidadPage (hoteles) -- UNI-C gestion: dialogos en lugar de window.
     expect(toastMock.success).toHaveBeenCalledWith("Aviso publicado como versión vigente.", expect.anything());
   });
 
+  it("privacidad > aviso: 'Usar plantilla base' solo llena el formulario (declara encargados y transferencias, con la etiqueta de revision legal) y NO publica nada", async () => {
+    stubFetch();
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await clickButton(buttonByText("Publicar versión nueva"));
+    expect(dialogo()!.textContent).toContain("Requiere revisión legal");
+    const escriturasAntes = escrituras().length;
+    await clickButton(botonDialogo("Usar plantilla base"));
+    const campo = (id: string) => dialogo()!.querySelector(`#${id}`) as HTMLInputElement;
+    const texto = campo("aviso-texto").value;
+    for (const proveedor of ["OpenRouter", "Meta / WhatsApp", "Google y LiveKit", "PAC", "Stripe", "Resend"]) expect(texto, proveedor).toContain(proveedor);
+    expect(campo("aviso-obligatorias").value.split("\n").length).toBeGreaterThanOrEqual(2);
+    expect(campo("aviso-opcionales").value).toContain("reseña");
+    expect(dialogo()!.textContent).toContain("requiere revisión legal");
+    // No se publica sola: ninguna escritura hasta que el hotel la revise y pulse "Publicar versión nueva".
+    expect(escrituras().length).toBe(escriturasAntes);
+    changeValue(campo("aviso-version"), "base-1");
+    await act(async () => {
+      dialogo()!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    const post = escrituras().find(([u]) => String(u).endsWith("/privacidad/avisos"))!;
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toMatchObject({ version: "base-1" });
+    expect(JSON.parse((post[1] as RequestInit).body as string).textoSimplificado).toContain("OpenRouter");
+  });
+
   it("privacidad > ARCO: registrar solicitud en dialogo; avanzar exige nota de 10+ caracteres y Cancelar no escribe", async () => {
     stubFetch({ arco: { disponible: true, hoy: "2026-03-24", items: [ARCO] } });
     rendered = renderPage();

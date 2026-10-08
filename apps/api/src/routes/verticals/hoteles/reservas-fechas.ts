@@ -186,7 +186,7 @@ export function hotelesReservasFechasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
             motivo,
           });
           // Noches liberadas -> lista de espera (best-effort, dentro de un SAVEPOINT).
-          const ofertas = await ofrecerListaEsperaTrasLiberacion(deps, c.get("db"), { organizationId, propertyId, roomTypeId: reserva.roomTypeId, noches: p.nochesQuitadas });
+          const ofertas = await ofrecerListaEsperaTrasLiberacion(deps, c.get("db"), { organizationId, propertyId, roomTypeId: reserva.roomTypeId, noches: p.nochesQuitadas }, c.get("postCommitTasks"));
           const actualizada = await repo.findReservation(propertyId, reserva.id);
           return {
             status: 200,

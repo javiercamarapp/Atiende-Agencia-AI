@@ -46,6 +46,44 @@ const TEXTO_OCUPACION = "Esta semana tu ocupación fue 73% (255 de 350 noches); 
 const FUENTE_OCUPACION = { tool: "ocupacion_adr_revpar", source: "Cargos de hospedaje del folio e inventario por día", periodLabel: "esta semana (lunes a hoy)", scopeLabel: "todos tus hoteles" };
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("hoteles.copiloto.conversaciones", () => []);
 
+
+// H-P3-03 -- Mensajeria > "Mensajes automaticos" al huesped (forma = apps/web/src/verticals/hoteles/lib/mensajes-huesped-client.ts y apps/api/.../hoteles/mensajes-huesped.ts).
+// El estado vive por escenario: un PUT se refleja en el GET siguiente. Solo existe en la API simulada de e2e.
+interface EventoMensajeMock {
+  evento: string;
+  etiqueta: string;
+  transaccional: boolean;
+  variables: string[];
+  activo: boolean;
+  horasAntes: number | null;
+  resenaUrl: string | null;
+  configurada: boolean;
+  actualizadoEn: string | null;
+  plantilla: { nombre: string; idioma: string; variables: string[]; estado: string; aprobadaEn: string | null; actualizadaEn: string } | null;
+}
+const EVENTOS_MENSAJES_MOCK: readonly { evento: string; etiqueta: string; variables: string[] }[] = [
+  { evento: "hold.aprobado", etiqueta: "Pre-reserva aprobada", variables: ["nombre", "hotel", "llegada", "salida", "total", "vence"] },
+  { evento: "hold.rechazado", etiqueta: "Pre-reserva rechazada", variables: ["nombre", "hotel", "llegada", "salida"] },
+  { evento: "hold.confirmado", etiqueta: "Pre-reserva confirmada (reserva creada)", variables: ["nombre", "hotel", "llegada", "salida", "total"] },
+  { evento: "hold.vencido", etiqueta: "Pre-reserva vencida", variables: ["nombre", "hotel", "llegada", "salida"] },
+  { evento: "reserva.confirmada", etiqueta: "Reserva confirmada", variables: ["nombre", "hotel", "llegada", "salida"] },
+  { evento: "pre_llegada", etiqueta: "Pre-llegada (antes del check-in)", variables: ["nombre", "hotel", "llegada", "salida", "enlace_aviso"] },
+  { evento: "post_estancia", etiqueta: "Post-estancia (agradecimiento y reseña)", variables: ["nombre", "hotel", "enlace_resena"] },
+  { evento: "lista_espera.ofrecida", etiqueta: "Oferta de lugar a la lista de espera", variables: ["nombre", "hotel", "llegada", "salida", "vence"] },
+];
+const TRANSACCIONALES_MOCK = new Set(["hold.aprobado", "hold.rechazado", "hold.confirmado", "reserva.confirmada"]);
+function mensajesSemilla(): { eventos: EventoMensajeMock[]; historial: Record<string, unknown>[] } {
+  return {
+    eventos: EVENTOS_MENSAJES_MOCK.map((e) => ({ ...e, transaccional: TRANSACCIONALES_MOCK.has(e.evento), activo: e.evento !== "pre_llegada" && e.evento !== "post_estancia", horasAntes: null, resenaUrl: null, configurada: false, actualizadoEn: null, plantilla: null })),
+    historial: [
+      { id: "env-1", evento: "hold.aprobado", etiqueta: "Pre-reserva aprobada", estado: "encolado", canal: "whatsapp", motivo: null, motivoTexto: null, envio: "sent", errorClase: null, creadoEn: "2026-10-02T15:05:00.000Z" },
+      { id: "env-2", evento: "hold.rechazado", etiqueta: "Pre-reserva rechazada", estado: "no_enviado", canal: null, motivo: "sin_contacto", motivoTexto: "El huésped no dejó teléfono ni correo.", envio: null, errorClase: null, creadoEn: "2026-10-02T15:10:00.000Z" },
+    ],
+  };
+}
+const mensajesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener("hoteles.mensajes-huesped", mensajesSemilla);
+const AVISO_URL_MOCK = `https://app.atiende.ai/hoteles/${ORG.slug}/aviso`;
+
 export const rutasHoteles: readonly Ruta[] = [
   { metodo: "GET", patron: `${H}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${H}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
@@ -98,6 +136,58 @@ export const rutasHoteles: readonly Ruta[] = [
       return conStatus(204, undefined);
     },
   },
+  // H-P3-03 -- Mensajeria: canal de WhatsApp, estado de voz y "Mensajes automaticos".
+  { metodo: "GET", patron: `${H}/mensajeria`, roles: ["owner"], manejador: () => ({ whatsapp: { configurado: true, phoneNumberId: "10000000000001", habilitado: true, actualizadoEn: null }, voz: { configurado: false, habilitado: false, secretoConfigurado: false, actualizadoEn: null } }) },
+  { metodo: "GET", patron: `${H}/voz/estado`, roles: ["owner"], manejador: () => ({ agente: { configurado: false, habilitado: false }, escalera: { operativa: false, escalones: [] }, precioMicroUsdPorMinuto: {}, preview: { disponible: false, motivo: "requiere GEMINI_API_KEY" } }) },
+  { metodo: "GET", patron: `${H}/mensajes-huesped/historial`, roles: ["owner"], manejador: (p) => ({ disponible: true, envios: mensajesMock(p).historial }) },
+  { metodo: "GET", patron: `${H}/mensajes-huesped`, roles: ["owner"], manejador: (p) => ({
+    disponible: true, catalogoDisponible: true, puedeConfigurar: true,
+    whatsapp: { canalConfigurado: true, canalHabilitado: true, credencialMeta: false, listo: false, aviso: "requiere credencial de WhatsApp (Meta); se enviará por correo" },
+    ventanaGraciaHoras: 24, horasAntesPorOmision: 48, horasAntesMin: 1, horasAntesMax: 336, horaPostEstancia: 12, estadosPlantilla: ["borrador", "enviada", "aprobada", "rechazada"],
+    eventos: mensajesMock(p).eventos,
+  }) },
+  { metodo: "PUT", patron: `${H}/mensajes-huesped/:evento/plantilla`, roles: ["owner"], manejador: (p) => {
+      const e = mensajesMock(p).eventos.find((x) => x.evento === p.params["evento"]);
+      const c = (p.cuerpo ?? {}) as { nombre?: string; idioma?: string; variables?: string[]; estado?: string };
+      if (!e) return fallo(404, "Ese evento no existe.");
+      if (typeof c.nombre !== "string" || !/^[a-z0-9_]{1,512}$/u.test(c.nombre)) return fallo(400, "nombre: el nombre de la plantilla en Meta usa solo minúsculas, dígitos y guion bajo.");
+      e.plantilla = { nombre: c.nombre, idioma: c.idioma ?? "es_MX", variables: c.variables ?? [], estado: c.estado ?? "borrador", aprobadaEn: c.estado === "aprobada" ? new Date().toISOString() : null, actualizadaEn: new Date().toISOString() };
+      return { evento: e.evento, plantilla: e.plantilla };
+    } },
+  { metodo: "DELETE", patron: `${H}/mensajes-huesped/:evento/plantilla`, roles: ["owner"], manejador: (p) => {
+      const e = mensajesMock(p).eventos.find((x) => x.evento === p.params["evento"]);
+      if (!e?.plantilla) return fallo(404, "Ese evento no tiene plantilla guardada.");
+      e.plantilla = null;
+      return { ok: true };
+    } },
+  { metodo: "PUT", patron: `${H}/mensajes-huesped/:evento`, roles: ["owner"], manejador: (p) => {
+      const e = mensajesMock(p).eventos.find((x) => x.evento === p.params["evento"]);
+      const c = (p.cuerpo ?? {}) as { activo?: unknown; horasAntes?: unknown; resenaUrl?: unknown };
+      if (!e) return fallo(404, "Ese evento no existe.");
+      if (typeof c.activo !== "boolean") return fallo(400, "activo: se esperaba true o false.");
+      if (c.horasAntes != null && (typeof c.horasAntes !== "number" || !Number.isInteger(c.horasAntes) || c.horasAntes < 1 || c.horasAntes > 336)) return fallo(400, "horasAntes: entero entre 1 y 336.");
+      if (c.resenaUrl != null && (typeof c.resenaUrl !== "string" || !/^https:\/\/\S+$/u.test(c.resenaUrl))) return fallo(400, "resenaUrl: debe ser un enlace https de hasta 500 caracteres.");
+      e.activo = c.activo;
+      e.horasAntes = (c.horasAntes as number | null | undefined) ?? null;
+      e.resenaUrl = (c.resenaUrl as string | null | undefined) ?? null;
+      e.configurada = true;
+      e.actualizadoEn = new Date().toISOString();
+      return { evento: e.evento, activo: e.activo, horasAntes: e.horasAntes, resenaUrl: e.resenaUrl, configurada: true, actualizadoEn: e.actualizadoEn };
+    } },
+  // H-P3-03 -- bandeja de conversaciones: el PRIMER mensaje del agente lleva la linea de IA y el enlace del aviso de privacidad (lo pone el codigo del servidor).
+  { metodo: "GET", patron: `${H}/conversaciones`, roles: ["owner"], manejador: () => ({ disponible: true, total: 1, siguiente: null, sinTelefono: false, items: [{
+      id: "conv-1", telefono: "+5219991230000", estado: "agente", porAtender: false, responsable: null, tomadaEn: null, motivo: null, motivoTexto: null, derivadaEn: null, noLeidos: 0,
+      ultimoMensajeDelHuespedEn: "2026-10-02T15:00:00.000Z", actividadEn: "2026-10-02T15:00:05.000Z", vistaPrevia: "Hola, quiero reservar", ultimoRol: "assistant", huesped: null }] }) },
+  { metodo: "GET", patron: `${H}/conversaciones/:cid`, roles: ["owner"], manejador: () => ({
+      id: "conv-1", telefono: "+5219991230000", estado: "agente", porAtender: false, responsable: null, tomadaEn: null, motivo: null, motivoTexto: null, derivadaEn: null, noLeidos: 0,
+      ultimoMensajeDelHuespedEn: "2026-10-02T15:00:00.000Z", actividadEn: "2026-10-02T15:00:05.000Z", vistaPrevia: "Hola, quiero reservar", ultimoRol: "assistant", huesped: null,
+      cerradaEn: null, derivaciones: 0, esResponsable: false, totalMensajes: 4, notas: [],
+      mensajes: [
+        { rol: "user", origen: "huesped", texto: "Hola, quiero reservar", creadoEn: "2026-10-02T15:00:00.000Z", envio: null },
+        { rol: "assistant", origen: "agente", texto: `Este número es atendido por un asistente automático (inteligencia artificial), no por una persona. Aviso de privacidad: ${AVISO_URL_MOCK}\n\n¡Hola! Con gusto te ayudo. ¿Para qué fechas buscas habitación?`, creadoEn: "2026-10-02T15:00:05.000Z", envio: "enviado" },
+        { rol: "user", origen: "huesped", texto: "Del 10 al 12 de noviembre", creadoEn: "2026-10-02T15:01:00.000Z", envio: null },
+        { rol: "assistant", origen: "agente", texto: "Perfecto, reviso disponibilidad para esas fechas.", creadoEn: "2026-10-02T15:01:05.000Z", envio: "enviado" },
+      ] }) },
   // UNI-RES-hoteles -- datos del Resumen (forma = apps/web/src/verticals/hoteles/lib/{pl,recepcion,agentes,reservas-agente,night-audit}-client.ts).
   // Forma COMPLETA de `GET .../pl` (PlFullResponse): la sirven tanto el Resumen (kpis + total) como la pagina de P&L (departamentos, equilibrio).
   { metodo: "GET", patron: `${H}/pl`, roles: ["owner"], manejador: () => ({
@@ -190,4 +280,4 @@ function serializarFolio(f: FolioMock) {
   return { id: f.id, estado: f.estado, reservationId: f.reservationId, etiqueta: f.etiqueta, esPrincipal: true, cerradoEn: f.cerradoEn, motivoCierre: f.motivoCierre, cargos: f.cargos, pagos: [], saldo: saldoFolio(f) };
 }
 
-export const hoteles = { orgSlug: ORG.slug, propertyId: PROP.id };
+export const hoteles = { orgSlug: ORG.slug, propertyId: PROP.id, avisoUrl: AVISO_URL_MOCK };

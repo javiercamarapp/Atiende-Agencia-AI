@@ -30,7 +30,7 @@ import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, MensajesHuespedSistemaRepository, MensajesHuespedStaffRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -266,6 +266,10 @@ export interface AppDeps {
   /** H-25 -- agente de reservas (migracion 037): holds, aprobacion, politica. OPCIONAL: en produccion no se define y las rutas (staff y voz) usan
    *  `PostgresReservasAgenteRepository` (RLS real, SAVEPOINT contra base sin migrar); solo las pruebas HTTP inyectan el espejo en memoria. */
   readonly hotelesReservasAgenteRepo?: (db: TenantDbSession) => ReservasAgenteRepository;
+  /** H-P3-03 -- mensajes automaticos al huesped (migracion 046): puerto de SISTEMA (cron y disparo post-commit) y de STAFF (config, historial,
+   *  plantillas) en un solo objeto. OPCIONAL: en produccion no se define y las rutas usan `PostgresMensajesHuespedSistemaRepository` /
+   *  `PostgresMensajesHuespedStaffRepository` (SAVEPOINT contra base sin migrar); solo las pruebas inyectan el espejo en memoria. */
+  readonly hotelesMensajesHuespedRepo?: (db: TenantDbSession) => MensajesHuespedSistemaRepository & MensajesHuespedStaffRepository;
   /** H-02 -- privacidad de hoteles (aviso, consentimientos, ARCO, retencion legal, incidentes). OPCIONAL:
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */

@@ -222,6 +222,13 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
   bloqueos cuya fecha de liberación ya llegó en la zona horaria de CADA property y vence propuestas fuera de
   vigencia; sesión de sistema y una transacción por property. Protegido con el secreto interno. **No está en
   `vercel.json`** (programarlo es decisión de producto; ver `docs/DEPLOY.md`).
+- `mensajes-huesped.ts` (H-P3-03, migración 046) — avisos automáticos al huésped por evento (pre-reserva aprobada/rechazada/confirmada/vencida,
+  reserva confirmada, pre-llegada, post-estancia, oferta de lista de espera): `GET /hoteles/:propertyId/mensajes-huesped` (config de los 8 eventos, canal y
+  plantillas; owner/gm/frontdesk/reservations/accountant), `PUT .../:evento` (activar, horas de pre-llegada, enlace de reseña; owner/gm), `PUT|DELETE .../:evento/plantilla`
+  (plantilla HSM del catálogo de la organización, PL-31; owner/gm y la RLS exige owner/admin) y `GET .../historial` (estado real del outbox). Cron
+  `GET|POST /internal/hoteles/mensajes-huesped` (ruta manual; su ciclo corre cada 15 min encadenado al cron `holds-vencidos`, sin cron propio por el tope de 40 de `vercel.json`) y disparo post-commit (`programarMensajesHuesped`) tras decidir/confirmar un hold, crear una reserva y
+  ofrecer a la lista de espera. Los eventos se derivan del estado real; idempotente por (referencia, evento). WhatsApp con plantilla aprobada o texto libre dentro de 24 h,
+  si no correo, si no "no enviado" con motivo y aviso in-app.
 - `reservas-agente.ts` (H-25, migración 037) — lado staff del AGENTE DE RESERVAS: `GET /hoteles/:propertyId/reservas-agente/holds`
   (pre-reservas que apartó el agente; `?estado=` y `?abiertas=1`), `POST .../holds/:id/decidir` (`aprobar|rechazar` con motivo),
   `POST .../holds/:id/link-pago` (SOLO registra la referencia de un link que el hotel generó por fuera; rechaza números con forma de

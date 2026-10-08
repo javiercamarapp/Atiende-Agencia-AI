@@ -1,4 +1,5 @@
-// H-29 -- Mensajeria: configuracion editable del canal de WhatsApp (numero de Meta) y del agente de voz de la propiedad. Cada
+// H-29 -- Mensajeria: configuracion editable del canal de WhatsApp (numero de Meta) y del agente de voz de la propiedad. H-P3-03: ademas, los
+// "Mensajes automaticos" al huesped por evento (activar, plantilla del catalogo, horas de pre-llegada, enlace de resena) y su historial de envios. Cada
 // control llama a un endpoint real (apps/api/.../hoteles/mensajeria-config.ts, solo owner/gm). SIN SECRETOS EN CLARO: la pantalla
 // nunca lee el secreto de voz; solo la rotacion lo entrega, UNA vez, y aqui se muestra sin guardarlo en el navegador. No hay token
 // de envio por hotel: la plataforma usa una Meta App compartida.
@@ -9,6 +10,7 @@ import { MENSAJERIA_ROLES, cambiarVoz, fetchMensajeria, guardarWhatsApp, rotarSe
 import type { MensajeriaEstado } from "../lib/mensajeria-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 import { PruebaAgenteVoz } from "../voz/PruebaAgenteVoz.tsx";
+import { MensajesAutomaticosSection } from "../components/mensajes-huesped/MensajesAutomaticosSection.tsx";
 import type { EntornoVoz } from "../../../lib/voz/adaptador-gemini-live.ts";
 
 function mensaje(err: unknown, fallback: string): string {
@@ -115,6 +117,8 @@ export function MensajeriaPage({ apiBaseUrl, token, propertyId, role, entornoVoz
           </Button>
         </CardContent>
       </Card>
+
+      <MensajesAutomaticosSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
 
       <Card>
         <CardContent className="p-4 flex flex-col gap-3">

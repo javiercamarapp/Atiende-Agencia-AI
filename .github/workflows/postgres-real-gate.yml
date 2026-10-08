@@ -521,6 +521,40 @@ jobs:
       - name: scripts/verify-restaurantes-whatsapp-concurrencia/run.sh
         run: bash scripts/verify-restaurantes-whatsapp-concurrencia/run.sh
 
+  hoteles-mensajes-huesped-concurrencia-gate:
+    name: Mensajes al huesped de hoteles, idempotencia concurrente (scripts/verify-hoteles-mensajes-huesped)
+    runs-on: ubuntu-latest
+    # Job APARTE, igual que fallback-savepoint-gate: run.sh levanta su PROPIO Postgres efimero via initdb porque la prueba de concurrencia
+    # necesita VARIAS conexiones a la vez (un escenario begin/rollback del runner generico usa una sola). Los escenarios de RLS/GRANT de
+    # la misma carpeta corren ademas en el job `postgres-real-gate` (auto-descubiertos). Falla si dos conexiones simultaneas logran emitir
+    # el mismo (referencia, evento) o si la retencion deja de vaciar el texto y respetar la retencion legal.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Confirmar initdb/pg_ctl/psql disponibles
+        run: |
+          if ! command -v initdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          # El paquete `postgresql` de Ubuntu/Debian deja initdb/pg_ctl fuera de PATH (ver el job fallback-savepoint-gate).
+          if ! command -v initdb >/dev/null 2>&1; then
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 3 -name initdb -print -quit)")"
+            if [ -z "$PG_BIN" ] || [ "$PG_BIN" = "." ]; then
+              echo "verify-hoteles-mensajes-huesped (CI): no se encontro initdb bajo /usr/lib/postgresql" >&2
+              exit 1
+            fi
+            echo "$PG_BIN" >> "$GITHUB_PATH"
+            export PATH="$PG_BIN:$PATH"
+          fi
+          initdb --version
+          pg_ctl --version
+          psql --version
+
+      - name: scripts/verify-hoteles-mensajes-huesped/run.sh
+        run: bash scripts/verify-hoteles-mensajes-huesped/run.sh
+
   eval-copiloto-congelado:
     name: Arnes de evaluacion del Copiloto - respuestas esperadas congeladas vs Postgres sembrado (scripts/eval-copiloto)
     runs-on: ubuntu-latest
