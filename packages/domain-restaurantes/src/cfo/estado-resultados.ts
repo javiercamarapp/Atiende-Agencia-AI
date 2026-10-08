@@ -316,12 +316,13 @@ function numerosSr(filas: readonly FilaSrResumen[]): NumerosSr {
   let iva = 0;
   let tarjeta = 0;
   let propTarjeta = 0;
-  let hayForma = false;
+  // Tarjeta solo se conoce si TODOS los renglones traen forma de pago (084 las separa por renglón): con una mezcla, sumar solo los que la traen subestimaría la comisión.
+  let hayForma = filas.length > 0;
   for (const f of filas) {
     porServicio[f.tipoServicio] += f.netaCentavos;
     if (f.ivaCentavos == null) ivaTodos = false;
     else iva += f.ivaCentavos;
-    if (f.formaPago != null) hayForma = true;
+    if (f.formaPago == null) hayForma = false;
     if (esFormaPagoTarjeta(f.formaPago)) { tarjeta += f.netaCentavos; propTarjeta += f.propinaCentavos; }
   }
   return {

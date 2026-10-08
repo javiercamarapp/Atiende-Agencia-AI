@@ -1,4 +1,4 @@
-// CFO-05 · puerto de lectura/escritura del CFO de restaurantes (una llamada por función SQL de 081/082/083).
+// CFO-05 · puerto de lectura/escritura del CFO de restaurantes (una llamada por función SQL de 081/082/083; CFO-02b suma las de la 084).
 //
 // Contrato (lecciones de la revisión de CFO-01..04):
 //  - Las llamadas son SECUENCIALES: comparten UNA sesión (la transacción única del request) y cada una abre su SAVEPOINT. Nunca `Promise.all`.
@@ -24,9 +24,11 @@ import type {
   FilaComandasPos,
   FilaCortesias,
   FilaCostoCaptura,
+  FilaDescuentoP90,
   FilaEntregaPercentiles,
   FilaEntregas,
   FilaEscalacionHora,
+  FilaFrecuentesDormidos,
   FilaPedidoDetalle,
   FilaProducto,
   FilaRepartidor,
@@ -87,6 +89,16 @@ export interface UmbralesClientes {
   readonly frecuenteDias: number;
   readonly activoDias: number;
   readonly perdidoDias: number;
+}
+
+/** Parámetros de `cfo_clientes_frecuentes_dormidos`: N y X salen de `cfo_config` si se omiten; M (días sin pedir) es obligatorio. */
+export interface ParamsFrecuentesDormidos {
+  readonly frecuenteN?: number;
+  readonly frecuenteDias?: number;
+  /** Días sin pedir para considerar dormido (7..365). */
+  readonly dormidoDias: number;
+  /** Cuántos clientes (alias hash) devolver en la muestra de cada renglón, 0..50. */
+  readonly muestra?: number;
 }
 
 export interface LecturaConfig {
@@ -233,6 +245,12 @@ export interface CfoRepository {
   comandasPos(p: ParamsCfo, r: RangoCfo): Promise<LecturaCfo<FilaComandasPos>>;
   /** Solo agotados vigentes; `rankingUnidades` queda en null (lo calcula el servicio con `productos`). */
   agotados(p: ParamsCfo): Promise<LecturaCfo<FilaAgotado>>;
+
+  // ---- 084: huecos del CFO (CFO-02b) ----
+  /** Frecuentes dormidos al cierre `hasta` (día de negocio). Base sin la 084: `disponible: false`. */
+  clientesFrecuentesDormidos(p: ParamsCfo, hasta: string, params: ParamsFrecuentesDormidos): Promise<LecturaCfo<FilaFrecuentesDormidos>>;
+  /** p90 del descuento % diario de los `dias` días que terminan en `hasta` (14..365). Base sin la 084: `disponible: false`. */
+  descuentoP90(p: ParamsCfo, hasta: string, dias: number): Promise<LecturaCfo<FilaDescuentoP90>>;
 
   // ---- 083: configuración, costos capturados, SoftRestaurant, bitácora ----
   configLeer(organizationId: string): Promise<LecturaConfig>;
