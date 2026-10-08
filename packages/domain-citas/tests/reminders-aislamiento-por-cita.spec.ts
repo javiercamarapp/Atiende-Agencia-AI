@@ -16,11 +16,20 @@
 // sesión Postgres abortable) -- un error real en una cita se registra en
 // `summary.failedAppointmentIds` y el loop SIGUE con las demás citas de la misma
 // organización.
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { runConfirmacionCitaCore } from "../src/reminders.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("runConfirmacionCitaCore — aislamiento por cita (fix auditoría a3, hallazgo confirmado #7)", () => {
   it("una cita falla con un error real de Postgres (deadlock/timeout simulado) => las DEMÁS citas de la misma organización SÍ se procesan y se reflejan en failedAppointmentIds", async () => {

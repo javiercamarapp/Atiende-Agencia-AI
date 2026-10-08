@@ -32,7 +32,8 @@ import {
   reassignAppointment,
   rescheduleAppointment,
 } from "../appointments.ts";
-import { runAfterReassignEffects } from "../appointment-effects.ts";
+import { enrollInWaitlist } from "../waitlist-enrollment.ts";
+import { runAfterReassignEffects, runWaitlistAfterAgentCancel, runWaitlistAfterAgentReschedule } from "../appointment-effects.ts";
 import { isUrgentCancellationMessage } from "./urgent-cancellation.ts";
 import { zonedDateStr } from "../availability.ts";
 import type { CitasCustomerContext } from "../customers.ts";
@@ -290,6 +291,23 @@ export const TOOLS: readonly LlmToolDefinition[] = [
       required: ["appointment_id"],
     },
   },
+  {
+    name: "anotar_lista_espera",
+    description:
+      "Anota al cliente que está escribiendo en la lista de espera cuando NO hay horario que le sirva (usa el teléfono real del chat). Úsala SOLO si el cliente acepta que lo anotes: dile que se le avisará por este mismo medio si se libera un espacio, sin prometer que lo habrá. provider_id/service_id (de listar_proveedores/listar_servicios) y las fechas son opcionales: omítelos si no tiene preferencia.",
+    parameters: {
+      type: "object",
+      properties: {
+        service_id: { type: "string", description: "id real de servicio (de listar_servicios), si pidió uno." },
+        provider_id: { type: "string", description: "id real de proveedor (de listar_proveedores), si pidió uno." },
+        date_from: { type: "string", description: "Primer día aceptable, YYYY-MM-DD, resuelto contra la fecha de hoy real del prompt." },
+        date_to: { type: "string", description: "Último día aceptable, YYYY-MM-DD." },
+        time_window: { type: "string", description: "morning (antes de las 12), afternoon (12 a 17), evening (después de las 17) o any (sin preferencia)." },
+        customer_name: { type: "string", description: "Nombre del cliente, si lo dio." },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -336,7 +354,7 @@ export interface ToolExecutionOutcome {
   readonly isEscalatingFailure: boolean;
 }
 
-/** Las 8 herramientas de citas se despachan EN PROCESO contra las mismas funciones de dominio; la voz (`voz/tools-servidor.ts`) usa este mismo
+/** Las 9 herramientas de citas se despachan EN PROCESO contra las mismas funciones de dominio; la voz (`voz/tools-servidor.ts`) usa este mismo
  * despacho con `canal: "voice"` para que la cita quede marcada con su origen real. Por omision, WhatsApp (el comportamiento de siempre). */
 export async function executeToolCall(
   repo: CitasRepository,
@@ -399,12 +417,16 @@ export async function executeToolCall(
         case "cancelar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           const appointment = await cancelAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? "") });
+          // El horario liberado se ofrece a la lista de espera (best-effort con SAVEPOINT), igual que el boton Cancelar y el panel.
+          await runWaitlistAfterAgentCancel(repo, organizationId, appointment);
           return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
         }
         case "reagendar_cita": {
           await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           try {
             const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: canal });
+            // El horario VIEJO queda libre: se ofrece a la lista de espera (best-effort con SAVEPOINT).
+            await runWaitlistAfterAgentReschedule(repo, organizationId, outcome);
             return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {
@@ -433,6 +455,20 @@ export async function executeToolCall(
             }
             throw err;
           }
+        }
+        case "anotar_lista_espera": {
+          const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+          const { created, entry } = await enrollInWaitlist(repo, {
+            organizationId,
+            customerPhone: phone,
+            customerName: str(input.customer_name),
+            serviceId: str(input.service_id),
+            providerId: str(input.provider_id),
+            preferredDateFrom: str(input.date_from),
+            preferredDateTo: str(input.date_to),
+            preferredTimeWindow: str(input.time_window),
+          }, { sistema: true });
+          return { result: { waitlist: { id: entry.id, already_on_list: !created } }, ...noFailure };
         }
         default:
           return { result: { error: `Herramienta desconocida: ${name}` }, ...noFailure };

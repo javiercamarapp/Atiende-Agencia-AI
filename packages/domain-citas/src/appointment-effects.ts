@@ -9,7 +9,7 @@
 // error real de Postgres aquí (deadlock, timeout) se traga con SAVEPOINT + ROLLBACK TO
 // SAVEPOINT: la cancelación/cambio ya hecho NUNCA se revierte por un efecto secundario.
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
-import { tryNotifyWaitlistOfFreedSlot } from "./reminders.ts";
+import { notifyWaitlistAfterReschedule, tryNotifyWaitlistOfFreedSlot } from "./reminders.ts";
 import type { CitasRepository } from "./repository.ts";
 import type { AppointmentRecord } from "./types.ts";
 
@@ -46,4 +46,26 @@ export async function runAfterReassignEffects(
   const tz = await resolveProviderTimeZone(repo, organizationId, outcome.previousProviderId);
   await tryNotifyWaitlistOfFreedSlot(repo, organizationId, tz, { providerId: outcome.previousProviderId, serviceId: outcome.previousServiceId, startsAt: outcome.appointment.startsAt });
   await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.modified", outcome.appointment.id);
+}
+
+/** Tras CANCELAR por el agente (WhatsApp o voz): solo el aviso a la lista de espera del hueco liberado, igual que el boton Cancelar y el panel. No
+ * encola correo: el agente nunca lo hizo y esta funcion no cambia lo que recibe el cliente que cancela. */
+export async function runWaitlistAfterAgentCancel(repo: CitasRepository, organizationId: string, cancelled: AppointmentRecord): Promise<void> {
+  const tz = await resolveProviderTimeZone(repo, organizationId, cancelled.providerId, cancelled.propertyId);
+  await tryNotifyWaitlistOfFreedSlot(repo, organizationId, tz, { providerId: cancelled.providerId, serviceId: cancelled.serviceId, startsAt: cancelled.startsAt });
+}
+
+/** Tras REAGENDAR por el agente: el hueco que se libera es el horario VIEJO de la cita. */
+export async function runWaitlistAfterAgentReschedule(
+  repo: CitasRepository,
+  organizationId: string,
+  outcome: { readonly appointment: AppointmentRecord; readonly previousStartsAt: string },
+): Promise<void> {
+  const tz = await resolveProviderTimeZone(repo, organizationId, outcome.appointment.providerId, outcome.appointment.propertyId);
+  await notifyWaitlistAfterReschedule(repo, organizationId, tz, {
+    providerId: outcome.appointment.providerId,
+    serviceId: outcome.appointment.serviceId,
+    previousStartsAt: outcome.previousStartsAt,
+    newStartsAt: outcome.appointment.startsAt,
+  });
 }

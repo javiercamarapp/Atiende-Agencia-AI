@@ -87,11 +87,55 @@ export interface AppointmentsRange {
   readonly providerId?: string;
 }
 
-export async function fetchAppointments(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, range: AppointmentsRange): Promise<readonly AppointmentSummary[]> {
+/** Una pagina de la Agenda: `truncated` = el servidor recorto el rango por su tope (500); `nextFrom` = primer horario NO incluido (donde seguir). `timezone`
+ * = zona horaria del NEGOCIO (null si el servidor es una version vieja que no la manda). */
+export interface AppointmentsPage {
+  readonly appointments: readonly AppointmentSummary[];
+  readonly truncated: boolean;
+  readonly nextFrom: string | null;
+  readonly timezone: string | null;
+}
+
+export async function fetchAppointmentsPage(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, range: AppointmentsRange): Promise<AppointmentsPage> {
   const params = new URLSearchParams({ from: range.fromIso, to: range.toIso });
   if (range.providerId) params.set("provider_id", range.providerId);
-  const body = await fetchJson<{ appointments: readonly AppointmentApiRow[] }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments?${params.toString()}`, token);
-  return body.appointments.map(mapAppointmentRow);
+  const body = await fetchJson<{ appointments: readonly AppointmentApiRow[]; truncated?: boolean; next_from?: string | null; timezone?: string | null }>(
+    fetchImpl,
+    `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments?${params.toString()}`,
+    token,
+  );
+  return { appointments: body.appointments.map(mapAppointmentRow), truncated: body.truncated === true, nextFrom: body.next_from ?? null, timezone: body.timezone ?? null };
+}
+
+/** Tope de paginas por consulta: 10 x 500 = 5000 citas en un rango; mas alla se avisa en vez de seguir pidiendo sin fin. */
+export const MAX_AGENDA_PAGES = 10;
+
+export interface AppointmentsResult extends AppointmentsPage {
+  /** true si aun tras pedir `MAX_AGENDA_PAGES` paginas quedaron citas sin traer (la lista esta incompleta y la pantalla debe decirlo). */
+  readonly incomplete: boolean;
+}
+
+/** Trae TODAS las citas del rango siguiendo `next_from` (sin duplicar): el mes de una clinica grande ya no pierde en silencio los ultimos dias. */
+export async function fetchAllAppointments(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, range: AppointmentsRange): Promise<AppointmentsResult> {
+  const porId = new Map<string, AppointmentSummary>();
+  let desde = range.fromIso;
+  let timezone: string | null = null;
+  for (let pagina = 0; pagina < MAX_AGENDA_PAGES; pagina++) {
+    const page = await fetchAppointmentsPage(fetchImpl, apiBaseUrl, token, propertyId, { ...range, fromIso: desde });
+    timezone = page.timezone ?? timezone;
+    const antes = porId.size;
+    for (const a of page.appointments) porId.set(a.id, a);
+    // Sin avance (todo ya visto) o sin mas paginas: terminado; evita un bucle si el servidor repite la misma pagina.
+    if (!page.truncated || !page.nextFrom || (porId.size === antes && pagina > 0)) {
+      return { appointments: [...porId.values()], truncated: false, nextFrom: null, timezone, incomplete: page.truncated && porId.size === antes && pagina > 0 };
+    }
+    desde = page.nextFrom;
+  }
+  return { appointments: [...porId.values()], truncated: true, nextFrom: desde, timezone, incomplete: true };
+}
+
+export async function fetchAppointments(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, range: AppointmentsRange): Promise<readonly AppointmentSummary[]> {
+  return (await fetchAppointmentsPage(fetchImpl, apiBaseUrl, token, propertyId, range)).appointments;
 }
 
 export async function cancelAppointment(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, appointmentId: string): Promise<AppointmentSummary> {
@@ -137,6 +181,8 @@ export interface NewAppointmentInput {
   readonly customerEmail?: string;
   readonly startsAt: string;
   readonly notes?: string;
+  /** Llave del formulario: reintentar el MISMO alta (respuesta perdida) devuelve la misma cita en vez de un 409 contra la propia cita. */
+  readonly idempotencyKey?: string;
 }
 
 export async function createAppointment(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: NewAppointmentInput): Promise<AppointmentSummary> {
@@ -148,6 +194,7 @@ export async function createAppointment(fetchImpl: typeof fetch, apiBaseUrl: str
     ...(input.customerEmail ? { customer_email: input.customerEmail } : {}),
     starts_at: input.startsAt,
     ...(input.notes ? { notes: input.notes } : {}),
+    ...(input.idempotencyKey ? { idempotency_key: input.idempotencyKey } : {}),
   });
   return mapAppointmentRow(body.appointment);
 }

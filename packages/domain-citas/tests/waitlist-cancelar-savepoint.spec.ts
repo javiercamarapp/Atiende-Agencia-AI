@@ -128,6 +128,9 @@ describe("tryNotifyWaitlistOfFreedSlot / tryEnqueueAppointmentEmail — SAVEPOIN
       // Base sin la migracion 0050: la ventana de 24 h no se puede saber y el aviso conserva el comportamiento anterior.
       { match: /citas\.ultimo_mensaje_entrante/, respond: () => Object.assign(new Error("function citas.ultimo_mensaje_entrante(uuid, text[]) does not exist"), { code: "42883" }) },
       { match: /citas\.claim_waitlist_notification_slot/, respond: () => [{ id: WAITLIST_ID, notified_count: 1 }] },
+      // Detalle del hueco para el texto del aviso (servicio y proveedor ya borrados: el aviso sale sin detalle).
+      { match: /from citas\.services where id = \$1/, respond: () => [] },
+      { match: /from citas\.providers where id = \$1/, respond: () => [] },
       { match: /citas\.enqueue_messaging_outbox/, respond: () => [{ enqueue_messaging_outbox: "00000000-0000-0000-0000-0000000000e1" }] },
     ]);
     const repo = new PostgresCitasRepository(session);
@@ -137,5 +140,25 @@ describe("tryNotifyWaitlistOfFreedSlot / tryEnqueueAppointmentEmail — SAVEPOIN
     expect(result).toEqual({ matched: true, waitlistId: WAITLIST_ID, customerPhone: "5215500000001" });
     expect(session.calls.some((c) => c.startsWith("savepoint sp_fallback_"))).toBe(true);
     expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_fallback_"))).toBe(false);
+  });
+
+  it("QA R1 viaje-10: si el detalle del hueco (servicio/proveedor) falla con un error real de Postgres, el aviso SALE igual y la sesion queda utilizable (SAVEPOINT propio)", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /citas\.system_load_live_waitlist_candidates/, respond: () => [{ out_id: WAITLIST_ID, out_customer_phone: "5215500000001", out_customer_name: "Candidato", out_notified_count: 0, out_provider_id: PROVIDER_ID, out_service_id: null, out_preferred_date_from: null, out_preferred_date_to: null, out_preferred_time_window: "any", out_created_at: "2026-01-01T00:00:00.000Z" }] },
+      { match: /citas\.system_resolve_active_whatsapp_phone_number_id/, respond: () => [{ system_resolve_active_whatsapp_phone_number_id: "phone-1" }] },
+      { match: /citas\.ultimo_mensaje_entrante/, respond: () => Object.assign(new Error("function citas.ultimo_mensaje_entrante(uuid, text[]) does not exist"), { code: "42883" }) },
+      { match: /citas\.claim_waitlist_notification_slot/, respond: () => [{ id: WAITLIST_ID, notified_count: 1 }] },
+      { match: /from citas\.services where id = \$1/, respond: () => pgPermissionDenied() },
+      { match: /from citas\.providers where id = \$1/, respond: () => pgPermissionDenied() },
+      { match: /citas\.enqueue_messaging_outbox/, respond: () => [{ enqueue_messaging_outbox: "00000000-0000-0000-0000-0000000000e1" }] },
+      { match: /select 1/, respond: () => [] },
+    ]);
+    const repo = new PostgresCitasRepository(session);
+
+    const result = await tryNotifyWaitlistOfFreedSlot(repo, ORG_ID, "America/Mexico_City", { providerId: PROVIDER_ID, serviceId: SERVICE_ID, startsAt: "2026-01-02T16:00:00.000Z" });
+
+    expect(result).toEqual({ matched: true, waitlistId: WAITLIST_ID, customerPhone: "5215500000001" });
+    expect(session.calls.some((c) => c.includes("citas.enqueue_messaging_outbox"))).toBe(true);
+    await expectSessionRecovered(session);
   });
 });

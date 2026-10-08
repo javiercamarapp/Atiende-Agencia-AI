@@ -8,7 +8,7 @@
 // (calendar-sync-resolver-factory.ts) para probar la resolución real de punta a
 // punta contra el protocolo HTTP real de cada plataforma — nunca un mock de HTTP
 // inventado.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment, cancelAppointment, rescheduleAppointment, retryAppointmentCalendarSyncFromPanel } from "../src/appointments.ts";
 import { updateCustomerEmailFromPanel } from "../src/customers.ts";
 import { syncPendingAppointmentsMultiProvider, tryTriggerCalendarSync } from "../src/calendar-sync.ts";
@@ -24,6 +24,15 @@ import { CalDavServerSimulator } from "./caldav-sim.ts";
 import { buildCitasFixture } from "./fixtures.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { claveFicticia, llaveFicticia } from "./support/credenciales-ficticias.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const NEXT_MONDAY_9AM_MERIDA = zonedTimeToUtc("2026-09-14", "09:00", "America/Merida").toISOString();
 

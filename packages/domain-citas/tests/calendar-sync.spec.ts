@@ -3,13 +3,22 @@
 // esta suite es "un fallo de Google Calendar NUNCA rompe la operación real de
 // dominio" (tryTriggerGoogleSync es best-effort, nunca lanza).
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cancelAppointment, createAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { MAX_SYNC_ATTEMPTS, nextSyncBackoffMs, syncPendingAppointments, tryTriggerGoogleSync } from "../src/calendar-sync.ts";
 import { FakeGoogleCalendarPort, GoogleCalendarApiError } from "../src/google-calendar-port.ts";
 import type { ResolveCalendarPort } from "../src/calendar-sync.ts";
 import { buildCitasFixture } from "./fixtures.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const NEXT_MONDAY_9AM_MERIDA = zonedTimeToUtc("2026-09-14", "09:00", "America/Merida").toISOString(); // lunes real
 

@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { MAX_SYNC_ATTEMPTS } from "./calendar-sync.ts";
 import { MENSAJES_CONFIG_POR_OMISION as MENSAJES_CONFIG_POR_OMISION_MEM, fotoConfigMensajes } from "./whatsapp/message-config.ts";
 import { AGENTE_CONFIG_POR_OMISION } from "./whatsapp/agent-config.ts";
+import type { InsertWaitlistResult, NewWaitlistEntryInput } from "./waitlist-enrollment.ts";
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
@@ -195,6 +196,11 @@ interface InMemoryOutboxRow {
   lastError: string | null;
   /** Para `systemAvisosResumen` (ventana de agotados): momento en que se encolo. */
   createdAtMs: number;
+}
+
+/** Misma regla que el SQL: la cita es de la sucursal pedida o de un proveedor sin sucursal asignada; sin sucursal pedida, todas. */
+function enSucursal(a: { readonly propertyId: string | null }, propertyId: string | null | undefined): boolean {
+  return !propertyId || a.propertyId === null || a.propertyId === propertyId;
 }
 
 export class InMemoryCitasRepository implements CitasRepository {
@@ -638,13 +644,13 @@ export class InMemoryCitasRepository implements CitasRepository {
     return [...this.customers.values()].filter((c) => c.organizationId === organizationId && idSet.has(c.id));
   }
 
-  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>> {
+  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentStatus, number>>> {
     const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
     const from = Date.parse(fromIso);
     const to = Date.parse(toIso);
     for (const a of this.appointments.values()) {
       const t = Date.parse(a.startsAt);
-      if (a.organizationId === organizationId && t >= from && t < to) result[a.status] += 1;
+      if (a.organizationId === organizationId && t >= from && t < to && enSucursal(a, propertyId)) result[a.status] += 1;
     }
     return result;
   }
@@ -652,11 +658,11 @@ export class InMemoryCitasRepository implements CitasRepository {
   /** Solo para tests: fecha de alta de un cliente (en Postgres es `created_at`). */
   readonly customerCreatedAt = new Map<string, string>();
 
-  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>> {
+  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentSource, number>>> {
     const result: Record<AppointmentSource, number> = { voice: 0, whatsapp: 0, web: 0, manual: 0 };
     const since = Date.parse(sinceIso);
     for (const a of this.appointments.values()) {
-      if (a.organizationId === organizationId && a.status !== "cancelled" && Date.parse(a.createdAt) >= since) result[a.source] += 1;
+      if (a.organizationId === organizationId && a.status !== "cancelled" && Date.parse(a.createdAt) >= since && enSucursal(a, propertyId)) result[a.source] += 1;
     }
     return result;
   }
@@ -826,11 +832,11 @@ export class InMemoryCitasRepository implements CitasRepository {
     return appointment;
   }
 
-  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]> {
+  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number, propertyId?: string | null): Promise<readonly AppointmentRecord[]> {
     const fromMs = Date.parse(fromIso);
     const toMs = Date.parse(toIso);
     return [...this.appointments.values()]
-      .filter((a) => a.organizationId === organizationId && (!providerId || a.providerId === providerId))
+      .filter((a) => a.organizationId === organizationId && (!providerId || a.providerId === providerId) && enSucursal(a, propertyId))
       .filter((a) => {
         const startsMs = Date.parse(a.startsAt);
         return startsMs >= fromMs && startsMs < toMs;
@@ -1267,6 +1273,47 @@ export class InMemoryCitasRepository implements CitasRepository {
     row.attempts = attempts;
     row.lastErrorClass = errorClass.slice(0, 120);
     row.claimedAt = null;
+  }
+
+  async insertWaitlistEntryAsSystem(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult | { readonly outcome: "unavailable" }> {
+    return this.insertWaitlistEntry(input, maxActivePerPhone);
+  }
+
+  async insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult> {
+    const vivas = [...this.waitlist.values()].filter((w) => w.organizationId === input.organizationId && w.customerPhone === input.customerPhone && w.status === "active" && Date.parse(w.expiresAt) > Date.now());
+    const identica = vivas.find(
+      (w) =>
+        w.providerId === input.providerId &&
+        w.serviceId === input.serviceId &&
+        w.preferredDateFrom === input.preferredDateFrom &&
+        w.preferredDateTo === input.preferredDateTo &&
+        w.preferredTimeWindow === input.preferredTimeWindow,
+    );
+    const aFila = (w: StoredWaitlistRow): WaitlistCandidateRow => ({
+      id: w.id,
+      customerPhone: w.customerPhone,
+      customerName: w.customerName,
+      notifiedCount: w.notifiedCount,
+      providerId: w.providerId,
+      serviceId: w.serviceId,
+      preferredDateFrom: w.preferredDateFrom,
+      preferredDateTo: w.preferredDateTo,
+      preferredTimeWindow: w.preferredTimeWindow,
+      createdAt: w.createdAt,
+    });
+    if (identica) return { outcome: "already_waiting", entry: aFila(identica) };
+    if (vivas.length >= maxActivePerPhone) return { outcome: "too_many" };
+    const id = this.seedWaitlistEntry({
+      organizationId: input.organizationId,
+      customerPhone: input.customerPhone,
+      customerName: input.customerName,
+      providerId: input.providerId,
+      serviceId: input.serviceId,
+      preferredDateFrom: input.preferredDateFrom,
+      preferredDateTo: input.preferredDateTo,
+      preferredTimeWindow: input.preferredTimeWindow,
+    });
+    return { outcome: "created", entry: aFila(this.waitlist.get(id)!) };
   }
 
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {

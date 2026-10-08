@@ -5,7 +5,7 @@
 // `PostgresCitasRepository` + `AbortAwareFakeSession` (reproduce el estado abortado
 // 25P02; una sesión falsa plana NO sirve).
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { PostgresCitasRepository } from "../src/postgres-repository.ts";
@@ -16,6 +16,15 @@ import { createDefaultConversationGuard, handleInboundWhatsAppMessage } from "..
 import type { WhatsAppTurnHandler } from "../src/whatsapp/turn-handler.ts";
 import { buildCitasFixture, nextWeekdayDateStr } from "./fixtures.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const PHONE_WA = "+5219981234567"; // remitente de Meta (con +52 1)
 const PHONE_STORED = "9981234567"; // `normalizePhone`: últimos 10 dígitos

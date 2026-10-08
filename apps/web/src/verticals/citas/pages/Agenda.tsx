@@ -25,10 +25,10 @@
 // cancela/marca no-show — el momento real en que un horario se libera y vale la
 // pena avisar a quien está esperando; reusa el MISMO `providerFilter` de la
 // agenda para no duplicar el selector de proveedor.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { OpcionesConfirmar } from "@atiende/ui";
-import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, RefreshCw, TriangleAlert, UserX, X } from "lucide-react";
+import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, RefreshCw, TriangleAlert, UserPlus, UserX, X } from "lucide-react";
 import {
   StatusBadge,
   statusTone,
@@ -58,15 +58,15 @@ import {
   FormDialog,
 } from "@atiende/ui";
 import { CITA_STATUS_TONES } from "../lib/status-tones.ts";
-import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../lib/appointments-client.ts";
+import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAllAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
 import type { ProviderSummary } from "../lib/providers-client.ts";
 import { fetchServices } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
-import { broadcastWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
-import type { WaitlistBroadcastSummary, WaitlistCandidate } from "../lib/waitlist-client.ts";
-import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention } from "../lib/format.ts";
+import { broadcastWaitlist, enrollWaitlist, fetchWaitlist, FRANJA_ROTULOS, formatPreferenciasListaEspera } from "../lib/waitlist-client.ts";
+import type { FranjaListaEspera, WaitlistBroadcastSummary, WaitlistCandidate } from "../lib/waitlist-client.ts";
+import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention, wallTimeToIso, zonedDayKey } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
 import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
@@ -117,10 +117,11 @@ function shiftAnchor(anchor: Date, view: ViewMode, direction: 1 | -1): Date {
   return d;
 }
 
-function groupByDay(appointments: readonly AppointmentSummary[]): ReadonlyArray<[string, AppointmentSummary[]]> {
+/** Agrupa por DIA DEL NEGOCIO (una cita a las 19:00 de Merida ya es el dia siguiente en UTC). */
+function groupByDay(appointments: readonly AppointmentSummary[], timeZone: string | undefined): ReadonlyArray<[string, AppointmentSummary[]]> {
   const groups = new Map<string, AppointmentSummary[]>();
   for (const apt of appointments) {
-    const dayKey = apt.startsAt.slice(0, 10);
+    const dayKey = zonedDayKey(apt.startsAt, timeZone);
     const list = groups.get(dayKey) ?? [];
     list.push(apt);
     groups.set(dayKey, list);
@@ -137,6 +138,18 @@ const COMPLETABLE_STATUSES = new Set(["pending", "confirmed"]);
 const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
 
 type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show" | "retry_sync";
+
+/** Borrador del alta manual: vive FUERA del componente porque cambiar de sucursal remonta la pagina (contentKey = propertyId) y se perdia lo escrito.
+ * Su llave es organizacion + correo del staff (`orgId` guarda esa llave): otra persona que inicie sesion en la misma pestana no ve datos del cliente del turno anterior.
+ * Solo texto del cliente y la hora; proveedor y servicio son de cada sucursal y no se arrastran. */
+const BORRADOR_VACIO = { orgId: "", name: "", phone: "", email: "", notes: "", startsAt: "" };
+let borradorNuevaCita = { ...BORRADOR_VACIO };
+
+/** Llave de idempotencia del alta: un reintento tras perder la respuesta repite la MISMA llave. */
+function nuevaClave(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return c?.randomUUID ? c.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
 
 export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail }: CitasShellContext) {
   // Confirmaciones destructivas con el diálogo de @atiende/ui (antes `window.confirm`, que el navegador puede bloquear).
@@ -158,6 +171,12 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
   const [providerFilter, setProviderFilter] = useState<string>("");
   const [appointments, setAppointments] = useState<readonly AppointmentSummary[] | null>(null);
+  // A que rango/proveedor pertenece `appointments`: nunca se pintan citas de otro rango bajo la etiqueta del actual.
+  const [appointmentsKey, setAppointmentsKey] = useState<string | null>(null);
+  // Zona horaria del NEGOCIO (la manda el servidor con las citas): horas, dias y alta manual se calculan con ella, no con la del navegador.
+  const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
+  const [listaIncompleta, setListaIncompleta] = useState(false);
+  const loadSeq = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Una sola acción de ciclo de vida en vuelo a la vez, por cita — mismo criterio
@@ -188,13 +207,36 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [showNewForm, setShowNewForm] = useState(false);
   const [newProviderId, setNewProviderId] = useState("");
   const [newServiceId, setNewServiceId] = useState("");
-  const [newCustomerName, setNewCustomerName] = useState("");
-  const [newCustomerPhone, setNewCustomerPhone] = useState("");
-  const [newCustomerEmail, setNewCustomerEmail] = useState("");
-  const [newStartsAt, setNewStartsAt] = useState("");
-  const [newNotes, setNewNotes] = useState("");
+  // El borrador es de UNA persona de UNA organizacion: otro negocio u otro staff que inicie sesion en la misma pestana (computadora compartida) nunca lo ve.
+  const claveBorrador = `${orgId}\u0000${(staffEmail ?? "").trim().toLowerCase()}`;
+  if (borradorNuevaCita.orgId !== claveBorrador) borradorNuevaCita = { ...BORRADOR_VACIO, orgId: claveBorrador };
+  const [newCustomerName, setNewCustomerName] = useState(borradorNuevaCita.name);
+  const [newCustomerPhone, setNewCustomerPhone] = useState(borradorNuevaCita.phone);
+  const [newCustomerEmail, setNewCustomerEmail] = useState(borradorNuevaCita.email);
+  const [newStartsAt, setNewStartsAt] = useState(borradorNuevaCita.startsAt);
+  const [newNotes, setNewNotes] = useState(borradorNuevaCita.notes);
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const claveAlta = useRef<string | null>(null);
+
+  // Lo escrito sobrevive al cambio de sucursal (ver `borradorNuevaCita`); cualquier edicion invalida la llave de idempotencia (ya es otra solicitud).
+  useEffect(() => {
+    borradorNuevaCita = { orgId: claveBorrador, name: newCustomerName, phone: newCustomerPhone, email: newCustomerEmail, notes: newNotes, startsAt: newStartsAt };
+    claveAlta.current = null;
+  }, [newProviderId, newServiceId, newCustomerName, newCustomerPhone, newCustomerEmail, newNotes, newStartsAt]);
+
+  // ---- Alta en la lista de espera (POST .../waitlist) ----
+  const [showEnrollForm, setShowEnrollForm] = useState(false);
+  const [enrollName, setEnrollName] = useState("");
+  const [enrollPhone, setEnrollPhone] = useState("");
+  const [enrollServiceId, setEnrollServiceId] = useState("");
+  const [enrollProviderId, setEnrollProviderId] = useState("");
+  const [enrollWindow, setEnrollWindow] = useState<FranjaListaEspera>("any");
+  const [enrollFrom, setEnrollFrom] = useState("");
+  const [enrollTo, setEnrollTo] = useState("");
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [enrollNotice, setEnrollNotice] = useState<string | null>(null);
 
   const range = useMemo(() => computeRange(anchor, view), [anchor, view]);
 
@@ -249,16 +291,28 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     }
   }
 
+  const rangoKey = `${range.fromIso}|${range.toIso}|${providerFilter}`;
+
   async function load() {
+    // Solo la ULTIMA carga pinta: una respuesta lenta del mes anterior ya no pisa el mes actual (ni su error, ni su "cargando").
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchAppointments(fetch, apiBaseUrl, token, propertyId, { fromIso: range.fromIso, toIso: range.toIso, providerId: providerFilter || undefined });
-      setAppointments(result);
+      const result = await fetchAllAppointments(fetch, apiBaseUrl, token, propertyId, { fromIso: range.fromIso, toIso: range.toIso, providerId: providerFilter || undefined });
+      if (seq !== loadSeq.current) return;
+      setAppointments(result.appointments);
+      setAppointmentsKey(rangoKey);
+      setListaIncompleta(result.incomplete);
+      if (result.timezone) setTimeZone(result.timezone);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
+      // Sin citas viejas bajo el rango nuevo: el error se muestra solo, con su "Reintentar".
+      setAppointments(null);
+      setAppointmentsKey(null);
       setError(err instanceof Error ? err.message : "No se pudieron cargar las citas.");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }
 
@@ -343,11 +397,11 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
         customerName: newCustomerName.trim(),
         customerPhone: newCustomerPhone.trim(),
         customerEmail: newCustomerEmail.trim() || undefined,
-        // El <input type="datetime-local"> devuelve hora LOCAL sin offset — se manda
-        // tal cual el `Date` la interpreta (hora local del navegador) y se serializa
-        // a ISO con offset real antes de mandarla al servidor.
-        startsAt: new Date(newStartsAt).toISOString(),
+        // El <input type="datetime-local"> devuelve la hora de pared SIN zona: se interpreta en la zona del NEGOCIO (la del servidor), no en la del
+        // navegador de quien opera el panel.
+        startsAt: wallTimeToIso(newStartsAt, timeZone),
         notes: newNotes.trim() || undefined,
+        idempotencyKey: (claveAlta.current ??= nuevaClave()),
       });
       setNewProviderId("");
       setNewServiceId("");
@@ -356,6 +410,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       setNewCustomerEmail("");
       setNewStartsAt("");
       setNewNotes("");
+      borradorNuevaCita = { ...BORRADOR_VACIO, orgId: claveBorrador };
       setShowNewForm(false);
       await load();
     } catch (err) {
@@ -365,8 +420,40 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     }
   }
 
-  const groups = appointments ? groupByDay(appointments) : [];
+  async function handleEnrollWaitlist(e: FormEvent) {
+    e.preventDefault();
+    if (!enrollPhone.trim()) return;
+    setEnrolling(true);
+    setEnrollError(null);
+    try {
+      const { created } = await enrollWaitlist(fetch, apiBaseUrl, token, propertyId, {
+        customerName: enrollName.trim() || undefined,
+        customerPhone: enrollPhone.trim(),
+        serviceId: enrollServiceId || undefined,
+        providerId: enrollProviderId || undefined,
+        preferredTimeWindow: enrollWindow,
+        preferredDateFrom: enrollFrom || undefined,
+        preferredDateTo: enrollTo || undefined,
+      });
+      setEnrollNotice(created ? "Cliente anotado en la lista de espera." : "Ese cliente ya estaba anotado con esas mismas preferencias.");
+      setEnrollName("");
+      setEnrollPhone("");
+      setEnrollServiceId("");
+      setEnrollProviderId("");
+      setEnrollWindow("any");
+      setEnrollFrom("");
+      setEnrollTo("");
+      setShowEnrollForm(false);
+      await loadWaitlist();
+    } catch (err) {
+      setEnrollError(err instanceof Error ? err.message : "No se pudo anotar al cliente.");
+    } finally {
+      setEnrolling(false);
+    }
+  }
 
+  const visibles = appointmentsKey === rangoKey ? appointments : null;
+  const groups = visibles ? groupByDay(visibles, timeZone) : [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -374,7 +461,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
         <div>
           <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
           <h1 className="font-display text-xl font-semibold text-foreground">Agenda</h1>
-          <p className="mt-1 text-sm capitalize text-muted-foreground">{range.label}</p>
+          <p className="mt-1 text-sm text-muted-foreground first-letter:uppercase">{range.label}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Label htmlFor="citas-agenda-proveedor" className="sr-only">
@@ -489,21 +576,27 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
         </form>
       </FormDialog>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      {loading && !appointments && <EstadoCargando etiqueta="Cargando citas…" />}
+      {loading && !visibles && !error && <EstadoCargando etiqueta="Cargando citas…" />}
 
-      {appointments && appointments.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje="No hay citas en este rango." />}
+      {listaIncompleta && (
+        <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+          Este rango tiene más citas de las que se pueden mostrar a la vez. Acota el rango (vista Semana) o filtra por proveedor para ver el resto.
+        </p>
+      )}
+
+      {visibles && visibles.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje="No hay citas en este rango." />}
 
       {groups.map(([day, dayAppointments]) => (
         <section key={day} className="flex flex-col gap-2">
-          <h2 className="border-b border-border pb-1 text-sm font-semibold capitalize text-foreground">{formatDateLong(dayAppointments[0]!.startsAt)}</h2>
+          <h2 className="border-b border-border pb-1 text-sm font-semibold text-foreground first-letter:uppercase">{formatDateLong(dayAppointments[0]!.startsAt, timeZone)}</h2>
           {dayAppointments.map((apt) => (
             <Card key={apt.id}>
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">
-                    {formatTimeRange(apt.startsAt, apt.endsAt)} — {apt.serviceName ?? "Servicio desconocido"}
+                    {formatTimeRange(apt.startsAt, apt.endsAt, timeZone)} — {apt.serviceName ?? "Servicio desconocido"}
                   </p>
                   <p className="mt-0.5 text-sm text-foreground/80">
                     {apt.customerName ?? "Cliente desconocido"} {apt.customerPhone ? `· ${apt.customerPhone}` : ""}
@@ -588,6 +681,10 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                 </option>
               ))}
             </NativeSelect>
+            <Button variant="outline" size="sm" onClick={() => setShowEnrollForm(true)}>
+              <UserPlus aria-hidden />
+              Anotar cliente
+            </Button>
             <Button
               size="sm"
               onClick={() => void handleBroadcastWaitlist()}
@@ -603,7 +700,13 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
             Filtro de proveedor: el mismo selector de arriba ({providerFilter ? providers?.find((p) => p.id === providerFilter)?.displayName ?? providerFilter : "todos los proveedores"}).
           </p>
 
-          {waitlistError && <EstadoError mensaje={waitlistError} />}
+          {waitlistError && <EstadoError mensaje={waitlistError} compacto onReintentar={() => void loadWaitlist()} />}
+
+          {enrollNotice && (
+            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+              {enrollNotice}
+            </p>
+          )}
 
           {broadcastSummary && !broadcastSummary.queued && (
             // Corrección bloqueante de la ronda 2 de revisión del PR #180 — la
@@ -648,14 +751,10 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                   <TableRow key={candidate.id}>
                     <TableCell className="font-medium text-foreground">#{candidate.position}</TableCell>
                     <TableCell>
-                      <span className="block font-medium text-foreground">{candidate.customerName}</span>
+                      <span className="block font-medium text-foreground">{candidate.customerName ?? "Sin nombre"}</span>
                       <span className="block text-xs text-muted-foreground">{candidate.customerPhone}</span>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {candidate.preferredDateFrom || candidate.preferredTimeWindow
-                        ? `${candidate.preferredDateFrom ? `desde ${candidate.preferredDateFrom}` : ""}${candidate.preferredDateFrom && candidate.preferredTimeWindow ? " · " : ""}${candidate.preferredTimeWindow ?? ""}`
-                        : "Sin preferencia"}
-                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{formatPreferenciasListaEspera(candidate)}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">
                       {candidate.notifiedCount > 0 ? `ya avisado ${candidate.notifiedCount}x` : "nunca avisado"}
                     </TableCell>
@@ -666,6 +765,75 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
           )}
         </CardContent>
       </Card>
+      <FormDialog
+        open={showEnrollForm}
+        onOpenChange={setShowEnrollForm}
+        titulo="Anotar en la lista de espera"
+        subtitulo="Si se libera un horario que coincida, se le avisa por WhatsApp (o correo) a quien lleve más tiempo esperando."
+        footer={
+          <Button type="submit" form="citas-anotar-espera" disabled={enrolling}>
+            {enrolling ? "Anotando…" : "Anotar"}
+          </Button>
+        }
+      >
+        <form id="citas-anotar-espera" onSubmit={handleEnrollWaitlist} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-nombre">Nombre del cliente</Label>
+              <Input id="citas-espera-nombre" placeholder="Nombre del cliente" value={enrollName} onChange={(e) => setEnrollName(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-telefono">Teléfono</Label>
+              <Input id="citas-espera-telefono" required placeholder="Teléfono" value={enrollPhone} onChange={(e) => setEnrollPhone(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-servicio-alta">Servicio</Label>
+              <NativeSelect id="citas-espera-servicio-alta" value={enrollServiceId} onChange={(e) => setEnrollServiceId(e.target.value)}>
+                <option value="">Cualquiera</option>
+                {services?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-proveedor-alta">Proveedor</Label>
+              <NativeSelect id="citas-espera-proveedor-alta" value={enrollProviderId} onChange={(e) => setEnrollProviderId(e.target.value)}>
+                <option value="">Cualquiera</option>
+                {providers?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-desde">Desde (opcional)</Label>
+              <Input id="citas-espera-desde" type="date" value={enrollFrom} onChange={(e) => setEnrollFrom(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-espera-hasta">Hasta (opcional)</Label>
+              <Input id="citas-espera-hasta" type="date" value={enrollTo} onChange={(e) => setEnrollTo(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label htmlFor="citas-espera-franja">Franja</Label>
+              <NativeSelect id="citas-espera-franja" value={enrollWindow} onChange={(e) => setEnrollWindow(e.target.value as FranjaListaEspera)}>
+                {(Object.keys(FRANJA_ROTULOS) as FranjaListaEspera[]).map((f) => (
+                  <option key={f} value={f}>
+                    {FRANJA_ROTULOS[f]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          </div>
+          {enrollError && (
+            <p role="alert" className="text-sm text-destructive">
+              {enrollError}
+            </p>
+          )}
+        </form>
+      </FormDialog>
       {dialogo}
     </div>
   );

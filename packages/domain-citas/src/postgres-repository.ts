@@ -9,6 +9,7 @@
 // interno) — ninguna de ellas usa un `auth.uid()` real (ver diseño Fase 1 §5); la
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
+import type { InsertWaitlistResult, NewWaitlistEntryInput } from "./waitlist-enrollment.ts";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { configAgenteDesdeFila, fotoConfigAgente } from "./whatsapp/agent-config.ts";
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
@@ -758,20 +759,20 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows.map((row) => ({ id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email }));
   }
 
-  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>> {
+  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentStatus, number>>> {
     const { rows } = await this.db.query<{ status: AppointmentStatus; count: string }>(
-      `select status, count(*)::text as count from citas.appointments where organization_id = $1 and starts_at >= $2 and starts_at < $3 group by status;`,
-      [organizationId, fromIso, toIso],
+      `select status, count(*)::text as count from citas.appointments where organization_id = $1 and starts_at >= $2 and starts_at < $3 and ($4::uuid is null or property_id is null or property_id = $4) group by status;`,
+      [organizationId, fromIso, toIso, propertyId ?? null],
     );
     const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
     for (const row of rows) if (row.status in result) result[row.status] = Number(row.count);
     return result;
   }
 
-  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>> {
+  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentSource, number>>> {
     const { rows } = await this.db.query<{ source: AppointmentSource; count: string }>(
-      `select source, count(*)::text as count from citas.appointments where organization_id = $1 and created_at >= $2 and status <> 'cancelled' group by source;`,
-      [organizationId, sinceIso],
+      `select source, count(*)::text as count from citas.appointments where organization_id = $1 and created_at >= $2 and status <> 'cancelled' and ($3::uuid is null or property_id is null or property_id = $3) group by source;`,
+      [organizationId, sinceIso, propertyId ?? null],
     );
     const result: Record<AppointmentSource, number> = { voice: 0, whatsapp: 0, web: 0, manual: 0 };
     for (const row of rows) if (row.source in result) result[row.source] = Number(row.count);
@@ -911,15 +912,16 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows[0] ? mapAppointment(rows[0]) : null;
   }
 
-  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]> {
+  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number, propertyId?: string | null): Promise<readonly AppointmentRecord[]> {
     const { rows } = await this.db.query<AppointmentRow>(
       `select id, organization_id, property_id, provider_id, service_id, customer_id, starts_at, ends_at, status, source, notes, dedupe_fingerprint, idempotency_key, reminder_24h_sent_at, created_at, google_event_id, google_sync_status, google_sync_attempts, google_sync_next_retry_at, google_sync_error
        from citas.appointments
        where organization_id = $1 and starts_at >= $2 and starts_at < $3
          and ($4::uuid is null or provider_id = $4)
+         and ($6::uuid is null or property_id is null or property_id = $6)
        order by starts_at asc
        limit $5;`,
-      [organizationId, fromIso, toIso, providerId ?? null, limit],
+      [organizationId, fromIso, toIso, providerId ?? null, limit, propertyId ?? null],
     );
     return rows.map(mapAppointment);
   }
@@ -1495,6 +1497,98 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
     await this.db.query(`select citas.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
+  async insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult> {
+    type Fila = { id: string; customer_phone: string; customer_name: string | null; notified_count: number; provider_id: string | null; service_id: string | null; preferred_date_from: string | null; preferred_date_to: string | null; preferred_time_window: "morning" | "afternoon" | "evening" | "any"; created_at: string };
+    const columnas = "id, customer_phone, customer_name, notified_count, provider_id, service_id, preferred_date_from::text, preferred_date_to::text, preferred_time_window, created_at";
+    const aFila = (r: Fila): WaitlistCandidateRow => ({
+      id: r.id,
+      customerPhone: r.customer_phone,
+      customerName: r.customer_name,
+      notifiedCount: r.notified_count,
+      providerId: r.provider_id,
+      serviceId: r.service_id,
+      preferredDateFrom: r.preferred_date_from,
+      preferredDateTo: r.preferred_date_to,
+      preferredTimeWindow: r.preferred_time_window,
+      createdAt: r.created_at,
+    });
+    // Una sola anotacion activa por (telefono, proveedor, servicio, fechas, franja): reintentar no duplica.
+    const { rows: existentes } = await this.db.query<Fila>(
+      `select ${columnas} from citas.appointment_waitlist
+       where organization_id = $1 and customer_phone = $2 and status = 'active' and expires_at > now()
+         and provider_id is not distinct from $3::uuid and service_id is not distinct from $4::uuid
+         and preferred_date_from is not distinct from $5::date and preferred_date_to is not distinct from $6::date
+         and preferred_time_window = $7
+       order by created_at asc limit 1;`,
+      [input.organizationId, input.customerPhone, input.providerId, input.serviceId, input.preferredDateFrom, input.preferredDateTo, input.preferredTimeWindow],
+    );
+    if (existentes[0]) return { outcome: "already_waiting", entry: aFila(existentes[0]) };
+    const { rows: conteo } = await this.db.query<{ n: string }>(`select count(*)::text as n from citas.appointment_waitlist where organization_id = $1 and customer_phone = $2 and status = 'active' and expires_at > now();`, [input.organizationId, input.customerPhone]);
+    if (Number(conteo[0]?.n ?? "0") >= maxActivePerPhone) return { outcome: "too_many" };
+    const { rows } = await this.db.query<Fila>(
+      `insert into citas.appointment_waitlist (organization_id, customer_phone, customer_name, provider_id, service_id, preferred_date_from, preferred_date_to, preferred_time_window)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       returning ${columnas};`,
+      [input.organizationId, input.customerPhone, input.customerName, input.providerId, input.serviceId, input.preferredDateFrom, input.preferredDateTo, input.preferredTimeWindow],
+    );
+    return { outcome: "created", entry: aFila(rows[0]!) };
+  }
+
+  async insertWaitlistEntryAsSystem(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult | { readonly outcome: "unavailable" }> {
+    return runWithSavepointFallback<InsertWaitlistResult | { readonly outcome: "unavailable" }>({
+      session: this.db,
+      savepointName: "sp_citas_system_enroll_waitlist",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          out_outcome: "created" | "already_waiting" | "too_many";
+          out_id: string | null;
+          out_customer_phone: string | null;
+          out_customer_name: string | null;
+          out_notified_count: number | null;
+          out_provider_id: string | null;
+          out_service_id: string | null;
+          out_preferred_date_from: string | null;
+          out_preferred_date_to: string | null;
+          out_preferred_time_window: "morning" | "afternoon" | "evening" | "any" | null;
+          out_created_at: string | null;
+        }>(`select * from citas.system_enroll_waitlist($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9);`, [
+          input.organizationId,
+          input.customerPhone,
+          input.customerName,
+          input.providerId,
+          input.serviceId,
+          input.preferredDateFrom,
+          input.preferredDateTo,
+          input.preferredTimeWindow,
+          maxActivePerPhone,
+        ]);
+        const row = rows[0];
+        if (!row) return { outcome: "unavailable" as const };
+        if (row.out_outcome === "too_many") return { outcome: "too_many" as const };
+        return {
+          outcome: row.out_outcome,
+          entry: {
+            id: row.out_id!,
+            customerPhone: row.out_customer_phone!,
+            customerName: row.out_customer_name,
+            notifiedCount: row.out_notified_count ?? 0,
+            providerId: row.out_provider_id,
+            serviceId: row.out_service_id,
+            preferredDateFrom: row.out_preferred_date_from,
+            preferredDateTo: row.out_preferred_date_to,
+            preferredTimeWindow: row.out_preferred_time_window ?? "any",
+            createdAt: row.out_created_at!,
+          },
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.system_enroll_waitlist"),
+      fallback: (err) => {
+        console.warn("insertWaitlistEntryAsSystem: citas.system_enroll_waitlist no existe todavía (migración 034 pendiente de aplicar) -- lista de espera del agente no disponible aún:", err instanceof Error ? err.message : err);
+        return Promise.resolve({ outcome: "unavailable" as const });
+      },
+    });
   }
 
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
