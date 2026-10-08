@@ -145,6 +145,15 @@ interface CostoVersion extends CostoCapturadoDetalle {
   readonly org: string;
 }
 
+/** `AAAA-MM-DD|n` con fecha real de 2000..2100 (la SQL lo recibe como date; una fecha imposible sería un 22xxx de Postgres). */
+function cursorValido(c: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}\|\d{1,18}$/.test(c)) return false;
+  const f = c.slice(0, 10);
+  const anio = Number(f.slice(0, 4));
+  const d = new Date(`${f}T00:00:00Z`);
+  return anio >= 2000 && anio <= 2100 && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === f;
+}
+
 export class InMemoryCfoRepository implements CfoRepository {
   readonly auditoria: AuditoriaCfo[] = [];
   /** Cuántas llamadas recibió cada función (para probar «una sola consulta» o «no se llamó»). */
@@ -258,7 +267,7 @@ export class InMemoryCfoRepository implements CfoRepository {
     if (!(limite >= 1)) throw new CfoParametroInvalidoError("cfo_pedidos_detalle: limite invalido");
     const permitidas = new Set(["canal", "source", "status", "payment_method", "producto_ref", "es_venta", "es_compensacion", "con_descuento", "entrega_tarde", "hora_local", "dow_negocio"]);
     for (const k of Object.keys(filtro)) if (!permitidas.has(k)) throw new CfoParametroInvalidoError(`cfo_pedidos_detalle: filtro ${k} no permitido`);
-    if (cursor !== null && !/^\d{4}-\d{2}-\d{2}\|\d{1,18}$/.test(cursor)) throw new CfoParametroInvalidoError("cfo_pedidos_detalle: cursor invalido");
+    if (cursor !== null && !cursorValido(cursor)) throw new CfoParametroInvalidoError("cfo_pedidos_detalle: cursor invalido");
     if (!this.mig.m081) return { disponible: false, filas: [], cursorSiguiente: null };
     let filas = this.filtrar(this.dataset.pedidosDetalle, p, (f) => f.diaNegocio, r);
     const f = filtro;

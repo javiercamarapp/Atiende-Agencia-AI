@@ -123,6 +123,8 @@ export function parsearLimite(raw: string | undefined): number {
 export function parsearCursor(raw: string | undefined): string | null {
   if (raw === undefined || raw === "") return null;
   if (!/^\d{4}-\d{2}-\d{2}\|\d{1,18}$/.test(raw)) throw invalido("cursor inválido.");
+  // La fecha del cursor llega a la SQL como date: una fecha imposible (0000-00-00, 2026-02-30) o fuera de 2000..2100 debe ser 422 aquí, no un 400 de Postgres.
+  if (!fechaValida(raw.slice(0, 10))) throw invalido("cursor inválido: la fecha debe ser real y de los años 2000 a 2100.");
   return raw;
 }
 
