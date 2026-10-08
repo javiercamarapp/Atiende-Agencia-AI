@@ -15,18 +15,27 @@ import { useCargaCfo } from "./use-carga-cfo.ts";
 const SEMAFORO_KPI: Readonly<Record<KpiTarjeta["semaforo"], EstadoSemaforo>> = { verde: "verde", ambar: "ambar", rojo: "rojo", sin_dato: "sin_dato" };
 const CLASE_TONO = { bueno: "text-success", malo: "text-destructive", neutro: "text-muted-foreground" } as const;
 
-/** Resalta (negritas) las cifras de una oración narrada: pesos, porcentajes, minutos y conteos con unidad. */
-export function resaltarCifras(texto: string): Array<string | { readonly cifra: string }> {
-  const partes: Array<string | { readonly cifra: string }> = [];
-  const re = /-?[$]\s?[\d,]+(?:\.\d+)?|-?\d[\d,]*(?:\.\d+)?\s?(?:%|pp|min)/g;
-  let ultimo = 0;
-  for (const m of texto.matchAll(re)) {
-    const i = m.index ?? 0;
-    if (i > ultimo) partes.push(texto.slice(ultimo, i));
-    partes.push({ cifra: m[0] });
-    ultimo = i + m[0].length;
+/**
+ * El resumen narrado cita cada cifra con una marca `[ref]` (la guarda de números del dominio). Aquí la marca no se muestra: la cifra que la
+ * precede se resalta en negritas y la marca desaparece. Una marca cuyo valor no está pegado antes se descarta.
+ */
+export function resaltarNarrativa(texto: string, referencias: Readonly<Record<string, string>>): Array<string | { readonly cifra: string; readonly ref: string }> {
+  const partes: Array<string | { readonly cifra: string; readonly ref: string }> = [];
+  let cursor = 0;
+  for (const m of texto.matchAll(/\s?\[([a-z0-9_]+)\]/g)) {
+    const inicio = m.index ?? 0;
+    const previo = texto.slice(cursor, inicio);
+    const ref = m[1] ?? "";
+    const valor = referencias[ref];
+    if (valor && previo.endsWith(valor)) {
+      if (previo.length > valor.length) partes.push(previo.slice(0, previo.length - valor.length));
+      partes.push({ cifra: valor, ref });
+    } else if (previo) {
+      partes.push(previo);
+    }
+    cursor = inicio + m[0].length;
   }
-  if (ultimo < texto.length) partes.push(texto.slice(ultimo));
+  if (cursor < texto.length) partes.push(texto.slice(cursor));
   return partes;
 }
 
@@ -92,10 +101,7 @@ export function CfoResumen(props: CfoPaginaProps) {
             <section aria-labelledby="cfo-lo-importante" className="space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <SectionLabel>Lo más importante</SectionLabel>
-                  <h2 id="cfo-lo-importante" className="sr-only">
-                    Lo más importante
-                  </h2>
+                  <SectionLabel id="cfo-lo-importante">Lo más importante</SectionLabel>
                 </div>
                 <RadioSegmentado<CriterioOrden>
                   name="cfo-orden-hallazgos"
@@ -121,10 +127,7 @@ export function CfoResumen(props: CfoPaginaProps) {
             </section>
 
             <section aria-labelledby="cfo-narrativa" className="space-y-2">
-              <SectionLabel>Resumen narrado</SectionLabel>
-              <h2 id="cfo-narrativa" className="sr-only">
-                Resumen narrado
-              </h2>
+              <SectionLabel id="cfo-narrativa">Resumen narrado</SectionLabel>
               <Card className="p-4" data-testid="cfo-narrativa">
                 {d.narrativa.oraciones.length === 0 ? (
                   <p className="text-ui text-muted-foreground">{d.narrativa.texto || "Sin datos suficientes para redactar el resumen."}</p>
@@ -132,7 +135,7 @@ export function CfoResumen(props: CfoPaginaProps) {
                   <p className="text-ui leading-relaxed">
                     {d.narrativa.oraciones.map((o, i) => (
                       <Fragment key={i}>
-                        {resaltarCifras(o.texto).map((p, j) => (typeof p === "string" ? <Fragment key={j}>{p}</Fragment> : <strong key={j} className="font-semibold tabular-nums">{p.cifra}</strong>))}{" "}
+                        {resaltarNarrativa(o.texto, d.narrativa.referencias).map((p, j) => (typeof p === "string" ? <Fragment key={j}>{p}</Fragment> : <strong key={j} className="font-semibold tabular-nums" data-ref={p.ref}>{p.cifra}</strong>))}{" "}
                       </Fragment>
                     ))}
                   </p>
@@ -143,10 +146,7 @@ export function CfoResumen(props: CfoPaginaProps) {
             <section aria-labelledby="cfo-kpis" className="space-y-2.5">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
-                  <SectionLabel>Indicadores</SectionLabel>
-                  <h2 id="cfo-kpis" className="sr-only">
-                    Indicadores
-                  </h2>
+                  <SectionLabel id="cfo-kpis">Indicadores</SectionLabel>
                 </div>
                 <Card className="flex items-center gap-3 px-3.5 py-2" data-testid="cfo-titular">
                   <div className="min-w-0">
