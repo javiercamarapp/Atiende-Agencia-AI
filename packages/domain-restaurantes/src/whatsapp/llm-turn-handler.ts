@@ -844,7 +844,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
           // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».
           if (perfil === "taqueria_pm" && !preview && !orderId && !escalarMotivo && cotizacionDelTurno && pareceResumenParaConfirmar(replyFinal)) {
-            const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+            // Misma fila que `flowFinal` (leida arriba en este mismo punto del turno, sin ninguna escritura entre las dos): no se vuelve a leer de la base.
+            const vigente = flowFinal;
             if (vigente?.state === "cotizado" && vigente.context?.quoteHash === cotizacionDelTurno) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
           }
           return done({ reply: replyFinal, orderId, propertyId });

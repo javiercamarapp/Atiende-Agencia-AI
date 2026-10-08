@@ -11,6 +11,9 @@ import { NOTA_TOQUE_CONFIRMAR, NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA, RESPUESTA_TOQ
 import { normalizePhone } from "../../src/phone.ts";
 import { buildRestaurantFixture } from "../fixtures.ts";
 
+/** Lecturas de la maquina de estados del pedido en un turno que cotiza y termina con resumen (inicio, cotizar_pedido y cierre). */
+const LECTURAS_TURNO_COTIZA = 3; // antes de reutilizar la lectura final eran 4
+
 /** Latencia virtual de CADA llamada al modelo. */
 export const MS_POR_LLAMADA = 3_000;
 
@@ -251,5 +254,24 @@ describe("R5 latencia: llamadas secuenciales al modelo por tipo de turno (modelo
     await t.preparar();
     const r = await t.turno("me cobraron dos veces mi pedido", () => texto("NO DEBE LLAMARSE"));
     expect(r.llamadas).toBe(0);
+  });
+
+  it("DB por turno: el turno que cotiza y muestra botones lee la maquina de estados una vez menos (el cierre reutiliza la lectura final)", async () => {
+    const t = armar();
+    await t.preparar();
+    const real = t.f.repo.readOrderFlow.bind(t.f.repo);
+    let lecturas = 0;
+    const espia = vi.spyOn(t.f.repo, "readOrderFlow").mockImplementation(async (...a) => {
+      lecturas += 1;
+      return real(...a);
+    });
+    try {
+      const r = await t.turno("quiero una coca para recoger", lineal(llamada("q", "cotizar_pedido", { branch_slug: SLUG, canal: "recoger", items: t.items }), texto("Su pedido: 1 Coca-Cola, total $45.00 para recoger. ¿Es correcto?")));
+      expect(r.llamadas).toBe(2);
+      expect(t.botones().map((b) => b.title)).toEqual(["Confirmar pedido", "Cambiar algo"]); // la lectura reutilizada sigue habilitando los botones
+      expect(lecturas).toBe(LECTURAS_TURNO_COTIZA);
+    } finally {
+      espia.mockRestore();
+    }
   });
 });
