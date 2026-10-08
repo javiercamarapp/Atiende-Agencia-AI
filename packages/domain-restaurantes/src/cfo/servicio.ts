@@ -149,7 +149,7 @@ import {
   ventanas4Semanas,
 } from "./servicio-util.ts";
 import { AVISO_CFO } from "./estado-resultados.ts";
-import { cifra, diaSemanaIso, diasEntre, expandirDias, fechaLocal, mesDe, pct1, promedioMin1, divEntera, sinDato, sumarDiasFecha } from "./util.ts";
+import { cifra, diaSemanaIso, diasEntre, primerDiaMesSiguiente, expandirDias, fechaLocal, mesDe, pct1, promedioMin1, divEntera, sinDato, sumarDiasFecha } from "./util.ts";
 
 export interface EntradaServicioCfo {
   readonly repo: CfoRepository;
@@ -378,11 +378,36 @@ export class ServicioCfo {
     });
   }
 
+  /**
+   * `cfo_costos_leer` valida `[mesDesde, mesHasta]` con cfo_validar_rango (≤ 400 días). Un rango válido de 397-400 días puede tocar 15 meses
+   * calendario, y del día 1 del primer mes al día 1 del último miden más de 400: se parte en tramos de meses completos (cada uno ≤ 400 días,
+   * como mucho 2) y se unen. Los tramos son disjuntos por mes, así que no se duplican filas.
+   */
+  private async costosLeerPorTramos(mesDesde: string, mesHasta: string): Promise<LecturaCfo<CostoCapturadoDetalle>> {
+    const tramos: [string, string][] = [];
+    let ini = mesDesde;
+    while (ini <= mesHasta) {
+      let fin = ini;
+      for (let sig = primerDiaMesSiguiente(fin); sig <= mesHasta && diasEntre(ini, sig) <= 400; sig = primerDiaMesSiguiente(fin)) fin = sig;
+      tramos.push([ini, fin]);
+      ini = primerDiaMesSiguiente(fin);
+    }
+    let disponible = true;
+    const filas: CostoCapturadoDetalle[] = [];
+    // Secuencial a propósito (una sesión).
+    for (const [d, h] of tramos) {
+      const l = await this.e.repo.costosLeer(this.params, d, h);
+      disponible = disponible && l.disponible;
+      filas.push(...l.filas);
+    }
+    return { disponible, filas };
+  }
+
   private costosCapturados(r: RangoCfo): Promise<LecturaCfo<CostoCapturadoDetalle>> {
     const mesDesde = `${mesDe(r.desde)}-01`;
     const mesHasta = `${mesDe(r.hasta)}-01`;
     return this.cached(`co:${mesDesde}:${mesHasta}`, async () => {
-      const l = await this.marcar("captura", this.e.repo.costosLeer(this.params, mesDesde, mesHasta));
+      const l = await this.marcar("captura", this.costosLeerPorTramos(mesDesde, mesHasta));
       const filas = this.enAlcance(l.filas);
       const meses = filas.map((f) => f.mes).sort();
       this.fuentes.set("costos_capturados", {
@@ -540,6 +565,8 @@ export class ServicioCfo {
     base: BaseColumna;
     incluirLlm: boolean;
     margen: Cifra | null;
+    /** Ventas netas de SoftRestaurant cuando SR es el titular de la columna (null = el titular es el agente). El margen se calcula sobre ESTA base. */
+    ventasNegocioSr?: Cifra | null;
     clientes: FilaClientesResumen | null;
     p90: number | null;
     ventasOk: boolean;
@@ -587,14 +614,24 @@ export class ServicioCfo {
     const costoPedido = args.clientesOk && ok ? cposAct : sd("formula:cac_agente");
 
     return [
-      k("ventas_netas", "Ventas netas", "centavos", ventasN, bs ? bs.netaCentavos : null, "mayor", (v) => semaforoCaida(v.valor, cfg.caidaPct)),
+      { ...k("ventas_netas", "Ventas netas", "centavos", ventasN, bs ? bs.netaCentavos : null, "mayor", (v) => semaforoCaida(v.valor, cfg.caidaPct)), baseVentas: "agente" as const },
       k("pedidos", "Pedidos", "entero", pedidosN, bs ? bs.pedidos : null, "mayor", (v) => semaforoCaida(v.valor, cfg.caidaPct)),
       k("ticket", "Ticket promedio", "centavos", ticketN, baseTicket, "mayor", (v) => semaforoCaida(v.valor, cfg.ticketBajaPct)),
       k("mix_domicilio", "Mix domicilio (pedidos)", "pct", mixN, baseMix, "neutral", neutro),
       k("descuento_pct", "Descuento sobre venta bruta", "pct", descN, baseDesc, "menor", () => semaforoDescuento(descN.valor, cfg)),
       k("cancelacion_pct", "Cancelación", "pct", cancN, baseCanc, "menor", (v) => semaforoAlza(v.valor, 5)),
       k("costo_pedido_agente", "Costo del agente por pedido", "centavos", costoPedido, cposBase ? cposBase.valor : null, "menor", () => semaforoAlza(variacionPct(costoPedido.valor, cposBase?.valor ?? null), cfg.costoAgenteAlzaPct)),
-      k("margen_contribucion", "Margen de contribución", "centavos", args.margen ?? sd("formula:margen_contribucion"), null, "mayor", neutro),
+      ...(args.ventasNegocioSr
+        ? [{ ...k("ventas_negocio_sr", "Ventas del negocio (SoftRestaurant)", "centavos", args.ventasNegocioSr, null, "mayor", neutro), baseVentas: "softrestaurant" as const }]
+        : []),
+      {
+        ...k(
+          "margen_contribucion",
+          args.ventasNegocioSr ? "Margen de contribución (sobre las ventas del negocio, SoftRestaurant)" : "Margen de contribución",
+          "centavos", args.margen ?? sd("formula:margen_contribucion"), null, "mayor", neutro,
+        ),
+        baseVentas: args.ventasNegocioSr ? ("softrestaurant" as const) : ("agente" as const),
+      },
       k("clientes_activos", "Clientes activos", "entero", activos, null, "mayor", neutro),
       k("frecuentes_pct", "% de frecuentes", "pct", frec, null, "mayor", neutro),
       k("tasa_cierre_agente", "Tasa de cierre del agente", "pct", cierre, baseCierre, "mayor", (v) => semaforoPuntos(v.valor, cfg.cierreBajaPp)),
@@ -650,7 +687,7 @@ export class ServicioCfo {
         sumas: s,
         kpis: this.kpisDe({
           s, ag, costoAg: costoAgente(ag, false), base: base.porProp.get(id) ?? { ventas: null, agente: null }, incluirLlm: false,
-          margen: col ? col.margenContribucion.cifra : null, clientes: clientesProp.get(id) ?? null, p90: p90Prop.get(id) ?? null, ventasOk, clientesOk, cfg,
+          margen: col ? col.margenContribucion.cifra : null, ventasNegocioSr: col?.titular.origen === "softrestaurant" ? col.titular.cifra : null, clientes: clientesProp.get(id) ?? null, p90: p90Prop.get(id) ?? null, ventasOk, clientesOk, cfg,
         }),
       };
     };
@@ -659,7 +696,9 @@ export class ServicioCfo {
       sumas: sumasTotal,
       kpis: this.kpisDe({
         s: sumasTotal, ag: agTotal, costoAg: costoAgente(agTotal, incluirLlm), base: base.total, incluirLlm,
-        margen: acumulado.columnas.find((c) => c.clave === "total")?.margenContribucion.cifra ?? null, clientes: conjunto, p90: p90Conjunto, ventasOk, clientesOk, cfg,
+        margen: acumulado.columnas.find((c) => c.clave === "total")?.margenContribucion.cifra ?? null,
+        ventasNegocioSr: acumulado.columnas.find((c) => c.clave === "total")?.titular.origen === "softrestaurant" ? (acumulado.columnas.find((c) => c.clave === "total")?.titular.cifra ?? null) : null,
+        clientes: conjunto, p90: p90Conjunto, ventasOk, clientesOk, cfg,
       }),
     };
     const agNoAsig = agente.filas.filter((f) => f.propertyId === null);
@@ -730,6 +769,7 @@ export class ServicioCfo {
       costoPorPedidoAgente: vk("costo_pedido_agente", "centavos"),
       metaNoMedido,
       margenContribucion: vk("margen_contribucion", "centavos"),
+      ...(colTotal.kpis.some((x) => x.id === "ventas_negocio_sr") ? { ventasNegocio: vk("ventas_negocio_sr", "centavos") } : {}),
       margenParcial: acumulado.columnas.find((c) => c.clave === "total")?.margenContribucion.parcial ?? false,
       multiSucursal: clientes.disponible ? cc.clientesVariasSucursales : null,
       mayorAporte: mejor ? { sucursal: this.nombre(mejor.propertyId), aportePct: cifra(mejor.aportePct, "medido", "formula:aporte_variacion") } : null,
@@ -1360,7 +1400,8 @@ export class ServicioCfo {
   }
 
   async costosVista(mesDesde: string, mesHasta: string): Promise<CostoVista> {
-    const l = await this.marcar("captura", this.e.repo.costosLeer(this.params, mesDesde, mesHasta));
+    // El readback del PUT /costos puede abarcar más de 400 días entre el primer y el último mes del lote: se lee por tramos.
+    const l = await this.marcar("captura", this.costosLeerPorTramos(`${mesDe(mesDesde)}-01`, `${mesDe(mesHasta)}-01`));
     return {
       disponible: l.disponible,
       costos: this.enAlcance(l.filas),
