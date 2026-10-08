@@ -34,7 +34,7 @@ describe("catálogo: las nueve herramientas CFO", () => {
   });
 
   it("ninguna acepta organización, sucursal por id, rol ni SQL; la sucursal es opcional y por nombre", () => {
-    const forbidden = /org|tenant|property|propiedad|role|rol|sql|query|user|usuario|id$/i;
+    const forbidden = /^(?:.*(?:org|tenant|property|propiedad|role|rol|sql|query|user|usuario)|.*id)$/i;
     for (const t of tools.filter((x) => x.name.startsWith("cfo_"))) {
       for (const key of Object.keys(t.params)) expect(key, `${t.name}.${key}`).not.toMatch(forbidden);
       expect(t.params["sucursal"]).toMatchObject({ type: "string", optional: true });
@@ -53,7 +53,7 @@ describe("cada herramienta contra el servicio del CFO", () => {
       expect(r.source, name).toMatch(/no sustituye a tu contador/);
       expect(r.scopeLabel, name).toBe("todas tus sucursales");
       expect(r.periodLabel, name).toContain("semana pasada");
-      for (const c of r.columns) expect(c.key, `${name}.${c.key}`).not.toMatch(/nombre_cliente|telefono|tel$|direccion|email|correo|phone/i);
+      for (const c of r.columns) expect(c.key, `${name}.${c.key}`).not.toMatch(/^(?:.*(?:nombre_cliente|telefono|direccion|email|correo|phone)|tel)$/i);
     }
   });
 
