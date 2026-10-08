@@ -269,6 +269,11 @@ const MARCO_DE_PETICION = /\b(?:quiero|quisiera|necesito|puedes|puede|podr[ií]a
  * "hablar con...". Un "no" lejano ("no se si quiero hablar con alguien", "no quiero el bot, pasame con alguien") ya no anula una peticion real. */
 const NEGACION_AL_FINAL =
   /\b(?:no|ni|nunca|jam[aá]s|tampoco)\s+(?:(?:es\s+necesario|hace\s+falta|hay\s+que|quiero|quisiera|necesito|ocupo|requiero|deseo|tengo\s+que|voy\s+a|vayas?\s+a|me\s+interesa|pienso)\s*(?:que\s+)?(?:me\s+|se\s+)?)?$/i;
+/** Retractacion DESPUES de la peticion ("quiero una persona... bueno no, mejor sigo contigo", "mejor sigo aqui", "ya no, gracias"): el cliente retoma con el agente
+ * y no hay nadie a quien pasarlo (QA-PM-R4-whatsapp-01: la toma callaba al agente y el pedido en curso se perdia). */
+const RETRACTACION_POSTERIOR =
+  /^[^.!?\n]{0,40}?\b(?:bueno\s*,?\s*)?(?:no|ya\s+no)\s*,?\s*(?:mejor|gracias|olvid\w+|dejalo|dejelo|sigo|seguimos|contigo|con\s+usted)\b|\bmejor\s+(?:sigo|seguimos|continuo|continuamos|contigo|con\s+usted|aqui|por\s+aqui)\b|\bsigo\s+(?:contigo|con\s+usted|aqui)\b/;
+
 /** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). NO cuenta: la negacion ("no quiero hablar con
  * una persona, con usted esta bien"), "pasar con alguien" como visita ("voy a pasar con alguien a recogerlo") ni una peticion mezclada con un pedido
  * (la peticion de una persona SIEMPRE escala, aunque venga con un pedido: "quiero 3 tacos y que me hable una persona"; el pedido lo retoma la persona). */
@@ -281,6 +286,8 @@ export function pideUnaPersona(text: string): boolean {
     // QA-PM-R3-voz-05: "que me atienda alguien en caja" / "alguien de caja" es una pregunta de pago al recoger (se paga en caja), no pedir una persona del equipo.
     if (/^\s+(?:de|en|a)\s+(?:la\s+)?(?:caja|cajero|mostrador)\b/i.test(text.slice(idx + m[0].length, idx + m[0].length + 24))) continue;
     if (/^pasar\b/i.test(m[0]) && !MARCO_DE_PETICION.test(segmento)) continue;
+    // Retractacion posterior en el mismo mensaje: "quiero hablar con una persona... bueno no, mejor sigo contigo".
+    if (RETRACTACION_POSTERIOR.test(normalizarParaClasificar(text.slice(idx + m[0].length, idx + m[0].length + 60)))) continue;
     return true;
   }
   return false;

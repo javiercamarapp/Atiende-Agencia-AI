@@ -10,7 +10,7 @@ import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
-import { matchesHighRiskOtherThan } from "./guards.ts";
+import { matchesHighRiskOtherThan, pideUnaPersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
@@ -255,7 +255,7 @@ export async function handleInboundWhatsAppMessage(
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
-      if (turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) {
+      if (turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, messagesAfterUser)) {
         await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
       }
 
@@ -268,7 +268,7 @@ export async function handleInboundWhatsAppMessage(
       }
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) };
+      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, messagesAfterUser)) };
     });
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
@@ -341,9 +341,9 @@ export const MAX_PASADAS_RAFAGA = 3;
  * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
 export const LEASE_RAFAGA_SEGUNDOS = 45;
 /** Una toma de handoff `pendiente` que nadie atiende: el agente calla (R-21), pero el cliente no puede quedarse horas sin NINGUNA respuesta. Pasados
- * `ACUSE_PENDIENTE_ESPERA_MIN` minutos sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
+ * `ACUSE_PENDIENTE_ESPERA_MIN` minutos (3; antes 15 y el cliente que insistia quedaba sin respuesta, QA-PM-R4-whatsapp-01) sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
  * cada `ACUSE_PENDIENTE_REPETIR_MIN`. El tiempo y la unicidad los decide la base (migracion 045); sin ella el agente sigue callando como antes. */
-export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
+export const ACUSE_PENDIENTE_ESPERA_MIN = 3;
 export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
 export const ACUSE_HANDOFF_PENDIENTE =
   "Seguimos esperando a que una persona del equipo tome su conversación; su aviso ya está registrado y no se perdió. Si lo prefiere, puede dejar aquí los detalles de su pedido para que los vean en cuanto la atiendan.";
@@ -352,6 +352,18 @@ export const ACUSE_HANDOFF_PENDIENTE =
  * handoff callaba al agente y el pedido se perdia (QA-PM-R2-whatsapp-05: reposicion_descuento...). Las demas (queja, alergia, cancelacion, cobro,
  * ARCO, "una persona", falla del sistema, pedido grande, zona/no entiendo por contador) si ceden la conversacion a una persona. */
 export const MOTIVOS_QUE_NO_ABREN_TOMA: ReadonlySet<string> = new Set(["reposicion_descuento", "producto_agotado", "tiempos_entrega", "pedido_especial", "zona_ambigua", "otro"]);
+
+/**
+ * ¿Esta escalacion cede la conversacion a una persona (abre la toma que calla al agente)? QA-PM-R4-whatsapp-01: el modelo escalaba `cliente_lo_pide` ante un
+ * "???" o ante "quiero una persona... bueno no, mejor sigo contigo", la toma callaba al agente y el pedido en curso se perdia. El motivo `cliente_lo_pide`
+ * solo abre toma si ALGUNO de los mensajes del cliente sin responder pide de verdad una persona (`pideUnaPersona`, que ya descarta negaciones y retractaciones);
+ * el aviso al equipo queda registrado de todos modos y el agente sigue atendiendo.
+ */
+export function abreTomaDeHandoff(motivo: string, mensajes: readonly ConversationMessage[]): boolean {
+  if (MOTIVOS_QUE_NO_ABREN_TOMA.has(motivo)) return false;
+  if (motivo !== "cliente_lo_pide") return true;
+  return mensajesSinResponder(mensajes).some((m) => m.role === "user" && pideUnaPersona(m.content));
+}
 
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
 export const FUNCION_MAX_MS = 30_000;
@@ -553,14 +565,14 @@ export async function responderTrasEspera(
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
         await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
-        if (turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) {
+        if (turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, historial)) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
         }
         if (deliverReply) {
           await encolarRespuesta(repo, organizationId, { messageId, sufijo: pasada === 1 ? "" : `:p${pasada}`, phone, phoneNumberId, reply, confirmacion: turn.pedirConfirmacion, recibidoEnMs: args.recibidoEnMs });
           if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, pasada === 1 ? `inbound-ubicacion:${messageId}` : `inbound-ubicacion:${messageId}:p${pasada}`, phone, phoneNumberId);
         }
-        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) }, silencio: false };
+        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, historial)) }, silencio: false };
       });
       ultimo = turnoDePasada.salida;
       // Todo lo que el turno vio ya tuvo su respuesta; lo que llegue mientras tanto es lo siguiente.
