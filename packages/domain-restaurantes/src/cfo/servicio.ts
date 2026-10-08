@@ -437,27 +437,33 @@ export class ServicioCfo {
   // ---- bases de comparación -----------------------------------------------------------------------------------------------------------
 
   /**
-   * Las 4 ventanas del mismo tramo de las 4 semanas previas. Una sola lectura del tramo [desde−28, hasta−7] (si cabe en los 400 días de la SQL) y se
+   * Las 4 ventanas del mismo tramo de las 4 semanas previas. Una sola lectura del tramo [desde−28, hasta−7] (en dos, contiguas, si no cabe en los 400 días de la SQL) y se
    * reparte por ventana, en vez de 4 barridos de la longitud completa; `conCortesias: false` omite las cortesías (solo las usan los hallazgos).
    */
   private async ventanas4(q: ConsultaCfo, conCortesias = true): Promise<{ rango: RangoCfo; ventas: FilaVentasDiarias[]; agente: FilaAgenteDiario[]; cortesias: FilaCortesias[] }[]> {
     const ventanas = ventanas4Semanas({ desde: q.desde, hasta: q.hasta });
     const union: RangoCfo = { desde: sumarDiasFecha(q.desde, -28), hasta: sumarDiasFecha(q.hasta, -7) };
-    const cabe = diasEntre(union.desde, union.hasta) <= 400;
+    // El tramo mide N+21 días; la SQL admite 400. Si no cabe (N de 380 a 400) se parte en dos lecturas contiguas y sin traslape, cada una <= 400
+    // (con N <= 400 el tramo mide <= 421, así que cada mitad <= 211): 2 lecturas por fuente en lugar de caer a ~8 barridos completos.
+    const dias = diasEntre(union.desde, union.hasta);
+    const tramos: RangoCfo[] = dias <= 400 ? [union] : (() => {
+      const mitad = sumarDiasFecha(union.desde, Math.floor(dias / 2) - 1);
+      return [{ desde: union.desde, hasta: mitad }, { desde: sumarDiasFecha(mitad, 1), hasta: union.hasta }];
+    })();
     const out: { rango: RangoCfo; ventas: FilaVentasDiarias[]; agente: FilaAgenteDiario[]; cortesias: FilaCortesias[] }[] = [];
     // Secuencial a propósito (una sesión).
-    const uv = cabe ? await this.ventas(union) : null;
-    const ua = cabe ? await this.agente(union) : null;
-    const uc = cabe && conCortesias ? await this.cortesiasDe(union) : null;
+    const uv: FilaVentasDiarias[] = [];
+    const ua: FilaAgenteDiario[] = [];
+    const uc: FilaCortesias[] = [];
+    for (const t of tramos) uv.push(...(await this.ventas(t)).filas);
+    for (const t of tramos) ua.push(...(await this.agente(t)).filas);
+    if (conCortesias) for (const t of tramos) uc.push(...(await this.cortesiasDe(t)).filas);
     for (const rango of ventanas) {
-      const v = uv ?? (await this.ventas(rango));
-      const a = ua ?? (await this.agente(rango));
-      const c = conCortesias ? (uc ?? (await this.cortesiasDe(rango))) : null;
       out.push({
         rango,
-        ventas: v.filas.filter((f) => enRango(f.diaNegocio, rango)),
-        agente: a.filas.filter((f) => enRango(f.diaNegocio, rango)),
-        cortesias: c ? c.filas.filter((f) => enRango(f.diaNegocio, rango)) : [],
+        ventas: uv.filter((f) => enRango(f.diaNegocio, rango)),
+        agente: ua.filter((f) => enRango(f.diaNegocio, rango)),
+        cortesias: uc.filter((f) => enRango(f.diaNegocio, rango)),
       });
     }
     return out;
