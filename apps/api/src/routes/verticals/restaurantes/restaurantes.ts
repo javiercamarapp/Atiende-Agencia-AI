@@ -44,6 +44,7 @@ import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
 import { restaurantesPrivacidadRoutes } from "./privacidad.ts";
 import { restaurantesPrivacidadInternoRoutes } from "./privacidad-interno.ts";
 import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
+import { restaurantesCfoRoutes } from "./cfo.ts";
 import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -124,5 +125,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // captura manual (staff) + dispatcher del outbox (cron). Ver softrestaurant/README.md.
   app.route("/", restaurantesAdminSoftRestauranteRoutes(deps));
   app.route("/", restaurantesSoftRestauranteDispatchRoutes(deps));
+  // CFO (migraciones 081/082/083): lectura, captura de costos e importacion de SoftRestaurant, solo owner/admin.
+  app.route("/", restaurantesCfoRoutes(deps));
   return app;
 }

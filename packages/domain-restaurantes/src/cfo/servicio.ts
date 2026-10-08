@@ -474,6 +474,7 @@ export class ServicioCfo {
     return {
       alcance: base.alcance,
       sucursales: this.e.sucursales.map((s) => ({ ...s, zona: zonaDe.get(s.propertyId)?.zona ?? null, corte: corteHHMM(zonaDe.get(s.propertyId)?.corte) })),
+      disponible: base.disponible,
       bloques: base.bloques,
       cobertura: {
         pedidos: cob.filas.map((f) => ({ propertyId: f.propertyId, primerDia: f.primerDia, ultimoDia: f.ultimoDia })),
@@ -1367,6 +1368,12 @@ export class ServicioCfo {
     avisos.push("El cuadre compara solo el domicilio del agente con el «domicilio» de SoftRestaurant en los días que el reporte trae; nunca se suman ambos.");
     const cab = await this.cabecera(q, avisos);
     return { ...cab, filas, porSucursal, umbrales: { verdePct: cfg.srCuadreVerdePct, ambarPct: cfg.srCuadreAmbarPct, verdeCentavos: cfg.srCuadreVerdeCentavos } };
+  }
+
+  /** Hora de corte (`HH:MM`) del día de negocio de una sucursal; `00:00` si la base aún no la informa. Lo usa la importación de SoftRestaurant. */
+  async corteDe(propertyId: string): Promise<string> {
+    const c = (await this.cobertura()).filas.find((f) => f.propertyId === propertyId);
+    return corteHHMM(c?.corte) ?? "00:00";
   }
 
   // ---- escrituras: delegan al repositorio (la SQL valida y deja la bitácora) ------------------------------------------------------------

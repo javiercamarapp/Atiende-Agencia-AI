@@ -119,6 +119,8 @@ export interface CoberturaSrApi {
 export interface AlcanceVista {
   readonly alcance: AlcanceApi;
   readonly sucursales: readonly SucursalAlcanceApi[];
+  /** true solo si ventas (081), clientes (082) y captura (083) están disponibles. */
+  readonly disponible: boolean;
   readonly bloques: BloquesCfo;
   readonly cobertura: {
     readonly pedidos: readonly CoberturaFuenteApi[];

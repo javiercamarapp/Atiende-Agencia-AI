@@ -28,6 +28,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -189,6 +190,10 @@ export interface AppDeps {
   /** R-42 (migración 041): cierre del día y resumen semanal. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresCierreRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly cierreRepo?: (db: TenantDbSession) => CierreRepository;
+  /** CFO de restaurantes (migraciones 081/082/083): ventas, clientes, costos, SoftRestaurant. OPCIONAL: sin él las rutas `/admin/cfo/*` responden 503 honesto. En producción es
+   * `(db) => new PostgresCfoRepository(db)` de domain-restaurantes/cfo/postgres (cada llamada degrada con SAVEPOINT a `disponible: false` contra la base sin migrar).
+   * No confundir con `cfoRepo` (panel CFO de superadmin). */
+  readonly cfoRestaurantesRepo?: (db: TenantDbSession) => CfoRestaurantesRepository;
   /** Autopiloto del ciclo del pedido (migración 050): aprobaciones, estados sin clic, regreso del handoff, agotado por hoy. OPCIONAL: sin él las rutas
    * responden 503 honesto y el tick lo omite. En producción es `(db) => new PostgresAutopilotoRepository(db)` (degrada con SAVEPOINT a "no disponible"
    * contra la base sin migrar). */
