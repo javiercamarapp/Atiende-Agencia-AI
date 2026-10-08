@@ -168,6 +168,10 @@ export function tokenizeForProductSearch(query: string): string[] {
     const singular = singularizar(t);
     tokens.push(ALIAS_DE_ESCRITURA[singular] ?? singular);
   }
+  // T7-060 (ronda 5): «¿cuánto cuesta el kilo de carne al pastor?» no encontraba «Pastor — 1 kg» porque «carne» es un genérico que ningún platillo lleva en su nombre y todos los tokens
+  // son obligatorios (el agente terminó diciendo que no hallaba el precio). «carne» solo se descarta si la consulta nombra algo más que el peso; sola («carne», «kilo de carne») se conserva.
+  const sinGenerico = tokens.filter((t) => t !== "carne");
+  if (sinGenerico.length < tokens.length && sinGenerico.some((t) => !t.startsWith("peso:"))) return sinGenerico;
   return tokens.length > 0 ? tokens : [sinAcentos(query)];
 }
 
