@@ -3,13 +3,14 @@
 // que la DIOT agregada.
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
-import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
+import { authedJson, buildDespachosTestContext, sembrarFichaCliente } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
 let ctx: DespachosTestContext;
 
 beforeEach(async () => {
   ctx = await buildDespachosTestContext(buildApp);
+  await sembrarFichaCliente(ctx, "AAA010101AAA");
 });
 
 function cfdi(overrides: Record<string, unknown> = {}) {
@@ -64,6 +65,27 @@ describe("GET .../declaraciones/diot/:periodo/layout", () => {
     expect(body.txt).toBe("");
     expect(body.renglones).toEqual([]);
     expect(body.advertencias[0]).toMatch(/no contiene renglones/);
+  });
+
+  it("D-P3-01: un CFDI emitido por el cliente (su venta) no entra al layout como proveedor", async () => {
+    const app = buildApp(ctx.deps);
+    const venta = cfdi({ rfcEmisor: "AAA010101AAA", rfcReceptor: "CON950820K12", folioFiscal: "99999999-2222-3333-4444-555555555555" });
+    expect((await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, venta))).status).toBe(201);
+    const res = await app.request(layoutUrl("2026-07"), authedJson(ctx.staff.contador.token));
+    const body = (await res.json()) as { rfcContribuyente: string | null; renglones: unknown[]; txt: string };
+    expect(body.renglones).toEqual([]);
+    expect(body.txt).toBe("");
+  });
+
+  it("D-P3-01: sin ficha de cartera el layout no se arma y la advertencia lo dice", async () => {
+    const sinFicha = await buildDespachosTestContext(buildApp);
+    const app = buildApp(sinFicha.deps);
+    await app.request(`/despachos/${sinFicha.propertyId}/cfdi`, authedJson(sinFicha.staff.contador.token, cfdi()));
+    const res = await app.request(`/despachos/${sinFicha.propertyId}/declaraciones/diot/2026-07/layout`, authedJson(sinFicha.staff.contador.token));
+    const body = (await res.json()) as { rfcContribuyente: string | null; renglones: unknown[]; advertencias: string[] };
+    expect(body.rfcContribuyente).toBeNull();
+    expect(body.renglones).toEqual([]);
+    expect(body.advertencias[0]).toMatch(/ficha/);
   });
 
   it("periodo mal formado -> 400 de validacion", async () => {

@@ -140,7 +140,8 @@ export function despachosBookkeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     assertVerticalRole(c, BOOKKEEPING_ROLES);
     const raw = await readJsonCapped<{ readonly clasificaciones?: unknown; readonly tenantId?: unknown; readonly fecha?: unknown }>(c.req.raw, 512 * 1024);
     if (!Array.isArray(raw.clasificaciones)) throw Errors.validation("clasificaciones: se esperaba un arreglo.");
-    const tenantId = typeof raw.tenantId === "string" ? raw.tenantId : "";
+    // D-P3-50: el tenant sale de la RUTA (propertyId ya validado por `requirePropertyMembership`); un `tenantId` del cuerpo se ignora.
+    const tenantId = c.req.param("propertyId");
     // Bug real (revisión r6, misma causa raíz que `./vencimientos.ts::todayIso` -- ver su
     // comentario de cabecera): el default de `fecha` (cuando el caller no la manda) usaba
     // el día UTC del proceso, corrido un día adelante del real en CDMX entre las 18:00 y
@@ -187,7 +188,7 @@ export function despachosBookkeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       haber: optionalNumber(e.haber, `entries[${idx}].haber`, 0),
       concepto: typeof e.concepto === "string" ? e.concepto : "",
     }));
-    const tenantId = typeof raw.tenantId === "string" ? raw.tenantId : "";
+    const tenantId = c.req.param("propertyId"); // D-P3-50: ver /poliza; el `tenantId` del cuerpo se ignora.
     const poliza = generateAdjustment(fecha, concepto, entries, tenantId);
     return c.json({ poliza, errores: validatePoliza(poliza) });
   });

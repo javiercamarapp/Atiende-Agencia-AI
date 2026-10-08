@@ -85,7 +85,24 @@ describe("POST calcular (no guarda) con parametros", () => {
     expect((await ctx.pagosRepo.listarPapeles(ctx.propertyId, 2026)).papeles).toHaveLength(0);
   });
 
+  it("D-P3-06: actosExentosCentavos aplica la proporcion del IVA acreditable y se guarda con el papel; sin el dato avisa", async () => {
+    await sembrarFicha();
+    ctx.pagosRepo.sembrarFacturas(factura({ base: 1_000_000 }), factura({ direccion: "recibido", base: 500_000 }));
+    const app = buildApp(ctx.deps);
+    type Cuerpo = { papel: { iva: { acreditableCentavos: number; aCargoCentavos: number }; advertencias: string[] } };
+    const sin = (await (await app.request(`${base()}/2026-07/calcular`, req(ctx.staff.contador.token, "POST", {}))).json()) as Cuerpo;
+    expect(sin.papel.iva.acreditableCentavos).toBe(80_000);
+    expect(sin.papel.advertencias.some((a) => a.startsWith("Proporción no aplicada"))).toBe(true);
+    const con = (await (await app.request(`${base()}/2026-07/calcular`, req(ctx.staff.contador.token, "POST", { actosExentosCentavos: 250_000 }))).json()) as Cuerpo;
+    expect(con.papel.iva).toMatchObject({ acreditableCentavos: 64_000, aCargoCentavos: 96_000 });
+    expect((await app.request(`${base()}/2026-07`, req(ctx.staff.contador.token, "PUT", { actosExentosCentavos: 250_000 }))).status).toBe(200);
+    const papeles = (await ctx.pagosRepo.listarPapeles(ctx.propertyId, 2026)).papeles;
+    expect(papeles.find((p) => p.impuesto === "IVA")?.parametros).toMatchObject({ actosExentosCentavos: 250_000 });
+  });
+
   it.each([
+    ["actos exentos con decimales", { actosExentosCentavos: 10.5 }],
+    ["actos gravados negativos", { actosGravadosCentavos: -1 }],
     ["coeficiente mal formado", { coeficienteUtilidad: "0.2345678" }],
     ["coeficiente con coma", { coeficienteUtilidad: "0,2" }],
     ["centavos con decimales", { coeficienteUtilidad: "0.2", perdidasPendientesCentavos: 10.5 }],

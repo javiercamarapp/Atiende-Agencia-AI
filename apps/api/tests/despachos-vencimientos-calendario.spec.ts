@@ -44,7 +44,7 @@ describe("POST .../vencimientos/calcular — día hábil, plazos y régimen", ()
 
   it("régimen 626 no genera balanza; régimen 605 solo la anual en diciembre; régimen inventado -> 422/400", async () => {
     const resico = (await (await calcular({ year: 2026, month: 3, regimenFiscal: "626" })).json()) as Fila[];
-    expect(resico.map((f) => f.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina"]);
+    expect(resico.map((f) => f.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina", "Retenciones", "IMSS", "ISN"]);
     const sueldos = (await (await calcular({ year: 2026, month: 12, regimenFiscal: "605" })).json()) as Fila[];
     expect(sueldos.map((f) => `${f.tipo}:${f.fechaLimite}`)).toEqual(["Anual:2027-04-30"]);
     const malo = await calcular({ year: 2026, month: 3, regimenFiscal: "999" });
@@ -84,7 +84,7 @@ describe("POST .../vencimientos/barrido — escalamiento automático", () => {
   }
   const barrer = (token = ctx.staff.contador.token) => buildApp(ctx.deps).request(`/despachos/${ctx.propertyId}/vencimientos/barrido`, authedJson(token, {}));
 
-  it("escala el vencido (nivel_4) y el de mañana (nivel_2), ignora el lejano y el completado, y es idempotente", async () => {
+  it("escala el vencido (nivel_4) y el de mañana (1 día hábil: nivel_3), ignora el lejano (>7 hábiles) y el completado, y es idempotente", async () => {
     const d = await sembrar();
     await ctx.despachosRepo.markDeadlineCompleted(d.hecho.id, null, "2026-05-30");
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -94,7 +94,7 @@ describe("POST .../vencimientos/barrido — escalamiento automático", () => {
     expect(res.status).toBe(200);
     const r = (await res.json()) as { evaluados: number; escalados: { id: string; nivel: string }[]; aunNoToca: number; yaEscalados: number };
     expect(r.evaluados).toBe(3);
-    expect(Object.fromEntries(r.escalados.map((e) => [e.id, e.nivel]))).toEqual({ [d.vencido.id]: "nivel_4", [d.manana.id]: "nivel_2" });
+    expect(Object.fromEntries(r.escalados.map((e) => [e.id, e.nivel]))).toEqual({ [d.vencido.id]: "nivel_4", [d.manana.id]: "nivel_3" });
     expect(r.aunNoToca).toBe(1);
     expect((await ctx.despachosRepo.findDeadline(ctx.propertyId, d.vencido.id))!.estado).toBe("escalado");
 

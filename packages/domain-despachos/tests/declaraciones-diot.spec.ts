@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { agregarDiot, esRfcGenerico } from "../src/declaraciones/diot-aggregate.ts";
 import type { RegistroDiotCandidato } from "../src/declaraciones/types.ts";
+import { candidatosDiotDesdeInvoices, construirDiotDesdeInvoices } from "../src/declaraciones/diot-desde-invoices.ts";
+import type { InvoiceRecord } from "../src/types.ts";
 
 function candidato(overrides: Partial<RegistroDiotCandidato> = {}): RegistroDiotCandidato {
   return {
@@ -124,5 +126,59 @@ describe("agregarDiot — contrato de API y edge cases", () => {
     expect(r.registros[0]!.fecha).toBe("2026-07-15");
     expect(r.registros[0]!.nombre).toBe("SEGUNDO");
     expect(r.registros[0]!.count).toBe(2);
+  });
+});
+
+// D-P3-01: la DIOT solo toma compras del cliente y su RFC sale de la ficha, nunca de un CFDI.
+function inv(id: string, extra: Partial<InvoiceRecord> = {}): InvoiceRecord {
+  return {
+    id, organizationId: "org", propertyId: "p1", folioFiscal: `UUID-${id}`, tipo: "I",
+    rfcEmisor: "CON950820K12", rfcReceptor: "DESP010101AB1", emisorNombre: "PROVEEDOR", subtotal: 1000, total: 1160, iva: 160, descuento: 0,
+    categoria: "gasto_operativo", confianza: null, valido: true, issues: [], warnings: [], requiresHumanReview: false,
+    diot: { reportable: true, proveedoresReportables: [{ rfcProveedor: "CON950820K12", nombreProveedor: "PROVEEDOR", totalOperacion: "1000", ivaAcreditable: "160", periodo: "2026-07", tasaIva: 0.16 }] },
+    fecha: "2026-07-10", createdAt: "2026-07-11T00:00:00Z", direccion: "recibido", estadoSat: "vigente",
+    ...extra,
+  };
+}
+const FICHA_RFC = "DESP010101AB1";
+
+describe("construirDiotDesdeInvoices — solo compras vigentes y validas del cliente (D-P3-01)", () => {
+  it("un CFDI emitido por el cliente (su venta) NO es proveedor", () => {
+    const r = construirDiotDesdeInvoices([inv("v", { direccion: "emitido", rfcEmisor: FICHA_RFC, rfcReceptor: "CLIENTE0001X9" })], "2026-07", FICHA_RFC);
+    expect(r.registros).toHaveLength(0);
+    expect(r.excluidos).toBe(1);
+  });
+
+  it("cancelado y no_encontrado ante el SAT quedan fuera; vigente y pendiente cuentan", () => {
+    const r = construirDiotDesdeInvoices([inv("a", { estadoSat: "cancelado" }), inv("b", { estadoSat: "no_encontrado" }), inv("c", { estadoSat: "vigente" }), inv("d", { estadoSat: "pendiente" })], "2026-07", FICHA_RFC);
+    expect(r.registros[0]!.count).toBe(2);
+    expect(r.excluidos).toBe(2);
+  });
+
+  it("un CFDI invalido queda fuera", () => {
+    const r = construirDiotDesdeInvoices([inv("a", { valido: false })], "2026-07", FICHA_RFC);
+    expect(r.registros).toHaveLength(0);
+    expect(r.excluidos).toBe(1);
+  });
+
+  it("el RFC del contribuyente es el de la ficha, aunque el receptor del CFDI sea otro", () => {
+    const r = construirDiotDesdeInvoices([inv("a", { rfcReceptor: "OTRO010101AB1" })], "2026-07", FICHA_RFC);
+    expect(r.rfcContribuyente).toBe(FICHA_RFC);
+    expect(r.registros).toHaveLength(1);
+  });
+
+  it("sin ficha (RFC null): sin datos, rfcContribuyente null, aunque haya compras", () => {
+    const r = construirDiotDesdeInvoices([inv("a")], "2026-07", null);
+    expect(r.registros).toHaveLength(0);
+    expect(r.rfcContribuyente).toBeNull();
+  });
+
+  it("direccion desconocida (base sin migrar): cuenta solo si la ficha confirma que el cliente es el receptor", () => {
+    const compraLegada = inv("a", { direccion: null, estadoSat: undefined });
+    const ventaLegada = inv("b", { direccion: null, estadoSat: undefined, rfcEmisor: FICHA_RFC, rfcReceptor: "CLIENTE0001X9" });
+    const r = candidatosDiotDesdeInvoices([compraLegada, ventaLegada], FICHA_RFC);
+    expect(r.candidatos).toHaveLength(1);
+    expect(r.excluidos).toBe(1);
+    expect(candidatosDiotDesdeInvoices([compraLegada], null).candidatos).toHaveLength(0);
   });
 });

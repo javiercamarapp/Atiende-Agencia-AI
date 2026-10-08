@@ -3,6 +3,7 @@ import {
   calcularPrioridad,
   calcularVencimientosDelPeriodo,
   decidirEscalamiento,
+  decidirEscalamientoHabil,
   diasHasta,
   fechaLimiteDia17MesSiguiente,
 } from "../src/vencimientos/engine.ts";
@@ -64,6 +65,10 @@ describe("calcularVencimientosDelPeriodo (D-26: día hábil y plazos por obligac
       ["IVA", "2026-07-17"],
       ["DIOT", "2026-07-31"],
       ["Nómina", "2026-07-17"],
+      ["Retenciones", "2026-07-17"],
+      ["IMSS", "2026-07-17"],
+      ["IMSS-bimestral", "2026-07-17"],
+      ["ISN", "2026-07-17"],
       ["Balanza", "2026-08-03"],
     ]);
     expect(v.every((x) => x.periodo === "2026-06")).toBe(true);
@@ -84,5 +89,30 @@ describe("calcularVencimientosDelPeriodo (D-26: día hábil y plazos por obligac
 
   it("un régimen sin calendario modelado lanza en vez de adivinar", () => {
     expect(() => calcularVencimientosDelPeriodo(2026, 6, "2026-06-01", { regimenFiscal: "999" })).toThrow(/999/);
+  });
+});
+
+describe("decidirEscalamientoHabil (D-P3-33: 7/3/1 dias habiles)", () => {
+  it("mas de 7 dias habiles: no toca avisar", () => {
+    expect(decidirEscalamientoHabil("IVA", "2026-06-22", 8)).toBeNull();
+    expect(decidirEscalamientoHabil("IVA", "2026-06-22", 30)).toBeNull();
+  });
+  it.each([
+    [7, "nivel_1"],
+    [4, "nivel_1"],
+    [3, "nivel_2"],
+    [2, "nivel_2"],
+    [1, "nivel_3"],
+    [0, "nivel_3"],
+    [-1, "nivel_4"],
+  ])("%s dia(s) habil(es) -> %s, siempre con revision humana (CFF art. 89)", (dias, nivel) => {
+    const d = decidirEscalamientoHabil("ISR", "2026-06-19", dias)!;
+    expect(d.level).toBe(nivel);
+    expect(d.requiresHumanReview).toBe(true);
+    expect(d.notes).toContain("2026-06-19");
+  });
+  it("el texto habla de dias habiles, no naturales", () => {
+    expect(decidirEscalamientoHabil("ISR", "2026-06-19", 3)!.notes).toContain("faltan 3 día(s) hábil(es)");
+    expect(decidirEscalamientoHabil("ISR", "2026-06-19", -1)!.notes).toContain("ya venció");
   });
 });

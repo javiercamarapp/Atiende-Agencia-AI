@@ -26,6 +26,7 @@
 // ejecuta nada; solo lee atributos.
 // ═══════════════════════════════════════════════════════════════════════════
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import type { TrasladoConceptoCfdi } from './validator.ts';
 
 export class CfdiXmlParseError extends Error {}
 
@@ -47,6 +48,8 @@ export interface CfdiXmlConcepto {
   readonly cantidad: number;
   readonly valorUnitario: number;
   readonly importe: number;
+  /** D-P3-31: traslados del concepto (IVA/IEPS) tal como vienen en el XML; vacío si el concepto no trae desglose. */
+  readonly traslados: readonly TrasladoConceptoCfdi[];
 }
 
 /** Mismo shape que `DatosCfdiDespachos` (@atiende/domain-despachos) menos los
@@ -78,6 +81,12 @@ export interface CfdiXmlParseResult {
   readonly retencionIsr: number | null;
   readonly retencionIva: number | null;
   readonly ieps: number | null;
+  /** D-P3-01: `implocal:ImpuestosLocales` TotaldeTraslados (ISH, etc.); null si el complemento no viene. Se SUMA al total. */
+  readonly impuestosLocalesTraslados: number | null;
+  /** D-P3-01: `implocal:ImpuestosLocales` TotaldeRetenciones; null si el complemento no viene. Se RESTA del total. */
+  readonly impuestosLocalesRetenciones: number | null;
+  /** D-P3-31: RegimenFiscalReceptor (obligatorio en CFDI 4.0; puede faltar en un XML mal armado, por eso no se exige aquí). */
+  readonly regimenFiscalReceptor?: string;
   readonly cfdiRelacionados?: readonly string[];
   readonly tipoRelacion?: string;
   /** Moneda del comprobante (atributo obligatorio en CFDI 4.0; "MXN", "USD", "XXX"...). */
@@ -261,6 +270,22 @@ function desglosarImpuestos(comprobante: Record<string, unknown>): readonly Cfdi
   }));
 }
 
+/** Traslados (IVA/IEPS) de un concepto con sus números; lo que no es numérico queda null y el validador lo ignora. */
+function trasladosDeConcepto(concepto: Record<string, unknown>): TrasladoConceptoCfdi[] {
+  const numOrNull = (v: unknown): number | null => {
+    const s = attrString(v);
+    if (s === undefined) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+  return extraerNodosImpuesto(concepto, 'Traslados', 'Traslado').flatMap((n) => {
+    const impuesto = attrString(n.Impuesto);
+    const tipoFactor = attrString(n.TipoFactor);
+    if (!impuesto || !tipoFactor) return [];
+    return [{ impuesto, tipoFactor, tasaOCuota: numOrNull(n.TasaOCuota), base: numOrNull(n.Base), importe: numOrNull(n.Importe) }];
+  });
+}
+
 /** Rechaza todo lo que no sea un CFDI plano ANTES de entregarlo al parser (ver cabecera: seguridad de la entrada). */
 export function validarXmlCfdiSeguro(xml: string): void {
   if (xml.length > CFDI_XML_MAX_CARACTERES) {
@@ -335,9 +360,13 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
     cantidad: requireAttrNumber(c.Cantidad, `Conceptos[${i}].Cantidad`),
     valorUnitario: requireAttrNumber(c.ValorUnitario, `Conceptos[${i}].ValorUnitario`),
     importe: requireAttrNumber(c.Importe, `Conceptos[${i}].Importe`),
+    traslados: trasladosDeConcepto(c),
   }));
 
-  const timbre = (comprobante.Complemento as Record<string, unknown> | undefined)?.TimbreFiscalDigital as Record<string, unknown> | undefined;
+  const complemento = comprobante.Complemento as Record<string, unknown> | undefined;
+  // `implocal:ImpuestosLocales` (el prefijo se quita al parsear): TotaldeTraslados se suma y TotaldeRetenciones se resta del Total.
+  const locales = complemento?.ImpuestosLocales as Record<string, unknown> | undefined;
+  const timbre = complemento?.TimbreFiscalDigital as Record<string, unknown> | undefined;
   if (!timbre) {
     throw new CfdiXmlParseError('El XML no trae tfd:TimbreFiscalDigital — sin timbrado no hay folio fiscal (UUID) ni efecto fiscal.');
   }
@@ -374,6 +403,9 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
     retencionIsr: sumarImporteImpuesto(comprobante, 'Retenciones', 'Retencion', IMPUESTO_ISR),
     retencionIva: sumarImporteImpuesto(comprobante, 'Retenciones', 'Retencion', IMPUESTO_IVA),
     ieps: sumarImporteImpuesto(comprobante, 'Traslados', 'Traslado', IMPUESTO_IEPS),
+    impuestosLocalesTraslados: locales ? optionalAttrNumber(locales.TotaldeTraslados, 'ImpuestosLocales.TotaldeTraslados') : null,
+    impuestosLocalesRetenciones: locales ? optionalAttrNumber(locales.TotaldeRetenciones, 'ImpuestosLocales.TotaldeRetenciones') : null,
+    regimenFiscalReceptor: attrString(receptor.RegimenFiscalReceptor),
     cfdiRelacionados,
     tipoRelacion,
     moneda: requireAttrString(comprobante.Moneda, 'Moneda'),

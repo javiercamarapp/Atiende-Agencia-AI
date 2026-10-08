@@ -17,10 +17,16 @@
 // - DIOT: último día del mes siguiente (RMF 4.5.1) — POR VALIDAR con fiscalista.
 // - Balanza de comprobación: día 3 del segundo mes siguiente (PM) o día 5 (PF) — RMF 2.8.1.6, POR VALIDAR.
 // - Declaración anual: 31 de marzo PM (LISR 76) y 30 de abril PF (LISR 150).
+// - D-P3-33 (migración 024): retenciones de ISR/IVA (honorarios y arrendamiento) día 17 (LISR 106, 116 y 126; LIVA 1-A y 5-D);
+//   cuotas obrero-patronales del IMSS mensuales día 17 del mes siguiente y RCV/Infonavit bimestrales día 17 del mes siguiente al
+//   bimestre (LSS art. 39 C); impuesto sobre nómina estatal (varía por entidad: se asume día 17, POR VALIDAR); informativa anual de
+//   retenciones el 15 de febrero (LISR art. 76 fracc. X y 99 fracc. VII, POR VALIDAR). El sistema NO sabe si el cliente tiene
+//   trabajadores, paga honorarios o arrienda: la ficha de cartera no captura "obligaciones" (hueco declarado), así que estas filas
+//   se generan con una nota "aplica si ..." igual que la de Nómina, y el contador marca como completada o ignora la que no aplique.
 // Ningún plazo se desplaza por el sexto dígito del RFC: no se modela (riesgo declarado, ver PR).
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type TipoVencimientoFiscal = "ISR" | "IVA" | "DIOT" | "Nómina" | "Balanza" | "Anual";
+export type TipoVencimientoFiscal = "ISR" | "IVA" | "DIOT" | "Nómina" | "Balanza" | "Anual" | "Retenciones" | "IMSS" | "IMSS-bimestral" | "ISN" | "Informativa";
 
 /** Cobertura verificada de la tabla de feriados (ver `feriadosDelAnio`). Fuera de estos años la regla de la LFT
  * se sigue aplicando pero el resultado se marca por validar. */
@@ -118,6 +124,21 @@ export function infoDiaInhabil(fecha: string): InfoDiaInhabil {
   const feriado = feriadosDelAnio(parseIso(fecha).y).find((f) => f.fecha === fecha);
   if (feriado) return { inhabil: true, motivo: feriado.nombre, porValidar: feriado.porValidar };
   return { inhabil: false, motivo: null, porValidar: false };
+}
+
+/** Días HÁBILES entre `hoy` y `fechaLimite` (ambas YYYY-MM-DD): cuenta los días hábiles posteriores a `hoy` hasta la fecha límite
+ * inclusive (art. 12 CFF). 0 = vence hoy; -1 = ya venció. Usa el mismo calendario fiscal que las fechas límite (feriados por regla de la
+ * LFT y Jueves/Viernes Santo por validar), de modo que "faltan 3 días hábiles" coincide con lo que ve el contador en el calendario. */
+export function diasHabilesHasta(hoy: string, fechaLimite: string): number {
+  if (fechaLimite < hoy) return -1;
+  let n = 0;
+  let d = hoy;
+  // Tope defensivo (fechas límite absurdamente lejanas): 5 años.
+  for (let i = 0; i < 1830 && d < fechaLimite; i += 1) {
+    d = sumarDias(d, 1);
+    if (!infoDiaInhabil(d).inhabil) n += 1;
+  }
+  return n;
 }
 
 /** Periodos en los que el SAT suele declarar días inhábiles por vacaciones (segunda quincena de julio y de
@@ -266,6 +287,38 @@ export function calcularCalendarioFiscal(year: number, month: number, opciones: 
     out.push(armar("Nómina", periodo, d17, `Retenciones de ISR de nómina y asimilados - ${mm}/${year}`, "LISR art. 96 y 106; art. 12 CFF", false, "Aplica si el contribuyente tiene trabajadores o paga asimilados."));
   }
 
+  if (mensuales) {
+    const d17 = iso(siguiente.y, siguiente.m, 17);
+    out.push(
+      armar("Retenciones", periodo, d17, `Retenciones de ISR/IVA por honorarios y arrendamiento - ${mm}/${year}`, "LISR art. 106, 116 y 126; LIVA art. 1-A y 5-D; art. 12 CFF", false, "Aplica si el contribuyente pagó honorarios o arrendamiento a personas físicas o recibió servicios sujetos a retención de IVA."),
+    );
+    out.push(armar("IMSS", periodo, d17, `Cuotas obrero-patronales del IMSS - ${mm}/${year}`, "LSS art. 39 C (a más tardar el día 17 del mes siguiente); art. 12 CFF", false, "Aplica si el contribuyente tiene trabajadores registrados en el IMSS."));
+    if (month % 2 === 0) {
+      out.push(
+        armar(
+          "IMSS-bimestral",
+          periodo,
+          d17,
+          `Cuotas bimestrales del IMSS (RCV) y aportaciones Infonavit - bimestre que cierra en ${mm}/${year}`,
+          "LSS art. 39 C y LINFONAVIT art. 29 (día 17 del mes siguiente al bimestre); art. 12 CFF",
+          false,
+          "Aplica si el contribuyente tiene trabajadores registrados en el IMSS.",
+        ),
+      );
+    }
+    out.push(
+      armar(
+        "ISN",
+        periodo,
+        d17,
+        `Impuesto sobre nómina estatal - ${mm}/${year}`,
+        "Ley de Hacienda de la entidad federativa (varía por estado); art. 12 CFF",
+        true,
+        "El plazo y la tasa dependen de la entidad federativa del contribuyente; el sistema asume el día 17 del mes siguiente: valida con el fiscalista. Aplica si paga nómina.",
+      ),
+    );
+  }
+
   const llevaBalanza = persona === "moral" && regimenFiscal !== "603" ? true : regimenFiscal === "612";
   if (llevaBalanza) {
     const dia = persona === "moral" ? 3 : 5;
@@ -278,6 +331,21 @@ export function calcularCalendarioFiscal(year: number, month: number, opciones: 
         `RMF regla 2.8.1.6 (día ${dia} del segundo mes siguiente); art. 12 CFF`,
         true,
         persona === "fisica" ? "Aplica a persona física solo si sus ingresos del ejercicio anterior fueron de 4 millones de pesos o más: validar." : null,
+      ),
+    );
+  }
+
+  // La informativa anual de retenciones se genera con el periodo de diciembre (cierre del ejercicio) y vence el 15 de febrero.
+  if (month === 12 && mensuales) {
+    out.push(
+      armar(
+        "Informativa",
+        periodo,
+        iso(year + 1, 2, 15),
+        `Declaración informativa anual de retenciones - ejercicio ${year}`,
+        "LISR art. 76 fracción X y art. 99 fracción VII (15 de febrero); art. 12 CFF",
+        true,
+        "Aplica si el contribuyente pagó sueldos, honorarios o arrendamiento con retención durante el ejercicio: valida el plazo con el fiscalista.",
       ),
     );
   }
@@ -300,16 +368,24 @@ const FUNDAMENTO_POR_TIPO: Record<TipoVencimientoFiscal, string> = {
   Nómina: "LISR art. 96 y 106; art. 12 CFF",
   Balanza: "RMF regla 2.8.1.6 (día 3 PM / día 5 PF del segundo mes siguiente); art. 12 CFF",
   Anual: "LISR art. 76 fracción IX (PM, 31 de marzo) / art. 150 (PF, 30 de abril); art. 12 CFF",
+  Retenciones: "LISR art. 106, 116 y 126; LIVA art. 1-A y 5-D; art. 12 CFF",
+  IMSS: "LSS art. 39 C (a más tardar el día 17 del mes siguiente); art. 12 CFF",
+  "IMSS-bimestral": "LSS art. 39 C y LINFONAVIT art. 29 (día 17 del mes siguiente al bimestre); art. 12 CFF",
+  ISN: "Ley de Hacienda de la entidad federativa (varía por estado); art. 12 CFF",
+  Informativa: "LISR art. 76 fracción X y art. 99 fracción VII (15 de febrero); art. 12 CFF",
 };
 
+/** Tipos cuyo plazo (o su existencia) depende de una fuente que un fiscalista debe confirmar, sin importar la fecha. */
+const TIPOS_POR_VALIDAR: ReadonlySet<TipoVencimientoFiscal> = new Set<TipoVencimientoFiscal>(["DIOT", "Balanza", "ISN", "Informativa"]);
+
 /** Fundamento y bandera de validación de un vencimiento YA persistido, derivados solo de su tipo y fecha límite
- * (la tabla no guarda el régimen). `validarConFiscalista` es true para DIOT y balanza (plazo por validar), para
+ * (la tabla no guarda el régimen). `validarConFiscalista` es true para DIOT, balanza, ISN e informativa (plazo por validar), para
  * fechas en ventana vacacional del SAT y para años fuera de la cobertura verificada. */
 export function metadatosVencimiento(tipo: TipoVencimientoFiscal, fechaLimite: string): { readonly fundamento: string; readonly validarConFiscalista: boolean } {
   const anio = parseIso(fechaLimite).y;
   return {
     fundamento: FUNDAMENTO_POR_TIPO[tipo],
-    validarConFiscalista: tipo === "DIOT" || tipo === "Balanza" || enVentanaVacacionalSat(fechaLimite) || !ANIOS_CALENDARIO_VERIFICADOS.includes(anio),
+    validarConFiscalista: TIPOS_POR_VALIDAR.has(tipo) || enVentanaVacacionalSat(fechaLimite) || !ANIOS_CALENDARIO_VERIFICADOS.includes(anio),
   };
 }
 

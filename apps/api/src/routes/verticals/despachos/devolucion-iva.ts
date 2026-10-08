@@ -231,7 +231,7 @@ export function despachosDevolucionIvaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         cuentaBanco: typeof raw.cuentaBanco === "string" ? raw.cuentaBanco : null,
         clabe: typeof raw.clabe === "string" ? raw.clabe : null,
         documentos: Array.isArray(raw.documentos) ? (raw.documentos as string[]) : [],
-        tenantId: typeof raw.tenantId === "string" ? raw.tenantId : null,
+        tenantId: c.req.param("propertyId"), // D-P3-50: del cuerpo se ignora; el tenant es la property de la ruta
         facturas: parseFacturas(raw.facturas),
         diotEntries: parseDiotEntries(raw.diotEntries),
         declaraciones: parseDeclaraciones(raw.declaraciones),
@@ -273,7 +273,7 @@ export function despachosDevolucionIvaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const diotEntries = raw.diotEntries !== undefined ? parseDiotEntries(raw.diotEntries) : generarDiotDevolucionIva(recopilarFacturas(facturas, periodo));
     const declaraciones = parseDeclaraciones(raw.declaraciones);
     const papel = generarPapelTrabajo(periodo, facturas, diotEntries, declaraciones, {
-      tenantId: typeof raw.tenantId === "string" ? raw.tenantId : null,
+      tenantId: c.req.param("propertyId"), // D-P3-50: del cuerpo se ignora; el tenant es la property de la ruta
       documentosSoporte: Array.isArray(raw.documentosSoporte) ? (raw.documentosSoporte as string[]) : [],
     });
     return c.json(papel);

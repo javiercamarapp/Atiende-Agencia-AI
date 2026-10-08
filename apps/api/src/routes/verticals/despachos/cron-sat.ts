@@ -4,8 +4,9 @@
 //                                                             los mas antiguos primero, con tope por corrida.
 //  /internal/despachos/efos-69b/descarga          mensual  -- baja la lista 69-B (CSV publico), la ingiere (idempotente por SHA-256 y
 //                                                             periodo) y alerta los CFDI ya ingeridos que toca la edicion nueva.
-//  /internal/despachos/vencimientos-barrido       diario   -- genera las obligaciones del periodo en curso por cliente con ficha y
-//                                                             escala las que vencen hoy/manana o ya vencieron.
+//  /internal/despachos/vencimientos-barrido       diario   -- genera las obligaciones del periodo en curso (y rellena el anterior si no
+//                                                             corrio) por cliente con ficha y escala/avisa las que vencen en 7, 3 o 1 dia(s)
+//                                                             habil(es), hoy o ya vencieron, con aviso in-app y correo (D-P3-33).
 //
 // Cada unidad de trabajo (un CFDI, un cliente, un grupo de alertas) corre en su PROPIA transaccion de sistema: un error SQL real en
 // una unidad no aborta ni revierte las demas. Compatibles con la base sin migrar: sin la migracion 022 responden `no_disponible`
@@ -85,8 +86,11 @@ export function despachosCronSatRoutes(deps: AppDeps): Hono {
         status: r.estado,
         clientes: r.clientes,
         creados: r.creados,
+        rellenados: r.rellenados,
+        omitidos: r.omitidos,
         escalados: r.escalados,
         ya_escalados: r.yaEscalados,
+        correos_encolados: r.correosEncolados,
         failures: r.fallidos.map((f) => ({ property_id: f.propertyId, error: f.error })),
       };
       const response = c.json(body, 200);

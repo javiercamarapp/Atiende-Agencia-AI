@@ -207,7 +207,7 @@ export async function reporteAPdf(reporte: ReportePdf): Promise<Uint8Array> {
   e.texto(reporte.titulo, { size: 16, font: negrita });
   e.espacio(2);
   e.texto(`Contribuyente: ${reporte.contribuyente.nombre}`, { size: 10 });
-  e.texto(`RFC: ${reporte.contribuyente.rfc ?? "sin datos (sin CFDI ingeridos)"}`, { size: 10 });
+  e.texto(`RFC: ${reporte.contribuyente.rfc ?? "sin datos (sin ficha de cartera)"}`, { size: 10 });
   e.texto(`${reporte.etiquetaPeriodo ?? `Período: ${reporte.periodo}`}    Generado el: ${reporte.generadoEn}`, { size: 10, color: COLOR_MUTED });
   if (reporte.sinDatos) {
     e.espacio(4);
