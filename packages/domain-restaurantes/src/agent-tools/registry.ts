@@ -584,6 +584,22 @@ async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolC
   }
 }
 
+
+/**
+ * H17 en el SERVIDOR (QA-PM-R3-reglas-05): un chat de WhatsApp que entra por el numero de una sucursal no toma pedidos PARA RECOGER en otra (hasta hoy solo lo
+ * pedia el prompt: R76 creaba 3 tacos en Pensiones desde el chat de Garcia Lavin). Se rechaza con el telefono de la sucursal que le toca. El domicilio no se
+ * limita aqui: la sucursal la decide la zona (`buscar_sucursal_cercana`). Sin sucursal de entrada (numero unico, vista previa del dueno) no hay nada que comparar.
+ */
+async function assertRecogerEnSucursalDeEntrada(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, canal: unknown): Promise<void> {
+  if (ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
+  const branch = await repo.findBranch(ctx.organizationId, { slug: branchSlug });
+  if (!branch || branch.propertyId === ctx.entryPropertyId) return;
+  const propia = (await repo.listBranchesForOrganization(ctx.organizationId)).find((b) => b.propertyId === ctx.entryPropertyId);
+  throw new OrderValidationError(
+    `Este chat es de ${propia?.name ?? "otra sucursal"}: el pedido para recoger en ${branch.name} no se toma aquí (H17). Dele al cliente el teléfono de ${branch.name}${branch.phone ? ` (${branch.phone})` : ""} y dígale con calidez que ahí lo atienden; si prefiere, ofrezca recoger en ${propia?.name ?? "la sucursal de este chat"}.`,
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Ejecutor unico
 // ─────────────────────────────────────────────────────────────────────────
@@ -1097,6 +1113,7 @@ async function dispatchTool(
     case "cotizar_pedido": {
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
+      await assertRecogerEnSucursalDeEntrada(repo, ctx, branchSlug, input.canal);
       if (ctx.channel === "web") assertCantidadesWeb(toRequestedItems(input.items, lenient).map((i) => i.requestedQuantity));
       const quote = await quoteOrder(repo, {
         organizationId,
@@ -1140,6 +1157,7 @@ async function dispatchTool(
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
       if (createInput.branchSlug || createInput.branchName) {
         await assertBranchAllowed(repo, ctx, createInput.branchSlug ?? "", createInput.branchName);
+        if (createInput.branchSlug) await assertRecogerEnSucursalDeEntrada(repo, ctx, createInput.branchSlug, createInput.canal);
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
       }
