@@ -80,6 +80,7 @@ export function sinAcentos(texto: string): string {
 /** Pesos que se venden por fraccion de kilo (chats reales de T7, 2-oct-2026): gramos canonicos de cada frase. El orden importa:
  * lo mas especifico primero ("kilo y medio" antes que "medio"; "1/4 de bistec" sin unidad es un cuarto de kilo, pero "1/2" sin
  * unidad NO es peso porque tambien es la "media orden"). */
+const NUMERO_DE_PESO = "\\d+|un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez";
 const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
   // "kilo y cuarto" (1250 g) no es una presentacion del menu: se buscan todos los pesos y el agente arma el total (igual que "3 kilos").
   [/\bkilo\s+y\s+cuarto\b/g, 0],
@@ -91,8 +92,10 @@ const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
   [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
   // "3 kilos", "5 kg": no hay producto de ese peso (se venden 1/4 a 2 kg): el numero no es un peso exacto; se buscan todos los pesos del producto (`peso:cualquiera`) y el agente
   // arma el total con renglones de 2 kg y de 1 kg (nunca 3 piezas del de 1 kg). Va ANTES del patron generico de "kilo".
-  [/(?<![\d./])(?:[3-9]|[1-9]\d)\s*(?:kg|kilos?)\b/g, 0],
+  [/(?<![\d./,])(?:[3-9]|[1-9]\d)\s*(?:kg|kilos?)\b/g, 0],
   [/(?<![\d./])(\d{2,4})\s*(?:grs?|g|gramos)\b/g, -1],
+  // "2.5 kg", "3,5 kilos": un decimal que no es 1/4, 1/2, 3/4 ni 1.5 tampoco es una presentacion; antes se leia como "5 kg"/"kg" (1 kg) y entregaba menos.
+  [/(?<![\d.])\d+[.,]\d+\s*(?:kg|kilos?)\b/g, 0],
   [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
 ];
 
@@ -108,7 +111,15 @@ function normalizarUnidadesDeKilo(texto: string): string {
 /** Convierte las frases de peso de una consulta en tokens `peso:<gramos>` (uno por frase). Lo que no es peso queda igual. */
 export function normalizarPesosEnConsulta(textoSinAcentos: string): string {
   // Fracciones Unicode (el teclado del celular las escribe): "½ kilo" = 1/2 kilo; "1½ kg" = 1.5 kg.
-  let texto = textoSinAcentos.replace(/1\s*½/g, "1.5").replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4");
+  let texto = textoSinAcentos.replace(/(\d)\s*½/g, "$1 y 1/2").replace(/½/g, "1/2").replace(/¼/g, "1/4").replace(/¾/g, "3/4");
+  // "N y medio kilos" / "N kg y medio" / "N ½ kg": solo N = 1 es 1.5 kg. Con N >= 2 (2.5, 3.5 kg...) no hay presentacion de ese peso: se buscan todas y el agente arma el total
+  // (devolver 1.5 kg como unica coincidencia entregaria MENOS de lo pedido sin aviso).
+  const pesoMixto = (_m: string, n: string) => (/^(?:1|un|uno)$/.test(n) ? " peso:1500 " : " peso:cualquiera ");
+  texto = texto
+    .replace(new RegExp(`(?<![\\d./\\w])(${NUMERO_DE_PESO})\\s*(?:kg|kilos?)\\s+y\\s+(?:medio|1\\s*/\\s*2)\\b`, "g"), pesoMixto)
+    .replace(new RegExp(`(?<![\\d./\\w])(${NUMERO_DE_PESO})\\s*(?:y\\s+)?(?:medios?|1\\s*/\\s*2)\\s*(?:kg|kilos?)\\b`, "g"), pesoMixto)
+    // "cuatro cuartos" (= 1 kg) y mayores: sin presentacion de ese peso exacto, ambiguo.
+    .replace(/\b(?:cuatro|cinco|seis|siete|ocho)\s+cuartos(?:\s+de\s+(?:kilo|kg)s?)?\b/g, " peso:cualquiera ");
   for (const [patron, gramos] of FRASES_DE_PESO) {
     texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === 0 ? "cualquiera" : gramos === -1 ? String(args[1]) : gramos} `);
   }

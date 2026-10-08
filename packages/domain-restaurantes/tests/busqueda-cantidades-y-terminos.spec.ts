@@ -300,3 +300,31 @@ describe("revision de #505: orden, fracciones Unicode y descripcion de la herram
     }
   });
 });
+
+describe("revision 2 de #505: 'N y medio' con N >= 2 nunca entrega 1.5 kg (ni otra presentacion menor) como unica coincidencia", () => {
+  const TODOS = [...TODOS_LOS_PASTOR].sort();
+  it.each([
+    "2 kg y medio de pastor", "3 kg y medio de pastor", "4 kg y medio de pastor", "5 kg y medio de pastor", "10 kg y medio de pastor", "dos kg y medio de pastor", "tres kg y medio de pastor",
+    "dos kilos y medio de pastor", "2 kilos y medio de pastor", "2½ kilos de pastor", "2 ½ kg de pastor", "2 y medio kilos de pastor", "2 y ½ kilos de pastor", "3 y medio kilos de pastor",
+    "2.5 kg de pastor", "3,5 kilos de pastor", "cuatro cuartos de pastor", "cinco cuartos de pastor",
+  ])("%s -> todas las presentaciones, ambiguo", async (q) => {
+    const r = await buscarCompleto(q);
+    expect(r.map((p) => p.name).sort(), q).toEqual(TODOS);
+    expect(r.every((p) => p.ambiguo === true), q).toBe(true);
+  });
+
+  it.each([
+    "1 kg y medio de pastor", "un kilo y medio de pastor", "kilo y medio de pastor", "1 y medio kilos de pastor", "1 y ½ kilos de pastor", "1½ kg de pastor", "1 1/2 kg de pastor", "1.5 kg de pastor",
+  ])("%s -> Pastor 1.5 kg, sin ambiguo", async (q) => {
+    const r = await buscarCompleto(q);
+    expect(r.map((p) => [p.name, p.ambiguo === true])).toEqual([["Pastor — 1.5 kg", false]]);
+  });
+
+  it("lo mismo con bistec y arrachera: nunca 1.5 kg para '2 kg y medio'", async () => {
+    for (const platillo of ["bistec", "arrachera", "bistec encebollado"]) {
+      const r = await buscarCompleto(`2 kg y medio de ${platillo}`);
+      expect(r.length, platillo).toBeGreaterThan(0);
+      expect(r.every((p) => p.ambiguo === true), platillo).toBe(true);
+    }
+  });
+});
