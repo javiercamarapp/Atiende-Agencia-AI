@@ -229,7 +229,7 @@ const ITEM_SCHEMA = {
 
 const DOBLE_SALSAS_SCHEMA = {
   type: "array",
-  description: "Salsas de las que el cliente quiere DOBLE porción. Las 9 salsas ya van incluidas sin costo; la doble porción es un extra cobrado.",
+  description: "Salsas de las que el cliente quiere DOBLE porción. Las 9 salsas ya van incluidas sin costo; la doble porción es un extra cobrado. \"Guacamole extra\" / \"extra guacamole\" NO es la doble salsa guacamolera: es el producto Extra Guacamole (buscar_producto).",
   items: { type: "string", enum: [...DEFAULT_COMPLEMENTS] },
 } as const;
 
@@ -621,10 +621,32 @@ function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["i
   });
 }
 
+
+/**
+ * QA-PM-R3-reglas-09: dos datos invalidos se descartaban EN SILENCIO y el pedido se creaba igual (la comanda salia sin la salsa que el cliente habia pedido, o sin la
+ * propina que dijo): un complemento que no es de la lista cerrada ("chimichurri") y una propina que no es un monto ("veinte"). Para los agentes se rechazan con un
+ * mensaje accionable en vez de crear un pedido distinto al que el cliente acepto. El relleno de siempre (propina 0 o vacia, lista vacia) sigue siendo "sin dato".
+ */
+function assertEntradasReconocidas(input: Record<string, unknown>): void {
+  if (Array.isArray(input.requested_complements)) {
+    const desconocidos = input.requested_complements.filter((c) => typeof c === "string" && c.trim() !== "" && canonicalRequestedComplement(c) === null);
+    if (desconocidos.length > 0) {
+      throw new OrderValidationError(
+        `No manejamos ${desconocidos.map((c) => `"${String(c)}"`).join(", ")} como complemento. Los que sí se piden son: ${COMPLEMENTOS_PEDIBLES.join(", ")}. Dígale al cliente que ese no lo manejamos y ofrezca uno de la lista; no lo anote ni lo dé por registrado.`,
+      );
+    }
+  }
+  const propina = input.propina;
+  if (propina !== undefined && propina !== null && propina !== "" && (typeof propina !== "number" || !Number.isFinite(propina))) {
+    throw new OrderValidationError("La propina debe ser un monto numérico en pesos (por ejemplo 20). Pregúntele al cliente cuánto desea dejar y vuelva a mandarla como número.");
+  }
+}
+
 /** Convierte los argumentos de `crear_pedido` en el input de dominio. El telefono viene del CONTEXTO
  * siempre que el canal lo conoce (WhatsApp: remitente; voz: token de llamada). */
 export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<string, unknown>, lenient: boolean): CreateOrderInput {
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  if (ctx.channel !== "web") assertEntradasReconocidas(input);
   const base: CreateOrderInput = {
     organizationId: ctx.organizationId,
     branchSlug: lenient ? String(input.branch_slug ?? "") : str(input.branch_slug),
@@ -746,6 +768,9 @@ const CONFLICT_MESSAGE = "La conversación se está procesando en otro lugar; vu
 /** Texto que acompana a una re-cotizacion identica de una cotizacion que el cliente ya vio (ver `runWithOrderFlow`). */
 const SIGUIENTE_PASO_COTIZACION_REPETIDA =
   "Esta cotización es idéntica a la de un mensaje anterior. Si el último mensaje del cliente es un sí claro (o el botón de confirmar) a un resumen que usted ya le mostró completo, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN repetir el resumen. Si todavía no le ha mostrado el resumen completo o el cliente cambió algo, atiéndalo normalmente.";
+
+const AVISO_DOBLE_GUACAMOLERA =
+  "Ojo: doble_salsas lleva salsa_guacamolera (la doble porción de la SALSA, un extra de pocos pesos). Si el cliente pidió GUACAMOLE extra (para ponerle a los tacos), eso es el producto Extra Guacamole: búsquelo con buscar_producto, agréguelo como renglón, quite salsa_guacamolera de doble_salsas y vuelva a cotizar antes de decir el total. Si pidió doble de la salsa guacamolera, deje la cotización tal cual.";
 
 const YA_REGISTRADO_AVISO =
   "Este pedido YA QUEDÓ REGISTRADO hace un momento: no es uno nuevo. No lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido. Dígale al cliente, de usted y sin dudar, que su pedido ya está registrado (con el total y la hora que ya le dio). Solo si el cliente pide EXPRESAMENTE otro pedido igual, vuelva a llamar cotizar_pedido con otro_pedido: true.";
@@ -1132,7 +1157,10 @@ async function dispatchTool(
       }).catch((err: unknown) => {
         throw err instanceof RestaurantesConfigUnavailableError ? new OrderValidationError(PROGRAMADOS_NO_DISPONIBLES) : err;
       });
-      return { result: { quote: quoteToWire(quote) }, raw: quote, orderId: null, propertyId: null };
+      // QA-PM-R3-voz-03: "guacamole extra" se cobraba como la doble salsa guacamolera ($19) y no como Extra Guacamole ($49). El servidor no puede saber que dijo el
+      // cliente, pero si el modelo uso la doble salsa guacamolera se lo hace revisar antes de decir el total.
+      const dobleGuacamole = (toDoubleSalsas(input.doble_salsas) ?? []).includes("salsa_guacamolera");
+      return { result: { quote: quoteToWire(quote), ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}) }, raw: quote, orderId: null, propertyId: null };
     }
     case "confirmar_resumen": {
       // Sin maquina de estados activa (camino legado): no hay nada que registrar.
