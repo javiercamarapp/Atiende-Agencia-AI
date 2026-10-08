@@ -42,7 +42,8 @@ export function filtroDeParams(sp: URLSearchParams): FiltroPedidosDetalle {
   }
   for (const k of CLAVES_ENTERO) {
     const v = sp.get(k);
-    if (v !== null && /^\d{1,2}$/.test(v)) out[k] = Number(v);
+    // Mismos límites que el API: hora 0..23, día de negocio 1..7 (lo demás se ignora en vez de mandarlo y recibir un 422).
+    if (v !== null && /^\d{1,2}$/.test(v) && Number(v) >= (k === "dow_negocio" ? 1 : 0) && Number(v) <= (k === "dow_negocio" ? 7 : 23)) out[k] = Number(v);
   }
   return out as FiltroPedidosDetalle;
 }

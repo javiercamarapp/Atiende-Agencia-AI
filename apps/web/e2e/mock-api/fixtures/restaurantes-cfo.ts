@@ -7,6 +7,8 @@
 // todas, solo Prolongación Montejo (T1), solo Pensiones (T3, que NO captura nómina a propósito), solo Galerías (T4) y T1 + Francisco de Montejo (T2). Cualquier otra combinación
 // responde 404 honesto (`mock_sin_fixture_cfo`). La exportación (CFO-06) no existe aquí: responde 404 y el botón de la SPA se oculta.
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { EstadoEscenario, Peticion, Ruta } from "../tipos.ts";
 import { fallo } from "../respuestas.ts";
 
@@ -44,7 +46,7 @@ interface PedidoMock {
 
 let cache: Datos | null = null;
 function datos(): Datos {
-  cache ??= JSON.parse(readFileSync(new URL("./restaurantes-cfo.datos.json", import.meta.url), "utf8")) as Datos;
+  cache ??= JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "restaurantes-cfo.datos.json"), "utf8")) as Datos;
   return cache;
 }
 

@@ -247,7 +247,7 @@ function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: 
       <AvisosCfo vista={d} />
       {total && total.incompleto.length > 0 && (
         <Callout tone="warning" titulo="EBITDA incompleto" data-testid="pyl-incompleto">
-          Faltan {lista(total.incompleto)}. Mientras tanto se muestra el margen de contribución (parcial); no se inventa ningún monto.
+          Faltan {lista(total.incompleto)}. Mientras tanto se muestra el margen de contribución, que no depende de esas líneas; no se inventa ningún monto.
         </Callout>
       )}
       {total && total.notas.length > 0 && (

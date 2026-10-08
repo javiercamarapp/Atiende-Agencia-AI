@@ -137,6 +137,7 @@ function CascadaCard({ d, abrir }: { readonly d: VentasVista; readonly abrir: (f
           ))}
         </p>
       )}
+      {pasos.some((p) => p.valor !== null) && (
       <TablaDatosGrafica
         titulo="Cascada de ventas"
         encabezados={["Concepto", "Monto", "Confianza"]}
@@ -149,6 +150,7 @@ function CascadaCard({ d, abrir }: { readonly d: VentasVista; readonly abrir: (f
           ["Ventas netas sin IVA", pesosExactos(c.netaSinIvaCentavos.valor), c.netaSinIvaCentavos.confianza],
         ]}
       />
+      )}
     </ChartCard>
   );
 }

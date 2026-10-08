@@ -59,7 +59,9 @@ async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, 
       ...(init.method === "GET" ? {} : { body: JSON.stringify(init.body ?? {}) }),
     }),
   );
-  if (res.status === 403) throw new CfoSinAccesoError();
+  // Una LECTURA con 403 = el rol no puede ver el CFO. Una ESCRITURA con 403 = el rol lo ve pero no puede capturar eso (p. ej. costos de la organización
+  // siendo un admin acotado): el mensaje del servidor explica por qué y se muestra tal cual en el diálogo.
+  if (res.status === 403 && init.method === "GET") throw new CfoSinAccesoError();
   if (res.status === 404 || res.status === 503) throw new VozNoDisponibleError(res.status);
   if (!res.ok) {
     const fallback = `No se pudo completar la solicitud al CFO (${res.status}).`;
