@@ -779,6 +779,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                   branches,
                 ),
                 orderId,
+                [...messages].reverse().find((m) => m.role === "user")?.content,
               );
           // Honestidad (QA-PM-R2-whatsapp-04): "ya avise al gerente" solo si el aviso existe. Sin llamada a escalar_a_humano/registrar_contacto en este turno
           // (ni una promesa anterior ya respaldada), el servidor deja el aviso de verdad; si no puede, quita la frase en vez de mentir.

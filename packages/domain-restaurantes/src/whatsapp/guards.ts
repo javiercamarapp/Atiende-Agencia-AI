@@ -120,7 +120,26 @@ export function afirmaHaberAvisado(reply: string): boolean {
   const inmediata = new RegExp(`\\b(?:permitame|permitanme|dejeme)\\s+avisar(?:le|les)?\\s+(?:a|al|a\\s+la)\\s+(?:\\w+\\s+){0,2}(?:gerente|equipo|encargad[oa])\\b(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)`);
   const registrado = /\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\b(?:ya\s+)?quedo\s+avisad[oa]\b/;
   const notifique = /\bnotific(?:ue|amos)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/;
-  return pasado.test(t) || inmediata.test(t) || registrado.test(t) || notifique.test(t);
+  // T7-060 (ronda 5): «Permítame verificarlo con una persona de la sucursal» (o «lo consulto con el gerente») es la promesa de que una persona lo revisa. Sin escalar_a_humano no hay nadie a
+  // quien le llegue: el agente dijo que consultaria y no habia aviso. Cuenta la promesa inmediata («permitame verificarlo con...») y la primera persona («lo verifico / voy a consultarlo con...»).
+  // Se mira frase por frase: no cuentan la pregunta, la negacion, el condicional («si quiere, lo consulto con el gerente») ni el subjuntivo («para que lo verifique»).
+  return pasado.test(t) || inmediata.test(t) || registrado.test(t) || notifique.test(t) || reply.split(/(?<=[.!?])\s+/).some(prometeConsultarConUnaPersona);
+}
+
+const PERSONA_A_CONSULTAR = "(?:una\\s+persona|un\\s+asesor|alguien|el\\s+gerente|la\\s+gerente|el\\s+equipo|la\\s+sucursal|el\\s+encargad[oa]|la\\s+encargada)";
+const VERBO_DE_CONSULTA = "(?:verificar|consultar|confirmar|checar|revisar)";
+const PROMESA_DE_CONSULTA = new RegExp(
+  `\\b(?:permitame|permitanme|dejeme)\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}|\\b(?:l[oae]s?\\s+)?(?:verifico|consulto|confirmo|checo|reviso)\\s+(?:l[oae]s?\\s+)?con\\s+${PERSONA_A_CONSULTAR}|\\bvoy\\s+a\\s+${VERBO_DE_CONSULTA}(?:l[oae]s?)?\\s+con\\s+${PERSONA_A_CONSULTAR}`,
+);
+function prometeConsultarConUnaPersona(frase: string): boolean {
+  if (/[?¿]/.test(frase)) return false;
+  // «Ayer lo consultó con el gerente» (3.a persona, pasado): sin el acento se confundiria con «consulto». Es historial, no una promesa.
+  if (/\b(?:consult|verific|confirm|revis|chec)ó(?![a-záéíóúñ])/i.test(frase)) return false;
+  const t = normalizarParaClasificar(frase);
+  const m = PROMESA_DE_CONSULTA.exec(t);
+  if (!m) return false;
+  // Solo importa lo que va ANTES de la promesa ("si quiere, lo consulto...", "no puedo; para que lo verifique..."): lo que sigue ("..., ya que no puedo confirmar el precio") es su motivo.
+  return !/\b(?:no|ni|nunca|jamas|si|cuando|podria|puedo|puede|podemos|para\s+que|en\s+caso|quiza|tal\s+vez)\b/.test(t.slice(0, m.index));
 }
 
 /** Frase que ofrece algo "de cortesia" como parte del pedido (afirmacion), no una explicacion de la regla de la promocion ("solo para recoger", "los martes", "si pide...", "no hay aguas de cortesia"). */
@@ -256,9 +275,31 @@ export function pendingQuestionForMissingData(branchKnown: boolean, orderId: str
   return "¿Qué le gustaría pedir, o hay algo más en lo que le pueda ayudar?";
 }
 
-export function enforcePendingQuestion(reply: string, branchKnown: boolean, orderId: string | null): string {
+/**
+ * T7-010 / T7-013 (ronda 5): el cliente ya se despidio («solo queria confirmar el horario, gracias», "nada mas, gracias", "hasta luego") y el servidor le anexaba «¿Qué le gustaría pedir?»
+ * a CADA turno, en bucle (8 veces seguidas), como si no hubiera terminado. Pura: el mensaje es SOLO una despedida/agradecimiento de cierre. Cuenta un mensaje corto, sin pregunta ni cifras,
+ * hecho unicamente de palabras de cierre y con al menos una de ellas inequivoca (gracias, nada mas, hasta luego, adios, es todo...). No cuenta: un saludo ("buenas tardes"), un «si,
+ * gracias» / «claro, gracias» (acepta una oferta), ni un mensaje que ademas pide, pregunta o dice una cantidad ("gracias, quiero 3 tacos", "no gracias, y el total?").
+ */
+export function esDespedidaDelCliente(mensaje: string | undefined): boolean {
+  if (!mensaje) return false;
+  if (/[?¿\d]/.test(mensaje)) return false;
+  const t = normalizarParaClasificar(mensaje).replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (t === "" || t.split(" ").length > 12) return false;
+  // Acepta una oferta o responde una pregunta: no es el cierre de la conversacion.
+  if (/(?:^|[,.;!¡]\s*)(?:ah\s+)?s[ií](?![a-záéíóúñ])/i.test(mensaje.trim())) return false;
+  if (/\b(?:claro|dale|va|ok|okay|por\s+favor|porfa|quiero|quisiera|necesito|ponme|pon|agrega|agregame|manda|mandame|envia|tambien|ademas|pero|cuanto|cuando|donde|como)\b/.test(t)) return false;
+  const CIERRE = new Set(["gracias", "muchas", "muchisimas", "mil", "no", "nada", "mas", "es", "eso", "todo", "ya", "por", "ahora", "igualmente", "igual", "hasta", "luego", "pronto", "adios", "bye", "chao", "fin", "buen", "buena", "buenas", "buenos", "dia", "dias", "tarde", "tardes", "noche", "noches", "que", "tenga", "tengas", "excelente", "usted", "ustedes", "saludos", "nos", "vemos", "solo", "queria", "confirmar", "saber", "si", "verificar", "estaban", "estan", "abiertos", "horario", "el", "la", "de", "lo", "se", "les", "le", "a", "ah", "oh", "bueno", "pues", "muy", "amable", "su", "atencion", "perfecto", "listo", "entendido", "excelentes", "fue", "todo", "eso", "era", "seria", "hoy", "gusto"]);
+  const palabras = t.split(" ");
+  if (!palabras.every((w) => CIERRE.has(w))) return false;
+  return /\b(?:gracias|nada\s+mas|es\s+todo|eso\s+es\s+todo|hasta\s+luego|hasta\s+pronto|adios|bye|chao|nos\s+vemos|igualmente|fin)\b/.test(t);
+}
+
+export function enforcePendingQuestion(reply: string, branchKnown: boolean, orderId: string | null, ultimoMensajeDelCliente?: string): string {
   const trimmed = reply.trim();
   if (/[?¿]/.test(trimmed)) return reply;
+  // El cliente cerro la conversacion: no se le vuelve a preguntar que quiere pedir (T7-010/T7-013).
+  if (esDespedidaDelCliente(ultimoMensajeDelCliente)) return reply;
   const pending = pendingQuestionForMissingData(branchKnown, orderId);
   if (!pending) return reply;
   return trimmed ? `${trimmed} ${pending}` : pending;
