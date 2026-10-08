@@ -19,6 +19,7 @@ import {
   BOTONES_MAX,
   NOTA_TOQUE_CAMBIAR,
   NOTA_TOQUE_CONFIRMAR,
+  NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA,
   RESPUESTA_TOQUE_EN_PROCESO,
   RESPUESTA_TOQUE_OBSOLETO,
   RESPUESTA_TOQUE_RETENIDO,
@@ -118,6 +119,11 @@ describe("marcador del toque en el historial", () => {
     const confirmar = contenidoDeMensajeConToque("Confirmar pedido", id);
     expect(contenidoParaElModelo(cambiar, { esElUltimo: true, confirmarVigente: false })).toBe(`Cambiar algo\n${NOTA_TOQUE_CAMBIAR}`);
     expect(contenidoParaElModelo(confirmar, { esElUltimo: true, confirmarVigente: true })).toBe(`Confirmar pedido\n${NOTA_TOQUE_CONFIRMAR}`);
+    // con la confirmacion ya registrada por el servidor, la nota pide solo crear_pedido; sin vigencia o sin ser el ultimo, nunca hay nota
+    expect(contenidoParaElModelo(confirmar, { esElUltimo: true, confirmarVigente: true, confirmacionYaRegistrada: true })).toBe(`Confirmar pedido\n${NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA}`);
+    expect(contenidoParaElModelo(confirmar, { esElUltimo: true, confirmarVigente: false, confirmacionYaRegistrada: true })).toBe("Confirmar pedido");
+    expect(contenidoParaElModelo(confirmar, { esElUltimo: false, confirmarVigente: true, confirmacionYaRegistrada: true })).toBe("Confirmar pedido");
+    expect(contenidoParaElModelo(confirmar, { esElUltimo: true, confirmarVigente: true, confirmacionYaRegistrada: false })).toBe(`Confirmar pedido\n${NOTA_TOQUE_CONFIRMAR}`);
     expect(contenidoParaElModelo(confirmar, { esElUltimo: false, confirmarVigente: true })).toBe("Confirmar pedido");
     expect(contenidoParaElModelo(confirmar, { esElUltimo: true, confirmarVigente: false })).toBe("Confirmar pedido");
     expect(contenidoParaElModelo("hola", { esElUltimo: true, confirmarVigente: true })).toBe("hola");
@@ -326,7 +332,9 @@ describe("el toque «Confirmar pedido»", () => {
     expect(r.outcome.orderId).not.toBeNull();
     expect(await t.pedidos()).toHaveLength(1);
     const vistos = r.ultimaPeticion!.messages.map((m) => m.content).join("\n");
-    expect(vistos).toContain(NOTA_TOQUE_CONFIRMAR);
+    // El servidor ya ejecuto confirmar_resumen por el toque vigente (una vuelta menos del modelo): la nota lo dice y solo pide crear_pedido.
+    expect(vistos).toContain(NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA);
+    expect(vistos).not.toContain(NOTA_TOQUE_CONFIRMAR);
     expect(vistos).not.toContain("rp1:");
     expect(vistos).not.toContain("[boton:");
   });
@@ -532,6 +540,7 @@ describe("revision: rafagas con texto + toque, pedido retenido, saneo y notas ra
     const { t, confirmar } = await conResumen();
     const r = await rafaga(t, [{ body: "mejor 5 cocas" }, { body: confirmar.body, botonId: confirmar.botonId }], [texto("Entendido, 5 cocas; voy a cotizar de nuevo.")]);
     expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR);
+    expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA);
     expect(r.vistos).toContain("mejor 5 cocas");
     expect(await t.pedidos()).toHaveLength(0);
   });
@@ -539,17 +548,19 @@ describe("revision: rafagas con texto + toque, pedido retenido, saneo y notas ra
     const { t, confirmar } = await conResumen();
     const r = await rafaga(t, [{ body: confirmar.body, botonId: confirmar.botonId }, { body: "mejor 5 cocas" }], [texto("Claro, 5 cocas.")]);
     expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR);
+    expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA);
     expect(await t.pedidos()).toHaveLength(0);
   });
   it("toque + «si» escrito: no se inyecta la nota (el modelo lee ambos mensajes)", async () => {
     const { t, confirmar } = await conResumen();
     const r = await rafaga(t, [{ body: confirmar.body, botonId: confirmar.botonId }, { body: "si" }], [texto("Un momento.")]);
     expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR);
+    expect(r.vistos).not.toContain(NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA);
   });
   it("dos toques de confirmar en la misma rafaga: solo toques, el resumen es vigente y se inyecta una vez el si", async () => {
     const { t, confirmar } = await conResumen();
     const r = await rafaga(t, [{ body: confirmar.body, botonId: confirmar.botonId }, { body: confirmar.body, botonId: confirmar.botonId }], [llamada("k", "confirmar_resumen", {}), t.crear(), texto("Listo, su pedido ya quedó registrado.")]);
-    expect(r.vistos).toContain(NOTA_TOQUE_CONFIRMAR);
+    expect(r.vistos).toContain(NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA);
     expect(await t.pedidos()).toHaveLength(1);
   });
 

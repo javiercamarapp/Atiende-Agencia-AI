@@ -146,15 +146,18 @@ export function toqueDeMensaje(content: string): BotonResumen | null {
 
 /** Texto que lee el MODELO en lugar del marcador. Confirmar es un «si» explicito (solo si es el ultimo mensaje del cliente y el boton es vigente). */
 export const NOTA_TOQUE_CONFIRMAR = "[El cliente tocó el botón «Confirmar pedido» del resumen vigente: es un sí explícito a ese resumen. Llame confirmar_resumen y enseguida crear_pedido con los mismos datos del resumen, SIN repetirlo.]";
+/** Variante cuando el SERVIDOR ya ejecuto `confirmar_resumen` por el toque vigente (una vuelta menos del modelo): solo falta `crear_pedido`. */
+export const NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA = "[El cliente tocó el botón «Confirmar pedido» del resumen vigente: es un sí explícito a ese resumen y el sistema YA registró la confirmación (confirmar_resumen ya se ejecutó, no la llame otra vez). Llame crear_pedido con los mismos datos del resumen, SIN repetirlo.]";
 export const NOTA_TOQUE_CAMBIAR = "[El cliente tocó el botón «Cambiar algo» del resumen: no cree el pedido. Pregúntele qué desea cambiar y, con su respuesta, vuelva a cotizar y a mostrar el resumen.]";
 
 /** Contenido del mensaje tal como lo ve el modelo: sin ids; los toques se vuelven una nota. `esElUltimo` = es el ultimo mensaje del cliente. */
-export function contenidoParaElModelo(content: string, opciones: { readonly esElUltimo: boolean; readonly confirmarVigente: boolean }): string {
+export function contenidoParaElModelo(content: string, opciones: { readonly esElUltimo: boolean; readonly confirmarVigente: boolean; readonly confirmacionYaRegistrada?: boolean }): string {
   const toque = toqueDeMensaje(content);
   if (!toque) return content;
   const base = quitarMarcadoresDeToque(content);
   if (toque.accion === "cambiar") return `${base}\n${NOTA_TOQUE_CAMBIAR}`;
-  return opciones.esElUltimo && opciones.confirmarVigente ? `${base}\n${NOTA_TOQUE_CONFIRMAR}` : base;
+  if (!(opciones.esElUltimo && opciones.confirmarVigente)) return base;
+  return `${base}\n${opciones.confirmacionYaRegistrada === true ? NOTA_TOQUE_CONFIRMAR_YA_REGISTRADA : NOTA_TOQUE_CONFIRMAR}`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
