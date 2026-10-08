@@ -8,6 +8,7 @@ import {
   camposFaltantes,
   camposRepetidos,
   columnasPersonales,
+  nombresPersonales,
   pareceTelefono,
   valorPersonalEnMapeo,
   construirTablaSr,
@@ -131,10 +132,12 @@ describe("importación SR en el navegador", () => {
   });
 
   describe("defensa en profundidad: valores con forma de teléfono o correo en columnas mapeadas", () => {
-    it("un teléfono dentro de la columna mapeada a folio bloquea el envío", () => {
-      const filas = [["Referencia", "Fecha", "Total"], ["9991112222", "21/09/2026", "$10.00"]];
-      expect(valorPersonalEnMapeo(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).toEqual({ campo: "folio", renglon: 2 });
-      expect(() => construirTablaSr(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).toThrow(/parece un teléfono o un correo/);
+    it("un teléfono CON FORMATO dentro de la columna mapeada a folio bloquea el envío (y la persona puede confirmar que es un folio)", () => {
+      const filas = [["Referencia", "Fecha", "Total"], ["999 111 2222", "21/09/2026", "$10.00"]];
+      expect(valorPersonalEnMapeo(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).toEqual({ campo: "folio", renglon: 2, motivo: "telefono" });
+      expect(valorPersonalEnMapeo(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 }, { confirmarFolio: true })).toBeNull();
+      expect(() => construirTablaSr(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 }, { confirmarFolio: true })).not.toThrow();
+      expect(() => construirTablaSr(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).toThrow(/parece un teléfono/);
     });
     it("un correo o un teléfono con separadores o +52 en forma de pago o tipo de servicio también", () => {
       const f = (v: string) => [["Folio", "Fecha", "Tipo de servicio", "Total"], ["T2-1", "21/09/2026", v, "$10.00"]];
@@ -147,6 +150,69 @@ describe("importación SR en el navegador", () => {
       const filas = [["Folio", "Fecha", "Tipo de servicio", "Forma de pago", "Total"], ["0000012345", "21/09/2026", "A domicilio", "Tarjeta", "$1,234.50"], ["123456789", "22/09/2026", "Comedor", "Efectivo", "10000000"]];
       expect(valorPersonalEnMapeo(filas, 0, "cuentas", { folio: 0, fecha: 1, servicio: 2, forma_pago: 3, total: 4 })).toBeNull();
       expect(() => construirTablaSr(filas, 0, "cuentas", { folio: 0, fecha: 1, servicio: 2, forma_pago: 3, total: 4 })).not.toThrow();
+    });
+  });
+
+  describe("falsos positivos que NO deben bloquear una importación legítima", () => {
+    it("folios de 10 dígitos sin separadores (2026092101), de 12 con 52 y de 13 con 521, y «1234-567-890», se aceptan como folio", () => {
+      const filas = [["Folio", "Fecha", "Total"], ["2026092101", "21/09/2026", "$10.00"], ["2026092102", "21/09/2026", "$10.00"], ["520000000001", "21/09/2026", "$10.00"], ["5210000000001", "21/09/2026", "$10.00"], ["1234-567-890", "21/09/2026", "$10.00"]];
+      expect(valorPersonalEnMapeo(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).toBeNull();
+      expect(() => construirTablaSr(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).not.toThrow();
+      expect(pareceTelefono("1234-567-890")).toBe(false);
+    });
+
+    it("un título con R.F.C. y Dirección arriba del encabezado no marca columnas personales ni muestra esos valores", () => {
+      const filas = [["R.F.C.:", "XAXX010101000"], ["Dirección:", "Calle 60 #123 Centro"], ["Folio", "Fecha", "Total"], ["T2-1", "21/09/2026", "$10.00"]];
+      expect(columnasPersonales(filas, 2)).toEqual([]);
+      const t = construirTablaSr(filas, 2, "cuentas", { folio: 0, fecha: 1, total: 2 });
+      expect(t.excluidas).toEqual([]);
+      expect(JSON.stringify(t.tabla)).not.toMatch(/XAXX|Calle 60/);
+    });
+
+    it("los renglones de datos bajo el encabezado no excluyen columnas («Calle 60 #123» bajo Domicilio, «Crédito cliente» en forma de pago)", () => {
+      const filas = [["Folio", "Fecha", "Domicilio", "Forma de pago", "Total"], ["T2-1", "21/09/2026", "Calle 60 #123", "Crédito cliente", "$10.00"], ["T2-2", "22/09/2026", "Calle 61", "Efectivo", "$20.00"]];
+      expect(columnasPersonales(filas, 0)).toEqual([]);
+      expect(nombresPersonales(filas, 0).size).toBe(0);
+    });
+
+    it("el aviso de columnas excluidas nunca muestra un valor de datos: con dígitos usa solo la posición", () => {
+      const filas = [["Folio", "Fecha", "Total", "Teléfono"], ["T2-1", "21/09/2026", "$10.00", "9991112222"]];
+      expect([...nombresPersonales(filas, 0).values()]).toEqual(["Teléfono"]);
+      const raro = [["Folio", "Calle 60 #123", "Total"], ["T2-1", "x", "$10.00"]];
+      expect([...nombresPersonales(raro, 0).values()]).toEqual(["Columna 2"]);
+    });
+  });
+
+  describe("variantes residuales de PII", () => {
+    it("un encabezado de grupo de UNA celda fuera de la columna 1 (`,,,Teléfono`) sí cuenta", () => {
+      const filas = [["", "", "", "Teléfono"], ["Folio", "Fecha", "Total", "Número"], ["T2-1", "21/09/2026", "$10.00", "9991112222"]];
+      expect(columnasPersonales(filas, 1)).toEqual([3]);
+      const t = construirTablaSr(filas, 1, "cuentas", { folio: 0, fecha: 1, total: 2 });
+      expect(JSON.stringify(t.tabla)).not.toContain("9991112222");
+      // Y si alguien forzara «Número» a un campo, falla antes de armar nada.
+      expect(() => construirTablaSr(filas, 1, "cuentas", { folio: 0, fecha: 1, total: 3 })).toThrow(/datos personales/);
+    });
+
+    it("Telephone, Mobile, Cell, Cellphone, Client, Guest, Apellido(s), Contact, Phone1 y Surname son columnas personales", () => {
+      for (const h of ["Telephone", "Mobile", "Cell", "Cellphone", "Client", "Guest", "Apellido", "Apellidos", "Contact", "Phone1", "Surname"]) {
+        expect(columnasPersonales([["Folio", "Fecha", "Total", h]], 0), h).toEqual([3]);
+      }
+    });
+
+    it("un teléfono mapeado a un campo de monto (propina) o de fecha se bloquea, y un entero de 10 dígitos o más sin decimales no es un monto", () => {
+      const filas = [["Folio", "Fecha", "Total", "Propina"], ["T2-1", "21/09/2026", "$10.00", "9991112222"]];
+      expect(valorPersonalEnMapeo(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2, propina: 3 })).toMatchObject({ campo: "propina", renglon: 2 });
+      const largo = [["Folio", "Fecha", "Total"], ["T2-1", "21/09/2026", "01234567890"]];
+      expect(valorPersonalEnMapeo(largo, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).toMatchObject({ campo: "total", motivo: "numero_largo" });
+      const sano = [["Folio", "Fecha", "Total", "Propina"], ["T2-1", "21/09/2026", "$1,234.50", "12345"]];
+      expect(valorPersonalEnMapeo(sano, 0, "cuentas", { folio: 0, fecha: 1, total: 2, propina: 3 })).toBeNull();
+    });
+
+    it("un correo se rechaza en cualquier campo, folio incluido, aunque se haya confirmado el folio", () => {
+      const filas = [["Folio", "Fecha", "Total"], ["ana@correo.com", "21/09/2026", "$10.00"]];
+      expect(valorPersonalEnMapeo(filas, 0, "cuentas", { folio: 0, fecha: 1, total: 2 }, { confirmarFolio: true })).toMatchObject({ campo: "folio", motivo: "correo" });
+      const enFecha = [["Folio", "Fecha", "Total"], ["T2-1", "ana@correo.com", "$10.00"]];
+      expect(valorPersonalEnMapeo(enFecha, 0, "cuentas", { folio: 0, fecha: 1, total: 2 })).toMatchObject({ campo: "fecha", motivo: "correo" });
     });
   });
 });

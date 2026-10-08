@@ -205,15 +205,31 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     const api = crearApiCfo();
     await b.pintar(CfoSoftRestaurant, api);
     await cargado();
-    const csv = ["Referencia,Fecha,Total", "9991112222,21/09/2026,$120.00", "9993334444,22/09/2026,$300.00"].join("\n");
+    const csv = ["Referencia,Fecha,Total", "999 111 2222,21/09/2026,$120.00", "999 333 4444,22/09/2026,$300.00"].join("\n");
     const d = await importarCsv(csv, "referencias.csv");
     changeValue(selector(d, "sr-tipo"), "cuentas");
     await esperarAcciones();
     changeValue(selector(d, "sr-mapeo-folio"), "0");
     await esperarAcciones();
-    expect(d.querySelector("[data-testid=sr-valor-personal]")!.textContent).toContain("parece un teléfono o un correo");
+    expect(d.querySelector("[data-testid=sr-valor-personal]")!.textContent).toContain("parece un teléfono");
     expect(botonDe(d, "Revisar vista previa").disabled).toBe(true);
     expect(api.peticiones("POST", "/softrestaurant/importar/vista-previa")).toHaveLength(0);
+    // Salida clara: confirmar que la columna es el folio (solo para el folio, nunca para columnas con encabezado personal).
+    click(d.querySelector("[data-testid=sr-confirmar-folio]") as HTMLElement);
+    await esperarAcciones();
+    expect(d.querySelector("[data-testid=sr-valor-personal]")).toBeNull();
+    expect(botonDe(d, "Revisar vista previa").disabled).toBe(false);
+    expect(d.querySelector("[data-testid=sr-confirmar-folio]")).not.toBeNull(); // sigue visible para poder deshacerlo
+  });
+
+  it("folios de 10 dígitos (2026092101) no bloquean la importación", async () => {
+    const api = crearApiCfo();
+    await b.pintar(CfoSoftRestaurant, api);
+    await cargado();
+    const csv = ["Folio,Fecha,Total", "2026092101,21/09/2026,$120.00", "2026092102,22/09/2026,$300.00"].join("\n");
+    const d = await importarCsv(csv, "folios-largos.csv");
+    expect(d.querySelector("[data-testid=sr-valor-personal]")).toBeNull();
+    expect(botonDe(d, "Revisar vista previa").disabled).toBe(false);
   });
 
   it("la vista previa muestra los errores por renglón con la numeración del archivo", async () => {

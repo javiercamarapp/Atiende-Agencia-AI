@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { MAX_RENGLONES_SR } from "@atiende/domain-restaurantes/cfo";
 import type { AlcanceVista, ImportacionSrVista, TipoLayoutSr, VistaPreviaSr } from "@atiende/domain-restaurantes/cfo";
-import { Button, Callout, DataTable, FormDialog, FormField, Label, NativeSelect, notify } from "@atiende/ui";
+import { Button, Callout, Checkbox, DataTable, FormDialog, FormField, Label, NativeSelect, notify } from "@atiende/ui";
 import { importarSr, vistaPreviaSr, type ContextoCfo, type CuerpoImportarSr } from "./cfo-client.ts";
 import { MapeoColumnasSr } from "./MapeoColumnasSr.tsx";
 import {
@@ -53,6 +53,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   const [leyendo, setLeyendo] = useState(false);
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmarFolio, setConfirmarFolio] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   function reiniciar() {
@@ -62,6 +63,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
     setVista(null);
     setResultado(null);
     setError(null);
+    setConfirmarFolio(false);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -69,7 +71,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   const nombresPers = archivo ? nombresPersonales(archivo.filas, filaEnc) : new Map<number, string>();
   const personales = new Set(nombresPers.keys());
   const excluidas = [...nombresPers.values()];
-  const valorPersonal = archivo ? valorPersonalEnMapeo(archivo.filas, filaEnc, tipo, mapeo) : null;
+  const valorPersonal = archivo ? valorPersonalEnMapeo(archivo.filas, filaEnc, tipo, mapeo, { confirmarFolio }) : null;
   const filasDatos = archivo ? Math.max(0, archivo.filas.length - filaEnc - 1) : 0;
   const maximo = MAX_RENGLONES_SR[tipo];
   const excedeTope = filasDatos > maximo;
@@ -107,7 +109,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
   }
 
   function cuerpo(): CuerpoImportarSr {
-    const { tabla } = construirTablaSr(archivo!.filas, filaEnc, tipo, mapeo);
+    const { tabla } = construirTablaSr(archivo!.filas, filaEnc, tipo, mapeo, { confirmarFolio });
     return { propertyId, nombreArchivo: archivo!.nombre.replace(/[/\\]/g, "_").slice(0, 120), tabla, tipo };
   }
 
@@ -254,10 +256,26 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
             <p className="m-0 text-xs text-muted-foreground">
               {archivo.nombre}: {entero(filasDatos)} {filasDatos === 1 ? "renglón" : "renglones"} de datos.
             </p>
-            {valorPersonal && (
-              <p role="alert" className="m-0 text-sm text-destructive" data-testid="sr-valor-personal">
-                {MENSAJE_VALOR_PERSONAL(valorPersonal)}
-              </p>
+            {(valorPersonal || confirmarFolio) && (
+              <div className="flex flex-col gap-1.5">
+                {valorPersonal && (
+                  <p role="alert" className="m-0 text-sm text-destructive" data-testid="sr-valor-personal">
+                    {MENSAJE_VALOR_PERSONAL(valorPersonal)}
+                  </p>
+                )}
+                {(confirmarFolio || (valorPersonal?.campo === "folio" && valorPersonal.motivo === "telefono")) && (
+                  <Checkbox
+                    checked={confirmarFolio}
+                    onChange={(e) => {
+                      setConfirmarFolio(e.target.checked);
+                      setVista(null);
+                    }}
+                    label="Confirmo que esta columna es el folio de la cuenta y no un teléfono"
+                    wrapperClassName="text-sm"
+                    data-testid="sr-confirmar-folio"
+                  />
+                )}
+              </div>
             )}
             {excedeTope && (
               <p role="alert" className="m-0 text-sm text-destructive">
@@ -291,6 +309,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
               onCambiar={(campo, indice) => {
                 setMapeo((m) => ({ ...m, [campo]: indice }));
                 setVista(null);
+                setConfirmarFolio(false);
               }}
               {...(vista ? { avisoAlias: vista.avisoAlias } : {})}
             />

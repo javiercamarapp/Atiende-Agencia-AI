@@ -78,38 +78,60 @@ export function sugerirTipo(encabezados: readonly string[]): TipoLayoutSr {
   return ALIAS_SR_INFERIDOS.cuentas.folio.some((a) => norm.has(a)) ? "cuentas" : "resumen_servicio";
 }
 
-const FILAS_REVISADAS = 15;
-
 /**
  * Índices de las columnas de datos personales (nombre, teléfono, correo, dirección, RFC…): se EXCLUYEN siempre. Una columna es personal si en esa posición
- * alguna fila con forma de encabezado (2 o más celdas llenas) tiene un encabezado personal: las filas hasta la elegida y las primeras 15, para que cambiar el
- * renglón de encabezados no la deje pasar. Los títulos de una sola celda no cuentan.
+ * una fila con forma de encabezado tiene un encabezado personal. Solo cuentan las filas HASTA la elegida (los renglones de datos de abajo no son encabezados,
+ * así que «Calle 60 #123» bajo «Domicilio» o «Crédito cliente» en forma de pago no excluyen nada), de modo que cambiar el renglón de encabezados a uno de
+ * datos no libera la columna que un renglón de arriba ya delató.
  */
 export function columnasPersonales(filas: readonly (readonly string[])[], filaEncabezado: number): number[] {
   return [...nombresPersonales(filas, filaEncabezado).keys()];
 }
 
-/** Columna personal -> el encabezado que la delata (nunca un valor de datos: es lo que se le muestra a la persona como «excluida»). */
+const esEtiqueta = (c: string): boolean => c.trim().endsWith(":");
+
+/**
+ * ¿Los renglones de arriba del encabezado elegido son encabezados (de grupo) y no títulos? Con 3 o más celdas llenas sí. Con menos: un par «etiqueta: valor»
+ * (`R.F.C.:,XAXX…`, `Dirección:,Calle 60…`) es un dato del negocio y se ignora entero, y un título suelto en la columna 1 también; una celda sola en otra
+ * columna (`,,,Teléfono`) SÍ es un encabezado de grupo y cuenta.
+ */
+function celdasDeEncabezado(fila: readonly string[], esElegida: boolean): Array<[number, string]> {
+  const llenas = fila.map((c, i) => [i, c.trim()] as [number, string]).filter(([, c]) => c !== "");
+  if (esElegida) return llenas.filter(([, c]) => !esEtiqueta(c));
+  if (llenas.length >= 3) return llenas.filter(([, c]) => !esEtiqueta(c));
+  if (llenas.some(([, c]) => esEtiqueta(c))) return [];
+  if (llenas.length === 1 && llenas[0]![0] === 0) return [];
+  return llenas.filter(([i]) => i > 0);
+}
+
+/** Columna personal -> cómo mostrarla: el encabezado si parece un nombre (sin dígitos) y, si no, solo su posición. Nunca un valor de datos. */
 export function nombresPersonales(filas: readonly (readonly string[])[], filaEncabezado: number): Map<number, string> {
-  const hasta = Math.min(filas.length - 1, Math.max(filaEncabezado, FILAS_REVISADAS - 1));
+  const hasta = Math.min(filas.length - 1, filaEncabezado);
   const out = new Map<number, string>();
   for (let r = 0; r <= hasta; r++) {
-    const fila = filas[r] ?? [];
-    if (r !== filaEncabezado && fila.filter((c) => c.trim() !== "").length < 2) continue;
-    fila.forEach((h, i) => {
-      if (h.trim() !== "" && esColumnaPersonal(h) && !out.has(i)) out.set(i, h.trim());
-    });
+    for (const [i, h] of celdasDeEncabezado(filas[r] ?? [], r === filaEncabezado)) {
+      if (esColumnaPersonal(h) && !out.has(i)) out.set(i, /\d/.test(h) || h.length > 30 ? `Columna ${i + 1}` : h);
+    }
   }
   return new Map([...out.entries()].sort((x, y) => x[0] - y[0]));
 }
 
-const CAMPOS_TEXTO = ["folio", "servicio", "forma_pago", "cancelada"] as const;
+const CAMPOS_NUMERICOS = ["total", "subtotal", "descuento", "propina", "impuesto", "cancelado", "tickets"] as const;
 const RE_CORREO = /[^\s@]+@[^\s@]+\.[^\s@]+/;
-/** Teléfono: con separadores o +52, 10 dígitos que no empiezan con 0 (un folio relleno con ceros no lo es), o 12 y 13 con prefijo 52 / 521. */
-export function pareceTelefono(valor: string): boolean {
+/** Con separadores o +52: 10 dígitos en grupos de teléfono (2-3 / 3-4 / 4) o con prefijo 52 / 521. «1234-567-890» no es un teléfono. */
+const RE_TEL_CON_FORMATO = /^(\+?5?2?1?[\s.-]?)?(\(\d{2,3}\)|\d{2,3})[\s.-]?\d{3,4}[\s.-]?\d{4}$/;
+
+/** Teléfono: con formato (separadores, paréntesis o +52) o, sin separadores, 10 dígitos que no empiezan con 0 (un folio relleno con ceros no lo es) o 12/13 con prefijo 52/521. */
+export function pareceTelefono(valor: string, opciones: { readonly sinFormato?: boolean } = {}): boolean {
   const v = valor.trim();
   if (!/^\+?[\d\s().-]{10,20}$/.test(v)) return false;
   const digitos = v.replace(/\D/g, "");
+  const conFormato = /[\s().+-]/.test(v);
+  if (conFormato) {
+    if (digitos.length === 10) return !digitos.startsWith("0") && RE_TEL_CON_FORMATO.test(v);
+    return (digitos.length === 12 && digitos.startsWith("52") || digitos.length === 13 && digitos.startsWith("521")) && RE_TEL_CON_FORMATO.test(v);
+  }
+  if (opciones.sinFormato === false) return false;
   if (digitos.length === 10) return !digitos.startsWith("0");
   return (digitos.length === 12 && digitos.startsWith("52")) || (digitos.length === 13 && digitos.startsWith("521"));
 }
@@ -118,15 +140,31 @@ export interface DatoPersonalDetectado {
   readonly campo: string;
   /** Renglón del archivo (1 = primero). */
   readonly renglon: number;
+  readonly motivo: "correo" | "telefono" | "numero_largo";
 }
 
-/** Primer valor con forma de teléfono o correo en una columna mapeada a un campo de texto (folio, tipo de servicio, forma de pago, cancelada). */
-export function valorPersonalEnMapeo(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr): DatoPersonalDetectado | null {
-  const activos = camposDeTipo(tipo).filter((c) => (CAMPOS_TEXTO as readonly string[]).includes(c.campo) && mapeo[c.campo] !== null && mapeo[c.campo] !== undefined);
+export interface OpcionesValorPersonal {
+  /** La persona confirmó que la columna del folio no trae teléfonos: se omite la regla de teléfono con formato SOLO para el folio (el correo nunca se omite). */
+  readonly confirmarFolio?: boolean;
+}
+
+/**
+ * Primer valor con forma de dato personal en una columna mapeada, de CUALQUIER campo: un correo (siempre), un teléfono (en un folio solo con formato:
+ * 2026092101 es un folio normal) y, en los campos de monto o cantidad, un entero sin decimales de 10 dígitos o más (no es un monto realista: es un teléfono mapeado a «propina»).
+ */
+export function valorPersonalEnMapeo(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr, opciones: OpcionesValorPersonal = {}): DatoPersonalDetectado | null {
+  const activos = camposDeTipo(tipo).filter((c) => mapeo[c.campo] !== null && mapeo[c.campo] !== undefined);
   for (let r = filaEncabezado + 1; r < filas.length; r++) {
     for (const c of activos) {
-      const v = filas[r]?.[mapeo[c.campo] as number] ?? "";
-      if (RE_CORREO.test(v) || pareceTelefono(v)) return { campo: c.campo, renglon: r + 1 };
+      const v = (filas[r]?.[mapeo[c.campo] as number] ?? "").trim();
+      if (v === "") continue;
+      if (RE_CORREO.test(v)) return { campo: c.campo, renglon: r + 1, motivo: "correo" };
+      if (c.campo === "folio") {
+        if (!opciones.confirmarFolio && pareceTelefono(v, { sinFormato: false })) return { campo: c.campo, renglon: r + 1, motivo: "telefono" };
+        continue;
+      }
+      if (pareceTelefono(v)) return { campo: c.campo, renglon: r + 1, motivo: "telefono" };
+      if ((CAMPOS_NUMERICOS as readonly string[]).includes(c.campo) && /^\$?\d{10,}$/.test(v)) return { campo: c.campo, renglon: r + 1, motivo: "numero_largo" };
     }
   }
   return null;
@@ -171,7 +209,7 @@ export function camposRepetidos(mapeo: MapeoSr): string[] {
 }
 
 export const MENSAJE_VALOR_PERSONAL = (d: DatoPersonalDetectado): string =>
-  `El renglón ${d.renglon} trae algo que parece un teléfono o un correo en la columna elegida para «${d.campo}». No se sube nada: revisa el mapeo (no subimos datos de tus clientes).`;
+  `El renglón ${d.renglon} trae algo que parece ${d.motivo === "correo" ? "un correo" : d.motivo === "numero_largo" ? "un teléfono (un número de 10 dígitos o más sin decimales)" : "un teléfono"} en la columna elegida para «${d.campo}». No se sube nada: revisa el mapeo (no subimos datos de tus clientes).`;
 
 export interface TablaSr {
   readonly tabla: Array<Array<string | null>>;
@@ -185,13 +223,13 @@ export interface TablaSr {
  * Tabla para la API: conserva el número de cada renglón del archivo (los de arriba del encabezado van vacíos y los errores del servidor apuntan al
  * renglón real), renombra las columnas mapeadas al alias canónico del dominio y NO incluye ninguna otra. Si el mapeo toca una columna personal, falla.
  */
-export function construirTablaSr(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr): TablaSr {
+export function construirTablaSr(filas: readonly (readonly string[])[], filaEncabezado: number, tipo: TipoLayoutSr, mapeo: MapeoSr, opciones: OpcionesValorPersonal = {}): TablaSr {
   const personales = new Set(columnasPersonales(filas, filaEncabezado));
   const campos = camposDeTipo(tipo).filter((c) => mapeo[c.campo] !== null && mapeo[c.campo] !== undefined);
   for (const c of campos) {
     if (personales.has(mapeo[c.campo] as number)) throw new Error("La columna elegida trae datos personales de tus clientes y no se sube.");
   }
-  const hallado = valorPersonalEnMapeo(filas, filaEncabezado, tipo, mapeo);
+  const hallado = valorPersonalEnMapeo(filas, filaEncabezado, tipo, mapeo, opciones);
   if (hallado) throw new Error(MENSAJE_VALOR_PERSONAL(hallado));
   const tabla = filas.map((fila, i): Array<string | null> => {
     if (i < filaEncabezado) return [];
