@@ -104,11 +104,19 @@ export function textoPorOmision(kind: MensajeKind, leadHours: number = ANTICIPAC
   }
 }
 
-/** Cuerpo del recordatorio EXACTAMENTE como lo armaba `runConfirmacionCitaCore` antes de C-04 (golden de compatibilidad:
- * sin configuracion guardada nada cambia para los negocios existentes). */
-export function legacyReminderBody(customerName: string | null, time: string): string {
+/** Cuerpo del recordatorio con el texto de siempre. La ventana del recordatorio es (ahora, ahora + 24 h], asi que una cita
+ * reservada en la madrugada para la tarde del mismo dia tambien cae dentro: `dia` dice "hoy" cuando la cita es del mismo dia
+ * LOCAL que el envio y "mañana" en cualquier otro caso (por omision, el texto de siempre). La hora es-MX puede terminar
+ * en "p.m." / "a. m.": el punto final se escribe una sola vez. */
+export function legacyReminderBody(customerName: string | null, time: string, dia: "hoy" | "mañana" = "mañana"): string {
   const greeting = customerName ? `Hola ${customerName}, ` : "Hola, ";
-  return `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`;
+  return `${greeting}le recordamos su cita ${dia} a las ${time.replace(/\.+$/, "")}. ¿Puede confirmar?`;
+}
+
+/** "hoy" si `startsAt` cae en el mismo dia calendario de `timeZone` que `now`; si no, "mañana". */
+export function diaDelRecordatorio(startsAt: string, now: Date, timeZone: string): "hoy" | "mañana" {
+  const dia = (d: Date): string => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  return dia(new Date(startsAt)) === dia(now) ? "hoy" : "mañana";
 }
 
 // ---- Validacion ----

@@ -15,7 +15,7 @@ import { eventoRecordatorioFallido } from "./notification-events.ts";
 import type { EventoRecordatorioFallido } from "./notification-events.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
-import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, sanitizarValor, dentroDelHorarioDeEnvio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
+import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, sanitizarValor, dentroDelHorarioDeEnvio, diaDelRecordatorio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
 import { armarMensaje, formatearFechaYHora, nuevoCacheValores, resolverValoresCita } from "./whatsapp/message-send.ts";
 
 /** Rate-limit real: nadie recibe más de esto por su entrada en la lista de espera. */
@@ -195,9 +195,12 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
             if (decision.canal === "sin_plantilla") {
               sinPlantillaLocal = true;
             } else {
-              const body = usaTextoDeSiempre ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora) : armarMensaje(config, "recordatorio", valores);
+              const body = usaTextoDeSiempre ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora, diaDelRecordatorio(apt.startsAt, now, timeZone)) : armarMensaje(config, "recordatorio", valores);
 
-              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
+              // La clave incluye el starts_at: tras reagendar (que limpia `reminder_24h_sent_at`) el recordatorio con la
+              // hora NUEVA es una fila distinta; con una clave solo por cita, el upsert no hacia nada sobre la fila ya
+              // `sent` y el cron lo contaba como enviado (QA R1 automatizacion 01).
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}:${apt.startsAt}`, {
                 to: apt.customerPhone,
                 phone_number_id: phoneNumberId,
                 body,
@@ -284,8 +287,10 @@ function matchesWaitlistPreferences(row: WaitlistCandidateRow, providerId: strin
  * `type: "template"` — ver el comentario de ese hallazgo (arriba) para el detalle
  * completo.
  */
-export async function runOptimizadorCore(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }): Promise<OptimizadorResult> {
+export async function runOptimizadorCore(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }, now: Date = new Date()): Promise<OptimizadorResult> {
   const slotDate = new Date(event.startsAt);
+  // Un hueco que ya empezo (o ya paso) no se ofrece: gastaria un aviso del cliente por algo que no puede reservar.
+  if (!(slotDate.getTime() > now.getTime())) return { matched: false, reason: "no_match" };
   const slotDateStr = slotDate.toISOString().slice(0, 10);
   const window = timeWindowFor(slotDate, timeZone);
 
@@ -324,7 +329,11 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
     valores: async () => ({ nombre: sanitizarValor(winner.customerName, 60) || "cliente", negocio: sanitizarValor((await repo.findOrganizationById(organizationId))?.name, 120) || "nuestro negocio" }),
     now: new Date(),
   });
-  const dedupeKey = `waitlist-offer:${winner.id}:${event.startsAt}`;
+  // Cada oferta lleva su propia clave: el cupo de aviso (`claimWaitlistNotificationSlot`) se consume ANTES de encolar y
+  // `enqueue_messaging_outbox` no hace nada sobre una fila ya `sent`; con una clave solo por (entrada, hueco), liberar el mismo
+  // hueco dos veces gastaba un aviso del cliente sin mandarle mensaje (QA R1 automatizacion 06). Claim y encolado van en la
+  // misma transaccion, asi que un aviso consumido es siempre exactamente un mensaje encolado.
+  const dedupeKey = `waitlist-offer:${winner.id}:${event.startsAt}:${globalThis.crypto.randomUUID()}`;
   if (decision.canal === "sin_plantilla") {
     const cliente = await repo.findCustomerByPhone(organizationId, winner.customerPhone);
     if (!cliente?.email) return { matched: false, reason: "sin_plantilla" };

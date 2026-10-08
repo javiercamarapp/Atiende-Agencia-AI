@@ -68,11 +68,21 @@ antes del corte y que no coinciden por contacto o nombre con una solicitud ARCO 
 del corte y cuyas instrucciones no se tocaron desde antes del corte; cada borrado deja un evento `purga_retencion` sin contenido en
 `rentas.acceso_instruccion_bitacora`. Ambas corren en simulación salvo `ejecutar=1` y se registran en `core.purge_run_log`.
 
-**Hueco conocido: citas no tiene clase de retención ni purga.** El historial de conversaciones de WhatsApp (`citas.whatsapp_conversations.messages`),
-las escalaciones de crisis (`citas.emergency_escalations`: teléfono, canal y etiqueta de la señal; el extracto del mensaje se guarda vacío en ambos canales) y las notas
-de conversación (`citas.conversation_note`) se conservan hasta que alguien los borre: no hay fila de citas en `core.retention_class` y ningún cron los
-purga. Son datos de salud: el plazo debe decidirse con el asesor jurídico y requiere una clase de retención con su purga programada y su `scripts/verify-*`
-contra Postgres real (trabajo con migración, fuera de este cambio). Mientras tanto, la solicitud ARCO de cancelación es la vía para borrar a una persona.
+**Citas (migración citas 033, QA R1 automatización 07).** Tres clases con ejecutor `vertical` (la purga la corre citas, no la plataforma):
+
+| Clase | Defecto | Rango | Qué hace al vencer |
+| --- | --- | --- | --- |
+| `citas_whatsapp_conversaciones` | 365 días | 30 a 1825 | vacía `citas.whatsapp_conversations.messages` (conserva la fila y su vínculo a la cita), por última actividad |
+| `citas_escalaciones_crisis` | 365 días | 30 a 1825 | borra `citas.emergency_escalations` (teléfono, canal y etiqueta de la señal; el extracto se guarda vacío) |
+| `citas_notas_conversacion` | 365 días | 30 a 1825 | borra `citas.conversation_note` (notas internas del staff) |
+
+**Los 365 días son PROVISIONALES: el plazo definitivo de datos de salud lo decide el asesor jurídico.** Por ser ejecutor `vertical`, una
+organización no puede cambiarlos desde `PUT /v1/privacidad/retencion/:claseDato` (solo acepta clases de plataforma). La purga es
+`citas.system_purge_retencion` (solo sesión de sistema; respeta el bloqueo de retención legal y nunca toca a un titular con una solicitud
+ARCO abierta; lotes de 500 por clase; simulación disponible) y corre como un paso de `/internal/plataforma/privacidad-retencion`
+(vercel.json ya está en el tope de 40 crons): GET con `Authorization: Bearer` ejecuta, lo demás simula, y la respuesta trae el bloque `citas`
+con solo conteos. Antes de aplicar la migración la respuesta trae `citas.disponible: false` y no se toca nada. A diferencia de la
+plataforma, esta purga **no deja fila en `core.purge_run_log`** (hueco declarado: el rastro es la respuesta del cron y su latido).
 
 Precedencia de los días efectivos: **política de la organización > configuración del vertical
 (`restaurantes.privacy_config`) > defecto**. Una clase que corre el vertical solo documenta su defecto: la plataforma
