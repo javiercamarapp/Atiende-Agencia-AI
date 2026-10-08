@@ -16,6 +16,7 @@ import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { PM_COPY } from "./perfil-pm.ts";
+import { TEXTO_BOTONES_APARTE, cabeEnMensajeInteractivo, construirBotonesDeConfirmacion, contenidoDeMensajeConToque, dentroDeVentanaDeServicio } from "./botones-confirmacion.ts";
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
@@ -122,6 +123,11 @@ export async function handleInboundWhatsAppMessage(
     /** R-32: el mensaje es una nota de voz. Con esto se intenta transcribirla DESPUES de reclamar el mensaje (un replay de Meta no la
      * transcribe dos veces); si no se puede, `body` (pedir que escriba) se conserva tal cual. */
     readonly transcripcion?: TranscripcionDeEntrada;
+    /** B03: id del boton de resumen que toco el cliente (`message.botonId` del extractor). Se guarda como marcador del mensaje para que el turno decida si ese
+     * resumen sigue vigente. Ausente = mensaje escrito. */
+    readonly botonId?: string;
+    /** Instante (ms) en que el cliente envio el mensaje: con mas de ~23 h ya no se encolan botones (ventana de 24 h de WhatsApp). Ausente = acaba de escribir. */
+    readonly recibidoEnMs?: number;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -156,7 +162,7 @@ export async function handleInboundWhatsAppMessage(
     // sí pueda registrar el fallo.
     return await repo.runWithRowSavepoint(async () => {
       const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
-      const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
+      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
       // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
@@ -250,12 +256,7 @@ export async function handleInboundWhatsAppMessage(
       // solo se guardaba en el historial de la conversación y nunca llegaba de
       // verdad al cliente (ver @atiende/whatsapp-gateway/README.md).
       if (deliverReply) {
-        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
-          to: phone,
-          phone_number_id: phoneNumberId,
-          body: reply,
-          transaccional: true, // SA-L-46: respuesta/confirmacion que el cliente pidio; la lista de supresion no la bloquea.
-        });
+        await encolarRespuesta(repo, organizationId, { messageId, sufijo: "", phone, phoneNumberId, reply, confirmacion: turn.pedirConfirmacion, recibidoEnMs: args.recibidoEnMs });
         if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, `inbound-ubicacion:${messageId}`, phone, phoneNumberId);
       }
 
@@ -267,6 +268,33 @@ export async function handleInboundWhatsAppMessage(
     await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
+}
+
+/**
+ * Encola la respuesta del agente. Con `confirmacion` (B03: el turno termino en un resumen por confirmar) y el cliente dentro de la ventana de 24 h, la respuesta sale
+ * como UN mensaje interactivo: el mismo texto de siempre + los botones «Confirmar pedido» / «Cambiar algo». Misma llave de idempotencia que el texto
+ * (`inbound-reply:<id de Meta>`): el reintento del mismo mensaje no duplica nada. Si el resumen no cabe en el cuerpo de un interactivo (1024 caracteres) sale el texto
+ * completo como siempre y los botones van en un segundo mensaje corto (`inbound-botones:<id de Meta>`). Sin `confirmacion` o fuera de la ventana: texto solo.
+ */
+async function encolarRespuesta(
+  repo: RestaurantesRepository,
+  organizationId: string,
+  a: { readonly messageId: string; readonly sufijo: string; readonly phone: string; readonly phoneNumberId: string; readonly reply: string; readonly confirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly recibidoEnMs?: number },
+): Promise<void> {
+  const base = { to: a.phone, phone_number_id: a.phoneNumberId, transaccional: true } as const; // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
+  const keyReply = `inbound-reply:${a.messageId}${a.sufijo}`;
+  const conBotones = a.confirmacion !== undefined && dentroDeVentanaDeServicio(a.recibidoEnMs, Date.now());
+  if (!conBotones || a.confirmacion === undefined) {
+    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply });
+    return;
+  }
+  const botones = construirBotonesDeConfirmacion(a.confirmacion);
+  if (cabeEnMensajeInteractivo(a.reply)) {
+    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply, buttons: botones });
+    return;
+  }
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply });
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-botones:${a.messageId}${a.sufijo}`, { ...base, body: TEXTO_BOTONES_APARTE, buttons: botones });
 }
 
 /** §5: encola, ademas de la respuesta de texto, el mensaje interactivo `location_request_message` (el cliente comparte su ubicacion con un toque).
@@ -401,7 +429,7 @@ export function analizarHistorial(
 
 export async function recibirMensajeConEspera(
   repo: RestaurantesRepository,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly transcripcion?: TranscripcionDeEntrada },
+  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly transcripcion?: TranscripcionDeEntrada; readonly botonId?: string },
 ): Promise<RecepcionConEspera> {
   const { organizationId, messageId, phone } = args;
   const phoneHash = actorHash(phone);
@@ -410,7 +438,7 @@ export async function recibirMensajeConEspera(
   try {
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
       const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
-      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: redactSensitiveInfo(body) });
+      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) });
       const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -441,6 +469,8 @@ export async function responderTrasEspera(
      * (la reserva de la fase B la garantiza). Sin esto no hay limite de tiempo. */
     readonly finFuncionMs?: number;
     readonly reloj?: () => number;
+    /** Instante (ms) en que el cliente envio el mensaje que tomo el turno (ver `handleInboundWhatsAppMessage`). */
+    readonly recibidoEnMs?: number;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -520,12 +550,7 @@ export async function responderTrasEspera(
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
         }
         if (deliverReply) {
-          await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
-            to: phone,
-            phone_number_id: phoneNumberId,
-            body: reply,
-            transaccional: true, // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
-          });
+          await encolarRespuesta(repo, organizationId, { messageId, sufijo: pasada === 1 ? "" : `:p${pasada}`, phone, phoneNumberId, reply, confirmacion: turn.pedirConfirmacion, recibidoEnMs: args.recibidoEnMs });
           if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, pasada === 1 ? `inbound-ubicacion:${messageId}` : `inbound-ubicacion:${messageId}:p${pasada}`, phone, phoneNumberId);
         }
         return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && !MOTIVOS_QUE_NO_ABREN_TOMA.has(turn.escalacion.motivo)) }, silencio: false };

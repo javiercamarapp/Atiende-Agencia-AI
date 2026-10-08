@@ -199,6 +199,8 @@ export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export { BOTON_CAMBIAR_TITULO, BOTON_CONFIRMAR_TITULO, construirBotonesDeConfirmacion, idDeBoton, parsearIdDeBoton, vigenciaDelToque } from "./whatsapp/botones-confirmacion.ts";
+export type { AccionBoton, BotonResumen, BotonSalida, VigenciaDelToque } from "./whatsapp/botones-confirmacion.ts";
 export {
   LIMITE_NOTAS_POR_CONVERSACION_HORA,
   LIMITE_NOTAS_POR_ORGANIZACION_DIA,
