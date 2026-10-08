@@ -101,10 +101,11 @@ describe("jerga de salsas y de platillos de T7", () => {
     expect(canonicalRequestedComplement(42)).toBeNull();
   });
 
-  it("el mapeo de crear_pedido normaliza la jerga y descarta lo desconocido", () => {
-    const input = { requested_complements: ["xnipec", "sauceada", "nada que ver"] };
-    const out = mapCreateOrderToolInput({ organizationId: "o", phone: "5219990000000", channel: "whatsapp" }, input, true);
+  it("el mapeo de crear_pedido normaliza la jerga y RECHAZA lo desconocido (R3 reglas-09: antes se descartaba en silencio)", () => {
+    const ctx = { organizationId: "o", phone: "5219990000000", channel: "whatsapp" as const };
+    const out = mapCreateOrderToolInput(ctx, { requested_complements: ["xnipec", "sauceada"] }, true);
     expect(out.requestedComplements).toEqual(["salsa_mexicana", "salsa_habanero_soasado"]);
+    expect(() => mapCreateOrderToolInput(ctx, { requested_complements: ["xnipec", "nada que ver"] }, true)).toThrow(/nada que ver/);
   });
 
   const charros = { name: "Frijoles Charros Normal (1/2 orden)", description: null, categoryName: "Frijoles Charros", searchKeywords: [] };

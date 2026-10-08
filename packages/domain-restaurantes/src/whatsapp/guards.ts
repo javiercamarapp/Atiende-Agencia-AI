@@ -132,6 +132,68 @@ export function quitarCortesiaNoRespaldada(reply: string): string {
   return resto || "Por ahora su pedido no lleva ninguna promoción aplicada; el total es el de la cotización.";
 }
 
+/**
+ * La frase AFIRMA que el pedido ya esta registrado / confirmado / en cocina ("su pedido ya quedo confirmado", "ya lo registre", "ya va a cocina"). Una pregunta, un condicional
+ * ("para que quede registrado", "si confirma...") o una explicacion no cuentan. Sirve a la guardia de honestidad del cierre (QA-PM-R3 T7-040, P0: "el pedido ya quedo confirmado"
+ * sin pedido en la base tras un "si" y un "agregame pina").
+ */
+export function afirmaPedidoRegistrado(frase: string): boolean {
+  const t = normalizarParaClasificar(frase);
+  if (/[?¿]/.test(frase)) return false;
+  // Condicional / negacion / futuro: no afirman nada. «si» se mira en el texto ORIGINAL para no confundir el «sí» afirmativo ("Sí, su pedido ya quedó registrado") con el condicional «si».
+  if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
+  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se)|todavia\s+no|aun\s+no|(?:todavia|aun)\s+falta|falta)\b/.test(t)) return false;
+  // Sujeto PEDIDO (pedido / orden / comanda) con un predicado de "ya existe": registrado, confirmado, tomado, enviado, en camino, en cocina... Entre el sujeto y el predicado no puede
+  // haber otro objeto ("su pedido ... su direccion quedo registrada"): la direccion, el nombre, el cambio o el pago anotados NO son el pedido registrado.
+  const N = "(?:pedido|orden|comanda)";
+  const OBJETO = "(?:direccion|domicilio|nombre|cambio|pago|tarjeta|telefono|datos|correo|referencia|ubicacion|propina|nota|notas|factura)";
+  const PART = "(?:registrad[oa]|confirmad[oa]|anotad[oa]|tomad[oa]|levantad[oa]|apartad[oa]|generad[oa]|enviad[oa]|mandad[oa]|capturad[oa]|procesad[oa]|recibid[oa])";
+  const SALIDA = "(?:en\\s+camino|en\\s+cocina|en\\s+preparacion|en\\s+proceso|en\\s+marcha|preparandose|se\\s+esta\\s+preparando)";
+  const VERBO = "(?:(?:quedo|queda|esta|fue|ha\\s+sido|va|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?)";
+  const UNO = "(?:registre|registramos|confirme|confirmamos|anote|anotamos|tome|tomamos|mande|mandamos|pase|pasamos|envie|enviamos|genere|generamos|capture|levante|aparte|procese)";
+  const patrones: RegExp[] = [
+    // «su pedido (ya) quedó registrado / está confirmado / va en camino / ya está en cocina», «Pedido confirmado ✅»
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[a-z0-9]+){0,4}?\\s+(?:ya\\s+)?${VERBO}?(?:${PART}|${SALIDA})\\b`),
+    // «ya quedó apartado su pedido», «ya está su pedido», «ya se generó su orden»
+    new RegExp(`\\b(?:ya\\s+)?(?:quedo|esta|fue|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?(?:${PART}\\s+)?(?:su|el)\\s+${N}\\b`),
+    // «ya tomé su pedido», «ya mandé su comanda», «registré su orden»
+    new RegExp(`\\b${UNO}\\s+(?:ya\\s+)?(?:su|el|la|lo)\\s+(?:\\w+\\s+)?${N}\\b`),
+    // «ya lo registré / confirmamos / mandé / pasé a cocina», «ya lo dejé registrado»
+    /\bya\s+(?:lo|la)\s+(?:\w+\s+){0,2}?(?:registre|registramos|confirme|confirmamos|mande|mandamos|pase|pasamos|envie|enviamos|tome|tomamos|deje\s+registrad[oa]|dejamos\s+registrad[oa])\b/,
+    /\bya\s+(?:lo|la)\s+tenemos\s+(?:ya\s+)?(?:registrad|anotad|confirmad)[oa]\b/,
+    /\b(?:lo|la)\s+(?:mande|mandamos|pase|pasamos|envie|enviamos)\s+a\s+(?:la\s+)?cocina\b/,
+    // «ya entró / llegó a cocina», «ya salió a reparto», «ya va para allá», «se está cocinando»
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[a-z0-9]+){0,3}?\\s+(?:ya\\s+)?(?:entro|llego|paso|salio|va)\\s+(?:ya\\s+)?(?:a|para)\\s+(?:la\\s+)?(?:cocina|reparto|alla|su\\s+casa)\\b`),
+    new RegExp(`\\b${N}\\b(?:\\s+[a-z0-9]+){0,3}?\\s+(?:ya\\s+)?se\\s+esta\\s+(?:cocinando|armando|haciendo)\\b`),
+    // «ya tenemos su pedido», «su orden ya fue aceptada», «ya dimos de alta su pedido», «su pedido quedó en el sistema», «su pedido está listo»
+    new RegExp(`\\b(?:ya\\s+)?(?:tenemos|recibimos|aceptamos|dimos\\s+de\\s+alta)\\s+(?:ya\\s+)?(?:su|el)\\s+${N}\\b`),
+    new RegExp(`\\b${N}\\b(?:\\s+[a-z0-9]+){0,3}?\\s+(?:ya\\s+)?(?:fue\\s+aceptad[oa]|quedo\\s+en\\s+el\\s+sistema|esta\\s+(?:ya\\s+)?list[oa](?:\\s+para\\s+(?:recoger|entregar|salir))?)\\b`),
+    // Sin sujeto: «Ya quedó registrado, lo esperamos» (solo si la frase no habla de otra cosa: direccion, nombre, pago...)
+    new RegExp(`^(?!.*\\b${OBJETO}\\b).*\\bya\\s+quedo\\s+(?:registrado|confirmado|anotado)\\b`),
+    // «va / pasó / se mandó (ya) a cocina»
+    /\b(?:esta|va|paso|se\s+mando|se\s+envio)\s+(?:ya\s+)?(?:en|a)\s+(?:la\s+)?(?:cocina|preparacion)\b/,
+  ];
+  return patrones.some((r) => r.test(t));
+}
+
+/** La frase habla del ESTADO de un pedido (va en camino, en preparacion, en cocina, listo, salio a reparto...), no solo de su registro. */
+export function hablaDelEstadoDelPedido(frase: string): boolean {
+  return /\b(?:en\s+(?:camino|cocina|preparacion|proceso|marcha)|preparandose|se\s+esta\s+(?:preparando|cocinando|armando|haciendo)|(?:entro|llego|salio|paso)\s+(?:ya\s+)?a\s+(?:la\s+)?(?:cocina|reparto)|va\s+para\s+alla|list[oa]\s+para)\b/.test(normalizarParaClasificar(frase));
+}
+
+/** Solo REGISTRO / CONFIRMACION del pedido (no su estado): lo unico que se quita cuando el cliente ya tiene un pedido activo y el turno esta armando otro. */
+export function afirmaSoloRegistroDePedido(frase: string): boolean {
+  return afirmaPedidoRegistrado(frase) && !hablaDelEstadoDelPedido(frase);
+}
+
+/** Quita las frases que afirman un pedido registrado cuando NO existe; si no queda nada, pide el "si" al resumen. */
+export function quitarAfirmacionDePedidoRegistrado(reply: string, sustituto?: string, afirma: (frase: string) => boolean = afirmaPedidoRegistrado): string {
+  const frases = reply.split(/(?<=[.!?])\s+/);
+  if (!frases.some(afirma)) return reply;
+  const resto = frases.filter((f) => !afirma(f)).join(" ").trim();
+  return resto || sustituto || "Todavía no queda registrado su pedido. ¿Me confirma con un «sí» el resumen para registrarlo?";
+}
+
 /** Quita la afirmacion de aviso cuando no se pudo dejar el aviso. */
 export function quitarAfirmacionDeAviso(reply: string): string {
   const sinFrase = reply
@@ -216,6 +278,8 @@ export function pideUnaPersona(text: string): boolean {
     const antes = text.slice(Math.max(0, idx - 60), idx);
     const segmento = antes.slice(Math.max(antes.lastIndexOf("."), antes.lastIndexOf(","), antes.lastIndexOf(";"), antes.lastIndexOf("!"), antes.lastIndexOf("?")) + 1);
     if (NEGACION_AL_FINAL.test(segmento)) continue;
+    // QA-PM-R3-voz-05: "que me atienda alguien en caja" / "alguien de caja" es una pregunta de pago al recoger (se paga en caja), no pedir una persona del equipo.
+    if (/^\s+(?:de|en|a)\s+(?:la\s+)?(?:caja|cajero|mostrador)\b/i.test(text.slice(idx + m[0].length, idx + m[0].length + 24))) continue;
     if (/^pasar\b/i.test(m[0]) && !MARCO_DE_PETICION.test(segmento)) continue;
     return true;
   }

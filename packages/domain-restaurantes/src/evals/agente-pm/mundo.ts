@@ -407,7 +407,7 @@ export class Mundo {
       promoId: q.promoId,
       cortesias: q.cortesias,
       propina: pago === "tarjeta" ? "en_terminal" : "no_aplica",
-      horaRecogerMin: canal === "recoger" ? minutosDesdeHoraRecogida(args.hora_recogida, this.caso.contexto.hora_local) : null,
+      horaRecogerMin: canal === "recoger" ? minutosDeRecogida(args, this.caso.contexto.hora_local) : null,
       totalMxn: q.total,
       colonia: typeof args.colonia_entrega === "string" ? args.colonia_entrega : null,
       direccion: typeof args.customer_address === "string" ? args.customer_address : null,
@@ -453,6 +453,14 @@ export function ajustesDeNotas(notas: string | null): string[] {
   // Una nota con forma de clave ("mucha_pina") tambien cuenta.
   for (const k of AJUSTES_PERMITIDOS) if (notas.includes(k) && !encontrados.includes(k)) encontrados.push(k);
   return encontrados;
+}
+
+/** Minutos para recoger: `minutos_para_recoger` (el servidor real calcula la hora con su reloj, R3) o, si no viene, la diferencia con `hora_recogida`. */
+export function minutosDeRecogida(args: Record<string, unknown>, horaLocal: string): number | null {
+  const hora = minutosDesdeHoraRecogida(args.hora_recogida, horaLocal);
+  if (hora !== null) return hora;
+  const plazo = typeof args.minutos_para_recoger === "number" ? args.minutos_para_recoger : Number(args.minutos_para_recoger);
+  return Number.isFinite(plazo) && plazo >= 1 && plazo <= 720 ? Math.round(plazo) : null;
 }
 
 /** Minutos entre la hora local del caso y `hora_recogida` (ISO 8601 con zona, el parametro real de crear_pedido). Solo cuenta ese

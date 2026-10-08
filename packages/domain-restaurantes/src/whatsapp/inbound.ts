@@ -48,6 +48,13 @@ export interface InboundMessageOutcome {
  * nunca se pierde en silencio — mismo contrato que el origen.
  */
 /** Turnos del agente que un mismo telefono puede consumir por ventana antes de que se le deje de contestar con el modelo. Un pedido normal usa unos 6-12. */
+/** Tope de caracteres de UN mensaje de cliente que llega al historial y al modelo. Un pedido real mide decenas de caracteres; un mensaje de miles ("quiero tacos por favor por favor ...") solo
+ * infla el prompt y la latencia hasta pasar el limite del turno, y el cliente se quedaba SIN respuesta (QA-PM-R3-whatsapp-12). Se conserva el inicio, que es donde esta la peticion. */
+export const MENSAJE_CLIENTE_MAX_CARACTERES = 1500;
+export function limitarLargoDelMensaje(texto: string): string {
+  return texto.length <= MENSAJE_CLIENTE_MAX_CARACTERES ? texto : `${texto.slice(0, MENSAJE_CLIENTE_MAX_CARACTERES).trimEnd()} […]`;
+}
+
 export const REMITENTE_MAX_TURNOS = 20;
 export const REMITENTE_VENTANA_SEGUNDOS = 600;
 export const REMITENTE_EXCEDIDO_TEXTO = "Hemos recibido muchos mensajes seguidos suyos. Para atenderle bien, espere unos minutos y escríbanos de nuevo, o llame directamente a la sucursal.";
@@ -161,7 +168,7 @@ export async function handleInboundWhatsAppMessage(
     // sesión UTILIZABLE de nuevo antes de repropagar, para que el `catch` de abajo
     // sí pueda registrar el fallo.
     return await repo.runWithRowSavepoint(async () => {
-      const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
+      const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
       const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
@@ -437,7 +444,7 @@ export async function recibirMensajeConEspera(
   if (!claimed) return { estado: "duplicado" };
   try {
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
-      const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
+      const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
       await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) });
       const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
