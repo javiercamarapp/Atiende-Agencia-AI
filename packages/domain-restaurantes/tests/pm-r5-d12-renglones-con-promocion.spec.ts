@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lookupCustomer } from "../src/customers.ts";
 import { repetirPedido } from "../src/cliente-360/repetir.ts";
 import { createOrder, quoteOrder } from "../src/orders.ts";
+import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { construirPayloadComanda } from "../src/softrestaurant/outbox-service.ts";
 import { fusionarRenglonesPorProducto, renglonesConPromocionAplicada } from "../src/promotions.ts";
 import type { Order, PersistedOrderItem, Promotion } from "../src/types.ts";
@@ -243,5 +244,84 @@ describe("D12: la comanda sigue siendo UNA linea por producto y tortilla", () =>
     // Misma comanda con dos tortillas distintas del mismo producto: dos lineas.
     const mixtas = construirPayloadComanda({ ...base, order: { ...order, items: [{ id: "p", name: "Tacos", price: 28, quantity: 1, tortilla: "maiz" }, { id: "p", name: "Tacos", price: 28, quantity: 1, tortilla: "harina" }] } }, deps as never);
     expect(mixtas.items.map((i) => i.cantidad)).toEqual([1, 1]);
+  });
+});
+
+// El CFO deriva bruta = suma(renglones a precio de lista) y descuento = bruta - total (supabase 081; migracion 086 lee `listPrice`). Estas pruebas del dominio fijan que los numeros
+// que ve el CFO son los de ANTES de D12 aunque la suma de renglones pagados sea ahora el total (el verify SQL scripts/verify-restaurantes-cfo-renglones-promo lo prueba en Postgres).
+describe("D12 + CFO: bruta y descuento por precio de lista iguales a los de antes", () => {
+  const bruta = (o: Pick<Order, "items">) => Math.round(o.items.reduce((acc, i) => acc + (i.listPrice ?? i.price) * i.quantity, 0) * 100) / 100;
+
+  it.each([
+    ["lunes 2x1 de 4 tacos", LUNES_14H, (f: Mundo) => [{ productId: f.ids.pastor, requestedQuantity: 4, tortilla: "mixta" as const }], 112, 56],
+    ["martes nachos + 2 aguas de cortesia", MARTES_14H, (f: Mundo) => [{ productId: f.ids.nachos, requestedQuantity: 1 }, { productId: f.ids.jamaica, requestedQuantity: 1 }, { productId: f.ids.horchata, requestedQuantity: 1 }], 152, 62],
+    ["martes cortesia de cantidad 1", MARTES_14H, (f: Mundo) => [{ productId: f.ids.nachos, requestedQuantity: 1 }, { productId: f.ids.jamaica, requestedQuantity: 1 }], 120, 30],
+    ["lunes mixto (3 tacos + bebida)", LUNES_14H, (f: Mundo) => [{ productId: f.ids.pastor, requestedQuantity: 3, tortilla: "maiz" as const }, { productId: f.ids.jamaica, requestedQuantity: 1 }], 114, 28],
+  ])("%s: bruta %i, descuento %i, y total = suma de renglones", async (_n, cuando, items, esperadaBruta, esperadoDescuento) => {
+    vi.setSystemTime(cuando);
+    const f = await seed();
+    const q = await quoteOrder(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", canal: "recoger", items: items(f) });
+    const order = await crear(f, items(f));
+    expect(bruta(order)).toBe(esperadaBruta);
+    expect(bruta(order)).toBe(q.subtotal);
+    expect(Math.round((bruta(order) - order.total) * 100) / 100).toBe(esperadoDescuento);
+    expect(sumaRenglones(order)).toBe(order.total);
+    // Los renglones regalados llevan la marca y su precio de lista; los pagados no.
+    for (const i of order.items) expect(i.price === 0 ? i.listPrice !== undefined && i.courtesy === true : i.listPrice === undefined).toBe(true);
+  });
+
+  it("negativo: un pedido sin promocion no lleva listPrice (igual que antes)", async () => {
+    vi.setSystemTime(MARTES_14H);
+    const f = await seed();
+    const order = await crear(f, [{ productId: f.ids.jamaica, requestedQuantity: 2 }]);
+    expect(order.items.every((i) => i.listPrice === undefined && i.courtesy === undefined)).toBe(true);
+  });
+});
+
+describe("D12: repetir el pedido y el historial con renglones regalados", () => {
+  const cuando = () => vi.setSystemTime(MARTES_14H);
+  const pedidoPasado = (order: Order) => ({ id: order.id, orderNumber: order.orderNumber ?? null, createdAt: order.createdAt, status: order.status, total: order.total, items: order.items, branch: order.branch, propertyId: order.propertyId, paymentMethod: "efectivo" as const, canal: "recoger" as const, propina: null, source: "voice" });
+
+  it("un producto regalado al 100 % (Agua de Jamaica a $0) se repite SIN falso aviso de cambio de precio ($0 -> $30)", async () => {
+    cuando();
+    const f = await seed();
+    const order = await crear(f, [{ productId: f.ids.nachos, requestedQuantity: 1 }, { productId: f.ids.jamaica, requestedQuantity: 1 }, { productId: f.ids.horchata, requestedQuantity: 1 }]);
+    const r = await repetirPedido(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", order: pedidoPasado(order) });
+    expect(r.cambios).toEqual([]);
+    expect(r.renglones.map((x) => x.productId).sort()).toEqual([f.ids.nachos, f.ids.jamaica, f.ids.horchata].sort());
+  });
+
+  it("2 tacos de maiz + 2 de harina NO se funden en 4 de maiz: cada tortilla se repite como estaba", async () => {
+    vi.setSystemTime(LUNES_14H);
+    const f = await seed();
+    const order = await crear(f, [{ productId: f.ids.pastor, requestedQuantity: 2, tortilla: "maiz" }, { productId: f.ids.pastor, requestedQuantity: 2, tortilla: "harina" }]);
+    const r = await repetirPedido(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", order: pedidoPasado(order) });
+    const porTortilla = Object.fromEntries(r.renglones.map((x) => [x.tortilla ?? "", x.requestedQuantity]));
+    expect(porTortilla).toEqual({ maiz: 2, harina: 2 });
+  });
+
+  it("fusionarRenglonesPorProducto: misma tortilla se une con precio de lista; tortillas distintas no", () => {
+    expect(
+      fusionarRenglonesPorProducto([
+        { id: "p", name: "Taco", price: 28, quantity: 2, tortilla: "maiz" as const },
+        { id: "p", name: "Taco", price: 0, quantity: 2, tortilla: "maiz" as const, listPrice: 28, courtesy: true as const },
+        { id: "p", name: "Taco", price: 28, quantity: 1, tortilla: "harina" as const },
+        { id: "a", name: "Agua", price: 0, quantity: 1, listPrice: 30, courtesy: true as const },
+      ]),
+    ).toEqual([
+      { id: "p", name: "Taco", price: 28, quantity: 4, tortilla: "maiz" },
+      { id: "p", name: "Taco", price: 28, quantity: 1, tortilla: "harina" },
+      { id: "a", name: "Agua", price: 30, quantity: 1 },
+    ]);
+  });
+
+  it("consultar_historial (herramienta del agente) lista UNA linea por producto y tortilla, sin renglones a $0 separados", async () => {
+    vi.setSystemTime(LUNES_14H);
+    const f = await seed();
+    await crear(f, [{ productId: f.ids.pastor, requestedQuantity: 4, tortilla: "maiz" }]);
+    const out = await invokeAgentTool(f.repo, { organizationId: f.organizationId, channel: "whatsapp", phone: "9991234567" }, "historial_pedidos", {});
+    const pedidos = (out.result as { pedidos: { productos: { name: string; quantity: number }[] }[] }).pedidos;
+    expect(pedidos).toHaveLength(1);
+    expect(pedidos[0]!.productos).toEqual([{ name: "Tacos al Pastor", quantity: 4 }]);
   });
 });

@@ -301,9 +301,11 @@ function unidadesGratisPorRenglon(promotion: Promotion, items: readonly Persiste
 
 /**
  * D12 (QA-PM-R5-voz-06 / reglas-12): el pedido persistia los renglones a precio de lista y el `total` con el descuento ya restado, asi que la suma de renglones NO
- * cuadraba con el total ($448 contra $328 con las 2 aguas de cortesia; $168 contra $84 con el 2x1). Reportes, correos y cualquier suma de renglones salian mal.
+ * cuadraba con el total ($448 contra $328 con las 2 aguas de cortesia; $168 contra $84 con el 2x1), contra la regla D12 (total = suma de renglones con las cortesias aplicadas).
+ * El CFO deriva bruta y descuento de promocion como (suma de renglones - total): por eso el renglon regalado conserva su precio de lista en `listPrice` y
+ * `restaurantes.cfo_renglones` (migracion 086) lo usa; bruta, descuento y neta del CFO quedan IGUALES a los de antes.
  * Devuelve los renglones tal como deben guardarse: las unidades REGALADAS por la promocion quedan en un renglon aparte a $0 (mismo producto, mismo nombre, para que la comanda
- * y el catalogo las sigan reconociendo) y la suma de renglones es exactamente el total. Solo para promociones que regalan unidades enteras; porcentaje y monto fijo no
+ * y el catalogo las sigan reconociendo; con `listPrice` = precio de lista, para que el CFO conserve la venta bruta y el descuento) y la suma de renglones es exactamente el total. Solo para promociones que regalan unidades enteras; porcentaje y monto fijo no
  * se reparten por renglon. Si la suma no cuadra con `total` (descuento recortado, redondeo) devuelve los renglones sin tocar: nunca empeora lo anterior.
  */
 export function renglonesConPromocionAplicada(items: readonly PersistedOrderItem[], promotion: Promotion | null, total: number): readonly PersistedOrderItem[] {
@@ -316,22 +318,33 @@ export function renglonesConPromocionAplicada(items: readonly PersistedOrderItem
     if (g <= 0) out.push(item);
     else {
       if (item.quantity - g > 0) out.push({ ...item, quantity: item.quantity - g });
-      out.push({ ...item, quantity: g, price: 0 });
+      out.push({ ...item, quantity: g, price: 0, listPrice: item.price, courtesy: true, promoCode: promotion.code });
     }
   });
   const suma = Math.round(out.reduce((acc, i) => acc + i.price * i.quantity, 0) * 100) / 100;
   return Math.abs(suma - total) < 0.005 ? out : items;
 }
 
-/** Une los renglones del MISMO producto (id, o nombre si no hay id) sumando cantidades: un renglon de cortesia/2x1 a $0 junto a su renglon pagado es UN producto para quien
- * lee el historial ("lo de siempre", repetir pedido). Conserva el precio de lista (el mayor) y la tortilla del primero. */
-export function fusionarRenglonesPorProducto<T extends { readonly id?: string; readonly name: string; readonly price?: number; readonly quantity: number }>(items: readonly T[]): T[] {
+/** Une los renglones del MISMO producto y la MISMA tortilla sumando cantidades: un renglon de cortesia/2x1 a $0 junto a su renglon pagado es UN producto para quien lee el historial
+ * ("lo de siempre", repetir pedido). El precio del renglon unido es el de LISTA (`listPrice` si el renglon fue regalado, si no `price`; el mayor): un producto regalado al 100 % no queda a $0.
+ * Tortillas distintas del mismo producto (2 de maiz + 2 de harina) siguen en renglones separados. */
+export function fusionarRenglonesPorProducto<T extends { readonly id?: string; readonly name: string; readonly price?: number; readonly quantity: number; readonly tortilla?: string }>(items: readonly T[]): T[] {
+  const precioDeLista = (i: T): number | undefined => {
+    const lista = (i as { listPrice?: unknown }).listPrice;
+    return typeof lista === "number" && Number.isFinite(lista) ? lista : i.price;
+  };
   const porClave = new Map<string, T>();
   for (const item of items) {
-    const clave = item.id ?? item.name;
+    const clave = `${item.id ?? item.name}|${item.tortilla ?? ""}`;
     const previo = porClave.get(clave);
-    if (!previo) porClave.set(clave, item);
-    else porClave.set(clave, { ...previo, quantity: previo.quantity + item.quantity, ...(item.price !== undefined && (previo.price === undefined || item.price > previo.price) ? { price: item.price } : {}) });
+    const precio = precioDeLista(item);
+    if (!previo) {
+      const { listPrice: _l, courtesy: _c, promoCode: _p, ...limpio } = item as T & { listPrice?: unknown; courtesy?: unknown; promoCode?: unknown };
+      porClave.set(clave, { ...(limpio as unknown as T), ...(precio !== undefined ? { price: precio } : {}) });
+    } else {
+      const previoPrecio = previo.price;
+      porClave.set(clave, { ...previo, quantity: previo.quantity + item.quantity, ...(precio !== undefined && (previoPrecio === undefined || precio > previoPrecio) ? { price: precio } : {}) });
+    }
   }
   return [...porClave.values()];
 }
