@@ -23,6 +23,9 @@ function cfoRepo(): CfoRepository {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Resp = Omit<Response, "json"> & { json(): Promise<any> };
+
 interface Emision { readonly evento: string; readonly organizationId: string; readonly dedupe: string; readonly severidad: string }
 
 async function armar(opts: { cfo?: (() => CfoRepository) | null } = {}) {
@@ -67,7 +70,7 @@ async function armar(opts: { cfo?: (() => CfoRepository) | null } = {}) {
   const deps: AppDeps = { ...base, engine, saludRepo, cierreRepo: () => cierreRepo, ...(cfo ? { cfoRestaurantesRepo: cfo } : {}) };
   if (!cfo) delete (deps as { cfoRestaurantesRepo?: unknown }).cfoRestaurantesRepo;
   const app = buildApp(deps);
-  const tick = () => app.request("/internal/restaurantes/cierres-dia?dias=2", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } });
+  const tick = () => Promise.resolve(app.request("/internal/restaurantes/cierres-dia?dias=2", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } })) as Promise<Resp>;
   return { app, tick, emisiones, latidos, organizationId, transacciones: () => transacciones };
 }
 
