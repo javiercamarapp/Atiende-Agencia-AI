@@ -362,7 +362,8 @@ export const MOTIVOS_QUE_NO_ABREN_TOMA: ReadonlySet<string> = new Set(["reposici
 export function abreTomaDeHandoff(motivo: string, mensajes: readonly ConversationMessage[]): boolean {
   if (MOTIVOS_QUE_NO_ABREN_TOMA.has(motivo)) return false;
   if (motivo !== "cliente_lo_pide") return true;
-  return mensajesSinResponder(mensajes).some((m) => m.role === "user" && pideUnaPersona(m.content));
+  // El ultimo mensaje del cliente que traia la peticion, aunque el agente haya intercalado turnos (pregunto el nombre y escalo en el siguiente).
+  return mensajes.filter((m) => m.role === "user").slice(-6).some((m) => pideUnaPersona(m.content));
 }
 
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */

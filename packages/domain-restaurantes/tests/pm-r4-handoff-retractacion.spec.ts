@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { abreTomaDeHandoff, handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
 import { pideUnaPersona } from "../src/whatsapp/guards.ts";
+import { evaluarPersonaVoz } from "../src/voz/guardia-persona.ts";
 import type { WhatsAppTurnHandler } from "../src/whatsapp/turn-handler.ts";
 import { InMemoryConversacionesRepository, InMemoryHandoffAgentGate } from "../src/index.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
@@ -60,5 +61,26 @@ describe("handleInboundWhatsAppMessage: el agente sigue atendiendo tras un falso
     const segundo = await enviar("m2", "quiero 4 tacos de pastor para recoger");
     expect(segundo).toMatchObject({ ok: true, reply: "Con calma, la sucursal ya fue avisada" });
     expect(turnos).toBe(2);
+  });
+});
+
+describe("la retractacion no quita escaladas reales (guardia de WhatsApp y de voz)", () => {
+  it.each([
+    "quiero hablar con el gerente, no con usted",
+    "pásame con una persona, no contigo",
+    "quiero hablar con alguien de verdad, no contigo",
+    "que me llame una persona, mejor por aquí",
+    "quiero hablar con un humano no contigo robot",
+    "me pasas con el gerente?",
+    "pásenme con el encargado",
+    "me comunicas con el gerente",
+    "I want to talk to a human",
+  ])("%s -> pide persona", (t) => {
+    expect(pideUnaPersona(t), t).toBe(true);
+    expect(evaluarPersonaVoz(t)?.motivo, t).toBe("cliente_lo_pide");
+  });
+  it("abreTomaDeHandoff mira la peticion aunque haya turnos intermedios del agente", () => {
+    const msgs = [u("quiero hablar con una persona"), { role: "assistant" as const, content: "¿A nombre de quién?" }, u("Ana")];
+    expect(abreTomaDeHandoff("cliente_lo_pide", msgs)).toBe(true);
   });
 });
