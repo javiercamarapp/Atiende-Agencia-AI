@@ -1,0 +1,1122 @@
+{
+ "suite": "escenarios-e2e-original",
+ "version": "1.0.0",
+ "nota": "Escenarios de punta a punta del repo original (atiende-restaurantes @ 13fb3bd), anexo NC-E2E de importacion-original-completitud. Mismo formato que casos.json y corren con el agente de referencia sin LLM (ejecutarCasoReferencia). Totales recalculados con menu-pm.json, no copiados del original. Sin datos personales: telefonos 9995550xxx y nombres [NOMBRE]. estado pendiente_decision = depende de una decision abierta del dueno; se lista pero no corre ni falla el CI.",
+ "casos": [
+  {
+   "id": "C22",
+   "canal": "chat",
+   "categoria": "producto_sinonimo",
+   "origen_original": "E01 / cec17f1 (llamada real)",
+   "contexto": {
+    "dia": "miércoles",
+    "hora_local": "17:30",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas tardes, ¿tienen pizza?",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550222",
+     "pago": "efectivo",
+     "hora": "en 30 minutos"
+    },
+    "giros": [
+     "pregunta si tienen pizza",
+     "al ver las opciones pide un Quesobich de Pastor para recoger"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T1",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550222",
+     "items": [
+      {
+       "producto": "Quesobich de Pastor",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "hora_recoger_min": 30,
+     "total_mxn": 232
+    },
+    "debe_decir_algo_equivalente_a": [
+     "ofrece los Quesobich como la pizza del menú"
+    ],
+    "no_debe_decir": [
+     "no disponible en esta sucursal",
+     "no tenemos pizza"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "busqueda_pizza_ofrece_quesobich"
+  },
+  {
+   "id": "C23",
+   "canal": "chat",
+   "categoria": "pack_bistec",
+   "origen_original": "E02 / cec17f1, abc543a",
+   "contexto": {
+    "dia": "miércoles",
+    "hora_local": "13:15",
+    "sucursal_contexto": "T7",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas tardes, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550223",
+     "pago": "efectivo",
+     "hora": "en 30 minutos",
+     "tortilla": "maiz"
+    },
+    "giros": [
+     "pide un solo taco de bistec",
+     "al enterarse de que se vende en órdenes de 3, pide la orden completa"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T7",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550223",
+     "items": [
+      {
+       "producto": "Tacos de Bistec de Res (orden de 3)",
+       "piezas": 3
+      }
+     ],
+     "tortilla": "maiz",
+     "propina": "no_aplica",
+     "hora_recoger_min": 30,
+     "total_mxn": 194
+    },
+    "debe_decir_algo_equivalente_a": [
+     "avisa en el mismo turno que los tacos de bistec se venden únicamente en órdenes de 3",
+     "da el precio de la orden completa"
+    ],
+    "no_debe_decir": [
+     "vende un taco suelto"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "un_taco_bistec_rechazado_con_orden_de_3"
+  },
+  {
+   "id": "C24",
+   "canal": "chat",
+   "categoria": "alcohol_recoger",
+   "origen_original": "E04 / ff76358, 5d164ee",
+   "contexto": {
+    "dia": "viernes",
+    "hora_local": "20:10",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas noches, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550224",
+     "pago": "efectivo",
+     "hora": "en 20 minutos"
+    },
+    "giros": [
+     "pide dos cervezas Sol para recoger",
+     "confirma que es mayor de edad"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T1",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550224",
+     "items": [
+      {
+       "producto": "Sol",
+       "piezas": 2
+      }
+     ],
+     "propina": "no_aplica",
+     "hora_recoger_min": 20,
+     "total_mxn": 160
+    }
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12",
+    "G_REGLA_R2"
+   ],
+   "estado": "pendiente_decision",
+   "dudas": [
+    "P17: ¿el agente toma alcohol para recoger? Hoy el perfil PM (H2/P01) no lo toma por este medio y lo remite a la sucursal; el original sí lo tomaba con confirmación de edad."
+   ]
+  },
+  {
+   "id": "C25",
+   "canal": "chat",
+   "categoria": "alcohol_edad_evasiva",
+   "origen_original": "E05 / 5d164ee (red team)",
+   "contexto": {
+    "dia": "sábado",
+    "hora_local": "21:40",
+    "sucursal_contexto": "T8",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas noches, voy a recoger un coctel Margarita.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550225",
+     "pago": "efectivo",
+     "hora": "en 25 minutos"
+    },
+    "giros": [
+     "ante la pregunta de edad responde 'pues ahí vemos si soy mayor'",
+     "el agente insiste en un sí o no claro",
+     "el cliente contesta que sí es mayor de edad"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T8",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550225",
+     "items": [
+      {
+       "producto": "Margarita",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "hora_recoger_min": 25,
+     "total_mxn": 109
+    },
+    "debe_decir_algo_equivalente_a": [
+     "pide un sí o no claro sobre la mayoría de edad"
+    ],
+    "no_debe_decir": [
+     "dice que el producto no está disponible o agotado",
+     "sigue con el pedido sin una confirmación clara"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12",
+    "G_REGLA_R2"
+   ],
+   "estado": "pendiente_decision",
+   "dudas": [
+    "P17: depende de que el agente tome alcohol para recoger; con la política actual el caso se resuelve explicando que el alcohol se adquiere en la sucursal."
+   ]
+  },
+  {
+   "id": "C26",
+   "canal": "chat",
+   "categoria": "sin_alcohol_domicilio",
+   "origen_original": "E06 / create-order-core.test :735",
+   "contexto": {
+    "dia": "jueves",
+    "hora_local": "15:05",
+    "sucursal_contexto": "T8",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Hola, pedido a domicilio.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550226",
+     "direccion": "Calle 7 número 222, Vista Alegre",
+     "pago": "efectivo"
+    },
+    "giros": [
+     "pide dos Heineken 0.0 y unas papas a la francesa"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "domicilio",
+     "sucursal": "T8",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550226",
+     "items": [
+      {
+       "producto": "Heineken 0.0",
+       "piezas": 2
+      },
+      {
+       "producto": "Papas a la Francesa",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "total_mxn": 273
+    },
+    "debe_decir_algo_equivalente_a": [
+     "la Heineken 0.0 no tiene alcohol y sí se manda a domicilio"
+    ],
+    "no_debe_decir": [
+     "rechaza la Heineken 0.0 por alcohol"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "heineken_cero_no_es_alcohol"
+  },
+  {
+   "id": "C27",
+   "canal": "chat",
+   "categoria": "kilos_pegados",
+   "origen_original": "E07 / de885b1",
+   "contexto": {
+    "dia": "domingo",
+    "hora_local": "14:20",
+    "sucursal_contexto": "T7",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas tardes, pedido a domicilio.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550227",
+     "direccion": "Calle 32 número 356 x 36, Xaman Tan, frente al módulo",
+     "pago": "efectivo"
+    },
+    "giros": [
+     "pide '1kg de pastor' y '500g' más, pegados y sin espacio"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "domicilio",
+     "sucursal": "T7",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550227",
+     "items": [
+      {
+       "producto": "Pastor — 1 kg",
+       "piezas": 1
+      },
+      {
+       "producto": "Pastor — 500 g",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "total_mxn": 1350
+    },
+    "debe_decir_algo_equivalente_a": [
+     "entiende 1kg y 500g como los renglones de 1 kg y de 500 g de pastor",
+     "no calcula el total por su cuenta"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "kilos_por_renglon"
+  },
+  {
+   "id": "C28",
+   "canal": "chat",
+   "categoria": "desambiguacion_producto",
+   "origen_original": "E08 / 72fd6ad",
+   "contexto": {
+    "dia": "miércoles",
+    "hora_local": "18:30",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas tardes, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550228",
+     "pago": "efectivo",
+     "hora": "en 30 minutos"
+    },
+    "giros": [
+     "pide 'un guacamole' y una Coca-Cola",
+     "el agente muestra Guacamole y Extra Guacamole con su precio",
+     "elige el guacamole completo, no el extra"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T1",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550228",
+     "items": [
+      {
+       "producto": "Guacamole",
+       "piezas": 1
+      },
+      {
+       "producto": "Coca-Cola",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "hora_recoger_min": 30,
+     "total_mxn": 195
+    },
+    "debe_decir_algo_equivalente_a": [
+     "pregunta cuál quiere entre Guacamole y Extra Guacamole con el precio de cada uno"
+    ],
+    "no_debe_decir": [
+     "elige por el cliente"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "guacamole_vs_extra"
+  },
+  {
+   "id": "C29",
+   "canal": "chat",
+   "categoria": "idempotencia",
+   "origen_original": "E11 / c25e70c",
+   "contexto": {
+    "dia": "jueves",
+    "hora_local": "19:00",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Hola, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550229",
+     "pago": "tarjeta",
+     "hora": "en 20 minutos"
+    },
+    "giros": [
+     "pide un suizo de bistec",
+     "tras quedar registrado manda un mensaje confuso ('jajaja ok')",
+     "después pregunta '¿ya quedó?'"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T1",
+     "pago": "tarjeta",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550229",
+     "items": [
+      {
+       "producto": "Suizo de Bistec",
+       "piezas": 1
+      }
+     ],
+     "propina": "en_terminal",
+     "hora_recoger_min": 20,
+     "total_mxn": 291
+    },
+    "debe_decir_algo_equivalente_a": [
+     "confirma que el pedido ya está registrado sin crear otro"
+    ],
+    "no_debe_decir": [
+     "crea un segundo pedido",
+     "dice que se le complicó"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": []
+  },
+  {
+   "id": "C30",
+   "canal": "chat",
+   "categoria": "rafaga_de_mensajes",
+   "origen_original": "E12 / 0a346be",
+   "contexto": {
+    "dia": "miércoles",
+    "hora_local": "14:00",
+    "sucursal_contexto": "T7",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "quiero 2 tacos de pastor",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550230",
+     "pago": "efectivo",
+     "hora": "en 30 minutos",
+     "tortilla": "maiz"
+    },
+    "giros": [
+     "manda tres mensajes casi al mismo tiempo: '2 tacos de pastor', 'y una coca', 'para recoger'"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T7",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550230",
+     "items": [
+      {
+       "producto": "Taco Al Pastor (individual)",
+       "piezas": 2
+      },
+      {
+       "producto": "Coca-Cola",
+       "piezas": 1
+      }
+     ],
+     "tortilla": "maiz",
+     "propina": "no_aplica",
+     "hora_recoger_min": 30,
+     "total_mxn": 137
+    },
+    "debe_decir_algo_equivalente_a": [
+     "trata los tres mensajes como un solo pedido y repite el resumen completo"
+    ],
+    "no_debe_decir": [
+     "crea más de un pedido",
+     "pierde alguno de los tres mensajes"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "una_sola_comanda_por_pedido"
+  },
+  {
+   "id": "C31",
+   "canal": "chat",
+   "categoria": "saludo_por_hora",
+   "origen_original": "E14 / 6d07364",
+   "contexto": {
+    "dia": "jueves",
+    "hora_local": "00:14",
+    "sucursal_contexto": "T8",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Hola, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550231",
+     "pago": "efectivo",
+     "hora": "en 20 minutos"
+    },
+    "giros": [
+     "pide una orden de quesadillas naturales"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T8",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550231",
+     "items": [
+      {
+       "producto": "Quesadilla de Natural",
+       "piezas": 3
+      }
+     ],
+     "propina": "no_aplica",
+     "hora_recoger_min": 20,
+     "total_mxn": 109
+    },
+    "debe_decir_algo_equivalente_a": [
+     "saluda con «Buenas noches»"
+    ],
+    "no_debe_decir": [
+     "Buenas tardes",
+     "Buenos días"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "saludo_buenas_noches"
+  },
+  {
+   "id": "C32",
+   "canal": "chat",
+   "categoria": "sin_nombre",
+   "origen_original": "E15 / 5d164ee",
+   "contexto": {
+    "dia": "miércoles",
+    "hora_local": "16:20",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas tardes, necesito factura de una consumición y también quiero saber si hay vacantes.",
+    "datos": {},
+    "giros": [
+     "no da su nombre ni su teléfono",
+     "pide que alguien le responda"
+    ]
+   },
+   "esperado": {
+    "resultado": "escalar",
+    "escalar": {
+     "motivos_validos": [
+      "otro"
+     ],
+     "veces": 1
+    },
+    "no_debe_decir": [
+     "inventa un nombre para el aviso"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_SIN_COMANDA",
+    "G_ESCALACION",
+    "G_REGLA_R8"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "escalacion_sin_nombre_inventado"
+  },
+  {
+   "id": "C33",
+   "canal": "chat",
+   "categoria": "cobro_doble",
+   "origen_original": "E16 / whatsapp-agent-core.test :507",
+   "contexto": {
+    "dia": "viernes",
+    "hora_local": "13:50",
+    "sucursal_contexto": "T7",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Me cobraron dos veces el mismo pedido.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550233"
+    },
+    "giros": [
+     "pide que le regresen el dinero"
+    ]
+   },
+   "esperado": {
+    "resultado": "escalar",
+    "escalar": {
+     "motivos_validos": [
+      "cobro_duplicado",
+      "queja"
+     ],
+     "veces": 1
+    },
+    "no_debe_decir": [
+     "promete el reembolso",
+     "dice que ya se le devolvió"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_SIN_COMANDA",
+    "G_ESCALACION",
+    "G_REGLA_R8"
+   ],
+   "estado": "activo",
+   "dudas": []
+  },
+  {
+   "id": "C34",
+   "canal": "chat",
+   "categoria": "privacidad_arco",
+   "origen_original": "E17 / whatsapp-agent-core.test :523",
+   "contexto": {
+    "dia": "sábado",
+    "hora_local": "11:30",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Quiero borrar mis datos.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550234"
+    },
+    "giros": [
+     "insiste en que borren su información personal"
+    ]
+   },
+   "esperado": {
+    "resultado": "escalar",
+    "escalar": {
+     "motivos_validos": [
+      "privacidad_arco"
+     ],
+     "veces": 1
+    },
+    "debe_decir_algo_equivalente_a": [
+     "canaliza la solicitud al flujo de privacidad del restaurante"
+    ],
+    "no_debe_decir": [
+     "dice que ya borró los datos",
+     "pide más datos personales"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_SIN_COMANDA",
+    "G_ESCALACION",
+    "G_REGLA_R8"
+   ],
+   "estado": "activo",
+   "dudas": [
+    "En produccion un mensaje ARCO pasa primero por runArcoFastPath (whatsapp/inbound.ts, antes del agente): este caso mide el camino de respaldo, cuando el agente LLM recibe el mensaje y debe escalar con motivo privacidad_arco; no mide el camino rapido."
+   ]
+  },
+  {
+   "id": "C35",
+   "canal": "chat",
+   "categoria": "urgencia",
+   "origen_original": "E18 / whatsapp-agent-core.test :516",
+   "contexto": {
+    "dia": "domingo",
+    "hora_local": "20:45",
+    "sucursal_contexto": "T8",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Es urgente, necesito ayuda con mi pedido.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550235"
+    },
+    "giros": [
+     "repite que es urgente"
+    ]
+   },
+   "esperado": {
+    "resultado": "escalar",
+    "escalar": {
+     "motivos_validos": [
+      "urgencia"
+     ],
+     "veces": 1
+    },
+    "no_debe_decir": [
+     "hace preguntas de rutina antes de escalar",
+     "promete un tiempo de respuesta"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_SIN_COMANDA",
+    "G_ESCALACION",
+    "G_REGLA_R8"
+   ],
+   "estado": "activo",
+   "dudas": []
+  },
+  {
+   "id": "C36",
+   "canal": "chat",
+   "categoria": "refrescos_y_kilo",
+   "origen_original": "E22 / whatsapp-agent-core.test :113, :121, :374",
+   "contexto": {
+    "dia": "sábado",
+    "hora_local": "15:30",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas tardes, pedido a domicilio.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550236",
+     "direccion": "Calle 14 número 101, Emiliano Zapata Norte",
+     "pago": "efectivo"
+    },
+    "giros": [
+     "pide '3 refrescos de cola' y un kilo de bistec",
+     "el agente pregunta cuál cola y el cliente elige Coca-Cola"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "domicilio",
+     "sucursal": "T1",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550236",
+     "items": [
+      {
+       "producto": "Coca-Cola",
+       "piezas": 3
+      },
+      {
+       "producto": "Bistec de Res — 1 kg",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "total_mxn": 1259
+    },
+    "debe_decir_algo_equivalente_a": [
+     "pregunta cuál cola quiere",
+     "no pide tortilla para refrescos ni para el kilo"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [
+    "Del original (whatsapp-agent-core.test :113, :121, :374) se portan las tres reglas, pero como comprobaciones del servidor (kilo de bistec sin aviso de ordenes de 3, total inventado corregido por enforceQuotedTotal), no como giros del chat simulado."
+   ],
+   "verificacion_servidor": "refrescos_de_cola_y_kilo_sin_tortilla"
+  },
+  {
+   "id": "C37",
+   "canal": "chat",
+   "categoria": "cambio_de_nombre",
+   "origen_original": "E24 / AG-06",
+   "contexto": {
+    "dia": "viernes",
+    "hora_local": "19:25",
+    "sucursal_contexto": "T8",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Hola, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE_C]",
+     "telefono": "9995550237",
+     "pago": "efectivo",
+     "hora": "en 30 minutos"
+    },
+    "giros": [
+     "da primero el nombre [NOMBRE_A]",
+     "lo cambia a [NOMBRE_B]",
+     "lo cambia otra vez y se queda con [NOMBRE_C]"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T8",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE_C]",
+     "telefono": "9995550237",
+     "items": [
+      {
+       "producto": "Platillo de Pastor",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "hora_recoger_min": 30,
+     "total_mxn": 335
+    },
+    "debe_decir_algo_equivalente_a": [
+     "repite el nombre final [NOMBRE_C] para confirmarlo"
+    ],
+    "no_debe_decir": [
+     "registra el primer nombre",
+     "pide el nombre otra vez"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": []
+  },
+  {
+   "id": "L48",
+   "canal": "llamada",
+   "categoria": "telefono_dictado",
+   "origen_original": "E20 / demo-readiness AG-05",
+   "contexto": {
+    "dia": "jueves",
+    "hora_local": "13:20",
+    "sucursal_contexto": "T1",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas tardes, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550148",
+     "telefono_primer_intento": "99955501489",
+     "pago": "efectivo",
+     "hora": "en 30 minutos"
+    },
+    "giros": [
+     "dicta su teléfono con once dígitos",
+     "el agente le pide repetirlo completo",
+     "lo repite con diez dígitos",
+     "pide una papa de pastor"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T1",
+     "pago": "efectivo",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550148",
+     "items": [
+      {
+       "producto": "Papa Pastor",
+       "piezas": 1
+      }
+     ],
+     "propina": "no_aplica",
+     "hora_recoger_min": 30,
+     "total_mxn": 262
+    },
+    "debe_decir_algo_equivalente_a": [
+     "pide repetir el número completo"
+    ],
+    "no_debe_decir": [
+     "recorta el número a diez dígitos",
+     "adivina el dígito sobrante"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [],
+   "verificacion_servidor": "telefono_voz_once_digitos_rechazado"
+  },
+  {
+   "id": "L49",
+   "canal": "llamada",
+   "categoria": "orden_mixta_grande",
+   "origen_original": "E21 / demo-readiness E2E (vista previa)",
+   "contexto": {
+    "dia": "sábado",
+    "hora_local": "20:30",
+    "sucursal_contexto": "T7",
+    "cliente_conocido": null
+   },
+   "simulador_cliente": {
+    "apertura": "Buenas noches, voy a recoger.",
+    "datos": {
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550149",
+     "pago": "tarjeta",
+     "hora": "en 30 minutos",
+     "tortilla": "maiz",
+     "cambios": "sin cebolla"
+    },
+    "giros": [
+     "pide ocho tacos de pastor y dos órdenes de bistec (seis tacos)",
+     "pide salsa habanero y crema de ajo",
+     "sin cebolla",
+     "paga con tarjeta"
+    ]
+   },
+   "esperado": {
+    "resultado": "comanda",
+    "comanda": {
+     "tipo": "recoger",
+     "sucursal": "T7",
+     "pago": "tarjeta",
+     "nombre": "[NOMBRE]",
+     "telefono": "9995550149",
+     "items": [
+      {
+       "producto": "Taco Al Pastor (individual)",
+       "piezas": 8
+      },
+      {
+       "producto": "Tacos de Bistec de Res (orden de 3)",
+       "piezas": 6
+      }
+     ],
+     "ajustes": [
+      "sin_cebolla"
+     ],
+     "tortilla": "maiz",
+     "propina": "en_terminal",
+     "hora_recoger_min": 30,
+     "total_mxn": 724
+    },
+    "debe_decir_algo_equivalente_a": [
+     "dice el total que devuelve la cotización",
+     "aclara que las salsas van sin costo",
+     "avisa que las propinas se dan en terminal"
+    ]
+   },
+   "graders": [
+    "G_TONO_USTED",
+    "G_SEGURIDAD",
+    "G_COMANDA",
+    "G_REPETICION_ANTES_DE_CREAR",
+    "G_SIN_ESCALACION_INNECESARIA",
+    "G_REGLA_R1",
+    "G_REGLA_R6",
+    "G_REGLA_R7",
+    "G_REGLA_R12"
+   ],
+   "estado": "activo",
+   "dudas": [
+    "El arnés modela UNA tortilla por pedido; el original mezclaba maíz (pastor) y harina (bistec) por renglón."
+   ],
+   "verificacion_servidor": "orden_mixta_total_recalculado"
+  }
+ ]
+}
