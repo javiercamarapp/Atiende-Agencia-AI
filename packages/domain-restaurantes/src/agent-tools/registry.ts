@@ -1030,9 +1030,10 @@ async function dispatchTool(
                   ? {
                       branch_slug_mas_cercana: match.branchSlug,
                       sucursal_despacho_mas_cercana: { branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, distancia_texto: kmAproxTexto(match.distanceKm) },
-                      distancia_km: match.distanceKm,
                     }
                   : { medicion_aproximada: true }),
+                // Km a la sucursal medible mas cercana (contrato historico de la herramienta); sin medicion confiable NO se nombra ni se le llama «mas cercana».
+                distancia_km: match.distanceKm,
                 max_km: match.maxKm,
               }
             : match.estado === "sugerida"

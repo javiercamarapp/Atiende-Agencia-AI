@@ -116,8 +116,9 @@ describe("e2e WhatsApp: casos de negocio", () => {
       sayObserving(seen, "A domicilio no llegamos a Progreso; para recoger son $284."),
     ]);
     await stack.sim.deliverText("5219991230005", "Entregan en Progreso?");
-    // La sucursal mas cercana existe pero esta a ~29 km: la cobertura de reparto la decide el servidor al cotizar.
-    expect((seen[0] as { distancia_km: number }).distancia_km).toBeGreaterThan(20);
+    // Progreso es una colonia cargada que NINGUNA sucursal cubre (esta a ~29 km): la herramienta ya no dice «asignada» (el servidor la rechazaria al cotizar, import-orig-01),
+    // pide confirmar y ofrece recoger; la cobertura de reparto la decide el servidor al cotizar.
+    expect(seen[0]).toMatchObject({ encontrada: false, estado: "sugerida", reparto: "por_confirmar", colonia_reconocida: "Progreso" });
     expect(JSON.stringify(seen[1])).toMatch(/zona|reparto|cobertura/i);
     expect((seen[2] as { quote: { total: number } }).quote.total).toBe(284);
     expect(JSON.stringify(seen[2])).not.toMatch(/"error"/);
