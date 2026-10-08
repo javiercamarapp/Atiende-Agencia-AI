@@ -247,6 +247,10 @@ describe("MetaGraphWhatsAppReader: el token nunca se expone", () => {
     expect(limpio).toContain("[REDACTADO]");
   });
 
+  it("no toca el nombre de la variable WHATSAPP_ACCESS_TOKEN=<valor> de un texto de ayuda", () => {
+    expect(redactarSecretos("Uso: WHATSAPP_ACCESS_TOKEN=<token> node x.ts")).toBe("Uso: WHATSAPP_ACCESS_TOKEN=<token> node x.ts");
+  });
+
   it("si Graph devuelve el token en su mensaje de error, el error y su serializacion no lo traen", async () => {
     const { reader } = lector([jsonResponse({ error: { message: `Invalid OAuth access token ${FAKE_TOKEN} (access_token=${FAKE_TOKEN})`, code: 190 } }, 401)]);
     const err = await fallo(reader.numero("1"));

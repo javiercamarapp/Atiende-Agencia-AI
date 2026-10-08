@@ -121,7 +121,7 @@ export function redactarSecretos(texto: string, token?: string): string {
   if (token && token.length > 0) limpio = limpio.split(token).join("[REDACTADO]");
   return limpio
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTADO]")
-    .replace(/(access_token|client_secret|appsecret_proof)=([^&\s"']+)/gi, "$1=[REDACTADO]")
+    .replace(/(?<![A-Za-z0-9_])(access_token|client_secret|appsecret_proof)=([^&\s"']+)/gi, "$1=[REDACTADO]")
     .replace(/\bEA[A-Za-z0-9]{20,}\b/g, "[REDACTADO]");
 }
 
