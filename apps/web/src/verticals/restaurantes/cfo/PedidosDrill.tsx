@@ -1,7 +1,7 @@
 // CFO-07 · drill-down a la lista de pedidos que respalda una cifra (`GET .../admin/cfo/pedidos`). Lista paginada por cursor, SIN PII
 // (el cliente aparece como alias de 8 caracteres) y con enlace a cada pedido en Historial (historial de transiciones + pantalla de Historial).
 // Se abre con `?pedidos=1&…` (el estado vive en la URL, así que el enlace de una tarjeta de «Lo más importante» llega directo aquí).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { History } from "lucide-react";
 import type { FiltroPedidosDetalle, FilaPedidoDetalle } from "@atiende/domain-restaurantes/cfo";
@@ -39,17 +39,22 @@ const VACIO: Estado = { filas: [], cursor: null, cargando: false, error: null, a
 export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedidos }: PedidosDrillProps) {
   const [estado, setEstado] = useState<Estado>(VACIO);
   const [historial, setHistorial] = useState<FilaPedidoDetalle | null>(null);
+  // Contador de petición: una respuesta de una petición anterior (otro filtro, o «Cargar más» de una lista que ya cambió) se descarta.
+  const peticion = useRef(0);
   const claveFiltro = JSON.stringify(filtroPedidos);
   const claveFiltros = `${filtros.desde}|${filtros.hasta}|${filtros.sucursales?.join(",") ?? ""}|${filtros.comparar}`;
 
   const cargar = useCallback(
     async (cursor: string | null, reiniciar: boolean) => {
+      const mia = ++peticion.current;
       setEstado((e) => ({ ...(reiniciar ? VACIO : e), cargando: true, error: null }));
       try {
         const v = await fetchPedidos(api, filtros, { filtro: filtroPedidos, cursor });
+        if (mia !== peticion.current) return;
         setEstado((e) => ({ filas: reiniciar ? v.pedidos : [...e.filas, ...v.pedidos], cursor: v.cursor, cargando: false, error: null, avisos: v.avisos }));
       } catch (err) {
         const mensaje = err instanceof CfoSinAccesoError ? MENSAJE_SIN_ACCESO_CFO : err instanceof CfoNoDisponibleError ? "La lista de pedidos del CFO aún no está disponible en este negocio." : err instanceof Error ? err.message : "No se pudieron cargar los pedidos.";
+        if (mia !== peticion.current) return;
         setEstado((e) => ({ ...e, cargando: false, error: mensaje }));
       }
     },
