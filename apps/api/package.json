@@ -27,7 +27,7 @@
     "@atiende/voice-core": "*",
     "@atiende/whatsapp-gateway": "*",
     "@atiende/worker": "*",
-    "hono": "4.13.9",
+    "hono": "4.13.13",
     "jose": "6.2.12",
     "jszip": "^3.10.1"
   },
