@@ -54,13 +54,14 @@ test.describe("restaurantes R2 botones: matriz visual de ficha, 404 y dialogos @
     defectos.push(...(await medirPagina(page, "404 en el shell", oscuro)));
 
     await ir(page, "/pedidos");
-    const tarjeta = main(page).locator("[class*=card]").filter({ hasText: "Marisol Pech" }).first();
+    const tarjeta = main(page).locator('[data-testid^="pedido-"]').filter({ hasText: "Marisol Pech" }).first();
     await expect(tarjeta).toBeVisible();
     defectos.push(...(await medirPagina(page, "/pedidos", oscuro)));
-    await main(page).getByRole("button", { name: "Reglas del autopiloto" }).click();
+    await main(page).getByRole("button", { name: "Herramientas de pedidos" }).click();
+    await page.getByRole("button", { name: "Reglas del autopiloto" }).click();
     defectos.push(...(await medirDialogo(page, dialogo(page, "Reglas del autopiloto"), "Reglas del autopiloto", /Guardar/)));
-    await tarjeta.getByRole("button", { name: "Marcar Cancelado" }).click();
-    defectos.push(...(await medirDialogo(page, dialogo(page, "Cancelar pedido"), "Cancelar pedido", "Cancelar el pedido")));
+    await tarjeta.getByRole("button", { name: "Cancelar pedido" }).click();
+    defectos.push(...(await medirDialogo(page, dialogo(page, "¿Cancelar este pedido?"), "Cancelar pedido", "Sí, cancelar pedido")));
     await tarjeta.getByRole("button", { name: "Historial", exact: true }).click();
     defectos.push(...(await medirDialogo(page, dialogo(page), "Historial del pedido", /Cerrar/)));
     await tarjeta.getByRole("button", { name: "Vista previa" }).click();

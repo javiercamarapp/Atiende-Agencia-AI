@@ -6,7 +6,7 @@
 import { conStatus, fallo } from "../respuestas.ts";
 import { propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
-import { ORDENES_SEMILLA, ENTREGAS_SEMILLA } from "./restaurantes.ts";
+import { ORDENES_SEMILLA, ENTREGAS_SEMILLA, PROGRAMADOS_SEMILLA } from "./restaurantes.ts";
 
 const PROP = propiedadDe("restaurantes");
 const B = "/v1/restaurantes/:id/admin";
@@ -151,9 +151,27 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     },
   },
   {
+    // Detalle de un pedido (pagina completa de Pedidos): tambien resuelve los programados.
+    metodo: "GET",
+    patron: `${B}/orders/:orderId`,
+    manejador: (p) => {
+      const o = ordenes(p).find((x) => x.id === p.params["orderId"]) ?? p.estado.obtener<Array<{ id: string }>>("rest.programados", () => structuredClone(PROGRAMADOS_SEMILLA)).find((x) => x.id === p.params["orderId"]);
+      return o ? { order: o } : fallo(404, "Ese pedido no existe");
+    },
+  },
+  {
     metodo: "PATCH",
     patron: `${B}/orders/:orderId/status`,
     manejador: (p) => {
+      // Un programado que se adelanta a cocina (pending) pasa a la lista normal; uno cancelado sale de los programados.
+      const programados = p.estado.obtener<Orden[]>("rest.programados", () => structuredClone(PROGRAMADOS_SEMILLA) as unknown as Orden[]);
+      const iProg = programados.findIndex((x) => x.id === p.params["orderId"]);
+      if (iProg >= 0) {
+        const destino = String(((p.cuerpo ?? {}) as { status?: string }).status ?? "");
+        const [prog] = programados.splice(iProg, 1);
+        if (prog && destino === "pending") ordenes(p).push({ ...prog, status: "pending" } as unknown as Orden);
+        return { order: { ...prog, status: destino } };
+      }
       const o = ordenes(p).find((x) => x.id === p.params["orderId"]);
       if (!o) return fallo(404, "Ese pedido no existe");
       const siguiente = String(((p.cuerpo ?? {}) as { status?: string }).status ?? "");
