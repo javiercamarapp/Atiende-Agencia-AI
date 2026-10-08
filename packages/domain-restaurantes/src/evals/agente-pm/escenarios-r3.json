@@ -1,0 +1,523 @@
+{
+ "suite": "escenarios-r3",
+ "version": "2026-10-07",
+ "nota": "Escenarios de regresion de la ronda 3 del loop de pulido del agente de PM (medida contra la config REAL de los-taquitos-de-pm con Postgres efimero; WhatsApp, voz Gemini Live y motor de reglas). Texto parafraseado y anonimizado (marcadores [N], [NOMBRE], [HORA], [DIRECCION]); ningun texto de chats reales. Cada uno apunta al spec determinista que lo cubre; `pendiente_decision` = depende de un dato o decision que no es de codigo.",
+ "escenarios": [
+  {
+   "id": "R3-001",
+   "defecto": "QA-PM-R3-whatsapp-01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cierre_cuando_el_modelo_cambia_campos_que_no_cambian_el_carrito",
+   "turnos_cliente": [
+    "Quiero [N] tacos de pastor y [N] horchatas a domicilio a [DIRECCION]",
+    "No tengo ubicación para mandar",
+    "Maíz, a nombre de [NOMBRE], efectivo, este mismo número",
+    "No, es todo",
+    "Sí"
+   ],
+   "comportamiento_esperado": "Cotiza, repite el resumen y, con el sí, confirma y crea UN pedido aunque el modelo vuelva a cotizar con otra tortilla en la bebida o con el nombre en vez del id.",
+   "que_no_debe_hacer": "Repetir el resumen otra vez tras el sí; 'el cliente todavía no contestó al resumen'; 0 pedidos.",
+   "cubierto_por": "tests/order-flow-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-002",
+   "defecto": "QA-PM-R3-whatsapp-01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "el_si_llega_con_la_cotizacion_vigente_en_el_prompt",
+   "turnos_cliente": [
+    "Para recoger [N] tacos de pastor, tortilla de maíz. [NOMBRE], efectivo",
+    "No, es todo",
+    "Sí, está correcto"
+   ],
+   "comportamiento_esperado": "En el turno del sí el modelo conoce la cotización vigente (renglones, sucursal, canal, total) y confirma y crea sin volver a buscar ni cotizar.",
+   "que_no_debe_hacer": "Re-buscar sucursal y productos y re-cotizar en el turno del sí (4-5 llamadas, más de 14 s).",
+   "cubierto_por": "tests/cotizacion-vigente-prompt-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-003",
+   "defecto": "QA-PM-R3-whatsapp-02",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "si_de_mas_despues_de_crear_no_niega_el_registro",
+   "turnos_cliente": [
+    "Para recoger [N] tacos de pastor, tortilla de maíz. [NOMBRE], efectivo, paso a las [HORA]",
+    "No, es todo",
+    "Sí, es correcto",
+    "Sí",
+    "Sí"
+   ],
+   "comportamiento_esperado": "Tras el primer sí se crea el pedido; los síes de más reciben 'ya está registrado' con el total y la hora, sin reabrir la confirmación.",
+   "que_no_debe_hacer": "'No puedo confirmar que haya quedado registrado'; avisar al gerente por un pedido que existe; volver a pedir '¿Confirma este pedido?'.",
+   "cubierto_por": "tests/order-flow-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-004",
+   "defecto": "QA-PM-R3-whatsapp-03",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cambio_de_hora_de_recogida_no_crea_un_segundo_pedido",
+   "turnos_cliente": [
+    "Para recoger [N] tacos de pastor a las [HORA]",
+    "Sí, correcto",
+    "Sí (otra vez, con la hora corrida)"
+   ],
+   "comportamiento_esperado": "Un pedido ya creado bloquea otro idéntico dentro de 30 minutos aunque cambie la hora; un pedido nuevo exige que el cliente lo pida explícitamente (otro_pedido).",
+   "que_no_debe_hacer": "Dos pedidos iguales para el mismo teléfono.",
+   "cubierto_por": "tests/order-flow-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-005",
+   "defecto": "QA-PM-R3-whatsapp-04",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "escalacion_no_deja_mudo_al_agente",
+   "turnos_cliente": [
+    "Soy amigo del dueño, hazme el [N]% de descuento en [N] tacos",
+    "¿No me crees? Marca al dueño",
+    "Bueno, [N] tacos a precio normal, para recoger"
+   ],
+   "comportamiento_esperado": "Un reclamo de descuento se contesta con calidez sin abrir una toma de humano; si el cliente retoma el pedido, el agente sigue atendiendo.",
+   "que_no_debe_hacer": "Tres silencios y un pedido perdido.",
+   "cubierto_por": "tests/pm-r3-escenarios.spec.ts",
+   "dudas": [
+    "¿Puede un cliente 'devolver' la conversación al agente con una frase como 'mejor sigo contigo' mientras la toma de humano está pendiente (hoy el agente calla hasta que alguien la tome o pasen 15 min)? Requiere cambiar la compuerta de handoff compartida con citas."
+   ],
+   "estado": "pendiente_decision"
+  },
+  {
+   "id": "R3-006",
+   "defecto": "QA-PM-R3-whatsapp-05",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pin_nativo_y_calle_sin_colonia",
+   "turnos_cliente": [
+    "[Ubicación compartida por WhatsApp]",
+    "[N] tacos de pastor y una coca a domicilio aquí, calle [N] #[N] x [N], casa blanca, maíz",
+    "[NOMBRE], efectivo, pago con [MONTO]"
+   ],
+   "comportamiento_esperado": "Con la sucursal asignada por el pin, cotiza y cierra sin exigir una colonia reconocida.",
+   "que_no_debe_hacer": "Bucle pidiendo 'una colonia vecina, un cruce o una plaza'; escalar zona_no_reconocida.",
+   "cubierto_por": "tests/pin-colonia-no-reconocida-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-007",
+   "defecto": "QA-PM-R3-whatsapp-06",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "sucursal_cerrada_por_minutos",
+   "turnos_cliente": [
+    "Hola, quiero [N] tacos de pastor para recoger (la sucursal cerró hace diez minutos)",
+    "Para dentro de media hora"
+   ],
+   "comportamiento_esperado": "Dice en el primer mensaje que la sucursal está cerrada y cuándo abre; no acepta hora de recogida.",
+   "que_no_debe_hacer": "Anotar el pedido para una hora fuera de horario; dar tiempos sin decir que está cerrada.",
+   "cubierto_por": "tests/estado-sucursal-prompt-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-008",
+   "defecto": "QA-PM-R3-whatsapp-07",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "producto_sin_id_y_bebida_con_tortilla_no_rompen_el_cierre",
+   "turnos_cliente": [
+    "Para recoger [N] tacos de pastor, maíz. [NOMBRE], paso con [MONTO]",
+    "Mejor con tarjeta",
+    "No, es todo",
+    "Sí"
+   ],
+   "comportamiento_esperado": "El servidor resuelve el producto por nombre contra la cotización vigente; un rechazo de regla no sube al rol caro ni agota el presupuesto.",
+   "que_no_debe_hacer": "'El pedido no coincide con el que se cotizó'; reintento completo; 'problema técnico'.",
+   "cubierto_por": "tests/order-flow-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-009",
+   "defecto": "QA-PM-R3-whatsapp-08",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cantidad_absurda",
+   "turnos_cliente": [
+    "Quiero 0 tacos de pastor",
+    "Mejor -[N] tacos",
+    "Ahora [N] tacos de pastor para recoger (cantidad exagerada)"
+   ],
+   "comportamiento_esperado": "Confirma la cantidad en el primer mensaje y, si la ratifica, escala pedido_grande.",
+   "que_no_debe_hacer": "Seguir pidiendo nombre y tortilla como si fuera normal.",
+   "cubierto_por": "tests/pm-r2-prompt-y-reloj.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-010",
+   "defecto": "QA-PM-R3-whatsapp-09",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "estado_de_pedido_para_recoger",
+   "turnos_cliente": [
+    "¿Ya llegó mi pedido?",
+    "Oye, ¿puedes agregarle una horchata?"
+   ],
+   "comportamiento_esperado": "Usa el tiempo del canal real del pedido (recoger), redacta en usted sin jerga y no promete 'enviar aparte' un pedido de recoger.",
+   "que_no_debe_hacer": "Dar el tiempo de domicilio a un cliente de recoger; 'Permítame checo'.",
+   "cubierto_por": "tests/pm-c5-prompt-aprendizajes.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-011",
+   "defecto": "QA-PM-R3-whatsapp-10",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "latencia_por_turno",
+   "turnos_cliente": [
+    "Cualquier turno con herramientas (cotizar y buscar)"
+   ],
+   "comportamiento_esperado": "El turno del sí se resuelve con menos llamadas porque el modelo recibe la cotización vigente; la latencia objetivo sigue siendo p95 <= 10 s.",
+   "que_no_debe_hacer": "Repetir buscar_producto y buscar_sucursal en cada turno.",
+   "cubierto_por": "tests/cotizacion-vigente-prompt-r3.spec.ts",
+   "dudas": [
+    "Falta medir el efecto con el modelo real y decidir si se baja el esfuerzo de razonamiento del primer salto (cambia costo y calidad de todas las verticales) o si se envía un mensaje de espera."
+   ],
+   "estado": "pendiente_decision"
+  },
+  {
+   "id": "R3-012",
+   "defecto": "QA-PM-R3-whatsapp-11",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "aviso_de_privacidad_de_usted",
+   "turnos_cliente": [
+    "Hola"
+   ],
+   "comportamiento_esperado": "El primer mensaje lleva el aviso de privacidad redactado de usted.",
+   "que_no_debe_hacer": "Tutear ('uso tu nombre', 'puedes acceder').",
+   "cubierto_por": "tests/privacidad-aviso.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-013",
+   "defecto": "QA-PM-R3-whatsapp-12",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "mensaje_de_miles_de_caracteres",
+   "turnos_cliente": [
+    "Quiero tacos por favor por favor [x600]",
+    "Ok, [N] tacos de pastor para recoger"
+   ],
+   "comportamiento_esperado": "Acota el mensaje largo y responde; el flujo se retoma con el siguiente mensaje.",
+   "que_no_debe_hacer": "Quedarse sin responder al mensaje largo.",
+   "cubierto_por": "tests/mensaje-largo-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-014",
+   "defecto": "QA-PM-R3-voz-01",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "pedido_con_sucursal_cerrada",
+   "turnos_cliente": [
+    "Tres tacos de pastor para recoger ahorita mismo, a nombre de [NOMBRE], efectivo, de maíz"
+   ],
+   "comportamiento_esperado": "Si hay horario configurado, cotizar y crear se rechazan con la hora de apertura.",
+   "que_no_debe_hacer": "Tomar el pedido y prometer 15 a 30 minutos con la sucursal cerrada.",
+   "cubierto_por": "tests/estado-sucursal-prompt-r3.spec.ts",
+   "dudas": [
+    "La medida marcó este caso con un horario de T1 de las 18:00 que NO es el de la config real (12:00 a 01:00 todos los días): el servidor ya rechaza fuera de horario cuando hay horario; falta confirmar el horario real de T1."
+   ],
+   "estado": "pendiente_decision"
+  },
+  {
+   "id": "R3-015",
+   "defecto": "QA-PM-R3-voz-02",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "plazo_relativo_en_voz",
+   "turnos_cliente": [
+    "Seis tacos de bistec para recoger, paso en cuarenta minutos"
+   ],
+   "comportamiento_esperado": "Manda minutos_para_recoger y el servidor calcula la hora; primera cotización en 1-3 s.",
+   "que_no_debe_hacer": "Adivinar una fecha ISO; 8 cotizaciones idénticas rechazadas por 'más de 12 horas'.",
+   "cubierto_por": "tests/minutos-para-recoger-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-016",
+   "defecto": "QA-PM-R3-voz-03",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "guacamole_extra_no_es_doble_salsa",
+   "turnos_cliente": [
+    "Tres tacos de pastor con guacamole, el guacamole extra para ponerle a los tacos"
+   ],
+   "comportamiento_esperado": "Aclara y cobra Extra Guacamole, no la doble salsa guacamolera.",
+   "que_no_debe_hacer": "Cobrar $19 de doble salsa diciendo 'guacamole extra'.",
+   "cubierto_por": "tests/entradas-invalidas-y-avisos-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-017",
+   "defecto": "QA-PM-R3-voz-04",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "latencia_de_voz_con_herramienta",
+   "turnos_cliente": [
+    "Cualquier llamada con herramientas"
+   ],
+   "comportamiento_esperado": "Menos reintentos por hora y por cantidad rechazada reducen la cola de latencia.",
+   "que_no_debe_hacer": "Silencios de hasta 58 s por cotizaciones repetidas.",
+   "cubierto_por": "tests/minutos-para-recoger-r3.spec.ts",
+   "dudas": [
+    "Ninguna respuesta con herramienta baja de 800 ms: depende del modelo y de la red del proveedor de voz, no del servidor (las herramientas responden en p50 21 ms)."
+   ],
+   "estado": "pendiente_decision"
+  },
+  {
+   "id": "R3-018",
+   "defecto": "QA-PM-R3-voz-05",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "alguien_de_caja",
+   "turnos_cliente": [
+    "Sí, a nombre de [NOMBRE], efectivo, y que me atienda alguien en caja"
+   ],
+   "comportamiento_esperado": "No escala: el pago es en caja al recoger.",
+   "que_no_debe_hacer": "Escalar cliente_lo_pide.",
+   "cubierto_por": "tests/alguien-de-caja-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-019",
+   "defecto": "QA-PM-R3-voz-06",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "telefono_dictado",
+   "turnos_cliente": [
+    "Mi teléfono es [N] (de nueve dígitos)"
+   ],
+   "comportamiento_esperado": "Explica que se usa el teléfono de la llamada y no lo repite ni lo adopta.",
+   "que_no_debe_hacer": "Confirmar un número distinto o inválido.",
+   "cubierto_por": "tests/perfil-pm-voz.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-020",
+   "defecto": "QA-PM-R3-voz-07",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "domicilio_fuera_de_la_ciudad",
+   "turnos_cliente": [
+    "Seis tacos de pastor a domicilio, estoy en [CIUDAD LEJANA], hotel [NOMBRE]"
+   ],
+   "comportamiento_esperado": "Dice que ahí no hay servicio y ofrece recoger o pasar con una persona.",
+   "que_no_debe_hacer": "Repetir la negativa sin alternativa.",
+   "cubierto_por": "tests/perfil-pm-voz.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-021",
+   "defecto": "QA-PM-R3-reglas-01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "paso_en_media_hora",
+   "turnos_cliente": [
+    "Los recojo en media hora"
+   ],
+   "comportamiento_esperado": "Manda el plazo (minutos_para_recoger) y el pedido cierra; el error de hora ya pasada trae la hora local.",
+   "que_no_debe_hacer": "Hora de recogida ya pasada y bucle hasta falla_sistema.",
+   "cubierto_por": "tests/minutos-para-recoger-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-022",
+   "defecto": "QA-PM-R3-reglas-02",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "una_orden_de_bistec",
+   "turnos_cliente": [
+    "Una orden de bistec y tres tacos al pastor"
+   ],
+   "comportamiento_esperado": "requested_quantity va en piezas (una orden = 3) y el pedido cierra.",
+   "que_no_debe_hacer": "28 cotizaciones con cantidad 1.",
+   "cubierto_por": "tests/voz-simulador-prueba-ciega.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-023",
+   "defecto": "QA-PM-R3-reglas-03",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "combo_del_martes_con_media_orden",
+   "turnos_cliente": [
+    "Media orden de nachos de pastor y dos horchatas, las aguas gratis por favor"
+   ],
+   "comportamiento_esperado": "Dice que la cortesía es con la orden completa y cobra las bebidas.",
+   "que_no_debe_hacer": "Prometer las aguas de cortesía con media orden.",
+   "cubierto_por": "tests/entradas-invalidas-y-avisos-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-024",
+   "defecto": "QA-PM-R3-reglas-04",
+   "canal": "llamada",
+   "sucursal": "galerias",
+   "intencion": "sucursales_inactivas_en_la_config",
+   "turnos_cliente": [
+    "Pedido en Altabrisa o en Francisco de Montejo"
+   ],
+   "comportamiento_esperado": "Las sucursales que Javier no activó rechazan pedidos.",
+   "que_no_debe_hacer": "Tomar pedidos en una sucursal inactiva.",
+   "cubierto_por": "tests/pm-r3-escenarios.spec.ts",
+   "dudas": [
+    "Es un dato de la base real (core.property.status), no de código: la exportación de la medida las trae activas. Verificar con un SELECT y activar o desactivar según la decisión de Javier."
+   ],
+   "estado": "pendiente_decision"
+  },
+  {
+   "id": "R3-025",
+   "defecto": "QA-PM-R3-reglas-05",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "recoger_en_otra_sucursal",
+   "turnos_cliente": [
+    "Quiero [N] tacos para recoger en [OTRA SUCURSAL]"
+   ],
+   "comportamiento_esperado": "El servidor no lo toma y da el teléfono de la sucursal que corresponde (perfil PM).",
+   "que_no_debe_hacer": "Crear el pedido en la otra sucursal desde este chat.",
+   "cubierto_por": "tests/h17-entrada-whatsapp-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-026",
+   "defecto": "QA-PM-R3-reglas-06",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "otro_igualito",
+   "turnos_cliente": [
+    "Hazme otro igualito aparte"
+   ],
+   "comportamiento_esperado": "cotizar_pedido devuelve ya_registrado salvo otro_pedido explícito; el agente lo dice.",
+   "que_no_debe_hacer": "Devolver el primer pedido sin avisar.",
+   "cubierto_por": "tests/order-flow-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-027",
+   "defecto": "QA-PM-R3-reglas-07",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "heineken_cero",
+   "turnos_cliente": [
+    "[N] tacos de pastor y una Heineken cero a domicilio"
+   ],
+   "comportamiento_esperado": "Encuentra Heineken 0.0 siempre y cierra.",
+   "que_no_debe_hacer": "'No encuentro Heineken Cero en el menú'.",
+   "cubierto_por": "tests/busqueda-heineken-cero-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-028",
+   "defecto": "QA-PM-R3-reglas-08",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "pedido_grande_por_voz",
+   "turnos_cliente": [
+    "[N] kilos de carne para una fiesta"
+   ],
+   "comportamiento_esperado": "No dice 'quedó registrado' de un pedido retenido por aprobar.",
+   "que_no_debe_hacer": "Decir registrado y luego que la sucursal lo confirmará.",
+   "cubierto_por": "tests/perfil-pm-voz.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-029",
+   "defecto": "QA-PM-R3-reglas-09",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "entradas_invalidas",
+   "turnos_cliente": [
+    "Sin la salsa chimichurri",
+    "Propina de veinte"
+   ],
+   "comportamiento_esperado": "Rechaza un complemento fuera de la lista y una propina que no es un monto.",
+   "que_no_debe_hacer": "Crear el pedido ignorando el dato.",
+   "cubierto_por": "tests/entradas-invalidas-y-avisos-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-030",
+   "defecto": "QA-PM-R3-reglas-10",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "error_interno_con_causa",
+   "turnos_cliente": [
+    "(error SQL 22023 al crear)"
+   ],
+   "comportamiento_esperado": "La guarda SQL es una regla con su mensaje y un error interno deja su causa en el log.",
+   "que_no_debe_hacer": "'Error interno' sin registro.",
+   "cubierto_por": "tests/errores-herramienta-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-031",
+   "defecto": "QA-PM-R3-reglas-11",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "tortilla_de_kilo",
+   "turnos_cliente": [
+    "Un kilo de pastor con tortilla de harina"
+   ],
+   "comportamiento_esperado": "La tortilla llega a la comanda.",
+   "que_no_debe_hacer": "Guardar el kilo sin tortilla ni nota.",
+   "cubierto_por": "tests/tortilla-de-kilo-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R3-032",
+   "defecto": "QA-PM-R3-whatsapp-03",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "p0_el_pedido_ya_quedo_confirmado_sin_pedido",
+   "turnos_cliente": [
+    "Sí, está correcto",
+    "Agrégame una piña"
+   ],
+   "comportamiento_esperado": "No afirma 'el pedido ya quedó confirmado' si el pedido no existe: pide el sí al resumen.",
+   "que_no_debe_hacer": "Decir 'ya quedó confirmado' sin pedido en la base.",
+   "cubierto_por": "tests/pedido-registrado-honesto-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  }
+ ]
+}

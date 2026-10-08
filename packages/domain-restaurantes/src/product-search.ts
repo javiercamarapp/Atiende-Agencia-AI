@@ -128,7 +128,7 @@ export function singularizar(palabra: string): string {
 
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
-    normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
+    normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero\s+alcohol\b/g, "0.0"),
   )
     .replace(FRASE_SIN_ALCOHOL, " sinalcohol ")
     // "cerveza con alcohol": "alcohol" no es parte del nombre de ningun producto pedido y casaria con los "sin Alcohol" (el contrario de lo pedido).
@@ -247,6 +247,8 @@ export function matchesProductSearch(
     if (t.startsWith("peso:")) return pesoProducto !== null && pesoProducto === Number(t.slice(5));
     if (t === SIN_ALCOHOL) return MENU_SIN_ALCOHOL.test(sinAcentos(fields.name)) || alias.some((a) => MENU_SIN_ALCOHOL.test(a));
     if (t === ORDEN_COMPLETA) return !/\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(textoPlano);
+    // «cero» suelto: el menu de la 0.0 se escribe "0.0" ("heineken cero"); un producto que dice "cero" en su nombre ("Coca Cero") tambien coincide por su texto.
+    if (t === "cero" && /(?<![\d.])0\.0(?![\d])/.test(textoPlano)) return true;
     return textoPlano.includes(t) || alias.some((a) => a.includes(t)) || (t.length >= 6 && textoCompacto.includes(t));
   });
 }

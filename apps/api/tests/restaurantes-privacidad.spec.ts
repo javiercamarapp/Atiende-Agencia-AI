@@ -206,7 +206,7 @@ describe("lado sistema: voz y purga", () => {
     const body = { organizationId: ctx.organizationId, callerPhone: PHONE };
     const first = await (await app.request("/internal/restaurantes/voz/privacidad/apertura", post(body))).json();
     expect(first.guion).toContain("asistente virtual");
-    expect(first.guion).toContain("¿Autorizas que esta llamada se grabe");
+    expect(first.guion).toContain("¿Autoriza que esta llamada se grabe");
     expect(first.pideConsentimientoGrabacion).toBe(true);
     expect(first.avisoEntregadoAhora).toBe(true);
     const second = await (await app.request("/internal/restaurantes/voz/privacidad/apertura", post(body))).json();

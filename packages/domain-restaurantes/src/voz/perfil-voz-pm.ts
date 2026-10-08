@@ -64,14 +64,19 @@ export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
 - ${PM_REGLA_NO_REPETIR_DATOS}
 - ${PM_REGLA_REINTENTO_PEDIDO}
 - ${PM_REGLA_RESERVACIONES}
-- HORA Y FECHA (QA-PM-R2-voz-03/reglas-04): la hora y la fecha locales de la sucursal las da consultar_sucursal (hora_local, fecha_local, dia_semana); úselas para "en 40 minutos" u "hoy a las ocho", nunca la hora UTC ni la de memoria. hora_recogida (ISO con -06:00) va igual en cotizar_pedido y en crear_pedido; con "en cuanto esté" o "ahorita" no se manda. programado_para solo para otro día o una hora exacta con más de 30 minutos, nunca vacío; si la herramienta rechaza la hora, diga a qué hora cierra.
+- HORA Y FECHA (QA-PM-R2-voz-03/reglas-04): la hora y la fecha locales de la sucursal las da consultar_sucursal (hora_local, fecha_local, dia_semana); úselas para "hoy a las ocho", nunca la hora UTC ni la de memoria. Un PLAZO ("en 40 minutos") no se calcula: minutos_para_recoger 40 en cotizar_pedido y crear_pedido; solo una hora exacta va en hora_recogida (ISO -06:00), igual en ambas; con "en cuanto esté" o "ahorita" no se manda. programado_para solo para otro día o una hora exacta con más de 30 minutos, nunca vacío; si la herramienta rechaza la hora, diga a qué hora cierra.
 - TELÉFONO: confirme UNA sola vez el número de la llamada, sin pedirle que lo dicte ni volver a preguntarlo.
 - RESUMEN: antes de pedir el sí, diga el pedido completo con el total de cotizar_pedido; si se corta o lo interrumpen, repítalo entero.
 - KILOS: "2 kilos" es UN renglón del producto de 2 kg con requested_quantity 1; "3 kilos" son dos renglones (2 kg y 1 kg). Busque cada producto que mencione el cliente; si no existe, dígalo y ofrezca opciones.
 - LLAMADA CORTADA: si el cliente vuelve a llamar porque se cortó y buscar_cliente trae un pedido_reciente de hace pocos minutos con lo mismo que pide, ese pedido YA está registrado: dígaselo y NO cree otro; solo cree un pedido nuevo si pide algo distinto o dice que quiere otro.
 - ESTADO DEL PEDIDO ("¿cuánto falta?", rellamada): llame buscar_cliente (trae pedido_reciente) o dé el tiempo de la sucursal; nunca afirme un estado de memoria.
 - Un insulto contra usted no es una queja de pedido ni pide una persona: responda con calma y siga con el pedido.
-- COMBO DEL MARTES: solo con orden completa de nachos de pastor; con media orden no hay aguas de cortesía (cobre las bebidas y dígalo antes de cotizar).`;
+- COMBO DEL MARTES: solo con orden completa de nachos de pastor; con media orden no hay aguas de cortesía (cobre las bebidas y dígalo antes de cotizar). Si la cotización trae sin_cortesias, NO diga "de cortesía", "van incluidas" ni "gratis" de nada, ni en el resumen.
+- ÓRDENES: requested_quantity va en PIEZAS, no en órdenes ("una orden de bistec" = 3, dos = 6); nunca mande 1 para "una orden". Si cotizar_pedido rechaza una cantidad, corríjala según su mensaje; no repita la misma cotización rechazada.
+- PEDIDO GRANDE: si crear_pedido devuelve pedido_grande o por_aprobar, diga que la sucursal lo confirmará y le avisará; NUNCA "quedó registrado" ni "confirmado".
+- TELÉFONO DICTADO: si el cliente dicta otro número, explique en una frase que se usa el de la llamada; no lo repita ni lo adopte.
+- FUERA DE LA CIUDAD ("estoy en Cancún"): no hay servicio ahí; ofrezca recoger en una sucursal o pasar con una persona (zona_no_reconocida) en vez de repetir la negativa.
+- "ALGUIEN DE CAJA" al recoger no pide una persona: el pago es en caja al recoger; no escale por eso.`;
 
 export interface EntradaBloqueReglasVoz {
   readonly businessName?: string;

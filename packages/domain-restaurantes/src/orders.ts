@@ -12,6 +12,7 @@ import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, saniti
 import { formatUbicacionEntregaNota } from "./whatsapp/location.ts";
 import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
+import { assignBranch } from "./branch-assignment.ts";
 import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
@@ -299,6 +300,8 @@ export interface PreparedOrder {
   readonly appliedPromotion: Promotion | null;
   /** Descuento real ya restado de `total` — 0 cuando no hay promoción aplicada. */
   readonly discount: number;
+  /** Lineas de la comanda con la tortilla que eligio el cliente para un kilo de carne (ese renglon no exige tortilla y la descarta). */
+  readonly tortillasDeKilo: readonly string[];
 }
 
 /** Tolerancia (minutos) para una hora de recogida "de ahora mismo": el cliente dice "paso en 5 minutos" y el modelo la redondea hacia atras. */
@@ -358,6 +361,9 @@ export async function prepareCreateOrder(
   );
 
   const orderItems: PersistedOrderItem[] = [];
+  // QA-PM-R3-reglas-11: el kilo de carne ("Pastor — 1 kg") no exige tortilla, asi que `buildOrderQuoteFromProducts` la descarta; pero va CON tortillas y el cliente
+  // elige cual ("de harina"). Esa eleccion viaja en una linea de las notas de la comanda (cocina la ve) en vez de perderse.
+  const tortillasDeKilo: string[] = [];
   let total = 0;
   let containsAlcohol = false;
 
@@ -387,6 +393,9 @@ export async function prepareCreateOrder(
     if (!Number.isInteger(quote.quantity) || quote.quantity <= 0) {
       throw new OrderValidationError(`Cantidad inválida para ${product.name}`);
     }
+    if (!quote.tortilla && inputItem.tortilla && isTortillaChoice(inputItem.tortilla) && pesoDeProductoEnGramos(product.name) !== null) {
+      tortillasDeKilo.push(`Tortilla (${product.name}): ${inputItem.tortilla}.`);
+    }
     const lineTotal = Math.round(product.price * quote.quantity * 100) / 100;
     total = Math.round((total + lineTotal) * 100) / 100;
     orderItems.push({
@@ -414,6 +423,7 @@ export async function prepareCreateOrder(
     canal: normalizarCanal(payload.canal),
     subtotal: total,
     colonia: payload.colonia,
+    pinEnEstaSucursal: pinEnSucursal(repo, branch, payload.organizationId, payload.ubicacion),
     paymentMethod: payload.paymentMethod,
     propina: payload.propina,
     source: payload.source,
@@ -491,7 +501,7 @@ export async function prepareCreateOrder(
     throw new OrderValidationError("La propina no puede ser mayor que el total del pedido. Confirme el monto con el cliente antes de registrarla.");
   }
 
-  return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
+  return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo };
 }
 
 /**
@@ -543,7 +553,7 @@ export async function createOrder(
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
   await options.beforePersist?.(prepared);
-  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = prepared;
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
@@ -572,6 +582,7 @@ export async function createOrder(
   if (payload.telefonoAlterno) canalLines.push(`Teléfono alterno: ${payload.telefonoAlterno}.`);
   // Destino de entrega (pin de WhatsApp o link de Maps) para el repartidor; solo a domicilio (recoger no lo usa).
   if (payload.ubicacionEntrega && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(formatUbicacionEntregaNota(payload.ubicacionEntrega));
+  canalLines.push(...tortillasDeKilo);
   if (payload.horaRecogida) canalLines.push(`Hora de recogida: ${payload.horaRecogida}.`);
   if (payload.programadoPara) {
     const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
@@ -685,6 +696,15 @@ export async function createOrder(
  * wrapper solo resuelve la sucursal y los renglones, la lógica de cotización
  * en sí no cambia.
  */
+/** QA-PM-R3-whatsapp-05: ¿la sucursal mas cercana al pin que compartio el cliente es esta? (solo se consulta si hace falta: colonia no reconocida). */
+function pinEnSucursal(repo: RestaurantesRepository, branch: Branch, organizationId: string, ubicacion: { readonly lat: number; readonly lng: number } | undefined): (() => Promise<boolean>) | undefined {
+  if (!ubicacion) return undefined;
+  return async () => {
+    const asignacion = await assignBranch(repo, { organizationId, lat: ubicacion.lat, lng: ubicacion.lng });
+    return asignacion.estado === "asignada" && asignacion.branchSlug === branch.slug;
+  };
+}
+
 export async function quoteOrder(
   repo: RestaurantesRepository,
   args: {
@@ -745,6 +765,7 @@ export async function quoteOrder(
     canal,
     subtotal: quote.total,
     colonia: args.colonia,
+    pinEnEstaSucursal: pinEnSucursal(repo, branch, args.organizationId, args.ubicacion),
     paymentMethod: args.paymentMethod,
     ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
     ...(args.horaRecogida && !instante && canal === "recoger" ? { horaRecogida: args.horaRecogida } : {}),
