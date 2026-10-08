@@ -1,30 +1,60 @@
-// Asignacion de sucursal por cercania en km (R-02, Los Taquitos de PM).
+// Asignacion de sucursal por cercania en km (R-02, Los Taquitos de PM; radio de 8 km y sucursal de despacho: decision de Javier, 7-oct-2026).
 //
-// Regla: la sucursal que atiende un domicilio es la MAS CERCANA EN KM (Haversine real) al punto
-// de entrega. El punto sale de, en este orden: (1) coordenadas explicitas del cliente (ubicacion
-// de WhatsApp), (2) la zona conocida (`restaurantes.known_zone`) que empata con la colonia o
-// referencia que dio. Las zonas conocidas son ademas un AJUSTE: si la zona reconocida tiene
-// cobertura de entrega explicita (`branch_delivery_zone`, migracion 023) y alguna de esas
-// sucursales esta activa y con coordenadas, se elige la mas cercana ENTRE ellas -- asi la practica
-// actual del cliente ("zonas fijas por sucursal") gana sobre la geometria pura sin dejar de usar km
-// para desempatar. Zona sin cobertura configurada = km puros.
+// Regla: la sucursal que atiende un domicilio es la sucursal de DESPACHO (activa y que acepta domicilio) MAS CERCANA EN KM (Haversine real) al punto de entrega,
+// y solo si esta a `radio` km o menos (8 km en el perfil `taqueria_pm`; configurable por organizacion, ver
+// `radioRepartoDelPerfil`; los perfiles que no son PM no tienen tope duro salvo que la organizacion lo configure). El punto sale de, en este orden: (1) coordenadas explicitas del cliente (ubicacion de WhatsApp), (2) la zona conocida
+// (`restaurantes.known_zone`) que empata con la colonia o referencia que dio.
 //
-// Contrato de silencio: sin punto utilizable NUNCA se adivina sucursal (`no_reconocida`); un punto
-// mas alla de `maxKm` es `fuera_de_zona` (el cliente no envia fuera de zona), nunca una sucursal
-// lejana asignada en silencio.
+// La cobertura de entrega EXPLICITA (`branch_delivery_zone`, migracion 023) es un OVERRIDE DEL DUENO y manda sobre la geometria: si la zona reconocida tiene
+// cobertura y alguna de esas sucursales de despacho esta activa, se elige la mas cercana ENTRE ellas (con coordenadas; si dos difieren menos de 0.5 km, la que el
+// piloto pone primero) o, si la colonia no tiene coordenadas (las del piloto, migracion 056), la primera que nombra la referencia del piloto y, si ninguna, la
+// primera por SLUG (orden estable documentado). Una colonia con doble cobertura nunca es `no_reconocida`. Sin cobertura explicita manda el km.
 //
-// Es dominio puro sobre el repositorio existente: sin SQL nuevo. Contra una base sin migrar,
-// `listBranchDeliveryZoneIds` ya degrada a [] con SAVEPOINT (sin cobertura = km puros).
+// Colonia reconocida SIN coordenadas y SIN cobertura de despacho: nunca se inventa ubicacion. Si la referencia del piloto nombra una sucursal de despacho a mas
+// del radio => `fuera_de_zona` (origen `referencia_piloto`); en cualquier otro caso `sugerida` (reparto `por_confirmar`): «no la tengo ubicada con certeza,
+// mandeme su ubicacion». Un punto mas alla del radio es `fuera_de_zona`, nunca una sucursal lejana asignada en silencio, y el resultado SIEMPRE nombra la
+// sucursal de despacho mas cercana con su distancia aproximada.
+//
+// Coordenadas de las sucursales: las vigentes en la base. `coordenadasPropuestas` (pines de Google, `coordenadas-sucursales.ts`) es opt-in y esta APAGADA por
+// omision: activarla es decision de Javier.
+//
+// Es dominio puro sobre el repositorio existente: sin SQL nuevo. Contra una base sin migrar, `listBranchDeliveryZoneIds` ya degrada a [] con SAVEPOINT.
+import { conCoordenadasPropuestas, type PuntoGeografico } from "./coordenadas-sucursales.ts";
+import { UMBRAL_AMBIGUA_KM } from "./colonias-ambiguas.ts";
 import { OrderValidationError } from "./errors.ts";
-import { COLONIA_NO_RECONOCIDA_MENSAJE, haversineKmExact, normalizeZoneText } from "./nearest-branch.ts";
+import {
+  haversineKmExact,
+  mensajeColoniaPorConfirmar,
+  mensajeFueraDeZonaHabitual,
+  mensajeSucursalAsignada,
+  normalizeZoneText,
+  COLONIA_NO_RECONOCIDA_MENSAJE,
+  type SucursalCercana,
+} from "./nearest-branch.ts";
 import { matchKnownZone } from "./reglas-pedido.ts";
 import type { RestaurantesRepository } from "./repository.ts";
-import type { Branch, KnownZone } from "./types.ts";
+import { opcionesDeReferencia, referenciaDeColonia, sucursalesDeDespacho } from "./sugerencia-despacho.ts";
+import type { Branch, KnownZone, PerfilAgenteWhatsApp } from "./types.ts";
 
-/** Tope DURO de reparto POR OMISION del perfil `taqueria_pm`, decidido por el SERVIDOR (QA-PM-R2-whatsapp-08): un pin en Progreso a 28.8 km se asignaba a Prolongacion
- * Montejo porque el modelo mandaba `max_km: 500` y sin tope no habia limite. El modelo solo puede bajarlo (un radio del negocio menor), nunca subirlo. Valor
- * provisional hasta que el negocio fije su radio de reparto. Las organizaciones de otro perfil NO heredan este tope (ver `radioMaximoKm`). */
-export const RADIO_MAXIMO_REPARTO_KM = 20;
+/** Radio de reparto del perfil `taqueria_pm`: 8 km en linea recta desde la sucursal de despacho mas cercana (decision de Javier, 7-oct-2026; antes 20 km). Lo decide el
+ * SERVIDOR (QA-PM-R2-whatsapp-08): el modelo solo puede bajarlo (`max_km`), nunca subirlo. */
+export const RADIO_REPARTO_PM_KM = 8;
+
+/** Doble cobertura con coordenadas: si la mas cercana y la siguiente difieren menos de esto (km), manda la que el piloto original pone primero (decision de Javier, 7-oct-2026). */
+export const EMPATE_DOBLE_COBERTURA_KM = 0.5;
+
+/** Radio que usa `assignBranch` cuando quien lo llama no fija ninguno (`radioMaximoKm` ausente): 20 km. Tambien es el tope laxo cuando la medicion no es confiable. Los perfiles que no son PM NO heredan un tope (ver `radioRepartoDelPerfil`). */
+export const RADIO_REPARTO_POR_OMISION_KM = 20;
+
+/**
+ * Radio de reparto de una organizacion: el configurado por ella (`WhatsAppAgentConfigRow.radioRepartoKm`, entre 0 y 500 km); si no hay, 8 km en `taqueria_pm`.
+ * Los demas perfiles (y una base sin la configuracion del agente) NO tienen tope duro por omision (`null`, como antes): una organizacion que lo quiera lo
+ * configura de forma explicita, asi este cambio no recorta el alcance de quien nunca lo tuvo.
+ */
+export function radioRepartoDelPerfil(perfil: PerfilAgenteWhatsApp, configuradoKm?: number | null): number | null {
+  if (typeof configuradoKm === "number" && Number.isFinite(configuradoKm) && configuradoKm > 0 && configuradoKm <= 500) return configuradoKm;
+  return perfil === "taqueria_pm" ? RADIO_REPARTO_PM_KM : null;
+}
 
 export const FUERA_DE_ZONA_MENSAJE = "Ese domicilio queda fuera de la zona de reparto: no se envía. Ofrezca recoger en sucursal.";
 
@@ -36,30 +66,66 @@ export interface AssignBranchInput {
   readonly colonia?: string;
   /** Radio maximo de reparto en km que pide el modelo; solo puede ser MENOR que el tope de la organizacion (`radioMaximoKm`): el servidor lo recorta. */
   readonly maxKm?: number;
-  /** Tope DURO de la organizacion, fijado por el servidor (no por el modelo): ausente = `RADIO_MAXIMO_REPARTO_KM`; `null` = la organizacion no tiene tope duro. */
+  /** Tope DURO de la organizacion, fijado por el servidor (no por el modelo; ver `radioRepartoDelPerfil`): ausente = `RADIO_REPARTO_POR_OMISION_KM`; `null` = la organizacion no tiene tope duro. */
   readonly radioMaximoKm?: number | null;
+  /** Coordenadas propuestas por slug de sucursal (`COORDENADAS_PROPUESTAS_PM`). Ausente (por omision) = se mide contra las coordenadas vigentes de la base. */
+  readonly coordenadasPropuestas?: Readonly<Record<string, PuntoGeografico>>;
+  /** Slugs de sucursales que NO reparten aunque la base diga `acepta_domicilio` (PM: Galerias y Playa; ver `SUCURSALES_QUE_NO_REPARTEN_PM`). */
+  readonly sucursalesQueNoReparten?: readonly string[];
 }
 
 export type BranchAssignmentVia = "coordenadas" | "zona";
+
+/** De donde sale la sucursal: `pin` = ubicacion del cliente, `distancia` = coordenadas de la colonia, `cobertura_dueno` = cobertura explicita (override del dueno). */
+export type BranchAssignmentOrigen = "pin" | "distancia" | "cobertura_dueno";
 
 export type BranchAssignment =
   | {
       readonly estado: "asignada";
       readonly branchSlug: string;
       readonly branchName: string;
-      /** `null` = colonia reconocida sin coordenadas: la sucursal sale de la cobertura cargada y no hay distancia que reportar. */
+      /** `null` = colonia reconocida sin coordenadas: la sucursal sale de la cobertura cargada y no hay distancia calculada que reportar. */
       readonly distanceKm: number | null;
       readonly via: BranchAssignmentVia;
       readonly recognizedZoneName: string | null;
       /** true cuando la cobertura de la zona cambio la sucursal respecto a la mas cercana en km puros. */
       readonly ajustePorZona: boolean;
+      readonly origen: BranchAssignmentOrigen;
+      /** Sin `distanceKm`: km que dijo el piloto original de esa sucursal (aproximado, nunca calculado); `null` si no hay. */
+      readonly kmReferencia: number | null;
+      /** Otra sucursal de despacho a menos de 1 km de la elegida (se menciona como alternativa). */
+      readonly alternativa: SucursalCercana | null;
+      /** La colonia la cubren dos o mas sucursales de despacho (se eligio la mas cercana o, sin coordenadas, la primera del piloto / por slug). */
+      readonly dobleCobertura: boolean;
+      /** La medicion NO es completa (alguna sucursal de despacho sin coordenada vigente y sin pines propuestos): se asigna como antes, sin decir distancias ni «mas cercana». */
+      readonly aproximada: boolean;
+      readonly message: string;
     }
   | {
       readonly estado: "fuera_de_zona";
+      /** Sucursal de despacho MAS CERCANA (la que el agente nombra); no se le asigna el domicilio. */
       readonly branchSlug: string;
       readonly branchName: string;
+      /** Km a esa sucursal: en linea recta, o aproximados si `origen` es `referencia_piloto`. */
       readonly distanceKm: number;
       readonly maxKm: number;
+      readonly origen: "pin" | "distancia" | "referencia_piloto";
+      /** false = alguna sucursal de despacho no se puede medir: `branchSlug` es solo la mejor medible y NO se debe presentar como «la mas cercana». */
+      readonly medicionConfiable: boolean;
+      readonly recognizedZoneName: string | null;
+      readonly message: string;
+    }
+  | {
+      /** Colonia reconocida pero sin cobertura de despacho ni coordenadas: «no la tengo ubicada con certeza». Nunca promete envio. */
+      readonly estado: "sugerida";
+      readonly reparto: "por_confirmar";
+      readonly sugerida: SucursalCercana | null;
+      readonly segunda: SucursalCercana | null;
+      /** Las dos referencias difieren menos de 1 km. */
+      readonly ambigua: boolean;
+      /** El cliente ya compartio su ubicacion (o la colonia tiene coordenadas) pero la colonia no tiene reparto confirmado / no se puede medir con certeza. */
+      readonly conUbicacion: boolean;
+      readonly recognizedZoneName: string;
       readonly message: string;
     }
   | { readonly estado: "no_reconocida"; readonly message: string };
@@ -92,6 +158,8 @@ export function rankBranchesByKm(lat: number, lng: number, branches: readonly Br
   return ranked.sort((a, b) => a.km - b.km || a.branch.slug.localeCompare(b.branch.slug));
 }
 
+const aCercana = (branch: Branch, km: number | null): SucursalCercana => ({ slug: branch.slug, nombre: branch.name, kmAprox: km === null ? null : redondear1(km) });
+
 export async function assignBranch(repo: RestaurantesRepository, input: AssignBranchInput): Promise<BranchAssignment> {
   const hasLat = input.lat !== undefined;
   const hasLng = input.lng !== undefined;
@@ -115,55 +183,176 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
     point = { lat: zone.lat, lng: zone.lng };
     via = "zona";
   }
-  const active = (await repo.listBranchesForOrganizationAdmin(input.organizationId)).filter((b) => b.status === "active");
+  // Solo las sucursales de DESPACHO (activas y que aceptan domicilio) pueden quedarse un domicilio; las coordenadas propuestas son opt-in.
+  const despacho = await sucursalesDeDespacho(repo, input.organizationId, input.sucursalesQueNoReparten);
+  const medibles = conCoordenadasPropuestas(despacho, input.coordenadasPropuestas);
 
-  // Colonia reconocida SIN coordenadas propias (migracion 056, colonias del piloto original): no hay punto para medir km. La sucursal
-  // sale SOLO de la cobertura de entrega cargada (`branch_delivery_zone`); si ninguna sucursal activa la cubre (colonia ambigua o
-  // sin asignar) NO se adivina: `no_reconocida` y el agente pide otra referencia o escala. La distancia queda `null` (no se inventa).
-  if (!point && zone) {
-    const cubren: Branch[] = [];
-    for (const candidate of active) {
-      if ((await repo.listBranchDeliveryZoneIds(candidate.propertyId)).includes(zone.id)) cubren.push(candidate);
+  const radioOrg = input.radioMaximoKm === undefined ? RADIO_REPARTO_POR_OMISION_KM : input.radioMaximoKm;
+  const tope = radioOrg === null ? (input.maxKm ?? Number.POSITIVE_INFINITY) : Math.min(input.maxKm ?? radioOrg, radioOrg);
+  // Medicion CONFIABLE = hay pines propuestos, o TODAS las sucursales de despacho tienen coordenada vigente. Si alguna no la tiene (Pensiones hoy) no se puede decir cual
+  // es «la mas cercana» ni cortar por distancia: el corte duro de `tope` solo vale con medicion confiable; sin ella queda el tope laxo de siempre (20 km) y sin nombrar.
+  const tieneCoordenadas = (b: Branch): boolean => b.lat !== null && b.lng !== null && esCoordenadaValida(b.lat, b.lng);
+  const confiable = input.coordenadasPropuestas !== undefined || (despacho.length > 0 && despacho.every(tieneCoordenadas));
+  const topeEfectivo = confiable || !Number.isFinite(tope) ? tope : Math.max(tope, RADIO_REPARTO_POR_OMISION_KM);
+  const radioTexto = Number.isFinite(tope) ? tope : null;
+
+  // Cobertura EXPLICITA del dueno: sucursales de despacho que cubren la zona reconocida.
+  const cubren = new Set<string>();
+  if (zone) {
+    for (const candidate of despacho) {
+      if ((await repo.listBranchDeliveryZoneIds(candidate.propertyId)).includes(zone.id)) cubren.add(candidate.propertyId);
     }
-    // Mas de una sucursal que la cubre: no se elige por orden de listado; el cliente debe dar otra referencia o pin.
-    const unica = cubren.length === 1 ? cubren[0] : undefined;
-    if (!unica) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
-    return { estado: "asignada", branchSlug: unica.slug, branchName: unica.name, distanceKm: null, via: "zona", recognizedZoneName: zone.name, ajustePorZona: false };
+  }
+
+  // Cobertura EXPLICITA sin medir km (colonia sin coordenadas, o cuya sucursal de cobertura no tiene coordenadas): primero la que nombra la referencia del piloto
+  // (la 1.a, luego la 2.a) y despues por slug (orden estable y documentado; nunca por orden de listado).
+  const referencia = zone && (!point || cubren.size > 0) ? opcionesDeReferencia(await referenciaDeColonia(repo, input.organizationId, zone.id), despacho) : [];
+  const porCobertura = (laZona: KnownZone, laVia: BranchAssignmentVia = "zona"): BranchAssignment => {
+    const kmDe = (slug: string): number | null => referencia.find((r) => r.slug === slug)?.kmAprox ?? null;
+    const ordenRef = (slug: string): number => {
+      const i = referencia.findIndex((r) => r.slug === slug);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    const ordenadas = despacho.filter((b) => cubren.has(b.propertyId)).sort((a, b) => ordenRef(a.slug) - ordenRef(b.slug) || a.slug.localeCompare(b.slug));
+    const elegida = ordenadas[0] as Branch;
+    const otra = ordenadas[1];
+    const kmElegida = kmDe(elegida.slug);
+    const kmOtra = otra ? kmDe(otra.slug) : null;
+    const alternativa = otra && kmElegida !== null && kmOtra !== null && Math.abs(kmOtra - kmElegida) < UMBRAL_AMBIGUA_KM ? aCercana(otra, kmOtra) : null;
+    return {
+      estado: "asignada",
+      branchSlug: elegida.slug,
+      branchName: elegida.name,
+      distanceKm: null,
+      via: laVia,
+      recognizedZoneName: laZona.name,
+      ajustePorZona: false,
+      origen: "cobertura_dueno",
+      kmReferencia: kmElegida,
+      alternativa,
+      dobleCobertura: ordenadas.length > 1,
+      aproximada: false,
+      message: mensajeSucursalAsignada({ principal: aCercana(elegida, kmElegida), alternativa, origen: "cobertura_dueno" }),
+    };
+  };
+
+  // Colonia reconocida SIN coordenadas propias (migracion 056, colonias del piloto original): no hay punto para medir km.
+  if (!point && zone) {
+    if (cubren.size > 0) return porCobertura(zone);
+    const sugerida = referencia[0] ?? null;
+    const segunda = referencia[1] ?? null;
+    // La referencia del piloto dice que la sucursal de despacho mas cercana esta mas alla del radio: se dice con claridad, sin prometer envio.
+    if (sugerida && sugerida.kmAprox !== null && sugerida.kmAprox > tope) {
+      return {
+        estado: "fuera_de_zona",
+        branchSlug: sugerida.slug,
+        branchName: sugerida.nombre,
+        distanceKm: sugerida.kmAprox,
+        maxKm: tope,
+        origen: "referencia_piloto",
+        medicionConfiable: true,
+        recognizedZoneName: zone.name,
+        message: mensajeFueraDeZonaHabitual({ masCercana: sugerida, radioKm: radioTexto, aproximada: true }),
+      };
+    }
+    const ambigua = sugerida !== null && segunda !== null && sugerida.kmAprox !== null && segunda.kmAprox !== null && segunda.kmAprox - sugerida.kmAprox < UMBRAL_AMBIGUA_KM;
+    return {
+      estado: "sugerida",
+      reparto: "por_confirmar",
+      sugerida,
+      segunda,
+      ambigua,
+      conUbicacion: false,
+      recognizedZoneName: zone.name,
+      message: mensajeColoniaPorConfirmar({ zona: zone.name, sugerida, segunda, conUbicacion: false }),
+    };
   }
 
   if (!point) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
-  const ranked = rankBranchesByKm(point.lat, point.lng, active);
+  const ranked = rankBranchesByKm(point.lat, point.lng, medibles);
+  const cubrenRanked = ranked.filter((r) => cubren.has(r.branch.propertyId));
+  // Cobertura EXPLICITA del dueno (override) con alguna sucursal que cubre y NO se puede medir (Pensiones hoy, sin coordenadas): su decision manda, sin inventar km.
+  // Tambien con pin: «filas explicitas = override del dueno».
+  if (zone && cubren.size > 0 && cubrenRanked.length < cubren.size) return porCobertura(zone, via);
   const nearest = ranked[0];
   if (!nearest) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
 
   let chosen = nearest;
-  let ajustePorZona = false;
-  if (zone) {
-    const covering = new Set<string>();
-    for (const candidate of ranked) {
-      const zoneIds = await repo.listBranchDeliveryZoneIds(candidate.branch.propertyId);
-      if (zoneIds.includes(zone.id)) covering.add(candidate.branch.propertyId);
+  const override = cubrenRanked.length > 0;
+  let ignorarZona = false;
+  if (override) {
+    chosen = cubrenRanked[0] as RankedBranch;
+    // Doble cobertura casi empatada (< 0.5 km): gana la que el piloto original pone primero; si ninguna esta en la referencia, la mas cercana.
+    const segundo = cubrenRanked[1];
+    if (zone && segundo && segundo.km - chosen.km < EMPATE_DOBLE_COBERTURA_KM) {
+      const ref = opcionesDeReferencia(await referenciaDeColonia(repo, input.organizationId, zone.id), despacho);
+      const empatadas = cubrenRanked.filter((r) => r.km - chosen.km < EMPATE_DOBLE_COBERTURA_KM);
+      const orden = (r: RankedBranch): number => {
+        const i = ref.findIndex((o) => o.slug === r.branch.slug);
+        return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+      };
+      const primera = [...empatadas].sort((a, b) => orden(a) - orden(b) || a.km - b.km)[0] as RankedBranch;
+      if (orden(primera) !== Number.MAX_SAFE_INTEGER) chosen = primera;
     }
-    const adjusted = ranked.find((r) => covering.has(r.branch.propertyId));
-    if (adjusted) {
-      chosen = adjusted;
-      ajustePorZona = adjusted.branch.propertyId !== nearest.branch.propertyId;
+    // Con pin Y medicion confiable, la ubicacion real manda SOLO si claramente no esta en esa colonia: la sucursal que la cubre queda fuera del radio y otra esta dentro.
+    if (via === "coordenadas" && confiable && chosen.km > tope && nearest.km <= tope) {
+      chosen = nearest;
+      ignorarZona = true;
     }
+  }
+  const ajustePorZona = chosen.branch.propertyId !== nearest.branch.propertyId;
+  const usaOverride = override && !ignorarZona;
+
+  // El radio aplica a la distancia medida; la cobertura explicita del dueno (con o sin pin) es SU decision y no se recorta por km.
+  if (!usaOverride && chosen.km > topeEfectivo) {
+    return {
+      estado: "fuera_de_zona",
+      branchSlug: nearest.branch.slug,
+      branchName: nearest.branch.name,
+      distanceKm: redondear1(nearest.km),
+      maxKm: topeEfectivo,
+      origen: via === "coordenadas" ? "pin" : "distancia",
+      medicionConfiable: confiable,
+      recognizedZoneName: zone ? zone.name : null,
+      // Sin medicion confiable no se nombra una «mas cercana» calculada con sucursales que no se pueden medir.
+      message: mensajeFueraDeZonaHabitual({ masCercana: confiable ? aCercana(nearest.branch, nearest.km) : null, radioKm: confiable ? radioTexto : null, kmFuera: confiable ? nearest.km : null }),
+    };
   }
 
-  const distanceKm = redondear1(chosen.km);
-  const radioOrg = input.radioMaximoKm === undefined ? RADIO_MAXIMO_REPARTO_KM : input.radioMaximoKm;
-  const tope = radioOrg === null ? (input.maxKm ?? Number.POSITIVE_INFINITY) : Math.min(input.maxKm ?? radioOrg, radioOrg);
-  if (chosen.km > tope) {
-    return { estado: "fuera_de_zona", branchSlug: chosen.branch.slug, branchName: chosen.branch.name, distanceKm, maxKm: tope, message: FUERA_DE_ZONA_MENSAJE };
+  // Colonia conocida SIN reparto confirmado: el servidor (cotizar/crear) la rechazaria en una sucursal con zonas cargadas, asi que NO se dice «asignada». Sin medicion
+  // confiable tampoco se asigna por distancia. Se pide confirmar y se ofrece recoger / una persona.
+  if (zone && !usaOverride && !ignorarZona && (!confiable || (await repo.listBranchDeliveryZoneIds(chosen.branch.propertyId)).length > 0)) {
+    const sugerida = confiable ? { slug: chosen.branch.slug, nombre: chosen.branch.name, kmAprox: null } : null;
+    return {
+      estado: "sugerida",
+      reparto: "por_confirmar",
+      sugerida,
+      segunda: null,
+      ambigua: false,
+      conUbicacion: true,
+      recognizedZoneName: zone.name,
+      message: mensajeColoniaPorConfirmar({ zona: zone.name, sugerida, segunda: null, conUbicacion: true }),
+    };
   }
+
+  const pool = usaOverride ? cubrenRanked : ranked;
+  const otra = pool.find((r) => r.branch.propertyId !== chosen.branch.propertyId);
+  const aproximada = !confiable && !usaOverride;
+  const alternativa = !aproximada && otra && Math.abs(otra.km - chosen.km) < UMBRAL_AMBIGUA_KM ? aCercana(otra.branch, otra.km) : null;
+  const origen: BranchAssignmentOrigen = usaOverride ? "cobertura_dueno" : via === "coordenadas" ? "pin" : "distancia";
   return {
     estado: "asignada",
     branchSlug: chosen.branch.slug,
     branchName: chosen.branch.name,
-    distanceKm,
+    distanceKm: aproximada ? null : redondear1(chosen.km),
     via,
     recognizedZoneName: zone ? zone.name : null,
     ajustePorZona,
+    origen,
+    kmReferencia: null,
+    alternativa,
+    dobleCobertura: cubrenRanked.length > 1,
+    aproximada,
+    message: mensajeSucursalAsignada({ principal: aCercana(chosen.branch, aproximada ? null : chosen.km), alternativa, origen, aproximada }),
   };
 }
