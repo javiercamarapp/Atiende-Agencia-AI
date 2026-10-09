@@ -91,9 +91,19 @@ function cerrarListaAbierta(): void {
   keydown(actual, "Enter");
 }
 
-/** Valor actual del disparador (el `select.value` de un <select> nativo). */
+/**
+ * Valor ELEGIDO ahora (el `select.value` de un <select> nativo): abre la lista y lee la opcion que Radix marca como elegida
+ * (`data-state=checked`), no la prop que recibio el componente. Sin eleccion devuelve "".
+ */
 export function valorDe(trigger: Element | null): string {
-  return (trigger as HTMLElement | null)?.dataset.valor ?? "";
+  if (!trigger) return "";
+  const t = trigger as HTMLElement;
+  t.focus();
+  keydown(t, "Enter");
+  const marcada = document.body.querySelector<HTMLElement>('[role="option"][data-state="checked"]');
+  const valor = marcada?.dataset.valor ?? "";
+  cerrarListaAbierta();
+  return valor;
 }
 
 /** Etiquetas de las opciones (el `[...select.options].map(o => o.textContent)` de un <select> nativo). */

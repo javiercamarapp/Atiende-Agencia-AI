@@ -1,5 +1,5 @@
 // Listas desplegables (`Selector` de @atiende/ui = Radix Select): el disparador es un boton `role=combobox` y las opciones viven en un portal.
-// El Selector marca el disparador y cada opcion con `data-valor` (el valor, no la etiqueta), de modo que estas ayudas sustituyen a
+// El Selector marca cada opcion con `data-valor` (el valor, no la etiqueta), de modo que estas ayudas sustituyen a
 // `selectOption(valor)` / `toHaveValue(valor)` de un <select> nativo.
 import { expect, type Locator, type Page } from "@playwright/test";
 
@@ -17,7 +17,12 @@ export async function elegirEtiqueta(disparador: Locator, etiqueta: string): Pro
   await page.getByRole("option", { name: etiqueta, exact: true }).click();
 }
 
-/** Afirma el valor actual de la lista (el `toHaveValue` de un <select>). */
+/** Afirma el valor ELEGIDO (el `toHaveValue` de un <select>): abre la lista y comprueba que Radix marca esa opcion como elegida; la cierra al terminar. */
 export async function esperarValor(disparador: Locator, valor: string): Promise<void> {
-  await expect(disparador).toHaveAttribute("data-valor", valor);
+  const page: Page = disparador.page();
+  await disparador.click();
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await expect(page.locator(`[role="option"][data-valor="${valor}"]`)).toHaveAttribute("data-state", "checked");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox")).toBeHidden();
 }

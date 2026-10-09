@@ -151,8 +151,11 @@ test.describe("restaurantes CFO B @humo", () => {
     await expect(aviso).toContainText("Teléfono");
     // La columna personal no se ofrece en ningún selector.
     await dialogo.locator("#sr-mapeo-total").click();
+    await expect(page.getByRole("listbox")).toBeVisible();
+    await expect.poll(async () => page.getByRole("option").count(), { message: "la lista debe traer opciones antes de afirmar que falta una" }).toBeGreaterThan(0);
     await expect(page.getByRole("option", { name: /Teléfono/ })).toHaveCount(0);
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("listbox")).toBeHidden();
     await dialogo.getByRole("button", { name: "Revisar vista previa" }).click();
     await expect(dialogo.getByTestId("sr-vista-previa")).toContainText("2 renglones aceptados");
     const enviadas = await mock.buscar({ metodo: "POST", ruta: "/softrestaurant/importar/vista-previa" });
