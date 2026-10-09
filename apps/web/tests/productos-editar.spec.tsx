@@ -4,10 +4,13 @@
 // clave y si se vende en la sucursal), renombrar y reordenar categorías, y mantiene lo que ya hacía (marcar popular, alta).
 // La API es un doble con estado: PATCH/POST cambian lo que devuelve el siguiente GET, igual que el servidor real.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ProductosPage } from "../src/verticals/restaurantes/pages/Productos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { changeValue, click, flushMicrotasks, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -173,7 +176,7 @@ describe("ProductosPage — editar producto", () => {
     expect(campo("Nombre").value).toBe("Taco dorado");
     expect(campo("Descripción").value).toBe("Tres piezas");
     expect(campo("Precio base").value).toBe("60");
-    expect(campo("Categoría").value).toBe("c1");
+    expect(valorDe(campo("Categoría"))).toBe("c1");
     expect(q('[aria-label="Alias del producto"]')?.textContent).toContain("flautas");
     expect(q('[role="switch"]')?.getAttribute("aria-checked")).toBe("true");
   });
@@ -185,7 +188,7 @@ describe("ProductosPage — editar producto", () => {
 
     changeValue(campo("Nombre"), "Flauta dorada");
     changeValue(campo("Descripción"), "Tres flautas crujientes");
-    changeValue(campo("Categoría"), "c3");
+    elegirValor(campo("Categoría"), "c3");
     const alias = q<HTMLInputElement>('input[placeholder^="Escribe un alias"]')!;
     changeValue(alias, "Taquitos Dorados, FLAUTAS");
     keydown(alias, "Enter");
