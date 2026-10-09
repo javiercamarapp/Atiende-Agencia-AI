@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { ClientesListPage } from "../src/verticals/restaurantes/pages/Clientes.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
-import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { elegirValor, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 beforeAll(prepararJsdomParaRadix);

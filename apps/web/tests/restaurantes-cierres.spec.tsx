@@ -6,7 +6,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { CierresPage } from "../src/verticals/restaurantes/pages/Cierres.tsx";
-import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 beforeAll(prepararJsdomParaRadix);

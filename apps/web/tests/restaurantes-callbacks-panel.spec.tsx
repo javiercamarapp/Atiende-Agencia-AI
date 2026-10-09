@@ -6,7 +6,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { CallbacksPanel } from "../src/verticals/restaurantes/pages/CallbacksPanel.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
-import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { elegirValor, etiquetasDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 beforeAll(prepararJsdomParaRadix);

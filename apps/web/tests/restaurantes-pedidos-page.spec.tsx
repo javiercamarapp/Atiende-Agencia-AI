@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { OrderSummary } from "../src/verticals/restaurantes/lib/orders-client.ts";
-import { changeValue, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 beforeAll(prepararJsdomParaRadix);
