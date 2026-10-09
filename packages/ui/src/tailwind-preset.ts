@@ -97,6 +97,8 @@ const preset: Omit<Config, "content"> = {
           DEFAULT: "hsl(var(--info))",
           tint: "hsl(var(--info-tint))",
         },
+        // Final de la franja de marca de los formularios (original: secondary; claro = azul, oscuro = cielo).
+        franja: "hsl(var(--franja-fin))",
         // Neutrales de Likida: gris sumido, lienzo, hairline fuerte, texto secundario y tenue.
         sunken: "hsl(var(--sunken))",
         canvas: "hsl(var(--canvas))",

@@ -141,22 +141,22 @@ function DialogoBase({ pie = true }: { pie?: boolean }) {
 // ---- 1. Medidas frente a la spec ----------------------------------------------
 
 describe("medidas del pop-up (spec 6.5): <= 1 px frente a Likida", () => {
-  it("Dialog: tarjeta de radio 16, p-4 (16 px), hairline, bg-card y sombra de elevacion", () => {
+  it("Dialog: tarjeta de radio 16, p-5 (20 px), hairline, bg-card y sombra de elevacion", () => {
     montar(<DialogoBase />);
     const d = abierto();
-    tiene(d, "rounded-lg", "border", "border-border", "bg-card", "p-4", "shadow-elevated");
+    tiene(d, "rounded-lg", "border", "border-border", "bg-card", "p-5", "shadow-elevated");
     expect(dentro(radioPx("lg"), 16)).toBe(true);
-    expect(dentro(espacioPx(4), 16)).toBe(true);
+    expect(dentro(espacioPx(5), 20)).toBe(true);
     // sin los restos del estilo anterior (p-6, bg-background, shadow-lg)
     for (const viejo of ["p-6", "bg-background", "shadow-lg"]) expect(clases(d)).not.toContain(viejo);
   });
 
-  it("Dialog: titulo 14 px semibold, descripcion 13 px, botones del pie apilados en movil y en fila desde sm", () => {
+  it("Dialog: titulo 16 px semibold, descripcion 13 px, botones del pie apilados en movil y en fila desde sm", () => {
     montar(<DialogoBase />);
     const titulo = document.getElementById(abierto().getAttribute("aria-labelledby")!)!;
     const desc = document.getElementById(abierto().getAttribute("aria-describedby")!)!;
-    tiene(titulo, "text-sm", "font-semibold");
-    expect(dentro(textoPx("sm"), 14)).toBe(true);
+    tiene(titulo, "text-base", "font-semibold");
+    expect(dentro(textoPx("base"), 16)).toBe(true);
     tiene(desc, "text-ui", "text-muted-foreground");
     expect(dentro(textoPx("ui"), 13)).toBe(true);
     const pie = porTexto("Guardar").parentElement!;
@@ -166,7 +166,7 @@ describe("medidas del pop-up (spec 6.5): <= 1 px frente a Likida", () => {
   it("Dialog: hoja inferior rounded-t-2xl (16) con safe-area en < md y centrado con modal-in en >= md", () => {
     montar(<DialogoBase />);
     const d = abierto();
-    tiene(d, "max-md:bottom-0", "max-md:rounded-t-2xl", "max-md:rounded-b-none", "max-md:pb-[calc(1rem+var(--safe-area-bottom))]", "max-md:data-[state=open]:animate-sheet-up", "data-[state=open]:animate-modal-in");
+    tiene(d, "max-md:bottom-0", "max-md:rounded-t-2xl", "max-md:rounded-b-none", "max-md:pb-[calc(1.25rem+var(--safe-area-bottom))]", "max-md:data-[state=open]:animate-sheet-up", "data-[state=open]:animate-modal-in");
     expect(dentro(radioPx("2xl"), 16)).toBe(true);
   });
 
@@ -191,7 +191,7 @@ describe("medidas del pop-up (spec 6.5): <= 1 px frente a Likida", () => {
 });
 
 describe("medidas de los demas pop-ups y estados", () => {
-  it("AlertDialog: mismo material que Dialog, titulo 14 px, descripcion 13 px, pie con gap-2 y sin boton de cierre", () => {
+  it("AlertDialog: mismo material que Dialog, titulo 16 px, descripcion 13 px, pie con gap-2 y sin boton de cierre", () => {
     montar(
       <AlertDialog open>
         <AlertDialogContent>
@@ -207,8 +207,8 @@ describe("medidas de los demas pop-ups y estados", () => {
       </AlertDialog>,
     );
     const d = abierto();
-    tiene(d, "rounded-lg", "border-border", "bg-card", "p-4", "shadow-elevated", "max-md:rounded-t-2xl");
-    tiene(document.getElementById(d.getAttribute("aria-labelledby")!), "text-sm", "font-semibold");
+    tiene(d, "rounded-lg", "border-border", "bg-card", "p-5", "shadow-elevated", "max-md:rounded-t-2xl");
+    tiene(document.getElementById(d.getAttribute("aria-labelledby")!), "text-base", "font-semibold");
     tiene(document.getElementById(d.getAttribute("aria-describedby")!), "text-ui", "text-muted-foreground");
     tiene(porTexto("Si").parentElement, "gap-2", "flex-col-reverse", "sm:flex-row");
     // botones del pie de 36 px (h-9 de Likida) y cancelar de contorno
@@ -255,7 +255,7 @@ describe("medidas de los demas pop-ups y estados", () => {
     const menu = document.body.querySelector<HTMLElement>('[role="menu"]')!;
     tiene(menu, "rounded-lg", "border-border", "bg-popover", "shadow-elevated", "p-1", "text-ui");
     const item = menu.querySelector<HTMLElement>('[role="menuitem"]')!;
-    tiene(item, "px-2.5", "py-1.5", "text-ui", "focus:bg-accent", "rounded-md");
+    tiene(item, "px-2.5", "py-1.5", "text-ui", "focus:bg-primary/10", "rounded-md");
     // alto de fila = interlineado de text-ui (13 * 1.5 = 19.5) + 2 * py-1.5 (6) = 31.5 px, el item del sidebar
     expect(dentro(textoPx("ui") * 1.5 + 2 * espacioPx(1.5), 31.5)).toBe(true);
     // el hover ya no es el azul solido
@@ -460,7 +460,7 @@ describe("accesibilidad de los pop-ups", () => {
     expect(document.activeElement).toBe(disparador);
   });
 
-  it("FormDialog: cierre de 44 px en movil con nombre 'Cerrar', sin barra de color y titulo de 14 px", () => {
+  it("FormDialog: cierre circular de 44 px en movil (28 px en escritorio) con nombre 'Cerrar', franja de marca de 4 px y titulo de 14 px", () => {
     montar(
       <FormDialog open onOpenChange={() => {}} titulo="Nueva reserva" subtitulo="Captura los datos">
         <input aria-label="Nombre" />
@@ -468,8 +468,9 @@ describe("accesibilidad de los pop-ups", () => {
     );
     const d = abierto();
     const cerrar = d.querySelector<HTMLElement>('button[aria-label="Cerrar"]')!;
-    tiene(cerrar, "size-11", "md:size-8", "rounded-lg");
-    expect(d.querySelector(".bg-gradient-to-r")).toBeNull();
+    tiene(cerrar, "size-11", "md:size-7", "rounded-full");
+    // franja de marca del ModalFormularioLateral del repo suelto (h-1, primary -> franja)
+    tiene(d.querySelector(".bg-gradient-to-r"), "h-1", "from-primary", "to-franja");
     tiene(document.getElementById(d.getAttribute("aria-labelledby")!), "text-sm", "font-semibold");
   });
 
