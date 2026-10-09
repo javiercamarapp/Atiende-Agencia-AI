@@ -56,6 +56,8 @@ export {
   VerticalShell,
   VerticalShellEstado,
   useTituloBarra,
+  useAccionesBarra,
+  useMarcoShell,
   VerticalNoEncontrado,
   RutaBoundary,
   construirMigas,

@@ -47,7 +47,7 @@ const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly label: s
  * `null` antes de llamar a la API. */
 const SIN_CONFIGURAR = "";
 
-export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreSucursal }: RestaurantesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
   const { confirmar, dialogo } = useConfirm();
 
@@ -305,7 +305,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
         </CardContent>
       </Card>
 
-      <AgenteWhatsappSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
+      <AgenteWhatsappSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} {...(nombreSucursal ? { nombreSucursal } : {})} />
       {dialogo}
     </PageContainer>
   );

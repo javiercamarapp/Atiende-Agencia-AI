@@ -306,6 +306,20 @@ export const rutasRestaurantes: readonly Ruta[] = [
       p.estado.guardar("rest.voz-config", nueva);
       return nueva;
     } },
+
+  // ---- Pruebas del agente (UNI-R4): el chat de WhatsApp de demostracion y la llamada de prueba. Solo existen en la API simulada de e2e; el
+  // contrato es el del servidor real (agente-preview.ts y voz-admin.ts): respuesta {respuesta, escalado, pedidoSimulado} y pedido PRUEBA-xxxx. ----
+  { metodo: "POST", patron: `${B}/agente-whatsapp/preview/mensaje`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { mensajes?: { rol: string; texto: string }[] };
+      if ((c.mensajes ?? []).length > 40) return fallo(400, "mensajes: se esperaba una lista de 1 a 40 mensajes.");
+      const ultimo = [...(c.mensajes ?? [])].reverse().find((m) => m.rol === "usuario")?.texto ?? "";
+      if (/pedido|quiero|tacos/i.test(ultimo)) {
+        return { respuesta: "Listo, le anoto 3 tacos al pastor y una horchata para recoger. Son $183.00. ¿Confirmo su pedido?", escalado: false, pedidoSimulado: { id: "PRUEBA-AB12", branch: PROP.nombre, total: 183, status: "simulado", payment_method: "efectivo", simulado: true, items: [{ name: "Tacos al pastor (orden)", quantity: 3, price: 45 }, { name: "Horchata", quantity: 1, price: 48 }] } };
+      }
+      return { respuesta: "Hola, bienvenido a Taquería El Faro. ¿En qué le puedo ayudar hoy?", escalado: false, pedidoSimulado: null };
+    } },
+  { metodo: "POST", patron: `${B}/voz/preview/sesion`, roles: ["owner", "admin"], manejador: () => ({ sesionId: "ses-prueba-1", proveedor: "gemini", modelo: "gemini-3.8-live", voiceId: "Kore", websocketUrl: "wss://gemini.e2e.test/live", tokenProveedor: "tok-efimero", tokenPreview: "tok-preview", expiraEn: "2099-01-01T00:00:00.000Z" }) },
+  { metodo: "POST", patron: `${B}/voz/preview/:sesionId/herramienta`, roles: ["owner", "admin"], manejador: () => ({ resultado: { ok: true }, simulado: true }) },
 ];
 
 // ---- Ajustes del agente (migración 055) y conocimiento automatico. Solo existe en la API simulada de e2e: reproduce el contrato de

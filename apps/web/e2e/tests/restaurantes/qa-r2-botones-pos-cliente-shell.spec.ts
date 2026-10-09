@@ -176,7 +176,7 @@ test.describe("restaurantes R2 botones: shell y sucursal activa @recorrido", () 
     await page.keyboard.press("ArrowRight");
     await expect(lista.getByRole("tab").nth(1)).toBeFocused();
     await expect(lista.getByRole("tab").nth(1)).toHaveAttribute("aria-selected", "true");
-    await main(page).getByRole("button", { name: "Vista previa" }).first().click();
+    await page.getByRole("banner").getByRole("button", { name: "Vista previa" }).or(main(page).getByRole("button", { name: "Vista previa" })).first().click();
     const vista = page.getByRole("dialog").first();
     await expect(vista).toBeVisible();
     await page.keyboard.press("Escape");

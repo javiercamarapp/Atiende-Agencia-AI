@@ -46,6 +46,9 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // Bandera opt-in para correr la prueba de integración del CFO contra un Postgres efímero local
   // (scripts/verify-restaurantes-cfo-repos/run.sh); no es una credencial.
   "CFO_REAL_PG",
+  // Cadena de conexion de un Postgres efimero local para la prueba opt-in de la ruta «Probar agente»
+  // (scripts/verify-restaurantes-agente-preview-rate-limit/run.sh); no es una credencial.
+  "VERIFY_PGURL",
 ]);
 
 const SOURCE_ROOTS = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/web/src", "packages"];

@@ -32,7 +32,6 @@ import {
   VozNoDisponibleError,
   VozProveedorError,
   VozRechazadaError,
-  consumeRateLimit,
   anteponerConocimiento,
   bloqueConocimientoDelTurno,
   esVozDeGemini,
@@ -52,6 +51,7 @@ import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { consumirTopesEnSesionDeSistema } from "./rate-limit-sistema.ts";
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECRETO_PREVIEW_MIN = 16;
@@ -217,8 +217,9 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (!secreto || secreto.length < SECRETO_PREVIEW_MIN) throw Errors.serviceUnavailable("Voz no configurada: falta VOICE_PREVIEW_TOKEN_SECRET.");
 
     const restaurantes = deps.restaurantesRepo(c.get("db"));
-    const limited = await consumeRateLimit(restaurantes, "voz-preview-sesion", requestActor(c.req.raw, actorUserId), 20, 600);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    // `consume_api_rate_limit` es de SOLO sistema: se consume en su propia sesion de sistema (ver rate-limit-sistema.ts), no en la del staff.
+    const agotado = await consumirTopesEnSesionDeSistema(deps, [{ scope: "voz-preview-sesion", actor: requestActor(c.req.raw, actorUserId), maxRequests: 20, windowSeconds: 600 }]);
+    if (agotado !== null) throw Errors.tooManyRequests();
 
     // 2) Voz: la pedida o la guardada; siempre dentro del catálogo del proveedor.
     const repo = vozRepo(c);
@@ -343,22 +344,28 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (typeof raw.nombre !== "string" || !toolDefinitionsForChannel("voz").some((t) => t.name === raw.nombre)) throw Errors.validation("nombre: herramienta desconocida.");
     if (raw.argumentos !== undefined && (typeof raw.argumentos !== "object" || raw.argumentos === null || Array.isArray(raw.argumentos))) throw Errors.validation("argumentos: se esperaba un objeto.");
 
-    const restaurantes = deps.restaurantesRepo(c.get("db"));
-    const limited = await consumeRateLimit(restaurantes, "voz-preview-herramienta", requestActor(c.req.raw, `${c.get("userId")}:${sesionId}`), 60, 600);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    const agotado = await consumirTopesEnSesionDeSistema(deps, [{ scope: "voz-preview-herramienta", actor: requestActor(c.req.raw, `${c.get("userId")}:${sesionId}`), maxRequests: 60, windowSeconds: 600 }]);
+    if (agotado !== null) throw Errors.tooManyRequests();
 
-    const outcome = await executeAgentToolSafely(
-      restaurantes,
-      {
-        organizationId,
-        channel: "voz",
-        phone: telefonoFicticioPreview(sesionId),
-        lockedPropertyId: propertyId,
-        modo: "preview",
-        flow: { key: `voz-preview:${sesionId}`, turn: null },
-      },
-      raw.nombre,
-      (raw.argumentos ?? {}) as Record<string, unknown>,
+    // Las funciones SQL de las que dependen estas herramientas (`cliente_memoria`, `read_order_flow_state`/`claim`/`write`) son de SOLO sistema: en la
+    // sesion del staff lanzan 42501, `executeAgentToolSafely` lo traga y la ruta respondia 200 con «Error interno al ejecutar la herramienta» (no se podia
+    // confirmar ni simular un pedido en la llamada de prueba). Se ejecuta en una sesion de sistema (`userId: null`), igual que las rutas de voz reales
+    // (`voice-tools.ts`). Esto NO abre un hueco: organizacion y sucursal ya salieron de la membership del staff y del token de preview firmado ARRIBA
+    // (nada del cuerpo las elige), y `modo: "preview"` lo fija el servidor, asi que el registro simula `crear_pedido`/avisos sin escribir dominio.
+    const outcome = await deps.engine.withAppSession({ userId: null }, (db) =>
+      executeAgentToolSafely(
+        deps.restaurantesRepo(db),
+        {
+          organizationId,
+          channel: "voz",
+          phone: telefonoFicticioPreview(sesionId),
+          lockedPropertyId: propertyId,
+          modo: "preview",
+          flow: { key: `voz-preview:${sesionId}`, turn: null },
+        },
+        raw.nombre as string,
+        (raw.argumentos ?? {}) as Record<string, unknown>,
+      ),
     );
     logEvent(c, "info", "restaurantes_admin_voz_preview_herramienta", { actorUserId: c.get("userId"), organizationId, propertyId, sessionId: sesionId, herramienta: raw.nombre });
     return c.json({ resultado: outcome.result, simulado: outcome.simulated === true });
