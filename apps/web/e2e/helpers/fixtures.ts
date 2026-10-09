@@ -7,6 +7,9 @@ import type { Rol, Vertical } from "../mock-api/tipos.ts";
 import { barraMovil, sidebar } from "./navegacion.ts";
 import { VigilanteConsola } from "./vigilante.ts";
 
+/** PNG de 1x1 que sustituye a cualquier tesela de OpenStreetMap. */
+const PNG_TESELA = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGN49OQFAAVaAq809SKAAAAAAElFTkSuQmCC", "base64");
+
 export const URL_API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? "8788"}`;
 
 export type ObjetivoLogin = Vertical | "superadmin";
@@ -36,6 +39,11 @@ export const test = base.extend<Fixtures>({
 
   // Tema: los proyectos "-oscuro" siguen al sistema (colorScheme dark); los claros usan el valor por defecto.
   page: async ({ page }, use, info) => {
+    // Teselas de OpenStreetMap (mapas de Pedidos y del Cerebro): se sirven locales, sin red (determinista). CAPTURAS_TESELAS_REALES=1 pide las reales
+    // (solo para generar imagenes de comparacion con el repo original: unas pocas peticiones).
+    if (process.env.CAPTURAS_TESELAS_REALES !== "1") {
+      await page.route("https://tile.openstreetmap.org/**", (r) => r.fulfill({ status: 200, contentType: "image/png", body: PNG_TESELA }));
+    }
     if (info.project.name.endsWith("oscuro")) {
       await page.addInitScript(() => {
         try {

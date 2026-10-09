@@ -150,7 +150,7 @@ test.describe("restaurantes R2 botones: shell y sucursal activa @recorrido", () 
     await expect(selector).toBeVisible();
     await mock.agregarAEstado("rest.ordenes", { id: "ord-norte-1", propertyId: SEGUNDA.propertyId, branch: SEGUNDA.name, customerId: "c-n", customerName: "Cliente del Norte", customerPhone: "+529995550177", customerAddress: "Calle 31", total: 120, status: "pending", items: [], source: "web", notes: null, paymentMethod: "efectivo", createdAt: new Date().toISOString(), assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, canal: "domicilio", propina: null, horaRecogida: null });
     await selector.selectOption(SEGUNDA.propertyId);
-    await expect(main(page).getByText("Cliente del Norte", { exact: false })).toBeVisible();
+    await expect(main(page).getByText("Cliente del Norte", { exact: false }).first()).toBeVisible();
     await expect(main(page).getByText("Marisol Pech")).toHaveCount(0);
     await expect(main(page).getByText("Jorge Canul")).toHaveCount(0);
     vigilante.verificar();

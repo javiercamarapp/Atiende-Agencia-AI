@@ -238,6 +238,8 @@ interface OrderRow {
   readonly incident_note: string | null;
   /** Folio (`order_number`): solo viene en la fila de `create_order_idempotent` (`to_jsonb` de la fila completa). */
   readonly order_number?: string | number | null;
+  /** Marca de entrega real (columna de la migracion 001): el detalle del pedido la muestra. */
+  readonly delivered_at?: string | Date | null;
   /** Migracion 031 -- solo vienen en la fila de `create_order_idempotent` con la base migrada. */
   readonly canal?: CanalPedido | null;
   readonly propina?: string | null;
@@ -282,6 +284,7 @@ function mapOrder(row: OrderRow): Order {
     estimatedDeliveryAt: row.estimated_delivery_at,
     incidentNote: row.incident_note,
     ...(row.order_number !== undefined && row.order_number !== null ? { orderNumber: Number(row.order_number) } : {}),
+    ...(row.delivered_at !== undefined ? { deliveredAt: aIsoONull(row.delivered_at) } : {}),
     ...(row.canal !== undefined ? { canal: row.canal } : {}),
     ...(row.propina !== undefined ? { propina: row.propina === null ? null : Number(row.propina) } : {}),
     ...(row.hora_recogida !== undefined ? { horaRecogida: row.hora_recogida } : {}),
@@ -291,7 +294,7 @@ function mapOrder(row: OrderRow): Order {
 }
 
 const ORDER_COLUMNS =
-  "id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, customer_email, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at, assigned_repartidor_id, estimated_delivery_at, incident_note";
+  "id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, customer_email, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at, assigned_repartidor_id, estimated_delivery_at, incident_note, order_number, delivered_at";
 
 interface CategoryRow {
   readonly id: string;
@@ -2523,8 +2526,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   async listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]> {
     // `delivered_at` es de la migracion 001: no hace falta fallback contra la base sin migrar. El dia local se convierte a un rango de
     // instantes en la zona de la sucursal: [00:00 local del dia, 00:00 local del dia siguiente).
-    const { rows } = await this.db.query<OrderRow & { delivered_at: string | Date | null }>(
-      `select ${ORDER_COLUMNS}, delivered_at
+    const { rows } = await this.db.query<OrderRow>(
+      `select ${ORDER_COLUMNS}
        from restaurantes.orders
        where organization_id = $1 and assigned_repartidor_id = $2 and delivered_at is not null
          and delivered_at >= ($3::date)::timestamp at time zone $4
@@ -2533,7 +2536,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
        limit 200;`,
       [organizationId, repartidorId, fechaLocal, zonaHoraria],
     );
-    return rows.map((r) => ({ ...mapOrder(r), deliveredAt: r.delivered_at === null ? null : r.delivered_at instanceof Date ? r.delivered_at.toISOString() : String(r.delivered_at) }));
+    return rows.map(mapOrder);
   }
 
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {

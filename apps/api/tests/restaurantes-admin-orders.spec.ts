@@ -34,6 +34,23 @@ describe("GET /v1/restaurantes/:propertyId/admin/orders", () => {
     expect(body.orders[0]?.status).toBe("pending");
   });
 
+  it("serializa el folio (`orderNumber`) y la entrega (`deliveredAt`) para el detalle del pedido; sin ellos devuelve null, nunca un campo ausente", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const conFolio = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "entregado", total: 80, orderNumber: 1001, deliveredAt: "2026-10-03T17:00:00.000Z" });
+    const sinFolio = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "pending", total: 60 });
+    ctx.restaurantesRepo.seedOrder(conFolio);
+    ctx.restaurantesRepo.seedOrder(sinFolio);
+    const app = buildApp(ctx.deps);
+
+    const lista = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders`, authedGet(ctx.staff.owner.token));
+    const body = (await lista.json()) as { orders: Array<{ id: string; orderNumber: number | null; deliveredAt: string | null }> };
+    expect(body.orders.find((o) => o.id === conFolio.id)).toMatchObject({ orderNumber: 1001, deliveredAt: "2026-10-03T17:00:00.000Z" });
+    expect(body.orders.find((o) => o.id === sinFolio.id)).toMatchObject({ orderNumber: null, deliveredAt: null });
+
+    const uno = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${conFolio.id}`, authedGet(ctx.staff.owner.token));
+    expect(((await uno.json()) as { order: { orderNumber: number | null } }).order.orderNumber).toBe(1001);
+  });
+
   it("status desconocido -> 400", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);

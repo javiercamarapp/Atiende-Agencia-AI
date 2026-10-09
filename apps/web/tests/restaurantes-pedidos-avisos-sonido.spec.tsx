@@ -94,7 +94,15 @@ async function avanzar(ms: number): Promise<void> {
   });
   await asentar();
 }
-const casilla = () => rendered!.container.querySelector<HTMLInputElement>("#sonido-pedidos")!;
+/** La casilla de sonido vive en el menu «Herramientas»: se abre una vez (queda abierto mientras dura la prueba). */
+async function abrirHerramientas(): Promise<void> {
+  const b = [...document.body.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === "Herramientas de pedidos")!;
+  await act(async () => {
+    b.click();
+  });
+  await asentar();
+}
+const casilla = () => document.body.querySelector<HTMLInputElement>("#sonido-pedidos")!;
 
 async function llegaUnPedidoNuevo(avisos: unknown) {
   const estado = { pending: [pedido("a")] };
@@ -112,6 +120,7 @@ describe("sonido del sondeo de pedidos y Avisos", () => {
   it("con el aviso y el sonido encendidos (o sin preferencia) SUENA al llegar un pedido nuevo", async () => {
     await llegaUnPedidoNuevo(mias(true, true));
     expect(sonidos).toBe(1);
+    await abrirHerramientas();
     expect(casilla().disabled).toBe(false);
   });
 
@@ -119,9 +128,10 @@ describe("sonido del sondeo de pedidos y Avisos", () => {
     await llegaUnPedidoNuevo(mias(true, false));
     expect(rendered!.container.querySelector('[data-testid="aviso-nuevos"]')?.textContent).toContain("1 pedido nuevo");
     expect(sonidos).toBe(0);
+    await abrirHerramientas();
     expect(casilla().disabled).toBe(true);
     expect(casilla().checked).toBe(false);
-    expect(rendered!.container.textContent).toContain("apagado en tus Avisos");
+    expect(document.body.textContent).toContain("apagado en tus Avisos");
   });
 
   it("con el aviso de pedido nuevo apagado tampoco suena", async () => {
@@ -132,6 +142,7 @@ describe("sonido del sondeo de pedidos y Avisos", () => {
   it("si no se pueden leer los Avisos (base sin migrar o error) conserva el comportamiento de siempre: suena", async () => {
     await llegaUnPedidoNuevo("falla");
     expect(sonidos).toBe(1);
+    await abrirHerramientas();
     expect(casilla().disabled).toBe(false);
   });
 
@@ -141,6 +152,7 @@ describe("sonido del sondeo de pedidos y Avisos", () => {
     stubFetch(estado, prefs);
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await asentar();
+    await abrirHerramientas();
     expect(casilla().disabled).toBe(false);
     prefs.mias[0]!.sonido = false;
     await act(async () => {

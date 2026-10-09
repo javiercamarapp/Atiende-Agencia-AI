@@ -424,7 +424,7 @@ export interface Order {
    * seleccionan (la base puede no estar migrada) -- `repo.listOrderScheduleInfo` las lee aparte. */
   readonly programadoPara?: string | null;
   readonly promovidoAt?: string | null;
-  /** Solo la trae `listDeliveredOrdersForRepartidor` (columna `delivered_at` de la 001, que se fija al pasar a `entregado`). */
+  /** `orders.delivered_at` (migracion 001, se fija al pasar a `entregado`): la traen los listados con ORDER_COLUMNS; ausente en pedidos de prueba. */
   readonly deliveredAt?: string | null;
 }
 

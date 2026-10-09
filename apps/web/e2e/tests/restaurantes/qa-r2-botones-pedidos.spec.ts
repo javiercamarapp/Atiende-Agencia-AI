@@ -7,9 +7,14 @@ import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { BASE, afirmarSinEscrituras, cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
 import { propiedadDe } from "../../mock-api/personas.ts";
+import { elegirEtiqueta, elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
-const tarjeta = (page: Page, nombre: string) => main(page).locator("[class*=card]").filter({ hasText: nombre }).first();
+/** La fila de un pedido del tablero (UNI-R1: ya no es una tarjeta por pedido sino una fila de la lista). */
+const tarjeta = (page: Page, nombre: string) => main(page).locator('[data-testid^="pedido-"]').filter({ hasText: nombre }).first();
+/** Las herramientas del tablero (Actualizar ahora, sonido, auto-impresion, Reglas del autopiloto) viven en el boton «Herramientas». */
+const abrirHerramientas = async (page: Page) => main(page).getByRole("button", { name: "Herramientas de pedidos" }).click();
+const chip = (page: Page, nombre: string) => main(page).getByRole("button", { name: nombre, exact: true });
 const PROP = propiedadDe("restaurantes");
 
 function pedido(id: string, cliente: string, status: string, extra: Record<string, unknown> = {}) {
@@ -44,13 +49,13 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
   });
 
   test("R1-botones-01 (verifica cierre): la respuesta lenta de Todos no pisa la pestana Preparando", async ({ page, mock, vigilante }) => {
-    await mock.inyectarFalla({ metodo: "GET", ruta: "status=en_camino", status: 200, retrasoMs: 2500, veces: 1, cuerpo: { orders: [pedido("ord-lento", "Pedro Lento", "en_camino")], nextCursor: null } });
+    await mock.inyectarFalla({ metodo: "GET", ruta: "status=problema", status: 200, retrasoMs: 2500, veces: 1, cuerpo: { orders: [pedido("ord-lento", "Pedro Lento", "problema")], nextCursor: null } });
     await page.goto(`${BASE}/pedidos`);
-    await main(page).getByRole("tab", { name: "Preparando" }).click();
-    await expect(main(page).getByText("Jorge Canul", { exact: false })).toBeVisible();
+    await chip(page, "Preparando").click();
+    await expect(tarjeta(page, "Jorge Canul")).toBeVisible();
     // La respuesta lenta de "Todos" ya llego al navegador (la registra el mock al responder).
-    await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "status=en_camino" })).filter((r) => r.inyectada).length, { timeout: 8000 }).toBe(1);
-    await expect(main(page).getByRole("tab", { name: "Preparando" })).toHaveAttribute("aria-selected", "true");
+    await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "status=problema" })).filter((r) => r.inyectada).length, { timeout: 8000 }).toBe(1);
+    await expect(chip(page, "Preparando")).toHaveAttribute("aria-pressed", "true");
     await expect(main(page).getByText("Pedro Lento")).toHaveCount(0);
     vigilante.verificar();
   });
@@ -59,8 +64,9 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await ir(page, "/pedidos");
     await expect(tarjeta(page, "Marisol Pech")).toBeVisible();
     await mock.agregarAEstado("rest.ordenes", pedido("ord-nuevo-1", "Cliente Nuevo WhatsApp", "pending"));
-    await main(page).getByRole("button", { name: "Actualizar ahora" }).click();
-    await expect(main(page).getByText("Cliente Nuevo WhatsApp", { exact: false })).toBeVisible();
+    await abrirHerramientas(page);
+    await page.getByRole("button", { name: "Actualizar ahora" }).click();
+    await expect(tarjeta(page, "Cliente Nuevo WhatsApp")).toBeVisible();
     await expect(main(page).getByTestId("aviso-nuevos")).toHaveText(/1 pedido nuevo/);
     vigilante.verificar();
   });
@@ -70,7 +76,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await ir(page, "/pedidos");
     await expect(tarjeta(page, "Marisol Pech")).toBeVisible();
     await mock.inyectarFalla({ metodo: "GET", ruta: "status=en_camino", status: 503 });
-    await main(page).getByRole("tab", { name: "En camino" }).click();
+    await main(page).getByRole("tab", { name: "Órdenes enviadas" }).click();
     await expect(main(page).getByRole("alert").filter({ has: page.getByRole("button", { name: "Reintentar" }) })).toBeVisible();
     // La semilla no tiene pedidos "En camino": nada de lo que se ve aqui puede ser de esta pestana.
     await expect(main(page).getByText("Marisol Pech")).toHaveCount(0);
@@ -83,7 +89,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await mock.configurar({ latenciaMs: 600 });
     await mock.limpiarRegistro();
     await tarjeta(page, "Marisol Pech").getByRole("button", { name: "Marcar Preparando" }).dblclick();
-    await expect(main(page).getByRole("button", { name: "Marcar En camino" })).toBeVisible();
+    await expect(tarjeta(page, "Marisol Pech").getByTestId("estado-ord-1001")).toHaveText("Preparando");
     const parches = await mock.buscar({ metodo: "PATCH", ruta: "/status" });
     expect(parches, "un doble clic no debe repetir la transicion").toHaveLength(1);
     expect(cuerpoDe(parches[0])).toMatchObject({ status: "preparando" });
@@ -92,35 +98,37 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
 
   test("Cancelar pedido: Volver, Escape y clic fuera no hacen PATCH; el motivo es obligatorio", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
-    const boton = tarjeta(page, "Marisol Pech").getByRole("button", { name: "Marcar Cancelado" });
+    const boton = tarjeta(page, "Marisol Pech").getByRole("button", { name: "Cancelar pedido" });
     await mock.limpiarRegistro();
     // Volver
     await boton.click();
-    let d = dialogo(page, "Cancelar pedido");
+    let d = dialogo(page, "¿Cancelar este pedido?");
     await expect(d).toBeVisible();
     await d.getByRole("button", { name: "Volver" }).click();
     await expect(d).toBeHidden();
     // Escape
     await boton.click();
-    d = dialogo(page, "Cancelar pedido");
+    d = dialogo(page, "¿Cancelar este pedido?");
     await expect(d).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(d).toBeHidden();
     // Clic fuera (esquina de la pantalla, sobre el velo)
     await boton.click();
-    d = dialogo(page, "Cancelar pedido");
+    d = dialogo(page, "¿Cancelar este pedido?");
     await expect(d).toBeVisible();
+    // Radix registra el cierre por clic fuera un instante despues de montar el dialogo (y el velo anima su entrada): se deja asentar.
+    await page.waitForTimeout(400);
     await page.mouse.click(5, 5);
     await expect(d).toBeHidden();
     await afirmarSinEscrituras(mock, "Cancelar pedido cerrado por Volver/Escape/clic fuera");
     // Elegir un motivo y luego Volver tampoco escribe; al reabrir el motivo vuelve a estar vacio.
     await boton.click();
-    d = dialogo(page, "Cancelar pedido");
-    await d.getByRole("combobox").selectOption("duplicado");
+    d = dialogo(page, "¿Cancelar este pedido?");
+    await elegirValor(d.getByRole("combobox"), "duplicado");
     await d.getByRole("button", { name: "Volver" }).click();
     await boton.click();
-    d = dialogo(page, "Cancelar pedido");
-    await expect(d.getByRole("button", { name: "Cancelar el pedido" })).toBeDisabled();
+    d = dialogo(page, "¿Cancelar este pedido?");
+    await expect(d.getByRole("button", { name: "Sí, cancelar pedido" })).toBeDisabled();
     await page.keyboard.press("Escape");
     await afirmarSinEscrituras(mock, "Cancelar pedido con motivo elegido y Volver");
     vigilante.verificar();
@@ -130,13 +138,13 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     vigilante.permitirRespuesta5xx(/\/status/);
     await ir(page, "/pedidos");
     await mock.inyectarFalla({ metodo: "PATCH", ruta: "/status", status: 503, veces: 1 });
-    await tarjeta(page, "Marisol Pech").getByRole("button", { name: "Marcar Cancelado" }).click();
-    const d = dialogo(page, "Cancelar pedido");
-    await d.getByRole("combobox").selectOption("cliente_desistio");
-    await d.getByRole("button", { name: "Cancelar el pedido" }).click();
+    await tarjeta(page, "Marisol Pech").getByRole("button", { name: "Cancelar pedido" }).click();
+    const d = dialogo(page, "¿Cancelar este pedido?");
+    await elegirValor(d.getByRole("combobox"), "cliente_desistio");
+    await d.getByRole("button", { name: "Sí, cancelar pedido" }).click();
     await expect(d).toBeVisible();
     await expect(d.getByText(/Falla inyectada 503|no se pudo/i)).toBeVisible();
-    await d.getByRole("button", { name: "Cancelar el pedido" }).click();
+    await d.getByRole("button", { name: "Sí, cancelar pedido" }).click();
     await expect(d).toBeHidden();
     const parches = await mock.buscar({ metodo: "PATCH", ruta: "/status" });
     expect(parches.map((p) => p.status)).toEqual([503, 200]);
@@ -175,7 +183,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
 
   test("Reglas del autopiloto: Cancelar/Escape no guardan; un valor fuera de rango no llega al servidor; Guardar hace UN PUT", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
-    const abrir = main(page).getByRole("button", { name: "Reglas del autopiloto" });
+    const abrir = { click: async () => { await abrirHerramientas(page); await page.getByRole("button", { name: "Reglas del autopiloto" }).click(); } };
     await mock.limpiarRegistro();
     await abrir.click();
     let d = dialogo(page, "Reglas del autopiloto");
@@ -207,7 +215,8 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await mock.inyectarFalla({ metodo: "GET", ruta: "/autopiloto/config", status: 503 });
     await ir(page, "/pedidos");
     await expect(tarjeta(page, "Marisol Pech")).toBeVisible();
-    await main(page).getByRole("button", { name: "Reglas del autopiloto" }).click();
+    await abrirHerramientas(page);
+    await page.getByRole("button", { name: "Reglas del autopiloto" }).click();
     const d = dialogo(page, "Reglas del autopiloto");
     await expect(d).toBeVisible();
     await expect(d.getByRole("button", { name: "Reintentar" }), "una falla de carga debe ofrecer Reintentar").toBeVisible({ timeout: 4000 });
@@ -219,7 +228,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     const base = { propertyId: PROP.id, estado: "pendiente", decision: null, motivoResolucion: null, codigoDescuento: null, solicitadaAt: new Date(Date.now() - 3 * 60_000).toISOString(), escaladaAt: null, resueltaAt: null };
     await mock.agregarAEstado("rest.autopiloto.solicitudes", { ...base, id: "5a000000-0000-4000-8000-0000000000c1", tipo: "compensacion", orderId: "ord-0999", detalle: { subtipo: "frio" }, pedido: { numero: 999, total: 143, status: "entregado", clienteNombre: "Queja Frio", canal: "domicilio", renglones: [{ indice: 0, nombre: "Tacos al pastor (orden)", cantidad: 1 }, { indice: 1, nombre: "Horchata", cantidad: 1 }] }, decisionesPosibles: ["sin_compensacion", "reponer_producto", "descuento_proximo"] });
     await mock.agregarAEstado("rest.autopiloto.solicitudes", { ...base, id: "5a000000-0000-4000-8000-0000000000c2", tipo: "cancelacion", orderId: "ord-1002", detalle: {}, pedido: { numero: 1002, total: 190, status: "preparando", clienteNombre: "Cancela Cocina", canal: "recoger", renglones: [{ indice: 0, nombre: "Cochinita pibil (torta)", cantidad: 2 }] }, decisionesPosibles: ["cancelar", "mantener"] });
-    await main(page).getByRole("tab", { name: /Por aprobar/ }).click();
+    await main(page).getByRole("button", { name: /Por aprobar/ }).click();
     const queja = main(page).getByTestId("solicitud-5a000000-0000-4000-8000-0000000000c1");
     const cancela = main(page).getByTestId("solicitud-5a000000-0000-4000-8000-0000000000c2");
     await expect(queja).toContainText("Queja Frio");
@@ -257,16 +266,20 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await ir(page, "/pedidos");
     await expect(tarjeta(page, "Marisol Pech")).toBeVisible();
     await mock.agregarAEstado("rest.ordenes", pedido("ord-e2e-1", "Viaje Completo", "pending"));
-    await main(page).getByRole("button", { name: "Actualizar ahora" }).click();
+    await abrirHerramientas(page);
+    await page.getByRole("button", { name: "Actualizar ahora" }).click();
+    await page.keyboard.press("Escape");
     const t = tarjeta(page, "Viaje Completo");
     await expect(t).toBeVisible();
     await t.getByRole("button", { name: "Marcar Preparando" }).click();
-    await expect(t.getByRole("button", { name: "Marcar En camino" })).toBeVisible();
-    await t.getByLabel("Repartidor:").selectOption({ label: "Ramon Uc" });
+    // «Asignar repartidor» -> «Confirmar envío» asigna Y manda a reparto (preparando -> en_camino); el pedido pasa a «Órdenes enviadas».
+    await t.getByRole("button", { name: "Asignar repartidor" }).click();
+    await elegirEtiqueta(t.getByLabel("Elegir repartidor"), "Ramon Uc");
+    await t.getByRole("button", { name: "Confirmar envío" }).click();
     await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/ord-e2e-1/assign-repartidor" }, 1);
-    await t.getByRole("button", { name: "Marcar En camino" }).click();
-    await expect(t.getByRole("button", { name: "Marcar Entregado" })).toBeVisible();
-    await t.getByRole("button", { name: "Marcar Entregado" }).click();
+    await expect(main(page).getByRole("tab", { name: "Órdenes enviadas" })).toHaveAttribute("aria-selected", "true");
+    await expect(t.getByRole("button", { name: "Marcar entregado" })).toBeVisible();
+    await t.getByRole("button", { name: "Marcar entregado" }).click();
     // Entregado ya no es un estado operativo: sale de Pedidos y se cierra desde Historial.
     await expect(main(page).getByText("Viaje Completo")).toHaveCount(0);
     await ir(page, "/historial");

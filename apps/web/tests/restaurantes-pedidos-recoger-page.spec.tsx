@@ -93,8 +93,10 @@ describe("PedidosPage -- pedidos para recoger", () => {
     await esperarCarga();
     const text = rendered.container.textContent!;
     expect(rendered.container.querySelector('[data-testid="canal-ord-r1"]')?.textContent).toBe("Recoger");
-    expect(rendered.container.querySelector('[data-testid="recoger-ord-r1"]')?.textContent).toMatch(/Recoge a las .* · Propina \$15\.00 \(no incluida en el total\)/);
-    expect(text).not.toContain("Repartidor:");
+    expect(rendered.container.querySelector('[data-testid="recoger-ord-r1"]')?.textContent).toBe("Recoge a las 20:30");
+    // La propina ya no va en la fila (como el original): vive en el detalle del pedido.
+    expect(text).not.toContain("Propina");
+    expect(botones(rendered.container)).not.toContain("Asignar repartidor");
     expect(botones(rendered.container)).toContain("Marcar Listo para recoger");
     expect(botones(rendered.container)).not.toContain("Marcar En camino");
   });
@@ -103,8 +105,9 @@ describe("PedidosPage -- pedidos para recoger", () => {
     stubFetch({ preparando: [{ ...BASE, canal: "domicilio", customerAddress: "Calle 5", propina: null, horaRecogida: null }] });
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await esperarCarga();
-    expect(rendered.container.textContent).toContain("Repartidor:");
-    expect(botones(rendered.container)).toContain("Marcar En camino");
+    // «Asignar repartidor» -> «Confirmar envío» reemplaza al viejo «Marcar En camino» (el envio sigue siendo preparando -> en_camino).
+    expect(botones(rendered.container)).toContain("Asignar repartidor");
+    expect(botones(rendered.container)).not.toContain("Marcar En camino");
     expect(botones(rendered.container)).not.toContain("Marcar Listo para recoger");
   });
 
@@ -113,7 +116,9 @@ describe("PedidosPage -- pedidos para recoger", () => {
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await esperarCarga();
     expect(rendered.container.querySelector('[data-testid="canal-ord-r1"]')).toBeNull();
-    expect(botones(rendered.container)).toContain("Marcar En camino");
+    // Sin canal conocido se ofrecen ambos caminos (el servidor valida igual): despacho y «Marcar Listo para recoger».
+    expect(botones(rendered.container)).toContain("Asignar repartidor");
+    expect(botones(rendered.container)).toContain("Marcar Listo para recoger");
   });
 
   it("'Marcar Listo para recoger' avisa al cliente por defecto: PATCH {status} sin notifyCustomer", async () => {
@@ -159,5 +164,14 @@ describe("PedidosPage -- pedidos para recoger", () => {
     expect(rendered.container.textContent).toContain("No recogido");
     expect(botones(rendered.container)).toContain("Marcar Preparando");
     expect(botones(rendered.container)).not.toContain("Marcar Entregado");
+  });
+
+  it("un pedido recogido en «Listo para recoger» se ve en Recibidas con su chip de estado y la accion «Marcar Entregado»", async () => {
+    stubFetch({ listo_para_recoger: [{ ...BASE, status: "listo_para_recoger" }] });
+    rendered = renderComponent(<PedidosPage {...CTX} />);
+    await esperarCarga();
+    expect(rendered.container.querySelector('[data-testid="estado-ord-r1"]')?.textContent).toBe("Listo para recoger");
+    expect(botones(rendered.container)).toContain("Marcar Entregado");
+    expect(botones(rendered.container)).toContain("Marcar No recogido");
   });
 });

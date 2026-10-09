@@ -3,6 +3,7 @@
 import { expect, test } from "../helpers/fixtures.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 import { SOLICITUD_GRANDE_ID } from "../mock-api/fixtures/restaurantes-autopiloto.ts";
+import { elegirValor } from "../helpers/listas.ts";
 
 test.describe("restaurantes autopiloto @humo", () => {
   test("owner: Por aprobar muestra el pedido grande y Aprobar lo resuelve una sola vez", async ({ page, iniciarSesion, mock, vigilante }) => {
@@ -11,7 +12,7 @@ test.describe("restaurantes autopiloto @humo", () => {
     const insignia = page.getByTestId("insignia-por-aprobar");
     await expect(insignia).toHaveText("1");
 
-    await page.getByRole("tab", { name: /Por aprobar/ }).click();
+    await page.getByRole("button", { name: /Por aprobar/ }).click();
     const tarjeta = page.getByTestId(`solicitud-${SOLICITUD_GRANDE_ID}`);
     await expect(tarjeta).toContainText("Evento Peniche");
     await expect(tarjeta).toContainText("60× Tacos al pastor");
@@ -29,11 +30,11 @@ test.describe("restaurantes autopiloto @humo", () => {
   test("owner: Rechazar pide un motivo de la lista y manda el motivo elegido", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("restaurantes", "owner");
     await page.goto(`/restaurantes/${restaurantes.orgSlug}/pedidos`);
-    await page.getByRole("tab", { name: /Por aprobar/ }).click();
+    await page.getByRole("button", { name: /Por aprobar/ }).click();
     await page.getByRole("button", { name: "Rechazar", exact: true }).click();
     const dialogo = page.getByRole("dialog");
     await expect(dialogo.getByRole("button", { name: "Rechazar pedido" })).toBeDisabled();
-    await dialogo.getByRole("combobox").selectOption("fuera_de_zona");
+    await elegirValor(dialogo.getByRole("combobox"), "fuera_de_zona");
     await dialogo.getByRole("button", { name: "Rechazar pedido" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "POST", ruta: "/autopiloto/solicitudes/" })).length).toBe(1);
     expect((await mock.buscar({ metodo: "POST", ruta: "/autopiloto/solicitudes/" }))[0]!.cuerpo).toEqual({ decision: "rechazar", motivo: "fuera_de_zona" });
@@ -42,12 +43,12 @@ test.describe("restaurantes autopiloto @humo", () => {
   test("cancelar un pedido desde Pedidos exige un motivo: sin motivo no hay PATCH", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("restaurantes", "owner");
     await page.goto(`/restaurantes/${restaurantes.orgSlug}/pedidos`);
-    await page.getByRole("button", { name: "Marcar Cancelado" }).first().click();
+    await page.getByRole("button", { name: "Cancelar pedido" }).first().click();
     const dialogo = page.getByRole("dialog");
-    await expect(dialogo.getByRole("button", { name: "Cancelar el pedido" })).toBeDisabled();
+    await expect(dialogo.getByRole("button", { name: "Sí, cancelar pedido" })).toBeDisabled();
     expect(await mock.buscar({ metodo: "PATCH", ruta: "/status" })).toHaveLength(0);
-    await dialogo.getByRole("combobox").selectOption("duplicado");
-    await dialogo.getByRole("button", { name: "Cancelar el pedido" }).click();
+    await elegirValor(dialogo.getByRole("combobox"), "duplicado");
+    await dialogo.getByRole("button", { name: "Sí, cancelar pedido" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "PATCH", ruta: "/status" })).length).toBe(1);
     expect((await mock.buscar({ metodo: "PATCH", ruta: "/status" }))[0]!.cuerpo).toEqual({ status: "cancelado", motivo: "duplicado" });
   });
@@ -55,7 +56,10 @@ test.describe("restaurantes autopiloto @humo", () => {
   test("staff de piso: ve Por aprobar pero no las Reglas del autopiloto (solo owner/admin)", async ({ page, iniciarSesion }) => {
     await iniciarSesion("restaurantes", "staff");
     await page.goto(`/restaurantes/${restaurantes.orgSlug}/pedidos`);
-    await expect(page.getByRole("tab", { name: /Por aprobar/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Por aprobar/ })).toBeVisible();
+    // Las herramientas viven en el menu «Herramientas»: ahi el staff de piso no tiene las reglas.
+    await page.getByRole("button", { name: "Herramientas de pedidos" }).click();
+    await expect(page.getByRole("button", { name: "Actualizar ahora" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Reglas del autopiloto" })).toHaveCount(0);
   });
 });

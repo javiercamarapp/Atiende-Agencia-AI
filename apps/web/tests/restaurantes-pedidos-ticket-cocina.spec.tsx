@@ -99,9 +99,20 @@ async function flush(): Promise<void> {
 }
 
 function boton(texto: string): HTMLButtonElement {
-  const b = [...document.body.querySelectorAll("button")].find((x) => x.textContent?.includes(texto));
+  // Imprimir ticket / Vista previa / Historial son botones de icono con nombre accesible (aria-label) en el tablero nuevo.
+  const b = [...document.body.querySelectorAll("button")].find((x) => x.textContent?.includes(texto) || x.getAttribute("aria-label") === texto);
   if (!b) throw new Error(`boton no encontrado: ${texto}`);
   return b as HTMLButtonElement;
+}
+
+/** La casilla de auto-impresion vive en el menu «Herramientas» del tablero: se abre y se marca. */
+async function activarAutoImpresion(): Promise<void> {
+  await clic(boton("Herramientas de pedidos"));
+  await flush();
+  await act(async () => {
+    (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
+    await flushMicrotasks();
+  });
 }
 
 async function clic(el: Element): Promise<void> {
@@ -142,11 +153,7 @@ describe("PedidosPage -- ticket de cocina", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await flush();
-    await act(async () => {
-      const chk = document.getElementById("auto-imprimir-cocina") as HTMLInputElement;
-      chk.click();
-      await flushMicrotasks();
-    });
+    await activarAutoImpresion();
     await flush();
     expect(imprimir).not.toHaveBeenCalled();
 
@@ -173,10 +180,7 @@ describe("PedidosPage -- ticket de cocina", () => {
     pendientes = [pedido("ord-aaaaaa1"), pedido("ord-otra001", { propertyId: "prop-2", branch: "Norte" })];
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await flush();
-    await act(async () => {
-      (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
-      await flushMicrotasks();
-    });
+    await activarAutoImpresion();
     await flush();
     const urls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).filter((u) => u.includes("status=pending"));
     expect(urls.length).toBeGreaterThan(0);
@@ -217,10 +221,7 @@ describe("PedidosPage -- ticket de cocina", () => {
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
       rendered = renderComponent(<PedidosPage {...CTX} />);
       await flush();
-      await act(async () => {
-        (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
-        await flushMicrotasks();
-      });
+      await activarAutoImpresion();
       await flush();
       expect(llamadasTicket()).toHaveLength(0);
       pendientes = [pedido("ord-aaaaaa1"), pedido("ord-bbbbbb2", { createdAt: "2026-09-19T10:05:00.000Z" })];

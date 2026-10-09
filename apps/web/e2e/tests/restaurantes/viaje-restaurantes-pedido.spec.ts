@@ -5,6 +5,7 @@ import { expect, test } from "../../helpers/fixtures.ts";
 import type { Page } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir, BASE } from "../../helpers/recorrido.ts";
 import { personaDe } from "../../mock-api/personas.ts";
+import { elegirEtiqueta } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -27,19 +28,25 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
     expect(cuerpoDe(creado)).toMatchObject({ name: "Taco de cochinita", price: 38 });
     await expect(main(page).getByText("Taco de cochinita")).toBeVisible();
 
-    // 3. Pedido nuevo (fixture ord-1001, pendiente): lo pasa a preparando y le asigna repartidor.
+    // 3. Pedido nuevo (fixture ord-1001, pendiente): lo pasa a preparando y lo envia con repartidor.
     await ir(page, "/pedidos");
-    const tarjeta = main(page).locator("div.card, [class*=card]").filter({ hasText: "Marisol Pech" }).first();
+    const tarjeta = main(page).locator('[data-testid^="pedido-"]').filter({ hasText: "Marisol Pech" }).first();
     await expect(tarjeta).toBeVisible();
     await mock.limpiarRegistro();
     await tarjeta.getByRole("button", { name: "Marcar Preparando" }).click();
     const [estado] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/status" });
     expect(cuerpoDe(estado)).toEqual({ status: "preparando" });
-    await page.getByLabel("Repartidor:").first().selectOption({ label: "Ramon Uc" });
+    // «Asignar repartidor» -> «Confirmar envío»: asigna (con ETA) Y manda a reparto (preparando -> en_camino) en un solo gesto.
+    await tarjeta.getByRole("button", { name: "Asignar repartidor" }).click();
+    await elegirEtiqueta(tarjeta.getByLabel("Elegir repartidor"), "Ramon Uc");
+    await tarjeta.getByRole("button", { name: "Confirmar envío" }).click();
     const [asignado] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/assign-repartidor" });
     expect(cuerpoDe(asignado)).toMatchObject({ repartidorId: "usr-2" });
+    expect(cuerpoDe(asignado)["estimatedDeliveryAt"]).toEqual(expect.any(String));
+    await expect.poll(async () => (await mock.buscar({ metodo: "PATCH", ruta: "/orders/ord-1001/status" })).length).toBe(2);
+    expect(cuerpoDe((await mock.buscar({ metodo: "PATCH", ruta: "/orders/ord-1001/status" }))[1])).toEqual({ status: "en_camino" });
 
-    // 4. Otra sesion: el repartidor ve el pedido en Mis entregas y lo marca en camino y entregado.
+    // 4. Otra sesion: el repartidor ve el pedido ya en camino en Mis entregas y lo marca entregado.
     const contexto = await browser.newContext({ baseURL: info.project.use.baseURL ?? "", locale: "es-MX", timezoneId: "America/Merida", viewport: info.project.use.viewport ?? null, colorScheme: info.project.use.colorScheme ?? "light" });
     try {
       const otra = await contexto.newPage();
@@ -48,16 +55,11 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
       await expect(otra.getByRole("heading", { name: "Mis entregas" })).toBeVisible();
       await expect(otra).toHaveURL(new RegExp(`${BASE}/repartidor$`));
       // Mis entregas lista primero lo activo en el orden del servidor: el pedido recien asignado (ord-1001) queda ULTIMO entre los
-      // activos, asi que su boton es el ultimo de cada tipo (las entregas sembradas de Marisol y Jorge van antes).
-      await otra.getByRole("button", { name: "Marcar en camino" }).last().click();
-      const enCamino = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/repartidor/orders/ord-1001/status" });
-      expect(cuerpoDe(enCamino[0])).toMatchObject({ status: "en_camino" });
-      // La lista se recarga tras el PATCH: se espera a que el pedido aparezca "En camino" (2 botones: Jorge y el nuestro) antes de elegir.
+      // activos (2 «Marcar entregado»: el de Jorge, sembrado en camino, y el nuestro).
       await expect(otra.getByRole("button", { name: "Marcar entregado" })).toHaveCount(2);
       await otra.getByRole("button", { name: "Marcar entregado" }).last().click();
-      await expect.poll(async () => (await mock.buscar({ metodo: "PATCH", ruta: "/repartidor/orders/ord-1001/status" })).length).toBe(2);
-      const todas = await mock.buscar({ metodo: "PATCH", ruta: "/repartidor/orders/ord-1001/status" });
-      expect(cuerpoDe(todas[1])).toMatchObject({ status: "entregado" });
+      const entregado = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/repartidor/orders/ord-1001/status" });
+      expect(cuerpoDe(entregado[0])).toMatchObject({ status: "entregado" });
     } finally {
       await contexto.close();
     }
