@@ -2,6 +2,7 @@ export { cn } from "./lib/utils.js";
 export { GRAFICA_TEMA, duracionEntradaGrafica } from "./lib/graficas-tema.js";
 export { formatMoney } from "./lib/formatMoney.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
+export { useAmbitoVertical, ATRIBUTO_AMBITO } from "./lib/ambito.js";
 
 // Ticket de cocina imprimible (restaurantes, PM PR-7).
 export {

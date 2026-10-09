@@ -188,6 +188,22 @@
     --vertical-licitaciones: 285 55% 45%;
     --vertical-despachos: 42 95% 34%;
     --vertical-citas: 330 70% 46%;
+
+    /* Familia "del repo suelto" (AMBITO restaurantes, ver el bloque html[data-ambito] mas abajo). Se definen aqui
+       para que existan siempre; las clases `rest:` que los usan no hacen nada fuera de restaurantes.
+       solido = el `terracotta` del original (azul 224 76% 48%): toast, superficie del menu. menu-activo = fondo del
+       elemento resaltado del menu (en el original es el MISMO azul que la superficie y no se ve: aqui es un tono mas oscuro).
+       destructive-solido = rojo del boton destructivo (blanco encima >= 4.5:1; --destructive sirve de texto). */
+    --solido: 224 76% 48%;
+    --solido-foreground: 0 0% 100%;
+    --menu-activo: 224 76% 32%;
+    --menu-activo-foreground: 0 0% 100%;
+    --destructive-solido: 352 83% 41%;
+    --destructive-solido-foreground: 0 0% 100%;
+    --scrim: hsl(0 0% 0% / 0.8);
+    --radius-menu: 1rem;
+    --radius-item: 0.75rem;
+    --shadow-boton: 0 0 0 0 transparent;
   }
 
   .dark {
@@ -265,6 +281,167 @@
     --vertical-licitaciones: 285 70% 72%;
     --vertical-despachos: 45 95% 58%;
     --vertical-citas: 330 80% 70%;
+
+    --solido: 224 76% 48%;
+    --solido-foreground: 0 0% 100%;
+    --menu-activo: 224 76% 48%;
+    --menu-activo-foreground: 0 0% 100%;
+    /* El rojo del original en oscuro (352 75% 55%) da 4.30:1 con blanco: 50 % de luminosidad llega a 4.77:1. */
+    --destructive-solido: 352 75% 50%;
+    --destructive-solido-foreground: 0 0% 100%;
+  }
+}
+
+/*
+ * ===========================================================================
+ * AMBITO RESTAURANTES (UNI-R0b): paleta, radios, alto de controles y movimiento IDENTICOS al repo suelto
+ * (atiende-restaurantes: index.css + tailwind.config.ts; inventario token a token en
+ * pm/paridad-visual/tokens-original-vs-monorepo.md). useAmbitoVertical("restaurantes") pone data-ambito="restaurantes"
+ * en <html> para que tambien lo hereden los portales de Radix (modales, menus, toasts), que viven en <body>. Las otras
+ * verticales no ponen el atributo: nada de aqui las toca. El SIDEBAR conserva la paleta de Likida: su <aside> lleva
+ * data-ambito-base y el bloque `[data-ambito-base]` de abajo repone SUS valores (iguales a :root/.dark; el test
+ * tokens-restaurantes.spec.ts lo exige). En oscuro el original es azul marino (216 45% 9%), no neutro.
+ * Desviaciones de contraste (WCAG AA) frente al original, verificadas en ese spec:
+ *   --input: el borde de campo del original (214 32% 91%) da 1.2:1; se usa 215 15% 54% (3.67:1, 1.4.11).
+ *   --destructive-solido (oscuro): 352 75% 50% en vez de 352 75% 55% (blanco encima: 4.77:1 vs 4.30:1).
+ *   --menu-activo (claro): el original resalta con el mismo azul de la superficie (invisible); aqui es un tono mas oscuro.
+ * ===========================================================================
+ */
+@layer base {
+  html[data-ambito="restaurantes"] {
+    --background: 210 40% 98%;
+    --foreground: 216 50% 12%;
+    --foreground-2: 216 25% 26%;
+    --sunken: 210 40% 98%;
+    --canvas: 210 40% 98%;
+    --line2: 214 25% 84%;
+    --faint: 215 18% 43%;
+    --card: 0 0% 100%;
+    --card-foreground: 216 50% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 216 50% 12%;
+    --secondary: 224 76% 48%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 30% 95%;
+    --muted-foreground: 215 18% 43%;
+    --accent: 224 76% 48%;
+    --accent-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 215 15% 54%;
+    --shadow-card: 0 4px 24px -4px hsl(216 50% 12% / 0.08);
+    --shadow-elevated: 0 12px 40px -8px hsl(216 50% 12% / 0.15);
+    --shadow-boton: 0 10px 26px hsl(224 76% 48% / 0.26);
+    --radius-dialog: 0.75rem;
+    --radius-field: 0.625rem;
+    --radius-menu: 0.625rem;
+    --radius-item: 0.5rem;
+    --control-sm: 2.25rem;
+    --control-md: 2.5rem;
+    --control-lg: 3rem;
+    --dur-fast: 200ms;
+    --dur-base: 200ms;
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --scrim: hsl(0 0% 0% / 0.8);
+  }
+
+  html[data-ambito="restaurantes"].dark {
+    --background: 216 45% 9%;
+    --foreground: 210 30% 95%;
+    --foreground-2: 210 25% 82%;
+    --sunken: 216 45% 9%;
+    --canvas: 216 40% 11%;
+    --line2: 216 30% 25%;
+    --faint: 215 18% 62%;
+    --card: 216 40% 13%;
+    --card-foreground: 210 30% 95%;
+    --popover: 216 40% 11%;
+    --popover-foreground: 210 30% 95%;
+    --primary-foreground: 216 45% 9%;
+    --secondary: 199 89% 55%;
+    --secondary-foreground: 216 45% 9%;
+    --muted: 216 30% 18%;
+    --muted-foreground: 215 18% 65%;
+    --accent: 199 89% 55%;
+    --accent-foreground: 216 45% 9%;
+    --destructive-foreground: 216 45% 9%;
+    --border: 216 30% 20%;
+    --input: 216 15% 48%;
+  }
+
+  /* Repone la paleta de Likida DENTRO del sidebar (y solo ahi). Debe igualar :root / .dark en cada token. */
+  [data-ambito-base] {
+    --accent: 240 9% 97.8%;
+    --accent-foreground: 18 27.8% 7.1%;
+    --background: 240 33% 98.8%;
+    --border: 240 9% 93.1%;
+    --canvas: 240 9% 97.8%;
+    --card: 0 0% 100%;
+    --card-foreground: 18 27.8% 7.1%;
+    --control-lg: 2.5rem;
+    --control-md: 2.25rem;
+    --control-sm: 2rem;
+    --destructive-foreground: 0 0% 100%;
+    --dur-base: 250ms;
+    --dur-fast: 150ms;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --faint: 240 4.1% 43.3%;
+    --foreground: 18 27.8% 7.1%;
+    --foreground-2: 240 5.3% 26.1%;
+    --input: 240 4% 55.9%;
+    --line2: 240 6% 90%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 220 9.8% 42.2%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 18 27.8% 7.1%;
+    --primary-foreground: 0 0% 100%;
+    --radius-dialog: 1rem;
+    --radius-field: 1rem;
+    --radius-item: 0.75rem;
+    --radius-menu: 1rem;
+    --scrim: hsl(0 0% 0% / 0.8);
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 18 27.8% 7.1%;
+    --shadow-boton: 0 0 0 0 transparent;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -12px rgba(0, 0, 0, 0.12);
+    --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 32px -8px rgba(0, 0, 0, 0.18);
+    --sunken: 240 4.8% 95.9%;
+  }
+  .dark [data-ambito-base] {
+    --accent: 240 10% 6.1%;
+    --accent-foreground: 240 4.8% 95.9%;
+    --background: 240 10% 3.9%;
+    --border: 240 7% 14.7%;
+    --canvas: 240 10% 6.1%;
+    --card: 240 7% 8%;
+    --card-foreground: 240 4.8% 95.9%;
+    --control-lg: 2.5rem;
+    --control-md: 2.25rem;
+    --control-sm: 2rem;
+    --destructive-foreground: 240 7% 8%;
+    --dur-base: 250ms;
+    --dur-fast: 150ms;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --faint: 240 3.5% 61%;
+    --foreground: 240 4.8% 95.9%;
+    --foreground-2: 240 4.9% 83.9%;
+    --input: 240 4% 45%;
+    --line2: 240 6% 17.1%;
+    --muted: 240 7% 11.4%;
+    --muted-foreground: 240 4.7% 66.7%;
+    --popover: 240 7% 8%;
+    --popover-foreground: 240 4.8% 95.9%;
+    --primary-foreground: 240 7% 8%;
+    --radius-dialog: 1rem;
+    --radius-field: 1rem;
+    --radius-item: 0.75rem;
+    --radius-menu: 1rem;
+    --scrim: hsl(0 0% 0% / 0.8);
+    --secondary: 240 7% 11.4%;
+    --secondary-foreground: 240 4.8% 95.9%;
+    --shadow-boton: 0 0 0 0 transparent;
+    --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.02);
+    --shadow-elevated: 0 0 0 1px rgba(255, 255, 255, 0.03);
+    --sunken: 240 7% 11.4%;
   }
 }
 
@@ -481,6 +658,46 @@
   @keyframes ds-shimmer {
     from { background-position: 100% 0; }
     to   { background-position: -100% 0; }
+  }
+
+  /* Toast del ambito restaurantes (repo suelto, sonner.tsx): bloque AZUL solido con texto blanco (bg-terracotta text-white), el boton
+     de accion en blanco con texto azul y el de cancelar en blanco al 20 %. Las MEJORAS del Toaster se conservan (icono por tipo, barra
+     de autocierre, pausa al hover, apilado, anuncio aria-live, reduced-motion). El error va en rojo SOLIDO (el original lo pintaba
+     azul como todo lo demas; un error azul no se distingue). Blanco sobre --solido = 6.65:1; sobre --destructive-solido >= 4.77:1. */
+  html[data-ambito="restaurantes"] .toaster .toast {
+    background: hsl(var(--solido));
+    border-color: hsl(var(--solido));
+    color: hsl(var(--solido-foreground));
+  }
+  html[data-ambito="restaurantes"] .toaster .toast[data-type="error"] {
+    background: hsl(var(--destructive-solido));
+    border-color: hsl(var(--destructive-solido));
+    color: hsl(var(--destructive-solido-foreground));
+  }
+  html[data-ambito="restaurantes"] .toaster .toast [data-title],
+  html[data-ambito="restaurantes"] .toaster .toast [data-description],
+  html[data-ambito="restaurantes"] .toaster .toast [data-icon] {
+    color: inherit !important;
+  }
+  html[data-ambito="restaurantes"] .toaster .toast [data-description] { opacity: 0.8; }
+  html[data-ambito="restaurantes"] .toaster .toast [data-button]:not([data-cancel]) {
+    background: hsl(var(--solido-foreground));
+    color: hsl(var(--solido));
+  }
+  html[data-ambito="restaurantes"] .toaster .toast[data-type="error"] [data-button]:not([data-cancel]) {
+    color: hsl(var(--destructive-solido));
+  }
+  html[data-ambito="restaurantes"] .toaster .toast [data-cancel] {
+    background: hsl(var(--solido-foreground) / 0.2);
+    color: hsl(var(--solido-foreground));
+  }
+  html[data-ambito="restaurantes"] .toaster .toast [data-close-button] {
+    background: hsl(var(--solido));
+    border-color: hsl(var(--solido-foreground) / 0.4);
+    color: hsl(var(--solido-foreground));
+  }
+  html[data-ambito="restaurantes"] .toaster .toast[data-type="error"] [data-close-button] {
+    background: hsl(var(--destructive-solido));
   }
 
   /* Toaster (sonner) en movil: queda por encima de la barra inferior de 63 px
