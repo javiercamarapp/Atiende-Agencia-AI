@@ -69,18 +69,19 @@ describe("limpiarTextoAgente (VX13 llamada 2)", () => {
 });
 
 // --- controlador con una sesion falsa ---
-interface SesionFalsa { readonly aperturas: AperturaLlamada[]; manejadores(): ManejadoresSesion; readonly cerradas: number[] }
+interface SesionFalsa { readonly aperturas: AperturaLlamada[]; manejadores(): ManejadoresSesion; readonly cerradas: number[]; readonly textos: string[] }
 function sesionFalsa(): { abrirSesion: (a: AperturaLlamada, h: ManejadoresSesion) => Promise<VozSesionLlamada>; estado: SesionFalsa } {
   const aperturas: AperturaLlamada[] = [];
   const cerradas: number[] = [];
+  const textos: string[] = [];
   let h: ManejadoresSesion | null = null;
   return {
     abrirSesion: async (a, m) => {
       aperturas.push(a);
       h = m;
-      return { enviarTexto: () => undefined, interrumpir: () => undefined, cerrar: async () => void cerradas.push(1) };
+      return { enviarTexto: (t: string) => void textos.push(t), interrumpir: () => undefined, cerrar: async () => void cerradas.push(1) };
     },
-    estado: { aperturas, cerradas, manejadores: () => h! },
+    estado: { aperturas, cerradas, textos, manejadores: () => h! },
   };
 }
 const REGISTRO: RegistroToolsVoz = {
@@ -175,6 +176,37 @@ describe("controlador", () => {
     await vi.advanceTimersByTimeAsync(1500);
     await c.vacio();
     expect(dichos).toContain("tool_timeout");
+  });
+
+  it("QA-PM-R5-voz-03: tras el pregrabado, si el agente sigue mudo se le empuja UNA vez con un turno de texto", async () => {
+    vi.useFakeTimers();
+    const { c, s, dichos } = controlador({ vigilarSilencioAgenteMs: 5000 });
+    await c.iniciar({ habilitado: true, gastoMesMicroUsd: 0, topeMensualMicroUsd: null });
+    await s.estado.manejadores().ejecutarTool({ id: "1", nombre: "cotizar_pedido", args: {} });
+    await vi.advanceTimersByTimeAsync(5500);
+    await c.vacio();
+    expect(dichos).toContain("tool_timeout");
+    expect(s.estado.textos.filter((t) => /Aviso del sistema/.test(t))).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(5500);
+    await c.vacio();
+    expect(s.estado.textos.filter((t) => /Aviso del sistema/.test(t))).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(30000);
+    await c.vacio();
+    expect(s.estado.textos.filter((t) => /Aviso del sistema/.test(t))).toHaveLength(1);
+  });
+
+  it("negativo: si el agente habla despues del pregrabado, no se le empuja", async () => {
+    vi.useFakeTimers();
+    const { c, s } = controlador({ vigilarSilencioAgenteMs: 5000 });
+    await c.iniciar({ habilitado: true, gastoMesMicroUsd: 0, topeMensualMicroUsd: null });
+    const h = s.estado.manejadores();
+    await h.ejecutarTool({ id: "1", nombre: "cotizar_pedido", args: {} });
+    await vi.advanceTimersByTimeAsync(5500);
+    await c.vacio();
+    h.agenteDijo("Son ciento veintiséis pesos.");
+    await vi.advanceTimersByTimeAsync(20000);
+    await c.vacio();
+    expect(s.estado.textos.filter((t) => /Aviso del sistema/.test(t))).toHaveLength(0);
   });
 
   it("si el agente SI habla tras la herramienta, no se dice nada", async () => {

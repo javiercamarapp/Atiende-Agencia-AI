@@ -503,4 +503,26 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
       pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 225, items: [{ nombre: "Arrachera — 250 g", cantidad: 1 }] },
     },
   },
+  // ---- Ronda 5 del loop de PM (QA-PM-R5): regresion permanente de lo que rompio la medida contra la cuenta real ----
+  {
+    id: "V32-tres-cuartos-de-arrachera-son-750-g",
+    titulo: "'Tres cuartos de kilo de arrachera con tortilla de harina': se cotiza la presentacion de 750 g (no el kilo) y la tortilla del kilo de carne llega a la comanda (QA-PM-R5-voz-01 y reglas-03)",
+    rasgos: ["carne por peso", "fraccion de kilo", "tortilla en renglon de peso"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Buenas tardes, quiero tres cuartos de kilo de arrachera para recoger, con tortilla de harina",
+        agente: [
+          buscar("tres cuartos de kilo de arrachera"),
+          cotizar((m) => [linea(m, "750 g", 1, "harina")], { canal: "recoger" }),
+          dice("Son tres cuartos de arrachera, seiscientos setenta y cinco pesos. ¿Es correcto?"),
+        ],
+      },
+      { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear((m) => [linea(m, "750 g", 1, "harina")], { canal: "recoger" }), dice("Listo, su pedido quedó registrado. Gracias por llamar.")] },
+    ],
+    esperado: {
+      resultado: "pedido_creado",
+      pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 675, items: [{ nombre: "Arrachera — 750 g", cantidad: 1 }] },
+    },
+  },
 ];

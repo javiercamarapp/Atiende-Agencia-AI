@@ -167,7 +167,9 @@ describe("pregrabado de saludo de respaldo segun la hora (X40)", () => {
   it("el id sigue la franja de Merida y cada texto dice su franja; el de reserva no dice ninguna", () => {
     expect(mensajeSaludoRespaldo("11:59")).toBe("saludo_respaldo_dias");
     expect(mensajeSaludoRespaldo("12:00")).toBe("saludo_respaldo_tardes");
-    expect(mensajeSaludoRespaldo(19)).toBe("saludo_respaldo_noches");
+    expect(mensajeSaludoRespaldo(19)).toBe("saludo_respaldo_tardes");
+    expect(mensajeSaludoRespaldo("19:59")).toBe("saludo_respaldo_tardes");
+    expect(mensajeSaludoRespaldo("20:00")).toBe("saludo_respaldo_noches");
     expect(mensajeSaludoRespaldo("00:30")).toBe("saludo_respaldo_noches");
     expect(MENSAJES_PREGRABADOS.saludo_respaldo_dias).toMatch(/^Buenos días/);
     expect(MENSAJES_PREGRABADOS.saludo_respaldo_tardes).toMatch(/^Buenas tardes/);

@@ -63,3 +63,37 @@ describe("token de llamada vencido en /orders (QA-PM-R2-reglas-16)", () => {
     expect(JSON.stringify(await r.json())).toMatch(/Token de llamada inválido o expirado/);
   });
 });
+
+describe("guarda SQL 22023 en /orders (QA-PM-R5-reglas-10)", () => {
+  it("'programado_para debe ser una hora futura' de la base responde 400 de validacion, no 500", async () => {
+    const { deps, products, restaurantesRepo } = await buildTestDeps();
+    const app = buildApp(deps);
+    vi.spyOn(restaurantesRepo, "createOrderIdempotent").mockRejectedValueOnce(Object.assign(new Error("programado_para debe ser una hora futura"), { code: "22023" }));
+    const r = await app.request(
+      `/v1/restaurantes/${ORG}/orders`,
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Nora", customer_phone: "9991230003", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }], payment_method: "efectivo", canal: "recoger" }, H),
+    );
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ code: "validation_error", message: "programado_para debe ser una hora futura" });
+  });
+  it("negativo: un 22023 de OTRA funcion (error interno de Postgres) sigue siendo 500, no se muestra como regla de negocio", async () => {
+    const { deps, products, restaurantesRepo } = await buildTestDeps();
+    const app = buildApp(deps);
+    vi.spyOn(restaurantesRepo, "createOrderIdempotent").mockRejectedValueOnce(Object.assign(new Error("invalid input syntax for type uuid: x"), { code: "22023" }));
+    const r = await app.request(
+      `/v1/restaurantes/${ORG}/orders`,
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Nora", customer_phone: "9991230005", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }], payment_method: "efectivo", canal: "recoger" }, H),
+    );
+    expect(r.status).toBe(500);
+  });
+  it("negativo: un error sin codigo SQL sigue siendo 500", async () => {
+    const { deps, products, restaurantesRepo } = await buildTestDeps();
+    const app = buildApp(deps);
+    vi.spyOn(restaurantesRepo, "createOrderIdempotent").mockRejectedValueOnce(new Error("boom"));
+    const r = await app.request(
+      `/v1/restaurantes/${ORG}/orders`,
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Nora", customer_phone: "9991230004", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }], payment_method: "efectivo", canal: "recoger" }, H),
+    );
+    expect(r.status).toBe(500);
+  });
+});

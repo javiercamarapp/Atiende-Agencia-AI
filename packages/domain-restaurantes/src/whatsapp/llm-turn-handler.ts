@@ -779,6 +779,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                   branches,
                 ),
                 orderId,
+                [...messages].reverse().find((m) => m.role === "user")?.content,
               );
           // Honestidad (QA-PM-R2-whatsapp-04): "ya avise al gerente" solo si el aviso existe. Sin llamada a escalar_a_humano/registrar_contacto en este turno
           // (ni una promesa anterior ya respaldada), el servidor deja el aviso de verdad; si no puede, quita la frase en vez de mentir.
@@ -853,7 +854,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             anyToolCalled = true;

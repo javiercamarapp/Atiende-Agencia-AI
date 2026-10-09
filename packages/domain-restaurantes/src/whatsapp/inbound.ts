@@ -10,7 +10,7 @@ import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
-import { matchesHighRiskOtherThan, pideUnaPersona } from "./guards.ts";
+import { matchesHighRiskOtherThan, pideUnaPersona, retractaPeticionDePersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
@@ -364,7 +364,12 @@ export function abreTomaDeHandoff(motivo: string, mensajes: readonly Conversatio
   if (MOTIVOS_QUE_NO_ABREN_TOMA.has(motivo)) return false;
   if (motivo !== "cliente_lo_pide") return true;
   // El ultimo mensaje del cliente que traia la peticion, aunque el agente haya intercalado turnos (pregunto el nombre y escalo en el siguiente).
-  return mensajes.filter((m) => m.role === "user").slice(-6).some((m) => pideUnaPersona(m.content));
+  // Menor de #522: la ventana era de 6 mensajes y una peticion vieja (ya atendida, o retirada despues con "mejor sigo contigo") abria la toma por una escalacion posterior; ahora son los
+  // ultimos 4 mensajes del cliente y una retractacion POSTERIOR a la peticion la cancela.
+  const delCliente = mensajes.filter((m) => m.role === "user").slice(-4);
+  const idx = delCliente.map((m) => pideUnaPersona(m.content)).lastIndexOf(true);
+  if (idx === -1) return false;
+  return !delCliente.slice(idx + 1).some((m) => retractaPeticionDePersona(m.content));
 }
 
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */

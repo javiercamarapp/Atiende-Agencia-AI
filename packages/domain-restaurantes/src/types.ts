@@ -449,6 +449,12 @@ export interface PersistedOrderItem {
   readonly price: number;
   readonly quantity: number;
   readonly tortilla?: TortillaChoice;
+  /** D12: precio de LISTA de un renglon regalado por la promocion (cortesia o 2x1). Ese renglon se guarda con `price` 0 para que la suma de renglones sea el total, y el CFO
+   * (restaurantes.cfo_renglones, migracion 086) calcula la venta bruta y el descuento de promocion con `listPrice`. Ausente en los renglones pagados y en los pedidos anteriores. */
+  readonly listPrice?: number;
+  /** D12: el renglon es una unidad regalada por la promocion `promoCode`. */
+  readonly courtesy?: true;
+  readonly promoCode?: string;
 }
 
 export interface Customer {
