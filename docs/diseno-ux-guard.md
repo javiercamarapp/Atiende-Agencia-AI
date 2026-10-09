@@ -25,10 +25,14 @@ npx vitest run apps/web/tests/web-ds-v2-guard.spec.ts apps/web/tests/web-ds-v2-g
 | paleta cruda de Tailwind (`bg-green-500`, `text-white`, ...) | tokens, `StatusBadge`, `Callout` |
 | hex literal (`#ff00aa`) | tokens `hsl(var(--...))` |
 | `style={{...}}` | clases |
-| `<select>`, `<textarea>`, `type="checkbox"` crudos | `NativeSelect`, `Textarea`, `Checkbox` |
+| `<select>`, `<textarea>`, `type="checkbox"` crudos | `Selector` (lista de Radix; `NativeSelect` solo donde aun no se migra), `Textarea`, `Checkbox` |
 | `function formatMoney` en `pages/` | `formatMoney` de `@atiende/ui` |
 | `function fmtMoney` o `toLocaleString("es-MX", { minimumFractionDigits` en `verticals/hoteles/pages/` (alcance heredado del guard de hoteles) | `formatMoney` de `@atiende/ui` |
 | `ModalFormularioLateral` | `FormDialog` |
+| `@radix-ui/react-(dialog\|alert-dialog\|popover\|select\|dropdown-menu\|tooltip)` importado directo en `apps/web/src` (UNI-R0) | `Dialog`, `Popover`, `Select`/`Selector`, `DropdownMenu`, `Tooltip` de `@atiende/ui` |
+| `import ... from "sonner"` directo (UNI-R0) | `notify` / `Toaster` de `@atiende/ui` |
+| `window.alert(...)`, `aria-modal`, `<dialog>` (UNI-R0) | `Dialog`, `ConfirmDialog`, `notify` |
+| En `verticals/restaurantes`: `role="dialog\|alertdialog\|listbox\|tooltip"`, `fixed inset-0`, `<datalist>` (UNI-R0) | `FormDialog`, `FormDialogElegante`, `Dialog`, `Selector`, `Popover` |
 | `<table>` crudo | `Table` / `DataTable` |
 | `<Badge>` | `StatusBadge` |
 | `className="... p-6"` | `PageContainer` |
@@ -73,3 +77,15 @@ Se evaluo moverlo a `eslint.config.js` o a `scripts/verify-ds-v2-guard.mjs` y se
 `apps/web/tests/formato-unico-baseline.json` y **puede bajar** (al bajar, el test pide bajar el baseline; nunca subirlo). Ninguna
 llamada puede fijar un locale distinto de `es-MX` (se tolera `en-CA`, modismo para `YYYY-MM-DD`). Las pantallas nuevas usan
 `formatMoney` / `resolverFormato` de `@atiende/ui` o `lib/formato-fecha.ts`. Sanidad: `formato-unico-guard-sanidad.spec.ts`.
+
+## Familia unica de overlays (UNI-R0)
+
+Todo pop-up, lista desplegable, toast y estado sale de `@atiende/ui`; ver el inventario y las decisiones en
+`pm/paridad-visual/unificacion-overlays.md` (fuera del repo) y el catalogo vivo en `/dev/catalogo` (solo `vite dev`).
+
+- Modales: `Dialog` (`size` sm/md/lg/xl, `DialogHeader icono tono`), `FormDialog` (riel + franja, el del repo suelto `ModalFormularioLateral`), `FormDialogElegante` (`ModalFormularioElegante`), `ConfirmDialog`/`useConfirm` (peligro con icono) y `Sheet`. Recetas compartidas en `packages/ui/src/components/ui/superficies.ts`.
+- Listas: `Selector` (acepta `<option>`/`<optgroup>`/`onChange`, sobre `Select` de Radix) o `Select*` compuesto. `NativeSelect` queda solo en las zonas aun no migradas; el guard de restaurantes lo prohibira en el PR de migracion.
+- Avisos: `notify.success|info|warning|error|cargando|promise` (barra de autocierre, pausa al cursor, maximo 3 apilados, `aria-live` asertivo en errores). La campana abre `CentroNotificaciones` (popover) via `CampanaNotificaciones` de `apps/web`.
+- Recuadros y estados: `Panel` (tarjeta de seccion), `Card`, `EstadoVacio` (centrado por defecto, `variante="fila"`), `EstadoCargando`, `Skeleton`, `EstadoError`.
+- Graficas: `GRAFICA_TEMA` (constantes sobre tokens del aspecto del repo suelto).
+- Movimiento: todo bajo `prefers-reduced-motion` (bloque global de `index.css` + `motion-reduce:` en las listas).

@@ -39,6 +39,7 @@ documentos enlazados. Si una regla choca con una petición explícita de Javier,
 - **Diseño idéntico a Likida**: toda pantalla, botón, pop-up y recuadro nuevo o tocado usa los componentes de `packages/ui` y el mismo lenguaje de Likida (tipografía, tamaños, márgenes, composición compacta,
   tarjetas, barra superior por página con icono + nombre), **conservando el azul de Atiende**; excepciones: el título de categoría del sidebar (mono de Atiende) y el logo. Sin estilos nuevos inventados.
   Guards: `docs/diseno-ux-guard.md` (`web-ds-v2-guard`, formato único `es-MX` con trinquete).
+  **Overlays (UNI-R0)**: pop-ups, listas desplegables, toasts, campana y estados salen de `@atiende/ui` (`Dialog`/`FormDialog`/`FormDialogElegante`/`ConfirmDialog`, `Selector`, `notify`, `CentroNotificaciones`, `Panel`, `EstadoVacio`); nunca Radix/sonner directo, `alert()`, `role="dialog"` ni `fixed inset-0` a mano. Catálogo vivo: `/dev/catalogo` (solo `vite dev`).
 - **Nada de maquetas**: ningún control sin backend real detrás (endpoint con RLS/roles/validación/bitácora, estados de carga, error y vacío, y prueba). Lo que dependa de credenciales u otro PR se oculta o
   muestra un estado honesto "no disponible aún: requiere X" y se declara como hueco conocido. Los dobles solo existen en tests y en la API simulada de e2e.
 
