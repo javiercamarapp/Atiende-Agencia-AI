@@ -1,4 +1,5 @@
 import * as React from "react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, OctagonAlert, X } from "lucide-react";
 import { Toaster as Sonner, toast } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
@@ -24,35 +25,86 @@ function useTemaOscuro(): "light" | "dark" {
   return tema;
 }
 
+// Anuncio asertivo: sonner anuncia todo con aria-live="polite". Un error debe
+// interrumpir al lector de pantalla (assertive), asi que notify.error ademas lo
+// escribe en esta region, que vive dentro del Toaster.
+const anunciosAsertivos = new Set<(m: string) => void>();
+function anunciarAsertivo(mensaje: string) {
+  anunciosAsertivos.forEach((f) => f(mensaje));
+}
+function RegionAsertiva() {
+  const [mensaje, setMensaje] = React.useState("");
+  React.useEffect(() => {
+    const f = (m: string) => {
+      setMensaje("");
+      // un tick de por medio para que repetir el mismo texto se vuelva a anunciar
+      setTimeout(() => setMensaje(m), 30);
+    };
+    anunciosAsertivos.add(f);
+    return () => {
+      anunciosAsertivos.delete(f);
+    };
+  }, []);
+  return (
+    <div role="alert" aria-live="assertive" aria-atomic="true" className="sr-only" data-testid="toaster-asertivo">
+      {mensaje}
+    </div>
+  );
+}
+
+/** Limite de toasts apilados a la vez (los demas esperan; sonner los pliega). */
+export const TOASTS_VISIBLES = 3;
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const tema = useTemaOscuro();
   return (
-    <Sonner
-      theme={tema}
-      closeButton
-      className="toaster group"
-      aria-live="polite"
-      toastOptions={{
-        classNames: {
-          toast:
-            "group toast group-[.toaster]:rounded-lg group-[.toaster]:border group-[.toaster]:border-border group-[.toaster]:bg-card group-[.toaster]:p-3 group-[.toaster]:text-ui group-[.toaster]:text-card-foreground group-[.toaster]:shadow-elevated",
-          title: "group-[.toast]:text-ui group-[.toast]:font-medium",
-          description: "group-[.toast]:text-xs group-[.toast]:leading-snug group-[.toast]:text-muted-foreground",
-          actionButton: "group-[.toast]:h-7 group-[.toast]:rounded-lg group-[.toast]:bg-primary group-[.toast]:px-2.5 group-[.toast]:text-xs group-[.toast]:font-medium group-[.toast]:text-primary-foreground",
-          cancelButton: "group-[.toast]:h-7 group-[.toast]:rounded-lg group-[.toast]:bg-canvas group-[.toast]:px-2.5 group-[.toast]:text-xs group-[.toast]:text-muted-foreground",
-          closeButton: "group-[.toast]:border-border group-[.toast]:bg-card group-[.toast]:text-muted-foreground",
-          // Sonner define su propio color de texto por defecto en [data-title]/
-          // [data-description] (sobrevive a heredar el color del contenedor) -- se
-          // fuerza aqui con selectores de descendiente.
-          success: "[&_[data-icon]]:text-success",
-          warning: "[&_[data-icon]]:text-warning",
-          info: "[&_[data-icon]]:text-info",
-          error:
-            "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive-tint group-[.toaster]:text-destructive [&_[data-title]]:!text-destructive [&_[data-description]]:!text-destructive [&_[data-description]]:!opacity-85 [&_[data-icon]]:text-destructive",
-        },
-      }}
-      {...props}
-    />
+    <>
+      <RegionAsertiva />
+      <Sonner
+        theme={tema}
+        closeButton
+        position="bottom-right"
+        visibleToasts={TOASTS_VISIBLES}
+        duration={DURACION_NOTIFY_MS.success}
+        gap={10}
+        offset={20}
+        className="toaster group"
+        aria-live="polite"
+        icons={{
+          success: <CheckCircle2 aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+          info: <Info aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+          warning: <AlertTriangle aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+          error: <OctagonAlert aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+          loading: <Loader2 aria-hidden="true" className="size-5 animate-spin motion-reduce:animate-none" strokeWidth={1.75} />,
+          close: <X aria-hidden="true" className="size-3.5" strokeWidth={2} />,
+        }}
+        toastOptions={{
+          classNames: {
+            // Tarjeta premium: radio de dialogo, hairline, sombra elevada, 360 px comodos y barra de
+            // autocierre (clase `toast-progreso`, index.css). Familia unica con Dialog/Popover.
+            toast:
+              "group toast toast-progreso group-[.toaster]:w-[min(22.5rem,calc(100vw-2rem))] group-[.toaster]:items-start group-[.toaster]:gap-3 group-[.toaster]:overflow-hidden group-[.toaster]:rounded-dialog group-[.toaster]:border group-[.toaster]:border-border group-[.toaster]:bg-card group-[.toaster]:p-4 group-[.toaster]:text-ui group-[.toaster]:text-card-foreground group-[.toaster]:shadow-elevated",
+            title: "group-[.toast]:text-sm group-[.toast]:font-semibold group-[.toast]:leading-snug",
+            description: "group-[.toast]:mt-0.5 group-[.toast]:text-xs group-[.toast]:leading-snug group-[.toast]:text-muted-foreground",
+            icon: "group-[.toast]:mt-0.5 group-[.toast]:size-5 group-[.toast]:shrink-0",
+            actionButton:
+              "group-[.toast]:h-8 group-[.toast]:rounded-full group-[.toast]:bg-primary group-[.toast]:px-3 group-[.toast]:text-xs group-[.toast]:font-semibold group-[.toast]:text-primary-foreground",
+            cancelButton: "group-[.toast]:h-8 group-[.toast]:rounded-full group-[.toast]:bg-canvas group-[.toast]:px-3 group-[.toast]:text-xs group-[.toast]:text-muted-foreground",
+            closeButton: "group-[.toast]:border-border group-[.toast]:bg-card group-[.toast]:text-muted-foreground group-[.toast]:hover:bg-canvas",
+            // Sonner define su propio color de texto por defecto en [data-title]/
+            // [data-description] (sobrevive a heredar el color del contenedor) -- se
+            // fuerza aqui con selectores de descendiente.
+            success: "[&_[data-icon]]:text-success",
+            warning: "[&_[data-icon]]:text-warning",
+            info: "[&_[data-icon]]:text-info",
+            loading: "[&_[data-icon]]:text-muted-foreground",
+            error:
+              "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive-tint group-[.toaster]:text-destructive [&_[data-title]]:!text-destructive [&_[data-description]]:!text-destructive [&_[data-description]]:!opacity-85 [&_[data-icon]]:text-destructive",
+          },
+        }}
+        {...props}
+      />
+    </>
   );
 };
 
@@ -72,6 +124,8 @@ export interface NotifyOpciones {
   /** Milisegundos; sustituye a la duracion por tipo. `Infinity` = persistente. */
   readonly duracion?: number;
   readonly deshacer?: NotifyDeshacer;
+  /** Accion secundaria con otra etiqueta (p. ej. "Ver"); como `deshacer`, deja el toast hasta que se decida. */
+  readonly accion?: NotifyDeshacer;
   readonly id?: string | number;
 }
 
@@ -80,19 +134,29 @@ export const DURACION_NOTIFY_MS = { success: 4000, info: 4000, warning: 6000, er
 type TipoNotify = keyof typeof DURACION_NOTIFY_MS;
 
 function opcionesSonner(tipo: TipoNotify, o: NotifyOpciones | undefined) {
-  const accion = o?.deshacer;
+  const accion = o?.deshacer ?? o?.accion;
+  const duration = o?.duracion ?? (accion ? Infinity : DURACION_NOTIFY_MS[tipo]);
   return {
     id: o?.id,
     description: o?.description,
-    duration: o?.duracion ?? (accion ? Infinity : DURACION_NOTIFY_MS[tipo]),
-    action: accion ? { label: accion.etiqueta ?? "Deshacer", onClick: accion.onClick } : undefined,
+    duration,
+    // Barra de autocierre (index.css .toast-progreso): dura lo mismo que el toast; con
+    // duracion infinita (accion pendiente) no hay barra (--toast-ms: 0).
+    style: { "--toast-ms": Number.isFinite(duration) ? `${duration}ms` : "0ms" } as React.CSSProperties,
+    action: accion ? { label: accion.etiqueta ?? (o?.deshacer ? "Deshacer" : "Ver"), onClick: accion.onClick } : undefined,
   };
 }
 
 export const notify = {
   success: (mensaje: string, o?: NotifyOpciones) => toast.success(mensaje, opcionesSonner("success", o)),
   warning: (mensaje: string, o?: NotifyOpciones) => toast.warning(mensaje, opcionesSonner("warning", o)),
-  error: (mensaje: string, o?: NotifyOpciones) => toast.error(mensaje, opcionesSonner("error", o)),
+  error: (mensaje: string, o?: NotifyOpciones) => {
+    anunciarAsertivo(o?.description ? `${mensaje}. ${o.description}` : mensaje);
+    return toast.error(mensaje, opcionesSonner("error", o));
+  },
+  /** Toast persistente de "cargando" (sin barra); se reemplaza con el mismo `id`. */
+  cargando: (mensaje: string, o?: Pick<NotifyOpciones, "description" | "id">) =>
+    toast.loading(mensaje, { id: o?.id, description: o?.description, style: { "--toast-ms": "0ms" } as React.CSSProperties }),
   info: (mensaje: string, o?: NotifyOpciones) => toast.info(mensaje, opcionesSonner("info", o)),
   /** Toast de progreso: cargando -> exito/error segun resuelva la promesa. */
   promise: <T,>(
