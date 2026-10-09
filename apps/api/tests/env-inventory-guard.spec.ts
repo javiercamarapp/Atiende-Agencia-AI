@@ -36,6 +36,9 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // Vite lo expone automáticamente (base path del build) — no es una variable de
   // entorno que el proyecto configure, ni una credencial.
   "BASE_URL",
+  // Bandera de Vite (true solo en `vite dev`): descarta del build el catalogo de overlays de apps/web (/dev/catalogo). No es una
+  // variable de entorno que el proyecto configure ni una credencial.
+  "DEV",
   // No aparece nunca en este repo hoy, pero es el ejemplo canónico de "variable de
   // plataforma que no es una credencial de integración" — se excluye a propósito
   // por si algún día se lee.
