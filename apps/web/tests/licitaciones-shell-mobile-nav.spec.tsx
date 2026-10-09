@@ -182,7 +182,7 @@ describe("LicitacionesShell — nav móvil", () => {
       await flushMicrotasks();
     });
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('a[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]')).not.toBeNull();
     const fetchMock = await cerrarSesionDesdeMenuMovil(rendered.container);
     // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con el refreshToken de la sesión.
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/logout", expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }));

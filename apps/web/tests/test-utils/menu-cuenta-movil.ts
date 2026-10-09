@@ -8,7 +8,7 @@ import { click, flushMicrotasks } from "./render.tsx";
 export async function cerrarSesionDesdeMenuMovil(container: HTMLElement): Promise<ReturnType<typeof vi.fn>> {
   const mobileHeader = [...container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"));
   expect(mobileHeader).toBeDefined();
-  expect(mobileHeader!.querySelector('a[aria-label^="Notificaciones"]')).not.toBeNull();
+  expect(mobileHeader!.querySelector('[aria-label^="Notificaciones"]')).not.toBeNull();
   click(mobileHeader!.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
   const hoja = document.body.querySelector('[role="dialog"]')!;
   expect(hoja.textContent).toContain("Chatea con tus datos");

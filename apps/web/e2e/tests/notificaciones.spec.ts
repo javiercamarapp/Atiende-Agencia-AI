@@ -1,5 +1,5 @@
 // Notificaciones de punta a punta contra la API simulada, en las 7 consolas (6 verticales + superadmin):
-// la campana (enlace con punto rojo SIN numero) se enciende con avisos sin leer y se APAGA al leerlos, lleva a
+// la campana (boton con punto rojo SIN numero que abre el centro de notificaciones) se enciende con avisos sin leer y se APAGA al leerlos, lleva a
 // la pagina (lista, filtros, marcar leida / todas, 'Resolver' a la pantalla origen) y una notificacion que llega
 // despues enciende el punto sin recargar. Escritorio y movil.
 import { expect, test } from "../helpers/fixtures.ts";
@@ -22,7 +22,7 @@ for (const { objetivo, destino } of CONSOLAS) {
     test("el punto rojo se enciende con avisos, se apaga al leerlos y vuelve al llegar uno nuevo", async ({ page, iniciarSesion, mock, vigilante }) => {
       await iniciarSesion(objetivo, objetivo === "superadmin" ? undefined : "owner");
       await afirmarPantallaSana(page, `${objetivo}: aterrizaje`);
-      const campana = page.locator('a[aria-label^="Notificaciones"]:visible');
+      const campana = page.locator('button[aria-label^="Notificaciones"]:visible');
       const punto = campana.locator('[data-testid="campana-punto"]');
 
       // Hay dos sin leer en la semilla: punto rojo, sin ningun numero.
@@ -30,8 +30,10 @@ for (const { objetivo, destino } of CONSOLAS) {
       await expect(punto).toBeVisible();
       expect(((await campana.textContent()) ?? "").trim()).toBe("");
 
-      // La campana lleva a la pagina; la barra superior dice "Notificaciones" y hay un solo <h1>.
+      // La campana abre el centro (popover con las recientes) y "Ver todas" lleva a la pagina; la barra superior dice "Notificaciones" y hay un solo <h1>.
       await campana.click();
+      await expect(page.getByTestId("centro-item")).toHaveCount(2);
+      await page.getByRole("link", { name: "Ver todas las notificaciones" }).click();
       await expect(page).toHaveURL(/\/notificaciones$/);
       if (!esMovil(page)) await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Notificaciones");
       const tarjetas = page.getByTestId("notificacion");
@@ -75,7 +77,8 @@ for (const { objetivo, destino } of CONSOLAS) {
 
     test("'Resolver' lleva a la pantalla origen y marca el aviso como leido", async ({ page, iniciarSesion, mock, vigilante }) => {
       await iniciarSesion(objetivo, objetivo === "superadmin" ? undefined : "owner");
-      await page.locator('a[aria-label^="Notificaciones"]:visible').click();
+      await page.locator('button[aria-label^="Notificaciones"]:visible').click();
+      await page.getByRole("link", { name: "Ver todas las notificaciones" }).click();
       const primera = page.getByTestId("notificacion").filter({ hasText: "Hay algo nuevo por atender" });
       await expect(primera).toBeVisible();
       await primera.getByRole("link", { name: "Resolver" }).click();
@@ -87,14 +90,15 @@ for (const { objetivo, destino } of CONSOLAS) {
     test("si el servidor falla al marcar, el aviso vuelve y se dice inline", async ({ page, iniciarSesion, mock, vigilante }) => {
       test.skip(esMovil(page), "el comportamiento es el mismo en escritorio");
       await iniciarSesion(objetivo, objetivo === "superadmin" ? undefined : "owner");
-      await page.locator('a[aria-label^="Notificaciones"]:visible').click();
+      await page.locator('button[aria-label^="Notificaciones"]:visible').click();
+      await page.getByRole("link", { name: "Ver todas las notificaciones" }).click();
       await expect(page.getByTestId("notificacion")).toHaveCount(2);
       vigilante.permitirRespuesta5xx(/\/notifications\/ntf-1\/read/);
       await mock.inyectarFalla({ metodo: "POST", ruta: "/notifications/ntf-1/read", status: 500, veces: 1 });
       await page.getByTestId("notificacion").filter({ hasText: "Hay algo nuevo por atender" }).getByRole("button", { name: "Marcar leído" }).click();
       await expect(page.getByRole("alert")).toContainText("El servidor no pudo atender la solicitud");
       await expect(page.getByTestId("notificacion")).toHaveCount(2);
-      await expect(page.locator('a[aria-label^="Notificaciones"]:visible').locator('[data-testid="campana-punto"]')).toBeVisible();
+      await expect(page.locator('button[aria-label^="Notificaciones"]:visible').locator('[data-testid="campana-punto"]')).toBeVisible();
       vigilante.verificar();
     });
   });
