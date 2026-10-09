@@ -1,4 +1,5 @@
 export { cn } from "./lib/utils.js";
+export { GRAFICA_TEMA, duracionEntradaGrafica } from "./lib/graficas-tema.js";
 export { formatMoney } from "./lib/formatMoney.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
 
@@ -28,12 +29,13 @@ export { GoogleIcon } from "./components/GoogleIcon.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { StatCard, TrendStatCard, type StatCardVariante } from "./components/StatCard.js";
-export { EstadoVacio } from "./components/EstadoVacio.js";
+export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
 export { ConfirmDialog, validarCampoConfirm, type ConfirmCampo, type ConfirmDialogProps, type ConfirmTono } from "./components/ConfirmDialog.js";
 export { useConfirm, type OpcionesConfirmar, type OpcionesPedirTexto, type UseConfirm } from "./components/useConfirm.js";
 export { FormDialog, type FormDialogPaso, type FormDialogProps } from "./components/FormDialog.js";
+export { FormDialogElegante, type FormDialogEleganteProps } from "./components/FormDialogElegante.js";
 export {
   DataTable,
   ordenarFilas,
@@ -80,9 +82,10 @@ export {
 } from "./components/ChatDatosDialog.js";
 export * from "./components/copiloto/index.js";
 export { NotificationBell, type NotificationBellProps } from "./components/NotificationBell.js";
+export { CentroNotificaciones, type CentroNotificacionesProps, type CentroNotificacionItem, type CentroSeveridad } from "./components/CentroNotificaciones.js";
 
 export { Button, buttonVariants, TEXTO_GUARDANDO, type ButtonProps } from "./components/ui/button.js";
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
+export { Panel, Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge.js";
 export { StatusBadge, STATUS_TONES, statusTone, type StatusBadgeProps, type StatusTone } from "./components/ui/status-badge.js";
 export {
@@ -98,6 +101,23 @@ export {
 export { Input } from "./components/ui/input.js";
 export { Textarea, type TextareaProps } from "./components/ui/textarea.js";
 export { NativeSelect, nativeSelectVariants, type NativeSelectProps } from "./components/ui/native-select.js";
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+  Selector,
+  valorComoTexto,
+  type SelectorProps,
+  type SelectTriggerProps,
+} from "./components/ui/select.js";
+export { TAMANOS_MODAL, CHIP_ICONO_MODAL, SUPERFICIE_FLOTANTE, type TamanoModal } from "./components/ui/superficies.js";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { FormField, type FormFieldControlProps, type FormFieldProps } from "./components/ui/form-field.js";
@@ -162,7 +182,7 @@ export {
   DropdownMenuSubTrigger,
   DropdownMenuRadioGroup,
 } from "./components/ui/dropdown-menu.js";
-export { Toaster, toast, notify, DURACION_NOTIFY_MS, type NotifyDeshacer, type NotifyOpciones } from "./components/ui/sonner.js";
+export { Toaster, toast, notify, DURACION_NOTIFY_MS, TOASTS_VISIBLES, type NotifyDeshacer, type NotifyOpciones } from "./components/ui/sonner.js";
 
 // Seguimiento de solicitudes de derechos ARCO (citas, C-02).
 export {

@@ -97,6 +97,8 @@ const preset: Omit<Config, "content"> = {
           DEFAULT: "hsl(var(--info))",
           tint: "hsl(var(--info-tint))",
         },
+        // Final de la franja de marca de los formularios (original: secondary; claro = azul, oscuro = cielo).
+        franja: "hsl(var(--franja-fin))",
         // Neutrales de Likida: gris sumido, lienzo, hairline fuerte, texto secundario y tenue.
         sunken: "hsl(var(--sunken))",
         canvas: "hsl(var(--canvas))",
@@ -115,6 +117,7 @@ const preset: Omit<Config, "content"> = {
           3: "hsl(var(--chart-3))",
           4: "hsl(var(--chart-4))",
           5: "hsl(var(--chart-5))",
+          ventas: "hsl(var(--chart-ventas))",
         },
         // Marca Atiende: solo el logo.
         "marca-atiende": "hsl(var(--marca-atiende))",

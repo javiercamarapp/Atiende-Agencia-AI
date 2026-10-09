@@ -269,8 +269,10 @@ describe("FormDialog", () => {
     );
     const d = dialogo()!;
     const enfocables = [...d.querySelectorAll<HTMLElement>("button, input")];
+    // La x va DESPUES del contenido en el DOM (el foco inicial cae en el primer campo): es el ultimo enfocable.
     const primero = enfocables[0]!;
-    const ultimo = boton("Ultimo");
+    expect(primero.getAttribute("aria-label")).toBe("Nombre");
+    const ultimo = d.querySelector<HTMLElement>('button[aria-label="Cerrar"]')!;
     expect(enfocables.at(-1)).toBe(ultimo);
     ultimo.focus();
     act(() => {

@@ -11,6 +11,8 @@ import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@ati
 import { puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/roles-nav.ts";
 
 // R-37: cada pantalla es su propio chunk (ver lib/carga-perezosa.tsx: reintento, recarga protegida y ErrorBoundary raíz).
+// UNI-R0: catalogo de overlays, SOLO en `vite dev` (import.meta.env.DEV es false y el chunk se descarta en el build).
+const CatalogoOverlaysPage = import.meta.env.DEV ? cargaPerezosa(() => import("./pages/CatalogoOverlays.tsx"), "CatalogoOverlaysPage") : null;
 const RestaurantesLoginPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Login.tsx"), "RestaurantesLoginPage");
 const RestaurantesDashboardPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Dashboard.tsx"), "RestaurantesDashboardPage");
 const RestaurantesShell = cargaPerezosa(() => import("./verticals/restaurantes/RestaurantesShell.tsx"), "RestaurantesShell");
@@ -1039,6 +1041,7 @@ export function App() {
       <ErrorBoundaryRaiz>
       <Suspense fallback={<div data-atiende-carga-ruta><EstadoCargando variante="pantalla" /></div>}>
       <Routes>
+        {CatalogoOverlaysPage ? <Route path="/dev/catalogo" element={<CatalogoOverlaysPage />} /> : null}
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
         {/* PL-21: enlaces del correo de restaurantes (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
         <Route path="/restaurantes/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />

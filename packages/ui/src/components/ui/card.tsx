@@ -40,4 +40,19 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 );
 CardFooter.displayName = "CardFooter";
 
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
+/**
+ * Panel: la tarjeta de seccion del repo suelto (`rounded-2xl border bg-card p-4 space-y-3`): mismo borde, radio y fondo que Card,
+ * con el relleno incluido y sin sombra (contenedor de listas, tablas o grupos dentro de una pantalla). `relleno="none"` para tablas a sangre.
+ */
+const Panel = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement> & { as?: "div" | "section" | "article"; relleno?: "none" | "sm" | "md" }>(
+  ({ className, as: Tag = "div", relleno = "md", ...props }, ref) => (
+    <Tag
+      ref={ref as React.Ref<HTMLDivElement>}
+      className={cn("card min-w-0 rounded-lg border border-border bg-card text-card-foreground", relleno === "md" && "space-y-3 p-4", relleno === "sm" && "space-y-2 p-3", className)}
+      {...props}
+    />
+  ),
+);
+Panel.displayName = "Panel";
+
+export { Panel, Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
