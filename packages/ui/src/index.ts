@@ -29,7 +29,7 @@ export { GoogleIcon } from "./components/GoogleIcon.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { StatCard, TrendStatCard, type StatCardVariante } from "./components/StatCard.js";
-export { EstadoVacio } from "./components/EstadoVacio.js";
+export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
 export { ConfirmDialog, validarCampoConfirm, type ConfirmCampo, type ConfirmDialogProps, type ConfirmTono } from "./components/ConfirmDialog.js";
@@ -111,6 +111,7 @@ export {
   SelectScrollUpButton,
   SelectScrollDownButton,
   Selector,
+  valorComoTexto,
   type SelectorProps,
   type SelectTriggerProps,
 } from "./components/ui/select.js";

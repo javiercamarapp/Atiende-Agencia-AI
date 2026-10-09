@@ -183,3 +183,65 @@ describe("Select compuesto", () => {
     for (const k of ["modal-in", "sheet-up", "popover-in", "overlay-in"]) expect(keyframes[k]).toBeDefined();
   });
 });
+
+describe("Selector: contrato de formulario y valores", () => {
+  const montarForm = (valor: unknown, extra: Partial<React.ComponentProps<typeof Selector>> = {}) => {
+    rendered = renderComponent(
+      <form>
+        <Selector aria-label="Zona" name="zona" value={valor as string} onValueChange={() => {}} {...extra}>
+          <option value="">Todas</option>
+          <option value="0">Cero</option>
+          <option value="a">Uno</option>
+        </Selector>
+      </form>,
+    );
+    return rendered.container.querySelector("form")!;
+  };
+
+  it("el FormData lleva el valor REAL: '' para la opcion vacia (nunca el centinela interno) y el valor elegido", () => {
+    let f = montarForm("");
+    expect(new FormData(f).get("zona")).toBe("");
+    rendered!.unmount();
+    f = montarForm("a");
+    expect(new FormData(f).get("zona")).toBe("a");
+    // el unico campo con nombre es el nuestro (el nativo interno de Radix no lleva name): una sola entrada
+    expect([...new FormData(f).keys()]).toEqual(["zona"]);
+  });
+
+  it("required valida de verdad: con '' el formulario es invalido; con un valor, valido", () => {
+    let f = montarForm("", { required: true });
+    expect(f.checkValidity()).toBe(false);
+    rendered!.unmount();
+    f = montarForm("a", { required: true });
+    expect(f.checkValidity()).toBe(true);
+    rendered!.unmount();
+    f = montarForm("0", { required: true });
+    expect(f.checkValidity()).toBe(true);
+  });
+
+  it.each([
+    [0, "Cero"],
+    ["", "Todas"],
+    [null, "Todas"],
+    [undefined, "Todas"],
+    [false, "Todas"],
+    [[], "Todas"],
+    [{}, "Todas"],
+  ])("valor %j se muestra como %s (sin fallar)", (valor, etiqueta) => {
+    const f = montarForm(valor);
+    expect(f.querySelector('[data-slot="valor"]')!.textContent).toBe(etiqueta);
+  });
+
+  it("valor controlado que no esta entre las opciones: se muestra el valor, no un disparador en blanco; el select oculto lo conserva", () => {
+    const f = montarForm("zz");
+    expect(f.querySelector('[data-slot="valor"]')!.textContent).toBe("zz");
+    expect(new FormData(f).get("zona")).toBe("zz");
+  });
+
+  it("el disparador mide lo mismo con cualquier opcion elegida (todas las etiquetas ocupan la misma celda)", () => {
+    const f = montarForm("a");
+    const medidas = [...f.querySelectorAll('[aria-hidden="true"].invisible')].map((e) => e.textContent);
+    expect(medidas).toEqual(["Todas", "Cero", "Uno"]);
+  });
+});
+
