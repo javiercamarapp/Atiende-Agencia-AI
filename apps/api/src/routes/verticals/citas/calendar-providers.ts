@@ -107,6 +107,15 @@ function sqlState(err: unknown): string | undefined {
  * se hace en una sesion de sistema propia, como el callback de Google Calendar. Base sin migrar (032): sin la policy de sistema de las cuentas
  * Cal.com/CalDAV esa escritura es rechazada (42501) y se responde un 503 honesto en vez de un 500.
  */
+/**
+ * «Probar conexion»: `citas.consume_api_rate_limit` y `citas.get_provider_calendar_refresh_token` (el secreto del Vault) son de SOLO sistema
+ * (`auth.uid() is null`): en la sesion del staff lanzaban 42501 (500 en el rate limit; el secreto se degradaba a «reconecta» sin serlo). El
+ * proveedor ya se verifico en la sesion del staff (RLS + sucursal); el tope y la lectura del secreto van en una sesion de sistema propia.
+ */
+async function enSesionDeSistema<T>(deps: AppDeps, fn: (repo: ReturnType<AppDeps["citasRepo"]>) => Promise<T>): Promise<T> {
+  return deps.engine.withAppSession({ userId: null }, (db) => fn(deps.citasRepo(db)));
+}
+
 async function connectEnSesionDeSistema<T>(deps: AppDeps, connect: (repo: ReturnType<AppDeps["citasRepo"]>) => Promise<T>): Promise<T> {
   try {
     return await deps.engine.withAppSession({ userId: null }, (db) => connect(deps.citasRepo(db)));
@@ -222,13 +231,13 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     // (mismo orden de magnitud que cancel/reschedule/reassign-appointment, ver
     // appointments-lifecycle.ts) para que no sirva como ariete de peticiones
     // contra la infraestructura de Cal.com ni como sonda de reconocimiento.
-    const limited = await consumeRateLimit(citasRepo, "citas-calendar-test-connection", requestActor(c.req.raw, providerId), 20, 60);
+    const limited = await enSesionDeSistema(deps, (repo) => consumeRateLimit(repo, "citas-calendar-test-connection", requestActor(c.req.raw, providerId), 20, 60));
     if (!limited.allowed) throw Errors.tooManyRequests();
 
     const account = await citasRepo.findProviderCalComAccount(providerId);
     if (!account || account.syncStatus === "disconnected") throw Errors.citasCalendarProviderNoConectado("calcom");
 
-    const apiKey = await citasRepo.resolveProviderCalComApiKey(providerId);
+    const apiKey = await enSesionDeSistema(deps, (repo) => repo.resolveProviderCalComApiKey(providerId));
     if (!apiKey) throw Errors.citasCalendarProviderCredencialInvalida("No hay una API key guardada para esta cuenta -- reconecta Cal.com.");
 
     const port = deps.citasCalComPortFactory({ apiKey, ...(account.baseUrl ? { baseUrl: account.baseUrl } : {}) });
@@ -321,13 +330,13 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
     assertProviderBelongsToProperty(provider, propertyId);
 
-    const limited = await consumeRateLimit(citasRepo, "citas-calendar-test-connection", requestActor(c.req.raw, providerId), 20, 60);
+    const limited = await enSesionDeSistema(deps, (repo) => consumeRateLimit(repo, "citas-calendar-test-connection", requestActor(c.req.raw, providerId), 20, 60));
     if (!limited.allowed) throw Errors.tooManyRequests();
 
     const account = await citasRepo.findProviderCalDavAccount(providerId);
     if (!account || account.syncStatus === "disconnected") throw Errors.citasCalendarProviderNoConectado("caldav");
 
-    const password = await citasRepo.resolveProviderCalDavPassword(providerId);
+    const password = await enSesionDeSistema(deps, (repo) => repo.resolveProviderCalDavPassword(providerId));
     if (!password) throw Errors.citasCalendarProviderCredencialInvalida("No hay una contraseña de aplicación guardada para esta cuenta -- reconecta CalDAV.");
 
     const port = deps.citasCalDavPortFactory({ calendarCollectionUrl: account.calendarCollectionUrl, username: account.username, password });
