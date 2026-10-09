@@ -1,5 +1,6 @@
 import { Mic, MicOff, PlayCircle, XCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { KeyboardEvent as TecladoReact, ReactNode } from "react";
 import { CampoPixeles } from "./CampoPixeles.js";
 import { OrbeAgente } from "./OrbeAgente.js";
@@ -25,6 +26,11 @@ export interface VistaPreviaLlamadaProps {
   readonly etiquetaSimulacion?: string;
   /** Si no se puede iniciar (p. ej. el servicio no está disponible), motivo honesto que se muestra en vez del botón activo. */
   readonly motivoNoDisponible?: string;
+  /**
+   * Marco de contenido de escritorio (barra superior + pagina; `useMarcoShell`): si se pasa y la pantalla es de escritorio, la vista previa se monta ahi
+   * y cubre TAMBIEN la barra superior, como el original (absolute inset-0 sobre todo el contenido). En movil (sin esa barra) queda en su sitio.
+   */
+  readonly portalEn?: HTMLElement | null;
   /** Contenido extra bajo el botón (avisos). */
   readonly pie?: ReactNode;
 }
@@ -46,7 +52,7 @@ const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), sele
  * Desacoplado del proveedor: solo consume un `VoiceSessionController`. Portado del
  * panel original, con el orbe reactivo en lugar del video fijo y sin framer-motion.
  */
-export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, onCerrar, videoSrc, videoSiempre, etiquetasChip, etiquetaSimulacion, motivoNoDisponible, pie }: VistaPreviaLlamadaProps) {
+export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, onCerrar, videoSrc, videoSiempre, etiquetasChip, portalEn, etiquetaSimulacion, motivoNoDisponible, pie }: VistaPreviaLlamadaProps) {
   const { estado, silenciado } = controller;
   const activa = sesionActiva(estado.modo);
   const conectando = estado.modo === "conectando";
@@ -95,7 +101,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
     void (activa ? controller.terminar() : controller.iniciar());
   };
 
-  return (
+  const contenido = (
     <div
       ref={panel}
       role="dialog"
@@ -207,4 +213,6 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
       </div>
     </div>
   );
+  const enMarco = portalEn && typeof window.matchMedia === "function" && window.matchMedia("(min-width: 768px)").matches;
+  return enMarco ? createPortal(contenido, portalEn) : contenido;
 }

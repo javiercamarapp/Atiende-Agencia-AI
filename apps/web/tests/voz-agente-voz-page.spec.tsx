@@ -517,6 +517,19 @@ describe("llamada de prueba (vista previa real)", () => {
     expect(rendered!.container.querySelector('[role="tablist"]')).not.toBeNull();
   });
 
+  it("el globo flotante «Iniciar llamada» abre la vista previa y se oculta mientras está abierta", async () => {
+    await pintar({}, { entornoVoz: entornoFalso().entorno });
+    const globo = () => document.body.querySelector<HTMLButtonElement>('[data-testid="globo-llamada"]');
+    expect(globo()?.textContent).toContain("Iniciar llamada");
+    click(globo()!);
+    await settle();
+    expect(rendered!.container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(globo()).toBeNull();
+    click(boton("Atrás")!);
+    await settle();
+    expect(globo()).not.toBeNull();
+  });
+
   it("el encabezado de la vista previa lleva el nombre de la sucursal activa (como el original) y el chip arranca en «Vista previa»", async () => {
     await pintar({}, { entornoVoz: entornoFalso().entorno });
     click(boton("Vista previa")!);

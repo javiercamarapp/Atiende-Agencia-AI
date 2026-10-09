@@ -1,0 +1,51 @@
+/*
+ * Globo flotante de llamada del Agente de voz: equivalente de voz del botón «Iniciar chat». En el panel original lo ponía el widget de
+ * ElevenLabs (<elevenlabs-convai>, globo con el orbe y el botón «Iniciar llamada» abajo a la derecha, siempre montado en la página); aquí es un
+ * componente propio que abre la vista previa (Gemini Live en modo preview, sin pedidos reales). Mismas medidas y entrada que el botón de WhatsApp.
+ * Colores: tokens del panel (tarjeta, borde, primario); el orbe usa los azules del original (#1d4ed8 y #0ea5e9) como variables locales.
+ */
+.globo-llamada {
+  --globo-c1: #1d4ed8;
+  --globo-c2: #0ea5e9;
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 3.5rem;
+  padding: 0 1.25rem 0 0.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9999px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px -6px rgb(29 78 216 / 0.45);
+  transition: filter 150ms, transform 150ms;
+  animation: globo-entra 200ms ease-out both;
+}
+.globo-llamada:hover { filter: brightness(1.03); }
+.globo-llamada:active { transform: scale(0.97); }
+.globo-llamada:focus-visible { outline: 3px solid hsl(var(--ring)); outline-offset: 2px; }
+.globo-llamada__orbe {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, var(--globo-c2), var(--globo-c1) 70%);
+  box-shadow: 0 0 18px -4px var(--globo-c1);
+  animation: globo-respira 4.2s ease-in-out infinite;
+}
+@media (max-width: 767px) {
+  .globo-llamada { right: 1rem; bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)); }
+}
+@keyframes globo-entra { from { opacity: 0; transform: translateY(10px) scale(0.85); } to { opacity: 1; transform: none; } }
+@keyframes globo-respira { 0%, 100% { transform: scale(0.96); } 50% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .globo-llamada, .globo-llamada__orbe { animation: none; }
+  .globo-llamada { transition: none; }
+}

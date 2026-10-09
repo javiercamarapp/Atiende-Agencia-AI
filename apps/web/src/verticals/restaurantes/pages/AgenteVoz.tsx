@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
@@ -27,6 +27,7 @@ import { contarEjecuciones, HERRAMIENTAS_AGENTE } from "../voz/herramientas-agen
 import { formatoCostoUsd, formatoDuracion } from "../voz/formato-voz.ts";
 import { PestanaConversaciones } from "../voz/PestanaConversaciones.tsx";
 import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
+import { GloboLlamada } from "../voz/GloboLlamada.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
 import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
@@ -84,6 +85,15 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
   const [avisoGuardado, setAvisoGuardado] = useState(false);
   const [vistaPrevia, setVistaPrevia] = useState(false);
   const [version, setVersion] = useState(0);
+  const marco = useMarcoShell();
+  // «Vista previa» vive en la barra superior de la página (escritorio), como en el original; en móvil (sin esa barra) queda el botón del encabezado de la página.
+  const botonVistaPrevia = (
+    <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-eyebrow" onClick={() => setVistaPrevia(true)}>
+      <PlayCircle className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
+      Vista previa
+    </Button>
+  );
+  useAccionesBarra(botonVistaPrevia);
 
   useEffect(() => {
     let cancelado = false;
@@ -169,10 +179,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
             <p className="text-ui text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
           </div>
           {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle). */}
-          <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-xs" onClick={() => setVistaPrevia(true)}>
-            <PlayCircle className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
-            Vista previa
-          </Button>
+          <div className="md:hidden">{botonVistaPrevia}</div>
         </div>
 
         <div role="tablist" aria-label="Secciones del agente de voz" onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
@@ -354,8 +361,10 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
         ) : null}
       </PageContainer>
 
+      {vistaPrevia ? null : <GloboLlamada onAbrir={() => setVistaPrevia(true)} />}
+
       {vistaPrevia ? (
-        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} nombreSucursal={nombreSucursal ?? "Llamada de prueba"} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} onCerrar={() => setVistaPrevia(false)} />
+        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} nombreSucursal={nombreSucursal ?? "Llamada de prueba"} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} portalEn={marco} onCerrar={() => setVistaPrevia(false)} />
       ) : null}
     </div>
   );
@@ -467,11 +476,12 @@ interface VistaPreviaVozProps {
   readonly vozId: string | null;
   readonly servicioListo: boolean;
   readonly entorno: EntornoVoz;
+  readonly portalEn: HTMLElement | null;
   readonly onCerrar: () => void;
 }
 
 /** Llamada de prueba real con el agente configurado. Antes de ofrecer el botón consulta la salud del proveedor: sin credencial muestra el motivo y no simula nada. */
-function VistaPreviaVoz({ apiBaseUrl, token, propertyId, nombreSucursal, vozId, servicioListo, entorno, onCerrar }: VistaPreviaVozProps) {
+function VistaPreviaVoz({ apiBaseUrl, token, propertyId, nombreSucursal, vozId, servicioListo, entorno, portalEn, onCerrar }: VistaPreviaVozProps) {
   const [motivo, setMotivo] = useState<string | null>(servicioListo ? "Comprobando el servicio de voz…" : "No disponible: el servicio de voz todavía no está activo para este negocio.");
   useEffect(() => {
     if (!servicioListo) return;
@@ -519,6 +529,7 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, nombreSucursal, vozId, 
       onCerrar={onCerrar}
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
       videoSiempre
+      portalEn={portalEn}
       etiquetasChip={ETIQUETAS_CHIP_LLAMADA}
       {...(motivo ? { motivoNoDisponible: motivo } : {})}
       pie={
