@@ -57,6 +57,10 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
         await expect(barraCompleta, `${seccion.href}: la barra superior debe estar visible`).toBeVisible();
         const campana = barraCompleta.getByRole("button", { name: /^Notificaciones/ });
         await expect(campana, `${seccion.href}: la campana debe estar en la barra`).toHaveCount(1);
+        // La campana abre el centro y "Ver todas" lleva a la pagina de notificaciones de la consola.
+        await campana.click();
+        await expect(page.getByRole("link", { name: "Ver todas las notificaciones" }), `${seccion.href}: "Ver todas" debe llevar a la pagina de notificaciones`).toHaveAttribute("href", /\/notificaciones\/?$/);
+        await page.keyboard.press("Escape");
         const fecha = ((await barraCompleta.getByTestId("barra-pagina-fecha").textContent()) ?? "").trim();
         expect(fecha, `${seccion.href}: el chip de fecha debe llevar la fecha de hoy`).toMatch(FORMATO_FECHA);
         nombres.add(texto);
