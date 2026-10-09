@@ -12,13 +12,13 @@
 //  - Sin ETag ni caché: el archivo se genera en cada petición y lleva `Cache-Control: no-store`.
 import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { consumeRateLimit } from "@atiende/domain-restaurantes";
 import { CfoNoDisponibleError, CfoParametroInvalidoError, CfoSinAccesoError } from "@atiende/domain-restaurantes/cfo";
 import type { ConsultaCfo, ServicioCfo, VistaExportacionCfo } from "@atiende/domain-restaurantes/cfo";
 import { Errors } from "../../../errors.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { assertAccion } from "./permisos-accion.ts";
+import { consumirTopesEnSesionDeSistema } from "./rate-limit-sistema.ts";
 import { construirContextoCfo, MENSAJE_SIN_ACCESO_CFO } from "./cfo.ts";
 import { invalido, parsearRango, parsearSucursales } from "./cfo-esquemas.ts";
 import { construirLibroCfo, VISTAS_EXPORTAR_CFO, XLSX_CONTENT_TYPE } from "./cfo-exportar-xlsx.ts";
@@ -99,8 +99,8 @@ export function restaurantesCfoExportarRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.get(`${BASE}/exportar`, async (c) => {
     assertAccion(c, "cfo.exportar");
-    const r = await consumeRateLimit(deps.restaurantesRepo(c.get("db")), "cfo-exportar", `${c.get("organizationId")}:${c.get("userId")}`, CFO_EXPORTAR_LIMITE_POR_MIN, 60);
-    if (!r.allowed) throw Errors.tooManyRequests();
+    const agotado = await consumirTopesEnSesionDeSistema(deps, [{ scope: "cfo-exportar", actor: `${c.get("organizationId")}:${c.get("userId")}`, maxRequests: CFO_EXPORTAR_LIMITE_POR_MIN, windowSeconds: 60 }]);
+    if (agotado !== null) throw Errors.tooManyRequests();
     const formato = parsearFormato(c.req.query("formato"));
     const vista = parsearVista(c.req.query("vista"));
     const { desde, hasta } = parsearRango(c.req.query("desde"), c.req.query("hasta"));
