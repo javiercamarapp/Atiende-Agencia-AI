@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { LlmGateway } from "@atiende/agent-core";
 import { InMemoryCfoRepository } from "@atiende/domain-restaurantes/cfo";
-import { DAY_SECONDS, FakeVoiceProvider, InMemoryVozRepository, actorHash } from "@atiende/domain-restaurantes";
+import { DAY_SECONDS, FakeVoiceProvider, InMemoryVozRepository, actorHash, telefonoFicticioPreview } from "@atiende/domain-restaurantes";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
@@ -42,7 +42,7 @@ async function construir() {
   const app = buildApp(guardado.deps);
   const A = ctx.propertyIdA;
   const mensaje = (token: string, sesionId = randomUUID()) => app.request(`/v1/restaurantes/${A}/admin/agente-whatsapp/preview/mensaje`, authedJson(token, { sesionId, mensajes: [{ rol: "usuario", texto: "Hola" }] }));
-  return { ctx, app, A, mensaje, turnos, llamadas: guardado.llamadas, voz };
+  return { ctx, app, A, mensaje, turnos, llamadas: guardado.llamadas, funcionesDeSistema: guardado.funcionesDeSistema, voz };
 }
 
 describe("«Probar agente» (POST .../admin/agente-whatsapp/preview/mensaje) con la restriccion de sistema del limitador", () => {
@@ -119,9 +119,67 @@ describe("preview de VOZ (admin/voz/preview/*) con la restriccion de sistema del
     const t = await construir();
     const sesion = (await (await t.app.request(`/v1/restaurantes/${t.A}/admin/voz/preview/sesion`, authedJson(t.ctx.staff.owner.token, {}))).json()) as Json;
     t.llamadas.length = 0;
-    const res = await t.app.request(`/v1/restaurantes/${t.A}/admin/voz/preview/${sesion.sesionId}/herramienta`, authedJson(t.ctx.staff.owner.token, { tokenPreview: sesion.tokenPreview, nombre: "consultar_sucursal", argumentos: {} }));
+    const res = await t.app.request(`/v1/restaurantes/${t.A}/admin/voz/preview/${sesion.sesionId}/herramienta`, authedJson(t.ctx.staff.owner.token, { tokenPreview: sesion.tokenPreview, nombre: "consultar_sucursal", argumentos: { branch_slug: "fco-montejo" } }));
     expect(res.status).toBe(200);
+    expect(((await res.json()) as Json).resultado.error).toBeUndefined();
     expect(t.llamadas).toEqual([{ scope: "voz-preview-herramienta", usuario: null }]);
+  });
+
+  // Relevo de herramientas con funciones de SOLO sistema (cliente_memoria, read/write_order_flow_state): la ruta debe ejecutarlas en una sesion de
+  // sistema. Sin eso Postgres real las rechaza con 42501, `executeAgentToolSafely` lo traga y la ruta responde 200 con «Error interno» (defecto 10-oct).
+  describe("relevo de herramientas: historial, repetir, confirmar y crear ejecutan en sesion de SISTEMA", () => {
+    async function conCatalogo() {
+      const t = await construir();
+      const producto = randomUUID();
+      t.ctx.restaurantesRepo.seedProduct({ id: producto, organizationId: t.ctx.organizationId, categoryId: null, name: "Agua de prueba", description: null, searchKeywords: [] });
+      t.ctx.restaurantesRepo.seedBranchProduct({ propertyId: t.A, productId: producto, price: 45, isAvailable: true });
+      const sesion = (await (await t.app.request(`/v1/restaurantes/${t.A}/admin/voz/preview/sesion`, authedJson(t.ctx.staff.owner.token, {}))).json()) as Json;
+      const telefono = telefonoFicticioPreview(sesion.sesionId);
+      const cliente = randomUUID();
+      t.ctx.restaurantesRepo.seedCustomer({ id: cliente, organizationId: t.ctx.organizationId, phone: telefono, name: "Cliente previo", orderCount: 1 });
+      t.ctx.restaurantesRepo.seedOrderForCustomer({
+        id: randomUUID(), organizationId: t.ctx.organizationId, propertyId: t.A, customerId: cliente, customerName: "Cliente previo", customerPhone: telefono, customerAddress: null, customerEmail: null,
+        branch: "Francisco de Montejo", total: 90, status: "entregado", items: [{ id: producto, name: "Agua de prueba", quantity: 2, price: 45 }], source: "voice", notes: null, paymentMethod: "efectivo",
+        callTranscript: null, callRecordingUrl: null, dedupeFingerprint: null, idempotencyKey: null, createdAt: new Date(Date.now() - 86_400_000).toISOString(), canal: "recoger",
+        assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null,
+      } as never);
+      const items = [{ product_id: producto, product_name: "Agua de prueba", requested_quantity: 2 }];
+      const herramienta = async (nombre: string, argumentos: Json = {}) => {
+        const res = await t.app.request(`/v1/restaurantes/${t.A}/admin/voz/preview/${sesion.sesionId}/herramienta`, authedJson(t.ctx.staff.owner.token, { tokenPreview: sesion.tokenPreview, nombre, argumentos }));
+        expect(res.status).toBe(200);
+        return (await res.json()) as Json;
+      };
+      return { t, items, herramienta, telefono };
+    }
+
+    it("historial_pedidos y repetir_pedido: sin `error` (antes: «Error interno al ejecutar la herramienta»)", async () => {
+      const { t, herramienta } = await conCatalogo();
+      const historial = await herramienta("historial_pedidos");
+      expect(historial.resultado.error).toBeUndefined();
+      expect(historial.resultado.total_pedidos_anteriores).toBe(1);
+      const repetir = await herramienta("repetir_pedido", { branch_slug: "fco-montejo", canal: "recoger" });
+      expect(repetir.resultado.error).toBeUndefined();
+      expect(repetir.resultado.quote_hash).toMatch(/^[0-9a-f]{32}$/);
+      expect(t.funcionesDeSistema.length).toBeGreaterThan(0);
+      expect(t.funcionesDeSistema.every((f) => f.usuario === null)).toBe(true);
+    });
+
+    it("cotizar -> confirmar_resumen -> crear_pedido: pedido SIMULADO (PRUEBA-xxxx), sin `error`, y ningun pedido real nuevo", async () => {
+      const { t, items, herramienta, telefono } = await conCatalogo();
+      const pedidosAntes = (await t.ctx.restaurantesRepo.getCustomerMemory(t.ctx.organizationId, telefono))?.orders.length;
+      const cot = await herramienta("cotizar_pedido", { branch_slug: "fco-montejo", items, canal: "recoger" });
+      expect(cot.resultado.error).toBeUndefined();
+      const conf = await herramienta("confirmar_resumen", { quote_hash: cot.resultado.quote_hash });
+      expect(conf.resultado.error).toBeUndefined();
+      expect(conf.resultado.confirmado).toBe(true);
+      const crear = await herramienta("crear_pedido", { branch_slug: "fco-montejo", customer_name: "Prueba", items, payment_method: "efectivo", canal: "recoger" });
+      expect(crear.resultado.error).toBeUndefined();
+      expect(crear.simulado).toBe(true);
+      expect(crear.resultado.order.id).toMatch(/^PRUEBA-[0-9A-F]{4}$/);
+      expect((await t.ctx.restaurantesRepo.getCustomerMemory(t.ctx.organizationId, telefono))?.orders.length).toBe(pedidosAntes);
+      expect(t.funcionesDeSistema.length).toBeGreaterThan(0);
+      expect(t.funcionesDeSistema.every((f) => f.usuario === null)).toBe(true);
+    });
   });
 });
 

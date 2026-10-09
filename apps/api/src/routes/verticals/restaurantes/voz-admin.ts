@@ -344,22 +344,28 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (typeof raw.nombre !== "string" || !toolDefinitionsForChannel("voz").some((t) => t.name === raw.nombre)) throw Errors.validation("nombre: herramienta desconocida.");
     if (raw.argumentos !== undefined && (typeof raw.argumentos !== "object" || raw.argumentos === null || Array.isArray(raw.argumentos))) throw Errors.validation("argumentos: se esperaba un objeto.");
 
-    const restaurantes = deps.restaurantesRepo(c.get("db"));
     const agotado = await consumirTopesEnSesionDeSistema(deps, [{ scope: "voz-preview-herramienta", actor: requestActor(c.req.raw, `${c.get("userId")}:${sesionId}`), maxRequests: 60, windowSeconds: 600 }]);
     if (agotado !== null) throw Errors.tooManyRequests();
 
-    const outcome = await executeAgentToolSafely(
-      restaurantes,
-      {
-        organizationId,
-        channel: "voz",
-        phone: telefonoFicticioPreview(sesionId),
-        lockedPropertyId: propertyId,
-        modo: "preview",
-        flow: { key: `voz-preview:${sesionId}`, turn: null },
-      },
-      raw.nombre,
-      (raw.argumentos ?? {}) as Record<string, unknown>,
+    // Las funciones SQL de las que dependen estas herramientas (`cliente_memoria`, `read_order_flow_state`/`claim`/`write`) son de SOLO sistema: en la
+    // sesion del staff lanzan 42501, `executeAgentToolSafely` lo traga y la ruta respondia 200 con «Error interno al ejecutar la herramienta» (no se podia
+    // confirmar ni simular un pedido en la llamada de prueba). Se ejecuta en una sesion de sistema (`userId: null`), igual que las rutas de voz reales
+    // (`voice-tools.ts`). Esto NO abre un hueco: organizacion y sucursal ya salieron de la membership del staff y del token de preview firmado ARRIBA
+    // (nada del cuerpo las elige), y `modo: "preview"` lo fija el servidor, asi que el registro simula `crear_pedido`/avisos sin escribir dominio.
+    const outcome = await deps.engine.withAppSession({ userId: null }, (db) =>
+      executeAgentToolSafely(
+        deps.restaurantesRepo(db),
+        {
+          organizationId,
+          channel: "voz",
+          phone: telefonoFicticioPreview(sesionId),
+          lockedPropertyId: propertyId,
+          modo: "preview",
+          flow: { key: `voz-preview:${sesionId}`, turn: null },
+        },
+        raw.nombre as string,
+        (raw.argumentos ?? {}) as Record<string, unknown>,
+      ),
     );
     logEvent(c, "info", "restaurantes_admin_voz_preview_herramienta", { actorUserId: c.get("userId"), organizationId, propertyId, sessionId: sesionId, herramienta: raw.nombre });
     return c.json({ resultado: outcome.result, simulado: outcome.simulated === true });
