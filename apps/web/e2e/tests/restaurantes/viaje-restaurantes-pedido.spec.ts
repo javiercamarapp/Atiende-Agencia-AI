@@ -5,6 +5,7 @@ import { expect, test } from "../../helpers/fixtures.ts";
 import type { Page } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir, BASE } from "../../helpers/recorrido.ts";
 import { personaDe } from "../../mock-api/personas.ts";
+import { elegirEtiqueta } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -37,7 +38,7 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
     expect(cuerpoDe(estado)).toEqual({ status: "preparando" });
     // «Asignar repartidor» -> «Confirmar envío»: asigna (con ETA) Y manda a reparto (preparando -> en_camino) en un solo gesto.
     await tarjeta.getByRole("button", { name: "Asignar repartidor" }).click();
-    await tarjeta.getByLabel("Elegir repartidor").selectOption({ label: "Ramon Uc" });
+    await elegirEtiqueta(tarjeta.getByLabel("Elegir repartidor"), "Ramon Uc");
     await tarjeta.getByRole("button", { name: "Confirmar envío" }).click();
     const [asignado] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/assign-repartidor" });
     expect(cuerpoDe(asignado)).toMatchObject({ repartidorId: "usr-2" });

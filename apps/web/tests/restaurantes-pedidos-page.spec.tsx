@@ -4,11 +4,15 @@
 // orders-client.ts/staff-client.ts/branches-client.ts (nunca se mockea el modulo completo); reloj fijo (solo `Date`) para las horas, el ETA y
 // «Demorado». Se afirma la peticion exacta (metodo, ruta, cuerpo) y el efecto en pantalla.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { OrderSummary } from "../src/verticals/restaurantes/lib/orders-client.ts";
 import { changeValue, click, esperarHasta, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+
+import { elegirValor, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 vi.mock("leaflet", () => {
   const capa = { addTo: () => capa, bindTooltip: () => capa, remove: () => undefined, setLatLng: () => undefined };
@@ -234,7 +238,7 @@ describe("PedidosPage: despacho (Asignar repartidor -> Confirmar envio)", () => 
     await esperarCarga();
     click(boton("Asignar repartidor")!);
     await esperarCarga();
-    changeValue(document.querySelector("#repartidor-ord-1") as HTMLSelectElement, "rep-1");
+    elegirValor(document.querySelector("#repartidor-ord-1"), "rep-1");
     await esperarCarga();
     click(boton("Confirmar envío")!);
     await esperarCarga();
@@ -255,7 +259,7 @@ describe("PedidosPage: despacho (Asignar repartidor -> Confirmar envio)", () => 
     click(boton("Asignar repartidor")!);
     await esperarCarga();
     expect(boton("Confirmar envío")).toBeUndefined();
-    changeValue(document.querySelector("#repartidor-ord-1") as HTMLSelectElement, "rep-1");
+    elegirValor(document.querySelector("#repartidor-ord-1"), "rep-1");
     await esperarCarga();
     click(boton("Asignar")!);
     await esperarCarga();
@@ -285,7 +289,7 @@ describe("PedidosPage: despacho (Asignar repartidor -> Confirmar envio)", () => 
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")).toBe(false);
     click(boton("Asignar repartidor")!);
     await esperarCarga();
-    expect((document.querySelector("#repartidor-ord-9") as HTMLSelectElement).value).toBe("rep-1");
+    expect(valorDe(document.querySelector("#repartidor-ord-9"))).toBe("rep-1");
     expect(document.querySelector('[data-testid="sugerido-ord-9"]')!.textContent).toContain("Sugerido: Repartidor Uno");
     click(boton("Confirmar envío")!);
     await esperarCarga();
@@ -339,7 +343,7 @@ describe("PedidosPage: cancelar e incidencia", () => {
     expect(dialogo.textContent).toContain('#1001 — Juan Pérez pasará a "Cancelado" y saldrá de Recibidos. Sigue visible en Historial.');
     const confirmar = [...dialogo.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Sí, cancelar pedido") as HTMLButtonElement;
     expect(confirmar.disabled).toBe(true);
-    changeValue(dialogo.querySelector("select") as HTMLSelectElement, "otro");
+    elegirValor(dialogo.querySelector('[role="combobox"]'), "otro");
     await esperarCarga();
     click([...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.trim() === "Sí, cancelar pedido")!);
     await esperarCarga();

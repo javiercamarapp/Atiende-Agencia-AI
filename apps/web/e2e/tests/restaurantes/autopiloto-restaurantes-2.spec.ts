@@ -6,6 +6,7 @@ import type { ClienteMock } from "../../mock-api/cliente.ts";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
+import { esperarValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -48,7 +49,7 @@ test.describe("restaurantes: autopiloto 2 @recorrido", () => {
     await fila.getByRole("button", { name: "Marcar Preparando" }).click();
     await fila.getByRole("button", { name: "Asignar repartidor" }).click();
     await expect(fila.getByText("Sugerido: Ramon Uc")).toBeVisible();
-    await expect(fila.getByLabel("Elegir repartidor")).toHaveValue("usr-2");
+    await esperarValor(fila.getByLabel("Elegir repartidor"), "usr-2");
     // La sugerencia es de solo lectura: ningun assign-repartidor hasta confirmar.
     expect((await mock.buscar({ metodo: "PATCH", ruta: "/assign-repartidor" })).length).toBe(0);
     await fila.getByRole("button", { name: "Confirmar envío" }).click();

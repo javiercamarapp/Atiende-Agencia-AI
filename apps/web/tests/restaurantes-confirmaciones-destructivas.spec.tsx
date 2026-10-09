@@ -8,7 +8,7 @@
 //   - Cancelar/cerrar NO ejecuta el DELETE;
 //   - Confirmar si lo ejecuta, con el nombre del objeto en el titulo del dialogo.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { StaffPage } from "../src/verticals/restaurantes/pages/Staff.tsx";
 import { ConfiguracionPage } from "../src/verticals/restaurantes/pages/Configuracion.tsx";
@@ -16,6 +16,10 @@ import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
 import { RepartidorPedidosView } from "../src/verticals/restaurantes/pages/Repartidor.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { changeValue, click, flushMicrotasks, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -265,7 +269,7 @@ describe("Pedidos (restaurantes) — cancelar pedido con motivo de la lista cerr
 
   it("con un motivo de la lista manda PATCH .../status con {status:'cancelado', motivo}", async () => {
     await abrirCancelar();
-    changeValue(dialogoMotivo()!.querySelector("select") as HTMLSelectElement, "sin_producto");
+    elegirValor(dialogoMotivo()!.querySelector('[role="combobox"]'), "sin_producto");
     await esperar();
     await pulsar("Sí, cancelar pedido");
     expect(patches()).toHaveLength(1);

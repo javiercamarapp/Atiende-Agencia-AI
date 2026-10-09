@@ -231,9 +231,3 @@ export function fechaAnioHoraEsMx(iso: string | Date, zonaHoraria: string = "Ame
   const f = partesFecha(iso, zonaHoraria, true);
   return `${f.dia} ${f.mes} ${f.anio}, ${f.hora}:${f.minuto}`;
 }
-
-/** "14:58" (hora de 24 h en la zona del negocio). */
-export function hora24EsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
-  const f = partesFecha(iso, zonaHoraria, false);
-  return `${f.hora}:${f.minuto}`;
-}

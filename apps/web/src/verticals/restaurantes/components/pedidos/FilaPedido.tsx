@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Bike, CheckCircle2, Clock, Eye, History, MapPin, Printer, ShoppingCart, Store, Truck, X } from "lucide-react";
-import { Button, Checkbox, NativeSelect, StatusBadge, cn, statusTone } from "@atiende/ui";
+import { Button, Checkbox, Selector, StatusBadge, cn, statusTone } from "@atiende/ui";
 import { fechaCortaHoraEsMx, hora24EsMx } from "../../../../lib/formato-fecha.ts";
 import { idCortoPedido, nextStatusesForCanal, ORDER_STATUS_LABELS } from "../../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary, RepartidorSugerido } from "../../lib/orders-client.ts";
@@ -182,22 +182,22 @@ export function FilaPedido(props: FilaPedidoProps) {
         <div className="mt-2.5 sm:ml-[52px]" onClick={detener}>
           {asignando ? (
             <div className="flex flex-wrap items-center gap-2">
-              <NativeSelect
+              <Selector
                 id={`repartidor-${order.id}`}
                 aria-label="Elegir repartidor"
                 size="sm"
                 value={elegido}
+                placeholder={repartidores && repartidores.length === 0 ? "Sin repartidores registrados" : "Elegir repartidor"}
                 disabled={ocupado || !repartidores || repartidores.length === 0}
-                onChange={(e) => setElegido(e.target.value)}
+                onValueChange={setElegido}
                 wrapperClassName="w-full max-w-[220px]"
               >
-                <option value="">{repartidores && repartidores.length === 0 ? "Sin repartidores registrados" : "Elegir repartidor"}</option>
                 {repartidores?.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.fullName || r.email}
                   </option>
                 ))}
-              </NativeSelect>
+              </Selector>
               <Button type="button" size="sm" className="h-8 rounded-full px-3 text-xs" loading={ocupado} disabled={ocupado || !elegido} onClick={() => void alConfirmar()}>
                 {!ocupado && <Truck className="h-3 w-3" aria-hidden="true" />}
                 {etiquetaConfirmar}

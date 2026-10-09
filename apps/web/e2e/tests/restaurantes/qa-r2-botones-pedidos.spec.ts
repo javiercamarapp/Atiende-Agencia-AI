@@ -7,6 +7,7 @@ import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { BASE, afirmarSinEscrituras, cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
 import { propiedadDe } from "../../mock-api/personas.ts";
+import { elegirEtiqueta, elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 /** La fila de un pedido del tablero (UNI-R1: ya no es una tarjeta por pedido sino una fila de la lista). */
@@ -123,7 +124,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     // Elegir un motivo y luego Volver tampoco escribe; al reabrir el motivo vuelve a estar vacio.
     await boton.click();
     d = dialogo(page, "¿Cancelar este pedido?");
-    await d.getByRole("combobox").selectOption("duplicado");
+    await elegirValor(d.getByRole("combobox"), "duplicado");
     await d.getByRole("button", { name: "Volver" }).click();
     await boton.click();
     d = dialogo(page, "¿Cancelar este pedido?");
@@ -139,7 +140,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await mock.inyectarFalla({ metodo: "PATCH", ruta: "/status", status: 503, veces: 1 });
     await tarjeta(page, "Marisol Pech").getByRole("button", { name: "Cancelar pedido" }).click();
     const d = dialogo(page, "¿Cancelar este pedido?");
-    await d.getByRole("combobox").selectOption("cliente_desistio");
+    await elegirValor(d.getByRole("combobox"), "cliente_desistio");
     await d.getByRole("button", { name: "Sí, cancelar pedido" }).click();
     await expect(d).toBeVisible();
     await expect(d.getByText(/Falla inyectada 503|no se pudo/i)).toBeVisible();
@@ -273,7 +274,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await t.getByRole("button", { name: "Marcar Preparando" }).click();
     // «Asignar repartidor» -> «Confirmar envío» asigna Y manda a reparto (preparando -> en_camino); el pedido pasa a «Órdenes enviadas».
     await t.getByRole("button", { name: "Asignar repartidor" }).click();
-    await t.getByLabel("Elegir repartidor").selectOption({ label: "Ramon Uc" });
+    await elegirEtiqueta(t.getByLabel("Elegir repartidor"), "Ramon Uc");
     await t.getByRole("button", { name: "Confirmar envío" }).click();
     await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/ord-e2e-1/assign-repartidor" }, 1);
     await expect(main(page).getByRole("tab", { name: "Órdenes enviadas" })).toHaveAttribute("aria-selected", "true");

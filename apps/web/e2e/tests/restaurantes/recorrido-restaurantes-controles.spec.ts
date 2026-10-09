@@ -5,6 +5,7 @@ import type { Page } from "@playwright/test";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
+import { elegirEtiqueta } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -43,7 +44,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     const fila = main(page).locator('[data-testid^="pedido-"]').filter({ hasText: "Marisol Pech" }).first();
     await mock.limpiarRegistro();
     await fila.getByRole("button", { name: "Asignar repartidor" }).click();
-    await fila.getByLabel("Elegir repartidor").selectOption({ label: "Ramon Uc" });
+    await elegirEtiqueta(fila.getByLabel("Elegir repartidor"), "Ramon Uc");
     await fila.getByRole("button", { name: "Asignar", exact: true }).click();
     const [patch] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/assign-repartidor" });
     expect(cuerpoDe(patch)).toMatchObject({ repartidorId: "usr-2" });
