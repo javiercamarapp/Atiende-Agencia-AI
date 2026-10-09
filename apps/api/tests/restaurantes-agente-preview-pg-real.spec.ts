@@ -3,7 +3,7 @@
 // `auth.uid()` no es nulo): este archivo es la prueba que no las esconde.
 //
 // Se omite sin `VERIFY_PGURL`. Lo corre `scripts/verify-restaurantes-agente-preview-rate-limit/run.sh` (Postgres efimero de puerto alto con
-// TODAS las migraciones reales); no hay nada que configurar en CI ordinario (`npm test` lo salta).
+// TODAS las migraciones reales); `npm test` lo salta, y en CI lo corre el job `restaurantes-agente-preview-pg-real-gate` de `postgres-real-gate.yml`.
 import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
 import { Hono } from "hono";
@@ -12,7 +12,7 @@ import { ApiError, signAccessToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { openManagedPostgres } from "@atiende/db";
 import type { ManagedPostgresEngine } from "@atiende/db";
-import { PostgresRestaurantesRepository, PostgresVozRepository } from "@atiende/domain-restaurantes";
+import { PostgresRestaurantesRepository, PostgresVozRepository, telefonoFicticioPreview } from "@atiende/domain-restaurantes";
 import { FakeVoiceProvider } from "@atiende/voice-core";
 import type { AppDeps } from "../src/deps.ts";
 import { restaurantesAgentePreviewRoutes, AGENTE_PREVIEW_LIMITES } from "../src/routes/verticals/restaurantes/agente-preview.ts";
@@ -143,12 +143,140 @@ describe.skipIf(!PGURL)("POST .../admin/agente-whatsapp/preview/mensaje contra P
       expect((await post("preview/sesion", "dueno", {})).status).toBe(429);
     });
 
-    it("POST .../preview/:sesionId/herramienta: el limite (60/10 min por staff+sesion) no revienta con la sesion de staff", async () => {
-      const sesion = (await (await post("preview/sesion", "dueno2", {})).json()) as { sesionId: string; tokenPreview: string };
-      const res = await post(`preview/${sesion.sesionId}/herramienta`, "dueno2", { tokenPreview: sesion.tokenPreview, nombre: "consultar_sucursal", argumentos: {} });
-      const cuerpo = (await res.json()) as { detail?: string };
-      expect(cuerpo.detail).toBeUndefined();
-      expect(res.status).toBe(200);
+    const herramienta = async (clave: string, sesion: { sesionId: string; tokenPreview: string }, nombre: string, argumentos: unknown = {}, extra: Record<string, unknown> = {}) => {
+      const res = await post(`preview/${sesion.sesionId}/herramienta`, clave, { tokenPreview: sesion.tokenPreview, nombre, argumentos, ...extra });
+      const cuerpo = (await res.json()) as { resultado?: Record<string, unknown>; simulado?: boolean; detail?: string };
+      return { status: res.status, cuerpo, resultado: cuerpo.resultado ?? {} };
+    };
+    const nuevaSesion = async (clave: string) => (await (await post("preview/sesion", clave, {})).json()) as { sesionId: string; tokenPreview: string };
+
+    // Fotografia de TODAS las tablas de dominio: el preview de voz corre ahora en sesion de sistema (con permiso para escribir), y la unica
+    // prueba de que NO escribe nada real es contar filas antes y despues.
+    async function fotoTablas(): Promise<Record<string, number>> {
+      const { rows } = await admin.query<{ t: string }>(
+        "select format('%I.%I', n.nspname, c.relname) as t from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.relkind in ('r','p') and n.nspname in ('restaurantes','core') order by 1",
+      );
+      const foto: Record<string, number> = {};
+      for (const { t } of rows) foto[t] = Number((await admin.query<{ n: string }>(`select count(*)::text as n from ${t}`)).rows[0]!.n);
+      return foto;
+    }
+    const difiere = (antes: Record<string, number>, despues: Record<string, number>) =>
+      Object.keys(despues)
+        .filter((t) => antes[t] !== despues[t])
+        .sort();
+    // Estado interno del flujo (maquina de cotizar/confirmar/crear de la llamada) y contadores de uso: son lo UNICO que el preview puede tocar.
+    const PERMITIDAS = ["restaurantes.api_rate_limits", "restaurantes.order_flow_state"];
+
+    const PRODUCTO = randomUUID();
+    const ORG_AJENA = "00000000-0000-0000-0000-0000000e0a02";
+    const PROP_AJENA = "00000000-0000-0000-0000-0000000e0b02";
+    const ITEMS = [{ product_id: PRODUCTO, product_name: "Agua de prueba", requested_quantity: 2 }];
+    const CREAR = { branch_slug: "sucursal-pg", customer_name: "Prueba", items: ITEMS, payment_method: "efectivo", canal: "recoger" };
+
+    describe("ejecucion de herramientas del preview de voz (la sesion de staff NO puede con las funciones de solo sistema)", () => {
+      beforeAll(async () => {
+        await admin.query("insert into restaurantes.products (id, organization_id, name, price) values ($1,$2,'Agua de prueba',45) on conflict do nothing", [PRODUCTO, ORG]);
+        await admin.query("insert into restaurantes.branch_products (property_id, product_id, price) values ($1,$2,45) on conflict do nothing", [PROP, PRODUCTO]);
+        // Otra organizacion con su sucursal: nada de lo que mande el cuerpo debe poder alcanzarla.
+        await admin.query("insert into core.organization (id, vertical, name, slug) values ($1,'restaurantes','Ajena PG','ajena-pg') on conflict do nothing", [ORG_AJENA]);
+        await admin.query("insert into core.property (id, organization_id, name) values ($1,$2,'Sucursal ajena') on conflict do nothing", [PROP_AJENA, ORG_AJENA]);
+        await admin.query("insert into restaurantes.branch_detail (property_id, organization_id, slug) values ($1,$2,'sucursal-ajena') on conflict do nothing", [PROP_AJENA, ORG_AJENA]);
+      });
+
+      /** Siembra un pedido ANTERIOR del telefono ficticio de la sesion, para que historial_pedidos y repetir_pedido tengan algo que leer. */
+      async function sembrarHistorial(sesionId: string): Promise<void> {
+        const tel = telefonoFicticioPreview(sesionId);
+        const { rows } = await admin.query<{ id: string }>("insert into restaurantes.customers (organization_id, phone, name, order_count) values ($1,$2,'Cliente previo',1) on conflict (organization_id, phone) do update set name = excluded.name returning id", [ORG, tel]);
+        await admin.query(
+          "insert into restaurantes.orders (organization_id, property_id, customer_id, customer_name, customer_phone, branch, total, status, items, source, canal, payment_method) values ($1,$2,$3,'Cliente previo',$4,'Sucursal PG',90,'entregado',$5::jsonb,'voice','recoger','efectivo')",
+          [ORG, PROP, rows[0]!.id, tel, JSON.stringify([{ id: PRODUCTO, name: "Agua de prueba", quantity: 2, price: 45 }])],
+        );
+      }
+
+      it("historial_pedidos y repetir_pedido: sin error (antes: 42501 cliente_memoria es solo para la sesion de sistema) y repetir entra al flujo de cotizacion", async () => {
+        const sesion = await nuevaSesion("dueno2");
+        await sembrarHistorial(sesion.sesionId);
+        const historial = await herramienta("dueno2", sesion, "historial_pedidos");
+        expect(historial.status).toBe(200);
+        expect(historial.cuerpo.detail).toBeUndefined();
+        expect(historial.resultado.error).toBeUndefined();
+        expect(historial.resultado.total_pedidos_anteriores).toBe(1);
+        const repetir = await herramienta("dueno2", sesion, "repetir_pedido", { branch_slug: "sucursal-pg", canal: "recoger" });
+        expect(repetir.resultado.error).toBeUndefined();
+        expect(repetir.resultado.quote_hash).toMatch(/^[0-9a-f]{32}$/);
+      });
+
+      it("cotizar -> confirmar_resumen -> crear_pedido: devuelve el pedido SIMULADO (PRUEBA-xxxx) y NO escribe pedido, cliente, comanda, aviso ni correo", async () => {
+        const sesion = await nuevaSesion("dueno2");
+        const antes = await fotoTablas();
+        const cotizacion = await herramienta("dueno2", sesion, "cotizar_pedido", { branch_slug: "sucursal-pg", items: ITEMS, canal: "recoger" });
+        expect(cotizacion.resultado.error).toBeUndefined();
+        const hash = cotizacion.resultado.quote_hash as string;
+        expect(hash).toMatch(/^[0-9a-f]{32}$/);
+        const confirmacion = await herramienta("dueno2", sesion, "confirmar_resumen", { quote_hash: hash });
+        expect(confirmacion.resultado.error).toBeUndefined();
+        expect(confirmacion.resultado.confirmado).toBe(true);
+        const creacion = await herramienta("dueno2", sesion, "crear_pedido", CREAR);
+        expect(creacion.status).toBe(200);
+        // Primero lo que importa: ninguna tabla de dominio cambio (si el modo fuera `real` aqui aparecerian orders, customers, comandas, avisos...).
+        expect(difiere(antes, await fotoTablas()).filter((t) => !PERMITIDAS.includes(t))).toEqual([]);
+        expect(creacion.resultado.error).toBeUndefined();
+        expect(creacion.cuerpo.simulado).toBe(true);
+        const orden = creacion.resultado.order as { id: string; status: string; total: number; simulado: boolean };
+        expect(orden.id).toMatch(/^PRUEBA-[0-9A-F]{4}$/);
+        expect(orden).toMatchObject({ status: "simulado", total: 90, simulado: true });
+        const { rows } = await admin.query<{ n: string }>("select count(*)::text as n from restaurantes.orders where organization_id = $1 and customer_phone = $2", [ORG, telefonoFicticioPreview(sesion.sesionId)]);
+        expect(rows[0]!.n).toBe("0");
+      });
+
+      it("el modo y la organizacion los fija el SERVIDOR: `modo: real`, `organizationId`, `phone` en el cuerpo o en los argumentos no cambian nada (sigue simulado y sin escrituras)", async () => {
+        const sesion = await nuevaSesion("dueno2");
+        const antes = await fotoTablas();
+        const ataque = { modo: "real", organizationId: ORG_AJENA, organization_id: ORG_AJENA, propertyId: PROP_AJENA, phone: "9991112233", lockedPropertyId: PROP_AJENA };
+        const cot = await herramienta("dueno2", sesion, "cotizar_pedido", { branch_slug: "sucursal-pg", items: ITEMS, canal: "recoger", ...ataque }, ataque);
+        expect(cot.resultado.error).toBeUndefined();
+        expect((await herramienta("dueno2", sesion, "confirmar_resumen", { quote_hash: cot.resultado.quote_hash, ...ataque }, ataque)).resultado.error).toBeUndefined();
+        const creacion = await herramienta("dueno2", sesion, "crear_pedido", { ...CREAR, ...ataque }, ataque);
+        expect(difiere(antes, await fotoTablas()).filter((t) => !PERMITIDAS.includes(t))).toEqual([]);
+        expect(creacion.resultado.error).toBeUndefined();
+        expect(creacion.cuerpo.simulado).toBe(true);
+        expect((creacion.resultado.order as { id: string }).id).toMatch(/^PRUEBA-/);
+        const { rows } = await admin.query<{ n: string }>("select count(*)::text as n from restaurantes.orders where customer_phone = '9991112233' or organization_id = $1", [ORG_AJENA]);
+        expect(rows[0]!.n).toBe("0");
+      });
+
+      it("registrar_contacto y escalar_a_humano: exito simulado y NINGUN aviso (callback) ni notificacion al equipo", async () => {
+        const sesion = await nuevaSesion("dueno2");
+        const antes = await fotoTablas();
+        const contacto = await herramienta("dueno2", sesion, "registrar_contacto", { reason: "pidio_llamada", customer_name: "Prueba", message: "hola" });
+        expect(contacto.resultado).toMatchObject({ ok: true, simulado: true });
+        const escalada = await herramienta("dueno2", sesion, "escalar_a_humano", { motivo: "queja", resumen: "prueba" });
+        expect(escalada.resultado).toMatchObject({ ok: true, simulado: true });
+        expect(difiere(antes, await fotoTablas()).filter((t) => !PERMITIDAS.includes(t))).toEqual([]);
+      });
+
+      it("aislamiento: una sucursal de OTRA organizacion en los argumentos no devuelve datos ajenos ni escribe", async () => {
+        const sesion = await nuevaSesion("dueno2");
+        const antes = await fotoTablas();
+        const ajena = await herramienta("dueno2", sesion, "cotizar_pedido", { branch_slug: "sucursal-ajena", items: ITEMS, canal: "recoger" });
+        expect(ajena.status).toBe(200);
+        expect(typeof ajena.resultado.error).toBe("string");
+        expect(ajena.resultado.quote).toBeUndefined();
+        expect(difiere(antes, await fotoTablas()).filter((t) => !PERMITIDAS.includes(t))).toEqual([]);
+      });
+
+      it("la autorizacion ocurre ANTES de abrir la sesion de sistema: sin token / token de otra sesion / otro dueno de otra organizacion no ejecutan nada", async () => {
+        const sesion = await nuevaSesion("dueno2");
+        const otra = await nuevaSesion("dueno2");
+        const antes = await fotoTablas();
+        const sinToken = await post(`preview/${sesion.sesionId}/herramienta`, "dueno2", { nombre: "consultar_sucursal", argumentos: {} });
+        expect(sinToken.status).toBe(401);
+        const tokenAjeno = await post(`preview/${sesion.sesionId}/herramienta`, "dueno2", { tokenPreview: otra.tokenPreview, nombre: "consultar_sucursal", argumentos: {} });
+        expect([401, 403]).toContain(tokenAjeno.status);
+        const desconocida = await post(`preview/${sesion.sesionId}/herramienta`, "dueno2", { tokenPreview: sesion.tokenPreview, nombre: "borrar_todo", argumentos: {} });
+        expect(desconocida.status).toBe(400);
+        expect(difiere(antes, await fotoTablas()).filter((t) => t !== "restaurantes.api_rate_limits")).toEqual([]);
+      });
     });
   });
 });

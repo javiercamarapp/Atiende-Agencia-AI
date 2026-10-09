@@ -303,6 +303,49 @@ jobs:
       - name: scripts/verify-whatsapp-concurrencia/run.sh
         run: bash scripts/verify-whatsapp-concurrencia/run.sh
 
+  restaurantes-agente-preview-pg-real-gate:
+    name: Preview de agente y de voz con sesion de staff contra Postgres real (scripts/verify-restaurantes-agente-preview-rate-limit)
+    runs-on: ubuntu-latest
+    # Job APARTE: la parte 2 de scripts/verify-restaurantes-agente-preview-rate-limit/run.sh es un spec de vitest (apps/api/tests/restaurantes-agente-preview-pg-real.spec.ts)
+    # que levanta la RUTA HTTP real con el motor de produccion contra un Postgres efimero (initdb, puerto alto) con TODAS las migraciones. `run-gate.mjs` solo corre
+    # el assertions.sql de esa carpeta (parte 1) y `npm run test:unit` omite el spec (sin VERIFY_PGURL): sin este job, el defecto «herramienta de voz del preview
+    # ejecutada con la sesion del staff => 42501 => "Error interno" con 200» solo lo vigilaban dobles en memoria. Cubre ademas que el preview NO escribe pedidos,
+    # clientes, comandas ni avisos aunque corra en sesion de sistema. No hace build ni deploy.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Confirmar initdb/pg_ctl/psql disponibles
+        run: |
+          if ! command -v initdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          # El paquete `postgresql` de Ubuntu/Debian deja initdb/pg_ctl fuera de PATH (ver el job fallback-savepoint-gate).
+          if ! command -v initdb >/dev/null 2>&1; then
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 3 -name initdb -print -quit)")"
+            if [ -z "$PG_BIN" ] || [ "$PG_BIN" = "." ]; then
+              echo "verify-restaurantes-agente-preview-rate-limit (CI): no se encontro initdb bajo /usr/lib/postgresql" >&2
+              exit 1
+            fi
+            echo "$PG_BIN" >> "$GITHUB_PATH"
+            export PATH="$PG_BIN:$PATH"
+          fi
+          initdb --version
+          pg_ctl --version
+          psql --version
+
+      - name: scripts/verify-restaurantes-agente-preview-rate-limit/run.sh
+        run: bash scripts/verify-restaurantes-agente-preview-rate-limit/run.sh
+
   citas-concurrencia-gate:
     name: Doble cita con 2+ conexiones simultaneas (scripts/verify-citas-concurrencia)
     runs-on: ubuntu-latest
