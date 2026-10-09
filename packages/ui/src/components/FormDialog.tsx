@@ -97,26 +97,18 @@ export function FormDialog({
         onInteractOutside={bloquearCierre ? (e) => e.preventDefault() : undefined}
         onEscapeKeyDown={bloquearCierre ? (e) => e.preventDefault() : undefined}
       >
-        {!bloquearCierre && (
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            aria-label="Cerrar"
-            className="absolute right-2 top-2 z-10 flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-canvas hover:text-foreground md:size-8"
-          >
-            <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
-          </button>
-        )}
+        {/* Franja de marca de 4 px (ModalFormularioLateral del repo suelto). */}
+        <div aria-hidden="true" className="h-1 bg-gradient-to-r from-primary to-franja" />
 
         <div
           className={cn("grid min-h-0 grid-cols-1 md:[grid-template-columns:var(--form-dialog-rail)_1fr]", altoMinimoClase)}
           style={{ ["--form-dialog-rail" as string]: anchoRiel }}
         >
           {/* Riel (escritorio) / cabecera (movil): marca + titulo + subtitulo + pasos */}
-          <div className="flex flex-col gap-3 border-b border-border bg-canvas p-4 pr-12 md:gap-4 md:border-b-0 md:border-r">
+          <div className="flex flex-col gap-3 border-b border-border bg-muted/30 p-5 pr-12 md:gap-6 md:border-b-0 md:border-r">
             <AtiendeMark className="hidden h-7 w-auto md:block" />
             <div>
-              <DialogTitle className="mb-1 font-display text-sm font-semibold">{titulo}</DialogTitle>
+              <DialogTitle className="mb-1 font-display text-base font-semibold">{titulo}</DialogTitle>
               {subtitulo ? (
                 <DialogDescription className="text-ui">{subtitulo}</DialogDescription>
               ) : (
@@ -147,7 +139,7 @@ export function FormDialog({
 
           {onGuardar ? (
             <form
-              className="flex min-h-0 flex-col p-4 md:pt-11 max-md:pb-[calc(1rem+var(--safe-area-bottom))]"
+              className="flex min-h-0 flex-col p-5 md:pt-10 max-md:pb-[calc(1.25rem+var(--safe-area-bottom))]"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!guardando && !guardarDeshabilitado) onGuardar();
@@ -156,9 +148,20 @@ export function FormDialog({
               {cuerpo}
             </form>
           ) : (
-            <div className="flex min-h-0 flex-col p-4 md:pt-11 max-md:pb-[calc(1rem+var(--safe-area-bottom))]">{cuerpo}</div>
+            <div className="flex min-h-0 flex-col p-5 md:pt-10 max-md:pb-[calc(1.25rem+var(--safe-area-bottom))]">{cuerpo}</div>
           )}
         </div>
+        {/* Despues del contenido en el DOM: el foco inicial cae en el primer campo, no en la x (que sigue arriba a la derecha por ser absoluta). */}
+        {!bloquearCierre && (
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            aria-label="Cerrar"
+            className="absolute right-2 top-3 z-10 flex size-11 items-center justify-center rounded-full text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-muted hover:text-foreground md:right-3 md:size-7"
+          >
+            <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
+          </button>
+        )}
       </DialogContent>
     </Dialog>
   );

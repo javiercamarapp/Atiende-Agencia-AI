@@ -37,7 +37,7 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { NativeSelect, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
@@ -84,6 +84,8 @@ export interface RestaurantesShellContext {
    * cae a `staffEmail` en ese caso. */
   readonly staffFullName: string | undefined;
   readonly staffEmail: string;
+  /** Nombre de la sucursal activa (encabezado del chat de prueba y de la vista previa de voz). Opcional: los contextos de prueba pueden omitirlo. */
+  readonly nombreSucursal?: string;
 }
 
 export interface RestaurantesShellProps {
@@ -282,7 +284,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     >
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
       <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
-        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+        <VarianteEstadoVacioProvider value="centrado">
+          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, nombreSucursal: activeBranch.name })}
+        </VarianteEstadoVacioProvider>
       </PuertaOnboarding>
     </VerticalShellConectado>
   );

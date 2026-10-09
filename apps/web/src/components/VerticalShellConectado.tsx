@@ -4,9 +4,10 @@
 // lugar de armar a mano el Sidebar, el MobileHeader y el BottomNav.
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
-import { NotificationBell, VerticalShell } from "@atiende/ui";
+import { VerticalShell } from "@atiende/ui";
 import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
 import { useNotifications } from "../lib/useNotifications.ts";
+import { CampanaNotificaciones } from "./CampanaNotificaciones.tsx";
 import { BotonChatDatos, useChatDatosDisponible } from "./BotonChatDatos.tsx";
 import { BannerPlan } from "./BannerPlan.tsx";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
@@ -52,7 +53,7 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
     ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregunta a tus datos", to: copilotoHref } : { label: "Pregunta a tus datos", onClick: () => setChatAbierto(true) }] : []),
   ];
   const campana = (className?: string) => (
-    <NotificationBell className={className} href={notificacionesHref} hayNoLeidas={notif.hayNoLeidas} />
+    <CampanaNotificaciones apiBaseUrl={apiBaseUrl} token={token} className={className} href={notificacionesHref} hayNoLeidas={notif.hayNoLeidas} />
   );
   return (
     <>

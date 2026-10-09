@@ -3,6 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { BOTON_CIERRE_MODAL, CAJA_MODAL, CAJA_MODAL_MOVIL, CHIP_ICONO_MODAL, OVERLAY_MODAL, TAMANOS_MODAL, type TamanoModal } from "./superficies";
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -15,10 +16,7 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn(
-      "fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm data-[state=open]:animate-overlay-in data-[state=closed]:animate-overlay-out",
-      className,
-    )}
+    className={cn(OVERLAY_MODAL, className)}
     {...props}
   />
 ));
@@ -26,26 +24,19 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideDefaultClose?: boolean }
->(({ className, children, hideDefaultClose = false, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideDefaultClose?: boolean; size?: TamanoModal }
+>(({ className, children, hideDefaultClose = false, size = "md", ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      className={cn(
-        // Material de la ventana flotante de Likida (spec UNI-3c, 6.5): hairline, bg-card,
-        // radio 16, sombra de elevacion y p-4. En < md es una hoja inferior (rounded-t-2xl,
-        // con el hueco de safe-area abajo) que sube con sheet-up; en >= md, centrado con modal-in.
-        "fixed inset-0 z-50 m-auto grid h-fit max-h-[calc(100dvh-2rem)] w-full max-w-lg gap-3 overflow-y-auto rounded-lg border border-border bg-card p-4 text-card-foreground shadow-elevated data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out",
-        "max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:m-0 max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl max-md:pb-[calc(1rem+var(--safe-area-bottom))] max-md:data-[state=open]:animate-sheet-up max-md:data-[state=closed]:animate-sheet-down",
-        className,
-      )}
+      className={cn(CAJA_MODAL, TAMANOS_MODAL[size], CAJA_MODAL_MOVIL, className)}
       {...props}
     >
       {children}
       {!hideDefaultClose && (
         // Cierre de 44 px solo en movil (objetivo tactil); en escritorio 32 px como los botones de icono de Likida.
-        <DialogPrimitive.Close className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-canvas hover:text-foreground disabled:pointer-events-none md:size-8">
+        <DialogPrimitive.Close className={BOTON_CIERRE_MODAL}>
           <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
           <span className="sr-only">Cerrar</span>
         </DialogPrimitive.Close>
@@ -55,13 +46,33 @@ const DialogContent = React.forwardRef<
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
-const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex min-w-0 flex-col gap-1 pr-10 text-left", className)} {...props} />
-);
+/**
+ * Cabecera del modal. Con `icono` pinta el chip circular de 40 px a la izquierda del titulo
+ * (`tono` lo tiñe: danger para confirmaciones destructivas).
+ */
+const DialogHeader = ({
+  className,
+  icono: Icono,
+  tono = "default",
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & { icono?: React.ComponentType<{ className?: string; strokeWidth?: number | string }>; tono?: keyof typeof CHIP_ICONO_MODAL }) =>
+  Icono ? (
+    <div className={cn("flex min-w-0 items-start gap-3 pr-10 text-left", className)} {...props}>
+      <span aria-hidden="true" className={cn("flex size-10 shrink-0 items-center justify-center rounded-full", CHIP_ICONO_MODAL[tono])}>
+        <Icono className="size-5" strokeWidth={1.75} />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">{children}</div>
+    </div>
+  ) : (
+    <div className={cn("flex min-w-0 flex-col gap-1 pr-10 text-left", className)} {...props}>
+      {children}
+    </div>
+  );
 DialogHeader.displayName = "DialogHeader";
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props} />
+  <div className={cn("flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:items-center sm:justify-end", className)} {...props} />
 );
 DialogFooter.displayName = "DialogFooter";
 
@@ -69,7 +80,7 @@ const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title ref={ref} className={cn("text-sm font-semibold", className)} {...props} />
+  <DialogPrimitive.Title ref={ref} className={cn("text-base font-semibold leading-snug", className)} {...props} />
 ));
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
 

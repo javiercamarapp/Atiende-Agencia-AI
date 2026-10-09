@@ -36,6 +36,19 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "Table a mano en listados de despachos", viola: "<Table><TableBody /></Table>", limpio: "<DataTable />", ruta: "verticals/despachos/pages/Cobranza.tsx" },
   { regla: "AlertDialog local en restaurantes", viola: "<AlertDialog open>x</AlertDialog>", limpio: "const { confirmar, dialogo } = useConfirm();", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "Guardando a mano en restaurantes", viola: '<Button>{saving ? "Guardando…" : "Guardar"}</Button>', limpio: "<Button loading={saving}>Guardar</Button>", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "primitivo Radix de overlay", viola: 'import * as D from "@radix-ui/react-dialog";', limpio: 'import { Dialog } from "@atiende/ui";' },
+  { regla: "primitivo Radix de overlay", viola: "import { Root } from '@radix-ui/react-select';", limpio: 'import { Select } from "@atiende/ui";' },
+  { regla: "sonner importado directo", viola: 'import { toast } from "sonner";', limpio: 'import { notify } from "@atiende/ui";' },
+  { regla: "toast directo", viola: 'toast.success("Listo");', limpio: 'notify.success("Listo");', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "toast directo", viola: 'import { toast } from "@atiende/ui";', limpio: 'import { notify } from "@atiende/ui";', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "alert() nativo", viola: "alert(mensaje);", limpio: "notify.error(mensaje);" },
+  { regla: "overlay a mano en restaurantes", viola: "<div role='dialog' />", limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "overlay a mano en restaurantes", viola: '<div role={"listbox"} />', limpio: "<Selector />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "alert() nativo", viola: 'window.alert("Listo");', limpio: 'notify.success("Listo");' },
+  { regla: "alert() nativo", viola: '<div aria-modal="true" role="dialog" />', limpio: "<Dialog open />" },
+  { regla: "overlay a mano en restaurantes", viola: '<div role="dialog" className="x" />', limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "overlay a mano en restaurantes", viola: '<div className="fixed inset-0 z-50" />', limpio: '<div className="relative" />', ruta: "verticals/restaurantes/components/Z.tsx" },
+  { regla: "overlay a mano en restaurantes", viola: '<input list="x" /><datalist id="x" />', limpio: "<Selector />", ruta: "verticals/restaurantes/pages/Y.tsx" },
 ];
 
 const porRegla = (prefijo: string) => {
@@ -60,8 +73,8 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
   }
 
   it("las reglas de trinquete de restaurantes no aplican a otras zonas", () => {
-    for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes"]) {
-      expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'}", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
+    for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes", "overlay a mano en restaurantes", "toast directo en restaurantes"]) {
+      expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'} <div role='dialog' /> <datalist />", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
     }
   });
 
@@ -75,6 +88,25 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
       expect(infractores([fuente("<Table />", `verticals/despachos/${ruta}`)], regla)).toHaveLength(1);
     }
     expect(infractores([fuente("<Table />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
+  });
+
+  it("WidgetWhatsApp (panel no modal): exento solo de aria-modal y del overlay a mano; en cualquier otro archivo las reglas aplican", () => {
+    const panel = '<div role="dialog" aria-modal="false" />';
+    const ruta = "verticals/restaurantes/preview/WidgetWhatsApp.tsx";
+    expect(infractores([fuente(panel, ruta)], porRegla("alert() nativo"))).toEqual([]);
+    expect(infractores([fuente(panel, ruta)], porRegla("overlay a mano en restaurantes"))).toEqual([]);
+    expect(infractores([fuente(panel, "verticals/restaurantes/preview/Otro.tsx")], porRegla("alert() nativo"))).toHaveLength(1);
+    expect(infractores([fuente(panel, "verticals/restaurantes/preview/Otro.tsx")], porRegla("overlay a mano en restaurantes"))).toHaveLength(1);
+    // el resto de reglas siguen aplicando al widget
+    expect(infractores([fuente('<p className="text-[13px]" />', ruta)], porRegla("tamano de texto arbitrario"))).toHaveLength(1);
+  });
+
+  it("alert(: x.alert(, useAlert( y role=alert son codigo limpio; toast directo no aplica fuera de restaurantes", () => {
+    const alerta = porRegla("alert() nativo");
+    for (const limpio of ["avisos.alert(1);", "const a = useAlert();", '<p role="alert">x</p>', "const alertas = 1;"]) {
+      expect(infractores([fuente(limpio)], alerta), limpio).toEqual([]);
+    }
+    expect(infractores([fuente('toast.success("x");', "verticals/hoteles/pages/Y.tsx")], porRegla("toast directo en restaurantes"))).toEqual([]);
   });
 
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {

@@ -88,6 +88,8 @@
 
     /* Logo de Atiende (excepcion de marca: solo lo usa AtiendeLogo). */
     --marca-atiende: 224 76% 48%;
+    /* Final de la franja de los formularios (secondary del repo suelto). */
+    --franja-fin: 224 76% 48%;
 
     /* Rampa neutra de graficas (--g1..--g5 de Likida). */
     --chart-1: 240 4.8% 95.9%;
@@ -95,6 +97,8 @@
     --chart-3: 240 5% 64.9%;
     --chart-4: 240 5.3% 26.1%;
     --chart-5: 240 5.9% 10%;
+    /* Serie de ventas/ingresos del Resumen del repo suelto (AdminDashboard: hsl(142 71% 45%)). */
+    --chart-ventas: 142 71% 45%;
 
     /* Odometro (contador retro de Likida): degradado de cada digito y raya central. */
     --odometro-a: #262626;
@@ -235,12 +239,14 @@
     --sidebar-ring: 213 82% 62%;
 
     --marca-atiende: 213 82% 62%;
+    --franja-fin: 199 89% 55%;
 
     --chart-1: 240 6.9% 11.4%;
     --chart-2: 240 6.7% 17.6%;
     --chart-3: 240 3.4% 45.5%;
     --chart-4: 240 4.9% 83.9%;
     --chart-5: 240 4.8% 95.9%;
+    --chart-ventas: 142 71% 45%;
 
     /* Tintes oscuros OPACOS (mezcla del color sobre --card), no alfa: asi
        admiten bg-success-tint y el contraste es medible. */
@@ -374,6 +380,58 @@
   .stagger-2 { animation-delay: 0.2s; }
   .stagger-3 { animation-delay: 0.3s; }
   .stagger-4 { animation-delay: 0.4s; }
+
+  /* Catalogo de movimiento del repo suelto (index.css del original) que faltaba: flotar, ondas y
+     el vaiven de las esferas. Siempre dentro de motion-safe: sin movimiento permitido se quedan quietas. */
+  @media (prefers-reduced-motion: no-preference) {
+    .animate-float { animation: float 6s ease-in-out infinite; }
+    .animate-wave-float { animation: waveFloat 3s ease-in-out infinite; }
+    .animate-wave-slide { animation: waveSlide 12s linear infinite; }
+    .animate-wiggle-float { animation: wiggleFloat 8s ease-in-out infinite; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-15px); }
+  }
+  @keyframes waveFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+  @keyframes waveSlide {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes wiggleFloat {
+    0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+    25% { transform: translateY(-8px) rotate(1deg) scale(1.02); }
+    50% { transform: translateY(-12px) rotate(-1deg) scale(1.01); }
+    75% { transform: translateY(-6px) rotate(0.5deg) scale(1.015); }
+  }
+
+  /* Barra de autocierre del toast (Toaster de ui/sonner.tsx). Dura --toast-ms (la pone notify), se
+     pausa al pasar el cursor o enfocar (sonner ya pausa el temporizador) y desaparece si el toast
+     es persistente (--toast-ms: 0ms) o hay reduced-motion. */
+  .toast-progreso::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 3px;
+    background: currentColor;
+    opacity: 0.25;
+    transform-origin: left center;
+    animation: toast-progreso var(--toast-ms, 4000ms) linear forwards;
+  }
+  .toast-progreso[data-type="loading"]::after,
+  .toast-progreso[style*="--toast-ms: 0ms"]::after { display: none; }
+  .toast-progreso:hover::after,
+  .toast-progreso:focus-within::after { animation-play-state: paused; }
+  @keyframes toast-progreso {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toast-progreso::after { display: none; }
+  }
 
   @media (prefers-reduced-motion: no-preference) {
     button:not(:disabled):active {

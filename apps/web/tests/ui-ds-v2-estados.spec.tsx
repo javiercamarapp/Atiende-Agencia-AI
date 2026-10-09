@@ -75,6 +75,7 @@ describe("EstadoVacio y EstadoError", () => {
     const onClick = vi.fn();
     rendered = renderComponent(<EstadoVacio titulo="Sin citas" mensaje="Crea la primera" accion={<button onClick={onClick}>Nueva</button>} />);
     expect(raiz().getAttribute("role")).toBe("status");
+    // por defecto (fuera de restaurantes) es la variante "fila" de Likida
     expect(raiz().className).toContain("p-4");
     click(rendered.container.querySelector("button")!);
     expect(onClick).toHaveBeenCalled();
@@ -83,6 +84,11 @@ describe("EstadoVacio y EstadoError", () => {
     expect(raiz().className).not.toContain("p-4");
     expect(raiz().className).toContain("mt-2");
     expect(raiz().textContent).toContain("Sin datos aún");
+    // variante centrada (el default dentro de restaurantes)
+    rendered.rerender(<EstadoVacio variante="centrado" mensaje="Nada" />);
+    expect(raiz().className).toContain("py-10");
+    rendered.rerender(<EstadoVacio variante="centrado" mensaje="Nada" compacto />);
+    expect(raiz().className).toContain("py-6");
   });
 
   it("EstadoError: role=alert, Reintentar llama al handler; sin handler no hay boton; compacto", () => {

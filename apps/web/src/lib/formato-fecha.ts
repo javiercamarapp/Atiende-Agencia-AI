@@ -21,6 +21,12 @@ export function horaEsMx(iso: string | Date, zonaHoraria: string = "America/Mexi
   return new Date(iso).toLocaleTimeString("es-MX", { timeZone: zonaHoraria, timeStyle: "short" });
 }
 
+// Hora de un timestamp en 24 horas ("20:15"), en la zona del negocio: la que muestran las burbujas del chat de prueba del agente de WhatsApp
+// (igual que el widget original). Intl.DateTimeFormat con hourCycle h23: la medianoche es "00:05", nunca "24:05".
+export function hora24EsMx(fecha: Date | string, zonaHoraria: string | undefined = "America/Mexico_City"): string {
+  return new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zonaHoraria }).format(new Date(fecha));
+}
+
 // --- Fechas de "solo día" (columnas `date` de Postgres: "YYYY-MM-DD", sin ---
 // --- hora ni zona) -- vencimientos, fecha límite fiscal, check-in/check-out, ---
 // --- periodos de estado de cuenta, fechas de factura, etc. -----------------
