@@ -32,7 +32,6 @@ import {
   VozNoDisponibleError,
   VozProveedorError,
   VozRechazadaError,
-  consumeRateLimit,
   anteponerConocimiento,
   bloqueConocimientoDelTurno,
   esVozDeGemini,
@@ -52,6 +51,7 @@ import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { consumirTopesEnSesionDeSistema } from "./rate-limit-sistema.ts";
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECRETO_PREVIEW_MIN = 16;
@@ -217,8 +217,9 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (!secreto || secreto.length < SECRETO_PREVIEW_MIN) throw Errors.serviceUnavailable("Voz no configurada: falta VOICE_PREVIEW_TOKEN_SECRET.");
 
     const restaurantes = deps.restaurantesRepo(c.get("db"));
-    const limited = await consumeRateLimit(restaurantes, "voz-preview-sesion", requestActor(c.req.raw, actorUserId), 20, 600);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    // `consume_api_rate_limit` es de SOLO sistema: se consume en su propia sesion de sistema (ver rate-limit-sistema.ts), no en la del staff.
+    const agotado = await consumirTopesEnSesionDeSistema(deps, [{ scope: "voz-preview-sesion", actor: requestActor(c.req.raw, actorUserId), maxRequests: 20, windowSeconds: 600 }]);
+    if (agotado !== null) throw Errors.tooManyRequests();
 
     // 2) Voz: la pedida o la guardada; siempre dentro del catálogo del proveedor.
     const repo = vozRepo(c);
@@ -344,8 +345,8 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (raw.argumentos !== undefined && (typeof raw.argumentos !== "object" || raw.argumentos === null || Array.isArray(raw.argumentos))) throw Errors.validation("argumentos: se esperaba un objeto.");
 
     const restaurantes = deps.restaurantesRepo(c.get("db"));
-    const limited = await consumeRateLimit(restaurantes, "voz-preview-herramienta", requestActor(c.req.raw, `${c.get("userId")}:${sesionId}`), 60, 600);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    const agotado = await consumirTopesEnSesionDeSistema(deps, [{ scope: "voz-preview-herramienta", actor: requestActor(c.req.raw, `${c.get("userId")}:${sesionId}`), maxRequests: 60, windowSeconds: 600 }]);
+    if (agotado !== null) throw Errors.tooManyRequests();
 
     const outcome = await executeAgentToolSafely(
       restaurantes,
