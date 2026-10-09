@@ -285,8 +285,8 @@ describe("medidas de los demas pop-ups y estados", () => {
     expect(pop.textContent).toBe("Detalle");
   });
 
-  it("EstadoVacio: tarjeta p-4, chip de 36 px (radio 12, canvas + hairline), icono de 17 px y texto de 14 px", () => {
-    montar(<EstadoVacio titulo="Sin citas" mensaje="Crea la primera" />);
+  it("EstadoVacio (variante fila, la de Likida): tarjeta p-4, chip de 36 px (radio 12, canvas + hairline), icono de 17 px y texto de 14 px", () => {
+    montar(<EstadoVacio variante="fila" titulo="Sin citas" mensaje="Crea la primera" />);
     const raiz = rendered!.container.firstElementChild as HTMLElement;
     tiene(raiz, "card", "rounded-lg", "border", "border-border", "bg-card", "shadow-card", "flex", "items-start", "gap-3", "p-4");
     expect(raiz.className).not.toContain("border-dashed");
@@ -460,7 +460,7 @@ describe("accesibilidad de los pop-ups", () => {
     expect(document.activeElement).toBe(disparador);
   });
 
-  it("FormDialog: cierre circular de 44 px en movil (28 px en escritorio) con nombre 'Cerrar', franja de marca de 4 px y titulo de 14 px", () => {
+  it("FormDialog: cierre circular de 44 px en movil (28 px en escritorio) con nombre 'Cerrar', franja de marca de 4 px y titulo de 16 px", () => {
     montar(
       <FormDialog open onOpenChange={() => {}} titulo="Nueva reserva" subtitulo="Captura los datos">
         <input aria-label="Nombre" />
@@ -471,7 +471,7 @@ describe("accesibilidad de los pop-ups", () => {
     tiene(cerrar, "size-11", "md:size-7", "rounded-full");
     // franja de marca del ModalFormularioLateral del repo suelto (h-1, primary -> franja)
     tiene(d.querySelector(".bg-gradient-to-r"), "h-1", "from-primary", "to-franja");
-    tiene(document.getElementById(d.getAttribute("aria-labelledby")!), "text-sm", "font-semibold");
+    tiene(document.getElementById(d.getAttribute("aria-labelledby")!), "text-base", "font-semibold");
   });
 
   it("los estados se anuncian: vacio como status, error como alert y carga como status ocupado con nombre", () => {

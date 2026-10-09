@@ -86,7 +86,8 @@ describe("Selector", () => {
     );
     await abrir();
     keydown(document.activeElement ?? document.body, "Escape");
-    await act(async () => flushMicrotasks());
+    // Radix devuelve el foco al disparador en un temporizador propio
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
     expect(lista()).toBeNull();
     expect(onValueChange).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(combo());
@@ -132,6 +133,16 @@ describe("Selector", () => {
     await abrir();
     const grupos = [...document.body.querySelectorAll('[role="group"]')];
     expect(grupos.map((g) => g.textContent)).toEqual(["NorteUno", "SurDos"]);
+  });
+
+  it("sin opcion vacia, value=\"\" muestra el marcador (placeholder)", () => {
+    rendered = renderComponent(
+      <Selector aria-label="Zona" value="" placeholder="Selecciona una zona" onValueChange={() => {}}>
+        <option value="a">Uno</option>
+      </Selector>,
+    );
+    expect(combo().textContent).toContain("Selecciona una zona");
+    expect(combo().hasAttribute("data-placeholder")).toBe(true);
   });
 
   it("deshabilitado no abre; aria-invalid y descripcion se propagan al disparador", () => {

@@ -220,6 +220,9 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
     ref,
   ) => {
     const grupos = React.useMemo(() => normalizarHijos(children), [children]);
+    // Sin opcion de valor "": Radix ya trata "" como "sin seleccion" y pinta el marcador; con ella, "" es un valor real.
+    const hayVacio = grupos.some((g) => g.opciones.some((o) => o.valor === ""));
+    const haciaRadixLocal = (v: string | undefined) => (hayVacio ? haciaRadix(v) : v);
     const cambiar = (v: string) => {
       const real = desdeRadix(v);
       onValueChange?.(real);
@@ -231,8 +234,8 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
     return (
       <div className={cn("w-full", wrapperClassName)}>
         <Select
-          value={value === undefined ? undefined : haciaRadix(String(value))}
-          defaultValue={defaultValue === undefined ? undefined : haciaRadix(String(defaultValue))}
+          value={value === undefined ? undefined : haciaRadixLocal(String(value))}
+          defaultValue={defaultValue === undefined ? undefined : haciaRadixLocal(String(defaultValue))}
           onValueChange={cambiar}
           disabled={disabled}
           required={required}

@@ -117,6 +117,7 @@ const preset: Omit<Config, "content"> = {
           3: "hsl(var(--chart-3))",
           4: "hsl(var(--chart-4))",
           5: "hsl(var(--chart-5))",
+          ventas: "hsl(var(--chart-ventas))",
         },
         // Marca Atiende: solo el logo.
         "marca-atiende": "hsl(var(--marca-atiende))",

@@ -97,6 +97,8 @@
     --chart-3: 240 5% 64.9%;
     --chart-4: 240 5.3% 26.1%;
     --chart-5: 240 5.9% 10%;
+    /* Serie de ventas/ingresos del Resumen del repo suelto (AdminDashboard: hsl(142 71% 45%)). */
+    --chart-ventas: 142 71% 45%;
 
     /* Odometro (contador retro de Likida): degradado de cada digito y raya central. */
     --odometro-a: #262626;
@@ -244,6 +246,7 @@
     --chart-3: 240 3.4% 45.5%;
     --chart-4: 240 4.9% 83.9%;
     --chart-5: 240 4.8% 95.9%;
+    --chart-ventas: 142 71% 45%;
 
     /* Tintes oscuros OPACOS (mezcla del color sobre --card), no alfa: asi
        admiten bg-success-tint y el contraste es medible. */
