@@ -131,22 +131,21 @@ describe("ConfirmDialog destructivo", () => {
 });
 
 describe("Toaster / notify", () => {
-  it("limite de apilado, posicion fija y region asertiva solo para errores", async () => {
+  it("limite de apilado, posicion fija y aria-live asertivo solo en los errores (sin duplicar el texto)", async () => {
     expect(TOASTS_VISIBLES).toBe(3);
     rendered = renderComponent(<Toaster />);
-    const region = () => document.body.querySelector<HTMLElement>('[data-testid="toaster-asertivo"]')!;
-    expect(region().getAttribute("aria-live")).toBe("assertive");
-    expect(region().getAttribute("role")).toBe("alert");
     await act(async () => {
       notify.success("Guardado");
-      await new Promise((r) => setTimeout(r, 60));
-    });
-    expect(region().textContent).toBe("");
-    await act(async () => {
       notify.error("No se pudo guardar", { description: "Sin conexion" });
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 150));
     });
-    expect(region().textContent).toBe("No se pudo guardar. Sin conexion");
+    const toasts = [...document.body.querySelectorAll<HTMLElement>("[data-sonner-toast]")];
+    const error = toasts.find((t) => t.getAttribute("data-type") === "error")!;
+    const exito = toasts.find((t) => t.getAttribute("data-type") === "success")!;
+    expect(error.getAttribute("aria-live")).toBe("assertive");
+    expect(exito.getAttribute("aria-live")).toBeNull();
+    // el texto del error aparece una sola vez en el documento
+    expect(document.body.textContent!.split("No se pudo guardar").length - 1).toBe(1);
     const lista = document.body.querySelector("[data-sonner-toaster]")!;
     expect(lista.getAttribute("data-y-position")).toBe("bottom");
     expect(lista.getAttribute("data-x-position")).toBe("right");

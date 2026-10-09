@@ -25,31 +25,19 @@ function useTemaOscuro(): "light" | "dark" {
   return tema;
 }
 
-// Anuncio asertivo: sonner anuncia todo con aria-live="polite". Un error debe
-// interrumpir al lector de pantalla (assertive), asi que notify.error ademas lo
-// escribe en esta region, que vive dentro del Toaster.
-const anunciosAsertivos = new Set<(m: string) => void>();
-function anunciarAsertivo(mensaje: string) {
-  anunciosAsertivos.forEach((f) => f(mensaje));
-}
-function RegionAsertiva() {
-  const [mensaje, setMensaje] = React.useState("");
+// Anuncio asertivo: sonner anuncia todo con aria-live="polite". Un error debe interrumpir al lector de pantalla,
+// asi que los toasts de tipo error se marcan aria-live="assertive" en cuanto entran al DOM. No se duplica el
+// texto en otra region (los lectores de pantalla y las pruebas ven un solo mensaje).
+function useErroresAsertivos() {
   React.useEffect(() => {
-    const f = (m: string) => {
-      setMensaje("");
-      // un tick de por medio para que repetir el mismo texto se vuelva a anunciar
-      setTimeout(() => setMensaje(m), 30);
-    };
-    anunciosAsertivos.add(f);
-    return () => {
-      anunciosAsertivos.delete(f);
-    };
+    if (typeof document === "undefined") return undefined;
+    const marcar = (raiz: ParentNode) =>
+      raiz.querySelectorAll<HTMLElement>('[data-sonner-toast][data-type="error"]:not([aria-live])').forEach((el) => el.setAttribute("aria-live", "assertive"));
+    marcar(document);
+    const obs = new MutationObserver(() => marcar(document));
+    obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-type"] });
+    return () => obs.disconnect();
   }, []);
-  return (
-    <div role="alert" aria-live="assertive" aria-atomic="true" className="sr-only" data-testid="toaster-asertivo">
-      {mensaje}
-    </div>
-  );
 }
 
 /** Limite de toasts apilados a la vez (los demas esperan; sonner los pliega). */
@@ -57,9 +45,9 @@ export const TOASTS_VISIBLES = 3;
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const tema = useTemaOscuro();
+  useErroresAsertivos();
   return (
     <>
-      <RegionAsertiva />
       <Sonner
         theme={tema}
         closeButton
@@ -151,7 +139,6 @@ export const notify = {
   success: (mensaje: string, o?: NotifyOpciones) => toast.success(mensaje, opcionesSonner("success", o)),
   warning: (mensaje: string, o?: NotifyOpciones) => toast.warning(mensaje, opcionesSonner("warning", o)),
   error: (mensaje: string, o?: NotifyOpciones) => {
-    anunciarAsertivo(o?.description ? `${mensaje}. ${o.description}` : mensaje);
     return toast.error(mensaje, opcionesSonner("error", o));
   },
   /** Toast persistente de "cargando" (sin barra); se reemplaza con el mismo `id`. */
