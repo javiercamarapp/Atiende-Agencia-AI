@@ -309,14 +309,9 @@ export const rutasRestaurantes: readonly Ruta[] = [
 
   // ---- Pruebas del agente (UNI-R4): el chat de WhatsApp de demostracion y la llamada de prueba. Solo existen en la API simulada de e2e; el
   // contrato es el del servidor real (agente-preview.ts y voz-admin.ts): respuesta {respuesta, escalado, pedidoSimulado} y pedido PRUEBA-xxxx. ----
-  { metodo: "GET", patron: `${B}/whatsapp/kpi`, roles: ["owner", "admin"], manejador: () => ({
-      disponible: true, zonaHoraria: "America/Merida", hoy: "2026-10-08", desde: "2026-09-25", hasta: "2026-10-08",
-      resumen: { dias: 14, conversaciones: 74, conversacionesConPedido: 52, conversacionesConHandoff: 4, conversionPct: 70.3, handoffPct: 5.4, pedidos: 52, handoffs: 4, pedidosOrg: 52, orgEsDemo: false, costoLlmOrgCentavosMxn: 18400, costoLlmPorPedidoCentavosMxn: 354 },
-      serie: [{ fecha: "2026-10-06", conversaciones: 11, conversacionesConPedido: 8, conversionPct: 72.7, handoffPct: 0, pedidos: 8, handoffs: 0, pedidosOrg: 8, costoLlmOrgCentavosMxn: 2800, costoLlmPorPedidoCentavosMxn: 350 }, { fecha: "2026-10-07", conversaciones: 13, conversacionesConPedido: 9, conversionPct: 69.2, handoffPct: 7.7, pedidos: 9, handoffs: 1, pedidosOrg: 9, costoLlmOrgCentavosMxn: 3200, costoLlmPorPedidoCentavosMxn: 355 }],
-      entrega: { disponible: false, resumen: { dias: 14, enviados: 0, entregados: 0, leidos: 0, fallidos: 0, sinEstado: 0, entregaPct: null, lecturaPct: null, fallosPorMotivo: {} }, serie: [] },
-    }) },
-  { metodo: "POST", patron: `${B}/agente-whatsapp/preview/mensaje`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+  { metodo: "POST", patron: `${B}/agente-whatsapp/preview/mensaje`, roles: ["owner", "admin"], manejador: (p) => {
       const c = (p.cuerpo ?? {}) as { mensajes?: { rol: string; texto: string }[] };
+      if ((c.mensajes ?? []).length > 40) return fallo(400, "mensajes: se esperaba una lista de 1 a 40 mensajes.");
       const ultimo = [...(c.mensajes ?? [])].reverse().find((m) => m.rol === "usuario")?.texto ?? "";
       if (/pedido|quiero|tacos/i.test(ultimo)) {
         return { respuesta: "Listo, le anoto 3 tacos al pastor y una horchata para recoger. Son $183.00. ¿Confirmo su pedido?", escalado: false, pedidoSimulado: { id: "PRUEBA-AB12", branch: PROP.nombre, total: 183, status: "simulado", payment_method: "efectivo", simulado: true, items: [{ name: "Tacos al pastor (orden)", quantity: 3, price: 45 }, { name: "Horchata", quantity: 1, price: 48 }] } };

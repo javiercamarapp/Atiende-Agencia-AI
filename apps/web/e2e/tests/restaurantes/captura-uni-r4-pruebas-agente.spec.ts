@@ -46,7 +46,7 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
     await expect(chat(page).getByText("bienvenido a Taquería El Faro")).toBeVisible();
     await campo.fill("quiero 3 tacos al pastor y una horchata");
     await campo.press("Enter");
-    await expect(chat(page).getByText("Pedido simulado · PRUEBA-AB12 · Prueba")).toBeVisible();
+    await expect(chat(page).getByText("Pedido simulado · PRUEBA-AB12 · Prueba", { exact: true })).toBeVisible();
     await expect(chat(page).getByTestId("tarjeta-pedido-simulado")).toContainText("$183.00");
     await expect(chat(page).locator(".wa-burbuja--cliente")).toHaveCount(2);
     await expect(chat(page).locator(".wa-burbuja--cliente").first()).toContainText(/\d{2}:\d{2}/);
@@ -75,7 +75,7 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
     await campo.fill("hola");
     await campo.press("Enter");
     await expect(chat(page).getByRole("alert")).toContainText("requiere OPENROUTER_API_KEY");
-    await expect(chat(page).locator(".wa-burbuja--agente")).toHaveCount(0);
+    await expect(chat(page).locator(".wa-burbuja--agente:not(.wa-burbuja--error)")).toHaveCount(0);
     await expect(campo).toHaveValue("hola");
   });
 
@@ -87,15 +87,32 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
     await expect(chat(page).getByLabel("Probar con los cambios sin guardar")).toBeVisible();
   });
 
+  test("Agente de voz: el globo flotante «Iniciar llamada» abre la vista previa", async ({ page }) => {
+    await page.goto(`${BASE}/agente-voz`);
+    await page.getByTestId("globo-llamada").click();
+    await expect(page.getByRole("dialog", { name: /Vista previa de llamada/ })).toBeVisible();
+  });
+
   test("Agente de voz: «Vista previa» arriba a la derecha, orbe, chip «● Llamada en curso» y boton que pasa a «Terminar llamada»", async ({ page, mock, vigilante }, info) => {
     await simularLlamada(page);
     await page.goto(`${BASE}/agente-voz`);
-    const abrir = main(page).getByRole("button", { name: "Vista previa" }).first();
+    // «Vista previa» va dentro de la barra superior de la página (escritorio) y en el encabezado de la página en móvil.
+    const abrir = page.getByRole("button", { name: "Vista previa", exact: true }).locator("visible=true").first();
     await expect(abrir).toBeVisible();
+    if (!info.project.name.startsWith("movil")) await expect(page.getByTestId("barra-pagina").getByRole("button", { name: "Vista previa" })).toBeVisible();
+    await expect(page.getByTestId("globo-llamada")).toBeVisible();
     await foto(page, "voz-pagina", info.project.name);
+    await foto(page, "voz-globo", info.project.name);
     await abrir.click();
     const vista = page.getByRole("dialog", { name: /Vista previa de llamada/ });
     await expect(vista).toBeVisible();
+    await expect(page.getByTestId("globo-llamada")).toBeHidden();
+    // En escritorio la vista previa cubre tambien la barra superior (como el original).
+    if (!info.project.name.startsWith("movil")) {
+      const caja = await vista.boundingBox();
+      const barra = await page.getByTestId("barra-pagina").boundingBox();
+      expect(caja!.y).toBeLessThanOrEqual(barra!.y + 1);
+    }
     await expect(vista.getByTestId("chip-estado")).toHaveText("Vista previa");
     await expect(vista).toContainText("Aún no hay una llamada activa");
     await expect(vista).toContainText("Sucursal Centro");
@@ -117,6 +134,7 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
     await expect(vista).toBeHidden();
     // La llamada de prueba solo emite la sesion efimera (POST); nada mas se escribe.
     const escrituras = await mock.escrituras();
+    expect(escrituras.length).toBeGreaterThan(0);
     expect(escrituras.every((e) => /\/voz\/preview\//.test(e.ruta))).toBe(true);
     vigilante.verificar();
   });
