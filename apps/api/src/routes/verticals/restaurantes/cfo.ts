@@ -22,7 +22,6 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { consumeRateLimit } from "@atiende/domain-restaurantes";
 import {
   CfoNoDisponibleError,
   CfoParametroInvalidoError,
@@ -40,6 +39,7 @@ import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { assertAccion } from "./permisos-accion.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { consumirTopesEnSesionDeSistema } from "./rate-limit-sistema.ts";
 import {
   CFO_BODY_MAX_BYTES,
   parsearConfig,
@@ -147,8 +147,9 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const contexto = (c: Context<CoreAuthHonoEnv>, ids: readonly string[] | null): Promise<ContextoCfo> => construirContextoCfo(deps, c, ids);
 
   async function limitar(c: Context<CoreAuthHonoEnv>, scope: string, max: number, ventanaSeg: number): Promise<void> {
-    const r = await consumeRateLimit(deps.restaurantesRepo(c.get("db")), scope, `${c.get("organizationId")}:${c.get("userId")}`, max, ventanaSeg);
-    if (!r.allowed) throw Errors.tooManyRequests();
+    // `consume_api_rate_limit` es de SOLO sistema (auth.uid() nulo): en la sesion del staff lanzaba 42501 (500). Sesion de sistema propia.
+    const agotado = await consumirTopesEnSesionDeSistema(deps, [{ scope, actor: `${c.get("organizationId")}:${c.get("userId")}`, maxRequests: max, windowSeconds: ventanaSeg }]);
+    if (agotado !== null) throw Errors.tooManyRequests();
   }
 
   /** JSON con ETag débil: si el cliente ya tiene esta versión, 304 sin cuerpo. */

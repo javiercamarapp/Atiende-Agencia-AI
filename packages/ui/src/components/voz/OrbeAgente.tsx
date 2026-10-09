@@ -39,6 +39,11 @@ export interface OrbeAgenteProps {
    * como cargador en reposo/conectando; si no se pasa, el orbe es solo CSS.
    */
   readonly videoSrc?: string;
+  /**
+   * El video se ve en TODOS los estados (como el orbe del original, que nunca lo cambia por una animación CSS); el halo, las ondas y el anillo
+   * siguen reaccionando al audio y al estado alrededor y encima de él. Sin esta bandera el video solo se ve en reposo/conectando.
+   */
+  readonly videoSiempre?: boolean;
   readonly className?: string;
 }
 
@@ -49,7 +54,7 @@ export interface OrbeAgenteProps {
  * sin pasar por el estado de React (evita re-renderizar 60 veces por segundo).
  * `data-volumen` refleja el mismo valor para pruebas y depuración.
  */
-export function OrbeAgente({ modo, volumenEntrada = 0, volumenSalida = 0, size = 224, colores, videoSrc, className }: OrbeAgenteProps) {
+export function OrbeAgente({ modo, volumenEntrada = 0, volumenSalida = 0, size = 224, colores, videoSrc, videoSiempre = false, className }: OrbeAgenteProps) {
   const raizRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   // Los niveles viajan por ref: el bucle de rAF lee siempre el último sin reiniciarse.
@@ -81,7 +86,7 @@ export function OrbeAgente({ modo, volumenEntrada = 0, volumenSalida = 0, size =
     };
   }, []);
 
-  const videoVisible = Boolean(videoSrc) && (modo === "reposo" || modo === "conectando");
+  const videoVisible = Boolean(videoSrc) && (videoSiempre || modo === "reposo" || modo === "conectando");
 
   // Boomerang del video original: adelante hasta el final, luego hacia atrás hasta
   // el inicio, repite; se maneja currentTime a mano vía rAF para que nunca haya un
