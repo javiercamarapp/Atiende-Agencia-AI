@@ -154,7 +154,10 @@ test.describe("restaurantes CFO B @humo", () => {
     await expect(page.getByRole("listbox")).toBeVisible();
     await expect.poll(async () => page.getByRole("option").count(), { message: "la lista debe traer opciones antes de afirmar que falta una" }).toBeGreaterThan(0);
     await expect(page.getByRole("option", { name: /Teléfono/ })).toHaveCount(0);
-    await page.keyboard.press("Escape");
+    // Se cierra eligiendo la opcion ya marcada (Escape tambien podria cerrar el dialogo que contiene la lista).
+    const marcada = page.locator('[role="option"][data-state="checked"]');
+    if ((await marcada.count()) > 0) await marcada.first().click();
+    else await page.keyboard.press("Escape");
     await expect(page.getByRole("listbox")).toBeHidden();
     await dialogo.getByRole("button", { name: "Revisar vista previa" }).click();
     await expect(dialogo.getByTestId("sr-vista-previa")).toContainText("2 renglones aceptados");

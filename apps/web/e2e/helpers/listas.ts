@@ -17,12 +17,14 @@ export async function elegirEtiqueta(disparador: Locator, etiqueta: string): Pro
   await page.getByRole("option", { name: etiqueta, exact: true }).click();
 }
 
-/** Afirma el valor ELEGIDO (el `toHaveValue` de un <select>): abre la lista y comprueba que Radix marca esa opcion como elegida; la cierra al terminar. */
+/** Afirma el valor ELEGIDO (el `toHaveValue` de un <select>): abre la lista y comprueba que Radix marca esa opcion como elegida; la cierra confirmando esa misma opcion. */
 export async function esperarValor(disparador: Locator, valor: string): Promise<void> {
   const page: Page = disparador.page();
   await disparador.click();
   await expect(page.getByRole("listbox")).toBeVisible();
-  await expect(page.locator(`[role="option"][data-valor="${valor}"]`)).toHaveAttribute("data-state", "checked");
-  await page.keyboard.press("Escape");
+  const opcion = page.locator(`[role="option"][data-valor="${valor}"]`);
+  await expect(opcion).toHaveAttribute("data-state", "checked");
+  // Se cierra confirmando la misma opcion (no cambia nada); Escape tambien podria cerrar el dialogo que contiene la lista.
+  await opcion.click();
   await expect(page.getByRole("listbox")).toBeHidden();
 }
