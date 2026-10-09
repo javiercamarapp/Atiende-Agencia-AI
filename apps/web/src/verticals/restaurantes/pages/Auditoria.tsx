@@ -19,7 +19,7 @@
 //    trae todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, DataTable, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, DataTable, Input, Label, Selector, PageContainer, StatusBadge } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -141,14 +141,14 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
                 Tipo de acción
-                <NativeSelect value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")}>
+                <Selector value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")}>
                   <option value="">Todos</option>
                   {AUDIT_LOG_ENTITY_TYPES.map((t) => (
                     <option key={t} value={t}>
                       {AUDIT_LOG_ENTITY_TYPE_LABELS[t]}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[160px]`}>
                 Desde

@@ -37,7 +37,7 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { Selector, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
@@ -249,13 +249,13 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
         <label htmlFor={idSelect} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
           Sucursal activa
         </label>
-        <NativeSelect id={idSelect} size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
+        <Selector id={idSelect} size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
           {branches.map((b) => (
             <option key={b.propertyId} value={b.propertyId}>
               {b.name}
             </option>
           ))}
-        </NativeSelect>
+        </Selector>
       </div>
     ) : (
       <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>

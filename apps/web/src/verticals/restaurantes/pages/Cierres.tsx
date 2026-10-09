@@ -4,7 +4,7 @@
 // Un cierre generado no se recalcula: se rotula con su hora de generación. Sin dato = "—" con su razón (nunca 0 inventado).
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, CircleSlash, Clock, DollarSign, ShoppingBag, Receipt } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatCard, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, notify } from "@atiende/ui";
 import { fetchCierres, generarCierre } from "../lib/cierres-client.ts";
 import type { CierreFila, CierreTipo, CierresLista } from "../lib/cierres-client.ts";
 import { desdeError } from "../voz/carga.ts";
@@ -80,7 +80,7 @@ export function CierresPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: 
             <label htmlFor="tipo-cierre" className="sr-only">
               Tipo de cierre
             </label>
-            <NativeSelect
+            <Selector
               id="tipo-cierre"
               value={tipo}
               onChange={(e) => {
@@ -90,7 +90,7 @@ export function CierresPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: 
             >
               <option value="dia">Cierre del día</option>
               <option value="semana">Resumen semanal</option>
-            </NativeSelect>
+            </Selector>
           </div>
         ) : null}
       </header>

@@ -4,7 +4,7 @@
 // "Costo LLM promedio por pedido" es un promedio del periodo, no el costo real de cada pedido. Sin dato = "—" con su razón.
 import { useCallback, useEffect, useState } from "react";
 import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp } from "lucide-react";
-import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatCard } from "@atiende/ui";
+import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard } from "@atiende/ui";
 import { fetchWhatsappKpi } from "../lib/whatsapp-kpi-client.ts";
 import type { WhatsappEntrega, WhatsappEntregaDiaSerie, WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
 import { desdeError } from "../voz/carga.ts";
@@ -141,13 +141,13 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, f
             <label htmlFor="periodo-whatsapp" className="sr-only">
               Periodo
             </label>
-            <NativeSelect id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))}>
+            <Selector id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))}>
               {PERIODOS.map((p) => (
                 <option key={p.dias} value={p.dias}>
                   {p.etiqueta}
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </div>
         ) : null}
       </header>

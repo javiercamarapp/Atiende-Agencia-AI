@@ -12,7 +12,7 @@
 // SIEMPRE el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
 //
 // Presentación (DS v2, PR-5): primitivos de `@atiende/ui` — `Card` para cada bloque y
-// cada fila, `FormDialog`/`FormField`/`Input`/`NativeSelect` para el alta (abierta desde el CTA de cabecera) y el rol
+// cada fila, `FormDialog`/`FormField`/`Input`/`Selector` para el alta (abierta desde el CTA de cabecera) y el rol
 // de cada miembro, `Button` para invitar/revocar, `Badge` para el rol y `StatusBadge`
 // para el estado de cada invitación, `useConfirm` para la baja y `PageContainer` como
 // contenedor. Todos los gates de rol, fetches y payloads de abajo son los MISMOS.
@@ -28,7 +28,7 @@ import {
   FormDialog,
   FormField,
   Input,
-  NativeSelect,
+  Selector,
   PageContainer,
   StatusBadge,
   statusTone,
@@ -302,7 +302,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                         <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <NativeSelect
+                        <Selector
                           aria-label={`Rol de ${m.fullName}`}
                           value={m.verticalRole}
                           disabled={savingRoleId === m.id}
@@ -314,7 +314,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                               {ROLE_LABELS[r]}
                             </option>
                           ))}
-                        </NativeSelect>
+                        </Selector>
                         <Button
                           type="button"
                           variant="danger"
@@ -378,13 +378,13 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
             <Input type="email" placeholder="correo@ejemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           </FormField>
           <FormField label="Rol" hint="No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.">
-            <NativeSelect value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}>
+            <Selector value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}>
               {ROLE_OPTIONS.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABELS[r]}
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
         </div>
       </FormDialog>

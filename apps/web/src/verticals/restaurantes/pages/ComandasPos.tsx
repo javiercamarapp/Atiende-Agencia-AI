@@ -15,7 +15,7 @@ import {
   EstadoVacio,
   FormField,
   Input,
-  NativeSelect,
+  Selector,
   PageContainer,
   StatusBadge,
   Tabs,
@@ -261,7 +261,7 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
               </div>
               {esAdmin ? (
                 <FormField label="Modo" hint={!real ? "Deshabilitado: requiere el adaptador real de SoftRestaurant." : undefined} className="w-full max-w-xs">
-                  <NativeSelect
+                  <Selector
                     id="pos-modo"
                     size="sm"
                     value={config.modo}
@@ -271,7 +271,7 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
                     <option value="apagado">Apagado</option>
                     <option value="sombra">Sombra</option>
                     <option value="activo">Activo</option>
-                  </NativeSelect>
+                  </Selector>
                 </FormField>
               ) : (
                 <p className="m-0 text-xs text-muted-foreground">El modo solo lo cambia un dueño o administrador.</p>
@@ -296,14 +296,14 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
           <div className="flex items-end gap-2">
             {sucursales.length > 1 && (
               <FormField label="Sucursal">
-                <NativeSelect id="pos-sucursal" size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto min-w-44">
+                <Selector id="pos-sucursal" size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto min-w-44">
                   <option value="">Todas mis sucursales</option>
                   {sucursales.map((s) => (
                     <option key={s.propertyId} value={s.propertyId}>
                       {s.name}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </FormField>
             )}
             <Button type="button" size="sm" variant="outline" onClick={refrescar} disabled={cargando}>

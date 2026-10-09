@@ -241,13 +241,13 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
           required={required}
           name={name}
         >
-          <SelectTrigger ref={ref} id={id} size={size} className={className} title={title} data-testid={testId} {...ariaProps}>
+          <SelectTrigger ref={ref} id={id} size={size} className={className} title={title} data-testid={testId} data-valor={value === undefined ? undefined : String(value)} {...ariaProps}>
             <SelectValue placeholder={marcador} />
           </SelectTrigger>
           <SelectContent>
             {grupos.map((g, gi) => {
               const items = g.opciones.map((o) => (
-                <SelectItem key={o.valor} value={haciaRadix(o.valor) as string} disabled={o.deshabilitada}>
+                <SelectItem key={o.valor} value={haciaRadix(o.valor) as string} disabled={o.deshabilitada} data-valor={o.valor}>
                   {o.etiqueta}
                 </SelectItem>
               ));

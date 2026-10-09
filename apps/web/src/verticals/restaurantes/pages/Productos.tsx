@@ -5,7 +5,7 @@
 //
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
 // primitivos de `@atiende/ui` — `Card`/`CardHeader`/`CardContent` para los dos
-// formularios de alta (UNI-C: ahora `FormDialog`/`FormField` abiertos desde los CTA de cabecera), `Input`/`NativeSelect` para sus campos,
+// formularios de alta (UNI-C: ahora `FormDialog`/`FormField` abiertos desde los CTA de cabecera), `Input`/`Selector` para sus campos,
 // `Checkbox` para las marcas, `Button` para enviar, `Badge` para las
 // categorías existentes y para el estado "Disponible / No disponible", y `Table` para
 // el catálogo. TODO el CRUD/estado de abajo es el MISMO: solo cambia el JSX.
@@ -23,7 +23,7 @@ import {
   FormDialog,
   FormField,
   Input,
-  NativeSelect,
+  Selector,
   PageContainer,
   Textarea,
   formatMoney,
@@ -466,14 +466,14 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
             <Textarea rows={3} value={newProdDescription} onChange={(e) => setNewProdDescription(e.target.value)} />
           </FormField>
           <FormField label="Categoría">
-            <NativeSelect value={newProdCategoryId} onChange={(e) => setNewProdCategoryId(e.target.value)}>
+            <Selector value={newProdCategoryId} onChange={(e) => setNewProdCategoryId(e.target.value)}>
               <option value="">Sin categoría</option>
               {categories?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
           <AliasChips alias={newProdAlias} onChange={setNewProdAlias} disabled={creatingProduct} onBorradorChange={setNewProdBorradorAlias} />
         </div>

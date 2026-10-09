@@ -2,7 +2,7 @@
 // inferidos del dominio). Las columnas de CLIENTE (nombre, teléfono, correo, dirección, RFC…) no se ofrecen: se excluyen y se avisa.
 import { ShieldCheck } from "lucide-react";
 import type { TipoLayoutSr } from "@atiende/domain-restaurantes/cfo";
-import { Callout, Checkbox, FormField, NativeSelect } from "@atiende/ui";
+import { Callout, Checkbox, FormField, Selector } from "@atiende/ui";
 import { camposDeTipo, camposFaltantes, camposRepetidos, type MapeoSr } from "./sr-importacion-navegador.ts";
 
 export const AVISO_SIN_DATOS_CLIENTES = "No subimos datos de tus clientes";
@@ -53,7 +53,7 @@ export function MapeoColumnasSr({ tipo, encabezados, personales, personalesFolio
           const error = faltan.has(campo) ? "Elige la columna de este dato." : repetidos.has(campo) ? "Esa columna ya se usa en otro dato." : undefined;
           return (
             <FormField key={campo} label={etiqueta} required={requerido} {...(error ? { error } : {})}>
-              <NativeSelect
+              <Selector
                 id={`sr-mapeo-${campo}`}
                 size="sm"
                 value={mapeo[campo] === null || mapeo[campo] === undefined ? "" : String(mapeo[campo])}
@@ -68,7 +68,7 @@ export function MapeoColumnasSr({ tipo, encabezados, personales, personalesFolio
                     </option>
                   ),
                 )}
-              </NativeSelect>
+              </Selector>
             </FormField>
           );
         })}
