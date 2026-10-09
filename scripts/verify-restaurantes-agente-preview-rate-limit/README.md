@@ -19,6 +19,11 @@ membership.
   con el motor de producción y el repositorio de Postgres: el primer mensaje responde 200, el 41.º 429 sin invocar al agente, el 401.º de la
   organización 429 `agente_preview_tope`, y el preview de voz (sesión y herramienta) tampoco da 500. Sin el arreglo, esta parte falla con el
   500 «consume_api_rate_limit es solo para la sesión de sistema».
+  Además cubre el relevo de herramientas del preview de voz (`POST .../admin/voz/preview/:sesionId/herramienta`): `historial_pedidos`,
+  `repetir_pedido`, `cotizar_pedido`, `confirmar_resumen` y `crear_pedido` deben responder SIN `resultado.error` (sin el arreglo: «Error interno
+  al ejecutar la herramienta» con 200, por `cliente_memoria` / `read_order_flow_state`, funciones de solo sistema), `crear_pedido` devuelve un
+  pedido simulado `PRUEBA-xxxx` y NINGUNA tabla de `restaurantes`/`core` cambia salvo `order_flow_state` y `api_rate_limits` (se cuentan filas
+  antes y después), el modo y la organización no salen del cuerpo, y la autorización ocurre antes de abrir la sesión de sistema.
 
 ## Cómo correrlo
 
@@ -28,4 +33,5 @@ VERIFY_PGPORT=57431 scripts/verify-restaurantes-agente-preview-rate-limit/run.sh
 ```
 
 Requiere `initdb`/`pg_ctl`/`psql` en PATH. Nunca usa el puerto 5432. El gate de CI (`scripts/verify-real-postgres-ci/run-gate.mjs`) descubre
-esta carpeta sola y corre solo la parte 1.
+esta carpeta sola y corre solo la parte 1; la parte 2 corre en CI en el job `restaurantes-agente-preview-pg-real-gate` de
+`.github/workflows/postgres-real-gate.yml` (Postgres efímero con `initdb`, como `whatsapp-concurrencia-gate`).
