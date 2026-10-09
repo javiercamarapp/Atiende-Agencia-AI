@@ -14,6 +14,10 @@ export interface VistaPreviaLlamadaProps {
   readonly onCerrar: () => void;
   /** Video del orbe original (cargador en reposo/conectando). */
   readonly videoSrc?: string;
+  /** Mantiene el video del orbe en todos los estados de la llamada (el original nunca lo reemplaza por una animación CSS). */
+  readonly videoSiempre?: boolean;
+  /** Reemplaza el texto del chip de estado por modo (p. ej. «● Llamada en curso» en lugar de «● Escuchando»); el modo real sigue en `data-modo` y en el orbe. */
+  readonly etiquetasChip?: Partial<Readonly<Record<ModoOrb, string>>>;
   /**
    * Si la llamada es una simulación (modo demo) se muestra una etiqueta visible: la
    * persona nunca debe confundirla con una llamada al agente real.
@@ -42,7 +46,7 @@ const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), sele
  * Desacoplado del proveedor: solo consume un `VoiceSessionController`. Portado del
  * panel original, con el orbe reactivo en lugar del video fijo y sin framer-motion.
  */
-export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, onCerrar, videoSrc, etiquetaSimulacion, motivoNoDisponible, pie }: VistaPreviaLlamadaProps) {
+export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, onCerrar, videoSrc, videoSiempre, etiquetasChip, etiquetaSimulacion, motivoNoDisponible, pie }: VistaPreviaLlamadaProps) {
   const { estado, silenciado } = controller;
   const activa = sesionActiva(estado.modo);
   const conectando = estado.modo === "conectando";
@@ -123,7 +127,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
               estado.modo === "error" ? "text-destructive border-destructive/30 bg-destructive/10" : activa ? "text-primary border-primary/30 bg-primary/10" : "text-muted-foreground border-border"
             }`}
           >
-            {ETIQUETA_CHIP[estado.modo]}
+            {etiquetasChip?.[estado.modo] ?? ETIQUETA_CHIP[estado.modo]}
           </span>
         </div>
       </header>
@@ -139,7 +143,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
             aria-label={activa ? "Terminar llamada" : "Iniciar llamada de prueba"}
             className="relative rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:hover:scale-100"
           >
-            <OrbeAgente modo={estado.modo} volumenEntrada={estado.volumenEntrada} volumenSalida={estado.volumenSalida} videoSrc={videoSrc} />
+            <OrbeAgente modo={estado.modo} volumenEntrada={estado.volumenEntrada} volumenSalida={estado.volumenSalida} videoSrc={videoSrc} videoSiempre={videoSiempre} />
           </button>
         </div>
 

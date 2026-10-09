@@ -27,7 +27,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "owner", staffFullName: "Gaby", staffEmail: "g@example.com" };
+const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "owner", staffFullName: "Gaby", staffEmail: "g@example.com", nombreSucursal: "Sucursal Centro" };
 
 // Formato REAL de la API (apps/api .../voz-admin.ts): el cliente lo mapea al modelo del panel.
 const CONFIG = { disponible: true, configurada: true, habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Habla en español de México.", mensajeInicial: "Hola, le atiende el asistente virtual de Los Taquitos." };
@@ -506,11 +506,24 @@ describe("llamada de prueba (vista previa real)", () => {
     const llamada = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/preview/sesion"))!;
     expect(JSON.parse((llamada[1] as RequestInit).body as string)).toEqual({ voiceId: "Kore" });
     expect(socket.url).toBe(`${SESION_PREVIEW.websocketUrl}?access_token=${SESION_PREVIEW.tokenProveedor}`);
-    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')!.textContent).toBe("● Escuchando");
+    // Como el original: «Vista previa» en reposo y «● Llamada en curso» mientras dura la llamada (el modo real sigue en data-modo y en el orbe).
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')!.textContent).toBe("● Llamada en curso");
+    expect(rendered!.container.querySelector('[role="dialog"]')!.getAttribute("data-modo")).toBe("escuchando");
+    expect(rendered!.container.querySelector(".voz-orbe")!.getAttribute("data-video")).toBe("visible");
+    expect(Array.from(rendered!.container.querySelectorAll("button")).find((b) => b.textContent === "Terminar llamada")!.className).toContain("bg-destructive");
     click(boton("Atrás")!);
     await settle();
     expect(socket.cerrado).toBe(true);
     expect(rendered!.container.querySelector('[role="tablist"]')).not.toBeNull();
+  });
+
+  it("el encabezado de la vista previa lleva el nombre de la sucursal activa (como el original) y el chip arranca en «Vista previa»", async () => {
+    await pintar({}, { entornoVoz: entornoFalso().entorno });
+    click(boton("Vista previa")!);
+    await settle();
+    expect(rendered!.container.querySelector('[role="dialog"]')!.textContent).toContain("Sucursal Centro");
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')!.textContent).toBe("Vista previa");
+    expect(texto()).toContain("Aún no hay una llamada activa");
   });
 
   it("si la API responde 503 al emitir la sesión (la credencial se perdió) muestra el error y no abre ningún socket", async () => {

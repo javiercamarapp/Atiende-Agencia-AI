@@ -140,6 +140,18 @@ describe("<VistaPreviaLlamada />", () => {
     expect(c.iniciar).not.toHaveBeenCalled();
   });
 
+  it("etiquetasChip reemplaza solo el texto del chip por modo (el modo real queda en data-modo) y videoSiempre mantiene el video del orbe en la llamada", () => {
+    const etiquetasChip = { escuchando: "● Llamada en curso" } as const;
+    pintar(controlador({ modo: "escuchando" }), { etiquetasChip, videoSrc: "/media/orbe.mp4", videoSiempre: true });
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')?.textContent).toBe("● Llamada en curso");
+    expect(rendered!.container.querySelector('[role="dialog"]')?.getAttribute("data-modo")).toBe("escuchando");
+    expect(rendered!.container.querySelector(".voz-orbe")?.getAttribute("data-video")).toBe("visible");
+    rendered!.unmount();
+    pintar(controlador({ modo: "hablando" }), { etiquetasChip });
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')?.textContent).toBe("● Hablando");
+    expect(rendered!.container.querySelector(".voz-orbe")?.getAttribute("data-video")).toBe("oculto");
+  });
+
   it("etiqueta visible de simulación cuando se le pasa", () => {
     pintar(controlador(), { etiquetaSimulacion: "Simulación" });
     expect(rendered!.container.textContent).toContain("Simulación");

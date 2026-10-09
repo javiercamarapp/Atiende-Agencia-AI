@@ -11,7 +11,7 @@
 // sin credencial en el servidor dice "no disponible: falta GEMINI_API_KEY" en vez de simular.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { BookOpen, CheckCircle2, Circle, Mic, Wrench } from "lucide-react";
+import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
@@ -46,6 +46,9 @@ const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[]
   { id: "indicadores", etiqueta: "Indicadores" },
 ];
 
+/** Chip de la vista previa como en el original: «Vista previa» en reposo y «● Llamada en curso» mientras dura la llamada (escuchando, pensando o hablando). */
+const ETIQUETAS_CHIP_LLAMADA = { escuchando: "● Llamada en curso", pensando: "● Llamada en curso", hablando: "● Llamada en curso" } as const;
+
 const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "comportamiento", "mensaje"]);
 
 const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", mensajeInicialInterrumpible: true, habilitado: false };
@@ -70,7 +73,7 @@ export interface AgenteVozPageProps extends RestaurantesShellContext {
   readonly entornoVoz?: EntornoVoz;
 }
 
-export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, crearAudio, entornoVoz }: AgenteVozPageProps) {
+export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucursal, crearAudio, entornoVoz }: AgenteVozPageProps) {
   const [pestana, setPestana] = useState<PestanaId>("resumen");
   const [config, setConfig] = useState<Carga<VozConfig | null>>({ estado: "cargando" });
   const [conversaciones, setConversaciones] = useState<Carga<readonly ConversacionVoz[]>>({ estado: "cargando" });
@@ -165,8 +168,9 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, crearAudio,
             <h1 className="sr-only">Agente de voz</h1>
             <p className="text-ui text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
           </div>
-          <Button type="button" onClick={() => setVistaPrevia(true)}>
-            <Mic className="h-4 w-4 mr-1.5" strokeWidth={1.75} />
+          {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle). */}
+          <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-xs" onClick={() => setVistaPrevia(true)}>
+            <PlayCircle className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
             Vista previa
           </Button>
         </div>
@@ -351,7 +355,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, crearAudio,
       </PageContainer>
 
       {vistaPrevia ? (
-        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} onCerrar={() => setVistaPrevia(false)} />
+        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} nombreSucursal={nombreSucursal ?? "Llamada de prueba"} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} onCerrar={() => setVistaPrevia(false)} />
       ) : null}
     </div>
   );
@@ -457,6 +461,8 @@ interface VistaPreviaVozProps {
   readonly apiBaseUrl: string;
   readonly token: string;
   readonly propertyId: string;
+  /** Subtítulo del encabezado (sucursal activa, como en el original). */
+  readonly nombreSucursal: string;
   /** Voz GUARDADA de la sucursal (la sesión de prueba usa la guardada, no un borrador sin guardar). */
   readonly vozId: string | null;
   readonly servicioListo: boolean;
@@ -465,7 +471,7 @@ interface VistaPreviaVozProps {
 }
 
 /** Llamada de prueba real con el agente configurado. Antes de ofrecer el botón consulta la salud del proveedor: sin credencial muestra el motivo y no simula nada. */
-function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, entorno, onCerrar }: VistaPreviaVozProps) {
+function VistaPreviaVoz({ apiBaseUrl, token, propertyId, nombreSucursal, vozId, servicioListo, entorno, onCerrar }: VistaPreviaVozProps) {
   const [motivo, setMotivo] = useState<string | null>(servicioListo ? "Comprobando el servicio de voz…" : "No disponible: el servicio de voz todavía no está activo para este negocio.");
   useEffect(() => {
     if (!servicioListo) return;
@@ -509,9 +515,11 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, e
     <VistaPreviaLlamada
       controller={controller}
       nombreAgente="Agente de voz"
-      nombreSucursal="Llamada de prueba"
+      nombreSucursal={nombreSucursal}
       onCerrar={onCerrar}
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
+      videoSiempre
+      etiquetasChip={ETIQUETAS_CHIP_LLAMADA}
       {...(motivo ? { motivoNoDisponible: motivo } : {})}
       pie={
         <>
