@@ -85,7 +85,7 @@ Todo pop-up, lista desplegable, toast y estado sale de `@atiende/ui`; ver el inv
 
 - Modales: `Dialog` (`size` sm/md/lg/xl, `DialogHeader icono tono`), `FormDialog` (riel + franja, el del repo suelto `ModalFormularioLateral`), `FormDialogElegante` (`ModalFormularioElegante`), `ConfirmDialog`/`useConfirm` (peligro con icono) y `Sheet`. Recetas compartidas en `packages/ui/src/components/ui/superficies.ts`.
 - Listas: `Selector` (acepta `<option>`/`<optgroup>`/`onChange`, sobre `Select` de Radix) o `Select*` compuesto. `NativeSelect` queda solo en las zonas aun no migradas; el guard de restaurantes lo prohibira en el PR de migracion.
-- Avisos: `notify.success|info|warning|error|cargando|promise` (barra de autocierre, pausa al cursor, maximo 3 apilados, `aria-live` asertivo en errores). La campana abre `CentroNotificaciones` (popover) via `CampanaNotificaciones` de `apps/web`.
-- Recuadros y estados: `Panel` (tarjeta de seccion), `Card`, `EstadoVacio` (centrado por defecto, `variante="fila"`), `EstadoCargando`, `Skeleton`, `EstadoError`.
+- Avisos: `notify.success|info|warning|error|cargando|promise` (barra de autocierre, pausa al cursor, maximo 3 apilados). La campana abre `CentroNotificaciones` (popover) via `CampanaNotificaciones` de `apps/web`.
+- Recuadros y estados: `Panel` (tarjeta de seccion), `Card`, `EstadoVacio` (fila de Likida por defecto; centrado dentro de restaurantes via `VarianteEstadoVacioProvider`, o con `variante="centrado"`), `EstadoCargando`, `Skeleton`, `EstadoError`.
 - Graficas: `GRAFICA_TEMA` (constantes sobre tokens del aspecto del repo suelto).
 - Movimiento: todo bajo `prefers-reduced-motion` (bloque global de `index.css` + `motion-reduce:` en las listas).
