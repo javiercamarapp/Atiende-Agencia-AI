@@ -74,7 +74,7 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
   }
 
   it("las reglas de trinquete de restaurantes no aplican a otras zonas", () => {
-    for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes", "overlay a mano en restaurantes"]) {
+    for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes", "overlay a mano en restaurantes", "toast directo en restaurantes"]) {
       expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'} <div role='dialog' /> <datalist />", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
     }
   });
@@ -91,12 +91,33 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
     expect(infractores([fuente("<Table />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
   });
 
-  it("NativeSelect en restaurantes: solo las 3 pantallas del lote R4 quedan exentas; otras zonas no se miran", () => {
+  it("WidgetWhatsApp (panel no modal): exento solo de aria-modal y del overlay a mano; en cualquier otro archivo las reglas aplican", () => {
+    const panel = '<div role="dialog" aria-modal="false" />';
+    const ruta = "verticals/restaurantes/preview/WidgetWhatsApp.tsx";
+    expect(infractores([fuente(panel, ruta)], porRegla("alert() nativo"))).toEqual([]);
+    expect(infractores([fuente(panel, ruta)], porRegla("overlay a mano en restaurantes"))).toEqual([]);
+    expect(infractores([fuente(panel, "verticals/restaurantes/preview/Otro.tsx")], porRegla("alert() nativo"))).toHaveLength(1);
+    expect(infractores([fuente(panel, "verticals/restaurantes/preview/Otro.tsx")], porRegla("overlay a mano en restaurantes"))).toHaveLength(1);
+    // el resto de reglas siguen aplicando al widget
+    expect(infractores([fuente('<p className="text-[13px]" />', ruta)], porRegla("tamano de texto arbitrario"))).toHaveLength(1);
+  });
+
+  it("alert(: x.alert(, useAlert( y role=alert son codigo limpio; toast directo no aplica fuera de restaurantes", () => {
+    const alerta = porRegla("alert() nativo");
+    for (const limpio of ["avisos.alert(1);", "const a = useAlert();", '<p role="alert">x</p>', "const alertas = 1;"]) {
+      expect(infractores([fuente(limpio)], alerta), limpio).toEqual([]);
+    }
+    expect(infractores([fuente('toast.success("x");', "verticals/hoteles/pages/Y.tsx")], porRegla("toast directo en restaurantes"))).toEqual([]);
+  });
+
+  it("NativeSelect en restaurantes: solo AgenteWhatsappSeccion y DemoWhatsAppPage (lote R4) quedan exentas; WidgetWhatsApp y otras zonas no", () => {
     const regla = porRegla("NativeSelect en restaurantes");
-    for (const ruta of ["preview/ProbarAgente.tsx", "pages/AgenteWhatsappSeccion.tsx", "demo/DemoWhatsAppPage.tsx"]) {
+    for (const ruta of ["pages/AgenteWhatsappSeccion.tsx", "demo/DemoWhatsAppPage.tsx"]) {
       expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toEqual([]);
     }
-    expect(infractores([fuente("<NativeSelect />", "verticals/restaurantes/pages/Otra.tsx")], regla)).toHaveLength(1);
+    for (const ruta of ["pages/Otra.tsx", "preview/WidgetWhatsApp.tsx"]) {
+      expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toHaveLength(1);
+    }
     expect(infractores([fuente("<NativeSelect />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
   });
 

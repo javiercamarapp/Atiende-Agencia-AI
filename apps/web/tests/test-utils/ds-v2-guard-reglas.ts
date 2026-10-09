@@ -47,6 +47,14 @@ export const PAGINAS_CALCULO_DESPACHOS: readonly string[] = ["Bookkeeping", "Dev
 const EXCLUIDAS_DESPACHOS = ["Dashboard", ...PAGINAS_CALCULO_DESPACHOS].map((n) => `${n}\\.tsx`).join("|");
 export const ALCANCE_LISTADOS_DESPACHOS = new RegExp(`^verticals/despachos/(?!pages/(?:${EXCLUIDAS_DESPACHOS})$|portal/PortalClientePage\\.tsx$)`);
 
+/**
+ * EXCEPCION ACOTADA a UN archivo: `verticals/restaurantes/preview/WidgetWhatsApp.tsx` es el chat flotante de demostracion con la forma de WhatsApp
+ * (replica del widget del repo suelto): un panel NO modal (`role="dialog" aria-modal="false"`, sin overlay ni atrapado de foco, la pagina sigue
+ * operable). `Dialog`/`FormDialog` son siempre modales, asi que no pueden reproducirlo. Solo se exime a ese archivo de las reglas de overlay a mano y
+ * de `aria-modal`; cualquier otro archivo, y las demas reglas (Select, toast, hex, paleta...), siguen aplicando.
+ */
+const EXCEPTO_WIDGET_WHATSAPP = /^(?!verticals\/restaurantes\/preview\/WidgetWhatsApp\.tsx$)/;
+
 export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "window.confirm (usar useConfirm)", patron: /\bwindow\.confirm\s*\(|(^|[^.\w])confirm\s*\(\s*[`"']/m },
   { nombre: "tamano de texto arbitrario text-[Npx] (usar la escala text-2xs/xs/sm/base)", patron: /text-\[[0-9.]+px\]/ },
@@ -76,11 +84,11 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "sonner importado directo (usar notify/Toaster de @atiende/ui)", patron: /from\s+["']sonner["']/ },
   // `toast` sigue exportado por @atiende/ui (hoteles y superadmin lo usan hoy: se migran en sus lotes); en restaurantes solo `notify`.
   { nombre: "toast directo en restaurantes (usar notify de @atiende/ui: duraciones, accion, barra y apilado unificados)", patron: /\btoast\s*[.(]|\{[^}]*\btoast\b[^}]*\}\s*from\s+["']@atiende\/ui["']/, alcance: /^verticals\/restaurantes\// },
-  { nombre: "alert() nativo o dialogo a mano (aria-modal / <dialog>): usar Dialog, ConfirmDialog o notify", patron: /\bwindow\.alert\s*\(|(^|[^.\w])alert\s*\(|aria-modal|<dialog[\s>]/m },
-  { nombre: "overlay a mano en restaurantes (role dialog/listbox/tooltip, fixed inset-0, <datalist>): usar los primitivos de @atiende/ui", patron: /role=\{?\s*["'`](dialog|alertdialog|listbox|tooltip)["'`]|\bfixed inset-0\b|<datalist[\s>]/, alcance: /^verticals\/restaurantes\// },
-  // UNI-R0 (migracion): en restaurantes las listas son `Selector`. Las 3 pantallas del lote R4 con NativeSelect (WhatsApp, probar agente, demo) se
-  // migran en su propio PR y salen de esta lista de excepciones entonces (nunca se agregan otras).
-  { nombre: "NativeSelect en restaurantes (usar Selector de @atiende/ui)", patron: /\bNativeSelect\b/, alcance: /^verticals\/restaurantes\/(?!preview\/ProbarAgente\.tsx$|pages\/AgenteWhatsappSeccion\.tsx$|demo\/DemoWhatsAppPage\.tsx$)/ },
+  { nombre: "alert() nativo o dialogo a mano (aria-modal / <dialog>): usar Dialog, ConfirmDialog o notify", patron: /\bwindow\.alert\s*\(|(^|[^.\w])alert\s*\(|aria-modal|<dialog[\s>]/m, alcance: EXCEPTO_WIDGET_WHATSAPP },
+  { nombre: "overlay a mano en restaurantes (role dialog/listbox/tooltip, fixed inset-0, <datalist>): usar los primitivos de @atiende/ui", patron: /role=\{?\s*["'`](dialog|alertdialog|listbox|tooltip)["'`]|\bfixed inset-0\b|<datalist[\s>]/, alcance: /^verticals\/restaurantes\/(?!preview\/WidgetWhatsApp\.tsx$)/ },
+  // UNI-R0 (migracion): en restaurantes las listas son `Selector`. Quedan exentas SOLO las 2 pantallas del lote R4 que aun tienen NativeSelect
+  // (agente de WhatsApp y demo): se migran en su propio PR y salen de esta lista entonces (nunca se agregan otras).
+  { nombre: "NativeSelect en restaurantes (usar Selector de @atiende/ui)", patron: /\bNativeSelect\b/, alcance: /^verticals\/restaurantes\/(?!pages\/AgenteWhatsappSeccion\.tsx$|demo\/DemoWhatsAppPage\.tsx$)/ },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);

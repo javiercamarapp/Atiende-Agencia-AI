@@ -10,7 +10,7 @@ import { cn } from "../../lib/utils";
  * gancho de `.card table` (filas punteadas, ui/index.css).
  */
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("card min-w-0 rounded-lg border border-border bg-card text-card-foreground shadow-sm", className)} {...props} />
+  <div ref={ref} className={cn("card min-w-0 rounded-lg border border-border bg-card text-card-foreground shadow-card", className)} {...props} />
 ));
 Card.displayName = "Card";
 
@@ -41,9 +41,8 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 CardFooter.displayName = "CardFooter";
 
 /**
- * Panel: la tarjeta de seccion del repo suelto (`rounded-2xl border bg-card p-4 space-y-3`), con la
- * misma receta de borde/radio/fondo que Card y el relleno incluido. Contenedor de TODA lista, tabla
- * o grupo de una pantalla. `relleno="none"` para tablas que van a sangre.
+ * Panel: la tarjeta de seccion del repo suelto (`rounded-2xl border bg-card p-4 space-y-3`): mismo borde, radio y fondo que Card,
+ * con el relleno incluido y sin sombra (contenedor de listas, tablas o grupos dentro de una pantalla). `relleno="none"` para tablas a sangre.
  */
 const Panel = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement> & { as?: "div" | "section" | "article"; relleno?: "none" | "sm" | "md" }>(
   ({ className, as: Tag = "div", relleno = "md", ...props }, ref) => (
