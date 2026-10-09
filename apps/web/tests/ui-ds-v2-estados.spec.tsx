@@ -82,13 +82,13 @@ describe("EstadoVacio y EstadoError", () => {
     rendered.rerender(<EstadoVacio mensaje="Nada" compacto className="mt-2" />);
     expect(raiz().className).toContain("p-3");
     expect(raiz().className).not.toContain("p-4");
+    expect(raiz().className).toContain("mt-2");
+    expect(raiz().textContent).toContain("Sin datos aún");
     // variante centrada (el default dentro de restaurantes)
     rendered.rerender(<EstadoVacio variante="centrado" mensaje="Nada" />);
     expect(raiz().className).toContain("py-10");
     rendered.rerender(<EstadoVacio variante="centrado" mensaje="Nada" compacto />);
     expect(raiz().className).toContain("py-6");
-    expect(raiz().className).toContain("mt-2");
-    expect(raiz().textContent).toContain("Sin datos aún");
   });
 
   it("EstadoError: role=alert, Reintentar llama al handler; sin handler no hay boton; compacto", () => {
