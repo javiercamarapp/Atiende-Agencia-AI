@@ -133,7 +133,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -169,7 +169,7 @@ jobs:
       # Se sube aunque el paso anterior falle: el agregador necesita el reporte de CADA shard para demostrar la cobertura.
       - name: Subir reporte del shard
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: postgres-gate-report-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-report.json
@@ -199,7 +199,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -273,7 +273,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -316,7 +316,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -596,7 +596,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
