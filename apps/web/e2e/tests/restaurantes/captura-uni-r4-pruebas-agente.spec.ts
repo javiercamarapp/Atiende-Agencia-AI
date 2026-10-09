@@ -11,7 +11,6 @@ import { BASE } from "../../helpers/recorrido.ts";
 
 test.use({ channel: "chrome", launchOptions: { args: [...ARGUMENTOS_MICROFONO_FALSO] }, permissions: ["microphone"] });
 
-const main = (page: Page) => page.locator("main#contenido-principal");
 const chat = (page: Page) => page.getByRole("dialog", { name: /Chat de prueba con el agente de WhatsApp/ });
 
 async function foto(page: Page, nombre: string, proyecto: string): Promise<void> {
