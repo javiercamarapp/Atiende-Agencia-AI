@@ -25,27 +25,14 @@ function useTemaOscuro(): "light" | "dark" {
   return tema;
 }
 
-// Anuncio asertivo: sonner anuncia todo con aria-live="polite". Un error debe interrumpir al lector de pantalla,
-// asi que los toasts de tipo error se marcan aria-live="assertive" en cuanto entran al DOM. No se duplica el
-// texto en otra region (los lectores de pantalla y las pruebas ven un solo mensaje).
-function useErroresAsertivos() {
-  React.useEffect(() => {
-    if (typeof document === "undefined") return undefined;
-    const marcar = (raiz: ParentNode) =>
-      raiz.querySelectorAll<HTMLElement>('[data-sonner-toast][data-type="error"]:not([aria-live])').forEach((el) => el.setAttribute("aria-live", "assertive"));
-    marcar(document);
-    const obs = new MutationObserver(() => marcar(document));
-    obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-type"] });
-    return () => obs.disconnect();
-  }, []);
-}
+// Anuncio: sonner anuncia cada toast por su region aria-live="polite" (incluidos los errores); no se intenta forzar "assertive":
+// sonner 1.7 no lo ofrece por toast y duplicar el texto en otra region rompia lectores de pantalla y pruebas.
 
 /** Limite de toasts apilados a la vez (los demas esperan; sonner los pliega). */
 export const TOASTS_VISIBLES = 3;
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const tema = useTemaOscuro();
-  useErroresAsertivos();
   return (
     <>
       <Sonner
