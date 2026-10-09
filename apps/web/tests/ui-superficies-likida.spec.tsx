@@ -36,7 +36,6 @@ describe("Card", () => {
     const c = montar(<Card data-testid="x" className="p-4" />);
     const el = c.firstElementChild as HTMLElement;
     for (const clase of ["card", "min-w-0", "rounded-lg", "border", "border-border", "bg-card", "shadow-sm", "p-4"]) expect(el.className).toContain(clase);
-    expect(el.className).not.toContain("shadow-sm");
   });
 
   it("CardTitle es un h2 limpio de 14 px (sin 24 px ni tracking) y CardHeader/Content/Footer usan p-4", () => {
