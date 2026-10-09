@@ -486,7 +486,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   useEffect(() => {
     let cancelado = false;
     fetchAdminBranches(fetch, apiBaseUrl, token, propertyId)
-      .then((b) => !cancelado && setBranches(b))
+      .then((b) => !cancelado && setBranches(Array.isArray(b) ? b : []))
       .catch(() => !cancelado && setBranches([]));
     return () => {
       cancelado = true;

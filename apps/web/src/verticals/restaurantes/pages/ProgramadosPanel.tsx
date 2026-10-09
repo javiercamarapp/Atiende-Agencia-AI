@@ -3,11 +3,12 @@
 // servidor al consultar; aqui, ademas, la fila sale de la vista en cuanto llega su hora de promocion, igual que el original). Desde aqui el
 // staff puede ADELANTAR el pedido a cocina o CANCELARLO (la cancelacion pide motivo en Pedidos.tsx).
 import { CalendarClock, MapPin, Store } from "lucide-react";
-import { Button, cn } from "@atiende/ui";
+import { Button, StatusBadge, cn, statusTone } from "@atiende/ui";
 import { montoFila } from "../components/pedidos/formato.ts";
-import { fechaCortaHoraEsMx } from "../../../lib/formato-fecha.ts";
+import { fechaCortaHoraEsMx, hora24EsMx } from "../../../lib/formato-fecha.ts";
 import { faltaPara } from "../lib/sondeo-pedidos.ts";
-import { idCortoPedido } from "../lib/orders-client.ts";
+import { idCortoPedido, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
+import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import type { OrderSummary } from "../lib/orders-client.ts";
 
 /** Minutos antes de la hora en que el servidor lo promueve a cocina (espejo de ANTICIPACION_PROMOCION_MIN del dominio). */
@@ -100,9 +101,20 @@ export function ProgramadosPanel({
                         {fechaCortaHoraEsMx(o.programadoPara)}
                       </p>
                       <p className="text-eyebrow text-muted-foreground">{faltaPara(o.programadoPara, ahoraMs)}</p>
+                      <p className="text-eyebrow text-muted-foreground">entra a cocina a las {hora24EsMx(new Date(Date.parse(o.programadoPara) - ANTICIPACION_PROMOCION_MIN * 60_000))}</p>
                     </>
                   )}
                 </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:ml-[52px]">
+                {o.canal && (
+                  <StatusBadge tone="neutral" dot={false} className="text-2xs">
+                    {o.canal === "recoger" ? "Recoger" : "Domicilio"}
+                  </StatusBadge>
+                )}
+                <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)} className="text-2xs">
+                  {ORDER_STATUS_LABELS[o.status]}
+                </StatusBadge>
               </div>
               <div className={cn("mt-2.5 flex flex-wrap items-center gap-1.5 sm:ml-[52px]")} onClick={(e) => e.stopPropagation()}>
                 <Button type="button" size="sm" variant="outline" className="h-7 rounded-full px-3 text-eyebrow" loading={changingId === o.id} disabled={changingId === o.id} onClick={() => onAdelantar(o)}>
