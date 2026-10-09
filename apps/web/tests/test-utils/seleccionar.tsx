@@ -56,9 +56,11 @@ export async function elegirOpcion(trigger: HTMLElement, etiqueta: string): Prom
   });
 }
 
-/** Etiqueta mostrada por un disparador (lo que ve la persona). */
-export function etiquetaMostrada(trigger: HTMLElement): string {
-  return trigger.textContent?.trim() ?? "";
+/** Etiqueta mostrada por un disparador (lo que ve la persona): el valor visible, sin las etiquetas invisibles que fijan el ancho; "" si solo se ve el marcador. */
+export function etiquetaMostrada(trigger: Element): string {
+  const t = trigger as HTMLElement;
+  if (t.hasAttribute("data-placeholder")) return "";
+  return t.querySelector('[data-slot="valor"]')?.textContent?.trim() ?? "";
 }
 
 // ---- Variantes sincronas (drop-in de `changeValue(select, valor)` y de leer `select.value`/`select.options`) ----
@@ -92,18 +94,24 @@ function cerrarListaAbierta(): void {
 }
 
 /**
- * Valor ELEGIDO ahora (el `select.value` de un <select> nativo): abre la lista y lee la opcion que Radix marca como elegida
- * (`data-state=checked`), no la prop que recibio el componente. Sin eleccion devuelve "".
+ * Valor ELEGIDO ahora (el `select.value` de un <select> nativo): abre la lista del disparador y lee la opcion que Radix marca como elegida
+ * (`data-state=checked`), no la prop que recibio el componente. Si la lista no aparece lanza error (no devuelve "" en silencio).
+ * Con el disparador deshabilitado, o con un valor que no esta entre las opciones, no hay opcion marcada: se lee el valor MOSTRADO
+ * (`[data-slot="valor"]`), y "" si solo se ve el marcador.
  */
 export function valorDe(trigger: Element | null): string {
-  if (!trigger) return "";
+  if (!trigger) throw new Error("valorDe: no existe el disparador");
   const t = trigger as HTMLElement;
+  if (t.hasAttribute("disabled") || t.getAttribute("aria-disabled") === "true") return etiquetaMostrada(t);
   t.focus();
   keydown(t, "Enter");
-  const marcada = document.body.querySelector<HTMLElement>('[role="option"][data-state="checked"]');
-  const valor = marcada?.dataset.valor ?? "";
+  const idLista = t.getAttribute("aria-controls");
+  const lista = (idLista ? document.getElementById(idLista) : null) ?? document.body.querySelector<HTMLElement>('[role="listbox"]');
+  if (!lista) throw new Error("valorDe: la lista no se abrio");
+  const marcada = lista.querySelector<HTMLElement>('[role="option"][data-state="checked"]');
+  const valor = marcada ? (marcada.dataset.valor ?? "") : null;
   cerrarListaAbierta();
-  return valor;
+  return valor ?? etiquetaMostrada(t);
 }
 
 /** Etiquetas de las opciones (el `[...select.options].map(o => o.textContent)` de un <select> nativo). */

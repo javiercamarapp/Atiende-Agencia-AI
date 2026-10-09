@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { ConocimientoNegocio } from "../src/verticals/restaurantes/components/ConocimientoNegocio.tsx";
 import { AgenteWhatsappSeccion } from "../src/verticals/restaurantes/pages/AgenteWhatsappSeccion.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
-import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+import { elegirValor, etiquetaMostrada, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 beforeAll(prepararJsdomParaRadix);
 
@@ -140,12 +140,12 @@ describe("<ConocimientoNegocio />", () => {
     click(boton("Agregar entrada")!);
     const form = () => rendered!.container.querySelector('section[aria-label="Nueva entrada"]')!;
     expect(form().textContent).not.toContain("Sustituye a una entrada general");
-    const aplicaA = [...form().querySelectorAll("[role='combobox']")].find((s) => s.textContent?.includes("Toda la organización"))!;
+    const aplicaA = [...form().querySelectorAll("[role='combobox']")].find((s) => etiquetaMostrada(s).includes("Toda la organización"))!;
     elegirValor(aplicaA, "prop-1");
     expect(form().textContent).toContain("Sustituye a una entrada general");
     changeValue(form().querySelector<HTMLInputElement>('input[placeholder="Estacionamiento"]')!, "Estacionamiento");
     changeValue(form().querySelector<HTMLTextAreaElement>("textarea")!, "Hoy el estacionamiento está en obra.");
-    const sustituye = [...form().querySelectorAll("[role='combobox']")].find((s) => s.textContent?.includes("No sustituye ninguna"))!;
+    const sustituye = [...form().querySelectorAll("[role='combobox']")].find((s) => etiquetaMostrada(s).includes("No sustituye ninguna"))!;
     elegirValor(sustituye, "k1");
     await pulsarYEsperar(botonEn(form(), "Guardar entrada"));
     expect(llamadas.find((c) => c.method === "POST")!.body).toMatchObject({ sucursalId: "prop-1", reemplazaId: "k1", tipo: "faq" });
