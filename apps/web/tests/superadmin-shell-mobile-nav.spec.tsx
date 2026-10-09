@@ -136,7 +136,7 @@ describe("SuperAdminShell — nav móvil", () => {
     const onRequireLogin = vi.fn();
     rendered = await renderShell(onRequireLogin);
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect(hoja.textContent).toContain("Chatea con tus datos");

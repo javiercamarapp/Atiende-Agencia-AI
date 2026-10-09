@@ -285,8 +285,8 @@ describe("medidas de los demas pop-ups y estados", () => {
     expect(pop.textContent).toBe("Detalle");
   });
 
-  it("EstadoVacio (variante fila, la de Likida): tarjeta p-4, chip de 36 px (radio 12, canvas + hairline), icono de 17 px y texto de 14 px", () => {
-    montar(<EstadoVacio variante="fila" titulo="Sin citas" mensaje="Crea la primera" />);
+  it("EstadoVacio: tarjeta p-4, chip de 36 px (radio 12, canvas + hairline), icono de 17 px y texto de 14 px", () => {
+    montar(<EstadoVacio titulo="Sin citas" mensaje="Crea la primera" />);
     const raiz = rendered!.container.firstElementChild as HTMLElement;
     tiene(raiz, "card", "rounded-lg", "border", "border-border", "bg-card", "shadow-card", "flex", "items-start", "gap-3", "p-4");
     expect(raiz.className).not.toContain("border-dashed");

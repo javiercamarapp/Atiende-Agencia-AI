@@ -74,11 +74,13 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   // UNI-R0: una sola familia de overlays (pop-ups, listas, toasts). Se importan de @atiende/ui; nada de overlays a mano.
   { nombre: "primitivo Radix de overlay importado directo (usar Dialog/Popover/Select/DropdownMenu/Tooltip de @atiende/ui)", patron: /from\s+["']@radix-ui\/react-(dialog|alert-dialog|popover|select|dropdown-menu|tooltip)["']/ },
   { nombre: "sonner importado directo (usar notify/Toaster de @atiende/ui)", patron: /from\s+["']sonner["']/ },
-  { nombre: "alert() nativo o dialogo a mano (aria-modal / <dialog>): usar Dialog, ConfirmDialog o notify", patron: /\bwindow\.alert\s*\(|(^|[^.\w])alert\s*\(\s*[`"']|aria-modal|<dialog[\s>]/m },
-  { nombre: "overlay a mano en restaurantes (role dialog/listbox/tooltip, fixed inset-0, <datalist>): usar los primitivos de @atiende/ui", patron: /role="(dialog|alertdialog|listbox|tooltip)"|\bfixed inset-0\b|<datalist[\s>]/, alcance: /^verticals\/restaurantes\// },
-  // UNI-R0 (migracion): en restaurantes las listas son `Selector`. Las 4 pantallas del lote R4 (voz, WhatsApp, probar agente, demo) se
+  // `toast` sigue exportado por @atiende/ui (hoteles y superadmin lo usan hoy: se migran en sus lotes); en restaurantes solo `notify`.
+  { nombre: "toast directo en restaurantes (usar notify de @atiende/ui: duraciones, accion, barra y apilado unificados)", patron: /\btoast\s*[.(]|\{[^}]*\btoast\b[^}]*\}\s*from\s+["']@atiende\/ui["']/, alcance: /^verticals\/restaurantes\// },
+  { nombre: "alert() nativo o dialogo a mano (aria-modal / <dialog>): usar Dialog, ConfirmDialog o notify", patron: /\bwindow\.alert\s*\(|(^|[^.\w])alert\s*\(|aria-modal|<dialog[\s>]/m },
+  { nombre: "overlay a mano en restaurantes (role dialog/listbox/tooltip, fixed inset-0, <datalist>): usar los primitivos de @atiende/ui", patron: /role=\{?\s*["'`](dialog|alertdialog|listbox|tooltip)["'`]|\bfixed inset-0\b|<datalist[\s>]/, alcance: /^verticals\/restaurantes\// },
+  // UNI-R0 (migracion): en restaurantes las listas son `Selector`. Las 3 pantallas del lote R4 con NativeSelect (WhatsApp, probar agente, demo) se
   // migran en su propio PR y salen de esta lista de excepciones entonces (nunca se agregan otras).
-  { nombre: "NativeSelect en restaurantes (usar Selector de @atiende/ui)", patron: /\bNativeSelect\b/, alcance: /^verticals\/restaurantes\/(?!preview\/ProbarAgente\.tsx$|pages\/AgenteVoz\.tsx$|pages\/AgenteWhatsappSeccion\.tsx$|demo\/DemoWhatsAppPage\.tsx$)/ },
+  { nombre: "NativeSelect en restaurantes (usar Selector de @atiende/ui)", patron: /\bNativeSelect\b/, alcance: /^verticals\/restaurantes\/(?!preview\/ProbarAgente\.tsx$|pages\/AgenteWhatsappSeccion\.tsx$|demo\/DemoWhatsAppPage\.tsx$)/ },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);

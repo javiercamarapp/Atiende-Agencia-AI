@@ -297,7 +297,7 @@ export function CatalogoOverlaysPage() {
             <CardContent className="text-ui text-muted-foreground">Misma receta, relleno por pieza.</CardContent>
           </Card>
           <div className="w-72">
-            <EstadoVacio icon={Inbox} titulo="Sin pedidos" mensaje="Cuando llegue uno nuevo lo verás aquí." />
+            <EstadoVacio variante="centrado" icon={Inbox} titulo="Sin pedidos" mensaje="Cuando llegue uno nuevo lo verás aquí." />
           </div>
           <div className="w-72">
             <EstadoVacio variante="fila" icon={FileX} mensaje="Sin datos en este periodo." />

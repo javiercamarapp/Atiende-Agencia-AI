@@ -39,6 +39,11 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "primitivo Radix de overlay", viola: 'import * as D from "@radix-ui/react-dialog";', limpio: 'import { Dialog } from "@atiende/ui";' },
   { regla: "primitivo Radix de overlay", viola: "import { Root } from '@radix-ui/react-select';", limpio: 'import { Select } from "@atiende/ui";' },
   { regla: "sonner importado directo", viola: 'import { toast } from "sonner";', limpio: 'import { notify } from "@atiende/ui";' },
+  { regla: "toast directo", viola: 'toast.success("Listo");', limpio: 'notify.success("Listo");', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "toast directo", viola: 'import { toast } from "@atiende/ui";', limpio: 'import { notify } from "@atiende/ui";', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "alert() nativo", viola: "alert(mensaje);", limpio: "notify.error(mensaje);" },
+  { regla: "overlay a mano en restaurantes", viola: "<div role='dialog' />", limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "overlay a mano en restaurantes", viola: '<div role={"listbox"} />', limpio: "<Selector />", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "alert() nativo", viola: 'window.alert("Listo");', limpio: 'notify.success("Listo");' },
   { regla: "alert() nativo", viola: '<div aria-modal="true" role="dialog" />', limpio: "<Dialog open />" },
   { regla: "overlay a mano en restaurantes", viola: '<div role="dialog" className="x" />', limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
@@ -86,9 +91,9 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
     expect(infractores([fuente("<Table />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
   });
 
-  it("NativeSelect en restaurantes: solo las 4 pantallas del lote R4 quedan exentas; otras zonas no se miran", () => {
+  it("NativeSelect en restaurantes: solo las 3 pantallas del lote R4 quedan exentas; otras zonas no se miran", () => {
     const regla = porRegla("NativeSelect en restaurantes");
-    for (const ruta of ["preview/ProbarAgente.tsx", "pages/AgenteVoz.tsx", "pages/AgenteWhatsappSeccion.tsx", "demo/DemoWhatsAppPage.tsx"]) {
+    for (const ruta of ["preview/ProbarAgente.tsx", "pages/AgenteWhatsappSeccion.tsx", "demo/DemoWhatsAppPage.tsx"]) {
       expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toEqual([]);
     }
     expect(infractores([fuente("<NativeSelect />", "verticals/restaurantes/pages/Otra.tsx")], regla)).toHaveLength(1);

@@ -25,6 +25,7 @@ import {
   Panel,
   TAMANOS_MODAL,
   TOASTS_VISIBLES,
+  VarianteEstadoVacioProvider,
   Toaster,
   notify,
   type CentroNotificacionItem,
@@ -131,7 +132,7 @@ describe("ConfirmDialog destructivo", () => {
 });
 
 describe("Toaster / notify", () => {
-  it("limite de apilado, posicion fija y aria-live asertivo solo en los errores (sin duplicar el texto)", async () => {
+  it("limite de apilado, posicion fija y un solo anuncio por toast (sin regiones duplicadas)", async () => {
     expect(TOASTS_VISIBLES).toBe(3);
     rendered = renderComponent(<Toaster />);
     await act(async () => {
@@ -139,13 +140,10 @@ describe("Toaster / notify", () => {
       notify.error("No se pudo guardar", { description: "Sin conexion" });
       await new Promise((r) => setTimeout(r, 150));
     });
-    const toasts = [...document.body.querySelectorAll<HTMLElement>("[data-sonner-toast]")];
-    const error = toasts.find((t) => t.getAttribute("data-type") === "error")!;
-    const exito = toasts.find((t) => t.getAttribute("data-type") === "success")!;
-    expect(error.getAttribute("aria-live")).toBe("assertive");
-    expect(exito.getAttribute("aria-live")).toBeNull();
-    // el texto del error aparece una sola vez en el documento
+    // el texto del error aparece una sola vez en el documento y la region de sonner es la cortes (polite)
     expect(document.body.textContent!.split("No se pudo guardar").length - 1).toBe(1);
+    expect(document.body.querySelector("section[aria-live]")?.getAttribute("aria-live")).toBe("polite");
+    expect(document.body.querySelector('[aria-live="assertive"]')).toBeNull();
     const lista = document.body.querySelector("[data-sonner-toaster]")!;
     expect(lista.getAttribute("data-y-position")).toBe("bottom");
     expect(lista.getAttribute("data-x-position")).toBe("right");
@@ -270,16 +268,20 @@ describe("Panel y EstadoVacio", () => {
     expect(rendered.container.querySelector<HTMLElement>('[data-testid="n"]')!.className).not.toContain("p-4");
   });
 
-  it("EstadoVacio centrado (icono tenue de 40 px) y variante fila; ambos role=status", () => {
+  it("EstadoVacio: fila por defecto (Likida); centrado con la variante o con el proveedor de restaurantes; ambos role=status", () => {
     rendered = renderComponent(
       <>
-        <EstadoVacio mensaje="Sin pedidos" />
-        <EstadoVacio variante="fila" mensaje="Sin datos" />
+        <EstadoVacio mensaje="Sin datos" />
+        <VarianteEstadoVacioProvider value="centrado">
+          <EstadoVacio mensaje="Sin pedidos" />
+        </VarianteEstadoVacioProvider>
+        <EstadoVacio variante="centrado" mensaje="Explicito" />
       </>,
     );
-    const [a, b] = [...rendered.container.querySelectorAll<HTMLElement>('[role="status"]')];
-    expect(a!.querySelector("svg")!.getAttribute("class")).toContain("size-10");
-    expect(a!.className).toContain("justify-items-center");
-    expect(b!.className).toContain("items-start");
+    const [a, b, c] = [...rendered.container.querySelectorAll<HTMLElement>('[role="status"]')];
+    expect(a!.className).toContain("items-start");
+    expect(b!.querySelector("svg")!.getAttribute("class")).toContain("size-10");
+    expect(b!.className).toContain("justify-items-center");
+    expect(c!.className).toContain("justify-items-center");
   });
 });

@@ -35,9 +35,7 @@ describe("Card", () => {
   it("es la tarjeta de Likida: clase card, radio 16, hairline y sombra fina, sin relleno propio", () => {
     const c = montar(<Card data-testid="x" className="p-4" />);
     const el = c.firstElementChild as HTMLElement;
-    for (const clase of ["card", "min-w-0", "rounded-lg", "border", "border-border", "bg-card", "p-4"]) expect(el.className).toContain(clase);
-    // UNI-R0: una sola receta de tarjeta, como el repo suelto: hairline sin sombra
-    expect(el.className).not.toContain("shadow-card");
+    for (const clase of ["card", "min-w-0", "rounded-lg", "border", "border-border", "bg-card", "shadow-sm", "p-4"]) expect(el.className).toContain(clase);
     expect(el.className).not.toContain("shadow-sm");
   });
 
@@ -144,8 +142,7 @@ describe("StatCard de dos capas", () => {
   it("anatomia: tarjeta exterior card p-2, interior con borde line2, chip circular azul, etiqueta, cifra", () => {
     const c = montar(<StatCard icon={Users} label="Clientes" value="1,204" nota="este mes" />);
     const ext = c.firstElementChild as HTMLElement;
-    for (const clase of ["card", "p-2", "h-full", "flex-col", "min-w-0", "bg-card", "rounded-lg"]) expect(ext.className).toContain(clase);
-    expect(ext.className).not.toContain("shadow-card");
+    for (const clase of ["card", "p-2", "h-full", "flex-col", "min-w-0", "bg-card", "rounded-lg", "shadow-sm"]) expect(ext.className).toContain(clase);
     const interior = ext.firstElementChild as HTMLElement;
     for (const clase of ["rounded-xl", "border", "border-line2", "bg-canvas", "px-3", "py-2"]) expect(interior.className).toContain(clase);
     const chip = interior.querySelector("svg")!.parentElement as HTMLElement;

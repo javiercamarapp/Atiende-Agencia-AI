@@ -29,7 +29,7 @@ const SelectTrigger = React.forwardRef<React.ElementRef<typeof SelectPrimitive.T
       ref={ref}
       className={cn(
         campoBase,
-        "flex items-center justify-between gap-2 py-0 text-left data-[placeholder]:text-muted-foreground [&>span]:line-clamp-1",
+        "flex items-center justify-between gap-2 py-0 text-left data-[placeholder]:text-muted-foreground",
         size === "sm" ? "h-[var(--control-sm)]" : "h-[var(--control-md)]",
         className,
       )}
@@ -73,7 +73,7 @@ const SelectContent = React.forwardRef<
       ref={ref}
       position={position}
       className={cn(
-        "relative z-[60] max-h-80 min-w-[8rem] overflow-hidden", SUPERFICIE_FLOTANTE,
+        "relative z-[60] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden", SUPERFICIE_FLOTANTE,
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
         "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 motion-reduce:animate-none",
         position === "popper" && "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
@@ -190,7 +190,8 @@ function textoPlano(n: React.ReactNode): string {
 }
 
 export interface SelectorProps {
-  value?: string | number;
+  /** Valor controlado. `null`/`undefined` y cualquier valor que no sea texto o numero cuentan como "" (sin eleccion). */
+  value?: string | number | null;
   defaultValue?: string | number;
   /** Recibe el valor elegido ("" para la opcion vacia). */
   onValueChange?: (valor: string) => void;
@@ -199,7 +200,9 @@ export interface SelectorProps {
   children?: React.ReactNode;
   placeholder?: string;
   disabled?: boolean;
+  /** Obligatorio de verdad: un <select> nativo oculto lo valida con el formulario (con "" no pasa). */
   required?: boolean;
+  /** Nombre en el FormData: viaja el valor real ("" para la opcion vacia, nunca el centinela interno). */
   name?: string;
   id?: string;
   size?: "sm" | "md";
@@ -214,35 +217,50 @@ export interface SelectorProps {
   title?: string;
 }
 
+/** Texto del valor: string o numero; todo lo demas (null, false, [], {}) es "" (sin eleccion). */
+export function valorComoTexto(v: unknown): string {
+  return typeof v === "string" ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+}
+
 const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
   (
     { value, defaultValue, onValueChange, onChange, children, placeholder, disabled, required, name, id, size, className, wrapperClassName, ...aria },
     ref,
   ) => {
     const grupos = React.useMemo(() => normalizarHijos(children), [children]);
+    const todas = React.useMemo(() => grupos.flatMap((g) => g.opciones), [grupos]);
     // Sin opcion de valor "": Radix ya trata "" como "sin seleccion" y pinta el marcador; con ella, "" es un valor real.
-    const hayVacio = grupos.some((g) => g.opciones.some((o) => o.valor === ""));
-    const haciaRadixLocal = (v: string | undefined) => (hayVacio ? haciaRadix(v) : v);
+    const hayVacio = todas.some((o) => o.valor === "");
+    const haciaRadixLocal = (v: string) => (hayVacio ? haciaRadix(v) : v);
+    const controlado = value !== undefined;
+    const [interno, setInterno] = React.useState(valorComoTexto(defaultValue));
+    const actual = controlado ? valorComoTexto(value) : interno;
     const cambiar = (v: string) => {
       const real = desdeRadix(v);
+      if (!controlado) setInterno(real);
       onValueChange?.(real);
       onChange?.({ target: { value: real, name }, currentTarget: { value: real, name } });
     };
     const marcador = placeholder ?? "Selecciona…";
     const { title, "data-testid": testId, ...ariaProps } = aria;
-    // Una opcion con valor "" actua de marcador (como <option value="">Todos</option>): se muestra su etiqueta.
+    // Valor que no esta entre las opciones (dato viejo, opcion aun cargando): se muestra tal cual en vez de dejar el disparador en blanco.
+    const respaldo = actual !== "" && !todas.some((o) => o.valor === actual) ? actual : null;
+    // Ancho estable: todas las etiquetas ocupan la misma celda (invisibles) y fijan el ancho del disparador al de la mas larga.
+    const medidas = todas.map((o) => textoPlano(o.etiqueta)).filter(Boolean);
     return (
-      <div className={cn("w-full", wrapperClassName)}>
-        <Select
-          value={value === undefined ? undefined : haciaRadixLocal(String(value))}
-          defaultValue={defaultValue === undefined ? undefined : haciaRadixLocal(String(defaultValue))}
-          onValueChange={cambiar}
-          disabled={disabled}
-          required={required}
-          name={name}
-        >
-          <SelectTrigger ref={ref} id={id} size={size} className={className} title={title} data-testid={testId} data-valor={value === undefined ? undefined : String(value)} {...ariaProps}>
-            <SelectValue placeholder={marcador} />
+      <div className={cn("relative w-full", wrapperClassName)}>
+        <Select value={haciaRadixLocal(actual)} onValueChange={cambiar} disabled={disabled}>
+          <SelectTrigger ref={ref} id={id} size={size} className={className} title={title} data-testid={testId} {...ariaProps}>
+            <span className="grid min-w-0 flex-1 text-left">
+              <span data-slot="valor" className="col-start-1 row-start-1 truncate">
+                <SelectValue placeholder={marcador}>{respaldo ?? undefined}</SelectValue>
+              </span>
+              {medidas.map((m, i) => (
+                <span key={i} aria-hidden="true" className="invisible col-start-1 row-start-1 h-0 overflow-hidden whitespace-nowrap">
+                  {m}
+                </span>
+              ))}
+            </span>
           </SelectTrigger>
           <SelectContent>
             {grupos.map((g, gi) => {
@@ -262,6 +280,26 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
             })}
           </SelectContent>
         </Select>
+        {(name || required) && (
+          // Control nativo oculto para formularios: lleva el valor REAL (""/valor) en el FormData y `required` valida de verdad
+          // (un <select required> con "" no pasa). No recibe foco ni se anuncia: el control accesible es el combobox.
+          <select
+            aria-hidden="true"
+            tabIndex={-1}
+            name={name}
+            required={required}
+            disabled={disabled}
+            value={actual}
+            onChange={() => {}}
+            className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+          >
+            <option value="" />
+            {respaldo !== null && <option value={respaldo} />}
+            {todas.filter((o) => o.valor !== "").map((o) => (
+              <option key={o.valor} value={o.valor} />
+            ))}
+          </select>
+        )}
       </div>
     );
   },
