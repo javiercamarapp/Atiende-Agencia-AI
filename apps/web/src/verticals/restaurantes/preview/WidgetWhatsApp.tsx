@@ -196,6 +196,8 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   }
 
   function alTeclear(e: KeyboardEvent<HTMLDivElement>) {
+    // La lista de Simular cliente vive en un portal pero sus eventos de React suben hasta este panel: Escape dentro de ella cierra solo la lista.
+    if ((e.target as HTMLElement).closest('[role="listbox"]')) return;
     if (e.key === "Escape") {
       e.stopPropagation();
       setAbierto(false);
