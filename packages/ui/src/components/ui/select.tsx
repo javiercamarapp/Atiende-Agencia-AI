@@ -227,6 +227,8 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
     { value, defaultValue, onValueChange, onChange, children, placeholder, disabled, required, name, id, size, className, wrapperClassName, ...aria },
     ref,
   ) => {
+    const disparadorRef = React.useRef<HTMLButtonElement>(null);
+    React.useImperativeHandle(ref, () => disparadorRef.current as HTMLButtonElement);
     const grupos = React.useMemo(() => normalizarHijos(children), [children]);
     const todas = React.useMemo(() => grupos.flatMap((g) => g.opciones), [grupos]);
     // Sin opcion de valor "": Radix ya trata "" como "sin seleccion" y pinta el marcador; con ella, "" es un valor real.
@@ -250,7 +252,7 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
     return (
       <div className={cn("relative w-full", wrapperClassName)}>
         <Select value={haciaRadixLocal(actual)} onValueChange={cambiar} disabled={disabled}>
-          <SelectTrigger ref={ref} id={id} size={size} className={className} title={title} data-testid={testId} {...ariaProps}>
+          <SelectTrigger ref={disparadorRef} id={id} size={size} className={className} title={title} data-testid={testId} {...ariaProps}>
             <span className="grid min-w-0 flex-1 text-left">
               <span data-slot="valor" className="col-start-1 row-start-1 truncate">
                 <SelectValue placeholder={marcador}>{respaldo ?? undefined}</SelectValue>
@@ -291,6 +293,9 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
             disabled={disabled}
             value={actual}
             onChange={() => {}}
+            // Formulario invalido o foco por programa: el foco va al combobox visible, nunca al select oculto (aria-hidden).
+            onInvalid={() => disparadorRef.current?.focus()}
+            onFocus={() => disparadorRef.current?.focus()}
             className="pointer-events-none absolute size-px overflow-hidden opacity-0"
           >
             <option value="" />

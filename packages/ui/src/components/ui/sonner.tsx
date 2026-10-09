@@ -34,52 +34,50 @@ export const TOASTS_VISIBLES = 3;
 const Toaster = ({ ...props }: ToasterProps) => {
   const tema = useTemaOscuro();
   return (
-    <>
-      <Sonner
-        theme={tema}
-        closeButton
-        position="bottom-right"
-        visibleToasts={TOASTS_VISIBLES}
-        duration={DURACION_NOTIFY_MS.success}
-        gap={10}
-        offset={20}
-        className="toaster group"
-        aria-live="polite"
-        icons={{
-          success: <CheckCircle2 aria-hidden="true" className="size-5" strokeWidth={1.75} />,
-          info: <Info aria-hidden="true" className="size-5" strokeWidth={1.75} />,
-          warning: <AlertTriangle aria-hidden="true" className="size-5" strokeWidth={1.75} />,
-          error: <OctagonAlert aria-hidden="true" className="size-5" strokeWidth={1.75} />,
-          loading: <Loader2 aria-hidden="true" className="size-5 animate-spin motion-reduce:animate-none" strokeWidth={1.75} />,
-          close: <X aria-hidden="true" className="size-3.5" strokeWidth={2} />,
-        }}
-        toastOptions={{
-          classNames: {
-            // Tarjeta premium: radio de dialogo, hairline, sombra elevada, 360 px comodos y barra de
-            // autocierre (clase `toast-progreso`, index.css). Familia unica con Dialog/Popover.
-            toast:
-              "group toast toast-progreso group-[.toaster]:w-[min(22.5rem,calc(100vw-2rem))] group-[.toaster]:items-start group-[.toaster]:gap-3 group-[.toaster]:overflow-hidden group-[.toaster]:rounded-dialog group-[.toaster]:border group-[.toaster]:border-border group-[.toaster]:bg-card group-[.toaster]:p-4 group-[.toaster]:text-ui group-[.toaster]:text-card-foreground group-[.toaster]:shadow-elevated",
-            title: "group-[.toast]:text-sm group-[.toast]:font-semibold group-[.toast]:leading-snug",
-            description: "group-[.toast]:mt-0.5 group-[.toast]:text-xs group-[.toast]:leading-snug group-[.toast]:text-muted-foreground",
-            icon: "group-[.toast]:mt-0.5 group-[.toast]:size-5 group-[.toast]:shrink-0",
-            actionButton:
-              "group-[.toast]:h-8 group-[.toast]:rounded-full group-[.toast]:bg-primary group-[.toast]:px-3 group-[.toast]:text-xs group-[.toast]:font-semibold group-[.toast]:text-primary-foreground",
-            cancelButton: "group-[.toast]:h-8 group-[.toast]:rounded-full group-[.toast]:bg-canvas group-[.toast]:px-3 group-[.toast]:text-xs group-[.toast]:text-muted-foreground",
-            closeButton: "group-[.toast]:border-border group-[.toast]:bg-card group-[.toast]:text-muted-foreground group-[.toast]:hover:bg-canvas",
-            // Sonner define su propio color de texto por defecto en [data-title]/
-            // [data-description] (sobrevive a heredar el color del contenedor) -- se
-            // fuerza aqui con selectores de descendiente.
-            success: "[&_[data-icon]]:text-success",
-            warning: "[&_[data-icon]]:text-warning",
-            info: "[&_[data-icon]]:text-info",
-            loading: "[&_[data-icon]]:text-muted-foreground",
-            error:
-              "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive-tint group-[.toaster]:text-destructive [&_[data-title]]:!text-destructive [&_[data-description]]:!text-destructive [&_[data-description]]:!opacity-85 [&_[data-icon]]:text-destructive",
-          },
-        }}
-        {...props}
-      />
-    </>
+    <Sonner
+      theme={tema}
+      closeButton
+      position="bottom-right"
+      visibleToasts={TOASTS_VISIBLES}
+      duration={DURACION_NOTIFY_MS.success}
+      gap={10}
+      offset={20}
+      className="toaster group"
+      aria-live="polite"
+      icons={{
+        success: <CheckCircle2 aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+        info: <Info aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+        warning: <AlertTriangle aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+        error: <OctagonAlert aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+        loading: <Loader2 aria-hidden="true" className="size-5 animate-spin motion-reduce:animate-none" strokeWidth={1.75} />,
+        close: <X aria-hidden="true" className="size-3.5" strokeWidth={2} />,
+      }}
+      toastOptions={{
+        classNames: {
+          // Tarjeta premium: radio de dialogo, hairline, sombra elevada, 360 px comodos y barra de
+          // autocierre (clase `toast-progreso`, index.css). Familia unica con Dialog/Popover.
+          toast:
+            "group toast toast-progreso group-[.toaster]:w-[min(22.5rem,calc(100vw-2rem))] group-[.toaster]:items-start group-[.toaster]:gap-3 group-[.toaster]:overflow-hidden group-[.toaster]:rounded-dialog group-[.toaster]:border group-[.toaster]:border-border group-[.toaster]:bg-card group-[.toaster]:p-4 group-[.toaster]:text-ui group-[.toaster]:text-card-foreground group-[.toaster]:shadow-elevated",
+          title: "group-[.toast]:text-sm group-[.toast]:font-semibold group-[.toast]:leading-snug",
+          description: "group-[.toast]:mt-0.5 group-[.toast]:text-xs group-[.toast]:leading-snug group-[.toast]:text-muted-foreground",
+          icon: "group-[.toast]:mt-0.5 group-[.toast]:size-5 group-[.toast]:shrink-0",
+          actionButton:
+            "group-[.toast]:h-8 group-[.toast]:rounded-full group-[.toast]:bg-primary group-[.toast]:px-3 group-[.toast]:text-xs group-[.toast]:font-semibold group-[.toast]:text-primary-foreground",
+          cancelButton: "group-[.toast]:h-8 group-[.toast]:rounded-full group-[.toast]:bg-canvas group-[.toast]:px-3 group-[.toast]:text-xs group-[.toast]:text-muted-foreground",
+          closeButton: "group-[.toast]:border-border group-[.toast]:bg-card group-[.toast]:text-muted-foreground group-[.toast]:hover:bg-canvas",
+          // Sonner define su propio color de texto por defecto en [data-title]/
+          // [data-description] (sobrevive a heredar el color del contenedor) -- se
+          // fuerza aqui con selectores de descendiente.
+          success: "[&_[data-icon]]:text-success",
+          warning: "[&_[data-icon]]:text-warning",
+          info: "[&_[data-icon]]:text-info",
+          loading: "[&_[data-icon]]:text-muted-foreground",
+          error:
+            "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive-tint group-[.toaster]:text-destructive [&_[data-title]]:!text-destructive [&_[data-description]]:!text-destructive [&_[data-description]]:!opacity-85 [&_[data-icon]]:text-destructive",
+        },
+      }}
+      {...props}
+    />
   );
 };
 
