@@ -140,6 +140,46 @@ describe("<VistaPreviaLlamada />", () => {
     expect(c.iniciar).not.toHaveBeenCalled();
   });
 
+  it("etiquetasChip reemplaza solo el texto del chip por modo (el modo real queda en data-modo) y videoSiempre mantiene el video del orbe en la llamada", () => {
+    const etiquetasChip = { escuchando: "● Llamada en curso" } as const;
+    pintar(controlador({ modo: "escuchando" }), { etiquetasChip, videoSrc: "/media/orbe.mp4", videoSiempre: true });
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')?.textContent).toBe("● Llamada en curso");
+    expect(rendered!.container.querySelector('[role="dialog"]')?.getAttribute("data-modo")).toBe("escuchando");
+    expect(rendered!.container.querySelector(".voz-orbe")?.getAttribute("data-video")).toBe("visible");
+    rendered!.unmount();
+    pintar(controlador({ modo: "hablando" }), { etiquetasChip });
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')?.textContent).toBe("● Hablando");
+    expect(rendered!.container.querySelector(".voz-orbe")?.getAttribute("data-video")).toBe("oculto");
+  });
+
+  it("en móvil (matchMedia < 768 px) se monta por portal en <body> como pantalla fija completa y reacciona al cambio de tamaño", () => {
+    let escritorio = false;
+    const oyentes = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return escritorio;
+      },
+      addEventListener: (_: string, f: () => void) => oyentes.add(f),
+      removeEventListener: (_: string, f: () => void) => oyentes.delete(f),
+    }));
+    const marco = document.createElement("div");
+    document.body.appendChild(marco);
+    pintar(controlador(), { portalEn: marco });
+    const dialogo = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialogo().parentElement).toBe(document.body);
+    expect(dialogo().className).toContain("fixed inset-0 z-50");
+    act(() => {
+      escritorio = true;
+      oyentes.forEach((f) => f());
+    });
+    expect(dialogo().parentElement).toBe(marco);
+    expect(dialogo().className).toContain("absolute inset-0 z-30");
+    rendered!.unmount();
+    rendered = undefined;
+    marco.remove();
+    vi.unstubAllGlobals();
+  });
+
   it("etiqueta visible de simulación cuando se le pasa", () => {
     pintar(controlador(), { etiquetaSimulacion: "Simulación" });
     expect(rendered!.container.textContent).toContain("Simulación");
