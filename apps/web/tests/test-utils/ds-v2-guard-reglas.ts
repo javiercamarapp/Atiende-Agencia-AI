@@ -86,6 +86,10 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "toast directo en restaurantes (usar notify de @atiende/ui: duraciones, accion, barra y apilado unificados)", patron: /\btoast\s*[.(]|\{[^}]*\btoast\b[^}]*\}\s*from\s+["']@atiende\/ui["']/, alcance: /^verticals\/restaurantes\// },
   { nombre: "alert() nativo o dialogo a mano (aria-modal / <dialog>): usar Dialog, ConfirmDialog o notify", patron: /\bwindow\.alert\s*\(|(^|[^.\w])alert\s*\(|aria-modal|<dialog[\s>]/m, alcance: EXCEPTO_WIDGET_WHATSAPP },
   { nombre: "overlay a mano en restaurantes (role dialog/listbox/tooltip, fixed inset-0, <datalist>): usar los primitivos de @atiende/ui", patron: /role=\{?\s*["'`](dialog|alertdialog|listbox|tooltip)["'`]|\bfixed inset-0\b|<datalist[\s>]/, alcance: /^verticals\/restaurantes\/(?!preview\/WidgetWhatsApp\.tsx$)/ },
+  // UNI-R0b: los colores de restaurantes salen de TOKENS (hsl(var(--x))); nada de rgb()/hsl() con numeros ni espacios de color modernos.
+  { nombre: "color funcional literal en restaurantes (usar un token: hsl(var(--x)))", patron: /\b(rgba?|hsla?)\(\s*(?!var\()|\b(oklch|oklab|lab|lch)\(/, alcance: /^verticals\/restaurantes\// },
+  // UNI-R0b: la variante `rest:` y el atributo data-ambito pertenecen a los primitivos de @atiende/ui; una pantalla no los usa a mano.
+  { nombre: "variante rest: o data-ambito a mano en apps/web (el ambito lo aplica @atiende/ui)", patron: /(^|[\s"'`])rest:[\w[-]|data-ambito/ },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);
