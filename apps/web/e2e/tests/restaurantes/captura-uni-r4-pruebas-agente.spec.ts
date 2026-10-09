@@ -106,6 +106,12 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
     const vista = page.getByRole("dialog", { name: /Vista previa de llamada/ });
     await expect(vista).toBeVisible();
     await expect(page.getByTestId("globo-llamada")).toBeHidden();
+    // En movil es una pantalla fija completa sobre todo (cabecera y barra inferior incluidas).
+    if (info.project.name.startsWith("movil")) {
+      const caja = await vista.boundingBox();
+      const vp = page.viewportSize()!;
+      expect(caja).toMatchObject({ x: 0, y: 0, width: vp.width, height: vp.height });
+    }
     // En escritorio la vista previa cubre tambien la barra superior (como el original).
     if (!info.project.name.startsWith("movil")) {
       const caja = await vista.boundingBox();
