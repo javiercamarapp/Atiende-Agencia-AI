@@ -2,7 +2,7 @@
 // clave y si se vende en ESTA sucursal. «Desactivar» no borra nada: apaga el producto en la sucursal (branch_products, lo que
 // consulta el agente) y conserva su descripción y sus alias para cuando se vuelva a encender.
 import { useEffect, useState } from "react";
-import { Button, Callout, FormDialog, FormField, Input, NativeSelect, Switch, Textarea } from "@atiende/ui";
+import { Button, Callout, FormDialog, FormField, Input, Selector, Switch, Textarea } from "@atiende/ui";
 import { AliasChips } from "./AliasChips.tsx";
 import { setBranchAvailability, updateProduct } from "../lib/catalog-client.ts";
 import type { Category, Product } from "../lib/catalog-client.ts";
@@ -132,14 +132,14 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
           <Input type="number" min={0} step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} disabled={guardando} />
         </FormField>
         <FormField label="Categoría">
-          <NativeSelect value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} disabled={guardando}>
+          <Selector value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} disabled={guardando}>
             <option value="">Sin categoría</option>
             {categorias.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </NativeSelect>
+          </Selector>
         </FormField>
         <AliasChips alias={alias} onChange={setAlias} disabled={guardando} onBorradorChange={setBorradorAlias} />
         {agotadoHasta && (

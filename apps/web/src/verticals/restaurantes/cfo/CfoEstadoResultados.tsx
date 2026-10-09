@@ -4,7 +4,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Settings2, SquarePen } from "lucide-react";
 import type { ColumnaPyl, ConceptoCosto, LineaId, LineaPyl, EstadoResultadosVista, Granularidad } from "@atiende/domain-restaurantes/cfo";
-import { Button, Callout, ChartCard, DataTable, NativeSelect, PageContainer } from "@atiende/ui";
+import { Button, Callout, ChartCard, DataTable, Selector, PageContainer } from "@atiende/ui";
 import { fetchEstadoResultados } from "./cfo-client.ts";
 import { AjustesCfoDialogo } from "./AjustesCfoDialogo.tsx";
 import { CapturaCostosDialogo, ORGANIZACION } from "./CapturaCostosDialogo.tsx";
@@ -185,11 +185,11 @@ export function CfoEstadoResultados(props: CfoPaginaProps) {
           <label htmlFor="pyl-granularidad" className="text-xs text-muted-foreground">
             Detalle por
           </label>
-          <NativeSelect id="pyl-granularidad" size="sm" value={granularidad} onChange={(e) => setGranularidad(e.target.value as Granularidad)} wrapperClassName="w-32" data-testid="pyl-granularidad">
+          <Selector id="pyl-granularidad" size="sm" value={granularidad} onChange={(e) => setGranularidad(e.target.value as Granularidad)} wrapperClassName="w-32" data-testid="pyl-granularidad">
             <option value="mes">Mes</option>
             <option value="semana">Semana</option>
             <option value="dia">Día</option>
-          </NativeSelect>
+          </Selector>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {puedeCapturar && (

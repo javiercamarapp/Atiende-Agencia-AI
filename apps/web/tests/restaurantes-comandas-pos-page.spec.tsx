@@ -4,11 +4,14 @@
 // estado del POS honesto (sin adaptador real el selector de modo queda deshabilitado), cola con filtros, "Copiar para POS", "Marcar
 // capturada" con confirmacion y nota opcional, umbral de aviso por sucursal (owner/admin) y los estados de carga, error y vacio.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { ComandasPosPage } from "../src/verticals/restaurantes/pages/ComandasPos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { ComandaWire, ConfigPosWire } from "../src/verticals/restaurantes/lib/pos-comandas-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -100,7 +103,7 @@ describe("ComandasPosPage -- estado del POS", () => {
     await esperar();
     expect(q("[data-testid='pos-no-conectado']")!.textContent).toContain("SoftRestaurant no conectado: requiere la API del distribuidor");
     expect(q("[data-testid='pos-no-conectado']")!.textContent).toContain("409");
-    const modo = q("#pos-modo") as HTMLSelectElement;
+    const modo = q("#pos-modo") as HTMLButtonElement;
     expect(modo.disabled).toBe(true);
     expect(q("[data-testid='pos-modo-actual']")!.textContent).toContain("Apagado");
     expect(llamadas("PUT", "/softrestaurant/config")).toHaveLength(0);
@@ -110,9 +113,9 @@ describe("ComandasPosPage -- estado del POS", () => {
     stub({ config: { ...CONFIG_SIN_POS, adaptador: { nombre: "http", esReal: true } } });
     rendered = renderComponent(<ComandasPosPage {...CTX} />);
     await esperar();
-    const modo = q("#pos-modo") as HTMLSelectElement;
+    const modo = q("#pos-modo") as HTMLButtonElement;
     expect(modo.disabled).toBe(false);
-    changeValue(modo, "sombra");
+    elegirValor(modo, "sombra");
     await esperar();
     expect(JSON.parse(String((llamadas("PUT", "/softrestaurant/config")[0]![1] as RequestInit).body))).toEqual({ modo: "sombra" });
     rendered.unmount();
@@ -170,7 +173,7 @@ describe("ComandasPosPage -- cola", () => {
       tab.focus();
       for (let i = 0; i < 6; i++) await flushMicrotasks();
     });
-    changeValue(q("#pos-sucursal") as HTMLSelectElement, "prop-2");
+    elegirValor(q("#pos-sucursal"), "prop-2");
     await esperar();
     const ultima = decodeURIComponent(String(llamadas("GET", "/comandas?").at(-1)![0]));
     expect(ultima).toContain("branchId=prop-2");

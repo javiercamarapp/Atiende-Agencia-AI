@@ -86,7 +86,7 @@ describe("restaurantes — selector de sucursal (QA-restaurantes-R1-botones-03)"
       }),
     );
     const c = await renderEn("/restaurantes/demo/pedidoss");
-    const selects = [...c.querySelectorAll("select")].filter((s) => s.id.startsWith("restaurantes-sucursal-activa"));
+    const selects = [...c.querySelectorAll("[role='combobox']")].filter((s) => s.id.startsWith("restaurantes-sucursal-activa"));
     expect(selects.map((s) => s.id).sort()).toEqual(["restaurantes-sucursal-activa", "restaurantes-sucursal-activa-movil"]);
     for (const s of selects) {
       expect(c.querySelectorAll(`#${s.id}`)).toHaveLength(1);

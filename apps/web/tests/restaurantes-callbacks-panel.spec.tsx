@@ -3,10 +3,13 @@
 // R-12: pestana de callbacks con estado, SLA, asignacion y acciones. Base sin la migracion 033 (`gestionable: false`) se ve el
 // listado de siempre, sin botones de estado.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { CallbacksPanel } from "../src/verticals/restaurantes/pages/CallbacksPanel.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
-import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, etiquetasDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -94,12 +97,12 @@ describe("CallbacksPanel (restaurantes)", () => {
     enrutar([{ ...NUEVO, estado: "en_curso", asignadoA: "u-2", asignadoNombre: "Luis" }]);
     rendered = renderComponent(<CallbacksPanel ctx={OWNER} />);
     await esperar();
-    const select = rendered.container.querySelector("select[aria-label^='Asignar']") as HTMLSelectElement;
+    const select = rendered.container.querySelector("[role='combobox'][aria-label^='Asignar']") as HTMLElement;
     expect(select).not.toBeNull();
-    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["Asignar a…", "Luis"]);
+    expect(etiquetasDe(select)).toEqual(["Asignar a…", "Luis"]);
     expect(rendered.container.textContent).toContain("Asignado a Luis");
     expect(boton("Asignar")!.hasAttribute("disabled")).toBe(true);
-    changeValue(select, "u-2");
+    elegirValor(select, "u-2");
     await esperar();
     expect(boton("Asignar")!.hasAttribute("disabled")).toBe(false);
     click(boton("Asignar")!);
@@ -111,7 +114,7 @@ describe("CallbacksPanel (restaurantes)", () => {
     enrutar([{ ...NUEVO, estado: "en_curso", asignadoNombre: "Luis" }]);
     rendered = renderComponent(<CallbacksPanel ctx={STAFF} />);
     await esperar();
-    expect(rendered.container.querySelector("select[aria-label^='Asignar']")).toBeNull();
+    expect(rendered.container.querySelector("[role='combobox'][aria-label^='Asignar']")).toBeNull();
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/staff/miembros"))).toBe(false);
   });
 
@@ -124,7 +127,7 @@ describe("CallbacksPanel (restaurantes)", () => {
     expect(t).toContain("Sin sucursal asignada");
     expect(boton("Tomar")).toBeUndefined();
     expect(boton("Resolver")).toBeUndefined();
-    expect(rendered.container.querySelector("select[aria-label^='Asignar']")).toBeNull();
+    expect(rendered.container.querySelector("[role='combobox'][aria-label^='Asignar']")).toBeNull();
     expect(boton("Contactado (resuelto)")).toBeDefined();
   });
 
@@ -141,7 +144,7 @@ describe("CallbacksPanel (restaurantes)", () => {
     rendered = renderComponent(<CallbacksPanel ctx={STAFF} />);
     await esperar();
     expect(String(fetchMock.mock.calls[0]![0])).toContain("/callbacks?soloAbiertos=1");
-    changeValue(rendered.container.querySelector("#callbacks-filtro") as HTMLSelectElement, "resuelto");
+    elegirValor(rendered.container.querySelector("#callbacks-filtro") as HTMLElement, "resuelto");
     await esperar();
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith("/callbacks?estado=resuelto"))).toBe(true);
   });

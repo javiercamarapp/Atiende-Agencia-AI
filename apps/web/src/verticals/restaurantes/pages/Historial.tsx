@@ -4,7 +4,7 @@
 //
 // Presentación real desde esta ronda: la `<table>` hecha a mano con `style={{...}}`
 // pasa a `Table`/`TableHeader`/`TableBody`/`TableRow`/`TableHead`/`TableCell` de
-// `@atiende/ui`, los filtros a `Input`/`Label`/`NativeSelect` y "Cargar más" a
+// `@atiende/ui`, los filtros a `Input`/`Label`/`Selector` y "Cargar más" a
 // `Button`. El estado de cada orden se pinta con `StatusBadge` (tono por estado).
 // La lógica de carga/paginación de abajo es la MISMA: solo cambia el JSX.
 import { useEffect, useRef, useState } from "react";
@@ -18,7 +18,7 @@ import {
   EstadoError,
   FormField,
   Input,
-  NativeSelect,
+  Selector,
   PageContainer,
   StatusBadge,
   formatMoney,
@@ -141,7 +141,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
       <div className="flex flex-wrap items-end gap-3">
         <FormField label="Estado">
-          <NativeSelect
+          <Selector
             id="restaurantes-historial-estado"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")}
@@ -153,7 +153,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
                 {ORDER_STATUS_LABELS[s]}
               </option>
             ))}
-          </NativeSelect>
+          </Selector>
         </FormField>
         <FormField label="Desde">
           <Input id="restaurantes-historial-desde" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />

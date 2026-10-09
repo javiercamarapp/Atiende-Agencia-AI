@@ -7,7 +7,7 @@
 // La voz, el saludo por sucursal y el conocimiento automatico viven aqui mismo como secciones propias.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, NativeSelect, PageContainer, RadioSegmentado, StatusBadge, Switch, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, PageContainer, RadioSegmentado, StatusBadge, Switch, formatMoney } from "@atiende/ui";
 import { fechaCortaEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchAjustesAgente, guardarAjustesAgente } from "../lib/ajustes-agente-client.ts";
 import type { AjustesAgente, AjustesAgenteVista, ModeloAgenteVista } from "../lib/ajustes-agente-client.ts";
@@ -152,14 +152,14 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 <label htmlFor="ajustes-modelo-whatsapp" className="block text-sm font-medium text-foreground mb-1.5">
                   Modelo
                 </label>
-                <NativeSelect id="ajustes-modelo-whatsapp" value={borrador.whatsappModelo ?? ""} disabled={!servicioListo} onChange={(e) => cambiar({ whatsappModelo: e.target.value === "" ? null : e.target.value })}>
+                <Selector id="ajustes-modelo-whatsapp" value={borrador.whatsappModelo ?? ""} disabled={!servicioListo} onChange={(e) => cambiar({ whatsappModelo: e.target.value === "" ? null : e.target.value })}>
                   <option value="">Predeterminado de la plataforma{modeloPlataforma ? ` (${modeloPlataforma.etiqueta})` : ""}</option>
                   {vista.modelos.map((m) => (
                     <option key={m.id} value={m.id}>
                       {etiquetaOpcionModelo(m, "whatsapp")}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
                 {modeloWhatsapp ? (
                   <p className="mt-1.5 text-xs text-muted-foreground" data-testid="costo-whatsapp">
                     {modeloWhatsapp.descripcion} Costo estimado: {costoPorMil(modeloWhatsapp.costoWhatsappMicroUsdPorMensaje, "mensajes")}
@@ -214,14 +214,14 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 <label htmlFor="ajustes-modelo-cascada" className="block text-sm font-medium text-foreground mb-1.5">
                   Modelo de la cascada de respaldo
                 </label>
-                <NativeSelect id="ajustes-modelo-cascada" value={borrador.vozModeloCascada ?? ""} disabled={!servicioListo} onChange={(e) => cambiar({ vozModeloCascada: e.target.value === "" ? null : e.target.value })}>
+                <Selector id="ajustes-modelo-cascada" value={borrador.vozModeloCascada ?? ""} disabled={!servicioListo} onChange={(e) => cambiar({ vozModeloCascada: e.target.value === "" ? null : e.target.value })}>
                   <option value="">Predeterminado de la plataforma{modeloPlataforma ? ` (${modeloPlataforma.etiqueta})` : ""}</option>
                   {vista.modelos.map((m) => (
                     <option key={m.id} value={m.id}>
                       {etiquetaOpcionModelo(m, "voz")}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
                 {modeloCascada ? (
                   <p className="mt-1.5 text-xs text-muted-foreground" data-testid="costo-cascada">
                     Costo estimado de la cascada con {modeloCascada.etiqueta}: {costoPorMil(modeloCascada.costoVozMicroUsdPorMinuto, "minutos")} ({formatMoney(vista.supuestosCosto.vozCascadaMinuto.tokensEntrada, 0)} tokens de entrada y {formatMoney(vista.supuestosCosto.vozCascadaMinuto.tokensSalida, 0)} de salida por minuto).

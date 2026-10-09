@@ -4,10 +4,13 @@
 // Se afirma lo que ve el dueño y lo que viaja a la API: apertura/cierre, burbujas con hora (reloj fijo), pedido simulado PRUEBA con su insignia,
 // errores honestos 503/429/500, reinicio (sesión nueva), cliente simulado, borrador sin guardar y la accesibilidad del registro en vivo.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { WidgetWhatsApp } from "../src/verticals/restaurantes/preview/WidgetWhatsApp.tsx";
 import { formDesdeWire } from "../src/verticals/restaurantes/lib/agente-whatsapp-client.ts";
 import { changeValue, click, flushMicrotasks, keydown, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -185,13 +188,27 @@ describe("<WidgetWhatsApp />", () => {
     await abrir();
     click(boton("Opciones de prueba")!);
     await esperar();
-    const select = q<HTMLSelectElement>("select")!;
-    await act(async () => changeValue(select, "c1"));
+    const select = q<HTMLButtonElement>('[role="combobox"]')!;
+    elegirValor(select, "c1");
     await act(async () => click(q<HTMLInputElement>('input[type="checkbox"]')!));
     await escribir("hola");
     expect(envios[0]!.clienteSimuladoId).toBe("c1");
     expect(envios[0]!.borrador).toMatchObject({ perfil: "taqueria_pm" });
-    expect(q<HTMLSelectElement>("select")!.disabled).toBe(true);
+    expect(q<HTMLButtonElement>('[role="combobox"]')!.disabled).toBe(true);
+  });
+
+  it("Escape dentro de la lista de Simular cliente cierra solo la lista, no el chat", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }), { borrador: true });
+    await abrir();
+    click(boton("Opciones de prueba")!);
+    await esperar();
+    const select = q<HTMLButtonElement>('[role="combobox"]')!;
+    select.focus();
+    keydown(select, "Enter");
+    const lista = q('[role="listbox"]')!;
+    expect(lista).not.toBeNull();
+    keydown(lista, "Escape");
+    expect(q('[data-testid="chat-whatsapp"]')).not.toBeNull();
   });
 
   it("«Reiniciar conversación» conserva el cliente simulado elegido", async () => {
@@ -199,11 +216,11 @@ describe("<WidgetWhatsApp />", () => {
     await abrir();
     click(boton("Opciones de prueba")!);
     await esperar();
-    await act(async () => changeValue(q<HTMLSelectElement>("select")!, "c1"));
+    elegirValor(q<HTMLButtonElement>('[role="combobox"]')!, "c1");
     await escribir("hola");
     click(boton("Reiniciar conversación")!);
     await esperar();
-    expect(q<HTMLSelectElement>("select")!.value).toBe("c1");
+    expect(valorDe(q<HTMLButtonElement>('[role="combobox"]'))).toBe("c1");
     await escribir("otra");
     expect(envios[1]!.clienteSimuladoId).toBe("c1");
   });
@@ -213,7 +230,7 @@ describe("<WidgetWhatsApp />", () => {
     await abrir();
     click(boton("Opciones de prueba")!);
     await esperar();
-    expect(q("select")).not.toBeNull();
+    expect(q('[role="combobox"]')).not.toBeNull();
     expect(q('input[type="checkbox"]')).toBeNull();
   });
 

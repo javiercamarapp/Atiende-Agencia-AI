@@ -49,6 +49,7 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "overlay a mano en restaurantes", viola: '<div role="dialog" className="x" />', limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "overlay a mano en restaurantes", viola: '<div className="fixed inset-0 z-50" />', limpio: '<div className="relative" />', ruta: "verticals/restaurantes/components/Z.tsx" },
   { regla: "overlay a mano en restaurantes", viola: '<input list="x" /><datalist id="x" />', limpio: "<Selector />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "NativeSelect en restaurantes", viola: "<NativeSelect value={a} />", limpio: "<Selector value={a} />", ruta: "verticals/restaurantes/pages/Y.tsx" },
 ];
 
 const porRegla = (prefijo: string) => {
@@ -107,6 +108,17 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
       expect(infractores([fuente(limpio)], alerta), limpio).toEqual([]);
     }
     expect(infractores([fuente('toast.success("x");', "verticals/hoteles/pages/Y.tsx")], porRegla("toast directo en restaurantes"))).toEqual([]);
+  });
+
+  it("NativeSelect en restaurantes: solo AgenteWhatsappSeccion y DemoWhatsAppPage (lote R4) quedan exentas; WidgetWhatsApp y otras zonas no", () => {
+    const regla = porRegla("NativeSelect en restaurantes");
+    for (const ruta of ["pages/AgenteWhatsappSeccion.tsx", "demo/DemoWhatsAppPage.tsx"]) {
+      expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toEqual([]);
+    }
+    for (const ruta of ["pages/Otra.tsx", "preview/WidgetWhatsApp.tsx"]) {
+      expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toHaveLength(1);
+    }
+    expect(infractores([fuente("<NativeSelect />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
   });
 
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {
