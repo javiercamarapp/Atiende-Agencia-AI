@@ -3,7 +3,7 @@
 // agente a la izquierda con hora y palomitas, mensajes de sistema, «escribiendo…», barra de entrada)— pero conectado al agente REAL en modo preview:
 //  · el servidor corre las mismas herramientas SIN efectos: `crear_pedido` devuelve un pedido simulado PRUEBA-xxxx (el original sí creaba pedidos
 //    reales; aquí NO), nada se escribe y a nadie se le avisa; el historial vive solo en el navegador;
-//  · sin proveedor de IA el servidor contesta 503/429 y el chat lo dice tal cual en una píldora de error: nunca hay respuestas por palabras clave.
+//  · sin proveedor de IA el servidor contesta 503/429 y el chat lo dice tal cual en una burbuja del agente con el detalle del servidor: nunca hay respuestas por palabras clave.
 // Lo que el original no tenía y el monorepo conserva (Simular cliente, probar con los cambios sin guardar, Reiniciar conversación) vive en el
 // encabezado: «Reiniciar» como icono y «Opciones de prueba» como bandeja que se despliega bajo él.
 // Las animaciones son CSS (apps/web no usa framer-motion) y se apagan con prefers-reduced-motion. Estilos: widget-whatsapp.css.
@@ -159,7 +159,6 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
     setError(null);
     setAviso(null);
     setBorradorTexto("");
-    setClienteId("");
   }
 
   async function enviar() {

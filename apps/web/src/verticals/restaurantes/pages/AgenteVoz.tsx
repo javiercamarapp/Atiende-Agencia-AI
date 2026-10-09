@@ -87,11 +87,14 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
   const [version, setVersion] = useState(0);
   const marco = useMarcoShell();
   // «Vista previa» vive en la barra superior de la página (escritorio), como en el original; en móvil (sin esa barra) queda el botón del encabezado de la página.
-  const botonVistaPrevia = (
+  const botonVistaPrevia = useMemo(
+    () => (
     <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-eyebrow" onClick={() => setVistaPrevia(true)}>
       <PlayCircle className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
       Vista previa
     </Button>
+  ),
+    [],
   );
   useAccionesBarra(botonVistaPrevia);
 
@@ -361,7 +364,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
         ) : null}
       </PageContainer>
 
-      {vistaPrevia ? null : <GloboLlamada onAbrir={() => setVistaPrevia(true)} />}
+      {vistaPrevia || !(role === "owner" || role === "admin") ? null : <GloboLlamada onAbrir={() => setVistaPrevia(true)} />}
 
       {vistaPrevia ? (
         <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} nombreSucursal={nombreSucursal ?? "Llamada de prueba"} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} portalEn={marco} onCerrar={() => setVistaPrevia(false)} />

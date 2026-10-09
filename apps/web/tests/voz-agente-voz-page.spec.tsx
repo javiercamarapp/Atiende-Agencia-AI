@@ -530,6 +530,13 @@ describe("llamada de prueba (vista previa real)", () => {
     expect(globo()).not.toBeNull();
   });
 
+  it("el globo de llamada no se muestra a quien no es owner/admin", async () => {
+    stub({});
+    rendered = renderComponent(<AgenteVozPage {...CTX} role="staff" />);
+    await settle();
+    expect(document.body.querySelector('[data-testid="globo-llamada"]')).toBeNull();
+  });
+
   it("el encabezado de la vista previa lleva el nombre de la sucursal activa (como el original) y el chip arranca en «Vista previa»", async () => {
     await pintar({}, { entornoVoz: entornoFalso().entorno });
     click(boton("Vista previa")!);

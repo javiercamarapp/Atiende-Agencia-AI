@@ -21,7 +21,6 @@
   --wa-sistema-fondo: rgb(7 94 84 / 0.1);
   --wa-sistema-texto: #075e54;
   --wa-error-fondo: hsl(var(--destructive) / 0.12);
-  --wa-error-texto: hsl(var(--destructive));
   --wa-borde: rgb(0 0 0 / 0.1);
   --wa-boton-texto: #ffffff;
 }

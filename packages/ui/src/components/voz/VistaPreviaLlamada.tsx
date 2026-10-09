@@ -1,5 +1,5 @@
 import { Mic, MicOff, PlayCircle, XCircle } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { KeyboardEvent as TecladoReact, ReactNode } from "react";
 import { CampoPixeles } from "./CampoPixeles.js";
@@ -44,6 +44,22 @@ const ETIQUETA_CHIP: Readonly<Record<ModoOrb, string>> = {
   error: "Error",
 };
 
+const CONSULTA_ESCRITORIO = "(min-width: 768px)";
+
+/** `true`/`false` según el ancho de la ventana (reacciona al cambio de tamaño); `null` si el entorno no tiene matchMedia (pruebas). */
+function useEscritorio(): boolean | null {
+  return useSyncExternalStore(
+    (aviso) => {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
+      const mq = window.matchMedia(CONSULTA_ESCRITORIO);
+      mq.addEventListener("change", aviso);
+      return () => mq.removeEventListener("change", aviso);
+    },
+    () => (typeof window.matchMedia === "function" ? window.matchMedia(CONSULTA_ESCRITORIO).matches : null),
+    () => null,
+  );
+}
+
 const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
@@ -58,6 +74,9 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
   const conectando = estado.modo === "conectando";
   const bloqueada = Boolean(motivoNoDisponible) && !activa;
   const panel = useRef<HTMLDivElement>(null);
+  const escritorio = useEscritorio();
+  // Móvil: pantalla completa fija sobre TODO (cabecera y barra inferior incluidas), montada en <body>. Escritorio con marco del shell: cubre barra y página.
+  const enBody = escritorio === false;
   // Se comporta como un dialogo: el foco entra al panel al abrirse, Tab no sale de el, Escape lo cierra (igual que "‹ Atrás") y al cerrarse
   // el foco vuelve al control que lo abrio (QA-restaurantes-R1-botones-09).
   const alCerrar = useRef(onCerrar);
@@ -109,7 +128,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
       aria-label={`Vista previa de llamada: ${nombreAgente}`}
       tabIndex={-1}
       onKeyDown={atraparTab}
-      className="voz-aparece absolute inset-0 z-30 bg-background flex flex-col outline-none"
+      className={`voz-aparece ${enBody ? "fixed inset-0 z-50" : "absolute inset-0 z-30"} bg-background flex flex-col outline-none`}
       data-modo={estado.modo}
     >
       <header className="h-12 shrink-0 border-b border-border flex items-center justify-between px-4">
@@ -213,6 +232,6 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
       </div>
     </div>
   );
-  const enMarco = portalEn && typeof window.matchMedia === "function" && window.matchMedia("(min-width: 768px)").matches;
-  return enMarco ? createPortal(contenido, portalEn) : contenido;
+  if (enBody) return createPortal(contenido, document.body);
+  return escritorio && portalEn ? createPortal(contenido, portalEn) : contenido;
 }

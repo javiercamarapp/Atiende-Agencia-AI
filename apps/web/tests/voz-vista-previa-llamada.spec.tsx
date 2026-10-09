@@ -152,6 +152,34 @@ describe("<VistaPreviaLlamada />", () => {
     expect(rendered!.container.querySelector(".voz-orbe")?.getAttribute("data-video")).toBe("oculto");
   });
 
+  it("en móvil (matchMedia < 768 px) se monta por portal en <body> como pantalla fija completa y reacciona al cambio de tamaño", () => {
+    let escritorio = false;
+    const oyentes = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return escritorio;
+      },
+      addEventListener: (_: string, f: () => void) => oyentes.add(f),
+      removeEventListener: (_: string, f: () => void) => oyentes.delete(f),
+    }));
+    const marco = document.createElement("div");
+    document.body.appendChild(marco);
+    pintar(controlador(), { portalEn: marco });
+    const dialogo = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialogo().parentElement).toBe(document.body);
+    expect(dialogo().className).toContain("fixed inset-0 z-50");
+    act(() => {
+      escritorio = true;
+      oyentes.forEach((f) => f());
+    });
+    expect(dialogo().parentElement).toBe(marco);
+    expect(dialogo().className).toContain("absolute inset-0 z-30");
+    rendered!.unmount();
+    rendered = undefined;
+    marco.remove();
+    vi.unstubAllGlobals();
+  });
+
   it("etiqueta visible de simulación cuando se le pasa", () => {
     pintar(controlador(), { etiquetaSimulacion: "Simulación" });
     expect(rendered!.container.textContent).toContain("Simulación");

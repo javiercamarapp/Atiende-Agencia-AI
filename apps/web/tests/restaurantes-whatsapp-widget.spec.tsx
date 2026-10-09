@@ -194,6 +194,20 @@ describe("<WidgetWhatsApp />", () => {
     expect(q<HTMLSelectElement>("select")!.disabled).toBe(true);
   });
 
+  it("«Reiniciar conversación» conserva el cliente simulado elegido", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    click(boton("Opciones de prueba")!);
+    await esperar();
+    await act(async () => changeValue(q<HTMLSelectElement>("select")!, "c1"));
+    await escribir("hola");
+    click(boton("Reiniciar conversación")!);
+    await esperar();
+    expect(q<HTMLSelectElement>("select")!.value).toBe("c1");
+    await escribir("otra");
+    expect(envios[1]!.clienteSimuladoId).toBe("c1");
+  });
+
   it("sin borrador (página de indicadores) las opciones solo traen Simular cliente", async () => {
     montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
     await abrir();
