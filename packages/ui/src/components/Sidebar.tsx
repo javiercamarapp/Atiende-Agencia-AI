@@ -232,6 +232,8 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
   return (
     <aside
       aria-label="Navegación principal"
+      // Mantiene la paleta de Likida aunque la vertical tenga su propio ambito de tokens (index.css, [data-ambito-base]).
+      data-ambito-base=""
       className={cn(
         "hidden md:flex flex-col rounded-lg border border-border bg-card shadow-card sticky top-4 h-[calc(100dvh-2rem)] overflow-hidden transition-[width] duration-base ease-brand",
         collapsed ? "w-[72px]" : "w-[72px] lg:w-[232px]",

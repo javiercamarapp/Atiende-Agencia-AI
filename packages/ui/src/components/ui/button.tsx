@@ -13,29 +13,32 @@ import { cn } from "../../lib/utils";
 // Transiciones enumeradas con los tokens de motion (nada de transition-all).
 // Feedback de press global vía CSS (:active { scale(.97) }) en index.css.
 // Variantes retiradas por no tener ningun uso en el repo: hero, terracotta, gold y el tamano xl.
+// Ambito restaurantes (UNI-R0b): el boton del repo suelto (button-variants.ts) llega por las clases `ambito-boton*` (index.css, solo bajo
+// html[data-ambito=restaurantes]): pildora, semibold, px-5/4/8 por tamano, primario con sombra y elevacion de 1 px, destructivo en rojo SOLIDO,
+// outline con borde que se oscurece. Los altos (40/36/48) y los 200 ms salen de --control-* y --dur-fast del ambito. Fuera de el, estas clases no hacen nada.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-fast ease-brand disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "ambito-boton inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-fast ease-brand disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        default: "ambito-boton-primario bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "ambito-boton-peligro bg-destructive text-destructive-foreground hover:bg-destructive/90",
         // Peligro como Likida (--bad sobre --badbg): tinte suave + texto de peligro.
-        danger: "bg-destructive-tint text-destructive hover:opacity-85",
+        danger: "ambito-boton-peligro bg-destructive-tint text-destructive hover:opacity-85",
         "danger-outline": "border border-destructive/40 bg-card text-destructive hover:bg-destructive-tint",
-        outline: "border border-border bg-card text-foreground hover:bg-canvas",
+        outline: "ambito-boton-borde border border-border bg-card text-foreground hover:bg-canvas",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-[var(--control-md)] px-4",
-        md: "h-[var(--control-md)] px-4",
+        default: "ambito-boton-md h-[var(--control-md)] px-4",
+        md: "ambito-boton-md h-[var(--control-md)] px-4",
         // CTA de cabecera de Likida: h-8 px-3 rounded-lg text-[13px].
-        sm: "h-[var(--control-sm)] rounded-lg px-3 text-ui",
+        sm: "ambito-boton-sm h-[var(--control-sm)] rounded-lg px-3 text-ui",
         // Boton de toolbar de Likida: h-7 px-2.5 rounded-lg text-xs.
-        xs: "h-7 rounded-lg px-2.5 text-xs",
-        lg: "h-[var(--control-lg)] px-6",
+        xs: "ambito-boton-xs h-7 rounded-lg px-2.5 text-xs",
+        lg: "ambito-boton-lg h-[var(--control-lg)] px-6",
         icon: "h-[var(--control-md)] w-[var(--control-md)]",
         "icon-sm": "h-[var(--control-sm)] w-[var(--control-sm)] rounded-lg",
       },

@@ -91,7 +91,7 @@ export function FormDialog({
         className={cn(
           // Escritorio: dialogo centrado. Movil: hoja inferior que sube desde abajo.
           anchoClase,
-          "gap-0 overflow-hidden p-0",
+          "gap-0 overflow-hidden p-0 rest:p-0",
           "max-md:max-h-[92dvh] max-md:pb-0",
         )}
         onInteractOutside={bloquearCierre ? (e) => e.preventDefault() : undefined}
@@ -108,9 +108,9 @@ export function FormDialog({
           <div className="flex flex-col gap-3 border-b border-border bg-muted/30 p-5 pr-12 md:gap-6 md:border-b-0 md:border-r">
             <AtiendeMark className="hidden h-7 w-auto md:block" />
             <div>
-              <DialogTitle className="mb-1 font-display text-base font-semibold">{titulo}</DialogTitle>
+              <DialogTitle className="mb-1 font-display text-base font-semibold rest:text-base rest:leading-snug rest:tracking-normal">{titulo}</DialogTitle>
               {subtitulo ? (
-                <DialogDescription className="text-ui">{subtitulo}</DialogDescription>
+                <DialogDescription className="text-ui rest:text-ui">{subtitulo}</DialogDescription>
               ) : (
                 <DialogDescription className="sr-only">{titulo}</DialogDescription>
               )}
@@ -157,7 +157,7 @@ export function FormDialog({
             type="button"
             onClick={() => onOpenChange(false)}
             aria-label="Cerrar"
-            className="absolute right-2 top-3 z-10 flex size-11 items-center justify-center rounded-full text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-muted hover:text-foreground md:right-3 md:size-7"
+            className="absolute right-2 top-3 z-10 flex size-11 items-center justify-center rounded-full text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-muted hover:text-foreground md:right-3 md:size-7 rest:focus-visible:outline-none rest:focus-visible:ring-2 rest:focus-visible:ring-ring rest:focus-visible:ring-offset-2 rest:ring-offset-card"
           >
             <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
           </button>

@@ -6,8 +6,11 @@
 // Tailwind ni estos tokens. Nunca reinventar este preset por vertical.
 import type { Config } from "tailwindcss";
 import preset from "@atiende/ui/tailwind-preset";
+import ambito from "@atiende/ui/tailwind-ambito";
 
 export default {
   presets: [preset],
+  // Variante `rest:` (ambito restaurantes, UNI-R0b).
+  plugins: [ambito],
   content: ["./src/**/*.{ts,tsx}", "../../packages/ui/src/**/*.{ts,tsx}"],
 } satisfies Config;

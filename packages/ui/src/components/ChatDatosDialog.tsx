@@ -261,7 +261,7 @@ export function ChatDatosDialog({ open, onOpenChange, nombreNegocio, mensajes, e
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] max-w-2xl flex-col gap-3 p-4 sm:p-6">
+      <DialogContent className="flex max-h-[88vh] max-w-2xl flex-col gap-3 p-4 sm:p-6 rest:p-4 rest:sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" aria-hidden="true" />

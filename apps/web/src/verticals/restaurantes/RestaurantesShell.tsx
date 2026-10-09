@@ -37,7 +37,7 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { NativeSelect, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
+import { NativeSelect, useAmbitoVertical, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
@@ -210,6 +210,8 @@ function buildMobileItems(orgSlug: string): BottomNavItem[] {
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
   useDocumentTitle("Restaurantes", orgSlug);
+  // Ambito visual del repo suelto (UNI-R0b): tokens, botones en pildora y overlays; el sidebar conserva su paleta.
+  useAmbitoVertical("restaurantes");
   const s = useVerticalSession({ adapter: RESTAURANTES_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
