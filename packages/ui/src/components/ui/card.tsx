@@ -10,7 +10,7 @@ import { cn } from "../../lib/utils";
  * gancho de `.card table` (filas punteadas, ui/index.css).
  */
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("card min-w-0 rounded-lg border border-border bg-card text-card-foreground", className)} {...props} />
+  <div ref={ref} className={cn("card min-w-0 rounded-lg border border-border bg-card text-card-foreground shadow-sm", className)} {...props} />
 ));
 Card.displayName = "Card";
 

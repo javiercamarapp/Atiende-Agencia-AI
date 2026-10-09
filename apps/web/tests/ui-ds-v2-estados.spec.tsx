@@ -71,22 +71,22 @@ describe("Skeleton", () => {
 });
 
 describe("EstadoVacio y EstadoError", () => {
-  it("EstadoVacio: role=status, titulo, mensaje, accion; compacto reduce el relleno (py-6; p-3 en la variante fila)", () => {
+  it("EstadoVacio: role=status, titulo, mensaje, accion; compacto reduce el relleno a p-3", () => {
     const onClick = vi.fn();
     rendered = renderComponent(<EstadoVacio titulo="Sin citas" mensaje="Crea la primera" accion={<button onClick={onClick}>Nueva</button>} />);
     expect(raiz().getAttribute("role")).toBe("status");
-    // por defecto es el estado centrado del repo suelto (py-10); la variante "fila" conserva el p-4 de Likida
-    expect(raiz().className).toContain("py-10");
+    // por defecto (fuera de restaurantes) es la variante "fila" de Likida
+    expect(raiz().className).toContain("p-4");
     click(rendered.container.querySelector("button")!);
     expect(onClick).toHaveBeenCalled();
     rendered.rerender(<EstadoVacio mensaje="Nada" compacto className="mt-2" />);
-    expect(raiz().className).toContain("py-6");
-    expect(raiz().className).not.toContain("py-10");
-    rendered.rerender(<EstadoVacio variante="fila" mensaje="Nada" />);
-    expect(raiz().className).toContain("p-4");
-    rendered.rerender(<EstadoVacio variante="fila" mensaje="Nada" compacto className="mt-2" />);
     expect(raiz().className).toContain("p-3");
     expect(raiz().className).not.toContain("p-4");
+    // variante centrada (el default dentro de restaurantes)
+    rendered.rerender(<EstadoVacio variante="centrado" mensaje="Nada" />);
+    expect(raiz().className).toContain("py-10");
+    rendered.rerender(<EstadoVacio variante="centrado" mensaje="Nada" compacto />);
+    expect(raiz().className).toContain("py-6");
     expect(raiz().className).toContain("mt-2");
     expect(raiz().textContent).toContain("Sin datos aún");
   });
