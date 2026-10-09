@@ -700,6 +700,69 @@
     background: hsl(var(--destructive-solido));
   }
 
+  /* Tipografia del ambito: el original no aplica tracking (Likida: -0.011em en el cuerpo y -0.02em en .font-display). El sidebar lo conserva. */
+  html[data-ambito="restaurantes"],
+  html[data-ambito="restaurantes"] body,
+  html[data-ambito="restaurantes"] .font-display {
+    letter-spacing: normal;
+  }
+  html[data-ambito="restaurantes"] [data-ambito-base] { letter-spacing: -0.011em; }
+  html[data-ambito="restaurantes"] [data-ambito-base] .font-display { letter-spacing: -0.02em; }
+
+  /* Boton y campo del ambito restaurantes (repo suelto: button-variants.ts / input.tsx). Las clases `ambito-*` las ponen Button y campoBase;
+     fuera de html[data-ambito="restaurantes"] no hacen nada (el Button de Likida queda intacto). Especificidad mayor que la de las utilidades
+     (html + atributo + clase) para ganar al `rounded-md` / `px-4` / `text-ui` de base; el hover de elevacion y la escala del press solo con
+     movimiento permitido. Todo color por token. Altos: --control-sm/md/lg (36/40/48 px) en el ambito. */
+  html[data-ambito="restaurantes"] .ambito-boton {
+    border-radius: var(--radius-control);
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    transition-property: color, background-color, border-color, opacity, transform, box-shadow;
+  }
+  html[data-ambito="restaurantes"] .ambito-boton-md { padding-inline: 1.25rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-sm { padding-inline: 1rem; font-size: 0.875rem; line-height: 1.25rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-xs { padding-inline: 0.75rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-lg { padding-inline: 2rem; font-size: 1rem; line-height: 1.5rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-primario { box-shadow: var(--shadow-card); }
+  html[data-ambito="restaurantes"] .ambito-boton-peligro {
+    background-color: hsl(var(--destructive-solido));
+    color: hsl(var(--destructive-solido-foreground));
+  }
+  html[data-ambito="restaurantes"] .ambito-boton-peligro:hover:not(:disabled) {
+    background-color: hsl(var(--destructive-solido) / 0.9);
+    opacity: 1;
+  }
+  html[data-ambito="restaurantes"] .ambito-boton-borde:hover:not(:disabled) {
+    background-color: hsl(var(--card));
+    border-color: hsl(var(--foreground) / 0.26);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html[data-ambito="restaurantes"] .ambito-boton-primario:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-boton);
+    }
+    html[data-ambito="restaurantes"] .ambito-boton-borde:hover:not(:disabled) { transform: translateY(-1px); }
+    html[data-ambito="restaurantes"] .ambito-boton:active:not(:disabled) { transform: scale(0.97); }
+  }
+
+  html[data-ambito="restaurantes"] .ambito-campo {
+    border-radius: var(--radius-field);
+    background-color: hsl(var(--background));
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+  @media (min-width: 768px) {
+    html[data-ambito="restaurantes"] .ambito-campo { font-size: 0.875rem; line-height: 1.25rem; }
+  }
+  html[data-ambito="restaurantes"] .ambito-campo:focus-visible {
+    border-color: hsl(var(--input));
+    box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
+  }
+  html[data-ambito="restaurantes"] .ambito-campo[aria-invalid="true"]:focus-visible {
+    border-color: hsl(var(--destructive));
+    box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--destructive));
+  }
+
   /* Toaster (sonner) en movil: queda por encima de la barra inferior de 63 px
      + safe-area (spec Likida/Atiende §5.3). */
   @media (max-width: 767px) {

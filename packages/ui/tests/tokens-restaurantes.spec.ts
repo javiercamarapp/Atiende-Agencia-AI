@@ -254,8 +254,24 @@ describe("variante rest: solo existe dentro del ambito", () => {
   });
 });
 
+describe("tipografia del ambito", () => {
+  it("sin tracking en el contenido (el original no lo aplica) y el sidebar conserva el de Likida", () => {
+    expect(css).toMatch(/html\[data-ambito="restaurantes"\],\s*html\[data-ambito="restaurantes"\] body,\s*html\[data-ambito="restaurantes"\] \.font-display \{\s*letter-spacing: normal;/);
+    expect(css).toMatch(/html\[data-ambito="restaurantes"\] \[data-ambito-base\] \{ letter-spacing: -0\.011em; \}/);
+    expect(css).toMatch(/html\[data-ambito="restaurantes"\] \[data-ambito-base\] \.font-display \{ letter-spacing: -0\.02em; \}/);
+    // Likida: -0.011em en html/body y -0.02em en .font-display, intactos fuera del ambito.
+    expect(css).toMatch(/html,\s*body \{\s*font-family: var\(--font-sans\);[^}]*letter-spacing: -0\.011em;/);
+    expect(css).toMatch(/\.font-display \{\s*letter-spacing: -0\.02em;/);
+  });
+  it("las familias son las mismas del original (Inter / Inter Tight / IBM Plex Mono)", () => {
+    expect(RAIZ["--font-body"]).toBe('"Inter", system-ui, sans-serif');
+    expect(RAIZ["--font-display"]).toBe('"Inter Tight", "Inter", sans-serif');
+    expect(RAIZ["--font-mono"]).toBe('"IBM Plex Mono", ui-monospace, monospace');
+  });
+});
+
 describe("toasts del ambito: CSS acotado al atributo", () => {
-  const bloque = css.slice(css.indexOf("Toast del ambito restaurantes"), css.indexOf("Toaster (sonner) en movil"));
+  const bloque = css.slice(css.indexOf("Toast del ambito restaurantes"), css.indexOf("Tipografia del ambito"));
   it("todas las reglas empiezan por html[data-ambito=\"restaurantes\"] .toaster .toast", () => {
     const selectores = [...bloque.matchAll(/^\s*(html\[[^{]+?)\s*\{/gm)].map((m) => m[1]!);
     expect(selectores.length).toBeGreaterThanOrEqual(9);

@@ -2,6 +2,9 @@
 //
 // UNI-R0b: el hook que enciende el ambito y la receta de clases `rest:` de botones, campos y overlays (variantes y tamanos del
 // original: pildora, destructivo solido, outline, ghost, secundario; titulo de modal 18 px; velo sin desenfoque; menu azul).
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -76,61 +79,111 @@ describe("useAmbitoVertical", () => {
 
 const clases = (s: string): string[] => s.split(/\s+/);
 
+const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/index.css"), "utf8");
+const AMB = 'html[data-ambito="restaurantes"]';
+/** Cuerpo de la regla cuyo selector es exactamente `selector` (la primera). */
+function regla(selector: string): string {
+  const i = css.indexOf(`${selector} {`);
+  if (i < 0) throw new Error(`no existe la regla ${selector}`);
+  return css.slice(css.indexOf("{", i) + 1, css.indexOf("}", i));
+}
+
 describe("Button del ambito restaurantes (variantes y tamanos del original)", () => {
-  it("base: pildora, semibold, tracking .005em, transicion con sombra", () => {
-    const c = clases(buttonVariants());
-    for (const k of ["rest:rounded-full", "rest:font-semibold", "rest:tracking-[0.005em]", "rest:transition-[color,background-color,border-color,opacity,transform,box-shadow]"]) expect(c, k).toContain(k);
-    // Y sigue siendo el boton de Likida fuera del ambito.
-    expect(c).toContain("rounded-md");
-    expect(c).toContain("font-medium");
+  it("las clases del ambito viajan en el Button y solo hacen algo bajo html[data-ambito=restaurantes]", () => {
+    const base = clases(buttonVariants());
+    expect(base).toContain("ambito-boton");
+    // Y sigue siendo el boton de Likida fuera del ambito (utilidades originales intactas).
+    expect(base).toEqual(expect.arrayContaining(["rounded-md", "font-medium", "text-sm"]));
+    const reglas = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/^\s*([^\n{}@/*][^{}]*?)\s*\{/gm)].map((m) => m[1]!).filter((sel) => sel.includes(".ambito-"));
+    expect(reglas.length).toBeGreaterThanOrEqual(15);
+    for (const sel of reglas) expect(sel, sel).toMatch(/^html\[data-ambito="restaurantes"\] \.ambito-/);
   });
 
-  it("default: azul con sombra de tarjeta, sube 1 px y gana sombra azul al hover (solo con movimiento permitido)", () => {
-    const c = clases(buttonVariants({ variant: "default" }));
-    for (const k of ["bg-primary", "rest:shadow-card", "rest:motion-safe:hover:-translate-y-px", "rest:motion-safe:hover:shadow-boton"]) expect(c, k).toContain(k);
+  it("base: pildora (radio de control), semibold, tracking .005em, transicion que incluye la sombra", () => {
+    const r = regla(`${AMB} .ambito-boton`);
+    expect(r).toMatch(/border-radius: var\(--radius-control\);/);
+    expect(r).toMatch(/font-weight: 600;/);
+    expect(r).toMatch(/letter-spacing: 0\.005em;/);
+    expect(r).toMatch(/transition-property: color, background-color, border-color, opacity, transform, box-shadow;/);
+    expect(css).toMatch(/--radius-control: 9999px;/);
   });
 
-  it("destructive y danger: rojo SOLIDO con blanco (no tinte rosa) en restaurantes; el tinte sigue fuera", () => {
-    for (const variant of ["destructive", "danger"] as const) {
-      const c = clases(buttonVariants({ variant }));
-      expect(c, variant).toContain("rest:bg-destructive-solido");
-      expect(c, variant).toContain("rest:text-destructive-solido-foreground");
-      expect(c, variant).toContain("rest:hover:bg-destructive-solido/90");
-    }
+  it("default: azul con sombra de tarjeta; sube 1 px y gana la sombra azul al hover SOLO con movimiento permitido; el press escala .97", () => {
+    expect(clases(buttonVariants({ variant: "default" }))).toEqual(expect.arrayContaining(["ambito-boton-primario", "bg-primary", "text-primary-foreground"]));
+    expect(regla(`${AMB} .ambito-boton-primario`)).toMatch(/box-shadow: var\(--shadow-card\);/);
+    const movimiento = css.slice(css.indexOf("@media (prefers-reduced-motion: no-preference) {\n    html[data-ambito=\"restaurantes\"] .ambito-boton-primario:hover"));
+    expect(movimiento).toMatch(/\.ambito-boton-primario:hover:not\(:disabled\) \{\s*transform: translateY\(-1px\);\s*box-shadow: var\(--shadow-boton\);/);
+    expect(movimiento).toMatch(/\.ambito-boton:active:not\(:disabled\) \{ transform: scale\(0\.97\); \}/);
+    // La sombra azul del original: 0 10px 26px primary al 26 %.
+    expect(css).toMatch(/--shadow-boton: 0 10px 26px hsl\(224 76% 48% \/ 0\.26\);/);
+  });
+
+  it("destructive y danger: rojo SOLIDO con blanco (no tinte rosa) en restaurantes, hover al 90 %; el tinte sigue fuera del ambito", () => {
+    for (const variant of ["destructive", "danger"] as const) expect(clases(buttonVariants({ variant })), variant).toContain("ambito-boton-peligro");
     expect(clases(buttonVariants({ variant: "danger" }))).toContain("bg-destructive-tint");
-    expect(clases(buttonVariants({ variant: "danger" }))).toContain("rest:hover:opacity-100");
+    const r = regla(`${AMB} .ambito-boton-peligro`);
+    expect(r).toMatch(/background-color: hsl\(var\(--destructive-solido\)\);/);
+    expect(r).toMatch(/color: hsl\(var\(--destructive-solido-foreground\)\);/);
+    const h = regla(`${AMB} .ambito-boton-peligro:hover:not(:disabled)`);
+    expect(h).toMatch(/background-color: hsl\(var\(--destructive-solido\) \/ 0\.9\);/);
+    expect(h).toMatch(/opacity: 1;/);
   });
 
   it("outline: borde que se oscurece al hover (26 % de la tinta) y sube 1 px; secundario y ghost salen de los tokens", () => {
-    const o = clases(buttonVariants({ variant: "outline" }));
-    for (const k of ["border-border", "bg-card", "rest:hover:bg-card", "rest:hover:border-foreground/[0.26]", "rest:motion-safe:hover:-translate-y-px"]) expect(o, k).toContain(k);
+    expect(clases(buttonVariants({ variant: "outline" }))).toEqual(expect.arrayContaining(["ambito-boton-borde", "border-border", "bg-card"]));
+    const h = regla(`${AMB} .ambito-boton-borde:hover:not(:disabled)`);
+    expect(h).toMatch(/background-color: hsl\(var\(--card\)\);/);
+    expect(h).toMatch(/border-color: hsl\(var\(--foreground\) \/ 0\.26\);/);
+    expect(css).toMatch(/\.ambito-boton-borde:hover:not\(:disabled\) \{ transform: translateY\(-1px\); \}/);
     expect(clases(buttonVariants({ variant: "secondary" }))).toEqual(expect.arrayContaining(["bg-secondary", "text-secondary-foreground", "hover:bg-secondary/80"]));
     expect(clases(buttonVariants({ variant: "ghost" }))).toEqual(expect.arrayContaining(["hover:bg-accent", "hover:text-accent-foreground"]));
   });
 
-  it("tamanos: alto por --control-* (40/36/48 en el ambito) y relleno px-5 / px-4 / px-8 del original", () => {
-    expect(clases(buttonVariants({ size: "default" }))).toEqual(expect.arrayContaining(["h-[var(--control-md)]", "rest:px-5"]));
-    expect(clases(buttonVariants({ size: "sm" }))).toEqual(expect.arrayContaining(["h-[var(--control-sm)]", "rest:px-4", "rest:text-sm"]));
-    expect(clases(buttonVariants({ size: "lg" }))).toEqual(expect.arrayContaining(["h-[var(--control-lg)]", "rest:px-8", "rest:text-base"]));
+  it("tamanos: alto por --control-* (40/36/48 en el ambito) y relleno 20 / 16 / 32 px del original (px-5 / px-4 / px-8)", () => {
+    expect(clases(buttonVariants({ size: "default" }))).toEqual(expect.arrayContaining(["ambito-boton-md", "h-[var(--control-md)]"]));
+    expect(clases(buttonVariants({ size: "sm" }))).toEqual(expect.arrayContaining(["ambito-boton-sm", "h-[var(--control-sm)]"]));
+    expect(clases(buttonVariants({ size: "lg" }))).toEqual(expect.arrayContaining(["ambito-boton-lg", "h-[var(--control-lg)]"]));
     expect(clases(buttonVariants({ size: "icon" }))).toEqual(expect.arrayContaining(["h-[var(--control-md)]", "w-[var(--control-md)]"]));
+    expect(regla(`${AMB} .ambito-boton-md`)).toMatch(/padding-inline: 1\.25rem;/);
+    expect(regla(`${AMB} .ambito-boton-sm`)).toMatch(/padding-inline: 1rem;\s*font-size: 0\.875rem;/);
+    expect(regla(`${AMB} .ambito-boton-lg`)).toMatch(/padding-inline: 2rem;\s*font-size: 1rem;/);
   });
 
   it("estados: disabled opaco 50 % sin eventos, foco por el outline global, svg de 16 px", () => {
-    const c = clases(buttonVariants());
-    expect(c).toEqual(expect.arrayContaining(["disabled:pointer-events-none", "disabled:opacity-50", "[&_svg]:size-4"]));
+    expect(clases(buttonVariants())).toEqual(expect.arrayContaining(["disabled:pointer-events-none", "disabled:opacity-50", "[&_svg]:size-4"]));
     const el = montar(createElement(Button, { disabled: true }, "No"));
     expect(el.querySelector("button")!.disabled).toBe(true);
+    // El hover/active de elevacion no aplica a un boton deshabilitado.
+    expect(css).not.toMatch(/\.ambito-boton[\w-]*:(hover|active)\s*\{/);
+  });
+
+  it("ninguna regla ambito-* usa color crudo: todo por token", () => {
+    const trozo = css.slice(css.indexOf("Boton y campo del ambito restaurantes"), css.indexOf("Toaster (sonner) en movil"));
+    expect(trozo.length).toBeGreaterThan(500);
+    expect(trozo).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\brgba?\(/);
+    const todas = trozo.match(/hsl\(/g)?.length ?? 0;
+    const portoken = trozo.match(/hsl\(var\(--[\w-]+\)(?: \/ [0-9.]+)?\)/g)?.length ?? 0;
+    expect(todas).toBeGreaterThan(8);
+    expect(portoken).toBe(todas);
   });
 });
 
 describe("campos del ambito", () => {
-  it("radio de campo (10 px), fondo --background, 16 px en movil y 14 px desde md, foco con anillo 2 px + offset 2", () => {
+  it("campoBase lleva ambito-campo y conserva el campo de Likida; el ambito da radio de campo (10 px), fondo --background, 16 px en movil y 14 px desde md", () => {
     const c = clases(campoBase);
-    for (const k of ["rest:rounded-field", "rest:bg-background", "rest:text-base", "rest:md:text-sm", "rest:focus-visible:ring-2", "rest:focus-visible:ring-ring", "rest:focus-visible:ring-offset-2", "rest:focus-visible:border-input"]) expect(c, k).toContain(k);
-    // El estado invalido sigue ganando en restaurantes.
-    expect(c).toContain("rest:aria-[invalid=true]:focus-visible:ring-destructive");
+    expect(c).toEqual(expect.arrayContaining(["ambito-campo", "rounded-lg", "bg-card", "text-ui", "border-input"]));
+    const r = regla(`${AMB} .ambito-campo`);
+    expect(r).toMatch(/border-radius: var\(--radius-field\);/);
+    expect(r).toMatch(/background-color: hsl\(var\(--background\)\);/);
+    expect(r).toMatch(/font-size: 1rem;/);
+    expect(css).toMatch(/@media \(min-width: 768px\) \{\s*html\[data-ambito="restaurantes"\] \.ambito-campo \{ font-size: 0\.875rem; line-height: 1\.25rem; \}/);
     const el = montar(createElement(Input, { "aria-label": "Nombre" }));
-    expect(el.querySelector("input")!.className).toContain("rest:rounded-field");
+    expect(el.querySelector("input")!.className).toContain("ambito-campo");
+  });
+
+  it("foco con anillo de 2 px y offset 2 sobre --background; invalido con anillo de peligro", () => {
+    expect(regla(`${AMB} .ambito-campo:focus-visible`)).toMatch(/border-color: hsl\(var\(--input\)\);\s*box-shadow: 0 0 0 2px hsl\(var\(--background\)\), 0 0 0 4px hsl\(var\(--ring\)\);/);
+    expect(regla(`${AMB} .ambito-campo[aria-invalid="true"]:focus-visible`)).toMatch(/box-shadow: 0 0 0 2px hsl\(var\(--background\)\), 0 0 0 4px hsl\(var\(--destructive\)\);/);
   });
 });
 

@@ -13,32 +13,32 @@ import { cn } from "../../lib/utils";
 // Transiciones enumeradas con los tokens de motion (nada de transition-all).
 // Feedback de press global vía CSS (:active { scale(.97) }) en index.css.
 // Variantes retiradas por no tener ningun uso en el repo: hero, terracotta, gold y el tamano xl.
-// Ambito restaurantes (variante `rest:`, UNI-R0b): el boton del repo suelto (button-variants.ts): pildora (rounded-full), semibold,
-// px-5/4/8 segun el tamano, primario con sombra y elevacion de 1 px al hover, destructivo en rojo SOLIDO, outline con borde que se
-// oscurece. Los altos (40/36/48) y la duracion (200 ms, ease-out) salen de --control-* y --dur-fast del ambito (index.css).
+// Ambito restaurantes (UNI-R0b): el boton del repo suelto (button-variants.ts) llega por las clases `ambito-boton*` (index.css, solo bajo
+// html[data-ambito=restaurantes]): pildora, semibold, px-5/4/8 por tamano, primario con sombra y elevacion de 1 px, destructivo en rojo SOLIDO,
+// outline con borde que se oscurece. Los altos (40/36/48) y los 200 ms salen de --control-* y --dur-fast del ambito. Fuera de el, estas clases no hacen nada.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-fast ease-brand rest:rounded-full rest:font-semibold rest:tracking-[0.005em] rest:transition-[color,background-color,border-color,opacity,transform,box-shadow] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "ambito-boton inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-fast ease-brand disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 rest:shadow-card rest:motion-safe:hover:-translate-y-px rest:motion-safe:hover:shadow-boton",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 rest:bg-destructive-solido rest:text-destructive-solido-foreground rest:hover:bg-destructive-solido/90",
-        // Peligro como Likida (--bad sobre --badbg): tinte suave + texto de peligro. En restaurantes (repo suelto) es el rojo solido.
-        danger: "bg-destructive-tint text-destructive hover:opacity-85 rest:bg-destructive-solido rest:text-destructive-solido-foreground rest:hover:bg-destructive-solido/90 rest:hover:opacity-100",
+        default: "ambito-boton-primario bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "ambito-boton-peligro bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        // Peligro como Likida (--bad sobre --badbg): tinte suave + texto de peligro.
+        danger: "ambito-boton-peligro bg-destructive-tint text-destructive hover:opacity-85",
         "danger-outline": "border border-destructive/40 bg-card text-destructive hover:bg-destructive-tint",
-        outline: "border border-border bg-card text-foreground hover:bg-canvas rest:hover:bg-card rest:hover:border-foreground/[0.26] rest:motion-safe:hover:-translate-y-px",
+        outline: "ambito-boton-borde border border-border bg-card text-foreground hover:bg-canvas",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-[var(--control-md)] px-4 rest:px-5",
-        md: "h-[var(--control-md)] px-4 rest:px-5",
+        default: "ambito-boton-md h-[var(--control-md)] px-4",
+        md: "ambito-boton-md h-[var(--control-md)] px-4",
         // CTA de cabecera de Likida: h-8 px-3 rounded-lg text-[13px].
-        sm: "h-[var(--control-sm)] rounded-lg px-3 text-ui rest:px-4 rest:text-sm",
+        sm: "ambito-boton-sm h-[var(--control-sm)] rounded-lg px-3 text-ui",
         // Boton de toolbar de Likida: h-7 px-2.5 rounded-lg text-xs.
-        xs: "h-7 rounded-lg px-2.5 text-xs rest:px-3",
-        lg: "h-[var(--control-lg)] px-6 rest:px-8 rest:text-base",
+        xs: "ambito-boton-xs h-7 rounded-lg px-2.5 text-xs",
+        lg: "ambito-boton-lg h-[var(--control-lg)] px-6",
         icon: "h-[var(--control-md)] w-[var(--control-md)]",
         "icon-sm": "h-[var(--control-sm)] w-[var(--control-sm)] rounded-lg",
       },
