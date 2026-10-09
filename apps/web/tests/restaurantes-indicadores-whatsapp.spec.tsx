@@ -4,9 +4,12 @@
 // Cubre: cifras exactas, "—" con su razón (nunca 0 inventado), rótulo veraz "Costo LLM promedio por pedido", organización demo,
 // sin alcance de organización, base sin migrar, error con reintento, cambio de periodo, rol sin acceso y ausencia de teléfonos.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { IndicadoresWhatsappPage } from "../src/verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
-import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -126,7 +129,7 @@ describe("<IndicadoresWhatsappPage />", () => {
   it("cambiar el periodo vuelve a pedir ese rango", async () => {
     const fetchMock = stub({ 14: { status: 200, body: kpi() }, 30: { status: 200, body: kpi({}, { conversaciones: 99, conversionPct: 12.5 }) } });
     await pintar(fetchMock);
-    changeValue(rendered!.container.querySelector("select#periodo-whatsapp") as HTMLSelectElement, "30");
+    elegirValor(rendered!.container.querySelector("#periodo-whatsapp") as HTMLElement, "30");
     await settle();
     expect(fetchMock).toHaveBeenLastCalledWith(URL_KPI(30), expect.anything());
     expect(texto()).toContain("12.5%");

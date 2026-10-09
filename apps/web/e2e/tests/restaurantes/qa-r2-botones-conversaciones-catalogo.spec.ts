@@ -5,6 +5,7 @@ import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { afirmarSinEscrituras, cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
 import { propiedadDe } from "../../mock-api/personas.ts";
+import { elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 const PROP = propiedadDe("restaurantes");
@@ -77,7 +78,7 @@ test.describe("restaurantes R2 botones: Conversaciones y Callbacks @recorrido", 
     await main(page).getByRole("tab", { name: "Callbacks" }).click();
     await expect(main(page).getByText("Sin callbacks")).toBeVisible();
     await mock.agregarAEstado("rest.callbacks", callback("cb-1", "Rosa Callback", "nuevo"));
-    await main(page).getByLabel("Mostrar").selectOption("todos");
+    await elegirValor(main(page).getByLabel("Mostrar"), "todos");
     await expect(main(page).getByText("Rosa Callback", { exact: false })).toBeVisible();
     await mock.limpiarRegistro();
     await main(page).getByRole("button", { name: "Tomar", exact: true }).click();
@@ -100,7 +101,7 @@ test.describe("restaurantes R2 botones: Conversaciones y Callbacks @recorrido", 
     await main(page).getByRole("tab", { name: "Callbacks" }).click();
     await expect(main(page).getByText("Sin callbacks")).toBeVisible();
     await mock.agregarAEstado("rest.callbacks", callback("cb-2", "Doble Intento", "en_curso"));
-    await main(page).getByLabel("Mostrar").selectOption("todos");
+    await elegirValor(main(page).getByLabel("Mostrar"), "todos");
     await expect(main(page).getByText("Doble Intento", { exact: false })).toBeVisible();
     await mock.configurar({ latenciaMs: 500 });
     await mock.limpiarRegistro();

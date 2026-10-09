@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import type { ConceptoCosto, CostoHistorialItem, SucursalApi } from "@atiende/domain-restaurantes/cfo";
 import { CONCEPTOS_COSTO } from "@atiende/domain-restaurantes/cfo";
-import { Callout, EstadoCargando, FormDialog, FormField, Input, NativeSelect, Textarea, notify } from "@atiende/ui";
+import { Callout, EstadoCargando, FormDialog, FormField, Input, Selector, Textarea, notify } from "@atiende/ui";
 import { fetchCostoHistorial, guardarCostos, type ContextoCfo } from "./cfo-client.ts";
 import { etiquetaFecha } from "./filtros-url.ts";
 import { SIN_DATO, etiquetaMes, pesosExactos, porcentaje } from "./formato.ts";
@@ -140,27 +140,27 @@ export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puede
         {error && <Callout tone="danger">{error}</Callout>}
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField label="Sucursal" required>
-            <NativeSelect value={ambito} onChange={(e) => setAmbito(e.target.value)} data-testid="captura-ambito">
+            <Selector value={ambito} onChange={(e) => setAmbito(e.target.value)} data-testid="captura-ambito">
               {sucursales.map((s) => (
                 <option key={s.propertyId} value={s.propertyId}>
                   {s.nombre}
                 </option>
               ))}
               {puedeOrganizacion && <option value={ORGANIZACION}>Organización (costo sin sucursal)</option>}
-            </NativeSelect>
+            </Selector>
           </FormField>
           <FormField label="Mes" required error={mesValido ? undefined : "Elige un mes."}>
             <Input type="month" value={mes} onChange={(e) => setMes(e.target.value)} data-testid="captura-mes" />
           </FormField>
         </div>
         <FormField label="Concepto" required>
-          <NativeSelect value={concepto} onChange={(e) => { setConcepto(e.target.value as ConceptoCosto); setValor(""); }} data-testid="captura-concepto">
+          <Selector value={concepto} onChange={(e) => { setConcepto(e.target.value as ConceptoCosto); setValor(""); }} data-testid="captura-concepto">
             {CONCEPTOS_COSTO.map((c) => (
               <option key={c} value={c}>
                 {ETIQUETA_CONCEPTO[c]}
               </option>
             ))}
-          </NativeSelect>
+          </Selector>
         </FormField>
         <FormField label={esPct ? "% objetivo sobre ventas netas sin IVA" : "Monto del mes en pesos"} required hint={esPct ? "Se aplica a las ventas netas sin IVA de cada periodo (estimado)." : "Escríbelo sin signo de pesos. El mes completo; si ves un periodo parcial se prorratea."} {...(valorError ? { error: valorError } : {})}>
           <Input inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder={esPct ? "32" : "12500.00"} data-testid="captura-valor" />

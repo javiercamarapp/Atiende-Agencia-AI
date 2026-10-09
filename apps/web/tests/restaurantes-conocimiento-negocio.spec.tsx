@@ -4,10 +4,13 @@
 // contrato, estados honestos (cargando, error con reintento, vacio, base sin migrar) y la misma seccion montada en el editor del agente de
 // WhatsApp. `fetch` mockeado por ruta real (lib/conocimiento-client.ts).
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { ConocimientoNegocio } from "../src/verticals/restaurantes/components/ConocimientoNegocio.tsx";
 import { AgenteWhatsappSeccion } from "../src/verticals/restaurantes/pages/AgenteWhatsappSeccion.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, etiquetaMostrada, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -121,7 +124,7 @@ describe("<ConocimientoNegocio />", () => {
     await montar();
     await pulsarYEsperar(botonEn(fila("k2"), "Editar"));
     const form = rendered!.container.querySelector('section[aria-label="Editar entrada"]')!;
-    expect(form.querySelector<HTMLSelectElement>("select[disabled]")).not.toBeNull();
+    expect(form.querySelector<HTMLElement>("[role='combobox'][disabled]")).not.toBeNull();
     changeValue(form.querySelector<HTMLTextAreaElement>("textarea")!, "Hoy cerramos a las 9.");
     await pulsarYEsperar(botonEn(form, "Guardar entrada"));
     expect(llamadas.find((c) => c.method === "PATCH")).toMatchObject({
@@ -137,13 +140,13 @@ describe("<ConocimientoNegocio />", () => {
     click(boton("Agregar entrada")!);
     const form = () => rendered!.container.querySelector('section[aria-label="Nueva entrada"]')!;
     expect(form().textContent).not.toContain("Sustituye a una entrada general");
-    const aplicaA = [...form().querySelectorAll("select")].find((s) => s.textContent?.includes("Toda la organización"))!;
-    changeValue(aplicaA, "prop-1");
+    const aplicaA = [...form().querySelectorAll("[role='combobox']")].find((s) => etiquetaMostrada(s).includes("Toda la organización"))!;
+    elegirValor(aplicaA, "prop-1");
     expect(form().textContent).toContain("Sustituye a una entrada general");
     changeValue(form().querySelector<HTMLInputElement>('input[placeholder="Estacionamiento"]')!, "Estacionamiento");
     changeValue(form().querySelector<HTMLTextAreaElement>("textarea")!, "Hoy el estacionamiento está en obra.");
-    const sustituye = [...form().querySelectorAll("select")].find((s) => s.textContent?.includes("No sustituye ninguna"))!;
-    changeValue(sustituye, "k1");
+    const sustituye = [...form().querySelectorAll("[role='combobox']")].find((s) => etiquetaMostrada(s).includes("No sustituye ninguna"))!;
+    elegirValor(sustituye, "k1");
     await pulsarYEsperar(botonEn(form(), "Guardar entrada"));
     expect(llamadas.find((c) => c.method === "POST")!.body).toMatchObject({ sucursalId: "prop-1", reemplazaId: "k1", tipo: "faq" });
   });

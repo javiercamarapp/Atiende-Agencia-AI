@@ -3,10 +3,13 @@
 // QA R1 (restaurantes) en Historial: botones-06 (fila de otro filtro tras un error), botones-07 (carrera de filtros) y viaje-11
 // (cerrar un pedido entregado / registrar incidencia con nota).
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { HistorialPage } from "../src/verticals/restaurantes/pages/Historial.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "owner", staffFullName: "Sam", staffEmail: "s@example.com" };
@@ -26,7 +29,7 @@ async function esperar() {
     for (let i = 0; i < 6; i++) await flushMicrotasks();
   });
 }
-const estadoSelect = () => rendered!.container.querySelector("#restaurantes-historial-estado") as HTMLSelectElement;
+const estadoSelect = () => rendered!.container.querySelector("#restaurantes-historial-estado") as HTMLElement;
 const texto = () => (rendered!.container.textContent ?? "") + (document.body.textContent ?? "");
 const boton = (t: string) => [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes(t))!;
 
@@ -46,7 +49,7 @@ describe("Historial: filtros", () => {
     rendered = renderComponent(<HistorialPage {...CTX} />);
     await esperar();
     expect(texto()).toContain("Marisol Pech");
-    changeValue(estadoSelect(), "cancelado");
+    elegirValor(estadoSelect(), "cancelado");
     await esperar();
     expect(texto()).toContain("Servicio no disponible");
     expect(texto()).not.toContain("Marisol Pech");
@@ -64,13 +67,13 @@ describe("Historial: filtros", () => {
     );
     rendered = renderComponent(<HistorialPage {...CTX} />);
     await esperar();
-    changeValue(estadoSelect(), "completado");
-    changeValue(estadoSelect(), "preparando");
+    elegirValor(estadoSelect(), "completado");
+    elegirValor(estadoSelect(), "preparando");
     await esperar();
     expect(texto()).toContain("Jorge Canul");
     lenta.resolve(json({ orders: [orden("o3", "Ana Vieja", "completado")], nextCursor: null }));
     await esperar();
-    expect(estadoSelect().value).toBe("preparando");
+    expect(valorDe(estadoSelect())).toBe("preparando");
     expect(texto()).toContain("Jorge Canul");
     expect(texto()).not.toContain("Ana Vieja");
   });

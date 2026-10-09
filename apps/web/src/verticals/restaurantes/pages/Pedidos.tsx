@@ -21,7 +21,7 @@ import {
   EstadoError,
   EstadoVacio,
   Label,
-  NativeSelect,
+  Selector,
   PageContainer,
   StatusBadge,
   Tabs,
@@ -694,7 +694,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                 <Label htmlFor={`repartidor-${o.id}`} className="text-xs font-normal text-foreground">
                   Repartidor:
                 </Label>
-                <NativeSelect
+                <Selector
                   id={`repartidor-${o.id}`}
                   size="sm"
                   value={o.assignedRepartidorId ?? ""}
@@ -708,7 +708,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                       {r.fullName}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
                 {!o.assignedRepartidorId && sugeridos[o.id] && (
                   <Button type="button" size="sm" variant="outline" disabled={assigningId === o.id} onClick={() => void handleAssignRepartidor(o, sugeridos[o.id]!.repartidorId)} data-testid={`asignar-sugerido-${o.id}`}>
                     Asignar a {sugeridos[o.id]!.nombre}

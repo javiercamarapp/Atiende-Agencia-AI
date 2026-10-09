@@ -7,6 +7,7 @@ import { expect, test } from "../../helpers/fixtures.ts";
 import { BASE, afirmarSinEscrituras, cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
 import { esMovil } from "../../helpers/navegacion.ts";
 import { propiedadDe } from "../../mock-api/personas.ts";
+import { elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 const PROP = propiedadDe("restaurantes");
@@ -149,7 +150,7 @@ test.describe("restaurantes R2 botones: shell y sucursal activa @recorrido", () 
     const selector = esMovil(page) ? page.getByRole("combobox", { name: /Sucursal activa/i }).filter({ visible: true }).first() : page.locator("#restaurantes-sucursal-activa");
     await expect(selector).toBeVisible();
     await mock.agregarAEstado("rest.ordenes", { id: "ord-norte-1", propertyId: SEGUNDA.propertyId, branch: SEGUNDA.name, customerId: "c-n", customerName: "Cliente del Norte", customerPhone: "+529995550177", customerAddress: "Calle 31", total: 120, status: "pending", items: [], source: "web", notes: null, paymentMethod: "efectivo", createdAt: new Date().toISOString(), assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, canal: "domicilio", propina: null, horaRecogida: null });
-    await selector.selectOption(SEGUNDA.propertyId);
+    await elegirValor(selector, SEGUNDA.propertyId);
     await expect(main(page).getByText("Cliente del Norte", { exact: false })).toBeVisible();
     await expect(main(page).getByText("Marisol Pech")).toHaveCount(0);
     await expect(main(page).getByText("Jorge Canul")).toHaveCount(0);

@@ -3,7 +3,7 @@
 // telefonos, tope de 5,000 renglones, huella del archivo para no duplicar, bitacora). No crea pedidos ni manda mensajes a nadie.
 import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
-import { Button, Callout, Checkbox, FormDialog, FormField, Label, NativeSelect, notify } from "@atiende/ui";
+import { Button, Callout, Checkbox, FormDialog, FormField, Label, Selector, notify } from "@atiende/ui";
 import {
   ArchivoImportacionError,
   CAMPOS_IMPORTACION,
@@ -203,14 +203,14 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
             <div className="grid gap-3 sm:grid-cols-2">
               {CAMPOS_IMPORTACION.map((campo) => (
                 <FormField key={campo} label={ETIQUETA_CAMPO[campo]} required={campo === "telefono"} hint={campo === "telefono" ? "10 dígitos; +52 y 521 se aceptan." : undefined}>
-                  <NativeSelect id={`clientes-import-${campo}`} size="sm" value={mapeo[campo] === null ? "" : String(mapeo[campo])} onChange={(e) => cambiarMapeo(campo, e.target.value)}>
+                  <Selector id={`clientes-import-${campo}`} size="sm" value={mapeo[campo] === null ? "" : String(mapeo[campo])} onChange={(e) => cambiarMapeo(campo, e.target.value)}>
                     <option value="">{campo === "telefono" ? "Elige la columna…" : "No importar"}</option>
                     {Array.from({ length: columnas }, (_, i) => (
                       <option key={i} value={i}>
                         {nombreColumna(i)}
                       </option>
                     ))}
-                  </NativeSelect>
+                  </Selector>
                 </FormField>
               ))}
             </div>

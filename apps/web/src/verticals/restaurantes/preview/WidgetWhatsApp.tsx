@@ -11,7 +11,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { RotateCcw, Send, SlidersHorizontal, X } from "lucide-react";
-import { Checkbox, FormField, NativeSelect } from "@atiende/ui";
+import { Checkbox, FormField, Selector } from "@atiende/ui";
 import { hora24EsMx } from "../../../lib/formato-fecha.ts";
 import { enviarMensajePrueba } from "../lib/agente-whatsapp-client.ts";
 import type { ConfigAgenteForm, MensajePrueba } from "../lib/agente-whatsapp-client.ts";
@@ -196,6 +196,8 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   }
 
   function alTeclear(e: KeyboardEvent<HTMLDivElement>) {
+    // La lista de Simular cliente vive en un portal pero sus eventos de React suben hasta este panel: Escape dentro de ella cierra solo la lista.
+    if ((e.target as HTMLElement).closest('[role="listbox"]')) return;
     if (e.key === "Escape") {
       e.stopPropagation();
       setAbierto(false);
@@ -250,14 +252,14 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
           {opcionesAbiertas ? (
             <div id={idOpciones} className="wa-opciones" role="group" aria-label="Opciones de prueba">
               <FormField label="Simular cliente" {...(mensajes.length > 0 ? { hint: "Reinicia la conversación para cambiar de cliente." } : {})}>
-                <NativeSelect value={clienteId} onChange={(e) => setClienteId(e.target.value)} disabled={mensajes.length > 0}>
+                <Selector value={clienteId} onChange={(e) => setClienteId(e.target.value)} disabled={mensajes.length > 0}>
                   <option value="">Cliente nuevo</option>
                   {clientes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name ?? "Sin nombre"} · {c.orderCount} {c.orderCount === 1 ? "pedido" : "pedidos"}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </FormField>
               {borrador ? <Checkbox label="Probar con los cambios sin guardar" checked={usarBorrador} onChange={(e) => setUsarBorrador(e.target.checked)} /> : null}
             </div>
