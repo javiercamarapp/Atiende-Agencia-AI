@@ -32,7 +32,9 @@ for (const { objetivo, destino } of CONSOLAS) {
 
       // La campana abre el centro (popover con las recientes) y "Ver todas" lleva a la pagina; la barra superior dice "Notificaciones" y hay un solo <h1>.
       await campana.click();
-      await expect(page.getByTestId("centro-item")).toHaveCount(2);
+      // La semilla trae 3 recientes: 2 sin leer (con punto) y 1 leida.
+      await expect(page.getByTestId("centro-item")).toHaveCount(3);
+      await expect(page.getByTestId("centro-sin-leer")).toHaveCount(2);
       await page.getByRole("link", { name: "Ver todas las notificaciones" }).click();
       await expect(page).toHaveURL(/\/notificaciones$/);
       if (!esMovil(page)) await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Notificaciones");
