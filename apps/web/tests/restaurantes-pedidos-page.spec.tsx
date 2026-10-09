@@ -214,7 +214,7 @@ describe("PedidosPage (restaurantes)", () => {
     rendered = renderPage();
     await esperarCarga();
 
-    const select = rendered.container.querySelector("#repartidor-ord-1") as HTMLElement;
+    const select = rendered.container.querySelector("#repartidor-ord-1") as HTMLButtonElement;
     expect(select.disabled).toBe(false);
     elegirValor(select, "rep-1");
     await esperarCarga();

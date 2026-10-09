@@ -67,7 +67,8 @@ export function etiquetaMostrada(trigger: HTMLElement): string {
 const opcionesSync = () => [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
 
 /** Elige la opcion de ese VALOR (no etiqueta), como `changeValue(select, valor)` en un <select> nativo. */
-export function elegirValor(trigger: Element, valor: string): void {
+export function elegirValor(trigger: Element | null, valor: string): void {
+  if (!trigger) throw new Error(`no existe la lista donde elegir "${valor}"`);
   const t = trigger as HTMLElement;
   t.focus();
   keydown(t, "Enter");
@@ -96,7 +97,8 @@ export function valorDe(trigger: Element | null): string {
 }
 
 /** Etiquetas de las opciones (el `[...select.options].map(o => o.textContent)` de un <select> nativo). */
-export function etiquetasDe(trigger: Element): string[] {
+export function etiquetasDe(trigger: Element | null): string[] {
+  if (!trigger) throw new Error("no existe la lista");
   const t = trigger as HTMLElement;
   t.focus();
   keydown(t, "Enter");
@@ -106,7 +108,8 @@ export function etiquetasDe(trigger: Element): string[] {
 }
 
 /** Valores de las opciones. */
-export function valoresDe(trigger: Element): string[] {
+export function valoresDe(trigger: Element | null): string[] {
+  if (!trigger) throw new Error("no existe la lista");
   const t = trigger as HTMLElement;
   t.focus();
   keydown(t, "Enter");

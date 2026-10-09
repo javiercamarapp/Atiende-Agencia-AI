@@ -103,7 +103,7 @@ describe("ComandasPosPage -- estado del POS", () => {
     await esperar();
     expect(q("[data-testid='pos-no-conectado']")!.textContent).toContain("SoftRestaurant no conectado: requiere la API del distribuidor");
     expect(q("[data-testid='pos-no-conectado']")!.textContent).toContain("409");
-    const modo = q("#pos-modo") as HTMLElement;
+    const modo = q("#pos-modo") as HTMLButtonElement;
     expect(modo.disabled).toBe(true);
     expect(q("[data-testid='pos-modo-actual']")!.textContent).toContain("Apagado");
     expect(llamadas("PUT", "/softrestaurant/config")).toHaveLength(0);
@@ -113,7 +113,7 @@ describe("ComandasPosPage -- estado del POS", () => {
     stub({ config: { ...CONFIG_SIN_POS, adaptador: { nombre: "http", esReal: true } } });
     rendered = renderComponent(<ComandasPosPage {...CTX} />);
     await esperar();
-    const modo = q("#pos-modo") as HTMLElement;
+    const modo = q("#pos-modo") as HTMLButtonElement;
     expect(modo.disabled).toBe(false);
     elegirValor(modo, "sombra");
     await esperar();
