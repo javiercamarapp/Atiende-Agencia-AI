@@ -15,6 +15,7 @@ import { Checkbox, FormField, NativeSelect } from "@atiende/ui";
 import { hora24EsMx } from "../../../lib/formato-fecha.ts";
 import { enviarMensajePrueba } from "../lib/agente-whatsapp-client.ts";
 import type { ConfigAgenteForm, MensajePrueba } from "../lib/agente-whatsapp-client.ts";
+import { fetchBranchTimezone } from "../lib/config-client.ts";
 import { fetchCustomers } from "../lib/customers-client.ts";
 import type { CustomerSummary } from "../lib/customers-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
@@ -37,6 +38,10 @@ type Mensaje =
   | { readonly id: string; readonly rol: "sistema"; readonly texto: string; readonly hora: Date; readonly pedido: PedidoSimulado };
 
 const MS_ANIMACION = 200;
+/** Tope del servidor (AGENTE_PREVIEW_LIMITES.maxMensajes). */
+const LIMITE_MENSAJES = 40;
+/** Mensaje del agente cuando algo falla, como en el original; el detalle honesto del servidor va debajo. */
+const TEXTO_FALLO = "Ahorita no pude procesar tu mensaje — intenta de nuevo en un momento.";
 
 /** Reconstrucción del glifo de WhatsApp (burbuja verde con el teléfono blanco recortado): icono inline propio, no el asset oficial. */
 function GlifoWhatsApp({ className }: { readonly className?: string }) {
@@ -89,9 +94,12 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   const [borradorTexto, setBorradorTexto] = useState("");
   const [escribiendo, setEscribiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [usarBorrador, setUsarBorrador] = useState(false);
   const [clientes, setClientes] = useState<readonly CustomerSummary[]>([]);
   const [clienteId, setClienteId] = useState("");
+  // Zona horaria de la sucursal para la hora de las burbujas; sin ella (o si falla) rige la de la plataforma (America/Mexico_City).
+  const [zona, setZona] = useState<string | undefined>(undefined);
   const fin = useRef<HTMLDivElement | null>(null);
   const campo = useRef<HTMLInputElement | null>(null);
   const botonFlotante = useRef<HTMLButtonElement | null>(null);
@@ -100,7 +108,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   const boton = usePresencia(!abierto);
   const panel = usePresencia(abierto);
 
-  // Clientes de la organización para «Simular cliente»: se piden la primera vez que se abre el panel.
+  // Clientes de la organización para «Simular cliente»: se piden en cada apertura del panel.
   useEffect(() => {
     if (!abierto) return undefined;
     let cancelado = false;
@@ -111,6 +119,19 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       .catch(() => {
         if (!cancelado) setClientes([]);
       });
+    return () => {
+      cancelado = true;
+    };
+  }, [abierto, apiBaseUrl, token, propertyId]);
+
+  useEffect(() => {
+    if (!abierto) return undefined;
+    let cancelado = false;
+    fetchBranchTimezone(fetch, apiBaseUrl, token, propertyId)
+      .then((c) => {
+        if (!cancelado && c.zonaHoraria) setZona(c.zonaHoraria);
+      })
+      .catch(() => undefined);
     return () => {
       cancelado = true;
     };
@@ -136,6 +157,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
     setSesionId(nuevaSesion());
     setMensajes([]);
     setError(null);
+    setAviso(null);
     setBorradorTexto("");
     setClienteId("");
   }
@@ -143,6 +165,14 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   async function enviar() {
     const limpio = borradorTexto.trim();
     if (!limpio || escribiendo) return;
+    // El servidor acepta hasta 40 mensajes por prueba: antes de rebasarlos se reinicia sola la conversación (sin esperar un 400 técnico).
+    if (mensajes.filter((m) => m.rol !== "sistema").length + 1 > LIMITE_MENSAJES) {
+      reiniciar();
+      setBorradorTexto(limpio);
+      setAviso(`La conversación de prueba llegó al límite de ${LIMITE_MENSAJES} mensajes y se reinició. Vuelve a enviar tu mensaje.`);
+      return;
+    }
+    setAviso(null);
     const mio: Mensaje = { id: crypto.randomUUID(), rol: "cliente", texto: limpio, hora: new Date() };
     const antes = mensajes;
     const historial: readonly MensajePrueba[] = [...antes, mio].flatMap((m): MensajePrueba[] => (m.rol === "sistema" ? [] : [{ rol: m.rol === "cliente" ? "usuario" : "agente", texto: m.texto }]));
@@ -154,7 +184,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       const r = await enviarMensajePrueba(fetch, apiBaseUrl, token, propertyId, { sesionId, mensajes: historial, clienteSimuladoId: clienteId || null, borrador: usarBorrador && borrador ? borrador : null });
       const nuevos: Mensaje[] = [mio, { id: crypto.randomUUID(), rol: "agente", texto: r.respuesta, hora: new Date() }];
       const simulado = pedidoSimuladoDe({ order: r.pedidoSimulado });
-      if (simulado) nuevos.push({ id: crypto.randomUUID(), rol: "sistema", texto: `Pedido simulado · ${simulado.folio}`, hora: new Date(), pedido: simulado });
+      if (simulado) nuevos.push({ id: crypto.randomUUID(), rol: "sistema", texto: `Pedido simulado · ${simulado.folio} · Prueba`, hora: new Date(), pedido: simulado });
       setMensajes([...antes, ...nuevos]);
     } catch (err) {
       // El mensaje del cliente se quita para que pueda reenviarlo: el servidor no guardó nada de este turno.
@@ -212,8 +242,8 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
               <button type="button" className="wa-icono" onClick={() => setOpcionesAbiertas((v) => !v)} aria-expanded={opcionesAbiertas} aria-controls={idOpciones} aria-label="Opciones de prueba" title="Opciones de prueba">
                 <SlidersHorizontal aria-hidden="true" strokeWidth={1.75} />
               </button>
-              <button type="button" className="wa-icono" onClick={() => setAbierto(false)} aria-label="Cerrar chat" title="Cerrar chat">
-                <X aria-hidden="true" strokeWidth={1.75} />
+              <button type="button" className="wa-icono wa-icono--cerrar" onClick={() => setAbierto(false)} aria-label="Cerrar chat" title="Cerrar chat">
+                <X aria-hidden="true" strokeWidth={2} />
               </button>
             </div>
           </div>
@@ -246,9 +276,9 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
             {mensajes.map((m) =>
               m.rol === "sistema" ? (
                 <div key={m.id} className="wa-sistema">
-                  <span className="wa-sistema__pildora">{m.texto} · Prueba</span>
+                  <span className="wa-sistema__pildora">{m.texto}</span>
                   <div className="wa-sistema__tarjeta">
-                    <TarjetaPedidoSimulado pedido={m.pedido} />
+                    <TarjetaPedidoSimulado pedido={m.pedido} compacta />
                   </div>
                 </div>
               ) : (
@@ -257,7 +287,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
                     <span className="wa-solo-lectores">{m.rol === "cliente" ? "Cliente: " : "Agente: "}</span>
                     <span>{m.texto}</span>
                     <span className="wa-hora">
-                      {hora24EsMx(m.hora)}
+                      {hora24EsMx(m.hora, zona)}
                       {m.rol === "cliente" ? <Palomitas /> : null}
                     </span>
                   </div>
@@ -276,9 +306,18 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
               </div>
             ) : null}
 
+            {aviso ? (
+              <div className="wa-sistema" role="status" data-testid="aviso-limite">
+                <span className="wa-sistema__pildora">{aviso}</span>
+              </div>
+            ) : null}
+
             {error ? (
-              <div className="wa-sistema" role="alert" data-testid="error-prueba">
-                <span className={`wa-sistema__pildora${noDisponible ? "" : " wa-sistema__pildora--error"}`}>{error}</span>
+              <div className="wa-fila wa-fila--agente" role="alert" data-testid="error-prueba">
+                <div className="wa-burbuja wa-burbuja--agente wa-burbuja--error">
+                  <span>{noDisponible ? "Por ahora no puedo contestar." : TEXTO_FALLO}</span>
+                  <span className="wa-burbuja__detalle">{error}</span>
+                </div>
               </div>
             ) : null}
             <div ref={fin} />

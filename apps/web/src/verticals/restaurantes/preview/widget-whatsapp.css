@@ -20,8 +20,8 @@
   --wa-palomitas: #53bdeb;
   --wa-sistema-fondo: rgb(7 94 84 / 0.1);
   --wa-sistema-texto: #075e54;
-  --wa-error-fondo: rgb(220 38 38 / 0.12);
-  --wa-error-texto: #991b1b;
+  --wa-error-fondo: hsl(var(--destructive) / 0.12);
+  --wa-error-texto: hsl(var(--destructive));
   --wa-borde: rgb(0 0 0 / 0.1);
   --wa-boton-texto: #ffffff;
 }
@@ -36,8 +36,6 @@
   --wa-campo: #2a3942;
   --wa-sistema-fondo: rgb(37 211 102 / 0.14);
   --wa-sistema-texto: #7ee0a8;
-  --wa-error-fondo: rgb(248 113 113 / 0.16);
-  --wa-error-texto: #fecaca;
   --wa-borde: rgb(255 255 255 / 0.12);
 }
 
@@ -136,6 +134,8 @@
 .wa-icono:disabled { opacity: 0.4; cursor: not-allowed; }
 .wa-icono:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .wa-icono svg { width: 1.125rem; height: 1.125rem; }
+/* Cierre como el original: la X llevaba el tamaño por omisión de lucide (24 px) y trazo 2. */
+.wa-icono--cerrar svg { width: 1.5rem; height: 1.5rem; }
 
 /* ---- Cuerpo del chat ---- */
 .wa-cuerpo {
@@ -170,8 +170,9 @@
 .wa-palomitas path { stroke: var(--wa-palomitas); }
 .wa-sistema { display: flex; flex-direction: column; align-items: center; gap: 0.375rem; padding: 0.25rem 0; }
 .wa-sistema__pildora { padding: 4px 10px; border-radius: 10px; background: var(--wa-sistema-fondo); color: var(--wa-sistema-texto); font-size: 11px; font-weight: 500; text-align: center; }
-.wa-sistema__pildora--error { background: var(--wa-error-fondo); color: var(--wa-error-texto); }
 .wa-sistema__tarjeta { width: 100%; }
+.wa-burbuja--error { border: 1px solid var(--wa-error-fondo); }
+.wa-burbuja__detalle { display: block; margin-top: 0.25rem; font-size: 12px; color: var(--wa-texto-tenue); }
 .wa-escribiendo { display: flex; align-items: center; gap: 0.25rem; padding: 10px 12px; background: var(--wa-burbuja-agente); border-radius: 8px 12px 12px 12px; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
 .wa-punto { width: 6px; height: 6px; border-radius: 9999px; background: var(--wa-texto-tenue); animation: wa-rebote 900ms ease-in-out infinite; }
 .wa-punto:nth-child(2) { animation-delay: 150ms; }
@@ -196,8 +197,10 @@
 .wa-solo-lectores { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* ---- Móvil (375 px): el original ocupaba 345 px de ancho sobre la barra inferior; aquí el panel casi llena la pantalla y el botón sube sobre la barra ---- */
-@media (max-width: 639px) {
+@media (max-width: 767px) {
   .wa-boton { right: 1rem; bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 639px) {
   .wa-panel { right: 0.5rem; bottom: 0.5rem; left: 0.5rem; width: auto; max-width: none; height: min(600px, calc(100dvh - 1rem)); max-height: none; }
 }
 

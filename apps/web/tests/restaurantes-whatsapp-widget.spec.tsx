@@ -94,11 +94,11 @@ describe("<WidgetWhatsApp />", () => {
     expect(cliente.querySelector(".wa-palomitas")).not.toBeNull();
     expect(agente.textContent).toContain("Listo, su pedido de prueba.");
     expect(agente.querySelector(".wa-palomitas")).toBeNull();
+    // «Prueba» aparece una sola vez (en el mensaje de sistema); la tarjeta compacta solo trae renglones y total.
     expect(q(".wa-sistema__pildora")?.textContent).toBe("Pedido simulado · PRUEBA-AB12 · Prueba");
     const tarjeta = q('[data-testid="tarjeta-pedido-simulado"]');
-    expect(tarjeta?.textContent).toContain("PRUEBA-AB12");
     expect(tarjeta?.textContent).toContain("$90.00");
-    expect(tarjeta?.textContent).toContain("Prueba");
+    expect(tarjeta?.textContent).not.toContain("Prueba");
     expect(envios[0]).toMatchObject({ mensajes: [{ rol: "usuario", texto: "quiero 2 cocas" }] });
     expect(typeof envios[0]!.sesionId).toBe("string");
     expect(envios[0]!.borrador).toBeUndefined();
@@ -157,8 +157,10 @@ describe("<WidgetWhatsApp />", () => {
       await escribir("hola");
       expect(q('[data-testid="error-prueba"]')?.textContent).toContain(mensaje);
       expect(q('[role="alert"]')).not.toBeNull();
+      // Como el original: el fallo llega como burbuja del agente, con el detalle honesto debajo.
+      expect(q('[role="alert"] .wa-burbuja--agente')).not.toBeNull();
+      expect(q('[role="alert"]')?.textContent).toMatch(/Ahorita no pude procesar tu mensaje|Por ahora no puedo contestar/);
       expect(q('[data-testid="tarjeta-pedido-simulado"]')).toBeNull();
-      expect(q(".wa-burbuja--agente")).toBeNull();
       expect(q(".wa-burbuja--cliente")).toBeNull();
       expect(caja().value).toBe("hola");
     });
@@ -199,6 +201,39 @@ describe("<WidgetWhatsApp />", () => {
     await esperar();
     expect(q("select")).not.toBeNull();
     expect(q('input[type="checkbox"]')).toBeNull();
+  });
+
+  it("al llegar al tope de 40 mensajes se reinicia sola la conversación con un aviso amable y conserva lo escrito (sin esperar el 400 del servidor)", async () => {
+    montar(() => json({ respuesta: "ok", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    for (let i = 0; i < 20; i += 1) await escribir(`mensaje ${i}`);
+    expect(envios.length).toBe(20);
+    await act(async () => changeValue(caja(), "el mensaje 41"));
+    await act(async () => {
+      await submitForm(q<HTMLFormElement>(".wa-barra")!);
+    });
+    await esperar();
+    expect(envios.length).toBe(20);
+    expect(q('[data-testid="aviso-limite"]')?.textContent).toContain("límite de 40 mensajes");
+    expect(q(".wa-burbuja--cliente")).toBeNull();
+    expect(caja().value).toBe("el mensaje 41");
+    await escribir("el mensaje 41");
+    expect((envios[20]!.mensajes as unknown[]).length).toBe(1);
+  });
+
+  it("la hora de las burbujas usa la zona de la sucursal cuando existe", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/config/zona-horaria")) return json({ zonaHoraria: "America/Tijuana" });
+      if (u.includes("/admin/customers")) return json({ customers: [], nextCursor: null });
+      envios.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return json({ respuesta: "x", escalado: false, pedidoSimulado: null });
+    });
+    await abrir();
+    await escribir("hola");
+    // 20:15 UTC = 13:15 en Tijuana (UTC-7) en octubre de 2026 (con horario de verano).
+    expect(q(".wa-burbuja--cliente")?.textContent).toContain("13:15");
   });
 
   it("Escape cierra el chat y el foco vuelve al botón flotante; «Cerrar chat» también; la conversación se conserva al reabrir", async () => {
