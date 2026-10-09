@@ -4,10 +4,13 @@
 // frecuente enmascarado, "Importar clientes" real (CSV -> mapeo -> vista previa -> importar) y los estados honestos de la base sin migrar.
 import { act } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { ClientesListPage } from "../src/verticals/restaurantes/pages/Clientes.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -86,13 +89,13 @@ describe("ClientesListPage -- cartera por nivel", () => {
     stub();
     montar();
     await esperar();
-    changeValue(q("#restaurantes-clientes-nivel") as HTMLSelectElement, "GOLD");
+    elegirValor(q("#restaurantes-clientes-nivel"), "GOLD");
     await esperar();
-    changeValue(q("#restaurantes-clientes-frecuencia") as HTMLSelectElement, "recurrentes");
+    elegirValor(q("#restaurantes-clientes-frecuencia"), "recurrentes");
     await esperar();
-    changeValue(q("#restaurantes-clientes-inactivo") as HTMLSelectElement, "30");
+    elegirValor(q("#restaurantes-clientes-inactivo"), "30");
     await esperar();
-    changeValue(q("#restaurantes-clientes-sucursal") as HTMLSelectElement, "prop-2");
+    elegirValor(q("#restaurantes-clientes-sucursal"), "prop-2");
     await esperar();
     const url = new URL(listados().at(-1)!);
     expect(Object.fromEntries(url.searchParams)).toMatchObject({ nivel: "GOLD", frecuencia: "recurrentes", inactivoDias: "30", branchId: "prop-2", limit: "50" });
@@ -102,7 +105,7 @@ describe("ClientesListPage -- cartera por nivel", () => {
     stub({ lista: { customers: [], nextCursor: null, filtrosDisponibles: true } });
     montar();
     await esperar();
-    changeValue(q("#restaurantes-clientes-nivel") as HTMLSelectElement, "BLUE");
+    elegirValor(q("#restaurantes-clientes-nivel"), "BLUE");
     await esperar();
     expect(rendered!.container.textContent).toContain("Ningún cliente coincide con estos filtros.");
   });
@@ -166,8 +169,8 @@ describe("ClientesListPage -- importar clientes", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(dialogo.textContent).toContain("3 renglones de datos");
-    expect((dialogo.querySelector("#clientes-import-telefono") as HTMLSelectElement).value).toBe("1");
-    expect((dialogo.querySelector("#clientes-import-nombre") as HTMLSelectElement).value).toBe("0");
+    expect(valorDe(dialogo.querySelector("#clientes-import-telefono"))).toBe("1");
+    expect(valorDe(dialogo.querySelector("#clientes-import-nombre"))).toBe("0");
 
     const revisar = [...dialogo.querySelectorAll("button")].find((b) => b.textContent?.includes("Revisar vista previa"))!;
     click(revisar);

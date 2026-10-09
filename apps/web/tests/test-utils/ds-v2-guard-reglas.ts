@@ -76,6 +76,9 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "sonner importado directo (usar notify/Toaster de @atiende/ui)", patron: /from\s+["']sonner["']/ },
   { nombre: "alert() nativo o dialogo a mano (aria-modal / <dialog>): usar Dialog, ConfirmDialog o notify", patron: /\bwindow\.alert\s*\(|(^|[^.\w])alert\s*\(\s*[`"']|aria-modal|<dialog[\s>]/m },
   { nombre: "overlay a mano en restaurantes (role dialog/listbox/tooltip, fixed inset-0, <datalist>): usar los primitivos de @atiende/ui", patron: /role="(dialog|alertdialog|listbox|tooltip)"|\bfixed inset-0\b|<datalist[\s>]/, alcance: /^verticals\/restaurantes\// },
+  // UNI-R0 (migracion): en restaurantes las listas son `Selector`. Las 4 pantallas del lote R4 (voz, WhatsApp, probar agente, demo) se
+  // migran en su propio PR y salen de esta lista de excepciones entonces (nunca se agregan otras).
+  { nombre: "NativeSelect en restaurantes (usar Selector de @atiende/ui)", patron: /\bNativeSelect\b/, alcance: /^verticals\/restaurantes\/(?!preview\/ProbarAgente\.tsx$|pages\/AgenteVoz\.tsx$|pages\/AgenteWhatsappSeccion\.tsx$|demo\/DemoWhatsAppPage\.tsx$)/ },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);

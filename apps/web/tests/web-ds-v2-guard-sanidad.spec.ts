@@ -44,6 +44,7 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "overlay a mano en restaurantes", viola: '<div role="dialog" className="x" />', limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "overlay a mano en restaurantes", viola: '<div className="fixed inset-0 z-50" />', limpio: '<div className="relative" />', ruta: "verticals/restaurantes/components/Z.tsx" },
   { regla: "overlay a mano en restaurantes", viola: '<input list="x" /><datalist id="x" />', limpio: "<Selector />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "NativeSelect en restaurantes", viola: "<NativeSelect value={a} />", limpio: "<Selector value={a} />", ruta: "verticals/restaurantes/pages/Y.tsx" },
 ];
 
 const porRegla = (prefijo: string) => {
@@ -83,6 +84,15 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
       expect(infractores([fuente("<Table />", `verticals/despachos/${ruta}`)], regla)).toHaveLength(1);
     }
     expect(infractores([fuente("<Table />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
+  });
+
+  it("NativeSelect en restaurantes: solo las 4 pantallas del lote R4 quedan exentas; otras zonas no se miran", () => {
+    const regla = porRegla("NativeSelect en restaurantes");
+    for (const ruta of ["preview/ProbarAgente.tsx", "pages/AgenteVoz.tsx", "pages/AgenteWhatsappSeccion.tsx", "demo/DemoWhatsAppPage.tsx"]) {
+      expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toEqual([]);
+    }
+    expect(infractores([fuente("<NativeSelect />", "verticals/restaurantes/pages/Otra.tsx")], regla)).toHaveLength(1);
+    expect(infractores([fuente("<NativeSelect />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
   });
 
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {

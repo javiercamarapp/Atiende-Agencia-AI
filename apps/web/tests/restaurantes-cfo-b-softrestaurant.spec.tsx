@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { act } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll } from "vitest";
 import type { CuadreSrVista } from "@atiende/domain-restaurantes/cfo";
 import { CSV_SR_SINTETICO, ETIQUETA_SINTETICO } from "../../../packages/domain-restaurantes/tests/fixtures/cfo-pm-sintetico.ts";
 import { operacionApagadaB } from "../e2e/mock-api/fixtures/restaurantes-cfo-b.ts";
@@ -15,6 +15,7 @@ import { CfoSoftRestaurant, MENSAJE_SIN_SR, ROTULO_CUADRE, TEXTO_COMANDAS_APAGAD
 import { BASE_CFO, IDS, crearApiCfo, respuestaBase } from "./test-utils/cfo-api-simulada.ts";
 import { bancoCfoB } from "./test-utils/cfo-b-banco.tsx";
 import { changeValue, click, flushMicrotasks } from "./test-utils/render.tsx";
+import { elegirValor, etiquetasDe, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 const b = bancoCfoB();
 const cargado = () => b.esperar(() => b.q("[data-testid=sr-lotes]") !== null && b.q("[data-testid=sr-bloque-importar]") !== null && !b.texto().includes("Cargando"), "bloques cargados");
@@ -42,11 +43,13 @@ const esperarAcciones = async () => {
 };
 
 const botonDe = (d: HTMLElement, texto: string): HTMLButtonElement => [...d.querySelectorAll("button")].find((x) => x.textContent?.includes(texto)) as HTMLButtonElement;
-const selector = (d: HTMLElement, id: string) => d.querySelector<HTMLSelectElement>(`#${id}`)!;
+beforeAll(prepararJsdomParaRadix);
+
+const selector = (d: HTMLElement, id: string) => d.querySelector<HTMLElement>(`#${id}`)!;
 
 async function importarCsv(csv = CSV_SR_SINTETICO, nombre = "reporte-cuentas.csv"): Promise<HTMLElement> {
   const d = await abrirDialogo();
-  changeValue(selector(d, "sr-sucursal"), IDS.T2);
+  elegirValor(selector(d, "sr-sucursal"), IDS.T2);
   await elegirArchivo(d.querySelector<HTMLInputElement>("#sr-archivo")!, new File([csv], nombre, { type: "text/csv" }));
   return d;
 }
@@ -89,10 +92,10 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     const d = await importarCsv();
     expect(d.textContent).toContain("reporte-cuentas.csv");
     // El título SINTÉTICO de arriba no es el encabezado: se detecta el renglón 2 y el layout de cuentas.
-    expect(selector(d, "sr-fila-encabezado").value).toBe("1");
-    expect(selector(d, "sr-tipo").value).toBe("cuentas");
-    expect(selector(d, "sr-mapeo-folio").value).toBe("0");
-    expect(selector(d, "sr-mapeo-total").value).toBe("7");
+    expect(valorDe(selector(d, "sr-fila-encabezado"))).toBe("1");
+    expect(valorDe(selector(d, "sr-tipo"))).toBe("cuentas");
+    expect(valorDe(selector(d, "sr-mapeo-folio"))).toBe("0");
+    expect(valorDe(selector(d, "sr-mapeo-total"))).toBe("7");
     click(botonDe(d, "Revisar vista previa"));
     await esperarAcciones();
     const previa = d.querySelector("[data-testid=sr-vista-previa]")!;
@@ -144,13 +147,13 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     await b.pintar(CfoSoftRestaurant, api);
     await cargado();
     const d = await abrirDialogo();
-    changeValue(selector(d, "sr-sucursal"), IDS.T2);
+    elegirValor(selector(d, "sr-sucursal"), IDS.T2);
     const bytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../e2e/fixtures/sr-resumen-servicio-SINTETICO.xlsx"));
     await elegirArchivo(d.querySelector<HTMLInputElement>("#sr-archivo")!, new File([bytes], "ventas-por-servicio.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-    expect(selector(d, "sr-tipo").value).toBe("resumen_servicio");
-    expect(selector(d, "sr-fila-encabezado").value).toBe("1");
-    expect(selector(d, "sr-mapeo-servicio").value).toBe("1");
-    expect(selector(d, "sr-mapeo-tickets").value).toBe("2");
+    expect(valorDe(selector(d, "sr-tipo"))).toBe("resumen_servicio");
+    expect(valorDe(selector(d, "sr-fila-encabezado"))).toBe("1");
+    expect(valorDe(selector(d, "sr-mapeo-servicio"))).toBe("1");
+    expect(valorDe(selector(d, "sr-mapeo-tickets"))).toBe("2");
     click(botonDe(d, "Revisar vista previa"));
     await esperarAcciones();
     expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/renglones aceptados y 0 rechazados/);
@@ -171,7 +174,7 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     expect(aviso.textContent).toContain("No subimos datos de tus clientes");
     expect(aviso.textContent).toContain("Teléfono");
     // La columna personal no se ofrece en ningún selector del mapeo.
-    for (const o of d.querySelectorAll("#sr-mapeo-total option")) expect(o.textContent).not.toContain("Teléfono");
+    for (const t of etiquetasDe(selector(d, "sr-mapeo-total"))) expect(t).not.toContain("Teléfono");
     click(botonDe(d, "Revisar vista previa"));
     await esperarAcciones();
     expect(d.querySelector("[data-testid=sr-vista-previa]")!.textContent).toMatch(/2 renglones aceptados/);
@@ -186,17 +189,17 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     await cargado();
     const csv = ["Folio,Fecha,Total,Teléfono", "T2-1,21/09/2026,$120.00,9991112222", "T2-2,22/09/2026,$300.00,9993334444"].join("\n");
     const d = await importarCsv(csv, "tel-al-final.csv");
-    changeValue(selector(d, "sr-fila-encabezado"), "1");
+    elegirValor(selector(d, "sr-fila-encabezado"), "1");
     await esperarAcciones();
     expect(d.querySelector("[data-testid=sr-columnas-excluidas]")!.textContent).toContain("Columna 4");
     expect(d.textContent).not.toContain("9991112222");
-    for (const o of d.querySelectorAll("select[id^=sr-mapeo-] option")) expect(o.textContent).not.toContain("Columna 4");
+    for (const c of d.querySelectorAll("[role='combobox'][id^=sr-mapeo-]")) for (const t of etiquetasDe(c)) expect(t).not.toContain("Columna 4");
     // Forzar el teléfono (columna 4) como folio ya no es posible desde la interfaz; el mapeo sano lo deja fuera.
-    changeValue(selector(d, "sr-tipo"), "cuentas");
+    elegirValor(selector(d, "sr-tipo"), "cuentas");
     await esperarAcciones();
-    changeValue(selector(d, "sr-mapeo-folio"), "0");
-    changeValue(selector(d, "sr-mapeo-fecha"), "1");
-    changeValue(selector(d, "sr-mapeo-total"), "2");
+    elegirValor(selector(d, "sr-mapeo-folio"), "0");
+    elegirValor(selector(d, "sr-mapeo-fecha"), "1");
+    elegirValor(selector(d, "sr-mapeo-total"), "2");
     click(botonDe(d, "Revisar vista previa"));
     await esperarAcciones();
     const previas = api.peticiones("POST", "/softrestaurant/importar/vista-previa");
@@ -209,9 +212,9 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     await cargado();
     const csv = ["Referencia,Fecha,Total", "999-111-2222,21/09/2026,$120.00", "999-333-4444,22/09/2026,$300.00"].join("\n");
     const d = await importarCsv(csv, "referencias.csv");
-    changeValue(selector(d, "sr-tipo"), "cuentas");
+    elegirValor(selector(d, "sr-tipo"), "cuentas");
     await esperarAcciones();
-    changeValue(selector(d, "sr-mapeo-folio"), "0");
+    elegirValor(selector(d, "sr-mapeo-folio"), "0");
     await esperarAcciones();
     const errores = d.querySelector("[data-testid=sr-errores-locales]")!.textContent!;
     expect(errores).toContain("2 renglones no se enviarán");
@@ -227,7 +230,7 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     expect(d.querySelector("[data-testid=sr-errores-locales] [role=alert]")).toBeNull();
     expect(d.querySelector("[data-testid=sr-confirmar-folio]")).not.toBeNull(); // sigue visible para poder deshacerlo
     // Cambiar el renglón de encabezados o el tipo de reporte pierde la confirmación.
-    changeValue(selector(d, "sr-tipo"), "resumen_servicio");
+    elegirValor(selector(d, "sr-tipo"), "resumen_servicio");
     await esperarAcciones();
     expect(d.querySelector("[data-testid=sr-confirmar-folio]")).toBeNull();
   });
@@ -239,12 +242,12 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     const csv = ["Folio,Fecha,Total,Colonia", "T2-1,21/09/2026,$120.00,Colonia Centro"].join("\n");
     const d = await importarCsv(csv, "con-colonia.csv");
     expect(d.querySelector("[data-testid=sr-columnas-excluidas]")!.textContent).toContain("Colonia");
-    for (const o of d.querySelectorAll("#sr-mapeo-forma_pago option")) expect(o.textContent).not.toContain("Colonia");
+    for (const t of etiquetasDe(selector(d, "sr-mapeo-forma_pago"))) expect(t).not.toContain("Colonia");
     click(d.querySelector("[data-testid=sr-incluir-3]") as HTMLElement);
     await esperarAcciones();
-    expect([...d.querySelectorAll("#sr-mapeo-forma_pago option")].some((o) => o.textContent?.includes("Colonia"))).toBe(true);
+    expect(etiquetasDe(selector(d, "sr-mapeo-forma_pago")).some((t) => t.includes("Colonia"))).toBe(true);
     // Mapeada a forma de pago, «Colonia Centro» no viaja como texto libre: sale «otro».
-    changeValue(selector(d, "sr-mapeo-forma_pago"), "3");
+    elegirValor(selector(d, "sr-mapeo-forma_pago"), "3");
     await esperarAcciones();
     click(botonDe(d, "Revisar vista previa"));
     await esperarAcciones();
@@ -286,9 +289,9 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     const d = await abrirDialogo();
     await elegirArchivo(d.querySelector<HTMLInputElement>("#sr-archivo")!, new File([CSV_SR_SINTETICO], "r.csv", { type: "text/csv" }));
     expect(botonDe(d, "Revisar vista previa").disabled).toBe(true); // falta la sucursal
-    changeValue(selector(d, "sr-sucursal"), IDS.T2);
+    elegirValor(selector(d, "sr-sucursal"), IDS.T2);
     expect(botonDe(d, "Revisar vista previa").disabled).toBe(false);
-    changeValue(selector(d, "sr-mapeo-total"), "");
+    elegirValor(selector(d, "sr-mapeo-total"), "");
     expect(botonDe(d, "Revisar vista previa").disabled).toBe(true);
     expect(d.textContent).toContain("Elige la columna de este dato.");
   });
@@ -318,7 +321,7 @@ describe("<CfoSoftRestaurant /> · (b) importar y (c) cuadre", () => {
     await b.pintar(CfoSoftRestaurant, api);
     await cargado();
     const d0 = await abrirDialogo();
-    changeValue(selector(d0, "sr-sucursal"), IDS.T2);
+    elegirValor(selector(d0, "sr-sucursal"), IDS.T2);
     await elegirArchivo(d0.querySelector<HTMLInputElement>("#sr-archivo")!, new File([CSV_SR_SINTETICO], "r.csv", { type: "text/csv" }));
     click(botonDe(d0, "Revisar vista previa"));
     await esperarAcciones();

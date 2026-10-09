@@ -4,9 +4,12 @@
 // Cubre: cifras exactas, "—" con su razón (nunca 0 inventado), periodos pendientes con botón REAL que llama al API y recarga, vista de
 // semana con por-día, selección de un cierre anterior, base sin migrar, error con reintento, rol sin acceso y ausencia de PII.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { CierresPage } from "../src/verticals/restaurantes/pages/Cierres.tsx";
 import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -146,7 +149,7 @@ describe("<CierresPage />", () => {
       [`GET ${BASE}?tipo=semana`]: { status: 200, body: lista({ tipo: "semana", cierres: [semana] }) },
     });
     await pintar(fetchMock);
-    changeValue(rendered!.container.querySelector("select#tipo-cierre") as HTMLSelectElement, "semana");
+    elegirValor(rendered!.container.querySelector("#tipo-cierre") as HTMLElement, "semana");
     await settle();
     expect(fetchMock).toHaveBeenLastCalledWith(`${BASE}?tipo=semana`, expect.anything());
     expect(texto()).toContain("Resumen de la semana del");
