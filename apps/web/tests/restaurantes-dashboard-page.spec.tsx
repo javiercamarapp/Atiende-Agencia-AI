@@ -134,7 +134,7 @@ function etiquetasKpi(r: RenderedComponent): string[] {
 function tarjeta(r: RenderedComponent, etiqueta: string): HTMLElement {
   const chip = [...r.container.querySelectorAll('[data-testid="stat-card-chip"]')].find((c) => c.nextElementSibling?.textContent === etiqueta);
   if (!chip) throw new Error(`sin tarjeta ${etiqueta}`);
-  return chip.closest(".shadow-card") as HTMLElement;
+  return chip.closest(".card") as HTMLElement;
 }
 
 function enlaces(r: RenderedComponent): Record<string, string> {
