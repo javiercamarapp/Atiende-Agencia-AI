@@ -5,6 +5,7 @@ import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { afirmarSinEscrituras, cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
 import { propiedadDe } from "../../mock-api/personas.ts";
+import { elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 // DataTable: tabla en escritorio, lista de tarjetas (listitem) en movil.
@@ -27,7 +28,7 @@ test.describe("restaurantes R2 botones: Historial y Reglas de pedido @recorrido"
     await ir(page, "/historial");
     await expect(fila(page, "Marisol Pech").first()).toBeVisible();
     await mock.inyectarFalla({ metodo: "GET", ruta: "status=cancelado", status: 503 });
-    await main(page).getByLabel("Estado").selectOption("cancelado");
+    await elegirValor(main(page).getByLabel("Estado"), "cancelado");
     await expect(main(page).getByRole("alert").filter({ has: page.getByRole("button", { name: "Reintentar" }) })).toBeVisible();
     await expect(fila(page, "Marisol Pech")).toHaveCount(0);
   });
@@ -36,8 +37,8 @@ test.describe("restaurantes R2 botones: Historial y Reglas de pedido @recorrido"
     await ir(page, "/historial");
     await expect(fila(page, "Marisol Pech").first()).toBeVisible();
     await mock.inyectarFalla({ metodo: "GET", ruta: "status=completado", status: 200, retrasoMs: 2500, veces: 1, cuerpo: { orders: [{ id: "ord-viejo", propertyId: PROP.id, branch: PROP.nombre, customerId: "c", customerName: "Fila Vieja Completado", customerPhone: "+529995550111", customerAddress: null, total: 99, status: "completado", items: [], source: "web", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-28T18:00:00.000Z", assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null }], nextCursor: null } });
-    await main(page).getByLabel("Estado").selectOption("completado");
-    await main(page).getByLabel("Estado").selectOption("preparando");
+    await elegirValor(main(page).getByLabel("Estado"), "completado");
+    await elegirValor(main(page).getByLabel("Estado"), "preparando");
     await expect(fila(page, "Jorge Canul")).toBeVisible();
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "status=completado" })).filter((r) => r.inyectada).length, { timeout: 8000 }).toBe(1);
     await expect(fila(page, "Fila Vieja Completado")).toHaveCount(0);
@@ -48,7 +49,7 @@ test.describe("restaurantes R2 botones: Historial y Reglas de pedido @recorrido"
     // Siembra un pedido entregado (la semilla no tiene) y abre Historial.
     await ir(page, "/historial");
     await mock.agregarAEstado("rest.ordenes", { id: "ord-ent-1", propertyId: PROP.id, branch: PROP.nombre, customerId: "c9", customerName: "Entregado Queja", customerPhone: "+529995550120", customerAddress: "Calle 1", total: 150, status: "entregado", items: [], source: "whatsapp", notes: null, paymentMethod: "efectivo", createdAt: new Date().toISOString(), assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, canal: "domicilio", propina: null, horaRecogida: null });
-    await main(page).getByLabel("Estado").selectOption("entregado");
+    await elegirValor(main(page).getByLabel("Estado"), "entregado");
     const filaQueja = fila(page, "Entregado Queja");
     await expect(filaQueja).toBeVisible();
     await mock.limpiarRegistro();

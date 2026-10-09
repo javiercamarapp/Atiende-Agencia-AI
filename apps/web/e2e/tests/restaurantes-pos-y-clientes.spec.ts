@@ -3,6 +3,7 @@
 import { dialogo } from "../helpers/dialogos.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
+import { elegirValor, esperarValor } from "../helpers/listas.ts";
 
 const BASE = `/restaurantes/${restaurantes.orgSlug}`;
 
@@ -69,7 +70,7 @@ test.describe("restaurantes clientes por nivel", () => {
     const csv = "Nombre,Teléfono\nAna Nueva,9991230001\nBruno Nuevo,+52 999 123 0002\nTelefono Malo,12345\n";
     await d.locator("#clientes-import-archivo").setInputFiles({ name: "cartera.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
     await expect(d).toContainText("3 renglones de datos");
-    await expect(d.locator("#clientes-import-telefono")).toHaveValue("1");
+    await esperarValor(d.locator("#clientes-import-telefono"), "1");
 
     await d.getByRole("button", { name: "Revisar vista previa" }).click();
     await expect(d.getByTestId("importar-vista-previa")).toContainText("Renglón 3: Telefono invalido");
@@ -81,7 +82,7 @@ test.describe("restaurantes clientes por nivel", () => {
 
     // Los importados aparecen y "Sin pedir en 30 dias" deja solo a quien no ha pedido (Marisol pidio hace 2 dias).
     await expect(page.getByRole("link", { name: /Ana Nueva/ })).toBeVisible();
-    await page.locator("#restaurantes-clientes-inactivo").selectOption("30");
+    await elegirValor(page.locator("#restaurantes-clientes-inactivo"), "30");
     await expect(page.getByRole("link", { name: /Ana Nueva/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /Bruno Nuevo/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /Marisol Pech/ })).toHaveCount(0);

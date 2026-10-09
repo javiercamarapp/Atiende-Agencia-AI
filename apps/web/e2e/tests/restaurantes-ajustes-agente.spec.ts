@@ -4,6 +4,7 @@
 import { expect, test } from "../helpers/fixtures.ts";
 import { seccionesDelPanel } from "../helpers/navegacion.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
+import { elegirValor, esperarValor } from "../helpers/listas.ts";
 
 const RUTA = `/restaurantes/${restaurantes.orgSlug}/agente-ajustes`;
 
@@ -17,7 +18,7 @@ test.describe("restaurantes: ajustes del agente", () => {
     // El predeterminado (Luna) no admite temperatura: lo dice en lugar de ofrecer un control que no hace nada.
     await expect(page.getByTestId("sin-temperatura-whatsapp")).toContainText("GPT-6 Luna no admite temperatura");
 
-    await modelo.selectOption("google/gemini-2.5-flash-lite");
+    await elegirValor(modelo, "google/gemini-2.5-flash-lite");
     await expect(page.getByTestId("costo-whatsapp")).toContainText("≈ US$0.76 por 1,000 mensajes");
     await expect(page.getByTestId("sin-temperatura-whatsapp")).toHaveCount(0);
     await page.getByRole("radiogroup", { name: "Temperatura del agente de WhatsApp" }).locator("label", { hasText: /^0\.4$/ }).click();
@@ -29,7 +30,7 @@ test.describe("restaurantes: ajustes del agente", () => {
     expect(put!.cuerpo).toMatchObject({ whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.4, vozFondoActivo: false, vozRitmo: "normal" });
 
     await page.reload();
-    await expect(page.locator("#ajustes-modelo-whatsapp")).toHaveValue("google/gemini-2.5-flash-lite");
+    await esperarValor(page.locator("#ajustes-modelo-whatsapp"), "google/gemini-2.5-flash-lite");
     await expect(page.getByRole("radiogroup", { name: "Temperatura del agente de WhatsApp" }).getByRole("radio", { name: "0.4" })).toBeChecked();
     vigilante.verificar();
   });
@@ -37,9 +38,9 @@ test.describe("restaurantes: ajustes del agente", () => {
   test("cambiar a un modelo sin temperatura la reinicia a automatica: el servidor nunca recibe una combinacion invalida", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("restaurantes", "owner");
     await page.goto(RUTA);
-    await page.locator("#ajustes-modelo-whatsapp").selectOption("deepseek/deepseek-v4.1-flash");
+    await elegirValor(page.locator("#ajustes-modelo-whatsapp"), "deepseek/deepseek-v4.1-flash");
     await page.getByRole("radiogroup", { name: "Temperatura del agente de WhatsApp" }).locator("label", { hasText: /^0\.6$/ }).click();
-    await page.locator("#ajustes-modelo-whatsapp").selectOption("anthropic/claude-sonnet-5.5");
+    await elegirValor(page.locator("#ajustes-modelo-whatsapp"), "anthropic/claude-sonnet-5.5");
     await expect(page.getByTestId("sin-temperatura-whatsapp")).toContainText("Claude Sonnet 5.5 no admite temperatura");
     await expect(page.getByTestId("costo-whatsapp")).toContainText("≈ US$16.00 por 1,000 mensajes");
     await page.getByRole("button", { name: "Guardar ajustes" }).click();
@@ -64,7 +65,7 @@ test.describe("restaurantes: ajustes del agente", () => {
     await page.getByRole("radiogroup", { name: "Ritmo de habla" }).locator("label", { hasText: "Pausado" }).click();
     await page.getByRole("radiogroup", { name: "Estilo de habla" }).locator("label", { hasText: "Cálido" }).click();
     await page.getByRole("radiogroup", { name: "Temperatura de la voz" }).locator("label", { hasText: /^0\.2$/ }).click();
-    await page.locator("#ajustes-modelo-cascada").selectOption("google/gemini-2.5-flash-lite");
+    await elegirValor(page.locator("#ajustes-modelo-cascada"), "google/gemini-2.5-flash-lite");
     await expect(page.getByTestId("costo-cascada")).toContainText("≈ US$1.40 por 1,000 minutos");
     await page.getByRole("button", { name: "Guardar ajustes" }).click();
     await expect(page.getByText("Ajustes guardados")).toBeVisible();
