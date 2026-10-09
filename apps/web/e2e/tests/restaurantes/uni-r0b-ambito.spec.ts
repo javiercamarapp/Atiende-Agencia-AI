@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 import { afirmarModo, afirmarSinScrollHorizontal } from "../../helpers/ds.ts";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
-import { BASE, ir } from "../../helpers/recorrido.ts";
+import { ir } from "../../helpers/recorrido.ts";
 import { citas } from "../../mock-api/fixtures/citas.ts";
 
 /** Color que el navegador calcula para un valor CSS (rgb(...)/rgba(...)). */
