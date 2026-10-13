@@ -49,7 +49,7 @@ export function confirmacionDePedido(pedido: unknown, opciones: OpcionesConfirma
   const programado = horaLocal(p.programadoPara ?? p.programado_para, opciones.timezone);
   const recoger = programado ? null : horaLocal(p.horaRecogida ?? p.hora_recogida, opciones.timezone);
 
-  const lineas = [simulado ? "¡Listo! Su pedido de prueba quedó registrado (es una simulación: no se mandó a cocina)." : programado ? "¡Listo! Su pedido quedó registrado y programado." : p.status === "pending" ? "¡Listo! Su pedido quedó registrado y se mandó a cocina." : "¡Listo! Su pedido quedó registrado."];
+  const lineas = [simulado ? "¡Listo! Su pedido de prueba quedó registrado (es una simulación: no se mandó a cocina)." : programado ? "¡Listo! Su pedido ya quedó registrado y programado." : p.status === "pending" ? "¡Listo! Su pedido ya quedó registrado y se mandó a cocina." : "¡Listo! Su pedido ya quedó registrado."];
   if (folio) lineas.push(`*Folio:* ${folio}`);
   for (const it of items) lineas.push(`${it.quantity} × ${it.name}`);
   lineas.push(`*Total:* ${dinero(total)}`);
