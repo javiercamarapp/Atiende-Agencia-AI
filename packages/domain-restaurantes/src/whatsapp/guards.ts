@@ -571,6 +571,16 @@ export function classifyHighRiskIntentInMessages(texts: readonly string[], ctx: 
   return mejor ? { ...mejor.match, text: mejor.text } : null;
 }
 
+/** Pura: el primer motivo de alto riesgo DISTINTO de `excepto` que dispara alguno de los textos (con su respuesta fija), o `null`. */
+export function highRiskMatchOtherThan(texts: readonly string[], excepto: HighRiskIntent, ctx: HighRiskContext = {}): HighRiskMatch | null {
+  for (const text of texts) {
+    const texto = normalizarParaClasificar(text);
+    const p = HIGH_RISK_PATTERNS.find((q) => q.intent !== excepto && coincide(q, texto, ctx));
+    if (p) return { intent: p.intent, motivo: p.intent, reply: p.reply };
+  }
+  return null;
+}
+
 /** Pura: ¿el texto dispara algun motivo de alto riesgo DISTINTO de `excepto`? (aunque otro de mayor
  * prioridad en el orden de arriba tambien coincida). */
 export function matchesHighRiskOtherThan(text: string, excepto: HighRiskIntent, ctx: HighRiskContext = {}): boolean {
