@@ -46,6 +46,15 @@ export interface RespuestaConsentimiento {
   readonly respuestaSugerida: string;
 }
 
+/** Resultado del atajo ARCO por voz (`POST /internal/restaurantes/voz/arco`). `respuesta` ausente = no es ARCO; el agente sigue como siempre. */
+export interface RespuestaArcoVoz {
+  /** `reemplaza`: el agente dice la respuesta y no toma el pedido en ese turno. `agrega`: la ofrece al final de su respuesta normal. */
+  readonly modo: "reemplaza" | "agrega" | null;
+  readonly respuesta: string | null;
+  /** Menu ARCO que la respuesta dejo pendiente (la proxima frase del cliente es su eleccion), o `null`. */
+  readonly menu: "numerado" | "nombres" | null;
+}
+
 export interface EntradaIniciarConversacion {
   readonly organizationId: string;
   readonly propertyId: string;
@@ -171,6 +180,21 @@ export class ClienteApi {
     const c = r.consentimiento;
     if (c !== "otorgado" && c !== "negado" && c !== "pendiente" && c !== "no_disponible") throw new ErrorApi("consentimiento", 502);
     return { consentimiento: c, respuestaSugerida: typeof r.respuestaSugerida === "string" ? r.respuestaSugerida : "" };
+  }
+
+  /** Atajo ARCO por voz: lo que dijo el titular se evalua en el servidor (detector unico) y, si pide un derecho, queda REGISTRADO con el telefono del identificador de llamada. */
+  async arcoVoz(e: { organizationId: string; callerPhone: string; texto: string; menu: "numerado" | "nombres" | null }): Promise<RespuestaArcoVoz> {
+    const r = await this.post<{ atendido?: unknown; respuesta?: unknown; modo?: unknown; menu?: unknown }>(
+      "arco",
+      "/internal/restaurantes/voz/arco",
+      { organizationId: e.organizationId, callerPhone: e.callerPhone, texto: e.texto.slice(0, 2000), ...(e.menu ? { menuPendiente: e.menu } : {}) },
+      this.servicio(),
+      1,
+    );
+    const modo = r.modo === "reemplaza" || r.modo === "agrega" ? r.modo : null;
+    const respuesta = typeof r.respuesta === "string" && r.respuesta.length > 0 ? r.respuesta : null;
+    const menu = r.menu === "numerado" || r.menu === "nombres" ? r.menu : null;
+    return { modo: respuesta ? modo : null, respuesta, menu };
   }
 
   /** Aviso in-app al owner/admin: el gasto del mes llego al 80 % del tope o lo alcanzo. El servidor valida las cifras y deduplica por organizacion y mes. */

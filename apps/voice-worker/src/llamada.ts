@@ -251,6 +251,27 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       consultandoConsentimiento = false;
     }
   };
+  // Derechos ARCO por voz: cada frase del titular se evalua en el servidor (mismo detector que WhatsApp). El telefono es SOLO el del identificador de llamada
+  // (nunca el dictado): sin el no hay a quien registrar y el agente sigue como siempre. Una solicitud queda REGISTRADA aunque el modelo no la entienda.
+  let menuArco: "numerado" | "nombres" | null = null;
+  let colaArco: Promise<void> = Promise.resolve();
+  const procesarArco = (texto: string): void => {
+    if (telefono === null || texto.trim() === "") return;
+    colaArco = colaArco.then(async () => {
+      try {
+        const r = await deps.api.arcoVoz({ organizationId, callerPhone: telefono, texto, menu: menuArco });
+        menuArco = r.menu;
+        if (!r.respuesta) return;
+        log("arco_voz", { modo: r.modo });
+        const sesion = sesionActual as VozSesionLlamada | null;
+        if (r.modo === "reemplaza") sesion?.enviarTexto(`(El cliente quiere ejercer derechos sobre sus datos personales. Dígale tal cual, sin cambiar nada y sin tomar su pedido en este turno: «${r.respuesta}»)`);
+        else sesion?.enviarTexto(`(Termine de atender lo que pidió el cliente y al final ofrézcale tal cual: «${r.respuesta}»)`);
+      } catch (err) {
+        log("arco_voz_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
+      }
+    });
+    segundoPlano.push(colaArco);
+  };
   const abrirSesion: AbrirSesionLlamada = async (apertura, h) => {
     const sesion = await escalera.abrirSesion(apertura, {
       ...h,
@@ -262,6 +283,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       usuarioDijo: (texto) => {
         h.usuarioDijo?.(texto);
         void procesarConsentimiento(texto);
+        procesarArco(texto);
       },
       interrumpido: () => {
         puente.cortarAudio();
