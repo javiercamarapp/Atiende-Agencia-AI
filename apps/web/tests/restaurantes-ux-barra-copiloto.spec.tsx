@@ -94,7 +94,7 @@ describe("restaurantes: la barra superior esta en cada ruta del panel", () => {
     expect(barras, "una sola barra por pantalla").toHaveLength(1);
     const barra = barras[0] as HTMLElement;
     expect(barra.textContent).toContain("Chatea con tus datos");
-    expect(barra.querySelector('a[href$="/notificaciones"]'), "campana").not.toBeNull();
+    expect(barra.querySelectorAll('[aria-label^="Notificaciones"]'), "campana (centro de notificaciones)").toHaveLength(1);
     expect(barra.querySelector('[data-testid="barra-pagina-fecha"]')?.textContent?.trim()).toBe("8 oct 2026");
     expect((barra.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent ?? "").trim().length).toBeGreaterThan(0);
     // Mismo lugar y estilo siempre: es el primer hijo de la columna de contenido (la barra no vive dentro de la pagina).
