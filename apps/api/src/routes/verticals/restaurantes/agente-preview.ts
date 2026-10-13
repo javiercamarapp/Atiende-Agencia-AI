@@ -13,7 +13,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { DAY_SECONDS, STAFF_INVITE_ROLES, getCustomerDetailById, telefonoFicticioPreview, validarConfigAgenteWhatsapp } from "@atiende/domain-restaurantes";
+import { DAY_SECONDS, STAFF_INVITE_ROLES, conOfertaArco, getCustomerDetailById, previsualizarAtajoArco, telefonoFicticioPreview, validarConfigAgenteWhatsapp } from "@atiende/domain-restaurantes";
 import type { ConversationMessage, WhatsAppAgentConfigInput } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
@@ -81,6 +81,13 @@ export function restaurantesAgentePreviewRoutes(deps: AppDeps): Hono<CoreAuthHon
       borrador = validada.valor;
     }
 
+    // ARCO: el MISMO atajo determinista que el webhook real, sobre un repositorio en memoria (no registra nada de verdad). Corre ANTES del agente y no necesita proveedor LLM:
+    // en produccion una solicitud de derechos tampoco depende del modelo.
+    const atajoArco = await previsualizarAtajoArco(mensajes);
+    if (atajoArco?.modo === "reemplaza") {
+      return c.json({ respuesta: atajoArco.reply, escalado: atajoArco.escalacion !== undefined, pedidoSimulado: null });
+    }
+
     // Sin proveedor LLM no hay agente: estado honesto, nunca una respuesta por palabras clave ni un turno de "solo acuse de recibo".
     if (deps.llmGateway === undefined) {
       return c.json({ code: "agente_no_disponible", message: "No disponible: requiere OPENROUTER_API_KEY. Sin un proveedor de IA configurado el agente no puede responder." }, 503);
@@ -116,7 +123,7 @@ export function restaurantesAgentePreviewRoutes(deps: AppDeps): Hono<CoreAuthHon
       configBorrador: borrador,
     });
     logEvent(c, "info", "restaurantes_admin_agente_preview_mensaje", { actorUserId: staffId, organizationId, propertyId, conBorrador: borrador !== null, clienteSimulado: clienteSimuladoId !== null });
-    return c.json({ respuesta: turno.reply, escalado: turno.escalacion !== undefined, pedidoSimulado: turno.pedidoSimulado ?? null });
+    return c.json({ respuesta: atajoArco?.modo === "agrega" ? conOfertaArco(turno.reply) : turno.reply, escalado: turno.escalacion !== undefined, pedidoSimulado: turno.pedidoSimulado ?? null });
   });
 
   return app;
