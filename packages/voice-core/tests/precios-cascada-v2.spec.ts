@@ -1,5 +1,5 @@
 // Precios por componente de la cascada v2 (P4): Deepgram por minuto, HeyGen por millon de caracteres con promocion de fecha de fin EXPLICITA y reloj inyectado.
-// Sin red, sin Date.now() suelto, sin process.env.TZ.
+// Sin red y sin Date.now() suelto: el reloj es siempre un instante fijo.
 import { describe, expect, it } from "vitest";
 import { VOZ_PLATAFORMA, costoDeepgramMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres } from "../src/index.ts";
 import type { ConfigPlataformaVoz } from "../src/index.ts";
