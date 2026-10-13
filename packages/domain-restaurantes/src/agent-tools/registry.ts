@@ -1158,6 +1158,8 @@ async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentTool
     status: "simulado",
     payment_method: prepared.payload.paymentMethod ?? null,
     items: prepared.orderItems,
+    ...(prepared.payload.horaRecogida ? { hora_recogida: prepared.payload.horaRecogida } : {}),
+    ...(prepared.payload.programadoPara ? { programado_para: prepared.payload.programadoPara } : {}),
     simulado: true,
   };
   return { result: { order: simulated }, raw: simulated, orderId: null, propertyId: null, simulated: true };

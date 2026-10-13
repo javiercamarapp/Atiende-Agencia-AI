@@ -41,6 +41,8 @@ import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, P
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
+import { confirmacionDePedido } from "./confirmacion-pedido.ts";
+import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -593,6 +595,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let anyToolCalled = false;
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
+      // Ultimo `crear_pedido` EXITOSO de este turno (real o simulado), con los datos del servidor: si el modelo no alcanza a redactar la respuesta final
+      // (agota vueltas, el proveedor cae o contesta vacio) el cliente recibe SU confirmacion, nunca un texto de fallo ni un aviso falso al equipo.
+      let pedidoCreadoDelTurno: { readonly raw: unknown; readonly mensajeAlCliente: string | null } | null = null;
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
       // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
@@ -602,6 +607,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const safeReply = (reply: string) => {
         const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
         return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+      };
+      /** Confirmacion del pedido que SI se creo en este turno (null = no hubo, o no se puede redactar con datos del servidor). */
+      const confirmacionDelTurno = (): string | null => {
+        if (!pedidoCreadoDelTurno) return null;
+        const texto = pedidoCreadoDelTurno.mensajeAlCliente ?? confirmacionDePedido(pedidoCreadoDelTurno.raw, { timezone: config.timezone });
+        return texto ? safeReply(texto) : null;
       };
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
@@ -712,6 +723,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // tecnico" a secas pierde el pedido sin que nadie del restaurante se entere. Se deja el aviso `falla_sistema` (con la sucursal de entrada)
       // y la toma de handoff para que una persona tome el pedido, como ya hace la voz. Solo se promete el aviso si quedo registrado de verdad.
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
+        const confirmacion = confirmacionDelTurno();
+        if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
         if (orderId) return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const ultimo = [...messages].reverse().find((m) => m.role === "user");
@@ -758,7 +771,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const base = completion.text || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          const base = completion.text || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
           if (noEntiendeActivo) {
             // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
             if (completion.text && pideRepetir(completion.text)) {
@@ -876,6 +889,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               });
             }
             if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
+            if (call.name === "crear_pedido" && !isToolErrorResult(result) && (executed.simulated || executed.orderId)) {
+              const mensaje = (result as { mensaje_al_cliente?: unknown } | null)?.mensaje_al_cliente;
+              pedidoCreadoDelTurno = { raw: executed.raw, mensajeAlCliente: executed.pedidoRetenido && typeof mensaje === "string" && mensaje.trim() ? mensaje : null };
+            }
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
@@ -926,6 +943,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       tele.resultado = "loop_agotado";
+      const confirmacionTrasAgotar = confirmacionDelTurno();
+      if (confirmacionTrasAgotar) return done({ reply: confirmacionTrasAgotar, orderId, propertyId });
       if (orderId) {
         return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
       }
@@ -952,7 +971,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
-        salida = await ejecutarTurno(entrada, tele);
+        const turno = await ejecutarTurno(entrada, tele);
+        // Unico punto de salida del texto: WhatsApp y la preview del panel leen *negrita* con un asterisco, no markdown (ver formato-whatsapp.ts).
+        salida = { ...turno, reply: normalizarFormatoWhatsApp(turno.reply) };
         return salida;
       } catch (err) {
         tele.resultado = "error_sistema";
