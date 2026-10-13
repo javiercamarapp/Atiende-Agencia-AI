@@ -34,8 +34,8 @@ import {
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
 import { emitirNotificacion } from "@atiende/db";
-import { ESCALERA_VOZ, eventosCostoLlamada } from "@atiende/voice-core";
-import type { EscalonVoz, TramoLlamada } from "@atiende/voice-core";
+import { ESCALERA_VOZ, PROVEEDOR_COMPONENTE_RE, eventosCostoLlamada } from "@atiende/voice-core";
+import type { ComponenteCosto, EscalonVoz, TramoLlamada } from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -58,6 +58,26 @@ function uuid(value: unknown, campo: string): string {
   return value;
 }
 
+const COMPONENTES_MAX = 8;
+
+/** Desglose opcional por componente (`deepgram`, `heygen`, `openrouter:<modelo>`): un worker anterior no lo manda. Ausente = sin desglose; presente pero invalido = 400. */
+function parsearComponentes(value: unknown, donde: string): ComponenteCosto[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0 || value.length > COMPONENTES_MAX) throw Errors.validation(`${donde}: se esperaba una lista de 1 a ${COMPONENTES_MAX} componentes.`);
+  const vistos = new Set<string>();
+  return value.map((c, j) => {
+    const o = (c !== null && typeof c === "object" && !Array.isArray(c) ? c : {}) as Record<string, unknown>;
+    if (typeof o.proveedor !== "string" || !PROVEEDOR_COMPONENTE_RE.test(o.proveedor)) throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, heygen u openrouter:<modelo>.`);
+    if (vistos.has(o.proveedor)) throw Errors.validation(`${donde}[${j}].proveedor: repetido en el tramo.`);
+    vistos.add(o.proveedor);
+    if (o.unidad !== "segundo" && o.unidad !== "unidad") throw Errors.validation(`${donde}[${j}].unidad: debe ser segundo o unidad.`);
+    if (typeof o.cantidad !== "number" || !Number.isFinite(o.cantidad) || o.cantidad < 0 || o.cantidad > 1_000_000_000) throw Errors.validation(`${donde}[${j}].cantidad: se esperaba un número entre 0 y 1000000000.`);
+    if (typeof o.costoMicroUsd !== "number" || !Number.isFinite(o.costoMicroUsd) || o.costoMicroUsd < 0 || o.costoMicroUsd > TRAMO_COSTO_MAX_MICRO_USD) throw Errors.validation(`${donde}[${j}].costoMicroUsd: se esperaba un número entre 0 y ${TRAMO_COSTO_MAX_MICRO_USD}.`);
+    if (typeof o.costoReal !== "boolean") throw Errors.validation(`${donde}[${j}].costoReal: se esperaba verdadero o falso.`);
+    return { proveedor: o.proveedor, unidad: o.unidad, cantidad: o.cantidad, costoMicroUsd: o.costoMicroUsd, costoReal: o.costoReal };
+  });
+}
+
 function parsearTramos(value: unknown): TramoLlamada[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 8) throw Errors.validation("tramos: se esperaba una lista de 1 a 8 tramos.");
   return value.map((t, i) => {
@@ -66,7 +86,8 @@ function parsearTramos(value: unknown): TramoLlamada[] {
     if (typeof o.duracionS !== "number" || !Number.isFinite(o.duracionS) || o.duracionS < 0 || o.duracionS > TRAMO_MAX_S) throw Errors.validation(`tramos[${i}].duracionS: se esperaba un número entre 0 y ${TRAMO_MAX_S}.`);
     if (typeof o.costoReportadoMicroUsd !== "number" || !Number.isFinite(o.costoReportadoMicroUsd) || o.costoReportadoMicroUsd < 0 || o.costoReportadoMicroUsd > TRAMO_COSTO_MAX_MICRO_USD) throw Errors.validation(`tramos[${i}].costoReportadoMicroUsd: se esperaba un número entre 0 y ${TRAMO_COSTO_MAX_MICRO_USD}.`);
     // `costoReal` (opcional: un worker anterior no lo manda): el costo sale de los tokens que informo el proveedor, no de una tarifa.
-    return { escalon: o.escalon as EscalonVoz, duracionS: o.duracionS, costoReportadoMicroUsd: o.costoReportadoMicroUsd, ...(o.costoReal === true ? { costoReal: true } : {}) };
+    const componentes = parsearComponentes(o.componentes, `tramos[${i}].componentes`);
+    return { escalon: o.escalon as EscalonVoz, duracionS: o.duracionS, costoReportadoMicroUsd: o.costoReportadoMicroUsd, ...(o.costoReal === true ? { costoReal: true } : {}), ...(componentes ? { componentes } : {}) };
   });
 }
 

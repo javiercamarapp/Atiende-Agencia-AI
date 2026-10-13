@@ -7,7 +7,8 @@
 // cascada no tiene el handle de reanudacion de Gemini) para no volver a saludar ni repreguntar.
 import { VozNoConfiguradaError } from "./provider.ts";
 import type { EscalonVoz } from "./config-plataforma.ts";
-import type { TramoLlamada } from "./costo.ts";
+import { PROVEEDOR_COMPONENTE_RE } from "./costo.ts";
+import type { ComponenteCosto, TramoLlamada } from "./costo.ts";
 import { redactarTranscripcion } from "./transcripcion.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "./llamada/sesion.ts";
 
@@ -43,6 +44,8 @@ interface TramoAbierto {
   finMs: number | null;
   reportado: number;
   real: boolean;
+  /** Desglose por componente (por proveedor) de lo reportado con un componente: vacio en los escalones que no lo mandan. */
+  readonly componentes: Map<string, { unidad: ComponenteCosto["unidad"]; cantidad: number; costoMicroUsd: number; estimado: boolean }>;
 }
 
 export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts: OpcionesEscalera = {}): EscaleraLlamada {
@@ -71,7 +74,7 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
     let ultimoError: unknown = new Error("Ningun escalon de voz esta configurado.");
     for (const escalon of escalones) {
       if (fallidos.includes(escalon.id)) continue;
-      const tramo: TramoAbierto = { escalon: escalon.id, inicioMs: ahora(), finMs: null, reportado: 0, real: false };
+      const tramo: TramoAbierto = { escalon: escalon.id, inicioMs: ahora(), finMs: null, reportado: 0, real: false, componentes: new Map() };
       const envueltos: ManejadoresSesion = {
         ...manejadores,
         agenteDijo: (texto) => {
@@ -82,10 +85,18 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
           dicho.push(`Cliente: ${texto}`);
           manejadores.usuarioDijo?.(texto);
         },
-        costo: (microUsd, real) => {
+        costo: (microUsd, real, componente) => {
           tramo.reportado += microUsd;
           if (real === true) tramo.real = true;
-          manejadores.costo?.(microUsd, real);
+          // Un componente con nombre invalido no rompe la llamada ni el costo total: queda en el evento del escalon, sin desglose.
+          if (componente && PROVEEDOR_COMPONENTE_RE.test(componente.proveedor)) {
+            const acum = tramo.componentes.get(componente.proveedor) ?? { unidad: componente.unidad, cantidad: 0, costoMicroUsd: 0, estimado: false };
+            acum.cantidad += Number.isFinite(componente.cantidad) && componente.cantidad > 0 ? componente.cantidad : 0;
+            acum.costoMicroUsd += Math.max(0, microUsd);
+            if (real !== true && microUsd > 0) acum.estimado = true;
+            tramo.componentes.set(componente.proveedor, acum);
+          }
+          manejadores.costo?.(microUsd, real, componente);
         },
         caido: (razon, handle) => {
           // El escalon que atendia se cayo: se cierra su tramo y, agotados sus reintentos (por omision ninguno), NO se reintenta en esta llamada.
@@ -122,7 +133,9 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
     tramos: () =>
       tramos.map((t) => {
         cerrarTramo(t);
-        return { escalon: t.escalon, duracionS: Math.max(0, ((t.finMs ?? t.inicioMs) - t.inicioMs) / 1000), costoReportadoMicroUsd: t.reportado, ...(t.real ? { costoReal: true } : {}) };
+        return { escalon: t.escalon, duracionS: Math.max(0, ((t.finMs ?? t.inicioMs) - t.inicioMs) / 1000), costoReportadoMicroUsd: t.reportado, ...(t.real ? { costoReal: true } : {}),
+          ...(t.componentes.size > 0 ? { componentes: [...t.componentes].map(([proveedor, c]) => ({ proveedor, unidad: c.unidad, cantidad: c.cantidad, costoMicroUsd: c.costoMicroUsd, costoReal: !c.estimado })) } : {}),
+        };
       }),
   };
 }
