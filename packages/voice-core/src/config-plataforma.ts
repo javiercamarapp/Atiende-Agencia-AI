@@ -61,6 +61,38 @@ export interface ConfigPlataformaVoz {
   };
   /** Silencio (ms) que cierra el turno del cliente en la cascada (en Gemini lo decide el proveedor). */
   readonly cascadaSilencioFinTurnoMs: number;
+  /** Precios por COMPONENTE de la cascada v2 (Deepgram + LLM por OpenRouter + HeyGen Voice). Solo precios y fuentes: el motor llega en otro PR (P2). */
+  readonly cascadaV2: ConfigCascadaV2;
+}
+
+/** Promocion de precio con fecha de fin EXPLICITA: se evalua con un reloj inyectado (`ahora`), nunca con `Date.now()` suelto. */
+export interface PromocionPrecio {
+  /** Precio promocional (misma unidad que el precio de lista). */
+  readonly precio: number;
+  /** Instante (ISO 8601 con zona) en que la promocion YA no aplica (exclusivo). */
+  readonly terminaEn: string;
+}
+
+export interface ConfigCascadaV2 {
+  readonly deepgram: {
+    /** Modelo de STT en streaming: Nova-3 monolingue, codigos `es` / `es-419` (docs de Deepgram; `es-MX` no figura para Nova-3). */
+    readonly modelo: string;
+    /** US$ por minuto de audio, STREAMING, pago por uso: tarifa VIGENTE. */
+    readonly usdPorMinuto: number;
+    /** US$ por minuto: tarifa anterior (la que uso el plan de voz del 10-oct). La vigente se publica como promocional por tiempo limitado, SIN fecha de fin: si sube, vuelve aqui. */
+    readonly usdPorMinutoAnterior: number;
+  };
+  readonly heygen: {
+    /** US$ por MILLON de caracteres, precio de lista. */
+    readonly usdPorMillonCaracteres: number;
+    readonly promocion: PromocionPrecio;
+  };
+  readonly llm: {
+    readonly modelo: string;
+    readonly modeloDificil: string;
+    /** El costo del LLM NO se calcula con una tarifa: es el `usage.cost` que OpenRouter reporta en cada respuesta (`costo_estimado = false`). */
+    readonly fuenteCosto: "openrouter-usage-cost";
+  };
 }
 
 export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
@@ -88,6 +120,17 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     ttsMicroUsdPorMilCaracteres: 15_000,
   }),
   cascadaSilencioFinTurnoMs: 700,
+  cascadaV2: Object.freeze({
+    // Deepgram: https://deepgram.com/pricing (leida el 2026-10-13): Nova-3 Monolingual streaming US$0.0048/min (tachado US$0.0077), Multilingual US$0.0058/min
+    // (tachado US$0.0092); la pagina marca las tarifas de streaming como promocionales por tiempo limitado y NO publica fecha de fin. El plan usaba US$0.0077.
+    deepgram: Object.freeze({ modelo: "nova-3", usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077 }),
+    // HeyGen Voice: US$30 por millon de caracteres de lista y US$15 en promocion hasta el 31-oct-2026 (cifras del plan de voz y del brief de Javier, 10-oct-2026;
+    // NO se pudieron contrastar con la pagina publica de HeyGen: no expone el precio por caracter sin sesion). La promocion termina al acabar el 31-oct en Merida
+    // (UTC-6 fijo desde 2022): 2026-11-01T00:00-06:00. Confirmar la zona con HeyGen.
+    heygen: Object.freeze({ usdPorMillonCaracteres: 30, promocion: Object.freeze({ precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" }) }),
+    // OpenRouter, leido el 2026-10-13 (/api/v1/models/<id>/endpoints): Haiku 5.5 US$0.10 / 0.50 por millon (cache 0.01); Sonnet 5.5 US$2 / 10 (cache 0.10).
+    llm: Object.freeze({ modelo: "anthropic/claude-haiku-5.5", modeloDificil: "anthropic/claude-sonnet-5.5", fuenteCosto: "openrouter-usage-cost" as const }),
+  }),
 });
 
 export function precioPorMinutoMicroUsd(escalon: EscalonVoz, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
@@ -127,4 +170,30 @@ export function costoDeUsoGeminiMicroUsd(uso: UsoGemini, config: ConfigPlataform
   const salidaSinDesglose = Math.max(0, nat(uso.responseTokenCount) - detalladoSalida) * p.audioSalida;
   const extra = nat(uso.toolUsePromptTokenCount) * p.textoEntrada + nat(uso.thoughtsTokenCount) * p.textoSalida;
   return Math.ceil(entrada + entradaSinDesglose + salida + salidaSinDesglose + extra);
+}
+
+/** Reloj inyectable: las funciones de precio que dependen de la fecha lo reciben para que las pruebas fijen la hora. */
+export type RelojFecha = () => Date;
+const relojSistema: RelojFecha = () => new Date();
+
+const microUsd = (usd: number): number => Math.round(usd * 1_000_000);
+
+/** Costo estimado de Deepgram (micro-USD, entero hacia arriba) para `duracionS` segundos de audio enviados al STT. */
+export function costoDeepgramMicroUsd(duracionS: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
+  if (typeof duracionS !== "number" || !Number.isFinite(duracionS) || duracionS <= 0) return 0;
+  return Math.ceil((duracionS * microUsd(config.cascadaV2.deepgram.usdPorMinuto)) / 60);
+}
+
+/** US$ por millon de caracteres de HeyGen en el instante `reloj()`: el precio promocional hasta su fecha de fin (exclusiva) y el de lista despues. */
+export function heygenUsdPorMillonCaracteres(reloj: RelojFecha = relojSistema, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
+  const { usdPorMillonCaracteres, promocion } = config.cascadaV2.heygen;
+  const fin = Date.parse(promocion.terminaEn);
+  // Una fecha de fin ilegible no regala la promocion: se cobra la lista (el lado seguro del tope).
+  return Number.isFinite(fin) && reloj().getTime() < fin ? promocion.precio : usdPorMillonCaracteres;
+}
+
+/** Costo estimado de HeyGen (micro-USD, entero hacia arriba) para `caracteres` sintetizados. US$ por millon = micro-USD por caracter. */
+export function costoHeygenMicroUsd(caracteres: number, reloj: RelojFecha = relojSistema, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
+  if (typeof caracteres !== "number" || !Number.isFinite(caracteres) || caracteres <= 0) return 0;
+  return Math.ceil(caracteres * heygenUsdPorMillonCaracteres(reloj, config));
 }
