@@ -7,6 +7,7 @@ import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { BASE, afirmarSinEscrituras, cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
 import { propiedadDe } from "../../mock-api/personas.ts";
+import { elegirValor, elegirEtiqueta } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 const tarjeta = (page: Page, nombre: string) => main(page).locator("[class*=card]").filter({ hasText: nombre }).first();
@@ -116,7 +117,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     // Elegir un motivo y luego Volver tampoco escribe; al reabrir el motivo vuelve a estar vacio.
     await boton.click();
     d = dialogo(page, "Cancelar pedido");
-    await d.getByRole("combobox").selectOption("duplicado");
+    await elegirValor(d.getByRole("combobox"), "duplicado");
     await d.getByRole("button", { name: "Volver" }).click();
     await boton.click();
     d = dialogo(page, "Cancelar pedido");
@@ -132,7 +133,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await mock.inyectarFalla({ metodo: "PATCH", ruta: "/status", status: 503, veces: 1 });
     await tarjeta(page, "Marisol Pech").getByRole("button", { name: "Marcar Cancelado" }).click();
     const d = dialogo(page, "Cancelar pedido");
-    await d.getByRole("combobox").selectOption("cliente_desistio");
+    await elegirValor(d.getByRole("combobox"), "cliente_desistio");
     await d.getByRole("button", { name: "Cancelar el pedido" }).click();
     await expect(d).toBeVisible();
     await expect(d.getByText(/Falla inyectada 503|no se pudo/i)).toBeVisible();
@@ -262,7 +263,7 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await expect(t).toBeVisible();
     await t.getByRole("button", { name: "Marcar Preparando" }).click();
     await expect(t.getByRole("button", { name: "Marcar En camino" })).toBeVisible();
-    await t.getByLabel("Repartidor:").selectOption({ label: "Ramon Uc" });
+    await elegirEtiqueta(t.getByLabel("Repartidor:"), "Ramon Uc");
     await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/ord-e2e-1/assign-repartidor" }, 1);
     await t.getByRole("button", { name: "Marcar En camino" }).click();
     await expect(t.getByRole("button", { name: "Marcar Entregado" })).toBeVisible();

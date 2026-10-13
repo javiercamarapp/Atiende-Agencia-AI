@@ -3,7 +3,7 @@
 // Base sin la migracion 033: `gestionable: false` -> se ve el listado de siempre (abierto/resuelto) sin botones de estado.
 import { useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
-import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, StatusBadge, useConfirm } from "@atiende/ui";
+import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Selector, StatusBadge, useConfirm } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
 import {
   CALLBACK_ESTADO_LABEL,
@@ -161,13 +161,13 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
         <label htmlFor="callbacks-filtro" className="text-sm text-muted-foreground">
           Mostrar
         </label>
-        <NativeSelect id="callbacks-filtro" size="sm" wrapperClassName="w-auto" value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)}>
+        <Selector id="callbacks-filtro" size="sm" wrapperClassName="w-auto" value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)}>
           <option value="abiertos">Pendientes (nuevos y en curso)</option>
           <option value="nuevo">Solo nuevos</option>
           <option value="en_curso">Solo en curso</option>
           <option value="resuelto">Resueltos</option>
           <option value="todos">Todos</option>
-        </NativeSelect>
+        </Selector>
       </div>
       {aviso && (
         <p role="alert" className="m-0 text-sm text-destructive">
@@ -235,14 +235,14 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
               )}
               {cb.gestionable && esGestor && cb.estado !== "resuelto" && miembros.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <NativeSelect aria-label={`Asignar el callback de ${cb.nombre}`} size="sm" wrapperClassName="w-auto" value={persona} onChange={(e) => setAsignando((p) => ({ ...p, [cb.id]: e.target.value }))}>
+                  <Selector aria-label={`Asignar el callback de ${cb.nombre}`} size="sm" wrapperClassName="w-auto" value={persona} onChange={(e) => setAsignando((p) => ({ ...p, [cb.id]: e.target.value }))}>
                     <option value="">Asignar a…</option>
                     {miembros.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.fullName}
                       </option>
                     ))}
-                  </NativeSelect>
+                  </Selector>
                   <Button size="sm" variant="outline" disabled={ocupado || persona === ""} onClick={() => void cambiar(cb, "asignar", { asignadoA: persona })}>
                     Asignar
                   </Button>

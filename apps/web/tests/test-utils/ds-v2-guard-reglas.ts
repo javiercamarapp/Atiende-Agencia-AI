@@ -90,6 +90,9 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "color funcional literal en restaurantes (usar un token: hsl(var(--x)))", patron: /\b(rgba?|hsla?)\(\s*(?!var\()|\b(oklch|oklab|lab|lch)\(/, alcance: /^verticals\/restaurantes\// },
   // UNI-R0b: la variante `rest:` y el atributo data-ambito pertenecen a los primitivos de @atiende/ui; una pantalla no los usa a mano.
   { nombre: "variante rest: o data-ambito a mano en apps/web (el ambito lo aplica @atiende/ui)", patron: /(^|[\s"'`])rest:[\w[-]|data-ambito/ },
+  // UNI-R0 (migracion): en restaurantes las listas son `Selector`. Quedan exentas SOLO las 2 pantallas del lote R4 que aun tienen NativeSelect
+  // (agente de WhatsApp y demo): se migran en su propio PR y salen de esta lista entonces (nunca se agregan otras).
+  { nombre: "NativeSelect en restaurantes (usar Selector de @atiende/ui)", patron: /\bNativeSelect\b/, alcance: /^verticals\/restaurantes\/(?!pages\/AgenteWhatsappSeccion\.tsx$|demo\/DemoWhatsAppPage\.tsx$)/ },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);
