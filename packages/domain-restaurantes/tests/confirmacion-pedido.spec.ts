@@ -1,4 +1,4 @@
-// Texto de confirmacion de un pedido creado: solo datos del servidor, sin inventar. Contrato de entradas invalidas y reloj fijo (zona explicita, sin process.env.TZ).
+// Texto de confirmacion de un pedido creado: solo datos del servidor, sin inventar. Contrato de entradas invalidas y reloj fijo (zona explicita, sin tocar la zona del proceso).
 import { describe, expect, it } from "vitest";
 import { confirmacionDePedido } from "../src/whatsapp/confirmacion-pedido.ts";
 

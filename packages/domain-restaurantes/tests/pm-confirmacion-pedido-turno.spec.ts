@@ -3,7 +3,7 @@
 // Causa: el turno agota sus vueltas de herramientas (o el proveedor falla / contesta vacio) DESPUES de un crear_pedido exitoso; la rama de respaldo
 // solo reconocia `orderId` (que en preview es null: el pedido simulado viaja aparte) y escalaba. Estas pruebas recorren el turno COMPLETO con un modelo
 // guionado (cotiza -> el cliente confirma -> confirmar_resumen -> crear_pedido -> el modelo sigue llamando herramientas) y afirman el EFECTO:
-// el texto de confirmacion con folio y total del servidor, y la AUSENCIA del texto de fallo y de cualquier aviso al equipo. Reloj fijo, sin process.env.TZ.
+// el texto de confirmacion con folio y total del servidor, y la AUSENCIA del texto de fallo y de cualquier aviso al equipo. Reloj fijo, sin tocar la zona del proceso.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
