@@ -193,6 +193,59 @@ describe("POST .../conversaciones/:id/costo", () => {
     expect(llamada.eventos).toHaveLength(0);
   });
 
+  describe("desglose por componente (cascada v2)", () => {
+    const HAIKU = "openrouter:anthropic/claude-haiku-5.5";
+    const componentes = [
+      { proveedor: "deepgram", unidad: "segundo", cantidad: 60, costoMicroUsd: 4_800, costoReal: false },
+      { proveedor: "heygen", unidad: "unidad", cantidad: 900, costoMicroUsd: 13_500, costoReal: false },
+      { proveedor: HAIKU, unidad: "unidad", cantidad: 3, costoMicroUsd: 321, costoReal: true },
+    ];
+    const tramoV2 = { escalon: "cascada-openrouter", duracionS: 60, costoReportadoMicroUsd: 18_621, componentes };
+
+    it("registra un evento por componente (proveedor, unidad, costo_estimado = false solo donde el proveedor reporta el costo) y es idempotente", async () => {
+      const { ctx, llamada, app } = await construir();
+      const res = await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [tramoV2] }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ registrados: 3, repetidos: 0 });
+      expect(llamada.eventos.map((e) => [e.proveedor, e.unidad, e.costoMicroUsd, e.costoEstimado, e.refId])).toEqual([
+        ["deepgram", "segundo", 4_800, true, "llamada-1:cascada-openrouter:deepgram"],
+        ["heygen", "unidad", 13_500, true, "llamada-1:cascada-openrouter:heygen"],
+        [HAIKU, "unidad", 321, false, `llamada-1:cascada-openrouter:${HAIKU}`],
+      ]);
+      expect(await (await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [tramoV2] }))).json()).toMatchObject({ registrados: 0, repetidos: 3 });
+    });
+
+    it("un worker anterior (sin componentes) sigue produciendo el evento del escalon de siempre", async () => {
+      const { ctx, llamada, app } = await construir();
+      await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, componentes: undefined }] }));
+      expect(llamada.eventos.map((e) => e.refId)).toEqual(["llamada-1:cascada-openrouter"]);
+    });
+
+    it.each([
+      ["componentes vacios", []],
+      ["componentes no es lista", "x"],
+      ["componentes null", null],
+      ["componentes false", false],
+      ["componentes objeto", {}],
+      ["demasiados componentes", Array.from({ length: 9 }, (_, i) => ({ ...componentes[0], proveedor: `openrouter:m${i}` }))],
+      ["componente null", [null]],
+      ["proveedor desconocido", [{ ...componentes[0], proveedor: "gemini" }]],
+      ["proveedor vacio", [{ ...componentes[0], proveedor: "" }]],
+      ["proveedor repetido", [componentes[0], componentes[0]]],
+      ["unidad invalida", [{ ...componentes[0], unidad: "minuto" }]],
+      ["cantidad negativa", [{ ...componentes[0], cantidad: -1 }]],
+      ["cantidad no numerica", [{ ...componentes[0], cantidad: "60" }]],
+      ["costo negativo", [{ ...componentes[0], costoMicroUsd: -1 }]],
+      ["costo por encima del tope de cordura", [{ ...componentes[0], costoMicroUsd: 1_000_000_000 }]],
+      ["costoReal no booleano", [{ ...componentes[0], costoReal: 0 }]],
+      ["costoReal ausente", [{ ...componentes[0], costoReal: undefined }]],
+    ])("validacion: %s -> 400 y NADA se registra", async (_n, valor) => {
+      const { ctx, llamada, app } = await construir();
+      expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, componentes: valor }] }))).status).toBe(400);
+      expect(llamada.eventos).toHaveLength(0);
+    });
+  });
+
   it("la hora del evento se acota: un reloj roto del worker no manda el costo a otro mes", async () => {
     const { ctx, llamada, app } = await construir();
     await post(app, ruta(UUID_AJENO), cuerpo(ctx, { ocurridoEn: "2001-01-01T00:00:00Z" }));
