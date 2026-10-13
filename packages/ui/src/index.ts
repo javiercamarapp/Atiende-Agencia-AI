@@ -118,6 +118,7 @@ export {
   type SelectTriggerProps,
 } from "./components/ui/select.js";
 export { TAMANOS_MODAL, CHIP_ICONO_MODAL, SUPERFICIE_FLOTANTE, type TamanoModal } from "./components/ui/superficies.js";
+export { SelectorSucursal, type SelectorSucursalProps, type SelectorSucursalOpcion } from "./components/SelectorSucursal.js";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { FormField, type FormFieldControlProps, type FormFieldProps } from "./components/ui/form-field.js";

@@ -40,7 +40,7 @@ import {
   Wallet,
   Building2,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
@@ -200,22 +200,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
   // Selector real de propiedad: lista solo con 2+ (el caso base de este vertical); con una sola se muestra su nombre. Va
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const propiedadSelector =
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor="rentas-propiedad-activa" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Propiedad
-        </label>
-        <NativeSelect id="rentas-propiedad-activa" size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
-          {branches.map((p) => (
-            <option key={p.propertyId} value={p.propertyId}>
-              {p.nombre}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.nombre}</p>
-    );
+    <SelectorSucursal id="rentas-propiedad-activa" etiqueta="Propiedad" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
 
   return (
     <VerticalShellConectado

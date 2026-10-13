@@ -43,7 +43,7 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
@@ -222,22 +222,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   // Selector real de CONTRIBUYENTE, visible solo cuando hay más de uno (con uno solo se muestra su nombre). Se ofrece
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const contribuyenteSelector =
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor="despachos-contribuyente-activo" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Contribuyente
-        </label>
-        <NativeSelect id="despachos-contribuyente-activo" size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
-          {branches.map((b) => (
-            <option key={b.propertyId} value={b.propertyId}>
-              {b.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
-    );
+    <SelectorSucursal id="despachos-contribuyente-activo" etiqueta="Contribuyente" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
