@@ -5,6 +5,7 @@ import { expect, test } from "../../helpers/fixtures.ts";
 import type { Page } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir, BASE } from "../../helpers/recorrido.ts";
 import { personaDe } from "../../mock-api/personas.ts";
+import { elegirValor, elegirEtiqueta } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -35,7 +36,7 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
     await tarjeta.getByRole("button", { name: "Marcar Preparando" }).click();
     const [estado] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/status" });
     expect(cuerpoDe(estado)).toEqual({ status: "preparando" });
-    await page.getByLabel("Repartidor:").first().selectOption({ label: "Ramon Uc" });
+    await elegirEtiqueta(page.getByLabel("Repartidor:").first(), "Ramon Uc");
     const [asignado] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/assign-repartidor" });
     expect(cuerpoDe(asignado)).toMatchObject({ repartidorId: "usr-2" });
 
@@ -64,7 +65,7 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
 
     // 5. El owner lo ve entregado en el Historial (el mismo pedido, visto desde el panel).
     await ir(page, "/historial");
-    await page.getByLabel("Estado").selectOption("entregado");
+    await elegirValor(page.getByLabel("Estado"), "entregado");
     await expect(main(page).getByText("Marisol Pech").first()).toBeVisible();
     await expect(main(page).getByText("Jorge Canul")).toHaveCount(0);
 

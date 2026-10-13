@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { Repeat2, Settings2, UserPlus, Users } from "lucide-react";
 import type { ClientesColumna, ClientesVista, CohorteApi } from "@atiende/domain-restaurantes/cfo";
-import { BarChartSimple, Button, Callout, ChartCard, DataTable, Dona, EstadoVacio, FormField, Heatmap, NativeSelect, PageContainer, StatCard, TablaDatosGrafica, cn } from "@atiende/ui";
+import { BarChartSimple, Button, Callout, ChartCard, DataTable, Dona, EstadoVacio, FormField, Heatmap, Selector, PageContainer, StatCard, TablaDatosGrafica, cn } from "@atiende/ui";
 import type { CeldaHeatmapUi } from "@atiende/ui";
 import { AjustesCfoDialogo } from "./AjustesCfoDialogo.tsx";
 import { fetchClientes } from "./cfo-client.ts";
@@ -220,13 +220,13 @@ function PorSegmento({ d }: { readonly d: ClientesVista }) {
         tamano="M"
         accion={
           <FormField label="Segmento" className="w-40">
-            <NativeSelect size="sm" value={elegido} onChange={(e) => setElegido(e.target.value as Segmento)} data-testid="segmento-horario">
+            <Selector size="sm" value={elegido} onChange={(e) => setElegido(e.target.value as Segmento)} data-testid="segmento-horario">
               {segmentos.map((s) => (
                 <option key={s} value={s}>
                   {ETIQUETA_SEGMENTO[s]}
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
         }
       >

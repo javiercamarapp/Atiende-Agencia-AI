@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Download, FileSpreadsheet, FileText, Store } from "lucide-react";
 import { COMPARAR_CFO } from "@atiende/domain-restaurantes/cfo";
 import type { AlcanceVista, CompararCfo } from "@atiende/domain-restaurantes/cfo";
-import { Button, Checkbox, Input, NativeSelect, Popover, PopoverContent, PopoverTrigger, RadioSegmentado } from "@atiende/ui";
+import { Button, Checkbox, Input, Selector, Popover, PopoverContent, PopoverTrigger, RadioSegmentado } from "@atiende/ui";
 import { ATAJOS_RANGO, ETIQUETA_COMPARAR, atajoActivo, errorDeRango, etiquetaRango, type FiltrosCfo, type VistaCfo } from "./filtros-url.ts";
 import type { FormatoExportacionCfo } from "./cfo-client.ts";
 
@@ -104,14 +104,14 @@ function SelectorRango({ filtros, hoy, onCambiar }: Pick<FiltrosCfoProps, "filtr
         <label htmlFor="cfo-rango" className="sr-only">
           Rango de fechas
         </label>
-        <NativeSelect id="cfo-rango" size="sm" value={personalizado ? "personalizado" : activo} onChange={(e) => cambiarAtajo(e.target.value)} wrapperClassName="w-full sm:w-52" data-testid="filtro-rango">
+        <Selector id="cfo-rango" size="sm" value={personalizado ? "personalizado" : activo} onChange={(e) => cambiarAtajo(e.target.value)} wrapperClassName="w-full sm:w-52" data-testid="filtro-rango">
           {ATAJOS_RANGO.map((a) => (
             <option key={a.id} value={a.id}>
               {a.etiqueta}
             </option>
           ))}
           <option value="personalizado">Personalizado</option>
-        </NativeSelect>
+        </Selector>
         {personalizado && (
           <>
             <label htmlFor="cfo-desde" className="sr-only">
@@ -151,13 +151,13 @@ export function FiltrosCfoBarra({ filtros, alcance, hoy, onCambiar, exportar }: 
           <label htmlFor="cfo-comparar" className="text-xs text-muted-foreground">
             Comparar contra
           </label>
-          <NativeSelect id="cfo-comparar" size="sm" value={filtros.comparar} onChange={(e) => onCambiar({ comparar: e.target.value as CompararCfo })} wrapperClassName="w-56" data-testid="filtro-comparar">
+          <Selector id="cfo-comparar" size="sm" value={filtros.comparar} onChange={(e) => onCambiar({ comparar: e.target.value as CompararCfo })} wrapperClassName="w-56" data-testid="filtro-comparar">
             {COMPARAR_CFO.map((c) => (
               <option key={c} value={c}>
                 {ETIQUETA_COMPARAR[c]}
               </option>
             ))}
-          </NativeSelect>
+          </Selector>
         </div>
         <RadioSegmentado<VistaCfo>
           name="cfo-vista"

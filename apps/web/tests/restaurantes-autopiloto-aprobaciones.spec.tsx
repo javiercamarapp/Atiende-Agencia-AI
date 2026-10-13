@@ -4,12 +4,15 @@
 // estados honestos (base sin migrar, vacio, error), reglas por sucursal (solo owner/admin) y "Agotado hasta manana" en Productos. Cada boton llama al
 // endpoint REAL: aqui se afirma la peticion exacta y el efecto en pantalla, no solo que el boton exista.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { notify } from "@atiende/ui";
 import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
 import { ProductosPage } from "../src/verticals/restaurantes/pages/Productos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -165,7 +168,7 @@ describe("Pedidos: pestana Por aprobar", () => {
     const confirmar = [...dialogo.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Rechazar pedido") as HTMLButtonElement;
     expect(confirmar.disabled).toBe(true);
     expect(posts()).toHaveLength(0);
-    changeValue(dialogo.querySelector("select") as HTMLSelectElement, "fuera_de_zona");
+    elegirValor(dialogo.querySelector("[role='combobox']") as HTMLElement, "fuera_de_zona");
     await esperar();
     click([...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.trim() === "Rechazar pedido")!);
     await esperar();
@@ -190,7 +193,7 @@ describe("Pedidos: pestana Por aprobar", () => {
     click(boton("Cancelar el pedido")!);
     await esperar();
     const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
-    changeValue(dialogo.querySelector("select") as HTMLSelectElement, "cliente_desistio");
+    elegirValor(dialogo.querySelector("[role='combobox']") as HTMLElement, "cliente_desistio");
     await esperar();
     click([...document.body.querySelectorAll('[role="dialog"] button')].find((b) => /^Cancelar pedido$/.test(b.textContent?.trim() ?? ""))!);
     await esperar();
@@ -235,7 +238,7 @@ describe("Pedidos: pestana Por aprobar", () => {
     const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
     const opciones = [...dialogo.querySelectorAll("option")].map((o) => o.value);
     expect(opciones).toEqual(["5", "10", "15"]);
-    changeValue(dialogo.querySelector("select") as HTMLSelectElement, "15");
+    elegirValor(dialogo.querySelector("[role='combobox']") as HTMLElement, "15");
     await esperar();
     click([...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.trim() === "Enviar código")!);
     await esperar();

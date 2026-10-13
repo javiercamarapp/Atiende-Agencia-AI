@@ -3,11 +3,14 @@
 // Reglas de pedido por sucursal (modelo PM) dentro de <SucursalesPage />: visible solo para
 // owner/admin, carga bajo demanda, y guardar manda la politica COMPLETA + la cobertura.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SucursalesPage } from "../src/verticals/restaurantes/pages/Sucursales.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -91,7 +94,7 @@ describe("reglas de pedido por sucursal (UI)", () => {
     expect(text).toContain("Lun, Mar 12:00 a 01:00 (cierra al día siguiente)");
     expect((rendered!.container.querySelector("#min-dom-prop-1") as HTMLInputElement).value).toBe("200");
     expect((rendered!.container.querySelector("#min-rec-prop-1") as HTMLInputElement).value).toBe("");
-    expect((rendered!.container.querySelector("#propina-prop-1") as HTMLSelectElement).value).toBe("solo_tarjeta");
+    expect(valorDe(rendered!.container.querySelector("#propina-prop-1"))).toBe("solo_tarjeta");
     expect((rendered!.container.querySelector("#wa-prop-1") as HTMLInputElement).value).toBe("15550001111");
     const zonas = [...rendered!.container.querySelectorAll("input[type=checkbox]")].filter((i) => i.closest("label")?.textContent === "Altabrisa" || i.closest("label")?.textContent === "Pensiones") as HTMLInputElement[];
     expect(zonas.map((z) => z.checked)).toEqual([true, false]);
@@ -107,7 +110,7 @@ describe("reglas de pedido por sucursal (UI)", () => {
 
     changeValue(rendered!.container.querySelector("#min-dom-prop-1") as HTMLInputElement, "250");
     changeValue(rendered!.container.querySelector("#min-rec-prop-1") as HTMLInputElement, "80");
-    changeValue(rendered!.container.querySelector("#propina-prop-1") as HTMLSelectElement, "");
+    elegirValor(rendered!.container.querySelector("#propina-prop-1") as HTMLElement, "");
     const pensiones = [...rendered!.container.querySelectorAll("input[type=checkbox]")].find((i) => i.closest("label")?.textContent === "Pensiones")!;
     click(pensiones);
     await act(async () => {

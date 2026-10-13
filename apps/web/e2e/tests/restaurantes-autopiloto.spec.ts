@@ -3,6 +3,7 @@
 import { expect, test } from "../helpers/fixtures.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 import { SOLICITUD_GRANDE_ID } from "../mock-api/fixtures/restaurantes-autopiloto.ts";
+import { elegirValor } from "../helpers/listas.ts";
 
 test.describe("restaurantes autopiloto @humo", () => {
   test("owner: Por aprobar muestra el pedido grande y Aprobar lo resuelve una sola vez", async ({ page, iniciarSesion, mock, vigilante }) => {
@@ -33,7 +34,7 @@ test.describe("restaurantes autopiloto @humo", () => {
     await page.getByRole("button", { name: "Rechazar", exact: true }).click();
     const dialogo = page.getByRole("dialog");
     await expect(dialogo.getByRole("button", { name: "Rechazar pedido" })).toBeDisabled();
-    await dialogo.getByRole("combobox").selectOption("fuera_de_zona");
+    await elegirValor(dialogo.getByRole("combobox"), "fuera_de_zona");
     await dialogo.getByRole("button", { name: "Rechazar pedido" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "POST", ruta: "/autopiloto/solicitudes/" })).length).toBe(1);
     expect((await mock.buscar({ metodo: "POST", ruta: "/autopiloto/solicitudes/" }))[0]!.cuerpo).toEqual({ decision: "rechazar", motivo: "fuera_de_zona" });
@@ -46,7 +47,7 @@ test.describe("restaurantes autopiloto @humo", () => {
     const dialogo = page.getByRole("dialog");
     await expect(dialogo.getByRole("button", { name: "Cancelar el pedido" })).toBeDisabled();
     expect(await mock.buscar({ metodo: "PATCH", ruta: "/status" })).toHaveLength(0);
-    await dialogo.getByRole("combobox").selectOption("duplicado");
+    await elegirValor(dialogo.getByRole("combobox"), "duplicado");
     await dialogo.getByRole("button", { name: "Cancelar el pedido" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "PATCH", ruta: "/status" })).length).toBe(1);
     expect((await mock.buscar({ metodo: "PATCH", ruta: "/status" }))[0]!.cuerpo).toEqual({ status: "cancelado", motivo: "duplicado" });

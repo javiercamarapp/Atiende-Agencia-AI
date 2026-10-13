@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { MAX_RENGLONES_SR } from "@atiende/domain-restaurantes/cfo";
 import type { AlcanceVista, ImportacionSrVista, TipoLayoutSr, VistaPreviaSr } from "@atiende/domain-restaurantes/cfo";
-import { Button, Callout, Checkbox, DataTable, FormDialog, FormField, Label, NativeSelect, notify } from "@atiende/ui";
+import { Button, Callout, Checkbox, DataTable, FormDialog, FormField, Label, Selector, notify } from "@atiende/ui";
 import { importarSr, vistaPreviaSr, type ContextoCfo, type CuerpoImportarSr } from "./cfo-client.ts";
 import { MapeoColumnasSr } from "./MapeoColumnasSr.tsx";
 import {
@@ -202,7 +202,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
           <>
             <div className="grid gap-3 sm:grid-cols-2">
               <FormField label="Sucursal del reporte" required hint="Un archivo corresponde a una sola sucursal.">
-                <NativeSelect
+                <Selector
                   id="sr-sucursal"
                   size="sm"
                   value={propertyId}
@@ -218,10 +218,10 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                       {s.nombre}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </FormField>
               <FormField label="Tipo de reporte" required hint={TIPOS_REPORTE_SR.find((t) => t.valor === tipo)?.ayuda}>
-                <NativeSelect
+                <Selector
                   id="sr-tipo"
                   size="sm"
                   value={tipo}
@@ -237,7 +237,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                       {t.etiqueta}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </FormField>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -303,7 +303,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
               </p>
             )}
             <FormField label="Renglón de los encabezados" hint="Es la fila con los nombres de las columnas; el reporte puede traer títulos arriba.">
-              <NativeSelect
+              <Selector
                 id="sr-fila-encabezado"
                 size="sm"
                 value={String(filaEnc)}
@@ -321,7 +321,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                     {`Renglón ${i + 1}: ${f.filter((c) => c.trim() !== "").slice(0, 3).join(" · ").slice(0, 60) || "(vacío)"}`}
                   </option>
                 ))}
-              </NativeSelect>
+              </Selector>
             </FormField>
             <MapeoColumnasSr
               tipo={tipo}
