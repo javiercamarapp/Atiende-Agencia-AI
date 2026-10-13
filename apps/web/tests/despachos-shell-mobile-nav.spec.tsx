@@ -8,13 +8,14 @@
 // afirmaba que el Sidebar de escritorio cubría el móvil, lo cual era falso).
 // Protege también que campana, chat y cerrar sesión sean alcanzables en móvil.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { DespachosShell } from "../src/verticals/despachos/DespachosShell.tsx";
 import type { BranchOption } from "../src/verticals/despachos/lib/admin-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
+import { elegirValor, etiquetasDe, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
 
@@ -60,6 +61,8 @@ async function renderShell(rol = "admin"): Promise<RenderedComponent> {
   });
   return result;
 }
+
+beforeAll(() => prepararJsdomParaRadix());
 
 describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
   it("mantiene el Sidebar oculto en mobile (hidden md:flex) y agrega MobileHeader + BottomNav", async () => {
@@ -217,12 +220,11 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     await act(async () => {
       await flushMicrotasks();
     });
-    const select = rendered.container.querySelector<HTMLSelectElement>("select#despachos-contribuyente-activo")!;
+    const select = rendered.container.querySelector<HTMLElement>("button#despachos-contribuyente-activo")!;
     expect(select).not.toBeNull();
     expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-1");
+    elegirValor(select, "prop-2");
     await act(async () => {
-      select.value = "prop-2";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
       await flushMicrotasks();
     });
     expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-2");

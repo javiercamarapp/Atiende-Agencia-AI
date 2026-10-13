@@ -15,7 +15,7 @@
 // "Más" abre TODOS los destinos (11), de modo que Precios/Finanzas/iCal/... no quedan
 // inalcanzables en móvil. Un único <main>, skip link y nombre de la propiedad visible.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { RentasShell } from "../src/verticals/rentas/RentasShell.tsx";
 import type { PropertyOption } from "../src/verticals/rentas/lib/discovery-client.ts";
@@ -23,6 +23,7 @@ import { click, flushMicrotasks, renderComponent, type RenderedComponent } from 
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
+import { elegirValor, etiquetasDe, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
 
 const fetchPropertiesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly PropertyOption[]>>();
 
@@ -68,6 +69,8 @@ async function renderShell(rol = "admin_gestora"): Promise<RenderedComponent> {
   });
   return result;
 }
+
+beforeAll(() => prepararJsdomParaRadix());
 
 describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
   it("mantiene el Sidebar oculto en mobile (hidden md:flex) y agrega MobileHeader + BottomNav", async () => {
@@ -178,12 +181,11 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     await act(async () => {
       await flushMicrotasks();
     });
-    const select = rendered.container.querySelector<HTMLSelectElement>("select#rentas-propiedad-activa")!;
+    const select = rendered.container.querySelector<HTMLElement>("button#rentas-propiedad-activa")!;
     expect(select).not.toBeNull();
     expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-1");
+    elegirValor(select, "prop-2");
     await act(async () => {
-      select.value = "prop-2";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
       await flushMicrotasks();
     });
     expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-2");

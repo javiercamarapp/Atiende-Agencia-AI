@@ -1,15 +1,17 @@
 // Selector de la sucursal (o propiedad / hotel / contribuyente) activa de las verticales, bajo el logo del Sidebar y en la cabecera movil.
 //
-// Misma familia visual que el conmutador de tema del pie del Sidebar (ThemeSelector): gris suave HUNDIDO (`bg-muted` con sombra
-// interior sutil y un hairline `ring-border`, sin borde duro), forma de pildora, texto sobrio del tamano de los items del Sidebar
-// (`text-ui`) y chevron pequeno en `muted-foreground`. Hover: el gris se oscurece apenas; teclado: anillo `ring` accesible.
+// Es el "hundido gris" de la zona inferior del Sidebar (`bg-canvas` + hairline, como las pildoras y el conmutador de tema), pero para ELEGIR:
+// fondo `bg-canvas` con sombra interior sutil y borde de 1 px, icono de tienda en `muted-foreground`, nombre de la sucursal truncado en
+// `text-ui font-medium` y un chevron pequeno que gira al abrir. Estados: hover (el gris se oscurece apenas), foco de teclado (anillo `ring`),
+// abierto (gris mas hundido) y deshabilitado. Sin colores propios: solo tokens, en claro y en oscuro.
 //
-// Sigue siendo un `<select>` NATIVO a proposito (como `NativeSelect`): teclado, lectores de pantalla y selector del sistema en
-// movil funcionan sin JavaScript propio, el `id`/`<label for>` de cada vertical se conservan y el menu desplegable (lista con
-// scroll, ya de por si) lo pinta el navegador. Con una sola opcion no hay nada que elegir: queda de solo lectura, con la misma
-// forma y sin chevron.
-import { ChevronDown } from "lucide-react";
+// La lista es la del sistema (Radix Select de `ui/select`, como `Selector`): teclado completo, busqueda por letra, palomita en la
+// elegida y animacion de entrada que se apaga con prefers-reduced-motion. Mantiene el contrato de siempre: `id` en el disparador (un
+// `role=combobox` con su `<label for>`), `onCambia(valor)` y, con una sola opcion, un bloque de solo lectura con la misma forma y sin
+// chevron. Cada opcion lleva `data-valor` (como `Selector`) para las ayudas de prueba.
+import { Store } from "lucide-react";
 import { cn } from "../lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 export interface SelectorSucursalOpcion {
   readonly valor: string;
@@ -17,24 +19,30 @@ export interface SelectorSucursalOpcion {
 }
 
 export interface SelectorSucursalProps {
-  /** Rotulo visible sobre el control ("Sucursal activa", "Hotel activo"...). Es el `<label>` del select. */
+  /** Rotulo visible sobre el control ("Sucursal activa", "Hotel activo"...). Es el `<label>` del disparador. */
   readonly etiqueta: string;
   readonly opciones: readonly SelectorSucursalOpcion[];
   readonly valor: string;
   readonly onCambia: (valor: string) => void;
-  /** `id` del `<select>` (cada copia en el DOM lleva el suyo para no duplicar ids). */
+  /** `id` del disparador (cada copia en el DOM lleva el suyo para no duplicar ids). */
   readonly id: string;
   readonly className?: string;
 }
 
-const FORMA = "h-8 w-full rounded-full bg-muted px-3.5 text-ui font-medium text-foreground shadow-[inset_0_1px_2px_hsl(var(--foreground)/0.08)] ring-1 ring-inset ring-border";
+const FORMA =
+  "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-canvas px-2.5 text-left text-ui font-medium text-foreground shadow-[inset_0_1px_2px_hsl(var(--foreground)/0.06)]";
 
 export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, className }: SelectorSucursalProps) {
   const actual = opciones.find((o) => o.valor === valor) ?? opciones[0];
+  const icono = <Store aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />;
   if (opciones.length <= 1) {
     return (
-      <div data-testid="selector-sucursal-unica" title={actual?.etiqueta} className={cn(FORMA, "flex items-center", className)}>
-        <span className="truncate">{actual?.etiqueta}</span>
+      <div className={className}>
+        <p className="mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">{etiqueta}</p>
+        <div data-testid="selector-sucursal-unica" title={actual?.etiqueta} className={FORMA}>
+          {icono}
+          <span className="min-w-0 flex-1 truncate">{actual?.etiqueta}</span>
+        </div>
       </div>
     );
   }
@@ -43,26 +51,34 @@ export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, clas
       <label htmlFor={id} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
         {etiqueta}
       </label>
-      <div className="relative">
-        <select
+      <Select value={actual?.valor ?? ""} onValueChange={onCambia}>
+        <SelectTrigger
           id={id}
           data-testid="selector-sucursal"
-          value={valor}
           title={actual?.etiqueta}
-          onChange={(e) => onCambia(e.target.value)}
           className={cn(
             FORMA,
-            "peer cursor-pointer appearance-none truncate pr-8 transition-colors duration-fast ease-brand hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "h-9 cursor-pointer py-0 transition-[background-color,box-shadow] duration-fast ease-brand motion-reduce:transition-none",
+            "hover:bg-muted data-[state=open]:bg-muted data-[state=open]:shadow-[inset_0_1px_3px_hsl(var(--foreground)/0.12)]",
+            "focus-visible:border-border focus-visible:ring-2 focus-visible:ring-ring",
+            // El chevron lo pinta SelectTrigger: aqui queda pequeno y gira al abrir (sin giro con movimiento reducido).
+            "[&>svg:last-child]:size-3.5 [&>svg:last-child]:transition-transform [&>svg:last-child]:duration-fast motion-reduce:[&>svg:last-child]:transition-none data-[state=open]:[&>svg:last-child]:rotate-180",
           )}
         >
+          {icono}
+          <span data-slot="valor" className="min-w-0 flex-1 truncate">
+            <SelectValue>{actual?.etiqueta}</SelectValue>
+          </span>
+        </SelectTrigger>
+        <SelectContent align="start" className="min-w-[var(--radix-select-trigger-width)]">
           {opciones.map((o) => (
-            <option key={o.valor} value={o.valor} className="bg-popover text-popover-foreground">
+            <SelectItem key={o.valor} value={o.valor} data-valor={o.valor} className="font-medium">
               {o.etiqueta}
-            </option>
+            </SelectItem>
           ))}
-        </select>
-        <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" strokeWidth={2} />
-      </div>
+        </SelectContent>
+      </Select>
     </div>
   );
 }
+
