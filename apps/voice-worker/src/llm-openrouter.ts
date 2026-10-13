@@ -6,12 +6,23 @@ import type { LlmMessage } from "@atiende/agent-core";
 import { VOZ_PLATAFORMA } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
 
-export function crearPuertoLlmOpenRouter(apiKey: string, fetchImpl?: typeof fetch): PuertoLlmVoz {
+/** Proveedores cuyos modelos NO listan `temperature` en OpenRouter: con `require_parameters: true` mandarla deja la ruta sin endpoints (404, docs/LLM-GATEWAY.md). */
+const PREFIJOS_SIN_TEMPERATURA = ["anthropic/", "openai/"] as const;
+
+/** `temperature` del modelo de voz: `"omit"` para Anthropic y OpenAI; para el resto, la temperatura pedida si es un numero finito (0 incluido) y, si no, no se manda. */
+export function temperaturaParaModelo(modelo: string, temperatura: number | null | undefined): number | "omit" | undefined {
+  if (typeof modelo === "string" && PREFIJOS_SIN_TEMPERATURA.some((p) => modelo.startsWith(p))) return "omit";
+  return typeof temperatura === "number" && Number.isFinite(temperatura) ? temperatura : undefined;
+}
+
+export function crearPuertoLlmOpenRouter(apiKey: string, fetchImpl?: typeof fetch, opciones: { modelo?: string; temperatura?: number | null } = {}): PuertoLlmVoz {
+  const modelo = opciones.modelo ?? VOZ_PLATAFORMA.cascada.modeloLlm;
+  const temperatura = temperaturaParaModelo(modelo, "temperatura" in opciones ? opciones.temperatura : VOZ_PLATAFORMA.cascada.temperatura);
   const proveedor = new OpenRouterProvider({
     apiKey,
-    model: VOZ_PLATAFORMA.cascada.modeloLlm,
+    model: modelo,
     appName: "atiende-voice-worker",
-    params: { temperature: 0 },
+    params: temperatura === undefined ? {} : { temperature: temperatura },
     // Un turno de voz que tarda mas de 8 s ya perdio al cliente: mejor fallar y que la escalera/maquina decidan.
     timeoutMs: 8_000,
     maxRetries: 0,
