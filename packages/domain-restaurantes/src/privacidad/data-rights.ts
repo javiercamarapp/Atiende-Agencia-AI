@@ -188,7 +188,7 @@ export const ARCO_THIRD_PARTY_REPLY =
   "Por seguridad solo puedo recibir solicitudes sobre los datos personales asociados a este mismo número, hechas por su titular. " +
   "Si necesita ejercer derechos sobre los datos de otra persona, ella debe escribir desde su propio número o contactar directamente al restaurante. No puedo compartir información de otras personas.";
 
-const ARCO_NOTA_PEDIDO = " Si lo que quería era otra cosa (por ejemplo su pedido o su factura), dígamelo y seguimos: la solicitud no avanza si no responde CONFIRMO.";
+const ARCO_NOTA_PEDIDO = " Si lo que quería era otra cosa (por ejemplo su pedido o su factura), dígamelo y seguimos: sin su CONFIRMO la solicitud no avanza.";
 
 export function arcoPendingConfirmationReply(rightType: DataRightType, id: string): string {
   return (

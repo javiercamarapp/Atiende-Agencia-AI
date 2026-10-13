@@ -41,7 +41,7 @@ describe("tono y marcas", () => {
   it("la solicitud pendiente aclara que el pedido sigue disponible y que sin CONFIRMO no avanza", () => {
     const t = arcoPendingConfirmationReply("cancelacion", ID);
     expect(t).toMatch(/su pedido o su factura/);
-    expect(t).toContain("la solicitud no avanza si no responde CONFIRMO");
+    expect(t).toContain("sin su CONFIRMO la solicitud no avanza");
   });
   it("el menu numerado lista los cuatro derechos con numero y deja seguir con el pedido", () => {
     for (const n of ["1. Acceso", "2. Rectificación", "3. Cancelación", "4. Oposición"]) expect(ARCO_MENU_REPLY).toContain(n);
