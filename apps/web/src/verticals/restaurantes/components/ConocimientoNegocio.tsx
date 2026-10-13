@@ -5,7 +5,7 @@
 // documento llegan como BORRADOR y no entran al agente hasta que una persona las aprueba una por una. Contrato: lib/conocimiento-client.ts.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, StatusBadge, Textarea, resolverFormato, useConfirm } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, Selector, StatusBadge, Textarea, resolverFormato, useConfirm } from "@atiende/ui";
 import { fetchAdminBranches } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import { TEXTO_MAX, TIPO_CONOCIMIENTO_LABEL, TITULO_MAX, actualizarConocimiento, borrarConocimiento, crearConocimiento, fetchConocimiento } from "../lib/conocimiento-client.ts";
@@ -279,23 +279,23 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
                     <Input value={form.titulo} maxLength={TITULO_MAX} placeholder="Estacionamiento" onChange={(e) => cambiar("titulo", e.target.value)} />
                   </FormField>
                   <FormField label="Tipo">
-                    <NativeSelect value={form.tipo} onChange={(e) => cambiar("tipo", e.target.value as TipoConocimiento)}>
+                    <Selector value={form.tipo} onChange={(e) => cambiar("tipo", e.target.value as TipoConocimiento)}>
                       {(Object.keys(TIPO_CONOCIMIENTO_LABEL) as TipoConocimiento[]).map((t) => (
                         <option key={t} value={t}>
                           {TIPO_CONOCIMIENTO_LABEL[t]}
                         </option>
                       ))}
-                    </NativeSelect>
+                    </Selector>
                   </FormField>
                   <FormField label="Aplica a" hint={form.id ? "No se puede cambiar: cree otra entrada para otra sucursal." : undefined}>
-                    <NativeSelect value={form.sucursalId} disabled={form.id !== null} onChange={(e) => setForm((f) => (f ? { ...f, sucursalId: e.target.value, reemplazaId: "" } : f))}>
+                    <Selector value={form.sucursalId} disabled={form.id !== null} onChange={(e) => setForm((f) => (f ? { ...f, sucursalId: e.target.value, reemplazaId: "" } : f))}>
                       <option value="">Toda la organización</option>
                       {sucursales.map((s) => (
                         <option key={s.propertyId} value={s.propertyId}>
                           Solo {s.name}
                         </option>
                       ))}
-                    </NativeSelect>
+                    </Selector>
                   </FormField>
                   <FormField label="Prioridad (0 a 100)" hint="Las de mayor prioridad entran primero si no cabe todo.">
                     <Input type="number" min={0} max={100} value={form.prioridad} onChange={(e) => cambiar("prioridad", e.target.value)} />
@@ -314,14 +314,14 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
                 </div>
                 {editandoSucursal && candidatasReemplazo.length > 0 && (
                   <FormField label="Sustituye a una entrada general (opcional)" hint="En esta sucursal el agente usa esta entrada en lugar de la general elegida.">
-                    <NativeSelect value={form.reemplazaId} onChange={(e) => cambiar("reemplazaId", e.target.value)}>
+                    <Selector value={form.reemplazaId} onChange={(e) => cambiar("reemplazaId", e.target.value)}>
                       <option value="">No sustituye ninguna</option>
                       {candidatasReemplazo.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.titulo}
                         </option>
                       ))}
-                    </NativeSelect>
+                    </Selector>
                   </FormField>
                 )}
                 <div className="flex flex-wrap gap-2">

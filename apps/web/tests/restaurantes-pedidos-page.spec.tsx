@@ -8,11 +8,14 @@
 // principal (transicionar estado y asignar repartidor) verificando método/ruta/
 // cuerpo reales de la llamada a la API.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { OrderSummary } from "../src/verticals/restaurantes/lib/orders-client.ts";
-import { changeValue, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -193,7 +196,7 @@ describe("PedidosPage (restaurantes)", () => {
     expect(fetchMock.mock.calls.some(([url, init]) => url.endsWith("/status") && init?.method === "PATCH")).toBe(false);
     expect(document.body.textContent).toContain("¿Cancelar el pedido de Juan Pérez?");
 
-    changeValue(document.body.querySelector('[role="dialog"] select') as HTMLSelectElement, "otro");
+    elegirValor(document.body.querySelector('[role="dialog"] [role="combobox"]') as HTMLElement, "otro");
     const confirmBtn = [...document.body.querySelectorAll("button")].find((b) => b.textContent === "Cancelar el pedido")!;
     await act(async () => {
       confirmBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -211,9 +214,9 @@ describe("PedidosPage (restaurantes)", () => {
     rendered = renderPage();
     await esperarCarga();
 
-    const select = rendered.container.querySelector("#repartidor-ord-1") as HTMLSelectElement;
+    const select = rendered.container.querySelector("#repartidor-ord-1") as HTMLButtonElement;
     expect(select.disabled).toBe(false);
-    changeValue(select, "rep-1");
+    elegirValor(select, "rep-1");
     await esperarCarga();
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/restaurantes/prop-1/admin/orders/ord-1/assign-repartidor" && init?.method === "PATCH");

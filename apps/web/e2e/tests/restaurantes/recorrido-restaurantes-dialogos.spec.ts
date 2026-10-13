@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { afirmarCancelarNoEscribe, dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
+import { elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -24,7 +25,7 @@ test.describe("restaurantes: dialogos, Cancelar y Escape nunca ejecutan @recorri
     const dlg = dialogo(page, "Cancelar pedido");
     // Con el autopiloto el boton queda desactivado hasta elegir un motivo de la lista cerrada y el PATCH lo lleva.
     await expect(dlg.getByRole("button", { name: "Cancelar el pedido" })).toBeDisabled();
-    await dlg.getByRole("combobox").selectOption("cliente_desistio");
+    await elegirValor(dlg.getByRole("combobox"), "cliente_desistio");
     await dlg.getByRole("button", { name: "Cancelar el pedido" }).click();
     const [patch] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/status" });
     expect(cuerpoDe(patch)).toEqual({ status: "cancelado", motivo: "cliente_desistio" });

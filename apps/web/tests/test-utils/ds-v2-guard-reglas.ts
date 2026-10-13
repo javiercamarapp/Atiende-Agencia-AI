@@ -86,6 +86,9 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "toast directo en restaurantes (usar notify de @atiende/ui: duraciones, accion, barra y apilado unificados)", patron: /\btoast\s*[.(]|\{[^}]*\btoast\b[^}]*\}\s*from\s+["']@atiende\/ui["']/, alcance: /^verticals\/restaurantes\// },
   { nombre: "alert() nativo o dialogo a mano (aria-modal / <dialog>): usar Dialog, ConfirmDialog o notify", patron: /\bwindow\.alert\s*\(|(^|[^.\w])alert\s*\(|aria-modal|<dialog[\s>]/m, alcance: EXCEPTO_WIDGET_WHATSAPP },
   { nombre: "overlay a mano en restaurantes (role dialog/listbox/tooltip, fixed inset-0, <datalist>): usar los primitivos de @atiende/ui", patron: /role=\{?\s*["'`](dialog|alertdialog|listbox|tooltip)["'`]|\bfixed inset-0\b|<datalist[\s>]/, alcance: /^verticals\/restaurantes\/(?!preview\/WidgetWhatsApp\.tsx$)/ },
+  // UNI-R0 (migracion): en restaurantes las listas son `Selector`. Quedan exentas SOLO las 2 pantallas del lote R4 que aun tienen NativeSelect
+  // (agente de WhatsApp y demo): se migran en su propio PR y salen de esta lista entonces (nunca se agregan otras).
+  { nombre: "NativeSelect en restaurantes (usar Selector de @atiende/ui)", patron: /\bNativeSelect\b/, alcance: /^verticals\/restaurantes\/(?!pages\/AgenteWhatsappSeccion\.tsx$|demo\/DemoWhatsAppPage\.tsx$)/ },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);

@@ -9,6 +9,7 @@ import { afirmarModo, afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
+import { elegirValor, esperarValor } from "../helpers/listas.ts";
 
 const BASE = `/restaurantes/${restaurantes.orgSlug}/cfo`;
 const RANGO = "desde=2026-09-21&hasta=2026-09-27&comparar=periodo_anterior";
@@ -80,12 +81,12 @@ test.describe("restaurantes CFO B @humo", () => {
     await page.getByTestId("sr-importar-abrir").click();
     const dialogo = page.getByRole("dialog", { name: "Importar reporte de SoftRestaurant" });
     await expect(dialogo).toBeVisible();
-    await dialogo.getByTestId("sr-sucursal").selectOption(T2);
+    await elegirValor(dialogo.getByTestId("sr-sucursal"), T2);
     await dialogo.locator("#sr-archivo").setInputFiles(archivo("sr-cuentas-SINTETICO.csv"));
     // El título SINTÉTICO de arriba no es el encabezado: se detecta el renglón 2 y el listado de cuentas.
-    await expect(dialogo.locator("#sr-fila-encabezado")).toHaveValue("1");
-    await expect(dialogo.getByTestId("sr-tipo")).toHaveValue("cuentas");
-    await expect(dialogo.getByTestId("sr-mapeo-folio")).toHaveValue("0");
+    await esperarValor(dialogo.locator("#sr-fila-encabezado"), "1");
+    await esperarValor(dialogo.getByTestId("sr-tipo"), "cuentas");
+    await esperarValor(dialogo.getByTestId("sr-mapeo-folio"), "0");
     await dialogo.getByRole("button", { name: "Revisar vista previa" }).click();
     const previa = dialogo.getByTestId("sr-vista-previa");
     await expect(previa).toContainText("renglones aceptados y 0 rechazados");
@@ -110,7 +111,7 @@ test.describe("restaurantes CFO B @humo", () => {
     // El mismo archivo con el mismo mapeo: «Este archivo ya estaba cargado».
     await page.getByTestId("sr-importar-abrir").click();
     await expect(dialogo).toBeVisible();
-    await dialogo.getByTestId("sr-sucursal").selectOption(T2);
+    await elegirValor(dialogo.getByTestId("sr-sucursal"), T2);
     await dialogo.locator("#sr-archivo").setInputFiles(archivo("sr-cuentas-SINTETICO.csv"));
     await dialogo.getByRole("button", { name: "Revisar vista previa" }).click();
     await expect(dialogo.getByTestId("sr-vista-previa")).toBeVisible();
@@ -126,9 +127,9 @@ test.describe("restaurantes CFO B @humo", () => {
     await page.goto(`${BASE}/softrestaurant?${RANGO}`);
     await page.getByTestId("sr-importar-abrir").click();
     const dialogo = page.getByRole("dialog", { name: "Importar reporte de SoftRestaurant" });
-    await dialogo.getByTestId("sr-sucursal").selectOption(T2);
+    await elegirValor(dialogo.getByTestId("sr-sucursal"), T2);
     await dialogo.locator("#sr-archivo").setInputFiles(archivo("sr-resumen-servicio-SINTETICO.xlsx"));
-    await expect(dialogo.getByTestId("sr-tipo")).toHaveValue("resumen_servicio");
+    await esperarValor(dialogo.getByTestId("sr-tipo"), "resumen_servicio");
     await dialogo.getByRole("button", { name: "Revisar vista previa" }).click();
     await expect(dialogo.getByTestId("sr-vista-previa")).toContainText("renglones aceptados y 0 rechazados");
     await dialogo.getByRole("button", { name: /^Importar \d/ }).click();
@@ -143,13 +144,21 @@ test.describe("restaurantes CFO B @humo", () => {
     await page.goto(`${BASE}/softrestaurant?${RANGO}`);
     await page.getByTestId("sr-importar-abrir").click();
     const dialogo = page.getByRole("dialog", { name: "Importar reporte de SoftRestaurant" });
-    await dialogo.getByTestId("sr-sucursal").selectOption(T2);
+    await elegirValor(dialogo.getByTestId("sr-sucursal"), T2);
     await dialogo.locator("#sr-archivo").setInputFiles(archivo("sr-con-columna-personal-SINTETICO.csv"));
     const aviso = dialogo.getByTestId("sr-columnas-excluidas");
     await expect(aviso).toContainText("No subimos datos de tus clientes");
     await expect(aviso).toContainText("Teléfono");
     // La columna personal no se ofrece en ningún selector.
-    await expect(dialogo.locator("#sr-mapeo-total option", { hasText: "Teléfono" })).toHaveCount(0);
+    await dialogo.locator("#sr-mapeo-total").click();
+    await expect(page.getByRole("listbox")).toBeVisible();
+    await expect.poll(async () => page.getByRole("option").count(), { message: "la lista debe traer opciones antes de afirmar que falta una" }).toBeGreaterThan(0);
+    await expect(page.getByRole("option", { name: /Teléfono/ })).toHaveCount(0);
+    // Se cierra eligiendo la opcion ya marcada (Escape tambien podria cerrar el dialogo que contiene la lista).
+    const marcada = page.locator('[role="option"][data-state="checked"]');
+    if ((await marcada.count()) > 0) await marcada.first().click();
+    else await page.keyboard.press("Escape");
+    await expect(page.getByRole("listbox")).toBeHidden();
     await dialogo.getByRole("button", { name: "Revisar vista previa" }).click();
     await expect(dialogo.getByTestId("sr-vista-previa")).toContainText("2 renglones aceptados");
     const enviadas = await mock.buscar({ metodo: "POST", ruta: "/softrestaurant/importar/vista-previa" });

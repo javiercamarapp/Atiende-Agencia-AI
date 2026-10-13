@@ -5,11 +5,14 @@
 // la variación sale del periodo comparado y los Ajustes del CFO guardan solo lo que cambió.
 import { act } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, beforeAll } from "vitest";
 import type { ConfigVista, EstadoResultadosVista } from "@atiende/domain-restaurantes/cfo";
 import { CfoEstadoResultados } from "../src/verticals/restaurantes/cfo/CfoEstadoResultados.tsx";
 import { IDS, crearApiCfo, propsPagina, respuestaBase } from "./test-utils/cfo-api-simulada.ts";
 import { changeValue, click, esperarHasta, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, valorDe, etiquetasDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -58,8 +61,8 @@ describe("<CfoEstadoResultados /> · captura pendiente", () => {
     await listo();
     click(botonEn(linea("nomina"), "Capturar costos: nómina")!);
     await esperarHasta(() => doc("[data-testid=captura-costos]") !== null, "diálogo de captura");
-    expect((doc("[data-testid=captura-concepto]") as HTMLSelectElement).value).toBe("nomina");
-    expect((doc("[data-testid=captura-ambito]") as HTMLSelectElement).value).toBe(IDS.T3);
+    expect(valorDe(doc("[data-testid=captura-concepto]"))).toBe("nomina");
+    expect(valorDe(doc("[data-testid=captura-ambito]"))).toBe(IDS.T3);
     expect((doc("[data-testid=captura-mes]") as HTMLInputElement).value).toBe("2026-09");
     await esperarHasta(() => doc("[data-testid=captura-historial]")!.textContent!.includes("Todavía no hay una captura"), "historial vacío");
 
@@ -90,7 +93,7 @@ describe("<CfoEstadoResultados /> · captura pendiente", () => {
     await listo();
     click(botonEn(q("[data-testid=cfo-pyl]")!, "Capturar costos")!);
     await esperarHasta(() => doc("[data-testid=captura-costos]") !== null, "diálogo");
-    changeValue(doc("[data-testid=captura-concepto]") as HTMLSelectElement, "food_cost_objetivo_pct");
+    elegirValor(doc("[data-testid=captura-concepto]"), "food_cost_objetivo_pct");
     await esperarHasta(() => document.body.textContent!.includes("% objetivo sobre ventas netas sin IVA"), "etiqueta de porcentaje");
     changeValue(doc("[data-testid=captura-valor]") as HTMLInputElement, "140");
     await esperarHasta(() => document.body.textContent!.includes("porcentaje entre 0 y 100"), "fuera de rango");
@@ -131,7 +134,7 @@ describe("<CfoEstadoResultados /> · permisos y alcance", () => {
     await listo();
     click(botonEn(q("[data-testid=cfo-pyl]")!, "Capturar costos")!);
     await esperarHasta(() => doc("[data-testid=captura-costos]") !== null, "diálogo");
-    const opciones = [...(doc("[data-testid=captura-ambito]") as HTMLSelectElement).options].map((o) => o.textContent);
+    const opciones = etiquetasDe(doc("[data-testid=captura-ambito]"));
     expect(opciones).not.toContain("Organización (costo sin sucursal)");
     expect(opciones).toContain("Pensiones");
     rendered?.unmount();
@@ -141,7 +144,7 @@ describe("<CfoEstadoResultados /> · permisos y alcance", () => {
     await listo();
     click(botonEn(q("[data-testid=cfo-pyl]")!, "Capturar costos")!);
     await esperarHasta(() => doc("[data-testid=captura-costos]") !== null, "diálogo del dueño");
-    expect([...(doc("[data-testid=captura-ambito]") as HTMLSelectElement).options].map((o) => o.textContent)).toContain("Organización (costo sin sucursal)");
+    expect(etiquetasDe(doc("[data-testid=captura-ambito]"))).toContain("Organización (costo sin sucursal)");
   });
 
   it("columnas: con todas las sucursales hay «No asignado» y «Total»; el API no manda «No asignado» a un alcance acotado y no se inventa", async () => {
@@ -205,7 +208,7 @@ describe("<CfoEstadoResultados /> · confianza, variación y avisos", () => {
     await pintar(api, { filtros: T3 });
     await listo();
     expect(api.peticiones("GET", "/estado-resultados")[0]!.consulta.get("granularidad")).toBe("mes");
-    changeValue(q("[data-testid=pyl-granularidad]") as HTMLSelectElement, "dia");
+    elegirValor(q("[data-testid=pyl-granularidad]"), "dia");
     await esperarHasta(() => api.peticiones("GET", "/estado-resultados").some((p) => p.consulta.get("granularidad") === "dia"), "granularidad día");
   });
 
