@@ -37,7 +37,7 @@ import {
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
 import { emitirNotificacion } from "@atiende/db";
-import { ESCALERA_VOZ, eventosCostoLlamada } from "@atiende/voice-core";
+import { ESCALERA_VOZ, eventosCostoLlamada, temperaturaParaLlamada } from "@atiende/voice-core";
 import type { EscalonVoz, TramoLlamada } from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
@@ -127,8 +127,8 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         instruccion,
         // Lo que el worker mezcla en la salida de audio: ambiente de restaurante y tecleo (apagados por omision).
         sonido: { fondo: llamada.fondo, tecleo: llamada.tecleo },
-        // Temperatura de la voz de los ajustes del agente (null = la de la plataforma).
-        temperatura: llamada.temperatura,
+        // Temperatura de la voz de los ajustes del agente para Gemini Live, con tope 0.4 (null = la de la plataforma).
+        temperatura: temperaturaParaLlamada(llamada.temperatura).valor,
         gastoMesMicroUsd: gasto,
         horaLocal,
       });

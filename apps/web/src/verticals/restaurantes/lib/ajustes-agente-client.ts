@@ -68,7 +68,7 @@ export interface AjustesAgenteVista {
     readonly vozCascadaMinuto: { readonly tokensEntrada: number; readonly tokensSalida: number };
     readonly nota: string;
   };
-  readonly temperatura: { readonly min: number; readonly max: number; readonly paso: number };
+  readonly temperatura: { readonly min: number; readonly max: number; readonly paso: number; readonly maxLlamada?: number };
   readonly habla: { readonly ritmos: readonly RitmoHabla[]; readonly estilos: readonly EstiloHabla[]; readonly nota: string };
   readonly fondo: { readonly volumenMax: number; readonly porOmision: string; readonly presets?: readonly { readonly id: PresetAmbiente; readonly descripcion: string }[] };
   readonly tecleo?: { readonly volumenMax: number; readonly porOmision: string; readonly nota: string };

@@ -270,8 +270,14 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 <p className="block text-sm font-medium text-foreground mb-1.5">Temperatura de la voz</p>
                 <SelectorTemperatura nombre="ajustes-temperatura-voz" etiqueta="Temperatura de la voz" valor={borrador.vozTemperatura} deshabilitado={!servicioListo} onCambio={(t) => cambiar({ vozTemperatura: t })} />
                 <p className="mt-1.5 text-xs text-muted-foreground" data-testid="aplica-voz-temperatura">
-                  Es un parámetro real de Gemini Live. Aplica en {vista.aplicaEn.vozTemperaturaYHabla}.
+                  Es un parámetro real de Gemini Live y solo se aplica a Gemini Live (la cascada de respaldo conserva su propia temperatura). Aplica en {vista.aplicaEn.vozTemperaturaYHabla}.
                 </p>
+                {vista.temperatura.maxLlamada !== undefined ? (
+                  <p className="mt-1 text-xs text-muted-foreground" data-testid="temperatura-tope-llamada">
+                    En llamadas reales la temperatura nunca pasa de {vista.temperatura.maxLlamada.toFixed(1)}
+                    {borrador.vozTemperatura !== null && borrador.vozTemperatura > vista.temperatura.maxLlamada ? `: el valor ${borrador.vozTemperatura.toFixed(1)} que elegiste se usa como ${vista.temperatura.maxLlamada.toFixed(1)} en las llamadas (la vista previa sí prueba el valor completo).` : "; la vista previa puede probar valores mayores."}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <p className="block text-sm font-medium text-foreground mb-1.5">Ritmo de habla</p>

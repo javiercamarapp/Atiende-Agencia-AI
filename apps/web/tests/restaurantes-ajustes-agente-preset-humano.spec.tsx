@@ -32,7 +32,7 @@ function vista(parche: Record<string, unknown> = {}, ajustes: Record<string, unk
     disponible: true, configurados: true, ambienteDisponible: true, actualizadoEn: "2026-10-13T10:00:00Z", ajustes: { ...AJUSTES, ...ajustes },
     modelos: [{ id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "x", aceptaTemperatura: false, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" }],
     supuestosCosto: { whatsappMensaje: { tokensEntrada: 6000, tokensSalida: 400 }, vozCascadaMinuto: { tokensEntrada: 12000, tokensSalida: 500 }, nota: "No es una factura." },
-    temperatura: { min: 0, max: 1, paso: 0.1 },
+    temperatura: { min: 0, max: 1, paso: 0.1, maxLlamada: 0.4 },
     habla: { ritmos: ["pausado", "normal", "agil"], estilos: ["neutro", "calido", "sobrio", "animado"], nota: "Se pide por instruccion." },
     fondo: { volumenMax: 20, porOmision: "apagado", presets: [{ id: "cocina-taqueria", descripcion: "Taqueria con la cocina a la vista." }, { id: "sala-tranquila", descripcion: "Comedor tranquilo." }, { id: "calle-ocupada", descripcion: "Abierto a la calle." }] },
     tecleo: { volumenMax: 25, porOmision: "apagado", nota: "Suena solo mientras el agente espera una herramienta." },
@@ -164,5 +164,20 @@ describe("ambiente y tecleo", () => {
     expect(radio("ajustes-tecleo-volumen", "12").checked).toBe(true);
     expect(q('[data-testid="nota-tecleo"]')?.textContent).toMatch(/no disponible aun en la vista previa/);
     expect(q('[data-testid="nota-vista-previa-sonido"]')?.textContent).toMatch(/No disponible aún en la vista previa/);
+  });
+
+  it("informa el tope de 0.4 en llamadas reales y avisa cuando la temperatura guardada lo pasa", async () => {
+    montar(vista({}, { vozTemperatura: 0.8 }));
+    await esperar();
+    const nota = q('[data-testid="temperatura-tope-llamada"]')?.textContent ?? "";
+    expect(nota).toMatch(/nunca pasa de 0\.4/);
+    expect(nota).toMatch(/el valor 0\.8 que elegiste se usa como 0\.4/);
+  });
+
+  it("con una temperatura dentro del tope solo informa el tope", async () => {
+    montar(vista({}, { vozTemperatura: 0.2 }));
+    await esperar();
+    expect(q('[data-testid="temperatura-tope-llamada"]')?.textContent).not.toMatch(/que elegiste/);
+    expect(q('[data-testid="aplica-voz-temperatura"]')?.textContent).toMatch(/solo se aplica a Gemini Live/);
   });
 });

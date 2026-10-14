@@ -219,6 +219,10 @@ describe("temperatura de la voz de los ajustes", () => {
     expect((await conTemperatura(0.4)).temperatura).toBe(0.4);
   });
 
+  it("una temperatura mayor al tope llega a la apertura ya bajada a 0.4 (el worker no confia solo en la API)", async () => {
+    expect((await conTemperatura(0.9)).temperatura).toBe(0.4);
+  });
+
   it("sin temperatura en los ajustes la apertura no la fija (manda la de la plataforma)", async () => {
     const apertura = await conTemperatura(null);
     expect(apertura.temperatura ?? null).toBeNull();

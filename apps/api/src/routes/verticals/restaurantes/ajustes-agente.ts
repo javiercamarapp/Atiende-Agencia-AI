@@ -42,6 +42,7 @@ import {
   PRESET_RESTAURANTE_HUMANO,
   RITMOS_HABLA,
   TECLEO_VOLUMEN_MAX,
+  TEMPERATURA_VOZ_LLAMADA_MAX,
   TEMPERATURA_VOZ_MAX,
   TEMPERATURA_VOZ_MIN,
   VOCES_FEMENINAS_REFERENCIA,
@@ -103,7 +104,7 @@ function opciones() {
       vozCascadaMinuto: PERFIL_COSTO_AGENTE.voz_cascada_minuto,
       nota: "Estimacion con precios de lista y un uso tipico; el costo real lo reporta OpenRouter por llamada. No es una factura.",
     },
-    temperatura: { min: TEMPERATURA_VOZ_MIN, max: TEMPERATURA_VOZ_MAX, paso: 0.1 },
+    temperatura: { min: TEMPERATURA_VOZ_MIN, max: TEMPERATURA_VOZ_MAX, paso: 0.1, maxLlamada: TEMPERATURA_VOZ_LLAMADA_MAX },
     habla: {
       ritmos: RITMOS_HABLA,
       estilos: ESTILOS_HABLA,

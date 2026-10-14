@@ -102,6 +102,15 @@ describe("contexto de la llamada para el worker", () => {
     expect(body.temperatura).toBe(0.4);
   });
 
+  it("una temperatura alta guardada antes (0.9) llega a la llamada como 0.4 y el panel conoce el tope", async () => {
+    const { ctx, app, base, contexto } = await construir();
+    await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...PRESET, vozTemperatura: 0.9 }, "PUT"));
+    expect((await (await contexto()).json()).temperatura).toBe(0.4);
+    const r = await (await app.request(`${base}/ajustes`, authedGet(ctx.staff.owner.token))).json();
+    expect(r.ajustes.vozTemperatura).toBe(0.9); // lo guardado no se toca
+    expect(r.temperatura.maxLlamada).toBe(0.4);
+  });
+
   it("base sin migrar (ajustes no disponibles): el contexto sigue funcionando con los valores de siempre", async () => {
     const { ajustes, contexto } = await construir();
     ajustes.migrada = false;
