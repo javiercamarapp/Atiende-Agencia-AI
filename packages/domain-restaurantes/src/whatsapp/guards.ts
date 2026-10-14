@@ -660,3 +660,28 @@ export function matchesHighRiskOtherThan(text: string, excepto: HighRiskIntent, 
   const texto = normalizarParaClasificar(text);
   return HIGH_RISK_PATTERNS.some((p) => p.intent !== excepto && coincide(p, texto, ctx));
 }
+
+// ── Pin antes de crear un domicilio dificil de ubicar (QA-PM-R8 T7-014) ──────────────────────────────────────────────────────────────────────
+// La regla del negocio es NO exigir el pin (perfil-pm.ts). Solo cuando el cliente describe su casa con referencias visuales («son 5 casas iguales, la unica con cochera techada»)
+// la direccion escrita no basta para el repartidor: se le pide el pin UNA vez antes de registrar. Si ya se lo pidieron, o dice que no puede, el pedido se crea como siempre.
+
+const REFERENCIA_VISUAL =
+  /\bcasas?\s+(?:son\s+)?iguales\b|\bunica\s+con\b|\bcochera\b|\bporton\b|\bzaguan\b|\bfachada\b|\bcasa\s+(?:de\s+color\s+)?(?:naranja|azul|verde|blanca|amarilla|roja|gris|morada|rosa|cafe)\b|\bsin\s+numero\b|\bs\/n\b|\bno\s+(?:tiene|hay)\s+numero\b|\bno\s+(?:me\s+)?encuentran?\b|\bdificil\s+de\s+(?:encontrar|ubicar)\b|\brejas?\b/;
+const RECHAZA_EL_PIN = /\bno\s+(?:puedo|quiero|me\s+deja|me\s+sale)\b[^.!?\n]{0,40}\b(?:ubicacion|pin|mapa|compartir)\b|\bsin\s+(?:el\s+)?(?:pin|ubicacion)\b|\bno\s+(?:tengo|hay)\s+(?:datos|internet|gps|senal)\b/;
+const PIDE_EL_PIN = /\b(?:pin|ubicacion)\b[^.!?\n]{0,60}\b(?:compart\w*|mand\w*|envi\w*)\b|\b(?:compart\w*|mand\w*|envi\w*)\w*\b[^.!?\n]{0,60}\b(?:pin|ubicacion)\b/;
+
+/**
+ * true = hay que pedir el pin antes de crear el domicilio: el cliente dio una referencia visual de su casa, no hay pin ni enlace de Maps, no dijo que no puede compartirlo y el asistente
+ * todavia no se lo pidio despues de esa referencia.
+ */
+export function requierePinAntesDeCrear(conversacion: readonly { readonly role: string; readonly content: string }[] | undefined): boolean {
+  if (!Array.isArray(conversacion)) return false;
+  const mensajes = conversacion.filter((m) => m && typeof m.content === "string").map((m) => ({ role: m.role, t: normalizarParaClasificar(m.content) }));
+  let ultimaReferencia = -1;
+  mensajes.forEach((m, i) => {
+    if (m.role === "user" && REFERENCIA_VISUAL.test(m.t)) ultimaReferencia = i;
+  });
+  if (ultimaReferencia === -1) return false;
+  if (mensajes.some((m) => m.role === "user" && RECHAZA_EL_PIN.test(m.t))) return false;
+  return !mensajes.some((m, i) => i >= ultimaReferencia && m.role === "assistant" && PIDE_EL_PIN.test(m.t));
+}

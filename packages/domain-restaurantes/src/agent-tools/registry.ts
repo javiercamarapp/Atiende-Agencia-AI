@@ -34,7 +34,7 @@ import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coor
 import { kmAproxTexto } from "../nearest-branch.ts";
 import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
-import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
+import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
@@ -611,6 +611,29 @@ export function orderToWire(order: Order) {
 }
 
 /** Una tool apunta a otra sucursal que la fijada por el contexto -> se rechaza (aislamiento entre sucursales). */
+const PIN_ANTES_DE_CREAR_MENSAJE =
+  "El cliente describió su casa con referencias visuales y todavía no hay pin de ubicación. Antes de registrar, pídale UNA vez que comparta su ubicación de WhatsApp (botón o clip) o un enlace de Google Maps, " +
+  "para que el repartidor llegue directo; guarde la referencia visual en referencias_acceso. Si responde que no puede o no quiere, vuelva a llamar crear_pedido con los mismos datos y se registra sin pin. No escale por esto.";
+
+/** La sucursal asignada al domicilio cuando NO es la de este chat (`entryPropertyId`); `null` si coincide o no hay sucursal de entrada. */
+async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string): Promise<Record<string, unknown> | null> {
+  if (!ctx.entryPropertyId) return null;
+  const asignada = await repo.findBranch(organizationId, { slug: branchSlug });
+  if (!asignada || asignada.propertyId === ctx.entryPropertyId) return null;
+  const delChat = await repo.findBranchById(organizationId, ctx.entryPropertyId);
+  const tel = asignada.phone ? ` (${asignada.phone})` : "";
+  return {
+    branch_slug: asignada.slug,
+    branch_name: asignada.name,
+    ...(asignada.phone ? { telefono: asignada.phone } : {}),
+    ...(delChat ? { chat_de: delChat.name } : {}),
+    aviso:
+      `Este chat es de ${delChat?.name ?? "otra sucursal"}, pero ese domicilio lo atiende ${asignada.name}${tel}. NO tome el pedido a domicilio desde este chat y NO conteste «sí, entregamos» ni «sí, desde aquí»: ` +
+      `dígale con calidez que su zona la atiende ${asignada.name}, dele ${asignada.phone ? `el teléfono ${asignada.phone}` : "el teléfono de esa sucursal (lista de DATOS DEL NEGOCIO)"} y conteste lo que preguntó (precio o tiempo). ` +
+      `Ofrezca recoger en ${delChat?.name ?? "la sucursal de este chat"}. Si insiste en domicilio, mantenga la postura (las zonas de reparto son fijas) y ofrezca recoger otra vez; no escale a una persona solo por eso.`,
+  };
+}
+
 async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, branchName?: string): Promise<void> {
   if (!ctx.lockedPropertyId) return;
   const branch = await repo.findBranch(ctx.organizationId, branchSlug ? { slug: branchSlug } : { name: branchName });
@@ -1322,11 +1345,15 @@ async function dispatchTool(
         });
         if (porPin.estado === "asignada" && porPin.branchSlug !== match.branchSlug) conflictoPin = { slug: porPin.branchSlug, nombre: porPin.branchName };
       }
+      // H17 (QA-PM-R8 G5/T7-026/T7-049..051): si la sucursal que le toca al domicilio NO es la de este chat, el servidor lo dice con nombre y telefono para que el modelo no conteste
+      // «si, entregamos» desde la sucursal equivocada ni omita el telefono.
+      const otraSucursal = match.estado === "asignada" ? await sucursalDeOtroChat(repo, ctx, organizationId, match.branchSlug) : null;
       const result =
         match.estado === "asignada"
           ? {
               encontrada: true,
               estado: match.estado,
+              ...(otraSucursal ? { atiende_otra_sucursal: otraSucursal } : {}),
               ...(conflictoPin
                 ? {
                     pin_y_colonia_difieren: {
@@ -1473,9 +1500,11 @@ async function dispatchTool(
       // Las basicas (comanda con «Básicas»/«Pedidas») son del perfil `taqueria_pm`, no de todo agente: con otro perfil o sin configuracion
       // (base sin migrar) se conservan las 9 incluidas de siempre.
       let mapped = mappedBase;
+      let esPerfilPm = false;
       if (mappedBase.basicComplements) {
         const config = await repo.findWhatsAppAgentConfig(ctx.organizationId, ctx.entryPropertyId ?? ctx.lockedPropertyId ?? null);
-        if (config?.perfil !== "taqueria_pm") mapped = { ...mappedBase, basicComplements: undefined };
+        esPerfilPm = config?.perfil === "taqueria_pm";
+        if (!esPerfilPm) mapped = { ...mappedBase, basicComplements: undefined };
       }
       // QA R2 features-07: el codigo de compensacion emitido a ESTE telefono se aplica solo (el modelo no lo dicta; ver `compensacionPendiente`).
       if (!mapped.promoCode) {
@@ -1489,6 +1518,10 @@ async function dispatchTool(
         if (createInput.branchSlug) await assertRecogerEnSucursalDeEntrada(repo, ctx, createInput.branchSlug, createInput.canal);
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
+      }
+      // QA-PM-R8 T7-014: domicilio de PM con una casa descrita por referencias visuales y SIN pin ni enlace de Maps: se pide el pin una vez antes de registrar (ver `requierePinAntesDeCrear`).
+      if (esPerfilPm && ctx.channel === "whatsapp" && (createInput.canal ?? "domicilio") === "domicilio" && !ctx.sharedLocation && !ctx.ubicacionEntrega && !createInput.mapsUrl && requierePinAntesDeCrear(ctx.conversacionReciente)) {
+        throw new OrderValidationError(PIN_ANTES_DE_CREAR_MENSAJE);
       }
       if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices);
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
