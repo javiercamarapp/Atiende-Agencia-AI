@@ -277,8 +277,9 @@ class SesionCascada implements VozSesionLlamada {
         mensajes: this.mensajes,
         herramientas: this.apertura.herramientas,
         ...(this.apertura.modeloLlm ? { modeloPreferido: this.apertura.modeloLlm } : {}),
-        // Temperatura de la organizacion (ajustes del agente); sin ajuste, la de la plataforma.
-        temperatura: typeof this.apertura.temperatura === "number" ? this.apertura.temperatura : this.o.config.cascada.temperatura,
+        // SIEMPRE la de la plataforma: la temperatura de la organizacion (ajustes del agente) llega solo a Gemini Live. En la cascada los modelos de Anthropic y OpenAI de OpenRouter
+        // no aceptan `temperature` con require_parameters (docs/LLM-GATEWAY.md) y las reglas de temperatura las fijan P4 y MODELOS_AGENTE.
+        temperatura: this.o.config.cascada.temperatura,
         senal,
       });
     } catch {

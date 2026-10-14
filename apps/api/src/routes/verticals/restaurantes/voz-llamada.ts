@@ -23,20 +23,24 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
+  AJUSTES_AGENTE_POR_DEFECTO,
   FRANJAS_VOZ,
   LATENCIA_VOZ_OBJETIVO_P95_MS,
   MODOS_ENTRADA_VOZ,
   STAFF_INVITE_ROLES,
   VOZ_POR_DEFECTO,
+  ajustesDeLlamada,
   armarInstruccionLlamada,
   canonicalizeMexicanPhone,
   diaLocalSucursal,
+  instruccionConAjustes,
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
-import { emitirNotificacion } from "@atiende/db";
-import { ESCALERA_VOZ, escalonAdmiteComponentes, eventosCostoLlamada, motivoComponenteInvalido } from "@atiende/voice-core";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
+import { ESCALERA_VOZ, escalonAdmiteComponentes, eventosCostoLlamada, motivoComponenteInvalido, temperaturaParaLlamada } from "@atiende/voice-core";
 import type { ComponenteCosto, EscalonVoz, TramoLlamada } from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
+import { logEvent } from "../../../logger.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
@@ -142,7 +146,24 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (!sucursal) throw Errors.notFound("La sucursal no existe para esa organización.");
       const lectura = await deps.vozRepo!(db).getConfig(propertyId);
       const ahora = new Date();
-      const { instruccion, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
+      const { instruccion: instruccionBase, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
+      // Ajustes del agente de la organización (ritmo, estilo, naturalidad, ambiente, tecleo; migraciones 055/087). Base sin migrar o despliegue sin el repositorio: valores de siempre.
+      // Si la lectura falla por cualquier motivo (no solo la base sin migrar, que el repositorio ya recupera) la llamada NO se cae: se atiende con los valores de siempre.
+      // Va con SAVEPOINT (regla de la casa): dentro de la transaccion unica del request un error SQL deja la transaccion abortada (25P02) y la consulta siguiente (gasto del mes) tambien fallaria.
+      const repoAjustes = deps.ajustesAgenteRepo;
+      const ajustes = repoAjustes
+        ? await runWithSavepointFallback({
+            session: db,
+            primary: async () => (await repoAjustes(db).leer(organizationId)).valor,
+            isRecoverable: () => true,
+            fallback: async (err) => {
+              logEvent(c, "warn", "voz_contexto_ajustes_no_leidos", { organizationId, codigo: typeof (err as { code?: unknown } | null)?.code === "string" ? (err as { code: string }).code : "error" });
+              return AJUSTES_AGENTE_POR_DEFECTO;
+            },
+          })
+        : AJUSTES_AGENTE_POR_DEFECTO;
+      const instruccion = instruccionConAjustes(instruccionBase, ajustes, null);
+      const llamada = ajustesDeLlamada(ajustes);
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.
       const gasto = deps.vozLlamadaRepo ? await deps.vozLlamadaRepo(db).gastoMesMicroUsd(organizationId, ahora) : null;
       return c.json({
@@ -150,6 +171,10 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         configurada: lectura.valor.configurada,
         voiceId: lectura.valor.voiceId || VOZ_POR_DEFECTO,
         instruccion,
+        // Lo que el worker mezcla en la salida de audio: ambiente de restaurante y tecleo (apagados por omision).
+        sonido: { fondo: llamada.fondo, tecleo: llamada.tecleo },
+        // Temperatura de la voz de los ajustes del agente para Gemini Live, con tope 0.4 (null = la de la plataforma).
+        temperatura: temperaturaParaLlamada(llamada.temperatura).valor,
         gastoMesMicroUsd: gasto,
         horaLocal,
       });

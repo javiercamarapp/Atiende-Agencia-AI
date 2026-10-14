@@ -32,7 +32,22 @@ import {
   validarAjustesAgente,
 } from "@atiende/domain-restaurantes";
 import type { AjustesAgente, AjustesAgenteRepository, AjustesEntrada, LecturaAjustes } from "@atiende/domain-restaurantes";
-import { ESTILOS_HABLA, FONDO_VOLUMEN_MAX, RITMOS_HABLA, TEMPERATURA_VOZ_MAX, TEMPERATURA_VOZ_MIN, VOZ_PLATAFORMA } from "@atiende/voice-core";
+import {
+  CANDIDATAS_TTS_CASCADA_V2,
+  CATALOGO_VOCES_GEMINI,
+  ESTILOS_HABLA,
+  FONDO_VOLUMEN_MAX,
+  PERFILES_AMBIENTE,
+  PRESETS_AMBIENTE,
+  PRESET_RESTAURANTE_HUMANO,
+  RITMOS_HABLA,
+  TECLEO_VOLUMEN_MAX,
+  TEMPERATURA_VOZ_LLAMADA_MAX,
+  TEMPERATURA_VOZ_MAX,
+  TEMPERATURA_VOZ_MIN,
+  VOCES_FEMENINAS_REFERENCIA,
+  VOZ_PLATAFORMA,
+} from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -60,6 +75,8 @@ function serializarAjustes(l: LecturaAjustes) {
   return {
     disponible: l.disponible,
     configurados: l.configurados,
+    /** false = la base no tiene la migración 087: ambiente con presets, tecleo y naturalidad no se pueden guardar (la pantalla lo dice). */
+    ambienteDisponible: l.ambienteDisponible,
     actualizadoEn: l.actualizadoEn,
     ajustes: {
       whatsappModelo: a.whatsappModelo,
@@ -70,6 +87,10 @@ function serializarAjustes(l: LecturaAjustes) {
       vozEstilo: a.vozEstilo,
       vozFondoActivo: a.vozFondoActivo,
       vozFondoVolumen: a.vozFondoVolumen,
+      vozFondoPreset: a.vozFondoPreset,
+      vozTecleoActivo: a.vozTecleoActivo,
+      vozTecleoVolumen: a.vozTecleoVolumen,
+      vozHumanizar: a.vozHumanizar,
     },
   };
 }
@@ -83,20 +104,41 @@ function opciones() {
       vozCascadaMinuto: PERFIL_COSTO_AGENTE.voz_cascada_minuto,
       nota: "Estimacion con precios de lista y un uso tipico; el costo real lo reporta OpenRouter por llamada. No es una factura.",
     },
-    temperatura: { min: TEMPERATURA_VOZ_MIN, max: TEMPERATURA_VOZ_MAX, paso: 0.1 },
+    temperatura: { min: TEMPERATURA_VOZ_MIN, max: TEMPERATURA_VOZ_MAX, paso: 0.1, maxLlamada: TEMPERATURA_VOZ_LLAMADA_MAX },
     habla: {
       ritmos: RITMOS_HABLA,
       estilos: ESTILOS_HABLA,
       nota: "Gemini Live no tiene un control numerico de velocidad ni de estabilidad: el ritmo y el estilo se piden al modelo por instruccion. La temperatura si es un parametro real.",
     },
-    fondo: { volumenMax: FONDO_VOLUMEN_MAX, porOmision: "apagado" },
+    fondo: { volumenMax: FONDO_VOLUMEN_MAX, porOmision: "apagado", presets: PRESETS_AMBIENTE.map((id) => ({ id, descripcion: PERFILES_AMBIENTE[id].descripcion })) },
+    tecleo: { volumenMax: TECLEO_VOLUMEN_MAX, porOmision: "apagado", nota: "Suena solo mientras el agente espera una herramienta (cotizar, confirmar, crear pedido, buscar cliente) y se corta si el cliente habla." },
+    // Preset 'restaurante-humano': los valores que el boton "Aplicar" rellena (ritmo, estilo, temperatura, ambiente, tecleo, naturalidad). La voz se elige en Agente de voz > Voz.
+    presetHumano: {
+      id: PRESET_RESTAURANTE_HUMANO.id,
+      ritmo: PRESET_RESTAURANTE_HUMANO.ritmo,
+      estilo: PRESET_RESTAURANTE_HUMANO.estilo,
+      temperatura: PRESET_RESTAURANTE_HUMANO.temperatura,
+      humanizar: PRESET_RESTAURANTE_HUMANO.humanizar,
+      fondo: PRESET_RESTAURANTE_HUMANO.fondo,
+      tecleo: PRESET_RESTAURANTE_HUMANO.tecleo,
+      vozPorMotor: PRESET_RESTAURANTE_HUMANO.vozPorMotor,
+      voz: {
+        principal: PRESET_RESTAURANTE_HUMANO.voz.principal,
+        alternativas: PRESET_RESTAURANTE_HUMANO.voz.alternativas,
+        descripciones: Object.fromEntries(CATALOGO_VOCES_GEMINI.filter((v) => VOCES_FEMENINAS_REFERENCIA.includes(v.id)).map((v) => [v.id, v.estilo])),
+      },
+      acento: "El acento mexicano se pide en la instruccion: la Gemini API no deja fijar el idioma en los modelos de audio nativo y la voz prediseñada puede no conservarlo en todos los turnos (depende del proveedor). Se valida escuchando.",
+      candidatasTtsCascadaV2: CANDIDATAS_TTS_CASCADA_V2,
+    },
     escaleraVoz: { principal: VOZ_PLATAFORMA.gemini.modelo, respaldo: "cascada por OpenRouter" },
     // Lo que ya aplica y lo que espera al servicio de llamadas (apps/voice-worker, PR aparte): la pantalla lo dice tal cual.
     aplicaEn: {
       whatsappModeloYTemperatura: "ahora",
       vozTemperaturaYHabla: "vista previa ahora; llamadas reales cuando se despliegue el servicio de llamadas",
       vozModeloCascada: "llamadas reales cuando se despliegue el servicio de llamadas (la cascada solo atiende llamadas)",
-      vozFondo: "llamadas reales cuando se despliegue el servicio de llamadas (la mezcla ya esta probada en aislado)",
+      vozFondo: "llamadas reales cuando se despliegue el servicio de llamadas (el worker ya mezcla el ambiente y el tecleo; sin probar contra LiveKit real). La vista previa del panel todavia no lo reproduce.",
+      vozTecleo: "llamadas reales cuando se despliegue el servicio de llamadas; no disponible aun en la vista previa del panel.",
+      vozHumanizar: "llamadas reales (la instruccion llega al worker con el contexto de la llamada) y vista previa ahora.",
     },
     clonacionDeVoz: CLONACION_DE_VOZ_ESTADO,
     documentosOmitidos: DOCUMENTOS_AUTO_OMITIDOS,
@@ -128,15 +170,16 @@ export function restaurantesAjustesAgenteRoutes(deps: AppDeps): Hono<CoreAuthHon
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const organizationId = c.get("organizationId");
     const actorUserId = c.get("userId");
+    const r = repo(c);
+    const anterior = await r.leer(organizationId);
     let nuevos: AjustesAgente;
     try {
-      nuevos = validarAjustesAgente(await readJsonCapped<AjustesEntrada>(c.req.raw, 4 * 1024));
+      // Los campos del ambiente/tecleo/naturalidad son opcionales: un cliente que no los manda conserva los vigentes.
+      nuevos = validarAjustesAgente(await readJsonCapped<AjustesEntrada>(c.req.raw, 4 * 1024), anterior.valor);
     } catch (err) {
       if (err instanceof AjustesInvalidosError) throw Errors.validation(err.message);
       throw err;
     }
-    const r = repo(c);
-    const anterior = await r.leer(organizationId);
     let guardado: LecturaAjustes;
     try {
       guardado = await r.guardar(organizationId, actorUserId, nuevos);
@@ -196,7 +239,9 @@ function resumenAjustes(a: AjustesAgente): string {
     vozCascada: [a.vozModeloCascada],
     vozTemp: a.vozTemperatura,
     habla: [a.vozRitmo, a.vozEstilo],
-    fondo: [a.vozFondoActivo, a.vozFondoVolumen],
+    fondo: [a.vozFondoActivo, a.vozFondoVolumen, a.vozFondoPreset],
+    tecleo: [a.vozTecleoActivo, a.vozTecleoVolumen],
+    humanizar: a.vozHumanizar,
   });
 }
 

@@ -60,13 +60,6 @@ import {
 import { primerNombreOCorreo } from "../../../lib/greeting.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-/** Roles con Copiloto (= COPILOTO_ROLES del Shell): la pildora solo se pinta a quien el servidor deja entrar. */
-const ROLES_COPILOTO: ReadonlySet<string> = new Set([
-  "owner",
-  "admin",
-  "staff",
-]);
-
 /** Roles con la pantalla "Agente de voz" (= STAFF_NAV_ROLES del Shell): el tile solo se pinta a quien puede abrirla. */
 const ROLES_VOZ: ReadonlySet<string> = new Set(["owner", "admin"]);
 
@@ -369,9 +362,6 @@ export function RestaurantesDashboardPage({
           <>
             <PillLink to={`${base}/pedidos`}>Ver pedidos</PillLink>
             <PillLink to={`${base}/historial`}>Ver historial</PillLink>
-            {ROLES_COPILOTO.has(role) && (
-              <PillLink to={`${base}/copiloto`}>Pregunta a tus datos</PillLink>
-            )}
           </>
         }
       >

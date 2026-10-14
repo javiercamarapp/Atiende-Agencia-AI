@@ -176,6 +176,8 @@ const preset: Omit<Config, "content"> = {
         elevated: "var(--shadow-elevated)",
         // Elevacion del boton primario al hover (repo suelto: 0 10px 26px primary/26 %). En otras verticales = sin sombra.
         boton: "var(--shadow-boton)",
+        hundido: "var(--shadow-hundido)",
+        "hundido-abierto": "var(--shadow-hundido-abierto)",
       },
       keyframes: {
         "accordion-down": {
