@@ -68,6 +68,7 @@ export interface OpcionesPuertoLlmVozV2 {
  *  - Modelo POR PETICION (`modeloPreferido`): un proveedor por (modelo, esfuerzo), reutilizado entre turnos (P3 lo usara para escalar).
  *  - Esfuerzo bajo: `reasoning: { effort: "low" }` (Sonnet 5.5 tiene razonamiento obligatorio; `none` se rechazaria). Solo se manda a modelos Anthropic.
  *  - NUNCA manda `temperature` (Anthropic y OpenAI la rechazan con `require_parameters: true`; aqui ningun modelo la recibe).
+ *  - Retencion cero (ZDR): `provider.zdr = true` y `only` = proveedores ZDR de la plataforma (Vertex, Bedrock); sin endpoint ZDR para el modelo, 404 -> `v2_llm_sin_zdr`.
  *  - Cache del system prompt: punto de cache explicito en modelos Anthropic; `tokensCache` de la respuesta permite verificar la lectura de cache.
  *  - Tope de salida corto (`topeSalidaTokens`, incluye el razonamiento).
  */
@@ -84,6 +85,9 @@ export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, op
         apiKey,
         model: modelo,
         appName: "atiende-voice-worker",
+        // RETENCION CERO (14-oct-2026): solo endpoints ZDR de Vertex/Bedrock (`provider.zdr` + `only`). `allowFallbacks` queda en true SOLO para saltar entre esos dos
+        // proveedores permitidos; nunca sale de la lista. Si OpenRouter no tiene endpoint ZDR para el modelo responde 404 y la sesion cae con `v2_llm_sin_zdr`.
+        routing: { zdr: true, only: cfg.proveedoresZdr, allowFallbacks: true },
         params: { temperature: "omit", maxTokens: cfg.topeSalidaTokens, ...(esAnthropic ? { reasoningEffort: esfuerzo, cacheSystemPrompt: true } : {}) },
         // Un turno de voz que tarda mas de 10 s (el streaming cuenta hasta el ultimo trozo) ya perdio al cliente: mejor fallar y que la escalera decida.
         timeoutMs: 10_000,

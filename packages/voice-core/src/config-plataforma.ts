@@ -117,6 +117,9 @@ export interface ConfigCascadaV2 {
     readonly modeloFacil: string;
     /** `reasoning.effort` de OpenRouter para los modelos Anthropic (Sonnet 5.5 tiene razonamiento obligatorio: `none` se rechaza). */
     readonly esfuerzo: "low" | "medium" | "high";
+    /** RETENCION CERO (decision de Javier, 14-oct-2026): el cerebro de voz solo se enruta a endpoints con Zero Data Retention de OpenRouter (`provider.zdr: true`),
+     * y de ellos solo a los de estos proveedores (Vertex y Bedrock sirven Claude con ZDR; Anthropic directo no figura en /api/v1/endpoints/zdr). Cuesta ~0.6 s mas al primer token. */
+    readonly proveedoresZdr: readonly string[];
     /** Tope de tokens de salida (incluye el razonamiento): una respuesta hablada es corta. */
     readonly topeSalidaTokens: number;
     /** El costo del LLM NO se calcula con una tarifa: es el `usage.cost` que OpenRouter reporta en cada respuesta (`costo_estimado = false`). */
@@ -169,7 +172,7 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     heygen: Object.freeze({ usdPorMillonCaracteres: 30, promocion: Object.freeze({ precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" }) }),
     // OpenRouter, leido el 2026-10-13 (/api/v1/models/<id>/endpoints): Haiku 5.5 US$0.10 / 0.50 por millon (cache 0.01); Sonnet 5.5 US$2 / 10 (cache 0.10).
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
-    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, topeSalidaTokens: 512, fuenteCosto: "openrouter-usage-cost" as const }),
+    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock"]), topeSalidaTokens: 512, fuenteCosto: "openrouter-usage-cost" as const }),
     frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
     // Piso por minuto: Deepgram STT ~4 800 + Aura-2 ~600 caracteres/min (~18 000) + LLM ~10 000 micro-USD.
     precioMicroUsdPorMinuto: 33_000,

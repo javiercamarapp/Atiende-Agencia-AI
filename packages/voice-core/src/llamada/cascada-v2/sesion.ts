@@ -244,7 +244,9 @@ class SesionCascadaV2 implements VozSesionLlamada {
     } catch (err) {
       if (senal.aborted) throw err;
       const status = (err as { status?: unknown } | null)?.status;
-      throw new ErrorEtapa("llm", typeof status === "number" && Number.isInteger(status) ? status : undefined);
+      // Con `provider.zdr = true`, un 404 de OpenRouter ("No endpoints found") significa que no hay endpoint con retencion cero para el modelo: falla claro, nunca cae a uno que retenga.
+      const detalle = status === 404 ? "sin_zdr" : typeof status === "number" && Number.isInteger(status) ? status : undefined;
+      throw new ErrorEtapa("llm", detalle);
     }
   }
 
