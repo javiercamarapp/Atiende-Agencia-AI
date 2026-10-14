@@ -68,4 +68,3 @@ export {
   validarPresetHumano,
 } from "./preset-restaurante-humano.ts";
 export type { PresetVozHumano, ProblemaPreset } from "./preset-restaurante-humano.ts";
-export type { OpcionesFondo } from "./fondo-ambiente.ts";
