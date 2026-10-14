@@ -22,7 +22,7 @@ export const OVERLAY_MODAL =
 
 /** Caja del modal en escritorio (centrada) y hoja inferior en movil. */
 export const CAJA_MODAL =
-  "fixed inset-0 z-50 m-auto grid h-fit max-h-[calc(100dvh-2rem)] w-full gap-4 overflow-y-auto rounded-lg border border-border bg-card p-5 text-card-foreground shadow-elevated data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out rest:p-6 rest:md:rounded-dialog";
+  "fixed inset-0 z-50 m-auto grid h-fit max-h-[calc(100dvh-2rem)] w-full gap-4 overflow-y-auto rounded-lg border border-border bg-card p-5 text-card-foreground shadow-elevated data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out rest:md:rounded-dialog";
 export const CAJA_MODAL_MOVIL =
   "max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:m-0 max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl max-md:pb-[calc(1.25rem+var(--safe-area-bottom))] max-md:data-[state=open]:animate-sheet-up max-md:data-[state=closed]:animate-sheet-down";
 

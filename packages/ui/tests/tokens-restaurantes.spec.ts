@@ -3,7 +3,7 @@
 //     pm/paridad-visual/tokens-original-vs-monorepo.md), claro y oscuro; (2) contraste WCAG AA con los valores REALES de index.css;
 // (3) el sidebar repone la paleta de Likida (igual a :root/.dark); (4) la variante `rest:` solo compila dentro del ambito
 //     y NINGUNA clase `rest:` usa paleta cruda, hex ni text-[Npx]; (5) el CSS de toasts del ambito esta acotado al atributo.
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import postcss from "postcss";
@@ -154,10 +154,34 @@ describe("contraste WCAG AA del ambito (valores reales de index.css)", () => {
     });
   }
 
-  it("el elemento resaltado del menu se distingue de la superficie del menu (el original: mismo azul, invisible)", () => {
+  it("el elemento resaltado del menu se distingue de la superficie del menu con >= 3:1 (1.4.11; el original: mismo azul, invisible)", () => {
     // Superficie = --primary (claro: azul; oscuro: azul claro); resaltado = --menu-activo.
-    expect(ratio(claro, "--menu-activo", "--primary")).toBeGreaterThanOrEqual(1.5);
-    expect(ratio(oscuro, "--menu-activo", "--primary")).toBeGreaterThanOrEqual(1.5);
+    expect(ratio(claro, "--menu-activo", "--primary")).toBeGreaterThanOrEqual(3);
+    expect(ratio(oscuro, "--menu-activo", "--primary")).toBeGreaterThanOrEqual(3);
+  });
+
+  it("texto de los menus, listas y toasts >= 4.5:1 en claro y oscuro", () => {
+    for (const t of [claro, oscuro]) {
+      // Etiqueta/atajos del menu: --primary-foreground a pleno sobre la superficie --primary.
+      expect(ratio(t, "--primary-foreground", "--primary")).toBeGreaterThanOrEqual(4.5);
+      // Item enfocado de la lista en oscuro usa --foreground sobre la lista (--popover) con el tinte del 20 %.
+      expect(ratio(t, "--foreground", "--popover")).toBeGreaterThanOrEqual(7);
+      // Toast: blanco a pleno sobre azul solido y sobre rojo solido (descripcion de error a opacidad 1, boton cancelar con borde).
+      expect(ratio(t, "--solido-foreground", "--solido")).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t, "--destructive-solido-foreground", "--destructive-solido")).toBeGreaterThanOrEqual(4.5);
+    }
+    // La descripcion del toast (azul) baja a 80 % de opacidad: blanco al 80 % sobre el azul sigue >= 4.5:1 (mezcla en RGB).
+    const mezcla = (fg: [number, number, number], bg: [number, number, number], a: number) => fg.map((c, i) => c * a + bg[i]! * (1 - a));
+    const lin = (c: number) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    const lum = (r: [number, number, number]) => 0.2126 * lin(r[0]) + 0.7152 * lin(r[1]) + 0.0722 * lin(r[2]);
+    const azul: [number, number, number] = [29, 78, 216]; // hsl(224 76% 48%)
+    const sobre = mezcla([255, 255, 255], azul, 0.8) as [number, number, number];
+    expect((lum(sobre) + 0.05) / (lum(azul) + 0.05)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("el CSS del toast: descripcion de error a opacidad 1 y boton cancelar con borde (sin relleno al 20 %)", () => {
+    expect(css).toMatch(/\.toast\[data-type="error"\] \[data-description\] \{ opacity: 1; \}/);
+    expect(css).toMatch(/\[data-cancel\] \{\s*background: transparent;\s*border: 1px solid hsl\(var\(--solido-foreground\) \/ 0\.6\);/);
   });
 
   it("desviaciones documentadas: borde de campo y rojo oscuro mas oscuros que el original por contraste", () => {
@@ -199,10 +223,10 @@ describe("el sidebar conserva la paleta de Likida", () => {
 function clasesRest(): string[] {
   const salida = new Set<string>();
   const recorrer = (dir: string): void => {
-    for (const nombre of readdirSync(dir)) {
-      const ruta = join(dir, nombre);
-      if (statSync(ruta).isDirectory()) recorrer(ruta);
-      else if (/\.(tsx?)$/.test(nombre)) for (const m of readFileSync(ruta, "utf8").matchAll(/(?<![\w-])rest:[^\s"'`]+/g)) salida.add(m[0]);
+    for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+      const ruta = join(dir, entrada.name);
+      if (entrada.isDirectory()) recorrer(ruta);
+      else if (/\.(tsx?)$/.test(entrada.name)) for (const m of readFileSync(ruta, "utf8").matchAll(/(?<![\w-])rest:[^\s"'`]+/g)) salida.add(m[0]);
     }
   };
   recorrer(src);
@@ -228,6 +252,11 @@ describe("variante rest: solo existe dentro del ambito", () => {
     for (const c of usadas) expect(motivosClaseRest(c), c).toEqual([]);
   });
 
+  it("la variante excluye el sidebar: el selector compilado lleva :where(:not([data-ambito-base] ...)) sin subir la especificidad", async () => {
+    const r = await postcss([tailwindcss({ presets: [preset as never], plugins: [ambito], content: [{ raw: '<i class="rest:p-2"></i>', extension: "html" }] })]).process("@tailwind utilities;", { from: undefined });
+    expect(r.css).toContain(':where(:not([data-ambito-base], [data-ambito-base] *))');
+  });
+
   it("casos negativos del criterio (la vara muerde)", () => {
     expect(motivosClaseRest("rest:bg-blue-500")).toContain("paleta cruda de Tailwind");
     expect(motivosClaseRest("rest:hover:text-white")).toContain("paleta cruda de Tailwind");
@@ -239,7 +268,7 @@ describe("variante rest: solo existe dentro del ambito", () => {
   });
 
   it("el plugin registra la variante con :where(html[data-ambito=\"restaurantes\"]) (especificidad 0)", () => {
-    expect(VARIANTE_REST).toBe(':where(html[data-ambito="restaurantes"]) &');
+    expect(VARIANTE_REST).toBe(':where(html[data-ambito="restaurantes"]) &:where(:not([data-ambito-base], [data-ambito-base] *))');
     expect(typeof (ambito as { handler?: unknown }).handler).toBe("function");
   });
 

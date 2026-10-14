@@ -109,7 +109,7 @@ const SelectItem = React.forwardRef<
     ref={ref}
     className={cn(
       "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-ui outline-none transition-colors duration-fast rest:rounded-item rest:text-sm",
-      "focus:bg-primary/20 focus:text-primary data-[state=checked]:bg-primary/10 data-[state=checked]:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "focus:bg-primary/20 focus:text-primary data-[state=checked]:bg-primary/10 data-[state=checked]:text-primary rest:dark:focus:text-foreground rest:dark:data-[state=checked]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}
@@ -229,6 +229,8 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
   ) => {
     const disparadorRef = React.useRef<HTMLButtonElement>(null);
     React.useImperativeHandle(ref, () => disparadorRef.current as HTMLButtonElement);
+    // Si el disparador vive en el sidebar (data-ambito-base), su lista (portal en <body>) usa tambien la paleta base y no la del ambito.
+    const [enBase, setEnBase] = React.useState(false);
     const grupos = React.useMemo(() => normalizarHijos(children), [children]);
     const todas = React.useMemo(() => grupos.flatMap((g) => g.opciones), [grupos]);
     // Sin opcion de valor "": Radix ya trata "" como "sin seleccion" y pinta el marcador; con ella, "" es un valor real.
@@ -251,7 +253,7 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
     const medidas = todas.map((o) => textoPlano(o.etiqueta)).filter(Boolean);
     return (
       <div className={cn("relative w-full", wrapperClassName)}>
-        <Select value={haciaRadixLocal(actual)} onValueChange={cambiar} disabled={disabled}>
+        <Select value={haciaRadixLocal(actual)} onValueChange={cambiar} disabled={disabled} onOpenChange={(abierto) => abierto && setEnBase(disparadorRef.current?.closest("[data-ambito-base]") != null)}>
           <SelectTrigger ref={disparadorRef} id={id} size={size} className={className} title={title} data-testid={testId} {...ariaProps}>
             <span className="grid min-w-0 flex-1 text-left">
               <span data-slot="valor" className="col-start-1 row-start-1 truncate">
@@ -264,7 +266,7 @@ const Selector = React.forwardRef<HTMLButtonElement, SelectorProps>(
               ))}
             </span>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent data-ambito-base={enBase ? "" : undefined}>
             {grupos.map((g, gi) => {
               const items = g.opciones.map((o) => (
                 <SelectItem key={o.valor} value={haciaRadix(o.valor) as string} disabled={o.deshabilitada} data-valor={o.valor}>

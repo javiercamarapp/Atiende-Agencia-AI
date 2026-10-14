@@ -91,7 +91,7 @@ export function FormDialog({
         className={cn(
           // Escritorio: dialogo centrado. Movil: hoja inferior que sube desde abajo.
           anchoClase,
-          "gap-0 overflow-hidden p-0 rest:p-0",
+          "gap-0 overflow-hidden p-0",
           "max-md:max-h-[92dvh] max-md:pb-0",
         )}
         onInteractOutside={bloquearCierre ? (e) => e.preventDefault() : undefined}

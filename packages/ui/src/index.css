@@ -196,8 +196,8 @@
        destructive-solido = rojo del boton destructivo (blanco encima >= 4.5:1; --destructive sirve de texto). */
     --solido: 224 76% 48%;
     --solido-foreground: 0 0% 100%;
-    --menu-activo: 224 76% 32%;
-    --menu-activo-foreground: 0 0% 100%;
+    --menu-activo: 0 0% 100%;
+    --menu-activo-foreground: 224 76% 48%;
     --destructive-solido: 352 83% 41%;
     --destructive-solido-foreground: 0 0% 100%;
     --scrim: hsl(0 0% 0% / 0.8);
@@ -284,8 +284,8 @@
 
     --solido: 224 76% 48%;
     --solido-foreground: 0 0% 100%;
-    --menu-activo: 224 76% 48%;
-    --menu-activo-foreground: 0 0% 100%;
+    --menu-activo: 216 45% 9%;
+    --menu-activo-foreground: 210 30% 95%;
     /* El rojo del original en oscuro (352 75% 55%) da 4.30:1 con blanco: 50 % de luminosidad llega a 4.77:1. */
     --destructive-solido: 352 75% 50%;
     --destructive-solido-foreground: 0 0% 100%;
@@ -304,7 +304,7 @@
  * Desviaciones de contraste (WCAG AA) frente al original, verificadas en ese spec:
  *   --input: el borde de campo del original (214 32% 91%) da 1.2:1; se usa 215 15% 54% (3.67:1, 1.4.11).
  *   --destructive-solido (oscuro): 352 75% 50% en vez de 352 75% 55% (blanco encima: 4.77:1 vs 4.30:1).
- *   --menu-activo (claro): el original resalta con el mismo azul de la superficie (invisible); aqui es un tono mas oscuro.
+ *   --menu-activo: el original resalta con el mismo azul de la superficie (invisible); aqui es blanco (claro) / marino (oscuro): >= 3:1 contra la superficie (1.4.11).
  * ===========================================================================
  */
 @layer base {
@@ -370,6 +370,7 @@
 
   /* Repone la paleta de Likida DENTRO del sidebar (y solo ahi). Debe igualar :root / .dark en cada token. */
   [data-ambito-base] {
+    color: hsl(var(--foreground));
     --accent: 240 9% 97.8%;
     --accent-foreground: 18 27.8% 7.1%;
     --background: 240 33% 98.8%;
@@ -407,6 +408,7 @@
     --sunken: 240 4.8% 95.9%;
   }
   .dark [data-ambito-base] {
+    color: hsl(var(--foreground));
     --accent: 240 10% 6.1%;
     --accent-foreground: 240 4.8% 95.9%;
     --background: 240 10% 3.9%;
@@ -680,6 +682,7 @@
     color: inherit !important;
   }
   html[data-ambito="restaurantes"] .toaster .toast [data-description] { opacity: 0.8; }
+  html[data-ambito="restaurantes"] .toaster .toast[data-type="error"] [data-description] { opacity: 1; }
   html[data-ambito="restaurantes"] .toaster .toast [data-button]:not([data-cancel]) {
     background: hsl(var(--solido-foreground));
     color: hsl(var(--solido));
@@ -688,7 +691,8 @@
     color: hsl(var(--destructive-solido));
   }
   html[data-ambito="restaurantes"] .toaster .toast [data-cancel] {
-    background: hsl(var(--solido-foreground) / 0.2);
+    background: transparent;
+    border: 1px solid hsl(var(--solido-foreground) / 0.6);
     color: hsl(var(--solido-foreground));
   }
   html[data-ambito="restaurantes"] .toaster .toast [data-close-button] {
@@ -710,55 +714,72 @@
   html[data-ambito="restaurantes"] [data-ambito-base] .font-display { letter-spacing: -0.02em; }
 
   /* Boton y campo del ambito restaurantes (repo suelto: button-variants.ts / input.tsx). Las clases `ambito-*` las ponen Button y campoBase;
-     fuera de html[data-ambito="restaurantes"] no hacen nada (el Button de Likida queda intacto). Especificidad mayor que la de las utilidades
-     (html + atributo + clase) para ganar al `rounded-md` / `px-4` / `text-ui` de base; el hover de elevacion y la escala del press solo con
-     movimiento permitido. Todo color por token. Altos: --control-sm/md/lg (36/40/48 px) en el ambito. */
-  html[data-ambito="restaurantes"] .ambito-boton {
-    border-radius: var(--radius-control);
-    font-weight: 600;
+     fuera de html[data-ambito="restaurantes"], o dentro del sidebar ([data-ambito-base]), no hacen nada (el Button y los campos de Likida quedan
+     intactos). Especificidad mayor que la de las utilidades (html + atributo + clase) para ganar al `rounded-md` / `px-4` / `text-ui` de base;
+     cuando quien llama fija radio, relleno, tamano de texto o peso en su className, Button agrega `ambito-ov-*` y el ambito se aparta (como tailwind-merge en
+     el original). El hover de elevacion y la escala del press solo con movimiento permitido. Todo color por token. Altos: --control-sm/md/lg (36/40/48 px).
+     Peligro: el original NO usa destructive en las acciones de fila (Cancelar pedido = contorno rojo con tinte, border red/30, hover red/10); el rojo
+     SOLIDO es solo del boton de las confirmaciones destructivas (AlertDialogAction bg-destructive): ConfirmDialog agrega `ambito-peligro-solido`. */
+  html[data-ambito="restaurantes"] .ambito-boton:where(:not([data-ambito-base] *)):not(.ambito-ov-radio) { border-radius: var(--radius-control); }
+  html[data-ambito="restaurantes"] .ambito-boton:where(:not([data-ambito-base] *)):not(.ambito-ov-peso) { font-weight: 600; }
+  html[data-ambito="restaurantes"] .ambito-boton:where(:not([data-ambito-base] *)) {
     letter-spacing: 0.005em;
     transition-property: color, background-color, border-color, opacity, transform, box-shadow;
   }
-  html[data-ambito="restaurantes"] .ambito-boton-md { padding-inline: 1.25rem; }
-  html[data-ambito="restaurantes"] .ambito-boton-sm { padding-inline: 1rem; font-size: 0.875rem; line-height: 1.25rem; }
-  html[data-ambito="restaurantes"] .ambito-boton-xs { padding-inline: 0.75rem; }
-  html[data-ambito="restaurantes"] .ambito-boton-lg { padding-inline: 2rem; font-size: 1rem; line-height: 1.5rem; }
-  html[data-ambito="restaurantes"] .ambito-boton-primario { box-shadow: var(--shadow-card); }
-  html[data-ambito="restaurantes"] .ambito-boton-peligro {
+  html[data-ambito="restaurantes"] .ambito-boton-md:where(:not([data-ambito-base] *)):not(.ambito-ov-px) { padding-inline: 1.25rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-sm:where(:not([data-ambito-base] *)):not(.ambito-ov-px) { padding-inline: 1rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-sm:where(:not([data-ambito-base] *)):not(.ambito-ov-texto) { font-size: 0.875rem; line-height: 1.25rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-xs:where(:not([data-ambito-base] *)):not(.ambito-ov-px) { padding-inline: 0.75rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-lg:where(:not([data-ambito-base] *)):not(.ambito-ov-px) { padding-inline: 2rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-lg:where(:not([data-ambito-base] *)):not(.ambito-ov-texto) { font-size: 1rem; line-height: 1.5rem; }
+  html[data-ambito="restaurantes"] .ambito-boton-primario:where(:not([data-ambito-base] *)) { box-shadow: var(--shadow-card); }
+  html[data-ambito="restaurantes"] .ambito-boton-peligro-borde:where(:not([data-ambito-base] *)) {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--destructive) / 0.3);
+    color: hsl(var(--destructive));
+  }
+  html[data-ambito="restaurantes"] .ambito-boton-peligro-borde:where(:not([data-ambito-base] *)):hover:not(:disabled) {
+    background-color: hsl(var(--destructive) / 0.1);
+    opacity: 1;
+  }
+  html[data-ambito="restaurantes"] .ambito-boton-peligro:where(:not([data-ambito-base] *)),
+  html[data-ambito="restaurantes"] .ambito-peligro-solido:where(:not([data-ambito-base] *)) {
     background-color: hsl(var(--destructive-solido));
+    border-color: transparent;
     color: hsl(var(--destructive-solido-foreground));
   }
-  html[data-ambito="restaurantes"] .ambito-boton-peligro:hover:not(:disabled) {
+  html[data-ambito="restaurantes"] .ambito-boton-peligro:where(:not([data-ambito-base] *)):hover:not(:disabled),
+  html[data-ambito="restaurantes"] .ambito-peligro-solido:where(:not([data-ambito-base] *)):hover:not(:disabled) {
     background-color: hsl(var(--destructive-solido) / 0.9);
     opacity: 1;
   }
-  html[data-ambito="restaurantes"] .ambito-boton-borde:hover:not(:disabled) {
+  html[data-ambito="restaurantes"] .ambito-boton-borde:where(:not([data-ambito-base] *)):hover:not(:disabled) {
     background-color: hsl(var(--card));
     border-color: hsl(var(--foreground) / 0.26);
   }
   @media (prefers-reduced-motion: no-preference) {
-    html[data-ambito="restaurantes"] .ambito-boton-primario:hover:not(:disabled) {
+    html[data-ambito="restaurantes"] .ambito-boton-primario:where(:not([data-ambito-base] *)):hover:not(:disabled) {
       transform: translateY(-1px);
       box-shadow: var(--shadow-boton);
     }
-    html[data-ambito="restaurantes"] .ambito-boton-borde:hover:not(:disabled) { transform: translateY(-1px); }
-    html[data-ambito="restaurantes"] .ambito-boton:active:not(:disabled) { transform: scale(0.97); }
+    html[data-ambito="restaurantes"] .ambito-boton-borde:where(:not([data-ambito-base] *)):hover:not(:disabled) { transform: translateY(-1px); }
+    html[data-ambito="restaurantes"] .ambito-boton:where(:not([data-ambito-base] *)):active:not(:disabled) { transform: scale(0.97); }
   }
 
-  html[data-ambito="restaurantes"] .ambito-campo {
+  html[data-ambito="restaurantes"] .ambito-campo:where(:not([data-ambito-base] *)) {
     border-radius: var(--radius-field);
     background-color: hsl(var(--background));
     font-size: 1rem;
     line-height: 1.5rem;
   }
   @media (min-width: 768px) {
-    html[data-ambito="restaurantes"] .ambito-campo { font-size: 0.875rem; line-height: 1.25rem; }
+    html[data-ambito="restaurantes"] .ambito-campo:where(:not([data-ambito-base] *)) { font-size: 0.875rem; line-height: 1.25rem; }
   }
-  html[data-ambito="restaurantes"] .ambito-campo:focus-visible {
+  html[data-ambito="restaurantes"] .ambito-campo:where(:not([data-ambito-base] *)):focus-visible {
     border-color: hsl(var(--input));
     box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
   }
-  html[data-ambito="restaurantes"] .ambito-campo[aria-invalid="true"]:focus-visible {
+  html[data-ambito="restaurantes"] .ambito-campo:where(:not([data-ambito-base] *))[aria-invalid="true"]:focus-visible {
     border-color: hsl(var(--destructive));
     box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--destructive));
   }

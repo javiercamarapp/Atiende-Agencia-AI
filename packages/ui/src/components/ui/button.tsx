@@ -24,7 +24,7 @@ const buttonVariants = cva(
         default: "ambito-boton-primario bg-primary text-primary-foreground hover:bg-primary/90",
         destructive: "ambito-boton-peligro bg-destructive text-destructive-foreground hover:bg-destructive/90",
         // Peligro como Likida (--bad sobre --badbg): tinte suave + texto de peligro.
-        danger: "ambito-boton-peligro bg-destructive-tint text-destructive hover:opacity-85",
+        danger: "ambito-boton-peligro-borde bg-destructive-tint text-destructive hover:opacity-85",
         "danger-outline": "border border-destructive/40 bg-card text-destructive hover:bg-destructive-tint",
         outline: "ambito-boton-borde border border-border bg-card text-foreground hover:bg-canvas",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
@@ -49,6 +49,23 @@ const buttonVariants = cva(
     },
   },
 );
+
+/**
+ * Overrides de quien llama: las reglas `.ambito-boton*` (index.css) tienen mas especificidad que las utilidades, asi que cuando el `className`
+ * fija radio, relleno horizontal, tamano de texto o peso, se marca con `ambito-ov-*` y el CSS del ambito se aparta (como tailwind-merge en el original).
+ */
+export function clasesAmbitoOverrides(className: string | undefined): string {
+  if (!className) return "";
+  const hay = (re: RegExp) => className.split(/\s+/).some((c) => re.test(c));
+  return [
+    hay(/^rounded(-|$)/) && "ambito-ov-radio",
+    hay(/^(p|px|pl|pr|ps|pe)-/) && "ambito-ov-px",
+    hay(/^text-(xs|sm|base|lg|xl|2xl|2xs|ui|pill|eyebrow|widget|display|\[)/) && "ambito-ov-texto",
+    hay(/^font-(thin|light|normal|medium|semibold|bold|extrabold|black)$/) && "ambito-ov-peso",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 /** Texto unificado del estado de guardado (reemplaza los "Guardando..." escritos a mano en cada pantalla). */
 export const TEXTO_GUARDANDO = "Guardando...";
@@ -75,7 +92,7 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading = false, loadingText, iconLeft, iconRight, disabled, children, ...props }, ref) => {
-    const classes = cn(buttonVariants({ variant, size, className }));
+    const classes = cn(buttonVariants({ variant, size, className }), clasesAmbitoOverrides(className));
     if (asChild) {
       return (
         <Slot className={classes} ref={ref} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined} {...props}>

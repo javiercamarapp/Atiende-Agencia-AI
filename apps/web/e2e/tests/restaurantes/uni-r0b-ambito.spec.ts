@@ -5,8 +5,10 @@ import type { Page } from "@playwright/test";
 import { afirmarModo, afirmarSinScrollHorizontal } from "../../helpers/ds.ts";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
-import { ir } from "../../helpers/recorrido.ts";
+import { BASE, ir } from "../../helpers/recorrido.ts";
 import { citas } from "../../mock-api/fixtures/citas.ts";
+
+const SEGUNDA = { propertyId: "00000000-0000-4000-8000-00000000a2b2", name: "Sucursal Norte", slug: "norte" };
 
 /** Color que el navegador calcula para un valor CSS (rgb(...)/rgba(...)). */
 async function resolver(page: Page, valor: string): Promise<string> {
@@ -114,24 +116,111 @@ test.describe("UNI-R0b ambito restaurantes @recorrido @oscuro", () => {
   test("otra vertical (citas) NO cambia: sin data-ambito, boton de 12 px y paleta de Likida", async ({ page, iniciarSesion, vigilante }, info) => {
     const oscuro = info.project.name.endsWith("oscuro");
     await iniciarSesion("citas", "owner");
-    await page.goto(`/citas/${citas.orgSlug}/resumen`);
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await page.goto(`/citas/${citas.orgSlug}/servicios`);
+    await expect(page.locator("main#contenido-principal")).toBeVisible();
     await expect(page.locator("html")).not.toHaveAttribute("data-ambito", /.*/);
     expect(await estilo(page, "body", "background-color")).toBe(await resolver(page, oscuro ? "hsl(240 10% 3.9%)" : "hsl(240 33% 98.8%)"));
-    const boton = page.locator("main#contenido-principal button").first();
-    if (await boton.count()) {
-      const r = await boton.evaluate((el) => getComputedStyle(el).borderRadius);
-      expect(r, "los botones de otras verticales no son pildora").not.toBe("9999px");
-    }
+    const boton = page.locator("button.ambito-boton").first(); // todo <Button> lleva la clase; sin ambito no debe tener efecto
+    await expect(boton, "citas debe tener al menos un boton para comparar").toBeVisible();
+    expect(await boton.evaluate((el) => getComputedStyle(el).borderRadius), "los botones de otras verticales no son pildora").not.toBe("9999px");
+    expect(await boton.evaluate((el) => el.className), "sin clases del ambito fuera de restaurantes en la funcionalidad").not.toContain("ambito-ov");
     vigilante.verificar();
   });
 
-  test("al salir de restaurantes el ambito se quita de <html>", async ({ page, iniciarSesion }) => {
+  test("al salir de restaurantes (navegacion SPA y cierre de sesion) el ambito se quita de <html> sin recargar", async ({ page, iniciarSesion }, info) => {
     await iniciarSesion("restaurantes", "owner");
+    await iniciarSesion("citas", "owner");
     await ir(page, "");
     await expect(page.locator("html")).toHaveAttribute("data-ambito", "restaurantes");
-    await page.goto("/restaurantes/login");
-    await page.waitForLoadState("networkidle");
-    await expect(page.locator("html")).not.toHaveAttribute("data-ambito", "restaurantes");
+    await page.evaluate(() => { (window as unknown as { __sinRecarga: boolean }).__sinRecarga = true; });
+    const spa = (ruta: string) => page.evaluate((r) => { history.pushState({}, "", r); window.dispatchEvent(new PopStateEvent("popstate")); }, ruta);
+    // Restaurantes -> citas (history API + popstate: lo que hace react-router).
+    await spa(`/citas/${citas.orgSlug}/resumen`);
+    await expect(page.locator("main#contenido-principal")).toBeVisible();
+    await expect(page.locator("html")).not.toHaveAttribute("data-ambito", /.*/);
+    // Y de vuelta lo reaplica.
+    await spa(BASE);
+    await expect(page.locator("html")).toHaveAttribute("data-ambito", "restaurantes");
+    // Cerrar sesion desde el sidebar (navegacion SPA al login) lo quita.
+    if (!info.project.name.startsWith("movil")) {
+      await page.getByRole("button", { name: "Cerrar sesión" }).first().click();
+      await expect(page).toHaveURL(/\/restaurantes\/login/);
+      await expect(page.locator("html")).not.toHaveAttribute("data-ambito", "restaurantes");
+    }
+    expect(await page.evaluate(() => (window as unknown as { __sinRecarga?: boolean }).__sinRecarga), "no hubo recarga completa").toBe(true);
+  });
+
+  test("el sidebar queda EXACTO: color heredado de Likida, selector de sucursal y su lista con la paleta base", async ({ page, iniciarSesion, mock, vigilante }, info) => {
+    test.skip(info.project.name.startsWith("movil"), "el sidebar de escritorio no existe en 375 px");
+    const oscuro = info.project.name.endsWith("oscuro");
+    await iniciarSesion("restaurantes", "owner");
+    await mock.agregarAEstado("rest.branches", SEGUNDA);
+    await ir(page, "/pedidos");
+    const aside = page.locator("aside[aria-label='Navegación principal']");
+    expect(await aside.evaluate((el) => getComputedStyle(el).color)).toBe(await resolver(page, oscuro ? "hsl(240 4.8% 95.9%)" : "hsl(18 27.8% 7.1%)"));
+    const selector = aside.locator("#restaurantes-sucursal-activa");
+    await expect(selector).toBeVisible();
+    // Campo de Likida dentro del sidebar: fondo de tarjeta, 13 px, radio 16 px y foco de Likida (sin anillo doble).
+    expect(await selector.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await resolver(page, oscuro ? "hsl(240 7% 8%)" : "hsl(0 0% 100%)"));
+    expect(await selector.evaluate((el) => getComputedStyle(el).fontSize)).toBe("13px");
+    expect(await selector.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("16px");
+    await selector.click();
+    const lista = page.getByRole("listbox");
+    await expect(lista).toBeVisible();
+    // Su lista (portal en <body>) usa la paleta base, no la navy del ambito.
+    expect(await lista.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await resolver(page, oscuro ? "hsl(240 7% 8%)" : "hsl(0 0% 100%)"));
+    await page.keyboard.press("Escape");
+    vigilante.verificar();
+  });
+
+  test("sin regresiones de espaciado: popover de la campana sin relleno propio; Button respeta px/texto/radio de quien llama", async ({ page, iniciarSesion, vigilante }, info) => {
+    const movil = info.project.name.startsWith("movil");
+    await iniciarSesion("restaurantes", "owner");
+    await ir(page, "");
+    const campana = page.getByTestId("barra-pagina").getByRole("button", { name: /^Notificaciones/ });
+    if (!movil) {
+      await campana.click();
+      const popover = page.getByRole("dialog").filter({ has: page.getByRole("link", { name: "Ver todas las notificaciones" }) });
+      await expect(popover).toBeVisible();
+      expect(await popover.evaluate((el) => getComputedStyle(el).paddingTop), "CentroNotificaciones declara p-0").toBe("0px");
+      await page.keyboard.press("Escape");
+    }
+    // Botones reales con override de quien llama, en varias pantallas: el CSS del ambito no pisa su px-N / text-xs / rounded-lg.
+    let verificados = 0;
+    for (const sub of ["/clientes", "/pedidos", "/agente-voz", "/historial"]) {
+      await ir(page, sub);
+      await page.waitForTimeout(600);
+      const resultado = await page.evaluate(() => {
+        const fallos: string[] = [];
+        let n = 0;
+        const px = (v: string) => parseFloat(v);
+        for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>("button.ambito-boton"))) {
+          const cls = Array.from(b.classList);
+          const cs = getComputedStyle(b);
+          const mpx = cls.find((c) => /^px-\d/.test(c) && b.classList.contains("ambito-ov-px"));
+          if (mpx) { n++; const esp = parseFloat(mpx.slice(3)) * 4; if (px(cs.paddingLeft) !== esp) fallos.push(`${mpx}: paddingLeft ${cs.paddingLeft}`); }
+          const mt = cls.find((c) => /^text-(xs|sm|base)$/.test(c) && b.classList.contains("ambito-ov-texto"));
+          if (mt) { n++; const esp = { "text-xs": 12, "text-sm": 14, "text-base": 16 }[mt]!; if (px(cs.fontSize) !== esp) fallos.push(`${mt}: fontSize ${cs.fontSize}`); }
+          if (b.classList.contains("ambito-ov-radio") && cls.includes("rounded-lg")) { n++; if (cs.borderTopLeftRadius !== "16px") fallos.push(`rounded-lg: ${cs.borderTopLeftRadius}`); }
+        }
+        return { fallos, n };
+      });
+      expect(resultado.fallos, `overrides pisados en ${sub}`).toEqual([]);
+      verificados += resultado.n;
+    }
+    expect(verificados, "debe haber botones reales con override para comprobar").toBeGreaterThan(0);
+    vigilante.verificar();
+  });
+
+  test("peligro como el original: accion de fila en contorno rojo con tinte (no solido) y confirmacion destructiva en solido", async ({ page, iniciarSesion, vigilante }, info) => {
+    const oscuro = info.project.name.endsWith("oscuro");
+    await iniciarSesion("restaurantes", "owner");
+    await ir(page, "/pedidos");
+    const fila = page.locator("main#contenido-principal").getByRole("button", { name: "Marcar Cancelado" }).first();
+    await expect(fila).toBeVisible();
+    expect(await fila.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await resolver(page, oscuro ? "hsl(216 40% 13%)" : "hsl(0 0% 100%)"));
+    expect(await fila.evaluate((el) => getComputedStyle(el).color)).toBe(await resolver(page, oscuro ? "hsl(352 85% 70%)" : "hsl(352 83% 41%)"));
+    expect(await fila.evaluate((el) => getComputedStyle(el).borderTopColor)).toBe(await resolver(page, oscuro ? "hsl(352 85% 70% / 0.3)" : "hsl(352 83% 41% / 0.3)"));
+    vigilante.verificar();
   });
 });
