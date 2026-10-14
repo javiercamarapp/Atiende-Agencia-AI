@@ -53,6 +53,8 @@ export interface RespuestaArcoVoz {
   readonly respuesta: string | null;
   /** Menu ARCO que la respuesta dejo pendiente (la proxima frase del cliente es su eleccion), o `null`. */
   readonly menu: "numerado" | "nombres" | null;
+  /** La API pide ceder la solicitud a una persona (no se identifico el derecho, o se pidieron varios): el agente lo dice y la API ya dejo el aviso al equipo. */
+  readonly escalar: boolean;
 }
 
 export interface EntradaIniciarConversacion {
@@ -184,7 +186,7 @@ export class ClienteApi {
 
   /** Atajo ARCO por voz: lo que dijo el titular se evalua en el servidor (detector unico) y, si pide un derecho, queda REGISTRADO con el telefono del identificador de llamada. */
   async arcoVoz(e: { organizationId: string; callerPhone: string; texto: string; menu: "numerado" | "nombres" | null }): Promise<RespuestaArcoVoz> {
-    const r = await this.post<{ atendido?: unknown; respuesta?: unknown; modo?: unknown; menu?: unknown }>(
+    const r = await this.post<{ atendido?: unknown; respuesta?: unknown; modo?: unknown; menu?: unknown; escalar?: unknown }>(
       "arco",
       "/internal/restaurantes/voz/arco",
       { organizationId: e.organizationId, callerPhone: e.callerPhone, texto: e.texto.slice(0, 2000), ...(e.menu ? { menuPendiente: e.menu } : {}) },
@@ -194,7 +196,7 @@ export class ClienteApi {
     const modo = r.modo === "reemplaza" || r.modo === "agrega" ? r.modo : null;
     const respuesta = typeof r.respuesta === "string" && r.respuesta.length > 0 ? r.respuesta : null;
     const menu = r.menu === "numerado" || r.menu === "nombres" ? r.menu : null;
-    return { modo: respuesta ? modo : null, respuesta, menu };
+    return { modo: respuesta ? modo : null, respuesta, menu, escalar: r.escalar === true };
   }
 
   /** Aviso in-app al owner/admin: el gasto del mes llego al 80 % del tope o lo alcanzo. El servidor valida las cifras y deduplica por organizacion y mes. */
