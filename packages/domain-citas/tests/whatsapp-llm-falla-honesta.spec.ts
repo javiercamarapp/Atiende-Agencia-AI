@@ -44,7 +44,7 @@ describe("providerFailureReply: nombra lo que SI se hizo", () => {
   it.each([
     ["crear_cita", /registrada/i],
     ["cancelar_cita", /cancelada/i],
-    ["reagendar_cita", /actualizada/i],
+    ["reagendar_cita", /reagendada/i],
     ["modificar_cita", /actualizada/i],
   ] as const)("con cita y accion %s", (accion, esperado) => {
     const texto = providerFailureReply("apt-1", accion);
@@ -52,6 +52,7 @@ describe("providerFailureReply: nombra lo que SI se hizo", () => {
     // Nunca dice 'registrada' de una cita cancelada ni 'cancelada' de una registrada.
     if (accion !== "crear_cita") expect(texto).not.toMatch(/registrada/i);
     if (accion !== "cancelar_cita") expect(texto).not.toMatch(/cancelada/i);
+    if (accion === "reagendar_cita") expect(texto).not.toMatch(/actualizada/i);
   });
 
   it("sin cita (null, '' ) es la disculpa sin promesas, sea cual sea la accion", () => {
@@ -134,6 +135,24 @@ describe("inbound: 'ya avisé' solo si la solicitud de humano quedo registrada",
     expect(t.store.handoffs).toHaveLength(1);
     expect(t.store.handoffs[0]).toMatchObject({ estado: "pendiente", crisis: false });
     expect(await t.enOutbox()).toEqual([FALLA_CON_AVISO_REPLY]);
+  });
+
+  it("si solicitarHumano LANZA (cualquier error), el turno no se cae: sale la disculpa sin promesas y no hay reintento", async () => {
+    const fixture = buildCitasFixture();
+    const store = new InMemoryConversacionesRepository({ actorUserId: randomUUID(), nombres: {} });
+    const gate = new InMemoryHandoffAgentGate(store);
+    gate.solicitarHumano = async () => {
+      throw new Error("boom 40001");
+    };
+    const turnHandler: WhatsAppTurnHandler = {
+      async handleInboundMessage() {
+        return { reply: FALLA_SIN_AVISO_REPLY, appointmentId: null, propertyId: null, handoff: { motivo: "x", replyConAviso: FALLA_CON_AVISO_REPLY } };
+      },
+    };
+    const r = await handleInboundWhatsAppMessage(fixture.repo, turnHandler, createDefaultConversationGuard({}), {
+      organizationId: fixture.organizationId, messageId: `wamid-${randomUUID()}`, phone: PHONE_WA, body: "quiero una cita", phoneNumberId: "1234567890", handoffGate: gate,
+    });
+    expect(r).toMatchObject({ ok: true, retryable: false, reply: FALLA_SIN_AVISO_REPLY });
   });
 
   it.each([
