@@ -1715,8 +1715,11 @@ async function retenerPedidoDeReincidente(repo: RestaurantesRepository, ctx: Age
   const result = {
     pedido_retenido: true,
     mensaje: "La sucursal confirma su pedido en un momento. Dígaselo así, con amabilidad: no explique motivos ni mencione historial; el pedido NO está creado todavía y no debe prometer hora de entrega.",
+    // Lo unico que el cliente lee de este pedido retenido: si el modelo no alcanza a redactar la respuesta (vueltas agotadas, proveedor caido, texto vacio) el turno
+    // usa este texto en vez de dejar al cliente sin mensaje o con un texto de fallo.
+    mensaje_al_cliente: MENSAJE_PEDIDO_REINCIDENTE_RETENIDO,
   };
-  return { result, raw: result, orderId: null, propertyId: prepared.branch.propertyId };
+  return { result, raw: result, orderId: null, propertyId: prepared.branch.propertyId, pedidoRetenido: true };
 }
 
 /** Devuelve el `PedidoGrandeRetenidoError` (sin lanzarlo) si el pedido ya cotizado supera el umbral de pedido grande de PM, o `null`. Solo organizaciones con
@@ -1775,6 +1778,9 @@ async function assertNoEsPedidoGrande(repo: RestaurantesRepository, prepared: Pr
   const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, undefined, sesionPrevia);
   if (grande) throw grande;
 }
+
+/** Pedido retenido por reincidencia: el pedido NO esta creado, no se explica el motivo ni se menciona historial y no se promete hora. */
+export const MENSAJE_PEDIDO_REINCIDENTE_RETENIDO = "La sucursal confirma su pedido en un momento. Todavía no está en cocina.";
 
 /** QA-PM-R4-voz-02: lo unico que el agente le dice al cliente de un pedido grande retenido (el modelo decia "ha quedado registrado" con el texto largo de `mensaje`). */
 export const MENSAJE_PEDIDO_GRANDE_PENDIENTE = "Su pedido es grande, así que la sucursal lo tiene que confirmar primero. Todavía no está en cocina; en cuanto lo confirmen le avisan.";
