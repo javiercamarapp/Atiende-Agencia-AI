@@ -90,6 +90,8 @@ export async function intentarCancelacionConAutopiloto(
 ): Promise<{ readonly reply: string } | null> {
   // Defensa en profundidad: una pregunta ("¿se cancelo?", "¿hasta que hora se puede cancelar?") ni cancela ni abre solicitud aunque el clasificador la deje pasar.
   if (args.texto !== undefined && (negacionDeCancelacion(args.texto) || esConsultaDeCancelacion(args.texto))) return null;
+  // Defensa en profundidad: solo se cancela (o se abre una solicitud de cancelacion) si el texto HABLA de cancelar; «cámbiame el pedido a harina» o «modifica el pedido» nunca cancelan.
+  if (args.texto !== undefined && !/cancel/.test(normalizarParaClasificar(args.texto))) return null;
   try {
     return await repo.runWithRowSavepoint(async () => {
       if (!(await hooks.cancelacionActiva(args.organizationId))) return null;
