@@ -215,6 +215,13 @@ describe("POST .../conversaciones/:id/costo", () => {
       expect(await (await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [tramoV2] }))).json()).toMatchObject({ registrados: 0, repetidos: 3 });
     });
 
+    it("acepta Deepgram Aura-2 como componente de TTS alternativo", async () => {
+      const { ctx, llamada, app } = await construir();
+      const aura = { proveedor: "deepgram-aura-2", unidad: "unidad", cantidad: 900, costoMicroUsd: 27_000, costoReal: false };
+      expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, costoReportadoMicroUsd: 27_000, componentes: [aura] }] }))).status).toBe(200);
+      expect(llamada.eventos.map((e) => [e.proveedor, e.costoMicroUsd, e.costoEstimado])).toEqual([["deepgram-aura-2", 27_000, true]]);
+    });
+
     it("un worker anterior (sin componentes) sigue produciendo el evento del escalon de siempre", async () => {
       const { ctx, llamada, app } = await construir();
       await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, componentes: undefined }] }));

@@ -1,7 +1,7 @@
 // Precios por componente de la cascada v2 (P4): Deepgram por minuto, HeyGen por millon de caracteres con promocion de fecha de fin EXPLICITA y reloj inyectado.
 // Sin red y sin Date.now() suelto: el reloj es siempre un instante fijo.
 import { describe, expect, it } from "vitest";
-import { VOZ_PLATAFORMA, costoDeepgramMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres } from "../src/index.ts";
+import { VOZ_PLATAFORMA, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres } from "../src/index.ts";
 import type { ConfigPlataformaVoz } from "../src/index.ts";
 
 const en = (iso: string) => () => new Date(iso);
@@ -66,5 +66,17 @@ describe("HeyGen: promocion con fecha de fin y reloj inyectado", () => {
   });
   it.each([[0], [""], [null], [false], [[]], [{}], [-1], [Number.NaN]])("caracteres invalidos %j -> 0", (v) => {
     expect(costoHeygenMicroUsd(v as unknown as number, en("2026-10-13T00:00:00Z"))).toBe(0);
+  });
+});
+
+describe("Deepgram Aura-2 (TTS alternativo)", () => {
+  it("US$0.030 por 1 000 caracteres = 30 micro-USD por caracter; redondea hacia arriba", () => {
+    expect(VOZ_PLATAFORMA.cascadaV2.deepgramAura2.usdPorMilCaracteres).toBe(0.03);
+    expect(costoDeepgramAura2MicroUsd(1_000)).toBe(30_000);
+    expect(costoDeepgramAura2MicroUsd(900)).toBe(27_000);
+    expect(costoDeepgramAura2MicroUsd(1)).toBe(30);
+  });
+  it.each([[0], [""], [null], [false], [[]], [{}], [-1], [Number.NaN]])("caracteres invalidos %j -> 0", (v) => {
+    expect(costoDeepgramAura2MicroUsd(v as unknown as number)).toBe(0);
   });
 });

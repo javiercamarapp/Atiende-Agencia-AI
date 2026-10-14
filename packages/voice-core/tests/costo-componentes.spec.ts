@@ -68,7 +68,7 @@ describe("eventosCostoLlamada con componentes", () => {
     expect(PROVEEDOR_COMPONENTE_RE.test(proveedor)).toBe(false);
     expect(() => eventosCostoLlamada({ ...BASE, tramos: [{ ...tramo, componentes: [comp(proveedor, "unidad", 1, 1, false)] }] })).toThrow(/proveedor de componente invalido/);
   });
-  it.each([["deepgram"], ["heygen"], [HAIKU], ["openrouter:anthropic/claude-sonnet-5.5"], ["openrouter:google/gemini-3.8-flash:nitro"]])("proveedor valido %j", (p) => {
+  it.each([["deepgram"], ["deepgram-aura-2"], ["heygen"], [HAIKU], ["openrouter:anthropic/claude-sonnet-5.5"], ["openrouter:google/gemini-3.8-flash:nitro"]])("proveedor valido %j", (p) => {
     expect(PROVEEDOR_COMPONENTE_RE.test(p)).toBe(true);
     expect(p.length).toBeLessThanOrEqual(80);
   });
