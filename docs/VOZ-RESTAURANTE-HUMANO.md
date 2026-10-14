@@ -8,7 +8,7 @@ con voz **femenina** y acento **mexicano**. Este documento dice qué se construy
 | Pieza | Dónde | Notas |
 |---|---|---|
 | Ambiente sintetizado | `packages/voice-core/src/ambiente-restaurante.ts` | Tres presets. Murmullo de voces lejanas en banda formante, cubiertos/platos/vasos esporádicos, cocina lejana (sartén, extractor, ollas), tráfico en `calle-ocupada`. Determinista por semilla, sin bucle, pensado para la banda telefónica (300-3400 Hz). Volumen = pico máximo (0-20 %, saturación suave `tanh`). Ducking de 7 dB bajo la voz del agente y la del cliente. |
-| Tecleo | `packages/voice-core/src/tecleo.ts` | Clics de teclado/POS sintetizados. Orquestador dirigido por el reloj de muestras: suena solo con una herramienta en vuelo, ráfagas de 0.9-2.5 s (mínimo 500 ms), pausas 0.35-1.1 s, fades, silencio mientras habla el agente, corte en ~25 ms por barge-in, tope 8 s por espera y 30 s por llamada, «pip» de POS al terminar bien. |
+| Tecleo | `packages/voice-core/src/tecleo.ts` | Clics de teclado/POS sintetizados. Orquestador dirigido por el reloj de muestras: suena solo con una herramienta en vuelo, ráfagas de 0.9-2.5 s (mínimo 500 ms), pausas 0.35-1.1 s, fades, silencio mientras habla el agente, corte por barge-in (fade de 25 ms; ver «Latencia y barge-in»), tope 8 s por espera y 30 s por llamada, «pip» de POS al terminar bien. |
 | Mezclador | `packages/voice-core/src/mezclador-salida.ts` | Voz + ambiente + tecleo en una secuencia; `cortarAgente()` para el barge-in. |
 | Sincronía con las herramientas | `packages/voice-core/src/llamada/ejecutor-con-tecleo.ts` | Envuelve el ejecutor: inicio/fin de cada herramienta, en los dos motores. |
 | Worker | `apps/voice-worker/src/llamada.ts`, `puente-audio.ts`, `audio/bombeo-salida.ts`, `telefonia/livekit.ts` | Ver `docs/AJUSTES-AGENTE-RESTAURANTES.md`. |
@@ -45,10 +45,27 @@ Fuente: `~/atiende-loop/pm/arquitectura-agentes-modelos-2026.md`. Azure MAI-Voic
 Deepgram Aura-2 `aura-2-estrella-es` / `aura-2-olivia-es` (muestras sin cuenta); ElevenLabs solo con una voz clonada de una locutora mexicana (con su consentimiento); respaldo Gemini TTS (mismas voces del catálogo).
 **HeyGen Voice no sirve para teléfono** (30 solicitudes/min fijas, WAV 44.1 kHz). Constante: `CANDIDATAS_TTS_CASCADA_V2`.
 
+## CPU, concurrencia y latencia (medido y estimado)
+
+**CPU del mezclador** (benchmark en un hilo de una Mac con Apple Silicon, ambiente + tecleo, tramas de 20 ms, 15 llamadas simultáneas, 10 s): antes de la optimización 43.7 % de un núcleo (p50 0.49 ms
+por trama, p99 1.42 ms); ahora **13.6 %** (p50 0.16 ms, p99 0.41 ms, máx 3.6 ms). La mejora viene de sintetizar el ambiente a 8 kHz (todo vive bajo ~3.8 kHz) y reutilizar los buffers. Esa cifra es solo el
+mezclador: no incluye el remuestreo de entrada, LiveKit/SIP ni el resto del worker, y una medición con el worker completo dio ~51 % de un núcleo para 15 llamadas con efectos ANTES de la optimización.
+
+**Límite de concurrencia y dimensionamiento.** `fly.toml` del worker está en `shared-cpu-1x` con el comentario «solo puentea audio»; con ambiente y tecleo el worker SÍ sintetiza audio en un solo hilo
+(JavaScript), y un tick de 20 ms que se retrasa se oye como corte. **No se tocó Fly** (regla del brief). Recomendación antes de activar el preset en producción: dimensionar a `performance-1x` (o limitar a
+~10-15 llamadas simultáneas con efectos por instancia) y repetir la medición con el worker completo y carga de pico (PM: ~15 simultáneas). Hasta entonces, activar el preset solo en una sucursal piloto.
+Si el tick se retrasa, el bombeo rellena por la cola real (no acumula retraso), pero el ambiente se entrecorta.
+
+**Latencia y barge-in.** El bombeo ya no se guía por el reloj de pared sino por `AudioSource.queuedDuration` de LiveKit, con objetivo de cola de 40-80 ms: esa cola es lo que el bombeo suma a cada respuesta
+y al corte del barge-in. Se registra por llamada como `salida_cola_p50` / `salida_cola_p95` (no entra en `latenciasMs`). Corte del tecleo por barge-in de punta a punta (estimado, **no medido contra
+LiveKit real**): ~80 ms de detección de voz del cliente en el puente + 40-80 ms de cola de salida + fade de 25 ms ≈ 150-190 ms; el ambiente baja en esa misma escala (ataque de 25 ms). El «~25 ms» que decía
+una versión anterior era solo el fade.
+
 ## Qué NO está verificado
 
 - **Nada se ha oído.** Las pruebas miden nivel, pico, espectro (≥ 80 % de la energía del ambiente en 300-3400 Hz), ausencia de bucle en 60 s, relación voz/ambiente, sincronía del tecleo con las herramientas y el barge-in. Que suene a restaurante y a teclado real, y que no cansen, solo se sabe escuchando las muestras (`~/atiende-loop/pm/audio-ambiente/`).
-- El bombeo continuo hacia LiveKit (`captureFrame` cada 20 ms, `clearQueue` en el barge-in) está probado con reloj y destino falsos, **no contra LiveKit real**; la latencia añadida de la cola (~200 ms de adelanto) no se midió.
+- El bombeo continuo hacia LiveKit (`captureFrame` guiado por `queuedDuration`, `clearQueue` en el barge-in) está probado con una cola simulada y destino falso, **no contra LiveKit real**; la latencia añadida de la cola (objetivo 40-80 ms) no se midió con LiveKit.
+- Si el bombeo falla, la llamada sigue sin mezcla (voz por `reproducir`) y se registra `sonido_mezclador_fallo`; si el cliente cuelga con voz en cola o la despedida no termina de sonar en 20 s, se descarta y se cuelga. Probado con fallos inyectados, no con LiveKit.
 - La **vista previa del panel no reproduce el ambiente ni el tecleo** (la pantalla dice «No disponible aún»); sí aplica la naturalidad, el ritmo, el estilo y la temperatura. Hacerlo requiere un reproductor WebAudio con el mismo mezclador y los eventos de herramienta de la sesión de vista previa.
 - Los ajustes viven **por organización** (`restaurantes.agent_runtime_settings`), no por sucursal: es donde ya vivían ritmo, estilo y fondo. La voz sí es por sucursal.
 - La migración 087 no se aplicó a ninguna base; su verificación contra Postgres real está en `scripts/verify-restaurantes-voz-ambiente-tecleo/`.

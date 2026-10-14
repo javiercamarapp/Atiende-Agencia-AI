@@ -8,7 +8,7 @@
 //       - `herramientaInicia(id)` / `herramientaTermina(id, ok)`: el tecleo suena SOLO mientras hay una herramienta en vuelo; sin herramienta, silencio;
 //       - rafagas de 0.9-2.5 s con pausas de 0.35-1.1 s mientras dure la herramienta (una herramienta rapida da una sola rafaga de al menos `minRafagaMs`);
 //       - fade-in/out; el agente hablando lo silencia (fade) y vuelve a sonar cuando calla si la herramienta sigue;
-//       - `clienteHabla()` (barge-in) lo CORTA en ~25 ms y no vuelve hasta la siguiente herramienta;
+//       - `clienteHabla()` (barge-in) lo CORTA (fade de 25 ms una vez que el orquestador se entera; de punta a punta son ~80 ms de deteccion del puente + la cola de salida del bombeo, 40-80 ms) y no vuelve hasta la siguiente herramienta;
 //       - topes: `topeEpisodioMs` por espera de herramienta y `topeLlamadaMs` en toda la llamada, para que nunca suene de mas;
 //       - un "pip" de confirmacion de POS (opcional) al terminar bien una rafaga.
 // Los clics viven en 700-3300 Hz con un golpe de ~350 Hz: caben en la banda telefonica (G.711, 300-3400 Hz).
@@ -182,7 +182,7 @@ export class OrquestadorTecleo {
     }
   }
 
-  /** Barge-in: el cliente habla. Corta el tecleo (fade de ~25 ms) y no vuelve hasta la siguiente herramienta. */
+  /** Barge-in: el cliente habla. Corta el tecleo (fade de 25 ms desde que se llama; la deteccion de voz y la cola de salida suman ~120-160 ms mas) y no vuelve hasta la siguiente herramienta. */
   clienteHabla(): void {
     this.suprimido = true;
     this.cortado = true;

@@ -105,7 +105,7 @@ Presets: ${PRESETS_AMBIENTE.map((id) => `**${id}** (${PERFILES_AMBIENTE[id].desc
 
 - Volumen del ambiente: ${p.fondo.volumen} % de plena escala (pico máximo; el del preset «restaurante-humano»). Volumen del tecleo: ${p.tecleo.volumen} %.
 - Ducking: el ambiente baja 7 dB (ataque 25 ms, liberación 350 ms) mientras habla el agente o el cliente.
-- Tecleo: ráfagas de 0.9-2.5 s con pausas de 0.35-1.1 s, mínimo 500 ms, fade-in 40 ms / fade-out 120 ms, corte por barge-in en ~25 ms, silenciado mientras habla el agente, tope 8 s por espera y 30 s por llamada, «pip» de POS al terminar bien.
+- Tecleo: ráfagas de 0.9-2.5 s con pausas de 0.35-1.1 s, mínimo 500 ms, fade-in 40 ms / fade-out 120 ms, corte por barge-in (fade de 25 ms; de punta a punta ~150-190 ms con la deteccion de voz y la cola de salida, estimado), silenciado mientras habla el agente, tope 8 s por espera y 30 s por llamada, «pip» de POS al terminar bien.
 - Mezclador: el mismo \`MezcladorSalida\` que usa el worker de la llamada (24 kHz, PCM16).
 
 ## Medidas objetivas
