@@ -281,13 +281,11 @@
    "turnos_cliente": [
     "[N] tacos de pastor para recoger (lunes)"
    ],
-   "comportamiento_esperado": "Lo que Javier decida sobre el alcance del 2x1 por sucursal.",
-   "que_no_debe_hacer": "Cobrar distinto a lo decidido.",
+   "comportamiento_esperado": "Decision de Javier (14-oct): LUNES2X1PM aplica en TODAS las sucursales, T7 incluida (recoger): 4 tacos a $42 cobran $84.",
+   "que_no_debe_hacer": "Cobrar $168 sin aplicar el 2x1 en T7.",
    "cubierto_por": "packages/domain-restaurantes/tests/promotions-2x1.spec.ts",
-   "dudas": [
-    "¿El 2x1 de lunes aplica en García Lavín (T7)? El cuestionario no excluye sucursales pero el menú 2025 lo imprime solo en T2/T3/T4."
-   ],
-   "estado": "pendiente_decision"
+   "dudas": [],
+   "estado": "activo"
   },
   {
    "id": "R6-019",
@@ -1123,7 +1121,7 @@
   },
   {
    "id": "R6WA48",
-   "fuente": "[ronda6-wa] T7 lunes NO tiene 2x1",
+   "fuente": "[ronda6-wa] T7 lunes SI tiene 2x1 (decision del dueno 14-oct)",
    "sucursal": "T7",
    "reloj_utc": "2026-10-05T19:00:00Z",
    "pasos": [
@@ -1134,8 +1132,8 @@
    ],
    "rafaga": false,
    "pedido_previo": null,
-   "esperado": "Cobra 4x42=$168 (el 2x1 es solo de otra sucursal).",
-   "prohibido": "Cobrar $84 (2x1 indebido).",
+   "esperado": "Cobra $84: el 2x1 de lunes aplica en todas las sucursales, T7 incluida.",
+   "prohibido": "Cobrar $168 (sin 2x1).",
    "pendiente": false
   }
  ],

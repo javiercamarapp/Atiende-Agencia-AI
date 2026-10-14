@@ -490,14 +490,14 @@ function minutosDeEspera(texto: string): number | null {
   if (!Number.isFinite(n)) return null;
   return n * (/^hora/.test(g.unidad ?? "") ? 60 : 1) + (g.ymedia ? 30 : 0);
 }
-/** Espera larga de un pedido VIGENTE: preparando o en camino (no entregado, no cancelado, no un cliente sin pedido). Sin el dato del pedido (lectura no disponible) solo cuenta si el
+/** Espera larga de un pedido VIGENTE: registrado, preparando o en camino (no entregado, no cancelado, no un cliente sin pedido). Sin el dato del pedido (lectura no disponible) solo cuenta si el
  * texto habla de «mi pedido». */
 function esperaLargaDelPedido(texto: string, ctx: HighRiskContext): boolean {
   const min = minutosDeEspera(texto);
   if (min === null || min < ESPERA_LARGA_MINUTOS) return false;
   const estado = ctx.pedidoReciente?.estado;
   if (ctx.pedidoReciente === undefined) return HABLA_DE_SU_PEDIDO.test(texto);
-  return estado === "preparando" || estado === "salio";
+  return estado === "registrado" || estado === "preparando" || estado === "salio";
 }
 // Quejas de "algo no llego / llego mal" que solo son queja si se habla de un pedido ya hecho (el mismo criterio que "me falto").
 const QUEJA_DE_ENTREGA = /\bno\s+me\s+(?:llego|llegaron|trajeron|mandaron|dieron)\b|\bvino\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada|aguado|revuelto)\b|\bme\s+(?:llego|llegaron|trajeron|mandaron)\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada)\b/;
@@ -570,7 +570,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     pattern: /\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\s+(?:el|mi|ese|este)\s+pedido\b/,
     cuando: (texto, ctx) => {
       const estado = ctx.pedidoReciente?.estado;
-      return (estado === "preparando" || estado === "programado" || estado === "por_confirmar") && !CONSULTA_DE_CANCELACION.test(texto) && !/\?/.test(texto);
+      return (estado === "registrado" || estado === "preparando" || estado === "programado" || estado === "por_confirmar") && !CONSULTA_DE_CANCELACION.test(texto) && !/\?/.test(texto);
     },
     reply:
       "Entendido, desea cambiar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",
