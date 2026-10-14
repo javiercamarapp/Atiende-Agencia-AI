@@ -53,6 +53,7 @@ import {
   reconciliarConCotizacion,
   resolverRenglonesCotizados,
   OrderFlowViolationError,
+  rechazaElResumen,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -1013,6 +1014,11 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   }
 
   if (name === "confirmar_resumen") {
+    // QA-PM-R6 (A13): en WhatsApp, si el ultimo mensaje del cliente rechaza el resumen no se confirma (el modelo lo confirmaba tras «No, así no»).
+    const ultimoDelCliente = ctx.channel === "whatsapp" ? [...(ctx.conversacionReciente ?? [])].reverse().find((m) => m.role === "user")?.content : undefined;
+    if (rechazaElResumen(ultimoDelCliente)) {
+      throw new OrderFlowViolationError("cliente_rechazo_resumen", "El último mensaje del cliente rechaza o corrige el resumen: NO confirmes ni crees el pedido. Pregúntale qué desea cambiar (sin discutir el precio), vuelve a cotizar con lo que corrija y pide su confirmación otra vez. No digas que el pedido quedó registrado.");
+    }
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor todavía" }, orderId: null, propertyId: null };
