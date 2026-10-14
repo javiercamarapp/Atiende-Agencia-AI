@@ -1,6 +1,6 @@
 // Falla del asistente DESPUES de crear un apartado (pre-reserva): el huesped debe leer que el apartado SI existe (para no pedirlo de nuevo) y recepcion no recibe un
 // segundo aviso `falla_sistema`. El "fallo" es agotar las vueltas del turno justo despues de la herramienta.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { QUOTED_TOTAL, STAY, makeWorld, tool } from "./support.ts";
 
 const holdArgs = (doble: string) => ({ tipo_habitacion_id: doble, ...STAY, huespedes: 2, total_cotizado_centavos: QUOTED_TOTAL, nombre_huesped: "Ana" });
@@ -56,5 +56,43 @@ describe("falla despues de crear un apartado", () => {
     expect(reply).toMatch(/ya registramos tu pedido/i);
     expect(reply).toMatch(/tu solicitud de pre-reserva sí quedó registrada/i);
     expect(w.handoffs.filter((h) => /^falla_sistema/.test(h.reason))).toHaveLength(0);
+  });
+
+  // `handoff: true` solo pide la derivacion; "ya avisé" exige un contacto insertado de verdad (o el de respaldo de la falla).
+  const modeloCae = () => {
+    throw Object.assign(new Error("caído"), { status: 503 });
+  };
+
+  it("crear_pre_reserva LANZA un error inesperado y luego cae el proveedor: se registra el contacto falla_sistema de respaldo, handoff agente_derivo y 'ya avisé' tiene respaldo", async () => {
+    const w = makeWorld();
+    vi.spyOn(w.reservas, "createHold").mockRejectedValue(new Error("error inesperado de la base"));
+    const { reply, handoff } = await w.run([tool("crear_pre_reserva", holdArgs(w.doble)), modeloCae]);
+    expect(w.reservas.allHolds()).toHaveLength(0);
+    expect(w.handoffs.filter((h) => /^falla_sistema/.test(h.reason))).toHaveLength(1);
+    expect(handoff).toEqual({ motivo: "agente_derivo" });
+    expect(reply).toMatch(/ya avisé al equipo del hotel/i);
+  });
+
+  it("el registro de mejor esfuerzo de la herramienta FALLA (estadia_muy_larga) y luego cae el proveedor: tampoco se da por avisado, el respaldo registra su contacto", async () => {
+    const w = makeWorld();
+    const previo = w.hoteles.insertContactoNoOperativo.bind(w.hoteles);
+    vi.spyOn(w.hoteles, "insertContactoNoOperativo").mockImplementation(async (input) => {
+      if (input.reason.startsWith("reservas:")) throw new Error("tabla no disponible");
+      return previo(input);
+    });
+    const { reply, handoff } = await w.run([tool("consultar_disponibilidad", { fecha_llegada: "2031-06-10", fecha_salida: "2031-06-25" }), modeloCae]);
+    expect(w.handoffs.filter((h) => /^falla_sistema/.test(h.reason))).toHaveLength(1);
+    expect(handoff).toEqual({ motivo: "agente_derivo" });
+    expect(reply).toMatch(/ya avisé al equipo del hotel/i);
+  });
+
+  it("sin ningun registro posible (la herramienta y el respaldo fallan): NO se dice 'ya avisé' aunque se pida la derivacion", async () => {
+    const w = makeWorld();
+    vi.spyOn(w.reservas, "createHold").mockRejectedValue(new Error("error inesperado de la base"));
+    vi.spyOn(w.hoteles, "insertContactoNoOperativo").mockRejectedValue(new Error("tabla no disponible"));
+    const { reply, handoff } = await w.run([tool("crear_pre_reserva", holdArgs(w.doble)), modeloCae]);
+    expect(reply).not.toMatch(/avis[ée]/i);
+    expect(reply).toMatch(/problema técnico/i);
+    expect(handoff).toEqual({ motivo: "agente_derivo" });
   });
 });
