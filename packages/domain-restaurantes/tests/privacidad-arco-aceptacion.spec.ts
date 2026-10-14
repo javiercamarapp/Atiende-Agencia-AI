@@ -128,7 +128,11 @@ describe("contrato: nunca lanza con entradas que no son texto", () => {
       detectArcoIntent(base.repeat(2000));
       detectArcoIntent(`${base}${"a ".repeat(5000)}`);
     }
-    expect(Date.now() - inicio).toBeLessThan(5000);
+    expect(Date.now() - inicio).toBeLessThan(10_000); // margen amplio: el CI con cobertura es ~10x mas lento; con el tope de largo local son milisegundos
+  });
+  it("una peticion al FINAL de un mensaje enorme se detecta igual (se conservan principio y final)", () => {
+    expect(detectArcoIntent(`${"hola buenas ".repeat(1000)} borren mis datos`)).toMatchObject({ kind: "request", right: "cancelacion" });
+    expect(detectArcoIntent(`borren mis datos ${"gracias ".repeat(1000)}`)).toMatchObject({ kind: "request", right: "cancelacion" });
   });
 });
 

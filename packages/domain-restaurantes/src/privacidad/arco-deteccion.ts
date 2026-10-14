@@ -192,8 +192,11 @@ export function raicesQueCoinciden(message: string): readonly string[] {
  */
 export function detectArcoIntent(message: string): ArcoIntent | null {
   if (typeof message !== "string") return null;
-  const normalizado = normalizarParaArco(message);
-  if (!normalizado) return null;
+  const completo = normalizarParaArco(message);
+  if (!completo) return null;
+  // Las raices con ventanas de palabras cuestan ~cuadratico en el largo: los mensajes reales ya vienen acotados (WhatsApp 1000 caracteres, voz 2000); si uno trae mas,
+  // se conservan el principio y el final (donde se dicen las peticiones) en vez de arriesgar tiempo.
+  const normalizado = completo.length > 2000 ? `${completo.slice(0, 1000)} ${completo.slice(-1000)}` : completo;
 
   // Unificado con el webhook: la baja exacta (BAJA, STOP, "no mas mensajes"...) es oposicion/revocacion de contacto.
   if (detectarOptOut(message) === "baja") return { kind: "request", right: "oposicion", contacto: true };
