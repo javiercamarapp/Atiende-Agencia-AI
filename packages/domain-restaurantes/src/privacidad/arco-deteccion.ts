@@ -51,6 +51,14 @@ export interface RaizArco {
   /** `true` = la raiz frena el contacto/publicidad: ademas de la solicitud ARCO, el webhook revoca el marketing de ese telefono. */
   readonly contacto?: boolean;
   readonly re: RegExp;
+  /** `true` = frena el contacto/publicidad de forma INEQUIVOCA (no ambigua con habla de pedido): solo estas raices revocan el consentimiento de marketing en el webhook. */
+  readonly inequivoca?: boolean;
+  /** El mensaje habla de dar/actualizar datos PARA UN PEDIDO O FACTURA («te mando mis datos», «datos de envio», «el nuevo es...»): `anula` la raiz o la `debilita`. */
+  readonly datosDePedido?: "anula" | "debilita";
+  /** El mensaje pide OTRO canal o forma de contacto («no me llamen, mejor escriban», «solo toquen el timbre»): es preferencia de servicio, no oposicion; baja a debil. */
+  readonly canalAlterno?: boolean;
+  /** Precision media: si hay clasificador y este dice «ninguna» con alta confianza, la deteccion se descarta (nunca ocurre con las demas raices fuertes). */
+  readonly arbitrable?: boolean;
   /** Que hacer si lo que sigue al objeto es "del pedido / de la cuenta / de la factura...": `anula` (no es ARCO: "borra mi nombre del pedido") o
    * `debilita` (queda en debil: "borren mis datos de mi pedido"). */
   readonly colaDePedido?: "anula" | "debilita";
@@ -64,27 +72,36 @@ const DATO_GENERAL = "(?:datos(?: personales)?|informacion(?: personal)?|info|hi
 const DATO_CONCRETO = "(?:numero|telefono|celular|cel|whatsapp|correo|email|mail|nombre|apellidos?|direccion|domicilio)";
 const DATO = `(?:${DATO_GENERAL}|${DATO_CONCRETO})`;
 /** Verbos de suprimir: borrar, eliminar, suprimir, destruir (con o sin pronombre pegado: borrame, eliminenlos). */
-const SUPRIMIR = "(?:borr|elimin|suprim|destru)\\w*";
+const SUPRIMIR = "(?:borr|elimin|suprim|destru|quit|descart|retir|sac|saqu)\\w*";
 /** Verbos de sacar de una lista (sin "olvidar"/"cancelar", que tienen su raiz propia). */
 const SACAR = "(?:borr|elimin|suprim|saqu|sac|quit|baj|excluy|destru|retir)\\w*";
 const FILL = "(?:\\w+ ){0,3}?";
 const NO_ES_PEDIDO = "(?! (?:pedido|orden|ordenes|cuenta|comanda|reserva|entrega|mesa|factura|carrito|compra|ticket)\\b)";
-const DESTINO_LISTA = "(?:su|sus|la|las|todas? (?:su|sus|las|la))(?: \\w+)? (?:base|bases|lista|listas|sistema|sistemas|registro|registros|contactos|directorio|padron|agenda|difusion)\\b";
-const CIERRE_DE_PERSONA = "(?=\\s*$|\\s+(?:por favor|porfa|pf|x favor|pls|ya|ahora|gracias|tambien|de\\b))";
+const DESTINO_LISTA = "(?:su|sus|la|las|todas? (?:su|sus|las|la))(?: \\w+)? (?:base|bases|lista|listas|sistema|sistemas|registro|registros|contactos|directorio|padron|agenda|difusion|grupo|grupos|canal)\\b";
+const CIERRE_DE_PERSONA = "(?=\\s*$|\\s+(?:por favor|porfa|pf|x favor|pls|ya|ahora|gracias|tambien|de\\b(?! (?:una |la |esta |mis |mi |sus |su )?(?:dudas?|aqui|ahi|apuros?|encima|mi vista))))";
 const CONTACTO_SUSTANTIVO =
   "(?:mensaj\\w*|msjs?|whats(?:app)?s?|publicidad|promociones|promos?|ofertas|avisos|notificaciones|correos|emails?|mails|llamadas|spam|propaganda|mercadotecnia|marketing|boletines|newsletters?|cupones|informacion comercial)";
-const CONTACTO_VERBO = "(?:escrib|llam|contact|molest|textee|mensajee)\\w*";
-const ENVIAR = "(?:mand|envi)\\w*";
+/** Formas de MANDAR/ENVIAR en subjuntivo/imperativo/infinitivo/gerundio (nunca el preterito: «no me mandaron el mensaje» es una QUEJA, no una oposicion). */
+const ENVIAR = "(?:mand(?:en|e|es|ar|ando)|envi(?:en|e|es|ar|ando))";
+/** Verbos de contactar en subjuntivo/imperativo/infinitivo (nunca el preterito: «el repartidor nunca me llamo» es una queja). */
+const CONTACTO_VERBO_FORMAS = "(?:llam(?:en|e|es|ar|ando)|escrib(?:an|a|as|ir|iendo)|contact(?:en|e|es|ar|ando)|molest(?:en|e|es|ar|ando)|textee(?:n|s)?|mensajee(?:n|s)?)";
+
+const CONTACTO_VERBO = CONTACTO_VERBO_FORMAS;
 
 const re = (fuente: string): RegExp => new RegExp(fuente);
 
 // --- Raices ---------------------------------------------------------------------------------------------------------------------------------------
 export const RAICES_ARCO: readonly RaizArco[] = [
   // ===== CANCELACION / SUPRESION =====
-  { id: "cancelacion.suprimir-mis-datos", right: "cancelacion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\b${SUPRIMIR} ${FILL}${POSS} ${DATO_CONCRETO}\\b`) },
-  { id: "cancelacion.suprimir-mis-datos-generales", right: "cancelacion", fuerza: "fuerte", colaDePedido: "debilita", re: re(`\\b${SUPRIMIR} ${FILL}${POSS} ${DATO_GENERAL}\\b`) },
+  { id: "cancelacion.suprimir-mis-datos", right: "cancelacion", fuerza: "fuerte", colaDePedido: "anula", datosDePedido: "anula", re: re(`\\b${SUPRIMIR} ${FILL}${POSS} ${DATO_CONCRETO}\\b`) },
+  { id: "cancelacion.suprimir-mis-datos-generales", right: "cancelacion", fuerza: "fuerte", colaDePedido: "debilita", datosDePedido: "debilita", re: re(`\\b${SUPRIMIR} ${FILL}${POSS} ${DATO_GENERAL}\\b`) },
   { id: "cancelacion.mis-datos-y-luego-borren", right: "cancelacion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\b${POSS} ${DATO}\\b(?: (?:de su sistema|de su base de datos|de sus registros|por favor|porfa|ya|tambien|y ${POSS} ${DATO}))*(?: que(?: los| lo| las| la)?)? ${SUPRIMIR}\\b`) },
-  { id: "cancelacion.suprimir-el-dato-que-tienen", right: "cancelacion", fuerza: "fuerte", re: re(`\\b${SUPRIMIR} (?:el|la|los|las) ${DATO} que (?:tienen|tengan|guardan|guarden|registraron|registren)\\b`) },
+  { id: "cancelacion.dar-de-baja-mis-datos", right: "cancelacion", fuerza: "fuerte", re: re(`\\bde baja ${POSS} ${DATO}\\b`) },
+  { id: "cancelacion.suprimir-todo-lo-mio", right: "cancelacion", fuerza: "fuerte", re: re(`\\b${SUPRIMIR}(?: \\w+){0,3}? (?:todo lo mio|todo lo mia|lo mio|todo mio|nada mio|todos mis datos)\\b`) },
+  { id: "cancelacion.mi-dato-ya-no-este-en-su-base", right: "cancelacion", fuerza: "fuerte", re: re(`\\b${POSS} ${DATO}(?: \\w+){0,2}? (?:ya no|no) (?:este|aparezca|figure|siga|quede|este registrado|este guardado)\\b(?: \\w+){0,3}? (?:en|con) (?:su|sus|la|las|ustedes)\\b`) },
+  { id: "cancelacion.salirme-de-la-lista", right: "cancelacion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:salirme|salir|me salgo|apartarme)\\b(?: \\w+){0,2}? (?:de|del)(?: la| el| su| sus| las)? (?:lista|listas|grupo|base|sistema|promos|promociones|difusion|registro|registros)\\b`) },
+  { id: "cancelacion.ya-no-ser-cliente", right: "cancelacion", fuerza: "debil", re: re(`\\b(?:ya no|no) (?:quiero|deseo|quisiera) ser (?:su )?(?:cliente|clienta)\\b`) },
+  { id: "cancelacion.suprimir-el-dato-que-tienen", right: "cancelacion", fuerza: "fuerte", re: re(`\\b${SUPRIMIR} (?:el|la|los|las) ${DATO} (?:que (?:tienen|tengan|guardan|guarden|registraron|registren)|(?:con|desde) (?:el|la) que (?:les )?(?:escribo|hablo|llamo|contacto|me comunico))\\b`) },
   { id: "cancelacion.suprimir-lo-que-tengan-de-mi", right: "cancelacion", fuerza: "fuerte", re: re(`\\b${SUPRIMIR}(?: \\w+){0,4}? que (?:tengan|tienen|guardan|guardaron|hayan guardado|han guardado|saben|sepan|conserven|almacenan)\\b(?: \\w+){0,4}? (?:de mi\\b${NO_ES_PEDIDO}|mio|mia|mios|mias|sobre mi\\b)`) },
   { id: "cancelacion.suprimir-mi-cuenta", right: "cancelacion", fuerza: "fuerte", re: re(`\\b(?:elimin|suprim|destru)\\w* ${FILL}mi cuenta\\b`) },
   { id: "cancelacion.borrar-mi-cuenta-ambiguo", right: "cancelacion", fuerza: "debil", re: re(`\\b(?:borr|cancel)\\w* ${FILL}mi cuenta\\b`) },
@@ -92,36 +109,44 @@ export const RAICES_ARCO: readonly RaizArco[] = [
   { id: "cancelacion.sacarme-yo", right: "cancelacion", fuerza: "fuerte", contacto: true, colaDePedido: "anula", re: re(`\\b(?:${SACAR}me|olvid\\w*me)\\b${CIERRE_DE_PERSONA}`) },
   { id: "cancelacion.que-me-borren", right: "cancelacion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\bque me (?:${SACAR}|olvid\\w*)\\b${CIERRE_DE_PERSONA}`) },
   { id: "cancelacion.me-pueden-borrar", right: "cancelacion", fuerza: "fuerte", re: re(`\\bme (?:pueden|puede|podrian|podria)(?: \\w+)? (?:borrar|eliminar|sacar|quitar|suprimir|dar de baja)\\b${CIERRE_DE_PERSONA}`) },
-  { id: "cancelacion.sacarme-de-la-lista", right: "cancelacion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:${SACAR}me|me ${SACAR})\\b ${FILL}(?:de|en) ${DESTINO_LISTA}`) },
+  { id: "cancelacion.sacarme-de-la-lista", right: "cancelacion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:${SACAR}me|me ${SACAR})\\b ${FILL}(?:(?:de|en) ${DESTINO_LISTA}|del (?:grupo|canal|listado|directorio|padron)\\b)`) },
   { id: "cancelacion.no-quiero-estar-en-su-sistema", right: "cancelacion", fuerza: "fuerte", re: re(`\\b(?:no|ya no) (?:quiero|deseo|quisiera|pienso) (?:seguir |continuar )?(?:(?:estar|aparecer|figurar|salir|seguir|permanecer|quedar)\\w*|que me (?:tengan|sigan|mantengan|dejen))\\b(?: \\w+){0,4}? (?:en|de) (?:su|sus|la|las) (?:base|bases|lista|listas|sistema|sistemas|registro|registros|contactos|padron)\\b`) },
   { id: "cancelacion.darme-de-baja", right: "cancelacion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:darme|darse|denme|dame|dar me|me den|me dan|me da|bajame|bajenme) de baja\\b(?! (?:la|el|las|los|un|una|esa|ese|esta|este|mi pedido)\\b)|\\bquiero (?:la|mi) baja\\b`) },
   { id: "cancelacion.olvidense-de-mi", right: "cancelacion", fuerza: "fuerte", contacto: true, re: re(`\\bolvid\\w* (?:se |nse )?de mi\\b${NO_ES_PEDIDO}`) },
-  { id: "cancelacion.no-guarden-mis-datos", right: "cancelacion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\b(?:no|ya no|nunca) (?:(?:quiero|deseo|quisiera|autorizo|permito) que )?(?:guarden|tengan|conserven|almacenen|registren|conozcan|archiven|sigan (?:teniendo|guardando|conservando))\\b(?: \\w+){0,2}? ${POSS} ${DATO}\\b`) },
+  { id: "cancelacion.no-guarden-mis-datos", right: "cancelacion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\b(?:no|ya no|nunca) (?:(?:quiero|deseo|quisiera|autorizo|permito) que )?(?:guarden|tengan|conserven|almacenen|registren|conozcan|archiven|sigan (?:teniendo|guardando|conservando))\\b(?: \\w+){0,2}? (?:${POSS} ${DATO}|nada (?:mio|mia|de mi)|todo lo mio)\\b`) },
   { id: "cancelacion.derecho-por-nombre", right: "cancelacion", fuerza: "fuerte", re: re(`\\bderecho (?:de |a la |al |a )?(?:cancelacion|supresion|olvido)\\b|\\b(?:supresion|cancelacion|suprimir) (?:de |a |sobre )?(?:mis |mi |los |la )?(?:datos|informacion|info)\\b|\\bcancelar mis datos\\b`) },
 
   // ===== OPOSICION / REVOCACION =====
-  { id: "oposicion.frase-legal-con-objeto", right: "oposicion", fuerza: "fuerte", re: re(`(?=.*\\b(?:datos|informacion|info|numero|telefono|tratamiento|uso|publicidad|promociones|mensajes|consentimiento|contacto|mercadotecnia)\\b)\\b(?:me opongo|oponerme|opongo|oposicion|revoco|revocar|revocacion|retiro (?:mi )?(?:consentimiento|autorizacion|permiso)|retirar (?:mi )?(?:consentimiento|autorizacion|permiso)|no consiento que (?:usen|utilicen|traten|compartan|guarden|tengan))\\b`) },
+  { id: "oposicion.frase-legal-con-objeto", right: "oposicion", fuerza: "fuerte", re: re(`(?=.*\\b(?:datos|informacion|info|numero|telefono|tratamiento|uso|publicidad|promociones|mensajes|consentimiento|contacto|contact\\w*|mercadotecnia)\\b)\\b(?:me opongo|oponerme|opongo|oposicion|revoco|revocar|revocacion|retiro (?:mi )?(?:consentimiento|autorizacion|permiso)|retirar (?:mi )?(?:consentimiento|autorizacion|permiso)|no consiento que (?:usen|utilicen|traten|compartan|guarden|tengan))\\b`) },
   { id: "oposicion.frase-legal-sin-objeto", right: "oposicion", fuerza: "debil", re: re(`^(?:(?:\\w+ ){0,2})?(?:me opongo|oponerme|oposicion|revoco|revocar|revocacion|retiro mi consentimiento)(?: \\w+){0,1}$`) },
   { id: "oposicion.no-autorizo-uso", right: "oposicion", fuerza: "fuerte", re: re(`\\bno (?:les )?(?:autorizo|permito|consiento|doy|di|otorgo)\\b(?: \\w+){0,2}? (?:permiso|autorizacion|consentimiento|que)\\b(?: \\w+){0,4}? (?:${POSS} ${DATO}|mis datos)\\b|\\bno autorizo\\b(?: \\w+){0,4}? ${POSS} ${DATO}\\b`) },
   { id: "oposicion.no-usen-mis-datos", right: "oposicion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\bno (?:\\w+ ){0,2}?(?:usen|utilicen|traten|compartan|vendan|cedan|transfieran|difundan|publiquen|ocupen|manejen)\\b(?: \\w+){0,3}? ${POSS} ${DATO}\\b`) },
   { id: "oposicion.dejen-de-usar-mis-datos", right: "oposicion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\bdejen de (?:usar|utilizar|tratar|compartir|guardar|ocupar|vender|tener|manejar)\\b(?: \\w+){0,3}? ${POSS} ${DATO}\\b`) },
   { id: "oposicion.derecho-por-nombre", right: "oposicion", fuerza: "fuerte", re: re(`\\bderecho (?:de |a la |al |a )?(?:oposicion|revocacion)\\b|\\b(?:oposicion|revocacion) (?:de |a |sobre |al )?(?:mis |mi |los |la )?(?:datos|informacion|info|tratamiento)\\b`) },
-  { id: "oposicion.no-escribir-mas", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\bno me ${CONTACTO_VERBO} (?:mas(?! (?:tarde|temprano|rato|despues|adelante|fuerte|bajo|bajito|alto|noche|luego))|nunca|jamas)\\b`) },
-  { id: "oposicion.no-mandar-contacto-sustantivo", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:ya )?no (?:me )?(?:vuelvan a |sigan |dejen de |quiero que me (?:sigan |vuelvan a )?|deseo que me (?:sigan |vuelvan a )?)?${ENVIAR}\\b(?: \\w+){0,2}? ${CONTACTO_SUSTANTIVO}\\b`) },
-  { id: "oposicion.no-escribir-con-marca", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:ya no|no mas|nunca) (?:me )?(?:vuelvan a |sigan |quiero que me (?:sigan |vuelvan a )?)?${CONTACTO_VERBO}\\b|\\bno (?:me )?vuelvan a ${CONTACTO_VERBO}\\b|\\bno (?:quiero|deseo|quisiera) que me (?:sigan |vuelvan a )?${CONTACTO_VERBO}\\b|\\bno (?:quiero|deseo) que me (?:sigan|vuelvan a) ${ENVIAR}\\b`) },
-  { id: "oposicion.no-escribir-sin-marca", right: "oposicion", fuerza: "debil", contacto: true, re: re(`\\bno me (?:llamen|escriban|contacten|molesten|hablen)\\b(?! (?:cuando|al |a la |para |que |mas (?:tarde|temprano|rato|despues))|.* (?:cuando|al llegar|a la puerta|timbre|repartidor|toquen|esperen|afuera))`) },
-  { id: "oposicion.dejen-de-contactarme", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\bdejen de (?:(?:escrib|llam|contact|molest|hablar|textee|mensajee)\\w*me\\b|(?:mandarme|enviarme|mandar|enviar)(?:me)?\\b(?: \\w+){0,2}? ${CONTACTO_SUSTANTIVO}\\b)`) },
-  { id: "oposicion.no-quiero-recibir", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:ya )?no (?:quiero|deseo|quisiera|autorizo) (?:recibir|mas|seguir recibiendo|que me lleguen)\\b(?: \\w+){0,3}? ${CONTACTO_SUSTANTIVO}\\b|\\bya no quiero ${CONTACTO_SUSTANTIVO}\\b`) },
-  { id: "oposicion.que-no-me-contacten", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:ya )?no (?:quiero|deseo|quisiera) que me (?:contacten|llamen|escriban|molesten)\\b`) },
-  { id: "oposicion.desuscribirme", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\b(?:desuscrib|desubscrib|desapunt)\\w*|\\bunsubscribe\\b|\\b(?:cancel|desactiv|quit)\\w*\\b(?: \\w+){0,4}? (?:suscripcion|promociones|publicidad|mensajes|avisos|notificaciones|lista de difusion|boletin|newsletter|mercadotecnia)\\b`) },
+  { id: "oposicion.no-escribir-mas", canalAlterno: true, arbitrable: true, right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\bno me ${CONTACTO_VERBO} (?:mas(?! (?:tarde|temprano|rato|despues|adelante|fuerte|bajo|bajito|alto|noche|luego))|nunca|jamas)\\b`) },
+  { id: "oposicion.basta-de-mensajes", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\b(?:ya )?basta de ${CONTACTO_SUSTANTIVO}\\b`) },
+  { id: "oposicion.no-vuelvan-a-mandar-nada", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\bno (?:me )?(?:vuelvan a|sigan|vayan a) (?:mand|envi)(?:ar|ando|arme|iarme)\\b(?: me)?(?: \\w+){0,1}? (?:nada|nunca|${CONTACTO_SUSTANTIVO})\\b|\\bno (?:me )?(?:mand|envi)(?:en|es|e)(?:me)? (?:nada|nunca mas)\\b`) },
+  { id: "oposicion.ya-no-me-las-manden", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\b(?:promociones|promos|ofertas|publicidad|mensajes|cupones)\\b.{0,40}\\bya no me (?:las |los )?(?:manden|envien)\\b`) },
+  { id: "oposicion.no-me-agreguen", right: "oposicion", fuerza: "fuerte", contacto: true, re: re(`\\bno me (?:agreguen|anoten|incluyan|registren|suscriban|den de alta)\\b(?: \\w+){0,3}? (?:lista|listas|grupo|grupos|difusion|promociones|promos|suscripcion|boletin|base)\\b(?! de espera)`) },
+  { id: "oposicion.no-autorizo-publicidad", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\bno (?:autorizo|acepto|permito|consiento|deseo|quiero)\\b(?: \\w+){0,2}? (?:publicidad|promociones|mercadotecnia|propaganda|spam)\\b|\\bno mas (?:publicidad|promociones|promos|ofertas|mensajes|spam)\\b|\\bsin (?:publicidad|promociones|spam)\\b`) },
+  { id: "oposicion.no-mandar-contacto-sustantivo", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\b(?:ya )?no (?:me )?(?:vuelvan a |sigan |dejen de |quiero que me (?:sigan |vuelvan a )?|deseo que me (?:sigan |vuelvan a )?)?${ENVIAR}\\b(?: \\w+){0,2}? ${CONTACTO_SUSTANTIVO}\\b`) },
+  { id: "oposicion.no-escribir-con-marca", canalAlterno: true, arbitrable: true, right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\b(?:ya no|no mas|nunca) (?:me )?(?:vuelvan a |sigan |quiero que me (?:sigan |vuelvan a )?)?${CONTACTO_VERBO}\\b|\\bno (?:me )?vuelvan a ${CONTACTO_VERBO}\\b|\\bno (?:quiero|deseo|quisiera) que me (?:sigan |vuelvan a )?${CONTACTO_VERBO}\\b|\\bno (?:quiero|deseo) que me (?:sigan|vuelvan a) ${ENVIAR}\\b`) },
+  { id: "oposicion.no-escribir-sin-marca", canalAlterno: true, right: "oposicion", fuerza: "debil", contacto: true, re: re(`\\bno me (?:llamen|escriban|contacten|molesten|hablen)\\b(?! (?:cuando|al |a la |para |que |mas (?:tarde|temprano|rato|despues))|.* (?:cuando|al llegar|a la puerta|timbre|repartidor|toquen|esperen|afuera))`) },
+  { id: "oposicion.dejen-de-contactarme", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\bdejen de (?:(?:escrib|llam|contact|molest|hablar|textee|mensajee)\\w*me\\b|(?:mandarme|enviarme|mandar|enviar)(?:me)?\\b(?: \\w+){0,2}? ${CONTACTO_SUSTANTIVO}\\b)`) },
+  { id: "oposicion.no-quiero-recibir", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\b(?:ya )?no (?:quiero|deseo|quisiera|autorizo) (?:recibir|mas|seguir recibiendo|que me lleguen)\\b(?: \\w+){0,3}? ${CONTACTO_SUSTANTIVO}\\b|\\bya no quiero (?:sus |las |recibir )?${CONTACTO_SUSTANTIVO}\\b|\\b(?:ya )?no (?:quiero|deseo) recibir nada\\b(?: de| mas)?`) },
+  { id: "oposicion.que-no-me-contacten", canalAlterno: true, right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\b(?:ya )?no (?:quiero|deseo|quisiera) que me (?:contacten|llamen|escriban|molesten)\\b`) },
+  { id: "oposicion.desuscribirme", right: "oposicion", fuerza: "fuerte", contacto: true, inequivoca: true, re: re(`\\b(?:desuscrib|desubscrib|desapunt)\\w*|\\bunsubscribe\\b|\\b(?:cancel|desactiv|quit)\\w*\\b(?: \\w+){0,4}? (?:suscripcion|promociones|publicidad|mensajes|avisos|notificaciones|lista de difusion|boletin|newsletter|mercadotecnia)\\b`) },
 
   // ===== ACCESO =====
   { id: "acceso.que-datos-tienen-de-mi", right: "acceso", fuerza: "fuerte", re: re(`\\b(?:que|cuales|cuantos) (?:datos|informacion|info)(?: personales| personal)? (?:mios |mias |mia |mio )?(?:tienen|tiene|guardan|guarda|manejan|almacenan|registran|poseen|han guardado|tengan|conservan|recopilan|recabaron|hay)\\b(?: \\w+){0,3}? (?:de|sobre) (?:mi\\b${NO_ES_PEDIDO}|mi persona)|\\b(?:que )?(?:datos|informacion|info) (?:mios|mias|mia|mio|personal(?:es)?) (?:tienen|guardan|manejan|almacenan)\\b|\\b(?:que|cuales|cuantos) (?:datos|informacion|info) (?:personales )?(?:tienen|guardan)\\b(?: \\w+){0,2}? (?:mios|mias)\\b`) },
   { id: "acceso.que-saben-de-mi", right: "acceso", fuerza: "fuerte", re: re(`\\b(?:que|cuanto) (?:es lo que )?(?:saben|guardan|han guardado|almacenan|registraron|conocen) (?:de|sobre) mi\\b${NO_ES_PEDIDO}`) },
   { id: "acceso.que-tienen-de-mi-sin-sustantivo", right: "acceso", fuerza: "debil", re: re(`\\bque (?:es lo que )?tienen (?:de|sobre) mi\\b${NO_ES_PEDIDO}`) },
-  { id: "acceso.pedir-mis-datos", right: "acceso", fuerza: "fuerte", re: re(`\\b(?:quiero|quisiera|necesito|solicito|deseo|pido)\\b(?: \\w+){0,3}? (?:mis datos|mis datos personales|mi informacion personal|una copia de (?:mis datos|mi informacion))\\b|\\b(?:acceso|acceder|conocer|consultar|saber|copia|obtener|entregu\\w*|mand\\w*|envi\\w*|pas(?:en|ame)\\w*|muestr\\w*|denme|dame|ver)\\b(?: \\w+){0,3}? (?:mis datos(?: personales)?|mi informacion personal|toda mi informacion|toda mi info)\\b`) },
+  { id: "acceso.pedir-mis-datos", right: "acceso", fuerza: "fuerte", datosDePedido: "anula", re: re(`\\b(?:quiero|quisiera|necesito|solicito|deseo|pido)\\b(?: \\w+){0,3}? (?:mis datos|mis datos personales|mi informacion personal|una copia de (?:mis datos|mi informacion))\\b|\\b(?:acceso|acceder|conocer|consultar|saber|copia|obtener|entregu\\w*|mand\\w*|envi\\w*|pas(?:en|ame)\\w*|muestr\\w*|denme|dame|ver)\\b(?: \\w+){0,3}? (?:mis datos(?: personales)?|mi informacion personal|toda mi informacion|toda mi info)\\b`) },
   { id: "acceso.todo-lo-que-tengan-de-mi", right: "acceso", fuerza: "fuerte", re: re(`\\b(?:mand\\w*|envi\\w*|pas(?:en|ame)\\w*|muestr\\w*|entreg\\w*|denme|dame|quiero|necesito|saber|ver|conocer)\\b(?: \\w+){0,3}? (?:todo )?lo que (?:tengan|tienen|guardan|saben|hayan guardado|han guardado)\\b(?: \\w+){0,3}? (?:de mi\\b${NO_ES_PEDIDO}|mio|mia|sobre mi)`) },
   { id: "acceso.mis-datos-que-tienen", right: "acceso", fuerza: "fuerte", re: re(`\\b(?:cuales|cuantos) (?:son )?${POSS} (?:datos|informacion|info)(?: personales)? que (?:tienen|guardan|manejan|almacenan|registran)\\b|\\b${POSS} (?:datos|informacion) (?:personales )?que (?:tienen|guardan|manejan|almacenan) (?:de mi|sobre mi)?`) },
+  { id: "acceso.a-quien-pasan-mis-datos", right: "acceso", fuerza: "fuerte", re: re(`\\ba quien(?:es)? (?:le |les |se )?(?:pasan|pasaron|dan|dieron|entregan|entregaron|ceden|cedieron|venden|vendieron|comparten|compartieron|mandan|enviaron|envian) ${POSS} (?:datos|informacion|info|numero|telefono|correo)\\b|\\b(?:venden|vendieron|cedieron|comparten|compartieron) ${POSS} (?:datos|informacion|info|numero|telefono)\\b(?: con (?:alguien|terceros|otras empresas|otros))?|\\bcomparten ${POSS} (?:datos|informacion|info|numero) con\\b`) },
+  { id: "acceso.cuanto-tiempo-guardan", right: "acceso", fuerza: "fuerte", re: re(`\\bcuanto tiempo (?:guardan|conservan|tienen|mantienen|van a guardar|van a conservar|almacenan) ${POSS} (?:datos|informacion|info|numero|telefono)\\b`) },
+  { id: "acceso.para-que-quieren-mis-datos", right: "acceso", fuerza: "fuerte", re: re(`\\bpara que (?:quieren|necesitan|ocupan|piden|requieren) ${POSS} (?:datos|informacion|info|numero|telefono|correo)\\b|\\bque hacen con (?:la |el |los )?(?:informacion|datos|info)(?: que)?(?: les)?\\b(?: doy| damos| da| dan)?`) },
   { id: "acceso.por-que-tienen-mi-dato", right: "acceso", fuerza: "fuerte", re: re(`\\bpor que (?:tienen|guardan|conservan|usan|manejan|almacenan|cuentan con|conocen) ${POSS} ${DATO_CONCRETO}\\b|\\bcomo (?:consiguieron|obtuvieron|supieron|lograron|encontraron|sacaron) ${POSS} ${DATO}\\b|\\bquien(?:es)? (?:les|le) (?:dio|dieron|paso|pasaron|dijo) ${POSS} ${DATO}\\b|\\bde donde (?:sacaron|obtuvieron|consiguieron) ${POSS} ${DATO}\\b`) },
   { id: "acceso.con-quien-comparten", right: "acceso", fuerza: "fuerte", re: re(`\\b(?:con|a) quien(?:es)? (?:comparten|compartieron|han compartido|vendieron|venden|ceden|cedieron|comparte)\\b(?: \\w+){0,3}? ${POSS}\\b`) },
   { id: "acceso.que-hacen-con-mis-datos", right: "acceso", fuerza: "fuerte", re: re(`\\b(?:que|para que|como) (?:hacen|hicieron|usan|utilizan|manejan|tratan|ocupan) (?:con )?${POSS} (?:datos|informacion|info|numero|telefono)\\b`) },
@@ -129,8 +154,9 @@ export const RAICES_ARCO: readonly RaizArco[] = [
   { id: "acceso.derecho-por-nombre", right: "acceso", fuerza: "fuerte", re: re(`\\bderecho (?:de |a la |al |a )?acceso\\b|\\bacceso (?:a |de |sobre )?(?:mis |mi |los |la )?(?:datos|informacion|info)\\b`) },
 
   // ===== RECTIFICACION =====
-  { id: "rectificacion.corregir-mis-datos", right: "rectificacion", fuerza: "fuerte", colaDePedido: "anula", re: re(`\\b(?:corrij|corrig|correg|rectific|actualic|actualiz|modific|modifiqu|cambi|arregl)\\w* ${FILL}${POSS} (?:datos(?: personales)?|informacion personal|nombre|apellidos?|correo|email|mail|telefono|numero de telefono|celular)\\b`) },
+  { id: "rectificacion.corregir-mis-datos", right: "rectificacion", fuerza: "fuerte", colaDePedido: "anula", datosDePedido: "anula", re: re(`\\b(?:corrij|corrig|correg|rectific|actualic|actualiz|modific|modifiqu|cambi|arregl)\\w* ${FILL}${POSS} (?:datos(?: personales)?|informacion personal|nombre|apellidos?|correo|email|mail|telefono|numero de telefono|celular)\\b`) },
   { id: "rectificacion.mi-dato-esta-mal", right: "rectificacion", fuerza: "fuerte", re: re(`\\b${POSS} (?:nombre|apellidos?|correo|email|mail|datos|telefono|celular|numero de telefono)\\b(?: \\w+){0,3}? (?:esta|estan|tienen|aparece|aparecen|salio|salen|quedo|quedaron|registraron|capturaron)\\b(?: \\w+){0,2}? (?:mal|incorrect\\w*|equivocad\\w*|erroneo\\w*)\\b|\\btienen (?:mal|incorrecto|equivocado)(?: escrito)?\\b(?: \\w+){0,2}? ${POSS} (?:nombre|apellidos?|correo|email|datos|telefono|celular)\\b`) },
+  { id: "rectificacion.mi-dato-es-otro-actualicen", right: "rectificacion", fuerza: "fuerte", colaDePedido: "anula", re: re(`^(?=.*\\b(?:actualic|cambien|registren|corrij|corrig|modifiqu|rectifiqu)\\w*)(?=.*\\b${POSS} (?:numero|telefono|celular|correo|email|nombre|apellidos?)(?: de \\w+)? (?:es otro|es diferente|cambio|ya no es|es el)\\b)`) },
   { id: "rectificacion.rectificar-datos", right: "rectificacion", fuerza: "fuerte", re: re(`\\b(?:rectificar|rectificacion|rectifiquen|rectifico)\\b(?: \\w+){0,3}? (?:datos|informacion|info|mis|mi)\\b|\\bderecho (?:de |a la |al |a )?(?:rectificacion|correccion)\\b|\\b(?:rectificacion|correccion) de (?:mis )?datos\\b`) },
   { id: "rectificacion.rectificar-sin-objeto", right: "rectificacion", fuerza: "debil", re: re(`^(?:(?:\\w+ ){0,3})?(?:rectificar|rectificacion)(?: \\w+){0,1}$`) },
 
@@ -148,6 +174,12 @@ const THIRD_PARTY_RE =
 /** Tras el objeto viene "del pedido / de la cuenta / de la factura...": habla del pedido, no de los datos del titular. */
 const COLA_DE_PEDIDO = /^\s*(?:y\s+)?(?:(?:de|del|en|a|al|para|por) (?:la |el |mi |esta |esa |este |ese |su )?(?:pedido|orden|ordenes|carrito|comanda|ticket|factura|entrega|envio|reserva|reservacion|reservaciones|compra|cuenta|mesa)\b)/;
 
+/** El mensaje habla de dar o cambiar datos PARA UN PEDIDO O FACTURA (no de ejercer un derecho): «te mando mis datos», «mis datos de envio/facturacion», «para la factura», «el nuevo es...», «lo escribieron mal en la bolsa». */
+const DATOS_DE_PEDIDO =
+  /\bmis datos (?:de|del|para|fiscales)\b|\bdatos (?:fiscales|de facturacion|de envio|de entrega|de la factura|del pedido|de pago|de contacto para)\b|\bpara (?:el |la |mi |mis |que )?(?:pedido|factura|facturar|facturen|envio|entrega|orden|pago|reparto)\b|\b(?:te|le|les) (?:mando|paso|doy|envio|dejo|comparto)\b.{0,12}\bmis datos\b|\banota\w* mis datos\b|\b(?:mis datos|mi info|mi informacion) (?:son|es)\b|\brfc\b|\b(?:el|la) (?:nuevo|nueva|bueno|buena|correcto|correcta|actual) (?:es|son)\b|\bahora es\b|\ben su lugar\b|\b(?:bolsa|ticket|recibo|comanda|empaque|etiqueta|caja|vaso|envase)\b/;
+
+const CANAL_ALTERNO = /\b(?:mejor|solo|solamente|nada mas|prefiero|en vez de|en lugar de|toquen|toque|timbre|cuando lleguen|al llegar|por whatsapp|por mensaje|por escrito)\b/;
+
 export type ArcoIntent =
   /** Peticion fuerte de un derecho concreto: se registra (con CONFIRMO). `contacto` = ademas frena el contacto/publicidad (el webhook revoca el marketing). */
   | { readonly kind: "request"; readonly right: DataRightType; readonly contacto: boolean }
@@ -163,12 +195,37 @@ interface Coincidencia {
   readonly fuerza: FuerzaArco;
 }
 
+/** Largo maximo que se evalua de una vez: las raices con ventanas de palabras cuestan ~cuadratico; un texto mas largo se evalua por VENTANAS DESLIZANTES (traslape de 300). */
+const VENTANA = 1200;
+const PASO = 900;
+
 function coincidencias(normalizado: string): Coincidencia[] {
+  if (normalizado.length <= VENTANA) return coincidenciasEnTrozo(normalizado);
+  const fuerzas = new Map<string, Coincidencia>();
+  for (let i = 0; i < normalizado.length; i += PASO) {
+    // Los cortes caen en espacios: no se parte una palabra.
+    let ini = i;
+    if (ini > 0) ini = normalizado.indexOf(" ", ini) + 1 || normalizado.length;
+    for (const c of coincidenciasEnTrozo(normalizado.slice(ini, ini + VENTANA))) {
+      const previa = fuerzas.get(c.raiz.id);
+      if (!previa || (previa.fuerza === "debil" && c.fuerza === "fuerte")) fuerzas.set(c.raiz.id, c);
+    }
+    if (ini + VENTANA >= normalizado.length) break;
+  }
+  return [...fuerzas.values()];
+}
+
+function coincidenciasEnTrozo(normalizado: string): Coincidencia[] {
   const salida: Coincidencia[] = [];
   for (const raiz of RAICES_ARCO) {
     const m = raiz.re.exec(normalizado);
     if (!m) continue;
     let fuerza = raiz.fuerza;
+    if (raiz.canalAlterno && CANAL_ALTERNO.test(normalizado)) fuerza = "debil";
+    if (raiz.datosDePedido && DATOS_DE_PEDIDO.test(normalizado)) {
+      if (raiz.datosDePedido === "anula") continue;
+      fuerza = "debil";
+    }
     if (raiz.colaDePedido) {
       const cola = normalizado.slice(m.index + m[0].length);
       if (COLA_DE_PEDIDO.test(cola)) {
@@ -192,11 +249,8 @@ export function raicesQueCoinciden(message: string): readonly string[] {
  */
 export function detectArcoIntent(message: string): ArcoIntent | null {
   if (typeof message !== "string") return null;
-  const completo = normalizarParaArco(message);
-  if (!completo) return null;
-  // Las raices con ventanas de palabras cuestan ~cuadratico en el largo: los mensajes reales ya vienen acotados (WhatsApp 1000 caracteres, voz 2000); si uno trae mas,
-  // se conservan el principio y el final (donde se dicen las peticiones) en vez de arriesgar tiempo.
-  const normalizado = completo.length > 2000 ? `${completo.slice(0, 1000)} ${completo.slice(-1000)}` : completo;
+  const normalizado = normalizarParaArco(message);
+  if (!normalizado) return null;
 
   // Unificado con el webhook: la baja exacta (BAJA, STOP, "no mas mensajes"...) es oposicion/revocacion de contacto.
   if (detectarOptOut(message) === "baja") return { kind: "request", right: "oposicion", contacto: true };
@@ -219,8 +273,20 @@ export function detectArcoIntent(message: string): ArcoIntent | null {
 
 /** `true` si el mensaje pide frenar el contacto/publicidad (BAJA, "ya no me escriban", "olvidense de mi"...): el webhook revoca ademas el marketing de ese telefono. */
 export function esOposicionDeContacto(message: string): boolean {
-  const intent = detectArcoIntent(message);
-  return intent !== null && intent.kind === "request" && intent.contacto;
+  return esOposicionDeContactoInequivoca(message);
+}
+
+/**
+ * Oposicion al contacto INEQUIVOCA: la baja exacta del webhook (BAJA, STOP...) o una raiz marcada `inequivoca` con fuerza fuerte («no me manden mas mensajes», «dejen de llamarme»,
+ * «quiero desuscribirme», «ya basta de mensajes»). Es lo UNICO que revoca el consentimiento de marketing en el webhook: una revocacion por falso positivo seria silenciosa y dificil
+ * de revertir, asi que «olvidense de mi», «sacame de la lista» o «no me llamen» (ambiguas) registran la solicitud ARCO pero NO tocan el marketing.
+ */
+export function esOposicionDeContactoInequivoca(message: string): boolean {
+  if (typeof message !== "string") return false;
+  if (detectarOptOut(message) === "baja") return true;
+  const normalizado = normalizarParaArco(message);
+  if (!normalizado || THIRD_PARTY_RE.test(normalizado)) return false;
+  return coincidencias(normalizado).some((c) => c.fuerza === "fuerte" && c.raiz.inequivoca === true);
 }
 
 // ===================================================================================================================================================
@@ -262,8 +328,10 @@ const SINONIMOS_LAXOS: ReadonlyArray<{ readonly right: DataRightType; readonly r
   { right: "oposicion", re: /\b(?:opos\w*|oponerme|oponer|opongo|revocar|revoco|revocacion|dejar de recibir|no manden|no escriban|no llamen|no contacten|cuarta|cuarto|cuatro|4)\b/ },
 ];
 const AMBIGUA_RE = /^(?:todos|todas|los cuatro|las cuatro|cualquiera|ninguno|ninguna|no se|nose|no estoy seguro|otra cosa|ayuda|una persona|un humano|alguien|un asesor|hablar con (?:una |un )?(?:persona|humano|alguien|asesor|encargado|gerente)|no entiendo|cual|cuales|cualquier)(?: .*)?$/;
-/** Una sola cifra o numero escrito (la eleccion «2», «la 3», «opcion 4»), nunca dentro de una frase de pedido («2 tacos»). */
-const SOLO_NUMERO = /^(?:[1-4]|uno|dos|tres|cuatro)$/;
+/** Palabras que pueden acompanar a una eleccion sin cambiar su sentido («borrar mis datos», «la de cancelacion y acceso»): lo que sobre es OTRA cosa («cancelar mi pedido», «eliminar el refresco»). */
+const ACOMPANANTES_DE_ELECCION = new Set(["datos", "dato", "informacion", "info", "personal", "personales", "mis", "mi", "numero", "telefono", "todo", "todos", "ya", "tambien", "y", "e", "que", "se", "me", "los", "las", "lo", "porfa", "favor", "derecho", "derechos", "arco", "tienen", "tengan", "guardan", "saber", "ver", "conocer"]);
+const NUMERO_O_ORDINAL = /^(?:[1-4]|uno|dos|tres|cuatro|primera|primero|segunda|segundo|tercera|tercero|cuarta|cuarto)$/;
+const NUMEROS_A_DERECHO: Readonly<Record<string, DataRightType>> = { "1": "acceso", uno: "acceso", primera: "acceso", primero: "acceso", "2": "rectificacion", dos: "rectificacion", segunda: "rectificacion", segundo: "rectificacion", "3": "cancelacion", tres: "cancelacion", tercera: "cancelacion", tercero: "cancelacion", "4": "oposicion", cuatro: "oposicion", cuarta: "oposicion", cuarto: "oposicion" };
 
 /** Interpreta la respuesta del cliente a un menu ARCO. `null` = no es una eleccion (sigue el flujo normal). */
 export function detectarEleccionDeMenu(message: string, estado: EstadoMenuArco): EleccionDeMenu | null {
@@ -274,19 +342,26 @@ export function detectarEleccionDeMenu(message: string, estado: EstadoMenuArco):
   const derechos = new Set<DataRightType>();
   if (estado === "numerado") {
     // El cliente esta en el tramite, pero un mensaje largo es otra cosa (un pedido): la eleccion es corta.
-    if (sinRelleno === "" || sinRelleno.split(" ").length > 4) return null;
-    for (const { right, re } of SINONIMOS_LAXOS) {
-      const hit = re.exec(sinRelleno);
-      if (!hit) continue;
-      // Los numeros solo valen SOLOS ("2", "la 3"); «2 tacos» no es la opcion 2.
-      if (SOLO_NUMERO.test(hit[0]) && !SOLO_NUMERO.test(sinRelleno)) continue;
-      derechos.add(right);
+    if (sinRelleno === "" || sinRelleno.split(" ").length > 6) return null;
+    const palabras = sinRelleno.split(" ");
+    // Solo numeros/ordinales («2», «la 1 y la 3», «primera y tercera»): varios derechos a la vez. «2 tacos» NO es la opcion 2.
+    if (palabras.every((w) => NUMERO_O_ORDINAL.test(w) || w === "y" || w === "e")) {
+      for (const w of palabras) if (NUMEROS_A_DERECHO[w]) derechos.add(NUMEROS_A_DERECHO[w]!);
+    } else {
+      for (const { right, re } of SINONIMOS_LAXOS) {
+        const hit = re.exec(sinRelleno);
+        if (!hit || NUMERO_O_ORDINAL.test(hit[0])) continue;
+        derechos.add(right);
+      }
+      // Lo que sobra tras quitar la palabra elegida y los acompanantes debe ser nada: «cancelar mi pedido» y «eliminar el refresco» NO son la cancelacion de datos.
+      const resto = palabras.filter((w) => !ACOMPANANTES_DE_ELECCION.has(w) && !SINONIMOS_LAXOS.some(({ re }) => new RegExp(`^(?:${re.source})$`).test(w)) && !/^(?:acceso|rectificacion|cancelacion|oposicion|supresion)$/.test(w));
+      if (resto.length > 0) derechos.clear();
     }
     if (derechos.size === 0) return AMBIGUA_RE.test(sinRelleno) || AMBIGUA_RE.test(normalizado) ? { tipo: "ambigua" } : null;
   } else {
     const conDatos = CON_MIS_DATOS.test(normalizado);
     for (const { right, re } of NOMBRES_ESTRICTOS) if (re.test(sinRelleno)) derechos.add(right);
-    if (conDatos) for (const { right, re } of SINONIMOS_LAXOS) if (!SOLO_NUMERO.test(re.exec(normalizado)?.[0] ?? "") && re.test(normalizado)) derechos.add(right);
+    if (conDatos) for (const { right, re } of SINONIMOS_LAXOS) { const hit = re.exec(normalizado); if (hit && !NUMERO_O_ORDINAL.test(hit[0])) derechos.add(right); }
     if (derechos.size === 0) return null;
   }
   return { tipo: "derechos", derechos: PRIORIDAD.filter((r) => derechos.has(r)) };

@@ -146,8 +146,6 @@ describe("unificado con la baja del webhook (detectarOptOut)", () => {
     "ya no me escriban",
     "no me manden publicidad",
     "dejen de mandarme promociones",
-    "olvidense de mi",
-    "saquenme de sus listas",
     "quiero desuscribirme",
     "ya no me llamen",
     "no quiero que me contacten",
@@ -155,7 +153,7 @@ describe("unificado con la baja del webhook (detectarOptOut)", () => {
     expect(detectarOptOut(frase)).toBeNull();
     expect(esOposicionDeContacto(frase)).toBe(true);
   });
-  it.each(["borren mis datos", "quiero acceso a mis datos", "corrijan mi nombre", "no me manden salsa", "no me llamen cuando lleguen, toquen el timbre"])("«%s» NO revoca el marketing por contacto", (frase) => {
+  it.each(["borren mis datos", "quiero acceso a mis datos", "corrijan mi nombre", "no me manden salsa", "no me llamen cuando lleguen, toquen el timbre", "olvidense de mi", "saquenme de sus listas", "no me llamen"])("«%s» NO revoca el marketing (no es oposicion inequivoca)", (frase) => {
     expect(esOposicionDeContacto(frase)).toBe(false);
   });
 });

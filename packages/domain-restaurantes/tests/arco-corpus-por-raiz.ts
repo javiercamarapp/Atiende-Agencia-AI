@@ -18,6 +18,62 @@ export const CASOS_POR_RAIZ: Readonly<Record<string, CasosDeRaiz>> = {
     pos: ["mis datos, borrenlos", "mi telefono por favor eliminenlo", "mis datos personales que los borren", "mi info ya borrenla"],
     neg: ["mi nombre es Juan, borra la cebolla", "mi direccion es calle 5, elimina el refresco", "mis tacos que los borren del pedido", "mi pedido, borra la salsa"],
   },
+  "cancelacion.dar-de-baja-mis-datos": {
+    pos: ["quiero dar de baja mis datos", "den de baja mi numero", "dieran de baja mi correo"],
+    neg: ["den de baja la orden de alitas", "dar de baja el combo 2 del menu", "dame de baja el volumen"],
+  },
+  "cancelacion.suprimir-todo-lo-mio": {
+    pos: ["borren todo lo mio", "eliminen lo mio de su sistema", "supriman todos mis datos"],
+    neg: ["borra todo el pedido", "elimina todo lo que lleve picante", "borra todo y empezamos"],
+  },
+  "cancelacion.mi-dato-ya-no-este-en-su-base": {
+    pos: ["quiero que mi numero ya no este en su base", "que mi correo no siga en sus registros", "mi telefono ya no figure en sus listas"],
+    neg: ["mi pedido ya no este en la lista de espera", "mi mesa ya no esta en su lista", "mi orden no aparece en su sistema de cobro"],
+  },
+  "cancelacion.salirme-de-la-lista": {
+    pos: ["quiero salirme de la lista de promos", "salirme de su lista", "me salgo del grupo de promociones"],
+    neg: ["salir de la fila del drive", "quiero salirme de la mesa un momento", "salir de dudas"],
+  },
+  "cancelacion.ya-no-ser-cliente": {
+    pos: ["ya no quiero ser su cliente", "no deseo ser cliente de ustedes"],
+    neg: ["quiero ser cliente frecuente", "como puedo ser su cliente vip"],
+  },
+  "oposicion.basta-de-mensajes": {
+    pos: ["ya basta de mensajes", "basta de publicidad", "basta de promociones"],
+    neg: ["basta de picante, gracias", "ya basta de esperar", "basta con dos tacos"],
+  },
+  "oposicion.no-vuelvan-a-mandar-nada": {
+    pos: ["no vuelvan a mandarme nada", "no me vuelvan a enviar mensajes", "no me manden nada"],
+    neg: ["no vuelvan a mandarme el refresco tibio", "no me mandaron nada de salsa", "no vuelvan a enviarme la cuenta separada"],
+  },
+  "oposicion.ya-no-me-las-manden": {
+    pos: ["no me interesan sus promociones, ya no me las manden", "las ofertas ya no me las envien", "mensajes ya no me los manden"],
+    neg: ["las salsas ya no me las manden", "ya no me las manden picosas, las quiero suaves"],
+  },
+  "oposicion.no-me-agreguen": {
+    pos: ["no me agreguen a sus listas", "no me incluyan en el grupo de promociones", "no me suscriban a su boletin"],
+    neg: ["no me agreguen cebolla", "no me anoten en la lista de espera de la terraza", "no me incluyan el postre"],
+  },
+  "oposicion.no-autorizo-publicidad": {
+    pos: ["no autorizo publicidad", "no mas promociones", "no deseo mercadotecnia", "sin publicidad por favor"],
+    neg: ["no autorizo cargos extra", "no autorizo mas cargos en mi tarjeta", "sin picante por favor"],
+  },
+  "acceso.a-quien-pasan-mis-datos": {
+    pos: ["a quien le pasan mis datos", "venden mis datos?", "comparten mi informacion con alguien", "a quienes entregan mi telefono"],
+    neg: ["a quien le pasan la comanda", "venden tamales", "comparten mesa con otros clientes"],
+  },
+  "acceso.cuanto-tiempo-guardan": {
+    pos: ["cuanto tiempo guardan mis datos", "cuanto tiempo conservan mi informacion"],
+    neg: ["cuanto tiempo guardan la reservacion", "cuanto tiempo tienen mi mesa apartada"],
+  },
+  "acceso.para-que-quieren-mis-datos": {
+    pos: ["para que quieren mis datos", "para que necesitan mi numero", "que hacen con la informacion que les doy"],
+    neg: ["para que quieren la direccion exacta del restaurante", "que hacen con el sobrante de comida", "para que necesitan el nombre del pedido"],
+  },
+  "rectificacion.mi-dato-es-otro-actualicen": {
+    pos: ["mi numero de telefono es otro, actualicenlo", "mi correo cambio, registren el nuevo"],
+    neg: ["mi numero de pedido es otro", "mi telefono es otro, el pedido es para llevar", "mi nombre es otro en la reservacion"],
+  },
   "cancelacion.suprimir-el-dato-que-tienen": {
     pos: ["borren el telefono que tienen registrado", "eliminen la direccion que tienen guardada", "supriman los datos que guardan"],
     neg: ["borra el refresco que pedi", "elimina la direccion que te di para el envio", "borra el postre que tienen en la lista"],
@@ -39,8 +95,8 @@ export const CASOS_POR_RAIZ: Readonly<Record<string, CasosDeRaiz>> = {
     neg: ["cancela mi reservacion de las 8", "cancela mi pedido de hoy", "cancelen el registro del pedido anterior"],
   },
   "cancelacion.sacarme-yo": {
-    pos: ["borrame", "bórrenme por favor", "sáquenme ya", "eliminame de todo", "quitenme de ahi ya"],
-    neg: ["quitame la cebolla", "sacame una coca", "bajame la cuenta", "borrame la salsa de la orden", "quitenme del pedido el refresco"],
+    pos: ["borrame", "bórrenme por favor", "sáquenme ya", "eliminame de todo", "quitenme ya"],
+    neg: ["quitame la cebolla", "sacame de dudas", "sacame una coca", "bajame la cuenta", "borrame la salsa de la orden", "quitenme del pedido el refresco"],
   },
   "cancelacion.que-me-borren": {
     pos: ["que me borren", "quiero que me borren de todo", "que me eliminen por favor"],
