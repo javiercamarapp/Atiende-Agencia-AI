@@ -189,6 +189,8 @@ describe("T7-002 coordenada absurda: sigue siendo fuera_de_zona pero sin sucursa
   });
 });
 
+type ResultadoSucursal = { estado: string; branch_slug: string; atiende_otra_sucursal?: { aviso: string; telefono?: string } };
+
 describe("G5/T7-026/T7-049..051 el domicilio lo atiende otra sucursal que la del chat", () => {
   const pm = { perfil: "taqueria_pm" as const, agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] };
   it("con el chat de García Lavín y un pin de Montejo, el resultado trae nombre, teléfono y la instrucción de no decir «sí entregamos»", async () => {
