@@ -25,7 +25,7 @@ describe("PRESET_RESTAURANTE_HUMANO", () => {
     expect(p.estilo).toBe("calido");
     expect(p.temperatura).toBe(0.4);
     expect(p.humanizar).toBe(true);
-    expect(p.fondo).toEqual({ activo: true, preset: "cocina-taqueria", volumen: 7 });
+    expect(p.fondo).toEqual({ activo: true, preset: "cocina-taqueria", volumen: 8 });
     expect(p.tecleo).toEqual({ activo: true, volumen: 12 });
   });
 

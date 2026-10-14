@@ -54,8 +54,9 @@ export const PRESET_RESTAURANTE_HUMANO: PresetVozHumano = Object.freeze({
   estilo: "calido",
   temperatura: 0.4,
   humanizar: true,
-  // 7 %: por debajo del 8 % historico; con ducking y la linea telefonica el ambiente se queda DETRAS (nunca tapa), y el tecleo (12 %) se oye sobre el.
-  fondo: Object.freeze({ activo: true, preset: "cocina-taqueria", volumen: 7 }),
+  // 8 % (el valor historico; tope 20): en las muestras el ambiente queda ~23 dB bajo la voz del agente mientras habla (ducking de 7 dB) y se oye en las pausas; es un punto de partida
+  // por calculo, NO por oido: Javier lo ajusta con las muestras de pm/audio-ambiente. El tecleo (12 %) se oye sobre el.
+  fondo: Object.freeze({ activo: true, preset: "cocina-taqueria", volumen: 8 }),
   tecleo: Object.freeze({ activo: true, volumen: 12 }),
 });
 

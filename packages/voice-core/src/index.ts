@@ -55,6 +55,8 @@ export type { AvisosHerramienta } from "./llamada/ejecutor-con-tecleo.ts";
 export { OrquestadorTecleo, TECLEO_VOLUMEN_MAX, TECLEO_VOLUMEN_MIN, TECLEO_VOLUMEN_POR_DEFECTO, crearClic, crearPip, esVolumenTecleo } from "./tecleo.ts";
 export type { OpcionesTecleo, TipoTecla } from "./tecleo.ts";
 export { MezcladorSalida } from "./mezclador-salida.ts";
+export { HZ_MUESTRA, TIPOS_MUESTRA, aTelefono, escribirWav16, leerWav16, medirMuestra, remuestrearLineal, renderizarMuestra, vozSinteticaDePrueba } from "./muestras-ambiente.ts";
+export type { EventoMuestra, MetricasMuestra, OpcionesMuestra, ResultadoMuestra, TipoMuestra } from "./muestras-ambiente.ts";
 export type { OpcionesMezclador } from "./mezclador-salida.ts";
 export {
   BLOQUE_ACENTO_MEXICANO,

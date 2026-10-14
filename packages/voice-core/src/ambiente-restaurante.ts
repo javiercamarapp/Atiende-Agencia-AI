@@ -285,7 +285,7 @@ export class Ducking {
   private readonly ataque: number;
   private readonly liberacion: number;
   constructor(hz: number, o: OpcionesDucking = {}) {
-    this.objetivo = Math.pow(10, (o.atenuacionDb ?? -9) / 20);
+    this.objetivo = Math.pow(10, (o.atenuacionDb ?? -7) / 20);
     this.ataque = 1 - Math.exp(-1 / (((o.ataqueMs ?? 25) / 1000) * hz));
     this.liberacion = 1 - Math.exp(-1 / (((o.liberacionMs ?? 350) / 1000) * hz));
   }
