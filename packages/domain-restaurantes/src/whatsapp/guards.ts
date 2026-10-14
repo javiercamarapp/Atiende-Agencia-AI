@@ -301,7 +301,10 @@ export function aclararGuacamoleExtra(nombresDeRenglones: readonly string[], con
   // El cliente dijo «extra» (o «doble», «adicional») despues de mencionarlo: ya eligio.
   if (despues.some((m) => m.role === "user" && (/\bextras?\b|\bdobles?\b|\badicional(?:es)?\b|\bde\s+mas\b|\bpara\s+(?:mis|los|el)\s+tacos?\b/.test(m.t) || EXTRA_DE_GUACAMOLE.test(m.t)))) return null;
   // El agente ya le pregunto por el guacamole y el cliente contesto.
-  const pregunto = despues.findIndex((m) => m.role === "assistant" && /guacamole|extra/.test(m.t));
+  // QA-PM-R6: antes bastaba que el agente dijera «guacamole» o «extra» en CUALQUIER frase (incluso «extra salsa» o «Anoto Extra Guacamole, ¿algo mas?») para dar la aclaracion por hecha; ahora debe ser una
+  // PREGUNTA que ofrezca la ELECCION platillo / extra («¿el guacamole como platillo o un extra para sus tacos?»).
+  const ELIGE = /(?:platillo|plato|orden|aparte)[^?]{0,60}\bo\b[^?]{0,60}(?:extras?|agregado|para\s+(?:sus|los|mis)\s+tacos?)|(?:extras?|agregado|para\s+(?:sus|los|mis)\s+tacos?)[^?]{0,60}\bo\b[^?]{0,60}(?:platillo|plato|orden|aparte)/;
+  const pregunto = despues.findIndex((m) => m.role === "assistant" && /\?/.test(m.t) && ELIGE.test(m.t));
   if (pregunto >= 0 && despues.slice(pregunto + 1).some((m) => m.role === "user")) return null;
   return "El cliente dijo «guacamole» sin decir «extra»: el platillo Guacamole y el Extra Guacamole (agregado para los tacos) son productos distintos y de distinto precio. No cotice Extra Guacamole por su cuenta ni por «lo de siempre»: pregúntele cuál quiere («¿el guacamole como platillo o un extra para sus tacos?»), espere su respuesta y vuelva a cotizar con el que elija.";
 }
