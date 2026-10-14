@@ -21,6 +21,23 @@ import { crearAux, MODELO_CLIENTE } from "./llm-aux.ts";
 import { ajustarFallos } from "./ajuste-graders.ts";
 import { correrGuionAdaptativo } from "./voz-adaptativo.ts";
 
+// RELOJ CONGELADO en "lunes 18:30" (America/Merida), la misma hora que el prompt del agente. El servidor valida horarios y "recoger en N minutos" con
+// Date.now(): sin esto los guiones de recoger dependen de la hora real en que corre el banco (a las 22-23 h reprueban a todos los modelos por igual).
+// --reloj-real lo desactiva.
+const RELOJ_FIJO = process.argv.includes("--reloj-real") ? null : Date.UTC(2026, 9, 13, 0, 30);
+if (RELOJ_FIJO !== null) {
+  const RealDate = Date;
+  class DateFija extends RealDate {
+    constructor(...a: unknown[]) {
+      super(...((a.length === 0 ? [RELOJ_FIJO] : a) as [number]));
+    }
+    static override now(): number {
+      return RELOJ_FIJO as number;
+    }
+  }
+  globalThis.Date = DateFija as unknown as DateConstructor;
+}
+
 function arg(nombre: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${nombre}`);
   return i >= 0 ? process.argv[i + 1] : def;
@@ -135,7 +152,7 @@ async function una(g: (typeof guiones)[number], rep: number): Promise<void> {
   const costoUsd = costoModeloUsd + costoClienteUsd;
   const rechazadas = tools.filter((t) => t.resultado && typeof t.resultado === "object" && "error" in (t.resultado as object)).map((t) => t.nombre);
   const rec = {
-    lote, motor, modelo, razon: razon ?? null, etiqueta, sinParalelo, guion: g.id, rep, ok, fallos, fallosBrutos, ajustes, error, resultado, turnosVoz: (typeof turnosVozR === 'number' ? turnosVozR : null), durMs: Math.round(durMs), costoUsd, costoModeloUsd, costoClienteUsd, cliente: clienteModo,
+    lote, motor, modelo, razon: razon ?? null, etiqueta, sinParalelo, reloj: RELOJ_FIJO !== null, guion: g.id, rep, ok, fallos, fallosBrutos, ajustes, error, resultado, turnosVoz: (typeof turnosVozR === 'number' ? turnosVozR : null), durMs: Math.round(durMs), costoUsd, costoModeloUsd, costoClienteUsd, cliente: clienteModo,
     costoRealPct: motor === "gemini" ? (m.costoMicro > 0 ? m.costoRealMicro / m.costoMicro : 0) : 1,
     tokens: { in: m.llamadasLlm.reduce((s, l) => s + l.tokensIn, 0), out: m.llamadasLlm.reduce((s, l) => s + l.tokensOut, 0), cached: m.llamadasLlm.reduce((s, l) => s + l.tokensCached, 0), razonamiento: m.llamadasLlm.reduce((s, l) => s + l.tokensReasoning, 0), llamadasLlm: m.llamadasLlm.length },
     llmTools: m.llamadasLlm.map((l) => l.detalleTools ?? []),
