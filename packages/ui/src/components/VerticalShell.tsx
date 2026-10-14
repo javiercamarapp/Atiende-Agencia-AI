@@ -180,8 +180,6 @@ export interface VerticalNoEncontradoProps {
 
 /** 404 dentro del shell: la navegacion sigue disponible y hay un enlace de regreso al panel. */
 export function VerticalNoEncontrado({ volverA, volverEtiqueta = "Volver al panel" }: VerticalNoEncontradoProps) {
-  // La barra superior dice la verdad: sin esto una ruta desconocida heredaba el nombre del Resumen (su ruta es prefijo de todas).
-  useTituloBarra("Página no encontrada", Compass);
   return (
     <EstadoVacio
       icon={Compass}
