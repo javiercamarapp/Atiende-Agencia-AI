@@ -240,6 +240,11 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                     ))}
                   </ul>
                 </div>
+                {presetHumano.vozPorMotor ? (
+                  <p className="text-xs text-muted-foreground" data-testid="preset-voz-motores">
+                    Por motor: Gemini Live usa la voz {presetHumano.vozPorMotor["gemini-live"].principal} del catálogo de Gemini; la cascada usará {presetHumano.vozPorMotor.cascada.principal} de Deepgram Aura-2 (otro proveedor; la cascada nueva aún no está integrada).
+                  </p>
+                ) : null}
                 <p className="text-xs text-muted-foreground" data-testid="preset-acento">
                   {presetHumano.acento}
                 </p>

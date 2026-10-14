@@ -64,9 +64,11 @@ export {
   CANDIDATAS_TTS_CASCADA_V2,
   ID_PRESET_RESTAURANTE_HUMANO,
   PRESET_RESTAURANTE_HUMANO,
+  MOTORES_VOZ_PRESET,
   VOCES_FEMENINAS_REFERENCIA,
+  vozParaMotor,
   conInstruccionHumana,
   instruccionHumana,
   validarPresetHumano,
 } from "./preset-restaurante-humano.ts";
-export type { PresetVozHumano, ProblemaPreset } from "./preset-restaurante-humano.ts";
+export type { MotorVozPreset, PresetVozHumano, ProblemaPreset, VozDeMotor } from "./preset-restaurante-humano.ts";

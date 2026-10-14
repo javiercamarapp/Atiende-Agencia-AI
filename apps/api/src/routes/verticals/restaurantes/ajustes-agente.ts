@@ -120,6 +120,7 @@ function opciones() {
       humanizar: PRESET_RESTAURANTE_HUMANO.humanizar,
       fondo: PRESET_RESTAURANTE_HUMANO.fondo,
       tecleo: PRESET_RESTAURANTE_HUMANO.tecleo,
+      vozPorMotor: PRESET_RESTAURANTE_HUMANO.vozPorMotor,
       voz: {
         principal: PRESET_RESTAURANTE_HUMANO.voz.principal,
         alternativas: PRESET_RESTAURANTE_HUMANO.voz.alternativas,

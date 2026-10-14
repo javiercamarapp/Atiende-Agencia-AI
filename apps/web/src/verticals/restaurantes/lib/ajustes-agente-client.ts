@@ -35,6 +35,7 @@ export interface PresetHumanoVista {
   readonly humanizar: boolean;
   readonly fondo: { readonly activo: boolean; readonly preset: PresetAmbiente; readonly volumen: number };
   readonly tecleo: { readonly activo: boolean; readonly volumen: number };
+  readonly vozPorMotor?: Readonly<Record<"gemini-live" | "cascada", { readonly proveedor: string; readonly principal: string; readonly alternativas: readonly string[] }>>;
   readonly voz: { readonly principal: string; readonly alternativas: readonly string[]; readonly descripciones: Readonly<Record<string, string>> };
   readonly acento: string;
   readonly candidatasTtsCascadaV2: readonly { readonly proveedor: string; readonly voces: readonly string[]; readonly nota: string }[];

@@ -36,6 +36,8 @@ describe("ajustes: ambiente, tecleo y preset restaurante-humano", () => {
     expect(r.tecleo.volumenMax).toBe(25);
     expect(r.presetHumano).toMatchObject({ id: "restaurante-humano", ritmo: "normal", estilo: "calido", temperatura: 0.4, humanizar: true, fondo: { volumen: 8, preset: "cocina-taqueria" }, tecleo: { volumen: 12 } });
     expect(r.presetHumano.voz).toMatchObject({ principal: "Sulafat", alternativas: ["Callirrhoe", "Aoede"] });
+    expect(r.presetHumano.vozPorMotor.cascada).toMatchObject({ proveedor: "deepgram-aura-2", principal: "aura-2-estrella-es" });
+    expect(r.presetHumano.vozPorMotor["gemini-live"]).toMatchObject({ proveedor: "gemini", principal: "Sulafat" });
     expect(Object.keys(r.presetHumano.voz.descripciones)).toContain("Sulafat");
     expect(JSON.stringify(r.presetHumano.candidatasTtsCascadaV2)).toContain("aura-2-estrella-es");
     expect(r.aplicaEn.vozTecleo).toMatch(/no disponible aun en la vista previa/);

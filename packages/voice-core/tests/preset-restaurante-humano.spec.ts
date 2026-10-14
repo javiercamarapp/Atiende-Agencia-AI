@@ -8,6 +8,8 @@ import {
   PRESET_RESTAURANTE_HUMANO,
   VOCES_FEMENINAS_REFERENCIA,
   conInstruccionHumana,
+  vozParaMotor,
+  MOTORES_VOZ_PRESET,
   instruccionHumana,
   validarPresetHumano,
   FONDO_VOLUMEN_MAX,
@@ -27,6 +29,22 @@ describe("PRESET_RESTAURANTE_HUMANO", () => {
     expect(p.humanizar).toBe(true);
     expect(p.fondo).toEqual({ activo: true, preset: "cocina-taqueria", volumen: 8 });
     expect(p.tecleo).toEqual({ activo: true, volumen: 12 });
+  });
+
+  it("cada motor tiene su voz por defecto: Gemini Live = Sulafat (catalogo de Gemini), cascada = Deepgram Aura-2 estrella (decision de Javier)", () => {
+    expect(vozParaMotor(PRESET_RESTAURANTE_HUMANO, "gemini-live")).toMatchObject({ proveedor: "gemini", principal: "Sulafat" });
+    expect(vozParaMotor(PRESET_RESTAURANTE_HUMANO, "cascada")).toEqual({ proveedor: "deepgram-aura-2", principal: "aura-2-estrella-es", alternativas: ["aura-2-olivia-es"] });
+    expect(MOTORES_VOZ_PRESET).toEqual(["gemini-live", "cascada"]);
+    expect(PRESET_RESTAURANTE_HUMANO.vozPorMotor["gemini-live"].principal).toBe(PRESET_RESTAURANTE_HUMANO.voz.principal);
+    for (const malo of [0, "", null, false, [], {}, undefined, "ab", "cascada-v2"]) expect(vozParaMotor(PRESET_RESTAURANTE_HUMANO, malo)).toBeNull();
+  });
+
+  it("validacion de la voz por motor: la cascada exige una voz Aura-2 en español y Gemini una femenina del catalogo", () => {
+    const base = PRESET_RESTAURANTE_HUMANO;
+    const campos = (p: unknown): string[] => validarPresetHumano(p).map((x) => x.campo);
+    expect(campos({ ...base, vozPorMotor: { ...base.vozPorMotor, cascada: { proveedor: "deepgram-aura-2", principal: "heygen-voice-1", alternativas: [] } } })).toContain("vozPorMotor.cascada");
+    expect(campos({ ...base, vozPorMotor: { ...base.vozPorMotor, "gemini-live": { proveedor: "gemini", principal: "Puck", alternativas: [] } } })).toContain("vozPorMotor.gemini-live");
+    expect(campos({ ...base, vozPorMotor: null })).toContain("vozPorMotor");
   });
 
   it("es valido, sus volumenes estan dentro de los topes y el tecleo se oye sobre el fondo", () => {

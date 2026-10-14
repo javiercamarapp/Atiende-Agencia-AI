@@ -13,6 +13,8 @@
 //     language code"; la tabla de idiomas solo trae `es`, sin variante regional); por eso el español de Mexico se pide en la INSTRUCCION (`BLOQUE_ACENTO_MEXICANO` y la
 //     linea fija `instruccionIdioma`). Vertex AI si tiene `languageCode` (hoy `idiomaVertex`, por confirmar con la primera llamada real). Lo que NO se puede garantizar: que la
 //     voz prediseñada conserve el acento mexicano en todos los turnos; es del proveedor. Se mide escuchando, no con una prueba.
+//   * Voz por motor (decision de Javier tras oir las muestras de Aura-2, 14-oct-2026): la CASCADA usa Deepgram Aura-2 `aura-2-estrella-es` (alternativa `aura-2-olivia-es`), mexicana
+//     por etiqueta oficial; Gemini Live sigue usando el catalogo de Gemini (Sulafat). Son proveedores distintos y cada motor lee su voz con `vozParaMotor`. La cascada v2 aun no esta integrada.
 //   * Ritmo 'normal' y estilo 'calido': el ritmo agil atropella numeros y precios (el propio texto de `ajustes-habla` lo advierte) y el pausado alarga la llamada (costo);
 //     'calido' es el estilo que pide el rol de anfitriona.
 //   * Temperatura 0.4 (juicio de ingenieria, sin medicion): 0 repite frases identicas turno tras turno y suena a grabacion; 1 improvisa. Los precios y totales salen de las
@@ -35,8 +37,20 @@ export const VOCES_FEMENINAS_REFERENCIA: readonly string[] = Object.freeze([
   "Zephyr", "Kore", "Leda", "Aoede", "Callirrhoe", "Autonoe", "Despina", "Erinome", "Laomedeia", "Achernar", "Gacrux", "Pulcherrima", "Vindemiatrix", "Sulafat",
 ]);
 
+export type MotorVozPreset = "gemini-live" | "cascada";
+export const MOTORES_VOZ_PRESET: readonly MotorVozPreset[] = ["gemini-live", "cascada"];
+
+/** Voz por defecto de cada motor. Son proveedores DISTINTOS: Gemini Live usa el catalogo de Gemini (`voice_name`); la cascada, el TTS de Deepgram Aura-2 (decision de Javier tras escuchar las muestras: `estrella`). */
+export interface VozDeMotor {
+  readonly proveedor: "gemini" | "deepgram-aura-2";
+  readonly principal: string;
+  readonly alternativas: readonly string[];
+}
+
 export interface PresetVozHumano {
   readonly id: typeof ID_PRESET_RESTAURANTE_HUMANO;
+  /** Voz del motor Gemini Live (se conserva por compatibilidad; igual a `vozPorMotor["gemini-live"]`). */
+  readonly vozPorMotor: Readonly<Record<MotorVozPreset, VozDeMotor>>;
   readonly voz: { readonly principal: string; readonly alternativas: readonly string[] };
   readonly ritmo: RitmoHabla;
   readonly estilo: EstiloHabla;
@@ -50,6 +64,11 @@ export interface PresetVozHumano {
 export const PRESET_RESTAURANTE_HUMANO: PresetVozHumano = Object.freeze({
   id: ID_PRESET_RESTAURANTE_HUMANO,
   voz: Object.freeze({ principal: "Sulafat", alternativas: Object.freeze(["Callirrhoe", "Aoede"]) }),
+  vozPorMotor: Object.freeze({
+    "gemini-live": Object.freeze({ proveedor: "gemini", principal: "Sulafat", alternativas: Object.freeze(["Callirrhoe", "Aoede"]) }),
+    // La cascada v2 aun NO esta integrada: esto solo deja registrada la voz por omision (ids de la documentacion de Deepgram; se confirman al integrarla).
+    cascada: Object.freeze({ proveedor: "deepgram-aura-2", principal: "aura-2-estrella-es", alternativas: Object.freeze(["aura-2-olivia-es"]) }),
+  }),
   ritmo: "normal",
   estilo: "calido",
   temperatura: 0.4,
@@ -85,6 +104,11 @@ export const CANDIDATAS_TTS_CASCADA_V2: ReadonlyArray<{ readonly proveedor: stri
   },
 ]);
 
+/** Voz por defecto del preset para un motor; null si el motor no existe (nunca lanza con entradas raras: 0, '', null, false, [], {}). */
+export function vozParaMotor(preset: Pick<PresetVozHumano, "vozPorMotor">, motor: unknown): VozDeMotor | null {
+  return typeof motor === "string" && (MOTORES_VOZ_PRESET as readonly string[]).includes(motor) ? preset.vozPorMotor[motor as MotorVozPreset] : null;
+}
+
 export interface ProblemaPreset {
   readonly campo: string;
   readonly mensaje: string;
@@ -104,6 +128,14 @@ export function validarPresetHumano(p: unknown): ProblemaPreset[] {
     if (!enCatalogo(v.principal)) mal("voz.principal", "no esta en el catalogo de voces");
     else if (!VOCES_FEMENINAS_REFERENCIA.includes(v.principal as string)) mal("voz.principal", "debe ser una voz femenina del catalogo");
     if (!Array.isArray(v.alternativas) || v.alternativas.some((a) => !enCatalogo(a))) mal("voz.alternativas", "lista de voces del catalogo");
+  }
+  const porMotor = o.vozPorMotor as Record<string, unknown> | null | undefined;
+  if (typeof porMotor !== "object" || porMotor === null || Array.isArray(porMotor)) mal("vozPorMotor", "se esperaba un objeto con gemini-live y cascada");
+  else {
+    const g = porMotor["gemini-live"] as { proveedor?: unknown; principal?: unknown } | undefined;
+    if (!g || g.proveedor !== "gemini" || typeof g.principal !== "string" || !VOCES_FEMENINAS_REFERENCIA.includes(g.principal)) mal("vozPorMotor.gemini-live", "voz femenina del catalogo de Gemini");
+    const c = porMotor.cascada as { proveedor?: unknown; principal?: unknown } | undefined;
+    if (!c || c.proveedor !== "deepgram-aura-2" || typeof c.principal !== "string" || !/^aura-2-[a-z]+-es$/.test(c.principal)) mal("vozPorMotor.cascada", "voz de Deepgram Aura-2 en español (aura-2-<nombre>-es)");
   }
   if (!esRitmoHabla(o.ritmo)) mal("ritmo", "ritmo desconocido");
   if (!esEstiloHabla(o.estilo)) mal("estilo", "estilo desconocido");

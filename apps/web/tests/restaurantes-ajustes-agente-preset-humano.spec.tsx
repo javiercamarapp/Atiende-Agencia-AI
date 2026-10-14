@@ -23,6 +23,7 @@ const PRESET = {
   id: "restaurante-humano", ritmo: "normal", estilo: "calido", temperatura: 0.4, humanizar: true,
   fondo: { activo: true, preset: "cocina-taqueria", volumen: 7 }, tecleo: { activo: true, volumen: 12 },
   voz: { principal: "Sulafat", alternativas: ["Callirrhoe", "Aoede"], descripciones: { Sulafat: "Warm", Callirrhoe: "Easy-going", Aoede: "Breezy" } },
+  vozPorMotor: { "gemini-live": { proveedor: "gemini", principal: "Sulafat", alternativas: [] }, cascada: { proveedor: "deepgram-aura-2", principal: "aura-2-estrella-es", alternativas: ["aura-2-olivia-es"] } },
   acento: "El acento mexicano se pide en la instruccion; depende del proveedor.",
   candidatasTtsCascadaV2: [],
 };
@@ -95,6 +96,7 @@ describe("preset «restaurante humano»", () => {
     expect(voces).toMatch(/Sulafat · Warm · sugerida/);
     expect(voces).toMatch(/Callirrhoe · Easy-going · alternativa/);
     expect(voces).toMatch(/Aoede · Breezy · alternativa/);
+    expect(q('[data-testid="preset-voz-motores"]')?.textContent).toMatch(/Gemini Live usa la voz Sulafat.*cascada usará aura-2-estrella-es de Deepgram Aura-2/);
     expect(q('[data-testid="preset-acento"]')?.textContent).toMatch(/depende del proveedor/);
   });
 
