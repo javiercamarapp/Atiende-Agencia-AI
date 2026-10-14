@@ -119,12 +119,15 @@ export function afirmaHaberAvisado(reply: string): boolean {
   // la negacion ("no tengo que avisar") ni el subjuntivo ("para que le avise"); "permitame avisar al gerente" es la promesa inmediata del aviso y si cuenta.
   const pasado = new RegExp(`(?<!\\bno\\s)(?<!\\bno\\s(?:le|les)\\s)(?<!\\bque\\s)(?<!\\bque\\s(?:le|les)\\s)\\b(?:ya\\s+)?(?:le\\s+|les\\s+)?avis(?:e|amos)\\s+(?:ya\\s+)?${DEST}`);
   const inmediata = new RegExp(`\\b(?:permitame|permitanme|dejeme)\\s+avisar(?:le|les)?\\s+(?:a|al|a\\s+la)\\s+(?:\\w+\\s+){0,2}(?:gerente|equipo|encargad[oa])\\b(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)`);
-  const registrado = /\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\b(?:ya\s+)?quedo\s+avisad[oa]\b/;
+  const registrado = /\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\b(?:ya\s+)?quedo\s+avisad[oa]\b|\b(?:gerente|gerencia|equipo|encargad[oa])\s+ya\s+(?:fue|esta|quedo)\s+(?:notificad|avisad|enterad)[oa]\b|\bya\s+(?:esta|fue)\s+(?:notificad|avisad|enterad)[oa]\s+(?:el|la)\s+(?:gerente|equipo|encargad[oa])\b/;
   // QA-PM-R6-reglas-01: el regex original decia «notificue» (typo) y nunca detectaba «notifiqué». Mismas negaciones/subjuntivo que `pasado` («que le comunique», «no le comuniqué»).
   const NO_SUBJ = "(?<!\\bno\\s)(?<!\\bno\\s(?:le|les)\\s)(?<!\\bque\\s)(?<!\\bque\\s(?:le|les)\\s)(?<!\\bpara\\s)";
+  // Un aviso de preparacion («le comuniqué a la sucursal para que tenga listo su pedido») es parte del flujo normal, no un aviso al gerente.
+  const SIN_PREPARACION = "(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)";
   const PERSONA_AVISO = "(?:gerente|gerencia|equipo|sucursal|encargad[oa]|restaurante|personal|duen[oa])";
   const notifique = new RegExp(
-    `${NO_SUBJ}\\b(?:le\\s+|les\\s+)?(?:notifiqu(?:e)|notificamos|comuniqu(?:e)|comunicamos|escal(?:e|amos))\\s+(?:ya\\s+)?(?:su\\s+(?:caso|queja|solicitud|pedido)\\s+)?(?:(?:al|a\\s+la|a\\s+los)\\s+(?:\\w+\\s+){0,2}${PERSONA_AVISO}\\b)` +
+    `${NO_SUBJ}\\b(?:le\\s+|les\\s+)?(?:notifiqu(?:e)|notificamos|comuniqu(?:e)|comunicamos|escal(?:e|amos))\\s+(?:ya\\s+)?(?:su\\s+(?:caso|queja|solicitud|reclamo)\\s+)?(?:(?:al|a\\s+la|a\\s+los)\\s+(?:\\w+\\s+){0,2}${PERSONA_AVISO}\\b${SIN_PREPARACION})` +
+      `|${NO_SUBJ}\\b(?:ya\\s+)?(?:le\\s+|les\\s+)?(?:pase|reporte|mande|envie|comente|dije|hice\\s+llegar)\\s+(?:ya\\s+)?(?:su\\s+(?:caso|queja|solicitud|reclamo|mensaje)|el\\s+(?:aviso|mensaje|recado)|lo\\s+que\\s+(?:me\\s+)?(?:dijo|comento|pidio))\\s+(?:al|a\\s+la|a\\s+los)\\s+(?:\\w+\\s+){0,2}${PERSONA_AVISO}\\b${SIN_PREPARACION}` +
       `|${NO_SUBJ}\\bya\\s+(?:habl(?:e|amos)|platiqu(?:e|amos))\\s+con\\s+(?:el\\s+|la\\s+|los\\s+)?(?:\\w+\\s+){0,1}${PERSONA_AVISO}\\b` +
       `|${NO_SUBJ}\\b(?:dej(?:e|amos))\\s+(?:el\\s+|un\\s+)?(?:recado|mensaje|aviso)\\s+(?:con|al|a\\s+la|para)\\s+(?:el\\s+|la\\s+)?(?:\\w+\\s+){0,1}${PERSONA_AVISO}\\b`,
   );

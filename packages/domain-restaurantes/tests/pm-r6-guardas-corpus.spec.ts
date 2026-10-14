@@ -7,10 +7,11 @@ const preparando: HighRiskContext = { pedidoReciente: { estado: "preparando", ca
 const entregado: HighRiskContext = { pedidoReciente: { estado: "entregado", canal: "whatsapp", sucursal: "García Lavín", confirmadoHoraLocal: "14:00", minutosDesdeConfirmacion: 90 } as never };
 
 describe("afirmaHaberAvisado (R6-reglas-01)", () => {
-  const SI = ["Ya notifiqué al equipo.", "Les notificamos al gerente de su queja.", "Ya le comuniqué al gerente su queja.", "Ya escalé su caso al equipo.", "Ya hablé con el gerente y le contesta.", "Dejé el recado con la encargada.", "Ya avisé al gerente, en minutos le contactan."];
+  const SI = ["Ya notifiqué al equipo.", "Les notificamos al gerente de su queja.", "Ya le comuniqué al gerente su queja.", "Ya escalé su caso al equipo.", "Ya hablé con el gerente y le contesta.", "Dejé el recado con la encargada.", "Ya avisé al gerente, en minutos le contactan.",
+    "Ya le pasé su queja al gerente.", "Ya reporté su caso al equipo.", "Ya le mandé el aviso a la encargada.", "El gerente ya fue notificado.", "Ya está avisado el gerente.", "Ya dejé el mensaje con la gerente."];
   const NO = [
     "Si gusta, para que le comunique al gerente su queja.", "Quiere que le notifique al equipo?", "Para que escale su caso necesito su nombre.", "No le he comunicado al gerente.", "No le comuniqué nada al gerente.",
-    "Hable con el gerente si gusta.", "Le aviso a la sucursal para que tenga listo su pedido.", "El pedido quedó registrado.", "Notificamos su pedido a cocina.", "Su cuenta se notifica por WhatsApp.",
+    "Hable con el gerente si gusta.", "Ya le comuniqué a la sucursal para que tenga listo su pedido.", "Le mandé su pedido a la sucursal para que lo preparen.", "Si gusta le paso su queja al gerente.", "No le he pasado su queja al gerente.", "Le aviso a la sucursal para que tenga listo su pedido.", "El pedido quedó registrado.", "Notificamos su pedido a cocina.", "Su cuenta se notifica por WhatsApp.",
   ];
   it.each(SI)("afirma aviso: %s", (t) => expect(afirmaHaberAvisado(t)).toBe(true));
   it.each(NO)("no afirma aviso: %s", (t) => expect(afirmaHaberAvisado(t)).toBe(false));
