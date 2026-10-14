@@ -4,7 +4,7 @@
 import { OpenRouterProvider } from "@atiende/agent-core";
 import type { LlmMessage } from "@atiende/agent-core";
 import { VOZ_PLATAFORMA } from "@atiende/voice-core";
-import type { PuertoLlmVoz } from "@atiende/voice-core";
+import type { ConfigPlataformaVoz, PuertoLlmVoz } from "@atiende/voice-core";
 
 /** Proveedores cuyos modelos NO listan `temperature` en OpenRouter: con `require_parameters: true` mandarla deja la ruta sin endpoints (404, docs/LLM-GATEWAY.md). */
 const PREFIJOS_SIN_TEMPERATURA = ["anthropic/", "openai/"] as const;
@@ -46,6 +46,77 @@ export function crearPuertoLlmOpenRouter(apiKey: string, fetchImpl?: typeof fetc
         texto: r.text,
         toolCalls: (r.toolCalls ?? []).map((t) => ({ id: t.id, nombre: t.name, argsJson: t.argumentsJson })),
         costoMicroUsd: Math.max(0, Math.round(r.costUsd * 1_000_000)),
+      };
+    },
+  };
+}
+
+/** Prefijos de modelos que aceptan `reasoning.effort` y el punto de cache explicito del system prompt (Anthropic en OpenRouter). Con `require_parameters: true` mandar `reasoning` a un modelo que no lo lista deja la ruta sin endpoints (404). */
+const PREFIJOS_CON_ESFUERZO = ["anthropic/"] as const;
+
+export interface OpcionesPuertoLlmVozV2 {
+  /** Modelo cuando la peticion no trae `modeloPreferido`; por omision `VOZ_PLATAFORMA.cascadaV2.llm.modelo`. */
+  readonly modelo?: string;
+  readonly config?: ConfigPlataformaVoz;
+}
+
+/**
+ * Puerto LLM de la cascada v2 (streaming) sobre OpenRouter, con la MISMA `OPENROUTER_API_KEY` del texto.
+ *  - Streaming: pasa `onTextDelta` a `OpenRouterProvider` (SSE) para que el nucleo sintetice por frase mientras el modelo escribe.
+ *  - Modelo POR PETICION (`modeloPreferido`): un proveedor por (modelo, esfuerzo), reutilizado entre turnos (P3 lo usara para escalar).
+ *  - Esfuerzo bajo: `reasoning: { effort: "low" }` (Sonnet 5.5 tiene razonamiento obligatorio; `none` se rechazaria). Solo se manda a modelos Anthropic.
+ *  - NUNCA manda `temperature` (Anthropic y OpenAI la rechazan con `require_parameters: true`; aqui ningun modelo la recibe).
+ *  - Cache del system prompt: punto de cache explicito en modelos Anthropic; `tokensCache` de la respuesta permite verificar la lectura de cache.
+ *  - Tope de salida corto (`topeSalidaTokens`, incluye el razonamiento).
+ */
+export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, opciones: OpcionesPuertoLlmVozV2 = {}): PuertoLlmVoz {
+  const cfg = (opciones.config ?? VOZ_PLATAFORMA).cascadaV2.llm;
+  const modeloPorDefecto = opciones.modelo ?? cfg.modelo;
+  const proveedores = new Map<string, OpenRouterProvider>();
+  const proveedorDe = (modelo: string, esfuerzo: "low" | "medium" | "high"): OpenRouterProvider => {
+    const esAnthropic = PREFIJOS_CON_ESFUERZO.some((p) => modelo.startsWith(p));
+    const clave = `${modelo}|${esAnthropic ? esfuerzo : "-"}`;
+    let p = proveedores.get(clave);
+    if (!p) {
+      p = new OpenRouterProvider({
+        apiKey,
+        model: modelo,
+        appName: "atiende-voice-worker",
+        params: { temperature: "omit", maxTokens: cfg.topeSalidaTokens, ...(esAnthropic ? { reasoningEffort: esfuerzo, cacheSystemPrompt: true } : {}) },
+        // Un turno de voz que tarda mas de 10 s (el streaming cuenta hasta el ultimo trozo) ya perdio al cliente: mejor fallar y que la escalera decida.
+        timeoutMs: 10_000,
+        maxRetries: 0,
+        ...(fetchImpl ? { fetchImpl } : {}),
+      });
+      proveedores.set(clave, p);
+    }
+    return p;
+  };
+  return {
+    async completar(p) {
+      const modelo = p.modeloPreferido && p.modeloPreferido.trim() !== "" ? p.modeloPreferido : modeloPorDefecto;
+      const mensajes: LlmMessage[] = p.mensajes.map((m) => {
+        if (m.role === "assistant") return { role: "assistant", content: m.content, ...(m.toolCalls ? { toolCalls: m.toolCalls.map((t) => ({ id: t.id, name: t.nombre, argumentsJson: t.argsJson })) } : {}) };
+        if (m.role === "tool") return { role: "tool", toolCallId: m.toolCallId, content: m.content };
+        return { role: "user", content: m.content };
+      });
+      const r = await proveedorDe(modelo, p.esfuerzo ?? cfg.esfuerzo).complete({
+        system: p.system,
+        messages: mensajes,
+        tools: p.herramientas.map((h) => ({ name: h.name, description: h.description, parameters: h.parameters as unknown as Record<string, unknown> })),
+        maxOutputTokens: cfg.topeSalidaTokens,
+        ...(p.onTextDelta ? { onTextDelta: p.onTextDelta } : {}),
+        ...(p.senal ? { signal: p.senal } : {}),
+      });
+      return {
+        texto: r.text,
+        toolCalls: (r.toolCalls ?? []).map((t) => ({ id: t.id, nombre: t.name, argsJson: t.argumentsJson })),
+        costoMicroUsd: Math.max(0, Math.round(r.costUsd * 1_000_000)),
+        costoReal: r.costSource === "provider",
+        modelo,
+        tokensEntrada: r.tokensIn,
+        tokensSalida: r.tokensOut,
+        ...(r.tokensCached !== undefined ? { tokensCache: r.tokensCached } : {}),
       };
     },
   };

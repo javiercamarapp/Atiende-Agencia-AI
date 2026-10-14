@@ -36,6 +36,8 @@ export interface ConfigWorker {
   readonly geminiBackend: "api" | "vertex";
   readonly vertex: { readonly project: string; readonly location: string; readonly serviceAccountJson: string } | null;
   readonly openrouterApiKey: string | null;
+  /** `DEEPGRAM_API_KEY`: UNA sola llave para el STT y el TTS de la cascada v2; null = el escalon `cascada-v2` se salta. */
+  readonly deepgramApiKey: string | null;
   /** Ajuste fino del VAD de Gemini (`VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN`); vacio = los valores de `VOZ_PLATAFORMA.gemini.vad`. */
   readonly vad: { readonly silencioFinMs?: number; readonly sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null };
   /** Tope de costo por llamada en micro-USD (`VOICE_COSTO_MAX_LLAMADA_USD`); null = el de la plataforma (US$0.50, `COSTO_MAX_LLAMADA_MICRO_USD`). */
@@ -156,6 +158,7 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   if (!internalSecret) motivos.push("Falta INTERNAL_SECRET (el mismo de la API; registra conversaciones y costos).");
   const gemini = lleno(env.GEMINI_API_KEY) ? env.GEMINI_API_KEY.trim() : null;
   const openrouter = lleno(env.OPENROUTER_API_KEY) ? env.OPENROUTER_API_KEY.trim() : null;
+  const deepgram = lleno(env.DEEPGRAM_API_KEY) ? env.DEEPGRAM_API_KEY.trim() : null;
   const backendCrudo = lleno(env.GEMINI_BACKEND) ? env.GEMINI_BACKEND.trim().toLowerCase() : "api";
   let geminiBackend: "api" | "vertex" = "api";
   let vertex: ConfigWorker["vertex"] = null;
@@ -209,6 +212,7 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     geminiBackend,
     vertex,
     openrouterApiKey: openrouter,
+    deepgramApiKey: deepgram,
     vad,
     costoMaxLlamadaMicroUsd: costoMax,
     dnis: tabla,
