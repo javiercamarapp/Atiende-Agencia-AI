@@ -104,7 +104,7 @@ describe("A38 nombreDeClienteUtilizable (contrato de entrada)", () => {
     expect(nombreDeClienteUtilizable(v)).toBe(true);
   });
 
-  const base = { branchSlug: "fco-montejo", customerPhone: "+5219990001111", items: [{ productName: "Coca-Cola", quantity: 1 }], paymentMethod: "efectivo" as const, canal: "recoger" as const };
+  const base = { organizationId: randomUUID(), branchSlug: "fco-montejo", customerPhone: "+5219990001111", items: [{ productName: "Coca-Cola", quantity: 1 }], paymentMethod: "efectivo" as const, canal: "recoger" as const };
   it("un pedido de WhatsApp o voz con nombre de relleno se rechaza con un mensaje accionable (sin escalar)", () => {
     for (const source of ["whatsapp", "voice"] as const) {
       expect(() => validateCreateOrderPayload({ ...base, source, customerName: "Cliente", ...(source === "voice" ? { customerPhone: "9991234567" } : {}) })).toThrow(NOMBRE_NO_UTILIZABLE_MENSAJE);
@@ -175,48 +175,50 @@ describe("T7-002 coordenada absurda: se rechaza, no es «fuera de zona»", () =>
   });
 });
 
+type ResultadoSucursal = { estado: string; branch_slug: string; atiende_otra_sucursal?: { aviso: string; telefono?: string } };
+
 describe("G5/T7-026/T7-049..051 el domicilio lo atiende otra sucursal que la del chat", () => {
   const pm = { perfil: "taqueria_pm" as const, agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] };
   it("con el chat de García Lavín y un pin de Montejo, el resultado trae nombre, teléfono y la instrucción de no decir «sí entregamos»", async () => {
     const m = mundoDosSucursales();
     await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
-    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.garcia }), "buscar_sucursal_cercana", { lat: 21.0283, lng: -89.6097 })).result as Record<string, any>;
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.garcia }), "buscar_sucursal_cercana", { lat: 21.0283, lng: -89.6097 })).result as unknown as ResultadoSucursal;
     expect(r.estado).toBe("asignada");
     expect(r.branch_slug).toBe("prol-montejo");
     expect(r.atiende_otra_sucursal).toMatchObject({ branch_slug: "prol-montejo", telefono: "999 944 0342", chat_de: "García Lavín (Victory Platz)" });
-    expect(r.atiende_otra_sucursal.aviso).toMatch(/NO conteste «sí, entregamos»/);
-    expect(r.atiende_otra_sucursal.aviso).toMatch(/999 944 0342/);
-    expect(r.atiende_otra_sucursal.aviso).toMatch(/Ofrezca recoger en García Lavín/);
-    expect(r.atiende_otra_sucursal.aviso).toMatch(/no escale/);
+    expect(r.atiende_otra_sucursal!.aviso).toMatch(/NO conteste «sí, entregamos»/);
+    expect(r.atiende_otra_sucursal!.aviso).toMatch(/999 944 0342/);
+    expect(r.atiende_otra_sucursal!.aviso).toMatch(/Ofrezca recoger en García Lavín/);
+    expect(r.atiende_otra_sucursal!.aviso).toMatch(/no escale/);
   });
   it("sin teléfono cargado, el aviso manda a la lista de datos del negocio (no inventa uno)", async () => {
     const m = mundoDosSucursales();
     await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
     const sinTel = { propertyId: m.montejo, organizationId: m.organizationId, name: "Prolongación Montejo", slug: "prol-montejo", status: "active" as const, phone: null, address: null, lat: 21.0282, lng: -89.6098 };
     m.repo.seedBranch(sinTel);
-    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.garcia }), "buscar_sucursal_cercana", { lat: 21.0283, lng: -89.6097 })).result as Record<string, any>;
-    expect(r.atiende_otra_sucursal.telefono).toBeUndefined();
-    expect(r.atiende_otra_sucursal.aviso).toMatch(/DATOS DEL NEGOCIO/);
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.garcia }), "buscar_sucursal_cercana", { lat: 21.0283, lng: -89.6097 })).result as unknown as ResultadoSucursal;
+    expect(r.atiende_otra_sucursal!.telefono).toBeUndefined();
+    expect(r.atiende_otra_sucursal!.aviso).toMatch(/DATOS DEL NEGOCIO/);
   });
   it("si la sucursal asignada ES la del chat, el resultado no cambia (camino feliz)", async () => {
     const m = mundoDosSucursales();
     await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
-    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.garcia }), "buscar_sucursal_cercana", { lat: 21.0212, lng: -89.614 })).result as Record<string, any>;
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.garcia }), "buscar_sucursal_cercana", { lat: 21.0212, lng: -89.614 })).result as unknown as ResultadoSucursal;
     expect(r.branch_slug).toBe("garcia-lavin");
     expect(r.atiende_otra_sucursal).toBeUndefined();
   });
   it("sin sucursal de entrada (número único o voz) tampoco aparece", async () => {
     const m = mundoDosSucursales();
     await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
-    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { lat: 21.0283, lng: -89.6097 })).result as Record<string, any>;
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { lat: 21.0283, lng: -89.6097 })).result as unknown as ResultadoSucursal;
     expect(r.atiende_otra_sucursal).toBeUndefined();
   });
 });
 
 // ── T7-014: pin antes de crear ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("T7-014 requierePinAntesDeCrear", () => {
-  const u = (content: string) => ({ role: "user", content });
-  const a = (content: string) => ({ role: "assistant", content });
+  const u = (content: string) => ({ role: "user" as const, content });
+  const a = (content: string) => ({ role: "assistant" as const, content });
   const CASA = "Calle 5 #100 en Real Montejo. Son 5 casas iguales, es la única con cochera techada. Un kilo de bistec con tortillas de maíz. Pago con tarjeta";
 
   it("referencia visual, sin pin y sin que se lo hayan pedido: SÍ", () => {
