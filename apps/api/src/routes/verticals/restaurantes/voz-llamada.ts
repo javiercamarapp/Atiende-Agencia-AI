@@ -36,7 +36,7 @@ import {
   instruccionConAjustes,
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
-import { emitirNotificacion } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import { ESCALERA_VOZ, escalonAdmiteComponentes, eventosCostoLlamada, motivoComponenteInvalido, temperaturaParaLlamada } from "@atiende/voice-core";
 import type { ComponenteCosto, EscalonVoz, TramoLlamada } from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
@@ -149,14 +149,19 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       const { instruccion: instruccionBase, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
       // Ajustes del agente de la organización (ritmo, estilo, naturalidad, ambiente, tecleo; migraciones 055/087). Base sin migrar o despliegue sin el repositorio: valores de siempre.
       // Si la lectura falla por cualquier motivo (no solo la base sin migrar, que el repositorio ya recupera) la llamada NO se cae: se atiende con los valores de siempre.
-      let ajustes = AJUSTES_AGENTE_POR_DEFECTO;
-      if (deps.ajustesAgenteRepo) {
-        try {
-          ajustes = (await deps.ajustesAgenteRepo(db).leer(organizationId)).valor;
-        } catch (err) {
-          logEvent(c, "warn", "voz_contexto_ajustes_no_leidos", { organizationId, codigo: typeof (err as { code?: unknown } | null)?.code === "string" ? (err as { code: string }).code : "error" });
-        }
-      }
+      // Va con SAVEPOINT (regla de la casa): dentro de la transaccion unica del request un error SQL deja la transaccion abortada (25P02) y la consulta siguiente (gasto del mes) tambien fallaria.
+      const repoAjustes = deps.ajustesAgenteRepo;
+      const ajustes = repoAjustes
+        ? await runWithSavepointFallback({
+            session: db,
+            primary: async () => (await repoAjustes(db).leer(organizationId)).valor,
+            isRecoverable: () => true,
+            fallback: async (err) => {
+              logEvent(c, "warn", "voz_contexto_ajustes_no_leidos", { organizationId, codigo: typeof (err as { code?: unknown } | null)?.code === "string" ? (err as { code: string }).code : "error" });
+              return AJUSTES_AGENTE_POR_DEFECTO;
+            },
+          })
+        : AJUSTES_AGENTE_POR_DEFECTO;
       const instruccion = instruccionConAjustes(instruccionBase, ajustes, null);
       const llamada = ajustesDeLlamada(ajustes);
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.

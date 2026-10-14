@@ -4,6 +4,7 @@ import { AJUSTES_AGENTE_POR_DEFECTO, InMemoryAjustesAgenteRepository, InMemoryVo
 import { BLOQUE_NATURALIDAD } from "@atiende/voice-core";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
+import { AbortAwareFakeSession } from "../../../packages/domain-restaurantes/tests/support/aborting-fake-session.ts";
 import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,19 +112,35 @@ describe("contexto de la llamada para el worker", () => {
     expect(r.temperatura.maxLlamada).toBe(0.4);
   });
 
-  it("si la lectura de ajustes lanza un error cualquiera, la llamada NO se cae: 200 con los valores de siempre", async () => {
+  it("si la lectura de ajustes lanza un error SQL cualquiera (42501, timeout) dentro de la transaccion compartida: la llamada NO se cae ni queda abortada (SAVEPOINT) y se atiende con los valores de siempre", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const voz = new InMemoryVozRepository();
     voz.seedProperty(ctx.propertyIdA, ctx.organizationId);
-    const roto = { leer: async () => { throw Object.assign(new Error("connection reset"), { code: "08006" }); }, guardar: async () => { throw new Error("no"); } };
-    const app = buildApp({ ...ctx.deps, ajustesAgenteRepo: () => roto, vozRepo: () => voz, vozLlamadaRepo: () => new InMemoryVozLlamadaRepository(), vozKpiRepo: () => new InMemoryVozKpiRepository() });
+    const llamadaRepo = new InMemoryVozLlamadaRepository();
+    // Sesion que modela Postgres: un error deja la transaccion ABORTADA (25P02) hasta un ROLLBACK TO SAVEPOINT.
+    const sesion = new AbortAwareFakeSession([
+      { match: /select ajustes/i, respond: () => Object.assign(new Error("permission denied"), { code: "42501" }) },
+      { match: /select gasto/i, respond: () => [{ ok: true }] },
+    ]);
+    const engine = { ...ctx.deps.engine, withAppSession: (_o: unknown, fn: (db: unknown) => Promise<unknown>) => fn(sesion) } as unknown as AppDeps["engine"];
+    const roto = { leer: async () => { await sesion.query("select ajustes"); throw new Error("inalcanzable"); }, guardar: async () => { throw new Error("no"); } };
+    const app = buildApp({
+      ...ctx.deps,
+      engine,
+      ajustesAgenteRepo: () => roto,
+      vozRepo: () => voz,
+      vozLlamadaRepo: () => ({ ...llamadaRepo, gastoMesMicroUsd: async () => { await sesion.query("select gasto"); return 0; } }) as unknown as InMemoryVozLlamadaRepository,
+      vozKpiRepo: () => new InMemoryVozKpiRepository(),
+    });
     const raw = JSON.stringify({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA });
     const res = await app.request("/internal/restaurantes/voz/llamada/contexto", { method: "POST", body: raw, headers: { "content-type": "application/json", "content-length": String(raw.length), "x-atiende-internal-secret": SECRETO } });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { sonido: { tecleo: { activo: boolean } }; temperatura: number | null; instruccion: string };
+    expect(res.status).toBe(200); // sin el SAVEPOINT el gasto del mes fallaria con 25P02 y daria 500
+    const body = (await res.json()) as { sonido: { tecleo: { activo: boolean } }; temperatura: number | null; instruccion: string; gastoMesMicroUsd: number };
     expect(body.sonido.tecleo.activo).toBe(false);
     expect(body.temperatura).toBeNull();
+    expect(body.gastoMesMicroUsd).toBe(0);
     expect(body.instruccion).not.toContain(BLOQUE_NATURALIDAD);
+    expect(sesion.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
   });
 
   it("base sin migrar (ajustes no disponibles): el contexto sigue funcionando con los valores de siempre", async () => {
