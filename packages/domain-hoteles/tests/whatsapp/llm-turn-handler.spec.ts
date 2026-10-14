@@ -395,4 +395,52 @@ describe("falla del sistema: disculpa honesta con aviso a recepcion solo si qued
     expect(result.handoff).toBeUndefined();
     expect(insertar).not.toHaveBeenCalled();
   });
+
+  const llamadaHerramienta = (name: string, args: object): LlmCompletionResult => ({ text: "", toolCalls: [{ id: randomUUID(), name, argumentsJson: JSON.stringify(args) }], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 });
+  /** El modelo llama una herramienta en el primer paso y luego el proveedor cae. */
+  const herramientaYCaida = (name: string, args: object) => {
+    const gateway = makeGateway();
+    let paso = 0;
+    const script = (): LlmCompletionResult => {
+      if (paso++ === 0) return llamadaHerramienta(name, args);
+      throw Object.assign(new Error("caído"), { status: 503 });
+    };
+    gateway.registerLadder("default", [new FakeLlmProvider({ id: "p", script })]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e", script })]);
+    return gateway;
+  };
+
+  it("el turno YA registro un contacto: no se registra un segundo aviso de falla, se pide un solo handoff y se puede decir 'ya avisé' (es cierto)", async () => {
+    const ids = baseRepoAndIds();
+    const insertar = vi.spyOn(ids.repo, "insertContactoNoOperativo");
+    const handler = createLlmHotelesWhatsAppTurnHandler(ids.repo, herramientaYCaida("registrar_contacto_no_operativo", { motivo: "factura", resumen: "necesita factura" }), { defaultRole: "default", escalatedRole: "escalated" });
+    const result = await handler.handleInboundMessage(entrada(ids));
+    expect(insertar).toHaveBeenCalledTimes(1);
+    expect(insertar.mock.calls[0]![0].reason).toBe("factura");
+    expect(result.reply).toMatch(/ya avisé al equipo del hotel/i);
+    expect(result.handoff).toEqual({ motivo: "falla_sistema" });
+  });
+
+  it("el turno YA creo un ticket de mantenimiento: lo nombra, pide que no lo repita y no registra otro contacto", async () => {
+    const ids = baseRepoAndIds();
+    const insertar = vi.spyOn(ids.repo, "insertContactoNoOperativo");
+    const handler = createLlmHotelesWhatsAppTurnHandler(ids.repo, herramientaYCaida("crear_ticket_mantenimiento", { titulo: "Aire no enfría", descripcion: "Lleva 2 horas", habitacion: "410", severidad: "media" }), { defaultRole: "default", escalatedRole: "escalated" });
+    const result = await handler.handleInboundMessage(entrada(ids));
+    expect(await ids.repo.listMaintenanceTickets(ids.propertyId)).toHaveLength(1);
+    expect(insertar).not.toHaveBeenCalled();
+    expect(result.reply).toMatch(/tu reporte de mantenimiento sí quedó registrado/i);
+    expect(result.reply).toMatch(/no lo repitas/i);
+    expect(result.reply).not.toMatch(/no pude atender tu mensaje\.? Ya avisé/i);
+    expect(result.handoff).toEqual({ motivo: "falla_sistema" });
+  });
+
+  it("un ticket de mantenimiento que FALLO (titulo vacio) no cuenta: se registra el aviso de falla normal", async () => {
+    const ids = baseRepoAndIds();
+    const insertar = vi.spyOn(ids.repo, "insertContactoNoOperativo");
+    const handler = createLlmHotelesWhatsAppTurnHandler(ids.repo, herramientaYCaida("crear_ticket_mantenimiento", { titulo: "", descripcion: "" }), { defaultRole: "default", escalatedRole: "escalated" });
+    const result = await handler.handleInboundMessage(entrada(ids));
+    expect(insertar).toHaveBeenCalledTimes(1);
+    expect(insertar.mock.calls[0]![0].reason).toMatch(/^falla_sistema/);
+    expect(result.reply).not.toMatch(/mantenimiento/i);
+  });
 });
