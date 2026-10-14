@@ -160,10 +160,10 @@ test.describe("UNI-R0b ambito restaurantes @recorrido @oscuro", () => {
     expect(await aside.evaluate((el) => getComputedStyle(el).color)).toBe(await resolver(page, oscuro ? "hsl(240 4.8% 95.9%)" : "hsl(18 27.8% 7.1%)"));
     const selector = aside.locator("#restaurantes-sucursal-activa");
     await expect(selector).toBeVisible();
-    // Campo de Likida dentro del sidebar: fondo de tarjeta, 13 px, radio 16 px y foco de Likida (sin anillo doble).
-    expect(await selector.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await resolver(page, oscuro ? "hsl(240 7% 8%)" : "hsl(0 0% 100%)"));
+    // UNI-MARCO: el selector es el "hundido gris" del pie del sidebar (fondo canvas, no el blanco de tarjeta), 13 px y radio de rounded-xl.
+    expect(await selector.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await resolver(page, oscuro ? "hsl(240 10% 6.1%)" : "hsl(240 9% 97.8%)"));
     expect(await selector.evaluate((el) => getComputedStyle(el).fontSize)).toBe("13px");
-    expect(await selector.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("16px");
+    expect(await selector.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("12px");
     await selector.click();
     const lista = page.getByRole("listbox");
     await expect(lista).toBeVisible();
