@@ -349,6 +349,13 @@ describe("caida de cada etapa", () => {
     }
   });
 
+  it("LLM sin endpoint de retencion cero: un 404 de OpenRouter sube `v2_llm_sin_zdr` (falla claro; la escalera pasa al siguiente escalon)", async () => {
+    const { stt, eventos, inactivo } = await armar(llmFalso([async () => { throw Object.assign(new Error("No endpoints found"), { status: 404 }); }]));
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(eventos.filter((e) => e.startsWith("caido:"))).toEqual(["caido:v2_llm_sin_zdr"]);
+  });
+
   it("TTS: un fallo del sintetizador sube `v2_tts_ws_1006`, detiene al LLM y no registra el turno como terminado", async () => {
     const tts = new TtsFalso(async function* () {
       yield audioDe(1);

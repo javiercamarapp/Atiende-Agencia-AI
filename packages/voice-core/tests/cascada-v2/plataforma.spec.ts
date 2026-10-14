@@ -52,6 +52,10 @@ describe("configuracion de la cascada v2", () => {
     expect(VOZ_PLATAFORMA.cascadaV2.deepgram.endpointingMs).toBeLessThanOrEqual(500);
     expect(VOZ_PLATAFORMA.cascadaV2.deepgramAura2).toMatchObject({ voz: "aura-2-estrella-es", hzSalida: 24_000 });
   });
+  it("retencion cero: el cerebro de voz solo admite proveedores ZDR de Vertex y Bedrock (decision de Javier, 14-oct-2026)", () => {
+    expect(VOZ_PLATAFORMA.cascadaV2.llm.proveedoresZdr).toEqual(["google-vertex", "amazon-bedrock"]);
+    expect(Object.isFrozen(VOZ_PLATAFORMA.cascadaV2.llm.proveedoresZdr)).toBe(true);
+  });
   it("el piso por minuto del escalon existe y la configuracion sigue congelada", () => {
     expect(precioPorMinutoMicroUsd("cascada-v2")).toBe(VOZ_PLATAFORMA.cascadaV2.precioMicroUsdPorMinuto);
     expect(costoEstimadoMicroUsd("cascada-v2", 60)).toBe(VOZ_PLATAFORMA.cascadaV2.precioMicroUsdPorMinuto);

@@ -100,6 +100,17 @@ describe("puerto LLM de voz v2", () => {
     expect((cuerpos[0]!.tools as unknown[]).length).toBe(1);
   });
 
+  it("RETENCION CERO: toda peticion pide endpoints ZDR solo de Vertex y Bedrock, con data_collection deny y sin salirse de esa lista", async () => {
+    const { fn, cuerpos } = fetchSse([delta("ok"), uso]);
+    const puerto = crearPuertoLlmVozV2("k", fn);
+    await puerto.completar({ ...BASE, onTextDelta: () => undefined });
+    await puerto.completar({ ...BASE, modeloPreferido: "anthropic/claude-haiku-5.5", onTextDelta: () => undefined });
+    for (const c of cuerpos) {
+      expect(c.provider).toMatchObject({ zdr: true, only: ["google-vertex", "amazon-bedrock"], allow_fallbacks: true, data_collection: "deny", require_parameters: true });
+      expect(JSON.stringify(c.provider)).not.toContain("anthropic\"");
+    }
+  });
+
   it("sin onTextDelta responde sin streaming (la forma de siempre) y tambien sin temperature", async () => {
     const cuerpos: Record<string, unknown>[] = [];
     const fn = (async (_u: string, init?: RequestInit) => {
