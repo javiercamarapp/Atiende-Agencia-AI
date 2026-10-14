@@ -9,6 +9,7 @@
 // elegida y animacion de entrada que se apaga con prefers-reduced-motion. Mantiene el contrato de siempre: `id` en el disparador (un
 // `role=combobox` con su `<label for>`), `onCambia(valor)` y, con una sola opcion, un bloque de solo lectura con la misma forma y sin
 // chevron. Cada opcion lleva `data-valor` (como `Selector`) para las ayudas de prueba.
+import * as React from "react";
 import { Store } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -33,6 +34,9 @@ const FORMA =
   "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-canvas px-2.5 text-left text-ui font-medium text-foreground shadow-[inset_0_1px_2px_hsl(var(--foreground)/0.06)]";
 
 export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, className }: SelectorSucursalProps) {
+  const disparadorRef = React.useRef<HTMLButtonElement>(null);
+  // Si el disparador vive en el sidebar (data-ambito-base), su lista (portal en <body>) usa tambien la paleta base y no la del ambito (como `Selector`).
+  const [enBase, setEnBase] = React.useState(false);
   const actual = opciones.find((o) => o.valor === valor) ?? opciones[0];
   const icono = <Store aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />;
   if (opciones.length <= 1) {
@@ -51,8 +55,9 @@ export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, clas
       <label htmlFor={id} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
         {etiqueta}
       </label>
-      <Select value={actual?.valor ?? ""} onValueChange={onCambia}>
+      <Select value={actual?.valor ?? ""} onValueChange={onCambia} onOpenChange={(abierto) => abierto && setEnBase(disparadorRef.current?.closest("[data-ambito-base]") != null)}>
         <SelectTrigger
+          ref={disparadorRef}
           id={id}
           data-testid="selector-sucursal"
           title={actual?.etiqueta}
@@ -70,7 +75,7 @@ export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, clas
             <SelectValue>{actual?.etiqueta}</SelectValue>
           </span>
         </SelectTrigger>
-        <SelectContent align="start" className="min-w-[var(--radix-select-trigger-width)]">
+        <SelectContent align="start" data-ambito-base={enBase ? "" : undefined} className="min-w-[var(--radix-select-trigger-width)]">
           {opciones.map((o) => (
             <SelectItem key={o.valor} value={o.valor} data-valor={o.valor} className="font-medium">
               {o.etiqueta}
