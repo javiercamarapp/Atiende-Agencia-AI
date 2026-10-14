@@ -112,6 +112,7 @@ export function knownAmountsOfQuote(quote: {
  * (QA-PM-R2-whatsapp-04: 12 de 48 conversaciones del juez eran "ya avise al gerente" sin llamar a escalar_a_humano). Un aviso de preparacion
  * ("le aviso a la sucursal para que tenga listo su pedido") es parte del flujo normal del pedido, no un aviso al gerente: no cuenta. */
 export function afirmaHaberAvisado(reply: string): boolean {
+  if (typeof reply !== "string" || !reply) return false;
   const t = normalizarParaClasificar(reply);
   const DEST = "(?:a|al|a\\s+la|a\\s+los)\\s+(?:\\w+\\s+){0,2}(?:gerente|equipo|sucursal|encargad[oa]|restaurante|personal)\\b(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)";
   // Solo afirmaciones en PASADO de haber avisado (R4-whatsapp-02/reglas-01). No cuentan el futuro ni el condicional ("le voy a avisar a la sucursal que usted pasa a las 8", "debo avisar al gerente si..."),
@@ -119,7 +120,14 @@ export function afirmaHaberAvisado(reply: string): boolean {
   const pasado = new RegExp(`(?<!\\bno\\s)(?<!\\bno\\s(?:le|les)\\s)(?<!\\bque\\s)(?<!\\bque\\s(?:le|les)\\s)\\b(?:ya\\s+)?(?:le\\s+|les\\s+)?avis(?:e|amos)\\s+(?:ya\\s+)?${DEST}`);
   const inmediata = new RegExp(`\\b(?:permitame|permitanme|dejeme)\\s+avisar(?:le|les)?\\s+(?:a|al|a\\s+la)\\s+(?:\\w+\\s+){0,2}(?:gerente|equipo|encargad[oa])\\b(?![^.!?]*\\b(?:list[oa]s?|prepar\\w*|tenga\\w*)\\b)`);
   const registrado = /\bel\s+aviso\s+(?:ya\s+)?(?:quedo|fue|se\s+registro|esta\s+registrado)\b|\b(?:ya\s+)?quedo\s+avisad[oa]\b/;
-  const notifique = /\bnotific(?:ue|amos)\s+(?:al|a\s+la)\s+(?:\w+\s+){0,2}(?:gerente|equipo|sucursal)\b/;
+  // QA-PM-R6-reglas-01: el regex original decia «notificue» (typo) y nunca detectaba «notifiqué». Mismas negaciones/subjuntivo que `pasado` («que le comunique», «no le comuniqué»).
+  const NO_SUBJ = "(?<!\\bno\\s)(?<!\\bno\\s(?:le|les)\\s)(?<!\\bque\\s)(?<!\\bque\\s(?:le|les)\\s)(?<!\\bpara\\s)";
+  const PERSONA_AVISO = "(?:gerente|gerencia|equipo|sucursal|encargad[oa]|restaurante|personal|duen[oa])";
+  const notifique = new RegExp(
+    `${NO_SUBJ}\\b(?:le\\s+|les\\s+)?(?:notifiqu(?:e)|notificamos|comuniqu(?:e)|comunicamos|escal(?:e|amos))\\s+(?:ya\\s+)?(?:su\\s+(?:caso|queja|solicitud|pedido)\\s+)?(?:(?:al|a\\s+la|a\\s+los)\\s+(?:\\w+\\s+){0,2}${PERSONA_AVISO}\\b)` +
+      `|${NO_SUBJ}\\bya\\s+(?:habl(?:e|amos)|platiqu(?:e|amos))\\s+con\\s+(?:el\\s+|la\\s+|los\\s+)?(?:\\w+\\s+){0,1}${PERSONA_AVISO}\\b` +
+      `|${NO_SUBJ}\\b(?:dej(?:e|amos))\\s+(?:el\\s+|un\\s+)?(?:recado|mensaje|aviso)\\s+(?:con|al|a\\s+la|para)\\s+(?:el\\s+|la\\s+)?(?:\\w+\\s+){0,1}${PERSONA_AVISO}\\b`,
+  );
   // T7-060 (ronda 5): «Permítame verificarlo con una persona de la sucursal» (o «lo consulto con el gerente») es la promesa de que una persona lo revisa. Sin escalar_a_humano no hay nadie a
   // quien le llegue: el agente dijo que consultaria y no habia aviso. Cuenta la promesa inmediata («permitame verificarlo con...») y la primera persona («lo verifico / voy a consultarlo con...»).
   // Se mira frase por frase: no cuentan la pregunta, la negacion, el condicional («si quiere, lo consulto con el gerente») ni el subjuntivo («para que lo verifique»).
@@ -170,6 +178,7 @@ export function quitarCortesiaNoRespaldada(reply: string): string {
  * sin pedido en la base tras un "si" y un "agregame pina").
  */
 export function afirmaPedidoRegistrado(frase: string): boolean {
+  if (typeof frase !== "string" || !frase) return false;
   const t = normalizarParaClasificar(frase);
   if (/[?¿]/.test(frase)) return false;
   // Condicional / negacion / futuro: no afirman nada. «si» se mira en el texto ORIGINAL para no confundir el «sí» afirmativo ("Sí, su pedido ya quedó registrado") con el condicional «si».
@@ -202,6 +211,8 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
     new RegExp(`\\b${N}\\b(?:\\s+[a-z0-9]+){0,3}?\\s+(?:ya\\s+)?(?:fue\\s+aceptad[oa]|quedo\\s+en\\s+el\\s+sistema|esta\\s+(?:ya\\s+)?list[oa](?:\\s+para\\s+(?:recoger|entregar|salir))?)\\b`),
     // Sin sujeto: «Ya quedó registrado, lo esperamos» (solo si la frase no habla de otra cosa: direccion, nombre, pago...)
     new RegExp(`^(?!.*\\b${OBJETO}\\b).*\\bya\\s+quedo\\s+(?:registrado|confirmado|anotado)\\b`),
+    // QA-PM-R6-reglas-05: frases cortas sin sujeto «pedido»: «ya tengo todo anotado», «quedó apartado» (el cliente las lee como pedido registrado).
+    new RegExp(`^(?!.*\\b${OBJETO}\\b).*\\b(?:ya\\s+tengo\\s+todo\\s+(?:anotad[oa]|registrad[oa]|apartad[oa])|quedo\\s+(?:ya\\s+)?apartad[oa])\\b`),
     // «va / pasó / se mandó (ya) a cocina»
     /\b(?:esta|va|paso|se\s+mando|se\s+envio)\s+(?:ya\s+)?(?:en|a)\s+(?:la\s+)?(?:cocina|preparacion)\b/,
   ];
@@ -372,7 +383,7 @@ export const PIDE_UNA_PERSONA_RE = (() => {
       // "hablar / comuníqueme / páseme con (su) supervisor"
       `\\b${verbo}\\s+(?:con|a)\\s+${det}${quien}${fin}`,
       // "quiero / necesito / prefiero una persona" y "¿me puede atender una persona?"
-      `\\b(?:quiero|necesito|prefiero|busco|quisiera)\\s+(?:hablar\\s+con\\s+)?${det}(?:persona|humano)${fin}`,
+      `\\b(?:quiero|necesito|prefiero|busco|quisiera)\\s+(?:hablar\\s+con\\s+)?${det}(?:persona|humano|asesor(?:a)?)${fin}`,
       `\\b(?:puede|pueden|podr[ií]a|podr[ií]an|puedes)\\s+(?:atender(?:me)?|ayudar(?:me)?)\\s+${det}${quien}${fin}`,
       // "un humano por favor", "una persona, por favor"
       `(?<!\\bpara\\s)\\b(?:una?)\\s+(?:persona|humano)\\s*,?\\s+por\\s+favor${fin}`,
@@ -408,6 +419,7 @@ export function retractaPeticionDePersona(text: string): boolean {
  * una persona, con usted esta bien"), "pasar con alguien" como visita ("voy a pasar con alguien a recogerlo") ni una peticion mezclada con un pedido
  * (la peticion de una persona SIEMPRE escala, aunque venga con un pedido: "quiero 3 tacos y que me hable una persona"; el pedido lo retoma la persona). */
 export function pideUnaPersona(text: string): boolean {
+  if (typeof text !== "string" || !text) return false;
   for (const m of text.matchAll(PIDE_UNA_PERSONA_GLOBAL)) {
     const idx = m.index ?? 0;
     const antes = text.slice(Math.max(0, idx - 60), idx);
@@ -433,6 +445,7 @@ export interface HighRiskContext {
 
 /** Texto comparable: minusculas y sin acentos. Asi "faltó" y "falto" son lo mismo (con `\b` y sin acentos el resultado ya no depende de si el cliente acentuó). */
 export function normalizarParaClasificar(text: string): string {
+  if (typeof text !== "string") return "";
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
@@ -443,9 +456,11 @@ const INFINITIVO = "[a-z]{2,}(?:ar|er|ir)(?:le|les|me|se|lo|la|los|las|selo)?";
 const CORRECCION_DE_CARRITO = /\bmejor\b|\ben\s+(?:vez|lugar)\s+de\b|\bponme\b|\bponmanos\b|\bcambi(?:a|ame|alo|ala)\b/;
 // El mensaje habla del pedido que YA existe (no de uno que se esta armando).
 const HABLA_DE_SU_PEDIDO = /\b(?:mi|su|el|ese|este)\s+pedido\b|\bmi\s+orden\b|\bya\s+(?:viene|sale|salio|llego|casi)\b|\bcuanto\s+(?:tarda|falta|se\s+tarda)\b/;
-const ME_FALTO = new RegExp(`\\bme\\s+falt(?:o|aron)\\b\\s*(?<resto>.*)$`);
+const ME_FALTO = new RegExp(`\\b(?:me|le|les|nos)\\s+falt(?:o|aron)\\b\\s*(?<resto>.*)$`);
 // El mensaje describe un pedido NUEVO que se esta armando ("quiero hacer mi pedido urgente", "mi pedido: 5 tacos de pastor"): "urgente" es enfasis, no una emergencia.
 const ARMA_UN_PEDIDO_NUEVO = /\bquiero\s+(?:hacer|levantar|realizar|armar|mandar)\s+(?:mi|un|el)\s+pedido\b|\b(?:hacer|levantar|realizar)\s+(?:mi|un)\s+pedido\b|\bmi\s+pedido\s*:|\bpedido\s*:\s*\d/;
+// QA-PM-R6-reglas-02: «llevo 2 horas esperando mi pedido» es una espera larga del pedido que ya existe (urgencia), con o sin la palabra «urgente».
+const ESPERA_LARGA = /\bllevo\s+(?:mas\s+de\s+)?(?:(?:\d+|un|una|dos|tres|cuatro|cinco|media)\s+horas?|(?:[3-9]\d|\d{3,})\s+minutos?)\b[^.!?\n]{0,30}\besperando\b/;
 // Quejas de "algo no llego / llego mal" que solo son queja si se habla de un pedido ya hecho (el mismo criterio que "me falto").
 const QUEJA_DE_ENTREGA = /\bno\s+me\s+(?:llego|llegaron|trajeron|mandaron|dieron)\b|\bvino\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada|aguado|revuelto)\b|\bme\s+(?:llego|llegaron|trajeron|mandaron)\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada)\b/;
 // Pregunta de estado o de politica sobre cancelar ("¿mi pedido se cancelo?", "¿si cancelo me cobran algo?", "¿hasta que hora se puede cancelar?"): NO pide cancelar nada.
@@ -469,6 +484,13 @@ interface Patron {
 // mezcla varios motivos se atienda por el de mayor riesgo. Los patrones corren sobre texto SIN acentos.
 const HIGH_RISK_PATTERNS: readonly Patron[] = [
   {
+    // QA-PM-R6-reglas-02: intoxicacion / malestar tras comer en el restaurante es riesgo legal y de salud: escala al gerente, no se contesta con ingredientes.
+    intent: "alergia_salud",
+    pattern: /\bintoxic\w*|\bintoxiqu\w*|\bdiarrea\b|\bvomit\w*|\bme\s+(?:enferm\w*|cayo\s+mal|hizo\s+dano|dio\s+(?:dolor|asco))\b|\bdolor\s+de\s+(?:estomago|panza)\b|\benvenen\w*|\bcomida\s+(?:en\s+mal\s+estado|descompuesta)\b/,
+    reply:
+      "Lamento mucho lo que me cuenta. Su salud es lo primero: si sigue con malestar, busque atención médica. Ya avisé al gerente para que lo contacte de inmediato y revise lo ocurrido.",
+  },
+  {
     intent: "alergia_salud",
     pattern: /\b(?:alergic[oa]s?|alergias?|intolerante|intolerancia|celiac[oa]|cacahuate|gluten)\b/,
     reply:
@@ -476,7 +498,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   },
   {
     intent: "cobro_duplicado",
-    pattern: /cobr(?:o|aron|e)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces/,
+    pattern: /cobr(?:o|aron|e)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces|\bcarg(?:o|aron|aro)\s+(?:dos\s+veces|2\s+veces|doble|duplicado)|\b(?:doble|segundo)\s+cargo\b|\bcargo\s+(?:doble|duplicado)\b/,
     reply: "Lamento el problema con el cobro. Ya avisé al equipo para que revise su caso directamente y lo contacte lo antes posible.",
   },
   {
@@ -490,12 +512,24 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     // Solo "pedido": "orden" y "comanda" son UNIDADES del menu ("cancela la orden de bistec" corrige el carrito). Si ademas es un cambio de
     // opinion y el telefono no tiene un pedido ya creado, es el carrito y va al agente; un pedido ya creado SI justifica el aviso al equipo.
     intent: "cancelacion_modificacion",
-    pattern: /\bcancel(?:ar|o|a|e|en)\b[^.!?\n]{0,40}\bpedido\b|\bpedido\b[^.!?\n]{0,40}\bcancel(?:ar|o|a|e|en)\b|\bcancelarme\s+(?:el|mi)\s+pedido\b/,
+    pattern: /\bcancel(?:ar|o|a|e|en)(?:l[oa]s?|me|nos)?\b[^.!?\n]{0,40}\bpedido\b|\bpedido\b[^.!?\n]{0,40}\bcancel(?:ar|o|a|e|en)(?:l[oa]s?|me|nos)?\b|\bcancelarme\s+(?:el|mi)\s+pedido\b/,
     // Sin pedido (el servidor ya sabe que el telefono no tiene uno reciente) no hay nada que cancelar: "olvidelo, cancele el pedido" es abandonar el carrito.
     // Una PREGUNTA sobre cancelar ("¿mi pedido se cancelo?", "¿hasta que hora se puede cancelar?") va al agente, que si puede contestarla.
     cuando: (texto, ctx) => ctx.pedidoReciente !== null && !CONSULTA_DE_CANCELACION.test(texto) && (!CORRECCION_DE_CARRITO.test(texto) || (ctx.pedidoReciente ?? null) !== null),
     reply:
       "Entendido, desea cancelar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",
+  },
+  {
+    // QA-PM-R6-reglas-03: «cámbiame el pedido a harina» sobre un pedido YA creado y todavia modificable lo decide una persona (depende de si ya se empezo a preparar). Sin pedido
+    // reciente (o ya entregado) es el carrito y va al agente.
+    intent: "cancelacion_modificacion",
+    pattern: /\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\s+(?:el|mi|ese|este)\s+pedido\b/,
+    cuando: (texto, ctx) => {
+      const estado = ctx.pedidoReciente?.estado;
+      return (estado === "preparando" || estado === "programado" || estado === "por_confirmar") && !CONSULTA_DE_CANCELACION.test(texto) && !/\?/.test(texto);
+    },
+    reply:
+      "Entendido, desea cambiar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",
   },
   {
     intent: "transferencia",
@@ -506,20 +540,22 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   {
     intent: "queja",
     pattern: new RegExp(
-      `${/\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bme\s+falt(?:o|aron)\b|\bmal\s+armado\b/.source}|${QUEJA_DE_ENTREGA.source}`,
+      `${/\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\b(?:me|le|les|nos)\s+falt(?:o|aron)\b|\bmal\s+armado\b/.source}|${QUEJA_DE_ENTREGA.source}`,
     ),
     // "me falto" es queja solo si habla de algo que NO llego ("me falto la bebida de mi pedido"); "me falto pedir otra coca" es el carrito.
     cuando: (texto, ctx) => {
       // Quejas inequivocas (siempre escalan).
       if (/\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bmal\s+armado\b/.test(texto)) return true;
       // "no me llego la coca" / "vino frio todo": queja solo si habla de un pedido ya hecho.
-      if (QUEJA_DE_ENTREGA.test(texto) && !/\bme\s+falt(?:o|aron)\b/.test(texto)) {
+      if (QUEJA_DE_ENTREGA.test(texto) && !/\b(?:me|le|les|nos)\s+falt(?:o|aron)\b/.test(texto)) {
         const estadoEntrega = ctx.pedidoReciente?.estado;
         return estadoEntrega === "entregado" || estadoEntrega === "salio" || HABLA_DE_SU_PEDIDO.test(texto);
       }
-      if (!/\bme\s+falt(?:o|aron)\b/.test(texto)) return true;
+      if (!/\b(?:me|le|les|nos)\s+falt(?:o|aron)\b/.test(texto)) return true;
       const resto = ME_FALTO.exec(texto)?.groups?.resto ?? "";
       if (new RegExp(`^(?:a\\s+)?${INFINITIVO}\\b`).test(resto)) return false;
+      // QA-PM-R6-reglas-02: «le faltó la salsa» (tercera persona: lo que le falto al pedido) es queja sin necesitar «mi pedido»; «me faltó la bebida» sigue pidiendo contexto de pedido.
+      if (/\b(?:le|les|nos)\s+falt(?:o|aron)\b/.test(texto)) return true;
       const estado = ctx.pedidoReciente?.estado;
       return estado === "entregado" || estado === "salio" || HABLA_DE_SU_PEDIDO.test(texto);
     },
@@ -528,8 +564,8 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   {
     // "urgente" como enfasis de un pedido nuevo ("medio kilo de pastor, lo necesito urgente") NO es una emergencia: solo escala cuando habla del pedido que ya existe.
     intent: "urgencia",
-    pattern: /\burgen(?:te|cia)\b/,
-    cuando: (texto, ctx) => HABLA_DE_SU_PEDIDO.test(texto) && !ARMA_UN_PEDIDO_NUEVO.test(texto) && ctx.pedidoReciente !== null,
+    pattern: /\burgen(?:te|cia)\b|\bllevo\s+(?:mas\s+de\s+)?(?:(?:\d+|un|una|dos|tres|cuatro|cinco|media)\s+horas?|(?:[3-9]\d|\d{3,})\s+minutos?)\b[^.!?\n]{0,30}\besperando\b/,
+    cuando: (texto, ctx) => (HABLA_DE_SU_PEDIDO.test(texto) || ESPERA_LARGA.test(texto)) && !ARMA_UN_PEDIDO_NUEVO.test(texto) && ctx.pedidoReciente !== null,
     reply: "Entendido, es urgente. Ya avisé al equipo para que lo contacte de inmediato.",
   },
   {
