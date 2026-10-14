@@ -33,12 +33,15 @@ export function confirmacionDePedido(pedido: unknown, opciones: OpcionesConfirma
   if (typeof pedido !== "object" || pedido === null || Array.isArray(pedido)) return null;
   const p = pedido as Record<string, unknown>;
   if (!esTexto(p.id)) return null;
+  // Defensa: un pedido retenido / por aprobar NO esta registrado ni en cocina; su unico texto valido es el `mensaje_al_cliente` del servidor.
+  const ESTADOS_RETENIDOS = ["por_aprobar", "por_confirmar", "por_confirmar_por_la_sucursal", "retenido"];
+  if (p.pedido_grande === true || p.por_aprobar === true || p.pedido_retenido === true || ESTADOS_RETENIDOS.includes(String(p.status)) || ESTADOS_RETENIDOS.includes(String(p.estado))) return null;
   const total = p.total;
   if (typeof total !== "number" || !Number.isFinite(total) || total < 0) return null;
   const items = Array.isArray(p.items)
     ? p.items.flatMap((i: unknown) => {
         const it = i as Record<string, unknown> | null;
-        return it && esTexto(it.name) && typeof it.quantity === "number" && Number.isFinite(it.quantity) && it.quantity > 0 ? [{ name: it.name.trim(), quantity: it.quantity }] : [];
+        return it && esTexto(it.name) && typeof it.quantity === "number" && Number.isFinite(it.quantity) && it.quantity > 0 ? [{ name: it.name.trim(), quantity: it.quantity, cortesia: it.courtesy === true }] : [];
       })
     : [];
   if (items.length === 0) return null;
@@ -51,8 +54,10 @@ export function confirmacionDePedido(pedido: unknown, opciones: OpcionesConfirma
 
   const lineas = [simulado ? "¡Listo! Su pedido de prueba quedó registrado (es una simulación: no se mandó a cocina)." : programado ? "¡Listo! Su pedido ya quedó registrado y programado." : p.status === "pending" ? "¡Listo! Su pedido ya quedó registrado y se mandó a cocina." : "¡Listo! Su pedido ya quedó registrado."];
   if (folio) lineas.push(`*Folio:* ${folio}`);
-  for (const it of items) lineas.push(`${it.quantity} × ${it.name}`);
+  for (const it of items) lineas.push(`${it.quantity} × ${it.name}${it.cortesia ? " (cortesía)" : ""}`);
   lineas.push(`*Total:* ${dinero(total)}`);
+  // `Order.total` NO incluye la propina (se cobra aparte, solo con tarjeta): se muestra para que el cliente sepa lo que se le cobrara.
+  if (typeof p.propina === "number" && Number.isFinite(p.propina) && p.propina > 0) lineas.push(`*Propina:* ${dinero(p.propina)} (aparte del total)`);
   if (pago === "efectivo" || pago === "tarjeta") lineas.push(`*Pago:* ${pago}`);
   if (esTexto(p.branch)) lineas.push(`*Sucursal:* ${p.branch.trim()}`);
   if (programado) lineas.push(`*Programado para:* ${programado}`);
