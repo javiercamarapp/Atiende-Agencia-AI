@@ -35,27 +35,41 @@ type Modo = "real" | "preview";
 interface Opciones {
   readonly perfilPm?: boolean;
   /** Que hace el modelo DESPUES de crear_pedido: seguir llamando herramientas (agota las vueltas), responder vacio, o hacer fallar al proveedor. */
-  readonly trasCrear: "sigue_con_herramientas" | "texto_vacio" | "proveedor_falla" | "escalar_y_agotar";
+  readonly trasCrear: "sigue_con_herramientas" | "texto_vacio" | "proveedor_falla" | "escalar_y_agotar" | "crear_otra_vez";
   readonly textoCotizacion?: string;
+  readonly cantidad?: number;
+  readonly extraBase?: Record<string, unknown>;
+  readonly bistec?: boolean;
+  readonly zonaSucursal?: string;
+  /** Numera el pedido real como lo hace Postgres (`orders.order_number`); el repositorio en memoria no lo hace. */
+  readonly orderNumber?: number;
 }
 
 async function escenario(modo: Modo, op: Opciones) {
   const f = buildRestaurantFixture();
   f.repo.seedBranchPolicy(f.propertyId, { horario: [{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "23:00" }] });
-  void f.repo.upsertBranchZonaHoraria(f.propertyId, "America/Merida");
+  void f.repo.upsertBranchZonaHoraria(f.propertyId, op.zonaSucursal ?? "America/Merida");
+  if (op.orderNumber !== undefined) {
+    const original = f.repo.createOrderIdempotent.bind(f.repo);
+    vi.spyOn(f.repo, "createOrderIdempotent").mockImplementation(async (...a) => ({ ...(await original(...a)), orderNumber: op.orderNumber }));
+  }
   if (op.perfilPm) await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
-  const items = [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 3 }];
-  const base = { branch_slug: "fco-montejo", items, canal: "recoger" };
+  const items = op.bistec
+    ? [{ product_id: f.products.tacosPastor, product_name: "Tacos de Bistec de Res (orden de 3)", requested_quantity: op.cantidad ?? 3, tortilla: "maiz" }]
+    : [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: op.cantidad ?? 3 }];
+  const base = { branch_slug: "fco-montejo", items, canal: "recoger", ...(op.extraBase ?? {}) };
   let proveedorCaido = false;
   const script = (request: LlmCompletionRequest): LlmCompletionResult => {
     if (proveedorCaido) throw new Error("proveedor caido");
     const paso = pasoDelTurno(request);
     const ultimo = [...request.messages].reverse().find((m) => m.role === "user")?.content ?? "";
-    if (/quiero/i.test(ultimo) && !/confirmo/i.test(ultimo)) {
+    if (/quiero|bistec/i.test(ultimo) && !/confirmo/i.test(ultimo)) {
       return paso === 0 ? llamada("cotizar_pedido", base) : texto(op.textoCotizacion ?? "Son 3 Coca-Cola, el total es **$135**. ¿Confirma y cómo paga?");
     }
     if (paso === 0) return llamada("confirmar_resumen", {});
     if (paso === 1) return llamada("crear_pedido", { ...base, customer_name: "Javier", payment_method: "efectivo" });
+    if (op.trasCrear === "crear_otra_vez" && paso === 2) return llamada("crear_pedido", { ...base, customer_name: "Javier", payment_method: "efectivo" });
+    if (op.trasCrear === "crear_otra_vez") return texto("");
     if (op.trasCrear === "texto_vacio") return texto("");
     if (op.trasCrear === "proveedor_falla") {
       proveedorCaido = true;
@@ -71,13 +85,14 @@ async function escenario(modo: Modo, op: Opciones) {
   const phone = modo === "preview" ? telefonoFicticioPreview("sesion-qa") : "+5219990001111";
   const comun = { organizationId: f.organizationId, phone, customer: { isNew: true as const }, propertyId: null, ...(modo === "preview" ? { modo: "preview" as const } : {}) };
 
-  const t1 = await handler.handleInboundMessage({ ...comun, messages: [{ role: "user", content: "Hola, quiero 3 coca cola para recoger" }] });
+  const pedido1 = op.bistec ? "Quiero 3 tacos de bistec para recoger" : "Hola, quiero 3 coca cola para recoger";
+  const t1 = await handler.handleInboundMessage({ ...comun, messages: [{ role: "user", content: pedido1 }] });
   const t2 = await handler.handleInboundMessage({
     ...comun,
     messages: [
-      { role: "user", content: "Hola, quiero 3 coca cola para recoger" },
+      { role: "user", content: pedido1 },
       { role: "assistant", content: t1.reply },
-      { role: "user", content: "Sí confirmo, pago en efectivo" },
+      { role: "user", content: op.bistec ? "Sí confirmo los tacos de bistec, pago en efectivo" : "Sí confirmo, pago en efectivo" },
     ],
   });
   return { f, t1, t2 };
@@ -98,12 +113,12 @@ const ESCENARIOS: ReadonlyArray<{ nombre: string; op: Opciones }> = [
 
 describe.each(["preview", "real"] as const)("crear_pedido exitoso -> el cliente ve la confirmacion (%s)", (modo) => {
   it.each(ESCENARIOS)("$nombre", async ({ op }) => {
-    const { f, t2 } = await escenario(modo, op);
+    const { f, t2 } = await escenario(modo, { ...op, orderNumber: 4521 });
     // Confirmacion generada con datos del servidor: total de la cotizacion ($45 x 3) y folio.
     expect(t2.reply).toContain("$135");
-    // Preview: folio PRUEBA. Real: el repositorio en memoria no numera pedidos (Postgres si: orderNumber -> "Folio"); lo cubre confirmacion-pedido.spec.ts.
+    // Preview: folio PRUEBA. Real: el folio numerico que devuelve la base (aqui 4521, como `orders.order_number`).
     if (modo === "preview") expect(t2.reply).toMatch(/\*Folio:\* PRUEBA-[0-9A-F]{4}/);
-    else expect(t2.reply).toMatch(/\*Total:\* \$135/);
+    else expect(t2.reply).toContain("*Folio:* #4521");
     expect(t2.reply).toMatch(/Coca-Cola/);
     expect(t2.reply).toMatch(/Francisco de Montejo/);
     expect(t2.reply).toMatch(/efectivo/i);
@@ -135,9 +150,48 @@ describe.each(["preview", "real"] as const)("crear_pedido exitoso -> el cliente 
       expect(t2.reply).toContain("$135");
       expect(t2.reply).not.toMatch(FALLO);
       expect(f.repo.listCallbackRequests(f.organizationId)).toHaveLength(0);
+      // En real el aviso FALLO de verdad: ni escalacion ni promesa de aviso. En preview el aviso es simulado y exitoso (el modelo lo pidio): solo se exige la confirmacion.
+      if (modo === "real") expect(t2.escalacion).toBeUndefined();
     } finally {
       for (const e of espias) e.mockRestore();
     }
+  });
+});
+
+describe.each(["preview", "real"] as const)("pedido grande retenido SIN autopiloto: el cliente lee el mensaje del servidor y hay UN solo aviso (%s)", (modo) => {
+  const MENSAJE = /la sucursal lo tiene que confirmar primero/i;
+  it.each(["sigue_con_herramientas", "proveedor_falla", "texto_vacio"] as const)("tras retenerlo el modelo: %s", async (trasCrear) => {
+    const { f, t2 } = await escenario(modo, { perfilPm: true, trasCrear, cantidad: 100 });
+    expect(t2.reply).toMatch(MENSAJE);
+    expect(t2.reply).not.toMatch(FALLO);
+    expect(t2.reply).not.toMatch(/ya qued[óo] registrado|se mand[óo] a cocina/i);
+    expect(t2.escalacion?.motivo).toBe("pedido_grande");
+    // Real: exactamente el aviso escalada:pedido_grande (nunca un segundo no_puedo_resolver / falla_sistema). Preview: ningun aviso.
+    const avisos = f.repo.listCallbackRequests(f.organizationId).map((a) => a.reason);
+    expect(avisos).toEqual(modo === "real" ? ["escalada:pedido_grande"] : []);
+    expect((await pedidosReales(f.repo, f.organizationId)).length).toBe(0);
+  });
+});
+
+describe("casos limite de la confirmacion (real)", () => {
+  it("dos crear_pedido iguales en el mismo turno: un pedido, una confirmacion", async () => {
+    const { f, t2 } = await escenario("real", { trasCrear: "crear_otra_vez", orderNumber: 77 });
+    expect((await pedidosReales(f.repo, f.organizationId)).length).toBe(1);
+    expect(t2.reply.match(/\*Folio:\*/g)).toHaveLength(1);
+    expect(t2.reply).not.toMatch(FALLO);
+  });
+
+  it("el aviso de bistec (orden de 3) aparece una sola vez aunque el modelo conteste vacio", async () => {
+    const { t2 } = await escenario("real", { trasCrear: "texto_vacio", bistec: true });
+    expect(t2.reply.match(/se venden únicamente en órdenes de 3/g) ?? []).toHaveLength(1);
+    expect(t2.reply).toContain("*Total:*");
+  });
+
+  it("la hora de recogida se muestra en la zona de la SUCURSAL (Cancun, UTC-5), no en la del agente (Merida, UTC-6)", async () => {
+    // 2026-10-07T01:30Z = 20:30 en Cancun = 19:30 en Merida.
+    const { t2 } = await escenario("real", { trasCrear: "texto_vacio", zonaSucursal: "America/Cancun", extraBase: { hora_recogida: "2026-10-07T01:30:00Z" } });
+    expect(t2.reply).toMatch(/\*Recoger a las:\*.*20:30/);
+    expect(t2.reply).not.toMatch(/19:30/);
   });
 });
 

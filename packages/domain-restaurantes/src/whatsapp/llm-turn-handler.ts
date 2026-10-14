@@ -24,6 +24,7 @@
 // propio historial de tool_calls.
 import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
@@ -393,7 +394,7 @@ export function enforceBistecPackNotice(reply: string, messages: readonly LlmMes
   if (
     typeof latestUserText !== "string" ||
     !/(?:\btacos?\b.{0,30}\bbistec(?:es)?\b|\bbistec(?:es)?\b.{0,30}\btacos?\b)/i.test(latestUserText) ||
-    /\b[oó]rdenes?\s+de\s+(?:3|tres)\b/i.test(reply)
+    /(?<![\p{L}\p{N}_])[oó]rdenes?\s+de\s+(?:3|tres)(?![\p{L}\p{N}_])/iu.test(reply)
   ) {
     return reply;
   }
@@ -597,7 +598,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let pedidoSimulado: unknown;
       // Ultimo `crear_pedido` EXITOSO de este turno (real o simulado), con los datos del servidor: si el modelo no alcanza a redactar la respuesta final
       // (agota vueltas, el proveedor cae o contesta vacio) el cliente recibe SU confirmacion, nunca un texto de fallo ni un aviso falso al equipo.
-      let pedidoCreadoDelTurno: { readonly raw: unknown; readonly mensajeAlCliente: string | null } | null = null;
+      const pedidosCreadosDelTurno: Array<{ readonly clave: string; readonly raw: unknown; readonly mensajeAlCliente: string | null; readonly timezone: string }> = [];
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
       // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
@@ -608,11 +609,22 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
         return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
       };
+      /** Zona horaria de la SUCURSAL del pedido (la misma que usa el servidor para validar la hora de recogida); si no se puede leer, la del agente. */
+      const zonaDeLaSucursal = async (propertyIdDelPedido: string | null | undefined, branchSlug: unknown): Promise<string> => {
+        try {
+          const pid = propertyIdDelPedido ?? (typeof branchSlug === "string" && branchSlug ? (await repo.findBranch(organizationId, { slug: branchSlug }))?.propertyId : null) ?? null;
+          if (pid) return resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(pid)).zonaHoraria);
+        } catch {
+          // Sin zona de sucursal se usa la del agente.
+        }
+        return config.timezone;
+      };
       /** Confirmacion del pedido que SI se creo en este turno (null = no hubo, o no se puede redactar con datos del servidor). */
       const confirmacionDelTurno = (): string | null => {
-        if (!pedidoCreadoDelTurno) return null;
-        const texto = pedidoCreadoDelTurno.mensajeAlCliente ?? confirmacionDePedido(pedidoCreadoDelTurno.raw, { timezone: config.timezone });
-        return texto ? safeReply(texto) : null;
+        const textos = [...new Set(pedidosCreadosDelTurno.flatMap((p) => { const t = p.mensajeAlCliente ?? confirmacionDePedido(p.raw, { timezone: p.timezone }); return t ? [t] : []; }))];
+        if (textos.length === 0) return null;
+        // Con dos pedidos en el mismo turno no se reescribe el total (enforceQuotedTotal solo conoce el del ultimo): cada texto ya lleva su total del servidor.
+        return textos.length === 1 ? safeReply(textos[0]!) : textos.join("\n\n");
       };
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
@@ -889,9 +901,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               });
             }
             if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
-            if (call.name === "crear_pedido" && !isToolErrorResult(result) && (executed.simulated || executed.orderId)) {
-              const mensaje = (result as { mensaje_al_cliente?: unknown } | null)?.mensaje_al_cliente;
-              pedidoCreadoDelTurno = { raw: executed.raw, mensajeAlCliente: executed.pedidoRetenido && typeof mensaje === "string" && mensaje.trim() ? mensaje : null };
+            if (call.name === "crear_pedido" && !isToolErrorResult(result)) {
+              const rc = result as { mensaje_al_cliente?: unknown; pedido_grande?: unknown } | null;
+              const mensaje = typeof rc?.mensaje_al_cliente === "string" && rc.mensaje_al_cliente.trim() ? rc.mensaje_al_cliente : null;
+              // Pedido grande retenido (con o sin autopiloto, real o preview): lo unico que se le dice al cliente es el mensaje del servidor; NO es un pedido registrado.
+              const retenido = rc?.pedido_grande === true || executed.pedidoRetenido === true;
+              if (retenido ? mensaje !== null : Boolean(executed.simulated || executed.orderId)) {
+                const idCrudo = (executed.raw as { id?: unknown } | null)?.id;
+                const clave = executed.orderId ?? (typeof idCrudo === "string" ? idCrudo : "retenido");
+                if (!pedidosCreadosDelTurno.some((p) => p.clave === clave)) {
+                  pedidosCreadosDelTurno.push({ clave, raw: executed.raw, mensajeAlCliente: retenido ? mensaje : null, timezone: retenido ? config.timezone : await zonaDeLaSucursal(executed.propertyId, input.branch_slug) });
+                }
+              }
             }
             if (executed.orderId) {
               orderId = executed.orderId;

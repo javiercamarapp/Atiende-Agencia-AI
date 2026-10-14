@@ -73,4 +73,27 @@ describe("confirmacionDePedido", () => {
   ])("pedido incompleto (%s) -> null: el llamador conserva su respaldo", (_n, entrada) => {
     expect(confirmacionDePedido(entrada, zona)).toBeNull();
   });
+
+  it("renglon de cortesia (2x1 / D12): se marca como cortesia y no se confunde con uno pagado", () => {
+    const t = confirmacionDePedido({ ...real, total: 42, items: [{ id: "p1", name: "Taco Al Pastor", price: 42, quantity: 1 }, { id: "p1", name: "Taco Al Pastor", price: 0, listPrice: 42, quantity: 1, courtesy: true }] }, zona)!;
+    expect(t).toContain("1 × Taco Al Pastor\n1 × Taco Al Pastor (cortesía)");
+    expect(t).toContain("*Total:* $42");
+  });
+
+  it("propina: se muestra aparte del total (Order.total no la incluye); sin propina o en cero no hay linea", () => {
+    expect(confirmacionDePedido({ ...real, paymentMethod: "tarjeta", propina: 12.6 }, zona)).toContain("*Propina:* $12.60 (aparte del total)");
+    expect(confirmacionDePedido({ ...real, propina: 0 }, zona)).not.toContain("Propina");
+    expect(confirmacionDePedido({ ...real, propina: null }, zona)).not.toContain("Propina");
+    expect(confirmacionDePedido({ ...real, propina: "10" }, zona)).not.toContain("Propina");
+  });
+
+  it.each([
+    ["status por_aprobar", { status: "por_aprobar" }],
+    ["estado por_confirmar_por_la_sucursal", { estado: "por_confirmar_por_la_sucursal" }],
+    ["pedido_grande", { pedido_grande: true }],
+    ["por_aprobar", { por_aprobar: true }],
+    ["pedido_retenido", { pedido_retenido: true }],
+  ])("pedido retenido (%s) -> null: jamas se confirma como registrado", (_n, extra) => {
+    expect(confirmacionDePedido({ ...real, ...extra }, zona)).toBeNull();
+  });
 });
