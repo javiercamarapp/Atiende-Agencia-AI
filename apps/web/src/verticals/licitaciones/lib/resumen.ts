@@ -51,11 +51,11 @@ function partesEnZona(fecha: Date, zona: string, opciones: Intl.DateTimeFormatOp
   return new Intl.DateTimeFormat("es-MX", { timeZone: zona, ...opciones }).formatToParts(fecha);
 }
 
-/** Saludo segun la hora de la ORGANIZACION (no la del navegador): mismos cortes que `saludoPorHora`. */
+/** Saludo segun la hora de la ORGANIZACION (no la del navegador): mismos cortes que `saludoPorHora` (buenas tardes hasta las 19:59). */
 export function saludoEnZona(fecha: Date, zona: string = ZONA_LICITACIONES): "Buenos días" | "Buenas tardes" | "Buenas noches" {
   const hora = Number(partesEnZona(fecha, zona, { hour: "numeric", hourCycle: "h23" }).find((p) => p.type === "hour")?.value);
   if (hora >= 5 && hora < 12) return "Buenos días";
-  if (hora >= 12 && hora < 19) return "Buenas tardes";
+  if (hora >= 12 && hora < 20) return "Buenas tardes"; // mismo corte que restaurantes: «buenas noches» desde las 20:00
   return "Buenas noches";
 }
 
