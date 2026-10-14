@@ -301,9 +301,13 @@ function assertFresh(ctx: OrderFlowContext, now: number): void {
 export function rechazaElResumen(mensaje: unknown): boolean {
   if (typeof mensaje !== "string" || !mensaje.trim()) return false;
   const t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const rechazo = /\basi\s+no\b|\bno\s+(?:es|esta|estan|son)\s+(?:correct[oa]s?|bien|asi)\b|\b(?:esta|estan)\s+mal\b|\bincorrect[oa]s?\b|\bno\s+(?:lo\s+|la\s+)?(?:quiero|acepto)\s+(?:asi|a\s+ese|con\s+ese)\b|\bno\s*,?\s*(?:cambia|corrige|quita|mejor)\b/;
+  // «asi no» solo rechaza cuando NO va seguido de la consecuencia buena de confirmar («así no se me olvida», «así no tengo que salir», «así no me complico»).
+  const rechazo =
+    /\basi\s+no\b(?!\s+(?:se\s+(?:me|nos)|tengo|tenemos|hay\s+que|necesito|me\s+compli|me\s+olvido|voy\s+a\s+tener))|\bno\s+(?:es|esta|estan|son)\s+(?:correct[oa]s?|bien|asi)\b|(?<!\bno\s)(?<!\bnada\s)(?<!\bmuy\s)\b(?:esta|estan)\s+mal\b|\bincorrect[oa]s?\b|\bno\s+(?:lo\s+|la\s+)?(?:quiero|acepto)\s+(?:asi|a\s+ese|con\s+ese)\b|(?:^|[.,;!?]\s*)no\s*,\s*(?:cambia|corrige|quita|mejor)\b/;
   if (!rechazo.test(t)) return false;
-  return !/\b(?:si|sip|simon|confirmo|confirmado|dale|ok|okey|de\s+acuerdo|esta\s+bien\s+asi|asi\s+esta\s+bien)\b/.test(t);
+  // Una afirmacion al inicio («perfecto, ...», «va, ...», «confirmalo...») o dentro del mensaje deja la decision al modelo.
+  if (/^\W*(?:va|listo|perfecto|claro|adelante|correcto|confirm\w*)\b/.test(t)) return false;
+  return !/\b(?:si|sip|simon|confirmo|confirmado|confirmalo|confirmelo|dale|ok|okey|de\s+acuerdo|(?<!\bno\s)esta\s+bien\s+asi|asi\s+esta\s+bien)\b/.test(t);
 }
 
 /** Precondicion de `confirmar_resumen`. Lanza `OrderFlowViolationError` si no procede. */
