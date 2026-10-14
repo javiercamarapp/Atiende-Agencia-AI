@@ -198,7 +198,8 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
   const UNO = "(?:registre|registramos|confirme|confirmamos|anote|anotamos|tome|tomamos|mande|mandamos|pase|pasamos|envie|enviamos|genere|generamos|capture|levante|aparte|procese)";
   const patrones: RegExp[] = [
     // «su pedido (ya) quedó registrado / está confirmado / va en camino / ya está en cocina», «Pedido confirmado ✅»
-    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[a-z0-9]+){0,4}?\\s+(?:ya\\s+)?${VERBO}?(?:${PART}|${SALIDA})\\b`),
+    // Entre el sujeto y el predicado caben hasta 14 palabras (el modelo describe el pedido: «su pedido de 2 tacos al pastor ($84) en García Lavín ya quedó registrado»; QA-PM-R8 A41), nunca otra frase.
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[^\\s.!?;]+){0,14}?\\s+(?:ya\\s+)?${VERBO}?(?:${PART}|${SALIDA})\\b`),
     // «ya quedó apartado su pedido», «ya está su pedido», «ya se generó su orden»
     new RegExp(`\\b(?:ya\\s+)?(?:quedo|esta|fue|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?(?:${PART}\\s+)?(?:su|el)\\s+${N}\\b`),
     // «ya tomé su pedido», «ya mandé su comanda», «registré su orden»

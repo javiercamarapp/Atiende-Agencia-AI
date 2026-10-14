@@ -839,7 +839,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // puede responder "ya quedo registrado" (QA-PM-R3 revisor: hueco en el segundo pedido). Un pedido retenido (estado creado SIN orderId) no esta registrado: lo confirma la sucursal.
           const flowFinal = await repo.readOrderFlow(organizationId, `wa:${phone}`);
           const retenidoVigente = retenidoEnTurno || (flowFinal?.state === "creado" && !flowFinal.context?.orderId);
-          const creadoEnFlujo = flowFinal ? (flowFinal.state === "creado" && Boolean(flowFinal.context?.orderId)) || flowFinal.state === "creando" : messages.some((m) => m.role === "assistant" && m.pedidoCreado === true);
+          // Evidencia = un pedido con id (estado `creado` + orderId). `creando` es solo el reclamo en vuelo (si crear_pedido fallo a medias queda ahi SIN pedido): no es un pedido registrado (QA-PM-R8 A41).
+          const creadoEnFlujo = flowFinal ? flowFinal.state === "creado" && Boolean(flowFinal.context?.orderId) : messages.some((m) => m.role === "assistant" && m.pedidoCreado === true);
           const pedidoExiste = orderId !== null || pedidoSimulado !== undefined || yaRegistradoEnTurno || (!retenidoEnTurno && tele.tools.some((t) => t.tool === "crear_pedido" && t.resultado === "ok") && !retenidoVigente) || (!retenidoEnTurno && creadoEnFlujo);
           // Un pedido ACTIVO reciente del telefono (voz, hace mas de 2 h, de otro flujo) tambien existe: la respuesta a «¿ya salio mi pedido?» ("va en preparacion", "ya esta en camino") es
           // verdad y no se borra. Retenido (por_confirmar), no recogido, con problema y cancelado NO cuentan. Si el turno esta armando OTRO pedido (cotizacion de este turno o flujo
