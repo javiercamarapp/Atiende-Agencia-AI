@@ -23,6 +23,7 @@ import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
+import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { pesoDeProductoEnGramos } from "../product-search.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
@@ -960,6 +961,17 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
             ...outcome,
             result: { ...(outcome.result as object), ya_registrado: true, pedido_id: creadoPrevio.orderId, aviso: YA_REGISTRADO_AVISO },
           };
+        }
+      }
+      // QA-PM-R6-voz-01: un pedido IGUAL del mismo telefono de hace pocos minutos (otra llamada / otro chat) no se duplica en silencio: el modelo debe preguntar si es el mismo.
+      // Solo con un flujo SIN estado (llamada o chat nuevo): dentro de un mismo flujo ya rigen `ya_registrado` y `otro_pedido`.
+      if (!snap.state && input.otro_pedido !== true && ctx.phone && ctx.modo !== "preview") {
+        const reciente = await repo.findLatestOrderByPhone(ctx.organizationId, normalizePhone(ctx.phone), new Date(flowNow(flow) - VENTANA_PEDIDO_IGUAL_MIN * 60_000).toISOString());
+        if (reciente && reciente.status !== "cancelado" && reciente.status !== "no_recogido" && mismosRenglones(reciente.items, quotedQuote.lines)) {
+          const hace = Math.max(0, Math.round((flowNow(flow) - Date.parse(reciente.createdAt)) / 60_000));
+          throw new OrderValidationError(
+            `Este cliente ya tiene un pedido IGUAL registrado hace ${hace} minuto(s)${reciente.orderNumber ? ` (folio #${reciente.orderNumber})` : ""} por $${reciente.total}. NO lo cotice ni lo cree otra vez. Dígale que ese pedido ya está registrado y pregúntele si es el mismo o si quiere OTRO igual; solo si pide otro, vuelva a llamar cotizar_pedido con otro_pedido: true.`,
+          );
         }
       }
       // QA-PM-R2-whatsapp-01 (P0): el modelo vuelve a cotizar el MISMO carrito en el turno del "si" (para "refrescar" el resumen). Reescribir
