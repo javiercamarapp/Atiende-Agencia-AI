@@ -1,6 +1,6 @@
 // Nucleo de la cascada v2 con puertos FALSOS (STT, LLM en streaming y TTS): turno completo, primer audio antes de que el LLM termine, barge-in, herramientas,
 // caida de cada etapa y paso al siguiente escalon, y eventos de costo por componente. Sin red, sin llaves, reloj inyectado.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { VOZ_PLATAFORMA, VozNoConfiguradaError, VozProveedorError, crearEscaleraLlamada, crearProveedorCascadaV2, eventosCostoLlamada } from "../../src/index.ts";
 import type { AperturaLlamada, ManejadoresSesion } from "../../src/index.ts";
 import { SttFalso, TtsFalso, audioDe, compuerta, escribe, llmFalso, manejadoresFalsos, turnoMicrotareas } from "./dobles.ts";
@@ -15,11 +15,11 @@ const APERTURA: AperturaLlamada = {
 const AHORA = () => 1_700_000_000_000;
 const MODELO = VOZ_PLATAFORMA.cascadaV2.llm.modelo;
 
-async function armar(llm: ReturnType<typeof llmFalso>, o: { tts?: TtsFalso; stt?: SttFalso; h?: Partial<ManejadoresSesion>; herramientasEnParalelo?: ReadonlySet<string>; elegirModelo?: (c: { turno: number; vuelta: number; modeloPorDefecto: string }) => string | undefined } = {}) {
+async function armar(llm: ReturnType<typeof llmFalso>, o: { ahora?: () => number; confirmacionAntesDeCrear?: { confirmar: string; crear: string }; tts?: TtsFalso; stt?: SttFalso; h?: Partial<ManejadoresSesion>; herramientasEnParalelo?: ReadonlySet<string>; elegirModelo?: (c: { turno: number; vuelta: number; modeloPorDefecto: string }) => string | undefined } = {}) {
   const stt = o.stt ?? new SttFalso();
   const tts = o.tts ?? new TtsFalso();
   const m = manejadoresFalsos(o.h);
-  const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts, ahora: AHORA, ...(o.herramientasEnParalelo ? { herramientasEnParalelo: o.herramientasEnParalelo } : {}), ...(o.elegirModelo ? { elegirModelo: o.elegirModelo } : {}) });
+  const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts, ahora: o.ahora ?? AHORA, ...(o.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: o.confirmacionAntesDeCrear } : {}), ...(o.herramientasEnParalelo ? { herramientasEnParalelo: o.herramientasEnParalelo } : {}), ...(o.elegirModelo ? { elegirModelo: o.elegirModelo } : {}) });
   const sesion = await prov.abrirSesion(APERTURA, m.h);
   return { stt, tts, sesion, prov, inactivo: () => prov.inactivo(), ...m };
 }
@@ -175,7 +175,9 @@ describe("barge-in", () => {
     stt.eventos!.turnoFinal("quiero dos tacos");
     await turnoMicrotareas(60);
     expect(audio).toHaveLength(1);
-    stt.eventos!.hablaIniciada();
+    stt.eventos!.hablaIniciada(); // un SpeechStarted aislado NO corta: se confirma con el primer parcial con texto
+    expect(eventos).not.toContain("interrumpido");
+    stt.eventos!.parcial("no espere");
     await inactivo();
     expect(tts.senales[0]!.aborted).toBe(true);
     expect(llm.senales[0]!.aborted).toBe(true);
@@ -193,7 +195,7 @@ describe("barge-in", () => {
     const { stt, inactivo } = await armar(llm, { tts });
     stt.eventos!.turnoFinal("quiero dos tacos");
     await turnoMicrotareas(60);
-    stt.eventos!.hablaIniciada();
+    stt.eventos!.parcial("mejor");
     stt.eventos!.turnoFinal("mejor tres");
     await inactivo();
     expect(llm.peticiones[1]!.mensajes).toEqual([
@@ -471,5 +473,251 @@ describe("costo por componente", () => {
     sesion.enviarAudio!(new Uint8Array(16_000 * 2 * 3));
     await sesion.cerrar();
     expect(m.costos).toEqual([{ micro: 240, real: false, proveedor: "deepgram", unidad: "segundo", cantidad: 3 }]);
+  });
+});
+
+describe("lo que el cliente oyo, cola del puente y reproduccion estimada", () => {
+  /** 1 s de audio PCM16 a 24 kHz con voz por cada frase sintetizada. */
+  const unSegundo = (): GuionTts =>
+    async function* () {
+      const b = new Uint8Array(24_000 * 2);
+      new DataView(b.buffer).setInt16(0, 8000, true);
+      yield b;
+    };
+
+  it("un barge-in DESPUES de que el TTS termino de generar pero con la cola del puente aun sonando corta la cola (interrumpido) y deja en el historial solo lo que sono", async () => {
+    let t = 1_000_000;
+    const llm = llmFalso([escribe(["Primera frase del agente. ", "Segunda frase del agente."])]);
+    const { stt, eventos, inactivo } = await armar(llm, { tts: new TtsFalso(unSegundo()), ahora: () => t });
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(eventos.at(-1)).toBe("fin"); // el turno ya termino: todo el audio esta generado (2 s) y encolado en el puente
+    t += 500; // el cliente habla a los 0.5 s: solo sono la primera frase
+    stt.eventos!.parcial("espera");
+    expect(eventos.filter((e) => e === "interrumpido")).toHaveLength(1);
+  });
+
+  it("el historial conserva solo las frases que ya sonaban al interrumpir (no las que el TTS genero de mas) y no corta si el audio ya acabo de sonar", async () => {
+    let t = 1_000_000;
+    const llm = llmFalso([escribe(["Primera frase del agente. ", "Segunda frase del agente."]), escribe(["Entendido, dime."])]);
+    const { stt, eventos, inactivo } = await armar(llm, { tts: new TtsFalso(unSegundo()), ahora: () => t });
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    t += 500;
+    stt.eventos!.parcial("espera");
+    stt.eventos!.turnoFinal("quiero otra cosa");
+    await inactivo();
+    expect(llm.peticiones[1]!.mensajes).toEqual([
+      { role: "user", content: "hola" },
+      { role: "assistant", content: "Primera frase del agente." },
+      { role: "user", content: "quiero otra cosa" },
+    ]);
+    // Pasados los 2 s el audio ya termino de sonar: un parcial NO interrumpe nada.
+    t += 10_000;
+    const antes = eventos.filter((e) => e === "interrumpido").length;
+    stt.eventos!.parcial("hola otra vez");
+    expect(eventos.filter((e) => e === "interrumpido").length).toBe(antes);
+  });
+
+  it("si interrumpe en la segunda vuelta de herramientas, el historial NO duplica el texto de la primera vuelta", async () => {
+    const sigue = compuerta();
+    let n = 0;
+    const tts = new TtsFalso(async function* (_f, senal) {
+      yield audioDe(1);
+      if (++n === 2) await Promise.race([sigue.promesa, new Promise<void>((r) => senal.addEventListener("abort", () => r(), { once: true }))]);
+    });
+    const llm = llmFalso([
+      async (_p, texto) => {
+        texto("Un momento, reviso. ");
+        return { texto: "Un momento, reviso. ", toolCalls: [{ id: "t0", nombre: "buscar_cliente", argsJson: "{}" }] };
+      },
+      escribe(["Ya lo encontre, es su cuenta frecuente. ", "Desea lo de siempre?"]),
+      escribe(["Entendido."]),
+    ]);
+    let t = 1_000_000;
+    const { stt, inactivo } = await armar(llm, { tts, ahora: () => t });
+    stt.eventos!.turnoFinal("hola");
+    await vi.waitFor(() => expect(tts.frases.length).toBeGreaterThanOrEqual(2)); // la 2a vuelta ya esta hablando (su audio sigue sonando)
+    t += 1_000; // ya sono la 2a vuelta (el audio de la 1a dura apenas unos microsegundos)
+    stt.eventos!.parcial("no, espera");
+    stt.eventos!.turnoFinal("no, espera");
+    await inactivo();
+    const hist = llm.peticiones[2]!.mensajes;
+    expect(hist.filter((m) => m.role === "assistant" && m.content.includes("Un momento, reviso."))).toHaveLength(1);
+    expect(hist.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant", "user"]);
+    expect((hist[3] as { content: string }).content).toBe("Ya lo encontre, es su cuenta frecuente.");
+  });
+});
+
+describe("respuesta vacia (el razonamiento agoto el tope: finish_reason length)", () => {
+  const vacia = async () => ({ texto: "", finishReason: "length" });
+
+  it("reintenta UNA vez y habla la respuesta del reintento", async () => {
+    const llm = llmFalso([vacia, escribe(["Claro, digame que desea."])]);
+    const { stt, eventos, inactivo } = await armar(llm);
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(llm.peticiones).toHaveLength(2);
+    expect(dice(eventos)).toEqual(["Claro, digame que desea."]);
+    expect(eventos.at(-1)).toBe("fin");
+    // La respuesta vacia no queda en el historial.
+    expect(llm.peticiones[1]!.mensajes).toEqual([{ role: "user", content: "hola" }]);
+  });
+
+  it("si vuelve vacia dice la frase de respaldo en lugar de quedarse en silencio, y la registra en el historial", async () => {
+    const llm = llmFalso([vacia, vacia, escribe(["Si, digame."])]);
+    const { stt, tts, eventos, inactivo } = await armar(llm);
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(llm.peticiones).toHaveLength(2);
+    expect(tts.frases).toEqual([VOZ_PLATAFORMA.cascadaV2.llm.fraseRespaldo]);
+    expect(eventos.at(-1)).toBe("fin");
+    stt.eventos!.turnoFinal("si, un taco");
+    await inactivo();
+    expect(llm.peticiones[2]!.mensajes[1]).toEqual({ role: "assistant", content: VOZ_PLATAFORMA.cascadaV2.llm.fraseRespaldo });
+  });
+
+  it("el costo de cada intento se registra (aunque la respuesta venga vacia)", async () => {
+    const llm = llmFalso([async () => ({ texto: "", finishReason: "length", costoMicroUsd: 900, costoReal: true }), escribe(["Hola, digame."], { costoMicroUsd: 400, costoReal: true })]);
+    const { stt, costos, inactivo } = await armar(llm);
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(costos.filter((c) => c.proveedor?.startsWith("openrouter:")).map((c) => c.micro)).toEqual([900, 400]);
+  });
+});
+
+describe("herramientas e interrupciones", () => {
+  const dos = async (_p: unknown, texto: (d: string) => void) => {
+    texto("Le leo el resumen. ");
+    return {
+      texto: "Le leo el resumen. ",
+      toolCalls: [
+        { id: "c", nombre: "confirmar_resumen", argsJson: "{}" },
+        { id: "p", nombre: "crear_pedido", argsJson: "{}" },
+      ],
+    };
+  };
+
+  it("si el modelo pide confirmar_resumen y crear_pedido en la MISMA respuesta, solo corre el primero y el segundo espera la confirmacion del cliente", async () => {
+    const llm = llmFalso([dos, escribe(["Son 328 pesos, le parece bien?"])]);
+    const { stt, herramientas, inactivo } = await armar(llm, { confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido" } });
+    stt.eventos!.turnoFinal("quiero el pedido");
+    await inactivo();
+    expect(herramientas).toEqual(["confirmar_resumen"]);
+    const tool = llm.peticiones[1]!.mensajes.filter((m) => m.role === "tool");
+    expect(tool.map((m) => (m as { toolCallId: string }).toolCallId)).toEqual(["c", "p"]);
+    expect(JSON.parse((tool[1] as { content: string }).content)).toMatchObject({ error: "espera_confirmacion_del_cliente" });
+  });
+
+  it("sin la regla configurada se conserva el comportamiento de siempre (ambas corren en serie)", async () => {
+    const llm = llmFalso([dos, escribe(["Listo."])]);
+    const { stt, herramientas, inactivo } = await armar(llm);
+    stt.eventos!.turnoFinal("quiero el pedido");
+    await inactivo();
+    expect(herramientas).toEqual(["confirmar_resumen", "crear_pedido"]);
+  });
+
+  it("si el cliente interrumpe («no, espere») a media confirmar_resumen, crear_pedido NO corre y el historial queda consistente", async () => {
+    const llm = llmFalso([dos, escribe(["Entendido, dime."])]);
+    const { stt, herramientas, inactivo } = await armar(llm, {
+      h: {
+        ejecutarTool: async (l) => {
+          herramientas.push(l.nombre);
+          if (l.nombre === "confirmar_resumen") stt.eventos!.parcial("no, espere"); // el cliente habla mientras corre la confirmacion
+          return { ok: true };
+        },
+      },
+    });
+    stt.eventos!.turnoFinal("quiero el pedido");
+    await inactivo();
+    expect(herramientas).toEqual(["confirmar_resumen"]);
+    stt.eventos!.turnoFinal("no, espere, quiero cambiar algo");
+    await inactivo();
+    const tool = llm.peticiones[1]!.mensajes.filter((m) => m.role === "tool") as { toolCallId: string; content: string }[];
+    expect(tool.map((m) => m.toolCallId)).toEqual(["c", "p"]);
+    expect(JSON.parse(tool[1]!.content)).toMatchObject({ error: "interrumpido_por_el_cliente" });
+  });
+});
+
+describe("costo del LLM", () => {
+  it("el costo de una respuesta que termina DESPUES de que el cliente interrumpio igual se registra", async () => {
+    const compuertaLlm = compuerta();
+    const llm = llmFalso([async () => (await compuertaLlm.promesa, { texto: "nunca se dice", costoMicroUsd: 700, costoReal: true })]);
+    const { stt, costos, inactivo } = await armar(llm);
+    stt.eventos!.turnoFinal("hola");
+    await vi.waitFor(() => expect(llm.peticiones).toHaveLength(1));
+    stt.eventos!.parcial("espera"); // el cliente interrumpe mientras el LLM sigue
+    compuertaLlm.abrir();
+    await inactivo();
+    expect(costos.filter((c) => c.proveedor?.startsWith("openrouter:"))).toEqual([{ micro: 700, real: true, proveedor: `openrouter:${MODELO}`, unidad: "unidad", cantidad: 1 }]);
+  });
+
+  it("solo es REAL si el proveedor lo reporto: sin costoReal el evento sale estimado", async () => {
+    const llm = llmFalso([escribe(["Hola, digame."], { costoMicroUsd: 321 })]);
+    const { stt, costos, inactivo } = await armar(llm);
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(costos.find((c) => c.proveedor?.startsWith("openrouter:"))).toMatchObject({ micro: 321, real: false });
+  });
+});
+
+describe("agrupar frases para no agotar el limite de Flush", () => {
+  const tresFrases = escribe(["Primera frase del agente. ", "Segunda frase del agente. ", "Tercera frase del agente."]);
+
+  it("la primera frase sale sola (menor latencia) y las siguientes van juntas en UNA sintesis", async () => {
+    const { stt, tts, inactivo } = await armar(llmFalso([tresFrases]));
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(tts.frases).toEqual(["Primera frase del agente.", "Segunda frase del agente. Tercera frase del agente."]);
+  });
+
+  it("con pocos Flush disponibles TODO el turno va junto (degrada la latencia, no cae el escalon)", async () => {
+    const tts = new TtsFalso();
+    tts.flushes = 2;
+    const { stt, eventos, inactivo } = await armar(llmFalso([tresFrases]), { tts });
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(tts.frases).toEqual(["Primera frase del agente. Segunda frase del agente. Tercera frase del agente."]);
+    expect(eventos.filter((e) => e.startsWith("caido:"))).toEqual([]);
+    expect(eventos.at(-1)).toBe("fin");
+  });
+
+  it("el costo de TTS cuenta los caracteres de cada sintesis, juntas o no", async () => {
+    const { stt, costos, inactivo } = await armar(llmFalso([tresFrases]));
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    const aura = costos.filter((c) => c.proveedor === "deepgram-aura-2").map((c) => c.cantidad);
+    expect(aura).toEqual(["Primera frase del agente.".length, "Segunda frase del agente. Tercera frase del agente.".length]);
+  });
+});
+
+describe("colgar / cerrar con audio en cola", () => {
+  it("cerrar() a media sintesis aborta el LLM y el TTS, cierra STT y TTS y no deja promesas colgadas", async () => {
+    const sigue = compuerta();
+    const tts = new TtsFalso(async function* (_f, senal) {
+      yield audioDe(1);
+      await Promise.race([sigue.promesa, new Promise<void>((r) => senal.addEventListener("abort", () => r(), { once: true }))]);
+    });
+    const { stt, sesion, inactivo } = await armar(llmFalso([escribe(["Una frase larga del agente. ", "Y otra mas del agente."])]), { tts });
+    stt.eventos!.turnoFinal("hola");
+    await turnoMicrotareas(60);
+    await sesion.cerrar();
+    await inactivo(); // si quedara una promesa colgada, esto nunca resolveria
+    expect(tts.senales[0]!.aborted).toBe(true);
+    expect(stt.cerrada).toBe(true);
+    expect(tts.cerrada).toBe(true);
+  });
+});
+
+describe("TTS sin respuesta", () => {
+  it("un tts_timeout del adaptador sube `v2_tts_timeout` y la escalera pasa al siguiente escalon", async () => {
+    const tts = new TtsFalso(async function* (): AsyncGenerator<Uint8Array> {
+      yield* [];
+      throw new Error("tts_timeout");
+    });
+    const { stt, eventos, inactivo } = await armar(llmFalso([escribe(["Claro, con gusto."])]), { tts });
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(eventos.filter((e) => e.startsWith("caido:"))).toEqual(["caido:v2_tts_timeout"]);
   });
 });

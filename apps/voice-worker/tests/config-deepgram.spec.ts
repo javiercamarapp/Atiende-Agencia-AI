@@ -33,3 +33,12 @@ describe("DEEPGRAM_API_KEY", () => {
     expect(JSON.stringify(c.motivos)).not.toContain("llave-deepgram-secreta");
   });
 });
+
+describe("VOZ_CASCADA_V2_HABILITADA (interruptor)", () => {
+  it("apagado por omision aunque exista la llave de Deepgram", () => {
+    expect(cargarConfig({ ...ENV_BASE, DEEPGRAM_API_KEY: "llave" }).cascadaV2Habilitada).toBe(false);
+  });
+  it.each([["1", true], ["true", true], ["TRUE", true], [" si ", true], ["0", false], ["false", false], ["", false], ["quizas", false]])("%j -> %s", (valor, esperado) => {
+    expect(cargarConfig({ ...ENV_BASE, VOZ_CASCADA_V2_HABILITADA: valor }).cascadaV2Habilitada).toBe(esperado);
+  });
+});

@@ -44,7 +44,7 @@ function conGuardaDeSistema(base: AppDeps, repo: CitasRepository): { deps: AppDe
   return { deps: { ...base, engine: engine as unknown as AppDeps["engine"], citasRepo }, llamadas };
 }
 
-async function construir(opts: { provider?: FakeVoiceProvider | GeminiLiveProvider | null; sinSecreto?: boolean; geminiApiKey?: string | null; deepgramApiKey?: string | null; openrouter?: boolean; gateway?: boolean } = {}) {
+async function construir(opts: { provider?: FakeVoiceProvider | GeminiLiveProvider | null; sinSecreto?: boolean; geminiApiKey?: string | null; deepgramApiKey?: string | null; cascadaV2Habilitada?: boolean; openrouter?: boolean; gateway?: boolean } = {}) {
   const ctx = await buildCitasTestContext(buildApp);
   const provider = opts.provider === undefined ? new FakeVoiceProvider() : opts.provider;
   const deps: AppDeps = {
@@ -56,6 +56,7 @@ async function construir(opts: { provider?: FakeVoiceProvider | GeminiLiveProvid
       voicePreviewTokenSecret: opts.sinSecreto ? null : SECRETO,
       geminiApiKey: opts.geminiApiKey ?? null,
       deepgramApiKey: opts.deepgramApiKey ?? null,
+      cascadaV2Habilitada: opts.cascadaV2Habilitada === true,
       llmProviders: { ...ctx.deps.env.llmProviders, openrouter: opts.openrouter ? { apiKey: LLAVE_OPENROUTER, countryOfResidence: null, modelsJson: null, zdr: false, sharedBreaker: null, breakerEnv: "test" } : null },
     },
   };
@@ -78,7 +79,7 @@ describe("GET .../admin/voz/estado", () => {
     const cuerpo = (await (await app.request(`${base}/estado`, authedJson(ctx.staff.owner.token))).json()) as Json;
     expect(cuerpo.escalera.operativa).toBe(false);
     expect(cuerpo.escalera.escalones.map((e: { escalon: string; configurado: boolean }) => [e.escalon, e.configurado])).toEqual([["gemini-3.8-live", false], ["cascada-v2", false], ["cascada-openrouter", false]]);
-    expect(cuerpo.escalera.escalones[1].detalle).toBe("No disponible aún: requiere DEEPGRAM_API_KEY.");
+    expect(cuerpo.escalera.escalones[1].detalle).toContain("No disponible aún: requiere habilitar cascada-v2");
     expect(cuerpo.preview.disponible).toBe(false);
     expect(cuerpo.preview.motivo).toContain("GEMINI_API_KEY");
   });
@@ -90,7 +91,7 @@ describe("GET .../admin/voz/estado", () => {
   });
 
   it("con las tres llaves y el gateway: todos los escalones configurados, y NUNCA se devuelve una llave ni el secreto de tools", async () => {
-    const { ctx, app, base } = await construir({ provider: new GeminiLiveProvider({ apiKey: LLAVE_GEMINI }), geminiApiKey: LLAVE_GEMINI, deepgramApiKey: LLAVE_DEEPGRAM, openrouter: true, gateway: true });
+    const { ctx, app, base } = await construir({ provider: new GeminiLiveProvider({ apiKey: LLAVE_GEMINI }), geminiApiKey: LLAVE_GEMINI, deepgramApiKey: LLAVE_DEEPGRAM, cascadaV2Habilitada: true, openrouter: true, gateway: true });
     const texto = JSON.stringify(await (await app.request(`${base}/estado`, authedJson(ctx.staff.owner.token))).json());
     const cuerpo = JSON.parse(texto) as Json;
     expect(cuerpo.escalera.operativa).toBe(true);

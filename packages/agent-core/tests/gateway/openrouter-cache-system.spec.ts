@@ -31,3 +31,22 @@ describe('cacheSystemPrompt', () => {
     expect(con).toEqual(sin);
   });
 });
+
+describe('finishReason', () => {
+  const sse = (chunks: unknown[]) =>
+    (async () => new Response(`${chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('')}data: [DONE]\n\n`, { status: 200 })) as unknown as typeof fetch;
+  it('el resultado trae finish_reason (streaming y no streaming): length con texto vacio es detectable', async () => {
+    const stream = new OpenRouterProvider({ apiKey: 'k', model: 'anthropic/claude-sonnet-5.5', fetchImpl: sse([{ choices: [{ delta: { content: '' }, finish_reason: 'length' }] }]) });
+    expect(await stream.complete({ ...REQ, onTextDelta: () => undefined })).toMatchObject({ text: '', finishReason: 'length' });
+    const plano = new OpenRouterProvider({
+      apiKey: 'k',
+      model: 'anthropic/claude-sonnet-5.5',
+      fetchImpl: (async () => new Response(JSON.stringify({ choices: [{ message: { content: 'Hola' }, finish_reason: 'stop' }] }), { status: 200 })) as unknown as typeof fetch,
+    });
+    expect(await plano.complete(REQ)).toMatchObject({ text: 'Hola', finishReason: 'stop' });
+  });
+  it('sin motivo reportado no inventa uno', async () => {
+    const p = new OpenRouterProvider({ apiKey: 'k', model: 'm', fetchImpl: (async () => new Response(JSON.stringify({ choices: [{ message: { content: 'x' } }] }), { status: 200 })) as unknown as typeof fetch });
+    expect(await p.complete(REQ)).not.toHaveProperty('finishReason');
+  });
+});

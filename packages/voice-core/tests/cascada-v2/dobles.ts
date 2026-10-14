@@ -100,6 +100,8 @@ export class TtsFalso implements PuertoTtsVoz {
   frases: string[] = [];
   senales: AbortSignal[] = [];
   cerrada = false;
+  /** Flush que el proveedor falso dice tener disponibles; undefined = el puerto no lo expone. */
+  flushes: number | undefined = undefined;
   constructor(
     private readonly guion: GuionTts = async function* () {
       yield audioDe(1);
@@ -116,6 +118,7 @@ export class TtsFalso implements PuertoTtsVoz {
         this.senales.push(senal);
         return this.guion(texto, senal);
       },
+      ...(this.flushes !== undefined ? { flushesDisponibles: () => this.flushes as number } : {}),
       cerrar: async () => {
         this.cerrada = true;
       },

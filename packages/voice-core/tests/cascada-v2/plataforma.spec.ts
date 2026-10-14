@@ -14,7 +14,7 @@ describe("escalera de plataforma con cascada v2", () => {
 
   it("con DEEPGRAM_API_KEY y el LLM en streaming abre la cascada v2: STT es-419 y TTS con la voz de la sucursal, ambos con la llave en la cabecera", async () => {
     const f = fabricaSockets();
-    const escalera = crearEscaleraPlataforma({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "dg-llave", llm: llmFalso([]), llmV2: llmFalso([escribe(["Hola."])]), crearSocketDeepgram: f.crear });
+    const escalera = crearEscaleraPlataforma({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "dg-llave", cascadaV2Habilitada: true, llm: llmFalso([]), llmV2: llmFalso([escribe(["Hola."])]), crearSocketDeepgram: f.crear });
     await escalera.abrirSesion(APERTURA, manejadoresFalsos().h);
     expect(escalera.escalonActual()).toBe("cascada-v2");
     expect(escalera.fallidos()).toEqual(["gemini-3.8-live"]);
@@ -27,8 +27,11 @@ describe("escalera de plataforma con cascada v2", () => {
 
   it("sin DEEPGRAM_API_KEY, o sin el LLM en streaming, el escalon se salta y atiende la cascada de respaldo", async () => {
     for (const deps of [
-      { deepgramApiKey: null, llmV2: llmFalso([]) },
-      { deepgramApiKey: "dg-llave", llmV2: null },
+      { deepgramApiKey: null, cascadaV2Habilitada: true, llmV2: llmFalso([]) },
+      { deepgramApiKey: "dg-llave", cascadaV2Habilitada: true, llmV2: null },
+      // INTERRUPTOR apagado (por omision): aunque exista la llave y el LLM, el escalon no abre.
+      { deepgramApiKey: "dg-llave", llmV2: llmFalso([]) },
+      { deepgramApiKey: "dg-llave", cascadaV2Habilitada: false, llmV2: llmFalso([]) },
     ]) {
       const f = fabricaSockets();
       const escalera = crearEscaleraPlataforma({ geminiApiKey: null, openrouterApiKey: "k", llm: llmFalso([]), crearSocketDeepgram: f.crear, ...deps });
@@ -44,7 +47,7 @@ describe("configuracion de la cascada v2", () => {
   it("el cerebro por omision es Sonnet 5.5 con esfuerzo bajo; Haiku 5.5 queda como modelo configurable", () => {
     expect(VOZ_PLATAFORMA.cascadaV2.llm).toMatchObject({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" });
     expect(VOZ_PLATAFORMA.cascadaV2.llm.topeSalidaTokens).toBeGreaterThan(0);
-    expect(VOZ_PLATAFORMA.cascadaV2.llm.topeSalidaTokens).toBeLessThanOrEqual(1024);
+    expect(VOZ_PLATAFORMA.cascadaV2.llm.topeSalidaTokens).toBeGreaterThanOrEqual(1_500); // piso como el gateway: con 400 el benchmark midio 5.3 % de respuestas cortadas
   });
   it("STT Nova-3 es-419 con endpointing de conversacion; TTS Aura-2 mexicana a la tasa de salida de la sala (sin remuestreo)", () => {
     expect(VOZ_PLATAFORMA.cascadaV2.deepgram).toMatchObject({ modelo: "nova-3", idioma: "es-419", hzEntrada: 16_000 });

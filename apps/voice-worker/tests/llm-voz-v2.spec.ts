@@ -76,6 +76,16 @@ describe("puerto LLM de voz v2", () => {
     expect(r).toMatchObject({ texto: "Claro, con gusto.", toolCalls: [], costoMicroUsd: 4200, costoReal: true, modelo: "anthropic/claude-sonnet-5.5", tokensEntrada: 1200, tokensSalida: 30, tokensCache: 1100 });
   });
 
+  it("devuelve el motivo de fin (finish_reason) y usa el piso de 1 500 tokens de salida: con razonamiento, un tope chico deja el contenido vacio", async () => {
+    const { fn, cuerpos } = fetchSse([delta("Hola"), { choices: [{ delta: {}, finish_reason: "length" }], usage: { prompt_tokens: 10, completion_tokens: 1500 } }]);
+    const r = await crearPuertoLlmVozV2("k", fn).completar({ ...BASE, onTextDelta: () => undefined });
+    expect(r.finishReason).toBe("length");
+    expect(cuerpos[0]!.max_tokens).toBe(1500);
+    const fnVacio = (async () => new Response(JSON.stringify({ choices: [{ message: { content: "" }, finish_reason: "length" }], usage: { prompt_tokens: 3, completion_tokens: 1500 } }), { status: 200 })) as unknown as typeof fetch;
+    const vacia = await crearPuertoLlmVozV2("k", fnVacio).completar(BASE);
+    expect(vacia).toMatchObject({ texto: "", finishReason: "length" });
+  });
+
   it("sin costo reportado el costo no se marca como real; sin lectura de cache no inventa tokensCache", async () => {
     const { fn } = fetchSse([delta("ok"), { usage: { prompt_tokens: 100, completion_tokens: 5 }, choices: [{ delta: {}, finish_reason: "stop" }] }]);
     const r = await crearPuertoLlmVozV2("k", fn).completar({ ...BASE, onTextDelta: () => undefined });
