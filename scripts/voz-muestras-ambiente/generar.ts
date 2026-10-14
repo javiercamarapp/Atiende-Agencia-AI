@@ -6,7 +6,7 @@
 // el mezclado. Los WAV y el README van FUERA del repo (por omision en ~/atiende-loop/pm/audio-ambiente/) y NO se commitean.
 // Usa el MISMO mezclador de la llamada (`MezcladorSalida`); no llama a ninguna API.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { HZ_MUESTRA, PERFILES_AMBIENTE, PRESETS_AMBIENTE, PRESET_RESTAURANTE_HUMANO, aTelefono, escribirWav16, leerWav16, medirMuestra, medirTelefono, remuestrearLineal, renderizarMuestra } from "../../packages/voice-core/src/index.ts";
@@ -120,13 +120,20 @@ ${filas.map((x) => `| ${x.archivo} | ${f(x.m.rmsDbfs)} | ${f(x.m.lufsAprox)} | $
 
 Volumen, preset y tecleo se eligen en el panel: Ajustes del agente → «Preset restaurante humano» y «Sonido de fondo de restaurante». Para regenerar con otra semilla o duración: \`npx vite-node scripts/voz-muestras-ambiente/generar.ts -- --semilla 2 --segundos 20\`.
 `;
-// No pisa un README que no sea de este script: si ya hay uno (de otra persona o sesion), escribe README-ambiente.md y lo dice.
+// No pisa un README que no sea de este script: se intenta crear en exclusiva (flag "wx", sin comprobar antes); si ya existe y es de otra persona o sesion (no empieza con la marca),
+// el de las muestras se escribe en README-ambiente.md y se avisa.
 const MARCA = "<!-- generado por scripts/voz-muestras-ambiente/generar.ts -->";
 const rutaReadme = join(out, "README.md");
-let destinoReadme = rutaReadme;
-if (existsSync(rutaReadme) && !readFileSync(rutaReadme, "utf8").startsWith(MARCA)) {
-  destinoReadme = join(out, "README-ambiente.md");
-  console.warn(`AVISO: ya existe ${rutaReadme} que no es de este script; el de las muestras se escribio en ${destinoReadme}.`);
+const contenidoReadme = `${MARCA}\n${readme}`;
+try {
+  writeFileSync(rutaReadme, contenidoReadme, { flag: "wx" });
+} catch (err) {
+  if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  if (readFileSync(rutaReadme, "utf8").startsWith(MARCA)) writeFileSync(rutaReadme, contenidoReadme);
+  else {
+    const alterno = join(out, "README-ambiente.md");
+    writeFileSync(alterno, contenidoReadme);
+    console.warn(`AVISO: ya existe ${rutaReadme} que no es de este script; el de las muestras se escribio en ${alterno}.`);
+  }
 }
-writeFileSync(destinoReadme, `${MARCA}\n${readme}`);
 console.log(`Listo: ${filas.length} archivos en ${out}`);
