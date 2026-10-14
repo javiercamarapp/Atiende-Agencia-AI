@@ -18,7 +18,7 @@ import {
   EstadoVacio,
   FormField,
   Input,
-  NativeSelect,
+  Selector,
   PageContainer,
   StatusBadge,
   Textarea,
@@ -343,14 +343,14 @@ function PerfilForm({ ficha, ejecutar, api }: { readonly ficha: FichaCliente; re
             <Input inputMode="numeric" value={dia} maxLength={2} onChange={(e) => setDia(e.target.value.replace(/\D/g, ""))} />
           </FormField>
           <FormField label="Cumpleaños: mes">
-            <NativeSelect value={mes} onChange={(e) => setMes(e.target.value)}>
+            <Selector value={mes} onChange={(e) => setMes(e.target.value)}>
               <option value="">—</option>
               {MESES.map((m, i) => (
                 <option key={m} value={String(i + 1)}>
                   {m}
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
         </div>
         <FormField label="Notas del restaurante" hint="Solo las ve el personal; no las lee el agente.">
@@ -543,13 +543,13 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
       )}
       <form onSubmit={agregar} className="mt-3 grid grid-cols-[auto_1fr_auto] items-end gap-2">
         <FormField label="Tipo">
-          <NativeSelect value={kind} onChange={(e) => setKind(e.target.value as TipoGusto)}>
+          <Selector value={kind} onChange={(e) => setKind(e.target.value as TipoGusto)}>
             {TIPOS_GUSTO.map((t) => (
               <option key={t} value={t}>
                 {ETIQUETA_TIPO_GUSTO[t]}
               </option>
             ))}
-          </NativeSelect>
+          </Selector>
         </FormField>
         <FormField label="Valor">
           <Input value={value} maxLength={120} onChange={(e) => setValue(e.target.value)} />

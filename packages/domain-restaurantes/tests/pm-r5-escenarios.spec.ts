@@ -144,7 +144,7 @@ describe("buscar_cliente no deja inventar el estado de cocina (QA-PM-R5-voz-04)"
     await crear(f);
     const r = (await invokeAgentTool(f.repo, ctxDe(f), "buscar_cliente", {})).result as Record<string, unknown>;
     expect(r.isNew).toBe(false);
-    expect(r.pedidoReciente).toMatchObject({ estado: "preparando" });
+    expect(r.pedidoReciente).toMatchObject({ estado: "registrado" });
     expect(r.aviso_estado_pedido).toBeUndefined();
   });
   it("cliente con pedido y SIN lectura del estado de cocina (pedidoReciente indefinido): el resultado trae el aviso", async () => {

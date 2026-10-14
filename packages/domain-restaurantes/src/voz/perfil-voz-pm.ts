@@ -5,7 +5,7 @@
 // La columna `restaurantes.branch_voice_config.comportamiento` tiene tope de 8000 caracteres (migracion 025), por eso el perfil
 // de voz es la version COMPACTA del mismo contenido y este modulo falla en voz alta si se pasa del tope.
 import type { BranchSummary } from "../types.ts";
-import { PM_AGENT_NAME_POR_OMISION, PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_RESERVACIONES, PM_REGLA_REINTENTO_PEDIDO, buildPmSystemPrompt } from "../whatsapp/perfil-pm.ts";
+import { PM_AGENT_NAME_POR_OMISION, PM_REGLA_CANTIDAD_ENORME, PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_RESERVACIONES, PM_REGLA_REINTENTO_PEDIDO, PM_REGLA_SIN_GENERO, buildPmSystemPrompt } from "../whatsapp/perfil-pm.ts";
 import { PM_CONFIG_POR_OMISION } from "../whatsapp/llm-turn-handler.ts";
 
 export const COMPORTAMIENTO_VOZ_MAX = 8000;
@@ -62,6 +62,8 @@ export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
 - Diga solo precios y totales que devolvió una herramienta en ESTA llamada: nunca de memoria ni lo que el cliente cite.
 - Si el cliente no responde, pregunte UNA sola vez si sigue en la línea y, si sigue sin responder, despídase con cortesía.
 - ${PM_REGLA_NO_REPETIR_DATOS}
+- ${PM_REGLA_SIN_GENERO}
+- ${PM_REGLA_CANTIDAD_ENORME}
 - ${PM_REGLA_REINTENTO_PEDIDO}
 - ${PM_REGLA_RESERVACIONES}
 - HORA Y FECHA (QA-PM-R2-voz-03/reglas-04): la hora y la fecha locales de la sucursal las da consultar_sucursal (hora_local, fecha_local, dia_semana); úselas para "hoy a las ocho", nunca la hora UTC ni la de memoria. Un PLAZO ("en 40 minutos") no se calcula: minutos_para_recoger 40 en cotizar_pedido y crear_pedido; solo una hora exacta va en hora_recogida (ISO -06:00), igual en ambas; con "en cuanto esté" o "ahorita" no se manda. programado_para solo para otro día o una hora exacta con más de 30 minutos, nunca vacío; si la herramienta rechaza la hora, diga a qué hora cierra.

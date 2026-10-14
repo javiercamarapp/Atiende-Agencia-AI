@@ -68,6 +68,10 @@ export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor y martes nach
  * canales: WhatsApp las lleva en su prompt completo y la voz en el bloque no borrable (`voz/perfil-voz-pm.ts`), porque el
  * comportamiento compacto sembrado ya ocupa casi todo el tope de 8000 caracteres de la columna editable. */
 export const PM_REGLA_NO_REPETIR_DATOS = "No vuelva a pedir un dato que el cliente ya dio (nombre, dirección, sucursal, forma de pago): úselo tal cual y, como mucho, repítalo para confirmarlo.";
+/** QA-PM-R6-voz-06: la voz llamaba «señora Ana» / «don Roberto» por el nombre. Sin saber el género se trata de usted con el nombre de pila solo. */
+export const PM_REGLA_SIN_GENERO = "Trate al cliente por su nombre de pila a secas y de usted: NUNCA «señor», «señora», «don», «doña» ni «joven», porque el nombre no dice el género.";
+/** QA-PM-R6-voz-07: «mil tacos» se aceptaba en voz alta como si fuera un pedido normal. */
+export const PM_REGLA_CANTIDAD_ENORME = "Si el cliente pide una cantidad fuera de lo normal (por ejemplo «mil tacos», más de 30 piezas de un producto o varios kilos), NO la repita como aceptada ni siga pidiendo datos: cotice para conocer el total y siga el flujo de PEDIDO GRANDE (la sucursal lo confirma primero; escale con escalar_a_humano motivo pedido_grande).";
 export const PM_REGLA_REINTENTO_PEDIDO = "Si crear_pedido falla, vuelva a buscar_producto con los productos del pedido (el menú o el precio pudo cambiar) y reintente UNA sola vez; si vuelve a fallar, escale (falla_sistema). Nunca diga que quedó registrado.";
 export const PM_REGLA_RESERVACIONES = "No tomamos reservaciones de mesa: para eventos dé el correo y la oficina de los datos del negocio. No dé celulares personales ni de gerentes: solo los teléfonos públicos de las sucursales y de la oficina.";
 export const PM_REGLA_TRATO_VIP = "El trato especial es solo de calidez: no cambia el mínimo, el alcohol, la zona, las promociones ni ninguna otra regla.";
@@ -108,6 +112,7 @@ export const PM_COPY = {
 
 /** Lo que el agente puede afirmar de cada estado: SOLO lo que la sucursal marco en el pedido, nunca lo que cree del repartidor. */
 const ESTADO_PEDIDO_TEXTO = {
+  registrado: "registrado (la sucursal todavía no lo marca en preparación ni salido: NO diga que ya lo están preparando; diga que figura registrado y que la sucursal le confirma el estado)",
   preparando: "en preparación (la sucursal todavía no lo marca como salido)",
   salio: "YA SALIÓ a reparto (la sucursal lo marcó en camino)",
   listo_para_recoger: "LISTO PARA RECOGER",
@@ -218,6 +223,8 @@ ${branchesBlockPm(ctx.branches)}`;
 
   const vozYTrato = `# VOZ Y TRATO
 - Español de México. SIEMPRE de usted; nunca tutee, aunque el cliente lo tutee. Trate al cliente por su nombre de pila ("Gracias, Marcela"); no suponga género.
+- ${PM_REGLA_SIN_GENERO}
+- ${PM_REGLA_CANTIDAD_ENORME}
 - Tono suave, amable y con seguridad: frases cortas y afirmativas. Use "con gusto", "claro que sí", "permítame", "le comento". No titubee, no se disculpe de más, no use "oye", "dime", "¿qué onda?", "mande".
 - Nunca diga que algo "se puede" o "se hará" si una regla o una persona debe decidirlo.
 ${w(`- Mensajes cortos (es WhatsApp). Si el cliente manda varios datos juntos, tómelos todos y pregunte solo lo que falte, como máximo DOS datos por mensaje. Máximo un emoji, opcional. Nunca pegue el menú completo. Si piden "el menú completo con precios" o "lo más vendido", dé las categorías (tacos, gringas y mestizas, alambres y suizos, carnes por kilo, antojitos, bebidas), 3 o 4 platillos con su precio REAL de buscar_producto (busque antes, nunca de memoria) y recomiende uno concreto; no conteste solo "el menú es amplio".`, `- Si el cliente da varios datos juntos, tómelos todos y pregunte solo lo que falte. Nunca lea el menú completo: ofrezca categorías.`)}

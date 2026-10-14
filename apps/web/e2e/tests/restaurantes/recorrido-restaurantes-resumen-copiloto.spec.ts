@@ -2,6 +2,7 @@
 // destino; en el Copiloto: pregunta libre, abort con "Detener", historial y rol sin acceso.
 import { expect, test } from "../../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../../helpers/humo.ts";
+import { esMovil } from "../../helpers/navegacion.ts";
 import { BASE, ir } from "../../helpers/recorrido.ts";
 import type { Page } from "@playwright/test";
 
@@ -36,9 +37,10 @@ test.describe("restaurantes: Resumen @recorrido", () => {
     const destinos: Array<[string, string]> = [
       ["Ver pedidos", `${BASE}/pedidos`],
       ["Ver historial", `${BASE}/historial`],
-      ["Pregunta a tus datos", `${BASE}/copiloto`],
     ];
     for (const [texto, href] of destinos) await expect(main(page).getByRole("link", { name: texto })).toHaveAttribute("href", href);
+    // El acceso al Copiloto vive en la barra y en el Sidebar, no se repite en el cuerpo del Resumen.
+    await expect(main(page).getByRole("link", { name: "Pregunta a tus datos" })).toHaveCount(0);
     await expect(main(page).getByRole("link", { name: /WhatsApp/ }).first()).toHaveAttribute("href", `${BASE}/conversaciones`);
     await afirmarPantallaSana(page, "resumen");
     vigilante.verificar();
@@ -67,10 +69,12 @@ test.describe("restaurantes: Resumen @recorrido", () => {
     vigilante.verificar();
   });
 
-  test("staff ve el Resumen con su pildora del Copiloto", async ({ page, iniciarSesion }) => {
+  test("staff ve el Resumen y llega al Copiloto desde la barra (sin pildora repetida en el cuerpo)", async ({ page, iniciarSesion }) => {
     await iniciarSesion("restaurantes", "staff");
     await ir(page, "");
-    await expect(main(page).getByRole("link", { name: "Pregunta a tus datos" })).toBeVisible();
+    await expect(main(page).getByRole("link", { name: "Pregunta a tus datos" })).toHaveCount(0);
+    // La barra es de escritorio; en movil el chat vive en el menu de cuenta (lo cubre restaurantes-uni-marco.spec.ts).
+    if (!esMovil(page)) await expect(page.getByTestId("barra-pagina").getByRole("link", { name: /Chatea con tus datos/ })).toHaveAttribute("href", `${BASE}/copiloto`);
   });
 });
 

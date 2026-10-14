@@ -31,6 +31,18 @@ describe("aclararGuacamoleExtra (pura)", () => {
     }
   });
 
+  it("R6: que el agente mencione guacamole/extra SIN ofrecer la eleccion no da la aclaracion por hecha (corpus negativo)", () => {
+    for (const frase of ["Anoto Extra Guacamole, ¿algo más?", "¿Quiere extra salsa o ajo?", "Su guacamole va con las salsas, ¿qué tortilla desea?", "Son 4 tacos y 1 guacamole. ¿Pagará en efectivo?", "Con la salsa guacamolera incluida, ¿recoger o domicilio?"]) {
+      expect(aclararGuacamoleExtra(EXTRA, [u("quiero 4 tacos y 1 guacamole"), a(frase), u("maíz")]), frase).not.toBeNull();
+    }
+  });
+
+  it("R6: la pregunta que SI ofrece la eleccion cierra la aclaracion (corpus positivo)", () => {
+    for (const pregunta of ["¿El guacamole como platillo o un extra para sus tacos?", "¿Platillo o extra?", "¿Prefiere el guacamole extra para sus tacos o la orden de guacamole?"]) {
+      expect(aclararGuacamoleExtra(EXTRA, [u("quiero 4 tacos y 1 guacamole"), a(pregunta), u("maíz")]), pregunta).toBeNull();
+    }
+  });
+
   it("el cliente dice «extra» por su cuenta, antes o despues de mencionarlo, aunque el agente no pregunte", () => {
     for (const m of ["un extra guacamole", "Guacamole extra por favor", "agrégame doble guacamole", "otro guacamole para los tacos", "quiero más guacamole", "guacamole adicional", "un EXTRA de guacamole", "2 extras de guacamole"]) {
       expect(aclararGuacamoleExtra(EXTRA, [u(m)]), m).toBeNull();

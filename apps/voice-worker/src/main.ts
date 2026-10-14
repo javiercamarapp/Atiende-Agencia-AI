@@ -6,7 +6,7 @@ import { HERRAMIENTAS_VOZ_SOLO_LECTURA, LIMITES_VOZ_PM } from "@atiende/domain-r
 import type { SumideroLog } from "@atiende/domain-restaurantes";
 import { ClienteApi } from "./api-cliente.ts";
 import { cargarConfig } from "./config.ts";
-import { crearPuertoLlmOpenRouter } from "./llm-openrouter.ts";
+import { crearPuertoLlmOpenRouter, crearPuertoLlmVozV2 } from "./llm-openrouter.ts";
 import { cargarPregrabados } from "./pregrabados.ts";
 import { crearProveedorTokenVertex } from "./vertex-token.ts";
 import { Worker, crearServidorSalud } from "./worker.ts";
@@ -28,6 +28,8 @@ async function main(): Promise<void> {
     const telefonia = new LiveKitTelefonia({ ...config.livekit, log: logPlano });
     const api = new ClienteApi({ baseUrl: config.apiBaseUrl, internalSecret: config.internalSecret });
     const llm = config.openrouterApiKey ? crearPuertoLlmOpenRouter(config.openrouterApiKey) : null;
+    // Cascada v2 (Deepgram + OpenRouter en streaming): su propio puerto, que honra el modelo y el esfuerzo por turno y no manda `temperature`.
+    const llmV2 = config.openrouterApiKey ? crearPuertoLlmVozV2(config.openrouterApiKey, undefined, { proveedoresZdr: config.proveedoresZdr }) : null;
     // Vertex AI (opcional, no activado por omision): el token de la cuenta de servicio se renueva solo; se pide al abrir cada sesion.
     const vertex = config.vertex ? { project: config.vertex.project, location: config.vertex.location, accessToken: crearProveedorTokenVertex({ credencialesJson: config.vertex.serviceAccountJson }) } : undefined;
     worker = new Worker({
@@ -39,7 +41,7 @@ async function main(): Promise<void> {
         pregrabados: pregrabados.audios,
         api,
         log: sumidero,
-        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, llm, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
+        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, deepgramApiKey: config.deepgramApiKey, cascadaV2Habilitada: config.cascadaV2Habilitada, confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido" }, llm, llmV2, log: sumidero, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
         ...(config.costoMaxLlamadaMicroUsd !== null ? { limites: { ...LIMITES_VOZ_PM, costoMaxMicroUsd: config.costoMaxLlamadaMicroUsd } } : {}),
       },
     });

@@ -34,10 +34,10 @@ function isoHoraRecogida(horaLocal: string, minutos: number): string {
   return `2026-10-03T${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}:00-06:00`;
 }
 
-function saludoHora(horaLocal: string): string {
+export function saludoHora(horaLocal: string): string {
   const h = Number(horaLocal.split(":")[0]);
   if (h >= 5 && h < 12) return "Buenos días";
-  if (h >= 12 && h < 19) return "Buenas tardes";
+  if (h >= 12 && h < 20) return "Buenas tardes";
   return "Buenas noches";
 }
 

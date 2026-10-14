@@ -19,6 +19,15 @@ export type EstiloHabla = (typeof ESTILOS_HABLA)[number];
 export const TEMPERATURA_VOZ_MIN = 0;
 export const TEMPERATURA_VOZ_MAX = 1;
 
+/** Tope de la temperatura de la organizacion en LLAMADAS REALES (Gemini Live): mas alto improvisa de mas con precios y cantidades. La vista previa del panel puede probar hasta TEMPERATURA_VOZ_MAX. */
+export const TEMPERATURA_VOZ_LLAMADA_MAX = 0.4;
+
+/** Temperatura de la organizacion tal como se usa en una llamada real: null/invalida = la de la plataforma; mayor al tope se baja al tope (`ajustada` lo dice para informarlo en el panel). */
+export function temperaturaParaLlamada(t: unknown): { readonly valor: number | null; readonly ajustada: boolean } {
+  if (!esTemperaturaVoz(t)) return { valor: null, ajustada: false };
+  return t > TEMPERATURA_VOZ_LLAMADA_MAX ? { valor: TEMPERATURA_VOZ_LLAMADA_MAX, ajustada: true } : { valor: t, ajustada: false };
+}
+
 export interface AjustesHabla {
   readonly ritmo: RitmoHabla;
   readonly estilo: EstiloHabla;

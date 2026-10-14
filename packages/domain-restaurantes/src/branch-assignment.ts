@@ -167,7 +167,7 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   const hasLat = input.lat !== undefined;
   const hasLng = input.lng !== undefined;
   if (hasLat !== hasLng) throw new OrderValidationError("lat y lng deben venir juntas.");
-  if (hasLat && !esCoordenadaValida(input.lat, input.lng)) throw new OrderValidationError("Coordenadas inválidas: lat entre -90 y 90, lng entre -180 y 180.");
+  if (hasLat && !esCoordenadaValida(input.lat, input.lng)) throw new OrderValidationError("Coordenadas inválidas: lat entre -90 y 90, lng entre -180 y 180. NO las repita ni reintente con las mismas: pídale al cliente que comparta de nuevo su ubicación de WhatsApp o que le diga su colonia, y vuelva a llamar buscar_sucursal_cercana con la colonia.");
   if (input.maxKm !== undefined && (typeof input.maxKm !== "number" || !Number.isFinite(input.maxKm) || input.maxKm <= 0 || input.maxKm > 500)) {
     throw new OrderValidationError("maxKm debe ser un número entre 0 y 500.");
   }

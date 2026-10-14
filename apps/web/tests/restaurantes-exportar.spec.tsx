@@ -4,12 +4,15 @@
 // pantalla), que solo se ofrezca a owner/admin, que se entregue el archivo al navegador con el nombre que manda el servidor, y que un error del
 // servidor (p. ej. 413 por pasar del tope de filas) se muestre con su mensaje en vez de descargar nada.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { ClientesListPage } from "../src/verticals/restaurantes/pages/Clientes.tsx";
 import { HistorialPage } from "../src/verticals/restaurantes/pages/Historial.tsx";
 import { BotonExportar, puedeExportar } from "../src/verticals/restaurantes/components/BotonExportar.tsx";
 import { descargarExportacion, guardarArchivo, urlExportarClientes, urlExportarHistorial } from "../src/verticals/restaurantes/lib/exportar-client.ts";
 import { changeValue, click, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 const creados: string[] = [];
@@ -146,8 +149,8 @@ describe("pantallas: el boton exporta con los filtros VIGENTES", () => {
     vi.stubGlobal("fetch", f);
     rendered = renderComponent(<HistorialPage {...ctx("owner")} />);
     await settle();
-    const estado = document.getElementById("restaurantes-historial-estado") as HTMLSelectElement;
-    changeValue(estado, "entregado");
+    const estado = document.getElementById("restaurantes-historial-estado") as HTMLElement;
+    elegirValor(estado, "entregado");
     changeValue(document.getElementById("restaurantes-historial-desde") as HTMLInputElement, "2026-10-01");
     await settle();
     abrirMenu();

@@ -6,7 +6,9 @@ import { base as baseVoz, pedir } from "./voz-client.ts";
 export type RitmoHabla = "pausado" | "normal" | "agil";
 export type EstiloHabla = "neutro" | "calido" | "sobrio" | "animado";
 
-/** Los ocho ajustes que edita el panel (PUT los reemplaza completos; null = "usar el de la plataforma"). */
+export type PresetAmbiente = "cocina-taqueria" | "sala-tranquila" | "calle-ocupada";
+
+/** Los doce ajustes que edita el panel (PUT los reemplaza completos; null = "usar el de la plataforma"). */
 export interface AjustesAgente {
   readonly whatsappModelo: string | null;
   readonly whatsappTemperatura: number | null;
@@ -16,6 +18,27 @@ export interface AjustesAgente {
   readonly vozEstilo: EstiloHabla;
   readonly vozFondoActivo: boolean;
   readonly vozFondoVolumen: number;
+  /** Ambiente de la sala (migracion 087). */
+  readonly vozFondoPreset: PresetAmbiente;
+  /** Tecleo mientras el agente anota (migracion 087). */
+  readonly vozTecleoActivo: boolean;
+  readonly vozTecleoVolumen: number;
+  /** Naturalidad y español de Mexico en la instruccion (migracion 087). */
+  readonly vozHumanizar: boolean;
+}
+
+export interface PresetHumanoVista {
+  readonly id: string;
+  readonly ritmo: RitmoHabla;
+  readonly estilo: EstiloHabla;
+  readonly temperatura: number;
+  readonly humanizar: boolean;
+  readonly fondo: { readonly activo: boolean; readonly preset: PresetAmbiente; readonly volumen: number };
+  readonly tecleo: { readonly activo: boolean; readonly volumen: number };
+  readonly vozPorMotor?: Readonly<Record<"gemini-live" | "cascada", { readonly proveedor: string; readonly principal: string; readonly alternativas: readonly string[] }>>;
+  readonly voz: { readonly principal: string; readonly alternativas: readonly string[]; readonly descripciones: Readonly<Record<string, string>> };
+  readonly acento: string;
+  readonly candidatasTtsCascadaV2: readonly { readonly proveedor: string; readonly voces: readonly string[]; readonly nota: string }[];
 }
 
 export interface ModeloAgenteVista {
@@ -35,6 +58,8 @@ export interface AjustesAgenteVista {
   /** false = la base todavia no tiene la migracion: se ven los valores de siempre y no se puede guardar. */
   readonly disponible: boolean;
   readonly configurados: boolean;
+  /** false = la base tiene la migracion 055 pero no la 087: ambiente con presets, tecleo y naturalidad no se pueden guardar. Ausente (API vieja) = igual que false. */
+  readonly ambienteDisponible?: boolean;
   readonly actualizadoEn: string | null;
   readonly ajustes: AjustesAgente;
   readonly modelos: readonly ModeloAgenteVista[];
@@ -43,15 +68,19 @@ export interface AjustesAgenteVista {
     readonly vozCascadaMinuto: { readonly tokensEntrada: number; readonly tokensSalida: number };
     readonly nota: string;
   };
-  readonly temperatura: { readonly min: number; readonly max: number; readonly paso: number };
+  readonly temperatura: { readonly min: number; readonly max: number; readonly paso: number; readonly maxLlamada?: number };
   readonly habla: { readonly ritmos: readonly RitmoHabla[]; readonly estilos: readonly EstiloHabla[]; readonly nota: string };
-  readonly fondo: { readonly volumenMax: number; readonly porOmision: string };
+  readonly fondo: { readonly volumenMax: number; readonly porOmision: string; readonly presets?: readonly { readonly id: PresetAmbiente; readonly descripcion: string }[] };
+  readonly tecleo?: { readonly volumenMax: number; readonly porOmision: string; readonly nota: string };
+  readonly presetHumano?: PresetHumanoVista;
   readonly escaleraVoz: { readonly principal: string; readonly respaldo: string };
   readonly aplicaEn: {
     readonly whatsappModeloYTemperatura: string;
     readonly vozTemperaturaYHabla: string;
     readonly vozModeloCascada: string;
     readonly vozFondo: string;
+    readonly vozTecleo?: string;
+    readonly vozHumanizar?: string;
   };
   readonly clonacionDeVoz: { readonly disponible: boolean; readonly motivo: string; readonly decision: string };
   readonly documentosOmitidos: readonly { readonly tipo: string; readonly motivo: string }[];

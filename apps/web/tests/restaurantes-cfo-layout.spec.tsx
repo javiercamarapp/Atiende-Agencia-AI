@@ -4,10 +4,13 @@
 // sucursal, pestañas, exportación (se oculta si la ruta de CFO-06 responde 404), drill-down y estados (403, base sin migrar, error con reintento).
 import { act } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { CfoLayout } from "../src/verticals/restaurantes/cfo/CfoLayout.tsx";
 import { API, IDS, PROPIEDAD, crearApiCfo } from "./test-utils/cfo-api-simulada.ts";
 import { changeValue, click, esperarHasta, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -170,7 +173,7 @@ describe("<CfoLayout /> · filtros en la URL", () => {
       expect(params().get("sucursales")).toBe(IDS.T3);
       click([...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cerrar")!);
       await cuando(() => !params().has("pedidos"), "cerrado");
-      changeValue(q("[data-testid=filtro-rango]") as HTMLSelectElement, "30d");
+      elegirValor(q("[data-testid=filtro-rango]"), "30d");
       await cuando(() => params().get("desde") === "2026-08-30", "rango nuevo");
       expect(params().get("sucursales")).toBe(IDS.T3);
       await cuando(() => q("[data-testid=cfo-sucursal-descartada]") === null, "aviso fuera");
@@ -188,12 +191,12 @@ describe("<CfoLayout /> · filtros en la URL", () => {
     const api = crearApiCfo();
     montar(api);
     await cuando(() => q("[data-testid=filtro-rango]") !== null, "barra");
-    changeValue(q("[data-testid=filtro-rango]") as HTMLSelectElement, "30d");
+    elegirValor(q("[data-testid=filtro-rango]"), "30d");
     await cuando(() => params().get("desde") === "2026-08-30", "URL con 30 días");
     expect(params().get("hasta")).toBe("2026-09-28");
     await cuando(() => api.peticiones("GET", "/resumen").some((r) => r.consulta.get("desde") === "2026-08-30"), "pidió con 30 d");
 
-    changeValue(q("[data-testid=filtro-rango]") as HTMLSelectElement, "personalizado");
+    elegirValor(q("[data-testid=filtro-rango]"), "personalizado");
     await cuando(() => document.getElementById("cfo-desde") !== null, "campos de fecha");
     changeValue(document.getElementById("cfo-desde") as HTMLInputElement, "2024-01-01");
     await cuando(() => texto().includes("El rango máximo es de 400 días."), "error de rango");
@@ -205,7 +208,7 @@ describe("<CfoLayout /> · filtros en la URL", () => {
   it("«Comparar contra» se escribe en la URL", async () => {
     montar(crearApiCfo());
     await cuando(() => q("[data-testid=filtro-comparar]") !== null, "barra");
-    changeValue(q("[data-testid=filtro-comparar]") as HTMLSelectElement, "mismo_dia_semana_4");
+    elegirValor(q("[data-testid=filtro-comparar]"), "mismo_dia_semana_4");
     await cuando(() => params().get("comparar") === "mismo_dia_semana_4", "comparar en la URL");
   });
 

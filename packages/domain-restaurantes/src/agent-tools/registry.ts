@@ -23,6 +23,7 @@ import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
 import { normalizePhone } from "../phone.ts";
+import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { pesoDeProductoEnGramos } from "../product-search.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
@@ -53,6 +54,7 @@ import {
   reconciliarConCotizacion,
   resolverRenglonesCotizados,
   OrderFlowViolationError,
+  rechazaElResumen,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -961,6 +963,18 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
           };
         }
       }
+      // QA-PM-R6-voz-01: un pedido IGUAL del mismo telefono de hace pocos minutos (otra llamada / otro chat) no se duplica en silencio: el modelo debe preguntar si es el mismo.
+      // Solo con un flujo SIN estado (llamada o chat nuevo): dentro de un mismo flujo ya rigen `ya_registrado` y `otro_pedido`.
+      // Con telefono DECLARADO por el cliente (caller ID no confiable) no se consulta nada del numero: seria filtrar pedidos de un tercero.
+      if (!snap.state && input.otro_pedido !== true && ctx.phone && !ctx.phoneDeclared && ctx.modo !== "preview") {
+        const reciente = await repo.findLatestOrderByPhone(ctx.organizationId, normalizePhone(ctx.phone), new Date(flowNow(flow) - VENTANA_PEDIDO_IGUAL_MIN * 60_000).toISOString());
+        if (reciente && reciente.status !== "cancelado" && reciente.status !== "no_recogido" && mismosRenglones(reciente.items, quotedQuote.lines)) {
+          const hace = Math.max(0, Math.round((flowNow(flow) - Date.parse(reciente.createdAt)) / 60_000));
+          throw new OrderValidationError(
+            `Este cliente ya tiene un pedido IGUAL registrado hace ${hace} minuto(s)${reciente.orderNumber ? ` (folio #${reciente.orderNumber})` : ""} por $${reciente.total}. NO lo cotice ni lo cree otra vez. Dígale que ese pedido ya está registrado y pregúntele si es el mismo o si quiere OTRO igual; solo si pide otro, vuelva a llamar cotizar_pedido con otro_pedido: true.`,
+          );
+        }
+      }
       // QA-PM-R2-whatsapp-01 (P0): el modelo vuelve a cotizar el MISMO carrito en el turno del "si" (para "refrescar" el resumen). Reescribir
       // `quotedTurn` con el turno actual hacia que confirmar_resumen rechazara `confirmacion_mismo_turno` y ningun pedido cerraba (0/36).
       // Una re-cotizacion identica (mismos renglones, mismos precios, mismo total) y todavia vigente CONSERVA la cotizacion y su turno: el
@@ -1013,6 +1027,11 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   }
 
   if (name === "confirmar_resumen") {
+    // QA-PM-R6 (A13): en WhatsApp, si el ultimo mensaje del cliente rechaza el resumen no se confirma (el modelo lo confirmaba tras «No, así no»).
+    const ultimoDelCliente = ctx.channel === "whatsapp" ? [...(ctx.conversacionReciente ?? [])].reverse().find((m) => m.role === "user")?.content : undefined;
+    if (rechazaElResumen(ultimoDelCliente)) {
+      throw new OrderFlowViolationError("cliente_rechazo_resumen", "El último mensaje del cliente rechaza o corrige el resumen: NO confirmes ni crees el pedido. Pregúntale qué desea cambiar (sin discutir el precio), vuelve a cotizar con lo que corrija y pide su confirmación otra vez. No digas que el pedido quedó registrado.");
+    }
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
       if (snap === null) return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor todavía" }, orderId: null, propertyId: null };
@@ -1143,7 +1162,7 @@ async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentTool
     await assertNoEsPedidoGrande(repo, prepared);
   } catch (err) {
     if (!(err instanceof PedidoGrandeRetenidoError)) throw err;
-    const retenido = { pedido_grande: true, escalado: true, estado: "por_confirmar_por_la_sucursal", simulado: true, mensaje: "Este pedido supera el umbral de pedido grande: en el servicio real NO se mandaría a cocina y se avisaría a la sucursal para confirmarlo (en el preview no se crea ningún aviso)." };
+    const retenido = { pedido_grande: true, escalado: true, estado: "por_confirmar_por_la_sucursal", simulado: true, mensaje: "Este pedido supera el umbral de pedido grande: en el servicio real NO se mandaría a cocina y se avisaría a la sucursal para confirmarlo (en el preview no se crea ningún aviso).", mensaje_al_cliente: MENSAJE_PEDIDO_GRANDE_PENDIENTE };
     return { result: retenido, raw: retenido, orderId: null, propertyId: null };
   }
   const folio = `${FOLIO_PREVIEW_PREFIJO}${createHash("sha256")
@@ -1157,7 +1176,10 @@ async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentTool
     total: prepared.total,
     status: "simulado",
     payment_method: prepared.payload.paymentMethod ?? null,
-    items: prepared.orderItems,
+    items: prepared.renglonesPersistidos,
+    ...(prepared.payload.propina ? { propina: prepared.payload.propina } : {}),
+    ...(prepared.payload.horaRecogida ? { hora_recogida: prepared.payload.horaRecogida } : {}),
+    ...(prepared.payload.programadoPara ? { programado_para: prepared.payload.programadoPara } : {}),
     simulado: true,
   };
   return { result: { order: simulated }, raw: simulated, orderId: null, propertyId: null, simulated: true };
@@ -1611,7 +1633,7 @@ async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentT
   const encontrado = await buscarPedidoRecienteConSucursal(repo, ctx.organizationId, ctx.phone as string);
   const reciente = encontrado?.reciente;
   // Solo con un pedido CONOCIDO para recoger y aun vigente: canal desconocido (base sin migrar o sin dato) o un estado cerrado/con problema no se avisa como llegada.
-  if (!reciente || reciente.canal !== "recoger" || (reciente.estado !== "preparando" && reciente.estado !== "listo_para_recoger" && reciente.estado !== "programado")) {
+  if (!reciente || reciente.canal !== "recoger" || (reciente.estado !== "registrado" && reciente.estado !== "preparando" && reciente.estado !== "listo_para_recoger" && reciente.estado !== "programado")) {
     return { result: { ok: false, motivo: "sin_pedido_para_recoger", instruccion: MENSAJE_LLEGADA_SIN_PEDIDO }, raw: { ok: false }, orderId: null, propertyId: null };
   }
   const identificacion = typeof input.message === "string" ? sanitizeInlineText(input.message, 200) : "";
