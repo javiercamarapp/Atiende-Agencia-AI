@@ -13,14 +13,50 @@
 import { costoEstimadoMicroUsd } from "./config-plataforma.ts";
 import type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
 
-/** Proveedores de componente validos: `deepgram`, `deepgram-aura-2`, `heygen` u `openrouter:<modelo>` (el `ref_id` y el CHECK de 80 caracteres de la base lo acotan). */
-export const PROVEEDOR_COMPONENTE_RE = /^(?:deepgram|deepgram-aura-2|heygen|openrouter:[a-z0-9][a-z0-9._/-]{0,60}(?::[a-z0-9._-]{1,16})?)$/;
+/** Proveedores de componente validos: `deepgram` (STT), `deepgram-aura-2` (TTS), `heygen` (TTS) u `openrouter:<modelo>` (LLM). El largo total (1-80) es el CHECK de
+ * `core.usage_cost_event.proveedor`: la base rechazaria uno mas largo con 23514 y se perderia el costo de la llamada. */
+export const PROVEEDOR_COMPONENTE_RE = /^(?=.{1,80}$)(?:deepgram|deepgram-aura-2|heygen|openrouter:[a-z0-9][a-z0-9._/-]{0,60}(?::[a-z0-9._-]{1,16})?)$/;
+
+export type UnidadComponente = "segundo" | "unidad";
+
+/** Unidad en la que se mide cada proveedor: Deepgram STT en segundos de audio; TTS en caracteres y LLM en llamadas, ambos `unidad`. */
+export function unidadDeComponente(proveedor: string): UnidadComponente {
+  return proveedor === "deepgram" ? "segundo" : "unidad";
+}
+
+/** Solo OpenRouter reporta el costo de cada respuesta (`usage.cost`); Deepgram y HeyGen se estiman con tarifa: su `costoReal` siempre es false. */
+export function componenteReportaCosto(proveedor: string): boolean {
+  return proveedor.startsWith("openrouter:");
+}
+
+/** El componente es coherente: proveedor valido, unidad que le corresponde y `costoReal` solo donde el proveedor reporta el costo. Devuelve el motivo o null. */
+export function motivoComponenteInvalido(c: { readonly proveedor: unknown; readonly unidad: unknown; readonly costoReal: unknown }): string | null {
+  if (typeof c.proveedor !== "string" || !PROVEEDOR_COMPONENTE_RE.test(c.proveedor)) return "proveedor";
+  if (c.unidad !== unidadDeComponente(c.proveedor)) return "unidad";
+  if (typeof c.costoReal !== "boolean" || (c.costoReal && !componenteReportaCosto(c.proveedor))) return "costoReal";
+  return null;
+}
+
+/** El desglose por componente solo existe en la cascada: Gemini Live cobra por tokens de audio/texto y reporta su costo por turno, sin componentes. */
+export function escalonAdmiteComponentes(escalon: EscalonVoz): boolean {
+  return escalon !== "gemini-3.8-live";
+}
+
+/** `ref_id` del evento de un componente: `<llamada>:<escalon>:<proveedor>`. Si pasara de 200 (el CHECK de la base) el proveedor se acorta con un sufijo
+ * de hash estable, asi dos componentes distintos nunca chocan por el recorte. */
+export function refIdComponente(llamadaId: string, escalon: string, proveedor: string): string {
+  const completo = `${llamadaId}:${escalon}:${proveedor}`;
+  if (completo.length <= 200) return completo;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < proveedor.length; i++) h = Math.imul(h ^ proveedor.charCodeAt(i), 0x01000193) >>> 0;
+  const prefijo = `${llamadaId}:${escalon}:`;
+  return `${prefijo}${proveedor.slice(0, Math.max(0, 200 - prefijo.length - 9))}~${h.toString(16).padStart(8, "0")}`;
+}
 
 /** Costo de UN componente dentro de un tramo (lo reporta la sesion con `costo(microUsd, real, componente)`). */
 export interface ComponenteCosto {
   readonly proveedor: string;
-  /** `segundo` (audio de Deepgram) o `unidad` (caracteres de HeyGen, llamadas al LLM). */
-  readonly unidad: "segundo" | "unidad";
+  readonly unidad: UnidadComponente;
   readonly cantidad: number;
   readonly costoMicroUsd: number;
   /** El proveedor reporto el costo (`usage.cost` de OpenRouter): el evento sale con `costo_estimado = false`. */
@@ -70,7 +106,9 @@ export interface EntradaEventosCosto {
 
 const VERTICAL_RE = /^[a-z][a-z0-9_]{0,30}$/;
 
-/** Un evento por escalon (si Gemini cayo y la cascada siguio, salen dos); con componentes, uno por componente. Los tramos sin duracion ni costo no generan evento. */
+/** Un evento por escalon (si Gemini cayo y la cascada siguio, salen dos); con componentes, uno por componente. Los tramos sin duracion ni costo no generan evento.
+ * Con componentes, el evento del escalon lleva el REMANENTE: el costo del escalon (el costo reportado o, si es mayor y no es real, el piso por minuto) menos lo
+ * ya desglosado. Asi un desglose parcial o vacio no borra el piso por minuto, y la suma de los eventos nunca queda por debajo del costo sin desglose. */
 export function eventosCostoLlamada(entrada: EntradaEventosCosto): EventoCostoUso[] {
   if (!VERTICAL_RE.test(entrada.vertical)) throw new Error(`eventosCostoLlamada: vertical invalida (${entrada.vertical}).`);
   interface AcumComponente { unidad: ComponenteCosto["unidad"]; cantidad: number; costo: number; estimado: boolean }
@@ -78,8 +116,10 @@ export function eventosCostoLlamada(entrada: EntradaEventosCosto): EventoCostoUs
   const porEscalon = new Map<EscalonVoz, Acum>();
   for (const t of entrada.tramos) {
     const previo = porEscalon.get(t.escalon) ?? { duracionS: 0, reportado: 0, real: false, componentes: new Map<string, AcumComponente>() };
+    if ((t.componentes?.length ?? 0) > 0 && !escalonAdmiteComponentes(t.escalon)) throw new Error(`eventosCostoLlamada: ${t.escalon} no admite componentes.`);
     for (const c of t.componentes ?? []) {
-      if (!PROVEEDOR_COMPONENTE_RE.test(c.proveedor)) throw new Error(`eventosCostoLlamada: proveedor de componente invalido (${c.proveedor}).`);
+      const motivo = motivoComponenteInvalido(c);
+      if (motivo) throw new Error(`eventosCostoLlamada: componente invalido (${motivo}).`);
       const costo = Math.max(0, c.costoMicroUsd);
       const acum = previo.componentes.get(c.proveedor) ?? { unidad: c.unidad, cantidad: 0, costo: 0, estimado: false };
       acum.cantidad += Math.max(0, c.cantidad);
@@ -98,13 +138,12 @@ export function eventosCostoLlamada(entrada: EntradaEventosCosto): EventoCostoUs
       const costoMicroUsd = Math.ceil(c.costo);
       desglosado += costoMicroUsd;
       if (costoMicroUsd <= 0 && c.cantidad <= 0) continue;
-      eventos.push({ ...base, proveedor, unidad: c.unidad, cantidad: Math.round(c.cantidad * 1000) / 1000, costoMicroUsd, costoEstimado: c.estimado, refId: `${entrada.llamadaId}:${escalon}:${proveedor}`.slice(0, 200) });
+      eventos.push({ ...base, proveedor, unidad: c.unidad, cantidad: Math.round(c.cantidad * 1000) / 1000, costoMicroUsd, costoEstimado: c.estimado, refId: refIdComponente(entrada.llamadaId, escalon, proveedor) });
     }
     const estimado = costoEstimadoMicroUsd(escalon, acum.duracionS, entrada.config);
-    // Con desglose, el evento del escalon lleva SOLO lo que los componentes no explican (sin piso por minuto: el desglose ya es el costo).
-    const reportado = Math.max(0, Math.ceil(acum.reportado) - desglosado);
     // Costo REAL (tokens del proveedor) manda sobre la tarifa por minuto: la facturacion compuesta de Gemini Live puede quedar por encima O por debajo.
-    const costoMicroUsd = acum.componentes.size > 0 ? reportado : acum.real ? Math.ceil(acum.reportado) : Math.max(estimado, Math.ceil(acum.reportado));
+    const delEscalon = acum.real ? Math.ceil(acum.reportado) : Math.max(estimado, Math.ceil(acum.reportado));
+    const costoMicroUsd = Math.max(0, delEscalon - desglosado);
     if (acum.componentes.size > 0 ? costoMicroUsd <= 0 : acum.duracionS <= 0 && costoMicroUsd <= 0) continue;
     eventos.push({
       ...base,
@@ -112,6 +151,7 @@ export function eventosCostoLlamada(entrada: EntradaEventosCosto): EventoCostoUs
       unidad: "segundo",
       cantidad: Math.round(acum.duracionS * 1000) / 1000,
       costoMicroUsd,
+      // Con componentes la bandera del remanente depende SOLO de lo reportado sin componente (la escalera no marca `costoReal` por un aporte con componente).
       costoEstimado: !acum.real,
       refId: `${entrada.llamadaId}:${escalon}`.slice(0, 200),
     });

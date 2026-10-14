@@ -7,7 +7,7 @@
 // cascada no tiene el handle de reanudacion de Gemini) para no volver a saludar ni repreguntar.
 import { VozNoConfiguradaError } from "./provider.ts";
 import type { EscalonVoz } from "./config-plataforma.ts";
-import { PROVEEDOR_COMPONENTE_RE } from "./costo.ts";
+import { escalonAdmiteComponentes, motivoComponenteInvalido } from "./costo.ts";
 import type { ComponenteCosto, TramoLlamada } from "./costo.ts";
 import { redactarTranscripcion } from "./transcripcion.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "./llamada/sesion.ts";
@@ -26,6 +26,8 @@ export interface EscaleraLlamada {
   fallidos(): readonly EscalonVoz[];
   /** Tramos de la llamada para el costo (cierra el que siga abierto). */
   tramos(): readonly TramoLlamada[];
+  /** Avisos de costo que la sesion mando invalidos (NaN, infinito o negativo) y que NO se registraron: para registrar la falla sin PII. */
+  costosInvalidos(): number;
 }
 
 export interface OpcionesEscalera {
@@ -65,6 +67,7 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
   const dicho: string[] = [];
   const tramos: TramoAbierto[] = [];
   let actual: EscalonVoz | null = null;
+  let invalidos = 0;
 
   const cerrarTramo = (t: TramoAbierto): void => {
     if (t.finMs === null) t.finMs = ahora();
@@ -86,13 +89,20 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
           manejadores.usuarioDijo?.(texto);
         },
         costo: (microUsd, real, componente) => {
+          // Un costo no finito o negativo no se suma ni se reenvia (un NaN envenenaria el total y desactivaria el tope por llamada): se descarta y se cuenta.
+          if (typeof microUsd !== "number" || !Number.isFinite(microUsd) || microUsd < 0) {
+            invalidos += 1;
+            return;
+          }
+          // Un componente incoherente (proveedor/unidad/costoReal) o en un escalon sin desglose (Gemini) no rompe la llamada ni el total: queda en el remanente del
+          // escalon, sin desglose y sin marcar el costo como real (solo el aporte SIN componente puede marcar real el remanente).
+          const desglosa = componente !== undefined && escalonAdmiteComponentes(escalon.id) && motivoComponenteInvalido({ ...componente, costoReal: real === true }) === null;
           tramo.reportado += microUsd;
-          if (real === true) tramo.real = true;
-          // Un componente con nombre invalido no rompe la llamada ni el costo total: queda en el evento del escalon, sin desglose.
-          if (componente && PROVEEDOR_COMPONENTE_RE.test(componente.proveedor)) {
+          if (real === true && componente === undefined) tramo.real = true;
+          if (desglosa) {
             const acum = tramo.componentes.get(componente.proveedor) ?? { unidad: componente.unidad, cantidad: 0, costoMicroUsd: 0, estimado: false };
             acum.cantidad += Number.isFinite(componente.cantidad) && componente.cantidad > 0 ? componente.cantidad : 0;
-            acum.costoMicroUsd += Math.max(0, microUsd);
+            acum.costoMicroUsd += microUsd;
             if (real !== true && microUsd > 0) acum.estimado = true;
             tramo.componentes.set(componente.proveedor, acum);
           }
@@ -130,11 +140,12 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
     abrirSesion,
     escalonActual: () => actual,
     fallidos: () => [...fallidos],
+    costosInvalidos: () => invalidos,
     tramos: () =>
       tramos.map((t) => {
         cerrarTramo(t);
         return { escalon: t.escalon, duracionS: Math.max(0, ((t.finMs ?? t.inicioMs) - t.inicioMs) / 1000), costoReportadoMicroUsd: t.reportado, ...(t.real ? { costoReal: true } : {}),
-          ...(t.componentes.size > 0 ? { componentes: [...t.componentes].map(([proveedor, c]) => ({ proveedor, unidad: c.unidad, cantidad: c.cantidad, costoMicroUsd: c.costoMicroUsd, costoReal: !c.estimado })) } : {}),
+          ...(t.componentes.size > 0 ? { componentes: [...t.componentes].map(([proveedor, c]) => ({ proveedor, unidad: c.unidad, cantidad: c.cantidad, costoMicroUsd: Math.floor(c.costoMicroUsd), costoReal: !c.estimado })) } : {}),
         };
       }),
   };
