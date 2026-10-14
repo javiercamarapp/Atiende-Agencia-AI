@@ -18,7 +18,10 @@ function voz(muestras: number): Uint8Array {
 const junto = (...partes: Uint8Array[]): Uint8Array => {
   const out = new Uint8Array(partes.reduce((n, p) => n + p.length, 0));
   let o = 0;
-  for (const p of partes) (out.set(p, o), (o += p.length));
+  for (const p of partes) {
+    out.set(p, o);
+    o += p.length;
+  }
   return out;
 };
 const duracionMs = (b: Uint8Array | null): number => ((b?.length ?? 0) / 2 / HZ) * 1000;
