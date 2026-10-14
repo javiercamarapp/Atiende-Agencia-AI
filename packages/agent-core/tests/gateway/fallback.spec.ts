@@ -182,4 +182,23 @@ describe('LlmGateway — corte de credito (402 de OpenRouter, QA-PM-R6-whatsapp-
     expect(err).toBeInstanceOf(OpenRouterError);
     expect(b.callCount).toBe(0);
   });
+
+  it('el 402 NO cuenta fallos en el circuit breaker (recargar el credito no deja circuitos abiertos); un 502 si', async () => {
+    const store = new InMemoryCircuitBreakerStore();
+    const breaker = new CircuitBreaker(store, { failureThreshold: 2, openDurationSeconds: 60 });
+    const gateway = new LlmGateway({ breaker, budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 1, maxTenantDailyUsd: 5 } });
+    const a = new FakeLlmProvider({ id: 'a', failWith: sinCredito });
+    const b = new FakeLlmProvider({ id: 'b', failWith: sinCredito });
+    gateway.registerLadder('chat', [a, b]);
+    for (let i = 0; i < 4; i++) await gateway.complete({ tenantId: 't1', runId: `r402c${i}`, lane: 'interactive', role: 'chat', request: req() }).catch(() => undefined);
+    expect(await breaker.getBreakerState('a')).toBe('closed');
+    expect(await breaker.getBreakerState('b')).toBe('closed');
+    expect(a.callCount).toBe(4);
+
+    const c = new FakeLlmProvider({ id: 'c', failWith: () => Object.assign(new Error('OpenRouter 502'), { status: 502 }) });
+    const d = new FakeLlmProvider({ id: 'd' });
+    gateway.registerLadder('otro', [c, d]);
+    for (let i = 0; i < 2; i++) await gateway.complete({ tenantId: 't1', runId: `r502${i}`, lane: 'interactive', role: 'otro', request: req() });
+    expect(await breaker.getBreakerState('c')).toBe('open');
+  });
 });
