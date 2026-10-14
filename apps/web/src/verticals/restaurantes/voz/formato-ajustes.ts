@@ -1,6 +1,6 @@
 // Formato de los ajustes del agente (es-MX). El costo llega en micro-USD enteros (estimacion con precio de lista) y se muestra por 1,000 unidades.
 import { formatMoney } from "@atiende/ui";
-import type { AjustesAgente, ModeloAgenteVista, RitmoHabla, EstiloHabla } from "../lib/ajustes-agente-client.ts";
+import type { AjustesAgente, ModeloAgenteVista, PresetAmbiente, RitmoHabla, EstiloHabla } from "../lib/ajustes-agente-client.ts";
 
 const NIVEL: Readonly<Record<ModeloAgenteVista["nivel"], string>> = { economico: "Económico", equilibrado: "Equilibrado", premium: "Premium" };
 export const etiquetaNivel = (n: ModeloAgenteVista["nivel"]): string => NIVEL[n];
@@ -49,8 +49,20 @@ export function ajustesIguales(a: AjustesAgente, b: AjustesAgente): boolean {
     a.vozRitmo === b.vozRitmo &&
     a.vozEstilo === b.vozEstilo &&
     a.vozFondoActivo === b.vozFondoActivo &&
-    a.vozFondoVolumen === b.vozFondoVolumen
+    a.vozFondoVolumen === b.vozFondoVolumen &&
+    a.vozFondoPreset === b.vozFondoPreset &&
+    a.vozTecleoActivo === b.vozTecleoActivo &&
+    a.vozTecleoVolumen === b.vozTecleoVolumen &&
+    a.vozHumanizar === b.vozHumanizar
   );
 }
 
 export const NIVELES_FONDO: readonly number[] = [4, 8, 12, 16, 20];
+
+export const NIVELES_TECLEO: readonly number[] = [6, 9, 12, 16, 20];
+
+export const PRESETS_AMBIENTE: readonly { readonly id: PresetAmbiente; readonly rotulo: string }[] = [
+  { id: "cocina-taqueria", rotulo: "Cocina de taquería" },
+  { id: "sala-tranquila", rotulo: "Sala tranquila" },
+  { id: "calle-ocupada", rotulo: "Calle ocupada" },
+];
