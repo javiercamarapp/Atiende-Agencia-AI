@@ -101,7 +101,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresAjustesAgenteRepository: la tabla de ajustes del agente todavia no existe en esta base (SQLSTATE 42P01/42703/42883) -- " +
-      "aplica packages/domain-restaurantes/migrations/055_ajustes_agente_modelo_voz_fondo.sql (o su espejo en supabase/migrations/). El agente sigue con los valores de siempre.",
+      "aplica packages/domain-restaurantes/migrations/055_ajustes_agente_modelo_voz_fondo.sql y, para ambiente/tecleo/naturalidad, 087_ajustes_agente_ambiente_tecleo_humano.sql (o sus espejos en supabase/migrations/). El agente sigue con los valores de siempre.",
     err,
   );
 }

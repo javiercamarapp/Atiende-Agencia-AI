@@ -2,9 +2,8 @@
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-restaurantes-audit-log/run.sh. Acompaña a
 # packages/domain-restaurantes/migrations/087_ajustes_agente_ambiente_tecleo_humano.sql:
-# prueba, contra RLS/GRANT/auth.uid() reales, el ambiente, el tecleo y la naturalidad del agente de voz, el estado
-# del pedido en el servidor y la bitácora de voz (el repositorio en memoria nunca aplica
-# ninguno de los tres).
+# prueba, contra RLS/GRANT/CHECK/auth.uid() reales, las cuatro columnas nuevas (preset de ambiente, tecleo, volumen del tecleo y naturalidad): valores por omision, escritura
+# solo de owner/admin de su organizacion, CHECK de rangos, lectura de la sesion de sistema y la base sin la 087 (el repositorio en memoria nunca aplica nada de esto).
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
 # entorno vienen con `brew install postgresql`). Si no están disponibles, este

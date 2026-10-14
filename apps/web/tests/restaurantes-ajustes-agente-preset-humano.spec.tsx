@@ -163,7 +163,7 @@ describe("ambiente y tecleo", () => {
     expect(txt()).toContain("nunca pasa de 25 %");
     expect(radio("ajustes-tecleo-volumen", "12").checked).toBe(true);
     expect(q('[data-testid="nota-tecleo"]')?.textContent).toMatch(/no disponible aun en la vista previa/);
-    expect(q('[data-testid="nota-vista-previa-sonido"]')?.textContent).toMatch(/No disponible aún en la vista previa/);
+    expect(q('[data-testid="nota-vista-previa-sonido"]')?.textContent).toMatch(/No disponible aún: el ambiente y el tecleo no suenan en la vista previa/);
   });
 
   it("informa el tope de 0.4 en llamadas reales y avisa cuando la temperatura guardada lo pasa", async () => {

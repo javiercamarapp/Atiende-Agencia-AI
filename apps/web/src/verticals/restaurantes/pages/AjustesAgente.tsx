@@ -401,7 +401,7 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 </label>
               </div>
               <p className="text-xs text-muted-foreground" data-testid="nota-vista-previa-sonido">
-                Vista previa del panel: el ambiente y el tecleo: No disponible aún en la vista previa (solo suenan en llamadas reales); la naturalidad sí se aplica en la vista previa.
+                Vista previa del panel — No disponible aún: el ambiente y el tecleo no suenan en la vista previa (solo en llamadas reales); la naturalidad sí se aplica en la vista previa.
               </p>
             </CardContent>
           </Card>
