@@ -131,6 +131,8 @@ export interface ConfigCascadaV2 {
     readonly topeSalidaTokens: number;
     /** Lo que se dice si el modelo responde vacio dos veces seguidas (nunca se deja al cliente en silencio). */
     readonly fraseRespaldo: string;
+    /** Lo que se dice tras una respuesta cortada por el tope de tokens (`finish_reason: length`) en lugar de leer la oracion truncada. */
+    readonly fraseCorte: string;
     /** El costo del LLM NO se calcula con una tarifa: es el `usage.cost` que OpenRouter reporta en cada respuesta (`costo_estimado = false`). */
     readonly fuenteCosto: "openrouter-usage-cost";
   };
@@ -181,7 +183,7 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     heygen: Object.freeze({ usdPorMillonCaracteres: 30, promocion: Object.freeze({ precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" }) }),
     // OpenRouter, leido el 2026-10-13 (/api/v1/models/<id>/endpoints): Haiku 5.5 US$0.10 / 0.50 por millon (cache 0.01); Sonnet 5.5 US$2 / 10 (cache 0.10).
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
-    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fuenteCosto: "openrouter-usage-cost" as const }),
+    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
     frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
     // Piso por minuto (SUPUESTO a reemplazar con la medicion del smoke): Deepgram STT ~4 800 (+1 300 de keyterms) + Aura-2 ~600 caracteres/min (~18 000) + LLM ~24 000 micro-USD
     // (Sonnet 5.5 con esfuerzo bajo; con ~10 000 se subestimaba).

@@ -19,6 +19,9 @@ export interface OpcionesHerramientas {
   readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string };
   /** Falso = el turno ya no esta vigente (el cliente interrumpio o la llamada cerro): no se inicia ninguna herramienta mas. */
   readonly continuar?: () => boolean;
+  /** Estado de la regla a nivel de SESION: `pendiente` = el modelo ya confirmo el resumen y espera la respuesta del cliente. Se enciende al ejecutar `confirmar` y la sesion lo apaga
+   * cuando el cliente habla de nuevo; mientras este encendido ningun `crear` corre, ni en la misma respuesta ni en una vuelta posterior del MISMO turno. */
+  readonly esperandoAlCliente?: { pendiente: boolean };
 }
 
 function argumentosDe(argsJson: string): Record<string, unknown> {
@@ -37,6 +40,7 @@ export async function ejecutarHerramientas(
   opciones: OpcionesHerramientas = {},
 ): Promise<ResultadoHerramienta[]> {
   const { enParalelo, confirmacionAntesDeCrear: regla, continuar } = opciones;
+  const espera = opciones.esperandoAlCliente ?? { pendiente: false };
   const una = async (tc: ToolCallLlmVoz): Promise<ResultadoHerramienta> => {
     try {
       return { llamada: tc, salida: await ejecutar({ id: tc.id, nombre: tc.nombre, args: argumentosDe(tc.argsJson) }) };
@@ -47,19 +51,19 @@ export async function ejecutarHerramientas(
   let racha = 0;
   while (enParalelo && racha < llamadas.length && enParalelo.has(llamadas[racha]?.nombre ?? "")) racha++;
   const resultados = racha > 1 ? await Promise.all(llamadas.slice(0, racha).map((tc) => una(tc))) : [];
-  let confirmoEnEstaRespuesta = resultados.some((r) => regla !== undefined && r.llamada.nombre === regla.confirmar);
+  if (regla && resultados.some((r) => r.llamada.nombre === regla.confirmar)) espera.pendiente = true;
   for (let i = resultados.length; i < llamadas.length; i++) {
     const tc = llamadas[i] as ToolCallLlmVoz;
     if (continuar && !continuar()) {
       resultados.push({ llamada: tc, salida: { error: "interrumpido_por_el_cliente", mensaje: "El cliente interrumpio: no se ejecuto. Escuche lo que dice antes de continuar." } });
       continue;
     }
-    if (regla && confirmoEnEstaRespuesta && tc.nombre === regla.crear) {
+    if (regla && espera.pendiente && tc.nombre === regla.crear) {
       resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: "Lea el resumen al cliente y espere su respuesta antes de crear el pedido." } });
       continue;
     }
     resultados.push(await una(tc));
-    if (regla && tc.nombre === regla.confirmar) confirmoEnEstaRespuesta = true;
+    if (regla && tc.nombre === regla.confirmar) espera.pendiente = true;
   }
   return resultados;
 }

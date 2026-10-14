@@ -114,6 +114,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
   private turnosCliente = 0;
   /** Linea de tiempo del audio del turno (la ultima respuesta): lo generado, para estimar lo que ya sono. Persiste tras terminar el turno mientras el audio siga sonando. */
   private audio: LineaAudio | null = null;
+  /** Regla confirmar -> crear a nivel de sesion (ver `herramientas.ts`): se apaga cuando el cliente vuelve a hablar. */
+  private readonly esperandoAlCliente = { pendiente: false };
   /** Vuelta (modelo -> herramienta -> modelo) en curso: solo el texto de esa vuelta se corrige al interrumpir. */
   private vueltaActual = 0;
   /** Lo que ya sono al momento de interrumpir (se fija en `interrumpir`, antes de que el reloj avance). */
@@ -224,6 +226,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
   private alTurnoFinal(texto: string): void {
     if (this.cerrada || texto.trim() === "") return;
     this.interrumpir();
+    this.esperandoAlCliente.pendiente = false; // el cliente respondio: ya puede crearse el pedido
     this.reportarSegundosStt();
     this.h.usuarioDijo?.(texto);
     this.encolar(() => this.turno(texto));
@@ -292,8 +295,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
     } catch (err) {
       if (senal.aborted) throw err;
       const status = (err as { status?: unknown } | null)?.status;
-      // Con `provider.zdr = true`, un 404 de OpenRouter ("No endpoints found") significa que no hay endpoint con retencion cero para el modelo: falla claro, nunca cae a uno que retenga.
-      const detalle = status === 404 ? "sin_zdr" : typeof status === "number" && Number.isInteger(status) ? status : undefined;
+      // El puerto marca `motivo: "sin_zdr"` cuando el cuerpo del 404 dice que no hay endpoint con retencion cero (falla claro, nunca cae a uno que retenga). Un 404 por otra causa
+      // (parametro no admitido, modelo inexistente) sube como `v2_llm_404`.
+      const motivo = (err as { motivo?: unknown } | null)?.motivo;
+      const detalle = motivo === "sin_zdr" ? "sin_zdr" : typeof status === "number" && Number.isInteger(status) ? status : undefined;
       throw new ErrorEtapa("llm", detalle);
     }
   }
@@ -329,18 +334,31 @@ class SesionCascadaV2 implements VozSesionLlamada {
       while (vuelta <= this.o.vueltasToolMax) {
         this.vueltaActual = vuelta;
         const segmentador = crearSegmentadorFrases(cfg.frase);
+        const frasesRonda: string[] = [];
         const modelo = this.modeloDelTurno(vuelta);
         const t0 = this.ahora();
         let ttft: number | null = null;
         const r = await this.completar(modelo, senal, (delta) => {
           if (ttft === null) ttft = this.ahora() - t0;
-          for (const f of segmentador.agregar(delta)) cola.push({ frase: f, vuelta });
+          for (const f of segmentador.agregar(delta)) {
+            frasesRonda.push(f);
+            cola.push({ frase: f, vuelta });
+          }
         });
         // El costo se registra SIEMPRE que el proveedor lo reporto, aunque el cliente haya interrumpido mientras tanto (una llamada abortada antes de terminar no trae uso).
         this.registrarLlm(r, modelo, ttft, this.ahora() - t0);
         if (!vigente()) break;
-        const resto = segmentador.vaciar();
+        const truncada = r.finishReason === "length" && r.toolCalls.length === 0 && r.texto.trim() !== "";
+        // Una respuesta cortada por el tope de tokens termina a media oracion: ese fragmento NO se dice; se cierra con una frase de respaldo.
+        const resto = truncada ? (segmentador.vaciar(), null) : segmentador.vaciar();
         if (resto !== null) cola.push({ frase: resto, vuelta });
+        if (truncada) {
+          this.log("v2_respuesta_cortada", { proveedor: modelo, motivo: "length" });
+          cola.push({ frase: cfg.llm.fraseCorte, vuelta });
+          this.mensajes.push({ role: "assistant", content: [...frasesRonda, cfg.llm.fraseCorte].join(" ") });
+          this.indiceRespuestaFinal = this.mensajes.length - 1;
+          break;
+        }
         const sinTexto = r.texto.trim() === "" && resto === null;
         if (sinTexto && r.toolCalls.length === 0) {
           // Respuesta vacia (p. ej. el razonamiento agoto el tope: finish_reason "length"): un reintento; si vuelve vacia, una frase de respaldo. Nunca silencio.
@@ -365,6 +383,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
           ...(this.o.herramientasEnParalelo ? { enParalelo: this.o.herramientasEnParalelo } : {}),
           ...(this.o.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: this.o.confirmacionAntesDeCrear } : {}),
           continuar: vigente,
+          esperandoAlCliente: this.esperandoAlCliente,
         });
         for (const res of resultados) this.mensajes.push({ role: "tool", toolCallId: res.llamada.id, content: JSON.stringify(res.salida ?? null) });
         if (!vigente()) break;

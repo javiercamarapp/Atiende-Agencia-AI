@@ -55,6 +55,8 @@ export interface DeepgramTtsOpciones {
   readonly fraseTimeoutMs?: number;
   /** Tope de espera de `Cleared` tras un barge-in antes de reconectar. */
   readonly clearTimeoutMs?: number;
+  /** Tope de espera a que se libere la ventana de Flush (20 por 60 s) antes de fallar con `tts_flush_limite`. */
+  readonly flushEsperaMaxMs?: number;
 }
 
 type Entrante = { readonly audio: Uint8Array } | { readonly fin: true };
@@ -200,9 +202,26 @@ class SesionDeepgramTts implements SesionTts {
     return Math.max(0, FLUSH_MAX_POR_VENTANA - 1 - this.flushes.length);
   }
 
-  private reservarFlush(): void {
-    // Se deja un margen de 1: nunca se llega al limite duro de Deepgram.
-    if (this.flushesDisponibles() <= 0) throw new Error("tts_flush_limite");
+  /** Reserva un Flush. Sin disponibles (margen de 1 bajo el limite duro de Deepgram) ESPERA a que se libere la ventana de 60 s; si no se libera dentro del tope, falla con `tts_flush_limite`. */
+  private async esperarFlush(senal: AbortSignal): Promise<void> {
+    const tope = this.o.flushEsperaMaxMs ?? 10_000;
+    const limite = this.ahora() + tope;
+    while (this.flushesDisponibles() <= 0) {
+      const libera = (this.flushes[0] as number) + VENTANA_FLUSH_MS;
+      if (libera > limite) throw new Error("tts_flush_limite");
+      await new Promise<void>((resolver) => {
+        const t = setTimeout(resolver, Math.max(1, libera - this.ahora()));
+        senal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(t);
+            resolver();
+          },
+          { once: true },
+        );
+      });
+      if (senal.aborted || this.cerrada) return;
+    }
     this.flushes.push(this.ahora());
   }
 
@@ -234,8 +253,15 @@ class SesionDeepgramTts implements SesionTts {
       // Tras un barge-in se espera el `Cleared` de la MISMA conexion; si no llega, se reconecta.
       if (this.limpiando) {
         await this.conTope(this.limpiando.promesa, this.o.clearTimeoutMs ?? 2_000, "tts_clear_timeout").catch(() => this.descartarSocket());
+        // La espera pudo terminar PORQUE se cerro la sesion (cerrar() cierra el socket): no se reconecta ni se manda nada (colgar no deja sockets ni cobra caracteres).
+        if (this.cerrada || senal.aborted) return;
       }
       if (!this.socket) await this.conectar().catch(() => Promise.reject(new Error("tts_ws_apertura")));
+      if (this.cerrada || senal.aborted) {
+        // Se colgo mientras se abria el socket nuevo: se cierra de inmediato.
+        this.descartarSocket();
+        return;
+      }
       const socket = this.socket as SocketDeepgram | null;
       if (!socket) throw new Error("tts_ws_cerrado");
       const cola = new ColaAsync<Entrante>();
@@ -245,7 +271,8 @@ class SesionDeepgramTts implements SesionTts {
       const tope = this.o.fraseTimeoutMs ?? this.o.config.fraseTimeoutMs;
       const recorte = crearRecortadorInicial(this.o.config.silencioInicial, this.hzSalida);
       try {
-        this.reservarFlush();
+        await this.esperarFlush(senal);
+        if (this.cerrada || senal.aborted) return;
         for (const parte of partirTexto(texto)) socket.send(JSON.stringify({ type: "Speak", text: parte }));
         socket.send(JSON.stringify({ type: "Flush" }));
         let sobrante: number | null = null;
