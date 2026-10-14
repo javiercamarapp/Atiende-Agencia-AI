@@ -35,6 +35,8 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "plataforma:compuerta_escalamiento",
   "plataforma:titulos_resumenes",
   "plataforma:compactacion_historial",
+  // Clasificador ARCO: apagarlo deja solo la capa regex del atajo de privacidad (nunca bloquea el pedido).
+  "restaurantes:clasificador_arco",
   // CHAT-16: Copiloto de superadmin. Apagado: el turno responde sin llamar al modelo (consultas directas disponibles).
   "superadmin:copiloto",
 ];

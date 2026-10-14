@@ -29,6 +29,7 @@ import {
   VOICE_CONSENT_REPEAT_REPLY,
   estadoDeMenuArco,
   interpretRecordingConsent,
+  registerCallbackRequest,
   runArcoFastPath,
   voiceOpeningScript,
 } from "@atiende/domain-restaurantes";
@@ -161,8 +162,16 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
     const menuPendiente = body.menuPendiente === "numerado" || body.menuPendiente === "nombres" ? body.menuPendiente : null;
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const result = await runArcoFastPath(repoDe(db), organizationId, callerPhone, body.texto as string, "voice", undefined, { menu: menuPendiente });
+      const result = await runArcoFastPath(repoDe(db), organizationId, callerPhone, body.texto as string, "voice", undefined, { menu: menuPendiente, ...(deps.arcoClassifier ? { clasificador: deps.arcoClassifier } : {}) });
       if (!result) return c.json({ atendido: false });
+      // Escalacion (no se identifico el derecho / se pidieron varios): ademas de la solicitud registrada, aviso al equipo (mismo callback que `escalar_a_humano`). Best-effort en SAVEPOINT:
+      // un fallo del aviso nunca revierte la solicitud ya registrada ni rompe la llamada.
+      if (result.escalar && deps.restaurantesRepo) {
+        const rest = deps.restaurantesRepo(db);
+        await rest
+          .runWithRowSavepoint(() => registerCallbackRequest(rest, { organizationId, propertyId: null, customerName: "Cliente (llamada)", customerPhone: callerPhone, reason: "escalada:privacidad_arco", message: "Solicitud de derechos ARCO por voz: no se identifico el derecho o se pidieron varios.", source: "voice" }))
+          .catch(() => undefined);
+      }
       // `reemplaza` = el agente dice la respuesta tal cual y no toma el pedido en ese turno; `agrega` = la ofrece al final de su respuesta normal (senal debil).
       return c.json({ atendido: result.modo === "reemplaza", modo: result.modo, respuesta: result.reply, registrada: result.registrada, escalar: result.escalar, menu: estadoDeMenuArco(result.reply) });
     });

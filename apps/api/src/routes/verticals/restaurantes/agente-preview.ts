@@ -83,7 +83,7 @@ export function restaurantesAgentePreviewRoutes(deps: AppDeps): Hono<CoreAuthHon
 
     // ARCO: el MISMO atajo determinista que el webhook real, sobre un repositorio en memoria (no registra nada de verdad). Corre ANTES del agente y no necesita proveedor LLM:
     // en produccion una solicitud de derechos tampoco depende del modelo.
-    const atajoArco = await previsualizarAtajoArco(mensajes);
+    const atajoArco = await previsualizarAtajoArco(mensajes, deps.arcoClassifier, organizationId);
     if (atajoArco?.modo === "reemplaza") {
       return c.json({ respuesta: atajoArco.reply, escalado: atajoArco.escalacion !== undefined, pedidoSimulado: null });
     }
