@@ -56,6 +56,12 @@ export function radioRepartoDelPerfil(perfil: PerfilAgenteWhatsApp, configuradoK
   return perfil === "taqueria_pm" ? RADIO_REPARTO_PM_KM : null;
 }
 
+/**
+ * Un pin a mas de esta distancia de TODA sucursal no es un domicilio fuera de zona: es una coordenada mal formada (un signo, un digito de mas: QA-PM-R8 T7-002, «2,922 km»)
+ * o un pin de otra ciudad. Se rechaza con un mensaje claro y NO se asigna ni se nombra sucursal. 150 km deja de sobra el area metropolitana.
+ */
+export const UBICACION_IMPLAUSIBLE_KM = 150;
+
 export const FUERA_DE_ZONA_MENSAJE = "Ese domicilio queda fuera de la zona de reparto: no se envía. Ofrezca recoger en sucursal.";
 
 export interface AssignBranchInput {
@@ -274,6 +280,13 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
 
   if (!point) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
   const ranked = rankBranchesByKm(point.lat, point.lng, medibles);
+  // Coordenada absurda (mas de 150 km de toda sucursal; solo con un radio de reparto fijado, para no recortar a quien no tiene tope): no es «fuera de zona»; se rechaza sin nombrar sucursal ni distancia y sin escalar a una persona.
+  if (via === "coordenadas" && Number.isFinite(tope) && ranked[0] && ranked[0].km > UBICACION_IMPLAUSIBLE_KM) {
+    throw new OrderValidationError(
+      "La ubicación recibida no parece estar en la zona de las sucursales (probablemente llegó mal formada). NO diga a qué sucursal corresponde, NO diga distancias, NO escale a una persona por esto y NO repita esas coordenadas: " +
+        "dígale al cliente, con amabilidad, que no pudo recibir bien su ubicación y pídale que la comparta de nuevo con el botón de WhatsApp o que le diga su colonia y calle; después vuelva a llamar buscar_sucursal_cercana con la colonia.",
+    );
+  }
   const cubrenRanked = ranked.filter((r) => cubren.has(r.branch.propertyId));
   // Cobertura EXPLICITA del dueno (override) con alguna sucursal que cubre y NO se puede medir (Pensiones hoy, sin coordenadas): su decision manda, sin inventar km.
   // Tambien con pin: «filas explicitas = override del dueno».
