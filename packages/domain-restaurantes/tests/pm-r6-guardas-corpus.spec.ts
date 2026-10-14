@@ -55,3 +55,9 @@ describe("afirmaPedidoRegistrado (R6-reglas-05)", () => {
   it.each(["¿Confirma su pedido?", "Su nombre quedó anotado.", "Su dirección quedó registrada.", "Si confirma, queda registrado.", "Ya tengo su nombre, ¿qué desea?", "Todavía no está confirmado su pedido."])("no afirma: %s", (t) =>
     expect(afirmaPedidoRegistrado(t)).toBe(false));
 });
+
+describe("ARCO sinonimos (QA-PM-R6-reglas-04)", () => {
+  // El detector recall-first vive en el PR #545 (no se toca aqui): al fusionarlo, estas dos frases deben clasificarse como privacidad_arco.
+  it.todo("«elimina mi número de su base de datos» -> privacidad_arco (depende de #545)");
+  it.todo("«dame acceso a mis datos personales» -> privacidad_arco (depende de #545)");
+});
