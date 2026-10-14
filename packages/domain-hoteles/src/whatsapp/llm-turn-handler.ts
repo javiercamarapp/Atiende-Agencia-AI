@@ -372,17 +372,21 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
 
       // Lo que SI quedo registrado en este turno antes de la falla (solo herramientas que no devolvieron error).
       let contactoRegistradoEnTurno = false;
-      let ticketMantenimientoEnTurno = false;
+      let ticketsMantenimientoEnTurno = 0;
       let apartadoEnTurno = false;
 
       // El asistente no pudo responder (tiempo agotado, proveedor caido o vueltas agotadas). Con un pedido de F&B ya registrado se le confirma ese pedido, que es
       // cierto. Si el turno ya dejo un contacto, un ticket de mantenimiento o un apartado, NO se registra otro aviso (el equipo ya lo tiene): se nombra lo que si
       // quedo hecho y se pide el handoff una sola vez. Sin nada registrado, se deja el contacto y SOLO si quedo registrado se dice "ya avise"; si no, un texto sin promesas.
       const fallaDelSistema = async (motivo: string): Promise<{ readonly reply: string; readonly fnbOrderId: string | null; readonly handoff?: { readonly motivo: string } }> => {
-        if (fnbOrderId) return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
-        if (ticketMantenimientoEnTurno || apartadoEnTurno || contactoRegistradoEnTurno) {
-          const hecho = [ticketMantenimientoEnTurno ? "tu reporte de mantenimiento" : null, apartadoEnTurno ? "tu apartado de reserva" : null].filter((x): x is string => x !== null);
-          const reply = hecho.length > 0 ? `Tuve un problema técnico y no pude terminar de atender tu mensaje, pero ${hecho.join(" y ")} ${hecho.length > 1 ? "sí quedaron registrados" : "sí quedó registrado"}. Por favor no lo repitas; una persona del hotel puede continuar contigo.` : FALLA_CON_AVISO_REPLY;
+        // Lo que si quedo hecho en el turno, dicho con exactitud (un apartado NO es una reserva confirmada; dos tickets van en plural).
+        const hecho: string[] = [];
+        if (ticketsMantenimientoEnTurno === 1) hecho.push("tu reporte de mantenimiento sí quedó registrado");
+        if (ticketsMantenimientoEnTurno > 1) hecho.push("tus reportes de mantenimiento sí quedaron registrados");
+        if (apartadoEnTurno) hecho.push("tu solicitud de pre-reserva sí quedó registrada; todavía no es una reserva confirmada: el hotel te avisará");
+        if (fnbOrderId) return conHandoff({ reply: hecho.length > 0 ? `${providerFailureReply(fnbOrderId)} Además, ${hecho.join(". Además, ")}.` : providerFailureReply(fnbOrderId), fnbOrderId });
+        if (hecho.length > 0 || contactoRegistradoEnTurno) {
+          const reply = hecho.length > 0 ? `Tuve un problema técnico y no pude terminar de atender tu mensaje. ${hecho.map((h) => `${h[0]!.toUpperCase()}${h.slice(1)}`).join(". ")}. Por favor no lo repitas; una persona del hotel puede continuar contigo.` : FALLA_CON_AVISO_REPLY;
           return { reply, fnbOrderId, handoff: { motivo: derivarAHumano ? "agente_derivo" : "falla_sistema" } };
         }
         const ultimo = [...messages].reverse().find((m) => m.role === "user");
@@ -470,7 +474,11 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
             if (reservasCtx && isReservasToolName(call.name)) {
               const outcome = await executeReservasToolCall(repo, options.reservas!, { organizationId, propertyId, phone, turnId, now: options.now ? clock() : undefined }, call.name, input);
               result = outcome.result;
-              if (outcome.handoff) derivarAHumano = true;
+              if (outcome.handoff) {
+                // La herramienta de reservas ya dejo su propio contacto (`reservas: ...`): la falla posterior no registra otro.
+                derivarAHumano = true;
+                contactoRegistradoEnTurno = true;
+              }
               if (outcome.holdCreated) apartadoEnTurno = true;
               for (const cents of outcome.moneyCents) allowedCents.add(cents);
             } else {
@@ -479,7 +487,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
               if (executed.fnbOrderId) fnbOrderId = executed.fnbOrderId;
             }
           }
-          if (call.name === "crear_ticket_mantenimiento" && !isToolErrorResult(result)) ticketMantenimientoEnTurno = true;
+          if (call.name === "crear_ticket_mantenimiento" && !isToolErrorResult(result)) ticketsMantenimientoEnTurno += 1;
           if (call.name === "registrar_contacto_no_operativo" && !isToolErrorResult(result)) contactoRegistradoEnTurno = true;
           if ((call.name === "crear_ticket_huesped_fnb" || call.name === "crear_ticket_mantenimiento") && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;
