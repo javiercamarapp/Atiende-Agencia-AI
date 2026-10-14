@@ -60,6 +60,9 @@ export const PERFILES_AMBIENTE: Readonly<Record<PresetAmbiente, PerfilAmbiente>>
 /** Nivel RMS (relativo, antes de la saturacion) al que se lleva la suma de capas: el pico acotado por tanh deja el RMS final en ~0.2-0.3 del tope. */
 const RMS_OBJETIVO = 0.28;
 
+/** Tasa a la que se SINTETIZA el ambiente: todo vive por debajo de ~3.8 kHz (banda telefonica), asi que se genera a 8 kHz y se sube a la tasa de salida con interpolacion lineal (3x menos CPU a 24 kHz). */
+const HZ_INTERNO = 8000;
+
 class Biquad {
   private b0 = 0;
   private b1 = 0;
@@ -340,6 +343,12 @@ export class AmbienteRestaurante {
   private colaVoz = 0;
   private cliente = false;
   private readonly escala: number;
+  /** Tasa interna de sintesis (<= HZ_INTERNO) y estado de la interpolacion hacia la tasa de salida. */
+  private readonly hzI: number;
+  private readonly pasoI: number;
+  private ultimoI = 0;
+  private actualI = 0;
+  private faseI = 0;
   private readonly altosFinal: UnPolo;
   private readonly altosFinal2: UnPolo;
   private readonly bajosFinal1: UnPolo;
@@ -354,7 +363,9 @@ export class AmbienteRestaurante {
     this.hz = opciones.hz ?? HZ_AUDIO_AGENTE;
     const azar = crearAzar(opciones.semilla ?? 1);
     this.azar = azar;
-    const hz = this.hz;
+    this.hzI = Math.min(this.hz, HZ_INTERNO);
+    this.pasoI = this.hzI / this.hz;
+    const hz = this.hzI;
     this.perfil = PERFILES_AMBIENTE[preset];
     for (let i = 0; i < this.perfil.voces; i++) this.voces.push(new VozLejana(azar, hz, this.perfil.actividadVoces));
     this.lejania1 = new UnPolo(3300, hz);
@@ -376,13 +387,14 @@ export class AmbienteRestaurante {
     this.proxCubierto = esperaPoisson(azar, this.perfil.cubiertosPorMin, hz);
     this.proxOlla = esperaPoisson(azar, this.perfil.ollasPorMin, hz);
     this.autoRestante = esperaPoisson(azar, this.perfil.autosPorMin, hz, 2);
-    this.ducking = new Ducking(hz);
+    this.ducking = new Ducking(this.hz);
     // Banda final de la linea telefonica: nada por debajo de ~260 Hz (2 polos) ni por encima de ~3.8 kHz (G.711 lo recortaria de todos modos).
     this.altosFinal = new UnPolo(260, hz);
     this.altosFinal2 = new UnPolo(260, hz);
     this.bajosFinal1 = new UnPolo(3800, hz);
     this.bajosFinal2 = new UnPolo(3800, hz);
     this.escala = this.calibracion();
+    this.actualI = this.muestraInterna();
   }
 
   /** Escala fija por preset que lleva la suma de capas a `RMS_OBJETIVO` (medida offline; ver la prueba de nivel). */
@@ -409,7 +421,8 @@ export class AmbienteRestaurante {
 
   /** Una muestra de la suma de capas, sin escala ni ducking. */
   private capas(): number {
-    const { azar, hz, perfil } = this;
+    const { azar, perfil } = this;
+    const hz = this.hzI;
     // Murmullo
     let mur = 0;
     for (const v of this.voces) mur += v.p();
@@ -492,6 +505,22 @@ export class AmbienteRestaurante {
     return this.bajosFinal2.p(this.bajosFinal1.p(s));
   }
 
+  /** Una muestra a la tasa interna: suma de capas, escala y saturacion suave (|x| < 1, asi el pico nunca pasa del tope). */
+  private muestraInterna(): number {
+    return Math.tanh(this.capas() * this.escala);
+  }
+
+  /** Una muestra a la tasa de salida (interpolacion lineal entre dos muestras internas). */
+  private muestraSalida(): number {
+    this.faseI += this.pasoI;
+    while (this.faseI >= 1) {
+      this.faseI -= 1;
+      this.ultimoI = this.actualI;
+      this.actualI = this.muestraInterna();
+    }
+    return this.ultimoI + (this.actualI - this.ultimoI) * this.faseI;
+  }
+
   /** Sigue a la voz del agente: `true` mientras suena (con una cola corta para no "respirar" entre palabras). */
   private vozActiva(x: number): boolean {
     const a = Math.abs(x);
@@ -502,14 +531,17 @@ export class AmbienteRestaurante {
   }
 
   /** Ambiente de `n` muestras PCM16 (sin voz). `agente` (misma longitud, opcional) baja el ambiente mientras suena; el cliente tambien lo baja (`fijarClienteHablando`). */
-  siguienteMuestras(n: number, agente?: Int16Array): Int16Array {
-    const salida = new Int16Array(n);
-    if (!this.activo) return salida;
+  siguienteMuestras(n: number, agente?: Int16Array, destino?: Int16Array): Int16Array {
+    const salida = destino && destino.length >= n ? destino.subarray(0, n) : new Int16Array(n);
+    if (!this.activo) {
+      salida.fill(0);
+      return salida;
+    }
     const tope = (this.volumen / 100) * 32767;
     for (let i = 0; i < n; i++) {
       const ocupado = (agente !== undefined && i < agente.length ? this.vozActiva(agente[i]! / 32768) : this.colaVoz > 0 ? (this.colaVoz--, true) : false) || this.cliente;
       const g = this.ducking.p(ocupado);
-      salida[i] = Math.round(Math.tanh(this.capas() * this.escala) * tope * g);
+      salida[i] = Math.round(this.muestraSalida() * tope * g);
     }
     return salida;
   }
@@ -544,9 +576,9 @@ export class AmbienteRestaurante {
 
 /** Escala fija por preset (suma de capas -> RMS_OBJETIVO). Se mide con `scripts/voz-muestras-ambiente` y la prueba de nivel la vigila. */
 export const ESCALA_POR_PRESET: Readonly<Record<PresetAmbiente, number>> = Object.freeze({
-  "cocina-taqueria": 2.6,
-  "sala-tranquila": 4.5,
-  "calle-ocupada": 3,
+  "cocina-taqueria": 2.1,
+  "sala-tranquila": 4.4,
+  "calle-ocupada": 2.4,
 });
 
 export { RMS_OBJETIVO };

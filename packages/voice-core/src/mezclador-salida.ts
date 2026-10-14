@@ -30,6 +30,10 @@ export class MezcladorSalida {
   readonly tecleo: OrquestadorTecleo | null;
   private cola: TramoAgente[] = [];
   private cliente = false;
+  private bufN = 0;
+  private bufVoz: Int16Array | null = null;
+  private bufAmb: Int16Array | null = null;
+  private bufTec: Float64Array | null = null;
 
   constructor(o: OpcionesMezclador = {}) {
     this.hz = o.hz ?? 24_000;
@@ -85,7 +89,15 @@ export class MezcladorSalida {
 
   /** Las proximas `n` muestras de la salida (voz + ambiente + tecleo). Siempre devuelve exactamente n (silencio si no hay nada). */
   siguiente(n: number): Int16Array {
-    const voz = new Int16Array(n);
+    // Buffers reutilizados entre tramas del mismo largo (la llamada pide siempre 20 ms): sin asignaciones por tick.
+    if (this.bufN !== n) {
+      this.bufN = n;
+      this.bufVoz = new Int16Array(n);
+      this.bufAmb = new Int16Array(n);
+      this.bufTec = new Float64Array(n);
+    }
+    const voz = this.bufVoz!;
+    voz.fill(0);
     let i = 0;
     while (i < n && this.cola.length > 0) {
       const t = this.cola[0]!;
@@ -100,9 +112,9 @@ export class MezcladorSalida {
     }
     const hablaAgente = i > 0 || this.cola.length > 0;
     this.tecleo?.fijarAgenteHablando(hablaAgente);
-    const salida = new Int16Array(n);
-    const amb = this.ambiente ? this.ambiente.siguienteMuestras(n, voz) : null;
-    const tec = this.tecleo ? this.tecleo.siguiente(n) : null;
+    const salida = new Int16Array(n); // se entrega al destino: no se reutiliza
+    const amb = this.ambiente ? this.ambiente.siguienteMuestras(n, voz, this.bufAmb!) : null;
+    const tec = this.tecleo ? this.tecleo.siguiente(n, this.bufTec!) : null;
     for (let j = 0; j < n; j++) {
       const suma = voz[j]! + (amb ? amb[j]! : 0) + (tec ? Math.round(tec[j]! * 32767) : 0);
       salida[j] = suma > 32767 ? 32767 : suma < -32768 ? -32768 : suma;

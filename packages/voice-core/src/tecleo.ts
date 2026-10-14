@@ -214,8 +214,9 @@ export class OrquestadorTecleo {
   }
 
   /** Siguientes `n` muestras del tecleo (Float64, ya a su volumen, |x| < volumen/100). Silencio si no hay herramienta, si esta apagado o cortado. */
-  siguiente(n: number): Float64Array {
-    const salida = new Float64Array(n);
+  siguiente(n: number, destino?: Float64Array): Float64Array {
+    const salida = destino && destino.length >= n ? destino.subarray(0, n) : new Float64Array(n);
+    salida.fill(0);
     if (!this.activo) return salida;
     const tope = this.volumen / 100;
     const pasoIn = 1 / ((FADE_IN_MS / 1000) * this.hz);
