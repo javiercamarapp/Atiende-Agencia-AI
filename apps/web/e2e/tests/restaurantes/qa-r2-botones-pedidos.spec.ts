@@ -116,10 +116,11 @@ test.describe("restaurantes R2 botones: Pedidos @recorrido", () => {
     await boton.click();
     d = dialogo(page, "¿Cancelar este pedido?");
     await expect(d).toBeVisible();
-    // Radix registra el cierre por clic fuera un instante despues de montar el dialogo (y el velo anima su entrada): se deja asentar.
-    await page.waitForTimeout(400);
-    await page.mouse.click(5, 5);
-    await expect(d).toBeHidden();
+    // Radix registra el cierre por clic fuera un instante despues de montar el dialogo: se reintenta el clic hasta que cierre (espera determinista).
+    await expect(async () => {
+      await page.mouse.click(5, 5);
+      await expect(d).toBeHidden({ timeout: 500 });
+    }).toPass({ timeout: 10_000 });
     await afirmarSinEscrituras(mock, "Cancelar pedido cerrado por Volver/Escape/clic fuera");
     // Elegir un motivo y luego Volver tampoco escribe; al reabrir el motivo vuelve a estar vacio.
     await boton.click();
