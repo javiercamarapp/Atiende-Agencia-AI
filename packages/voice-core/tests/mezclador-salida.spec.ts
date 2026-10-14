@@ -114,4 +114,19 @@ describe("MezcladorSalida", () => {
       expect(new MezcladorSalida(o).conEfectos).toBe(false);
     }
   });
+
+  it("cerrar() (la llamada termino): libera lo que esperaba y, desde ahi, encolarAgente resuelve AL INSTANTE aunque nadie consuma", async () => {
+    const m = new MezcladorSalida();
+    let antes = false;
+    void m.encolarAgente(tono(1000)).then(() => (antes = true));
+    m.cerrar();
+    await Promise.resolve();
+    expect(antes).toBe(true);
+    expect(m.estaCerrado).toBe(true);
+    let despues = false;
+    void m.encolarAgente(tono(1000)).then(() => (despues = true));
+    await Promise.resolve();
+    expect(despues).toBe(true);
+    expect(m.pendientes).toBe(0);
+  });
 });

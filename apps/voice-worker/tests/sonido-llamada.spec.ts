@@ -200,6 +200,59 @@ describe("cierre de la llamada con la salida mezclada (sin cuelgues)", () => {
   });
 });
 
+describe("el cliente cuelga ANTES de que se abra la salida mezclada (durante el contexto)", () => {
+  for (const habilitado of [false, true]) {
+    it(`sucursal habilitado=${habilitado}: la llamada termina y cuelga (con el pregrabado de «no disponible» no se queda esperando una voz que nadie consume)`, async () => {
+      const ajustes = new InMemoryAjustesAgenteRepository();
+      const api = await crearMundoApi({ ajustesAgente: ajustes, habilitado });
+      await ajustes.guardar(api.mundo.organizationId, "u", PRESET);
+      const telefonia = new TelefoniaFalsa();
+      const agente = new AgenteGuionado([]);
+      const worker = new Worker({ config: api.config, telefonia, log: () => undefined, deps: api.depsAtencion({ crearEscalera: () => crearEscaleraLlamada([agente.escalon()], { ahora: api.reloj.ahora }) }) });
+      await worker.iniciar();
+      const antes = worker.salud().llamadasAtendidas;
+      const llamada = telefonia.llamar({ id: `llamada-temprana-${habilitado}`, dnis: NUMERO_SUCURSAL, desde: SIP_DESDE });
+      llamada.clienteCuelga(); // cuelga mientras el worker pide el contexto
+      await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 3_000, interval: 10 });
+      expect(llamada.colgadaPorSistema).toBe(true);
+      expect(llamada.salidaMezclada?.pendientes ?? 0).toBe(0);
+    }, 8_000);
+  }
+});
+
+describe("el tecleo solo suena con las herramientas de «anotar» (conexion real del filtro)", () => {
+  async function contar(guion: TurnoGuion[], desde: string | null) {
+    const ajustes = new InMemoryAjustesAgenteRepository();
+    const api = await crearMundoApi({ ajustesAgente: ajustes });
+    await ajustes.guardar(api.mundo.organizationId, "u", PRESET);
+    const telefonia = new TelefoniaFalsa();
+    const agente = new AgenteGuionado(guion);
+    const worker = new Worker({ config: api.config, telefonia, log: () => undefined, deps: api.depsAtencion({ crearEscalera: () => crearEscaleraLlamada([agente.escalon()], { ahora: api.reloj.ahora }) }) });
+    await worker.iniciar();
+    const llamada = telefonia.llamar({ id: "llamada-filtro", dnis: NUMERO_SUCURSAL, desde });
+    await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
+    const m = llamada.salidaMezclada!;
+    let inicios = 0;
+    const ini = m.herramientaInicia.bind(m);
+    m.herramientaInicia = (id) => (inicios++, ini(id));
+    for (let i = 1; i <= guion.length; i++) await turnoCliente(llamada, api.reloj, () => agente.respondidos, i);
+    llamada.clienteCuelga();
+    return { inicios, agente };
+  }
+  const SALUDO: TurnoGuion = { cliente: "Sí, autorizo que se grabe la llamada", agente: [{ dice: "Gracias." }] };
+
+  it("pasar con una persona (escalar_a_humano) NO hace sonar el tecleo; buscar_cliente en el mismo turno SI", async () => {
+    const r = await contar([SALUDO, { cliente: "Quiero hablar con una persona", agente: [{ tool: "buscar_cliente", args: {} }, { tool: "escalar_a_humano", args: { customer_name: "Cliente", motivo: "pide_persona", resumen: "Pide una persona" } }, { dice: "Permítame avisar al gerente." }] }], SIP_DESDE);
+    expect(r.agente.memoria.ultimo("escalar_a_humano")).toBeDefined(); // la herramienta SI se ejecuto
+    expect(r.inicios).toBe(1); // solo buscar_cliente
+  });
+
+  it("confirmar_telefono_llamante (llamada sin caller ID confiable) NO hace sonar el tecleo", async () => {
+    const r = await contar([SALUDO, { cliente: "Mi numero es nueve nueve nueve", agente: [{ tool: "confirmar_telefono_llamante", args: { numero: "9991234567" } }, { dice: "Gracias, ya quedó." }] }], null);
+    expect(r.inicios).toBe(0);
+  });
+});
+
 describe("temperatura de la voz de los ajustes", () => {
   async function conTemperatura(vozTemperatura: number | null) {
     const ajustes = new InMemoryAjustesAgenteRepository();

@@ -30,6 +30,7 @@ export class MezcladorSalida {
   readonly tecleo: OrquestadorTecleo | null;
   private cola: TramoAgente[] = [];
   private cliente = false;
+  private cerrado = false;
   private bufN = 0;
   private bufVoz: Int16Array | null = null;
   private bufAmb: Int16Array | null = null;
@@ -57,12 +58,22 @@ export class MezcladorSalida {
     return this.cola.length > 0;
   }
 
-  /** Encola audio del agente (PCM16 a la tasa del mezclador). Resuelve cuando ya salio entero o se corto. */
+  /** Encola audio del agente (PCM16 a la tasa del mezclador). Resuelve cuando ya salio entero o se corto; con el mezclador cerrado, al instante. */
   encolarAgente(muestras: Int16Array): Promise<void> {
-    if (muestras.length === 0) return Promise.resolve();
+    if (this.cerrado || muestras.length === 0) return Promise.resolve();
     return new Promise<void>((resolve) => {
       this.cola.push({ muestras, pos: 0, listo: resolve });
     });
+  }
+
+  /** La llamada termino (el cliente colgo o la salida nunca se abrio): nadie va a consumir mas audio. Libera lo que espera y, desde aqui, `encolarAgente` resuelve al instante. */
+  cerrar(): void {
+    this.cerrado = true;
+    this.cortarAgente();
+  }
+
+  get estaCerrado(): boolean {
+    return this.cerrado;
   }
 
   /** Barge-in: calla al agente y libera a quien esperaba su audio. */

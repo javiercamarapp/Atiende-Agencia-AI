@@ -67,6 +67,7 @@ export class LlamadaFalsa implements LlamadaTelefonica {
   abrirSalidaMezclada(mezclador: MezcladorSalida, avisos: AvisosSalidaMezclada = {}): void {
     this.salidaMezclada = mezclador;
     this.avisosMezclada = avisos;
+    if (this.colgo && this.liberarMezcladaAlColgar) mezclador.cerrar();
     if (!this.vaciarMezclada) return;
     const vaciar = (): void => {
       if (this.colgo || this.salidaMezclada === null) return;
@@ -82,7 +83,7 @@ export class LlamadaFalsa implements LlamadaTelefonica {
   fallarSalidaMezclada(codigo = "ErrorDePrueba"): void {
     const m = this.salidaMezclada;
     this.salidaMezclada = null;
-    m?.cortarAgente();
+    m?.cerrar();
     this.avisosMezclada.alFallo?.(codigo);
   }
   /** Simula que la voz del agente empezo a entrar a la salida con esta cola en el destino. */
@@ -118,7 +119,7 @@ export class LlamadaFalsa implements LlamadaTelefonica {
   private terminar(): void {
     if (this.colgo) return;
     this.colgo = true;
-    if (this.liberarMezcladaAlColgar) this.salidaMezclada?.cortarAgente();
+    if (this.liberarMezcladaAlColgar) this.salidaMezclada?.cerrar();
     this.cbColgar?.();
   }
 }

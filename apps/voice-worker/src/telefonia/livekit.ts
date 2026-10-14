@@ -78,7 +78,7 @@ class LlamadaLiveKit implements LlamadaTelefonica {
     this.colgo = true;
     this.generacion += 1;
     // Si el cliente cuelga con voz del agente en la cola del mezclador, nadie la va a consumir: se libera para que la llamada pueda cerrar.
-    this.mezclador?.cortarAgente();
+    this.mezclador?.cerrar();
     this.cbColgar?.();
   }
 
@@ -101,7 +101,12 @@ class LlamadaLiveKit implements LlamadaTelefonica {
   /** Modo MEZCLADO: UN bombeo continuo de tramas de 20 ms (voz + ambiente + tecleo) a la unica pista del agente, guiado por la cola real de LiveKit. Sin probar contra LiveKit real.
    * Si el bombeo falla NO se queda mudo ni colgado: se libera la voz en cola y se avisa para volver a `reproducir` sin mezcla. */
   abrirSalidaMezclada(mezclador: MezcladorSalida, avisos: AvisosSalidaMezclada = {}): void {
-    if (this.colgo || this.bombeando) return;
+    if (this.colgo) {
+      // El cliente ya colgo (p. ej. durante el contexto): el bombeo no arranca y nadie consumiria la voz que el puente encole.
+      mezclador.cerrar();
+      return;
+    }
+    if (this.bombeando) return;
     this.bombeando = true;
     this.mezclador = mezclador;
     void bombearConRespaldo({

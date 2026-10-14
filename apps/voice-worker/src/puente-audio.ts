@@ -169,7 +169,7 @@ export class PuenteAudio {
   cerrar(): void {
     this.cerrado = true;
     this.generacion += 1;
-    this.mezclador?.cortarAgente();
+    this.mezclador?.cerrar();
   }
 
   /** Se llama una vez por segundo: reloj de la llamada y silencio del cliente (solo cuando nadie esta hablando). */

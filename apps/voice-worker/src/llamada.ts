@@ -127,9 +127,12 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
 
   // Cuelgue del cliente: se aplica al controlador cuando exista y se recuerda para el cierre.
   let clienteColgo = false;
+  // Cierra la salida mezclada (si hay) cuando el cliente cuelga: la voz que el puente encole despues no se va a consumir y no debe dejar la llamada esperando.
+  let cerrarSalidaMezclada: (() => void) | null = null;
   let alColgarCliente: (() => void) | null = null;
   tel.alColgar(() => {
     clienteColgo = true;
+    cerrarSalidaMezclada?.();
     alColgarCliente?.();
   });
 
@@ -242,6 +245,9 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   let alFalloSonido: (() => void) | null = null;
   let alTomarVozSonido: ((ms: number) => void) | null = null;
   if (salidaMezclada) {
+    cerrarSalidaMezclada = () => salidaMezclada.cerrar();
+    // El cliente pudo colgar ANTES de que se abriera la salida (mientras se pedia el contexto): se cierra ya.
+    if (clienteColgo) salidaMezclada.cerrar();
     tel.abrirSalidaMezclada!(salidaMezclada, {
       alFallo: (codigo) => {
         log("sonido_mezclador_fallo", { codigo });
