@@ -53,7 +53,7 @@ test.describe("captura UX restaurantes @captura", () => {
         const barra = page.getByTestId("barra-pagina");
         await expect(barra, `${nombre}: barra visible`).toBeVisible();
         await expect(barra.getByRole("link", { name: /Chatea con tus datos/ }), `${nombre}: Chatea con tus datos`).toBeVisible();
-        await expect(barra.getByRole("link", { name: /^Notificaciones/ }), `${nombre}: campana`).toHaveCount(1);
+        await expect(barra.locator('[aria-label^="Notificaciones"]'), `${nombre}: campana`).toHaveCount(1);
         await expect(barra.getByTestId("barra-pagina-fecha"), `${nombre}: fecha`).toBeVisible();
       }
       await afirmarSinScrollHorizontal(page);
