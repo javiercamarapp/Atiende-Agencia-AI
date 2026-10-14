@@ -86,7 +86,9 @@ export default function MapaLeaflet({ sucursal, direccionCliente, repartidorNomb
     m.fitBounds(L.latLngBounds([origen, destino]), { padding: [40, 40], animate: false });
 
     let raf: number | null = null;
-    if (enCamino) {
+    // Con «reducir movimiento» el repartidor queda quieto (sin requestAnimationFrame).
+    const reducirMovimiento = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (enCamino && !reducirMovimiento) {
       const inicio = performance.now();
       const animar = (t: number) => {
         const p = progresoIdaYVuelta(t - inicio);
