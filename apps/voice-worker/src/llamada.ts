@@ -277,7 +277,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     }
   };
   const abrirSesion: AbrirSesionLlamada = async (apertura, h) => {
-    const sesion = await escalera.abrirSesion(apertura, {
+    const sesion = await escalera.abrirSesion(contexto.temperatura !== null ? { ...apertura, temperatura: contexto.temperatura } : apertura, {
       ...h,
       audioAgente: (pcm) => puente.audioAgente(pcm),
       agenteTermino: () => {

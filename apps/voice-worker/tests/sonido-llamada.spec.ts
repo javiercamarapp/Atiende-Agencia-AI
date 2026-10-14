@@ -129,6 +129,31 @@ describe("ambiente y tecleo en la llamada", () => {
   });
 });
 
+describe("temperatura de la voz de los ajustes", () => {
+  async function conTemperatura(vozTemperatura: number | null) {
+    const ajustes = new InMemoryAjustesAgenteRepository();
+    const api = await crearMundoApi({ ajustesAgente: ajustes });
+    await ajustes.guardar(api.mundo.organizationId, "u", { ...AJUSTES_AGENTE_POR_DEFECTO, vozTemperatura });
+    const telefonia = new TelefoniaFalsa();
+    const agente = new AgenteGuionado(GUION);
+    const worker = new Worker({ config: api.config, telefonia, log: () => undefined, deps: api.depsAtencion({ crearEscalera: () => crearEscaleraLlamada([agente.escalon()], { ahora: api.reloj.ahora }) }) });
+    await worker.iniciar();
+    const llamada = telefonia.llamar({ id: "llamada-temp", dnis: NUMERO_SUCURSAL, desde: SIP_DESDE });
+    await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
+    llamada.clienteCuelga();
+    return agente.aperturas[0]!;
+  }
+
+  it("la temperatura elegida llega a la apertura de la sesion del proveedor (Gemini Live y cascada la leen de ahi)", async () => {
+    expect((await conTemperatura(0.4)).temperatura).toBe(0.4);
+  });
+
+  it("sin temperatura en los ajustes la apertura no la fija (manda la de la plataforma)", async () => {
+    const apertura = await conTemperatura(null);
+    expect(apertura.temperatura ?? null).toBeNull();
+  });
+});
+
 describe("contratos de entrada del sonido que manda la API", () => {
   it("lo invalido se descarta como 'sin sonido' (nunca rompe la llamada)", () => {
     for (const malo of [0, "", null, false, [], {}, undefined, { fondo: 1, tecleo: "x" }, { fondo: { activo: true, volumen: 99, preset: "cocina-taqueria" }, tecleo: { activo: true, volumen: 99 } }, { fondo: { activo: true, volumen: 5, preset: "x" } }]) {

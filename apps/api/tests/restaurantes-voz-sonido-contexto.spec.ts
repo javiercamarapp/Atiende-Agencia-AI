@@ -87,6 +87,7 @@ describe("contexto de la llamada para el worker", () => {
     const body = await (await contexto()).json();
     expect(body.sonido).toEqual({ fondo: { activo: false, volumen: 0, preset: "cocina-taqueria" }, tecleo: { activo: false, volumen: 0 } });
     expect(body.instruccion).not.toContain(BLOQUE_NATURALIDAD);
+    expect(body.temperatura).toBeNull();
   });
 
   it("con el preset guardado: sonido activo con preset y volumenes, y la instruccion lleva ritmo/estilo y la naturalidad al FINAL", async () => {
@@ -96,6 +97,7 @@ describe("contexto de la llamada para el worker", () => {
     expect(body.sonido).toEqual({ fondo: { activo: true, volumen: 7, preset: "cocina-taqueria" }, tecleo: { activo: true, volumen: 12 } });
     expect(body.instruccion).toContain("Tu voz es calida y cercana.");
     expect(body.instruccion.endsWith(BLOQUE_NATURALIDAD)).toBe(true);
+    expect(body.temperatura).toBe(0.4);
   });
 
   it("base sin migrar (ajustes no disponibles): el contexto sigue funcionando con los valores de siempre", async () => {

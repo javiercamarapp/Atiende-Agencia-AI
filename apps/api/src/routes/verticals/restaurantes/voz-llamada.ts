@@ -127,6 +127,8 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         instruccion,
         // Lo que el worker mezcla en la salida de audio: ambiente de restaurante y tecleo (apagados por omision).
         sonido: { fondo: llamada.fondo, tecleo: llamada.tecleo },
+        // Temperatura de la voz de los ajustes del agente (null = la de la plataforma).
+        temperatura: llamada.temperatura,
         gastoMesMicroUsd: gasto,
         horaLocal,
       });
