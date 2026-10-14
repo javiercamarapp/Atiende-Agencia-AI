@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     const api = new ClienteApi({ baseUrl: config.apiBaseUrl, internalSecret: config.internalSecret });
     const llm = config.openrouterApiKey ? crearPuertoLlmOpenRouter(config.openrouterApiKey) : null;
     // Cascada v2 (Deepgram + OpenRouter en streaming): su propio puerto, que honra el modelo y el esfuerzo por turno y no manda `temperature`.
-    const llmV2 = config.openrouterApiKey ? crearPuertoLlmVozV2(config.openrouterApiKey) : null;
+    const llmV2 = config.openrouterApiKey ? crearPuertoLlmVozV2(config.openrouterApiKey, undefined, { proveedoresZdr: config.proveedoresZdr }) : null;
     // Vertex AI (opcional, no activado por omision): el token de la cuenta de servicio se renueva solo; se pide al abrir cada sesion.
     const vertex = config.vertex ? { project: config.vertex.project, location: config.vertex.location, accessToken: crearProveedorTokenVertex({ credencialesJson: config.vertex.serviceAccountJson }) } : undefined;
     worker = new Worker({

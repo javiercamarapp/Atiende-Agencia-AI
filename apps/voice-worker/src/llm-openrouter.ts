@@ -60,7 +60,13 @@ export interface OpcionesPuertoLlmVozV2 {
   /** Modelo cuando la peticion no trae `modeloPreferido`; por omision `VOZ_PLATAFORMA.cascadaV2.llm.modelo`. */
   readonly modelo?: string;
   readonly config?: ConfigPlataformaVoz;
+  /** Proveedores permitidos para el enrutamiento ZDR (`provider.only`); por omision `VOZ_PLATAFORMA.cascadaV2.llm.proveedoresZdr` (`VOZ_LLM_PROVEEDORES_ZDR` en el worker).
+   * OJO residencia: los slugs `google-vertex` y `amazon-bedrock` incluyen endpoints regionales de Europa (`google-vertex/europe`, `amazon-bedrock/eu-west-1`); acotar la region es una decision pendiente de Javier. */
+  readonly proveedoresZdr?: readonly string[];
 }
+
+/** El cuerpo de un 404 de OpenRouter dice que ningun endpoint cumple la politica de datos (retencion cero). Patron aproximado: no se pudo verificar el texto exacto contra la API real. */
+const SIN_ENDPOINT_ZDR_RE = /zero.?data.?retention|data policy|\bzdr\b/i;
 
 /**
  * Puerto LLM de la cascada v2 (streaming) sobre OpenRouter, con la MISMA `OPENROUTER_API_KEY` del texto.
@@ -75,6 +81,7 @@ export interface OpcionesPuertoLlmVozV2 {
 export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, opciones: OpcionesPuertoLlmVozV2 = {}): PuertoLlmVoz {
   const cfg = (opciones.config ?? VOZ_PLATAFORMA).cascadaV2.llm;
   const modeloPorDefecto = opciones.modelo ?? cfg.modelo;
+  const proveedoresZdr = opciones.proveedoresZdr && opciones.proveedoresZdr.length > 0 ? opciones.proveedoresZdr : cfg.proveedoresZdr;
   const proveedores = new Map<string, OpenRouterProvider>();
   const proveedorDe = (modelo: string, esfuerzo: "low" | "medium" | "high"): OpenRouterProvider => {
     const esAnthropic = PREFIJOS_CON_ESFUERZO.some((p) => modelo.startsWith(p));
@@ -87,7 +94,7 @@ export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, op
         appName: "atiende-voice-worker",
         // RETENCION CERO (14-oct-2026): solo endpoints ZDR de Vertex/Bedrock (`provider.zdr` + `only`). `allowFallbacks` queda en true SOLO para saltar entre esos dos
         // proveedores permitidos; nunca sale de la lista. Si OpenRouter no tiene endpoint ZDR para el modelo responde 404 y la sesion cae con `v2_llm_sin_zdr`.
-        routing: { zdr: true, only: cfg.proveedoresZdr, allowFallbacks: true },
+        routing: { zdr: true, only: proveedoresZdr, allowFallbacks: true },
         params: { temperature: "omit", maxTokens: cfg.topeSalidaTokens, ...(esAnthropic ? { reasoningEffort: esfuerzo, cacheSystemPrompt: true } : {}) },
         // Un turno de voz que tarda mas de 10 s (el streaming cuenta hasta el ultimo trozo) ya perdio al cliente: mejor fallar y que la escalera decida.
         timeoutMs: 10_000,
@@ -106,14 +113,22 @@ export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, op
         if (m.role === "tool") return { role: "tool", toolCallId: m.toolCallId, content: m.content };
         return { role: "user", content: m.content };
       });
-      const r = await proveedorDe(modelo, p.esfuerzo ?? cfg.esfuerzo).complete({
+      let r;
+      try {
+        r = await proveedorDe(modelo, p.esfuerzo ?? cfg.esfuerzo).complete({
         system: p.system,
         messages: mensajes,
         tools: p.herramientas.map((h) => ({ name: h.name, description: h.description, parameters: h.parameters as unknown as Record<string, unknown> })),
         maxOutputTokens: cfg.topeSalidaTokens,
         ...(p.onTextDelta ? { onTextDelta: p.onTextDelta } : {}),
         ...(p.senal ? { signal: p.senal } : {}),
-      });
+        });
+      } catch (err) {
+        // Con `provider.zdr` un 404 puede ser "no hay endpoint con retencion cero" (se distingue por el cuerpo) u otra cosa (parametro no admitido, modelo inexistente).
+        const status = (err as { status?: unknown } | null)?.status;
+        if (status === 404 && SIN_ENDPOINT_ZDR_RE.test(err instanceof Error ? err.message : "")) throw Object.assign(new Error("llm_sin_zdr"), { status: 404, motivo: "sin_zdr" });
+        throw err;
+      }
       return {
         texto: r.text,
         toolCalls: (r.toolCalls ?? []).map((t) => ({ id: t.id, nombre: t.name, argsJson: t.argumentsJson })),
