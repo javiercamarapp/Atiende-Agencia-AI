@@ -56,3 +56,16 @@ export { OrquestadorTecleo, TECLEO_VOLUMEN_MAX, TECLEO_VOLUMEN_MIN, TECLEO_VOLUM
 export type { OpcionesTecleo, TipoTecla } from "./tecleo.ts";
 export { MezcladorSalida } from "./mezclador-salida.ts";
 export type { OpcionesMezclador } from "./mezclador-salida.ts";
+export {
+  BLOQUE_ACENTO_MEXICANO,
+  BLOQUE_NATURALIDAD,
+  CANDIDATAS_TTS_CASCADA_V2,
+  ID_PRESET_RESTAURANTE_HUMANO,
+  PRESET_RESTAURANTE_HUMANO,
+  VOCES_FEMENINAS_REFERENCIA,
+  conInstruccionHumana,
+  instruccionHumana,
+  validarPresetHumano,
+} from "./preset-restaurante-humano.ts";
+export type { PresetVozHumano, ProblemaPreset } from "./preset-restaurante-humano.ts";
+export type { OpcionesFondo } from "./fondo-ambiente.ts";
