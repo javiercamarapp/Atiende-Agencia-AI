@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
-import { elegirEtiqueta } from "../../helpers/listas.ts";
+import { elegirValor, elegirEtiqueta } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -81,7 +81,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await ir(page, "/historial");
     await expect(main(page).getByText("Marisol Pech").first()).toBeVisible();
     await mock.limpiarRegistro();
-    await page.getByLabel("Estado").selectOption("completado");
+    await elegirValor(page.getByLabel("Estado"), "completado");
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "status=completado" })).length).toBeGreaterThan(0);
     await expect(main(page).getByText("Jorge Canul")).toHaveCount(0);
     vigilante.verificar();
@@ -200,7 +200,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await expect(main(page).getByText("nuevo.staff@example.test").first()).toBeVisible();
 
     await mock.limpiarRegistro();
-    await page.getByLabel("Rol de Lucia Xool").selectOption("admin");
+    await elegirValor(page.getByLabel("Rol de Lucia Xool"), "admin");
     const [rol] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/staff/miembros/usr-1" });
     expect(cuerpoDe(rol)).toEqual({ verticalRole: "admin" });
 
@@ -229,7 +229,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await expect(main(page).getByText("Itzimna")).toBeVisible();
 
     await mock.limpiarRegistro();
-    await page.getByLabel("Zona horaria de esta sucursal").selectOption("America/Cancun");
+    await elegirValor(page.getByLabel("Zona horaria de esta sucursal"), "America/Cancun");
     await page.locator("form").filter({ has: page.locator("#config-zona-horaria") }).getByRole("button", { name: "Guardar" }).click();
     const [tz] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/config/zona-horaria" });
     expect(cuerpoDe(tz)).toEqual({ zona_horaria: "America/Cancun" });
@@ -281,7 +281,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await ir(page, "/auditoria");
     await expect(main(page).getByTitle("producto.precio_actualizado")).toBeVisible();
     await mock.limpiarRegistro();
-    await page.getByLabel("Tipo de acción").selectOption("staff");
+    await elegirValor(page.getByLabel("Tipo de acción"), "staff");
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "tipo=staff" })).length).toBeGreaterThan(0);
     await expect(main(page).getByTitle("producto.precio_actualizado")).toHaveCount(0);
     vigilante.verificar();
@@ -290,7 +290,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
   test("Indicadores de WhatsApp: cambiar el periodo pide whatsapp/kpi?dias=", async ({ page, mock, vigilante }) => {
     await ir(page, "/agente-whatsapp");
     await mock.limpiarRegistro();
-    await page.getByLabel("Periodo").selectOption({ label: "Últimos 30 días" });
+    await elegirEtiqueta(page.getByLabel("Periodo"), "Últimos 30 días");
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "whatsapp/kpi?dias=30" })).length).toBeGreaterThan(0);
     vigilante.verificar();
   });
