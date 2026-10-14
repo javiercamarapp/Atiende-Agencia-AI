@@ -9,6 +9,7 @@
 //
 // Seguridad: la API key va en la URL del WebSocket (asi lo pide el endpoint de servidor); la URL NUNCA se loguea. Los errores
 // que suben al controlador llevan un codigo corto, nunca el cuerpo del mensaje del proveedor.
+import { TEMPERATURA_VOZ_LLAMADA_MAX } from "../ajustes-habla.ts";
 import { VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd } from "../config-plataforma.ts";
 import type { ConfigPlataformaVoz, UsoGemini } from "../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../provider.ts";
@@ -89,7 +90,8 @@ export function mensajeSetup(model: string, apertura: AperturaLlamada, vertex?: 
       generationConfig: {
         responseModalities: ["AUDIO"],
         // Temperatura de la organizacion (ajustes del agente); sin ajuste, 0 (VOZ_PLATAFORMA): el agente vivo de PM corre determinista.
-        temperature: typeof apertura.temperatura === "number" ? apertura.temperatura : g.temperatura,
+        // La de la organizacion (ajustes del agente) con tope TEMPERATURA_VOZ_LLAMADA_MAX en llamadas reales; sin ajuste, la de la plataforma.
+        temperature: typeof apertura.temperatura === "number" ? Math.min(apertura.temperatura, TEMPERATURA_VOZ_LLAMADA_MAX) : g.temperatura,
         speechConfig: {
           ...(languageCode ? { languageCode } : {}),
           voiceConfig: { prebuiltVoiceConfig: { voiceName: apertura.voiceId } },
