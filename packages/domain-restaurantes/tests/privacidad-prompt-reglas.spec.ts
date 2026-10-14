@@ -58,7 +58,7 @@ describe("el system prompt completo del turno", () => {
     const system = await capturedSystem(KNOWN);
     expect(system).toContain(PRIVACY_AND_AI_RULES);
     expect(system).toContain("asistente virtual");
-    expect(system).toContain("mis datos personales");
+    expect(system).toContain("registrar_solicitud_arco");
     expect(system).toContain(TRATO_Y_TRANSPARENCIA_RULES);
   });
 });

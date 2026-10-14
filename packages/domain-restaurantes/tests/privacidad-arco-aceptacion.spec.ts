@@ -8,6 +8,9 @@ import { RAICES_ARCO, detectArcoIntent, esOposicionDeContacto, raicesQueCoincide
 import { CORPUS } from "./arco-corpus-revisor.ts";
 import { CORPUS_PROPIO } from "./arco-corpus-propio.ts";
 import { CASOS_POR_RAIZ } from "./arco-corpus-por-raiz.ts";
+import { CORPUS_545 as DEV_545, RAFAGAS_545 as RAFAGAS_DEV } from "./arco-corpus-545-dev.ts";
+import { CORPUS_545 as CIEGO_545, RAFAGAS_545 as RAFAGAS_CIEGO } from "./arco-corpus-545-ciego.ts";
+import { intencionesPorMensaje } from "../src/privacidad/arco-intent.ts";
 
 const FP_MAXIMO_MAIN = 5; // main: 5 de 84 negativos del revisor mandados al menu
 const RECALL_MINIMO = 0.98;
@@ -182,5 +185,52 @@ describe("propiedad: objetos de pedido nunca son ARCO con ningun verbo de suprim
   const casos = verbos.flatMap((v) => objetos.map((o) => `${v} ${o}`));
   it("ninguna combinacion dispara", () => {
     expect(casos.filter((c) => detectArcoIntent(c) !== null)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Corpus del revisor del PR #545, partido en DESARROLLO (se uso para afinar la capa regex) y CIEGO (nunca se leyo ni se afino contra el: mide la generalizacion real).
+// Estos umbrales miden SOLO la capa regex determinista (alta precision). La RED DE SEGURIDAD con el modelo real se mide aparte, una vez, con
+// scripts/medir-clasificador-arco (docs/ARCO-CLASIFICADOR.md): ahi se exige recall >= 98 % del sistema completo. Del lado de falsos positivos la regex SI se exige completa.
+// Del corpus ciego NO se imprimen frases al fallar (solo conteos).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+const esFuerte = (r: ReturnType<typeof detectArcoIntent>): boolean => r !== null && (r.kind === "request" || (r.kind === "menu" && r.fuerza === "fuerte"));
+
+describe("corpus del revisor #545: capa regex (umbrales fijos)", () => {
+  const pDev = DEV_545.filter(([, e]) => e === "P").map(([f]) => f);
+  const nDev = DEV_545.filter(([, e]) => e === "N").map(([f]) => f);
+  const pCiego = CIEGO_545.filter(([, e]) => e === "P").map(([f]) => f);
+  const nCiego = CIEGO_545.filter(([, e]) => e === "N").map(([f]) => f);
+
+  it("tamanos: 225 frases en total (113 desarrollo + 112 ciego) y 11 rafagas", () => {
+    expect(DEV_545.length + CIEGO_545.length).toBe(225);
+    expect(RAFAGAS_DEV.length + RAFAGAS_CIEGO.length).toBe(11);
+    expect(pDev.length + pCiego.length).toBe(112);
+    expect(nDev.length + nCiego.length).toBe(104);
+  });
+  it("desarrollo: recall >= 95 % y 0 falsos positivos", () => {
+    expect(pDev.filter((f) => detectArcoIntent(f) !== null).length / pDev.length).toBeGreaterThanOrEqual(0.95);
+    expect(nDev.filter((f) => detectArcoIntent(f) !== null)).toEqual([]);
+  });
+  it("CIEGO: recall de la regex >= 88 % y falsos positivos <= 5 (los de main); sin imprimir frases", () => {
+    const fn = pCiego.filter((f) => detectArcoIntent(f) === null).length;
+    const fp = nCiego.filter((f) => detectArcoIntent(f) !== null).length;
+    expect(1 - fn / pCiego.length).toBeGreaterThanOrEqual(0.88);
+    expect(fp).toBeLessThanOrEqual(5);
+  });
+  it("las dos mitades juntas: falsos positivos <= 5 de 104 (umbral del revisor)", () => {
+    expect([...nDev, ...nCiego].filter((f) => detectArcoIntent(f) !== null).length).toBeLessThanOrEqual(5);
+  });
+  it("senal FUERTE (la que toma el turno): 0 falsos positivos en 533, propio y desarrollo", () => {
+    const negs = [...negativos, ...CORPUS_PROPIO.filter(([, e]) => e === "N").map(([f]) => f), ...nDev];
+    expect(negs.filter((f) => esFuerte(detectArcoIntent(f)))).toEqual([]);
+  });
+  it("rafagas (cada mensaje por separado, como en produccion): al menos 8 de 11", async () => {
+    let bien = 0;
+    for (const [mensajes, etiqueta] of [...RAFAGAS_DEV, ...RAFAGAS_CIEGO]) {
+      const detectado = (await intencionesPorMensaje(mensajes, undefined, "org")).length > 0;
+      if ((etiqueta === "P") === detectado) bien += 1;
+    }
+    expect(bien).toBeGreaterThanOrEqual(8);
   });
 });

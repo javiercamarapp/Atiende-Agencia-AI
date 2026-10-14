@@ -11,6 +11,8 @@ import { ARCO_MENU_APENDICE, ARCO_MENU_MARCA_NOMBRES, ARCO_MENU_MARCA_NUMERADO, 
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const PHONE = "+5219981234567";
+/** Formato canonico con el que se registran y buscan las solicitudes ARCO (+52 y 10 digitos). */
+const PHONE_CANONICO = "+529981234567";
 const RESPUESTA_LLM = "Claro, ¿qué desea pedir?";
 
 function setup() {
@@ -69,7 +71,7 @@ describe("el menu ARCO NO es un bucle", () => {
     expect(out.reply).not.toContain(ARCO_MENU_MARCA_NUMERADO);
     expect(out.reply).toContain("CONFIRMO");
     expect(privacy.requests).toHaveLength(1);
-    expect(privacy.requests[0]).toMatchObject({ customerPhone: PHONE, rightType: derecho, status: "pendiente_confirmacion" });
+    expect(privacy.requests[0]).toMatchObject({ customerPhone: PHONE_CANONICO, rightType: derecho, status: "pendiente_confirmacion" });
   });
 
   it("nombre del derecho + CONFIRMO: la solicitud corre sus plazos (recorrido completo menu -> eleccion -> confirmacion)", async () => {
@@ -91,7 +93,7 @@ describe("el menu ARCO NO es un bucle", () => {
       expect(out.reply).not.toContain(ARCO_MENU_MARCA_NUMERADO);
       expect(out.reply).toContain("registré su solicitud");
       expect(privacy.requests).toHaveLength(1);
-      expect(privacy.requests[0]).toMatchObject({ customerPhone: PHONE, rightType: "acceso", status: "pendiente_confirmacion" });
+      expect(privacy.requests[0]).toMatchObject({ customerPhone: PHONE_CANONICO, rightType: "acceso", status: "pendiente_confirmacion" });
       expect(solicitarHumano).toHaveBeenCalledTimes(1);
       expect(solicitarHumano.mock.calls[0]![0]).toMatchObject({ motivo: "privacidad_arco", phone: PHONE });
     },
@@ -255,7 +257,7 @@ describe("la deteccion corre POR MENSAJE de la rafaga, no sobre el texto unido c
     const { handle, privacy, out } = await rafaga(["quiero 2 tacos de pastor", "ya no me manden publicidad"]);
     expect(handle).not.toHaveBeenCalled();
     expect(privacy.requests).toHaveLength(1);
-    expect(privacy.requests[0]).toMatchObject({ rightType: "oposicion", customerPhone: PHONE });
+    expect(privacy.requests[0]).toMatchObject({ rightType: "oposicion", customerPhone: PHONE_CANONICO });
     expect(out.reply).toContain("CONFIRMO");
   });
 

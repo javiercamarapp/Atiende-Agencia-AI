@@ -291,11 +291,30 @@ describe("lado sistema: voz y purga", () => {
     expect(privacy.requests).toHaveLength(0);
   });
 
+  it("ARCO por voz: una segunda ambiguedad registra la conjetura, devuelve escalar y deja el aviso al equipo (callback escalada:privacidad_arco)", async () => {
+    const { app, ctx, privacy } = await construir();
+    const r = await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: "9981234567", texto: "no sé", menuPendiente: "numerado" }))).json();
+    expect(r).toMatchObject({ atendido: true, registrada: true, escalar: true });
+    expect(privacy.requests[0]).toMatchObject({ rightType: "acceso", channel: "voice", customerPhone: "+529981234567" });
+    const callbacks = ctx.restaurantesRepo.listCallbackRequests(ctx.organizationId);
+    expect(callbacks.some((c) => c.reason === "escalada:privacidad_arco" && c.source === "voice")).toBe(true);
+  });
+
+  it("ARCO por voz: el clasificador LLM tambien lo ve (lo que la regex no reconoce)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const privacy = new InMemoryPrivacidadRepository();
+    const arcoClassifier = { clasificar: async () => ({ intencion: "cancelacion" as const, confianza: 0.95, derechoMasProbable: "cancelacion" as const }) };
+    const app = envolver(buildApp({ ...ctx.deps, privacidadRepo: () => privacy, arcoClassifier }));
+    const r = await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "oiga ya no quiero seguir apareciendo con ustedes" }))).json();
+    expect(r).toMatchObject({ atendido: true, registrada: true });
+    expect(privacy.requests[0]).toMatchObject({ rightType: "cancelacion" });
+  });
+
   it("ARCO por voz: el telefono sale del identificador de llamada, no del texto dictado", async () => {
     const { app, ctx, privacy } = await construir();
     await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "quiero acceso a mis datos personales, el telefono es 5551112233" }));
     expect(privacy.requests).toHaveLength(1);
-    expect(privacy.requests[0]!.customerPhone).toBe(PHONE);
+    expect(privacy.requests[0]!.customerPhone).toBe("+529981234567");
   });
 
   it("purga por retencion: devuelve los conteos; base sin migrar -> disponible:false", async () => {
@@ -352,7 +371,7 @@ describe("POST /v1/restaurantes/whatsapp/webhook con privacidad", () => {
     expect(arco.status).toBe(200);
     expect(turns).toBe(1);
     expect(privacy.requests).toHaveLength(1);
-    expect(privacy.requests[0]).toMatchObject({ customerPhone: "+5219991234567", rightType: "acceso" });
+    expect(privacy.requests[0]).toMatchObject({ customerPhone: "+529991234567", rightType: "acceso" });
   });
 
   it("sin privacidadRepo (despliegue anterior) el webhook funciona como antes", async () => {

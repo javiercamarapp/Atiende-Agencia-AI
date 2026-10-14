@@ -105,7 +105,7 @@ describe("fast-path ARCO dentro del webhook", () => {
     expect(handle).not.toHaveBeenCalled();
     expect(outcome.reply).toContain("CONFIRMO");
     expect(privacy.requests).toHaveLength(1);
-    expect(privacy.requests[0]).toMatchObject({ customerPhone: PHONE, rightType: "acceso", status: "pendiente_confirmacion", channel: "whatsapp" });
+    expect(privacy.requests[0]).toMatchObject({ customerPhone: "+529981234567", rightType: "acceso", status: "pendiente_confirmacion", channel: "whatsapp" });
   });
 
   it("CONFIRMO desde el mismo numero arranca los plazos", async () => {

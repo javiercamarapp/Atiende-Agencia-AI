@@ -2,6 +2,7 @@
 // Antes el endpoint /internal/restaurantes/voz/arco existia pero ningun llamador lo usaba: una solicitud por voz nunca quedaba registrada.
 // API real en proceso (repositorio de privacidad en memoria) + telefonia falsa + proveedor guionado.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { INSTRUCCION_ARCO_SIN_TELEFONO, peticionClaraDeArco } from "../src/llamada.ts";
 import { AgenteGuionado } from "./support/agente-guionado.ts";
 import { escenario } from "./support/escenario.ts";
 import { turnoCliente } from "./support/llamada.ts";
@@ -68,16 +69,55 @@ describe("ARCO por voz", () => {
 });
 
 describe("ARCO por voz sin telefono confiable", () => {
-  it("sin identificador de llamada no hay a quien registrar: no se consulta el servidor ni se inventa un telefono", async () => {
+  it("sin identificador de llamada no hay a quien registrar (no se consulta el servidor ni se inventa un telefono), pero el agente NO lo ignora: explica, recoge un contacto y escala", async () => {
     const api = await crearMundoApi();
     const agente = new AgenteGuionado([{ cliente: "borren mis datos", agente: [{ dice: "Entendido." }] }]);
     const t = await escenario(api, () => [agente.escalon()]);
     const llamada = t.telefonia.llamar({ id: "llamada-arco-anonima", dnis: NUMERO_SUCURSAL, desde: null, desviadaDesde: "<sip:+529992220002@telmex.invalid>" });
     await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
     await turnoCliente(llamada, api.reloj, () => agente.respondidos, 1);
+    await vi.waitFor(() => expect(agente.textosRecibidos).toContain(INSTRUCCION_ARCO_SIN_TELEFONO), { timeout: 5_000, interval: 5 });
     llamada.clienteCuelga();
     await t.esperarFin();
     expect(api.peticiones.some((p) => p.includes("/voz/arco"))).toBe(false);
     expect(api.privacidad.requests).toHaveLength(0);
+    expect(INSTRUCCION_ARCO_SIN_TELEFONO).toContain("escalar_a_humano");
+    expect(INSTRUCCION_ARCO_SIN_TELEFONO).toContain("privacidad_arco");
+  });
+
+  it("solo una vez por llamada, y la senal debil o el pedido normal no la disparan", async () => {
+    const api = await crearMundoApi();
+    const agente = new AgenteGuionado([
+      { cliente: "quiero tres tacos de pastor", agente: [{ dice: "Claro." }] },
+      { cliente: "no me llamen", agente: [{ dice: "Ok." }] },
+      { cliente: "borren mis datos", agente: [{ dice: "Entendido." }] },
+      { cliente: "borren mis datos por favor", agente: [{ dice: "Entendido." }] },
+    ]);
+    const t = await escenario(api, () => [agente.escalon()]);
+    const llamada = t.telefonia.llamar({ id: "llamada-arco-anonima-2", dnis: NUMERO_SUCURSAL, desde: null, desviadaDesde: "<sip:+529992220002@telmex.invalid>" });
+    await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
+    for (let i = 1; i <= 4; i++) await turnoCliente(llamada, api.reloj, () => agente.respondidos, i);
+    llamada.clienteCuelga();
+    await t.esperarFin();
+    expect(agente.textosRecibidos.filter((x) => x === INSTRUCCION_ARCO_SIN_TELEFONO)).toHaveLength(1);
+  });
+
+  it("peticionClaraDeArco: solicitud o pregunta explicita si; senal debil o pedido no", () => {
+    expect(peticionClaraDeArco("borren mis datos")).toBe(true);
+    expect(peticionClaraDeArco("derechos arco")).toBe(true);
+    expect(peticionClaraDeArco("no me llamen")).toBe(false);
+    expect(peticionClaraDeArco("tres tacos")).toBe(false);
+  });
+});
+
+describe("ARCO por voz: escalacion", () => {
+  it("una segunda ambiguedad (el API devuelve escalar) le dice al agente que una persona lo contactara, y el aviso al equipo queda registrado", async () => {
+    const { api, agente } = await llamar([
+      { cliente: "quiero ejercer mis derechos ARCO", agente: [{ dice: "Claro." }] },
+      { cliente: "no sé", agente: [{ dice: "Listo." }] },
+    ]);
+    expect(api.privacidad.requests).toHaveLength(1);
+    expect(agente.textosRecibidos.some((t) => t.includes("una persona del equipo lo contactará"))).toBe(true);
+    expect(api.mundo.callbacks.some((c) => String((c as { reason?: string }).reason).includes("privacidad_arco"))).toBe(true);
   });
 });

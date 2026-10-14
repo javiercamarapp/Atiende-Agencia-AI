@@ -5,6 +5,8 @@ import { InMemoryPrivacidadRepository } from "../src/privacidad/in-memory-reposi
 
 const ORG = "00000000-0000-0000-0000-0000000000a1";
 const PHONE = "+5219981234567";
+/** Formato canonico con el que se registran y buscan las solicitudes ARCO (+52 y 10 digitos). */
+const PHONE_CANONICO = "+529981234567";
 
 describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de pedidos", () => {
   it.each([
@@ -88,7 +90,7 @@ describe("runArcoFastPath -- flujo guiado de punta a punta (repositorio en memor
     expect(result?.reply).toContain("CONFIRMO");
     expect(result?.reply).toContain("acceso");
     expect(repo.requests).toHaveLength(1);
-    expect(repo.requests[0]).toMatchObject({ organizationId: ORG, customerPhone: PHONE, rightType: "acceso", status: "pendiente_confirmacion", channel: "whatsapp" });
+    expect(repo.requests[0]).toMatchObject({ organizationId: ORG, customerPhone: PHONE_CANONICO, rightType: "acceso", status: "pendiente_confirmacion", channel: "whatsapp" });
     expect(result?.reply).not.toContain(PHONE);
   });
 

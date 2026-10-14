@@ -12,7 +12,7 @@ import { authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admi
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any;
 
-async function construir(opciones: { conLlm?: boolean } = {}) {
+async function construir(opciones: { conLlm?: boolean; clasificador?: import("@atiende/domain-restaurantes").ClasificadorArco } = {}) {
   const ctx = await buildRestaurantesKpiTestContext(buildApp);
   const turnos: string[] = [];
   const privacidad = new InMemoryPrivacidadRepository();
@@ -22,7 +22,7 @@ async function construir(opciones: { conLlm?: boolean } = {}) {
       return { reply: "Hola, soy el asistente (prueba).", orderId: null, propertyId: entrada.propertyId ?? null };
     },
   };
-  const deps: AppDeps = { ...ctx.deps, ...(opciones.conLlm === false ? {} : { llmGateway: {} as LlmGateway }), turnHandler, privacidadRepo: () => privacidad };
+  const deps: AppDeps = { ...ctx.deps, ...(opciones.conLlm === false ? {} : { llmGateway: {} as LlmGateway }), turnHandler, privacidadRepo: () => privacidad, ...(opciones.clasificador ? { arcoClassifier: opciones.clasificador } : {}) };
   const app = buildApp(deps);
   const enviar = (mensajes: Array<{ rol: "usuario" | "agente"; texto: string }>) =>
     app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/agente-whatsapp/preview/mensaje`, authedJson(ctx.staff.owner.token, { sesionId: randomUUID(), mensajes }));
@@ -64,6 +64,15 @@ describe("«Probar agente»: atajo ARCO compartido con produccion", () => {
     expect(t.turnos).toEqual(["no me llamen"]);
     expect(cuerpo.respuesta).toContain("Hola, soy el asistente (prueba).");
     expect(cuerpo.respuesta).toContain("Por si se refería a sus datos personales");
+  });
+
+  it("el clasificador tambien corre en el preview (mismo camino que produccion) y no registra nada en la base", async () => {
+    const t = await construir({ clasificador: { clasificar: async () => ({ intencion: "revocacion_contacto", confianza: 0.95, derechoMasProbable: "oposicion" }) } });
+    const cuerpo = (await (await t.enviar([{ rol: "usuario", texto: "oiga ya no quiero que me anden buscando" }])).json()) as Json;
+    expect(cuerpo.respuesta).toContain("CONFIRMO");
+    expect(cuerpo.respuesta).toContain("oposición");
+    expect(t.turnos).toEqual([]);
+    expect(t.privacidad.requests).toHaveLength(0);
   });
 
   it("un mensaje normal sigue al agente tal cual", async () => {
