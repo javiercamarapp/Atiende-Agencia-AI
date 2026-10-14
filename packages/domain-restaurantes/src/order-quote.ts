@@ -93,7 +93,26 @@ const EXCLUSIONES_EN_NOTAS: ReadonlyArray<readonly [RegExp, DefaultComplement]> 
 export function complementosExcluidosEnNotas(notes: unknown): DefaultComplement[] {
   if (typeof notes !== "string" || !notes.trim()) return [];
   const t = notes.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  return EXCLUSIONES_EN_NOTAS.filter(([patron]) => patron.test(t)).map(([, item]) => item);
+  return EXCLUSIONES_EN_NOTAS.filter(([patron, item]) => excluyeDeVerdad(patron, item, t)).map(([, item]) => item);
+}
+
+/** La exclusion alcanza a TODO el complemento: no es parcial («sin salsa roja en los de pastor, en bistec sí», «sin cilantro en los frijoles») ni deja la otra mitad del par
+ * («sin cebolla pero con cilantro» sigue llevando el cilantro; «con cebolla y sin cilantro» la cebolla). */
+function excluyeDeVerdad(patron: RegExp, item: DefaultComplement, t: string): boolean {
+  if (item === "cebolla_cilantro") {
+    const sinCebolla = /\bsin\s+(?:la\s+)?cebolla\b/.test(t);
+    const sinCilantro = /\bsin\s+(?:el\s+)?cilantro\b/.test(t);
+    if (sinCebolla && !sinCilantro && /\bcon\s+(?:el\s+)?cilantro\b/.test(t)) return false;
+    if (sinCilantro && !sinCebolla && /\bcon\s+(?:la\s+)?cebolla\b/.test(t)) return false;
+  }
+  for (const m of t.matchAll(new RegExp(patron.source, "g"))) {
+    const clausula = t.slice((m.index ?? 0) + m[0].length).split(/[,.;\n]/)[0] ?? "";
+    const parcial =
+      /^\s+(?:solo\s+)?(?:en|para)\s+(?:los|las|el|la|mis|sus|un|una|unos|unas)\b/.test(clausula) &&
+      !/^\s+(?:solo\s+)?(?:en|para)\s+(?:los\s+|las\s+|el\s+|mi\s+)?(?:todos\s+)?(?:tacos?|pedido|ordenes|orden|todo)\s*$/.test(clausula);
+    if (!parcial) return true;
+  }
+  return false;
 }
 
 /** `cebolla` es el nombre historico de `cebolla_cilantro`: ambos omiten la misma salsa. */

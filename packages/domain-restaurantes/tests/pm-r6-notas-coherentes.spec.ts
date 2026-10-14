@@ -13,7 +13,7 @@ describe("complementosExcluidosEnNotas", () => {
     ["bien dorados", []],
     ["con cebolla extra", []],
     ["sin picante", []],
-    ["sin cilantro en los frijoles", ["cebolla_cilantro"]],
+    ["sin cilantro en los frijoles", []],
   ] as const)("%s", (t, esperado) => expect(new Set(complementosExcluidosEnNotas(t))).toEqual(new Set(esperado)));
   it.each([0, "", null, undefined, false, [], {}].map((v) => [v]))("entrada %j -> []", (v) => expect(complementosExcluidosEnNotas(v)).toEqual([]));
 });

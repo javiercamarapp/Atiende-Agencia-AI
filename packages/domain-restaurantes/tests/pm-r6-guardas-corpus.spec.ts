@@ -25,17 +25,17 @@ describe("classifyHighRiskIntent (R6-reglas-02/03)", () => {
     ["me intoxiqué con sus tacos de ayer", "alergia_salud"], ["me dio diarrea después de comer ahí", "alergia_salud"], ["creo que la comida estaba en mal estado y vomité", "alergia_salud"],
     ["soy alérgico a los cacahuates, ¿el mole tiene?", "alergia_salud"],
     ["me cargaron dos veces en la tarjeta", "cobro_duplicado"], ["me hicieron un doble cargo", "cobro_duplicado"], ["me cobraron doble", "cobro_duplicado"],
-    ["le faltó la salsa", "queja"], ["a mi pedido le faltaron las salsas", "queja"],
-    ["llevo 2 horas esperando mi pedido", "urgencia"], ["llevo 45 minutos esperando mi pedido", "urgencia"],
+    ["a mi pedido le faltaron las salsas", "queja"], ["le faltó la salsa", "queja", entregado],
+    ["llevo 2 horas esperando mi pedido", "urgencia"], ["llevo 2 horas esperando mi pedido", "urgencia", preparando],
     ["ya no quiero el pedido, cancélalo", "cancelacion_modificacion"], ["cancélame el pedido", "cancelacion_modificacion"],
-    ["cámbiame el pedido a harina", "cancelacion_modificacion", preparando], ["quiero modificar mi pedido", "cancelacion_modificacion", preparando],
+    ["cámbiame el pedido a harina", "modificacion_pedido", preparando], ["quiero modificar mi pedido", "modificacion_pedido", preparando],
     ["quiero un asesor", "cliente_lo_pide"], ["necesito un asesor", "cliente_lo_pide"],
   ];
   const NEG: [string, HighRiskContext?][] = [
     ["no me gusta el picante"], ["¿cuánto cuesta la horchata?"], ["sin picante porfa, soy delicado del estómago"], ["quiero tacos sin cebolla"], ["el sabor me cayó muy bien"],
     ["¿cuánto cobran de envío?"], ["¿cobran la salsa?"], ["pago con tarjeta"], ["¿me cobran cargo por pagar con tarjeta?"],
     ["me faltó pedir una horchata"], ["me faltó agregar salsa"], ["le falta sal a la salsa de la foto?"],
-    ["llevo 10 minutos esperando que me contesten el menú"], ["¿cuánto tarda?"], ["llevo 20 minutos esperando mi pedido"], ["necesito para urgente 3 tacos"],
+    ["llevo 10 minutos esperando que me contesten el menú"], ["¿cuánto tarda?"], ["llevo 20 minutos esperando mi pedido"], ["llevo 45 minutos esperando mi pedido", preparando], ["le faltó la salsa"], ["necesito para urgente 3 tacos"],
     ["cámbiame el pedido a harina"], ["cámbiame el pedido a harina", entregado], ["¿puedo cambiar el pedido?", preparando], ["¿se puede cancelar el pedido?"], ["¿cancelan el 2x1 los lunes?"],
     ["el asesor de ayer fue amable"], ["no quiero hablar con un humano, tú atiéndeme"],
   ];
