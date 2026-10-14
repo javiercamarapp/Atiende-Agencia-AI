@@ -209,7 +209,8 @@ export class CallStateMachine<R extends string = string> {
         if (this.objetivoLogrado) this.cerrarAlTerminar = true;
         return [];
       case "costo":
-        this.costo += Math.max(0, ev.microUsd);
+        // Un NaN o infinito NO se suma (this.costo = NaN haria `>= tope` falso para siempre y apagaria el tope por llamada): se ignora.
+        if (Number.isFinite(ev.microUsd)) this.costo += Math.max(0, ev.microUsd);
         return this.costo >= this.limites.costoMaxMicroUsd ? this.cortar("limite_costo") : [];
       case "tick":
         return this.reloj(ev.segundos);
