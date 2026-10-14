@@ -17,7 +17,10 @@ describe("registro unico de tools", () => {
   it("WhatsApp y voz exponen las MISMAS definiciones (nombre, descripcion y esquema), sin duplicados", () => {
     const voz = toolDefinitionsForChannel("voz");
     const wa = toolDefinitionsForChannel("whatsapp");
-    expect(voz.map((t) => t.name)).toEqual(wa.map((t) => t.name));
+    // Unica herramienta exclusiva de WhatsApp: `registrar_solicitud_arco` (el registro necesita el contexto del webhook; por voz las solicitudes ARCO las atiende el worker con el endpoint de privacidad).
+    const SOLO_WHATSAPP = new Set(["registrar_solicitud_arco"]);
+    expect(voz.map((t) => t.name)).toEqual(wa.filter((t) => !SOLO_WHATSAPP.has(t.name)).map((t) => t.name));
+    expect(wa.filter((t) => SOLO_WHATSAPP.has(t.name)).map((t) => t.name)).toEqual(["registrar_solicitud_arco"]);
     expect(new Set(AGENT_TOOL_DEFINITIONS.map((t) => t.name)).size).toBe(AGENT_TOOL_DEFINITIONS.length);
     // El arreglo que recibe el gateway de WhatsApp sale del registro, no de una copia.
     expect(TOOLS.map((t) => [t.name, t.description])).toEqual(wa.map((t) => [t.name, t.description]));

@@ -34,6 +34,7 @@ export const HERRAMIENTAS_REGISTRO = [
   "crear_pedido",
   "registrar_contacto",
   "escalar_a_humano",
+  "registrar_solicitud_arco",
 ] as const;
 
 const AQUI = new URL("./", import.meta.url);
@@ -179,6 +180,9 @@ export class Mundo {
         return { ok: true };
       case "escalar_a_humano":
         return this.escalar(args);
+      case "registrar_solicitud_arco":
+        // El mundo de evals no tiene base de privacidad: solo confirma que el modelo uso la herramienta con un derecho valido.
+        return ["acceso", "rectificacion", "cancelacion", "oposicion"].includes(String(args.derecho)) ? { ok: true, simulado: true } : { error: "derecho: use acceso, rectificacion, cancelacion u oposicion." };
       default:
         throw new ErrorNegocio(`Herramienta desconocida: ${nombre}`);
     }
