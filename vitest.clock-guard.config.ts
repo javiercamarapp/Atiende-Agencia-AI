@@ -43,6 +43,7 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/pm-r6-pedido-igual-entre-llamadas.spec.ts",
   "packages/domain-citas/tests/pm-r6-saludo-franja.spec.ts",
   "apps/web/tests/saludo-misma-franja-r5.spec.ts",
+  "apps/api/tests/pm-r6-voz-quote-reenvia-plazo.spec.ts",
   "packages/domain-restaurantes/tests/evals-agente-pm-k.spec.ts",
   // Prueba ciega de voz: reloj fijo (miercoles 12:00 Merida); V27 calcula la hora de recogida con el reloj del servidor.
   "packages/domain-restaurantes/tests/voz-simulador-prueba-ciega.spec.ts",
