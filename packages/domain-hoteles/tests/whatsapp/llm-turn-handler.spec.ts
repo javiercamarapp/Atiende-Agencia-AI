@@ -443,4 +443,25 @@ describe("falla del sistema: disculpa honesta con aviso a recepcion solo si qued
     expect(insertar.mock.calls[0]![0].reason).toMatch(/^falla_sistema/);
     expect(result.reply).not.toMatch(/mantenimiento/i);
   });
+
+  it("dos tickets de mantenimiento en el mismo turno se nombran en plural", async () => {
+    const ids = baseRepoAndIds();
+    const gateway = makeGateway();
+    let paso = 0;
+    const script = (): LlmCompletionResult => {
+      if (paso++ === 0) {
+        return { text: "", toolCalls: [
+          { id: "t1", name: "crear_ticket_mantenimiento", argumentsJson: JSON.stringify({ titulo: "Aire", descripcion: "No enfría", habitacion: "410", severidad: "media" }) },
+          { id: "t2", name: "crear_ticket_mantenimiento", argumentsJson: JSON.stringify({ titulo: "Llave", descripcion: "Gotea", habitacion: "410", severidad: "baja" }) },
+        ], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 };
+      }
+      throw Object.assign(new Error("caído"), { status: 503 });
+    };
+    gateway.registerLadder("default", [new FakeLlmProvider({ id: "p", script })]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e", script })]);
+    const handler = createLlmHotelesWhatsAppTurnHandler(ids.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+    const result = await handler.handleInboundMessage(entrada(ids));
+    expect(result.reply).toMatch(/tus reportes de mantenimiento sí quedaron registrados/i);
+    expect(result.reply).not.toMatch(/tu reporte de mantenimiento/i);
+  });
 });
