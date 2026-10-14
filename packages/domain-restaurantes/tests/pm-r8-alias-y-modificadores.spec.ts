@@ -4,7 +4,7 @@
 // «Pechuga» del menu. Los precios salen siempre del menu; los negativos fijan que no se inventa un producto (sushi, BBQ) ni se cambia por uno distinto (coca sin azucar, pastor).
 import { describe, expect, it } from "vitest";
 import { searchProducts } from "../src/orders.ts";
-import { tokenizeForProductSearch, variantesMasPermisivas } from "../src/product-search.ts";
+import { aplicarRestas, tokenizeForProductSearch, variantesMasPermisivas } from "../src/product-search.ts";
 import { buildPmSeedPlan } from "../src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../src/seed/pm-world.ts";
 import { loadSeedInputs } from "../../../scripts/seed-pm-demo/seed-pm-demo.ts";
@@ -103,7 +103,8 @@ describe("R8: T7-052 y T7-038 no se rompen", () => {
 });
 
 describe("variantesMasPermisivas: contrato de entrada", () => {
-  it("entradas vacias, solo peso o solo marcadores no producen variantes", () => {
+  it("entradas vacias, invalidas, solo peso o solo marcadores no producen variantes ni lanzan", () => {
+    for (const malo of [0, "", {}, "sin queso", null, undefined, false, [1], [null], 5n]) expect(variantesMasPermisivas(malo)).toEqual([]);
     expect(variantesMasPermisivas([])).toEqual([]);
     expect(variantesMasPermisivas(["sin"])).toEqual([]);
     expect(variantesMasPermisivas(["sin", "queso"])).toEqual([]);
@@ -112,16 +113,117 @@ describe("variantesMasPermisivas: contrato de entrada", () => {
     expect(variantesMasPermisivas(["sinalcohol"])).toEqual([]);
     expect(variantesMasPermisivas(["bien", "picada"])).toEqual([]);
   });
-  it("una consulta sin restas, notas ni sinonimos no tiene variantes; con ellas, de la mas conservadora a la mas permisiva y sin repetidas", () => {
+  it("sin restas, notas ni sinonimos no hay variantes; con ellas, de la mas conservadora a la mas permisiva, sin repetidas y con las palabras restadas", () => {
     expect(variantesMasPermisivas(["pastor"])).toEqual([]);
-    expect(variantesMasPermisivas(["frijol", "sin", "tostada"])).toEqual([["frijol"]]);
-    expect(variantesMasPermisivas(["peso:250", "pollo", "bien", "picada"])).toEqual([["peso:250", "pollo"], ["peso:250", "pechuga", "bien", "picada"], ["peso:250", "pechuga"]]);
-    expect(variantesMasPermisivas(["torta", "bistec", "sin", "queso", "ni", "cebolla"])).toEqual([["torta", "bistec"]]);
+    expect(variantesMasPermisivas(["frijol", "sin", "tostada"])).toEqual([{ tokens: ["frijol"], restados: ["tostada"], conSinonimo: false }]);
+    expect(variantesMasPermisivas(["peso:250", "pollo", "bien", "picada"])).toEqual([
+      { tokens: ["peso:250", "pollo"], restados: [], conSinonimo: false },
+      { tokens: ["peso:250", "pechuga", "bien", "picada"], restados: [], conSinonimo: true },
+      { tokens: ["peso:250", "pechuga"], restados: [], conSinonimo: true },
+    ]);
+    expect(variantesMasPermisivas(["torta", "bistec", "sin", "queso", "ni", "cebolla"])).toEqual([{ tokens: ["torta", "bistec"], restados: ["queso", "cebolla"], conSinonimo: false }]);
+  });
+  it("una resta que DEFINE otro producto (azucar, soda, gas, gluten, cafeina...) no se relaja nunca", () => {
+    for (const r of ["azucar", "soda", "gas", "gluten", "lactosa", "cafeina", "alcohol"]) expect(variantesMasPermisivas(["coca", "sin", r])).toEqual([]);
+    expect(variantesMasPermisivas(["coca", "sin", "hielo"])).toEqual([{ tokens: ["coca"], restados: ["hielo"], conSinonimo: false }]);
   });
   it("tokenizar «sin alcohol» no se confunde con una resta: el marcador sigue ahi y la cerveza sin alcohol se encuentra", async () => {
     expect(tokenizeForProductSearch("cerveza sin alcohol")).toContain("sinalcohol");
     const r = await nombres("cerveza sin alcohol");
     expect(r.length).toBeGreaterThan(0);
     expect(r.every((n) => /sin alcohol|0[.,]0/i.test(n))).toBe(true);
+  });
+});
+
+describe("aplicarRestas: nunca el contrario", () => {
+  const P = (name: string) => ({ name });
+  it("sin restas devuelve todo; sin candidatos devuelve vacio", () => {
+    expect(aplicarRestas([P("Taco")], [], ["taco"])).toEqual({ productos: [P("Taco")], ambiguo: false });
+    expect(aplicarRestas([], ["queso"], ["taco"])).toEqual({ productos: [], ambiguo: false });
+  });
+  it("quita los que llevan la palabra restada en el nombre (incluida subcadena: cebolla en Encebollado) y los «sin ...» del menu", () => {
+    const r = aplicarRestas([P("Tacos de Bistec de Res (orden de 3)"), P("Tacos de Bistec Encebollado (orden de 3)")], ["cebolla"], ["taco", "bistec"]);
+    expect(r.productos.map((p) => p.name)).toEqual(["Tacos de Bistec de Res (orden de 3)"]);
+    expect(aplicarRestas([P("Coca-Cola"), P("Coca-Cola sin Azúcar")], ["hielo"], ["coca"]).productos.map((p) => p.name)).toEqual(["Coca-Cola"]);
+  });
+  it("si el producto sin la palabra restada no esta, NO devuelve el que la lleva (Charros con Queso), salvo la excepcion «Frijol con Tostada» marcada ambiguo", () => {
+    expect(aplicarRestas([P("Frijoles Charros con Queso")], ["queso"], ["frijole", "charro"])).toEqual({ productos: [], ambiguo: false });
+    expect(aplicarRestas([P("Frijol con Tostada"), P("Frijoles Charros Normal")], ["tostada"], ["frijol"])).toEqual({ productos: [P("Frijol con Tostada")], ambiguo: true });
+    expect(aplicarRestas([P("Frijol con Tostada"), P("Frijoles Charros Normal")], ["tostada"], ["frijole"])).toEqual({ productos: [P("Frijol con Tostada")], ambiguo: true });
+  });
+});
+
+describe("R8 (revision): las restas nunca devuelven el contrario, ni con existencias agotadas", () => {
+  async function sinProducto(nombreExacto: string[], consulta: string, slug = "garcia-lavin") {
+    const world = await mundo;
+    const propertyId = world.propertyBySlug.get(slug)!;
+    const real = world.repo.listAvailableProductsForBranch.bind(world.repo);
+    const repo = Object.create(world.repo) as typeof world.repo;
+    repo.listAvailableProductsForBranch = async (id: string) => (await real(id)).filter((p) => !nombreExacto.includes(p.name));
+    return (await searchProducts(repo, { propertyId, query: consulta })).map((p) => ({ name: p.name, ambiguo: (p as { ambiguo?: boolean }).ambiguo === true }));
+  }
+  it("orden: «frijoles charros sin queso» deja la version sin queso primero y sin la «con Queso»; «hamburguesa sin queso» no trae la «con Queso»", async () => {
+    const charros = await nombres("frijoles charros sin queso");
+    expect(charros[0]).toBe("Frijoles Charros Normal");
+    expect(charros.some((n) => /con queso/i.test(n))).toBe(false);
+    const hamb = await nombres("hamburguesa sin queso");
+    expect(hamb).toEqual(["Boyo-Hamburguesa Sencilla"]);
+  });
+  it("«tacos de bistec sin cebolla» no trae el Encebollado; con los de Res agotados da vacio, no el contrario", async () => {
+    expect((await nombres("tacos de bistec sin cebolla")).some((n) => /encebollado/i.test(n))).toBe(false);
+    expect((await nombres("tacos de bistec sin cebolla"))[0]).toBe("Tacos de Bistec de Res (orden de 3)");
+    const sinRes = await sinProducto(["Tacos de Bistec de Res (orden de 3)"], "tacos de bistec sin cebolla");
+    expect(sinRes.some((x) => /encebollado/i.test(x.name))).toBe(false);
+    expect(sinRes.every((x) => x.ambiguo)).toBe(true);
+  });
+  it("«limonada sin soda» y «coca sin azucar», «agua sin gas», «cafe sin cafeina»: sin el producto exacto agotado/inexistente dan vacio, nunca el contrario", async () => {
+    expect(await nombres("limonada sin soda")).toEqual([]);
+    expect(await nombres("agua sin gas")).toEqual([]);
+    expect(await nombres("cafe sin cafeina")).toEqual([]);
+    expect(await sinProducto(["Coca-Cola sin Azúcar"], "coca sin azucar")).toEqual([]);
+    expect(await sinProducto(["Coca-Cola sin Azúcar"], "refresco sin azucar")).toEqual([]);
+    expect((await sinProducto([], "coca sin azucar"))[0]).toMatchObject({ name: "Coca-Cola sin Azúcar" });
+  });
+  it("«coca sin hielo» no cambia a Coca-Cola sin Azucar: trae Coca-Cola y la Light, marcado ambiguo", async () => {
+    const r = await sinProducto([], "coca sin hielo");
+    expect(r.map((x) => x.name)).toEqual(["Coca-Cola", "Coca-Cola Light"]);
+    expect(r.every((x) => x.ambiguo)).toBe(true);
+  });
+  it("T7-064 (plural y singular): «frijoles sin tostadas» y «frijol sin tostada» dan el Frijol con Tostada primero, ambiguo; con el Frijol agotado NO se cobran los Charros de $123", async () => {
+    for (const q of ["frijoles sin tostadas", "frijol sin tostada"]) {
+      const r = await buscar(q);
+      expect(r[0]).toMatchObject({ name: "Frijol con Tostada", price: 93 });
+      expect((r[0] as { ambiguo?: boolean }).ambiguo).toBe(true);
+    }
+    const sinFrijol = await sinProducto(["Frijol con Tostada"], "frijol sin tostada");
+    expect(sinFrijol.every((x) => x.ambiguo)).toBe(true);
+  });
+  it("el sinonimo solo casa con el NOMBRE o alias: «pollo en mole», «ensalada de pollo», «pollo con guacamole/papas/crema/lechuga» siguen vacios", async () => {
+    for (const q of ["pollo en mole", "ensalada de pollo", "pollo con guacamole", "pollo con crema", "pollo con lechuga", "pollo al horno", "pollo gratinado", "pollo con champiñones", "pollo con frijol"]) expect(await nombres(q)).toEqual([]);
+  });
+  it("quitar una resta o inferir un sinonimo va marcado ambiguo (el agente lo confirma); solo quitar una nota con un unico producto, no", async () => {
+    const amb = (r: Awaited<ReturnType<typeof buscar>>) => r.map((p) => (p as { ambiguo?: boolean }).ambiguo);
+    expect(amb(await buscar("francés suizo sin queso")).every((a) => a === true)).toBe(true);
+    expect(amb(await buscar("torta de bistek sin queso"))).toEqual([true]);
+    expect(amb(await buscar("flautas de pollo"))).toEqual([true]);
+    expect(amb(await buscar("pollo con papas"))).toEqual([true]);
+    expect(amb(await buscar("1 francés suizo de pastor planchado"))).toEqual([undefined]);
+  });
+  it("la PRIMERA variante que encuentra algo gana (restas antes que sinonimos) y sus tokens ordenan el resultado", async () => {
+    // «pollo sin cebolla»: la variante sin resta («pollo») ya encuentra platillos con «pollo» en el nombre; no se sustituye por «pechuga».
+    const r = await nombres("pollo sin cebolla");
+    expect(r.length).toBeGreaterThan(0);
+    expect(r.every((n) => /pollo/i.test(n))).toBe(true);
+    expect(r.some((n) => /encebollado|cebolla/i.test(n))).toBe(false);
+  });
+  it("los tokens de la variante ganadora son los que siguen en la busqueda: «media orden de bistec sin cebolla» sigue la duda media orden / medio kilo (500 g primero, ambiguo)", async () => {
+    const r = await buscar("media orden de bistec sin cebolla");
+    expect(r[0]).toMatchObject({ name: "Bistec de Res — 500 g", price: 550 });
+    expect(r.every((p) => (p as { ambiguo?: boolean }).ambiguo === true)).toBe(true);
+  });
+  it("en las variantes una palabra casa con el inicio de una palabra del nombre, no con una subcadena, y las de 1-2 letras solo si son la palabra entera", async () => {
+    expect(await nombres("ito sin queso")).toEqual([]);
+    expect(await nombres("en sin queso")).toEqual([]);
+    expect(await nombres("pollo en sin queso")).toEqual([]);
   });
 });
