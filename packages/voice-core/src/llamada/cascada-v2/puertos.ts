@@ -48,6 +48,8 @@ export interface SesionTts {
    * curso en el proveedor y el audio pendiente se descarta. Un fallo lanza un `Error` con codigo corto en `message`.
    */
   sintetizar(texto: string, senal: AbortSignal): AsyncIterable<Uint8Array>;
+  /** Cuantas sintesis mas admite el proveedor ahora sin agotar su limite de peticiones (Deepgram: 20 `Flush` por 60 s). Con pocas disponibles el nucleo junta frases en una sola. */
+  flushesDisponibles?(): number;
   cerrar(): Promise<void>;
 }
 
@@ -82,6 +84,11 @@ export class ColaAsync<T> {
       return;
     }
     this.items.push(item);
+  }
+
+  /** Saca de golpe lo que ya esta en la cola, sin esperar. */
+  tomarDisponibles(): T[] {
+    return this.items.splice(0, this.items.length);
   }
 
   /** Cierra la cola: el consumidor recibe lo pendiente y luego `null`. */

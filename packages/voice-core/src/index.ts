@@ -42,7 +42,7 @@ export { crearEscaleraLlamada } from "./escalera.ts";
 export type { EscalonLlamada, EscaleraLlamada, OpcionesEscalera } from "./escalera.ts";
 export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav, pistaVocabulario } from "./llamada/cascada-openrouter.ts";
 export type { CascadaOpenRouterOpciones, MensajeLlmVoz, PeticionLlmVoz, ProveedorCascadaLlamada, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "./llamada/cascada-openrouter.ts";
-export { ColaAsync, DEEPGRAM_LISTEN_URL, DEEPGRAM_SPEAK_URL, VOCES_AURA2_ES, crearProveedorCascadaV2, crearSegmentadorFrases, crearSttDeepgram, crearTtsDeepgram, ejecutarHerramientas, keytermsDe, limpiarParaVoz, partirTexto, resolverVozAura2, urlListenDeepgram, urlSpeakDeepgram } from "./llamada/cascada-v2/index.ts";
+export { ColaAsync, DEEPGRAM_LISTEN_URL, DEEPGRAM_SPEAK_URL, VOCES_AURA2_ES, crearProveedorCascadaV2, crearRecortadorInicial, crearSegmentadorFrases, crearSttDeepgram, crearTtsDeepgram, ejecutarHerramientas, keytermsDe, limpiarParaVoz, partirTexto, resolverVozAura2, urlListenDeepgram, urlSpeakDeepgram } from "./llamada/cascada-v2/index.ts";
 export type { CascadaV2Opciones, ContextoTurnoLlm, CrearSocketDeepgram, DeepgramSttOpciones, DeepgramTtsOpciones, EventosStt, OpcionesSocketDeepgram, OpcionesStt, OpcionesTts, ProveedorCascadaV2Llamada, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts, SocketDeepgram } from "./llamada/cascada-v2/index.ts";
 export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";
 export type { CredencialesVoz, DepsPlataformaVoz, EstadoEscaleraVoz, EstadoEscalonVoz } from "./plataforma.ts";

@@ -12,3 +12,5 @@ export type { OpcionesSegmentador, SegmentadorFrases } from "./frases.ts";
 export { ejecutarHerramientas } from "./herramientas.ts";
 export { crearSocketDeepgramGlobal } from "./socket.ts";
 export type { CrearSocketDeepgram, OpcionesSocketDeepgram, SocketDeepgram } from "./socket.ts";
+export { crearRecortadorInicial } from "./recorte.ts";
+export type { OpcionesRecorte, RecortadorInicial } from "./recorte.ts";
