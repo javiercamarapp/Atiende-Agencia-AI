@@ -207,8 +207,11 @@ export async function handleInboundWhatsAppMessage(
           if (turnDelModelo.handoff && handoffGate) {
             try {
               solicitud = (await handoffGate.solicitarHumano({ organizationId, phone, motivo: turnDelModelo.handoff.motivo, crisis: false })) || null;
-            } catch {
+            } catch (err) {
               solicitud = null;
+              // Rastro sin PII: solo la clase del error y el SQLSTATE (nunca el mensaje, el telefono ni el texto del cliente).
+              const code = (err as { code?: unknown } | null)?.code;
+              console.warn(`[citas-whatsapp] solicitarHumano fallo tras una falla del asistente: ${err instanceof Error ? err.constructor.name : typeof err}${typeof code === "string" ? ` ${code}` : ""}`);
             }
           }
           const turn = solicitud && turnDelModelo.handoff ? { ...turnDelModelo, reply: turnDelModelo.handoff.replyConAviso } : turnDelModelo;
