@@ -79,6 +79,42 @@ export function canonicalRequestedComplement(valor: unknown): RequestedComplemen
   return null;
 }
 
+/** Complementos basicos que el cliente EXCLUYE en el texto libre de las notas («sin cebolla», «sin salsa roja», «sin limones»). Lista cerrada de frases; el resto del texto no se toca. */
+const EXCLUSIONES_EN_NOTAS: ReadonlyArray<readonly [RegExp, DefaultComplement]> = [
+  [/\bsin\s+(?:la\s+)?(?:cebolla|cilantro)\b/, "cebolla_cilantro"],
+  [/\bsin\s+(?:la\s+)?salsa\s+roja\b/, "salsa_roja"],
+  [/\bsin\s+(?:la\s+)?salsa\s+verde\b/, "salsa_verde"],
+  [/\bsin\s+(?:la\s+)?(?:salsa\s+)?(?:mexicana|pico\s+de\s+gallo|xnipec)\b/, "salsa_mexicana"],
+  [/\bsin\s+(?:la\s+)?(?:salsa\s+)?guacamolera\b/, "salsa_guacamolera"],
+  [/\bsin\s+(?:los\s+)?limon(?:es)?\b/, "limones"],
+  [/\bsin\s+(?:la\s+)?crema\s+de\s+ajo\b/, "crema_ajo"],
+];
+
+export function complementosExcluidosEnNotas(notes: unknown): DefaultComplement[] {
+  if (typeof notes !== "string" || !notes.trim()) return [];
+  const t = notes.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return EXCLUSIONES_EN_NOTAS.filter(([patron, item]) => excluyeDeVerdad(patron, item, t)).map(([, item]) => item);
+}
+
+/** La exclusion alcanza a TODO el complemento: no es parcial («sin salsa roja en los de pastor, en bistec sí», «sin cilantro en los frijoles») ni deja la otra mitad del par
+ * («sin cebolla pero con cilantro» sigue llevando el cilantro; «con cebolla y sin cilantro» la cebolla). */
+function excluyeDeVerdad(patron: RegExp, item: DefaultComplement, t: string): boolean {
+  if (item === "cebolla_cilantro") {
+    const sinCebolla = /\bsin\s+(?:la\s+)?cebolla\b/.test(t);
+    const sinCilantro = /\bsin\s+(?:el\s+)?cilantro\b/.test(t);
+    if (sinCebolla && !sinCilantro && /\bcon\s+(?:el\s+)?cilantro\b/.test(t)) return false;
+    if (sinCilantro && !sinCebolla && /\bcon\s+(?:la\s+)?cebolla\b/.test(t)) return false;
+  }
+  for (const m of t.matchAll(new RegExp(patron.source, "g"))) {
+    const clausula = t.slice((m.index ?? 0) + m[0].length).split(/[,.;\n]/)[0] ?? "";
+    const parcial =
+      /^\s+(?:solo\s+)?(?:en|para)\s+(?:los|las|el|la|mis|sus|un|una|unos|unas)\b/.test(clausula) &&
+      !/^\s+(?:solo\s+)?(?:en|para)\s+(?:los\s+|las\s+|el\s+|mi\s+)?(?:todos\s+)?(?:tacos?|pedido|ordenes|orden|todo)\s*$/.test(clausula);
+    if (!parcial) return true;
+  }
+  return false;
+}
+
 /** `cebolla` es el nombre historico de `cebolla_cilantro`: ambos omiten la misma salsa. */
 function canonicalComplement(item: DefaultComplement): DefaultComplement {
   return item === "cebolla" ? "cebolla_cilantro" : item;
@@ -130,7 +166,8 @@ export function buildComplementNotes(
   // Las 9 salsas (incluidas habanero y crema de ajo) ya van incluidas sin costo por omision, asi que pedir
   // habanero/crema de ajo NO agrega una linea "solicitados" aparte (apareceria a la vez como incluido y
   // solicitado). Si el cliente la pide expresamente, esa peticion gana sobre una omision contradictoria.
-  const omittedSet = new Set(omitted.map(canonicalComplement));
+  // QA-PM-R6-voz-02: «sin cebolla, sin cilantro» en las notas libres y a la vez «Básicas: cebolla con cilantro» contradecian la comanda. Lo que las notas excluyen sale de las básicas.
+  const omittedSet = new Set([...omitted.map(canonicalComplement), ...complementosExcluidosEnNotas(notes)]);
   if (basics) return buildComplementNotesConBasicas(notes, requested, omittedSet, basics);
   const requestedSet = new Set<DefaultComplement>(requested.filter((r) => (DEFAULT_COMPLEMENTS as readonly string[]).includes(r)) as unknown as DefaultComplement[]);
   const included = DEFAULT_COMPLEMENTS.filter((item) => requestedSet.has(item) || !omittedSet.has(item));

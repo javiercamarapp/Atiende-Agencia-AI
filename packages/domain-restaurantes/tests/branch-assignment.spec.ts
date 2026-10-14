@@ -79,6 +79,12 @@ describe("assignBranch -- coordenadas", () => {
     await expect(assignBranch(repo, { organizationId, ...coords })).rejects.toBeInstanceOf(OrderValidationError);
   });
 
+  // QA-PM-R6 (T7-041): el rechazo le dice al modelo que NO repita las mismas coordenadas (antes repetia hasta agotar vueltas y respondia «problema tecnico»).
+  it.each([["lng -614100", { lat: 21.0211, lng: -614100 }], ["lat 91", { lat: 91, lng: -89.6 }]])("el error de coordenadas invalidas (%s) es accionable: pide la ubicacion o la colonia", async (_n, coords) => {
+    const { repo, organizationId } = seed();
+    await expect(assignBranch(repo, { organizationId, ...coords })).rejects.toThrow(/NO las repita.*colonia/s);
+  });
+
   it("los polos y la fecha internacional no rompen el calculo", async () => {
     const { repo, organizationId } = seed();
     for (const [lat, lng] of [[90, 0], [-90, 180], [0, -180]] as const) {

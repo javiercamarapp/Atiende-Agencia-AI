@@ -56,7 +56,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 export function saludoSegunHora(timezone: string, ahora: Date = new Date()): string {
   const hora = Number(new Intl.DateTimeFormat("es-MX", { timeZone: timezone, hour: "numeric", hourCycle: "h23" }).format(ahora));
   if (hora >= 5 && hora < 12) return "Buenos días";
-  if (hora >= 12 && hora < 19) return "Buenas tardes";
+  if (hora >= 12 && hora < 20) return "Buenas tardes"; // mismo corte que restaurantes: «buenas noches» desde las 20:00
   return "Buenas noches";
 }
 
