@@ -183,43 +183,103 @@ const NOTAS_DE_PREPARACION = new Set(["dorado", "dorada", "doradito", "doradita"
  * Pechuga") y "empanizada" es el alias "empanizado" de los Crujientes. Nunca se mapea a un platillo distinto (pastor/bistec) ni a algo que el menu no tiene (BBQ). */
 const SINONIMOS_SI_NO_HAY_RESULTADO: Readonly<Record<string, string>> = { pollo: "pechuga", empanizada: "empanizado" };
 
-const esContenido = (t: string) => !t.startsWith("peso:") && t !== SIN_ALCOHOL && t !== ORDEN_COMPLETA && t !== "1/2";
+/** «sin X» donde X DEFINE otro producto del menu (Coca-Cola sin Azucar, Limonada con Soda, el agua con gas): no es un ajuste que se pueda ignorar. Si la busqueda literal no
+ * lo encuentra (agotado), la respuesta es vacia ("no lo tenemos"): relajarlo cobraria el CONTRARIO de lo pedido. */
+const RESTAS_QUE_CAMBIAN_EL_PRODUCTO = new Set(["azucar", "gluten", "lactosa", "cafeina", "soda", "gas", "alcohol"]);
 
-/** Quita las restas "sin X" ("sin queso", "sin la cebolla", "sin queso ni cebolla"): son un AJUSTE al platillo, no otro producto ni un precio distinto. */
-function quitarRestas(tokens: readonly string[]): string[] {
+const esContenido = (t: string) => !t.startsWith("peso:") && t !== SIN_ALCOHOL && t !== ORDEN_COMPLETA && t !== "1/2" && t !== "sin" && t !== "ni";
+
+/** Quita las restas "sin X" ("sin queso", "sin queso ni cebolla"; el tokenizador ya elimino los articulos) y devuelve tambien las palabras restadas. */
+function quitarRestas(tokens: readonly string[]): { readonly tokens: string[]; readonly restados: string[] } {
   const salida: string[] = [];
+  const restados: string[] = [];
   for (let i = 0; i < tokens.length; i++) {
     if (tokens[i] !== "sin") {
       salida.push(tokens[i]!);
       continue;
     }
     i++;
-    if (tokens[i] === "el" || tokens[i] === "la" || tokens[i] === "los" || tokens[i] === "las") i++;
-    while (tokens[i + 1] === "ni" && tokens[i + 2] !== undefined) i += 2;
+    if (tokens[i] !== undefined) restados.push(tokens[i]!);
+    while (tokens[i + 1] === "ni" && tokens[i + 2] !== undefined) {
+      restados.push(tokens[i + 2]!);
+      i += 2;
+    }
   }
-  return salida;
+  return { tokens: salida, restados };
+}
+
+/** Una consulta alternativa: los `tokens` a buscar y las palabras `restados` ("sin X") que el cliente quito del platillo (vacio si no hubo restas). */
+export interface VarianteDeBusqueda {
+  readonly tokens: string[];
+  readonly restados: string[];
+  /** true si algun token se cambio por su sinonimo del menu (pollo -> pechuga): es una INFERENCIA, el agente debe confirmarla. */
+  readonly conSinonimo: boolean;
 }
 
 /**
  * Consultas alternativas, de la mas conservadora a la mas permisiva, para cuando la busqueda literal (AND de todos los tokens) no encuentra nada: sin las restas
  * "sin X", sin las notas de preparacion y/o con el sinonimo del menu. Una variante siempre conserva al menos una palabra de producto (nunca se busca solo el peso ni
- * el marcador), asi que "sin queso" o "sushi sin queso" no inventan un producto. Quien la use prueba las variantes EN ORDEN y se queda con la primera que encuentra algo.
+ * el marcador), asi que "sin queso" o "sushi sin queso" no inventan un producto. Una resta que define otro producto (sin azucar, sin soda, sin gas...) nunca se relaja.
+ * Quien la use prueba las variantes EN ORDEN con `matchesProductSearch(..., true)` y `aplicarRestas`, y se queda con la primera que encuentra algo.
  */
-export function variantesMasPermisivas(tokens: readonly string[]): string[][] {
-  const sinRestas = quitarRestas(tokens);
+export function variantesMasPermisivas(tokens: unknown): VarianteDeBusqueda[] {
+  if (!Array.isArray(tokens) || !tokens.every((t) => typeof t === "string")) return [];
+  const entrada = tokens as string[];
+  const { tokens: sinRestas, restados } = quitarRestas(entrada);
+  const relajaRestas = !restados.some((r) => RESTAS_QUE_CAMBIAN_EL_PRODUCTO.has(r));
   const sinNotas = (ts: readonly string[]) => ts.filter((t) => !NOTAS_DE_PREPARACION.has(t));
   const conSinonimos = (ts: readonly string[]) => ts.map((t) => SINONIMOS_SI_NO_HAY_RESULTADO[t] ?? t);
-  const bases = [sinRestas, sinNotas(tokens), sinNotas(sinRestas)];
-  const candidatas = [...bases, conSinonimos(tokens), ...bases.map(conSinonimos)];
-  const vistas = new Set<string>([tokens.join(" ")]);
-  const salida: string[][] = [];
-  for (const v of candidatas) {
-    const clave = v.join(" ");
-    if (vistas.has(clave) || !v.some(esContenido)) continue;
+  // [restas, notas, sinonimos], de menos a mas cambios a la consulta.
+  const combinaciones: ReadonlyArray<readonly [boolean, boolean, boolean]> = [
+    [true, false, false], [false, true, false], [true, true, false], [false, false, true], [true, false, true], [false, true, true], [true, true, true],
+  ];
+  const vistas = new Set<string>([entrada.join(" ")]);
+  const salida: VarianteDeBusqueda[] = [];
+  for (const [r, n, y] of combinaciones) {
+    if (r && !relajaRestas) continue;
+    let ts: string[] = r ? sinRestas : entrada;
+    if (n) ts = sinNotas(ts);
+    if (y) ts = conSinonimos(ts);
+    const clave = ts.join(" ");
+    if (vistas.has(clave) || !ts.some(esContenido)) continue;
     vistas.add(clave);
-    salida.push(v);
+    salida.push({ tokens: ts, restados: r ? restados : [], conSinonimo: y });
   }
   return salida;
+}
+
+/** Raiz tosca para comparar «frijol/frijoles/frijole», «taco/tacos»: solo sirve para igualar conjuntos de palabras, no para buscar. */
+const raiz = (w: string) => w.replace(/(?:es|s|e)$/, "");
+const MARCAS_DE_VERSION_BASE = new Set(["normal", "regular", "sencilla", "sencillo"]);
+
+/**
+ * Aplica las restas «sin X» a los productos que hallo una variante relajada. La resta es un AJUSTE al platillo, asi que NUNCA se devuelve un producto que lleva X en su
+ * nombre ("Frijoles Charros con Queso", "Encebollado") ni una version «sin ...» del menu (Coca-Cola sin Azucar para «coca sin hielo»): serian el contrario. Unica
+ * excepcion: el producto cuyo nombre SIN la palabra X es exactamente lo pedido y no hay otra forma de pedirlo ("frijol sin tostada" = «Frijol con Tostada» menos la
+ * tostada, mientras los Frijoles Charros son otro platillo; solo cuando el platillo es UNA palabra «con X», para que «frijoles charros sin queso» no cobre «con Queso»); se devuelve solo y marcado `ambiguo` para que el agente confirme. Si no queda nada, vacio.
+ */
+export function aplicarRestas<T extends { readonly name: string }>(
+  candidatos: readonly T[],
+  restados: readonly string[],
+  tokens: readonly string[],
+): { readonly productos: T[]; readonly ambiguo: boolean } {
+  if (restados.length === 0) return { productos: [...candidatos], ambiguo: false };
+  const consulta = new Set(tokens.filter(esContenido).map(raiz));
+  const info = candidatos.map((p) => {
+    const nombre = sinAcentos(p.name);
+    const palabras = nombre.split(/[^a-z0-9.]+/).filter(Boolean);
+    const conSin = /\bsin\b/.test(nombre);
+    const conX = restados.some((x) => nombre.includes(x));
+    const comoPalabra = restados.some((x) => palabras.includes(x));
+    const nucleo = new Set([...palabrasNucleo(p.name)].filter((w) => !restados.includes(w) && !MARCAS_DE_VERSION_BASE.has(w)).map(raiz));
+    const equivalente = nucleo.size === consulta.size && [...nucleo].every((w) => consulta.has(w));
+    return { p, conSin, conX, comoPalabra, equivalente };
+  });
+  const limpios = info.filter((i) => !i.conX && !i.conSin);
+  if (limpios.some((i) => i.equivalente)) return { productos: limpios.map((i) => i.p), ambiguo: false };
+  const exentos = info.filter((i) => i.comoPalabra && !i.conSin && i.equivalente && consulta.size === 1);
+  if (exentos.length > 0) return { productos: exentos.map((i) => i.p), ambiguo: true };
+  return { productos: limpios.map((i) => i.p), ambiguo: false };
 }
 
 /** Palabras que identifican un platillo (sin "de/la", sin "(orden de 3)", sin el peso "— 500 g"): sirve para saber si un producto es una
@@ -287,8 +347,26 @@ export function ordenarPorRelevancia<T extends { readonly name: string; readonly
 export function matchesProductSearch(
   tokens: readonly string[],
   fields: { readonly name: string; readonly description: string | null; readonly categoryName: string | null; readonly searchKeywords: readonly string[] },
+  estricto = false,
 ): boolean {
+  // `estricto` (variantes relajadas de la busqueda): cada palabra debe ser PALABRA o inicio de palabra del NOMBRE o de un alias, nunca subcadena ni de la descripcion o la
+  // categoria ("mole" estaba dentro de «guacamole» y «ensalada» en la descripcion de una flauta: «pollo en mole» aparecia como una flauta). El peso y los marcadores no cambian.
+  if (estricto) {
+    const palabrasDe = (txt: string) => sinAcentos(txt).split(/[^a-z0-9.]+/).filter(Boolean);
+    const vocab = [...palabrasDe(fields.name), ...fields.searchKeywords.flatMap(palabrasDe)];
+    const pesoNombre = pesoDeProductoEnGramos(fields.name);
+    const planoNombre = sinAcentos(fields.name);
+    return tokens.every((t) => {
+      if (t === "peso:cualquiera") return pesoNombre !== null;
+      if (t.startsWith("peso:")) return pesoNombre !== null && pesoNombre === Number(t.slice(5));
+      if (t === SIN_ALCOHOL) return MENU_SIN_ALCOHOL.test(planoNombre);
+      if (t === ORDEN_COMPLETA) return !/\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(planoNombre);
+      if (t === "1/2") return /\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(planoNombre);
+      return vocab.some((w) => (t.length <= 2 ? w === t : w.startsWith(t)));
+    });
+  }
   const textoPlano = sinAcentos([fields.name, fields.description, fields.categoryName].filter(Boolean).join(" "));
+
   const alias = fields.searchKeywords.map(sinAcentos);
   // "cocacola" (junto) debe encontrar "Coca-Cola": una palabra larga tambien se compara contra el texto sin guiones ni espacios.
   const textoCompacto = textoPlano.replace(/[\s-]/g, "");

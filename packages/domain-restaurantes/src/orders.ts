@@ -18,7 +18,7 @@ import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
 import { applyPromotionToOrder, normalizePromotionCode, renglonesConPromocionAplicada, selectAutomaticPromotion } from "./promotions.ts";
-import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN, variantesMasPermisivas } from "./product-search.ts";
+import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN, aplicarRestas, variantesMasPermisivas } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
@@ -74,17 +74,23 @@ export async function searchProducts(repo: RestaurantesRepository, args: { reado
   // R8 (T7-032/045/064/031/005/061): "torta de bistek sin queso", "frijol sin tostada", "pastor planchado", "flautas de pollo doradas", "1/4 de pollo bien picada" daban lista vacia
   // porque "sin", "queso", "planchado"... eran palabras obligatorias del nombre, y el agente escalaba o cobraba OTRO producto. Solo si la busqueda literal no encuentra nada se prueba
   // sin las restas "sin X", sin las notas de preparacion y con el sinonimo del menu; el precio siempre sale del producto del menu que casa.
+  let relajado = false;
+  let ambiguoPorRestas = false;
   if (encontrados.length === 0) {
     for (const variante of variantesMasPermisivas(tokens)) {
-      const hallados = buscar(variante);
-      if (hallados.length > 0) {
-        tokens = variante;
-        encontrados = hallados;
+      const alcanzados = catalog.filter((p) => matchesProductSearch(variante.tokens, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }, true));
+      const { productos, ambiguo: dudoso } = aplicarRestas(alcanzados, variante.restados, variante.tokens);
+      if (productos.length > 0) {
+        tokens = variante.tokens;
+        encontrados = productos;
+        relajado = true;
+        // Quitar una resta o inferir un sinonimo es una suposicion: el agente debe confirmarla con el cliente antes de cotizar (`ambiguo`).
+        ambiguoPorRestas = dudoso || variante.restados.length > 0 || variante.conSinonimo;
         break;
       }
     }
   }
-  let ambiguo = false;
+  let ambiguo = relajado && (ambiguoPorRestas || encontrados.length > 1);
   let mediaOrdenODeMedioKilo = false;
   const gramosPedidos = tokens.filter((t) => t.startsWith("peso:")).map((t) => Number(t.slice(5))).filter((n) => Number.isFinite(n) && n > 0);
   // Con varios pesos en la consulta se usa el MENOR: nunca se ofrece una presentacion mayor a alguno de ellos.
