@@ -2,7 +2,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
 import { describe, expect, it } from "vitest";
-import { InMemoryAutopilotoRepository, crearHooksAutopilotoTurno, subtipoQueja } from "../../src/autopiloto/index.ts";
+import { InMemoryAutopilotoRepository, crearHooksAutopilotoTurno } from "../../src/autopiloto/index.ts";
 import type { AutopilotoTurnoHooks, PedidoMemoria } from "../../src/autopiloto/index.ts";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { createOrder } from "../../src/orders.ts";
