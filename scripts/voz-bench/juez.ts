@@ -47,6 +47,7 @@ async function una(r: Reg): Promise<void> {
   for (let i = 0; i < 2 && !out; i++) {
     try { out = parse(await aux.pedir({ sistema, mensajes: [{ role: "user", content: user }] })); } catch { /* reintento */ }
   }
+  if (!out) return; // sin veredicto (p. ej. sin credito): no se registra para poder reintentar
   const costo = aux.acum.costoUsd - gasto;
   gasto = aux.acum.costoUsd;
   appendFileSync(salida, JSON.stringify({ clave: r.clave, motor: r.motor, modelo: r.modelo, etiqueta: r.etiqueta ?? "", guion: r.guion, rep: r.rep, ok: r.ok, juez: out, costoUsd: costo }) + "\n");

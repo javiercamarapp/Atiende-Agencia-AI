@@ -4,10 +4,11 @@ Uso: python3 reporte.py DIR [prefijo ...]   (prefijos de archivo: v1 = voz casca
 import json, sys, os, glob, statistics, collections
 
 D = sys.argv[1]
-prefijos = sys.argv[2:] or ["v1", "v2", "v3"]
+prefijos = sys.argv[2:] or ["v1", "r1", "v2", "v3"]
 CONTROLADOR = {"V08", "V09", "V10", "V13", "V14", "V15"}          # prueban la maquina de llamada, no al modelo (siempre pasan)
 SERVIDOR = {"V16", "V21", "V23"}                                    # dependen de provocar fallas/zonas que el prompt no cubre: se reportan aparte
-COMANDA_VOZ = {"V01", "V02", "V03", "V04", "V06", "V17", "V20", "V24", "V25", "V27", "V28", "V29", "V30", "V31", "V32"}
+RECOGER_VOZ = {"V02", "V24", "V25", "V27", "V28", "V29", "V30", "V31", "V32"}  # validan horario con Date.now(): solo valen las corridas con reloj congelado
+COMANDA_VOZ = {"V01", "V03", "V04", "V06", "V17", "V20"}                            # comandas a domicilio (no dependen de la hora)
 ESCALA_VOZ = {"V07", "V22", "V26"}
 REGLAS_VOZ = {"V05", "V06"}
 NO_APLICA = lambda g: g["grader"] == "G_BARGE_IN" or (g["grader"] == "G_TOOLS" and "no se rechazo" in g["detalle"])  # barge-in no existe por texto; no intentar una accion prohibida es correcto
@@ -37,7 +38,22 @@ for f in sorted(glob.glob(os.path.join(D, "*.jsonl"))):
             if l.strip():
                 r = json.loads(l); r["clave"] = f'{r["motor"]}|{r["modelo"]}|{r.get("etiqueta") or ""}|{r["guion"]}|{r["rep"]}'; recs.append(r)
 
-def fallos_efectivos(r): return [f for f in r["fallos"] if not NO_APLICA(f)]
+recs = [r for r in recs if not (r["motor"] != "texto" and r["guion"].split("-")[0] in RECOGER_VOZ and not r.get("reloj"))]
+
+import re
+PALABRAS = {"63": "sesenta y tres", "412": "cuatrocientos doce", "45": "cuarenta y cinco", "47": "cuarenta y siete"}
+def falso_positivo(r, f):
+    """Dos falsos positivos que NO son errores del agente: (1) direccion dictada en palabras ("cuatrocientos doce") en vez de cifras;
+    (2) en Gemini Live la transcripcion del audio pierde un fragmento alrededor de una herramienta ("...veintiocho pesos" por "trescientos veintiocho")."""
+    m = re.match(r'la direccion no incluye "(\w+)": (.*)', f["detalle"])
+    if f["grader"] == "G_PEDIDO" and m and PALABRAS.get(m.group(1)) and PALABRAS[m.group(1)] in m.group(2).lower():
+        return True
+    m = re.match(r"el agente dijo \$(\d+) y ninguna", f["detalle"])
+    if f["grader"] == "G_PRECIO_HABLADO" and m and r["motor"] == "gemini":
+        totales = {t for h in r.get("herramientasDetalle", []) for t in re.findall(r'"total":(\d+)', h["r"])}
+        return any(t.endswith(m.group(1)) and len(t) > len(m.group(1)) for t in totales)
+    return False
+def fallos_efectivos(r): return [f for f in r["fallos"] if not NO_APLICA(f) and not falso_positivo(r, f)]
 def ok_estricto(r): return not r.get("error") and not fallos_efectivos(r)
 def ok_ajustado(r):
     if ok_estricto(r): return True
@@ -67,7 +83,10 @@ def resumen(k, rs):
         o["escal_innecesaria"] = pct(sum(any(f["grader"] == "G_SIN_ESCALACION_INNECESARIA" for f in fallos_efectivos(r)) for r in val), len(val))
         o["precio_inv"] = pct(sum(any(f["grader"] == "G_REGLA_R6" for f in fallos_efectivos(r)) for r in val), len(val))
     else:
-        nuc = [r for r in val if idc(r) not in CONTROLADOR | SERVIDOR]
+        nuc = [r for r in val if idc(r) not in CONTROLADOR | SERVIDOR | RECOGER_VOZ]
+        rec_ = [r for r in val if idc(r) in RECOGER_VOZ]
+        o["recoger_ajustado"] = (pct(sum(ok_ajustado(r) for r in rec_), len(rec_)) + f" n={len(rec_)}") if rec_ else "sin datos con reloj"
+        o["recoger_estricto"] = pct(sum(ok_estricto(r) for r in rec_), len(rec_)) if rec_ else "-"
         com = [r for r in val if idc(r) in COMANDA_VOZ]
         esc = [r for r in val if idc(r) in ESCALA_VOZ]
         o["comanda_estricto"] = pct(sum(ok_estricto(r) for r in com), len(com)) + f" n={len(com)}"
@@ -105,6 +124,7 @@ def resumen(k, rs):
     tv = [r.get("turnosVoz") for r in val if r.get("turnosVoz")]
     if tv: o["turnos_cliente_medio"] = round(statistics.mean(tv), 1); o["usd_por_turno_cliente"] = round(sum(cm) / sum(tv), 5)
     if motor == "gemini":
+        o["errores_proveedor"] = f'{sum(1 for r in val if r.get("caidas"))}/{len(val)} llamadas con caida del websocket ({collections.Counter(c[:12] for r in val for c in r.get("caidas", [])).most_common(2)})'
         mins = [(r["chars"]["agente"] + r["chars"]["cliente"]) / 14 / 60 for r in val]
         o["min_est_medio"] = round(statistics.mean(mins), 2); o["usd_por_min_est"] = round(sum(cm) / sum(mins), 3)
     js = [juez.get(r["clave"]) for r in val if juez.get(r["clave"])]
@@ -120,7 +140,7 @@ def resumen(k, rs):
 
 res = [resumen(k, v) for k, v in grupos.items()]
 json.dump(res, open(os.path.join(D, "resumen.json"), "w"), indent=1, ensure_ascii=False)
-COLS = [("modelo", lambda r: r["modelo"].split("/")[-1] + (" " + r["razon"] if r["razon"] else "") + (" +" + r["etiqueta"] if r["etiqueta"] else "")), ("n", "corridas"), ("infra", "infra"), ("comanda estricto", "comanda_estricto"), ("comanda ajustado", "comanda_ajustado"), ("escalamiento", "escalamiento"), ("pass núcleo estr/ajust", lambda r: f'{r["pass_nucleo_estricto"]} / {r["pass_nucleo_ajustado"]}'), ("pass@1", "pass@1_ajustado"), ("pass^N", "pass^N_ajustado"), ("precio inv.", "precio_inv"), ("reglas duras (n / %corr)", lambda r: f'{r["reglas_duras"]} / {r["reglas_duras_corridas"]}'), ("escal. innec.", "escal_innecesaria"), ("afirm. falsas", "afirmaciones_falsas"), ("falla falsa", "falla_falsa"), ("natural. 1-5", "naturalidad_media"), ("TTFT turno p50/p95", "ttft_p50_p95_ms"), ("total turno p50/p95", "total_turno_p50_p95_ms"), ("USD/corrida", "usd_por_corrida"), ("caché", "cache")]
+COLS = [("modelo", lambda r: r["modelo"].split("/")[-1] + (" " + r["razon"] if r["razon"] else "") + (" +" + r["etiqueta"] if r["etiqueta"] else "")), ("n", "corridas"), ("infra", "infra"), ("comanda estricto", "comanda_estricto"), ("comanda ajustado", "comanda_ajustado"), ("escalamiento", "escalamiento"), ("recoger (reloj fijo) estr/ajust", lambda r: (r.get("recoger_estricto","-") + " / " + r.get("recoger_ajustado","-")) if r["motor"] != "texto" else "-"), ("pass núcleo estr/ajust", lambda r: f'{r["pass_nucleo_estricto"]} / {r["pass_nucleo_ajustado"]}'), ("pass@1", "pass@1_ajustado"), ("pass^N", "pass^N_ajustado"), ("precio inv.", "precio_inv"), ("reglas duras (n / %corr)", lambda r: f'{r["reglas_duras"]} / {r["reglas_duras_corridas"]}'), ("escal. innec.", "escal_innecesaria"), ("afirm. falsas", "afirmaciones_falsas"), ("falla falsa", "falla_falsa"), ("natural. 1-5", "naturalidad_media"), ("TTFT turno p50/p95", "ttft_p50_p95_ms"), ("total turno p50/p95", "total_turno_p50_p95_ms"), ("USD/corrida", "usd_por_corrida"), ("caché", "cache")]
 def tabla(motores):
     print("| " + " | ".join(c[0] for c in COLS) + " |"); print("|" + "---|" * len(COLS))
     for r in res:
