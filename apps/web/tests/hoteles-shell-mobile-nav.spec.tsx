@@ -210,9 +210,13 @@ describe("HotelesShell — nav móvil", () => {
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];
     const mobileHeader = headers.find((h) => h.className.includes("md:hidden"))!;
-    const select = mobileHeader.querySelector("button#hoteles-hotel-activo");
+    const select = mobileHeader.querySelector("button#hoteles-hotel-activo-movil");
     expect(select).not.toBeNull();
     expect(etiquetasDe(select)).toEqual(["Hotel Centro", "Hotel Norte"]);
+    // Cada copia (Sidebar y cabecera movil) lleva su propio id y su propia etiqueta: sin ids duplicados.
+    expect(root.querySelectorAll("#hoteles-hotel-activo")).toHaveLength(1);
+    expect(root.querySelectorAll("#hoteles-hotel-activo-movil")).toHaveLength(1);
+    expect(root.querySelector('label[for="hoteles-hotel-activo-movil"]')?.textContent).toBe("Hotel activo");
   });
 
   it("PR-6: expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical hoteles", async () => {
