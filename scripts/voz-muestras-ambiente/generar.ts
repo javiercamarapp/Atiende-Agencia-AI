@@ -6,10 +6,10 @@
 // el mezclado. Los WAV y el README van FUERA del repo (por omision en ~/atiende-loop/pm/audio-ambiente/) y NO se commitean.
 // Usa el MISMO mezclador de la llamada (`MezcladorSalida`); no llama a ninguna API.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { HZ_MUESTRA, PERFILES_AMBIENTE, PRESETS_AMBIENTE, PRESET_RESTAURANTE_HUMANO, aTelefono, escribirWav16, leerWav16, medirMuestra, remuestrearLineal, renderizarMuestra } from "../../packages/voice-core/src/index.ts";
+import { HZ_MUESTRA, PERFILES_AMBIENTE, PRESETS_AMBIENTE, PRESET_RESTAURANTE_HUMANO, aTelefono, escribirWav16, leerWav16, medirMuestra, medirTelefono, remuestrearLineal, renderizarMuestra } from "../../packages/voice-core/src/index.ts";
 import type { MetricasMuestra, PresetAmbiente } from "../../packages/voice-core/src/index.ts";
 
 const FRASES = [
@@ -68,7 +68,7 @@ for (const preset of PRESETS_AMBIENTE as readonly PresetAmbiente[]) {
     if (def.tipo === "voz-ambiente-tecleo") {
       const tel = `${preset}-4-telefono.wav`;
       writeFileSync(join(out, tel), escribirWav16(aTelefono(r.pcm), 8000));
-      filas.push({ archivo: tel, descripcion: "Lo anterior como lo oye el cliente por telefono (8 kHz, 300-3400 Hz, mu-law)", m: medirMuestra({ ...r, pcm: r.pcm }) });
+      filas.push({ archivo: tel, descripcion: "Lo anterior como lo oye el cliente por telefono (8 kHz, 300-3400 Hz, mu-law)", m: medirTelefono(r) });
     }
   }
 }
@@ -78,7 +78,7 @@ for (const volumenFondo of [5, 8, 12, 16]) {
   const r = renderizarMuestra({ preset: "cocina-taqueria", tipo: "voz-ambiente-tecleo", segundos, semilla, volumenFondo, ...(frases ? { frases } : {}) });
   const archivo = `comparar-volumen-${String(volumenFondo).padStart(2, "0")}-telefono.wav`;
   writeFileSync(join(out, archivo), escribirWav16(aTelefono(r.pcm), 8000));
-  filas.push({ archivo, descripcion: `cocina-taqueria por telefono con el ambiente al ${volumenFondo} %`, m: medirMuestra(r) });
+  filas.push({ archivo, descripcion: `cocina-taqueria por telefono con el ambiente al ${volumenFondo} %`, m: medirTelefono(r) });
 }
 
 const f = (n: number | null, d = 1): string => (n === null ? "—" : Number.isFinite(n) ? n.toFixed(d) : "-inf");
@@ -114,11 +114,19 @@ Presets: ${PRESETS_AMBIENTE.map((id) => `**${id}** (${PERFILES_AMBIENTE[id].desc
 |---|---|---|---|---|---|---|
 ${filas.map((x) => `| ${x.archivo} | ${f(x.m.rmsDbfs)} | ${f(x.m.lufsAprox)} | ${f(x.m.picoDbfs)} | ${x.m.muestrasRecortadas} | ${x.m.ventanasRepetidas} | ${f(x.m.vozSobreAmbienteDb)} |`).join("\n")}
 
-(LUFS aproximado: ponderación K sin compuerta. «Voz sobre ambiente» = RMS de la voz contra el RMS de todo lo demás durante las frases; los archivos 4 se miden antes de pasar a teléfono.)
+(LUFS aproximado: ponderación K sin compuerta. «Voz sobre ambiente» = RMS de la voz contra el RMS de todo lo demás durante las frases. Los archivos -4-telefono y comparar-volumen-* se miden YA en banda telefónica (8 kHz, 300-3400 Hz, mu-law); los demás, en banda ancha a 24 kHz.)
 
 ## Cómo cambiar algo
 
 Volumen, preset y tecleo se eligen en el panel: Ajustes del agente → «Preset restaurante humano» y «Sonido de fondo de restaurante». Para regenerar con otra semilla o duración: \`npx vite-node scripts/voz-muestras-ambiente/generar.ts -- --semilla 2 --segundos 20\`.
 `;
-writeFileSync(join(out, "README.md"), readme);
+// No pisa un README que no sea de este script: si ya hay uno (de otra persona o sesion), escribe README-ambiente.md y lo dice.
+const MARCA = "<!-- generado por scripts/voz-muestras-ambiente/generar.ts -->";
+const rutaReadme = join(out, "README.md");
+let destinoReadme = rutaReadme;
+if (existsSync(rutaReadme) && !readFileSync(rutaReadme, "utf8").startsWith(MARCA)) {
+  destinoReadme = join(out, "README-ambiente.md");
+  console.warn(`AVISO: ya existe ${rutaReadme} que no es de este script; el de las muestras se escribio en ${destinoReadme}.`);
+}
+writeFileSync(destinoReadme, `${MARCA}\n${readme}`);
 console.log(`Listo: ${filas.length} archivos en ${out}`);

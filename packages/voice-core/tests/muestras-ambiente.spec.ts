@@ -1,7 +1,7 @@
 // Muestras de escucha del ambiente y el tecleo: lo que SI se puede validar sin oir (nivel, pico, relacion voz/ambiente, sin bucle, sincronia del tecleo con las herramientas,
 // version telefono). Voz de prueba sintetica: no pretende sonar humana.
 import { describe, expect, it } from "vitest";
-import { PRESETS_AMBIENTE, aTelefono, escribirWav16, leerWav16, medirMuestra, renderizarMuestra, remuestrearLineal, vozSinteticaDePrueba, TIPOS_MUESTRA } from "../src/index.ts";
+import { PRESETS_AMBIENTE, medirTelefono, aTelefono, escribirWav16, leerWav16, medirMuestra, renderizarMuestra, remuestrearLineal, vozSinteticaDePrueba, TIPOS_MUESTRA } from "../src/index.ts";
 import { fraccionEnergiaEnBanda, pico, rms } from "../src/analisis-audio.ts";
 
 const HZ = 24_000;
@@ -100,5 +100,19 @@ describe("WAV y version telefono", () => {
     expect(fraccionEnergiaEnBanda(tel, 8000, 300, 3400)).toBeGreaterThan(0.9);
     expect(pico(tel)).toBeLessThan(1);
     expect(rms(tel)).toBeGreaterThan(0);
+  });
+
+  it("medirTelefono mide la version de telefono (8 kHz, otra escala que la de banda ancha) y la voz sigue sobre el ambiente", () => {
+    const frases = [vozSinteticaDePrueba(2200), vozSinteticaDePrueba(2200), vozSinteticaDePrueba(2200)];
+    const r = renderizarMuestra({ preset: "cocina-taqueria", tipo: "voz-ambiente-tecleo", semilla: 1, frases });
+    const ancha = medirMuestra(r);
+    const tel = medirTelefono(r);
+    expect(tel.duracionS).toBeCloseTo(18, 1);
+    expect(tel.rmsDbfs).toBeLessThanOrEqual(ancha.rmsDbfs + 1); // limitar la banda no agrega energia
+    expect(tel.picoDbfs).toBeLessThan(0);
+    expect(tel.muestrasRecortadas).toBe(0);
+    expect(tel.vozSobreAmbienteDb).not.toBeNull();
+    expect(tel.vozSobreAmbienteDb!).toBeGreaterThan(8);
+    expect(tel.vozSobreAmbienteDb!).not.toBeCloseTo(ancha.vozSobreAmbienteDb!, 3);
   });
 });

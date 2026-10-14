@@ -157,28 +157,40 @@ export interface MetricasMuestra {
   readonly vozSobreAmbienteDb: number | null;
 }
 
-export function medirMuestra(r: ResultadoMuestra): MetricasMuestra {
+function medir(pcm: Int16Array, voz: Int16Array, resto: Int16Array, hz: number): MetricasMuestra {
   let vozE = 0;
   let restoE = 0;
   let n = 0;
-  for (let i = 0; i < r.pcm.length; i++) {
-    if (r.voz[i] !== 0) {
-      const v = r.voz[i]! / 32768;
-      const resto = (r.pcm[i]! - r.voz[i]!) / 32768;
+  for (let i = 0; i < pcm.length; i++) {
+    if (voz[i] !== 0) {
+      const v = voz[i]! / 32768;
+      const r = resto[i]! / 32768;
       vozE += v * v;
-      restoE += resto * resto;
+      restoE += r * r;
       n++;
     }
   }
   return {
-    duracionS: r.pcm.length / r.hz,
-    rmsDbfs: aDbfs(rms(r.pcm)),
-    lufsAprox: lufsAprox(r.pcm, r.hz),
-    picoDbfs: aDbfs(pico(r.pcm)),
-    muestrasRecortadas: muestrasRecortadas(r.pcm),
-    ventanasRepetidas: ventanasRepetidas(r.pcm, r.hz),
+    duracionS: pcm.length / hz,
+    rmsDbfs: aDbfs(rms(pcm)),
+    lufsAprox: lufsAprox(pcm, hz),
+    picoDbfs: aDbfs(pico(pcm)),
+    muestrasRecortadas: muestrasRecortadas(pcm),
+    ventanasRepetidas: ventanasRepetidas(pcm, hz),
     vozSobreAmbienteDb: n === 0 || restoE === 0 ? null : 10 * Math.log10(vozE / n / (restoE / n)),
   };
+}
+
+/** Medidas de la muestra tal como sale del mezclador (24 kHz, banda ancha). */
+export function medirMuestra(r: ResultadoMuestra): MetricasMuestra {
+  const resto = Int16Array.from(r.pcm, (v, i) => v - r.voz[i]!);
+  return medir(r.pcm, r.voz, resto, r.hz);
+}
+
+/** Medidas de la muestra COMO LA OYE EL CLIENTE POR TELEFONO (8 kHz, 300-3400 Hz, mu-law): se pasan a telefono la mezcla, la voz sola y el resto por separado (aproximado: la compresion mu-law no es lineal). */
+export function medirTelefono(r: ResultadoMuestra): MetricasMuestra {
+  const resto = Int16Array.from(r.pcm, (v, i) => v - r.voz[i]!);
+  return medir(aTelefono(r.pcm, r.hz), aTelefono(r.voz, r.hz), aTelefono(resto, r.hz), 8000);
 }
 
 // ---- WAV y version «telefono» ----
