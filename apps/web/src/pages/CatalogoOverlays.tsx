@@ -47,6 +47,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   notify,
+  useAmbitoVertical,
   type CentroNotificacionItem,
 } from "@atiende/ui";
 
@@ -71,6 +72,9 @@ function Seccion({ titulo, children }: { titulo: string; children: React.ReactNo
 
 export function CatalogoOverlaysPage() {
   const [params] = useSearchParams();
+  // Ambito de restaurantes (UNI-R0b), como en las pantallas reales. `?ambito=ninguno` apaga la paleta/botones/overlays del repo suelto
+  // para capturar el "antes" (otra vertical) con el mismo estado.
+  useAmbitoVertical(params.get("ambito") === "ninguno" ? "ninguno" : "restaurantes");
   const inicial = params.get("abrir");
   const [abierto, setAbierto] = useState<Abierto>(inicial && inicial.startsWith("modal") ? (inicial as Abierto) : (["confirmar", "peligro", "lateral", "elegante", "hoja"].includes(inicial ?? "") ? (inicial as Abierto) : null));
   const [valor, setValor] = useState("pendiente");
