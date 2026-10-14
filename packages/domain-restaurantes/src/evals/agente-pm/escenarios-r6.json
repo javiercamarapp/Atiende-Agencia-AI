@@ -218,9 +218,9 @@
     "Hola, quiero [N] tacos a domicilio",
     "[Ubicación compartida con coordenadas inválidas]"
    ],
-   "comportamiento_esperado": "Ignora las coordenadas imposibles y pide la ubicación o la colonia de nuevo.",
+   "comportamiento_esperado": "Las coordenadas imposibles se rechazan con un error que dice al modelo que no las repita y que pida la ubicación de nuevo o la colonia.",
    "que_no_debe_hacer": "Repetir la búsqueda hasta agotar vueltas y responder 'problema técnico'.",
-   "cubierto_por": "packages/domain-restaurantes/tests/pm-r6-pin-fuera-de-rango.spec.ts",
+   "cubierto_por": "packages/domain-restaurantes/tests/branch-assignment.spec.ts",
    "dudas": [],
    "estado": "activo"
   },
