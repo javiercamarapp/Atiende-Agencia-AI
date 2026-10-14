@@ -109,7 +109,7 @@ describe("canal, propina y hora de recogida como datos del pedido", () => {
     expect(order).toMatchObject({ canal: "recoger", propina: 12.5, horaRecogida: hora });
     expect(order.notes).toMatch(/Propina: \$12\.50/);
     // QA-PM-R6-voz-03: la nota lleva la hora LOCAL de la sucursal (no el ISO UTC); 19:30 + 45 min = 20:15 en la zona de la fixture.
-    expect(order.notes).toMatch(/Hora de recogida: [a-zéá]+ \d{2}\/\d{2} \d{2}:\d{2}\./);
+    expect(order.notes).toMatch(/Hora de recogida: [a-zéá]+ \d{2}\/\d{2} 20:15\./);
     expect(order.notes).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
     expect(await f.repo.listOrderPickupInfo(f.organizationId, [order.id])).toEqual([{ orderId: order.id, canal: "recoger", propina: 12.5, horaRecogida: hora }]);
   });
