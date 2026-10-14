@@ -182,7 +182,7 @@ const CANAL_ALTERNO = /\b(?:mejor|solo|solamente|nada mas|prefiero|en vez de|en 
 
 export type ArcoIntent =
   /** Peticion fuerte de un derecho concreto: se registra (con CONFIRMO). `contacto` = ademas frena el contacto/publicidad (el webhook revoca el marketing). */
-  | { readonly kind: "request"; readonly right: DataRightType; readonly contacto: boolean }
+  | { readonly kind: "request"; readonly right: DataRightType; readonly contacto: boolean; readonly arbitrable?: boolean }
   /** `fuerte` = pregunta explicita por sus derechos/privacidad (el menu sustituye el turno); `debil` = suena a ARCO pero puede ser habla de pedido (el agente sigue y se agrega el menu). */
   | { readonly kind: "menu"; readonly fuerza: FuerzaArco; readonly derechoProbable: DataRightType | null }
   | { readonly kind: "third_party" };
@@ -264,7 +264,7 @@ export function detectArcoIntent(message: string): ArcoIntent | null {
   if (concretas.length > 0) {
     const derechos = new Set(concretas.map((c) => c.raiz.right));
     const right = PRIORIDAD.find((r) => derechos.has(r)) ?? concretas[0]!.raiz.right;
-    return { kind: "request", right, contacto: concretas.some((c) => c.raiz.contacto === true) };
+    return { kind: "request", right, contacto: concretas.some((c) => c.raiz.contacto === true), ...(concretas.every((c) => c.raiz.arbitrable === true) ? { arbitrable: true } : {}) };
   }
   if (fuertes.length > 0) return { kind: "menu", fuerza: "fuerte", derechoProbable: null };
   const probable = coinc.find((c) => !RAICES_SIN_DERECHO.has(c.raiz.id));

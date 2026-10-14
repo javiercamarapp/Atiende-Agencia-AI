@@ -10,6 +10,9 @@ import type { RestaurantesRepository } from "../repository.ts";
 import type { ConversationMessage } from "../repository.ts";
 import type { CustomerLookupResult, WhatsAppAgentConfigInput } from "../types.ts";
 
+/** Puerto del agente para registrar una solicitud ARCO (ver `crearRegistroArcoParaAgente`). Solo lo fija el servidor; el telefono nunca sale del modelo. */
+export type RegistrarArcoPuerto = (e: { readonly derecho: "acceso" | "rectificacion" | "cancelacion" | "oposicion"; readonly detalle?: string }) => Promise<{ readonly reply: string; readonly registrada: boolean } | null>;
+
 export interface WhatsAppTurnHandler {
   handleInboundMessage(args: {
     readonly organizationId: string;
@@ -32,6 +35,8 @@ export interface WhatsAppTurnHandler {
     readonly previewCustomerId?: string | null;
     /** Solo `preview`: configuracion del agente en BORRADOR (ya validada) para probarla antes de guardar. Ausente = la vigente. */
     readonly configBorrador?: WhatsAppAgentConfigInput | null;
+    /** Herramienta `registrar_solicitud_arco`: registra la solicitud de derechos que el modelo reconocio. Ausente = la herramienta responde que no esta disponible. */
+    readonly registrarArco?: RegistrarArcoPuerto;
   }): Promise<{
     readonly reply: string;
     readonly orderId: string | null;

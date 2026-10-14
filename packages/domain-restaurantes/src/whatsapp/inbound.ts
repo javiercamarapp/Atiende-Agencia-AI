@@ -9,7 +9,9 @@ import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
-import { runArcoFastPath, estadoDeMenuArco } from "../privacidad/arco-intent.ts";
+import { runArcoFastPath, estadoDeMenuArco, registrarSolicitudArco } from "../privacidad/arco-intent.ts";
+import type { ClasificadorArco } from "../privacidad/clasificador-arco.ts";
+import type { RegistrarArcoPuerto } from "./turn-handler.ts";
 import { ARCO_MENU_APENDICE } from "../privacidad/data-rights.ts";
 import { InMemoryPrivacidadRepository } from "../privacidad/in-memory-repository.ts";
 import { highRiskMatchOtherThan, pideUnaPersona, retractaPeticionDePersona } from "./guards.ts";
@@ -134,10 +136,10 @@ export interface AtajoArco {
  */
 export async function resolverAtajoArco(
   privacy: PrivacidadRepository,
-  args: { readonly organizationId: string; readonly phone: string; readonly textos: readonly string[]; readonly historial: readonly ConversationMessage[] },
+  args: { readonly organizationId: string; readonly phone: string; readonly textos: readonly string[]; readonly historial: readonly ConversationMessage[]; readonly clasificador?: ClasificadorArco },
 ): Promise<AtajoArco | null> {
   const menu = estadoDeMenuArco(ultimoTextoDelAsistentePrevio(args.historial));
-  const arco = await runArcoFastPath(privacy, args.organizationId, args.phone, args.textos, "whatsapp", undefined, { menu });
+  const arco = await runArcoFastPath(privacy, args.organizationId, args.phone, args.textos, "whatsapp", undefined, { menu, ...(args.clasificador ? { clasificador: args.clasificador } : {}) });
   if (!arco) return null;
   if (arco.modo === "agrega") return { modo: "agrega", reply: arco.reply };
   const otro = highRiskMatchOtherThan(args.textos, "privacidad_arco");
@@ -151,15 +153,27 @@ export async function resolverAtajoArco(
  * solicitudes reales con el telefono ficticio de la prueba. El estado (menu pendiente, solicitud por confirmar) se reconstruye repitiendo los mensajes anteriores
  * del historial de la prueba, asi "CONFIRMO" y la eleccion del menu funcionan igual que en WhatsApp.
  */
-export async function previsualizarAtajoArco(historial: readonly ConversationMessage[], organizationId = "00000000-0000-0000-0000-000000000000", phone = "+520000000000"): Promise<AtajoArco | null> {
+export async function previsualizarAtajoArco(historial: readonly ConversationMessage[], clasificador?: ClasificadorArco, organizationId = "00000000-0000-0000-0000-000000000000", phone = "+520000000000"): Promise<AtajoArco | null> {
   const repo = new InMemoryPrivacidadRepository();
   let ultimo: AtajoArco | null = null;
   for (let i = 0; i < historial.length; i++) {
     const m = historial[i]!;
     if (m.role !== "user") continue;
-    ultimo = await resolverAtajoArco(repo, { organizationId, phone, textos: [m.content], historial: historial.slice(0, i + 1) });
+    ultimo = await resolverAtajoArco(repo, { organizationId, phone, textos: [m.content], historial: historial.slice(0, i + 1), ...(clasificador && i === historial.length - 1 ? { clasificador } : {}) });
   }
   return ultimo;
+}
+
+/**
+ * Puerto que el agente usa (herramienta `registrar_solicitud_arco`) para registrar una solicitud que el modelo RECONOCIO aunque ni la regex ni el clasificador la vieran. El telefono sale
+ * del contexto del webhook (nunca del modelo); mismas guardas que el atajo: queda pendiente de CONFIRMO, mismos plazos, telefono canonico. Devuelve la frase que el agente debe
+ * decir tal cual. `null` = base sin la migracion 030.
+ */
+export function crearRegistroArcoParaAgente(privacy: PrivacidadRepository, e: { readonly organizationId: string; readonly phone: string; readonly textosDelCliente: readonly string[] }): RegistrarArcoPuerto {
+  return async ({ derecho, detalle }) => {
+    const r = await registrarSolicitudArco(privacy, { organizationId: e.organizationId, customerPhone: e.phone, right: derecho, textos: detalle ? [detalle] : e.textosDelCliente.slice(-3) });
+    return r ? { reply: r.reply, registrada: true } : null;
+  };
 }
 
 /** Agrega la oferta de derechos ARCO al final de la respuesta del agente. */
@@ -186,6 +200,8 @@ export async function handleInboundWhatsAppMessage(
     /** PM PR-9: privacidad (aviso simplificado + asistente virtual en el primer mensaje, fast-path
      * ARCO determinista). Ausente = comportamiento anterior, sin aviso ni fast-path. */
     readonly privacy?: PrivacidadRepository;
+    /** Red de seguridad LLM del detector ARCO (clasificador barato, fail-open). Ausente = solo la capa regex. */
+    readonly arcoClassifier?: ClasificadorArco;
     /** `false` = NO encola la respuesta en el outbox de WhatsApp (nada sale hacia Meta): la respuesta solo se guarda en
      * la conversacion y se devuelve en `outcome.reply`. Lo usa el widget demo (R-19); por omision `true` (webhook real). */
     readonly deliverReply?: boolean;
@@ -199,7 +215,7 @@ export async function handleInboundWhatsAppMessage(
     readonly recibidoEnMs?: number;
   },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
+  const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy, arcoClassifier } = args;
   const deliverReply = args.deliverReply !== false;
   const phoneHash = actorHash(phone);
 
@@ -241,7 +257,7 @@ export async function handleInboundWhatsAppMessage(
       // de handoff abierta: es una obligacion legal y solo responde a frases explicitas de ARCO.
       // Un mensaje que mezcla ARCO con otro motivo de alto riesgo (alergia, cobro, queja...) NO toma el
       // fast-path: pasa al agente, cuyo clasificador de #226 escala al equipo con el texto completo.
-      const atajo = privacy ? await resolverAtajoArco(privacy, { organizationId, phone, textos: [body], historial: messagesAfterUser }) : null;
+      const atajo = privacy ? await resolverAtajoArco(privacy, { organizationId, phone, textos: [body], historial: messagesAfterUser, ...(arcoClassifier ? { clasificador: arcoClassifier } : {}) }) : null;
       const arco = atajo?.modo === "reemplaza" ? atajo : null;
 
       // R-21: con una toma de handoff abierta (pendiente o tomada) el agente calla; el mensaje del cliente ya
@@ -300,6 +316,7 @@ export async function handleInboundWhatsAppMessage(
                 customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
                 propertyId: propertyId ?? null,
                 messageId,
+                ...(privacy ? { registrarArco: crearRegistroArcoParaAgente(privacy, { organizationId, phone, textosDelCliente: [body] }) } : {}),
               });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
@@ -552,6 +569,8 @@ export async function responderTrasEspera(
     readonly propertyId?: string | null;
     readonly handoffGate?: HandoffAgentGate;
     readonly privacy?: PrivacidadRepository;
+    /** Red de seguridad LLM del detector ARCO (clasificador barato, fail-open). Ausente = solo la capa regex. */
+    readonly arcoClassifier?: ClasificadorArco;
     readonly deliverReply?: boolean;
     /** Instante (ms, mismo reloj que `reloj`) en que muere la funcion. Las pasadas 2 y 3 no empiezan si no caben antes; la pasada 1 siempre corre
      * (la reserva de la fase B la garantiza). Sin esto no hay limite de tiempo. */
@@ -561,7 +580,7 @@ export async function responderTrasEspera(
     readonly recibidoEnMs?: number;
   },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
+  const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy, arcoClassifier } = args;
   const reloj = args.reloj ?? Date.now;
   const deliverReply = args.deliverReply !== false;
   const phoneHash = actorHash(phone);
@@ -591,7 +610,7 @@ export async function responderTrasEspera(
       const textoPendiente = pendientes.map((m) => m.content).join("\n");
       const turnoDePasada = await repo.runWithRowSavepoint(async (): Promise<{ readonly salida: InboundMessageOutcome; readonly silencio: boolean }> => {
         // La deteccion ARCO corre POR MENSAJE pendiente (no sobre la rafaga unida con "\n": una frase de pedido y otra de datos no se mezclan).
-        const atajo = privacy ? await resolverAtajoArco(privacy, { organizationId, phone, textos: pendientes.map((m) => m.content), historial: historialCrudo }) : null;
+        const atajo = privacy ? await resolverAtajoArco(privacy, { organizationId, phone, textos: pendientes.map((m) => m.content), historial: historialCrudo, ...(arcoClassifier ? { clasificador: arcoClassifier } : {}) }) : null;
         const arco = atajo?.modo === "reemplaza" ? atajo : null;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
@@ -625,6 +644,7 @@ export async function responderTrasEspera(
                 customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
                 propertyId: propertyId ?? null,
                 messageId,
+                ...(privacy ? { registrarArco: crearRegistroArcoParaAgente(privacy, { organizationId, phone, textosDelCliente: pendientes.map((m) => m.content) }) } : {}),
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
         let reply = atajo?.modo === "agrega" ? conOfertaArco(turn.reply) : turn.reply;
