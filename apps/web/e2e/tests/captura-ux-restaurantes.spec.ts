@@ -124,7 +124,7 @@ test.describe("captura UX: selector de sucursal en las demas verticales @captura
       });
       await page.reload();
       const aside = page.getByRole("complementary", { name: "Navegación principal" });
-      await expect(aside.locator(`select#${o.id}`)).toBeVisible();
+      await expect(aside.locator(`button#${o.id}`)).toBeVisible();
       if (dir) await aside.screenshot({ path: join(dir, `sucursal-${o.objetivo}-${info.project.name}.png`) });
       vigilante.verificar();
     });
@@ -135,7 +135,7 @@ test.describe("captura UX: selector de sucursal en las demas verticales @captura
     await iniciarSesion("licitaciones", "owner");
     const aside = page.getByRole("complementary", { name: "Navegación principal" });
     await expect(aside).toBeVisible();
-    await expect(aside.locator("select")).toHaveCount(0);
+    await expect(aside.getByRole("combobox")).toHaveCount(0);
     const dir = destino();
     if (dir) await aside.screenshot({ path: join(dir, `sucursal-licitaciones-${info.project.name}.png`) });
     void licitaciones;
