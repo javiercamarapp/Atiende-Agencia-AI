@@ -192,13 +192,18 @@ export async function handleInboundWhatsAppMessage(
             await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
             return null;
           }
-          const turn = crisisCheck.triggered
+          const turnDelModelo = crisisCheck.triggered
             ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
             : button?.kind === "reply"
               ? { reply: button.reply, appointmentId: null, propertyId: null }
               : arco
               ? { reply: arco.reply, appointmentId: null, propertyId: null }
               : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
+
+          // El asistente no pudo responder y pide una persona: "ya avise" solo se le dice al cliente si la solicitud de humano quedo registrada de verdad
+          // (sin puerto, sin conversacion o con la base sin migrar el puerto devuelve null y se queda el texto sin promesas).
+          const solicitud = turnDelModelo.handoff && handoffGate ? await handoffGate.solicitarHumano({ organizationId, phone, motivo: turnDelModelo.handoff.motivo, crisis: false }) : null;
+          const turn = solicitud && turnDelModelo.handoff ? { ...turnDelModelo, reply: turnDelModelo.handoff.replyConAviso } : turnDelModelo;
 
           const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
           await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);

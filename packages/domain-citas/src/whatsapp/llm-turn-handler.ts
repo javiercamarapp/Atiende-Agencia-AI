@@ -42,7 +42,7 @@ import type { AppointmentRecord, Slot } from "../types.ts";
 import { getVerticalFaqs } from "../vertical-config.ts";
 import { TONO_INSTRUCCION, reglasComoLista } from "./agent-config.ts";
 import type { WhatsappAgentConfig } from "./agent-config.ts";
-import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import type { CitasTurnOutcome, WhatsAppTurnHandler } from "./turn-handler.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -194,10 +194,19 @@ export function previewPromptAgente(agent: WhatsappAgentConfig, businessName: st
   return buildSystemPrompt({ ...FALLBACK_CONFIG, businessName }, { isNew: true, fullName: null, upcomingAppointments: [] }, AHORA_DE_MUESTRA, null, agent);
 }
 
-export function providerFailureReply(appointmentId: string | null): string {
-  return appointmentId
-    ? "¡Listo! Tu cita ya quedó registrada."
-    : "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.";
+/** Texto cuando el asistente no pudo responder y no hay cita tocada en este turno: nada prometido que no se hizo (ni "ya avise" sin aviso registrado). */
+export const FALLA_SIN_AVISO_REPLY = "Tuve un problema técnico y no pude procesar tu solicitud. Por favor intenta de nuevo en unos minutos o comunícate directamente con el negocio.";
+/** Mismo caso, pero con una persona del equipo ya solicitada de verdad (la solicitud devolvio un id): solo entonces se dice "avise". */
+export const FALLA_CON_AVISO_REPLY = "Tuve un problema técnico y no pude procesar tu solicitud. Ya avisé al equipo para que una persona te contacte lo antes posible.";
+
+/** Lo ultimo que SI se hizo en el turno sobre una cita (para no decir "registrada" de una cita que se cancelo). */
+export type AccionCitaDelTurno = "crear_cita" | "cancelar_cita" | "reagendar_cita" | "modificar_cita";
+
+export function providerFailureReply(appointmentId: string | null, accion: AccionCitaDelTurno = "crear_cita"): string {
+  if (!appointmentId) return FALLA_SIN_AVISO_REPLY;
+  if (accion === "cancelar_cita") return "Tu cita quedó cancelada.";
+  if (accion === "reagendar_cita" || accion === "modificar_cita") return "Tu cita quedó actualizada.";
+  return "¡Listo! Tu cita ya quedó registrada.";
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -512,11 +521,17 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
       let appointmentId: string | null = null;
       let propertyId: string | null = null;
       let huboFalloDeHerramienta = false;
+      let accionDelTurno: AccionCitaDelTurno = "crear_cita";
+
+      // El asistente no pudo responder (tiempo agotado, proveedor caido o vueltas agotadas). Con una cita ya tocada en el turno se confirma ESA accion (es cierta).
+      // Sin cita se pide una persona (`handoff`): quien procesa el mensaje solo cambia al texto "ya avise" si la solicitud quedo registrada de verdad.
+      const fallaDelSistema = (motivo: string): CitasTurnOutcome => {
+        if (appointmentId) return { reply: providerFailureReply(appointmentId, accionDelTurno), appointmentId, propertyId };
+        return { reply: FALLA_SIN_AVISO_REPLY, appointmentId, propertyId, handoff: { motivo: `El asistente no pudo responder (falla del sistema: ${motivo}).`, replyConAviso: FALLA_CON_AVISO_REPLY } };
+      };
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
-        if (Date.now() >= deadline) {
-          return { reply: providerFailureReply(appointmentId), appointmentId, propertyId };
-        }
+        if (Date.now() >= deadline) return fallaDelSistema("presupuesto_agotado");
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
         let completion: { text: string; toolCalls?: LlmToolCall[] };
@@ -539,7 +554,7 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente de
           // WhatsApp; si ya hay un appointmentId real, se lo confirmamos con éxito
           // en vez de sonar a error.
-          return { reply: providerFailureReply(appointmentId), appointmentId, propertyId };
+          return fallaDelSistema("error_proveedor");
         }
 
         const toolCalls = completion.toolCalls ?? [];
@@ -562,6 +577,7 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
           if (executed.appointmentId) {
             appointmentId = executed.appointmentId;
             propertyId = executed.propertyId;
+            accionDelTurno = call.name as AccionCitaDelTurno;
           }
           if (executed.isEscalatingFailure && isToolErrorResult(executed.result)) {
             huboFalloDeHerramienta = true;
@@ -570,10 +586,7 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
         }
       }
 
-      if (appointmentId) {
-        return { reply: providerFailureReply(appointmentId), appointmentId, propertyId };
-      }
-      return { reply: "Se me complicó procesar tu solicitud, un momento por favor.", appointmentId, propertyId };
+      return fallaDelSistema("loop_agotado");
     },
   };
 }
