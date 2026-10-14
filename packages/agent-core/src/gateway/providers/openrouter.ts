@@ -64,6 +64,9 @@ export interface OpenRouterModelParams {
   minMaxTokens?: number;
   /** El modelo soporta `response_format: json_schema`. Si es false, `responseFormat` se omite. */
   supportsStructuredOutput?: boolean;
+  /** Marca el system prompt con un punto de cache explicito de Anthropic (`cache_control` por bloque, documentado en openrouter.ai/docs/guides/best-practices/prompt-caching).
+   *  La lectura de cache llega en `usage.prompt_tokens_details.cached_tokens` (`LlmCompletionResult.tokensCached`). Solo para modelos `anthropic/*`. */
+  cacheSystemPrompt?: boolean;
 }
 
 /** Preferencias de enrutamiento de OpenRouter (objeto `provider` de la peticion). */
@@ -217,7 +220,7 @@ export class OpenRouterProvider implements LlmProvider {
 
     const body: Record<string, unknown> = {
       model: this.model,
-      messages: toOpenAiWireMessages(request.system, request.messages),
+      messages: toOpenAiWireMessages(request.system, request.messages, { cacheSystem: params.cacheSystemPrompt === true }),
       max_tokens: maxTokens,
       provider: buildOpenRouterProviderPrefs(this.opts.routing),
       usage: { include: true },
