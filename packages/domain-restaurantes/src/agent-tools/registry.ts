@@ -1143,7 +1143,7 @@ async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentTool
     await assertNoEsPedidoGrande(repo, prepared);
   } catch (err) {
     if (!(err instanceof PedidoGrandeRetenidoError)) throw err;
-    const retenido = { pedido_grande: true, escalado: true, estado: "por_confirmar_por_la_sucursal", simulado: true, mensaje: "Este pedido supera el umbral de pedido grande: en el servicio real NO se mandaría a cocina y se avisaría a la sucursal para confirmarlo (en el preview no se crea ningún aviso)." };
+    const retenido = { pedido_grande: true, escalado: true, estado: "por_confirmar_por_la_sucursal", simulado: true, mensaje: "Este pedido supera el umbral de pedido grande: en el servicio real NO se mandaría a cocina y se avisaría a la sucursal para confirmarlo (en el preview no se crea ningún aviso).", mensaje_al_cliente: MENSAJE_PEDIDO_GRANDE_PENDIENTE };
     return { result: retenido, raw: retenido, orderId: null, propertyId: null };
   }
   const folio = `${FOLIO_PREVIEW_PREFIJO}${createHash("sha256")
@@ -1157,7 +1157,10 @@ async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentTool
     total: prepared.total,
     status: "simulado",
     payment_method: prepared.payload.paymentMethod ?? null,
-    items: prepared.orderItems,
+    items: prepared.renglonesPersistidos,
+    ...(prepared.payload.propina ? { propina: prepared.payload.propina } : {}),
+    ...(prepared.payload.horaRecogida ? { hora_recogida: prepared.payload.horaRecogida } : {}),
+    ...(prepared.payload.programadoPara ? { programado_para: prepared.payload.programadoPara } : {}),
     simulado: true,
   };
   return { result: { order: simulated }, raw: simulated, orderId: null, propertyId: null, simulated: true };
