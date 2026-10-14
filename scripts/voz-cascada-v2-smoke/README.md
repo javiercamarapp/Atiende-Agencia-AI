@@ -9,7 +9,7 @@ DEEPGRAM_API_KEY=... OPENROUTER_API_KEY=... npx tsx scripts/voz-cascada-v2-smoke
 
 Comprueba, en orden: (1) el TTS entrega audio PCM lineal a 24 kHz y mide el tiempo al primer audio; (2) el STT transcribe ese audio y cierra el turno con su endpointing;
 (3) el LLM en streaming responde y el segundo turno con el mismo system prompt **lee de la caché** (`tokensCache > 0`); (4) la cascada completa saca el primer audio **antes**
-de que el LLM termine. `node --experimental-strip-types` no sirve para este script (los módulos importados usan *parameter properties*): usa `npx tsx`. El tope se revisa **antes** de cada paso y suma también la cascada completa; la sesión de STT se cierra siempre.
+de que el LLM termine. `node --experimental-strip-types` no sirve para este script (los módulos importados usan *parameter properties*): usa `npx tsx`. El tope se revisa **antes** de cada paso y suma también la cascada completa; la sesión de STT se cierra al terminar su paso (si un paso falla, el proceso termina con `process.exit(1)` y sus sockets).
 Imprime solo métricas y la frase sintética propia; nunca llaves ni datos de clientes.
 
 Estado: **nadie la ha ejecutado todavía** (no había llave de Deepgram al escribirla). Si alguno de los pasos falla, el protocolo documentado en

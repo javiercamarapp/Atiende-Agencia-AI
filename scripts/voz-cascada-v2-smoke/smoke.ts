@@ -98,7 +98,8 @@ async function main(): Promise<void> {
       })
       .catch(reject);
   });
-  // La sesion de STT se cierra SIEMPRE: si no, sigue con KeepAlive, factura por segundo y deja el proceso colgado.
+  // La sesion de STT se cierra en cuanto termina este paso: si no, sigue con KeepAlive, factura por segundo y deja el proceso colgado. (Si un paso falla, `main().catch` hace
+  // process.exit(1) y el proceso termina con sus sockets; no hay cierre ordenado en ese camino.)
   await (sesionStt as { cerrar(): Promise<void> } | null)?.cerrar();
   console.log(`  transcripcion: "${transcripcion}"`);
   sumar(costoDeepgramMicroUsd(audio16.byteLength / 2 / c.deepgram.hzEntrada + 1.5, VOZ_PLATAFORMA), "STT");
