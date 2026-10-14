@@ -175,6 +175,53 @@ export function tokenizeForProductSearch(query: string): string[] {
   return tokens.length > 0 ? tokens : [sinAcentos(query)];
 }
 
+/** Palabras de PREPARACION o nota que el cliente pega al platillo ("flautas doradas", "pastor planchado", "pollo bien picada"): no son parte del nombre de ningun
+ * producto. Solo se descartan en el segundo intento de la busqueda (ver `variantesMasPermisivas`), nunca de entrada: "Ceiba Dorada Premium" si las lleva. */
+const NOTAS_DE_PREPARACION = new Set(["dorado", "dorada", "doradito", "doradita", "planchado", "planchada", "picado", "picada", "bien"]);
+
+/** Sinonimos de UNA palabra que se prueban solo cuando la busqueda literal no encuentra nada: "pollo" es la "pechuga" del menu ("flauta de pollo" = "Flauta de
+ * Pechuga") y "empanizada" es el alias "empanizado" de los Crujientes. Nunca se mapea a un platillo distinto (pastor/bistec) ni a algo que el menu no tiene (BBQ). */
+const SINONIMOS_SI_NO_HAY_RESULTADO: Readonly<Record<string, string>> = { pollo: "pechuga", empanizada: "empanizado" };
+
+const esContenido = (t: string) => !t.startsWith("peso:") && t !== SIN_ALCOHOL && t !== ORDEN_COMPLETA && t !== "1/2";
+
+/** Quita las restas "sin X" ("sin queso", "sin la cebolla", "sin queso ni cebolla"): son un AJUSTE al platillo, no otro producto ni un precio distinto. */
+function quitarRestas(tokens: readonly string[]): string[] {
+  const salida: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== "sin") {
+      salida.push(tokens[i]!);
+      continue;
+    }
+    i++;
+    if (tokens[i] === "el" || tokens[i] === "la" || tokens[i] === "los" || tokens[i] === "las") i++;
+    while (tokens[i + 1] === "ni" && tokens[i + 2] !== undefined) i += 2;
+  }
+  return salida;
+}
+
+/**
+ * Consultas alternativas, de la mas conservadora a la mas permisiva, para cuando la busqueda literal (AND de todos los tokens) no encuentra nada: sin las restas
+ * "sin X", sin las notas de preparacion y/o con el sinonimo del menu. Una variante siempre conserva al menos una palabra de producto (nunca se busca solo el peso ni
+ * el marcador), asi que "sin queso" o "sushi sin queso" no inventan un producto. Quien la use prueba las variantes EN ORDEN y se queda con la primera que encuentra algo.
+ */
+export function variantesMasPermisivas(tokens: readonly string[]): string[][] {
+  const sinRestas = quitarRestas(tokens);
+  const sinNotas = (ts: readonly string[]) => ts.filter((t) => !NOTAS_DE_PREPARACION.has(t));
+  const conSinonimos = (ts: readonly string[]) => ts.map((t) => SINONIMOS_SI_NO_HAY_RESULTADO[t] ?? t);
+  const bases = [sinRestas, sinNotas(tokens), sinNotas(sinRestas)];
+  const candidatas = [...bases, conSinonimos(tokens), ...bases.map(conSinonimos)];
+  const vistas = new Set<string>([tokens.join(" ")]);
+  const salida: string[][] = [];
+  for (const v of candidatas) {
+    const clave = v.join(" ");
+    if (vistas.has(clave) || !v.some(esContenido)) continue;
+    vistas.add(clave);
+    salida.push(v);
+  }
+  return salida;
+}
+
 /** Palabras que identifican un platillo (sin "de/la", sin "(orden de 3)", sin el peso "— 500 g"): sirve para saber si un producto es una
  * VARIANTE de otro ("Margarita sin Alcohol" de "Margarita", "Bistec de Res Encebollado" de "Bistec de Res"). */
 function palabrasNucleo(nombre: string): Set<string> {
