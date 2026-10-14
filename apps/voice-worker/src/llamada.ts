@@ -13,7 +13,7 @@
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
 import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
-import { costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
+import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
@@ -79,6 +79,16 @@ const programarPorDefecto = (tarea: () => void, ms: number): (() => void) => {
   const id = setInterval(tarea, ms);
   return () => clearInterval(id);
 };
+
+/** Semilla estable (FNV-1a) del `callId`: el ambiente de cada llamada es distinto pero reproducible. */
+export function semillaDeLlamada(callId: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < callId.length; i++) {
+    h ^= callId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
 
 const CALL_ID_INVALIDO = /[^A-Za-z0-9._:-]/g;
 const sanearCallId = (id: string): string => id.replace(CALL_ID_INVALIDO, "-").slice(0, 128) || "llamada";
@@ -209,9 +219,24 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return salida;
   };
   let sesionActual: VozSesionLlamada | null = null;
+  // Ambiente de restaurante y tecleo (ajustes del agente). Solo si la telefonia sabe bombear una salida mezclada Y hay algo activo; si no, la llamada suena como siempre.
+  const sonido = contexto.sonido;
+  const mezclador =
+    tel.abrirSalidaMezclada && sonido
+      ? new MezcladorSalida({
+          ...(sonido.fondo.activo ? { ambiente: { volumen: sonido.fondo.volumen, preset: sonido.fondo.preset, semilla: semillaDeLlamada(callId) } } : {}),
+          ...(sonido.tecleo.activo ? { tecleo: { volumen: sonido.tecleo.volumen, semilla: semillaDeLlamada(callId) + 1 } } : {}),
+        })
+      : null;
+  const salidaMezclada = mezclador !== null && mezclador.conEfectos ? mezclador : null;
+  if (salidaMezclada) {
+    tel.abrirSalidaMezclada!(salidaMezclada);
+    log("sonido_ambiente", { fondo: salidaMezclada.ambiente !== null, tecleo: salidaMezclada.tecleo !== null });
+  }
   const puente = new PuenteAudio({
     tel,
     ahora,
+    ...(salidaMezclada ? { mezclador: salidaMezclada } : {}),
     eventos: {
       usuarioHabla: () => controlador.usuarioHabla(),
       silencio: (ms) => controlador.silencio(ms),
@@ -291,7 +316,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return { ok: true, mensaje: "Teléfono registrado." };
   };
   const ejecutorBase = crearEjecutorTools({ transporte, timeoutMs: limites.toolTimeoutMs });
-  const ejecutor: EjecutorTools = telefonoPendiente
+  const ejecutorSinSonido: EjecutorTools = telefonoPendiente
     ? {
         definiciones: () => [...ejecutorBase.definiciones(), DEFINICION_CONFIRMAR_TELEFONO as unknown as ReturnType<EjecutorTools["definiciones"]>[number]],
         async ejecutar(nombre, args, contexto) {
@@ -303,6 +328,10 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         },
       }
     : ejecutorBase;
+  // Tecleo sincronizado con la duracion REAL de cada herramienta (mismo punto para Gemini Live y para la cascada: ambos pasan por el ejecutor del controlador).
+  const ejecutor: EjecutorTools = salidaMezclada?.tecleo
+    ? conAvisosDeHerramienta(ejecutorSinSonido, { inicia: (id) => salidaMezclada.herramientaInicia(id), termina: (id, ok) => salidaMezclada.herramientaTermina(id, ok) })
+    : ejecutorSinSonido;
   const controlador = new ControladorLlamada({
     callId,
     propertyId,

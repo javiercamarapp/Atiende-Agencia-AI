@@ -3,6 +3,8 @@
 //
 // El audio entra y sale como PCM16 mono en la tasa que entregue la linea: el puente (`puente-audio.ts`) remuestrea a lo que pide cada escalon.
 
+import type { MezcladorSalida } from "@atiende/voice-core";
+
 export interface LlamadaTelefonica {
   /** Identificador opaco de la llamada (en LiveKit, el nombre de la sala). Se usa como `call_id` y `externalId`. */
   readonly id: string;
@@ -19,6 +21,9 @@ export interface LlamadaTelefonica {
   alColgar(cb: () => void): void;
   /** Encola audio hacia el llamante; resuelve cuando termino de sonar o se interrumpio. */
   reproducir(pcm: Int16Array, hz: number): Promise<void>;
+  /** OPCIONAL: pasa la salida de audio al modo MEZCLADO (ambiente de restaurante + tecleo + voz del agente en una sola secuencia continua que la telefonia bombea
+   * trama a trama). Despues de llamarlo la voz del agente va por `mezclador.encolarAgente` y `reproducir` ya no se usa. Sin este metodo la llamada suena como siempre. */
+  abrirSalidaMezclada?(mezclador: MezcladorSalida): void;
   /** Corta lo que suena y lo encolado (barge-in). */
   detenerReproduccion(): void;
   /** Cuelga por el lado del sistema. Idempotente. */

@@ -16,10 +16,11 @@ async function construir() {
   const voz = new InMemoryVozRepository();
   voz.seedProperty(ctx.propertyIdA, ctx.organizationId);
   const deps: AppDeps = { ...ctx.deps, ajustesAgenteRepo: () => ajustes, vozRepo: () => voz, vozLlamadaRepo: () => new InMemoryVozLlamadaRepository(), vozKpiRepo: () => new InMemoryVozKpiRepository() };
-  const app = buildApp(deps);
+  const real = buildApp(deps);
+  const app = { request: (input: string, init?: RequestInit) => Promise.resolve(real.request(input, init)) as Promise<Resp> };
   const contexto = async (): Promise<Resp> => {
     const raw = JSON.stringify({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA });
-    return Promise.resolve(app.request("/internal/restaurantes/voz/llamada/contexto", { method: "POST", body: raw, headers: { "content-type": "application/json", "content-length": String(raw.length), "x-atiende-internal-secret": SECRETO } })) as Promise<Resp>;
+    return Promise.resolve(real.request("/internal/restaurantes/voz/llamada/contexto", { method: "POST", body: raw, headers: { "content-type": "application/json", "content-length": String(raw.length), "x-atiende-internal-secret": SECRETO } })) as Promise<Resp>;
   };
   return { ctx, ajustes, app, contexto, base: `/v1/restaurantes/${ctx.propertyIdA}/admin/agente` };
 }

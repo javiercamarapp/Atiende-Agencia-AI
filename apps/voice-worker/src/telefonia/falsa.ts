@@ -1,5 +1,6 @@
 // Telefonia FALSA: inyecta audio PCM (de archivos o de los guiones del simulador) y captura lo que el agente reproduce. Sin red ni reloj propio:
 // `reproducir` resuelve de inmediato, asi una prueba controla el tiempo con los relojes falsos de vitest sin colgarse.
+import type { MezcladorSalida } from "@atiende/voice-core";
 import type { LlamadaTelefonica, TelefoniaPort } from "./puerto.ts";
 
 export interface OpcionesLlamadaFalsa {
@@ -47,6 +48,11 @@ export class LlamadaFalsa implements LlamadaTelefonica {
   alColgar(cb: () => void): void {
     this.cbColgar = cb;
     if (this.colgo) cb();
+  }
+  /** El mezclador de la salida (si la llamada lo abrio): las pruebas lo consumen con `siguiente(n)` en vez de bombearlo con un reloj. */
+  salidaMezclada: MezcladorSalida | null = null;
+  abrirSalidaMezclada(mezclador: MezcladorSalida): void {
+    this.salidaMezclada = mezclador;
   }
   async reproducir(pcm: Int16Array, hz: number): Promise<void> {
     if (this.colgo) return;

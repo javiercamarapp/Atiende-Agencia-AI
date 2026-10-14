@@ -7,7 +7,8 @@
 // que siempre se limpia, o las pruebas con tiempo manual).
 import type { AudioWav } from "./audio/pcm.ts";
 import { bytesAMuestras, energiaMuestras, muestrasABytes } from "./audio/pcm.ts";
-import { Remuestreador } from "./audio/remuestreo.ts";
+import { Remuestreador, remuestrearPcm16 } from "./audio/remuestreo.ts";
+import type { MezcladorSalida } from "@atiende/voice-core";
 import type { LlamadaTelefonica } from "./telefonia/puerto.ts";
 
 export const HZ_ENTRADA_ESCALON = 16_000;
@@ -29,6 +30,8 @@ export interface OpcionesPuente {
   readonly ahora: () => number;
   /** RMS (0..1) desde el cual un trozo cuenta como voz. */
   readonly umbralVoz?: number;
+  /** Si se pasa, la voz del agente va por el mezclador (ambiente + tecleo + voz en una sola secuencia que la telefonia bombea) en vez de `tel.reproducir`. */
+  readonly mezclador?: MezcladorSalida;
   /** Silencio (ms) que da por terminado el turno del cliente. */
   readonly finVozMs?: number;
   /** Voz continua (ms) necesaria para considerar que el cliente empezo a hablar (descarta chasquidos). */
@@ -82,6 +85,7 @@ export class PuenteAudio {
       if (!this.clienteHablando && this.vozAcumuladaMs >= this.inicioVozMs) {
         this.clienteHablando = true;
         this.esperandoRespuesta = false;
+        this.o.mezclador?.fijarClienteHablando(true);
         void this.o.eventos.usuarioHabla();
       }
     } else {
@@ -89,6 +93,7 @@ export class PuenteAudio {
       if (!this.clienteHablando) this.vozAcumuladaMs = 0;
       else if (this.silencioAcumuladoMs >= this.finVozMs) {
         this.clienteHablando = false;
+        this.o.mezclador?.fijarClienteHablando(false);
         this.vozAcumuladaMs = 0;
         this.esperandoRespuesta = true;
         this.finVozEn = this.ultimaVozEn;
@@ -123,6 +128,7 @@ export class PuenteAudio {
   /** Barge-in o corte del controlador: calla lo que suena y lo encolado. */
   cortarAudio(): void {
     this.generacion += 1;
+    this.o.mezclador?.cortarAgente();
     this.o.tel.detenerReproduccion();
   }
 
@@ -134,6 +140,7 @@ export class PuenteAudio {
   cerrar(): void {
     this.cerrado = true;
     this.generacion += 1;
+    this.o.mezclador?.cortarAgente();
   }
 
   /** Se llama una vez por segundo: reloj de la llamada y silencio del cliente (solo cuando nadie esta hablando). */
@@ -153,7 +160,10 @@ export class PuenteAudio {
     this.enCola += 1;
     const p = this.cola.then(async () => {
       try {
-        if (gen === this.generacion && !this.cerrado) await this.o.tel.reproducir(muestras, hz);
+        if (gen === this.generacion && !this.cerrado) {
+          if (this.o.mezclador) await this.o.mezclador.encolarAgente(hz === this.o.mezclador.hz ? muestras : remuestrearPcm16(muestras, hz, this.o.mezclador.hz));
+          else await this.o.tel.reproducir(muestras, hz);
+        }
       } finally {
         this.enCola -= 1;
         if (this.enCola === 0) this.ultimoAudioAgenteFin = this.o.ahora();

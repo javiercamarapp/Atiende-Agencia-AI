@@ -10,6 +10,8 @@ import { randomUUID } from "node:crypto";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { AudioFrame, AudioSource, AudioStream, LocalAudioTrack, ParticipantKind, Room, RoomEvent, TrackKind, TrackPublishOptions, TrackSource } from "@livekit/rtc-node";
 import type { RemoteParticipant, Track } from "@livekit/rtc-node";
+import type { MezcladorSalida } from "@atiende/voice-core";
+import { bombearSalida } from "../audio/bombeo-salida.ts";
 import { remuestrearPcm16 } from "../audio/remuestreo.ts";
 import { infoDeParticipanteSip } from "./sip-atributos.ts";
 import type { InfoParticipanteSip } from "./sip-atributos.ts";
@@ -89,6 +91,21 @@ class LlamadaLiveKit implements LlamadaTelefonica {
       await this.fuente.captureFrame(new AudioFrame(trozo, HZ_SALIDA_LIVEKIT, 1, trozo.length));
     }
     if (this.generacion === mia && !this.colgo) await this.fuente.waitForPlayout();
+  }
+
+  private bombeando = false;
+  /** Modo MEZCLADO: UN bombeo continuo de tramas de 20 ms (voz + ambiente + tecleo) a la unica pista del agente. Sin probar contra LiveKit real. */
+  abrirSalidaMezclada(mezclador: MezcladorSalida): void {
+    if (this.colgo || this.bombeando) return;
+    this.bombeando = true;
+    void bombearSalida({
+      mezclador,
+      enviar: (trama) => this.fuente.captureFrame(new AudioFrame(trama, mezclador.hz, 1, trama.length)),
+      ahora: () => Date.now(),
+      dormir: (ms) => new Promise((r) => setTimeout(r, ms)),
+      terminado: () => this.colgo,
+      frameMs: FRAME_MS,
+    }).catch(() => undefined);
   }
 
   detenerReproduccion(): void {
