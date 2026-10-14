@@ -68,6 +68,9 @@ export interface OpenRouterModelParams {
   minMaxTokens?: number;
   /** El modelo soporta `response_format: json_schema`. Si es false, `responseFormat` se omite. */
   supportsStructuredOutput?: boolean;
+  /** Marca el system prompt con un punto de cache explicito de Anthropic (`cache_control` por bloque, documentado en openrouter.ai/docs/guides/best-practices/prompt-caching).
+   *  La lectura de cache llega en `usage.prompt_tokens_details.cached_tokens` (`LlmCompletionResult.tokensCached`). Solo para modelos `anthropic/*`. */
+  cacheSystemPrompt?: boolean;
 }
 
 /** Preferencias de enrutamiento de OpenRouter (objeto `provider` de la peticion). */
@@ -221,7 +224,7 @@ export class OpenRouterProvider implements LlmProvider {
 
     const body: Record<string, unknown> = {
       model: this.model,
-      messages: toOpenAiWireMessages(request.system, request.messages),
+      messages: toOpenAiWireMessages(request.system, request.messages, { cacheSystem: params.cacheSystemPrompt === true }),
       max_tokens: maxTokens,
       provider: buildOpenRouterProviderPrefs(this.opts.routing),
       usage: { include: true },
@@ -335,7 +338,7 @@ export class OpenRouterProvider implements LlmProvider {
     return new OpenRouterError(`OpenRouter error (${this.model}): ${String(e.message ?? e.code ?? 'desconocido').slice(0, 300)}`, status, cls);
   }
 
-  private buildResult(parts: { text: string; toolCalls: LlmToolCall[] | undefined; model: string | undefined; usage: OpenRouterUsage | undefined }): LlmCompletionResult {
+  private buildResult(parts: { text: string; toolCalls: LlmToolCall[] | undefined; model: string | undefined; usage: OpenRouterUsage | undefined; finishReason?: string | null | undefined }): LlmCompletionResult {
     const usage = parts.usage;
     const tokensIn = asNumber(usage?.prompt_tokens) ?? 0;
     const tokensOut = asNumber(usage?.completion_tokens) ?? 0;
@@ -371,6 +374,7 @@ export class OpenRouterProvider implements LlmProvider {
       ...(tokensReasoning !== undefined ? { tokensReasoning } : {}),
       costUsd,
       costSource,
+      ...(typeof parts.finishReason === 'string' && parts.finishReason !== '' ? { finishReason: parts.finishReason } : {}),
     };
   }
 
@@ -380,7 +384,7 @@ export class OpenRouterProvider implements LlmProvider {
     const choice = data.choices?.[0];
     if (choice?.error) throw this.errorFromBody(choice.error);
     if (!choice) throw this.errorFromBody({ message: 'respuesta sin choices' });
-    return this.buildResult({ text: choice.message?.content ?? '', toolCalls: fromOpenAiWireToolCalls(choice.message?.tool_calls), model: data.model, usage: data.usage });
+    return this.buildResult({ text: choice.message?.content ?? '', toolCalls: fromOpenAiWireToolCalls(choice.message?.tool_calls), model: data.model, usage: data.usage, finishReason: choice.finish_reason });
   }
 
   private async readStream(res: Response, onTextDelta: (delta: string) => void): Promise<LlmCompletionResult> {
@@ -391,6 +395,7 @@ export class OpenRouterProvider implements LlmProvider {
     let text = '';
     let model: string | undefined;
     let usage: OpenRouterUsage | undefined;
+    let finishReason: string | null | undefined;
     const calls = new Map<number, { id: string; name: string; args: string }>();
 
     const handleLine = (line: string): void => {
@@ -407,6 +412,8 @@ export class OpenRouterProvider implements LlmProvider {
       if (chunk.error) throw this.errorFromBody(chunk.error);
       if (chunk.model) model = chunk.model;
       if (chunk.usage) usage = chunk.usage;
+      const fin = chunk.choices?.[0]?.finish_reason;
+      if (typeof fin === 'string' && fin !== '') finishReason = fin;
       const delta = chunk.choices?.[0]?.delta;
       if (!delta) return;
       if (typeof delta.content === 'string' && delta.content.length > 0) {
@@ -441,6 +448,6 @@ export class OpenRouterProvider implements LlmProvider {
             .sort((a, b) => a[0] - b[0])
             .map(([, c], i) => ({ id: c.id || `call_${i}`, name: c.name, argumentsJson: c.args }))
         : undefined;
-    return this.buildResult({ text, toolCalls, model, usage });
+    return this.buildResult({ text, toolCalls, model, usage, finishReason });
   }
 }

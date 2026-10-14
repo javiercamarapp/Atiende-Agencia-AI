@@ -2,20 +2,21 @@
 // la escalera de proveedores, los modelos y el precio por minuto con el que se estima el costo. Una vertical NO elige otro modelo ni otro
 // proveedor por su cuenta (decision de Javier, 3-oct): lo suyo es la persona, el prompt, las tools y las guardias, no el motor ni el costo.
 //
-// Escalera HIBRIDA (decision de Javier, 3-oct 02:50):
+// Escalera HIBRIDA (decision de Javier, 3-oct 02:50; cascada v2 agregada el 13-oct):
 //   1. Gemini Live directo (`GEMINI_API_KEY`, `gemini-3.8-live`)                         principal
-//   2. Cascada OpenRouter (`OPENROUTER_API_KEY`): STT -> Gemini por texto -> TTS          respaldo automatico si Google falla o no hay llave
-//   3. Humano / buzon con callback                                                         cuando no queda ningun escalon (maquina de la llamada)
-// `gpt-live-1` salio de la escalera (pediria otra llave).
+//   2. Cascada v2 en streaming (`DEEPGRAM_API_KEY` + `OPENROUTER_API_KEY`): Deepgram STT -> LLM por OpenRouter -> Deepgram Aura-2 TTS
+//   3. Cascada OpenRouter (`OPENROUTER_API_KEY`): STT -> Gemini por texto -> TTS          ultimo respaldo automatico si lo anterior falla o no hay llave
+//   4. Humano / buzon con callback                                                         cuando no queda ningun escalon (maquina de la llamada)
+// `gpt-live-1` salio de la escalera (pediria otra llave). El motor por sucursal y el reparto A/B (que escalon va primero) son del paquete P1, no de este archivo.
 //
 // Dinero siempre entero (micro-USD, como `core.llm_usage_daily`). Los precios son ESTIMACIONES de lista, no una factura: el evento de costo
 // se registra con `costo_estimado = true` hasta conciliar contra el proveedor. Los identificadores de modelo de la cascada no se probaron contra
 // la API real (no hay credencial en este entorno): se cambian AQUI, en un solo lugar, y aplican a todas las verticales a la vez.
 
-export type EscalonVoz = "gemini-3.8-live" | "cascada-openrouter";
+export type EscalonVoz = "gemini-3.8-live" | "cascada-v2" | "cascada-openrouter";
 
 /** Orden de la escalera: el primero que abre, atiende. */
-export const ESCALERA_VOZ: readonly EscalonVoz[] = ["gemini-3.8-live", "cascada-openrouter"];
+export const ESCALERA_VOZ: readonly EscalonVoz[] = ["gemini-3.8-live", "cascada-v2", "cascada-openrouter"];
 
 export interface ConfigPlataformaVoz {
   readonly escalera: readonly EscalonVoz[];
@@ -62,7 +63,7 @@ export interface ConfigPlataformaVoz {
   };
   /** Silencio (ms) que cierra el turno del cliente en la cascada (en Gemini lo decide el proveedor). */
   readonly cascadaSilencioFinTurnoMs: number;
-  /** Precios por COMPONENTE de la cascada v2 (Deepgram + LLM por OpenRouter + HeyGen Voice). Solo precios y fuentes: el motor llega en otro PR (P2). */
+  /** Cascada v2 en streaming: Deepgram (STT y TTS) + LLM por OpenRouter. Precios por componente (P4) y parametros del motor (P2). HeyGen queda solo como precio de referencia. */
   readonly cascadaV2: ConfigCascadaV2;
 }
 
@@ -78,6 +79,16 @@ export interface ConfigCascadaV2 {
   readonly deepgram: {
     /** Modelo de STT en streaming: Nova-3 monolingue, codigos `es` / `es-419` (docs de Deepgram; `es-MX` no figura para Nova-3). */
     readonly modelo: string;
+    /** `language` del STT. Nova-3 admite `es` y `es-419` (espanol latinoamericano); `es-MX` NO existe para Nova-3. */
+    readonly idioma: string;
+    /** `endpointing` (ms de silencio que cierran el turno: Deepgram devuelve `speech_final`). Recomendado 300-500 para conversacion. */
+    readonly endpointingMs: number;
+    /** `utterance_end_ms` (respaldo del fin de turno: mensaje `UtteranceEnd` tras este hueco entre palabras). Deepgram no da beneficio por debajo de 1000. */
+    readonly utteranceEndMs: number;
+    /** Tope de `keyterm` (terminos del menu) por conexion. Deepgram admite hasta 500 tokens; recomienda 20-50 terminos. */
+    readonly keytermsMax: number;
+    /** Tasa (Hz) del audio PCM16 que recibe la sesion de la sala. */
+    readonly hzEntrada: number;
     /** US$ por minuto de audio, STREAMING, pago por uso: tarifa VIGENTE. */
     readonly usdPorMinuto: number;
     /** US$ por minuto: tarifa anterior (la que uso el plan de voz del 10-oct). La vigente se publica como promocional por tiempo limitado, SIN fecha de fin: si sube, vuelve aqui. */
@@ -89,6 +100,16 @@ export interface ConfigCascadaV2 {
   readonly deepgramAura2: {
     /** US$ por 1 000 caracteres, pago por uso. */
     readonly usdPorMilCaracteres: number;
+    /** Voz por omision: DECISION DE JAVIER (14-oct-2026, tras escuchar las muestras): Aura-2 `estrella`, femenina mexicana (es-mx), identificador EXACTO `aura-2-estrella-es`
+     * (https://developers.deepgram.com/docs/tts-models, leido el 2026-10-13). `aura-2-olivia-es` queda como alternativa configurable (la sucursal la elige con su `voiceId`). */
+    readonly voz: string;
+    /** Tasa (Hz) del PCM lineal que se pide al TTS: igual a la de salida de la sala (24 kHz), asi no hay remuestreo. */
+    readonly hzSalida: number;
+    /** Recorte del silencio INICIAL que Aura-2 antepone a cada frase (medido 520-710 ms por REST; por WebSocket sin verificar): se descarta lo que no pase de `umbral`
+     * (energia RMS normalizada 0..1 de una ventana de 10 ms), con un tope de `maxMs` y dejando `rellenoMs` antes de la voz para no comer el ataque. */
+    readonly silencioInicial: { readonly umbral: number; readonly maxMs: number; readonly rellenoMs: number };
+    /** Tope de espera (ms) por trozo/fin de una frase: si Deepgram nunca manda `Flushed`, la frase falla con `tts_timeout` y la escalera decide. */
+    readonly fraseTimeoutMs: number;
   };
   readonly heygen: {
     /** US$ por MILLON de caracteres, precio de lista. */
@@ -96,11 +117,29 @@ export interface ConfigCascadaV2 {
     readonly promocion: PromocionPrecio;
   };
   readonly llm: {
+    /** Cerebro por omision del motor (decision de Javier, 13-oct): Sonnet 5.5 con esfuerzo BAJO. */
     readonly modelo: string;
-    readonly modeloDificil: string;
+    /** Modelo configurable para turnos faciles (el escalamiento por turno es P3; aqui solo queda disponible para el selector). */
+    readonly modeloFacil: string;
+    /** `reasoning.effort` de OpenRouter para los modelos Anthropic (Sonnet 5.5 tiene razonamiento obligatorio: `none` se rechaza). */
+    readonly esfuerzo: "low" | "medium" | "high";
+    /** RETENCION CERO (decision de Javier, 14-oct-2026): el cerebro de voz solo se enruta a endpoints con Zero Data Retention de OpenRouter (`provider.zdr: true`),
+     * y de ellos solo a los de estos proveedores (Vertex y Bedrock sirven Claude con ZDR; Anthropic directo no figura en /api/v1/endpoints/zdr). Cuesta ~0.6 s mas al primer token. */
+    readonly proveedoresZdr: readonly string[];
+    /** Tope de tokens de salida, INCLUIDO el razonamiento. Es un PISO alto a proposito (igual que el gateway): con 400 el benchmark midio 5.3 % de respuestas cortadas y con 1 500, 0.03 %;
+     * si el razonamiento agota el tope, OpenRouter devuelve el contenido vacio con finish_reason "length". La respuesta hablada sigue siendo corta por la instruccion, no por este tope. */
+    readonly topeSalidaTokens: number;
+    /** Lo que se dice si el modelo responde vacio dos veces seguidas (nunca se deja al cliente en silencio). */
+    readonly fraseRespaldo: string;
+    /** Lo que se dice tras una respuesta cortada por el tope de tokens (`finish_reason: length`) en lugar de leer la oracion truncada. */
+    readonly fraseCorte: string;
     /** El costo del LLM NO se calcula con una tarifa: es el `usage.cost` que OpenRouter reporta en cada respuesta (`costo_estimado = false`). */
     readonly fuenteCosto: "openrouter-usage-cost";
   };
+  /** Segmentacion del texto del LLM en frases para sintetizar por frase. */
+  readonly frase: { readonly minCaracteres: number; readonly maxCaracteres: number };
+  /** Piso estimado por minuto (micro-USD) cuando una etapa cae antes de reportar componentes: STT + TTS + LLM tipicos. El desglose por componente reemplaza este piso. */
+  readonly precioMicroUsdPorMinuto: number;
 }
 
 export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
@@ -132,22 +171,29 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // Deepgram: https://deepgram.com/pricing (leida el 2026-10-13): Nova-3 Monolingual streaming US$0.0048/min (tachado US$0.0077), Multilingual US$0.0058/min
     // (tachado US$0.0092); el add-on Keyterm Prompting (streaming) cuesta US$0.0013/min extra, sin tachado (el brief manda las palabras del menu como keyterms: tarifa
     // efectiva US$0.0061/min con vocabulario). La pagina marca las tarifas de streaming como promocionales por tiempo limitado y NO publica fecha de fin. El plan usaba US$0.0077.
-    deepgram: Object.freeze({ modelo: "nova-3", usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077, usdPorMinutoKeyterms: 0.0013 }),
+    // Parametros del STT verificados en https://developers.deepgram.com/reference/speech-to-text/listen-streaming y /docs/models-languages-overview (13-oct-2026).
+    deepgram: Object.freeze({ modelo: "nova-3", idioma: "es-419", endpointingMs: 400, utteranceEndMs: 1000, keytermsMax: 50, hzEntrada: 16_000, usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077, usdPorMinutoKeyterms: 0.0013 }),
     // Deepgram Aura-2 (TTS alternativo): https://deepgram.com/pricing (leida el 2026-10-13): US$0.030 por 1 000 caracteres pago por uso (US$0.027 en plan Growth),
     // sin marca de promocion. Se usa la tarifa de pago por uso (la mas alta).
-    deepgramAura2: Object.freeze({ usdPorMilCaracteres: 0.03 }),
+    deepgramAura2: Object.freeze({ usdPorMilCaracteres: 0.03, voz: "aura-2-estrella-es", hzSalida: 24_000, silencioInicial: Object.freeze({ umbral: 0.01, maxMs: 800, rellenoMs: 20 }), fraseTimeoutMs: 8_000 }),
     // HeyGen NO se da por la voz definitiva (investigacion de arquitectura): limite FIJO de 30 solicitudes por minuto en todos los planes y solo entrega WAV a 44.1 kHz;
     // se mantiene como parametro configurable junto a Aura-2. HeyGen Voice: US$30 por millon de caracteres de lista y US$15 en promocion hasta el 31-oct-2026 (cifras del plan de voz y del brief de Javier, 10-oct-2026;
     // NO se pudieron contrastar con la pagina publica de HeyGen: no expone el precio por caracter sin sesion). La promocion termina al acabar el 31-oct en Merida
     // (UTC-6 fijo desde 2022): 2026-11-01T00:00-06:00. Confirmar la zona con HeyGen.
     heygen: Object.freeze({ usdPorMillonCaracteres: 30, promocion: Object.freeze({ precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" }) }),
     // OpenRouter, leido el 2026-10-13 (/api/v1/models/<id>/endpoints): Haiku 5.5 US$0.10 / 0.50 por millon (cache 0.01); Sonnet 5.5 US$2 / 10 (cache 0.10).
-    llm: Object.freeze({ modelo: "anthropic/claude-haiku-5.5", modeloDificil: "anthropic/claude-sonnet-5.5", fuenteCosto: "openrouter-usage-cost" as const }),
+    // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
+    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
+    frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
+    // Piso por minuto (SUPUESTO a reemplazar con la medicion del smoke): Deepgram STT ~4 800 (+1 300 de keyterms) + Aura-2 ~600 caracteres/min (~18 000) + LLM ~24 000 micro-USD
+    // (Sonnet 5.5 con esfuerzo bajo; con ~10 000 se subestimaba).
+    precioMicroUsdPorMinuto: 47_000,
   }),
 });
 
 export function precioPorMinutoMicroUsd(escalon: EscalonVoz, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
-  return escalon === "gemini-3.8-live" ? config.gemini.precioMicroUsdPorMinuto : config.cascada.precioMicroUsdPorMinuto;
+  if (escalon === "gemini-3.8-live") return config.gemini.precioMicroUsdPorMinuto;
+  return escalon === "cascada-v2" ? config.cascadaV2.precioMicroUsdPorMinuto : config.cascada.precioMicroUsdPorMinuto;
 }
 
 /** Costo estimado de un tramo de llamada (entero, redondeado hacia arriba: nunca subestima). */
