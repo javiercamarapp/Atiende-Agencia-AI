@@ -202,7 +202,15 @@ export async function handleInboundWhatsAppMessage(
 
           // El asistente no pudo responder y pide una persona: "ya avise" solo se le dice al cliente si la solicitud de humano quedo registrada de verdad
           // (sin puerto, sin conversacion o con la base sin migrar el puerto devuelve null y se queda el texto sin promesas).
-          const solicitud = turnDelModelo.handoff && handoffGate ? await handoffGate.solicitarHumano({ organizationId, phone, motivo: turnDelModelo.handoff.motivo, crisis: false }) : null;
+          // Cualquier error de ese paso cuenta como "sin aviso": la disculpa sin promesas sale igual y el turno no se cae.
+          let solicitud: string | null = null;
+          if (turnDelModelo.handoff && handoffGate) {
+            try {
+              solicitud = (await handoffGate.solicitarHumano({ organizationId, phone, motivo: turnDelModelo.handoff.motivo, crisis: false })) || null;
+            } catch {
+              solicitud = null;
+            }
+          }
           const turn = solicitud && turnDelModelo.handoff ? { ...turnDelModelo, reply: turnDelModelo.handoff.replyConAviso } : turnDelModelo;
 
           const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };

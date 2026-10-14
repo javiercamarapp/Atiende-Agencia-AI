@@ -205,7 +205,8 @@ export type AccionCitaDelTurno = "crear_cita" | "cancelar_cita" | "reagendar_cit
 export function providerFailureReply(appointmentId: string | null, accion: AccionCitaDelTurno = "crear_cita"): string {
   if (!appointmentId) return FALLA_SIN_AVISO_REPLY;
   if (accion === "cancelar_cita") return "Tu cita quedó cancelada.";
-  if (accion === "reagendar_cita" || accion === "modificar_cita") return "Tu cita quedó actualizada.";
+  if (accion === "reagendar_cita") return "Tu cita quedó reagendada.";
+  if (accion === "modificar_cita") return "Tu cita quedó actualizada.";
   return "¡Listo! Tu cita ya quedó registrada.";
 }
 
