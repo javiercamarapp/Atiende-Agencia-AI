@@ -13,12 +13,12 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-function setup(phone = "9991234567") {
+function setup(phone = "9991234567", declarado = false) {
   const f = buildRestaurantFixture();
   f.repo.seedBranchPolicy(f.propertyId, { horario: [{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }] });
   void f.repo.upsertBranchZonaHoraria(f.propertyId, "America/Merida");
   const llamada = (id: string) => {
-    const ctx = () => ({ organizationId: f.organizationId, channel: "voz" as const, phone, flow: { key: `call:${id}`, turn: "1", now: () => Date.now() } });
+    const ctx = () => ({ organizationId: f.organizationId, channel: "voz" as const, phone, ...(declarado ? { phoneDeclared: true } : {}), flow: { key: `call:${id}`, turn: "1", now: () => Date.now() } });
     const tacos = (q = 3) => ({ product_id: f.products.tacosPastor, product_name: "Tacos de Bistec de Res (orden de 3)", requested_quantity: q, tortilla: "maiz" });
     const base = { branch_slug: "fco-montejo", canal: "recoger" };
     return {
@@ -68,6 +68,21 @@ describe("pedido igual en otra llamada", () => {
     const otro = setup("9998887766");
     const lx = otro.llamada("x");
     await expect(lx.quote([lx.tacos()])).resolves.toBeTruthy();
+  });
+});
+
+describe("telefono declarado por el cliente", () => {
+  it("no consulta pedidos del numero (seria filtrar pedidos de un tercero) y cotiza normal", async () => {
+    const dueno = setup("9991234567");
+    const l1 = dueno.llamada("a");
+    await l1.quote([l1.tacos()]);
+    await l1.confirm();
+    await l1.create([l1.tacos()]);
+    // Misma base y mismo numero, pero la llamada lo trae como declarado (sin caller ID confiable).
+    const f = dueno.f;
+    const ctx = { organizationId: f.organizationId, channel: "voz" as const, phone: "9991234567", phoneDeclared: true, flow: { key: "call:z", turn: "1", now: () => Date.now() } };
+    const items = [{ product_id: f.products.tacosPastor, product_name: "Tacos de Bistec de Res (orden de 3)", requested_quantity: 3, tortilla: "maiz" }];
+    await expect(invokeAgentTool(f.repo, ctx, "cotizar_pedido", { branch_slug: "fco-montejo", canal: "recoger", items })).resolves.toBeTruthy();
   });
 });
 

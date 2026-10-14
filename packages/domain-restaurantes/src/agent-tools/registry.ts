@@ -965,7 +965,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       }
       // QA-PM-R6-voz-01: un pedido IGUAL del mismo telefono de hace pocos minutos (otra llamada / otro chat) no se duplica en silencio: el modelo debe preguntar si es el mismo.
       // Solo con un flujo SIN estado (llamada o chat nuevo): dentro de un mismo flujo ya rigen `ya_registrado` y `otro_pedido`.
-      if (!snap.state && input.otro_pedido !== true && ctx.phone && ctx.modo !== "preview") {
+      // Con telefono DECLARADO por el cliente (caller ID no confiable) no se consulta nada del numero: seria filtrar pedidos de un tercero.
+      if (!snap.state && input.otro_pedido !== true && ctx.phone && !ctx.phoneDeclared && ctx.modo !== "preview") {
         const reciente = await repo.findLatestOrderByPhone(ctx.organizationId, normalizePhone(ctx.phone), new Date(flowNow(flow) - VENTANA_PEDIDO_IGUAL_MIN * 60_000).toISOString());
         if (reciente && reciente.status !== "cancelado" && reciente.status !== "no_recogido" && mismosRenglones(reciente.items, quotedQuote.lines)) {
           const hace = Math.max(0, Math.round((flowNow(flow) - Date.parse(reciente.createdAt)) / 60_000));
