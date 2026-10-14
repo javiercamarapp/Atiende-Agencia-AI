@@ -12,7 +12,7 @@ const PRIMER_INSTANTE_LISTA = "2026-11-01T06:00:00.000Z";
 describe("VOZ_PLATAFORMA.cascadaV2", () => {
   it("lleva las tarifas vigentes y los modelos de la cascada v2", () => {
     const v2 = VOZ_PLATAFORMA.cascadaV2;
-    expect(v2.deepgram).toMatchObject({ modelo: "nova-3", usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077 });
+    expect(v2.deepgram).toMatchObject({ modelo: "nova-3", usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077, usdPorMinutoKeyterms: 0.0013 });
     expect(v2.heygen).toMatchObject({ usdPorMillonCaracteres: 30, promocion: { precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" } });
     expect(v2.llm).toMatchObject({ modelo: "anthropic/claude-haiku-5.5", modeloDificil: "anthropic/claude-sonnet-5.5", fuenteCosto: "openrouter-usage-cost" });
   });
@@ -29,9 +29,17 @@ describe("costoDeepgramMicroUsd", () => {
     expect(costoDeepgramMicroUsd(1)).toBe(80);
     expect(costoDeepgramMicroUsd(0.001)).toBe(1);
   });
+  it("con vocabulario del menu (keyterms) suma el add-on de US$0.0013/min: tarifa efectiva US$0.0061/min", () => {
+    expect(costoDeepgramMicroUsd(60, VOZ_PLATAFORMA, true)).toBe(6_100);
+    expect(costoDeepgramMicroUsd(150, VOZ_PLATAFORMA, true)).toBe(15_250);
+    expect(costoDeepgramMicroUsd(60, VOZ_PLATAFORMA, false)).toBe(4_800);
+    // Sin sumar el add-on, un minuto con vocabulario se subestimaria ~21 % del costo efectivo (27 % sobre la base).
+    expect(costoDeepgramMicroUsd(60, VOZ_PLATAFORMA, true) / costoDeepgramMicroUsd(60)).toBeCloseTo(1.27, 2);
+  });
   it("usa la tarifa de la configuracion recibida (p. ej. la anterior de US$0.0077)", () => {
     const anterior: ConfigPlataformaVoz = { ...VOZ_PLATAFORMA, cascadaV2: { ...VOZ_PLATAFORMA.cascadaV2, deepgram: { ...VOZ_PLATAFORMA.cascadaV2.deepgram, usdPorMinuto: 0.0077 } } };
     expect(costoDeepgramMicroUsd(60, anterior)).toBe(7_700);
+    expect(costoDeepgramMicroUsd(60, anterior, true)).toBe(9_000);
   });
   it.each([[0], [""], [null], [false], [[]], [{}], [-5], [Number.NaN], [Number.POSITIVE_INFINITY]])("entrada invalida %j -> 0", (v) => {
     expect(costoDeepgramMicroUsd(v as unknown as number)).toBe(0);
