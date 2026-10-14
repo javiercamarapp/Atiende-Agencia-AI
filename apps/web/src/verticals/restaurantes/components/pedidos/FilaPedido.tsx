@@ -162,7 +162,7 @@ export function FilaPedido(props: FilaPedidoProps) {
           )}
           <div className="ml-auto flex flex-wrap items-center gap-1.5" onClick={detener}>
             {proximos.includes("problema") && (
-              <Button type="button" size="sm" variant="outline" className={cn(BOTON_PILDORA, "pedido-incidencia-boton")} onClick={() => props.onIncidencia(order)}>
+              <Button type="button" size="sm" variant="outline" className={cn(BOTON_PILDORA, "pedido-incidencia-boton")} disabled={ocupado} onClick={() => props.onIncidencia(order)}>
                 <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                 Incidencia
               </Button>
@@ -228,7 +228,7 @@ export function FilaPedido(props: FilaPedidoProps) {
                 </Button>
               )}
               {proximos.includes("problema") && (
-                <Button type="button" size="sm" variant="outline" className={cn(BOTON_PILDORA, "pedido-incidencia-boton")} onClick={() => props.onIncidencia(order)}>
+                <Button type="button" size="sm" variant="outline" className={cn(BOTON_PILDORA, "pedido-incidencia-boton")} disabled={ocupado} onClick={() => props.onIncidencia(order)}>
                   <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                   Incidencia
                 </Button>

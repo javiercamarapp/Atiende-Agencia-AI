@@ -120,7 +120,7 @@ export function ProgramadosPanel({
                 <Button type="button" size="sm" variant="outline" className="h-7 rounded-full px-3 text-eyebrow" loading={changingId === o.id} disabled={changingId === o.id} onClick={() => onAdelantar(o)}>
                   Enviar a cocina ahora
                 </Button>
-                <Button type="button" size="sm" variant="danger-outline" className="h-7 rounded-full px-3 text-eyebrow" disabled={changingId === o.id} onClick={() => onCancelar(o)}>
+                <Button type="button" size="sm" variant="danger" className="h-7 rounded-full px-3 text-eyebrow" disabled={changingId === o.id} onClick={() => onCancelar(o)}>
                   Cancelar pedido
                 </Button>
               </div>
