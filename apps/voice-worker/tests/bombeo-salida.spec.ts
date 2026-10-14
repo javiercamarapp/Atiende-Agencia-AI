@@ -1,7 +1,7 @@
 // Bombeo de la salida mezclada guiado por la COLA REAL del destino (no por el reloj de pared). Destino simulado: una cola en ms que se vacia al dormir.
 import { describe, expect, it } from "vitest";
 import { MezcladorSalida } from "@atiende/voice-core";
-import { COLA_OBJETIVO_MAX_MS, COLA_OBJETIVO_MIN_MS, bombearConRespaldo, bombearSalida } from "../src/audio/bombeo-salida.ts";
+import { CEDER_CADA, COLA_OBJETIVO_MAX_MS, COLA_OBJETIVO_MIN_MS, bombearConRespaldo, bombearSalida } from "../src/audio/bombeo-salida.ts";
 
 /** Destino simulado: cada trama de 20 ms suma 20 ms a la cola; dormir N ms la reproduce (la cola baja N, sin pasar de 0). */
 function destino() {
@@ -58,6 +58,20 @@ describe("bombearSalida (guiado por la cola)", () => {
     d.e.cola = 0;
     await bombearSalida({ mezclador: new MezcladorSalida({ ambiente: { volumen: 8 } }), ...d, terminado: () => d.e.tramas.length >= 4 });
     expect(d.e.esperas).toEqual([]); // 4 tramas = 80 ms: justo el objetivo, sin esperar nada
+  });
+
+  it("CEDE el hilo: si el destino resuelve al instante y la cola nunca crece, duerme (0 ms) cada CEDER_CADA tramas en vez de congelar el bucle de eventos", async () => {
+    const esperas: number[] = [];
+    let enviadas = 0;
+    await bombearSalida({
+      mezclador: new MezcladorSalida({ ambiente: { volumen: 8 } }),
+      enviar: async () => void enviadas++,
+      colaMs: () => 0,
+      dormir: async (ms) => void esperas.push(ms),
+      terminado: () => enviadas >= CEDER_CADA * 4,
+    });
+    expect(esperas.length).toBeGreaterThanOrEqual(3);
+    expect(esperas.every((ms) => ms === 0)).toBe(true);
   });
 
   it("avisa con la cola (ms) con la que entra la voz del agente: ese es el retraso que anade el bombeo", async () => {

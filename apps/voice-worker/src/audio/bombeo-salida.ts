@@ -7,6 +7,8 @@ import type { MezcladorSalida } from "@atiende/voice-core";
 
 export const COLA_OBJETIVO_MIN_MS = 40;
 export const COLA_OBJETIVO_MAX_MS = 80;
+/** Tramas seguidas que el bombeo envia sin ceder el hilo al bucle de eventos. */
+export const CEDER_CADA = 25;
 
 export interface OpcionesBombeo {
   readonly mezclador: MezcladorSalida;
@@ -29,11 +31,18 @@ export async function bombearSalida(o: OpcionesBombeo): Promise<number> {
   const porTrama = Math.round((o.mezclador.hz * frameMs) / 1000);
   let enviadas = 0;
   let vozAntes = false;
+  let sinCeder = 0;
   while (!o.terminado()) {
     const cola = o.colaMs();
     if (cola >= maxMs) {
+      sinCeder = 0;
       await o.dormir(Math.max(1, cola - minMs));
       continue;
+    }
+    // Si la cola no crece (destino que resuelve al instante) el bucle no se queda con el hilo: cede cada CEDER_CADA tramas.
+    if (++sinCeder >= CEDER_CADA) {
+      sinCeder = 0;
+      await o.dormir(0);
     }
     const hayVoz = o.mezclador.agenteHablando;
     if (hayVoz && !vozAntes) o.alTomarVoz?.(cola);
