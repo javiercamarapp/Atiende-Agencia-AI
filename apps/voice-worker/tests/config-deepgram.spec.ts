@@ -42,3 +42,15 @@ describe("VOZ_CASCADA_V2_HABILITADA (interruptor)", () => {
     expect(cargarConfig({ ...ENV_BASE, VOZ_CASCADA_V2_HABILITADA: valor }).cascadaV2Habilitada).toBe(esperado);
   });
 });
+
+describe("VOZ_LLM_PROVEEDORES_ZDR", () => {
+  it("vacio por omision (se usan los de la plataforma); se lee como lista de slugs", () => {
+    expect(cargarConfig(ENV_BASE).proveedoresZdr).toEqual([]);
+    expect(cargarConfig({ ...ENV_BASE, VOZ_LLM_PROVEEDORES_ZDR: " google-vertex/us , amazon-bedrock " }).proveedoresZdr).toEqual(["google-vertex/us", "amazon-bedrock"]);
+  });
+  it("un valor que no es un slug deja al worker sin configurar (nunca se manda basura a OpenRouter)", () => {
+    const c = cargarConfig({ ...ENV_BASE, VOZ_LLM_PROVEEDORES_ZDR: "google-vertex, Mala Entrada!" });
+    expect(c.estado).toBe("no_configurado");
+    expect(c.motivos.join(" ")).toContain("VOZ_LLM_PROVEEDORES_ZDR");
+  });
+});

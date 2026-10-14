@@ -352,10 +352,17 @@ describe("caida de cada etapa", () => {
   });
 
   it("LLM sin endpoint de retencion cero: un 404 de OpenRouter sube `v2_llm_sin_zdr` (falla claro; la escalera pasa al siguiente escalon)", async () => {
-    const { stt, eventos, inactivo } = await armar(llmFalso([async () => { throw Object.assign(new Error("No endpoints found"), { status: 404 }); }]));
+    const { stt, eventos, inactivo } = await armar(llmFalso([async () => { throw Object.assign(new Error("llm_sin_zdr"), { status: 404, motivo: "sin_zdr" }); }]));
     stt.eventos!.turnoFinal("hola");
     await inactivo();
     expect(eventos.filter((e) => e.startsWith("caido:"))).toEqual(["caido:v2_llm_sin_zdr"]);
+  });
+
+  it("un 404 que NO es de retencion cero (parametro no admitido, modelo inexistente) sube `v2_llm_404`, no `sin_zdr`", async () => {
+    const { stt, eventos, inactivo } = await armar(llmFalso([async () => { throw Object.assign(new Error("OpenRouter 404: unsupported parameter"), { status: 404 }); }]));
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(eventos.filter((e) => e.startsWith("caido:"))).toEqual(["caido:v2_llm_404"]);
   });
 
   it("TTS: un fallo del sintetizador sube `v2_tts_ws_1006`, detiene al LLM y no registra el turno como terminado", async () => {
@@ -719,5 +726,63 @@ describe("TTS sin respuesta", () => {
     stt.eventos!.turnoFinal("hola");
     await inactivo();
     expect(eventos.filter((e) => e.startsWith("caido:"))).toEqual(["caido:v2_tts_timeout"]);
+  });
+});
+
+describe("regla confirmar -> crear a nivel de sesion", () => {
+  const confirmaYCrea = async (_p: unknown, texto: (d: string) => void) => {
+    texto("Le leo el resumen. ");
+    return { texto: "Le leo el resumen. ", toolCalls: [{ id: "c", nombre: "confirmar_resumen", argsJson: "{}" }, { id: "p", nombre: "crear_pedido", argsJson: "{}" }] };
+  };
+  const soloCrea = async () => ({ texto: "", toolCalls: [{ id: "p2", nombre: "crear_pedido", argsJson: "{}" }] });
+  const regla = { confirmar: "confirmar_resumen", crear: "crear_pedido" };
+
+  it("el modelo NO puede saltarse la espera con un crear_pedido solo en la vuelta siguiente del MISMO turno (sin que el cliente hable)", async () => {
+    const llm = llmFalso([confirmaYCrea, soloCrea, escribe(["Le confirmo el resumen, le parece bien?"])]);
+    const { stt, herramientas, inactivo } = await armar(llm, { confirmacionAntesDeCrear: regla });
+    stt.eventos!.turnoFinal("quiero el pedido");
+    await inactivo();
+    expect(herramientas).toEqual(["confirmar_resumen"]);
+    const tool = llm.peticiones[2]!.mensajes.filter((m) => m.role === "tool") as { toolCallId: string; content: string }[];
+    expect(tool.map((m) => m.toolCallId)).toEqual(["c", "p", "p2"]);
+    expect(JSON.parse(tool[2]!.content)).toMatchObject({ error: "espera_confirmacion_del_cliente" });
+  });
+
+  it("cuando el cliente responde (turno siguiente) crear_pedido SI corre", async () => {
+    const llm = llmFalso([confirmaYCrea, escribe(["Son 328 pesos, le parece bien?"]), soloCrea, escribe(["Listo, su pedido quedo registrado."])]);
+    const { stt, herramientas, inactivo } = await armar(llm, { confirmacionAntesDeCrear: regla });
+    stt.eventos!.turnoFinal("quiero el pedido");
+    await inactivo();
+    expect(herramientas).toEqual(["confirmar_resumen"]);
+    stt.eventos!.turnoFinal("si, esta bien");
+    await inactivo();
+    expect(herramientas).toEqual(["confirmar_resumen", "crear_pedido"]);
+  });
+});
+
+describe("respuesta cortada por el tope (finish_reason length con texto)", () => {
+  it("no dice el fragmento truncado: dice las oraciones completas y cierra con la frase de corte, tambien en el historial", async () => {
+    const llm = llmFalso([escribe(["Tenemos tacos de cochinita. ", "Y tambien panuchos de pollo ase"], { finishReason: "length" }), escribe(["Claro."])]);
+    let t = 1_000_000;
+    const { stt, tts, eventos, inactivo } = await armar(llm, { ahora: () => t });
+    stt.eventos!.turnoFinal("que tienen");
+    await inactivo();
+    t += 10_000; // el audio ya termino de sonar
+    const corte = VOZ_PLATAFORMA.cascadaV2.llm.fraseCorte;
+    expect(tts.frases.join(" ")).toContain("Tenemos tacos de cochinita.");
+    expect(tts.frases.join(" ")).toContain(corte);
+    expect(tts.frases.join(" ")).not.toContain("ase");
+    expect(eventos.at(-1)).toBe("fin");
+    stt.eventos!.turnoFinal("si, repitelo");
+    await inactivo();
+    expect(llm.peticiones[1]!.mensajes[1]).toEqual({ role: "assistant", content: `Tenemos tacos de cochinita. ${corte}` });
+  });
+
+  it("un `stop` normal NO se toca", async () => {
+    const llm = llmFalso([escribe(["Tenemos tacos de cochinita. ", "Y tambien panuchos."], { finishReason: "stop" })]);
+    const { stt, tts, inactivo } = await armar(llm);
+    stt.eventos!.turnoFinal("que tienen");
+    await inactivo();
+    expect(tts.frases.join(" ")).not.toContain(VOZ_PLATAFORMA.cascadaV2.llm.fraseCorte);
   });
 });

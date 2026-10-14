@@ -270,7 +270,34 @@ describe("TTS Deepgram Aura-2: cancelacion y fallos", () => {
     expect(await r).toEqual([]);
   });
 
-  it("respeta el limite de 20 Flush por minuto: antes de llegar a el falla con tts_flush_limite, y la ventana se renueva con el reloj", async () => {
+  it("sin Flush disponibles ESPERA a que se libere la ventana de 60 s en vez de caer; si no se libera dentro del tope, falla con tts_flush_limite", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fabricaSockets();
+      const sesion = await crearTtsDeepgram({ apiKey: "k", config: C, crearSocket: f.crear, flushEsperaMaxMs: 70_000 }).abrir({ voz: "aura-2-estrella-es", hzSalida: 24_000 });
+      const s = f.sockets[0]!;
+      const senal = new AbortController().signal;
+      for (let i = 0; i < 19; i++) {
+        const r = recolectar(sesion.sintetizar(`frase ${i}`, senal));
+        await vi.advanceTimersByTimeAsync(0);
+        s.texto({ type: "Flushed", sequence_id: i });
+        await r;
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      expect(sesion.flushesDisponibles?.()).toBe(0);
+      const r = recolectar(sesion.sintetizar("una mas", senal));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(s.json.filter((m) => m.type === "Speak")).toHaveLength(19); // sigue esperando: no cayo ni mando nada
+      await vi.advanceTimersByTimeAsync(28_300); // ya paso la ventana de 60 s desde el primer Flush
+      s.texto({ type: "Flushed", sequence_id: 99 });
+      await expect(r).resolves.toEqual([]);
+      expect(s.json.filter((m) => m.type === "Speak")).toHaveLength(20);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si la ventana de Flush no se libera dentro del tope, falla con tts_flush_limite (nunca cuelga)", async () => {
     let ahora = 5_000_000;
     const { sesion, sockets } = await abrir({ ahora: () => ahora });
     const s = sockets[0]!;
@@ -282,12 +309,41 @@ describe("TTS Deepgram Aura-2: cancelacion y fallos", () => {
       await r;
     }
     await expect(recolectar(sesion.sintetizar("una mas", senal))).rejects.toThrow("tts_flush_limite");
-    ahora += 61_000;
-    const r = recolectar(sesion.sintetizar("ya paso la ventana", senal));
+  });
+
+  it("COLGAR mientras se espera el Cleared de un barge-in: no reconecta, no manda Speak ni Flush (no cobra caracteres) y no deja ningun socket abierto", async () => {
+    const { sesion, sockets } = await abrir();
+    const ctl = new AbortController();
+    const it = sesion.sintetizar("Frase uno que se corta.", ctl.signal)[Symbol.asyncIterator]();
+    const p = it.next();
+    await turnoMicrotareas();
+    ctl.abort();
+    await p;
+    const r = recolectar(sesion.sintetizar("Frase dos.", new AbortController().signal));
     await turnoMicrotareas(40);
-    const activo = sockets.at(-1)!;
-    activo.texto({ type: "Flushed", sequence_id: 0 });
-    await expect(r).resolves.toEqual([]);
+    await sesion.cerrar(); // el cliente cuelga justo ahora
+    await r;
+    await turnoMicrotareas(60);
+    expect(sockets).toHaveLength(1); // no se abrio un socket nuevo
+    expect(sockets[0]!.json.filter((m) => m.type === "Speak")).toHaveLength(1); // solo la frase uno
+    expect(sockets.every((x) => x.cerrado !== null)).toBe(true);
+  });
+
+  it("COLGAR mientras se abre el socket de una frase: el socket recien abierto se cierra y no se manda nada", async () => {
+    const g = fabricaSockets({ autoAbrir: false });
+    const abierto = crearTtsDeepgram({ apiKey: "k", config: C, crearSocket: (u, o) => (queueMicrotask(() => g.sockets.length === 1 && g.sockets[0]!.abrir()), g.crear(u, o)) }).abrir({ voz: "aura-2-estrella-es", hzSalida: 24_000 });
+    await turnoMicrotareas(10);
+    const sesion = await abierto;
+    g.sockets[0]!.caer(1000); // la conexion se cerro en reposo: la siguiente frase reconecta
+    const r = recolectar(sesion.sintetizar("hola", new AbortController().signal));
+    await turnoMicrotareas(10); // frase() ya pidio el socket nuevo, que sigue sin abrir
+    expect(g.sockets).toHaveLength(2);
+    void sesion.cerrar(); // se cuelga mientras abre
+    g.sockets[1]!.abrir();
+    await r;
+    await turnoMicrotareas(40);
+    expect(g.sockets[1]!.cerrado).not.toBeNull();
+    expect(g.sockets.flatMap((x) => x.json).filter((m) => m.type === "Speak")).toEqual([]);
   });
 
   it("cerrar manda Close, cierra el socket y las frases posteriores fallan; cerrar dos veces no repite", async () => {

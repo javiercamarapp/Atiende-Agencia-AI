@@ -121,6 +121,21 @@ describe("puerto LLM de voz v2", () => {
     }
   });
 
+  it("un 404 cuyo cuerpo habla de la politica de datos / retencion cero sube con motivo sin_zdr; cualquier otro 404 conserva solo su estado", async () => {
+    const con = (cuerpo: string) => (async () => new Response(cuerpo, { status: 404 })) as unknown as typeof fetch;
+    const zdr = await crearPuertoLlmVozV2("k", con("No endpoints found matching your data policy (Zero Data Retention)")).completar({ ...BASE, onTextDelta: () => undefined }).catch((e: unknown) => e as { status?: number; motivo?: string });
+    expect(zdr).toMatchObject({ status: 404, motivo: "sin_zdr" });
+    const otro = await crearPuertoLlmVozV2("k", con("No endpoints found that support the requested parameter")).completar({ ...BASE, onTextDelta: () => undefined }).catch((e: unknown) => e as { status?: number; motivo?: string });
+    expect(otro).toMatchObject({ status: 404 });
+    expect(otro).not.toHaveProperty("motivo");
+  });
+
+  it("los proveedores ZDR permitidos se pueden sobreescribir (residencia: decision pendiente de Javier)", async () => {
+    const { fn, cuerpos } = fetchSse([delta("ok"), uso]);
+    await crearPuertoLlmVozV2("k", fn, { proveedoresZdr: ["google-vertex/us"] }).completar({ ...BASE, onTextDelta: () => undefined });
+    expect((cuerpos[0]!.provider as { only: string[] }).only).toEqual(["google-vertex/us"]);
+  });
+
   it("sin onTextDelta responde sin streaming (la forma de siempre) y tambien sin temperature", async () => {
     const cuerpos: Record<string, unknown>[] = [];
     const fn = (async (_u: string, init?: RequestInit) => {
