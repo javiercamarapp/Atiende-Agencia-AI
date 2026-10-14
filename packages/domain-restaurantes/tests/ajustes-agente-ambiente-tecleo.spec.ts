@@ -11,6 +11,7 @@ import {
   validarAjustesAgente,
 } from "../src/index.ts";
 import { BLOQUE_NATURALIDAD } from "@atiende/voice-core";
+import { REGLAS_VIVAS_VOZ } from "../src/index.ts";
 import type { AjustesAgente } from "../src/index.ts";
 
 const BASE_ENTRADA = { ...AJUSTES_AGENTE_POR_DEFECTO };
@@ -97,5 +98,31 @@ describe("repositorio en memoria sin la 087", () => {
     await expect(r.guardar("o", "u", { ...AJUSTES_AGENTE_POR_DEFECTO, vozFondoVolumen: 5 })).resolves.toMatchObject({ disponible: true });
     r.ambienteMigrado = true;
     expect((await r.leer("o")).ambienteDisponible).toBe(true);
+  });
+});
+
+describe("la naturalidad NO contradice las reglas duras de PM", () => {
+  const completa = instruccionConAjustes(`REGLAS DURAS DE LA SUCURSAL\n${REGLAS_VIVAS_VOZ}`, { vozRitmo: "normal", vozEstilo: "calido", vozHumanizar: true }, null);
+
+  it("las reglas duras siguen enteras y el bloque de naturalidad va DESPUES con la prioridad declarada", () => {
+    expect(completa).toContain(REGLAS_VIVAS_VOZ);
+    expect(completa.indexOf(BLOQUE_NATURALIDAD)).toBeGreaterThan(completa.indexOf(REGLAS_VIVAS_VOZ));
+    expect(BLOQUE_NATURALIDAD).toMatch(/mandan SIEMPRE sobre este bloque/);
+  });
+
+  it("regla dura RESUMEN («si se corta o lo interrumpen, repítalo entero») tiene su excepcion explicita", () => {
+    expect(REGLAS_VIVAS_VOZ).toContain("si se corta o lo interrumpen, repítalo entero");
+    expect(BLOQUE_NATURALIDAD).toMatch(/RESUMEN del pedido.*se repite ENTERO desde el principio/);
+    expect(BLOQUE_NATURALIDAD).toMatch(/salvo el RESUMEN del pedido, que se repite entero/);
+  });
+
+  it("regla dura del cierre (repetir el pedido completo con la hora y esperar un «sí» nuevo) tiene su excepcion explicita", () => {
+    expect(REGLAS_VIVAS_VOZ).toContain("repita el pedido completo con la hora y espere un «sí» NUEVO");
+    expect(BLOQUE_NATURALIDAD).toMatch(/el cierre del pedido \(hora, nombre, pago y total\) se repite completo/);
+  });
+
+  it("regla dura del TELEFONO DICTADO (nunca «lo anoto» ni repetir cifras) tiene su excepcion explicita", () => {
+    expect(REGLAS_VIVAS_VOZ).toContain('ni "lo anoto" de ese número');
+    expect(BLOQUE_NATURALIDAD).toMatch(/de un teléfono dictado NUNCA diga «lo anoto» ni repita sus cifras/);
   });
 });

@@ -91,6 +91,11 @@ describe("PRESET_RESTAURANTE_HUMANO", () => {
     expect(BLOQUE_NATURALIDAD).toMatch(/déjeme anotarlo/);
     expect(BLOQUE_NATURALIDAD).toMatch(/NO diga nada antes de las consultas rápidas/);
     expect(BLOQUE_NATURALIDAD).toMatch(/interrumpe/);
+    // Las reglas duras mandan y lo que piden decir completo queda exceptuado de forma EXPLICITA
+    expect(BLOQUE_NATURALIDAD).toMatch(/REGLAS DURAS.*mandan SIEMPRE sobre este bloque/);
+    expect(BLOQUE_NATURALIDAD).toMatch(/RESUMEN del pedido.*COMPLETO.*repite ENTERO/);
+    expect(BLOQUE_NATURALIDAD).toMatch(/NUNCA diga «lo anoto»/);
+    expect(BLOQUE_NATURALIDAD).toMatch(/salvo el RESUMEN del pedido, que se repite entero/);
     expect(BLOQUE_NATURALIDAD).toMatch(/nombre del cliente/);
   });
 
