@@ -234,7 +234,7 @@ export function FilaPedido(props: FilaPedidoProps) {
                 </Button>
               )}
               {proximos.includes("cancelado") && (
-                <Button type="button" size="sm" variant="danger-outline" className={BOTON_PILDORA} disabled={ocupado} onClick={() => props.onCancelar(order)}>
+                <Button type="button" size="sm" variant="danger" className={BOTON_PILDORA} disabled={ocupado} onClick={() => props.onCancelar(order)}>
                   <X className="h-3 w-3" aria-hidden="true" />
                   Cancelar pedido
                 </Button>
