@@ -31,7 +31,7 @@ export interface SelectorSucursalProps {
 }
 
 const FORMA =
-  "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-canvas px-2 text-left md:px-2.5 text-ui font-medium text-foreground shadow-hundido";
+  "flex h-9 max-md:h-auto max-md:min-h-9 max-md:py-1 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-canvas px-2 text-left md:px-2.5 text-ui font-medium text-foreground shadow-hundido";
 
 export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, className }: SelectorSucursalProps) {
   const disparadorRef = React.useRef<HTMLButtonElement>(null);
@@ -45,7 +45,7 @@ export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, clas
         <p className="mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">{etiqueta}</p>
         <div data-testid="selector-sucursal-unica" title={actual?.etiqueta} className={FORMA}>
           {icono}
-          <span className="min-w-0 flex-1 truncate">{actual?.etiqueta}</span>
+          <span className="min-w-0 flex-1 truncate max-md:line-clamp-2 max-md:whitespace-normal max-md:break-words max-md:leading-tight">{actual?.etiqueta}</span>
         </div>
       </div>
     );
@@ -63,7 +63,7 @@ export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, clas
           title={actual?.etiqueta}
           className={cn(
             FORMA,
-            "h-9 cursor-pointer py-0 transition-[background-color,box-shadow] duration-fast ease-brand motion-reduce:transition-none",
+            "h-9 cursor-pointer py-0 max-md:h-auto max-md:min-h-9 max-md:py-1 transition-[background-color,box-shadow] duration-fast ease-brand motion-reduce:transition-none",
             "hover:bg-muted data-[state=open]:bg-muted data-[state=open]:shadow-hundido-abierto",
             "focus-visible:border-border focus-visible:ring-2 focus-visible:ring-ring",
             // El chevron lo pinta SelectTrigger: aqui queda pequeno y gira al abrir (sin giro con movimiento reducido).
@@ -71,7 +71,7 @@ export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, clas
           )}
         >
           {icono}
-          <span data-slot="valor" className="min-w-0 flex-1 truncate">
+          <span data-slot="valor" className="min-w-0 flex-1 truncate max-md:line-clamp-2 max-md:whitespace-normal max-md:break-words max-md:text-left max-md:leading-tight">
             <SelectValue>{actual?.etiqueta}</SelectValue>
           </span>
         </SelectTrigger>

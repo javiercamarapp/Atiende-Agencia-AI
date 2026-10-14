@@ -11,7 +11,8 @@ import { esMovil, irASeccion, seccionesDelPanel } from "../helpers/navegacion.ts
 
 // El Copiloto de cada consola pone en la barra el nombre de su portada ("Pregunta a tus datos") con `useTituloBarra`, no el rotulo "Copiloto" del menu.
 const TITULO_COPILOTO = "Pregunta a tus datos";
-const nombreEsperado = (texto: string): string[] => (texto === "Copiloto" ? [TITULO_COPILOTO] : [texto]);
+// Las 6 verticales llevan el titulo nuevo; el superadmin tiene su propia pagina del Copiloto (rotulo "Copiloto").
+const nombreEsperado = (texto: string, objetivo: ObjetivoLogin): string[] => (texto === "Copiloto" ? (objetivo === "superadmin" ? [texto] : [TITULO_COPILOTO]) : [texto]);
 
 // "4 oct 2026" / "15 sept 2026": dia, mes corto es-MX y ano.
 const FORMATO_FECHA = /^\d{1,2} [a-z]{3,5}\.? \d{4}$/;
@@ -46,7 +47,7 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
         await expect
           .poll(async () => {
             const actual = ((await barra.textContent()) ?? "").trim();
-            return titulo.test(actual) || nombreEsperado(seccion.texto).includes(actual);
+            return titulo.test(actual) || nombreEsperado(seccion.texto, objetivo).includes(actual);
           }, { message: `${seccion.href}: la barra debe pasar a llevar el nombre de la pagina`, timeout: 10_000 })
           .toBe(true);
         const texto = ((await barra.textContent()) ?? "").trim();
@@ -54,7 +55,7 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
           // Solo el Resumen (la raiz del panel) conserva el titulo de la consola.
           resumenes += 1;
         } else {
-          expect(nombreEsperado(seccion.texto), `${objetivo}: la barra de ${seccion.href} debe llevar el nombre de la pagina`).toContain(texto);
+          expect(nombreEsperado(seccion.texto, objetivo), `${objetivo}: la barra de ${seccion.href} debe llevar el nombre de la pagina`).toContain(texto);
         }
         // Campana y fecha en CADA pagina (no solo en la de aterrizaje).
         const barraCompleta = page.getByTestId("barra-pagina");
