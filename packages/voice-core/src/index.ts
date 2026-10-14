@@ -50,3 +50,7 @@ export type { OpcionesFondo } from "./fondo-ambiente.ts";
 export { AmbienteRestaurante, Ducking, ESCALA_POR_PRESET, PERFILES_AMBIENTE, PRESETS_AMBIENTE, PRESET_AMBIENTE_POR_DEFECTO, esPresetAmbiente } from "./ambiente-restaurante.ts";
 export type { OpcionesAmbiente, OpcionesDucking, PresetAmbiente } from "./ambiente-restaurante.ts";
 export { autocorrelacionEnvolvente, aDbfs, fraccionEnergiaEnBanda, lufsAprox, muestrasRecortadas, pico, rms, ventanasRepetidas } from "./analisis-audio.ts";
+export { conAvisosDeHerramienta } from "./llamada/ejecutor-con-tecleo.ts";
+export type { AvisosHerramienta } from "./llamada/ejecutor-con-tecleo.ts";
+export { OrquestadorTecleo, TECLEO_VOLUMEN_MAX, TECLEO_VOLUMEN_MIN, TECLEO_VOLUMEN_POR_DEFECTO, crearClic, crearPip, esVolumenTecleo } from "./tecleo.ts";
+export type { OpcionesTecleo, TipoTecla } from "./tecleo.ts";
