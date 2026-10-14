@@ -195,11 +195,11 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const mensajeria = deps.hotelesMensajeriaConfigRepo ? deps.hotelesMensajeriaConfigRepo(c.get("db")) : new PostgresMensajeriaConfigRepository(c.get("db"));
     const agente = await mensajeria.getVoiceAgent(propertyId);
     const motivoPreview = await motivoSinPreview();
-    const escalera = estadoEscalera({ geminiApiKey: deps.env.geminiApiKey ?? null, openrouterApiKey: deps.env.llmProviders.openrouter?.apiKey ?? null, llm: deps.llmGateway ? { completar: () => Promise.reject(new Error("solo estado")) } : null });
+    const escalera = estadoEscalera({ geminiApiKey: deps.env.geminiApiKey ?? null, deepgramApiKey: deps.env.deepgramApiKey ?? null, openrouterApiKey: deps.env.llmProviders.openrouter?.apiKey ?? null, llm: deps.llmGateway ? { completar: () => Promise.reject(new Error("solo estado")) } : null });
     return c.json({
       agente: { configurado: agente.configurado, habilitado: agente.enabled },
       escalera,
-      precioMicroUsdPorMinuto: { "gemini-3.8-live": VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto, "cascada-openrouter": VOZ_PLATAFORMA.cascada.precioMicroUsdPorMinuto },
+      precioMicroUsdPorMinuto: { "gemini-3.8-live": VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto, "cascada-v2": VOZ_PLATAFORMA.cascadaV2.precioMicroUsdPorMinuto, "cascada-openrouter": VOZ_PLATAFORMA.cascada.precioMicroUsdPorMinuto },
       preview: { disponible: motivoPreview === null, motivo: motivoPreview },
     });
   });
