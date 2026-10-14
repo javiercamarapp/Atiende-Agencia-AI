@@ -195,7 +195,7 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const mensajeria = deps.hotelesMensajeriaConfigRepo ? deps.hotelesMensajeriaConfigRepo(c.get("db")) : new PostgresMensajeriaConfigRepository(c.get("db"));
     const agente = await mensajeria.getVoiceAgent(propertyId);
     const motivoPreview = await motivoSinPreview();
-    const escalera = estadoEscalera({ geminiApiKey: deps.env.geminiApiKey ?? null, deepgramApiKey: deps.env.deepgramApiKey ?? null, openrouterApiKey: deps.env.llmProviders.openrouter?.apiKey ?? null, llm: deps.llmGateway ? { completar: () => Promise.reject(new Error("solo estado")) } : null });
+    const escalera = estadoEscalera({ geminiApiKey: deps.env.geminiApiKey ?? null, deepgramApiKey: deps.env.deepgramApiKey ?? null, cascadaV2Habilitada: deps.env.cascadaV2Habilitada === true, openrouterApiKey: deps.env.llmProviders.openrouter?.apiKey ?? null, llm: deps.llmGateway ? { completar: () => Promise.reject(new Error("solo estado")) } : null });
     return c.json({
       agente: { configurado: agente.configurado, habilitado: agente.enabled },
       escalera,

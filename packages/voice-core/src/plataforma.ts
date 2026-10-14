@@ -20,6 +20,9 @@ export interface CredencialesVoz {
   readonly openrouterApiKey: string | null;
   /** `DEEPGRAM_API_KEY`: UNA sola llave para el STT y el TTS de la cascada v2. */
   readonly deepgramApiKey?: string | null;
+  /** INTERRUPTOR de la cascada v2 (`VOZ_CASCADA_V2_HABILITADA`): APAGADO por omision. Con la llave de Deepgram cargada pero sin habilitar, el escalon no abre (la escalera
+   * sigue con Gemini Live y la cascada de respaldo) hasta que el smoke manual pase y alguien lo encienda. */
+  readonly cascadaV2Habilitada?: boolean;
 }
 
 export interface DepsPlataformaVoz extends CredencialesVoz {
@@ -27,6 +30,8 @@ export interface DepsPlataformaVoz extends CredencialesVoz {
   readonly llm: PuertoLlmVoz | null;
   /** Puerto del LLM EN STREAMING de la cascada v2 (honra el modelo y el esfuerzo por turno). Sin el, la cascada v2 queda sin configurar. */
   readonly llmV2?: PuertoLlmVoz | null;
+  /** Ver `CascadaV2Opciones.confirmacionAntesDeCrear` (restaurantes: confirmar_resumen / crear_pedido). */
+  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string };
   readonly crearSocketDeepgram?: CrearSocketDeepgram;
   /** Registro de eventos de la cascada v2 (sin PII: modelo, tokens, latencias). */
   readonly log?: SumideroLog;
@@ -57,18 +62,21 @@ export interface EstadoEscaleraVoz {
 const lleno = (v: string | null): boolean => v !== null && v.trim() !== "";
 
 /** Estado HONESTO de la escalera para el panel: que escalones tienen credencial. No abre sesiones ni gasta. */
-export function estadoEscalera(deps: Pick<DepsPlataformaVoz, "geminiApiKey" | "openrouterApiKey" | "llm"> & { readonly deepgramApiKey?: string | null; readonly vertex?: VertexLiveOpciones }): EstadoEscaleraVoz {
+export function estadoEscalera(deps: Pick<DepsPlataformaVoz, "geminiApiKey" | "openrouterApiKey" | "llm" | "cascadaV2Habilitada"> & { readonly deepgramApiKey?: string | null; readonly vertex?: VertexLiveOpciones }): EstadoEscaleraVoz {
   const gemini = deps.vertex ? true : lleno(deps.geminiApiKey);
   const cascada = lleno(deps.openrouterApiKey) && deps.llm !== null;
   const deepgram = lleno(deps.deepgramApiKey ?? null);
-  const v2 = deepgram && cascada;
+  const habilitada = deps.cascadaV2Habilitada === true;
+  const v2 = deepgram && cascada && habilitada;
   const escalones: EstadoEscalonVoz[] = [
     { escalon: "gemini-3.8-live", configurado: gemini, detalle: gemini ? (deps.vertex ? "Vertex AI configurado (no se probó la red)." : "Credencial presente (no se probó la red).") : "Falta GEMINI_API_KEY." },
     {
       escalon: "cascada-v2",
       configurado: v2,
       detalle: v2
-        ? "Credenciales presentes (no se probó la red)."
+        ? "Credenciales presentes y escalón habilitado (no se probó la red)."
+        : !habilitada
+          ? "No disponible aún: requiere habilitar cascada-v2 (VOZ_CASCADA_V2_HABILITADA) tras la prueba real."
         : !deepgram
           ? "No disponible aún: requiere DEEPGRAM_API_KEY."
           : lleno(deps.openrouterApiKey)
@@ -95,19 +103,20 @@ export function crearEscalonesPlataforma(deps: DepsPlataformaVoz): EscalonLlamad
     ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}),
   });
   const sinGateway: EscalonLlamada["abrirSesion"] = () => Promise.reject(new VozNoConfiguradaError("Voz no configurada: la cascada necesita el gateway de texto."));
-  const v2 = deps.llmV2
+  const v2 = deps.llmV2 && deps.cascadaV2Habilitada === true
     ? crearProveedorCascadaV2({
         deepgramApiKey: deps.deepgramApiKey ?? null,
         llm: deps.llmV2,
         config,
         ...(deps.crearSocketDeepgram ? { crearSocket: deps.crearSocketDeepgram } : {}),
         ...(deps.herramientasEnParalelo ? { herramientasEnParalelo: deps.herramientasEnParalelo } : {}),
+        ...(deps.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: deps.confirmacionAntesDeCrear } : {}),
         ...(deps.log ? { log: deps.log } : {}),
       })
     : null;
   const porId: Record<EscalonVoz, EscalonLlamada> = {
     "gemini-3.8-live": { id: "gemini-3.8-live", abrirSesion: gemini.abrirSesion },
-    "cascada-v2": { id: "cascada-v2", abrirSesion: v2 ? v2.abrirSesion : sinGateway },
+    "cascada-v2": { id: "cascada-v2", abrirSesion: v2 ? v2.abrirSesion : deps.cascadaV2Habilitada === true ? sinGateway : () => Promise.reject(new VozNoConfiguradaError("Voz no configurada: la cascada v2 no esta habilitada (VOZ_CASCADA_V2_HABILITADA).")) },
     "cascada-openrouter": { id: "cascada-openrouter", abrirSesion: deps.llm ? cascada.abrirSesion : sinGateway },
   };
   return config.escalera.map((id) => porId[id]);
