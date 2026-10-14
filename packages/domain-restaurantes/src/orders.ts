@@ -592,7 +592,12 @@ export async function createOrder(
   // Destino de entrega (pin de WhatsApp o link de Maps) para el repartidor; solo a domicilio (recoger no lo usa).
   if (payload.ubicacionEntrega && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(formatUbicacionEntregaNota(payload.ubicacionEntrega));
   canalLines.push(...tortillasDeKilo);
-  if (payload.horaRecogida) canalLines.push(`Hora de recogida: ${payload.horaRecogida}.`);
+  if (payload.horaRecogida) {
+    // QA-PM-R6-voz-03: la comanda llevaba el ISO en UTC crudo («2026-10-06T19:40:10.057Z»); cocina lee la hora LOCAL de la sucursal.
+    const instante = new Date(payload.horaRecogida);
+    const zonaRecogida = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+    canalLines.push(`Hora de recogida: ${Number.isNaN(instante.getTime()) ? payload.horaRecogida : etiquetaHoraLocal(instante, zonaRecogida)}.`);
+  }
   if (payload.programadoPara) {
     const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
     canalLines.push(`Pedido programado para: ${etiquetaHoraLocal(new Date(payload.programadoPara), zona)}.`);
