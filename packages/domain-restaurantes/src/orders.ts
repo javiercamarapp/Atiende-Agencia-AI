@@ -166,6 +166,28 @@ export function validarTextoHoraRecogida(valor: unknown): void {
   if (!/(Z|[+-]\d{2}:?\d{2})$/.test(valor)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
 }
 
+/** Nombres que el modelo pone cuando el cliente NO dio uno ("Cliente", "Sin nombre"...). Se comparan sin acentos, en minusculas y sin signos. */
+const NOMBRES_GENERICOS = new Set(["cliente", "cliente whatsapp", "cliente nuevo", "cliente sin nombre", "sin nombre", "nombre", "anonimo", "desconocido", "na", "no proporcionado", "no dio nombre", "no especificado", "pendiente", "por confirmar", "usuario", "whatsapp"]);
+/** Caracteres de codigo/marcado que un nombre de persona no lleva (HTML, SQL, plantillas): QA-PM-R8 A38. */
+const NOMBRE_CON_CODIGO = /[<>{}[\]`;\\=]|--|\/\*|\$\(/;
+
+/**
+ * Un pedido de un agente (WhatsApp o voz) solo se registra con el nombre que DIO el cliente: no vacio, con al menos una letra, que no sea un relleno generico
+ * ("Cliente", "Sin nombre") ni lleve marcado o codigo ("<script>", "'; DROP"). QA-PM-R8 A38: el agente creo el pedido sin un nombre confirmado.
+ */
+export function nombreDeClienteUtilizable(valor: unknown): boolean {
+  if (typeof valor !== "string") return false;
+  const limpio = sanitizeInlineText(valor, 160);
+  if (!/\p{L}/u.test(limpio)) return false;
+  if (NOMBRE_CON_CODIGO.test(limpio)) return false;
+  const comparable = limpio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  return !NOMBRES_GENERICOS.has(comparable);
+}
+
+export const NOMBRE_NO_UTILIZABLE_MENSAJE =
+  "Falta el nombre del cliente: el que llegó está vacío, es genérico (por ejemplo «Cliente») o trae caracteres que no son de un nombre. Pregúntele UNA vez a nombre de quién va el pedido y use exactamente lo que responda; " +
+  "NO invente un nombre ni use «Cliente». No es motivo para escalar: pida el nombre, repita el resumen y cree el pedido en cuanto lo tenga.";
+
 /** Port literal de validateCreateOrderPayload — contrato único para pedidos reales
  * y simulados, sin efectos secundarios. */
 export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCreateOrderInput {
@@ -194,6 +216,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (raw.customerEmail !== undefined && raw.customerEmail !== null && raw.customerEmail.trim() !== "" && (typeof raw.customerEmail !== "string" || raw.customerEmail.trim().length > 320 || !EMAIL_RE.test(raw.customerEmail.trim()))) {
     throw new OrderValidationError("customerEmail inválido");
   }
+  if ((raw.source === "voice" || raw.source === "whatsapp") && !nombreDeClienteUtilizable(raw.customerName)) throw new OrderValidationError(NOMBRE_NO_UTILIZABLE_MENSAJE);
   const canal = normalizarCanal(raw.canal);
   if (raw.propinaPorcentaje !== undefined && (typeof raw.propinaPorcentaje !== "number" || !Number.isFinite(raw.propinaPorcentaje) || raw.propinaPorcentaje <= 0 || raw.propinaPorcentaje > 100)) {
     throw new OrderValidationError("El porcentaje de propina debe estar entre 1 y 100.");
