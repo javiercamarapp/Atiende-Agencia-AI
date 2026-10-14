@@ -47,3 +47,6 @@ export { AJUSTES_HABLA_POR_DEFECTO, ESTILOS_HABLA, RITMOS_HABLA, TEMPERATURA_VOZ
 export type { AjustesHabla, EstiloHabla, RitmoHabla } from "./ajustes-habla.ts";
 export { FONDO_VOLUMEN_MAX, FONDO_VOLUMEN_MIN, FONDO_VOLUMEN_POR_DEFECTO, FondoRestaurante, HZ_AUDIO_AGENTE, esVolumenFondo } from "./fondo-ambiente.ts";
 export type { OpcionesFondo } from "./fondo-ambiente.ts";
+export { AmbienteRestaurante, Ducking, ESCALA_POR_PRESET, PERFILES_AMBIENTE, PRESETS_AMBIENTE, PRESET_AMBIENTE_POR_DEFECTO, esPresetAmbiente } from "./ambiente-restaurante.ts";
+export type { OpcionesAmbiente, OpcionesDucking, PresetAmbiente } from "./ambiente-restaurante.ts";
+export { autocorrelacionEnvolvente, aDbfs, fraccionEnergiaEnBanda, lufsAprox, muestrasRecortadas, pico, rms, ventanasRepetidas } from "./analisis-audio.ts";
