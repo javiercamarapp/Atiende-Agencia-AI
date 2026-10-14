@@ -123,6 +123,7 @@ export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, op
         tokensEntrada: r.tokensIn,
         tokensSalida: r.tokensOut,
         ...(r.tokensCached !== undefined ? { tokensCache: r.tokensCached } : {}),
+        ...(r.finishReason ? { finishReason: r.finishReason } : {}),
       };
     },
   };

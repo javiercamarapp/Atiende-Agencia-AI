@@ -5,7 +5,10 @@
 //
 // - Fin de turno: lo decide el endpointing del STT (ya no hay corte por energia RMS).
 // - Por frase: en cuanto el LLM cierra la primera oracion se manda al TTS; el primer audio sale ANTES de que el LLM termine de escribir.
-// - Barge-in: si el STT detecta voz (o texto) del cliente mientras el agente habla o piensa, se aborta el LLM y el TTS en curso con un `AbortController`.
+// - Barge-in: si el STT entrega texto del cliente mientras el agente piensa, habla o aun suena su audio en la linea, se aborta el LLM y el TTS en curso con un `AbortController`
+//   y se avisa `interrumpido` (el worker corta la cola del puente). Un `SpeechStarted` aislado NO corta (un ruido dejaria al agente mudo): se confirma con el primer parcial no vacio.
+// - Historial: lo que queda como dicho por el agente es lo que SONO (estimado por el tiempo transcurrido desde el primer audio), no todo lo generado.
+// - Frases al TTS: la primera sale sola (menor latencia); las siguientes se agrupan en un solo Flush (Deepgram limita a 20 Flush por minuto); con pocos Flush disponibles todo el turno va junto.
 // - Herramientas: mismo registro y misma regla de la sesion de Gemini (`herramientas.ts`).
 // - Errores: cualquier etapa que se cae sube `h.caido("v2_<etapa>[_<estado>]")` (codigo corto, sin PII); la escalera pasa al siguiente escalon con el resumen redactado.
 // - Costo por COMPONENTE: `deepgram` (segundos de audio), `deepgram-aura-2` (caracteres), `openrouter:<modelo>` (costo real de OpenRouter).
@@ -38,6 +41,8 @@ export interface CascadaV2Opciones {
   readonly crearSocket?: CrearSocketDeepgram;
   /** Herramientas de solo lectura que pueden correr en paralelo al inicio de un turno (el resto, en serie). */
   readonly herramientasEnParalelo?: ReadonlySet<string>;
+  /** Si el modelo pide `confirmar` y `crear` en la MISMA respuesta, solo se ejecuta `confirmar`: `crear` espera la confirmacion del cliente en un turno posterior (restaurantes: confirmar_resumen / crear_pedido). */
+  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string };
   /** Tope de vueltas modelo -> herramienta -> modelo dentro de un turno. */
   readonly vueltasToolMax?: number;
   /** Modelo del LLM por omision (de lo contrario `config.cascadaV2.llm.modelo`). */
@@ -68,6 +73,32 @@ function codigoDeError(err: unknown, etapa: "stt" | "llm" | "tts"): string {
   return `v2_${etapa}`;
 }
 
+/** Frase del LLM con la vuelta (modelo -> herramienta -> modelo) en que se escribio. */
+interface FraseLlm {
+  readonly frase: string;
+  readonly vuelta: number;
+}
+
+/** Audio de UNA sintesis (una o varias frases agrupadas): sus frases, su peso en caracteres, cuando empieza en la linea de tiempo del turno y cuanto lleva generado. */
+interface OlaAudio {
+  readonly frases: string[];
+  readonly chars: number[];
+  readonly vuelta: number;
+  readonly inicioMs: number;
+  ms: number;
+}
+
+interface LineaAudio {
+  /** Instante (reloj de la sesion) del primer audio entregado; null si aun no hubo. */
+  t0: number | null;
+  /** Duracion (ms) del audio generado del turno: hasta t0 + totalMs se asume que sigue sonando. */
+  totalMs: number;
+  olas: OlaAudio[];
+}
+
+/** Con tan pocos Flush disponibles el nucleo deja de mandar frases sueltas y junta el resto del turno (Deepgram: 20 por 60 s). */
+const FLUSH_MINIMOS_PARA_FRASE_SUELTA = 3;
+
 const cuentaDeCaracteres = (texto: string): number => Array.from(texto).length;
 
 class SesionCascadaV2 implements VozSesionLlamada {
@@ -76,15 +107,17 @@ class SesionCascadaV2 implements VozSesionLlamada {
   private tts: SesionTts | null = null;
   private cerrada = false;
   private ocupada = false;
-  /** El agente esta emitiendo audio (ya salio el primer trozo y el turno sigue vigente). */
-  private hablando = false;
   private generacion = 0;
   private control: AbortController | null = null;
   private cadena: Promise<void> = Promise.resolve();
   private bytesSttPendientes = 0;
   private turnosCliente = 0;
-  /** Frases del turno en curso cuyo audio ya empezo a sonar (lo que el cliente oyo). */
-  private oidas: string[] = [];
+  /** Linea de tiempo del audio del turno (la ultima respuesta): lo generado, para estimar lo que ya sono. Persiste tras terminar el turno mientras el audio siga sonando. */
+  private audio: LineaAudio | null = null;
+  /** Vuelta (modelo -> herramienta -> modelo) en curso: solo el texto de esa vuelta se corrige al interrumpir. */
+  private vueltaActual = 0;
+  /** Lo que ya sono al momento de interrumpir (se fija en `interrumpir`, antes de que el reloj avance). */
+  private oidasAlInterrumpir: string[] | null = null;
   /** Posicion en `mensajes` del mensaje de texto final del turno en curso (para corregirlo si se interrumpe). */
   private indiceRespuestaFinal: number | null = null;
   private readonly ahora: () => number;
@@ -94,7 +127,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
   constructor(
     private readonly apertura: AperturaLlamada,
     private readonly h: ManejadoresSesion,
-    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "modeloLlm" | "elegirModelo" | "log" | "ahora">,
+    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora">,
     readonly vozTts: string,
   ) {
     this.ahora = o.ahora ?? Date.now;
@@ -139,14 +172,28 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.stt.enviarAudio(pcm16);
   }
 
+  /** El audio del agente sigue sonando en la linea (estimado: tiempo transcurrido desde el primer audio contra la duracion de lo generado). */
+  private reproduciendo(): boolean {
+    const a = this.audio;
+    return a !== null && a.t0 !== null && this.ahora() < a.t0 + a.totalMs;
+  }
+
   interrumpir(): void {
     if (this.cerrada) return;
-    const estaba = this.ocupada;
-    this.generacion += 1;
-    this.control?.abort();
-    this.hablando = false;
-    this.ocupada = false;
-    if (estaba) this.h.interrumpido();
+    const enCurso = this.ocupada;
+    if (!enCurso && !this.reproduciendo()) return;
+    // Lo que ya sono se fija AHORA: despues el reloj sigue avanzando.
+    this.oidasAlInterrumpir = this.oidasAhora();
+    if (enCurso) {
+      this.generacion += 1;
+      this.control?.abort();
+      this.ocupada = false;
+    } else {
+      // El turno ya termino pero su audio aun suena: se corrige el historial de inmediato y se corta la cola del puente (`interrumpido`).
+      this.registrarInterrupcion();
+    }
+    if (this.audio) this.audio.totalMs = 0;
+    this.h.interrumpido();
   }
 
   async cerrar(): Promise<void> {
@@ -166,17 +213,17 @@ class SesionCascadaV2 implements VozSesionLlamada {
   // ---- eventos del STT ----
 
   private alHablaCliente(): void {
-    // El cliente empezo a hablar encima del agente: se calla de inmediato. Si el agente solo estaba pensando, se espera al texto (un ruido no debe dejarlo mudo).
-    if (this.hablando) this.interrumpir();
+    // `SpeechStarted` solo avisa que hay energia de voz: un ruido (puerta, cocina) sin texto NO debe cortar al agente ni dejarlo mudo. El corte se confirma con el primer
+    // parcial no vacio (`alParcial`), unos 200-300 ms despues.
   }
 
   private alParcial(texto: string): void {
-    if (this.ocupada && texto.trim() !== "") this.interrumpir();
+    if (texto.trim() !== "") this.interrumpir();
   }
 
   private alTurnoFinal(texto: string): void {
     if (this.cerrada || texto.trim() === "") return;
-    if (this.ocupada) this.interrumpir();
+    this.interrumpir();
     this.reportarSegundosStt();
     this.h.usuarioDijo?.(texto);
     this.encolar(() => this.turno(texto));
@@ -217,6 +264,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.cerrada = true;
     this.generacion += 1;
     this.control?.abort();
+    this.audio = null;
     this.reportarSegundosStt();
     this.log("v2_caida", { codigo });
     // Se cierran los sockets: el STT factura por segundo de audio enviado y no debe quedar abierto tras la caida.
@@ -259,43 +307,68 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.control = control;
     const senal = control.signal;
     this.ocupada = true;
-    this.hablando = false;
-    this.oidas = [];
+    this.audio = { t0: null, totalMs: 0, olas: [] };
+    this.oidasAlInterrumpir = null;
     this.indiceRespuestaFinal = null;
+    this.vueltaActual = 0;
     this.turnosCliente += 1;
     this.mensajes.push({ role: "user", content: texto });
 
-    const cola = new ColaAsync<string>();
+    const cola = new ColaAsync<FraseLlm>();
     let fallaTts: unknown = null;
     const bombeo = this.bombearFrases(cola, senal, vigente).catch((err: unknown) => {
       // El TTS se cayo: se detiene tambien el LLM (no tiene caso seguir escribiendo una respuesta que nadie puede decir).
       fallaTts = err;
       control.abort();
     });
+    const cfg = this.o.config.cascadaV2;
     let errorLlm: unknown = null;
     try {
-      for (let vuelta = 0; vuelta <= this.o.vueltasToolMax; vuelta++) {
-        const segmentador = crearSegmentadorFrases(this.o.config.cascadaV2.frase);
+      let vuelta = 0;
+      let vacios = 0;
+      while (vuelta <= this.o.vueltasToolMax) {
+        this.vueltaActual = vuelta;
+        const segmentador = crearSegmentadorFrases(cfg.frase);
         const modelo = this.modeloDelTurno(vuelta);
         const t0 = this.ahora();
         let ttft: number | null = null;
         const r = await this.completar(modelo, senal, (delta) => {
           if (ttft === null) ttft = this.ahora() - t0;
-          for (const f of segmentador.agregar(delta)) cola.push(f);
+          for (const f of segmentador.agregar(delta)) cola.push({ frase: f, vuelta });
         });
+        // El costo se registra SIEMPRE que el proveedor lo reporto, aunque el cliente haya interrumpido mientras tanto (una llamada abortada antes de terminar no trae uso).
+        this.registrarLlm(r, modelo, ttft, this.ahora() - t0);
         if (!vigente()) break;
         const resto = segmentador.vaciar();
-        if (resto !== null) cola.push(resto);
-        this.registrarLlm(r, modelo, ttft, this.ahora() - t0);
+        if (resto !== null) cola.push({ frase: resto, vuelta });
+        const sinTexto = r.texto.trim() === "" && resto === null;
+        if (sinTexto && r.toolCalls.length === 0) {
+          // Respuesta vacia (p. ej. el razonamiento agoto el tope: finish_reason "length"): un reintento; si vuelve vacia, una frase de respaldo. Nunca silencio.
+          this.log("v2_respuesta_vacia", { proveedor: modelo, motivo: r.finishReason ?? "desconocido" });
+          if (vacios < 1) {
+            vacios += 1;
+            continue;
+          }
+          cola.push({ frase: cfg.llm.fraseRespaldo, vuelta });
+          this.mensajes.push({ role: "assistant", content: cfg.llm.fraseRespaldo });
+          this.indiceRespuestaFinal = this.mensajes.length - 1;
+          break;
+        }
         this.mensajes.push({ role: "assistant", content: r.texto, ...(r.toolCalls.length ? { toolCalls: r.toolCalls } : {}) });
         if (r.toolCalls.length === 0) {
           this.indiceRespuestaFinal = this.mensajes.length - 1;
           break;
         }
-        // El historial queda consistente aunque el cliente interrumpa a media herramienta: SIEMPRE se anotan las respuestas de las herramientas pedidas.
-        const resultados = await ejecutarHerramientas(r.toolCalls, (l) => this.h.ejecutarTool(l), this.o.herramientasEnParalelo);
+        // El historial queda consistente aunque el cliente interrumpa a media herramienta: SIEMPRE se anotan las respuestas de las herramientas pedidas
+        // (las que no llegaron a correr por la interrupcion o por esperar la confirmacion del cliente llevan un error explicito).
+        const resultados = await ejecutarHerramientas(r.toolCalls, (l) => this.h.ejecutarTool(l), {
+          ...(this.o.herramientasEnParalelo ? { enParalelo: this.o.herramientasEnParalelo } : {}),
+          ...(this.o.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: this.o.confirmacionAntesDeCrear } : {}),
+          continuar: vigente,
+        });
         for (const res of resultados) this.mensajes.push({ role: "tool", toolCallId: res.llamada.id, content: JSON.stringify(res.salida ?? null) });
         if (!vigente()) break;
+        vuelta += 1;
       }
     } catch (err) {
       errorLlm = err;
@@ -320,17 +393,13 @@ class SesionCascadaV2 implements VozSesionLlamada {
         this.falla(errorLlm, "llm");
         return;
       }
-      this.hablando = false;
       this.h.agenteTermino();
     } finally {
-      if (this.generacion === mia) {
-        this.ocupada = false;
-        this.hablando = false;
-      }
+      if (this.generacion === mia) this.ocupada = false;
     }
   }
 
-  /** Registra el uso del turno del LLM: costo por componente y, sin texto, el modelo, los tokens y la lectura de cache (para verificar el cache del system prompt). */
+  /** Registra el uso del turno del LLM: costo por componente (real solo si el proveedor lo reporto) y, sin texto, el modelo, los tokens y la lectura de cache. */
   private registrarLlm(r: RespuestaLlmVoz, modelo: string, ttftMs: number | null, ms: number): void {
     this.h.costo?.(r.costoMicroUsd, r.costoReal === true, { proveedor: `openrouter:${modelo}`, unidad: "unidad", cantidad: 1 });
     this.log("v2_llm", {
@@ -340,48 +409,84 @@ class SesionCascadaV2 implements VozSesionLlamada {
       ...(typeof r.tokensEntrada === "number" ? { tokensEntrada: r.tokensEntrada } : {}),
       ...(typeof r.tokensSalida === "number" ? { tokensSalida: r.tokensSalida } : {}),
       ...(typeof r.tokensCache === "number" ? { tokensCache: r.tokensCache } : {}),
+      ...(r.finishReason ? { motivo: r.finishReason } : {}),
     });
   }
 
-  /** El turno se interrumpio: el historial debe reflejar lo que el cliente SI oyo, no lo que el modelo alcanzo a escribir. */
+  /** Frases (de la vuelta pedida) cuyo audio YA empezo a sonar, estimado por el tiempo desde el primer audio: el audio se genera mas rapido que en tiempo real y el puente lo encola. */
+  private oidasAhora(vuelta: number = this.vueltaActual): string[] {
+    const a = this.audio;
+    if (!a || a.t0 === null) return [];
+    const transcurrido = this.ahora() - a.t0;
+    const oidas: string[] = [];
+    for (const ola of a.olas) {
+      if (ola.vuelta !== vuelta) continue;
+      const total = ola.chars.reduce((n, c) => n + c, 0) || 1;
+      let antes = 0;
+      ola.frases.forEach((f, i) => {
+        const inicio = ola.inicioMs + ola.ms * (antes / total);
+        antes += ola.chars[i] ?? 0;
+        if (inicio <= transcurrido) oidas.push(f);
+      });
+    }
+    return oidas;
+  }
+
+  /** El turno se interrumpio: el historial debe reflejar lo que el cliente SI oyo, no lo que el modelo alcanzo a escribir ni lo que el TTS alcanzo a generar. */
   private registrarInterrupcion(): void {
-    const dicho = this.oidas.join(" ").trim();
+    const dicho = (this.oidasAlInterrumpir ?? this.oidasAhora()).join(" ").trim();
     const i = this.indiceRespuestaFinal;
     if (i !== null && this.mensajes[i]?.role === "assistant") {
       if (dicho === "") this.mensajes.splice(i, 1);
       else this.mensajes[i] = { role: "assistant", content: dicho };
     } else if (dicho !== "") {
-      // El LLM no alcanzo a terminar: queda lo que ya se dijo en voz alta.
+      // El LLM no alcanzo a terminar la vuelta: queda lo que ya se dijo en voz alta EN ESA vuelta (el texto de las anteriores ya esta en su mensaje).
       this.mensajes.push({ role: "assistant", content: dicho });
     }
     this.indiceRespuestaFinal = null;
+    this.oidasAlInterrumpir = null;
   }
 
-  /** Consume las frases del LLM y las sintetiza de una en una, entregando el audio conforme llega. Lanza si el TTS falla. */
-  private async bombearFrases(cola: ColaAsync<string>, senal: AbortSignal, vigente: () => boolean): Promise<void> {
+  /** Consume las frases del LLM y las sintetiza, entregando el audio conforme llega. La primera frase sale sola; las siguientes se agrupan en una sola sintesis (un Flush). Lanza si el TTS falla. */
+  private async bombearFrases(cola: ColaAsync<FraseLlm>, senal: AbortSignal, vigente: () => boolean): Promise<void> {
     const tts = this.tts;
+    const turnoAudio = this.audio;
+    const hz = this.o.config.cascadaV2.deepgramAura2.hzSalida;
     let primera = true;
     const t0 = this.ahora();
     for (;;) {
-      const frase = await cola.siguiente();
-      if (frase === null || !vigente() || senal.aborted || !tts) return;
-      // Deepgram factura por caracteres enviados: se anota al mandar la frase.
-      const caracteres = cuentaDeCaracteres(frase);
+      const primero = await cola.siguiente();
+      if (primero === null || !vigente() || senal.aborted || !tts || !turnoAudio) return;
+      const lote: FraseLlm[] = [primero];
+      const pocosFlush = typeof tts.flushesDisponibles === "function" && tts.flushesDisponibles() <= FLUSH_MINIMOS_PARA_FRASE_SUELTA;
+      if (pocosFlush) {
+        // Cerca del limite de Flush: todo lo que falta del turno va en UNA sintesis (degrada la latencia, no cae el escalon).
+        for (let f = await cola.siguiente(); f !== null; f = await cola.siguiente()) lote.push(f);
+      } else if (!primera) {
+        lote.push(...cola.tomarDisponibles());
+      }
+      if (!vigente() || senal.aborted) return;
+      const texto = lote.map((l) => l.frase).join(" ");
+      // Deepgram factura por caracteres enviados: se anota al mandar el texto.
+      const caracteres = cuentaDeCaracteres(texto);
       this.h.costo?.(costoDeepgramAura2MicroUsd(caracteres, this.o.config), false, { proveedor: "deepgram-aura-2", unidad: "unidad", cantidad: caracteres });
+      const ola: OlaAudio = { frases: lote.map((l) => l.frase), chars: lote.map((l) => cuentaDeCaracteres(l.frase)), vuelta: lote[lote.length - 1]!.vuelta, inicioMs: turnoAudio.totalMs, ms: 0 };
       let empezo = false;
       try {
-        for await (const pcm of tts.sintetizar(frase, senal)) {
+        for await (const pcm of tts.sintetizar(texto, senal)) {
           if (!vigente() || senal.aborted) return;
           if (!empezo) {
             empezo = true;
-            this.hablando = true;
-            this.oidas.push(frase);
+            turnoAudio.olas.push(ola);
+            turnoAudio.t0 ??= this.ahora();
             if (primera) {
               primera = false;
               this.log("v2_primer_audio", { ms: this.ahora() - t0 });
             }
-            this.h.agenteDijo(`${frase} `);
+            this.h.agenteDijo(`${texto} `);
           }
+          ola.ms += (pcm.byteLength / 2 / hz) * 1000;
+          turnoAudio.totalMs = ola.inicioMs + ola.ms;
           this.h.audioAgente?.(pcm);
         }
       } catch (err) {
@@ -415,7 +520,7 @@ export function crearProveedorCascadaV2(opts: CascadaV2Opciones): ProveedorCasca
     const sesion = new SesionCascadaV2(
       apertura,
       manejadores,
-      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
+      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
       voz,
     );
     await sesion.iniciar(stt, tts);

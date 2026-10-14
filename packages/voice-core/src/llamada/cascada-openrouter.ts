@@ -53,6 +53,8 @@ export interface RespuestaLlmVoz {
   readonly tokensEntrada?: number;
   readonly tokensSalida?: number;
   readonly tokensCache?: number;
+  /** Motivo de fin que reporto el proveedor (`stop`, `length`...). `length` con texto vacio = el razonamiento agoto el tope de tokens. */
+  readonly finishReason?: string;
 }
 export interface PuertoLlmVoz {
   completar(peticion: PeticionLlmVoz): Promise<RespuestaLlmVoz>;

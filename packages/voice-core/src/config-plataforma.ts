@@ -104,6 +104,11 @@ export interface ConfigCascadaV2 {
     readonly voz: string;
     /** Tasa (Hz) del PCM lineal que se pide al TTS: igual a la de salida de la sala (24 kHz), asi no hay remuestreo. */
     readonly hzSalida: number;
+    /** Recorte del silencio INICIAL que Aura-2 antepone a cada frase (medido 520-710 ms por REST; por WebSocket sin verificar): se descarta lo que no pase de `umbral`
+     * (energia RMS normalizada 0..1 de una ventana de 10 ms), con un tope de `maxMs` y dejando `rellenoMs` antes de la voz para no comer el ataque. */
+    readonly silencioInicial: { readonly umbral: number; readonly maxMs: number; readonly rellenoMs: number };
+    /** Tope de espera (ms) por trozo/fin de una frase: si Deepgram nunca manda `Flushed`, la frase falla con `tts_timeout` y la escalera decide. */
+    readonly fraseTimeoutMs: number;
   };
   readonly heygen: {
     /** US$ por MILLON de caracteres, precio de lista. */
@@ -120,8 +125,11 @@ export interface ConfigCascadaV2 {
     /** RETENCION CERO (decision de Javier, 14-oct-2026): el cerebro de voz solo se enruta a endpoints con Zero Data Retention de OpenRouter (`provider.zdr: true`),
      * y de ellos solo a los de estos proveedores (Vertex y Bedrock sirven Claude con ZDR; Anthropic directo no figura en /api/v1/endpoints/zdr). Cuesta ~0.6 s mas al primer token. */
     readonly proveedoresZdr: readonly string[];
-    /** Tope de tokens de salida (incluye el razonamiento): una respuesta hablada es corta. */
+    /** Tope de tokens de salida, INCLUIDO el razonamiento. Es un PISO alto a proposito (igual que el gateway): con 400 el benchmark midio 5.3 % de respuestas cortadas y con 1 500, 0.03 %;
+     * si el razonamiento agota el tope, OpenRouter devuelve el contenido vacio con finish_reason "length". La respuesta hablada sigue siendo corta por la instruccion, no por este tope. */
     readonly topeSalidaTokens: number;
+    /** Lo que se dice si el modelo responde vacio dos veces seguidas (nunca se deja al cliente en silencio). */
+    readonly fraseRespaldo: string;
     /** El costo del LLM NO se calcula con una tarifa: es el `usage.cost` que OpenRouter reporta en cada respuesta (`costo_estimado = false`). */
     readonly fuenteCosto: "openrouter-usage-cost";
   };
@@ -164,7 +172,7 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     deepgram: Object.freeze({ modelo: "nova-3", idioma: "es-419", endpointingMs: 400, utteranceEndMs: 1000, keytermsMax: 50, hzEntrada: 16_000, usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077, usdPorMinutoKeyterms: 0.0013 }),
     // Deepgram Aura-2 (TTS alternativo): https://deepgram.com/pricing (leida el 2026-10-13): US$0.030 por 1 000 caracteres pago por uso (US$0.027 en plan Growth),
     // sin marca de promocion. Se usa la tarifa de pago por uso (la mas alta).
-    deepgramAura2: Object.freeze({ usdPorMilCaracteres: 0.03, voz: "aura-2-estrella-es", hzSalida: 24_000 }),
+    deepgramAura2: Object.freeze({ usdPorMilCaracteres: 0.03, voz: "aura-2-estrella-es", hzSalida: 24_000, silencioInicial: Object.freeze({ umbral: 0.01, maxMs: 800, rellenoMs: 20 }), fraseTimeoutMs: 8_000 }),
     // HeyGen NO se da por la voz definitiva (investigacion de arquitectura): limite FIJO de 30 solicitudes por minuto en todos los planes y solo entrega WAV a 44.1 kHz;
     // se mantiene como parametro configurable junto a Aura-2. HeyGen Voice: US$30 por millon de caracteres de lista y US$15 en promocion hasta el 31-oct-2026 (cifras del plan de voz y del brief de Javier, 10-oct-2026;
     // NO se pudieron contrastar con la pagina publica de HeyGen: no expone el precio por caracter sin sesion). La promocion termina al acabar el 31-oct en Merida
@@ -172,10 +180,11 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     heygen: Object.freeze({ usdPorMillonCaracteres: 30, promocion: Object.freeze({ precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" }) }),
     // OpenRouter, leido el 2026-10-13 (/api/v1/models/<id>/endpoints): Haiku 5.5 US$0.10 / 0.50 por millon (cache 0.01); Sonnet 5.5 US$2 / 10 (cache 0.10).
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
-    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock"]), topeSalidaTokens: 512, fuenteCosto: "openrouter-usage-cost" as const }),
+    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fuenteCosto: "openrouter-usage-cost" as const }),
     frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
-    // Piso por minuto: Deepgram STT ~4 800 + Aura-2 ~600 caracteres/min (~18 000) + LLM ~10 000 micro-USD.
-    precioMicroUsdPorMinuto: 33_000,
+    // Piso por minuto (SUPUESTO a reemplazar con la medicion del smoke): Deepgram STT ~4 800 (+1 300 de keyterms) + Aura-2 ~600 caracteres/min (~18 000) + LLM ~24 000 micro-USD
+    // (Sonnet 5.5 con esfuerzo bajo; con ~10 000 se subestimaba).
+    precioMicroUsdPorMinuto: 47_000,
   }),
 });
 
