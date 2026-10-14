@@ -64,10 +64,11 @@ const ALIAS_DE_COMPLEMENTO: ReadonlyArray<readonly [RegExp, RequestedComplement]
   [/\b(?:sauceada|suasada|soasada|soasado|sauceado|suasado)\b/, "salsa_habanero_soasado"],
   [/\bxnipec\b|\bxni\s?pec\b|\bpico\s+de\s+gallo\b|\bcebolla\s+con\s+tomate\b|\bsalsa\s+mexicana\b|\bmexicana\b/, "salsa_mexicana"],
   [/\bguacamolera\b|\bguacamole\b/, "salsa_guacamolera"],
-  [/\bcrema\s+de\s+ajo\b|\bcrema_ajo\b/, "crema_ajo"],
+  // «salsa de ajo» / «ajo» (T7-002, T7-035) es la crema de ajo: sin alias el modelo la mandaba, el servidor la rechazaba y el reintento terminaba con otra salsa o sin ella.
+  [/\bcrema\s+de\s+ajo\b|\bcrema_ajo\b|\bsalsa\s+de\s+ajo\b|^ajo$/, "crema_ajo"],
   [/\bsalsa\s+de\s+pi[ñn]a\b|\bsalsa_pina\b/, "salsa_pina"],
   [/\bpi[ñn]a\b|\bpina\b/, "pina"],
-  [/\bhabanero\b|\bsalsa_habanero\b/, "salsa_habanero"],
+  [/\bhabanero\b|\bhabanera\b|\bsalsa_habanero\b/, "salsa_habanero"],
 ];
 
 /** Convierte lo que mando el modelo en un complemento canonico de la lista cerrada, o null si no se reconoce (se descarta, nunca se imprime). */
@@ -75,7 +76,8 @@ export function canonicalRequestedComplement(valor: unknown): RequestedComplemen
   if (typeof valor !== "string") return null;
   const t = valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   if ((COMPLEMENTOS_PEDIBLES as readonly string[]).includes(t)) return t as RequestedComplement;
-  for (const [patron, canonico] of ALIAS_DE_COMPLEMENTO) if (patron.test(t)) return canonico;
+  const conEspacios = t.replace(/_/g, " ").replace(/\s+/g, " ");
+  for (const [patron, canonico] of ALIAS_DE_COMPLEMENTO) if (patron.test(t) || patron.test(conEspacios)) return canonico;
   return null;
 }
 
