@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 const V = "https://api.test/hoteles/prop-1/voz";
-const PRECIOS = { "gemini-3.8-live": 18_000, "cascada-openrouter": 14_000 } as const;
+const PRECIOS = { "gemini-3.8-live": 18_000, "cascada-v2": 33_000, "cascada-openrouter": 14_000 } as const;
 
 const SIN_CREDENCIALES: EstadoVozHoteles = {
   agente: { configurado: false, habilitado: false },
@@ -30,6 +30,7 @@ const SIN_CREDENCIALES: EstadoVozHoteles = {
     operativa: false,
     escalones: [
       { escalon: "gemini-3.8-live", configurado: false, detalle: "Falta GEMINI_API_KEY." },
+      { escalon: "cascada-v2", configurado: false, detalle: "No disponible aún: requiere DEEPGRAM_API_KEY." },
       { escalon: "cascada-openrouter", configurado: false, detalle: "Falta OPENROUTER_API_KEY." },
     ],
   },
@@ -43,6 +44,7 @@ const OPERATIVA: EstadoVozHoteles = {
     operativa: true,
     escalones: [
       { escalon: "gemini-3.8-live", configurado: true, detalle: "Credencial presente (no se probó la red)." },
+      { escalon: "cascada-v2", configurado: false, detalle: "No disponible aún: requiere DEEPGRAM_API_KEY." },
       { escalon: "cascada-openrouter", configurado: false, detalle: "Falta OPENROUTER_API_KEY." },
     ],
   },
@@ -79,6 +81,8 @@ describe("PruebaAgenteVoz (hoteles)", () => {
     const texto = rendered.container.textContent ?? "";
     expect(texto).toContain("Requiere credenciales");
     expect(texto).toContain("Falta GEMINI_API_KEY.");
+    expect(texto).toContain("No disponible aún: requiere DEEPGRAM_API_KEY.");
+    expect(texto).toContain("Cascada v2 en streaming (Deepgram)");
     expect(texto).toContain("Falta OPENROUTER_API_KEY.");
     expect(rendered.container.querySelector("[data-testid='preview-no-disponible']")?.textContent).toContain("No disponible aún");
     expect(boton(rendered, "Hacer llamada de prueba")).toBeUndefined();

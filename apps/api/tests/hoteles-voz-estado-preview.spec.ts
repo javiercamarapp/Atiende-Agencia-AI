@@ -11,6 +11,7 @@ import { authedJson, buildHotelesTestContext } from "./hoteles-fixtures.ts";
 
 const SECRETO = "test-voice-preview-token-secret";
 const LLAVE_GEMINI = "AIza-llave-de-plataforma-no-debe-salir";
+const LLAVE_DEEPGRAM = `dg-${"d".repeat(24)}`;
 const LLAVE_OPENROUTER = "sk-or-llave-de-plataforma-no-debe-salir";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,7 +50,7 @@ function conGuardaDeSistema(base: AppDeps, repo: HotelesRepository): { deps: App
 }
 
 async function construir(
-  opts: { provider?: FakeVoiceProvider | GeminiLiveProvider | null; sinSecreto?: boolean; geminiApiKey?: string | null; openrouter?: boolean; gateway?: boolean } = {},
+  opts: { provider?: FakeVoiceProvider | GeminiLiveProvider | null; sinSecreto?: boolean; geminiApiKey?: string | null; deepgramApiKey?: string | null; openrouter?: boolean; gateway?: boolean } = {},
 ) {
   const ctx = await buildHotelesTestContext(buildApp);
   const provider = opts.provider === undefined ? new FakeVoiceProvider() : opts.provider;
@@ -61,6 +62,7 @@ async function construir(
       ...ctx.deps.env,
       voicePreviewTokenSecret: opts.sinSecreto ? null : SECRETO,
       geminiApiKey: opts.geminiApiKey ?? null,
+      deepgramApiKey: opts.deepgramApiKey ?? null,
       llmProviders: { ...ctx.deps.env.llmProviders, openrouter: opts.openrouter ? { apiKey: LLAVE_OPENROUTER, countryOfResidence: null, modelsJson: null, zdr: false, sharedBreaker: null, breakerEnv: "test" } : null },
     },
   };
@@ -83,7 +85,8 @@ describe("GET /hoteles/:propertyId/voz/estado", () => {
     const cuerpo = await res.json();
     expect(cuerpo.agente).toEqual({ configurado: false, habilitado: false });
     expect(cuerpo.escalera.operativa).toBe(false);
-    expect(cuerpo.escalera.escalones.map((e: { escalon: string; configurado: boolean }) => [e.escalon, e.configurado])).toEqual([["gemini-3.8-live", false], ["cascada-openrouter", false]]);
+    expect(cuerpo.escalera.escalones.map((e: { escalon: string; configurado: boolean }) => [e.escalon, e.configurado])).toEqual([["gemini-3.8-live", false], ["cascada-v2", false], ["cascada-openrouter", false]]);
+    expect(cuerpo.escalera.escalones[1].detalle).toBe("No disponible aún: requiere DEEPGRAM_API_KEY.");
     expect(cuerpo.preview.disponible).toBe(false);
     expect(cuerpo.preview.motivo).toContain("GEMINI_API_KEY");
   });
@@ -91,11 +94,11 @@ describe("GET /hoteles/:propertyId/voz/estado", () => {
   it("precio por minuto: el MISMO de la config de plataforma (mismo costo para todas las verticales)", async () => {
     const { ctx, app, base } = await construir();
     const cuerpo = await (await app.request(`${base}/estado`, authedJson(ctx.staff.owner.token))).json();
-    expect(cuerpo.precioMicroUsdPorMinuto).toEqual({ "gemini-3.8-live": VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto, "cascada-openrouter": VOZ_PLATAFORMA.cascada.precioMicroUsdPorMinuto });
+    expect(cuerpo.precioMicroUsdPorMinuto).toEqual({ "gemini-3.8-live": VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto, "cascada-v2": VOZ_PLATAFORMA.cascadaV2.precioMicroUsdPorMinuto, "cascada-openrouter": VOZ_PLATAFORMA.cascada.precioMicroUsdPorMinuto });
   });
 
-  it("con las dos llaves y el gateway: ambos escalones configurados, y NUNCA se devuelve una llave ni el secreto de tools", async () => {
-    const { ctx, app, base, mensajeria } = await construir({ provider: new GeminiLiveProvider({ apiKey: LLAVE_GEMINI }), geminiApiKey: LLAVE_GEMINI, openrouter: true, gateway: true });
+  it("con las tres llaves y el gateway: todos los escalones configurados, y NUNCA se devuelve una llave ni el secreto de tools", async () => {
+    const { ctx, app, base, mensajeria } = await construir({ provider: new GeminiLiveProvider({ apiKey: LLAVE_GEMINI }), geminiApiKey: LLAVE_GEMINI, deepgramApiKey: LLAVE_DEEPGRAM, openrouter: true, gateway: true });
     await mensajeria.rotateVoiceSecret(ctx.propertyId, ctx.organizationId, "secreto-de-tools-de-la-property", true);
     const res = await app.request(`${base}/estado`, authedJson(ctx.staff.owner.token));
     const texto = JSON.stringify(await res.json());
@@ -104,7 +107,7 @@ describe("GET /hoteles/:propertyId/voz/estado", () => {
     expect(cuerpo.escalera.operativa).toBe(true);
     expect(cuerpo.escalera.escalones.every((e: { configurado: boolean }) => e.configurado)).toBe(true);
     expect(cuerpo.preview).toEqual({ disponible: true, motivo: null });
-    for (const secreto of [LLAVE_GEMINI, LLAVE_OPENROUTER, "secreto-de-tools-de-la-property", SECRETO]) expect(texto).not.toContain(secreto);
+    for (const secreto of [LLAVE_GEMINI, LLAVE_OPENROUTER, LLAVE_DEEPGRAM, "secreto-de-tools-de-la-property", SECRETO]) expect(texto).not.toContain(secreto);
   });
 
   it("solo OpenRouter + gateway: la escalera es operativa (cascada) pero la vista previa NO (el navegador solo habla con Gemini)", async () => {
