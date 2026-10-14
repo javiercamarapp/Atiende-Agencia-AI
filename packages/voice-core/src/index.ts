@@ -46,7 +46,32 @@ export { ColaAsync, DEEPGRAM_LISTEN_URL, DEEPGRAM_SPEAK_URL, VOCES_AURA2_ES, cre
 export type { CascadaV2Opciones, ContextoTurnoLlm, CrearSocketDeepgram, DeepgramSttOpciones, DeepgramTtsOpciones, EventosStt, OpcionesSocketDeepgram, OpcionesStt, OpcionesTts, ProveedorCascadaV2Llamada, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts, SocketDeepgram } from "./llamada/cascada-v2/index.ts";
 export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";
 export type { CredencialesVoz, DepsPlataformaVoz, EstadoEscaleraVoz, EstadoEscalonVoz } from "./plataforma.ts";
-export { AJUSTES_HABLA_POR_DEFECTO, ESTILOS_HABLA, RITMOS_HABLA, TEMPERATURA_VOZ_MAX, TEMPERATURA_VOZ_MIN, conInstruccionDeHabla, esEstiloHabla, esRitmoHabla, esTemperaturaVoz, instruccionDeHabla } from "./ajustes-habla.ts";
+export { AJUSTES_HABLA_POR_DEFECTO, ESTILOS_HABLA, RITMOS_HABLA, TEMPERATURA_VOZ_LLAMADA_MAX, TEMPERATURA_VOZ_MAX, TEMPERATURA_VOZ_MIN, temperaturaParaLlamada, conInstruccionDeHabla, esEstiloHabla, esRitmoHabla, esTemperaturaVoz, instruccionDeHabla } from "./ajustes-habla.ts";
 export type { AjustesHabla, EstiloHabla, RitmoHabla } from "./ajustes-habla.ts";
 export { FONDO_VOLUMEN_MAX, FONDO_VOLUMEN_MIN, FONDO_VOLUMEN_POR_DEFECTO, FondoRestaurante, HZ_AUDIO_AGENTE, esVolumenFondo } from "./fondo-ambiente.ts";
 export type { OpcionesFondo } from "./fondo-ambiente.ts";
+export { AmbienteRestaurante, Ducking, ESCALA_POR_PRESET, PERFILES_AMBIENTE, PRESETS_AMBIENTE, PRESET_AMBIENTE_POR_DEFECTO, esPresetAmbiente } from "./ambiente-restaurante.ts";
+export type { OpcionesAmbiente, OpcionesDucking, PresetAmbiente } from "./ambiente-restaurante.ts";
+export { autocorrelacionEnvolvente, aDbfs, fraccionEnergiaEnBanda, lufsAprox, muestrasRecortadas, pico, rms, ventanasRepetidas } from "./analisis-audio.ts";
+export { conAvisosDeHerramienta } from "./llamada/ejecutor-con-tecleo.ts";
+export type { AvisosHerramienta } from "./llamada/ejecutor-con-tecleo.ts";
+export { OrquestadorTecleo, TECLEO_VOLUMEN_MAX, TECLEO_VOLUMEN_MIN, TECLEO_VOLUMEN_POR_DEFECTO, crearClic, crearPip, esVolumenTecleo } from "./tecleo.ts";
+export type { OpcionesTecleo, TipoTecla } from "./tecleo.ts";
+export { MezcladorSalida } from "./mezclador-salida.ts";
+export { HZ_MUESTRA, TIPOS_MUESTRA, aTelefono, escribirWav16, leerWav16, medirMuestra, medirTelefono, remuestrearLineal, renderizarMuestra, vozSinteticaDePrueba } from "./muestras-ambiente.ts";
+export type { EventoMuestra, MetricasMuestra, OpcionesMuestra, ResultadoMuestra, TipoMuestra } from "./muestras-ambiente.ts";
+export type { OpcionesMezclador } from "./mezclador-salida.ts";
+export {
+  BLOQUE_ACENTO_MEXICANO,
+  BLOQUE_NATURALIDAD,
+  CANDIDATAS_TTS_CASCADA_V2,
+  ID_PRESET_RESTAURANTE_HUMANO,
+  PRESET_RESTAURANTE_HUMANO,
+  MOTORES_VOZ_PRESET,
+  VOCES_FEMENINAS_REFERENCIA,
+  vozParaMotor,
+  conInstruccionHumana,
+  instruccionHumana,
+  validarPresetHumano,
+} from "./preset-restaurante-humano.ts";
+export type { MotorVozPreset, PresetVozHumano, ProblemaPreset, VozDeMotor } from "./preset-restaurante-humano.ts";

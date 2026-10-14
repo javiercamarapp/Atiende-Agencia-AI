@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { saludoPorHora } from "../src/lib/greeting.ts";
 import { saludoDespacho } from "../src/verticals/despachos/lib/saludo.ts";
 import { saludoEnZona } from "../src/verticals/restaurantes/lib/resumen-formato.ts";
+import { saludoEnZona as saludoLicitaciones } from "../src/verticals/licitaciones/lib/resumen.ts";
+import { saludoMexico } from "../src/superadmin/lib/consola-client.ts";
 
 // Regla del backend (voice-core saludoPorHora): buenos días 5:00-11:59, buenas tardes 12:00-19:59, buenas noches el resto.
 const esperadoDe = (h: number) => (h >= 5 && h < 12 ? "Buenos días" : h >= 12 && h < 20 ? "Buenas tardes" : "Buenas noches");
@@ -16,6 +18,9 @@ describe("mismas franjas que el backend", () => {
     const enMexico = new Date(Date.UTC(2026, 9, 6, h + 6, 30));
     expect(saludoEnZona(enMexico, "America/Mexico_City")).toBe(esperado);
     expect(saludoDespacho(enMexico)).toBe(esperado);
+    // QA-PM-R6: licitaciones y la consola del superadmin tenian el corte de las noches a las 19:00.
+    expect(saludoLicitaciones(enMexico, "America/Mexico_City")).toBe(esperado);
+    expect(saludoMexico(enMexico)).toBe(esperado);
   });
   it("19:30 sigue siendo buenas tardes y 20:00 ya es buenas noches", () => {
     expect(saludoPorHora(new Date(2026, 9, 6, 19, 30))).toBe("Buenas tardes");

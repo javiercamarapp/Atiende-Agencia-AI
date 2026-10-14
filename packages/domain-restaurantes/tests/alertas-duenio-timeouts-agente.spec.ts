@@ -231,11 +231,13 @@ describe("crearLectorTurnosAgentePostgres", () => {
           { organization_id: A, claimed_at: "2026-10-07T17:59:00Z", status: "processed", last_error_class: null },
           { organization_id: A, claimed_at: new Date("2026-10-07T17:58:00Z"), status: "failed", last_error_class: "TimeoutError" },
           { organization_id: B, claimed_at: "2026-10-07T17:57:00Z", status: "failed", last_error_class: "TypeError" },
+          // QA-PM-R6-whatsapp-02: un turno procesado que termino en «problema tecnico» cuenta como fallo.
+          { organization_id: B, claimed_at: "2026-10-07T17:56:00Z", status: "processed", last_error_class: "FallaDelSistema" },
         ],
       },
     ]);
     const turnos = await crearLectorTurnosAgentePostgres(session).leer(desde, AHORA);
-    expect(turnos!.map((t) => t.resultado)).toEqual(["ok", "timeout", "fallo"]);
+    expect(turnos!.map((t) => t.resultado)).toEqual(["ok", "timeout", "fallo", "fallo"]);
     expect(turnos![1]!.at.toISOString()).toBe("2026-10-07T17:58:00.000Z");
   });
 

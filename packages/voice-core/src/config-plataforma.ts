@@ -22,7 +22,8 @@ export interface ConfigPlataformaVoz {
   readonly escalera: readonly EscalonVoz[];
   readonly gemini: {
     readonly modelo: string;
-    /** Temperatura de generacion (0 = determinista: el agente vivo de PM corre asi, sin variar precios ni reglas). */
+    /** Temperatura de generacion por omision (0 = determinista: el agente vivo de PM corre asi, sin variar precios ni reglas). La de la ORGANIZACION (ajustes del agente) la reemplaza solo en Gemini Live y con tope
+     * `TEMPERATURA_VOZ_LLAMADA_MAX` (0.4); la cascada conserva siempre `cascada.temperatura`. */
     readonly temperatura: number;
     /** `speechConfig.languageCode` del setup de la Gemini API (BCP-47); `null` = no enviarlo. Los modelos de audio nativo de la Gemini API ELIGEN el idioma
      * solos y no admiten `languageCode` (investigacion 4-oct): el idioma se fija en la instruccion (`instruccionIdioma`). */
