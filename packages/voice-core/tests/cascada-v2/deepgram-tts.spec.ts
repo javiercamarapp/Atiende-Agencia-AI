@@ -298,7 +298,7 @@ describe("TTS Deepgram Aura-2: cancelacion y fallos", () => {
   });
 
   it("si la ventana de Flush no se libera dentro del tope, falla con tts_flush_limite (nunca cuelga)", async () => {
-    let ahora = 5_000_000;
+    const ahora = 5_000_000;
     const { sesion, sockets } = await abrir({ ahora: () => ahora });
     const s = sockets[0]!;
     const senal = new AbortController().signal;
