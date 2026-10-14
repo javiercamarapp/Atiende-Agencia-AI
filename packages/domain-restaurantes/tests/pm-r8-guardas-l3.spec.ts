@@ -142,26 +142,40 @@ function mundoDosSucursales() {
 }
 const ctxWa = (organizationId: string, extra: Record<string, unknown> = {}) => ({ organizationId, channel: "whatsapp" as const, phone: "9991234567", ...extra });
 
-describe("T7-002 coordenada absurda: se rechaza, no es «fuera de zona»", () => {
-  it("el pin con lng=-61.41 (mal formado) lanza un error claro, sin sucursal ni distancia", async () => {
+describe("T7-002 coordenada absurda: sigue siendo fuera_de_zona pero sin sucursal ni distancia que escalar", () => {
+  const pm = { perfil: "taqueria_pm" as const, agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] };
+  it("assignBranch marca el pin con lng=-61.41 (mal formado) como ubicacionImplausible", async () => {
     const m = mundoDosSucursales();
-    await expect(assignBranch(m.repo, { organizationId: m.organizationId, lat: 21.0211, lng: -61.41, radioMaximoKm: 8 })).rejects.toThrow(/no parece estar en la zona/);
-    const e = await assignBranch(m.repo, { organizationId: m.organizationId, lat: 21.0211, lng: -61.41, radioMaximoKm: 8 }).catch((x: unknown) => x as Error);
-    expect(e).toBeInstanceOf(OrderValidationError);
-    expect(e.message).not.toMatch(/\d{3,} ?km|García Lavín|Montejo/); // no inventa sucursal ni cifra
-    expect(e.message).toMatch(/NO escale/);
+    const r = await assignBranch(m.repo, { organizationId: m.organizationId, lat: 21.0211, lng: -61.41, radioMaximoKm: 8 });
+    expect(r).toMatchObject({ estado: "fuera_de_zona", ubicacionImplausible: true });
   });
-  it("por la herramienta: el modelo recibe el error y no hay resultado de sucursal", async () => {
+  it("por la herramienta: no nombra sucursal ni distancia y manda a pedir la ubicacion de nuevo sin escalar", async () => {
     const m = mundoDosSucursales();
-    await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
-    await expect(invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { lat: 21.0211, lng: -61.41 })).rejects.toThrow(OrderValidationError);
+    await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { lat: 21.0211, lng: -61.41 })).result as Record<string, unknown>;
+    expect(r).toMatchObject({ encontrada: false, estado: "fuera_de_zona", ubicacion_sospechosa: true });
+    expect(Object.keys(r).sort()).toEqual(["encontrada", "estado", "mensaje", "reparto", "ubicacion_sospechosa"]); // sin branch_slug_mas_cercana, distancia_km ni max_km
+    const mensaje = String(r.mensaje);
+    expect(mensaje).not.toMatch(/\d{3,} ?km|García Lavín|Montejo/);
+    expect(mensaje).toMatch(/NO escale/);
+    expect(mensaje).toMatch(/comparta de nuevo/);
   });
-  it("el limite: a 149 km sigue siendo «fuera de zona» (domicilio real lejano) y a 151 km se rechaza", async () => {
+  it("el limite: a 148 km sigue siendo un fuera_de_zona normal (con sucursal y distancia) y a 152 km es implausible", async () => {
     const m = mundoDosSucursales();
     const grados = (km: number) => km / 111.19; // un grado de latitud ~ 111.19 km
     const lejos = async (km: number) => assignBranch(m.repo, { organizationId: m.organizationId, lat: 21.0211 + grados(km), lng: -89.6141, radioMaximoKm: 8 });
-    expect((await lejos(UBICACION_IMPLAUSIBLE_KM - 2)).estado).toBe("fuera_de_zona");
-    await expect(lejos(UBICACION_IMPLAUSIBLE_KM + 2)).rejects.toThrow(OrderValidationError);
+    const cerca = await lejos(UBICACION_IMPLAUSIBLE_KM - 2);
+    expect(cerca.estado).toBe("fuera_de_zona");
+    expect("ubicacionImplausible" in cerca).toBe(false);
+    expect(await lejos(UBICACION_IMPLAUSIBLE_KM + 2)).toMatchObject({ estado: "fuera_de_zona", ubicacionImplausible: true });
+  });
+  it("un fuera_de_zona normal (20 km) conserva sucursal mas cercana y distancia", async () => {
+    const m = mundoDosSucursales();
+    await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { lat: 21.0211 + 20 / 111.19, lng: -89.6141 })).result as Record<string, unknown>;
+    expect(r).toMatchObject({ estado: "fuera_de_zona", branch_slug_mas_cercana: "prol-montejo" });
+    expect(typeof r.distancia_km).toBe("number");
+    expect(r.ubicacion_sospechosa).toBeUndefined();
   });
   it("sin radio de reparto (organización sin tope) no se recorta: se conserva el comportamiento anterior", async () => {
     const m = mundoDosSucursales();
@@ -174,8 +188,6 @@ describe("T7-002 coordenada absurda: se rechaza, no es «fuera de zona»", () =>
     expect(r).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin" });
   });
 });
-
-type ResultadoSucursal = { estado: string; branch_slug: string; atiende_otra_sucursal?: { aviso: string; telefono?: string } };
 
 describe("G5/T7-026/T7-049..051 el domicilio lo atiende otra sucursal que la del chat", () => {
   const pm = { perfil: "taqueria_pm" as const, agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] };
