@@ -315,10 +315,13 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
   return messages.map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
 }
 
+/** Texto cuando el asistente no pudo responder y el equipo del hotel NO quedo avisado (o no se sabe): nada prometido que no se hizo. */
+export const FALLA_SIN_AVISO_REPLY = "Tuve un problema técnico y no pude atender tu mensaje. Por favor intenta de nuevo en unos minutos o comunícate directamente con el hotel.";
+/** Texto cuando el asistente no pudo responder y el aviso al equipo SI quedo registrado: solo se dice "avisé" porque es cierto. */
+export const FALLA_CON_AVISO_REPLY = "Tuve un problema técnico y no pude atender tu mensaje. Ya avisé al equipo del hotel para que una persona te contacte lo antes posible.";
+
 export function providerFailureReply(fnbOrderId: string | null): string {
-  return fnbOrderId
-    ? "¡Listo! Ya registramos tu pedido, la cocina lo va a preparar."
-    : "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.";
+  return fnbOrderId ? "¡Listo! Ya registramos tu pedido, la cocina lo va a preparar." : FALLA_SIN_AVISO_REPLY;
 }
 
 /**
@@ -367,10 +370,34 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
       let derivarAHumano = false;
       const conHandoff = <T extends { readonly reply: string; readonly fnbOrderId: string | null }>(r: T) => (derivarAHumano ? { ...r, handoff: { motivo: "agente_derivo" } } : r);
 
-      for (let turn = 0; turn < maxToolUseTurns; turn++) {
-        if (Date.now() >= deadline) {
-          return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
+      // El asistente no pudo responder (tiempo agotado, proveedor caido o vueltas agotadas). Con un pedido de F&B ya registrado se le confirma ese pedido, que es
+      // cierto. Sin pedido, se deja el contacto para recepcion y SOLO si quedo registrado se dice "ya avise" y se pide el handoff; si no, un texto sin promesas.
+      const fallaDelSistema = async (motivo: string): Promise<{ readonly reply: string; readonly fnbOrderId: string | null; readonly handoff?: { readonly motivo: string } }> => {
+        if (fnbOrderId) return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
+        const ultimo = [...messages].reverse().find((m) => m.role === "user");
+        let avisado = false;
+        try {
+          await repo.runWithRowSavepoint(() =>
+            registerContactoNoOperativo(repo, {
+              organizationId,
+              propertyId,
+              guestPhone: phone,
+              guestName: null,
+              reason: `falla_sistema: ${motivo}`,
+              message: `El asistente no pudo responder (falla del sistema). Ultimo mensaje del huesped: ${(ultimo?.content ?? "").slice(0, 400)}`,
+              source: "whatsapp",
+            }),
+          );
+          avisado = true;
+        } catch {
+          // best-effort: sin registro no se promete ningun aviso.
         }
+        if (!avisado) return conHandoff({ reply: FALLA_SIN_AVISO_REPLY, fnbOrderId });
+        return { reply: FALLA_CON_AVISO_REPLY, fnbOrderId, handoff: { motivo: "falla_sistema" } };
+      };
+
+      for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        if (Date.now() >= deadline) return fallaDelSistema("presupuesto_agotado");
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
         let completion: { text: string; toolCalls?: LlmToolCall[] };
@@ -385,7 +412,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
         } catch {
           // Escalera de proveedores agotada / presupuesto excedido / gate de
           // residencia bloqueado — nunca se propaga un 500 crudo al huésped.
-          return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
+          return fallaDelSistema("error_proveedor");
         }
 
         const toolCalls = completion.toolCalls ?? [];
@@ -447,8 +474,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
         }
       }
 
-      if (fnbOrderId) return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
-      return conHandoff({ reply: "Se me complicó procesar tu mensaje, un momento por favor.", fnbOrderId });
+      return fallaDelSistema("loop_agotado");
     },
   };
 }
