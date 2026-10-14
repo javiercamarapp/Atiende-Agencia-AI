@@ -79,7 +79,7 @@ export function FormDialogElegante({
           )}
           <DialogTitle className="font-display text-lg font-semibold">{titulo}</DialogTitle>
           {subtitulo ? (
-            <DialogDescription className="mt-1 max-w-sm text-ui">{subtitulo}</DialogDescription>
+            <DialogDescription className="mt-1 max-w-sm text-ui rest:text-ui">{subtitulo}</DialogDescription>
           ) : (
             <DialogDescription className="sr-only">{titulo}</DialogDescription>
           )}
