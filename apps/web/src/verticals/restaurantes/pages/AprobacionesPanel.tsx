@@ -233,7 +233,7 @@ export function AprobacionesPanel({
         <div className="grid gap-3">
           {errorDialogo && <Callout tone="danger">{errorDialogo}</Callout>}
           <FormField label="Descuento">
-            <Selector value={String(pct)} onChange={(e) => setPct(Number(e.target.value))}>
+            <Selector value={String(pct)} onValueChange={(v) => setPct(Number(v))}>
               {opcionesPct.map((n) => (
                 <option key={n} value={n}>
                   {n} %

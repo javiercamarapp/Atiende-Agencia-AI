@@ -83,8 +83,8 @@ test.describe("UNI-R0b ambito restaurantes @recorrido @oscuro", () => {
     const movil = info.project.name.startsWith("movil");
     await iniciarSesion("restaurantes", "owner");
     await ir(page, "/pedidos");
-    await page.locator("main#contenido-principal").getByRole("button", { name: "Marcar Cancelado" }).first().click();
-    const d = dialogo(page, "Cancelar pedido");
+    await page.locator("main#contenido-principal").getByRole("button", { name: "Cancelar pedido" }).first().click();
+    const d = dialogo(page, "¿Cancelar este pedido?");
     await expect(d).toBeVisible();
     expect(await d.getByRole("heading").first().evaluate((el) => getComputedStyle(el).fontSize)).toBe("16px");
     expect(await d.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe(movil ? "16px" : "12px");
@@ -216,7 +216,7 @@ test.describe("UNI-R0b ambito restaurantes @recorrido @oscuro", () => {
     const oscuro = info.project.name.endsWith("oscuro");
     await iniciarSesion("restaurantes", "owner");
     await ir(page, "/pedidos");
-    const fila = page.locator("main#contenido-principal").getByRole("button", { name: "Marcar Cancelado" }).first();
+    const fila = page.locator("main#contenido-principal").getByRole("button", { name: "Cancelar pedido" }).first();
     await expect(fila).toBeVisible();
     expect(await fila.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await resolver(page, oscuro ? "hsl(216 40% 13%)" : "hsl(0 0% 100%)"));
     expect(await fila.evaluate((el) => getComputedStyle(el).color)).toBe(await resolver(page, oscuro ? "hsl(352 85% 70%)" : "hsl(352 83% 41%)"));

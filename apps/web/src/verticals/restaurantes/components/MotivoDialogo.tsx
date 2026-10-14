@@ -53,8 +53,7 @@ export function MotivoDialogo({
       <div className="grid gap-3">
         {error && <Callout tone="danger">{error}</Callout>}
         <FormField label="Motivo" required hint="Queda en el historial del pedido y alimenta la precisión del agente.">
-          <Selector value={motivo} onChange={(e) => setMotivo(e.target.value as MotivoCancelacion | "")}>
-            <option value="">Elige un motivo…</option>
+          <Selector value={motivo} placeholder="Elige un motivo…" onValueChange={(v) => setMotivo(v as MotivoCancelacion | "")}>
             {MOTIVOS_CANCELACION.map((m) => (
               <option key={m} value={m}>
                 {MOTIVO_CANCELACION_ETIQUETAS[m]}
