@@ -23,14 +23,17 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
+  AJUSTES_AGENTE_POR_DEFECTO,
   FRANJAS_VOZ,
   LATENCIA_VOZ_OBJETIVO_P95_MS,
   MODOS_ENTRADA_VOZ,
   STAFF_INVITE_ROLES,
   VOZ_POR_DEFECTO,
+  ajustesDeLlamada,
   armarInstruccionLlamada,
   canonicalizeMexicanPhone,
   diaLocalSucursal,
+  instruccionConAjustes,
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
 import { emitirNotificacion } from "@atiende/db";
@@ -110,7 +113,11 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (!sucursal) throw Errors.notFound("La sucursal no existe para esa organización.");
       const lectura = await deps.vozRepo!(db).getConfig(propertyId);
       const ahora = new Date();
-      const { instruccion, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
+      const { instruccion: instruccionBase, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
+      // Ajustes del agente de la organización (ritmo, estilo, naturalidad, ambiente, tecleo; migraciones 055/087). Base sin migrar o despliegue sin el repositorio: valores de siempre.
+      const ajustes = deps.ajustesAgenteRepo ? (await deps.ajustesAgenteRepo(db).leer(organizationId)).valor : AJUSTES_AGENTE_POR_DEFECTO;
+      const instruccion = instruccionConAjustes(instruccionBase, ajustes, null);
+      const llamada = ajustesDeLlamada(ajustes);
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.
       const gasto = deps.vozLlamadaRepo ? await deps.vozLlamadaRepo(db).gastoMesMicroUsd(organizationId, ahora) : null;
       return c.json({
@@ -118,6 +125,8 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         configurada: lectura.valor.configurada,
         voiceId: lectura.valor.voiceId || VOZ_POR_DEFECTO,
         instruccion,
+        // Lo que el worker mezcla en la salida de audio: ambiente de restaurante y tecleo (apagados por omision).
+        sonido: { fondo: llamada.fondo, tecleo: llamada.tecleo },
         gastoMesMicroUsd: gasto,
         horaLocal,
       });
