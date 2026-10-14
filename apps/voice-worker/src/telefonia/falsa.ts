@@ -49,10 +49,18 @@ export class LlamadaFalsa implements LlamadaTelefonica {
     this.cbColgar = cb;
     if (this.colgo) cb();
   }
-  /** El mezclador de la salida (si la llamada lo abrio): las pruebas lo consumen con `siguiente(n)` en vez de bombearlo con un reloj. */
+  /** El mezclador de la salida (si la llamada lo abrio). Esta telefonia falsa lo VACIA sola mientras haya voz del agente pendiente (sin reloj: tan rapido como puede),
+   * para que `vaciar()` de la llamada no espere para siempre; lo que sale queda en `tramasMezcladas`. */
   salidaMezclada: MezcladorSalida | null = null;
+  readonly tramasMezcladas: Int16Array[] = [];
   abrirSalidaMezclada(mezclador: MezcladorSalida): void {
     this.salidaMezclada = mezclador;
+    const vaciar = (): void => {
+      if (this.colgo) return;
+      while (mezclador.pendientes > 0) this.tramasMezcladas.push(mezclador.siguiente(Math.round(mezclador.hz * 0.02)));
+      setTimeout(vaciar, 2);
+    };
+    setTimeout(vaciar, 0);
   }
   async reproducir(pcm: Int16Array, hz: number): Promise<void> {
     if (this.colgo) return;
