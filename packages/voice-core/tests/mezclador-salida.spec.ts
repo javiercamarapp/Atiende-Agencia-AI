@@ -86,13 +86,27 @@ describe("MezcladorSalida", () => {
     expect(m.tecleo!.sonando).toBe(false);
   });
 
-  it("satura a PCM16 sin desbordar con voz a plena escala mas ambiente y tecleo", () => {
-    const m = new MezcladorSalida({ ambiente: { volumen: 20, semilla: 1 }, tecleo: { volumen: 25, semilla: 1 } });
-    m.herramientaInicia("a");
-    void m.encolarAgente(Int16Array.from({ length: ms(500) }, (_, i) => (i % 2 === 0 ? 32767 : -32768)));
-    const x = m.siguiente(ms(500));
-    expect(pico(x)).toBeLessThanOrEqual(1);
-    expect(x.every((v) => v >= -32768 && v <= 32767)).toBe(true);
+  it("satura a PCM16 en vez de desbordar: voz casi a plena escala + ambiente + tecleo (sin la saturacion habria muestras con el signo cambiado)", () => {
+    for (const signo of [1, -1]) {
+      const m = new MezcladorSalida({ ambiente: { volumen: 20, semilla: 1 }, tecleo: { volumen: 25, semilla: 1 } });
+      m.herramientaInicia("a");
+      void m.encolarAgente(new Int16Array(ms(500)).fill(signo * 32000));
+      const x = m.siguiente(ms(500));
+      let min = Infinity;
+      let max = -Infinity;
+      for (const v of x) {
+        min = Math.min(min, v);
+        max = Math.max(max, v);
+      }
+      if (signo === 1) {
+        // 32000 + ambiente/tecleo (hasta ~14000 de pico) pasa de 32767: sin clamp el Int16Array lo daria vuelta a negativo
+        expect(min).toBeGreaterThan(0);
+        expect(max).toBe(32767); // llego al techo y se quedo ahi
+      } else {
+        expect(max).toBeLessThan(0);
+        expect(min).toBe(-32768);
+      }
+    }
   });
 
   it("volumenes en 0 o ausentes no activan nada", () => {

@@ -111,16 +111,23 @@ describe("OrquestadorTecleo", () => {
     expect(hayAudio(avanzar(o, 1500))).toBe(false);
   });
 
-  it("barge-in: si el cliente habla el tecleo se corta en ~25 ms y NO vuelve aunque la herramienta siga", () => {
+  it("barge-in: una tecla sonando se apaga en ~25 ms (reloj de muestras), no vuelve aunque la herramienta siga y la siguiente herramienta si suena", () => {
     const o = crear();
     o.herramientaInicia("t1");
-    avanzar(o, 800);
+    // Avanza de 10 en 10 ms hasta que acaba de dispararse una tecla (su sonido dura ~75 ms): el cliente habla JUSTO ahi.
+    for (let guardia = 0; guardia < 400; guardia++) {
+      const antes = o.teclas;
+      avanzar(o, 10);
+      if (o.teclas > antes && o.teclas >= 3) break;
+    }
     o.clienteHabla();
-    avanzar(o, 60); // fade de corte
-    const despues = avanzar(o, 3000);
-    expect(hayAudio(despues)).toBe(false);
+    const corte = avanzar(o, 25);
+    const despues = avanzar(o, 500);
+    // dentro de los 25 ms del corte todavia se oye la tecla apagandose; pasados ~30 ms es silencio EXACTO (sin `cortado` la cola de la tecla duraria hasta ~75 ms)
+    expect(hayAudio(corte)).toBe(true);
+    expect(hayAudio(despues.subarray(ms(5)))).toBe(false);
     expect(o.sonando).toBe(false);
-    // la siguiente herramienta si vuelve a sonar
+    expect(o.herramientasEnVuelo).toBe(1); // la herramienta sigue en vuelo y aun asi no vuelve a sonar
     o.herramientaTermina("t1", true);
     o.herramientaInicia("t2");
     expect(hayAudio(avanzar(o, 500))).toBe(true);
