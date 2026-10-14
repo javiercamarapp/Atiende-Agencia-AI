@@ -92,6 +92,8 @@ export interface ConfigCascadaV2 {
     readonly usdPorMinuto: number;
     /** US$ por minuto: tarifa anterior (la que uso el plan de voz del 10-oct). La vigente se publica como promocional por tiempo limitado, SIN fecha de fin: si sube, vuelve aqui. */
     readonly usdPorMinutoAnterior: number;
+    /** US$ por minuto del add-on Keyterm Prompting (streaming, pago por uso), que se suma cuando la llamada manda vocabulario del menu como `keyterm`. */
+    readonly usdPorMinutoKeyterms: number;
   };
   /** TTS alternativo: Deepgram Aura-2 (mismo proveedor y llave que el STT). */
   readonly deepgramAura2: {
@@ -153,9 +155,10 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
   cascadaSilencioFinTurnoMs: 700,
   cascadaV2: Object.freeze({
     // Deepgram: https://deepgram.com/pricing (leida el 2026-10-13): Nova-3 Monolingual streaming US$0.0048/min (tachado US$0.0077), Multilingual US$0.0058/min
-    // (tachado US$0.0092); la pagina marca las tarifas de streaming como promocionales por tiempo limitado y NO publica fecha de fin. El plan usaba US$0.0077.
+    // (tachado US$0.0092); el add-on Keyterm Prompting (streaming) cuesta US$0.0013/min extra, sin tachado (el brief manda las palabras del menu como keyterms: tarifa
+    // efectiva US$0.0061/min con vocabulario). La pagina marca las tarifas de streaming como promocionales por tiempo limitado y NO publica fecha de fin. El plan usaba US$0.0077.
     // Parametros del STT verificados en https://developers.deepgram.com/reference/speech-to-text/listen-streaming y /docs/models-languages-overview (13-oct-2026).
-    deepgram: Object.freeze({ modelo: "nova-3", idioma: "es-419", endpointingMs: 400, utteranceEndMs: 1000, keytermsMax: 50, hzEntrada: 16_000, usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077 }),
+    deepgram: Object.freeze({ modelo: "nova-3", idioma: "es-419", endpointingMs: 400, utteranceEndMs: 1000, keytermsMax: 50, hzEntrada: 16_000, usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077, usdPorMinutoKeyterms: 0.0013 }),
     // Deepgram Aura-2 (TTS alternativo): https://deepgram.com/pricing (leida el 2026-10-13): US$0.030 por 1 000 caracteres pago por uso (US$0.027 en plan Growth),
     // sin marca de promocion. Se usa la tarifa de pago por uso (la mas alta).
     deepgramAura2: Object.freeze({ usdPorMilCaracteres: 0.03, voz: "aura-2-estrella-es", hzSalida: 24_000 }),
@@ -219,10 +222,12 @@ const relojSistema: RelojFecha = () => new Date();
 
 const microUsd = (usd: number): number => Math.round(usd * 1_000_000);
 
-/** Costo estimado de Deepgram (micro-USD, entero hacia arriba) para `duracionS` segundos de audio enviados al STT. */
-export function costoDeepgramMicroUsd(duracionS: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
+/** Costo estimado de Deepgram STT (micro-USD, entero hacia arriba) para `duracionS` segundos de audio enviados. `conKeyterms` suma el add-on Keyterm Prompting (la llamada
+ * manda vocabulario del menu); sin vocabulario se cobra solo la tarifa base. */
+export function costoDeepgramMicroUsd(duracionS: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA, conKeyterms = false): number {
   if (typeof duracionS !== "number" || !Number.isFinite(duracionS) || duracionS <= 0) return 0;
-  return Math.ceil((duracionS * microUsd(config.cascadaV2.deepgram.usdPorMinuto)) / 60);
+  const { usdPorMinuto, usdPorMinutoKeyterms } = config.cascadaV2.deepgram;
+  return Math.ceil((duracionS * (microUsd(usdPorMinuto) + (conKeyterms === true ? microUsd(usdPorMinutoKeyterms) : 0))) / 60);
 }
 
 /** Costo estimado de Deepgram Aura-2 (micro-USD, entero hacia arriba) para `caracteres` sintetizados. US$ por 1 000 caracteres x 1 000 = micro-USD por caracter. */

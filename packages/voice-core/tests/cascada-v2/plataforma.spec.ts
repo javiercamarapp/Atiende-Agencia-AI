@@ -1,6 +1,6 @@
 // La cascada v2 dentro de la escalera de la plataforma: orden de los escalones, configuracion congelada y cableado con credenciales. WebSocket y LLM FALSOS.
 import { describe, expect, it } from "vitest";
-import { ESCALERA_VOZ, VOZ_PLATAFORMA, costoEstimadoMicroUsd, crearEscalonesPlataforma, crearEscaleraPlataforma, precioPorMinutoMicroUsd } from "../../src/index.ts";
+import { ESCALERA_VOZ, eventosCostoLlamada, VOZ_PLATAFORMA, costoEstimadoMicroUsd, crearEscalonesPlataforma, crearEscaleraPlataforma, precioPorMinutoMicroUsd } from "../../src/index.ts";
 import type { AperturaLlamada } from "../../src/index.ts";
 import { fabricaSockets, llmFalso, manejadoresFalsos, escribe } from "./dobles.ts";
 
@@ -59,5 +59,16 @@ describe("configuracion de la cascada v2", () => {
     expect(Object.isFrozen(VOZ_PLATAFORMA.cascadaV2.llm)).toBe(true);
     expect(Object.isFrozen(VOZ_PLATAFORMA.cascadaV2.deepgram)).toBe(true);
     expect(Object.isFrozen(VOZ_PLATAFORMA.cascadaV2.deepgramAura2)).toBe(true);
+  });
+});
+
+describe("piso por minuto propio de la cascada v2", () => {
+  it("un tramo de cascada-v2 sin desglose se estima con SU piso (no con el de cascada-openrouter, 14 000 micro-USD/min)", () => {
+    const base = { vertical: "restaurantes", llamadaId: "l1", organizationId: "o", propertyId: "p", ocurridoEn: "2026-10-14T12:00:00.000Z" };
+    const v2 = eventosCostoLlamada({ ...base, tramos: [{ escalon: "cascada-v2", duracionS: 60, costoReportadoMicroUsd: 0 }] });
+    const or = eventosCostoLlamada({ ...base, tramos: [{ escalon: "cascada-openrouter", duracionS: 60, costoReportadoMicroUsd: 0 }] });
+    expect(v2.map((e) => [e.proveedor, e.costoMicroUsd])).toEqual([["cascada-v2", VOZ_PLATAFORMA.cascadaV2.precioMicroUsdPorMinuto]]);
+    expect(or[0]!.costoMicroUsd).toBe(14_000);
+    expect(VOZ_PLATAFORMA.cascadaV2.precioMicroUsdPorMinuto).not.toBe(14_000);
   });
 });

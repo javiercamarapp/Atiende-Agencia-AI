@@ -392,6 +392,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
 
   // 6) Cierre: costo por escalon (en `core.usage_cost_event`), turnos, conversacion. La duracion y el p95 los calcula la base desde los turnos.
   const tramos = escalera.tramos();
+  // Avisos de costo no finitos o negativos que la escalera descarto (sin PII: solo el conteo). Si hubo, el costo de la llamada podria estar subestimado.
+  if (escalera.costosInvalidos() > 0) log("costos_invalidos", { invalidos: escalera.costosInvalidos() });
   const eventos = eventosCostoLlamada({ vertical: "restaurantes", llamadaId: callId, organizationId, propertyId, ocurridoEn: new Date(iniciadaEn).toISOString(), tramos });
   costoMicroUsd = costoTotalMicroUsd(eventos);
   if (conversationId && tramos.length > 0) {

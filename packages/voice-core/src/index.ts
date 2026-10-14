@@ -36,7 +36,7 @@ export type { ConfigCascadaV2, PromocionPrecio, RelojFecha } from "./config-plat
 export type { ConfigPlataformaVoz, EscalonVoz, UsoGemini } from "./config-plataforma.ts";
 export { COSTO_MAX_LLAMADA_MICRO_USD, ESCENARIOS_COSTO_GEMINI, TOKENS_AUDIO_POR_SEGUNDO, estimarCostoLlamadaGemini } from "./costo-gemini.ts";
 export type { CostoLlamadaGemini, EscenarioLlamadaGemini } from "./costo-gemini.ts";
-export { PROVEEDOR_COMPONENTE_RE, costoTotalMicroUsd, eventosCostoLlamada } from "./costo.ts";
+export { PROVEEDOR_COMPONENTE_RE, componenteReportaCosto, costoTotalMicroUsd, escalonAdmiteComponentes, eventosCostoLlamada, motivoComponenteInvalido, refIdComponente, unidadDeComponente } from "./costo.ts";
 export type { ComponenteCosto, EntradaEventosCosto, EventoCostoUso, TramoLlamada } from "./costo.ts";
 export { crearEscaleraLlamada } from "./escalera.ts";
 export type { EscalonLlamada, EscaleraLlamada, OpcionesEscalera } from "./escalera.ts";

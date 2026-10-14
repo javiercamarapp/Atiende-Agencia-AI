@@ -22,7 +22,7 @@ import { crearSegmentadorFrases } from "./frases.ts";
 import { ejecutarHerramientas } from "./herramientas.ts";
 import { ColaAsync } from "./puertos.ts";
 import type { ContextoTurnoLlm, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts } from "./puertos.ts";
-import { crearSttDeepgram } from "./deepgram-stt.ts";
+import { crearSttDeepgram, keytermsDe } from "./deepgram-stt.ts";
 import { crearTtsDeepgram, resolverVozAura2 } from "./deepgram-tts.ts";
 import type { CrearSocketDeepgram } from "./socket.ts";
 
@@ -88,6 +88,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
   /** Posicion en `mensajes` del mensaje de texto final del turno en curso (para corregirlo si se interrumpe). */
   private indiceRespuestaFinal: number | null = null;
   private readonly ahora: () => number;
+  /** El STT recibio `keyterm` (vocabulario del menu): Deepgram cobra el add-on Keyterm Prompting por minuto. */
+  private readonly conKeyterms: boolean;
 
   constructor(
     private readonly apertura: AperturaLlamada,
@@ -96,6 +98,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     readonly vozTts: string,
   ) {
     this.ahora = o.ahora ?? Date.now;
+    this.conKeyterms = keytermsDe(apertura.vocabulario, o.config.cascadaV2.deepgram.keytermsMax).length > 0;
   }
 
   /** Abre STT y TTS en paralelo; si uno falla cierra el otro y propaga el error (el escalon se salta o la escalera pasa al siguiente). */
@@ -187,7 +190,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.bytesSttPendientes = 0;
     const c = this.o.config.cascadaV2;
     const segundos = bytes / 2 / c.deepgram.hzEntrada;
-    this.h.costo?.(costoDeepgramMicroUsd(segundos, this.o.config), false, { proveedor: "deepgram", unidad: "segundo", cantidad: segundos });
+    this.h.costo?.(costoDeepgramMicroUsd(segundos, this.o.config, this.conKeyterms), false, { proveedor: "deepgram", unidad: "segundo", cantidad: segundos });
   }
 
   // ---- internos ----

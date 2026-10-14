@@ -3,15 +3,17 @@
 // de OpenRouter) sube a la sesion, que lo suma al costo de la llamada y a los topes por llamada y mensual.
 import { OpenRouterProvider } from "@atiende/agent-core";
 import type { LlmMessage } from "@atiende/agent-core";
+import { modeloAgentePorId } from "@atiende/domain-restaurantes";
 import { VOZ_PLATAFORMA } from "@atiende/voice-core";
 import type { ConfigPlataformaVoz, PuertoLlmVoz } from "@atiende/voice-core";
 
-/** Proveedores cuyos modelos NO listan `temperature` en OpenRouter: con `require_parameters: true` mandarla deja la ruta sin endpoints (404, docs/LLM-GATEWAY.md). */
-const PREFIJOS_SIN_TEMPERATURA = ["anthropic/", "openai/"] as const;
-
-/** `temperature` del modelo de voz: `"omit"` para Anthropic y OpenAI; para el resto, la temperatura pedida si es un numero finito (0 incluido) y, si no, no se manda. */
+/** `temperature` del modelo de voz. La lista de modelos que la aceptan ya existe (`MODELOS_AGENTE.aceptaTemperatura`, verificada contra los endpoints permitidos de OpenRouter):
+ * un modelo que la rechaza (Luna, Sonnet 5.5) o que NO esta verificado en esa lista (Haiku 5.5 y cualquier id nuevo) recibe `"omit"`, porque con `require_parameters: true`
+ * mandarla deja la ruta sin endpoints (404, docs/LLM-GATEWAY.md). Para uno que la acepta, la temperatura pedida si es un numero finito (0 incluido) y, si no, no se manda.
+ * NOTA para la cascada v2: este puerto no manda `provider.zdr` ni `only` (rutas de EE.UU.), y el modelo por omision `google/gemini-3.8-flash` con `temperature: 0` solo lo
+ * aceptan los endpoints de Google AI Studio (no los de Vertex). */
 export function temperaturaParaModelo(modelo: string, temperatura: number | null | undefined): number | "omit" | undefined {
-  if (typeof modelo === "string" && PREFIJOS_SIN_TEMPERATURA.some((p) => modelo.startsWith(p))) return "omit";
+  if (!modeloAgentePorId(modelo)?.aceptaTemperatura) return "omit";
   return typeof temperatura === "number" && Number.isFinite(temperatura) ? temperatura : undefined;
 }
 

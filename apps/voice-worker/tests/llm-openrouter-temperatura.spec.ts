@@ -1,5 +1,6 @@
 // Contrato de `temperature` del puerto LLM de la cascada: con `require_parameters: true` los modelos de Anthropic y OpenAI en OpenRouter NO la aceptan
 // (404 "No endpoints found", docs/LLM-GATEWAY.md); los demas la conservan. `fetch` falso: ningun test llama a OpenRouter.
+import { MODELOS_AGENTE } from "@atiende/domain-restaurantes";
 import { describe, expect, it } from "vitest";
 import { crearPuertoLlmOpenRouter, temperaturaParaModelo } from "../src/llm-openrouter.ts";
 
@@ -20,7 +21,7 @@ async function cuerpoEnviado(modelo: string | undefined, temperatura?: number | 
 }
 
 describe("temperature en la peticion a OpenRouter", () => {
-  it.each(["anthropic/claude-haiku-5.5", "anthropic/claude-sonnet-5.5", "openai/gpt-6-luna", "openai/gpt-6-sol"])("%s: NUNCA manda temperature (con 0, otro numero, null ni undefined)", async (modelo) => {
+  it.each(["anthropic/claude-haiku-5.5", "anthropic/claude-sonnet-5.5", "openai/gpt-6-luna", "openai/gpt-6-sol", "modelo-nuevo/sin-verificar"])("%s: NUNCA manda temperature (con 0, otro numero, null ni undefined)", async (modelo) => {
     for (const t of [0, 0.7, null, undefined, "sin-clave" as const]) {
       const cuerpo = await cuerpoEnviado(modelo, t);
       expect(cuerpo, `${modelo} con ${String(t)}`).not.toHaveProperty("temperature");
@@ -53,11 +54,16 @@ describe("temperaturaParaModelo", () => {
     ["google/gemini-3.8-flash", 0.5, 0.5],
     ["google/gemini-3.8-flash", null, undefined],
     ["google/gemini-3.8-flash", undefined, undefined],
-    ["", 0, 0],
+    ["deepseek/deepseek-v4.1-flash", 0, 0],
+    ["", 0, "omit"],
+    ["modelo-nuevo/sin-verificar", 0, "omit"],
   ])("%s con %s -> %s", (modelo, t, esperado) => {
     expect(temperaturaParaModelo(modelo, t as number | null | undefined)).toBe(esperado);
   });
-  it.each([[null], [false], [[]], [{}], [0]])("modelo invalido %j no rompe y conserva la temperatura", (modelo) => {
-    expect(temperaturaParaModelo(modelo as unknown as string, 0)).toBe(0);
+  it.each([[null], [false], [[]], [{}], [0], [undefined]])("modelo invalido %j no rompe: no esta verificado, asi que NO se manda temperatura", (modelo) => {
+    expect(temperaturaParaModelo(modelo as unknown as string, 0)).toBe("omit");
+  });
+  it("coincide con la lista verificada de MODELOS_AGENTE (una sola fuente): cada modelo respeta su aceptaTemperatura", () => {
+    for (const m of MODELOS_AGENTE) expect(temperaturaParaModelo(m.id, 0), m.id).toBe(m.aceptaTemperatura ? 0 : "omit");
   });
 });

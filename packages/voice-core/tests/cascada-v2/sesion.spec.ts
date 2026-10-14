@@ -438,12 +438,12 @@ describe("costo por componente", () => {
     await prov.inactivo();
     await turnoMicrotareas(60);
     const porProveedor = Object.fromEntries(m.costos.map((c) => [c.proveedor, c]));
-    expect(porProveedor["deepgram"]).toEqual({ micro: 80, real: false, proveedor: "deepgram", unidad: "segundo", cantidad: 1 }); // 1 s x US$0.0048/min
+    expect(porProveedor["deepgram"]).toEqual({ micro: 102, real: false, proveedor: "deepgram", unidad: "segundo", cantidad: 1 }); // 1 s x (US$0.0048 + US$0.0013 de keyterms)/min: la apertura trae vocabulario
     expect(porProveedor["deepgram-aura-2"]).toEqual({ micro: 510, real: false, proveedor: "deepgram-aura-2", unidad: "unidad", cantidad: 17 }); // 17 caracteres x US$0.030 / 1 000
     expect(porProveedor[`openrouter:${MODELO}`]).toEqual({ micro: 2500, real: true, proveedor: `openrouter:${MODELO}`, unidad: "unidad", cantidad: 1 });
     const eventos = eventosCostoLlamada({ vertical: "restaurantes", llamadaId: "llamada-1", organizationId: "o", propertyId: "p", ocurridoEn: "2026-10-13T12:00:00.000Z", tramos: escalera.tramos() });
     const evento = Object.fromEntries(eventos.map((e) => [e.proveedor, e]));
-    expect(evento["deepgram"]).toMatchObject({ costoMicroUsd: 80, costoEstimado: true, unidad: "segundo", cantidad: 1 });
+    expect(evento["deepgram"]).toMatchObject({ costoMicroUsd: 102, costoEstimado: true, unidad: "segundo", cantidad: 1 });
     expect(evento["deepgram-aura-2"]).toMatchObject({ costoMicroUsd: 510, costoEstimado: true, unidad: "unidad", cantidad: 17 });
     expect(evento[`openrouter:${MODELO}`]).toMatchObject({ costoMicroUsd: 2500, costoEstimado: false, unidad: "unidad", cantidad: 1 });
   });
@@ -452,6 +452,15 @@ describe("costo por componente", () => {
     const m = manejadoresFalsos();
     const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm: llmFalso([]), stt: new SttFalso(), tts: new TtsFalso() });
     const sesion = await prov.abrirSesion(APERTURA, m.h);
+    sesion.enviarAudio!(new Uint8Array(16_000 * 2 * 3));
+    await sesion.cerrar();
+    expect(m.costos).toEqual([{ micro: 305, real: false, proveedor: "deepgram", unidad: "segundo", cantidad: 3 }]); // con keyterms: 3 s x US$0.0061/min
+  });
+
+  it("sin vocabulario no hay keyterms y no se cobra el add-on: 3 s x US$0.0048/min", async () => {
+    const m = manejadoresFalsos();
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm: llmFalso([]), stt: new SttFalso(), tts: new TtsFalso() });
+    const sesion = await prov.abrirSesion({ ...APERTURA, vocabulario: [] }, m.h);
     sesion.enviarAudio!(new Uint8Array(16_000 * 2 * 3));
     await sesion.cerrar();
     expect(m.costos).toEqual([{ micro: 240, real: false, proveedor: "deepgram", unidad: "segundo", cantidad: 3 }]);

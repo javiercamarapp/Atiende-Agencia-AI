@@ -222,6 +222,23 @@ describe("POST .../conversaciones/:id/costo", () => {
       expect(llamada.eventos.map((e) => [e.proveedor, e.costoMicroUsd, e.costoEstimado])).toEqual([["deepgram-aura-2", 27_000, true]]);
     });
 
+    it("Gemini Live no admite componentes: 400 y nada se registra", async () => {
+      const { ctx, llamada, app } = await construir();
+      expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, escalon: "gemini-3.8-live" }] }))).status).toBe(400);
+      expect(llamada.eventos).toHaveLength(0);
+    });
+
+    it("el peor caso (8 tramos x 8 componentes) cabe en el cuerpo: pasa de 8 KB y se registra", async () => {
+      const { ctx, llamada, app } = await construir();
+      const nombres = Array.from({ length: 8 }, (_, i) => `openrouter:proveedor/modelo-con-nombre-largo-numero-${i}-abcdefghijklmnopqrstuvwxyz`.slice(0, 72));
+      const tramo = { escalon: "cascada-openrouter", duracionS: 10, costoReportadoMicroUsd: 800, componentes: nombres.map((proveedor) => ({ proveedor, unidad: "unidad", cantidad: 1, costoMicroUsd: 10, costoReal: true })) };
+      const cuerpoGrande = cuerpo(ctx, { tramos: Array.from({ length: 8 }, () => tramo) });
+      expect(JSON.stringify(cuerpoGrande).length).toBeGreaterThan(8 * 1024);
+      const res = await post(app, ruta(UUID_AJENO), cuerpoGrande);
+      expect(res.status).toBe(200);
+      expect(llamada.eventos.filter((e) => e.proveedor.startsWith("openrouter:"))).toHaveLength(8);
+    });
+
     it("un worker anterior (sin componentes) sigue produciendo el evento del escalon de siempre", async () => {
       const { ctx, llamada, app } = await construir();
       await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, componentes: undefined }] }));
@@ -239,6 +256,11 @@ describe("POST .../conversaciones/:id/costo", () => {
       ["proveedor desconocido", [{ ...componentes[0], proveedor: "gemini" }]],
       ["proveedor vacio", [{ ...componentes[0], proveedor: "" }]],
       ["proveedor repetido", [componentes[0], componentes[0]]],
+      ["proveedor de 88 caracteres de forma valida", [{ ...componentes[2], proveedor: "openrouter:" + "a".repeat(60) + ":" + "b".repeat(16) }]],
+      ["unidad que no corresponde al proveedor", [{ ...componentes[0], unidad: "unidad" }]],
+      ["costoReal en un proveedor que no reporta su costo", [{ ...componentes[0], costoReal: true }]],
+      ["costo fraccionario", [{ ...componentes[2], costoMicroUsd: 10.5 }]],
+      ["los componentes suman mas que el costo del tramo", [{ ...componentes[0], costoMicroUsd: 18_000 }, { ...componentes[1], costoMicroUsd: 1_000 }]],
       ["unidad invalida", [{ ...componentes[0], unidad: "minuto" }]],
       ["cantidad negativa", [{ ...componentes[0], cantidad: -1 }]],
       ["cantidad no numerica", [{ ...componentes[0], cantidad: "60" }]],
