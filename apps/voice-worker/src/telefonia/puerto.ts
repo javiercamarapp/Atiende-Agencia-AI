@@ -5,6 +5,13 @@
 
 import type { MezcladorSalida } from "@atiende/voice-core";
 
+export interface AvisosSalidaMezclada {
+  /** El bombeo fallo (codigo corto sin PII): la llamada debe volver a `reproducir` sin mezcla. Lo llama la telefonia UNA vez. */
+  readonly alFallo?: (codigo: string) => void;
+  /** La voz del agente empezo a entrar a la salida con esta cola (ms) en el destino: retraso que anade el bombeo. */
+  readonly alTomarVoz?: (colaMs: number) => void;
+}
+
 export interface LlamadaTelefonica {
   /** Identificador opaco de la llamada (en LiveKit, el nombre de la sala). Se usa como `call_id` y `externalId`. */
   readonly id: string;
@@ -23,7 +30,9 @@ export interface LlamadaTelefonica {
   reproducir(pcm: Int16Array, hz: number): Promise<void>;
   /** OPCIONAL: pasa la salida de audio al modo MEZCLADO (ambiente de restaurante + tecleo + voz del agente en una sola secuencia continua que la telefonia bombea
    * trama a trama). Despues de llamarlo la voz del agente va por `mezclador.encolarAgente` y `reproducir` ya no se usa. Sin este metodo la llamada suena como siempre. */
-  abrirSalidaMezclada?(mezclador: MezcladorSalida): void;
+  abrirSalidaMezclada?(mezclador: MezcladorSalida, avisos?: AvisosSalidaMezclada): void;
+  /** OPCIONAL: resuelve cuando lo que el mezclador ya entrego terminó de SONAR en la linea (hay que esperarlo antes de colgar: si no, la despedida se corta al final). */
+  vaciarSalidaMezclada?(): Promise<void>;
   /** Corta lo que suena y lo encolado (barge-in). */
   detenerReproduccion(): void;
   /** Cuelga por el lado del sistema. Idempotente. */

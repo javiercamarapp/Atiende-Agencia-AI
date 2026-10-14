@@ -54,6 +54,8 @@ export interface DepsAtencion {
   readonly limites?: LimitesLlamada;
   /** Silencio maximo del agente tras el resultado de una herramienta antes de decir "un momento, por favor" (ms). Por omision `VIGILAR_SILENCIO_AGENTE_MS`. */
   readonly vigilarSilencioAgenteMs?: number;
+  /** Tope (ms) de espera a que la despedida termine de sonar antes de colgar. Por omision `TOPE_VACIAR_SALIDA_MS`. */
+  readonly topeVaciarSalidaMs?: number;
   /** Cada cuanto se vuelcan los turnos nuevos al registrador (ms). */
   readonly volcadoTurnosMs?: number;
 }
@@ -90,6 +92,12 @@ export function semillaDeLlamada(callId: string): number {
   return h >>> 0;
 }
 
+/** Herramientas durante las cuales NO suena el tecleo. */
+export const HERRAMIENTAS_SIN_TECLEO: ReadonlySet<string> = new Set(["escalar_a_humano", TOOL_CONFIRMAR_TELEFONO]);
+
+/** Tope (ms) de espera a que la despedida termine de sonar antes de colgar. Pasado el tope se corta y se cuelga: la llamada nunca espera para siempre. */
+export const TOPE_VACIAR_SALIDA_MS = 20_000;
+
 const CALL_ID_INVALIDO = /[^A-Za-z0-9._:-]/g;
 const sanearCallId = (id: string): string => id.replace(CALL_ID_INVALIDO, "-").slice(0, 128) || "llamada";
 
@@ -101,6 +109,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   const ref = referenciaLlamada(callId);
   const log = (evento: string, campos: Record<string, unknown> = {}): void => eventoSinPII(deps.log, evento, { callRef: ref, ...campos });
   const iniciadaEn = ahora();
+  const topeVaciarMs = deps.topeVaciarSalidaMs ?? TOPE_VACIAR_SALIDA_MS;
 
   const entrada: EntradaDnis | undefined = deps.config.dnis.get(normalizarNumero(tel.dnis) ?? "");
   if (!entrada) {
@@ -229,9 +238,18 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         })
       : null;
   const salidaMezclada = mezclador !== null && mezclador.conEfectos ? mezclador : null;
+  // Si el bombeo falla, la llamada vuelve al audio sin mezcla (tel.reproducir) en vez de quedarse muda o colgada; el codigo es corto y sin PII.
+  let alFalloSonido: (() => void) | null = null;
+  let alTomarVozSonido: ((ms: number) => void) | null = null;
   if (salidaMezclada) {
-    tel.abrirSalidaMezclada!(salidaMezclada);
-    log("sonido_ambiente", { fondo: salidaMezclada.ambiente !== null, tecleo: salidaMezclada.tecleo !== null });
+    tel.abrirSalidaMezclada!(salidaMezclada, {
+      alFallo: (codigo) => {
+        log("sonido_mezclador_fallo", { codigo });
+        alFalloSonido?.();
+      },
+      alTomarVoz: (ms) => alTomarVozSonido?.(ms),
+    });
+    log("sonido_ambiente", { mensaje: salidaMezclada.ambiente !== null && salidaMezclada.tecleo !== null ? "fondo+tecleo" : salidaMezclada.ambiente !== null ? "fondo" : "tecleo" });
   }
   const puente = new PuenteAudio({
     tel,
@@ -245,6 +263,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     },
     enviarASesion: (pcm) => sesionActual?.enviarAudio?.(pcm),
   });
+  alFalloSonido = () => puente.desactivarMezclador();
+  alTomarVozSonido = (ms) => puente.registrarColaSalida(ms);
   // Consentimiento de grabacion: la primera respuesta clara del cliente DESPUES de que el agente termino el aviso se manda al servidor, que la interpreta
   // (conservador: lo ambiguo es "no grabar"). Una respuesta ambigua repite la pregunta hasta REINTENTOS_CONSENTIMIENTO veces.
   const pideConsentimiento = aviso?.pideConsentimientoGrabacion === true && conversationId !== null;
@@ -330,7 +350,12 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     : ejecutorBase;
   // Tecleo sincronizado con la duracion REAL de cada herramienta (mismo punto para Gemini Live y para la cascada: ambos pasan por el ejecutor del controlador).
   const ejecutor: EjecutorTools = salidaMezclada?.tecleo
-    ? conAvisosDeHerramienta(ejecutorSinSonido, { inicia: (id) => salidaMezclada.herramientaInicia(id), termina: (id, ok) => salidaMezclada.herramientaTermina(id, ok) })
+    ? conAvisosDeHerramienta(ejecutorSinSonido, {
+        inicia: (id) => salidaMezclada.herramientaInicia(id),
+        termina: (id, ok) => salidaMezclada.herramientaTermina(id, ok),
+        // Pasar con una persona (incluida la guardia de crisis) y registrar el telefono dictado no son «anotar el pedido»: no suena tecleo.
+        incluir: (nombre) => !HERRAMIENTAS_SIN_TECLEO.has(nombre),
+      })
     : ejecutorSinSonido;
   const controlador = new ControladorLlamada({
     callId,
@@ -409,8 +434,9 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     if (iniciada) (sesionActual as VozSesionLlamada | null)?.enviarTexto(disparadorDeApertura(aviso));
     const fin = await controlador.terminada;
     resultado = fin.resultado;
-    // La despedida o el pregrabado terminal tienen que sonar antes de colgar.
-    await puente.vaciar();
+    // La despedida o el pregrabado terminal tienen que sonar antes de colgar (con tope). Si el cliente ya colgo, nadie la oye y la voz en cola no se va a consumir: se descarta.
+    if (clienteColgo || senal?.aborted === true) puente.cortarAudio();
+    else if (!(await puente.vaciar(topeVaciarMs))) log("salida_no_vacio", { ms: topeVaciarMs });
   } finally {
     cancelarReloj();
     cancelarVolcado();
@@ -431,6 +457,13 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     }
   }
   await volcarTurnos(true, costoMicroUsd);
+  // Retraso que anadio la cola del bombeo de la salida mezclada a cada respuesta (solo con ambiente/tecleo).
+  if (puente.colasSalidaMs.length > 0) {
+    const ord = [...puente.colasSalidaMs].sort((a, b) => a - b);
+    const pc = (p: number): number => ord[Math.min(ord.length - 1, Math.max(0, Math.ceil(p * ord.length) - 1))] ?? 0;
+    log("salida_cola_p50", { ms: Math.round(pc(0.5)), intento: ord.length });
+    log("salida_cola_p95", { ms: Math.round(pc(0.95)), intento: ord.length });
+  }
   // Latencia de voz a voz de cada respuesta (B-36) como EVENTO operativo (sin texto): se mide aunque la llamada no se grabe.
   if (puente.latenciasMs.length > 0) {
     const ordenadas = [...puente.latenciasMs].sort((a, b) => a - b);

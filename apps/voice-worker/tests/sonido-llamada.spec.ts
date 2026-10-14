@@ -5,7 +5,9 @@ import { crearEscaleraLlamada } from "@atiende/voice-core";
 import { AJUSTES_AGENTE_POR_DEFECTO, InMemoryAjustesAgenteRepository } from "@atiende/domain-restaurantes";
 import { Worker } from "../src/worker.ts";
 import { TelefoniaFalsa } from "../src/telefonia/falsa.ts";
-import { semillaDeLlamada } from "../src/llamada.ts";
+import { HERRAMIENTAS_SIN_TECLEO, semillaDeLlamada } from "../src/llamada.ts";
+import { TOOL_CONFIRMAR_TELEFONO } from "../src/telefono-llamante.ts";
+import type { OpcionesLlamadaFalsa } from "../src/telefonia/falsa.ts";
 import { leerSonidoLlamada } from "../src/api-cliente.ts";
 import { AgenteGuionado } from "./support/agente-guionado.ts";
 import type { TurnoGuion } from "./support/agente-guionado.ts";
@@ -126,6 +128,75 @@ describe("ambiente y tecleo en la llamada", () => {
     await callar(llamada, api.reloj, 900);
     expect(m.clienteHablando).toBe(false);
     llamada.clienteCuelga();
+  });
+});
+
+async function conPreset(fake: OpcionesLlamadaFalsa = {}, extraDeps: Record<string, unknown> = {}) {
+  const ajustes = new InMemoryAjustesAgenteRepository();
+  const api = await crearMundoApi({ ajustesAgente: ajustes });
+  await ajustes.guardar(api.mundo.organizationId, "u", PRESET);
+  const telefonia = new TelefoniaFalsa();
+  const agente = new AgenteGuionado(GUION);
+  const eventos: { evento: string; campos: Record<string, string | number | boolean> }[] = [];
+  const worker = new Worker({
+    config: api.config,
+    telefonia,
+    log: () => undefined,
+    deps: api.depsAtencion({ crearEscalera: () => crearEscaleraLlamada([agente.escalon()], { ahora: api.reloj.ahora }), log: (l) => void eventos.push({ evento: l.evento, campos: { ...l.campos } }), ...extraDeps }),
+  });
+  await worker.iniciar();
+  const antes = worker.salud().llamadasAtendidas;
+  const llamada = telefonia.llamar({ id: "llamada-cierre", dnis: NUMERO_SUCURSAL, desde: SIP_DESDE, ...fake });
+  await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
+  const termino = (): Promise<void> => vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 3_000, interval: 5 });
+  return { api, llamada, agente, eventos, termino, worker };
+}
+
+describe("cierre de la llamada con la salida mezclada (sin cuelgues)", () => {
+  it("el cliente cuelga con voz del agente EN COLA y nadie la consume (bombeo parado, la telefonia no libera nada): la llamada igual cierra, cuelga y registra", async () => {
+    const t = await conPreset({ vaciarMezclada: false, liberarMezcladaAlColgar: false });
+    expect(t.llamada.salidaMezclada!.pendientes).toBeGreaterThan(0); // el saludo sigue en la cola: nadie la oyo
+    t.llamada.clienteCuelga();
+    await t.termino(); // antes del arreglo esto se quedaba esperando para siempre en `puente.vaciar()`
+    expect(t.llamada.colgadaPorSistema).toBe(true);
+    expect(t.llamada.salidaMezclada!.pendientes).toBe(0);
+    expect(t.eventos.some((e) => e.evento === "atencion_fin")).toBe(true);
+  });
+
+  it("si el bombeo FALLA a media llamada: se registra un codigo sin PII, el mezclador se apaga y la voz siguiente sale por tel.reproducir sin mezcla", async () => {
+    const t = await conPreset();
+    await vi.waitFor(() => expect(t.llamada.tramasMezcladas.length).toBeGreaterThan(0), { timeout: 3_000, interval: 5 });
+    t.llamada.fallarSalidaMezclada("TypeError");
+    expect(t.eventos.find((e) => e.evento === "sonido_mezclador_fallo")?.campos).toMatchObject({ codigo: "TypeError" });
+    const antes = t.llamada.salida.length;
+    await turnoCliente(t.llamada, t.api.reloj, () => t.agente.respondidos, 1);
+    await vi.waitFor(() => expect(t.llamada.salida.length).toBeGreaterThan(antes), { timeout: 3_000, interval: 5 });
+    t.llamada.clienteCuelga();
+    await t.termino();
+  });
+
+  it("registra, sin PII, el retraso de cola que anadio el bombeo a las respuestas (p50/p95)", async () => {
+    const t = await conPreset();
+    for (const ms of [40, 60, 80]) t.llamada.tomarVoz(ms);
+    t.llamada.clienteCuelga();
+    await t.termino();
+    expect(t.eventos.find((e) => e.evento === "salida_cola_p50")?.campos).toMatchObject({ ms: 60, intento: 3 });
+    expect(t.eventos.find((e) => e.evento === "salida_cola_p95")?.campos).toMatchObject({ ms: 80 });
+  });
+
+  it("el log del sonido solo lleva campos permitidos (nada de PII)", async () => {
+    const t = await conPreset();
+    t.llamada.clienteCuelga();
+    await t.termino();
+    const campos = t.eventos.find((e) => e.evento === "sonido_ambiente")?.campos ?? {};
+    expect(campos).toMatchObject({ mensaje: "fondo+tecleo" });
+    expect(Object.keys(campos).sort()).toEqual(["callRef", "mensaje"]);
+  });
+
+  it("escalar a una persona y registrar el telefono dictado no hacen sonar el tecleo", () => {
+    expect(HERRAMIENTAS_SIN_TECLEO.has("escalar_a_humano")).toBe(true);
+    expect(HERRAMIENTAS_SIN_TECLEO.has(TOOL_CONFIRMAR_TELEFONO)).toBe(true);
+    expect(HERRAMIENTAS_SIN_TECLEO.has("cotizar_pedido")).toBe(false);
   });
 });
 

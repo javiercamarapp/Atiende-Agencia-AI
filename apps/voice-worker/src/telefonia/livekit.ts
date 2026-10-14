@@ -11,11 +11,11 @@ import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { AudioFrame, AudioSource, AudioStream, LocalAudioTrack, ParticipantKind, Room, RoomEvent, TrackKind, TrackPublishOptions, TrackSource } from "@livekit/rtc-node";
 import type { RemoteParticipant, Track } from "@livekit/rtc-node";
 import type { MezcladorSalida } from "@atiende/voice-core";
-import { bombearSalida } from "../audio/bombeo-salida.ts";
+import { bombearConRespaldo } from "../audio/bombeo-salida.ts";
 import { remuestrearPcm16 } from "../audio/remuestreo.ts";
 import { infoDeParticipanteSip } from "./sip-atributos.ts";
 import type { InfoParticipanteSip } from "./sip-atributos.ts";
-import type { LlamadaTelefonica, TelefoniaPort } from "./puerto.ts";
+import type { AvisosSalidaMezclada, LlamadaTelefonica, TelefoniaPort } from "./puerto.ts";
 
 export const HZ_ENTRADA_LIVEKIT = 16_000;
 export const HZ_SALIDA_LIVEKIT = 24_000;
@@ -77,6 +77,8 @@ class LlamadaLiveKit implements LlamadaTelefonica {
     if (this.colgo) return;
     this.colgo = true;
     this.generacion += 1;
+    // Si el cliente cuelga con voz del agente en la cola del mezclador, nadie la va a consumir: se libera para que la llamada pueda cerrar.
+    this.mezclador?.cortarAgente();
     this.cbColgar?.();
   }
 
@@ -94,18 +96,36 @@ class LlamadaLiveKit implements LlamadaTelefonica {
   }
 
   private bombeando = false;
-  /** Modo MEZCLADO: UN bombeo continuo de tramas de 20 ms (voz + ambiente + tecleo) a la unica pista del agente. Sin probar contra LiveKit real. */
-  abrirSalidaMezclada(mezclador: MezcladorSalida): void {
+  private mezclador: MezcladorSalida | null = null;
+  private bombeoCaido = false;
+  /** Modo MEZCLADO: UN bombeo continuo de tramas de 20 ms (voz + ambiente + tecleo) a la unica pista del agente, guiado por la cola real de LiveKit. Sin probar contra LiveKit real.
+   * Si el bombeo falla NO se queda mudo ni colgado: se libera la voz en cola y se avisa para volver a `reproducir` sin mezcla. */
+  abrirSalidaMezclada(mezclador: MezcladorSalida, avisos: AvisosSalidaMezclada = {}): void {
     if (this.colgo || this.bombeando) return;
     this.bombeando = true;
-    void bombearSalida({
+    this.mezclador = mezclador;
+    void bombearConRespaldo({
       mezclador,
       enviar: (trama) => this.fuente.captureFrame(new AudioFrame(trama, mezclador.hz, 1, trama.length)),
-      ahora: () => Date.now(),
+      colaMs: () => this.fuente.queuedDuration,
       dormir: (ms) => new Promise((r) => setTimeout(r, ms)),
-      terminado: () => this.colgo,
+      terminado: () => this.colgo || this.bombeoCaido,
       frameMs: FRAME_MS,
-    }).catch(() => undefined);
+      ...(avisos.alTomarVoz ? { alTomarVoz: avisos.alTomarVoz } : {}),
+      alFallo: (codigo) => {
+        this.bombeoCaido = true;
+        this.mezclador = null;
+        mezclador.cortarAgente();
+        avisos.alFallo?.(codigo);
+      },
+    });
+  }
+
+  /** Espera a que lo ya entregado al AudioSource termine de sonar (la cola de LiveKit), con tope: la despedida no se corta al colgar. */
+  async vaciarSalidaMezclada(): Promise<void> {
+    if (this.colgo || !this.mezclador) return;
+    const ms = Math.min(2000, Math.ceil(this.fuente.queuedDuration) + 30);
+    if (ms > 0) await new Promise<void>((r) => setTimeout(r, ms));
   }
 
   detenerReproduccion(): void {
