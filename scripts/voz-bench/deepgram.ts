@@ -1,7 +1,7 @@
 // Medicion de Deepgram (TTS Aura-2 y STT Nova-3) y de la latencia voz-a-voz de la cascada completa. La llave sale SOLO de DEEPGRAM_API_KEY en el entorno del
 // proceso (el que lanza el script la carga de un archivo con permisos 600); nunca se imprime ni se guarda. Solo usa /v1/speak y /v1/listen (sin endpoints de cuenta).
 // Uso: set -a; . ~/atiende-loop/.env.voz-bench; set +a; OPENROUTER_API_KEY=... npx vite-node scripts/voz-bench/deepgram.ts <tts|stt|e2e> [--reps 3] [--out DIR]
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { FondoRestaurante } from "../../packages/voice-core/src/fondo-ambiente.ts";
 import { OpenRouterProvider } from "../../packages/agent-core/src/index.ts";
 import { instruccionVozPm } from "../../packages/domain-restaurantes/src/voz/simulador/prompt-voz.ts";
@@ -135,7 +135,9 @@ async function modoTts(): Promise<void> {
       }
     }
   }
-  writeFileSync(`${OUT}/deepgram-tts.json`, JSON.stringify(filas, null, 1));
+  // Solo cifras (nunca texto que venga de la red) llegan al archivo de resultados.
+  const soloCifras = filas.map((f) => Object.fromEntries(Object.entries(f).map(([k, v]) => [k, typeof v === "number" ? Number(v) : k === "voz" || k === "frase" || k === "formato" ? String(v).replace(/[^\w .-]/g, "") : typeof v === "string" ? "error" : null])));
+  writeFileSync(`${OUT}/deepgram-tts.json`, JSON.stringify(soloCifras, null, 1));
   const resumen: Record<string, unknown>[] = [];
   for (const voz of VOCES) for (const grupo of ["C", "L"]) {
     const rs = filas.filter((f) => f.voz === voz && String(f.frase).startsWith(grupo) && !f.error);
@@ -212,7 +214,9 @@ async function modoStt(): Promise<void> {
   for (const voz of VOCES) for (const f of FRASES) {
     const cache = `${OUT}/tts-cache-${voz}-${f.id}.pcm`;
     let pcm24: Int16Array;
-    if (existsSync(cache)) pcm24 = aInt16(new Uint8Array(readFileSync(cache)));
+    let guardado: Uint8Array | null = null;
+    try { guardado = new Uint8Array(readFileSync(cache)); } catch { /* sin cache: se sintetiza */ }
+    if (guardado) pcm24 = aInt16(guardado);
     else { const x = await tts(f.t, voz); if (x.estado !== 200) continue; pcm24 = aInt16(x.pcm); writeFileSync(cache, x.pcm); }
     const pad = new Int16Array(24_000 * 1.2); // 1.2 s de linea abierta al final
     for (const c of cond) {
