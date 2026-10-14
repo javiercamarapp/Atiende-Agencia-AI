@@ -40,6 +40,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ESCALERA_VOZ, eventosCostoLlamada, temperaturaParaLlamada } from "@atiende/voice-core";
 import type { EscalonVoz, TramoLlamada } from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
+import { logEvent } from "../../../logger.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
@@ -115,7 +116,15 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       const ahora = new Date();
       const { instruccion: instruccionBase, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
       // Ajustes del agente de la organización (ritmo, estilo, naturalidad, ambiente, tecleo; migraciones 055/087). Base sin migrar o despliegue sin el repositorio: valores de siempre.
-      const ajustes = deps.ajustesAgenteRepo ? (await deps.ajustesAgenteRepo(db).leer(organizationId)).valor : AJUSTES_AGENTE_POR_DEFECTO;
+      // Si la lectura falla por cualquier motivo (no solo la base sin migrar, que el repositorio ya recupera) la llamada NO se cae: se atiende con los valores de siempre.
+      let ajustes = AJUSTES_AGENTE_POR_DEFECTO;
+      if (deps.ajustesAgenteRepo) {
+        try {
+          ajustes = (await deps.ajustesAgenteRepo(db).leer(organizationId)).valor;
+        } catch (err) {
+          logEvent(c, "warn", "voz_contexto_ajustes_no_leidos", { organizationId, codigo: typeof (err as { code?: unknown } | null)?.code === "string" ? (err as { code: string }).code : "error" });
+        }
+      }
       const instruccion = instruccionConAjustes(instruccionBase, ajustes, null);
       const llamada = ajustesDeLlamada(ajustes);
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.

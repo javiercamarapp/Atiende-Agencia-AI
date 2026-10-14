@@ -111,6 +111,21 @@ describe("contexto de la llamada para el worker", () => {
     expect(r.temperatura.maxLlamada).toBe(0.4);
   });
 
+  it("si la lectura de ajustes lanza un error cualquiera, la llamada NO se cae: 200 con los valores de siempre", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const voz = new InMemoryVozRepository();
+    voz.seedProperty(ctx.propertyIdA, ctx.organizationId);
+    const roto = { leer: async () => { throw Object.assign(new Error("connection reset"), { code: "08006" }); }, guardar: async () => { throw new Error("no"); } };
+    const app = buildApp({ ...ctx.deps, ajustesAgenteRepo: () => roto, vozRepo: () => voz, vozLlamadaRepo: () => new InMemoryVozLlamadaRepository(), vozKpiRepo: () => new InMemoryVozKpiRepository() });
+    const raw = JSON.stringify({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA });
+    const res = await app.request("/internal/restaurantes/voz/llamada/contexto", { method: "POST", body: raw, headers: { "content-type": "application/json", "content-length": String(raw.length), "x-atiende-internal-secret": SECRETO } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { sonido: { tecleo: { activo: boolean } }; temperatura: number | null; instruccion: string };
+    expect(body.sonido.tecleo.activo).toBe(false);
+    expect(body.temperatura).toBeNull();
+    expect(body.instruccion).not.toContain(BLOQUE_NATURALIDAD);
+  });
+
   it("base sin migrar (ajustes no disponibles): el contexto sigue funcionando con los valores de siempre", async () => {
     const { ajustes, contexto } = await construir();
     ajustes.migrada = false;
