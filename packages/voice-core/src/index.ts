@@ -31,7 +31,7 @@ export type { DecisionGuardiaCliente, DepsControlador, EventoKpiLlamada, Guardia
 export type { AbrirSesionLlamada, AperturaLlamada, ComponenteSesionCosto, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
 export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup, vertexLiveWsUrl, vertexModelPath } from "./llamada/gemini-live-sesion.ts";
 export type { CrearSocketLive, GeminiLiveSesionOpciones, OpcionesSocketLive, ProveedorGeminiLlamada, SocketLive, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
-export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd, costoDeepgramMicroUsd, costoEstimadoMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
+export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoEstimadoMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
 export type { ConfigCascadaV2, PromocionPrecio, RelojFecha } from "./config-plataforma.ts";
 export type { ConfigPlataformaVoz, EscalonVoz, UsoGemini } from "./config-plataforma.ts";
 export { COSTO_MAX_LLAMADA_MICRO_USD, ESCENARIOS_COSTO_GEMINI, TOKENS_AUDIO_POR_SEGUNDO, estimarCostoLlamadaGemini } from "./costo-gemini.ts";

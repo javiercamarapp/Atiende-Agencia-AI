@@ -67,7 +67,7 @@ function parsearComponentes(value: unknown, donde: string): ComponenteCosto[] | 
   const vistos = new Set<string>();
   return value.map((c, j) => {
     const o = (c !== null && typeof c === "object" && !Array.isArray(c) ? c : {}) as Record<string, unknown>;
-    if (typeof o.proveedor !== "string" || !PROVEEDOR_COMPONENTE_RE.test(o.proveedor)) throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, heygen u openrouter:<modelo>.`);
+    if (typeof o.proveedor !== "string" || !PROVEEDOR_COMPONENTE_RE.test(o.proveedor)) throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, deepgram-aura-2, heygen u openrouter:<modelo>.`);
     if (vistos.has(o.proveedor)) throw Errors.validation(`${donde}[${j}].proveedor: repetido en el tramo.`);
     vistos.add(o.proveedor);
     if (o.unidad !== "segundo" && o.unidad !== "unidad") throw Errors.validation(`${donde}[${j}].unidad: debe ser segundo o unidad.`);

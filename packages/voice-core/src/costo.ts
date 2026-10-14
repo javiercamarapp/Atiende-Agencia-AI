@@ -13,8 +13,8 @@
 import { costoEstimadoMicroUsd } from "./config-plataforma.ts";
 import type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
 
-/** Proveedores de componente validos: `deepgram`, `heygen` u `openrouter:<modelo>` (el `ref_id` y el CHECK de 80 caracteres de la base lo acotan). */
-export const PROVEEDOR_COMPONENTE_RE = /^(?:deepgram|heygen|openrouter:[a-z0-9][a-z0-9._/-]{0,60}(?::[a-z0-9._-]{1,16})?)$/;
+/** Proveedores de componente validos: `deepgram`, `deepgram-aura-2`, `heygen` u `openrouter:<modelo>` (el `ref_id` y el CHECK de 80 caracteres de la base lo acotan). */
+export const PROVEEDOR_COMPONENTE_RE = /^(?:deepgram|deepgram-aura-2|heygen|openrouter:[a-z0-9][a-z0-9._/-]{0,60}(?::[a-z0-9._-]{1,16})?)$/;
 
 /** Costo de UN componente dentro de un tramo (lo reporta la sesion con `costo(microUsd, real, componente)`). */
 export interface ComponenteCosto {

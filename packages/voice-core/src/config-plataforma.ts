@@ -82,6 +82,11 @@ export interface ConfigCascadaV2 {
     /** US$ por minuto: tarifa anterior (la que uso el plan de voz del 10-oct). La vigente se publica como promocional por tiempo limitado, SIN fecha de fin: si sube, vuelve aqui. */
     readonly usdPorMinutoAnterior: number;
   };
+  /** TTS alternativo: Deepgram Aura-2 (mismo proveedor y llave que el STT). */
+  readonly deepgramAura2: {
+    /** US$ por 1 000 caracteres, pago por uso. */
+    readonly usdPorMilCaracteres: number;
+  };
   readonly heygen: {
     /** US$ por MILLON de caracteres, precio de lista. */
     readonly usdPorMillonCaracteres: number;
@@ -124,7 +129,11 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // Deepgram: https://deepgram.com/pricing (leida el 2026-10-13): Nova-3 Monolingual streaming US$0.0048/min (tachado US$0.0077), Multilingual US$0.0058/min
     // (tachado US$0.0092); la pagina marca las tarifas de streaming como promocionales por tiempo limitado y NO publica fecha de fin. El plan usaba US$0.0077.
     deepgram: Object.freeze({ modelo: "nova-3", usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077 }),
-    // HeyGen Voice: US$30 por millon de caracteres de lista y US$15 en promocion hasta el 31-oct-2026 (cifras del plan de voz y del brief de Javier, 10-oct-2026;
+    // Deepgram Aura-2 (TTS alternativo): https://deepgram.com/pricing (leida el 2026-10-13): US$0.030 por 1 000 caracteres pago por uso (US$0.027 en plan Growth),
+    // sin marca de promocion. Se usa la tarifa de pago por uso (la mas alta).
+    deepgramAura2: Object.freeze({ usdPorMilCaracteres: 0.03 }),
+    // HeyGen NO se da por la voz definitiva (investigacion de arquitectura): limite FIJO de 30 solicitudes por minuto en todos los planes y solo entrega WAV a 44.1 kHz;
+    // se mantiene como parametro configurable junto a Aura-2. HeyGen Voice: US$30 por millon de caracteres de lista y US$15 en promocion hasta el 31-oct-2026 (cifras del plan de voz y del brief de Javier, 10-oct-2026;
     // NO se pudieron contrastar con la pagina publica de HeyGen: no expone el precio por caracter sin sesion). La promocion termina al acabar el 31-oct en Merida
     // (UTC-6 fijo desde 2022): 2026-11-01T00:00-06:00. Confirmar la zona con HeyGen.
     heygen: Object.freeze({ usdPorMillonCaracteres: 30, promocion: Object.freeze({ precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" }) }),
@@ -182,6 +191,12 @@ const microUsd = (usd: number): number => Math.round(usd * 1_000_000);
 export function costoDeepgramMicroUsd(duracionS: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
   if (typeof duracionS !== "number" || !Number.isFinite(duracionS) || duracionS <= 0) return 0;
   return Math.ceil((duracionS * microUsd(config.cascadaV2.deepgram.usdPorMinuto)) / 60);
+}
+
+/** Costo estimado de Deepgram Aura-2 (micro-USD, entero hacia arriba) para `caracteres` sintetizados. US$ por 1 000 caracteres x 1 000 = micro-USD por caracter. */
+export function costoDeepgramAura2MicroUsd(caracteres: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
+  if (typeof caracteres !== "number" || !Number.isFinite(caracteres) || caracteres <= 0) return 0;
+  return Math.ceil(caracteres * microUsd(config.cascadaV2.deepgramAura2.usdPorMilCaracteres) / 1000);
 }
 
 /** US$ por millon de caracteres de HeyGen en el instante `reloj()`: el precio promocional hasta su fecha de fin (exclusiva) y el de lista despues. */
