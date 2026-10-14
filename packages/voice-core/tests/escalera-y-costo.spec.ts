@@ -215,18 +215,29 @@ describe("estado honesto de la escalera", () => {
   it("sin llaves: no operativa y dice que falta", () => {
     const s = estadoEscalera({ geminiApiKey: null, openrouterApiKey: null, llm: null });
     expect(s.operativa).toBe(false);
-    expect(s.escalones.map((x) => [x.escalon, x.configurado])).toEqual([["gemini-3.8-live", false], ["cascada-openrouter", false]]);
+    expect(s.escalones.map((x) => [x.escalon, x.configurado])).toEqual([["gemini-3.8-live", false], ["cascada-v2", false], ["cascada-openrouter", false]]);
     expect(s.escalones[0]!.detalle).toContain("GEMINI_API_KEY");
-    expect(s.escalones[1]!.detalle).toContain("OPENROUTER_API_KEY");
+    expect(s.escalones[1]!.detalle).toBe("No disponible aún: requiere DEEPGRAM_API_KEY.");
+    expect(s.escalones[2]!.detalle).toContain("OPENROUTER_API_KEY");
   });
   it("solo OpenRouter + gateway: operativa por la cascada; sin gateway la cascada no cuenta", () => {
     expect(estadoEscalera({ geminiApiKey: null, openrouterApiKey: "k", llm }).operativa).toBe(true);
     const sinGateway = estadoEscalera({ geminiApiKey: null, openrouterApiKey: "k", llm: null });
     expect(sinGateway.operativa).toBe(false);
-    expect(sinGateway.escalones[1]!.detalle).toContain("gateway");
+    expect(sinGateway.escalones[2]!.detalle).toContain("gateway");
   });
   it("nunca devuelve la llave", () => {
-    expect(JSON.stringify(estadoEscalera({ geminiApiKey: "AIza-secreta", openrouterApiKey: "sk-or-secreta", llm }))).not.toMatch(/secreta/);
+    expect(JSON.stringify(estadoEscalera({ geminiApiKey: "AIza-secreta", openrouterApiKey: "sk-or-secreta", deepgramApiKey: "dg-secreta", llm }))).not.toMatch(/secreta/);
+  });
+  it("cascada v2: necesita DEEPGRAM_API_KEY, OPENROUTER_API_KEY y el gateway; cada faltante se dice con el mensaje honesto «No disponible aún: requiere X»", () => {
+    const solo = (o: Parameters<typeof estadoEscalera>[0]) => estadoEscalera(o).escalones.find((e) => e.escalon === "cascada-v2")!;
+    expect(solo({ geminiApiKey: null, openrouterApiKey: "k", llm })).toMatchObject({ configurado: false, detalle: "No disponible aún: requiere DEEPGRAM_API_KEY." });
+    expect(solo({ geminiApiKey: null, openrouterApiKey: null, deepgramApiKey: "d", llm })).toMatchObject({ configurado: false, detalle: "No disponible aún: requiere OPENROUTER_API_KEY." });
+    expect(solo({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "d", llm: null }).detalle).toContain("gateway de texto");
+    expect(solo({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "  ", llm }).configurado).toBe(false);
+    const listo = estadoEscalera({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "d", llm });
+    expect(listo.escalones.find((e) => e.escalon === "cascada-v2")!.configurado).toBe(true);
+    expect(listo.operativa).toBe(true);
   });
 });
 

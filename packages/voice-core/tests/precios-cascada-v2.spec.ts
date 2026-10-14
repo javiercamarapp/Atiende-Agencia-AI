@@ -14,7 +14,7 @@ describe("VOZ_PLATAFORMA.cascadaV2", () => {
     const v2 = VOZ_PLATAFORMA.cascadaV2;
     expect(v2.deepgram).toMatchObject({ modelo: "nova-3", usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077 });
     expect(v2.heygen).toMatchObject({ usdPorMillonCaracteres: 30, promocion: { precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" } });
-    expect(v2.llm).toMatchObject({ modelo: "anthropic/claude-haiku-5.5", modeloDificil: "anthropic/claude-sonnet-5.5", fuenteCosto: "openrouter-usage-cost" });
+    expect(v2.llm).toMatchObject({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low", fuenteCosto: "openrouter-usage-cost" });
   });
   it("la configuracion esta congelada (nadie cambia un precio en caliente)", () => {
     expect(Object.isFrozen(VOZ_PLATAFORMA.cascadaV2)).toBe(true);
