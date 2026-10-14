@@ -112,7 +112,8 @@ export type AgentToolName =
   | "confirmar_resumen"
   | "crear_pedido"
   | "registrar_contacto"
-  | "escalar_a_humano";
+  | "escalar_a_humano"
+  | "registrar_solicitud_arco";
 
 /** Subconjunto de JSON Schema que usan las tools (mismo shape que `LlmToolDefinition.parameters`). */
 export interface AgentToolJsonSchema {
@@ -129,6 +130,8 @@ export interface AgentToolDefinition {
 }
 
 export interface AgentToolContext {
+  /** Registra una solicitud de derechos ARCO que el modelo reconocio (ver `crearRegistroArcoParaAgente`). Solo lo fija el servidor en el webhook de WhatsApp; el telefono nunca sale del modelo. */
+  readonly registrarArco?: (e: { readonly derecho: "acceso" | "rectificacion" | "cancelacion" | "oposicion"; readonly detalle?: string }) => Promise<{ readonly reply: string; readonly registrada: boolean } | null>;
   readonly organizationId: string;
   readonly channel: AgentChannel;
   /** Telefono del cliente tomado del CONTEXTO (remitente de WhatsApp / token de llamada).
@@ -418,6 +421,20 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     },
     channels: ["whatsapp", "voz"],
   },
+  {
+    name: "registrar_solicitud_arco",
+    description:
+      "Registra la solicitud de derechos sobre datos personales (ARCO) o de dejar de ser contactado que el cliente acaba de expresar, aunque no use palabras técnicas: pregunta qué datos tienen o para qué los usan o con quién los comparten (acceso), corregir sus datos guardados (rectificacion), borrar/quitar/dar de baja sus datos o su número (cancelacion), dejar de usar sus datos o de mandarle mensajes, promociones o llamadas (oposicion). NO la uses para cambios del pedido, datos de entrega o de factura, ni quejas de algo ya ocurrido. Devuelve decir_al_cliente: dígaselo tal cual.",
+    parameters: {
+      type: "object",
+      properties: {
+        derecho: { type: "string", enum: ["acceso", "rectificacion", "cancelacion", "oposicion"], description: "El derecho que pide; ante la duda, el más probable. Dejar de recibir mensajes o promociones es oposicion." },
+        detalle: { type: "string", description: "Una frase corta con lo que pidió el cliente, sin datos personales." },
+      },
+      required: ["derecho"],
+    },
+    channels: ["whatsapp"],
+  },
 ];
 
 /** Definiciones visibles para un canal (ninguna parametro de telefono, por diseño). */
@@ -438,6 +455,7 @@ export const VOICE_TOOL_HTTP_PATHS: Readonly<Record<AgentToolName, string>> = {
   crear_pedido: "/orders",
   registrar_contacto: "/callbacks",
   escalar_a_humano: "/callbacks",
+  registrar_solicitud_arco: "/arco-solicitud",
 };
 
 /**
@@ -1538,6 +1556,26 @@ async function dispatchTool(
       }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
+    case "registrar_solicitud_arco": {
+      const derecho = input.derecho;
+      if (derecho !== "acceso" && derecho !== "rectificacion" && derecho !== "cancelacion" && derecho !== "oposicion") throw new OrderValidationError("derecho: use acceso, rectificacion, cancelacion u oposicion.");
+      // Preview: exito simulado, sin registrar nada (el telefono de la prueba es ficticio).
+      if (ctx.modo === "preview") {
+        const simulado = { ok: true, simulado: true, decir_al_cliente: MENSAJE_ARCO_SIMULADO, instruccion: INSTRUCCION_ARCO };
+        return { result: simulado, raw: simulado, orderId: null, propertyId: null, simulated: true };
+      }
+      if (!ctx.registrarArco) {
+        const noDisp = { ok: false, instruccion: "El registro de solicitudes de derechos no está disponible en este momento: llame a escalar_a_humano con motivo privacidad_arco y dígale al cliente que ya avisó al equipo." };
+        return { result: noDisp, raw: noDisp, orderId: null, propertyId: null };
+      }
+      const detalle = typeof input.detalle === "string" ? sanitizeInlineText(input.detalle, 200) : undefined;
+      const registro = await ctx.registrarArco({ derecho, ...(detalle ? { detalle } : {}) });
+      if (!registro) {
+        const noDisp = { ok: false, instruccion: "El registro de solicitudes de derechos no está disponible en este momento: llame a escalar_a_humano con motivo privacidad_arco y dígale al cliente que ya avisó al equipo." };
+        return { result: noDisp, raw: noDisp, orderId: null, propertyId: null };
+      }
+      return { result: { ok: true, decir_al_cliente: registro.reply, instruccion: INSTRUCCION_ARCO }, raw: { ok: true }, orderId: null, propertyId: null };
+    }
     case "registrar_contacto":
     case "escalar_a_humano": {
       // Preview: exito simulado, sin crear aviso (callback) ni notificacion para el equipo.
@@ -1571,6 +1609,10 @@ async function dispatchTool(
 
 /** Resultado de buscar_cliente sin `pedidoReciente`: no hay dato del estado en cocina. */
 export const AVISO_SIN_ESTADO_DE_PEDIDO = "Este resultado NO trae el estado del pedido en cocina ni si ya salió. Si el cliente pregunta si ya está en cocina o si se está preparando, diga solo que el pedido figura registrado (con su total y hora, si los tiene) y que la sucursal le confirma el estado; NUNCA «ya se está preparando» ni «ya salió».";
+
+/** Instruccion para el MODELO tras registrar una solicitud ARCO: se dice tal cual (incluye el folio y como confirmar) y no se improvisan plazos. */
+export const INSTRUCCION_ARCO = "Dígale al cliente el decir_al_cliente TAL CUAL, de usted. No agregue plazos, no prometa borrados y no tome su pedido en este mensaje: si además tiene un pedido en curso, lo retoma cuando conteste.";
+export const MENSAJE_ARCO_SIMULADO = "(Simulación) Recibí su solicitud sobre sus datos personales. En producción aquí se le da el folio y se le pide responder CONFIRMO.";
 
 /** Lo que el agente de VOZ le dice al cliente tras escalar a una persona (SOLO la frase literal: `mensaje_al_cliente` se lee tal cual). */
 export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan.";
