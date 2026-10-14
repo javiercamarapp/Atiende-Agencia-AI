@@ -516,7 +516,7 @@ export async function responderTrasEspera(
       const { pendientes, vista: historial, totalUsuarios } = analizarHistorial(historialCrudo, respondidos);
       if (pendientes.length === 0) {
         // Nada que contestar (lo hizo una pasada anterior): se suelta el turno y se revisa una vez mas por si llego un mensaje justo ahora.
-        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
+        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", falloDelSistema ? CLASE_FALLA_DEL_SISTEMA : null);
         if (analizarHistorial(await leerHistorial(), respondidos).pendientes.length === 0) return ultimo;
         owner = `${messageId}:p${pasada + 1}`;
         if (!(await repo.claimWhatsAppConversation(organizationId, phoneHash, owner, LEASE_RAFAGA_SEGUNDOS))) return ultimo; // otro mensaje tomo el turno: lo contestara
