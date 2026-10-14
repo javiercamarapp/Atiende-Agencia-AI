@@ -10,7 +10,7 @@ export const VENTANA_PEDIDO_RECIENTE_MIN = 12 * 60;
 /** Sucursal sin zona horaria propia (`branch_detail.zona_horaria` nula): la del negocio (Los Taquitos de PM es de Merida). */
 const ZONA_POR_OMISION = "America/Merida";
 
-export type EstadoPedidoParaCliente = "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido" | "por_confirmar";
+export type EstadoPedidoParaCliente = "registrado" | "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido" | "por_confirmar";
 
 export interface PedidoReciente {
   readonly estado: EstadoPedidoParaCliente;
@@ -24,7 +24,9 @@ export interface PedidoReciente {
 /** Lo que el cliente puede entender de cada estado interno; `cancelado` no es un pedido vigente (devuelve null). */
 export function estadoParaCliente(status: OrderStatus): EstadoPedidoParaCliente | null {
   switch (status) {
+    // `pending` = el pedido figura registrado pero la sucursal todavia no lo marco en preparacion (QA-PM-R6-voz-04: antes se le decia al cliente «ya lo estan preparando» sin ese dato).
     case "pending":
+      return "registrado";
     case "preparando":
       return "preparando";
     case "en_camino":

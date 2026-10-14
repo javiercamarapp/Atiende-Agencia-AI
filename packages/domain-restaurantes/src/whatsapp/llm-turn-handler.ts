@@ -844,7 +844,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // Un pedido ACTIVO reciente del telefono (voz, hace mas de 2 h, de otro flujo) tambien existe: la respuesta a «¿ya salio mi pedido?» ("va en preparacion", "ya esta en camino") es
           // verdad y no se borra. Retenido (por_confirmar), no recogido, con problema y cancelado NO cuentan. Si el turno esta armando OTRO pedido (cotizacion de este turno o flujo
           // cotizado/confirmado) solo se quitan las afirmaciones de REGISTRO, no las de ESTADO, del pedido anterior.
-          const previoActivo = !customer.isNew && customer.pedidoReciente != null && ["preparando", "salio", "listo_para_recoger", "entregado", "programado"].includes(customer.pedidoReciente.estado);
+          const previoActivo = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "entregado", "programado"].includes(customer.pedidoReciente.estado);
           const armandoOtro = cotizacionDelTurno !== null ? true : flowFinal?.state === "cotizado" || flowFinal?.state === "confirmado";
           const guardiaSoloRegistro = !pedidoExiste && previoActivo && !retenidoEnTurno && armandoOtro;
           const pedidoExisteFinal = pedidoExiste || (previoActivo && !retenidoEnTurno && !armandoOtro);
