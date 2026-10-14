@@ -112,6 +112,7 @@ export const PM_COPY = {
 
 /** Lo que el agente puede afirmar de cada estado: SOLO lo que la sucursal marco en el pedido, nunca lo que cree del repartidor. */
 const ESTADO_PEDIDO_TEXTO = {
+  registrado: "registrado (la sucursal todavía no lo marca en preparación ni salido: NO diga que ya lo están preparando; diga que figura registrado y que la sucursal le confirma el estado)",
   preparando: "en preparación (la sucursal todavía no lo marca como salido)",
   salio: "YA SALIÓ a reparto (la sucursal lo marcó en camino)",
   listo_para_recoger: "LISTO PARA RECOGER",

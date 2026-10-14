@@ -1633,7 +1633,7 @@ async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentT
   const encontrado = await buscarPedidoRecienteConSucursal(repo, ctx.organizationId, ctx.phone as string);
   const reciente = encontrado?.reciente;
   // Solo con un pedido CONOCIDO para recoger y aun vigente: canal desconocido (base sin migrar o sin dato) o un estado cerrado/con problema no se avisa como llegada.
-  if (!reciente || reciente.canal !== "recoger" || (reciente.estado !== "preparando" && reciente.estado !== "listo_para_recoger" && reciente.estado !== "programado")) {
+  if (!reciente || reciente.canal !== "recoger" || (reciente.estado !== "registrado" && reciente.estado !== "preparando" && reciente.estado !== "listo_para_recoger" && reciente.estado !== "programado")) {
     return { result: { ok: false, motivo: "sin_pedido_para_recoger", instruccion: MENSAJE_LLEGADA_SIN_PEDIDO }, raw: { ok: false }, orderId: null, propertyId: null };
   }
   const identificacion = typeof input.message === "string" ? sanitizeInlineText(input.message, 200) : "";
