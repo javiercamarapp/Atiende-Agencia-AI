@@ -84,6 +84,8 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
       await afirmarPantallaSana(page, nombre);
       await afirmarSinScrollHorizontal(page);
 
+      // El Resumen no repite el acceso al Copiloto en su cuerpo (vive en la barra / menu de cuenta y en el Sidebar).
+      await expect(page.locator("main#contenido-principal").getByRole("link", { name: /Pregunta a tus datos/ }), `${nombre}: sin pildora «Pregunta a tus datos» en el cuerpo`).toHaveCount(0);
       if (!esMovil(page)) {
         const barra = page.getByTestId("barra-pagina");
         await expect(barra, `${nombre}: exactamente una barra visible`).toHaveCount(1);
@@ -119,6 +121,7 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
         await page.keyboard.press("Escape");
         await expect(menu).toBeHidden();
       }
+      if (nombre === "copiloto") await expect(page.getByTestId("barra-pagina-titulo").or(page.getByTestId("mobile-pagina-titulo")).first(), "el Copiloto lleva su nombre en la barra").toHaveText("Pregunta a tus datos");
       if (dir) await page.screenshot({ path: join(dir, `${nombre}-${info.project.name}.png`) });
       if (nombre === "copiloto" && dir) {
         // "Consulta" con el campo vacio abre las tarjetas (VENTAS, OPERACION, CLIENTES, CFO).

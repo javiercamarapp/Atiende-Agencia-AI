@@ -25,7 +25,8 @@ export function CopilotoCategorias({
       data-testid="copiloto-categorias"
       className={cn(
         "copiloto-categorias-entra grid w-full items-stretch sm:auto-rows-fr gap-3 mb-5",
-        compacta ? "grid-cols-1 max-w-2xl" : "grid-cols-1 sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] max-w-5xl",
+        compacta ? "grid-cols-1 max-w-2xl" : "grid-cols-1 sm:grid-cols-2 max-w-5xl",
+        !compacta && (categorias.length === 3 ? "xl:grid-cols-3" : "xl:grid-cols-4"),
       )}
     >
       {categorias.map((c) => (

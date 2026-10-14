@@ -199,8 +199,8 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
 
   // Selector real de propiedad: lista solo con 2+ (el caso base de este vertical); con una sola se muestra su nombre. Va
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
-  const propiedadSelector =
-    <SelectorSucursal id="rentas-propiedad-activa" etiqueta="Propiedad" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
+  const propiedadSelector = (idSelect: string) =>
+    <SelectorSucursal id={idSelect} etiqueta="Propiedad" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
 
   return (
     <VerticalShellConectado
@@ -217,8 +217,8 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <Home className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `${org?.nombre ?? orgSlug} · ${activeBranch.nombre}`, fecha: fechaCortaEsMx(), resumenTo: `/rentas/${orgSlug}` }}
-      branchSelector={propiedadSelector}
-      mobileSelector={branches.length > 1 ? propiedadSelector : null}
+      branchSelector={propiedadSelector("rentas-propiedad-activa")}
+      mobileSelector={branches.length > 1 ? propiedadSelector("rentas-propiedad-activa-movil") : null}
       contentKey={propertyId}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, setPropertyId: s.selectBranch, properties: branches, orgSlug, session })}

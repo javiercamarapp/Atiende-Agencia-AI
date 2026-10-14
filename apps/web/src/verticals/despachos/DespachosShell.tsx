@@ -221,8 +221,8 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
 
   // Selector real de CONTRIBUYENTE, visible solo cuando hay más de uno (con uno solo se muestra su nombre). Se ofrece
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
-  const contribuyenteSelector =
-    <SelectorSucursal id="despachos-contribuyente-activo" etiqueta="Contribuyente" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
+  const contribuyenteSelector = (idSelect: string) =>
+    <SelectorSucursal id={idSelect} etiqueta="Contribuyente" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
@@ -239,8 +239,8 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, fecha: fechaCortaEsMx(), resumenTo: `/despachos/${orgSlug}/dashboard` }}
-      branchSelector={contribuyenteSelector}
-      mobileSelector={contribuyenteSelector}
+      branchSelector={contribuyenteSelector("despachos-contribuyente-activo")}
+      mobileSelector={contribuyenteSelector("despachos-contribuyente-activo-movil")}
       contentKey={propertyId}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}

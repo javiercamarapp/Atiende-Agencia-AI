@@ -77,13 +77,15 @@ describe("SelectorSucursal", () => {
     for (const c of ["bg-canvas", "border-border", "rounded-xl", "text-ui", "font-medium", "text-foreground", "hover:bg-muted", "data-[state=open]:bg-muted", "focus-visible:ring-2", "focus-visible:ring-ring"]) {
       expect(clases, c).toContain(c);
     }
-    expect(clases).toContain("shadow-[inset_");
+    expect(clases).toContain("shadow-hundido");
+    expect(clases).toContain("data-[state=open]:shadow-hundido-abierto");
     expect(clases).toContain("motion-reduce:transition-none");
     // El nombre largo se trunca en una sola linea (el titulo conserva el texto completo).
     const nombre = disparador.querySelector('[data-slot="valor"]')!;
     expect(nombre.className).toContain("truncate");
     expect(disparador.title).toContain("larguísimo");
     // Icono de tienda y chevron: decorativos, pequenos, en muted-foreground.
+    // (el icono de tienda se oculta en movil: ahi el espacio es para el nombre)
     const svgs = [...disparador.querySelectorAll("svg")];
     expect(svgs).toHaveLength(2);
     for (const s of svgs) expect(s.getAttribute("aria-hidden")).toBe("true");

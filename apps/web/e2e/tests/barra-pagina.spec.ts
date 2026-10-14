@@ -11,7 +11,7 @@ import { esMovil, irASeccion, seccionesDelPanel } from "../helpers/navegacion.ts
 
 // El Copiloto de cada consola pone en la barra el nombre de su portada ("Pregunta a tus datos") con `useTituloBarra`, no el rotulo "Copiloto" del menu.
 const TITULO_COPILOTO = "Pregunta a tus datos";
-const nombreEsperado = (texto: string): string[] => (texto === "Copiloto" ? [texto, TITULO_COPILOTO] : [texto]);
+const nombreEsperado = (texto: string): string[] => (texto === "Copiloto" ? [TITULO_COPILOTO] : [texto]);
 
 // "4 oct 2026" / "15 sept 2026": dia, mes corto es-MX y ano.
 const FORMATO_FECHA = /^\d{1,2} [a-z]{3,5}\.? \d{4}$/;

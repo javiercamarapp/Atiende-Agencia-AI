@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Tarjetas de la portada del Copiloto ("Consulta"): con 3, 4 o 5 categorias quedan en una cuadricula auto-fit de una fila en
+// Tarjetas de la portada del Copiloto ("Consulta"): con 3, 4 o 5 categorias quedan en una cuadricula de columnas fijas (2 en tablet, una fila desde xl) en
 // escritorio (2 columnas en tablet, 1 en movil), todas de la MISMA altura (`items-stretch` + `auto-rows-fr` + `h-full`), con
 // relleno y tipografia identicos y cada pregunta con altura minima uniforme. El orden es el de la config (VENTAS, OPERACION,
 // CLIENTES, CFO). En jsdom no hay layout: se afirma la estructura y las clases que lo producen.
@@ -31,7 +31,7 @@ function pintar(n: number, compacta = false) {
 }
 
 describe("CopilotoCategorias: grilla de tarjetas parejas", () => {
-  it.each([3, 4, 5])("con %i tarjetas: auto-fit, filas e items estirados y cada tarjeta a la altura completa", (n) => {
+  it.each([3, 4, 5])("con %i tarjetas: columnas fijas, filas e items estirados y cada tarjeta a la altura completa", (n) => {
     const { grilla, tarjetas } = pintar(n);
     expect(tarjetas).toHaveLength(n);
     const clases = grilla.className;
@@ -39,7 +39,10 @@ describe("CopilotoCategorias: grilla de tarjetas parejas", () => {
     expect(clases).toContain("items-stretch");
     expect(clases).toContain("sm:auto-rows-fr");
     expect(clases).toContain("grid-cols-1");
-    expect(clases).toContain("sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]");
+    // Columnas fijas (sin auto-fit, que dejaba 3+1 entre 900 y 1279 px): 2x2 en tablet y una fila desde xl.
+    expect(clases).toContain("sm:grid-cols-2");
+    expect(clases).toContain(n === 3 ? "xl:grid-cols-3" : "xl:grid-cols-4");
+    expect(clases).not.toContain("auto-fit");
     for (const t of tarjetas) {
       // Misma altura (h-full dentro de filas iguales), mismo relleno y estructura en columna.
       expect(t.className).toContain("h-full");

@@ -31,14 +31,14 @@ export interface SelectorSucursalProps {
 }
 
 const FORMA =
-  "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-canvas px-2.5 text-left text-ui font-medium text-foreground shadow-[inset_0_1px_2px_hsl(var(--foreground)/0.06)]";
+  "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-canvas px-2 text-left md:px-2.5 text-ui font-medium text-foreground shadow-hundido";
 
 export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, className }: SelectorSucursalProps) {
   const disparadorRef = React.useRef<HTMLButtonElement>(null);
   // Si el disparador vive en el sidebar (data-ambito-base), su lista (portal en <body>) usa tambien la paleta base y no la del ambito (como `Selector`).
   const [enBase, setEnBase] = React.useState(false);
   const actual = opciones.find((o) => o.valor === valor) ?? opciones[0];
-  const icono = <Store aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />;
+  const icono = <Store aria-hidden="true" className="hidden size-3.5 shrink-0 text-muted-foreground md:block" strokeWidth={1.75} />;
   if (opciones.length <= 1) {
     return (
       <div className={className}>
@@ -64,7 +64,7 @@ export function SelectorSucursal({ etiqueta, opciones, valor, onCambia, id, clas
           className={cn(
             FORMA,
             "h-9 cursor-pointer py-0 transition-[background-color,box-shadow] duration-fast ease-brand motion-reduce:transition-none",
-            "hover:bg-muted data-[state=open]:bg-muted data-[state=open]:shadow-[inset_0_1px_3px_hsl(var(--foreground)/0.12)]",
+            "hover:bg-muted data-[state=open]:bg-muted data-[state=open]:shadow-hundido-abierto",
             "focus-visible:border-border focus-visible:ring-2 focus-visible:ring-ring",
             // El chevron lo pinta SelectTrigger: aqui queda pequeno y gira al abrir (sin giro con movimiento reducido).
             "[&>svg:last-child]:size-3.5 [&>svg:last-child]:transition-transform [&>svg:last-child]:duration-fast motion-reduce:[&>svg:last-child]:transition-none data-[state=open]:[&>svg:last-child]:rotate-180",

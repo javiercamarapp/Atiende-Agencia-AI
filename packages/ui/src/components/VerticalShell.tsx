@@ -312,7 +312,7 @@ export function VerticalShell({
         pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1 }}
         action={
           <div className="flex items-center gap-1 min-w-0">
-            {mobileSelector ? <div className="min-w-0 max-w-[40vw]">{mobileSelector}</div> : null}
+            {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
             {mobileNotificationBell ?? notificationBell}
             <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut}>
               {mobileChatButton ?? chatButton}
