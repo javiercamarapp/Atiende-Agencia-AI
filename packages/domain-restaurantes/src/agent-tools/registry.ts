@@ -611,6 +611,10 @@ export function orderToWire(order: Order) {
 }
 
 /** Una tool apunta a otra sucursal que la fijada por el contexto -> se rechaza (aislamiento entre sucursales). */
+const UBICACION_IMPLAUSIBLE_MENSAJE =
+  "La ubicación recibida no parece estar en la zona de las sucursales (probablemente llegó mal formada). NO diga a qué sucursal corresponde, NO diga distancias, NO escale a una persona por esto y NO repita esas coordenadas: " +
+  "dígale al cliente, con amabilidad, que no pudo recibir bien su ubicación y pídale que la comparta de nuevo con el botón de WhatsApp o que le diga su colonia y calle; después vuelva a llamar buscar_sucursal_cercana con la colonia. Si no puede, ofrezca recoger en la sucursal de este chat.";
+
 const PIN_ANTES_DE_CREAR_MENSAJE =
   "El cliente describió su casa con referencias visuales y todavía no hay pin de ubicación. Antes de registrar, pídale UNA vez que comparta su ubicación de WhatsApp (botón o clip) o un enlace de Google Maps, " +
   "para que el repartidor llegue directo; guarde la referencia visual en referencias_acceso. Si responde que no puede o no quiere, vuelva a llamar crear_pedido con los mismos datos y se registra sin pin. No escale por esto.";
@@ -1376,6 +1380,10 @@ async function dispatchTool(
               ...(match.alternativa ? { alternativa: { branch_slug: match.alternativa.slug, branch_name: match.alternativa.nombre, distancia_texto: match.alternativa.kmAprox === null ? null : kmAproxTexto(match.alternativa.kmAprox) } } : {}),
               mensaje: match.message,
             }
+          : match.estado === "fuera_de_zona" && match.ubicacionImplausible
+            ? // QA-PM-R8 T7-002: pin a mas de 150 km de toda sucursal (coordenada mal formada o de otra ciudad). Sigue siendo `fuera_de_zona` y no se asigna, pero NO se nombra sucursal ni
+              // distancia (el agente escalaba «por 2,922 km») y se le dice como pedir la ubicacion de nuevo.
+              { encontrada: false, estado: match.estado, reparto: "ubicacion_implausible", ubicacion_sospechosa: true, mensaje: UBICACION_IMPLAUSIBLE_MENSAJE }
           : match.estado === "fuera_de_zona"
             ? {
                 encontrada: false,

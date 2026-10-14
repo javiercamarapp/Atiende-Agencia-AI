@@ -57,8 +57,8 @@ export function radioRepartoDelPerfil(perfil: PerfilAgenteWhatsApp, configuradoK
 }
 
 /**
- * Un pin a mas de esta distancia de TODA sucursal no es un domicilio fuera de zona: es una coordenada mal formada (un signo, un digito de mas: QA-PM-R8 T7-002, «2,922 km»)
- * o un pin de otra ciudad. Se rechaza con un mensaje claro y NO se asigna ni se nombra sucursal. 150 km deja de sobra el area metropolitana.
+ * Un pin a mas de esta distancia de TODA sucursal no es un domicilio «fuera de zona» al que se le pueda ofrecer recoger: es una coordenada mal formada (un signo, un digito de mas:
+ * QA-PM-R8 T7-002, «2,922 km») o un pin de otra ciudad. `fuera_de_zona` lo marca `ubicacionImplausible` y `buscar_sucursal_cercana` no nombra sucursal ni distancia. 150 km deja de sobra el area metropolitana.
  */
 export const UBICACION_IMPLAUSIBLE_KM = 150;
 
@@ -121,6 +121,8 @@ export type BranchAssignment =
       readonly origen: "pin" | "distancia" | "referencia_piloto";
       /** false = alguna sucursal de despacho no se puede medir: `branchSlug` es solo la mejor medible y NO se debe presentar como «la mas cercana». */
       readonly medicionConfiable: boolean;
+      /** true = el pin queda a mas de `UBICACION_IMPLAUSIBLE_KM` de toda sucursal: coordenada mal formada u otra ciudad, no un domicilio al que ofrecer recoger. */
+      readonly ubicacionImplausible?: true;
       readonly recognizedZoneName: string | null;
       readonly message: string;
     }
@@ -280,13 +282,6 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
 
   if (!point) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
   const ranked = rankBranchesByKm(point.lat, point.lng, medibles);
-  // Coordenada absurda (mas de 150 km de toda sucursal; solo con un radio de reparto fijado, para no recortar a quien no tiene tope): no es «fuera de zona»; se rechaza sin nombrar sucursal ni distancia y sin escalar a una persona.
-  if (via === "coordenadas" && Number.isFinite(tope) && ranked[0] && ranked[0].km > UBICACION_IMPLAUSIBLE_KM) {
-    throw new OrderValidationError(
-      "La ubicación recibida no parece estar en la zona de las sucursales (probablemente llegó mal formada). NO diga a qué sucursal corresponde, NO diga distancias, NO escale a una persona por esto y NO repita esas coordenadas: " +
-        "dígale al cliente, con amabilidad, que no pudo recibir bien su ubicación y pídale que la comparta de nuevo con el botón de WhatsApp o que le diga su colonia y calle; después vuelva a llamar buscar_sucursal_cercana con la colonia.",
-    );
-  }
   const cubrenRanked = ranked.filter((r) => cubren.has(r.branch.propertyId));
   // Cobertura EXPLICITA del dueno (override) con alguna sucursal que cubre y NO se puede medir (Pensiones hoy, sin coordenadas): su decision manda, sin inventar km.
   // Tambien con pin: «filas explicitas = override del dueno».
@@ -333,6 +328,7 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
       maxKm: topeEfectivo,
       origen: via === "coordenadas" ? "pin" : "distancia",
       medicionConfiable: confiable,
+      ...(via === "coordenadas" && nearest.km > UBICACION_IMPLAUSIBLE_KM ? { ubicacionImplausible: true as const } : {}),
       recognizedZoneName: zone ? zone.name : null,
       // Sin medicion confiable no se nombra una «mas cercana» calculada con sucursales que no se pueden medir.
       message: mensajeFueraDeZonaHabitual({ masCercana: confiable ? aCercana(nearest.branch, nearest.km) : null, radioKm: confiable ? radioTexto : null, kmFuera: confiable ? nearest.km : null }),
