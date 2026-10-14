@@ -408,7 +408,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
           // best-effort: sin registro no se promete ningun aviso.
         }
         if (!avisado) return conHandoff({ reply: FALLA_SIN_AVISO_REPLY, fnbOrderId });
-        return { reply: FALLA_CON_AVISO_REPLY, fnbOrderId, handoff: { motivo: "falla_sistema" } };
+        return { reply: FALLA_CON_AVISO_REPLY, fnbOrderId, handoff: { motivo: derivarAHumano ? "agente_derivo" : "falla_sistema" } };
       };
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
@@ -474,11 +474,9 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
             if (reservasCtx && isReservasToolName(call.name)) {
               const outcome = await executeReservasToolCall(repo, options.reservas!, { organizationId, propertyId, phone, turnId, now: options.now ? clock() : undefined }, call.name, input);
               result = outcome.result;
-              if (outcome.handoff) {
-                // La herramienta de reservas ya dejo su propio contacto (`reservas: ...`): la falla posterior no registra otro.
-                derivarAHumano = true;
-                contactoRegistradoEnTurno = true;
-              }
+              if (outcome.handoff) derivarAHumano = true;
+              // Solo cuenta como aviso hecho si la herramienta SI inserto su contacto (`reservas: ...`); `handoff` solo pide la derivacion (puede venir de un error inesperado).
+              if (outcome.contactoRegistrado === true) contactoRegistradoEnTurno = true;
               if (outcome.holdCreated) apartadoEnTurno = true;
               for (const cents of outcome.moneyCents) allowedCents.add(cents);
             } else {
@@ -524,6 +522,7 @@ async function executeReservasToolCall(
       moneyCents: [],
       holdCreated: null,
       handoff: true,
+      contactoRegistrado: false,
     };
   }
 }
