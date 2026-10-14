@@ -88,6 +88,10 @@ describe("PRESET_RESTAURANTE_HUMANO", () => {
     expect(BLOQUE_ACENTO_MEXICANO).toMatch(/mande/);
     expect(BLOQUE_ACENTO_MEXICANO).toMatch(/órale/);
     expect(BLOQUE_ACENTO_MEXICANO).toMatch(/usted/);
+    // Con usted: nada de «va» ni de «le anoto» (informal / choca con la regla del telefono dictado)
+    expect(instruccionHumana()).not.toMatch(/«va»/);
+    expect(instruccionHumana()).not.toMatch(/«le anoto»|permítame, lo anoto/);
+    expect(BLOQUE_NATURALIDAD).toMatch(/«muy bien»/);
     expect(BLOQUE_NATURALIDAD).toMatch(/déjeme anotarlo/);
     expect(BLOQUE_NATURALIDAD).toMatch(/NO diga nada antes de las consultas rápidas/);
     expect(BLOQUE_NATURALIDAD).toMatch(/interrumpe/);

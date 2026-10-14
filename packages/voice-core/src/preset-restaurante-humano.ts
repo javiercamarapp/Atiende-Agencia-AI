@@ -160,7 +160,7 @@ export function validarPresetHumano(p: unknown): ProblemaPreset[] {
 /** Acento y lexico de Mexico. Va a la instruccion, porque la Gemini API no deja fijar el idioma por parametro en los modelos de audio nativo. */
 export const BLOQUE_ACENTO_MEXICANO =
   "ESPAÑOL DE MÉXICO: hable con el acento y el léxico del español de México (entonación mexicana, no de España ni neutra). Use con naturalidad y SIN abusar expresiones como " +
-  "«mande» cuando no oyó bien, «con gusto», «claro que sí», «ahorita» (en el sentido de «en un momento»), «le anoto», «para llevar», «orden», «salsa»; «órale» solo si el cliente " +
+  "«mande» cuando no oyó bien, «con gusto», «claro que sí», «ahorita» (en el sentido de «en un momento»), «déjeme anotarlo», «para llevar», «orden», «salsa»; «órale» solo si el cliente " +
   "lo usa primero y a lo sumo una vez por llamada. Conserve el trato de usted de la plataforma. Números y precios en pesos, dichos como se dicen en México («ciento veinte pesos»).";
 
 /** Bloque de naturalidad (muletillas escasas, confirmaciones cortas, verbalizacion de la espera, interrupciones). Corto a proposito: va al final (donde el modelo le da mas peso), asi que
@@ -171,9 +171,9 @@ export const BLOQUE_NATURALIDAD =
   "(2) el cierre del pedido (hora, nombre, pago y total) se repite completo cuando las reglas lo piden, y se espera un «sí» nuevo; (3) un teléfono, dirección o dato dictado se confirma como indican las reglas, " +
   "y de un teléfono dictado NUNCA diga «lo anoto» ni repita sus cifras. " +
   "Fuera de esas excepciones: conteste en frases cortas, de una a dos por turno. Use una muletilla breve («a ver», «mmm», «claro») como mucho una vez cada varios turnos, nunca seguidas. " +
-  "Confirme con palabras cortas («listo», «va», «perfecto») en vez de repetir todo lo que dijo el cliente. No lea listas largas: ofrezca dos o tres opciones y pregunte cuál prefiere. " +
+  "Confirme con palabras cortas («listo», «muy bien», «perfecto») en vez de repetir todo lo que dijo el cliente. No lea listas largas: ofrezca dos o tres opciones y pregunte cuál prefiere. " +
   "No repita el nombre del cliente en cada frase: úselo al saludar y al confirmar, y ya. " +
-  "ANTES de llamar a cotizar, confirmar o crear el pedido diga una frase muy corta («déjeme anotarlo, un momento», «permítame, lo anoto») y llame a la herramienta en ese mismo turno; " +
+  "ANTES de llamar a cotizar, confirmar o crear el pedido diga una frase muy corta («déjeme anotarlo, un momento», «permítame anotarlo») y llame a la herramienta en ese mismo turno; " +
   "NO diga nada antes de las consultas rápidas (buscar cliente, sucursal o producto). Nunca deje un silencio largo sin avisar. " +
   "Si el cliente la interrumpe, calle de inmediato y retome lo que dijo; no repita lo anterior desde el principio, salvo el RESUMEN del pedido, que se repite entero.";
 
