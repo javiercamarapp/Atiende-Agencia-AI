@@ -9,12 +9,12 @@ describe("normalizarFormatoWhatsApp: lo que SI se convierte", () => {
     ["**Total:** $126 en efectivo", "*Total:* $126 en efectivo"],
     ["**3 tacos** y **1 agua**", "*3 tacos* y *1 agua*"],
     ["***Importante***: cierra a las 11", "*_Importante_*: cierra a las 11"],
-    ["__Gracias__ por su pedido", "*Gracias* por su pedido"],
     ["~~Agotado~~ disponible", "~Agotado~ disponible"],
     ["# Resumen del pedido", "*Resumen del pedido*"],
     ["### **Menú** del día ###", "*Menú del día*"],
     ["* 3 tacos al pastor\n* 1 agua", "- 3 tacos al pastor\n- 1 agua"],
-    ["+ salsa verde", "- salsa verde"],
+    ["# Precio 2*3", "*Precio 2*3*"],
+    ["## **Total** $126", "*Total $126*"],
     ["Menú:\n\n---\n\n1. Tacos", "Menú:\n\n1. Tacos"],
     ["Vea el [menú](https://ejemplo.mx/menu_2026)", "Vea el menú: https://ejemplo.mx/menu_2026"],
     ["**Pedido**\n* 3 × Taco **$126**", "*Pedido*\n- 3 × Taco *$126*"],
@@ -47,6 +47,11 @@ describe("normalizarFormatoWhatsApp: lo que NO se toca", () => {
     "** sin cerrar",
     "**con espacio al final **",
     "texto normal sin formato",
+    "+ 52 999 123 4567 es la lada",
+    "__init__ y __main__",
+    "__Gracias__ por su pedido",
+    "www.ejemplo.mx/__archivo__/a",
+    "+ salsa verde",
   ])("%j queda igual", (entrada) => {
     expect(n(entrada)).toBe(entrada);
   });
@@ -61,8 +66,22 @@ describe("normalizarFormatoWhatsApp: lo que NO se toca", () => {
   });
 });
 
+describe("normalizarFormatoWhatsApp: entradas hostiles (tiempo acotado)", () => {
+  it.each([
+    ["corchetes sin cerrar", "[".repeat(50_000)],
+    ["enlaces a medias", "[a](".repeat(12_000)],
+    ["dobles asteriscos sin cerrar", "**a ".repeat(15_000)],
+    ["tildes sin cerrar", "~~a ".repeat(15_000)],
+    ["encabezado enorme", "# " + "*".repeat(50_000)],
+  ])("%s se normaliza en menos de 500 ms", (_n, entrada) => {
+    const t0 = Date.now();
+    n(entrada);
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+});
+
 describe("normalizarFormatoWhatsApp: propiedades", () => {
-  const corpus = ["Son **$126**", "# Titulo\n* a\n* b", "---", "[a](https://x.mx/a_b)", "_ya_ *bien*", "***x***", "", "\n\n\n"];
+  const corpus = ["~~~", "~~~x~~~", "a~~~b", "~~~~", "*", "**", "***", "Son **$126**", "# Titulo\n* a\n* b", "---", "[a](https://x.mx/a_b)", "_ya_ *bien*", "***x***", "", "\n\n\n"];
   it("es idempotente", () => {
     for (const t of corpus) expect(n(n(t)), t).toBe(n(t));
   });

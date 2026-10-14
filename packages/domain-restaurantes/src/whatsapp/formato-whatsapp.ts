@@ -3,14 +3,14 @@
 // UNICO punto de normalizacion del texto final del agente de WhatsApp y de la preview del panel (`createLlmWhatsAppTurnHandler.handleInboundMessage`).
 //
 // Reglas deliberadamente conservadoras (un falso positivo corrompe un precio o un enlace; un falso negativo solo deja un asterisco de mas):
-//   * `***x***` -> `*_x_*`; `**x**` y `__x__` -> `*x*`; `~~x~~` -> `~x~`. Solo pares en la MISMA linea, sin espacio pegado a los marcadores.
+//   * `***x***` -> `*_x_*`; `**x**` -> `*x*` (`__x__` NO se convierte: es ambiguo con nombres como `__init__`); `~~x~~` -> `~x~`. Solo pares en la MISMA linea, sin espacio pegado a los marcadores.
 //   * `# Titulo` (1-6 almohadillas + espacio) -> `*Titulo*`; las reglas horizontales (`---`, `***`, `___`) se eliminan.
-//   * `* item` / `+ item` al inicio de linea -> `- item` (el asterisco inicial se confundiria con una negrita); `- item` y `1. item` ya los renderiza WhatsApp.
+//   * `* item` al inicio de linea -> `- item` (el asterisco inicial se confundiria con una negrita); `- item` y `1. item` ya los renderiza WhatsApp.
 //   * `[texto](https://url)` -> `texto: https://url`.
 //   * Se respetan tal cual: URLs (con sus guiones bajos), codigo en linea y bloques ``` ```, precios ($126, 5*3), asteriscos aislados y *negritas* ya correctas.
 // Idempotente: normalizar(normalizar(x)) === normalizar(x).
 
-const URL_RE = /https?:\/\/[^\s<>()]+/giu;
+const URL_RE = /(?:https?:\/\/|www\.)[^\s<>()]+/giu;
 const CODIGO_EN_LINEA_RE = /`[^`\n]+`/gu;
 const MARCADOR = "\u0000";
 
@@ -23,8 +23,10 @@ function restaurar(linea: string, guardados: readonly string[]): string {
   return linea.replace(new RegExp(`${MARCADOR}(\\d+)${MARCADOR}`, "gu"), (_m, i: string) => guardados[Number(i)] ?? "");
 }
 
+/** Contenido de un encabezado sin sus marcas de enfasis (`**`, `***`, y un `*` solo al inicio y al final); un `*` suelto de en medio (`2*3`) se conserva. */
 function sinMarcasDeEnfasis(s: string): string {
-  return s.replace(/\*+/gu, "").replace(/(^|[^\p{L}\p{N}])_+|_+($|[^\p{L}\p{N}])/gu, "$1$2").trim();
+  const t = s.replace(/\*{2,}/gu, "").trim();
+  return t.length > 2 && t.startsWith("*") && t.endsWith("*") ? t.slice(1, -1).trim() : t;
 }
 
 function normalizarLinea(linea: string): string | null {
@@ -33,19 +35,18 @@ function normalizarLinea(linea: string): string | null {
   const guardados: string[] = [];
   let l = proteger(linea, guardados);
   // Enlaces [texto](url): la URL ya esta protegida por el paso anterior, asi que se reconoce el marcador.
-  l = l.replace(new RegExp(`\\[([^\\]\\n]+)\\]\\(\\s*(${MARCADOR}\\d+${MARCADOR})\\s*\\)`, "gu"), (_m, texto: string, url: string) => `${texto}: ${url}`);
+  l = l.replace(new RegExp(`\\[([^\\]\\n]{1,200})\\]\\(\\s*(${MARCADOR}\\d+${MARCADOR})\\s*\\)`, "gu"), (_m, texto: string, url: string) => `${texto}: ${url}`);
   const encabezado = /^\s{0,3}#{1,6}\s+(.+?)(?:\s+#+)?\s*$/u.exec(l);
   if (encabezado) {
     const contenido = sinMarcasDeEnfasis(encabezado[1]!);
     l = contenido ? `*${contenido}*` : "";
   } else {
-    l = l.replace(/^(\s*)[*+]\s+(?=\S)/u, "$1- ");
+    l = l.replace(/^(\s*)\*\s+(?=\S)/u, "$1- ");
   }
   l = l
     .replace(/\*\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*\*/gu, "*_$1_*")
     .replace(/\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*/gu, "*$1*")
-    .replace(/(?<![\p{L}\p{N}_])__(?![\s_])([^_\n]+?)(?<![\s_])__(?![\p{L}\p{N}_])/gu, "*$1*")
-    .replace(/~~(?!\s)([^~\n]+?)(?<!\s)~~/gu, "~$1~");
+    .replace(/(?<!~)~~(?![\s~])([^~\n]+?)(?<![\s~])~~(?!~)/gu, "~$1~");
   return restaurar(l, guardados);
 }
 
