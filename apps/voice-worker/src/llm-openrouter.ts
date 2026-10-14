@@ -3,15 +3,28 @@
 // de OpenRouter) sube a la sesion, que lo suma al costo de la llamada y a los topes por llamada y mensual.
 import { OpenRouterProvider } from "@atiende/agent-core";
 import type { LlmMessage } from "@atiende/agent-core";
+import { modeloAgentePorId } from "@atiende/domain-restaurantes";
 import { VOZ_PLATAFORMA } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
 
-export function crearPuertoLlmOpenRouter(apiKey: string, fetchImpl?: typeof fetch): PuertoLlmVoz {
+/** `temperature` del modelo de voz. La lista de modelos que la aceptan ya existe (`MODELOS_AGENTE.aceptaTemperatura`, verificada contra los endpoints permitidos de OpenRouter):
+ * un modelo que la rechaza (Luna, Sonnet 5.5) o que NO esta verificado en esa lista (Haiku 5.5 y cualquier id nuevo) recibe `"omit"`, porque con `require_parameters: true`
+ * mandarla deja la ruta sin endpoints (404, docs/LLM-GATEWAY.md). Para uno que la acepta, la temperatura pedida si es un numero finito (0 incluido) y, si no, no se manda.
+ * NOTA para la cascada v2: este puerto no manda `provider.zdr` ni `only` (rutas de EE.UU.), y el modelo por omision `google/gemini-3.8-flash` con `temperature: 0` solo lo
+ * aceptan los endpoints de Google AI Studio (no los de Vertex). */
+export function temperaturaParaModelo(modelo: string, temperatura: number | null | undefined): number | "omit" | undefined {
+  if (!modeloAgentePorId(modelo)?.aceptaTemperatura) return "omit";
+  return typeof temperatura === "number" && Number.isFinite(temperatura) ? temperatura : undefined;
+}
+
+export function crearPuertoLlmOpenRouter(apiKey: string, fetchImpl?: typeof fetch, opciones: { modelo?: string; temperatura?: number | null } = {}): PuertoLlmVoz {
+  const modelo = opciones.modelo ?? VOZ_PLATAFORMA.cascada.modeloLlm;
+  const temperatura = temperaturaParaModelo(modelo, "temperatura" in opciones ? opciones.temperatura : VOZ_PLATAFORMA.cascada.temperatura);
   const proveedor = new OpenRouterProvider({
     apiKey,
-    model: VOZ_PLATAFORMA.cascada.modeloLlm,
+    model: modelo,
     appName: "atiende-voice-worker",
-    params: { temperature: 0 },
+    params: temperatura === undefined ? {} : { temperature: temperatura },
     // Un turno de voz que tarda mas de 8 s ya perdio al cliente: mejor fallar y que la escalera/maquina decidan.
     timeoutMs: 8_000,
     maxRetries: 0,

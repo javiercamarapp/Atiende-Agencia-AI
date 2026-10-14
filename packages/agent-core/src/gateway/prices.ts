@@ -29,7 +29,11 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
   'openai/gpt-6-sol': { inPerM: 1, outPerM: 5, cachedInPerM: 0.1, verifiedAt: '2026-10-01' },
   'google/gemini-3.5-flash-lite': { inPerM: 0.3, outPerM: 2.5, cachedInPerM: 0.03, verifiedAt: '2026-10-01' },
   'google/gemini-3.8-flash': { inPerM: 0.75, outPerM: 3.75, cachedInPerM: 0.075, verifiedAt: '2026-10-01' },
-  'anthropic/claude-sonnet-5.5': { inPerM: 2, outPerM: 10, cachedInPerM: 0.2, verifiedAt: '2026-10-01' },
+  // Lectura de cache bajo de US$0.20 a US$0.10 el 2026-10-07; releido en OpenRouter (/api/v1/models/<id>/endpoints) el 2026-10-13.
+  'anthropic/claude-sonnet-5.5': { inPerM: 2, outPerM: 10, cachedInPerM: 0.1, verifiedAt: '2026-10-13' },
+  // Cascada de voz v2 (P4). Tarifa global de OpenRouter; los endpoints regionales de EE.UU. (google-vertex/us, amazon-bedrock/us-east-1) cuestan 10 % mas
+  // (0.11 / 0.55 / 0.011): el costo registrado sigue siendo el `usage.cost` real de OpenRouter, esta fila solo reserva y respalda.
+  'anthropic/claude-haiku-5.5': { inPerM: 0.1, outPerM: 0.5, cachedInPerM: 0.01, verifiedAt: '2026-10-13' },
   'google/gemini-2.5-flash-lite': { inPerM: 0.1, outPerM: 0.4, cachedInPerM: 0.01, verifiedAt: '2026-10-02' },
   'meta/muse-spark-1.3': { inPerM: 1.25, outPerM: 4.25, verifiedAt: '2026-10-02' },
   // Modelos de laboratorios chinos servidos SOLO por proveedores de EE.UU. (ver
