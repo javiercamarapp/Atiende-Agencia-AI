@@ -24,7 +24,7 @@ con voz **femenina** y acento **mexicano**. Este documento dice qué se construy
 | Ritmo / estilo | Normal / Cálido | El ritmo ágil atropella números y precios; el pausado alarga la llamada. Cálido es el estilo de anfitriona. Gemini Live no tiene control numérico de velocidad: se pide por instrucción. |
 | Temperatura | 0.4 | **Juicio de ingeniería, sin medición.** 0 repite frases idénticas y suena a grabación; 1 improvisa. Precios y totales salen de las herramientas, no del modelo. Ahora sí llega a las llamadas reales (apertura de la sesión). |
 | Naturalidad | activada | Frases cortas, muletillas escasas, confirmaciones cortas, sin listas largas, sin repetir el nombre del cliente, español de México con usted, manejo de interrupciones, y «déjeme anotarlo» **antes** de cotizar/confirmar/crear pedido. |
-| Ambiente | `cocina-taqueria` al 8 % | En las muestras queda ~23 dB bajo la voz mientras habla y se oye en las pausas. **Punto de partida calculado, no de oído**: ajustar con los archivos `comparar-volumen-*`. |
+| Ambiente | `cocina-taqueria` al 8 % | En las muestras queda ~23 dB bajo la voz en banda ancha y ~17 dB por teléfono (banda 300-3400 Hz, mu-law) mientras habla, y se oye en las pausas. **Punto de partida calculado, no de oído**: ajustar con los archivos `comparar-volumen-*`. |
 | Tecleo | 12 % | Sobre el ambiente (8 %), muy por debajo de la voz. |
 
 ### Verbalización de la espera (límite honesto)
