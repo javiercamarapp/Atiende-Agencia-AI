@@ -66,7 +66,7 @@ test.describe("captura de Pedidos de restaurantes @captura", () => {
     const oscuro = info.project.name.endsWith("oscuro");
     const teselas: string[] = [];
     page.on("request", (r) => {
-      if (r.url().includes("tile.openstreetmap.org")) teselas.push(r.url());
+      if (new URL(r.url()).hostname.endsWith(".openstreetmap.org") || new URL(r.url()).hostname === "openstreetmap.org") teselas.push(r.url());
     });
     await ir(page, "/pedidos");
     await expect(main(page).getByText("Marisol Pech").first()).toBeVisible();
