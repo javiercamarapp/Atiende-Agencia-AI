@@ -2,7 +2,7 @@
 // tabla de productos, notas, incidencia, entrega y «Pedidos recientes». Autosuficiente (pide el pedido y los recientes por su cuenta) y se monta
 // EN VEZ de la lista mientras haya un pedido abierto; «Volver» regresa a la lista. Lo propio del monorepo: el estado real, el repartidor
 // asignado, la propina, la hora de recogida / programacion y el boton «Historial» (bitacora de transiciones).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Banknote, Bike, Clock, CreditCard, Globe, History, Loader2, MapPin, MessageCircle, Mic, Phone, ShoppingCart, StickyNote, Store, Truck, User, Wallet } from "lucide-react";
 import { Button, DataTable, StatusBadge, cn, formatMoney, statusTone } from "@atiende/ui";
 import { fechaAnioHoraEsMx, fechaCortaHoraEsMx, hora24EsMx } from "../../../../lib/formato-fecha.ts";
@@ -80,10 +80,21 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
     };
   }, [apiBaseUrl, token, propertyId, orderId]);
 
+  // Foco: al abrir el detalle pasa al contenedor (no queda en <body>) y, cuando carga, al encabezado del pedido.
+  const raiz = useRef<HTMLDivElement>(null);
+  const encabezado = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    raiz.current?.focus({ preventScroll: true });
+  }, [orderId]);
+  const detalleId = detalle?.id;
+  useEffect(() => {
+    if (detalleId) encabezado.current?.focus({ preventScroll: true });
+  }, [detalleId]);
+
   const repartidor = detalle?.assignedRepartidorId ? repartidores?.find((r) => r.id === detalle.assignedRepartidorId) : undefined;
 
   return (
-    <div className="w-full min-w-0 space-y-4" data-testid="pedido-detalle">
+    <div ref={raiz} tabIndex={-1} className="w-full min-w-0 space-y-4 outline-none" data-testid="pedido-detalle">
       <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8 gap-1.5 text-sm text-muted-foreground hover:text-foreground" onClick={onVolver}>
         <ArrowLeft className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         Volver
@@ -107,7 +118,7 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
           <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
-                <h2 className="font-display text-2xl font-semibold text-foreground">{etiquetaVenta(detalle)}</h2>
+                <h2 ref={encabezado} tabIndex={-1} className="font-display text-2xl font-semibold text-foreground outline-none">{etiquetaVenta(detalle)}</h2>
                 <StatusBadge tone={statusTone(ORDER_STATUS_TONES, detalle.status)} className={cn(detalle.status === "problema" && "pedido-incidencia-chip")}>
                   {ORDER_STATUS_LABELS[detalle.status]}
                 </StatusBadge>

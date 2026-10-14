@@ -1,8 +1,8 @@
 // Capturas de Pedidos de restaurantes para la aceptacion de UNI-R1 (paridad con el repo suelto): lista con mapa, enviadas (Demorado), programadas,
 // vacio, detalle y dialogos, en claro/oscuro y movil 375 px (las pruebas @oscuro corren en los 4 proyectos). Las comprobaciones (modo, un solo h1,
 // sin desborde horizontal, mapa cargado, sin errores de consola) corren siempre; el PNG solo se escribe si CAPTURAS_RESTAURANTES_DIR apunta a una
-// carpeta (CI no genera nada). Las teselas de OpenStreetMap se sirven locales desde helpers/fixtures.ts (determinista, sin red); con
-// CAPTURAS_TESELAS_REALES=1 se piden las reales (solo para generar imagenes de comparacion con el original, unas pocas peticiones).
+// carpeta (CI no genera nada). El mapa «Entrega en curso» esta oculto (MAPA_ENTREGA_HABILITADO=false, ver
+// mapa-entrega-config.ts): estas pruebas afirman que no hay mapa, «Simulado» ni peticiones a las teselas; el mapa encendido lo cubre una prueba de componente.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
@@ -62,18 +62,24 @@ test.describe("captura de Pedidos de restaurantes @captura", () => {
     await iniciarSesion("restaurantes", "owner");
   });
 
-  test("Recibidas: lista a la izquierda y mapa «Entrega en curso» con el pedido seleccionado @oscuro", async ({ page, vigilante }, info) => {
+  test("Recibidas: la lista ocupa todo el ancho y el mapa «Entrega en curso» esta oculto (sin Simulado ni teselas) @oscuro", async ({ page, vigilante }, info) => {
     const oscuro = info.project.name.endsWith("oscuro");
+    const teselas: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("tile.openstreetmap.org")) teselas.push(r.url());
+    });
     await ir(page, "/pedidos");
     await expect(main(page).getByText("Marisol Pech").first()).toBeVisible();
-    await expect(page.locator(".leaflet-container")).toBeVisible();
-    await expect(page.locator(".pedido-pin")).toHaveCount(3);
-    await expect(main(page).getByText("Simulado")).toBeVisible();
+    await expect(page.locator(".leaflet-container")).toHaveCount(0);
+    await expect(main(page).getByTestId("mapa-entrega")).toHaveCount(0);
+    await expect(main(page).getByText("Simulado")).toHaveCount(0);
+    await expect(main(page).getByText("Entrega en curso")).toHaveCount(0);
     await expect(main(page).getByRole("tab", { name: "Órdenes recibidas" })).toHaveAttribute("aria-selected", "true");
     await expect(main(page).getByTestId("total-pedidos")).toHaveText("2 en total");
     await sana(page, "pedidos recibidas", oscuro);
     vigilante.verificar();
-    await foto(page, "pedidos-recibidas-mapa", info.project.name);
+    expect(teselas, "sin mapa no se pide ninguna tesela a tile.openstreetmap.org").toEqual([]);
+    await foto(page, "pedidos-recibidas", info.project.name);
   });
 
   test("Recibidas: Asignar repartidor abre el selector con «Confirmar envío» @oscuro", async ({ page }, info) => {
@@ -96,8 +102,8 @@ test.describe("captura de Pedidos de restaurantes @captura", () => {
     await main(page).getByRole("tab", { name: "Órdenes enviadas" }).click();
     await expect(main(page).getByText("Pedro Chan").first()).toBeVisible();
     await expect(main(page).getByText(/Demorado — debía llegar/)).toBeVisible();
-    await expect(page.locator(".leaflet-container")).toBeVisible();
-    await expect(main(page).getByText("posición simulada en tránsito")).toBeVisible();
+    await expect(page.locator(".leaflet-container")).toHaveCount(0);
+    await expect(main(page).getByText("posición simulada en tránsito")).toHaveCount(0);
     await sana(page, "pedidos enviadas", info.project.name.endsWith("oscuro"));
     vigilante.verificar();
     await foto(page, "pedidos-enviadas", info.project.name);
@@ -134,8 +140,11 @@ test.describe("captura de Pedidos de restaurantes @captura", () => {
     await sana(page, "detalle de pedido", info.project.name.endsWith("oscuro"));
     vigilante.verificar();
     await foto(page, "pedido-detalle", info.project.name);
+    // Foco: al abrir cae en el encabezado del pedido (no en <body>) y al «Volver» regresa a la fila que lo abrio.
+    await expect(detalle.getByRole("heading", { name: "Venta 1001" })).toBeFocused();
     await detalle.getByRole("button", { name: "Volver" }).click();
-    await expect(main(page).getByTestId("mapa-entrega")).toBeVisible();
+    await expect(main(page).getByTestId("pedido-ord-1001")).toBeVisible();
+    await expect(main(page).getByTestId("pedido-ord-1001").locator(":focus")).toHaveCount(1);
   });
 
   test("Dialogos: Reportar incidencia (nota obligatoria) y «¿Cancelar este pedido?» @oscuro", async ({ page, mock, vigilante }, info) => {

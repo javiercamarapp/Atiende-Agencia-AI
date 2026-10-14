@@ -8,7 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { OrderSummary } from "../src/verticals/restaurantes/lib/orders-client.ts";
-import { changeValue, click, esperarHasta, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 import { elegirValor, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
 
@@ -511,23 +511,16 @@ describe("PedidosPage: programadas", () => {
 });
 
 describe("PedidosPage: mapa y detalle", () => {
-  it("la columna derecha trae «Entrega en curso» con el primer pedido de la lista y la insignia «Simulado»", async () => {
+  it("el mapa «Entrega en curso» esta apagado por omision: sin tarjeta, sin «Simulado», sin Leaflet y sin pedir sucursales", async () => {
     stubFetch({ byStatus: { pending: [PEDIDO_PENDING] } });
     rendered = renderPage();
     await esperarCarga();
-    const mapa = rendered.container.querySelector('[data-testid="mapa-entrega"]')!;
-    expect(mapa.textContent).toContain("Entrega en curso");
-    expect(mapa.textContent).toContain("Simulado");
-    expect(mapa.textContent).toContain("Juan Pérez");
-    await esperarHasta(() => rendered!.container.querySelector('[data-testid="mapa-entrega-leaflet"]') !== null, "el mapa Leaflet carga bajo demanda");
-  });
-
-  it("una sucursal sin lat/lng muestra el estado vacio del mapa (sin marcadores inventados)", async () => {
-    stubFetch({ byStatus: { pending: [PEDIDO_PENDING] }, sucursales: [{ ...SUCURSAL, lat: null as unknown as number, lng: null as unknown as number }] });
-    rendered = renderPage();
-    await esperarCarga();
-    expect(rendered.container.querySelector('[data-testid="mapa-sin-ubicacion"]')?.textContent).toContain("Esta sucursal aún no tiene ubicación en el mapa");
+    expect(rendered.container.querySelector('[data-testid="pedido-ord-1"]')).not.toBeNull();
+    expect(rendered.container.querySelector('[data-testid="mapa-entrega"]')).toBeNull();
     expect(rendered.container.querySelector('[data-testid="mapa-entrega-leaflet"]')).toBeNull();
+    expect(rendered.container.textContent).not.toContain("Entrega en curso");
+    expect(rendered.container.textContent).not.toContain("Simulado");
+    expect(llamadas("GET", "/admin/sucursales")).toHaveLength(0);
   });
 
   it("clic en una fila abre el detalle a pagina completa (GET .../orders/:id) y «Volver» regresa a la lista", async () => {
@@ -547,6 +540,18 @@ describe("PedidosPage: mapa y detalle", () => {
     await esperarCarga();
     expect(rendered.container.querySelector('[data-testid="pedido-detalle"]')).toBeNull();
     expect(rendered.container.querySelector('[data-testid="pedido-ord-1"]')).not.toBeNull();
+    // Foco: «Volver» devuelve el foco a la fila que abrio el detalle (no cae a <body>).
+    expect(rendered.container.querySelector('[data-testid="pedido-ord-1"]')!.contains(document.activeElement)).toBe(true);
+  });
+
+  it("al abrir el detalle el foco pasa al encabezado del pedido", async () => {
+    stubFetch({ byStatus: { pending: [PEDIDO_PENDING] }, porId: PEDIDO_PENDING });
+    rendered = renderPage();
+    await esperarCarga();
+    click(rendered.container.querySelector('[data-testid="pedido-ord-1"]')!);
+    await esperarCarga();
+    expect(document.activeElement?.tagName).toBe("H2");
+    expect(document.activeElement?.textContent).toContain("Venta 1001");
   });
 
   it("los botones de la fila no abren el detalle (stopPropagation)", async () => {

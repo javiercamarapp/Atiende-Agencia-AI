@@ -30,6 +30,7 @@ import { FilaPedido } from "../components/pedidos/FilaPedido.tsx";
 import { HerramientasPedidos } from "../components/pedidos/HerramientasPedidos.tsx";
 import { IncidenciaDialogo } from "../components/pedidos/IncidenciaDialogo.tsx";
 import { MapaEntrega } from "../components/pedidos/MapaEntrega.tsx";
+import { MAPA_ENTREGA_HABILITADO } from "../components/pedidos/mapa-entrega-config.ts";
 import { PedidoDetalle } from "../components/pedidos/PedidoDetalle.tsx";
 import { fetchEstadosComandaPorPedido } from "../lib/pos-comandas-client.ts";
 import type { EstadoComandaWire } from "../lib/pos-comandas-client.ts";
@@ -484,6 +485,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
 
   // Ubicacion REAL de las sucursales (lat/lng) para el mapa «Entrega en curso». Sin respuesta, el mapa muestra su estado vacio.
   useEffect(() => {
+    if (!MAPA_ENTREGA_HABILITADO) return;
     let cancelado = false;
     fetchAdminBranches(fetch, apiBaseUrl, token, propertyId)
       .then((b) => !cancelado && setBranches(Array.isArray(b) ? b : []))
@@ -582,11 +584,29 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
     setSelectedOrderId(order.id);
     setDetalleId(order.id);
   }
+  // Foco: al pulsar «Volver» regresa a la fila que abrio el detalle (no se pierde en <body>).
+  const volverAFila = useRef<string | null>(null);
+  function cerrarDetalle(): void {
+    volverAFila.current = detalleId;
+    setDetalleId(null);
+  }
+  useEffect(() => {
+    const id = volverAFila.current;
+    if (detalleId !== null || id === null) return;
+    volverAFila.current = null;
+    const fila = document.querySelector<HTMLElement>(`[data-testid="pedido-${CSS.escape(id)}"], [data-testid="programado-${CSS.escape(id)}"]`);
+    const objetivo = fila?.querySelector<HTMLElement>("button") ?? fila;
+    if (objetivo) {
+      if (!objetivo.matches("button, a, [tabindex]")) objetivo.setAttribute("tabindex", "-1");
+      objetivo.focus({ preventScroll: true });
+    }
+  }, [detalleId, vista]);
 
   // ---- Derivados de la vista ----
   const listaVisible: readonly OrderSummary[] = vista === "programadas" ? (programados ?? []).filter((o) => sigueProgramado(o, ahoraMs)) : (orders ?? []);
   const conteo = status === "por_aprobar" ? (aprobaciones?.solicitudes.length ?? 0) : listaVisible.length;
-  const seleccionado = listaVisible.find((o) => o.id === selectedOrderId) ?? listaVisible[0] ?? null;
+  // La fila seleccionada solo alimenta el mapa (apagado por omision): sin mapa no hay seleccion.
+  const seleccionado = MAPA_ENTREGA_HABILITADO ? (listaVisible.find((o) => o.id === selectedOrderId) ?? listaVisible[0] ?? null) : null;
   const sucursalDe = (o: OrderSummary | null) => {
     const b = o ? branches.find((x) => x.propertyId === o.propertyId) : undefined;
     return b ? { nombre: b.name, lat: b.lat, lng: b.lng } : null;
@@ -622,7 +642,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           propertyId={propertyId}
           orderId={detalleId}
           repartidores={repartidores}
-          onVolver={() => setDetalleId(null)}
+          onVolver={cerrarDetalle}
           onSelect={setDetalleId}
           onHistorial={setHistorialDe}
         />
@@ -739,7 +759,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
               onCancelar={(o) => void handleChangeStatus(o, "cancelado")}
             />
           ) : (
-            <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className={cn("grid grid-cols-1 items-start gap-3", MAPA_ENTREGA_HABILITADO && "xl:grid-cols-[minmax(0,1fr)_380px]")}>
               <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
                 {listaVisible.length === 0 ? (
                   <div role="status" className="py-12 text-center">
@@ -786,7 +806,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                   </div>
                 )}
               </div>
-              <MapaEntrega order={seleccionado} sucursal={sucursalDe(seleccionado)} repartidorNombre={repartidorDe(seleccionado)} />
+              {MAPA_ENTREGA_HABILITADO && <MapaEntrega order={seleccionado} sucursal={sucursalDe(seleccionado)} repartidorNombre={repartidorDe(seleccionado)} />}
             </div>
           )}
         </>
