@@ -194,7 +194,7 @@ export function ConfirmDialog({
             <AlertDialogCancel type="button" data-confirm-cancelar="" disabled={enCurso}>
               {cancelar}
             </AlertDialogCancel>
-            <Button type="submit" variant={tono === "danger" ? "danger" : "default"} disabled={bloqueado} aria-busy={enCurso || undefined}>
+            <Button type="submit" variant={tono === "danger" ? "danger" : "default"} className={tono === "danger" ? "ambito-peligro-solido" : undefined} disabled={bloqueado} aria-busy={enCurso || undefined}>
               {enCurso && <Loader2 aria-hidden="true" className="animate-spin" />}
               {confirmar}
             </Button>

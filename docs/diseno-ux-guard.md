@@ -89,3 +89,25 @@ Todo pop-up, lista desplegable, toast y estado sale de `@atiende/ui`; ver el inv
 - Recuadros y estados: `Panel` (tarjeta de seccion), `Card`, `EstadoVacio` (fila de Likida por defecto; centrado dentro de restaurantes via `VarianteEstadoVacioProvider`, o con `variante="centrado"`), `EstadoCargando`, `Skeleton`, `EstadoError`.
 - Graficas: `GRAFICA_TEMA` (constantes sobre tokens del aspecto del repo suelto).
 - Movimiento: todo bajo `prefers-reduced-motion` (bloque global de `index.css` + `motion-reduce:` en las listas).
+
+## Ambito visual de restaurantes (UNI-R0b)
+
+El aspecto del repo suelto (paleta, botones en pildora, overlays) se aplica solo a restaurantes con `html[data-ambito="restaurantes"]`
+(`useAmbitoVertical` en `RestaurantesShell`); el sidebar repone la paleta de Likida con `data-ambito-base`. Reglas nuevas del guard
+(`apps/web/tests/test-utils/ds-v2-guard-reglas.ts`, baseline 0, con casos de sanidad):
+
+- **Color funcional literal en restaurantes**: `rgb()/rgba()/hsl()/hsla()` con numeros u `oklch()/oklab()/lab()/lch()` en `verticals/restaurantes/` (solo `hsl(var(--token))`).
+  Se suma a las reglas globales de paleta cruda de Tailwind, hex literal y `text-[Npx]`, que ya cubren restaurantes.
+- **Variante `rest:` o `data-ambito` a mano en `apps/web/src`**: el ambito lo aplican los primitivos de `@atiende/ui`, no las pantallas.
+
+Pruebas del ambito (no son parte del guard de `apps/web`):
+
+| Archivo | Que fija |
+|---|---|
+| `packages/ui/tests/tokens-restaurantes.spec.ts` | Valores exactos del original (claro y oscuro), contraste WCAG AA con los valores reales de `index.css`, que `[data-ambito-base]` repone Likida token a token, que toda regla `rest:` compilada lleva el prefijo del ambito, que ninguna clase `rest:` usa paleta cruda/hex/`text-[Npx]` (con casos negativos) y que el CSS de toasts esta acotado al atributo. |
+| `packages/ui/tests/ambito-restaurantes.spec.tsx` | `useAmbitoVertical`, y las recetas de Button (variantes y tamanos del original), campos y overlays. |
+| `apps/web/e2e/tests/restaurantes/uni-r0b-ambito.spec.ts` | Estilos computados en un navegador real (claro, oscuro, 375 px): paleta, sidebar en Likida, pildora, velo, titulos, campos y que citas no cambia. |
+
+Los specs de Likida (`tokens-likida`, `ui-ds-v2-button`, `ui-primitivos-accion-likida`) siguen con sus aserciones originales: por eso el
+Button y los campos reciben el repo suelto por clases `ambito-*` de `index.css` y no por utilidades en el `className`, y la variante
+`rest:` vive en un plugin aparte (el preset conserva su unico plugin y no define `addVariant`).
