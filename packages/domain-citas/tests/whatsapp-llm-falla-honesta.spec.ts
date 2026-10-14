@@ -3,7 +3,7 @@
 //   - sin cita decia "un momento por favor" / "intenta de nuevo" sin avisar a nadie.
 // Ahora el respaldo nombra la accion que SI se hizo, y sin cita el turno pide una persona; `inbound` solo cambia a "ya avisé" si la solicitud quedo registrada.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
 import type { LlmCompletionResult } from "@atiende/agent-core";
 import { createAppointment } from "../src/appointments.ts";
@@ -142,8 +142,9 @@ describe("inbound: 'ya avisé' solo si la solicitud de humano quedo registrada",
     const store = new InMemoryConversacionesRepository({ actorUserId: randomUUID(), nombres: {} });
     const gate = new InMemoryHandoffAgentGate(store);
     gate.solicitarHumano = async () => {
-      throw new Error("boom 40001");
+      throw Object.assign(new Error(`boom con telefono ${PHONE_WA} y texto quiero una cita`), { code: "40001" });
     };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const turnHandler: WhatsAppTurnHandler = {
       async handleInboundMessage() {
         return { reply: FALLA_SIN_AVISO_REPLY, appointmentId: null, propertyId: null, handoff: { motivo: "x", replyConAviso: FALLA_CON_AVISO_REPLY } };
@@ -153,6 +154,16 @@ describe("inbound: 'ya avisé' solo si la solicitud de humano quedo registrada",
       organizationId: fixture.organizationId, messageId: `wamid-${randomUUID()}`, phone: PHONE_WA, body: "quiero una cita", phoneNumberId: "1234567890", handoffGate: gate,
     });
     expect(r).toMatchObject({ ok: true, retryable: false, reply: FALLA_SIN_AVISO_REPLY });
+    // Rastro sin PII: clase del error y SQLSTATE; nunca el mensaje (que aqui trae telefono y texto del cliente).
+    expect(warn).toHaveBeenCalledTimes(1);
+    const rastro = String(warn.mock.calls[0]![0]);
+    expect(rastro).toMatch(/solicitarHumano/);
+    expect(rastro).toContain("Error");
+    expect(rastro).toContain("40001");
+    expect(rastro).not.toContain(PHONE_WA);
+    expect(rastro).not.toContain("9981234567");
+    expect(rastro).not.toMatch(/quiero una cita|boom/);
+    warn.mockRestore();
   });
 
   it.each([
