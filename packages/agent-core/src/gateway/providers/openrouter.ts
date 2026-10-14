@@ -29,8 +29,12 @@
 //   - 400/404/422 -> rechazo ESPECIFICO DE ESE MODELO (parametro no soportado, sin endpoint que
 //     cumpla la politica de datos): no se reintenta aqui, pero el gateway SI prueba el siguiente
 //     modelo (otro modelo puede aceptarlo).
-//   - 401/402/403 -> problema de cuenta o de llave (llave invalida, sin credito, bloqueo): el
-//     siguiente modelo fallaria igual, se detiene la escalera.
+//   - 402 -> sin credito o saldo insuficiente para ESTA peticion (OpenRouter lo da tambien por
+//     «solo alcanza para N tokens» segun el modelo y su max_tokens): no se reintenta el mismo modelo,
+//     pero el gateway SI prueba el siguiente (QA-PM-R6-whatsapp-02: antes un corte de credito dejaba
+//     al cliente sin respuesta aunque un modelo mas barato de la escalera si cupiera en el saldo).
+//   - 401/403 -> problema de llave (invalida, bloqueo): el siguiente modelo fallaria igual, se
+//     detiene la escalera.
 //
 // SEGURIDAD: la llave solo viaja en la cabecera Authorization; nunca se registra en mensajes de
 // error (el cuerpo de error se recorta y no incluye cabeceras) ni se devuelve al llamador.
@@ -129,7 +133,7 @@ export class OpenRouterError extends GatewayError {
 
 export function classifyOpenRouterStatus(status: number): { transient: boolean; ladderRetryable: boolean } {
   if (status === 408 || status === 429 || status >= 500) return { transient: true, ladderRetryable: true };
-  if (status === 400 || status === 404 || status === 422) return { transient: false, ladderRetryable: true };
+  if (status === 400 || status === 402 || status === 404 || status === 422) return { transient: false, ladderRetryable: true };
   return { transient: false, ladderRetryable: false };
 }
 
