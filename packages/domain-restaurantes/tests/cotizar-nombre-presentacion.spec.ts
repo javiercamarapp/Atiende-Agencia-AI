@@ -50,4 +50,34 @@ describe("resolveOrderItemsAgainstProducts: nombre vs identificador", () => {
     expect(resolver("p-cafe", "Café Americano — chico")).toMatchObject({ productId: "p-cafe" });
     expect(() => resolver("p-cafe", "Cafe Americano")).toThrow(OrderValidationError);
   });
+
+  it("catálogo real del menú-pm: «Bistec de Res — 250 g» con el id de «— 2 kg» rechaza y nombra ambos", () => {
+    const g250 = { ...base, id: "p-250", name: "Bistec de Res — 250 g" } as unknown as ProductoEncontrado;
+    const k2 = { ...base, id: "p-2kg", name: "Bistec de Res — 2 kg" } as unknown as ProductoEncontrado;
+    const real = [g250, k2];
+    let msg = "";
+    try {
+      resolveOrderItemsAgainstProducts([{ productId: "p-2kg", productName: "Bistec de Res — 250 g" }], real);
+    } catch (e) {
+      expect(e).toBeInstanceOf(OrderValidationError);
+      msg = (e as Error).message;
+    }
+    expect(msg).toContain("«Bistec de Res — 250 g»");
+    expect(msg).toContain("«Bistec de Res — 2 kg»");
+    expect(msg).toContain("p-250");
+    expect(msg).toContain("MISMO resultado");
+    expect(msg).not.toMatch(/no van en el nombre/);
+    expect(msg).not.toMatch(/exactamente «Bistec de Res — 2 kg»/);
+    // Id y nombre del mismo producto siguen pasando.
+    expect(resolveOrderItemsAgainstProducts([{ productId: "p-250", productName: "Bistec de Res — 250 g" }], real)[0]).toMatchObject({ productId: "p-250" });
+  });
+  it("«Taco» y «Taco - Pastor»: el id de «Taco» con el nombre de «Taco - Pastor» NO se resuelve en silencio", () => {
+    const taco = { ...base, id: "a", name: "Taco" } as unknown as ProductoEncontrado;
+    const tacoPastor = { ...base, id: "b", name: "Taco - Pastor" } as unknown as ProductoEncontrado;
+    const cat = [taco, tacoPastor];
+    expect(() => resolveOrderItemsAgainstProducts([{ productId: "a", productName: "Taco - Pastor" }], cat)).toThrow(/id b/);
+    expect(resolveOrderItemsAgainstProducts([{ productId: "b", productName: "Taco - Pastor" }], cat)[0]).toMatchObject({ productId: "b" });
+    // Sin ser nombre exacto de otro producto, la presentación sigue tolerándose.
+    expect(resolveOrderItemsAgainstProducts([{ productId: "a", productName: "Taco - grande" }], cat)[0]).toMatchObject({ productId: "a" });
+  });
 });

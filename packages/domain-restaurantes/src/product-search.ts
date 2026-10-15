@@ -482,10 +482,18 @@ export function resolveOrderItemsAgainstProducts<T extends { productId?: string;
       ? products.find((product) => comparableProductName(product.name) === comparableProductName(requestedName))
       : undefined;
 
-    if (byId && requestedName && !requestedNameMatchesProduct(byId.name, requestedName)) {
-      throw new OrderValidationError(
-        `El identificador y el nombre del producto no coinciden: «${requestedName}» no es «${byId.name}». Reintenta con productName exactamente «${byId.name}» (la presentación o el gramaje no van en el nombre) o corrige el productId.`,
-      );
+    if (byId && requestedName) {
+      // Si el nombre pedido es EXACTAMENTE el de otro producto del catálogo, jamás se tolera el prefijo:
+      // «Taco - Pastor» con el id de «Taco» cobraría el precio equivocado.
+      const esOtroProducto = byName !== undefined && byName.id !== byId.id;
+      if (esOtroProducto || !requestedNameMatchesProduct(byId.name, requestedName)) {
+        const detalle = byName && byName.id !== byId.id
+          ? `«${requestedName}» es el producto con id ${byName.id}, pero el id enviado (${byId.id}) es de «${byId.name}».`
+          : `El id enviado (${byId.id}) es de «${byId.name}», no de «${requestedName}».`;
+        throw new OrderValidationError(
+          `El identificador y el nombre del producto no coinciden: ${detalle} Vuelve a llamar buscar_producto y copia el id y el nombre del MISMO resultado, sin combinarlos de resultados distintos.`,
+        );
+      }
     }
     const product = byId ?? byName;
     if (!product) {
