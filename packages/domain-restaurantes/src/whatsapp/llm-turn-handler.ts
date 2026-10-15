@@ -49,7 +49,7 @@ import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora 
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { RESPUESTA_TOQUE_EN_PROCESO, RESPUESTA_TOQUE_RETENIDO, RESPUESTA_TOQUE_YA_CREADO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
-import { esSiClaroDeConfirmacion, planDeCierreDeterminista } from "./cierre-determinista.ts";
+import { esSiClaroDeConfirmacion, planDeCierreDeterminista, reclamoFrescoDeOtroTurno } from "./cierre-determinista.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
@@ -600,6 +600,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       /** Si la ultima cotizacion DE ESTE TURNO traia `promocion_aplicada` o una promocion sugerida con cortesias (null = no se cotizo en este turno: no se puede verificar). */
       let lastQuoteRespaldaCortesia: boolean | null = null;
       let anyToolCalled = false;
+      let crearPropioFallido = false; // un crear_pedido de ESTE turno fallo (no por "en proceso"): si dejo un reclamo "creando", es propio y nadie lo termina
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
       // Ultimo `crear_pedido` EXITOSO de este turno (real o simulado), con los datos del servidor: si el modelo no alcanza a redactar la respuesta final
@@ -773,7 +774,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const vigencia = reciente ? vigenciaDelToque(flowAhora, { accion: "confirmar", quoteHash: inicial.quoteHash, quotedAtMs: inicial.quotedAtMs }, ahoraMs) : "obsoleto";
           if (vigencia === "ya_creado") return done({ reply: RESPUESTA_TOQUE_YA_CREADO, orderId: flowAhora?.context?.orderId ?? null, propertyId });
           if (vigencia === "retenido") return done({ reply: RESPUESTA_TOQUE_RETENIDO, orderId: null, propertyId });
-          if (vigencia === "en_proceso") return done({ reply: RESPUESTA_TOQUE_EN_PROCESO, orderId: null, propertyId });
+          // «En proceso» solo si el reclamo es fresco y de OTRO turno; uno viejo o propio (un crear_pedido que fallo en este turno) nadie lo termina: se escala.
+          if (vigencia === "en_proceso") {
+            if (reclamoFrescoDeOtroTurno(flowAhora, ahoraMs, crearPropioFallido)) return done({ reply: RESPUESTA_TOQUE_EN_PROCESO, orderId: null, propertyId });
+            tele.cierreDeterminista = "no_aplica:reclamo_propio_o_vencido";
+            return null;
+          }
           const ultimoResumen = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
           const plan = planDeCierreDeterminista({
             flow: flowAhora,
@@ -804,7 +810,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const despues = await repo.readOrderFlow(organizationId, `wa:${phone}`);
           const vigDespues = vigenciaDelToque(despues, { accion: "confirmar", quoteHash: inicial.quoteHash, quotedAtMs: inicial.quotedAtMs }, now().getTime());
           if (vigDespues === "ya_creado") return done({ reply: RESPUESTA_TOQUE_YA_CREADO, orderId: despues?.context?.orderId ?? null, propertyId });
-          if (vigDespues === "en_proceso") return done({ reply: RESPUESTA_TOQUE_EN_PROCESO, orderId: null, propertyId });
+          if (vigDespues === "en_proceso" && reclamoFrescoDeOtroTurno(despues, now().getTime(), crearPropioFallido)) return done({ reply: RESPUESTA_TOQUE_EN_PROCESO, orderId: null, propertyId });
           tele.cierreDeterminista = "fallo";
           return null;
         } catch (err) {
@@ -863,6 +869,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             anyToolCalled = true;
+            if (call.name === "crear_pedido" && isToolErrorResult(result) && executed.rechazoDelFlujo !== "pedido_en_proceso") crearPropioFallido = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
             if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
               const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;

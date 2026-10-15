@@ -4,7 +4,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { banco, call, item, say } from "./r1-arnes-whatsapp-pm.ts";
 import type { Banco, Paso } from "./r1-arnes-whatsapp-pm.ts";
-import { efectivoConDelResumen, esSiClaroDeConfirmacion, pagoDelTexto, textoLlevaElTotal } from "../../src/whatsapp/cierre-determinista.ts";
+import { efectivoConDelResumen, esSiClaroDeConfirmacion, pagoDelTexto, reclamoFrescoDeOtroTurno, resumenPideConfirmacion, textoLlevaElTotal } from "../../src/whatsapp/cierre-determinista.ts";
+import { contenidoDeMensajeConToque, idDeBoton } from "../../src/whatsapp/botones-confirmacion.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -223,11 +224,112 @@ describe("P1 cierre determinista: el turno del «si» se queda sin tiempo", () =
   });
 });
 
+describe("P1 cierre determinista: hallazgos del revisor (pedido distinto, reclamo, «ok» suelto)", () => {
+  const flujo = async (b: Banco, tel: string) => (await b.w.repo.readOrderFlow(b.w.organizationId, `wa:${tel}`))!;
+
+  it("BLOQUEANTE: el cliente cambio el pedido («mejor 5») y el modelo mostro un resumen nuevo SIN re-cotizar: el «si» NO crea el pedido viejo de 3 tacos", async () => {
+    const tel = "+5219990000321";
+    const { b, cierre } = await conCotizacion({ tel });
+    b.setGuion([say("Con gusto: sube de $126.00 a $210.00 (5 tacos al pastor, efectivo). Total: $210.00. ¿Es correcto?")]);
+    await b.enviar(tel, "mejor 5 tacos");
+    b.setGuion([lento()]);
+    const r = await b.enviar(tel, "sí");
+    expect(cierre()).toBe("no_aplica:turno_no_inmediato");
+    expect(r.orderId ?? null).toBeNull();
+    expect(r.escalated).toBe(true);
+    expect(b.callbacks().some((c) => c.reason === "escalada:falla_sistema")).toBe(true);
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+
+  it("MEDIO: el ultimo mensaje solo informa («¿Quiere agregar algo mas?») y el cliente dice «sí»: no se crea", async () => {
+    const { b, cierre } = await conCotizacion({ tel: "+5219990000322", resumen: "Son 3 tacos al pastor, total $126.00 en efectivo. ¿Quiere agregar algo más?" });
+    b.setGuion([lento()]);
+    const r = await b.enviar("+5219990000322", "sí");
+    expect(cierre()).toBe("no_aplica:resumen_no_pide_confirmacion");
+    expect(r.orderId ?? null).toBeNull();
+    expect(r.escalated).toBe(true);
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+
+  it("MEDIO: un «ok» suelto contestando un mensaje informativo no crea el pedido", async () => {
+    const { b, cierre } = await conCotizacion({ tel: "+5219990000323", resumen: "Son 3 tacos al pastor, total $126.00 en efectivo. ¿Quiere agregar algo más?" });
+    b.setGuion([lento()]);
+    const r = await b.enviar("+5219990000323", "ok");
+    expect(cierre()).toBe("no_aplica:si_ambiguo");
+    expect(r.orderId ?? null).toBeNull();
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+
+  it("BAJO: el toque del boton «Confirmar pedido» (cotizacion vigente) dispara el cierre y crea UN pedido", async () => {
+    const tel = "+5219990000324";
+    const { b } = await conCotizacion({ tel });
+    const f = await flujo(b, tel);
+    const boton = idDeBoton({ accion: "confirmar", quoteHash: f.context!.quoteHash, quotedAtMs: f.context!.quotedAtMs });
+    b.setGuion([lento()]);
+    const mensajes = [
+      { role: "user" as const, content: "3 de pastor en maiz pa recoger" },
+      { role: "assistant" as const, content: RESUMEN },
+      { role: "user" as const, content: contenidoDeMensajeConToque("Confirmar pedido", boton) },
+    ];
+    const r = await b.handler.handleInboundMessage({ organizationId: b.w.organizationId, phone: tel, messages: mensajes, customer: { isNew: false as const, name: "Ana Pech", orderCount: 0, addresses: [], lastOrderItems: null, frequentItems: [], tier: null, agentNotes: [] }, propertyId: b.t7 });
+    expect(r.orderId).toBeTruthy();
+    expect(r.escalacion).toBeUndefined();
+    const lista = await pedidos(b);
+    expect(lista).toHaveLength(1);
+    expect(lista[0]!.total).toBe(126);
+  });
+
+  it("BLOQUEANTE: flujo «creando» sin pedido con reclamo VIEJO (> 60 s) y el turno se agota: se escala falla_sistema, no «se esta registrando»", async () => {
+    const tel = "+5219990000325";
+    const { b } = await conCotizacion({ tel });
+    const f = await flujo(b, tel);
+    await b.w.repo.writeOrderFlow(b.w.organizationId, `wa:${tel}`, f.version, { state: "creando", context: { ...f.context!, claimedAtMs: Date.now() - 120_000 } }, 3600);
+    b.setGuion([lento()]);
+    const r = await b.enviar(tel, "sí");
+    expect(r.reply).not.toMatch(/se está registrando/i);
+    expect(r.escalated).toBe(true);
+    expect(b.callbacks().some((c) => c.reason === "escalada:falla_sistema")).toBe(true);
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+
+  it("un reclamo «creando» FRESCO de otro turno sigue respondiendo «se esta registrando» (sin escalar ni crear)", async () => {
+    const tel = "+5219990000326";
+    const { b } = await conCotizacion({ tel });
+    const f = await flujo(b, tel);
+    await b.w.repo.writeOrderFlow(b.w.organizationId, `wa:${tel}`, f.version, { state: "creando", context: { ...f.context!, claimedAtMs: Date.now() } }, 3600);
+    b.setGuion([lento()]);
+    const r = await b.enviar(tel, "sí");
+    expect(r.reply).toMatch(/se está registrando/i);
+    expect(r.escalated).toBe(false);
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+});
+
+describe("cierre determinista: reclamo y resumen (puras)", () => {
+  const snap = (state: "creando" | "creado" | "confirmado", ctx: Record<string, unknown>) => ({ state, version: 1, context: { quoteHash: "a".repeat(32), quotedAtMs: 0, quotedTurn: "1", ...ctx } }) as never;
+  it("reclamo fresco de otro turno = en proceso; viejo, propio, con pedido o en otro estado = no", () => {
+    expect(reclamoFrescoDeOtroTurno(snap("creando", { claimedAtMs: 100_000 }), 130_000, false)).toBe(true);
+    expect(reclamoFrescoDeOtroTurno(snap("creando", { claimedAtMs: 100_000 }), 161_000, false)).toBe(false);
+    expect(reclamoFrescoDeOtroTurno(snap("creando", { claimedAtMs: 100_000 }), 130_000, true)).toBe(false);
+    expect(reclamoFrescoDeOtroTurno(snap("creando", { claimedAtMs: 100_000, orderId: "x" }), 130_000, false)).toBe(false);
+    expect(reclamoFrescoDeOtroTurno(snap("confirmado", { claimedAtMs: 100_000 }), 130_000, false)).toBe(false);
+    expect(reclamoFrescoDeOtroTurno(null, 130_000, false)).toBe(false);
+  });
+  it("el resumen debe PEDIR confirmacion", () => {
+    expect(resumenPideConfirmacion("Total: $126.00. ¿Es correcto?")).toBe(true);
+    expect(resumenPideConfirmacion("Total: $126.00. ¿Es correcto y cómo pagará?")).toBe(true);
+    expect(resumenPideConfirmacion("Total: $126.00. ¿Lo confirmo?")).toBe(true);
+    expect(resumenPideConfirmacion("Son 3 tacos, total $126.00. ¿Quiere agregar algo más?")).toBe(false);
+    expect(resumenPideConfirmacion("Total: $126.00. ¿A nombre de quién?")).toBe(false);
+    expect(resumenPideConfirmacion("Total: $126.00. Es correcto")).toBe(false);
+  });
+});
+
 describe("cierre determinista: decisiones puras", () => {
-  it.each(["si", "Sí", "sí.", "sii", "si!!", "claro", "correcto", "sí, está bien", "si por favor", "sí efectivo", "dale", "ok", "Sí, confirmo", "perfecto gracias", "así es, sí"])("«%s» es un si claro", (t) => {
+  it.each(["si", "Sí", "sí.", "sii", "si!!", "claro", "correcto", "sí, está bien", "si por favor", "sí efectivo", "sí ok", "ok sí", "Sí, confirmo", "perfecto gracias", "así es, sí"])("«%s» es un si claro", (t) => {
     expect(esSiClaroDeConfirmacion(t)).toBe(true);
   });
-  it.each(["", "no", "no, gracias", "sí pero mejor 5", "si agrega una coca", "si, ¿cuánto tarda?", "mmm", "👍", "tal vez", "si y que sean 4 tacos", "x".repeat(200), "ok ok ok ok ok ok ok"])("«%s» NO es un si claro", (t) => {
+  it.each(["", "no", "no, gracias", "sí pero mejor 5", "si agrega una coca", "si, ¿cuánto tarda?", "mmm", "👍", "tal vez", "si y que sean 4 tacos", "x".repeat(200), "ok ok ok ok ok ok ok", "ok", "listo", "va", "dale", "okey"])("«%s» NO es un si claro", (t) => {
     expect(esSiClaroDeConfirmacion(t)).toBe(false);
   });
   it("pago: uno, ninguno o ambiguo", () => {

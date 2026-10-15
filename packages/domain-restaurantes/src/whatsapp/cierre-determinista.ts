@@ -8,7 +8,7 @@
 //
 // Este archivo solo tiene las decisiones PURAS (sin base ni modelo): sirven para probar cada puerta sin armar un turno completo. Cualquier duda = `null`,
 // y el handler escala como antes. Nunca se inventa un dato: es preferible perder el atajo que crear un pedido que el cliente no confirmo.
-import { fingerprintOrder, itemsDeHuella, QUOTE_TTL_MS } from "../agent-tools/order-flow.ts";
+import { CLAIM_STALE_MS, fingerprintOrder, itemsDeHuella, QUOTE_TTL_MS } from "../agent-tools/order-flow.ts";
 import type { OrderFlowContext, OrderFlowSnapshot } from "../agent-tools/order-flow.ts";
 import { nombreDeClienteUtilizable } from "../orders.ts";
 
@@ -24,7 +24,9 @@ function normalizar(texto: string): string {
 }
 
 /** Palabras que por si solas afirman. */
-const AFIRMACIONES = new Set(["si", "sii", "siii", "sip", "simon", "claro", "correcto", "confirmo", "confirmado", "ok", "okey", "va", "dale", "listo", "perfecto", "adelante", "exacto", "afirmativo", "cierto", "acuerdo"]);
+const AFIRMACIONES = new Set(["si", "sii", "siii", "sip", "simon", "claro", "correcto", "confirmo", "confirmado", "perfecto", "adelante", "exacto", "afirmativo", "cierto", "acuerdo"]);
+/** «ok / va / dale / listo» sueltos tambien se dicen al recibir un dato informativo («Son 3 tacos, $126»): NO bastan solos para crear un pedido, solo acompanan a un si claro («si ok»). */
+const AFIRMACIONES_DEBILES = new Set(["ok", "okey", "va", "dale", "listo"]);
 /** Palabras de relleno permitidas junto a una afirmacion («si, esta bien», «si por favor», «si efectivo»). Cualquier otra palabra (un «pero», un producto, una cantidad) descalifica. */
 const RELLENO = new Set(["es", "esta", "bien", "asi", "todo", "de", "por", "favor", "gracias", "muy", "bueno", "y", "efectivo", "tarjeta", "pago", "con", "el", "la", "lo", "mi", "pedido", "confirmar"]);
 const MAX_PALABRAS_DEL_SI = 6;
@@ -37,8 +39,31 @@ export function esSiClaroDeConfirmacion(texto: string): boolean {
   if (typeof texto !== "string" || texto.length > 80 || /[?¿]/.test(texto)) return false;
   const palabras = normalizar(texto).split(" ").filter(Boolean);
   if (palabras.length === 0 || palabras.length > MAX_PALABRAS_DEL_SI) return false;
-  if (!palabras.every((p) => AFIRMACIONES.has(p) || RELLENO.has(p))) return false;
+  if (!palabras.every((p) => AFIRMACIONES.has(p) || AFIRMACIONES_DEBILES.has(p) || RELLENO.has(p))) return false;
   return palabras.some((p) => AFIRMACIONES.has(p));
+}
+
+/**
+ * ¿El ultimo mensaje del asistente es un resumen QUE PIDE CONFIRMACION («¿Es correcto?», «¿Lo confirmo?»)? Un mensaje que solo informa o que pregunta otra cosa
+ * («¿Quiere agregar algo mas?», «¿a nombre de quien?») no convierte un «ok» del cliente en una confirmacion del pedido.
+ */
+export function resumenPideConfirmacion(texto: string): boolean {
+  // Se juzga la ULTIMA pregunta del mensaje (lo que el cliente esta contestando); el aviso de privacidad del primer contacto trae palabras como «su nombre» que no cuentan.
+  const preguntas = [...texto.matchAll(/[^.!?¿\n]*\?/g)].map((m) => normalizar(m[0]));
+  const ultima = preguntas.at(-1);
+  if (!ultima) return false;
+  if (/\b(agregar|agregarle|algo mas|alguna otra|otra cosa|a nombre de|su nombre|cual es su nombre)\b/.test(ultima)) return false;
+  return /\b(es correcto|esta correcto|correcto|esta bien|todo bien|asi esta bien|confirm\w*|procedo|lo registro|lo mando)\b/.test(ultima);
+}
+
+/**
+ * ¿El reclamo "creando" es de OTRO turno y sigue fresco? Solo entonces se le dice al cliente «se esta registrando». Un reclamo propio que fallo en este turno, o uno
+ * mas viejo que `CLAIM_STALE_MS`, no lo va a terminar nadie: ahi se escala (como sin atajo) en vez de prometer una confirmacion que nunca llega.
+ */
+export function reclamoFrescoDeOtroTurno(flow: OrderFlowSnapshot | null, ahoraMs: number, crearPropioFallido: boolean): boolean {
+  if (!flow || flow.state !== "creando" || flow.context?.orderId) return false;
+  if (crearPropioFallido) return false;
+  return ahoraMs - (flow.context?.claimedAtMs ?? 0) <= CLAIM_STALE_MS;
 }
 
 /** Forma de pago que menciona un texto: `null` si ninguna, `"ambiguo"` si menciona las dos. */
@@ -108,6 +133,8 @@ export type MotivoSinCierre =
   | "cotizacion_vencida"
   | "no_es_recoger"
   | "mismo_turno"
+  | "turno_no_inmediato"
+  | "resumen_no_pide_confirmacion"
   | "si_ambiguo"
   | "resumen_sin_total"
   | "sin_nombre"
@@ -130,6 +157,10 @@ export function planDeCierreDeterminista(e: EntradaCierre): PlanDeCierre {
   if (!ctx.quotedItems || ctx.quotedItems.length === 0 || !ctx.quotedBranchSlug || typeof ctx.quotedTotal !== "number") return no("sin_cotizacion");
   if (ctx.quotedCanal !== "recoger") return no("no_es_recoger");
   if (ctx.quotedTurn === null || ctx.quotedTurn === e.turnoActual) return no("mismo_turno");
+  // El «si» debe ser la respuesta al turno INMEDIATAMENTE posterior a la cotizacion: si entre la cotizacion y este «si» hubo otros mensajes del cliente (p. ej. «mejor 5
+  // tacos» contestado con un resumen nuevo SIN volver a cotizar), el resumen que vio ya no es el de la cotizacion guardada aunque cite su total viejo.
+  const turnosDesdeCotizar = Number(e.turnoActual) - Number(ctx.quotedTurn);
+  if (!Number.isInteger(turnosDesdeCotizar) || turnosDesdeCotizar !== e.mensajesDelCliente.length) return no("turno_no_inmediato");
   if (e.mensajesDelCliente.length === 0 || !e.mensajesDelCliente.every(esSiClaroDeConfirmacion)) return no("si_ambiguo");
   if (e.ultimoResumen === null || !textoLlevaElTotal(e.ultimoResumen, ctx.quotedTotal)) return no("resumen_sin_total");
   if (e.nombreConocido === null || e.nombreConocido.trim() === "") return no("sin_nombre");
@@ -143,6 +174,7 @@ export function planDeCierreDeterminista(e: EntradaCierre): PlanDeCierre {
   const pago = delCliente ?? delResumen;
   if (pago === null) return no("pago_no_claro");
 
+  if (!resumenPideConfirmacion(e.ultimoResumen)) return no("resumen_no_pide_confirmacion");
   const adulto = mayoriaDeEdadDeLaCotizacion(ctx);
   if (adulto === null) return no("huella_no_reproducible");
 
