@@ -44,6 +44,8 @@ export interface EventoTurnoWhatsApp {
   readonly motivoEscalacion: string | null;
   /** Por que se subio de rol de modelo barato a caro dentro del turno; null si no se subio. */
   readonly motivoEscaladaDeRol: "fallo_crear_pedido" | null;
+  /** Cierre del pedido sin modelo tras agotar el tiempo o caer el proveedor: "intentado" / "creado" / "fallo" / "no_aplica:<motivo>"; null = no se intento. */
+  readonly cierreDeterminista?: string | null;
   readonly telefonoHash: string | null;
 }
 

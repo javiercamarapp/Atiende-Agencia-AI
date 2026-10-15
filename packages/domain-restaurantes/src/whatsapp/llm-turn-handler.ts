@@ -31,7 +31,7 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
-import { bloqueCotizacionVigente } from "../agent-tools/order-flow.ts";
+import { QUOTE_TTL_MS, bloqueCotizacionVigente } from "../agent-tools/order-flow.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -48,7 +48,8 @@ import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, a
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
-import { RESPUESTA_TOQUE_RETENIDO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
+import { RESPUESTA_TOQUE_EN_PROCESO, RESPUESTA_TOQUE_RETENIDO, RESPUESTA_TOQUE_YA_CREADO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
+import { esSiClaroDeConfirmacion, planDeCierreDeterminista } from "./cierre-determinista.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
@@ -465,6 +466,9 @@ export interface WhatsAppLlmAgentOptions {
   /** R-PM-15: sumidero de eventos estructurados por turno y por tool (sin texto del cliente ni telefono en
    * claro). Ausente = sin observabilidad; emitir nunca lanza ni retrasa el turno. */
   readonly observabilidad?: ObservabilidadTurno;
+  /** P1 de la ronda 9: si el turno del «si» se queda sin tiempo o el proveedor cae, antes de escalar `falla_sistema` se intenta cerrar el pedido SIN modelo desde la cotizacion
+   * vigente (solo recoger, cliente conocido, «si» claro; ver `cierre-determinista.ts`). `false` lo apaga (interruptor de emergencia); por omision encendido. */
+  readonly cierreDeterminista?: boolean;
 }
 
 /** Encola la comanda del pedido recien creado. Nunca lanza: un fallo aqui no puede tumbar el turno ni
@@ -546,6 +550,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     resultado: ResultadoTurno;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
+    /** P1 ronda 9: resultado del intento de cierre sin modelo (solo clases, nunca texto del cliente); `null` = no se intento. */
+    cierreDeterminista: string | null;
   }
 
   async function ejecutarTurno(
@@ -732,6 +738,83 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (ultimoEnHistorial >= 0) working[ultimoEnHistorial] = { role: "user", content: contenidoParaElModelo(ultimoDelCliente.content, { esElUltimo: true, confirmarVigente: true }) };
       }
 
+      /**
+       * Cierre determinista (P1 ronda 9). Solo corre cuando el turno ya fallo (sin tiempo o proveedor caido), el perfil es PM real y TODAS las puertas de
+       * `planDeCierreDeterminista` pasan: cotizacion vigente y sin cambios desde el inicio del turno, recoger, un «si» claro, resumen con el total a la vista,
+       * nombre ya conocido, pago claro y huella reproducible. Las llamadas pasan por el MISMO camino que las del modelo (`procesarLlamada`): el servidor revalida la
+       * cotizacion, los precios, el horario, el minimo, el pedido grande y el nombre (#556), y la maquina de estados (reclamo atomico confirmado -> creando) impide un
+       * segundo pedido aunque el LLM ya hubiera alcanzado a crearlo o llegue un doble disparo. Si algo falla devuelve `null` y se escala `falla_sistema` como siempre.
+       */
+      const intentarCierreDeterminista = async (): Promise<Salida | null> => {
+        if (perfil !== "taqueria_pm" || preview || options.cierreDeterminista === false) return null;
+        // Con cotizacion abierta (vigente) se puede cerrar; con una ya tomada (creada o en proceso) solo se puede decir la verdad si es reciente (doble disparo del «si»).
+        const estadoInicial = flowSnapshot?.state;
+        const yaTomada = estadoInicial === "creado" || estadoInicial === "creando";
+        if (!flowSnapshot?.context || !(yaTomada || (cotizacionVigenteBloque && (estadoInicial === "cotizado" || estadoInicial === "confirmado")))) return null;
+        // El cierre cuesta unas lecturas y dos escrituras de base, sin modelo: solo si queda un poco de holgura bajo el tope del webhook.
+        if (finTurnoMs !== undefined && Date.now() > finTurnoMs + MARGEN_CIERRE_TURNO_MS / 2) return null;
+        try {
+          const inicial = flowSnapshot.context;
+          const flowAhora = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+          const ahoraMs = now().getTime();
+          const pendientesSi = mensajesSinResponder(messages).slice(-5);
+          // Un toque a «Confirmar pedido» ES un si, pero solo si es de ESTA cotizacion (vigenciaDelToque); cualquier otro toque o texto debe ser un si claro.
+          const mensajesDelCliente = pendientesSi.map((m) => {
+            const toque = toqueDeMensaje(m.content);
+            if (toque?.accion === "confirmar") return vigenciaDelToque(flowAhora, toque, ahoraMs) === "vigente" ? "si" : "?";
+            return toque ? "?" : m.content;
+          });
+          if (mensajesDelCliente.length === 0 || !mensajesDelCliente.every(esSiClaroDeConfirmacion)) {
+            tele.cierreDeterminista = "no_aplica:si_ambiguo";
+            return null;
+          }
+          // Idempotencia: si esa MISMA cotizacion ya es un pedido (otro turno, doble disparo) o se esta registrando, no se crea nada: se le dice al cliente la verdad.
+          const reciente = ahoraMs - (flowAhora?.context?.claimedAtMs ?? flowAhora?.context?.quotedAtMs ?? 0) <= QUOTE_TTL_MS;
+          const vigencia = reciente ? vigenciaDelToque(flowAhora, { accion: "confirmar", quoteHash: inicial.quoteHash, quotedAtMs: inicial.quotedAtMs }, ahoraMs) : "obsoleto";
+          if (vigencia === "ya_creado") return done({ reply: RESPUESTA_TOQUE_YA_CREADO, orderId: flowAhora?.context?.orderId ?? null, propertyId });
+          if (vigencia === "retenido") return done({ reply: RESPUESTA_TOQUE_RETENIDO, orderId: null, propertyId });
+          if (vigencia === "en_proceso") return done({ reply: RESPUESTA_TOQUE_EN_PROCESO, orderId: null, propertyId });
+          const ultimoResumen = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
+          const plan = planDeCierreDeterminista({
+            flow: flowAhora,
+            quoteHashInicial: inicial.quoteHash,
+            quotedAtMsInicial: inicial.quotedAtMs,
+            turnoActual: userTurn,
+            ahoraMs,
+            nombreConocido: !customer.isNew ? customer.name : null,
+            mensajesDelCliente,
+            ultimoResumen,
+          });
+          tele.cierreDeterminista = plan.ok ? "intentado" : `no_aplica:${plan.motivo}`;
+          if (!plan.ok) return null;
+          const confirmar = { id: `cierre-${randomUUID()}`, name: "confirmar_resumen", argumentsJson: JSON.stringify({ quote_hash: inicial.quoteHash }) };
+          const crear = { id: `cierre-${randomUUID()}`, name: "crear_pedido", argumentsJson: JSON.stringify(plan.input) };
+          const salidaConfirmar = await procesarLlamada(confirmar);
+          if (salidaConfirmar) return salidaConfirmar;
+          if (tele.tools.at(-1)?.tool === "confirmar_resumen" && tele.tools.at(-1)?.resultado === "ok") {
+            const salidaCrear = await procesarLlamada(crear);
+            if (salidaCrear) return salidaCrear;
+          }
+          const exito = confirmacionDelTurno();
+          if (exito) {
+            tele.cierreDeterminista = "creado";
+            return done({ reply: exito, orderId, propertyId });
+          }
+          // No se creo: puede ser un doble disparo que gano la carrera. Si esa cotizacion ya es pedido o esta en proceso, se dice la verdad en vez de escalar.
+          const despues = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+          const vigDespues = vigenciaDelToque(despues, { accion: "confirmar", quoteHash: inicial.quoteHash, quotedAtMs: inicial.quotedAtMs }, now().getTime());
+          if (vigDespues === "ya_creado") return done({ reply: RESPUESTA_TOQUE_YA_CREADO, orderId: despues?.context?.orderId ?? null, propertyId });
+          if (vigDespues === "en_proceso") return done({ reply: RESPUESTA_TOQUE_EN_PROCESO, orderId: null, propertyId });
+          tele.cierreDeterminista = "fallo";
+          return null;
+        } catch (err) {
+          console.error("whatsapp: el cierre determinista fallo (se escala como antes):", err instanceof Error ? err.message : err);
+          // Si el pedido alcanzo a crearse antes del error, el cliente lee SU confirmacion, nunca un aviso de falla.
+          const exito = confirmacionDelTurno();
+          return exito ? done({ reply: exito, orderId, propertyId }) : null;
+        }
+      };
+
       // Modo sin IA (interruptor de plataforma, tope de gasto agotado, proveedor caido o turno sin tiempo): si NO hay pedido creado, "problema
       // tecnico" a secas pierde el pedido sin que nadie del restaurante se entere. Se deja el aviso `falla_sistema` (con la sucursal de entrada)
       // y la toma de handoff para que una persona tome el pedido, como ya hace la voz. Solo se promete el aviso si quedo registrado de verdad.
@@ -739,6 +822,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
         if (orderId) return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+        // P1 ronda 9: el cliente ya dijo «si» y solo faltaba crear el pedido; antes de perderlo se intenta cerrarlo sin modelo (todo lo demas lo valida el servidor).
+        const cierre = await intentarCierreDeterminista();
+        if (cierre) return cierre;
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const ultimo = [...messages].reverse().find((m) => m.role === "user");
         const aviso = await executeAgentToolSafely(
@@ -750,6 +836,111 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (isToolErrorResult(aviso.result)) return done({ reply: providerFailureReply(null, perfil), orderId: null, propertyId });
         escalarMotivo = "falla_sistema";
         return done({ reply: perfil === "taqueria_pm" ? PM_COPY.sinAsistenteAvisoEquipo : PROVEEDOR_CAIDO_REPLY_GENERICO, orderId: null, propertyId });
+      };
+
+      // Procesa UNA llamada a herramienta (la del modelo, o la sintetica del cierre determinista): ejecuta, registra el pedido/aviso del turno y alimenta la telemetria.
+      // Devuelve una salida solo cuando la herramienta cierra el turno por su cuenta (escalacion por contador de colonia).
+      const procesarLlamada = async (call: LlmToolCall): Promise<Salida | undefined> => {
+          let input: Record<string, unknown> = {};
+          let result: unknown;
+          let fallaSistema = false;
+          let argumentosInvalidos = false;
+          const toolInicio = Date.now();
+          try {
+            input = JSON.parse(call.argumentsJson || "{}") as Record<string, unknown>;
+          } catch {
+            result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
+            argumentosInvalidos = true;
+          }
+          // Propina dicha en porcentaje ("de propina 10%") que el modelo no mando: el servidor la completa (solo tarjeta; el resto de la regla de propina sigue en el servidor).
+          // Solo si el modelo NO mando propina (ni 0): el ultimo mensaje del cliente acepta un porcentaje en afirmativo.
+          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
+            const pct = porcentajePropinaDichoPorElCliente([...messages].reverse().find((m) => m.role === "user")?.content);
+            if (pct !== null) input = { ...input, propina_porcentaje: pct };
+          }
+          if (result === undefined) {
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
+            result = executed.result;
+            fallaSistema = executed.fallaSistema === true;
+            anyToolCalled = true;
+            if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
+            if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
+              const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;
+              lastQuoteRespaldaCortesia = q?.promocion_aplicada != null || (q?.promociones_sugeridas?.length ?? 0) > 0;
+            }
+            const quoted = (result as { quote?: Parameters<typeof knownAmountsOfQuote>[0]; order?: { total?: unknown; items?: readonly { price?: unknown; quantity?: unknown }[] } } | null) ?? null;
+            if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") {
+              lastQuoteTotal = quoted.quote.total;
+              lastQuoteAmounts = knownAmountsOfQuote(quoted.quote);
+            }
+            if (call.name === "crear_pedido" && typeof quoted?.order?.total === "number") {
+              lastQuoteTotal = quoted.order.total;
+              lastQuoteAmounts = knownAmountsOfQuote({
+                total: quoted.order.total,
+                lines: (quoted.order.items ?? []).map((i) => ({ price: i.price, line_total: typeof i.price === "number" && typeof i.quantity === "number" ? Math.round(i.price * i.quantity * 100) / 100 : undefined })),
+              });
+            }
+            if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
+            if (call.name === "crear_pedido" && !isToolErrorResult(result)) {
+              const rc = result as { mensaje_al_cliente?: unknown; pedido_grande?: unknown } | null;
+              const mensaje = typeof rc?.mensaje_al_cliente === "string" && rc.mensaje_al_cliente.trim() ? rc.mensaje_al_cliente : null;
+              // Pedido grande retenido (con o sin autopiloto, real o preview): lo unico que se le dice al cliente es el mensaje del servidor; NO es un pedido registrado.
+              const retenido = rc?.pedido_grande === true || executed.pedidoRetenido === true;
+              if (retenido ? mensaje !== null : Boolean(executed.simulated || executed.orderId)) {
+                const idCrudo = (executed.raw as { id?: unknown } | null)?.id;
+                const clave = executed.orderId ?? (typeof idCrudo === "string" ? idCrudo : "retenido");
+                if (!pedidosCreadosDelTurno.some((p) => p.clave === clave)) {
+                  pedidosCreadosDelTurno.push({ clave, raw: executed.raw, mensajeAlCliente: retenido ? mensaje : null, timezone: retenido ? config.timezone : await zonaDeLaSucursal(executed.propertyId, input.branch_slug) });
+                }
+              }
+            }
+            if (executed.orderId) {
+              orderId = executed.orderId;
+              propertyId = executed.propertyId;
+              if (call.name === "crear_pedido" && options.encolarComanda && executed.raw && !executed.pedidoRetenido) {
+                const comanda = await encolarComandaDelTurno(options.encolarComanda, executed.raw as Order, input);
+                if (comanda) result = { ...(result as object), comanda };
+              }
+            }
+          }
+          if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
+            escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
+            tele.motivoEscalacion = escalarMotivo;
+          }
+          // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21). Si el pedido quedo `por_aprobar`
+          // (autopiloto) NO se abre toma: ya esta en el sistema y la sucursal lo aprueba con un clic; el agente sigue atendiendo al cliente.
+          if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown; por_aprobar?: unknown } | null)?.pedido_grande === true && (result as { por_aprobar?: unknown }).por_aprobar !== true) escalarMotivo = "pedido_grande";
+          if ((result as { ya_registrado?: unknown } | null)?.ya_registrado === true) yaRegistradoEnTurno = true;
+          // Pedido grande / de reincidente RETENIDO (sin orderId): la sucursal lo confirma; el agente nunca debe decir que "ya quedo registrado".
+          if ((result as { pedido_grande?: unknown } | null)?.pedido_grande === true) pedidoGrandeVisto = true;
+          const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
+          if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
+          tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
+          const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
+          if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
+            if ((await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
+          }
+          if (perfil === "taqueria_pm" && call.name === "crear_pedido" && !isToolErrorResult(result)) {
+            await contar(repo, organizationId, phone, "ubicacion_solicitada", "reiniciar");
+          }
+          if (perfil === "taqueria_pm" && call.name === "buscar_sucursal_cercana" && !isToolErrorResult(result)) {
+            const estado = (result as { estado?: unknown } | null)?.estado;
+            if (estado === "no_reconocida") {
+              const n = (await contar(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
+              if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("zona_no_reconocida", `La colonia no se reconoció ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
+            } else if (estado === "asignada" || estado === "fuera_de_zona") {
+              await contar(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
+            }
+          }
+          // B04: la escalera sube al modelo caro solo ante un FALLO (error de sistema al crear el pedido, o argumentos que el modelo barato no supo armar). Un RECHAZO DE
+          // REGLA (`OrderValidationError`: minimo a domicilio, zona, horario, cantidad, y los rechazos de la maquina de estados como un duplicado o un reintento
+          // simultaneo) es el servidor haciendo su trabajo: la respuesta correcta es explicarlo, y pagar el modelo caro solo suma latencia y costo en el turno donde mas
+          // se pierde el pedido.
+          if (call.name === "crear_pedido" && isToolErrorResult(result) && (fallaSistema || argumentosInvalidos)) {
+            huboFalloDeHerramienta = true;
+          }
+          working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+        return undefined;
       };
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
@@ -863,105 +1054,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
 
         for (const call of toolCalls) {
-          let input: Record<string, unknown> = {};
-          let result: unknown;
-          let fallaSistema = false;
-          let argumentosInvalidos = false;
-          const toolInicio = Date.now();
-          try {
-            input = JSON.parse(call.argumentsJson || "{}") as Record<string, unknown>;
-          } catch {
-            result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
-            argumentosInvalidos = true;
-          }
-          // Propina dicha en porcentaje ("de propina 10%") que el modelo no mando: el servidor la completa (solo tarjeta; el resto de la regla de propina sigue en el servidor).
-          // Solo si el modelo NO mando propina (ni 0): el ultimo mensaje del cliente acepta un porcentaje en afirmativo.
-          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
-            const pct = porcentajePropinaDichoPorElCliente([...messages].reverse().find((m) => m.role === "user")?.content);
-            if (pct !== null) input = { ...input, propina_porcentaje: pct };
-          }
-          if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
-            result = executed.result;
-            fallaSistema = executed.fallaSistema === true;
-            anyToolCalled = true;
-            if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
-            if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
-              const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;
-              lastQuoteRespaldaCortesia = q?.promocion_aplicada != null || (q?.promociones_sugeridas?.length ?? 0) > 0;
-            }
-            const quoted = (result as { quote?: Parameters<typeof knownAmountsOfQuote>[0]; order?: { total?: unknown; items?: readonly { price?: unknown; quantity?: unknown }[] } } | null) ?? null;
-            if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") {
-              lastQuoteTotal = quoted.quote.total;
-              lastQuoteAmounts = knownAmountsOfQuote(quoted.quote);
-            }
-            if (call.name === "crear_pedido" && typeof quoted?.order?.total === "number") {
-              lastQuoteTotal = quoted.order.total;
-              lastQuoteAmounts = knownAmountsOfQuote({
-                total: quoted.order.total,
-                lines: (quoted.order.items ?? []).map((i) => ({ price: i.price, line_total: typeof i.price === "number" && typeof i.quantity === "number" ? Math.round(i.price * i.quantity * 100) / 100 : undefined })),
-              });
-            }
-            if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
-            if (call.name === "crear_pedido" && !isToolErrorResult(result)) {
-              const rc = result as { mensaje_al_cliente?: unknown; pedido_grande?: unknown } | null;
-              const mensaje = typeof rc?.mensaje_al_cliente === "string" && rc.mensaje_al_cliente.trim() ? rc.mensaje_al_cliente : null;
-              // Pedido grande retenido (con o sin autopiloto, real o preview): lo unico que se le dice al cliente es el mensaje del servidor; NO es un pedido registrado.
-              const retenido = rc?.pedido_grande === true || executed.pedidoRetenido === true;
-              if (retenido ? mensaje !== null : Boolean(executed.simulated || executed.orderId)) {
-                const idCrudo = (executed.raw as { id?: unknown } | null)?.id;
-                const clave = executed.orderId ?? (typeof idCrudo === "string" ? idCrudo : "retenido");
-                if (!pedidosCreadosDelTurno.some((p) => p.clave === clave)) {
-                  pedidosCreadosDelTurno.push({ clave, raw: executed.raw, mensajeAlCliente: retenido ? mensaje : null, timezone: retenido ? config.timezone : await zonaDeLaSucursal(executed.propertyId, input.branch_slug) });
-                }
-              }
-            }
-            if (executed.orderId) {
-              orderId = executed.orderId;
-              propertyId = executed.propertyId;
-              if (call.name === "crear_pedido" && options.encolarComanda && executed.raw && !executed.pedidoRetenido) {
-                const comanda = await encolarComandaDelTurno(options.encolarComanda, executed.raw as Order, input);
-                if (comanda) result = { ...(result as object), comanda };
-              }
-            }
-          }
-          if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
-            escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
-            tele.motivoEscalacion = escalarMotivo;
-          }
-          // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21). Si el pedido quedo `por_aprobar`
-          // (autopiloto) NO se abre toma: ya esta en el sistema y la sucursal lo aprueba con un clic; el agente sigue atendiendo al cliente.
-          if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown; por_aprobar?: unknown } | null)?.pedido_grande === true && (result as { por_aprobar?: unknown }).por_aprobar !== true) escalarMotivo = "pedido_grande";
-          if ((result as { ya_registrado?: unknown } | null)?.ya_registrado === true) yaRegistradoEnTurno = true;
-          // Pedido grande / de reincidente RETENIDO (sin orderId): la sucursal lo confirma; el agente nunca debe decir que "ya quedo registrado".
-          if ((result as { pedido_grande?: unknown } | null)?.pedido_grande === true) pedidoGrandeVisto = true;
-          const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
-          if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
-          tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
-          const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
-          if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
-            if ((await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
-          }
-          if (perfil === "taqueria_pm" && call.name === "crear_pedido" && !isToolErrorResult(result)) {
-            await contar(repo, organizationId, phone, "ubicacion_solicitada", "reiniciar");
-          }
-          if (perfil === "taqueria_pm" && call.name === "buscar_sucursal_cercana" && !isToolErrorResult(result)) {
-            const estado = (result as { estado?: unknown } | null)?.estado;
-            if (estado === "no_reconocida") {
-              const n = (await contar(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
-              if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("zona_no_reconocida", `La colonia no se reconoció ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
-            } else if (estado === "asignada" || estado === "fuera_de_zona") {
-              await contar(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
-            }
-          }
-          // B04: la escalera sube al modelo caro solo ante un FALLO (error de sistema al crear el pedido, o argumentos que el modelo barato no supo armar). Un RECHAZO DE
-          // REGLA (`OrderValidationError`: minimo a domicilio, zona, horario, cantidad, y los rechazos de la maquina de estados como un duplicado o un reintento
-          // simultaneo) es el servidor haciendo su trabajo: la respuesta correcta es explicarlo, y pagar el modelo caro solo suma latencia y costo en el turno donde mas
-          // se pierde el pedido.
-          if (call.name === "crear_pedido" && isToolErrorResult(result) && (fallaSistema || argumentosInvalidos)) {
-            huboFalloDeHerramienta = true;
-          }
-          working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+          const salida = await procesarLlamada(call);
+          if (salida) return salida;
         }
       }
 
@@ -991,7 +1085,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", motivoEscalacion: null, motivoEscaladaDeRol: null, cierreDeterminista: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1023,6 +1117,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             resultado: tele.resultado,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
+            cierreDeterminista: tele.cierreDeterminista,
             telefonoHash,
           });
         }
