@@ -56,6 +56,7 @@ import {
   resolverRenglonesCotizados,
   OrderFlowViolationError,
   rechazaElResumen,
+  resumenMostradoEnHistorial,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -911,7 +912,16 @@ async function writeFlow(
   return res;
 }
 
-const CONFLICT_MESSAGE = "La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
+/** Forma de pago y efectivo_con de una cotizacion: lo que manda el modelo; si lo omite se conserva el de la cotizacion vigente. Tarjeta descarta el efectivo_con (es relleno). */
+function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowContext | undefined): { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number } {
+  const dado = input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined;
+  const quotedPago = dado ?? previo?.quotedPago;
+  const efDado = typeof input.efectivo_con === "number" && input.efectivo_con > 0 ? input.efectivo_con : undefined;
+  const quotedEfectivoCon = quotedPago === "tarjeta" ? undefined : (efDado ?? previo?.quotedEfectivoCon);
+  return { ...(quotedPago ? { quotedPago } : {}), ...(quotedEfectivoCon !== undefined ? { quotedEfectivoCon } : {}) };
+}
+
+const CONFLICT_MESSAGE ="La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
 
 /** Texto que acompana a una re-cotizacion identica de una cotizacion que el cliente ya vio (ver `runWithOrderFlow`). */
 const SIGUIENTE_PASO_COTIZACION_REPETIDA =
@@ -1029,17 +1039,25 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         horaCotizacion = previo.horaRecogida;
         quoteHash = previo.quoteHash;
       }
+      // Pago y efectivo_con NO entran a la huella, pero son parte de lo que el cliente debe ver y aceptar: cotizar temprano (sin pago) y re-cotizar con pago en el turno del "confirmo" ya no
+      // hereda el turno de la cotizacion anterior (si no, confirmar_resumen y crear_pedido pasaban sin que el cliente viera nunca el resumen con su pago). Omitirlos conserva los previos.
+      const previoVigente = previo && (snap.state === "cotizado" || snap.state === "confirmado") && flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS ? previo : undefined;
+      const pagoCotizado = pagoDeCotizacion(input, previoVigente);
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&
         previo.quoteHash === quoteHash &&
         previo.quotedPrices === quotedPrices &&
         previo.quotedTotal === quotedQuote.total &&
+        previo.quotedPago === pagoCotizado.quotedPago &&
+        previo.quotedEfectivoCon === pagoCotizado.quotedEfectivoCon &&
         flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS
       ) {
         // El historial de WhatsApp no trae los resultados de herramientas: en el turno del "si" el modelo busca y cotiza de nuevo y despues repite el resumen
         // en vez de cerrar (R2W14: 4 turnos de resumen sin crear). Si esta cotizacion YA se mostro en un turno anterior, se le dice el siguiente paso.
-        const yaMostrada = previo.quotedTurn !== null && flow.turn !== null && previo.quotedTurn !== flow.turn;
+        // Una cotizacion TEMPRANA (antes del resumen) no es "ya mostrada": con historial disponible (WhatsApp) solo cuenta si un mensaje del asistente trae su total.
+        const vistoEnHistorial = resumenMostradoEnHistorial(previo.quotedTotal, ctx.conversacionReciente);
+        const yaMostrada = previo.quotedTurn !== null && flow.turn !== null && previo.quotedTurn !== flow.turn && vistoEnHistorial !== false;
         const aviso = yaMostrada ? { ya_mostrada_al_cliente: true, siguiente_paso: SIGUIENTE_PASO_COTIZACION_REPETIDA } : {};
         return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash, ...aviso }, quoteHash };
       }
@@ -1048,6 +1066,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedAtMs: flowNow(flow),
         quotedTurn: flow.turn,
         quotedPrices,
+        ...(pagoCotizado.quotedPago ? { quotedPago: pagoCotizado.quotedPago } : {}),
+        ...(pagoCotizado.quotedEfectivoCon !== undefined ? { quotedEfectivoCon: pagoCotizado.quotedEfectivoCon } : {}),
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
         ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
         ...(programadoCotizado ? { programadoPara: programadoCotizado } : {}),

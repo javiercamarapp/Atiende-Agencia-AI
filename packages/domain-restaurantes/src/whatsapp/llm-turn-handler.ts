@@ -31,7 +31,7 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
-import { bloqueCotizacionVigente } from "../agent-tools/order-flow.ts";
+import { bloqueCotizacionVigente, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -713,7 +713,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         lastQuoteAmounts = flowVigente.quotedAmounts;
       }
       // La cotizacion vigente del servidor le llega al modelo (solo PM): en el turno del "si" confirma y crea sin volver a buscar ni cotizar.
-      const cotizacionVigenteBloque = perfil === "taqueria_pm" && !preview ? bloqueCotizacionVigente(flowSnapshot, now().getTime()) : "";
+      const cotizacionVigenteBloque = perfil === "taqueria_pm" && !preview ? bloqueCotizacionVigente(flowSnapshot, now().getTime(), { resumenMostrado: resumenMostradoEnHistorial(flowVigente?.quotedTotal, messages) }) : "";
       const systemFinal = cotizacionVigenteBloque ? `${systemPrompt}\n\n${cotizacionVigenteBloque}` : systemPrompt;
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
