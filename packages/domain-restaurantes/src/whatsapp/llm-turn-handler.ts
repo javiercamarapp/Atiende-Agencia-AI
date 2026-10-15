@@ -299,7 +299,7 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
       const estado = estaAbiertoAhora(policy.horario, ahora, zona);
       if (estado.abierto) return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${estado.cierraA}` : ""}. Un pedido para recoger cuya hora caiga después del cierre no se puede tomar.`;
       const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${estado.proximaApertura.hora}` : "";
-      return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; NO tome el pedido ni acepte una hora de recogida o de entrega mientras esté cerrada (H16); si insiste, escale (otro).`;
+      return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; tome el pedido y PROGRÁMELO con programado_para para la apertura u otra hora dentro del horario (H16), sin decir que ya está en cocina.`;
     });
   } catch {
     return "";
