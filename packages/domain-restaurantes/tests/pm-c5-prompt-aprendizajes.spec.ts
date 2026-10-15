@@ -51,7 +51,7 @@ describe("1. aclarar lo ambiguo antes de cotizar", () => {
     expect(p).toMatch(/termine el resumen con "¿Es correcto o desea agregar algo más\?"/);
     expect(p).toMatch(/en LISTA \(un renglón por producto\)/);
     expect(p).toMatch(/salsas \(las básicas más las que pidió\)/);
-    expect(p).toMatch(/forma de pago \(efectivo, o tarjeta con "llevar terminal"; solo diga con cuánto paga si el cliente ya lo dijo\)/);
+    expect(p).toMatch(/forma de pago \(efectivo con "paga con \$X", o tarjeta con "llevar terminal"\)/);
   });
   it("con salsas personalizadas por el dueño no se mezclan con las del perfil", () => {
     const personalizado = prompt({ salsasTexto: "roja, verde y de la casa" });
@@ -101,7 +101,7 @@ describe("5. pin a reparto: ayuda opcional, nunca requisito", () => {
     expect(p).not.toMatch(/pida el pin .* UNA SOLA VEZ y ANTES de confirmar el pedido, junto con privada o edificio/);
     expect(p).not.toMatch(/casa o depto y una referencia visible/);
     expect(p).toMatch(/OBJETIVO: cerrar el pedido\. Lo INDISPENSABLE es:/);
-    expect(p).toMatch(/NO condicione el pedido a nada más: no exija pin de ubicación, casa o depto, referencias, con cuánto paga ni propina en efectivo/);
+    expect(p).toMatch(/NO condicione el pedido a nada más: no exija pin de ubicación, casa o depto, referencias ni propina en efectivo\. Con cuánto paga SÍ se pregunta/);
   });
 });
 
