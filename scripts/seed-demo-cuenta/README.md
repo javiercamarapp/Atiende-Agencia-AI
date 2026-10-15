@@ -32,7 +32,13 @@ Re-ejecutar repara lo que el seed controla (nombres, precios, horarios, minimos,
 no vuelve a prender un producto agotado, no reactiva la voz, no reinicia contadores de promociones, no sobrescribe conocimiento ni textos del agente editados y no borra productos que el dueño haya agregado.
 Lo que el plan deja de vender en una sucursal se retira de `branch_products` (acotado a la organización y a productos del plan).
 
+## Verificación contra Postgres real
+
+`scripts/verify-restaurantes-seed-demo-cuenta/` ejecuta el bloque REAL del seed contra todas las migraciones en el gate de Postgres real del CI
+(`postgres-real-gate.yml`): 6 sucursales, 289 productos, 1666 precios, voz deshabilitada con `voice_id`, idempotencia (dos corridas, misma huella de conteos),
+la Taquería Demo vieja intacta y rechazo de un slug de otra vertical. `assertions.sql` es generado
+(`npx vite-node scripts/verify-restaurantes-seed-demo-cuenta/generar-assertions.ts`) y un test de vitest falla si se desincroniza.
+
 ## Pendiente (hueco conocido)
 
-- El seed **no se ha ejecutado contra ningún Postgres**: el SQL solo está probado como texto (forma, guardas, determinismo). Falta un `scripts/verify-*` contra Postgres real que lo corra dos veces (como `verify-restaurantes-seed-pm`).
 - No incluye volumen de pedidos ficticios.
