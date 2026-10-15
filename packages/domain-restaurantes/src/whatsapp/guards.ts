@@ -187,7 +187,7 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
   if (/[?¿]/.test(frase)) return false;
   // Condicional / negacion / futuro: no afirman nada. «si» se mira en el texto ORIGINAL para no confundir el «sí» afirmativo ("Sí, su pedido ya quedó registrado") con el condicional «si».
   if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
-  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se)|todavia\s+no|aun\s+no|(?:todavia|aun)\s+falta|falta)\b/.test(t)) return false;
+  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se)|todavia\s+no|aun\s+no|(?:todavia|aun)\s+falta|falta|quedaria|quedarian|podria|podrian|va\s+a\s+(?:quedar|ser|estar)|pudo\s+ser|no\s+pudo|tampoco|nunca)\b/.test(t)) return false;
   // Sujeto PEDIDO (pedido / orden / comanda) con un predicado de "ya existe": registrado, confirmado, tomado, enviado, en camino, en cocina... Entre el sujeto y el predicado no puede
   // haber otro objeto ("su pedido ... su direccion quedo registrada"): la direccion, el nombre, el cambio o el pago anotados NO son el pedido registrado.
   const N = "(?:pedido|orden|comanda)";
@@ -199,6 +199,10 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
   const patrones: RegExp[] = [
     // «su pedido (ya) quedó registrado / está confirmado / va en camino / ya está en cocina», «Pedido confirmado ✅»
     new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[a-z0-9]+){0,4}?\\s+(?:ya\\s+)?${VERBO}?(?:${PART}|${SALIDA})\\b`),
+    // Defensa adicional (QA-PM-R8 A41; NO es la causa demostrada: main ya atrapa «ya quedó registrado»): el modelo describe el pedido entre sujeto y predicado («su pedido de 2 tacos ($84) en García Lavín quedó registrado»).
+    // Hasta 14 palabras sin cruzar de frase, y el participio debe ser de REGISTRAR/CREAR el pedido (o ir con «quedó/está/fue»): «el precio confirmado de $126» o «el envío confirmado a Calle 60» no cuentan.
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[^\\s.!?;]+){0,14}?\\s+(?:ya\\s+)?(?:registrad[oa]|generad[oa]|levantad[oa]|capturad[oa]|procesad[oa])\\b`),
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[^\\s.!?;]+){0,14}?\\s+(?:ya\\s+)?(?:quedo|queda|esta|fue|ha\\s+sido|va|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?(?:${PART}|${SALIDA})\\b`),
     // «ya quedó apartado su pedido», «ya está su pedido», «ya se generó su orden»
     new RegExp(`\\b(?:ya\\s+)?(?:quedo|esta|fue|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?(?:${PART}\\s+)?(?:su|el)\\s+${N}\\b`),
     // «ya tomé su pedido», «ya mandé su comanda», «registré su orden»
@@ -658,4 +662,30 @@ export function classifyHighRiskIntentInMessages(texts: readonly string[], ctx: 
 export function matchesHighRiskOtherThan(text: string, excepto: HighRiskIntent, ctx: HighRiskContext = {}): boolean {
   const texto = normalizarParaClasificar(text);
   return HIGH_RISK_PATTERNS.some((p) => p.intent !== excepto && coincide(p, texto, ctx));
+}
+
+// ── Pin antes de crear un domicilio dificil de ubicar (QA-PM-R8 T7-014) ──────────────────────────────────────────────────────────────────────
+// La regla del negocio es NO exigir el pin (perfil-pm.ts). Solo cuando el cliente describe su casa con referencias visuales («son 5 casas iguales, la unica con cochera techada»)
+// la direccion escrita no basta para el repartidor: se le pide el pin UNA vez antes de registrar. Si ya se lo pidieron, o dice que no puede, el pedido se crea como siempre.
+
+const REFERENCIA_VISUAL =
+  /\bcasas?\s+(?:son\s+)?iguales\b|\bunica\s+con\b|\bcasa\s+(?:de\s+color\s+)?(?:naranja|azul|verde|blanca|amarilla|roja|gris|morada|rosa|cafe)\b|\bdificil\s+de\s+(?:encontrar|ubicar)\b/;
+// Direccion verificable por el repartidor/mapa: numero de casa, calle con numero, cruzamientos o «s/n» con cruce. Una referencia visual SOLA (sin nada de esto) es la unica que pide pin.
+const DIRECCION_VERIFICABLE = /#\s*\d|\bnum(?:ero)?\.?\s*\d|\b(?:calle|av|avenida|c|cll|carretera|km)\.?\s*\d|\bx\s*\d+\s*(?:y|e)\s*\d+|\bentre\s+(?:calle|c\.?|\d)|\bcruzamientos?\b|\bcalle\s+\d|\b\d{1,4}\s*[a-z]?\s*(?:x|por)\s*\d+/;
+const RECHAZA_EL_PIN = /\bno\s+(?:puedo|quiero|me\s+deja|me\s+sale|tengo\s+como)\b[^.!?\n]{0,40}\b(?:ubicacion|pin|mapa|compartir|compartirla)\b|\bno\s+tengo\s+como\b|\bsin\s+(?:el\s+)?(?:pin|ubicacion)\b|\bno\s+(?:tengo|hay)\s+(?:datos|internet|gps|senal)\b/;
+const PIDE_EL_PIN = /\b(?:pin|ubicacion)\b[^.!?\n]{0,60}\b(?:compart\w*|mand\w*|envi\w*)\b|\b(?:compart\w*|mand\w*|envi\w*)\w*\b[^.!?\n]{0,60}\b(?:pin|ubicacion)\b/;
+
+/**
+ * true = hay que pedir el pin antes de crear el domicilio. SOLO cuando la direccion es una referencia visual sin direccion verificable («la casa azul con portón»): ningun mensaje del cliente
+ * (ni `direccionDelPedido`) trae numero de casa, calle con numero ni cruzamientos. Nunca se pide dos veces: si en cualquier momento el asistente ya pidio la ubicacion o el cliente dijo que no puede, es false.
+ */
+export function requierePinAntesDeCrear(conversacion: readonly { readonly role: string; readonly content: string }[] | undefined, direccionDelPedido?: string): boolean {
+  if (!Array.isArray(conversacion)) return false;
+  const mensajes = conversacion.filter((m) => m && typeof m.content === "string").map((m) => ({ role: m.role, t: normalizarParaClasificar(m.content) }));
+  const delCliente = mensajes.filter((m) => m.role === "user");
+  if (!delCliente.some((m) => REFERENCIA_VISUAL.test(m.t))) return false;
+  const direccion = typeof direccionDelPedido === "string" ? normalizarParaClasificar(direccionDelPedido) : "";
+  if (DIRECCION_VERIFICABLE.test(direccion) || delCliente.some((m) => DIRECCION_VERIFICABLE.test(m.t))) return false;
+  if (delCliente.some((m) => RECHAZA_EL_PIN.test(m.t))) return false;
+  return !mensajes.some((m) => m.role === "assistant" && PIDE_EL_PIN.test(m.t));
 }
