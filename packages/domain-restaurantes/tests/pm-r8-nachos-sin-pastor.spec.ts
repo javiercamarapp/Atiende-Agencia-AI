@@ -117,6 +117,32 @@ describe("R8: puntuacion, cortesias y cantidades de varios digitos no rompen «s
     expect(ambiguos(r as never)).toBe(true);
   });
 
+  // Regresion del revisor (ronda 2): «s/» es la abreviatura de WhatsApp de «sin»; partir el slash dejaba «s pastor» y devolvia Nachos de Pastor sin ambiguo.
+  it.each(["nachos s/pastor", "nachos s/ pastor", "Nachos S/Pastor", "NACHOS S/ PASTOR", "nachos s/pastor.", "nachos s/pastor, gracias", "Nachós s/Pástor!"])(
+    "«%s»: «s/» es «sin»; nunca Nachos de Pastor y siempre ambiguo",
+    async (q) => {
+      const r = await buscar(q);
+      expect(r.length).toBeGreaterThan(0);
+      expect(r.filter((p) => esPastor(p.name))).toEqual([]);
+      expect(ambiguos(r as never)).toBe(true);
+    },
+  );
+
+  it.each(["nachos sin pastor \u{1F60A}", "nachos sin pastor xfa", "nachos sin pastor pls", "nachos sin pastor porfis", "nachos sin pastor mil gracias", "nachos sin pastor graciass", "nachos sin pastor jaja"])(
+    "«%s»: cortesias y emojis no vacian la busqueda ni traen Nachos de Pastor",
+    async (q) => {
+      const r = await buscar(q);
+      expect(r.length).toBeGreaterThan(0);
+      expect(r.filter((p) => esPastor(p.name))).toEqual([]);
+      expect(ambiguos(r as never)).toBe(true);
+    },
+  );
+
+  it("«s/» no rompe fracciones ni «sin X/Y»: «1/2 nachos» y «sin pastor/queso»", () => {
+    expect(tokenizeForProductSearch("1/2 nachos")).toContain("1/2");
+    expect(tokenizeForProductSearch("nachos s/pastor")).toEqual(["nacho", "sin", "pastor"]);
+  });
+
   it("«12 nachos de pastor» y «10 tacos de pastor» encuentran el platillo (la cantidad no es parte del nombre)", async () => {
     expect((await buscar("12 nachos de pastor"))[0]).toMatchObject({ name: "Nachos de Pastor", price: 328 });
     expect((await buscar("10 tacos de pastor")).length).toBeGreaterThan(0);

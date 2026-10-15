@@ -127,7 +127,7 @@ export function singularizar(palabra: string): string {
 }
 
 /** Cortesias de cierre ("por favor", "gracias"): nunca son parte del nombre de un platillo, pero como token obligatorio vaciaban la busqueda ("nachos sin pastor, por favor"). */
-const CORTESIAS = /\b(?:por\s*favor|porfavor|porfa|plis|please|muchas\s+gracias|gracias|grax)\b/g;
+const CORTESIAS = /\b(?:por\s*favor|porfavor|porfa|porfis|xfa|xfis|pls|plis|please|mil\s+gracias|muchas\s+gracias|graciass+|gracias|grax|jaja+|jeje+)\b/g;
 /** Unidades que NO convierten al numero que las precede en una cantidad ("600 ml", "2 litros"). */
 const UNIDADES_TRAS_NUMERO = new Set(["ml", "l", "lt", "lts", "litro", "litros", "g", "gr", "kg", "kilo", "kilos", "gramos", "oz", "pesos", "porciento"]);
 
@@ -137,6 +137,10 @@ const UNIDADES_TRAS_NUMERO = new Set(["ml", "l", "lt", "lts", "litro", "litros",
  */
 export function limpiarPuntuacionDeConsulta(textoSinAcentos: string): string {
   return textoSinAcentos
+    // «s/» (o «s /») pegado a una palabra es la abreviatura de WhatsApp de «sin»: se expande ANTES de partir el slash, o «s/pastor» quedaba «s pastor» y la resta se perdia.
+    .replace(/(?<![a-z0-9])s\s?\/\s*(?=[a-z])/g, "sin ")
+    // Emojis y simbolos pictograficos no son parte del nombre de un platillo.
+    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]|\u{FE0F}|\u{200D}/gu, " ")
     .replace(/[¡!¿?;:"'`´“”‘’«»()[\]{}*_~#]/g, " ")
     .replace(/[.,](?!\d)/g, " ")
     // "sin pastor/queso" = sin pastor NI queso; en cualquier otro lugar "pastor/queso" son dos palabras sueltas.
