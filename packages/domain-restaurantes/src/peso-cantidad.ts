@@ -10,6 +10,13 @@
 //   palabra_fraccion := medio(s) | cuarto(s)   ("un medio" = 1 x 1/2; "tres cuartos" = 3 x 1/4; "cuatro cuartos" = 4 x 1/4)
 //   unidad   := kg kilo kilos kilogramo(s) (k pegada a un numero) | g gr grs gramo(s)
 //
+// Variantes coloquiales (L2b, 14-oct): diminutivos (kilito, cuartito), "mitad" = medio, numeros escritos con letra de tres cifras y "mil"
+// ("doscientos cincuenta", "mil doscientos cincuenta"), sumas SIN "y" despues de una unidad en kilos ("kilo 250", "1 kg 250 g", "kilo cuarto", "kilo 3/4"),
+// "mas"/"menos" ("kilo mas medio", "kilo menos cuarto" = 750 g), "un par de kilos" = 2 kg, "1,250 g", "kg." con punto, signos de interrogacion/exclamacion.
+// Lo APROXIMADO ("casi un kilo", "kilo y pico", "kilo y poquito", "mas o menos 2 kilos") NO es un peso exacto: salen como
+// `peso:cualquiera` (lista todas las presentaciones, marcado ambiguo, para que el agente pregunte). Un numero SIN unidad ("750 de pastor", "setecientos cincuenta de pastor")
+// no es peso (puede ser dinero o piezas).
+//
 // Entrada: texto ya en minusculas y sin acentos. Salida: el mismo texto con cada frase de peso reemplazada por ` peso:<gramos> `.
 
 const NUMEROS: Readonly<Record<string, number>> = {
@@ -18,6 +25,8 @@ const NUMEROS: Readonly<Record<string, number>> = {
 };
 const FRACCION_BARRA: Readonly<Record<string, number>> = { "1/2": 0.5, "1/4": 0.25, "3/4": 0.75 };
 const UNIDAD_KG = /^(?:kg|kgs|kgr|kgrs|kilo|kilos|kilogramo|kilogramos)$/;
+/** Lo que sigue a "kilo 250" cuando NO son gramos sino dinero o piezas ("un kilo 250 pesos", "kilo 100 tacos"): solo "de" o el final de la frase confirman gramos. */
+const SEGUIDO_DE_GRAMOS_SUELTOS = (w: string | undefined) => w === undefined || w === "de";
 const UNIDAD_G = /^(?:g|gr|grs|gramo|gramos)$/;
 const DECIMAL = /^(?:\d+(?:[.,]\d+)?|[.,]\d+)$/;
 
@@ -83,22 +92,39 @@ interface Frase {
   readonly next: number;
 }
 
+const esGramosSueltos = (v: number) => Number.isInteger(v) && v >= 50 && v <= 950 && v % 50 === 0;
+
 /** Continuaciones con unidad: "2 kilos y 500 gramos", "medio kilo y un cuarto", "kilo y medio"; suman a lo anterior. `kg` = la frase previa estaba en kilos
- * (solo entonces una fraccion suelta como "y medio" o "y 1/4" se lee en kilos). */
+ * (solo entonces una fraccion suelta como "y medio" o "y 1/4" se lee en kilos, y un "250" suelto son gramos). Conectores: "y", "con", "mas" (suman) y "menos" (resta).
+ * Despues de kilos tambien suman SIN conector: "kilo 250", "1 kg 250 g", "kilo 3/4", "kilo cuarto". */
 function continuaciones(w: readonly string[], i: number, kg: boolean): { g: number; next: number } {
   let g = 0;
   let j = i;
-  while (w[j] === "y" || w[j] === "con") {
-    const frase = parseFrase(w, j + 1);
-    if (frase) {
-      g += frase.gramos;
+  for (;;) {
+    const conector = w[j] === "y" || w[j] === "con" || w[j] === "mas";
+    const resta = w[j] === "menos";
+    const k = conector || resta ? j + 1 : j;
+    const signo = resta ? -1 : 1;
+    const frase = parseFrase(w, k);
+    // Sin conector solo con la forma que no se confunde con otra cosa: numero + gramos explicitos ("1 kg 250 g").
+    const explicita = frase !== null && (conector || resta || (kg && UNIDAD_G.test(w[(w[k + 1] === "de" ? k + 2 : k + 1)] ?? "") && aNumero(w[k]) !== null));
+    if (frase && explicita) {
+      g += signo * frase.gramos;
       j = frase.next;
       continue;
     }
-    const val = kg ? parseValor(w, j + 1) : null;
-    if (val && !val.entero && val.v < 1) {
-      g += val.v * 1000;
+    if (!kg) break;
+    const val = parseValor(w, k);
+    if (val && !val.entero && val.v < 1 && (conector || resta || w[k] === "cuarto" || w[k] === "medio" || w[k] === "media" || FRACCION_BARRA[w[k] ?? ""] !== undefined)) {
+      g += signo * val.v * 1000;
       j = val.next;
+      continue;
+    }
+    // "kilo y 250", "kilo 500 de pastor": gramos sueltos (nunca con "pesos"/"tacos" detras: eso es dinero o piezas).
+    const suelto = aNumero(w[k]);
+    if (suelto !== null && DECIMAL.test(w[k]!) && esGramosSueltos(suelto) && SEGUIDO_DE_GRAMOS_SUELTOS(w[k + 1])) {
+      g += signo * suelto;
+      j = k + 1;
       continue;
     }
     break;
@@ -106,7 +132,16 @@ function continuaciones(w: readonly string[], i: number, kg: boolean): { g: numb
   return { g, next: j };
 }
 
+/** "cuarto DE hora" / "un cuarto de dia": no es peso. */
+const esDeTiempo = (w: readonly string[], i: number) => w[i] === "de" && /^(?:hora|horas|dia|dias|siglo|final)$/.test(w[i + 1] ?? "");
+
 function parseFrase(w: readonly string[], i: number): Frase | null {
+  // "un par de kilos" = 2 kg.
+  const par = w[i] === "par" ? i : w[i] === "un" && w[i + 1] === "par" ? i + 1 : -1;
+  if (par >= 0 && w[par + 1] === "de" && UNIDAD_KG.test(w[par + 2] ?? "")) {
+    const c = continuaciones(w, par + 3, true);
+    return { gramos: 2000 + c.g, next: c.next };
+  }
   // Unidad primero: "kilo", "kilos", "kilo y medio", "kg y cuarto".
   if (UNIDAD_KG.test(w[i] ?? "")) {
     const c = continuaciones(w, i + 1, true);
@@ -126,18 +161,83 @@ function parseFrase(w: readonly string[], i: number): Frase | null {
     return { gramos: val.v + c.g, next: c.next };
   }
   // Sin unidad: solo cuartos ("un cuarto de bistec") y "medio de ...".
+  if (esDeTiempo(w, val.next)) return null;
   if (val.sinUnidad === "siempre") return { gramos: val.v * 1000, next: val.next };
   if (val.sinUnidad === "con_de" && w[val.next] === "de") return { gramos: val.v * 1000, next: val.next };
   return null;
 }
 
-/** Prepara el texto: fracciones Unicode, numero pegado a la unidad ("250g", "1kg", "2k"), puntuacion. */
+const CIENTOS: Readonly<Record<string, number>> = { cien: 100, ciento: 100, doscientos: 200, doscientas: 200, trescientos: 300, trescientas: 300, cuatrocientos: 400, cuatrocientas: 400, quinientos: 500, quinientas: 500, seiscientos: 600, seiscientas: 600, setecientos: 700, setecientas: 700, ochocientos: 800, ochocientas: 800, novecientos: 900, novecientas: 900 };
+const DECENAS: Readonly<Record<string, number>> = { treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
+const VEINTI: Readonly<Record<string, number>> = { veintiuno: 21, veintiun: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29 };
+const UNIDADES: Readonly<Record<string, number>> = { uno: 1, un: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 };
+
+/** Numero en letra a partir de `i` ("mil doscientos cincuenta", "setecientos cincuenta", "treinta y cinco", "dos mil"); null si no empieza uno. Hasta 9999. */
+function numeroEnLetra(w: readonly string[], i: number): { n: number; next: number } | null {
+  let j = i;
+  let total = 0;
+  const bajo = (k: number): { v: number; next: number } | null => {
+    const t = w[k] ?? "";
+    if (DECENAS[t] !== undefined) {
+      const u = UNIDADES[w[k + 2] ?? ""];
+      return w[k + 1] === "y" && u !== undefined ? { v: DECENAS[t]! + u, next: k + 3 } : { v: DECENAS[t]!, next: k + 1 };
+    }
+    if (VEINTI[t] !== undefined) return { v: VEINTI[t]!, next: k + 1 };
+    if (NUMEROS[t] !== undefined) return { v: NUMEROS[t]!, next: k + 1 };
+    return null;
+  };
+  if (w[j] === "mil") {
+    total = 1000;
+    j++;
+  } else {
+    const m = bajo(j);
+    if (m && m.v < 10 && w[m.next] === "mil") {
+      total = m.v * 1000;
+      j = m.next + 1;
+    }
+  }
+  if (CIENTOS[w[j] ?? ""] !== undefined) {
+    total += CIENTOS[w[j]!]!;
+    j++;
+  }
+  const b = bajo(j);
+  if (b && (j > i || DECENAS[w[j] ?? ""] !== undefined || VEINTI[w[j] ?? ""] !== undefined)) {
+    total += b.v;
+    j = b.next;
+  }
+  return j > i && total > 0 ? { n: total, next: j } : null;
+}
+
+/** Cambia los numeros en letra compuestos o grandes por digitos ("doscientos cincuenta" -> "250"); los de una palabra que ya conoce la gramatica ("dos", "quince") quedan igual. */
+function numerosEnLetraADigitos(w: readonly string[]): string[] {
+  const salida: string[] = [];
+  for (let i = 0; i < w.length; ) {
+    const r = numeroEnLetra(w, i);
+    if (r && (r.next - i > 1 || NUMEROS[w[i]!] === undefined)) {
+      salida.push(String(r.n));
+      i = r.next;
+    } else {
+      salida.push(w[i]!);
+      i++;
+    }
+  }
+  return salida;
+}
+
+/** Prepara el texto: signos, diminutivos, fracciones Unicode, numero pegado a la unidad ("250g", "1kg", "2k"), puntuacion. */
 function preparar(texto: string): string[] {
-  return texto
-    .replace(/(\d)\s*½/g, "$1 y 1/2")
-    .replace(/½/g, " 1/2 ")
-    .replace(/¼/g, " 1/4 ")
-    .replace(/¾/g, " 3/4 ")
+  const w = texto
+    .replace(/[\u00bf?\u00a1!"\u201c\u201d()]/g, " ")
+    .replace(/\b(kgs?|kgrs?|kilos?|kilogramos?|grs?|gramos?|g)\.(?=\s|$)/g, "$1")
+    .replace(/(\d),(\d{3})(?=\s*(?:g|gr|grs|gramos?)\b)/g, "$1$2")
+    .replace(/\bkilit([oa]s?)\b/g, (_m, f: string) => `kil${f}`)
+    .replace(/\bcuartit([oa]s?)\b/g, (_m, f: string) => `cuart${f}`)
+    .replace(/\bmitad\b/g, "medio")
+    .replace(/\by(medio|media|cuartos?)\b/g, "y $1")
+    .replace(/(\d)\s*\u00bd/g, "$1 y 1/2")
+    .replace(/\u00bd/g, " 1/2 ")
+    .replace(/\u00bc/g, " 1/4 ")
+    .replace(/\u00be/g, " 3/4 ")
     .replace(/(\d)\s*k\b/g, "$1 kg")
     .replace(/(\d)\s*(kgs|kgrs|kgr|kg|kilogramos?|kilos?|grs|gr|gramos?|g)\b/g, "$1 $2")
     .replace(/(\d\/\d)\s*(kg|kilo)/g, "$1 $2")
@@ -145,17 +245,46 @@ function preparar(texto: string): string[] {
     .replace(/(?<!\d)[,;]/g, " ")
     .split(/\s+/)
     .filter(Boolean);
+  return numerosEnLetraADigitos(w);
 }
 
-/** Reemplaza cada frase de peso por ` peso:<gramos> `; lo demas queda igual. */
+const APROX_ANTES: ReadonlyArray<readonly string[]> = [["casi"], ["como"], ["aprox"], ["aproximadamente"], ["unos"], ["unas"], ["mas", "o", "menos"], ["poco", "mas", "de"], ["un", "poco", "mas", "de"], ["algo", "de"]];
+const APROX_DESPUES: ReadonlyArray<readonly string[]> = [["y", "pico"], ["y", "poquito"], ["y", "tantito", "mas"], ["y", "tantito"], ["y", "un", "poco", "mas"], ["y", "un", "poco"], ["y", "algo"], ["y", "feria"], ["o", "menos"], ["mas", "o", "menos"], ["poquito", "mas"], ["un", "poco", "mas"], ["aprox"], ["aproximadamente"]];
+const empiezaCon = (w: readonly string[], i: number, seq: readonly string[]) => seq.every((t, k) => w[i + k] === t);
+/** Cuantas palabras de aproximacion ("casi", "mas o menos") terminan justo antes de `i`. */
+function aproxAntes(w: readonly string[], i: number): number {
+  let mejor = 0;
+  for (const seq of APROX_ANTES) if (i - seq.length >= 0 && empiezaCon(w, i - seq.length, seq)) mejor = Math.max(mejor, seq.length);
+  return mejor;
+}
+function aproxDespues(w: readonly string[], i: number): number {
+  let mejor = 0;
+  for (const seq of APROX_DESPUES) if (empiezaCon(w, i, seq)) mejor = Math.max(mejor, seq.length);
+  return mejor;
+}
+/** "2 y medio de pastor": el "medio" es de una cantidad sin unidad, no "medio kilo" por si solo. */
+const esMedioDeOtraCantidad = (w: readonly string[], i: number) =>
+  (w[i - 1] === "y" || w[i - 1] === "con") && aNumero(w[i - 2]) !== null && (esFraccionPalabra(w[i]) || FRACCION_BARRA[w[i] ?? ""] !== undefined);
+
+/** Reemplaza cada frase de peso por ` peso:<gramos> `; lo demas queda igual. Una frase aproximada sale como `peso:cualquiera`. */
 export function normalizarPesos(textoSinAcentos: string): string {
   const w = preparar(textoSinAcentos);
   const salida: string[] = [];
   for (let i = 0; i < w.length; ) {
-    const f = parseFrase(w, i);
+    // "0 kg": el numero ya fallo (cero), la unidad sola no vale 1 kg.
+    const unidadHuerfana = UNIDAD_KG.test(w[i] ?? "") && i > 0 && aNumero(w[i - 1]) !== null;
+    const f = esMedioDeOtraCantidad(w, i) || unidadHuerfana ? null : parseFrase(w, i);
     if (f && Number.isFinite(f.gramos) && f.gramos > 0 && f.gramos <= 100000) {
-      salida.push(`peso:${Math.round(f.gramos)}`);
-      i = f.next;
+      const antes = aproxAntes(w, i);
+      const despues = aproxDespues(w, f.next);
+      if (antes > 0 || despues > 0) {
+        if (antes > 0) salida.splice(salida.length - antes, antes);
+        salida.push("peso:cualquiera");
+        i = f.next + despues;
+      } else {
+        salida.push(`peso:${Math.round(f.gramos)}`);
+        i = f.next;
+      }
     } else {
       salida.push(w[i]!);
       i++;
