@@ -1,6 +1,6 @@
 // P5 (ronda 9, VZ02): cotizar_pedido rechazaba «Bistec de Res — 250 g» y el modelo entraba en bucle.
 // Se tolera «<nombre> — <presentación>» resolviendo por id, SIN permitir un id con el nombre de OTRO producto.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveOrderItemsAgainstProducts } from "../src/product-search.ts";
 import { OrderValidationError } from "../src/errors.ts";
 import type { ProductoEncontrado } from "../src/types.ts";
@@ -79,5 +79,28 @@ describe("resolveOrderItemsAgainstProducts: nombre vs identificador", () => {
     expect(resolveOrderItemsAgainstProducts([{ productId: "b", productName: "Taco - Pastor" }], cat)[0]).toMatchObject({ productId: "b" });
     // Sin ser nombre exacto de otro producto, la presentación sigue tolerándose.
     expect(resolveOrderItemsAgainstProducts([{ productId: "a", productName: "Taco - grande" }], cat)[0]).toMatchObject({ productId: "a" });
+  });
+
+  it("nombres duplicados con distinto id: cada id con su propio nombre exacto pasa (sin rechazo ni cambio de precio)", () => {
+    const a = { ...base, id: "a", name: "Refresco", price: 30 } as unknown as ProductoEncontrado;
+    const b = { ...base, id: "b", name: "Refresco", price: 45 } as unknown as ProductoEncontrado;
+    const cat = [a, b];
+    expect(resolveOrderItemsAgainstProducts([{ productId: "a", productName: "Refresco" }], cat)[0]).toMatchObject({ productId: "a" });
+    expect(resolveOrderItemsAgainstProducts([{ productId: "b", productName: "Refresco" }], cat)[0]).toMatchObject({ productId: "b" });
+    expect(resolveOrderItemsAgainstProducts([{ productId: "b", productName: "  REFRESCO " }], cat)[0]).toMatchObject({ productId: "b" });
+  });
+  it("tolerancia por prefijo deja rastro (variante no disponible resuelta al base); la coincidencia exacta no", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const cat = [{ ...base, id: "p-pastor", name: "Pastor" } as unknown as ProductoEncontrado];
+      resolveOrderItemsAgainstProducts([{ productId: "p-pastor", productName: "Pastor" }], cat);
+      expect(warn).not.toHaveBeenCalled();
+      const r = resolveOrderItemsAgainstProducts([{ productId: "p-pastor", productName: "Pastor — 250 g" }], cat)[0];
+      expect(r).toMatchObject({ productId: "p-pastor", productName: "Pastor" });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("cotizar_presentacion_resuelta_al_base");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
