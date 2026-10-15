@@ -137,7 +137,7 @@ const UNIDADES_TRAS_NUMERO = new Set(["ml", "l", "lt", "lts", "litro", "litros",
  */
 export function limpiarPuntuacionDeConsulta(textoSinAcentos: string): string {
   return textoSinAcentos
-    .replace(/[¡!¿?;:"'`´“”‘’«»()\[\]{}*_~#]/g, " ")
+    .replace(/[¡!¿?;:"'`´“”‘’«»()[\]{}*_~#]/g, " ")
     .replace(/[.,](?!\d)/g, " ")
     // "sin pastor/queso" = sin pastor NI queso; en cualquier otro lugar "pastor/queso" son dos palabras sueltas.
     .replace(/\bsin\s+[a-z]+(?:\/[a-z]+)+/g, (m) => m.replace(/\//g, " ni "))
