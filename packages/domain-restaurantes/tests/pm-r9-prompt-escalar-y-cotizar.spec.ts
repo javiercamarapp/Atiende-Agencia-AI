@@ -83,4 +83,23 @@ describe("P3: cotizar temprano y el 'confirmo' sin resumen no ofrece promociones
     expect(wa).not.toMatch(/cotice (solo )?(cuando|después de) (tenga )?(nombre|pago|hora)/i);
     expect(wa).not.toMatch(/(?<!no )(espere|hasta) (a )?(tener|juntar) todos los datos/i);
   });
+  it("la cotizacion temprana es PRELIMINAR (no es resumen mostrado) y el 'confirmo' de mas tras crear lo atiende H12", () => {
+    const p10 = paso(wa, "10", "11");
+    expect(p10).toMatch(/cotización hecha temprano \(5b\) es PRELIMINAR: no cuenta como resumen mostrado/);
+    expect(p10).toMatch(/un "sí" a otra pregunta \(número, propina, "¿algo más\?"\) no es el sí al resumen/);
+    expect(p10).toMatch(/tras "Su pedido ya quedó registrado", un "confirmo" o "sí" de más lo atiende H12 \(nunca cotice ni cree otro\)/);
+  });
+});
+
+describe("la version de voz recortada (tope de 8000 caracteres) conserva sus reglas duras", () => {
+  // El tope de 8000 deja ~3 caracteres de margen: las frases recortadas ("Lista vacía: no existe ahí", "Alcohol: solo en sucursal", "no lo afirme de memoria", "sin exigir referencias")
+  // no caben; lo duro que cubrian sigue escrito en otros puntos y se fija aqui para que un recorte futuro no lo pierda en silencio.
+  it("el alcohol se retira a domicilio (9); el horario lo da la herramienta (H16); lo inexistente se dice y se sigue (6); la direccion pide calle, numero y colonia (4)", () => {
+    expect(voz).toMatch(/4\. [^\n]*dirección escrita \(calle, número y colonia\)/);
+    expect(voz).toMatch(/9\. cotizar_pedido[^\n]*Alcohol a domicilio: retírelo/);
+    expect(voz).toMatch(/Horario: lo da consultar_sucursal \(H16\)/);
+    expect(voz).toMatch(/Si no existe: "no lo manejamos"/);
+    expect(voz.length).toBeLessThanOrEqual(COMPORTAMIENTO_VOZ_MAX);
+  });
+  // El tope con las 7 sucursales reales lo cubre seed-pm-demo.spec.ts (buildPmSeedPlan lanza RangeError si se pasa de 8000).
 });
