@@ -238,6 +238,24 @@ describe("G5/T7-026/T7-049..051 el domicilio lo atiende otra sucursal que la del
     expect(r.atiende_otra_sucursal!.telefono).toBeUndefined();
     expect(r.atiende_otra_sucursal!.aviso).toMatch(/DATOS DEL NEGOCIO/);
   });
+  it("colonia reconocida sin cobertura confirmada (sugerida) cuya referencia es OTRA sucursal: aviso de referencia no confirmada, sin prometer entrega", async () => {
+    const m = mundoDosSucursales();
+    await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
+    const zona = randomUUID();
+    const otra = randomUUID();
+    m.repo.seedKnownZone({ id: zona, organizationId: m.organizationId, name: "Zona Nueva", lat: 21.0283, lng: -89.6097 });
+    m.repo.seedKnownZone({ id: otra, organizationId: m.organizationId, name: "Otra Zona", lat: 21.5, lng: -89.6 });
+    m.repo.seedBranchDeliveryZones(m.garcia, [otra]);
+    m.repo.seedBranchDeliveryZones(m.montejo, [otra]);
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.garcia }), "buscar_sucursal_cercana", { colonia: "Zona Nueva" })).result as unknown as { estado: string; referencia_otra_sucursal?: { branch_slug: string; aviso: string } };
+    expect(r.estado).toBe("sugerida");
+    expect(r.referencia_otra_sucursal).toMatchObject({ branch_slug: "prol-montejo" });
+    expect(r.referencia_otra_sucursal!.aviso).toMatch(/NO confirmada/);
+    expect(r.referencia_otra_sucursal!.aviso).toMatch(/No diga que entregan/);
+    // si la referencia es la sucursal del chat, no aparece
+    const mismo = (await invokeAgentTool(m.repo, ctxWa(m.organizationId, { entryPropertyId: m.montejo }), "buscar_sucursal_cercana", { colonia: "Zona Nueva" })).result as unknown as { referencia_otra_sucursal?: unknown };
+    expect(mismo.referencia_otra_sucursal).toBeUndefined();
+  });
   it("si la sucursal asignada ES la del chat, el resultado no cambia (camino feliz)", async () => {
     const m = mundoDosSucursales();
     await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, pm);
