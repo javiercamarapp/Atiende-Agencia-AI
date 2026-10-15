@@ -151,7 +151,9 @@ export function limpiarPuntuacionDeConsulta(textoSinAcentos: string): string {
 
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
-    normalizarUnidadesDeKilo(limpiarPuntuacionDeConsulta(sinAcentos(query))).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero\s+alcohol\b/g, "0.0"),
+    // La coma (no decimal) se vuelve el separador "|" ANTES de limpiar la puntuacion: si se borrara, "un kilo, 250 de pastor" llegaria al parser de peso
+    // como "un kilo 250 de pastor" (1250 g) y la coma ya no separaria las dos cantidades. El "|" lo ignora el filtro de tokens de 1 caracter.
+    normalizarUnidadesDeKilo(limpiarPuntuacionDeConsulta(sinAcentos(query).replace(/,(?!\d)/g, " | "))).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero\s+alcohol\b/g, "0.0"),
   )
     .replace(FRASE_SIN_ALCOHOL, " sinalcohol ")
     // "cerveza con alcohol": "alcohol" no es parte del nombre de ningun producto pedido y casaria con los "sin Alcohol" (el contrario de lo pedido).
