@@ -1,6 +1,6 @@
 // L2b: composicion de pesos con presentaciones reales (peso-composicion.ts). Puro: sin base ni reloj.
 import { describe, expect, it } from "vitest";
-import { componerPeso, composicionParaProducto, etiquetaDePeso, pesoPedidoEnConsulta, TOPE_COMPOSICION_G, type PresentacionPeso } from "../src/peso-composicion.ts";
+import { basePesoDeProducto, componerPeso, composicionParaProducto, etiquetaDePeso, pesoPedidoEnConsulta, TOPE_COMPOSICION_G, type PresentacionPeso } from "../src/peso-composicion.ts";
 
 const pres = (base: string, kilo: number, gramos = [250, 500, 750, 1000, 1500, 2000]): PresentacionPeso[] =>
   gramos.map((g) => ({ id: `${base}-${g}`, name: `${base} — ${etiquetaDePeso(g)}`, price: (kilo * g) / 1000, gramos: g }));
@@ -120,5 +120,34 @@ describe("pesoPedidoEnConsulta: que peso pide la consulta", () => {
   });
   it("contrato: lo que el registry manda con String(input.query ?? '') (0, '', null, false, [], {}) nunca lanza ni inventa peso", () => {
     for (const v of [0, "", null, undefined, false, [], {}]) expect(pesoPedidoEnConsulta(String(v ?? ""))).toBeNull();
+  });
+});
+
+describe("contrato de entrada (revision): cualquier tipo basura da un resultado seguro, nunca TypeError", () => {
+  const BASURA = [0, "", null, undefined, false, true, [], {}, 12, "x"];
+  it("componerPeso con presentaciones que no son arreglo, o con elementos basura", () => {
+    for (const b of BASURA) expect(componerPeso(1250, b), String(b)).toMatchObject({ tipo: "preguntar", motivo: "sin_presentaciones" });
+    expect(componerPeso(1250, [null, 1, "x", {}, undefined])).toMatchObject({ tipo: "preguntar", motivo: "sin_presentaciones" });
+  });
+  it("composicionParaProducto con catalogo/nombre/gramos invalidos", () => {
+    for (const b of BASURA) {
+      if (!Array.isArray(b)) expect(composicionParaProducto(b, "Pastor — 1 kg", 1250), `catalogo ${String(b)}`).toBeNull();
+      if (typeof b !== "string") expect(composicionParaProducto([], b, 1250), `nombre ${String(b)}`).toBeNull();
+      else expect(() => composicionParaProducto([], b, 1250)).not.toThrow();
+      expect(() => composicionParaProducto(pres("Pastor", 900), "Pastor — 1 kg", b)).not.toThrow();
+    }
+    expect(composicionParaProducto([null, 3, {}, { name: 5 }], "Pastor — 1 kg", 1250)).toMatchObject({ tipo: "preguntar" });
+  });
+  it("pesoPedidoEnConsulta, basePesoDeProducto y etiquetaDePeso", () => {
+    for (const b of BASURA) {
+      expect(pesoPedidoEnConsulta(b as never) === null || typeof b === "string").toBe(true);
+      expect(typeof basePesoDeProducto(b)).toBe("string");
+    }
+    expect(etiquetaDePeso(null)).toBe("");
+    expect(etiquetaDePeso(undefined)).toBe("");
+    expect(etiquetaDePeso(Number.NaN)).toBe("");
+    expect(etiquetaDePeso("250")).toBe("");
+    expect(etiquetaDePeso(250)).toBe("250 g");
+    expect(etiquetaDePeso(1500)).toBe("1.5 kg");
   });
 });

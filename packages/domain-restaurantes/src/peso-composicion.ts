@@ -49,10 +49,10 @@ const dinero = (n: number): string => {
   const miles = entero!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `$${miles}${dec === "00" ? "" : `.${dec}`}`;
 };
-export const etiquetaDePeso = (g: number): string => (g >= 1000 ? `${g / 1000} kg` : `${g} g`);
+export const etiquetaDePeso = (g: unknown): string => (typeof g !== "number" || !Number.isFinite(g) ? "" : g >= 1000 ? `${g / 1000} kg` : `${g} g`);
 
 /** Nombre del platillo sin el peso ("Pastor — 500 g" -> "Pastor"). */
-export const basePesoDeProducto = (nombre: string): string => nombre.replace(/[—–-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b.*$/i, "").trim();
+export const basePesoDeProducto = (nombre: unknown): string => (typeof nombre !== "string" ? "" : nombre).replace(/[—–-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b.*$/i, "").trim();
 
 /** `a` es mejor que `b`: menos piezas y, a igualdad, la que usa las piezas mas grandes primero (ambas ordenadas de mayor a menor). */
 function esMejor(a: readonly number[], b: readonly number[] | null): boolean {
@@ -79,7 +79,8 @@ function mejorCombinacion(gramos: number, gramosDisponibles: readonly number[]):
 }
 
 /** Arma `gramos` con las presentaciones dadas (todas del MISMO platillo). Una presentacion exacta no necesita composicion: devuelve una sola parte. */
-export function componerPeso(gramos: unknown, presentaciones: readonly PresentacionPeso[]): ComposicionPeso {
+export function componerPeso(gramos: unknown, presentacionesEntrada: unknown): ComposicionPeso {
+  const presentaciones: readonly PresentacionPeso[] = Array.isArray(presentacionesEntrada) ? (presentacionesEntrada as unknown[]).filter((p): p is PresentacionPeso => typeof p === "object" && p !== null) : [];
   if (typeof gramos !== "number" || !Number.isFinite(gramos) || gramos <= 0 || !Number.isInteger(gramos)) {
     return { tipo: "preguntar", gramos_pedidos: null, motivo: "peso_invalido", mensaje: "No se entendió el peso: pregunte cuánto quiere (por ejemplo 1 kg, 1 kg y un cuarto)." };
   }
@@ -132,10 +133,12 @@ export function componerPeso(gramos: unknown, presentaciones: readonly Presentac
 
 /** Composicion para el platillo `nombreProducto` (cualquiera de sus presentaciones) con el catalogo de la sucursal; null si el peso pedido ya es una presentacion exacta. */
 export function composicionParaProducto(
-  catalogo: ReadonlyArray<{ readonly id: string; readonly name: string; readonly price: number | string }>,
-  nombreProducto: string,
-  gramos: number | "aproximado",
+  catalogoEntrada: unknown,
+  nombreProducto: unknown,
+  gramos: unknown,
 ): ComposicionPeso | null {
+  if (typeof nombreProducto !== "string" || !Array.isArray(catalogoEntrada)) return null;
+  const catalogo = (catalogoEntrada as unknown[]).filter((c): c is { id: string; name: string; price: number | string } => typeof c === "object" && c !== null && typeof (c as { name?: unknown }).name === "string");
   if (gramos === "aproximado") {
     return { tipo: "preguntar", gramos_pedidos: null, motivo: "cantidad_aproximada", mensaje: "El cliente dio una cantidad aproximada («casi un kilo», «kilo y pico»): NO elija; pregúntele cuánto quiere exactamente entre las presentaciones." };
   }
@@ -148,7 +151,8 @@ export function composicionParaProducto(
 }
 
 /** Peso que pide la consulta del cliente: gramos exactos (una sola frase de peso), "aproximado" (casi un kilo...) o null si no pide peso o pide varios distintos. */
-export function pesoPedidoEnConsulta(consulta: string): number | "aproximado" | null {
+export function pesoPedidoEnConsulta(consulta: unknown): number | "aproximado" | null {
+  if (typeof consulta !== "string") return null;
   const pesos = tokenizeForProductSearch(consulta).filter((t) => t.startsWith("peso:")).map((t) => t.slice(5));
   const distintos = [...new Set(pesos)];
   if (distintos.length !== 1) return null;

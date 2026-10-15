@@ -208,12 +208,19 @@ function numeroEnLetra(w: readonly string[], i: number): { n: number; next: numb
   return j > i && total > 0 ? { n: total, next: j } : null;
 }
 
-/** Cambia los numeros en letra compuestos o grandes por digitos ("doscientos cincuenta" -> "250"); los de una palabra que ya conoce la gramatica ("dos", "quince") quedan igual. */
+/** Cambia los numeros en letra compuestos o grandes por digitos ("doscientos cincuenta" -> "250", "mil 250" -> "1250"), SOLO en contexto de peso: seguidos de una unidad
+ * ("mil quinientos gramos", "veinticinco kilos") o justo despues de kilos ("kilo doscientos cincuenta"). En cualquier otro lado ("mesa de cien personas") quedan como estaban;
+ * los de una palabra que la gramatica ya conoce ("dos", "quince") tampoco cambian. */
 function numerosEnLetraADigitos(w: readonly string[]): string[] {
   const salida: string[] = [];
+  const esUnidad = (t: string | undefined) => UNIDAD_KG.test(t ?? "") || UNIDAD_G.test(t ?? "");
   for (let i = 0; i < w.length; ) {
-    const r = numeroEnLetra(w, i);
-    if (r && (r.next - i > 1 || NUMEROS[w[i]!] === undefined)) {
+    let r = numeroEnLetra(w, i);
+    const sig = w[i + 1] ?? "";
+    // "mil 250" = 1250 (el segundo numero ya viene en digitos)
+    if (w[i] === "mil" && /^\d{1,3}$/.test(sig) && esUnidad(w[i + 2])) r = { n: 1000 + Number(sig), next: i + 2 };
+    const enContexto = r !== null && (esUnidad(w[r.next]) || UNIDAD_KG.test(w[i - 1] ?? ""));
+    if (r && enContexto && (r.next - i > 1 || NUMEROS[w[i]!] === undefined)) {
       salida.push(String(r.n));
       i = r.next;
     } else {
@@ -233,6 +240,8 @@ function preparar(texto: string): string[] {
     .replace(/\bkilit([oa]s?)\b/g, (_m, f: string) => `kil${f}`)
     .replace(/\bcuartit([oa]s?)\b/g, (_m, f: string) => `cuart${f}`)
     .replace(/\bmitad\b/g, "medio")
+    .replace(/\bquarto\b/g, "cuarto")
+    .replace(/\b(kgs?|kilos?|kilogramos?)y\b/g, "$1 y")
     .replace(/\by(medio|media|cuartos?)\b/g, "y $1")
     .replace(/(\d)\s*\u00bd/g, "$1 y 1/2")
     .replace(/\u00bd/g, " 1/2 ")
@@ -241,8 +250,9 @@ function preparar(texto: string): string[] {
     .replace(/(\d)\s*k\b/g, "$1 kg")
     .replace(/(\d)\s*(kgs|kgrs|kgr|kg|kilogramos?|kilos?|grs|gr|gramos?|g)\b/g, "$1 $2")
     .replace(/(\d\/\d)\s*(kg|kilo)/g, "$1 $2")
-    .replace(/[,;](?!\d)/g, " ")
-    .replace(/(?<!\d)[,;]/g, " ")
+    // La coma o el punto y coma CORTA la frase ("un kilo, 250 de bistec" son dos cosas): queda como separador "|" que nada de la gramatica consume.
+    .replace(/[,;](?!\d)/g, " | ")
+    .replace(/(?<!\d)[,;]/g, " | ")
     .split(/\s+/)
     .filter(Boolean);
   return numerosEnLetraADigitos(w);
@@ -257,22 +267,62 @@ function aproxAntes(w: readonly string[], i: number): number {
   for (const seq of APROX_ANTES) if (i - seq.length >= 0 && empiezaCon(w, i - seq.length, seq)) mejor = Math.max(mejor, seq.length);
   return mejor;
 }
+/** "y algo" / "y un poco" solo son aproximado pegados a la cantidad ("kilo y algo"); con "de ..." detras son otra cosa ("un kilo y algo de tomar", "y un poco de salsa"). */
+const SOLO_SIN_DE: ReadonlySet<string> = new Set(["y algo", "y un poco"]);
 function aproxDespues(w: readonly string[], i: number): number {
   let mejor = 0;
-  for (const seq of APROX_DESPUES) if (empiezaCon(w, i, seq)) mejor = Math.max(mejor, seq.length);
+  for (const seq of APROX_DESPUES) {
+    if (!empiezaCon(w, i, seq)) continue;
+    if (SOLO_SIN_DE.has(seq.join(" ")) && w[i + seq.length] === "de") continue;
+    mejor = Math.max(mejor, seq.length);
+  }
   return mejor;
 }
 /** "2 y medio de pastor": el "medio" es de una cantidad sin unidad, no "medio kilo" por si solo. */
 const esMedioDeOtraCantidad = (w: readonly string[], i: number) =>
   (w[i - 1] === "y" || w[i - 1] === "con") && aNumero(w[i - 2]) !== null && (esFraccionPalabra(w[i]) || FRACCION_BARRA[w[i] ?? ""] !== undefined);
 
-/** Reemplaza cada frase de peso por ` peso:<gramos> `; lo demas queda igual. Una frase aproximada sale como `peso:cualquiera`. */
+/** Un numero que es de CONTEXTO y no la cantidad de la unidad que viene despues: "a las 3, kilo y cuarto", "para las 3 kilo...", "mesa 3 kilo de pastor", "mesa de 4", "son 3", "somos 4". */
+const esNumeroDeContexto = (w: readonly string[], i: number): boolean => {
+  if (aNumero(w[i]) === null) return false;
+  const a = w[i - 1];
+  const b = w[i - 2];
+  return a === "mesa" || a === "son" || a === "somos" || ((a === "las" || a === "la") && (b === "a" || b === "para" || b === "en" || b === "de" || b === "como")) || (a === "de" && b === "mesa");
+};
+/** Una consulta mas larga que esto no es un pedido de cocina sino ruido: no se interpreta (evita trabajo cuadratico y recursion profunda). */
+export const LARGO_MAX_CONSULTA_PESO = 500;
+
+/** Reemplaza cada frase de peso por ` peso:<gramos> `; lo demas queda igual. Una frase aproximada sale como `peso:cualquiera`. Entrada que no es texto o es demasiado larga: sin cambios. */
 export function normalizarPesos(textoSinAcentos: string): string {
+  if (typeof textoSinAcentos !== "string") return "";
+  if (textoSinAcentos.length > LARGO_MAX_CONSULTA_PESO) return textoSinAcentos;
   const w = preparar(textoSinAcentos);
   const salida: string[] = [];
+  const deContexto = new Set<number>();
   for (let i = 0; i < w.length; ) {
-    // "0 kg": el numero ya fallo (cero), la unidad sola no vale 1 kg.
-    const unidadHuerfana = UNIDAD_KG.test(w[i] ?? "") && i > 0 && aNumero(w[i - 1]) !== null;
+    if (w[i] === "|") {
+      i++;
+      continue;
+    }
+    if (esNumeroDeContexto(w, i)) {
+      deContexto.add(i);
+      salida.push(w[i]!);
+      i++;
+      continue;
+    }
+    // "0 kg": el numero ya fallo (cero), la unidad sola no vale 1 kg. ("a las 3 kilo y cuarto": el 3 es de contexto, no de la unidad.)
+    const unidadHuerfana = UNIDAD_KG.test(w[i] ?? "") && i > 0 && aNumero(w[i - 1]) !== null && !deContexto.has(i - 1);
+    // "cuarto y kilo" (1.25 kg dicho al reves): no se adivina, el agente pregunta.
+    const alReves = UNIDAD_KG.test(w[i] ?? "") && w[i - 1] === "y" && (esFraccionPalabra(w[i - 2]) || FRACCION_BARRA[w[i - 2] ?? ""] !== undefined);
+    // "1 1/4 de pastor": una fraccion con un entero delante y SIN unidad ("1 1/4") no se lee como el cuarto suelto.
+    const enteroMasFraccion = FRACCION_BARRA[w[i] ?? ""] !== undefined && /^\d+$/.test(w[i - 1] ?? "") && !deContexto.has(i - 1) && !UNIDAD_KG.test(w[i + 1] ?? "") && !UNIDAD_G.test(w[i + 1] ?? "");
+    if (alReves || enteroMasFraccion) {
+      salida.splice(salida.length - (alReves ? 1 : 1), 1);
+      if (alReves) salida.splice(salida.length - 1, 1);
+      salida.push("peso:cualquiera");
+      i++;
+      continue;
+    }
     const f = esMedioDeOtraCantidad(w, i) || unidadHuerfana ? null : parseFrase(w, i);
     if (f && Number.isFinite(f.gramos) && f.gramos > 0 && f.gramos <= 100000) {
       const antes = aproxAntes(w, i);

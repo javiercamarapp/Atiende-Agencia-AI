@@ -999,11 +999,6 @@
 "nota": "peso aproximado o plural sin numero: se pregunta"
 },
 {
-"q": "kilo y un poco de pastor",
-"g": "c",
-"nota": "peso aproximado o plural sin numero: se pregunta"
-},
-{
 "q": "como kilo y medio de pastor",
 "g": "c",
 "nota": "peso aproximado o plural sin numero: se pregunta"
@@ -1237,5 +1232,95 @@
 "q": "2 kilos de caos",
 "g": 2000,
 "nota": "producto inexistente"
+},
+{
+"q": "para las 3, kilo y cuarto de pastor",
+"g": 1250,
+"nota": "contexto numerico antes de la unidad no se une"
+},
+{
+"q": "a las 3 kilo y cuarto de pastor",
+"g": 1250,
+"nota": "contexto numerico antes de la unidad no se une"
+},
+{
+"q": "somos 4, kilo y cuarto de pastor",
+"g": 1250,
+"nota": "contexto numerico antes de la unidad no se une"
+},
+{
+"q": "mesa de 4 kilo y cuarto de pastor",
+"g": 1250,
+"nota": "contexto numerico antes de la unidad no se une"
+},
+{
+"q": "mil 250 gramos de pastor",
+"g": 1250,
+"nota": "contexto numerico antes de la unidad no se une"
+},
+{
+"q": "kiloy cuarto de pastor",
+"g": 1250,
+"nota": "contexto numerico antes de la unidad no se une"
+},
+{
+"q": "kilo y quarto de pastor",
+"g": 1250,
+"nota": "contexto numerico antes de la unidad no se une"
+},
+{
+"q": "mesa 3, kilo de pastor",
+"g": 1000,
+"nota": "coma o contexto cortan"
+},
+{
+"q": "en la 5 un kilo de pastor",
+"g": 1000,
+"nota": "coma o contexto cortan"
+},
+{
+"q": "un kilo, 250 de pastor",
+"g": 1000,
+"nota": "coma o contexto cortan"
+},
+{
+"q": "pastor un kilo, 500 de bistec",
+"g": 1000,
+"nota": "la coma corta: 1 kg de bistec (la lista trae 1 kg), no 1.5 kg"
+},
+{
+"q": "cuarto y kilo de pastor",
+"g": "c",
+"nota": "al reves o sin unidad: se pregunta"
+},
+{
+"q": "1 1/4 de pastor",
+"g": "c",
+"nota": "al reves o sin unidad: se pregunta"
+},
+{
+"q": "un kilo y algo de tomar con el pastor",
+"g": 1000,
+"nota": "'y algo'/'y un poco' + de: no es aproximado"
+},
+{
+"q": "un kilo y un poco de salsa extra de pastor",
+"g": 1000,
+"nota": "'y algo'/'y un poco' + de: no es aproximado"
+},
+{
+"q": "kilo y algo",
+"g": "c",
+"nota": "pegado a la cantidad: aproximado"
+},
+{
+"q": "kilo y un poco",
+"g": "c",
+"nota": "pegado a la cantidad: aproximado"
+},
+{
+"q": "kilo y un poco de pastor",
+"g": 1000,
+"nota": "DECISION: 'y un poco de X' se lee como 1 kg + el resto de la frase (ambiguo con 'y un poco de salsa'); solo 'kilo y un poco' sin 'de' es aproximado"
 }
 ]
