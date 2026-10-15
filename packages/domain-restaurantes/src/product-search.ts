@@ -445,6 +445,18 @@ function comparableProductName(value: string): string {
   return value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("es-MX");
 }
 
+/**
+ * ¿El nombre pedido es el del producto, o el del producto seguido de su presentación/gramaje
+ * («Bistec de Res — 250 g»)? Exige el separador « — » o « - » justo tras el nombre completo:
+ * un nombre que apenas COMIENZA igual («Bistec de Res Premium») es OTRO producto y no coincide.
+ */
+function requestedNameMatchesProduct(productName: string, requestedName: string): boolean {
+  const product = comparableProductName(productName);
+  const requested = comparableProductName(requestedName);
+  if (requested === product) return true;
+  return requested.startsWith(`${product} — `) || requested.startsWith(`${product} - `);
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export { UUID_PATTERN };
 
@@ -466,14 +478,32 @@ export function resolveOrderItemsAgainstProducts<T extends { productId?: string;
     const requestedId = typeof item.productId === "string" ? item.productId.trim() : "";
     const requestedName = typeof item.productName === "string" ? item.productName.trim() : "";
     const byId = requestedId ? products.find((product) => product.id === requestedId) : undefined;
-    const byName = requestedName
-      ? products.find((product) => comparableProductName(product.name) === comparableProductName(requestedName))
-      : undefined;
+    const nombresIguales = requestedName
+      ? products.filter((product) => comparableProductName(product.name) === comparableProductName(requestedName))
+      : [];
+    // Con nombres duplicados (sin unicidad en BD) se prefiere el que coincide con el id enviado.
+    const byName = nombresIguales.find((product) => product.id === requestedId) ?? nombresIguales[0];
 
-    if (byId && requestedName && comparableProductName(byId.name) !== comparableProductName(requestedName)) {
-      throw new OrderValidationError(
-        `El identificador y el nombre del producto no coinciden: ${requestedName}. Vuelve a usar exactamente el resultado de buscar_producto.`,
-      );
+    if (byId && requestedName) {
+      const nombreExacto = comparableProductName(byId.name) === comparableProductName(requestedName);
+      // Si el nombre pedido es EXACTAMENTE el de otro producto del catálogo, jamás se tolera el prefijo:
+      // «Taco - Pastor» con el id de «Taco» cobraría el precio equivocado.
+      const esOtroProducto = !nombreExacto && byName !== undefined && byName.id !== byId.id;
+      if (!nombreExacto && (esOtroProducto || !requestedNameMatchesProduct(byId.name, requestedName))) {
+        const detalle = byName && byName.id !== byId.id
+          ? `«${requestedName}» es el producto con id ${byName.id}, pero el id enviado (${byId.id}) es de «${byId.name}».`
+          : `El id enviado (${byId.id}) es de «${byId.name}», no de «${requestedName}».`;
+        throw new OrderValidationError(
+          `El identificador y el nombre del producto no coinciden: ${detalle} Vuelve a llamar buscar_producto y copia el id y el nombre del MISMO resultado, sin combinarlos de resultados distintos.`,
+        );
+      }
+      if (!nombreExacto) {
+        // Tolerancia por prefijo: la presentación pedida no existe como producto disponible y se cobra el
+        // producto base. Se deja rastro para detectar variantes agotadas/no disponibles resueltas al base.
+        console.warn(
+          JSON.stringify({ level: "warn", event: "cotizar_presentacion_resuelta_al_base", productId: byId.id, productName: byId.name, requestedName }),
+        );
+      }
     }
     const product = byId ?? byName;
     if (!product) {
