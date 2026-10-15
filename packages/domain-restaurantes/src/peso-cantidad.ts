@@ -287,6 +287,10 @@ const esNumeroDeContexto = (w: readonly string[], i: number): boolean => {
   if (aNumero(w[i]) === null) return false;
   const a = w[i - 1];
   const b = w[i - 2];
+  // Si justo despues del numero viene una unidad de peso, es la CANTIDAD del pedido ("son 2 kilos de arrachera", "de la 2 kilos de pastor", "son 500 gramos"):
+  // el contexto de mesa/hora no lleva unidad pegada. Solo "kilo"/"kilogramo" en singular detras de "las/la/somos" sigue siendo ambiguo ("a las 3 kilo y cuarto") y se queda como contexto.
+  const u = w[i + 1] ?? "";
+  if (a !== "mesa" && !(a === "de" && b === "mesa") && (UNIDAD_KG.test(u) || UNIDAD_G.test(u)) && (a === "son" || u !== "kilo" && u !== "kilogramo")) return false;
   return a === "mesa" || a === "son" || a === "somos" || ((a === "las" || a === "la") && (b === "a" || b === "para" || b === "en" || b === "de" || b === "como")) || (a === "de" && b === "mesa");
 };
 /** Una consulta mas larga que esto no es un pedido de cocina sino ruido: no se interpreta (evita trabajo cuadratico y recursion profunda). */
