@@ -49,9 +49,12 @@ export function esSiClaroDeConfirmacion(texto: string): boolean {
  */
 export function resumenPideConfirmacion(texto: string): boolean {
   // Se juzga la ULTIMA pregunta del mensaje (lo que el cliente esta contestando); el aviso de privacidad del primer contacto trae palabras como «su nombre» que no cuentan.
-  const preguntas = [...texto.matchAll(/[^.!?¿\n]*\?/g)].map((m) => normalizar(m[0]));
-  const ultima = preguntas.at(-1);
-  if (!ultima) return false;
+  const fin = texto.lastIndexOf("?");
+  if (fin < 0) return false;
+  // Recorrido lineal (sin regex con repeticiones sobre texto libre): la pregunta empieza tras el ultimo separador de oracion anterior al «?».
+  let ini = fin;
+  while (ini > 0 && !".!?¿\n".includes(texto.charAt(ini - 1))) ini -= 1;
+  const ultima = normalizar(texto.slice(ini, fin));
   if (/\b(agregar|agregarle|algo mas|alguna otra|otra cosa|a nombre de|su nombre|cual es su nombre)\b/.test(ultima)) return false;
   return /\b(es correcto|esta correcto|correcto|esta bien|todo bien|asi esta bien|confirm\w*|procedo|lo registro|lo mando)\b/.test(ultima);
 }
