@@ -57,6 +57,7 @@ import {
   OrderFlowViolationError,
   rechazaElResumen,
   resumenMostradoEnHistorial,
+  resumenVistoPorElCliente,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -1155,6 +1156,17 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (existente) return { result: { order: orderToWire(existente), ya_registrado: true }, raw: existente, orderId: existente.id, propertyId: existente.propertyId, yaRegistrado: true };
     }
     const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
+    // QA-PM-R10 §6: con historial de WhatsApp, el cliente tiene que haber VISTO el resumen (y su ultimo mensaje no puede ser solo el pago o la propina). Sin historial (voz) no aplica.
+    // Salida contra el deadlock: el primer rechazo guarda el turno; en un turno POSTERIOR ya no se rechaza aunque la heuristica de texto siga dando falso negativo.
+    if (snap.state === "confirmado" && flow.turn !== null && resumenVistoPorElCliente(current.quotedTotal, ctx.conversacionReciente) === false) {
+      if (current.resumenRechazadoTurn === undefined || current.resumenRechazadoTurn === flow.turn) {
+        if (current.resumenRechazadoTurn === undefined) await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, resumenRechazadoTurn: flow.turn });
+        throw new OrderFlowViolationError(
+          "resumen_no_mostrado",
+          "El cliente todavía no ha visto el resumen final con el total, o su último mensaje es solo el pago o la propina (eso NO es el sí). NO se creó el pedido. Muéstrele ahora el resumen completo en lista (renglones, total a pagar, forma de pago) y pregúntele si confirma; espere su sí en el mensaje siguiente y entonces llame crear_pedido.",
+        );
+      }
+    }
     const claimCtx: OrderFlowContext = { ...current, claimedAtMs: flowNow(flow) };
     const res = await writeFlow(repo, ctx, flow, snap.version, "creando", claimCtx);
     if (res === "written") claimed = { version: snap.version + 1, context: claimCtx };

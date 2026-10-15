@@ -73,6 +73,9 @@ export interface OrderFlowContext {
   /** Id del ultimo pedido creado en la sesion: un pedido identico dentro de la ventana de deduplicacion devuelve ESE id y se marca `ya_registrado`. */
   readonly sessionUltimoPedidoId?: string;
   readonly confirmedAtMs?: number;
+  /** Turno del cliente en que `crear_pedido` fue rechazado por `resumen_no_mostrado`. Salida contra el deadlock: si la heuristica de texto da un falso negativo, el SIGUIENTE turno
+   * (distinto de este) ya no se rechaza por esa causa, de modo que el cierre se retrasa a lo mucho un turno y nunca se queda trabado. */
+  readonly resumenRechazadoTurn?: string;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
 }
@@ -111,6 +114,7 @@ export type OrderFlowViolationCode =
   | "pedido_distinto_al_cotizado"
   | "confirmacion_mismo_turno"
   | "cliente_rechazo_resumen"
+  | "resumen_no_mostrado"
   | "hash_no_coincide"
   | "pedido_ya_creado"
   | "pedido_en_proceso"
@@ -442,6 +446,35 @@ export function resumenMostradoEnHistorial(
   const vars = variantesDeTotal(quotedTotal).map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const re = new RegExp(`(?<![\\d.,])(?:${vars.join("|")})(?!\\d|[.,]\\d)`);
   return historial.some((m) => m.role === "assistant" && re.test(m.content));
+}
+
+/**
+ * QA-PM-R10 §6: el ultimo mensaje del cliente es solo una respuesta de PAGO o PROPINA («con 600», «$600», «efectivo», «tarjeta», «sin propina», «no gracias», «propina de 20»).
+ * Esa respuesta NO es el «si» al resumen: el pedido no puede crearse en ese turno. Conservador: el mensaje completo debe ser eso (un «si, con 600» no cuenta).
+ */
+export function esRespuestaDePagoOPropina(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string") return false;
+  const t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[!¡?]+/g, " ").replace(/[.,;:]+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return false;
+  const monto = "\\$?\\s*\\d[\\d,.]*\\s*(?:pesos|mxn|varos)?";
+  return new RegExp(
+    `^(?:(?:pago\\s+)?(?:con|de)\\s+(?:un\\s+)?(?:billete\\s+de\\s+)?${monto}|${monto}|(?:pago\\s+)?(?:en\\s+|con\\s+)?(?:efectivo|tarjeta|cash)|(?:sin|no)\\s+propina|no\\s+gracias|(?:(?:le\\s+)?(?:dejo|doy|pon(?:le)?)\\s+)?(?:de\\s+)?propina(?:\\s+de)?\\s*(?:${monto})?|(?:dejo|doy|pon(?:le)?)\\s+${monto}\\s+de\\s+propina|(?:de\\s+)?propina\\s+${monto})$`,
+  ).test(t);
+}
+
+/**
+ * Lo que decide la guarda de `crear_pedido`: `true` = el cliente VIO el resumen y su ultimo mensaje puede ser el «si»; `false` = no (el total no aparece en ningun mensaje del asistente, o el ultimo
+ * mensaje del cliente es solo pago/propina); `undefined` = sin historial (voz, pruebas): el llamador conserva el comportamiento anterior.
+ */
+export function resumenVistoPorElCliente(
+  quotedTotal: number | undefined,
+  historial: readonly { readonly role: string; readonly content: string }[] | undefined,
+): boolean | undefined {
+  const mostrado = resumenMostradoEnHistorial(quotedTotal, historial);
+  if (mostrado === undefined) return undefined;
+  const ultimoDelCliente = [...(historial ?? [])].reverse().find((m) => m.role === "user")?.content;
+  if (esRespuestaDePagoOPropina(ultimoDelCliente)) return false;
+  return mostrado;
 }
 
 const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
