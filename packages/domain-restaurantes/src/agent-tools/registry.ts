@@ -35,7 +35,7 @@ import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coor
 import { kmAproxTexto } from "../nearest-branch.ts";
 import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
-import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
+import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
@@ -608,6 +608,41 @@ export function orderToWire(order: Order) {
     status: order.status,
     payment_method: order.paymentMethod,
     items: order.items,
+  };
+}
+
+const UBICACION_IMPLAUSIBLE_MENSAJE =
+  "La ubicación recibida no parece estar en la zona de las sucursales (probablemente llegó mal formada). NO diga a qué sucursal corresponde, NO diga distancias, NO escale a una persona por esto y NO repita esas coordenadas: " +
+  "dígale al cliente, con amabilidad, que no pudo recibir bien su ubicación y pídale que la comparta de nuevo o que le diga su colonia y calle; después vuelva a llamar buscar_sucursal_cercana con la colonia. Si no puede, ofrezca recoger en sucursal.";
+
+const PIN_ANTES_DE_CREAR_MENSAJE =
+  "El cliente describió su casa solo con referencias visuales (sin número ni cruzamientos) y todavía no hay pin de ubicación. Antes de registrar, pídale UNA vez que comparta su ubicación de WhatsApp (botón o clip) o un enlace de Google Maps, " +
+  "para que el repartidor llegue directo; guarde la referencia visual en referencias_acceso. Si responde que no puede o no quiere, vuelva a llamar crear_pedido con los mismos datos y se registra sin pin. No escale por esto.";
+
+/** La sucursal asignada al domicilio cuando NO es la de este chat (`entryPropertyId`); `null` si coincide o no hay sucursal de entrada. */
+async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string, confirmada = true): Promise<Record<string, unknown> | null> {
+  if (!ctx.entryPropertyId) return null;
+  const asignada = await repo.findBranch(organizationId, { slug: branchSlug });
+  if (!asignada || asignada.propertyId === ctx.entryPropertyId) return null;
+  const delChat = await repo.findBranchById(organizationId, ctx.entryPropertyId);
+  const tel = asignada.phone ? ` (${asignada.phone})` : "";
+  if (!confirmada) {
+    return {
+      branch_slug: asignada.slug,
+      branch_name: asignada.name,
+      ...(asignada.phone ? { telefono: asignada.phone } : {}),
+      aviso: `La referencia (NO confirmada) apunta a ${asignada.name}${tel}, que no es la sucursal de este chat. No diga que entregan ni que le toca esa sucursal; ofrezca recoger en la sucursal de este chat y, si insiste en domicilio, escale UNA vez (zona_ambigua).`,
+    };
+  }
+  return {
+    branch_slug: asignada.slug,
+    branch_name: asignada.name,
+    ...(asignada.phone ? { telefono: asignada.phone } : {}),
+    ...(delChat ? { chat_de: delChat.name } : {}),
+    aviso:
+      `Este chat es de ${delChat?.name ?? "otra sucursal"}, pero ese domicilio lo atiende ${asignada.name}${tel}. NO tome el pedido a domicilio desde este chat y NO conteste «sí, entregamos» ni «sí, desde aquí»: ` +
+      `dígale con calidez que su zona la atiende ${asignada.name}, dele ${asignada.phone ? `el teléfono ${asignada.phone}` : "el teléfono de esa sucursal (lista de DATOS DEL NEGOCIO)"} y conteste lo que preguntó (precio o tiempo). ` +
+      `Ofrezca recoger en ${delChat?.name ?? "la sucursal de este chat"}. Si insiste una primera vez, mantenga la postura (las zonas de reparto son fijas) y ofrezca recoger otra vez; si insiste de nuevo, escale UNA vez con motivo zona_ambigua (el cliente insiste en otra sucursal para domicilio). No escale antes de eso.`,
   };
 }
 
@@ -1323,11 +1358,16 @@ async function dispatchTool(
         });
         if (porPin.estado === "asignada" && porPin.branchSlug !== match.branchSlug) conflictoPin = { slug: porPin.branchSlug, nombre: porPin.branchName };
       }
+      // H17 (QA-PM-R8 G5/T7-026/T7-049..051): si la sucursal que le toca al domicilio NO es la de este chat, el servidor lo dice con nombre y telefono para que el modelo no conteste
+      // «si, entregamos» desde la sucursal equivocada ni omita el telefono.
+      const otraSucursal = match.estado === "asignada" ? await sucursalDeOtroChat(repo, ctx, organizationId, match.branchSlug) : null;
+      const otraReferencia = match.estado === "sugerida" && match.sugerida ? await sucursalDeOtroChat(repo, ctx, organizationId, match.sugerida.slug, false) : null;
       const result =
         match.estado === "asignada"
           ? {
               encontrada: true,
               estado: match.estado,
+              ...(otraSucursal ? { atiende_otra_sucursal: otraSucursal } : {}),
               ...(conflictoPin
                 ? {
                     pin_y_colonia_difieren: {
@@ -1350,6 +1390,10 @@ async function dispatchTool(
               ...(match.alternativa ? { alternativa: { branch_slug: match.alternativa.slug, branch_name: match.alternativa.nombre, distancia_texto: match.alternativa.kmAprox === null ? null : kmAproxTexto(match.alternativa.kmAprox) } } : {}),
               mensaje: match.message,
             }
+          : match.estado === "fuera_de_zona" && match.ubicacionImplausible
+            ? // QA-PM-R8 T7-002: pin a mas de 150 km de toda sucursal (coordenada mal formada o de otra ciudad). Sigue siendo `fuera_de_zona` y no se asigna, pero NO se nombra sucursal ni
+              // distancia (el agente escalaba «por 2,922 km») y se le dice como pedir la ubicacion de nuevo.
+              { encontrada: false, estado: match.estado, reparto: "ubicacion_implausible", ubicacion_sospechosa: true, mensaje: UBICACION_IMPLAUSIBLE_MENSAJE }
           : match.estado === "fuera_de_zona"
             ? {
                 encontrada: false,
@@ -1379,6 +1423,7 @@ async function dispatchTool(
                   segunda_opcion: match.segunda ? { branch_slug: match.segunda.slug, branch_name: match.segunda.nombre } : null,
                   ambigua: match.ambigua,
                   ubicacion_recibida: match.conUbicacion,
+                  ...(otraReferencia ? { referencia_otra_sucursal: otraReferencia } : {}),
                   mensaje: match.message,
                 }
               : { encontrada: false, estado: match.estado, mensaje: match.message };
@@ -1478,9 +1523,11 @@ async function dispatchTool(
       // Las basicas (comanda con «Básicas»/«Pedidas») son del perfil `taqueria_pm`, no de todo agente: con otro perfil o sin configuracion
       // (base sin migrar) se conservan las 9 incluidas de siempre.
       let mapped = mappedBase;
+      let esPerfilPm = false;
       if (mappedBase.basicComplements) {
         const config = await repo.findWhatsAppAgentConfig(ctx.organizationId, ctx.entryPropertyId ?? ctx.lockedPropertyId ?? null);
-        if (config?.perfil !== "taqueria_pm") mapped = { ...mappedBase, basicComplements: undefined };
+        esPerfilPm = config?.perfil === "taqueria_pm";
+        if (!esPerfilPm) mapped = { ...mappedBase, basicComplements: undefined };
       }
       // QA R2 features-07: el codigo de compensacion emitido a ESTE telefono se aplica solo (el modelo no lo dicta; ver `compensacionPendiente`).
       if (!mapped.promoCode) {
@@ -1494,6 +1541,10 @@ async function dispatchTool(
         if (createInput.branchSlug) await assertRecogerEnSucursalDeEntrada(repo, ctx, createInput.branchSlug, createInput.canal);
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
+      }
+      // QA-PM-R8 T7-014: domicilio de PM con una casa descrita por referencias visuales y SIN pin ni enlace de Maps: se pide el pin una vez antes de registrar (ver `requierePinAntesDeCrear`).
+      if (esPerfilPm && ctx.channel === "whatsapp" && (createInput.canal ?? "domicilio") === "domicilio" && !ctx.sharedLocation && !ctx.ubicacionEntrega && !createInput.mapsUrl && requierePinAntesDeCrear(ctx.conversacionReciente, createInput.customerAddress)) {
+        throw new OrderValidationError(PIN_ANTES_DE_CREAR_MENSAJE);
       }
       if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices);
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
