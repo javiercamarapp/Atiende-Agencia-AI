@@ -250,7 +250,6 @@ export function variantesMasPermisivas(tokens: unknown): VarianteDeBusqueda[] {
 
 /** Raiz tosca para comparar «frijol/frijoles/frijole», «taco/tacos»: solo sirve para igualar conjuntos de palabras, no para buscar. */
 const raiz = (w: string) => w.replace(/(?:es|s|e)$/, "");
-const MARCAS_DE_VERSION_BASE = new Set(["normal", "regular", "sencilla", "sencillo"]);
 
 /**
  * Aplica las restas «sin X» a los productos que hallo una variante relajada. La resta es un AJUSTE al platillo, asi que NUNCA se devuelve un producto que lleva X en su
@@ -267,17 +266,18 @@ export function aplicarRestas<T extends { readonly name: string }>(
   const consulta = new Set(tokens.filter(esContenido).map(raiz));
   const info = candidatos.map((p) => {
     const nombre = sinAcentos(p.name);
-    const palabras = nombre.split(/[^a-z0-9.]+/).filter(Boolean);
-    const conSin = /\bsin\b/.test(nombre);
+    // Versiones «sin ...» / cero / light / 0.0 del menu: otro producto (Sprite Cero, Heineken 0.0), nunca lo que el cliente pidio con una resta ajena a ellas.
+    const conSin = /\bsin\b/.test(nombre) || (!tokens.some((t) => /^(?:cero|zero|light)$/.test(t)) && (/\b(?:cero|zero|light)\b/.test(nombre) || /(?<![\d.])0[.,]0(?!\d)/.test(nombre)));
     const conX = restados.some((x) => nombre.includes(x));
-    const comoPalabra = restados.some((x) => palabras.includes(x));
-    const nucleo = new Set([...palabrasNucleo(p.name)].filter((w) => !restados.includes(w) && !MARCAS_DE_VERSION_BASE.has(w)).map(raiz));
+    // El platillo es «<palabra> con X» (Frijol con Tostada): X es un acompanante que se quita. «Nachos de Pastor» NO lo es: ahi X es el platillo mismo.
+    const conConX = restados.some((x) => new RegExp(`\\bcon\\s+${x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(nombre));
+    const nucleo = new Set([...palabrasNucleo(p.name)].filter((w) => !restados.includes(w)).map(raiz));
     const equivalente = nucleo.size === consulta.size && [...nucleo].every((w) => consulta.has(w));
-    return { p, conSin, conX, comoPalabra, equivalente };
+    return { p, conSin, conX, conConX, equivalente };
   });
   const limpios = info.filter((i) => !i.conX && !i.conSin);
   if (limpios.some((i) => i.equivalente)) return { productos: limpios.map((i) => i.p), ambiguo: false };
-  const exentos = info.filter((i) => i.comoPalabra && !i.conSin && i.equivalente && consulta.size === 1);
+  const exentos = info.filter((i) => i.conConX && !i.conSin && i.equivalente && consulta.size === 1);
   if (exentos.length > 0) return { productos: exentos.map((i) => i.p), ambiguo: true };
   return { productos: limpios.map((i) => i.p), ambiguo: false };
 }
