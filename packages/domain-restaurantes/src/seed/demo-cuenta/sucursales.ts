@@ -171,7 +171,7 @@ export const COLONIAS: readonly ColoniaDef[] = [
   c("Colonia del Valle Monterrey", ["MTY1"], 6.3),
   c("Chepevera", ["MTY1"], 1.7),
   c("Contry", ["MTY1", "MTY2"], 3.8),
-  c("Tecnológico", ["MTY1"], 4.4),
+  c("Tecnológico de Monterrey", ["MTY1"], 4.4),
   c("Linda Vista", ["MTY1"], 5.2),
   c("Roma Monterrey", ["MTY1"], 2.2),
   c("Vista Hermosa", ["MTY1"], 3.6),
@@ -261,6 +261,6 @@ export const COLONIAS: readonly ColoniaDef[] = [
   c("Playas de Tijuana", ["TIJ1"], 6.4),
   c("Otay Constituyentes", ["TIJ1"], 5.8),
   c("Lomas Taurinas Tijuana", ["TIJ1"], 4.7),
-  c("Villa Fontana", ["TIJ1"], 5.5),
+  c("Villa Fontana Tijuana", ["TIJ1"], 5.5),
   c("Altamira Tijuana", ["TIJ1"], 3.3),
 ];

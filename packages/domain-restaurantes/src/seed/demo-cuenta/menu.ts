@@ -5,7 +5,6 @@ import type { ProductoDef, SucursalId } from "./tipos.ts";
 // ciudad (`factorPrecio`) salvo los productos con `precios` propios. NADA se copia de Los Taquitos de PM: los nombres, precios y salsas son inventados
 // para este estilo regional (lo vigila `tests/demo-cuenta-originalidad.spec.ts`).
 
-const MTY1: SucursalId = "MTY1";
 const MTY2: SucursalId = "MTY2";
 const GDL1: SucursalId = "GDL1";
 const CDMX1: SucursalId = "CDMX1";

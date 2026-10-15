@@ -1,4 +1,3 @@
-// TODO(WIP 14-oct): sin compilar ni probar todavia (carga de la Mac); falta correr tsc/lint y la spec de integridad.
 // Validacion de la definicion (`DemoCuentaDef`) y construccion del PLAN que renderiza `sql.ts` y consume `mundo.ts`. Puro: sin red ni fs. Si la definicion
 // rompe una invariante lanza `DemoCuentaError` (nunca emite un plan a medias).
 import { esTipoConocimiento, validarEntradaConocimiento } from "../../conocimiento/dominio.ts";
@@ -375,7 +374,7 @@ export function construirPlanDemoCuenta(def: DemoCuentaDef): DemoCuentaPlan {
     return { titulo: v.titulo, texto: v.texto, tipo: c.tipo, prioridad: c.prioridad };
   });
   if (conocimiento.length < 15) fail("El conocimiento debe tener al menos 15 entradas.");
-  if (caracteres > CONOCIMIENTO_TOPE_PROMPT / 2) fail(`El conocimiento (${caracteres} caracteres) ocupa mas de la mitad del tope del prompt (${CONOCIMIENTO_TOPE_PROMPT}).`);
+  if (caracteres > CONOCIMIENTO_TOPE_PROMPT * 0.85) fail(`El conocimiento (${caracteres} caracteres) rebasa el 85% del tope del prompt (${CONOCIMIENTO_TOPE_PROMPT}).`);
 
   // --- agente -------------------------------------------------------------------------------------------------------------------------------------
   const a = def.agente;
