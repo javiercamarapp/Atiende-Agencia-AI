@@ -31,7 +31,7 @@
     "demo:pm": "node scripts/seed-pm-demo/demo-pm.mjs",
     "demo:verificar": "node --experimental-strip-types scripts/seed-pm-demo/verificar-demo.ts",
     "demo:cuenta": "vite-node scripts/seed-demo-cuenta/seed-demo-cuenta.ts --",
-    "demo:seed":"node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts --demo",
+    "demo:seed": "node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts --demo",
     "demo:volumen": "node scripts/seed-pm-demo/ejecutar.mjs seed-volumen",
     "demo:limpiar": "node --experimental-strip-types scripts/seed-pm-demo/limpiar-demo.ts",
     "verify:bundle-budget": "node --experimental-strip-types scripts/verify-bundle-budget/check-bundle-budget.ts",

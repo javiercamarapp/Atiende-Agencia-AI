@@ -202,7 +202,7 @@ describe("sql: idempotencia e inocuidad", () => {
   it("no crea usuarios, membresias ni credenciales, no habilita la voz y no toca la demo vieja", () => {
     expect(cuerpo).not.toMatch(/staff_user|membership|auth\./i);
     expect(cuerpo).not.toMatch(/drop |truncate |alter /i);
-    expect(cuerpo).toMatch(/habilitado\)\s+select p\.id, v_org, false/);
+    expect(cuerpo).toMatch(/habilitado, voice_id\)\s+select p\.id, v_org, false, 'Kore'/);
     expect(cuerpo).not.toContain(SLUG_DEMO_VIEJA);
     expect(cuerpo).not.toMatch(/Taquer[ií]a Demo/i);
   });

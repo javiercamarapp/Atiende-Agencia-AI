@@ -163,9 +163,9 @@ begin
       visible_en_directorio = excluded.visible_en_directorio, acepta_domicilio = excluded.acepta_domicilio,
       dias_domicilio = excluded.dias_domicilio, de_temporada = excluded.de_temporada, updated_at = now();
 
-  -- 8) voz DESHABILITADA (sin gasto de proveedores): re-ejecutar no la habilita ni la vuelve a deshabilitar. Sin voice_id ni prompt: es dato de operador.
-  insert into restaurantes.branch_voice_config (property_id, organization_id, habilitado)
-    select p.id, v_org, false
+  -- 8) voz DESHABILITADA (sin gasto de proveedores): re-ejecutar no la habilita ni la vuelve a deshabilitar. voice_id es NOT NULL sin default (migracion 025): va la voz por defecto del catalogo; el prompt y el saludo los pone el operador.
+  insert into restaurantes.branch_voice_config (property_id, organization_id, habilitado, voice_id)
+    select p.id, v_org, false, 'Kore'
     from jsonb_to_recordset(v->'branches') as b(name text)
     join core.property p on p.organization_id = v_org and p.name = b.name
     on conflict (property_id) do nothing;
