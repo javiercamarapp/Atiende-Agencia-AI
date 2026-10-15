@@ -445,6 +445,18 @@ function comparableProductName(value: string): string {
   return value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("es-MX");
 }
 
+/**
+ * ¿El nombre pedido es el del producto, o el del producto seguido de su presentación/gramaje
+ * («Bistec de Res — 250 g»)? Exige el separador « — » o « - » justo tras el nombre completo:
+ * un nombre que apenas COMIENZA igual («Bistec de Res Premium») es OTRO producto y no coincide.
+ */
+function requestedNameMatchesProduct(productName: string, requestedName: string): boolean {
+  const product = comparableProductName(productName);
+  const requested = comparableProductName(requestedName);
+  if (requested === product) return true;
+  return requested.startsWith(`${product} — `) || requested.startsWith(`${product} - `);
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export { UUID_PATTERN };
 
@@ -470,9 +482,9 @@ export function resolveOrderItemsAgainstProducts<T extends { productId?: string;
       ? products.find((product) => comparableProductName(product.name) === comparableProductName(requestedName))
       : undefined;
 
-    if (byId && requestedName && comparableProductName(byId.name) !== comparableProductName(requestedName)) {
+    if (byId && requestedName && !requestedNameMatchesProduct(byId.name, requestedName)) {
       throw new OrderValidationError(
-        `El identificador y el nombre del producto no coinciden: ${requestedName}. Vuelve a usar exactamente el resultado de buscar_producto.`,
+        `El identificador y el nombre del producto no coinciden: «${requestedName}» no es «${byId.name}». Reintenta con productName exactamente «${byId.name}» (la presentación o el gramaje no van en el nombre) o corrige el productId.`,
       );
     }
     const product = byId ?? byName;
