@@ -126,9 +126,28 @@ export function singularizar(palabra: string): string {
   return palabra.slice(0, -1);
 }
 
+/** Cortesias de cierre ("por favor", "gracias"): nunca son parte del nombre de un platillo, pero como token obligatorio vaciaban la busqueda ("nachos sin pastor, por favor"). */
+const CORTESIAS = /\b(?:por\s*favor|porfavor|porfa|plis|please|muchas\s+gracias|gracias|grax)\b/g;
+/** Unidades que NO convierten al numero que las precede en una cantidad ("600 ml", "2 litros"). */
+const UNIDADES_TRAS_NUMERO = new Set(["ml", "l", "lt", "lts", "litro", "litros", "g", "gr", "kg", "kilo", "kilos", "gramos", "oz", "pesos", "porciento"]);
+
+/**
+ * Puntuacion pegada a las palabras ("pastor.", "pastor!", "pastor?", "pastor...", "pastor)", "pastor/queso", "pastor," ...) se vuelve espacio ANTES de tokenizar, para que
+ * el token restado de un "sin X" sea la palabra limpia («pastor») y no «pastor.». Se conservan los decimales ("1.5", "0.0", ".250") y las fracciones ("1/2", "1/4").
+ */
+export function limpiarPuntuacionDeConsulta(textoSinAcentos: string): string {
+  return textoSinAcentos
+    .replace(/[¡!¿?;:"'`´“”‘’«»()\[\]{}*_~#]/g, " ")
+    .replace(/[.,](?!\d)/g, " ")
+    // "sin pastor/queso" = sin pastor NI queso; en cualquier otro lugar "pastor/queso" son dos palabras sueltas.
+    .replace(/\bsin\s+[a-z]+(?:\/[a-z]+)+/g, (m) => m.replace(/\//g, " ni "))
+    .replace(/(?<=[a-z])\/|\/(?=[a-z])/g, " ")
+    .replace(CORTESIAS, " ");
+}
+
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
-    normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero\s+alcohol\b/g, "0.0"),
+    normalizarUnidadesDeKilo(limpiarPuntuacionDeConsulta(sinAcentos(query))).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero\s+alcohol\b/g, "0.0"),
   )
     .replace(FRASE_SIN_ALCOHOL, " sinalcohol ")
     // "cerveza con alcohol": "alcohol" no es parte del nombre de ningun producto pedido y casaria con los "sin Alcohol" (el contrario de lo pedido).
@@ -147,6 +166,9 @@ export function tokenizeForProductSearch(query: string): string[] {
     .split(/\s+/)
     .map((t) => (conSinAlcohol && /^cervezas?$/.test(t) ? "cerveza" : conSinAlcohol && /^coctel(?:es)?$/.test(t) ? "cocktail" : t))
     .filter((t) => t.length > 1 && (t === "cerveza" ? conSinAlcohol : t === "cocktail" || !STOPWORDS_BUSQUEDA.has(t)));
+  // Cantidad numerica de 2 digitos (10-99) al inicio ("12 nachos sin pastor", "10 tacos de pastor"): igual que "dos" o un digito, es la cantidad y no parte del nombre. Los de 3 digitos (100, 250, 500, 750...) se dejan: son gramos del menu.
+  // Solo si va primero, la sigue una palabra del platillo (no una unidad como "600 ml") y no es el unico contenido.
+  if (raw.length > 1 && /^[1-9]\d$/.test(raw[0]!) && !/^peso:|^\d/.test(raw[1]!) && !UNIDADES_TRAS_NUMERO.has(raw[1]!)) raw.shift();
   // "una cerveza", "dos cervezas": todas las palabras eran articulo/cantidad/categoria y la busqueda quedaba con la frase entera (vacia). La categoria
   // "cerveza" SI identifica lo pedido (casa con la categoria Cervezas), asi que se conserva cuando es lo unico que dice el cliente.
   if (raw.length === 0 && /\bcervezas?\b/.test(normalizada)) raw.push("cerveza");
@@ -199,9 +221,11 @@ function quitarRestas(tokens: readonly string[]): { readonly tokens: string[]; r
       continue;
     }
     i++;
-    if (tokens[i] !== undefined) restados.push(tokens[i]!);
+    // Defensa en profundidad: aunque el tokenizador ya quita la puntuacion, el token restado se compara por `includes` contra el nombre, asi que va limpio.
+    const limpio = (t: string) => t.replace(/[^a-z0-9]/g, "");
+    if (tokens[i] !== undefined && limpio(tokens[i]!)) restados.push(limpio(tokens[i]!));
     while (tokens[i + 1] === "ni" && tokens[i + 2] !== undefined) {
-      restados.push(tokens[i + 2]!);
+      if (limpio(tokens[i + 2]!)) restados.push(limpio(tokens[i + 2]!));
       i += 2;
     }
   }
