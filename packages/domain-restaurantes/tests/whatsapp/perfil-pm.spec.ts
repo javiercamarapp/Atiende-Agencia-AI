@@ -272,7 +272,8 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
     expect(p).toMatch(/consultar_sucursal \(abierto_ahora, cierra_a, horario\)/);
     expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes de esa hora/);
-    expect(p).toMatch(/no tome el pedido ni lo deje programado para la apertura/);
+    expect(p).not.toMatch(/no tome el pedido ni lo deje programado/);
+    expect(p).toMatch(/TOME el pedido y PROGRÁMELO/);
     expect(p).toMatch(/Horario: no lo afirme de memoria: lo da consultar_sucursal/);
   });
 
