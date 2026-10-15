@@ -184,9 +184,9 @@ describe("R8 (revision): las restas nunca devuelven el contrario, ni con existen
     expect(await sinProducto(["Coca-Cola sin Azúcar"], "refresco sin azucar")).toEqual([]);
     expect((await sinProducto([], "coca sin azucar"))[0]).toMatchObject({ name: "Coca-Cola sin Azúcar" });
   });
-  it("«coca sin hielo» no cambia a Coca-Cola sin Azucar: trae Coca-Cola y la Light, marcado ambiguo", async () => {
+  it("«coca sin hielo» no cambia a Coca-Cola sin Azucar: trae solo la Coca-Cola normal (ni la sin Azucar ni la Light), marcado ambiguo", async () => {
     const r = await sinProducto([], "coca sin hielo");
-    expect(r.map((x) => x.name)).toEqual(["Coca-Cola", "Coca-Cola Light"]);
+    expect(r.map((x) => x.name)).toEqual(["Coca-Cola"]);
     expect(r.every((x) => x.ambiguo)).toBe(true);
   });
   it("T7-064 (plural y singular): «frijoles sin tostadas» y «frijol sin tostada» dan el Frijol con Tostada primero, ambiguo; con el Frijol agotado NO se cobran los Charros de $123", async () => {
@@ -225,5 +225,31 @@ describe("R8 (revision): las restas nunca devuelven el contrario, ni con existen
     expect(await nombres("ito sin queso")).toEqual([]);
     expect(await nombres("en sin queso")).toEqual([]);
     expect(await nombres("pollo en sin queso")).toEqual([]);
+  });
+  it("la excepcion «Frijol con Tostada» exige el «con X» del nombre: quitar el platillo mismo («nachos sin pastor») NUNCA devuelve ese platillo", async () => {
+    const filas: Array<[string, string]> = [
+      ["nachos sin pastor", "pastor"], ["tacos sin pastor", "pastor"], ["gringa sin pastor", "pastor"], ["papa sin pastor", "pastor"], ["papa sin bistec", "bistec"],
+      ["quesadilla sin chorizo", "chorizo"], ["mestiza sin bistec", "bistec"], ["alambre sin pastor", "pastor"], ["flauta sin pastor", "pastor"], ["flautas sin pastor", "pastor"],
+      ["suizo sin pastor", "pastor"], ["chetaco sin pastor", "pastor"], ["platillo sin pastor", "pastor"], ["quesobich sin pastor", "pastor"], ["fajitas sin bistec", "bistec"],
+    ];
+    for (const [q, palabra] of filas) {
+      const r = await nombres(q);
+      expect(r.filter((n) => n.toLowerCase().normalize("NFD").includes(palabra)), q).toEqual([]);
+    }
+    const quesadilla = await nombres("quesadilla sin chorizo");
+    expect(quesadilla.length).toBeGreaterThan(0);
+    expect(quesadilla[0]).toMatch(/natural/i);
+  });
+  it("un resultado relajado SOLO por nota con varios productos va ambiguo («flautas doradas»: las 7 flautas)", async () => {
+    const r = await buscar("flautas doradas");
+    expect(r.length).toBeGreaterThan(1);
+    expect(r.every((p) => (p as { ambiguo?: boolean }).ambiguo === true)).toBe(true);
+  });
+  it("las versiones cero / light / 0.0 no se cuelan en una resta ajena: «sprite sin hielo» sin Sprite Cero, «heineken sin hielo» sin la 0.0; si lo pide, si", async () => {
+    expect(await nombres("sprite sin hielo")).toEqual(["Sprite"]);
+    const heineken = await nombres("heineken sin hielo");
+    expect(heineken.length).toBeGreaterThan(0);
+    expect(heineken.some((n) => /0[.,]0|cero/i.test(n))).toBe(false);
+    expect((await nombres("sprite cero"))[0]).toBe("Sprite Cero");
   });
 });
