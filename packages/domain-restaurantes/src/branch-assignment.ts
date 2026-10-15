@@ -58,9 +58,9 @@ export function radioRepartoDelPerfil(perfil: PerfilAgenteWhatsApp, configuradoK
 
 /**
  * Un pin a mas de esta distancia de TODA sucursal no es un domicilio «fuera de zona» al que se le pueda ofrecer recoger: es una coordenada mal formada (un signo, un digito de mas:
- * QA-PM-R8 T7-002, «2,922 km») o un pin de otra ciudad. `fuera_de_zona` lo marca `ubicacionImplausible` y `buscar_sucursal_cercana` no nombra sucursal ni distancia. 150 km deja de sobra el area metropolitana.
+ * QA-PM-R8 T7-002, «2,922 km») o un pin de otra ciudad. `fuera_de_zona` lo marca `ubicacionImplausible` y `buscar_sucursal_cercana` no nombra sucursal ni distancia. 1000 km deja como domicilios reales Valladolid, Campeche o Cancun y atrapa el error de T7-002 (2,923 km).
  */
-export const UBICACION_IMPLAUSIBLE_KM = 150;
+export const UBICACION_IMPLAUSIBLE_KM = 1000;
 
 export const FUERA_DE_ZONA_MENSAJE = "Ese domicilio queda fuera de la zona de reparto: no se envía. Ofrezca recoger en sucursal.";
 

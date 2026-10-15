@@ -166,21 +166,25 @@ export function validarTextoHoraRecogida(valor: unknown): void {
   if (!/(Z|[+-]\d{2}:?\d{2})$/.test(valor)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
 }
 
-/** Nombres que el modelo pone cuando el cliente NO dio uno ("Cliente", "Sin nombre"...). Se comparan sin acentos, en minusculas y sin signos. */
-const NOMBRES_GENERICOS = new Set(["cliente", "cliente whatsapp", "cliente nuevo", "cliente sin nombre", "sin nombre", "nombre", "anonimo", "desconocido", "na", "no proporcionado", "no dio nombre", "no especificado", "pendiente", "por confirmar", "usuario", "whatsapp"]);
-/** Caracteres de codigo/marcado que un nombre de persona no lleva (HTML, SQL, plantillas): QA-PM-R8 A38. */
-const NOMBRE_CON_CODIGO = /[<>{}[\]`;\\=]|--|\/\*|\$\(/;
+/** Nombres que el modelo pone cuando el cliente NO dio uno. Se comparan sin acentos, en minusculas y sin signos ni digitos finales. */
+const NOMBRES_GENERICOS = new Set([
+  "cliente", "cliente whatsapp", "cliente de whatsapp", "cliente nuevo", "cliente sin nombre", "cliente frecuente", "el cliente", "nombre del cliente", "nombre", "sin nombre",
+  "contacto de whatsapp", "contacto whatsapp", "contacto", "anonimo", "desconocido", "na", "no proporcionado", "no dio nombre", "no especifico", "no especificado", "sin especificar",
+  "pendiente", "por confirmar", "usuario", "whatsapp", "senor", "senora", "amigo", "amiga",
+]);
+/** Inyeccion real (no cualquier signo): marcado HTML, comillas con palabras SQL, comentarios SQL tras comilla, plantillas y sustitucion de shell. */
+const NOMBRE_CON_CODIGO = /[<>{}`]|\$\(|['"]\s*\)?\s*;|;\s*--|\/\*|\b(?:drop|select|insert|delete|update|union|truncate|alter)\b\s+\w*\s*\b(?:table|from|into|where|all)\b|['"]\s*(?:or|and)\s+['"\d]/i;
 
 /**
  * Un pedido de un agente (WhatsApp o voz) solo se registra con el nombre que DIO el cliente: no vacio, con al menos una letra, que no sea un relleno generico
- * ("Cliente", "Sin nombre") ni lleve marcado o codigo ("<script>", "'; DROP"). QA-PM-R8 A38: el agente creo el pedido sin un nombre confirmado.
+ * ("Cliente", "Cliente 2", "Sin nombre") ni lleve marcado o inyeccion ("<script>", "'; DROP TABLE"). Corchetes, guiones o "=" de un nombre real ("María [oficina]") se aceptan. QA-PM-R8 A38.
  */
 export function nombreDeClienteUtilizable(valor: unknown): boolean {
   if (typeof valor !== "string") return false;
   const limpio = sanitizeInlineText(valor, 160);
   if (!/\p{L}/u.test(limpio)) return false;
   if (NOMBRE_CON_CODIGO.test(limpio)) return false;
-  const comparable = limpio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  const comparable = limpio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+\d+$/, "").replace(/\s+/g, " ").trim();
   return !NOMBRES_GENERICOS.has(comparable);
 }
 
