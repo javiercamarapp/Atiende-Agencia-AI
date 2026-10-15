@@ -48,15 +48,51 @@ export function esSiClaroDeConfirmacion(texto: string): boolean {
  * («¿Quiere agregar algo mas?», «¿a nombre de quien?») no convierte un «ok» del cliente en una confirmacion del pedido.
  */
 export function resumenPideConfirmacion(texto: string): boolean {
-  // Se juzga la ULTIMA pregunta del mensaje (lo que el cliente esta contestando); el aviso de privacidad del primer contacto trae palabras como «su nombre» que no cuentan.
+  const ultima = ultimaPreguntaNormalizada(texto);
+  if (ultima === null || PREGUNTA_DE_OTRA_COSA.test(ultima)) return false;
+  return /\b(es correcto|esta correcto|correcto|esta bien|todo bien|asi esta bien|confirm\w*|procedo|lo registro|lo mando)\b/.test(ultima);
+}
+
+const PREGUNTA_DE_OTRA_COSA = /\b(agregar|agregarle|algo mas|alguna otra|otra cosa|a nombre de|su nombre|cual es su nombre)\b/;
+
+/** Se juzga la ULTIMA pregunta del mensaje (lo que el cliente esta contestando); el aviso de privacidad del primer contacto trae palabras como «su nombre» que no cuentan. */
+function ultimaPreguntaNormalizada(texto: string): string | null {
   const fin = texto.lastIndexOf("?");
-  if (fin < 0) return false;
+  if (fin < 0) return null;
   // Recorrido lineal (sin regex con repeticiones sobre texto libre): la pregunta empieza tras el ultimo separador de oracion anterior al «?».
   let ini = fin;
   while (ini > 0 && !".!?¿\n".includes(texto.charAt(ini - 1))) ini -= 1;
-  const ultima = normalizar(texto.slice(ini, fin));
-  if (/\b(agregar|agregarle|algo mas|alguna otra|otra cosa|a nombre de|su nombre|cual es su nombre)\b/.test(ultima)) return false;
-  return /\b(es correcto|esta correcto|correcto|esta bien|todo bien|asi esta bien|confirm\w*|procedo|lo registro|lo mando)\b/.test(ultima);
+  return normalizar(texto.slice(ini, fin));
+}
+
+/** ¿El mensaje termina preguntando OTRA cosa («¿Quiere agregar algo mas?», «¿a nombre de quien?»)? Un «si» a eso no es una confirmacion ni un doble disparo del «si» anterior. */
+export function terminaPreguntandoOtraCosa(texto: string): boolean {
+  const ultima = ultimaPreguntaNormalizada(texto);
+  return ultima !== null && PREGUNTA_DE_OTRA_COSA.test(ultima);
+}
+
+/** Palabras que cortan el nombre en «a nombre de Ana Pech para recoger». */
+const CORTA_NOMBRE = new Set(["para", "en", "con", "y", "pago", "pagara", "paga", "total", "recoger", "recogera", "sucursal", "efectivo", "tarjeta", "es", "son", "hora", "a"]);
+
+/** Nombre que el resumen dice («Pedido a nombre de Carlos Mex», «Nombre: Carlos Mex»), o `null` si no trae ninguno. */
+export function nombreDelResumen(resumen: string): string | null {
+  const m = /(?:a nombre de|nombre\s*:)\s*([^\n.,;:?¿!()$]{1,60})/i.exec(resumen);
+  if (!m) return null;
+  const palabras: string[] = [];
+  for (const p of normalizar(m[1]!).split(" ").filter(Boolean)) {
+    if (CORTA_NOMBRE.has(p)) break;
+    palabras.push(p);
+  }
+  return palabras.length > 0 ? palabras.join(" ") : null;
+}
+
+/** ¿El nombre del resumen es el del cliente conocido? Igual, o uno contenido en el otro por palabras completas («Ana» vs «Ana Pech»). */
+export function mismoNombre(delResumen: string, conocido: string): boolean {
+  const a = normalizar(delResumen).split(" ").filter(Boolean);
+  const b = normalizar(conocido).split(" ").filter(Boolean);
+  if (a.length === 0 || b.length === 0) return false;
+  const [corto, largo] = a.length <= b.length ? [a, b] : [b, a];
+  return corto.every((p) => largo.includes(p));
 }
 
 /**
@@ -142,6 +178,8 @@ export type MotivoSinCierre =
   | "resumen_sin_total"
   | "sin_nombre"
   | "nombre_no_utilizable"
+  | "nombre_distinto"
+  | "propina_con_tarjeta"
   | "pago_no_claro"
   | "huella_no_reproducible";
 
@@ -168,6 +206,9 @@ export function planDeCierreDeterminista(e: EntradaCierre): PlanDeCierre {
   if (e.ultimoResumen === null || !textoLlevaElTotal(e.ultimoResumen, ctx.quotedTotal)) return no("resumen_sin_total");
   if (e.nombreConocido === null || e.nombreConocido.trim() === "") return no("sin_nombre");
   if (!nombreDeClienteUtilizable(e.nombreConocido)) return no("nombre_no_utilizable");
+  // El nombre es lo que busca la sucursal al entregar: si el resumen que el cliente confirmo trae OTRO nombre, el pedido del nombre conocido no es el que confirmo.
+  const nombreResumen = nombreDelResumen(e.ultimoResumen);
+  if (nombreResumen !== null && !mismoNombre(nombreResumen, e.nombreConocido)) return no("nombre_distinto");
 
   // Forma de pago: la que dice el cliente en su «si» o, si no dice, la del resumen. Dos distintas, o ninguna clara, = no se adivina.
   const delCliente = pagoDelTexto(e.mensajesDelCliente.join(" "));
@@ -176,6 +217,8 @@ export function planDeCierreDeterminista(e: EntradaCierre): PlanDeCierre {
   if (delCliente !== null && delResumen !== null && delCliente !== delResumen) return no("pago_no_claro");
   const pago = delCliente ?? delResumen;
   if (pago === null) return no("pago_no_claro");
+  // Con tarjeta la propina la pide y la guarda el modelo (porcentaje o pesos dicho por el cliente): el atajo no la reproduce y la perderia sin avisar. Si se menciona, se escala.
+  if (pago === "tarjeta" && /propina/.test(normalizar(`${e.ultimoResumen} ${e.mensajesDelCliente.join(" ")}`))) return no("propina_con_tarjeta");
 
   if (!resumenPideConfirmacion(e.ultimoResumen)) return no("resumen_no_pide_confirmacion");
   const adulto = mayoriaDeEdadDeLaCotizacion(ctx);
@@ -192,8 +235,8 @@ export function planDeCierreDeterminista(e: EntradaCierre): PlanDeCierre {
       adult_confirmed: adulto,
       items: ctx.quotedItems.map((i) => ({ product_id: i.id, product_name: i.name, requested_quantity: i.qty, ...(i.tortilla ? { tortilla: i.tortilla } : i.tortillaKilo ? { tortilla: i.tortillaKilo } : {}) })),
       ...(efectivoCon !== null && efectivoCon >= ctx.quotedTotal ? { efectivo_con: efectivoCon } : {}),
-      // Los ajustes que no entran a la huella (sin cebolla, salsas extra, indicaciones) viajan solo en el texto que el cliente vio: se dejan en la nota para la sucursal.
-      notes: `Pedido cerrado automaticamente (el asistente no alcanzo a responder a tiempo). Resumen que el cliente confirmo: ${e.ultimoResumen.replace(/\s+/g, " ").trim().slice(0, 600)}`,
+      // Los ajustes que no entran a la huella (sin cebolla, salsas extra, indicaciones) viajan solo en el texto que el cliente vio: se dejan en la nota para la sucursal. Se toma el TRAMO FINAL (el resumen va al final; al inicio puede venir el aviso de privacidad del primer contacto).
+      notes: `Pedido cerrado automaticamente (el asistente no alcanzo a responder a tiempo). Resumen que el cliente confirmo: ${e.ultimoResumen.replace(/\s+/g, " ").trim().slice(-600)}`,
     },
   };
 }

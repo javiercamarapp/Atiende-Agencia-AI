@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { banco, call, item, say } from "./r1-arnes-whatsapp-pm.ts";
 import type { Banco, Paso } from "./r1-arnes-whatsapp-pm.ts";
-import { efectivoConDelResumen, esSiClaroDeConfirmacion, pagoDelTexto, reclamoFrescoDeOtroTurno, resumenPideConfirmacion, textoLlevaElTotal } from "../../src/whatsapp/cierre-determinista.ts";
+import { efectivoConDelResumen, esSiClaroDeConfirmacion, mismoNombre, nombreDelResumen, pagoDelTexto, terminaPreguntandoOtraCosa, reclamoFrescoDeOtroTurno, resumenPideConfirmacion, textoLlevaElTotal } from "../../src/whatsapp/cierre-determinista.ts";
 import { contenidoDeMensajeConToque, idDeBoton } from "../../src/whatsapp/botones-confirmacion.ts";
 
 afterEach(() => {
@@ -302,6 +302,106 @@ describe("P1 cierre determinista: hallazgos del revisor (pedido distinto, reclam
     expect(r.reply).toMatch(/se está registrando/i);
     expect(r.escalated).toBe(false);
     expect(await pedidos(b)).toHaveLength(0);
+  });
+});
+
+describe("P1 cierre determinista: segunda ronda del revisor (propina, nombre, notas, «si» a otra pregunta)", () => {
+  it("MEDIO: tarjeta con propina en el resumen: el atajo no la reproduce, asi que no crea el pedido sin ella y escala", async () => {
+    const { b, cierre } = await conCotizacion({ tel: "+5219990000331", resumen: "Su pedido: 3 Tacos al pastor para recoger. Pago: tarjeta con 10% de propina. Total: $126.00. ¿Es correcto?" });
+    b.setGuion([lento()]);
+    const r = await b.enviar("+5219990000331", "sí");
+    expect(cierre()).toBe("no_aplica:propina_con_tarjeta");
+    expect(r.orderId ?? null).toBeNull();
+    expect(r.escalated).toBe(true);
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+
+  it("MEDIO: tarjeta y el cliente da la propina en su mensaje: ese «si» no es claro y tampoco se crea", async () => {
+    const { b, cierre } = await conCotizacion({ tel: "+5219990000332", resumen: "Su pedido: 3 Tacos al pastor para recoger. Total: $126.00. ¿Es correcto?" });
+    b.setGuion([lento()]);
+    const r = await b.enviar("+5219990000332", "sí, tarjeta y 10% de propina");
+    expect(cierre()).toBe("no_aplica:si_ambiguo");
+    expect(r.orderId ?? null).toBeNull();
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+
+  it("tarjeta SIN propina sigue cerrando (la regresion no apaga el atajo)", async () => {
+    const { b, cierre } = await conCotizacion({ tel: "+5219990000333", resumen: "Su pedido: 3 Tacos al pastor para recoger. Pago: tarjeta. Total: $126.00. ¿Es correcto?" });
+    b.setGuion([lento()]);
+    const r = await b.enviar("+5219990000333", "sí");
+    expect(cierre()).toBe("creado");
+    const [pedido] = await pedidos(b);
+    expect(pedido!.paymentMethod).toBe("tarjeta");
+    expect(r.orderId).toBeTruthy();
+  });
+
+  it("MEDIO: el resumen dice «a nombre de Carlos Mex» y el cliente conocido es Ana Pech: no se crea a nombre de Ana", async () => {
+    const { b, cierre } = await conCotizacion({ tel: "+5219990000334", resumen: "Pedido a nombre de Carlos Mex, 3 Tacos al pastor para recoger. Pago: efectivo. Total: $126.00. ¿Es correcto?" });
+    b.setGuion([lento()]);
+    const r = await b.enviar("+5219990000334", "sí");
+    expect(cierre()).toBe("no_aplica:nombre_distinto");
+    expect(r.orderId ?? null).toBeNull();
+    expect(r.escalated).toBe(true);
+    expect(await pedidos(b)).toHaveLength(0);
+  });
+
+  it("el resumen a nombre del MISMO cliente conocido si cierra", async () => {
+    const { b, cierre } = await conCotizacion({ tel: "+5219990000335", resumen: "Pedido a nombre de Ana Pech para recoger: 3 Tacos al pastor. Pago: efectivo. Total: $126.00. ¿Es correcto?" });
+    b.setGuion([lento()]);
+    const r = await b.enviar("+5219990000335", "sí");
+    expect(cierre()).toBe("creado");
+    expect(r.orderId).toBeTruthy();
+    expect((await pedidos(b))[0]!.customerName).toBe("Ana Pech");
+  });
+
+  it("BAJO: con un mensaje largo (aviso de privacidad antes del resumen) las notas conservan los ajustes del FINAL del resumen", async () => {
+    const aviso = "Aviso de privacidad: sus datos se usan solo para atender su pedido. ".repeat(10);
+    const { b } = await conCotizacion({ tel: "+5219990000336", resumen: `${aviso}\n${RESUMEN}\nSin cebolla y salsa aparte.` });
+    b.setGuion([lento()]);
+    await b.enviar("+5219990000336", "sí");
+    const [pedido] = await pedidos(b);
+    expect(pedido!.notes ?? "").toMatch(/Sin cebolla y salsa aparte/);
+    expect(pedido!.notes ?? "").toMatch(/Total: \$126/);
+  });
+
+  it("BAJO: un «si» a «¿Quiere agregar algo mas?» justo despues de crear NO recibe «ya quedo registrado» (y no duplica)", async () => {
+    const tel = "+5219990000337";
+    const { b, cierre } = await conCotizacion({ tel });
+    b.setGuion([lento()]);
+    const primero = await b.enviar(tel, "sí");
+    expect(primero.orderId).toBeTruthy();
+    b.setGuion([lento()]);
+    const mensajes = [
+      { role: "user" as const, content: "3 de pastor en maiz pa recoger" },
+      { role: "assistant" as const, content: RESUMEN },
+      { role: "user" as const, content: "sí" },
+      { role: "assistant" as const, content: "Listo, su pedido quedó registrado. ¿Quiere agregar algo más?" },
+      { role: "user" as const, content: "sí" },
+    ];
+    const r = await b.handler.handleInboundMessage({ organizationId: b.w.organizationId, phone: tel, messages: mensajes, customer: { isNew: false as const, name: "Ana Pech", orderCount: 1, addresses: [], lastOrderItems: null, frequentItems: [], tier: null, agentNotes: [] }, propertyId: b.t7 });
+    expect(cierre()).toBe("no_aplica:si_a_otra_pregunta");
+    expect(r.reply).not.toMatch(/ya quedó registrado y no se duplicó/i);
+    expect(await pedidos(b)).toHaveLength(1);
+  });
+});
+
+describe("cierre determinista: nombre del resumen (puras)", () => {
+  it("extrae el nombre y corta en la siguiente palabra del pedido", () => {
+    expect(nombreDelResumen("Pedido a nombre de Carlos Mex, 3 tacos")).toBe("carlos mex");
+    expect(nombreDelResumen("Pedido a nombre de Ana Pech para recoger")).toBe("ana pech");
+    expect(nombreDelResumen("Nombre: José\nTotal $126")).toBe("jose");
+    expect(nombreDelResumen("3 tacos, total $126. ¿Es correcto?")).toBeNull();
+  });
+  it("mismo nombre: igual o contenido por palabras completas", () => {
+    expect(mismoNombre("ana pech", "Ana Pech")).toBe(true);
+    expect(mismoNombre("ana", "Ana Pech")).toBe(true);
+    expect(mismoNombre("carlos mex", "Ana Pech")).toBe(false);
+    expect(mismoNombre("an", "Ana Pech")).toBe(false);
+  });
+  it("terminaPreguntandoOtraCosa", () => {
+    expect(terminaPreguntandoOtraCosa("Listo. ¿Quiere agregar algo más?")).toBe(true);
+    expect(terminaPreguntandoOtraCosa(RESUMEN)).toBe(false);
+    expect(terminaPreguntandoOtraCosa("Su pedido quedó registrado.")).toBe(false);
   });
 });
 

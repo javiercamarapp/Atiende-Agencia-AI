@@ -49,7 +49,7 @@ import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora 
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { RESPUESTA_TOQUE_EN_PROCESO, RESPUESTA_TOQUE_RETENIDO, RESPUESTA_TOQUE_YA_CREADO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
-import { esSiClaroDeConfirmacion, planDeCierreDeterminista, reclamoFrescoDeOtroTurno } from "./cierre-determinista.ts";
+import { esSiClaroDeConfirmacion, planDeCierreDeterminista, reclamoFrescoDeOtroTurno, terminaPreguntandoOtraCosa } from "./cierre-determinista.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
@@ -772,6 +772,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // Idempotencia: si esa MISMA cotizacion ya es un pedido (otro turno, doble disparo) o se esta registrando, no se crea nada: se le dice al cliente la verdad.
           const reciente = ahoraMs - (flowAhora?.context?.claimedAtMs ?? flowAhora?.context?.quotedAtMs ?? 0) <= QUOTE_TTL_MS;
           const vigencia = reciente ? vigenciaDelToque(flowAhora, { accion: "confirmar", quoteHash: inicial.quoteHash, quotedAtMs: inicial.quotedAtMs }, ahoraMs) : "obsoleto";
+          // Un «si» a otra pregunta («¿quiere agregar algo mas?») no es un doble disparo del «si» al resumen: no se le responde que "ya quedo registrado".
+          const ultimoDelAsistente = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
+          if ((vigencia === "ya_creado" || vigencia === "retenido" || vigencia === "en_proceso") && ultimoDelAsistente !== null && terminaPreguntandoOtraCosa(ultimoDelAsistente)) {
+            tele.cierreDeterminista = "no_aplica:si_a_otra_pregunta";
+            return null;
+          }
           if (vigencia === "ya_creado") return done({ reply: RESPUESTA_TOQUE_YA_CREADO, orderId: flowAhora?.context?.orderId ?? null, propertyId });
           if (vigencia === "retenido") return done({ reply: RESPUESTA_TOQUE_RETENIDO, orderId: null, propertyId });
           // «En proceso» solo si el reclamo es fresco y de OTRO turno; uno viejo o propio (un crear_pedido que fallo en este turno) nadie lo termina: se escala.
