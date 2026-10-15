@@ -176,3 +176,29 @@ describe("de la busqueda al total: lo que dice la composicion es lo que cotiza e
     expect(q.quote.lines.map((l) => [l.name, l.line_total])).toEqual([["Pastor — 1 kg", 900], ["Pastor — 250 g", 225]]);
   });
 });
+
+describe("regresion: 'son N' y 'de la N' con unidad pegada son la CANTIDAD del pedido, no mesa ni hora", () => {
+  it.each([
+    ["son 2 kilos de arrachera", "2000"],
+    ["son 3 kilos de pastor", "3000"],
+    ["ya son 2 kilos de pastor", "2000"],
+    ["en total son 3 kilos de pastor", "3000"],
+    ["de la 2 kilos de pastor", "2000"],
+    ["son 2 kilos y medio de pastor", "2500"],
+    ["son 500 gramos de pastor", "500"],
+    ["son 3 kilo y cuarto de pastor", "3250"],
+  ])("%s -> peso:%s", (q, g) => {
+    expect(gramosDetectados(q)).toEqual([g]);
+  });
+  it("'son 3 tacos' no inventa peso y 'de la 2 quiero un kilo' conserva el kilo", () => {
+    expect(gramosDetectados("son 3 tacos de pastor")).toEqual([]);
+    expect(gramosDetectados("de la 2 quiero un kilo de pastor")).toEqual(["1000"]);
+  });
+  it("sigue sin romper mesa, hora y 'cuarto de hora'", () => {
+    expect(gramosDetectados("mesa 4 kilo de pastor")).toEqual(["1000"]);
+    expect(gramosDetectados("mesa de 4 kilo y cuarto de pastor")).toEqual(["1250"]);
+    expect(gramosDetectados("a las 3 kilo y cuarto de pastor")).toEqual(["1250"]);
+    expect(gramosDetectados("somos 4, kilo y cuarto de pastor")).toEqual(["1250"]);
+    expect(gramosDetectados("en un cuarto de hora paso por un kilo de pastor")).toEqual(["1000"]);
+  });
+});
