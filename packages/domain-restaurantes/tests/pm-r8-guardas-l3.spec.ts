@@ -44,6 +44,15 @@ describe("A41 afirmaPedidoRegistrado: el pedido descrito en la frase no la escon
     "El total de su pedido de 2 tacos al pastor en García Lavín es de $84.",
     "Su nombre quedó registrado, Carlos. ¿Confirmo el pedido de 2 tacos al pastor?",
     "Una vez que confirme, su pedido de 2 tacos de pastor quedará anotado.",
+    "Su pedido de 2 tacos al pastor por $84 en García Lavín quedaría registrado al confirmar.",
+    "Su pedido de 2 tacos al pastor por $84 podría quedar registrado en unos minutos.",
+    "Su pedido de 2 tacos al pastor por $84 va a quedar registrado al confirmar.",
+    "Su pedido de 2 tacos al pastor en García Lavín no pudo ser registrado.",
+    "Su pedido de 2 tacos al pastor en García Lavín tampoco quedó registrado.",
+    "Su pedido de 3 tacos tiene el precio confirmado de $126.",
+    "Su pedido de 3 tacos lleva el envío confirmado a Calle 60 por $35.",
+    "Su pedido de 3 tacos al pastor con la cortesía tomada de la promoción suma $84.",
+    "Su pedido de 3 tacos tiene el cambio anotado para $200.",
   ])("no afirma: %s", (frase) => {
     expect(afirmaPedidoRegistrado(frase)).toBe(false);
   });
@@ -96,11 +105,11 @@ describe("A38 nombreDeClienteUtilizable (contrato de entrada)", () => {
   it.each([0, "", "   ", null, undefined, false, true, [], {}, ["Carlos"], { n: "Carlos" }, Number.NaN, 42])("rechaza el valor no-nombre %j", (v) => {
     expect(nombreDeClienteUtilizable(v)).toBe(false);
   });
-  it.each(["Cliente", "cliente", "CLIENTE.", "Cliente WhatsApp", "Sin nombre", "N/A", "anónimo", "Desconocido", "1234", "?!", "---", "<script>alert(1)</script>", "Robert'); DROP TABLE pedidos;--", "{{nombre}}", "`rm -rf`", "$(whoami)"])("rechaza el relleno o el código %j", (v) => {
+  it.each(["Cliente", "cliente", "CLIENTE.", "Cliente WhatsApp", "Sin nombre", "N/A", "anónimo", "Desconocido", "1234", "?!", "---", "Cliente 2", "Cliente frecuente", "El cliente", "Cliente de WhatsApp", "Contacto de WhatsApp", "Nombre del cliente", "No especificó", "Sin especificar", "Señor", "Amigo", "<script>alert(1)</script>", "Robert'); DROP TABLE pedidos;--", "' OR '1'='1", "x'; DELETE FROM clientes; --", "{{nombre}}", "`rm -rf`", "$(whoami)"])("rechaza el relleno o el código %j", (v) => {
     expect(nombreDeClienteUtilizable(v)).toBe(false);
   });
   // Negativos: nombres reales que NO deben rechazarse.
-  it.each(["Carlos Prueba", "Ana", "María José", "José Luis Pérez-García", "O'Brien", "Zoë", "Dr. Ramírez", "Cliente Pérez", "Li", "X", "Juan Carlos (oficina)"])("acepta el nombre real %j", (v) => {
+  it.each(["Carlos Prueba", "Ana", "María José", "José Luis Pérez-García", "O'Brien", "Zoë", "Dr. Ramírez", "Cliente Pérez", "Li", "X", "Juan Carlos (oficina)", "María [oficina]", "Juan -- oficina", "María; recoge Juan", "Ana = esposa de Luis", "Cliente Pérez", "Luis (el de la select)"])("acepta el nombre real %j", (v) => {
     expect(nombreDeClienteUtilizable(v)).toBe(true);
   });
 
@@ -160,7 +169,7 @@ describe("T7-002 coordenada absurda: sigue siendo fuera_de_zona pero sin sucursa
     expect(mensaje).toMatch(/NO escale/);
     expect(mensaje).toMatch(/comparta de nuevo/);
   });
-  it("el limite: a 148 km sigue siendo un fuera_de_zona normal (con sucursal y distancia) y a 152 km es implausible", async () => {
+  it("el limite: a 998 km sigue siendo un fuera_de_zona normal (con sucursal y distancia) y a 1002 km es implausible", async () => {
     const m = mundoDosSucursales();
     const grados = (km: number) => km / 111.19; // un grado de latitud ~ 111.19 km
     const lejos = async (km: number) => assignBranch(m.repo, { organizationId: m.organizationId, lat: 21.0211 + grados(km), lng: -89.6141, radioMaximoKm: 8 });
@@ -168,6 +177,21 @@ describe("T7-002 coordenada absurda: sigue siendo fuera_de_zona pero sin sucursa
     expect(cerca.estado).toBe("fuera_de_zona");
     expect("ubicacionImplausible" in cerca).toBe(false);
     expect(await lejos(UBICACION_IMPLAUSIBLE_KM + 2)).toMatchObject({ estado: "fuera_de_zona", ubicacionImplausible: true });
+  });
+  it("ciudades reales (Valladolid 151 km, Campeche 161, Cancún 286) son fuera_de_zona normal, no pin mal formado", async () => {
+    const m = mundoDosSucursales();
+    await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    for (const km of [151, 161, 286]) {
+      const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { lat: 21.0211 + km / 111.19, lng: -89.6141 })).result as Record<string, unknown>;
+      expect(r, String(km)).toMatchObject({ estado: "fuera_de_zona", branch_slug_mas_cercana: expect.any(String) });
+      expect(r.ubicacion_sospechosa).toBeUndefined();
+    }
+  });
+  it("el mensaje de ubicacion implausible es neutro (sirve por voz): no habla de botones ni del chat", async () => {
+    const m = mundoDosSucursales();
+    await m.repo.upsertWhatsAppAgentConfig(m.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const r = (await invokeAgentTool(m.repo, ctxWa(m.organizationId), "buscar_sucursal_cercana", { lat: 21.0211, lng: -61.41 })).result as Record<string, unknown>;
+    expect(String(r.mensaje)).not.toMatch(/bot[oó]n|chat|WhatsApp/i);
   });
   it("un fuera_de_zona normal (20 km) conserva sucursal mas cercana y distancia", async () => {
     const m = mundoDosSucursales();
@@ -203,7 +227,7 @@ describe("G5/T7-026/T7-049..051 el domicilio lo atiende otra sucursal que la del
     expect(r.atiende_otra_sucursal!.aviso).toMatch(/NO conteste «sí, entregamos»/);
     expect(r.atiende_otra_sucursal!.aviso).toMatch(/999 944 0342/);
     expect(r.atiende_otra_sucursal!.aviso).toMatch(/Ofrezca recoger en García Lavín/);
-    expect(r.atiende_otra_sucursal!.aviso).toMatch(/no escale/);
+    expect(r.atiende_otra_sucursal!.aviso).toMatch(/insiste de nuevo, escale UNA vez con motivo zona_ambigua/);
   });
   it("sin teléfono cargado, el aviso manda a la lista de datos del negocio (no inventa uno)", async () => {
     const m = mundoDosSucursales();
@@ -230,50 +254,91 @@ describe("G5/T7-026/T7-049..051 el domicilio lo atiende otra sucursal que la del
 });
 
 // ── T7-014: pin antes de crear ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-describe("T7-014 requierePinAntesDeCrear", () => {
+describe("T7-014 requierePinAntesDeCrear: solo una referencia visual SIN direccion verificable", () => {
   const u = (content: string) => ({ role: "user" as const, content });
   const a = (content: string) => ({ role: "assistant" as const, content });
-  const CASA = "Calle 5 #100 en Real Montejo. Son 5 casas iguales, es la única con cochera techada. Un kilo de bistec con tortillas de maíz. Pago con tarjeta";
+  const CASA = "Estoy en Real Montejo, son 5 casas iguales, es la única con cochera techada. Un kilo de bistec con tortillas de maíz. Pago con tarjeta";
+  const exige = (texto: string, direccion?: string) => requierePinAntesDeCrear([u(texto), a("Le cotizo $1,100. ¿Confirma?"), u("sí")], direccion);
 
-  it("referencia visual, sin pin y sin que se lo hayan pedido: SÍ", () => {
-    expect(requierePinAntesDeCrear([u(CASA), a("Le cotizo $1,100. ¿Confirma?"), u("sí")])).toBe(true);
+  it("solo referencia visual, sin pin y sin que se lo hayan pedido: SÍ", () => {
+    expect(exige(CASA)).toBe(true);
   });
-  it("después de que el asistente pide el pin una vez, ya no se exige", () => {
+  // Corpus POSITIVO: la direccion es solo una referencia visual.
+  it.each([
+    CASA,
+    "Es la casa azul con portón, por el parque",
+    "Es la casa naranja de dos pisos, cerca de la tienda",
+    "Son 4 casas iguales, la mía es la única con la puerta roja",
+    "Es difícil de encontrar, hay que entrar por el terregal",
+    "Vivo en una casa verde frente al Oxxo, la única con palmera",
+    "Casa blanca con rejas, en el Fracc. Las Américas",
+    "Es una casa amarilla, tiene dos autos afuera",
+  ])("exige el pin: %s", (t) => expect(exige(t)).toBe(true));
+  // Corpus NEGATIVO: domicilios completos (con numero, calle+numero, cruzamientos) aunque mencionen rejas, portón, fachada, cochera, casa de color...
+  it.each([
+    "Calle 32 #345 x 20 y 22, Privada Los Almendros casa 13, Fracc. Xaman Tan. 4 tacos de pastor, efectivo",
+    "Calle 60 #345 x 45 y 47, Centro, casa verde con portón negro",
+    "Calle 21 #100 x 10 y 12, casa azul, tiene rejas blancas",
+    "Calle 8 número 220 entre 15 y 17, la fachada es amarilla",
+    "Av. Itzaes 500, cochera para 2 autos",
+    "Calle 33 s/n x 20 y 22, Col. Garcia Gineres, zaguán café",
+    "Calle 20 #98 por 15, si no me encuentran me marcan",
+    "Privada Las Rejas #5, Fracc. Los Pinos",
+    "Col. Portón del Sol, calle 12 número 40",
+    "Calle 45 x 30 y 32 Altabrisa, es la casa naranja",
+    "Calle 10 #55 entre calle 5 y calle 7, casa gris con cochera",
+    "Carretera Mérida-Progreso km 12, casa roja con portón",
+    "Calle 19 numero 301, la única con cochera techada",
+    "Son 5 casas iguales en Calle 5 #100, Real Montejo",
+    "Cruzamientos Calle 14 y 16, casa blanca",
+    "C. 62 #480 x 55 y 57, casa rosa",
+    "Calle 25 # 78, difícil de encontrar, llámeme",
+    "Quiero 2 órdenes de frijol con tostadas y un francés suizo, es para mi casa",
+    "Vivo en la casa 7 de la privada, pago con tarjeta",
+    "Nos vemos en una casa de tacos famosa? no, mejor quiero 3 kilos de pastor",
+    "Hola, buenas noches",
+    "Mi pedido: 1 kg de bistec, tortilla de maíz",
+    "Es en Dzitya, calle 20 #15, portón verde",
+    "Av. Colón 485 x 21 y 23, fachada con azulejos",
+    "Calle 7 #212 x 18 y 20 Mexico Norte, rejas negras",
+    "Calle 30 # 410 x 41 y 43, no me encuentran siempre, es la casa verde",
+    "Calle 56 A #301 x 33 y 35 Fracc. Floresta, casa blanca con portón",
+    "Calle 16 número 120, casa amarilla esquina con rejas",
+  ])("NO exige el pin con direccion completa: %s", (t) => expect(exige(t)).toBe(false));
+  it("la direccion verificable del propio pedido (customer_address) tambien cuenta", () => {
+    expect(exige("Es la casa azul con portón", "Calle 60 #345 x 45 y 47, Centro")).toBe(false);
+    expect(exige("Es la casa azul con portón", "frente al parque")).toBe(true);
+  });
+  it("nunca se pide dos veces: si el asistente ya pidio la ubicacion en cualquier momento (antes o despues de la referencia), no se exige", () => {
+    expect(requierePinAntesDeCrear([u("Quiero 1 kilo de bistec"), a("¿Me comparte su ubicación de WhatsApp?"), u("no tengo cómo, pero es la casa azul con portón"), a("Le cotizo."), u("sí")])).toBe(false);
     expect(requierePinAntesDeCrear([u(CASA), a("¿Me comparte su ubicación de WhatsApp para que el repartidor llegue directo?"), u("sí")])).toBe(false);
     expect(requierePinAntesDeCrear([u(CASA), a("Le mando el enlace; ¿puede mandarme el pin?"), u("ok")])).toBe(false);
   });
   it("si el cliente dice que no puede compartirlo, no se exige", () => {
     expect(requierePinAntesDeCrear([u(CASA), a("Le cotizo $1,100."), u("no puedo compartir la ubicación"), u("sí")])).toBe(false);
     expect(requierePinAntesDeCrear([u(CASA), u("sin pin por favor")])).toBe(false);
-  });
-  // Corpus negativo: direcciones y pedidos normales NO activan la guarda.
-  it.each([
-    "Calle 32 #345 x 20 y 22, Privada Los Almendros casa 13, Fracc. Xaman Tan. 4 tacos de pastor, efectivo",
-    "Quiero 2 órdenes de frijol con tostadas y un francés suizo, es para mi casa",
-    "Vivo en la casa 7 de la privada, pago con tarjeta",
-    "Nos vemos en una casa de tacos famosa? no, mejor quiero 3 kilos de pastor",
-    "Hola, buenas noches",
-    "Mi pedido: 1 kg de bistec, tortilla de maíz",
-  ])("no se exige para: %s", (texto) => {
-    expect(requierePinAntesDeCrear([u(texto), a("Le cotizo."), u("sí")])).toBe(false);
+    expect(requierePinAntesDeCrear([u(CASA), a("Le cotizo."), u("no tengo cómo compartirla, es la casa azul con portón")])).toBe(false);
   });
   it.each([undefined, null, [], "texto", 0, false, {}, [null], [{ role: "user" }], [{ role: "user", content: 5 }]])("contrato de entrada %j: no truena y no exige", (v) => {
     expect(requierePinAntesDeCrear(v as never)).toBe(false);
   });
 
-  const entrada = (f: ReturnType<typeof buildRestaurantFixture>) => ({
+  const entrada = (f: ReturnType<typeof buildRestaurantFixture>, direccion = "frente al parque, Real Montejo") => ({
     branch_slug: "fco-montejo",
     customer_name: "Carlos Prueba",
-    customer_address: "Calle 5 #100, Real Montejo",
+    customer_address: direccion,
     canal: "domicilio",
     payment_method: "tarjeta",
     items: [{ product_id: f.products.cocaCola, requested_quantity: 1 }],
   });
-  it("crear_pedido por el registro: PM + domicilio + referencia visual + sin pin → rechaza con el mensaje del pin", async () => {
+  it("crear_pedido por el registro: PM + domicilio + solo referencia visual + sin pin → rechaza con el mensaje del pin", async () => {
     const f = buildRestaurantFixture();
     await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, PM);
     const ctx = { organizationId: f.organizationId, channel: "whatsapp" as const, phone: PHONE, conversacionReciente: [u(CASA), a("Le cotizo $45."), u("sí")] };
-    await expect(invokeAgentTool(f.repo, ctx, "crear_pedido", entrada(f))).rejects.toThrow(/referencias visuales y todavía no hay pin/);
+    await expect(invokeAgentTool(f.repo, ctx, "crear_pedido", entrada(f))).rejects.toThrow(/solo con referencias visuales/);
+    // con direccion completa en el pedido, ya no se rechaza por el pin
+    const msg = await invokeAgentTool(f.repo, ctx, "crear_pedido", entrada(f, "Calle 5 #100, Real Montejo")).then(() => "", (e: Error) => e.message);
+    expect(msg).not.toMatch(/referencias visuales/);
   });
   it("con el pin compartido, con enlace de Maps, para recoger o con perfil genérico NO se rechaza por el pin", async () => {
     const f = buildRestaurantFixture();
