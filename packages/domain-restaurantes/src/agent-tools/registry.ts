@@ -25,6 +25,7 @@ import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts
 import { normalizePhone } from "../phone.ts";
 import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
+import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos } from "../product-search.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
@@ -310,7 +311,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_producto",
     description:
-      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú. Si ningún resultado coincide exactamente con lo que pidió el cliente (o hay varios parecidos), no elijas ni sustituyas por él: pregúntale cuál prefiere entre 2 o 3 opciones de la lista. Si algún resultado trae ambiguo: true, la búsqueda NO pudo fijar un único producto (por ejemplo «media orden» de algo que también se vende por kilo, o un peso que no existe): NO elijas por el cliente, pregúntale cuál presentación quiere antes de cotizar.",
+      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú. Si ningún resultado coincide exactamente con lo que pidió el cliente (o hay varios parecidos), no elijas ni sustituyas por él: pregúntale cuál prefiere entre 2 o 3 opciones de la lista. Si algún resultado trae ambiguo: true, la búsqueda NO pudo fijar un único producto (por ejemplo «media orden» de algo que también se vende por kilo, o un peso que no existe): NO elijas por el cliente, pregúntale cuál presentación quiere antes de cotizar. ÚNICA excepción: en un renglón por peso que trae composicion_peso de tipo composicion, el ambiguo solo significa que el peso pedido no es una presentación exacta y la combinación YA está armada con precios del menú: no preguntes cuál presentación, dile al cliente la composición y su total (tal cual vienen) y espera su sí; si el tipo es preguntar, pregunta cuánto quiere.",
     parameters: {
       type: "object",
       properties: {
@@ -1444,8 +1445,11 @@ async function dispatchTool(
           .filter((c) => pesoDeProductoEnGramos(c.name) !== null && baseDePeso(c.name) === baseDePeso(nombre))
           .sort((a, b) => (pesoDeProductoEnGramos(a.name) ?? 0) - (pesoDeProductoEnGramos(b.name) ?? 0))
           .map((c) => `${c.name} ($${Number(c.price)})`);
+      // L2b: un peso que no es presentacion exacta (1.25 kg) llega ya armado con presentaciones reales y precio proporcional, para decirlo ANTES del si.
+      const pesoPedido = hayPeso ? pesoPedidoEnConsulta(String(input.query ?? "")) : null;
       const result = productos.map((p) => {
         const otras = pesoDeProductoEnGramos(p.name) !== null ? presentaciones(p.name) : [];
+        const composicion = pesoPedido !== null && otras.length > 1 ? composicionParaProducto(catalogo, p.name, pesoPedido) : null;
         return {
           id: p.id,
           name: p.name,
@@ -1456,7 +1460,8 @@ async function dispatchTool(
           ...(otras.length > 1
             ? {
                 presentaciones_por_peso: otras,
-                aviso_peso: "Cotice la presentación del peso que pidió el cliente (cuarto = 250 g, medio = 500 g, tres cuartos = 750 g); no cotice el kilo si pidió una fracción. Si pidió un peso que no existe (1 1/4 kg, 3 kg), arme la combinación con estas presentaciones (por ejemplo 1 kg + 250 g) y no diga que no se maneja.",
+                ...(composicion ? { composicion_peso: composicion } : {}),
+                aviso_peso: "Cotice la presentación del peso que pidió el cliente (cuarto = 250 g, medio = 500 g, tres cuartos = 750 g); no cotice el kilo si pidió una fracción. Si pidió un peso que no existe (1 1/4 kg, 3 kg), arme la combinación con estas presentaciones (por ejemplo 1 kg + 250 g) y no diga que no se maneja. Si trae composicion_peso tipo composicion, esa es la combinación exacta a precio del menú y NO hay que preguntar cuál presentación (aunque venga ambiguo: true): dígasela al cliente con ese total ANTES del sí (por ejemplo «le armo 1 kg + 250 g, $1,125»; es el mismo total que dará cotizar_pedido, que es quien cobra) y cotice cada parte como renglón, sin redondear a otro peso ni calcular usted otro total; si es tipo preguntar (peso que no es múltiplo de 250 g, aproximado o muy grande) NO invente: pregunte cuánto quiere.",
               }
             : {}),
         };
