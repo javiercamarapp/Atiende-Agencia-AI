@@ -86,7 +86,7 @@ describe("cron de descubrimiento: cambio de bases (L-P3-08)", () => {
     const [aviso] = t.tipos("licitaciones.convocatoria.bases_modificadas");
     expect(aviso).toMatchObject({ organizationId: t.ctx.organizationId, severidad: "atencion", dedupeKey: `licitaciones.convocatoria.bases_modificadas:${tender!.id}:v2` });
     expect(aviso!.titulo + (aviso!.cuerpo ?? "")).not.toMatch(/limpieza|Municipio/i); // sin PII ni titulos en la campana
-    expect(t.tipos("licitaciones.expediente.aprobacion_invalidada")[0]).toMatchObject({ dedupeKey: `licitaciones.expediente.aprobacion_invalidada:${tender!.id}:v2`, enlace: `/licitaciones/{orgSlug}/convocatorias/${tender!.id}/cierre` });
+    expect(t.tipos("licitaciones.expediente.aprobacion_invalidada_por_insumos")[0]).toMatchObject({ dedupeKey: `licitaciones.expediente.aprobacion_invalidada_por_insumos:${tender!.id}:v2`, enlace: `/licitaciones/{orgSlug}/convocatorias/${tender!.id}/cierre` });
 
     const correos = t.ctx.repo.getMessagingOutbox().filter((o) => o.eventType === "tender.bases_modificadas");
     expect(correos).toHaveLength(1);

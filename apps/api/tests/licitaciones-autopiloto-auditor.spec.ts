@@ -79,7 +79,7 @@ describe("auditor del expediente (L-P3-11)", () => {
     await t.correrChecklist(VERDE);
 
     expect(await t.ctx.repo.activeApprovalsCovering(t.ctx.organizationId, proposal.id, "expediente")).toHaveLength(0);
-    const [aviso] = t.tipos("licitaciones.expediente.aprobacion_invalidada");
+    const [aviso] = t.tipos("licitaciones.expediente.aprobacion_invalidada_por_insumos");
     expect(aviso).toMatchObject({ organizationId: t.ctx.organizationId, roles: ["analyst"], severidad: "atencion" });
     expect(t.ctx.repo.getMessagingOutbox().filter((o) => o.eventType === "expediente.aprobacion_invalidada")).toHaveLength(1);
   });

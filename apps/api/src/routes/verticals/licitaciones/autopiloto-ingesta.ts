@@ -4,7 +4,7 @@
 //
 //   1. Cambio de bases (vigilante): la version y la cascada de invalidacion YA quedaron persistidas por el repositorio (en la
 //      transaccion de la fuente); aqui solo se AVISA: campana `licitaciones.convocatoria.bases_modificadas` (clave = id de la
-//      convocatoria + version), campana `licitaciones.expediente.aprobacion_invalidada` si la cascada invalido una aprobacion
+//      convocatoria + version), campana `licitaciones.expediente.aprobacion_invalidada_por_insumos` si la cascada invalido una aprobacion
 //      y correo a los responsables de la organizacion (owner/admin). Un canal que falla NUNCA revierte la version ni la
 //      invalidacion: cada aviso corre en su propia transaccion de sistema y un error se cuenta, no se propaga.
 //   2. Nuevo match: para cada convocatoria NUEVA de la corrida calcula el matching contra el perfil de la organizacion
@@ -84,7 +84,7 @@ async function avisarUnCambioDeBases(deps: AppDeps, organizationId: string, camb
     await avisarCambioDeBases(db, { organizationId, tenderId: cambio.tenderId, version: cambio.version });
     let aprobacion = false;
     if (cambio.invalidatedApprovals > 0) {
-      const e = await emitirNotificacion(db, { evento: "licitaciones.expediente.aprobacion_invalidada", organizationId, clave: `${cambio.tenderId}:v${cambio.version}`, entidadTipo: "convocatoria", entidadId: cambio.tenderId });
+      const e = await emitirNotificacion(db, { evento: "licitaciones.expediente.aprobacion_invalidada_por_insumos", organizationId, clave: `${cambio.tenderId}:v${cambio.version}`, entidadTipo: "convocatoria", entidadId: cambio.tenderId });
       aprobacion = e.estado === "emitida";
     }
     let correos = 0;

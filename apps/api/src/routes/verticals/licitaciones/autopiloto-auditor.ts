@@ -4,7 +4,7 @@
 // propuesta economica), dentro de la transaccion del request y en un SAVEPOINT: un fallo del auditor NUNCA cambia ni revierte la
 // escritura de negocio. Que hace:
 //   1. Re-sincroniza las aprobaciones con el hash VIVO de insumos (el mismo choke point AE-14 del cierre). Si un insumo invalido
-//      una aprobacion vigente, avisa: campana `licitaciones.expediente.aprobacion_invalidada` (a quienes pueden aprobar) y
+//      una aprobacion vigente, avisa: campana `licitaciones.expediente.aprobacion_invalidada_por_insumos` (a quienes pueden aprobar) y
 //      correo a owner/admin.
 //   2. Clasifica el checklist persistido (`clasificarExpediente`): sin bloqueos = corrido al menos una vez y ninguna dimension en
 //      rojo. Si pasa de "con bloqueos" (o nunca auditado) a "sin bloqueos" y las aprobaciones aun no estan completas, avisa:
@@ -73,7 +73,7 @@ export async function auditarExpediente(deps: AppDeps, db: TenantDbSession, inpu
 
       let aprobacionInvalidada = false;
       if (cambio && cambio.invalidatedApprovalIds.length > 0) {
-        const e = await emitirNotificacion(db, { evento: "licitaciones.expediente.aprobacion_invalidada", organizationId, clave: claveHash, entidadTipo: "convocatoria", entidadId: tenderId });
+        const e = await emitirNotificacion(db, { evento: "licitaciones.expediente.aprobacion_invalidada_por_insumos", organizationId, clave: claveHash, entidadTipo: "convocatoria", entidadId: tenderId });
         aprobacionInvalidada = e.estado === "emitida";
         if (aprobacionInvalidada) await correoAlEquipo(deps, organizationId, "expediente.aprobacion_invalidada", `aprobacion-invalidada:${claveHash}`, correoAprobacionInvalidada({ tenderTitle: titulo }));
       }
