@@ -22,7 +22,8 @@ import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
-import { normalizePhone } from "../phone.ts";
+import { normalizePhone, toWhatsAppRecipient } from "../phone.ts";
+import { resolverMenuPdf } from "../menu-pdf.ts";
 import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
@@ -116,6 +117,7 @@ export type AgentToolName =
   | "confirmar_resumen"
   | "crear_pedido"
   | "registrar_contacto"
+  | "enviar_menu"
   | "escalar_a_humano";
 
 /** Subconjunto de JSON Schema que usan las tools (mismo shape que `LlmToolDefinition.parameters`). */
@@ -171,6 +173,8 @@ export interface AgentToolContext {
   /** Ultimos mensajes (cliente y agente) de esta conversacion de WhatsApp. Solo lo fija el servidor; alimenta guardas que comparan lo que dijo el cliente, y si ya se le aclaro, con lo que cotiza el
    * modelo (p. ej. «guacamole» contra «Extra Guacamole»). Ausente (voz, camino legado) = esas guardas no opinan. */
   readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+  /** Base https publica donde estan los PDF del menu por sucursal (`PM_MENU_PDF_BASE_URL`). Solo la fija el servidor. Ausente = `enviar_menu` comparte el enlace de la pagina oficial del menu. */
+  readonly menuPdfBaseUrl?: string | null;
 }
 
 export interface AgentToolOutcome {
@@ -403,6 +407,17 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     channels: ["whatsapp", "voz"],
   },
   {
+    name: "enviar_menu",
+    description:
+      "Manda al cliente por WhatsApp el menú en PDF de UNA sucursal (el publicado en internet por esa sucursal). Úsela cuando pida el menú o la carta; no lo pegue en texto. Devuelve enviado 'pdf' (ya salió el documento), 'enlace' (no hay PDF: comparta ese enlace oficial tal cual) o 'sin_menu' (esa sucursal no tiene menú publicado). Solo WhatsApp.",
+    parameters: {
+      type: "object",
+      properties: { branch_slug: { type: "string", description: "Sucursal cuyo menú pide el cliente (la del chat por omisión; si pide otra, esa). Solo slugs de la lista de sucursales." } },
+      required: ["branch_slug"],
+    },
+    channels: ["whatsapp"],
+  },
+  {
     name: "escalar_a_humano",
     description:
       "Pasa la conversación a una persona del restaurante cuando el cliente lo pide, hay una queja, o no puedes resolver lo que necesita. Deja un aviso con el motivo para que alguien le responda.",
@@ -441,6 +456,8 @@ export const VOICE_TOOL_HTTP_PATHS: Readonly<Record<AgentToolName, string>> = {
   confirmar_resumen: "/orders/confirm",
   crear_pedido: "/orders",
   registrar_contacto: "/callbacks",
+  // Solo WhatsApp (no se exporta al manifiesto de voz): la ruta existe unicamente porque el Record exige todas las tools.
+  enviar_menu: "/menu/send",
   escalar_a_humano: "/callbacks",
 };
 
@@ -1644,6 +1661,8 @@ async function dispatchTool(
       }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
+    case "enviar_menu":
+      return enviarMenuPdf(repo, ctx, input);
     case "registrar_contacto":
     case "escalar_a_humano": {
       // Preview: exito simulado, sin crear aviso (callback) ni notificacion para el equipo.
@@ -1673,6 +1692,47 @@ async function dispatchTool(
       return { result: { ok: true, ...aviso }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
+}
+
+/**
+ * `enviar_menu`: encola el menu en PDF de la sucursal como documento de WhatsApp (outbox, mismo canal y numero del chat; el despachador lo manda con el cliente de Meta).
+ * Nunca envia nada real desde aqui: solo escribe en el outbox. Sin base de PDF configurada o con una sucursal sin menu, NO encola y devuelve el enlace oficial / `sin_menu`
+ * para que el agente lo diga en texto. Idempotente por mensaje del cliente y sucursal (un reintento del turno no manda dos PDF).
+ */
+async function enviarMenuPdf(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const slug = typeof input.branch_slug === "string" ? input.branch_slug.trim() : "";
+  const branch = slug ? await repo.findBranch(ctx.organizationId, { slug }) : null;
+  if (!branch || branch.status !== "active") {
+    throw new OrderValidationError(`Sucursal '${slug}' no encontrada o inactiva: use un branch_slug de la lista de sucursales (o pregunte al cliente de cuál quiere el menú).`);
+  }
+  const menu = resolverMenuPdf(branch.slug, ctx.menuPdfBaseUrl);
+  const hecho = (result: Record<string, unknown>, simulated = false): AgentToolOutcome => ({ result, raw: result, orderId: null, propertyId: branch.propertyId, ...(simulated ? { simulated: true } : {}) });
+  if (menu.tipo === "sin_menu") {
+    return hecho({ ok: true, enviado: "sin_menu", branch_slug: branch.slug, instruccion: "Esa sucursal no tiene menú publicado: diga que la sucursal se lo puede enviar y deje el aviso con registrar_contacto (reason menu_pdf)." });
+  }
+  if (menu.tipo === "enlace") {
+    return hecho({ ok: true, enviado: "enlace", branch_slug: branch.slug, enlace: menu.paginaWeb, instruccion: `Comparta ESTE enlace tal cual: es la página oficial con el menú de ${menu.etiqueta}. No invente otro.` });
+  }
+  // Vista previa del dueño: exito simulado, sin encolar nada.
+  if (ctx.modo === "preview") return hecho({ ok: true, simulado: true, enviado: "pdf", branch_slug: branch.slug, archivo: menu.archivo, instruccion: "Diga que ya le mandó el menú en PDF." }, true);
+  if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede mandar el menú.");
+  const to = toWhatsAppRecipient(ctx.phone);
+  if (!to) throw new OrderValidationError("El teléfono de esta conversación no es válido para WhatsApp; no se puede mandar el menú.");
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(ctx.organizationId, ctx.entryPropertyId ?? ctx.lockedPropertyId ?? null);
+  if (!phoneNumberId) {
+    // Sin numero activo no hay por donde mandar el documento: el agente comparte el enlace oficial en texto.
+    return hecho({ ok: true, enviado: "enlace", branch_slug: branch.slug, enlace: menu.paginaWeb, instruccion: `No se pudo mandar el PDF. Comparta ESTE enlace tal cual: es la página oficial con el menú de ${menu.etiqueta}.` });
+  }
+  const bucket = Math.floor(Date.now() / (10 * 60 * 1000));
+  const dedupeKey = `menu-pdf:${ctx.sourceEventId ?? `${to}:${bucket}`}:${branch.slug}`.slice(0, 255);
+  await repo.enqueueMessagingOutbox(ctx.organizationId, "whatsapp", "whatsapp.menu_pdf", dedupeKey, {
+    to,
+    phone_number_id: phoneNumberId,
+    body: `Menú de Los Taquitos de PM · ${menu.etiqueta}`,
+    documento: { url: menu.url, filename: menu.archivo, fallbackUrl: menu.paginaWeb },
+    transaccional: true, // lo pidio el cliente en esta conversacion (ventana de 24 h abierta): la supresion de plataforma no lo bloquea
+  });
+  return hecho({ ok: true, enviado: "pdf", branch_slug: branch.slug, archivo: menu.archivo, instruccion: `Ya se le manda el menú en PDF de ${menu.etiqueta}. Dígaselo en una frase (llegará como documento) y pregunte qué se le antoja; no pegue el menú.` });
 }
 
 /** Resultado de buscar_cliente sin `pedidoReciente`: no hay dato del estado en cocina. */
