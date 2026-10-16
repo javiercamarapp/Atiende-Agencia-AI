@@ -252,3 +252,9 @@ export const GESTIONAR_PAGOS_PROVISIONALES_ROLES: readonly DespachosRole[] = ["a
 // `contador` y `readonly` operan el dia a dia pero no revisan quien descargo que (separacion de funciones). Es una lectura
 // de nivel organizacion: ademas exige membresia sin acotar a ciertos clientes (`propertyIds === null`).
 export const VER_BITACORA_ROLES: readonly DespachosRole[] = ["admin", "auditor"];
+
+// D-32: facturacion de honorarios (igualas y prefacturas). Ver = lectura de lo ya persistido. Escribir (crear igualas, generar, aprobar, timbrar,
+// cancelar) = solo `admin` (dueno del despacho): timbrar un CFDI solo se deshace cancelandolo ante el SAT. El contador ve; la base repite la regla
+// (migracion 023: `despachos.honorarios_puede_escribir`).
+export const VER_HONORARIOS_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+export const GESTIONAR_HONORARIOS_ROLES: readonly DespachosRole[] = ["admin"];

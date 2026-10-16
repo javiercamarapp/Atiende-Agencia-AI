@@ -209,6 +209,7 @@ const BookkeepingPage = cargaPerezosa(() => import("./verticals/despachos/pages/
 const ContabilidadElectronicaPage = cargaPerezosa(() => import("./verticals/despachos/pages/ContabilidadElectronica.tsx"), "ContabilidadElectronicaPage");
 const LibroContablePage = cargaPerezosa(() => import("./verticals/despachos/pages/LibroContable.tsx"), "LibroContablePage");
 const PagosProvisionalesPage = cargaPerezosa(() => import("./verticals/despachos/pages/PagosProvisionales.tsx"), "PagosProvisionalesPage");
+const HonorariosPage = cargaPerezosa(() => import("./verticals/despachos/pages/Honorarios.tsx"), "HonorariosPage");
 const DespachosStaffPage = cargaPerezosa(() => import("./verticals/despachos/pages/Staff.tsx"), "StaffPage");
 const DespachosConfiguracionPage = cargaPerezosa(() => import("./verticals/despachos/pages/Configuracion.tsx"), "ConfiguracionPage");
 const DespachosPortalClientePage = cargaPerezosa(() => import("./verticals/despachos/pages/PortalCliente.tsx"), "PortalClientePage");
@@ -1014,6 +1015,7 @@ const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login",
 const DespachosContabilidadElectronicaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ContabilidadElectronicaPage {...ctx} />);
 const DespachosLibroContableRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <LibroContablePage {...ctx} />);
 const DespachosPagosProvisionalesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <PagosProvisionalesPage {...ctx} />);
+const DespachosHonorariosRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <HonorariosPage {...ctx} />);
 const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosStaffPage {...ctx} />);
 const DespachosConfiguracionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosConfiguracionPage {...ctx} />);
 const DespachosPortalClienteRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosPortalClientePage {...ctx} />);
@@ -1284,6 +1286,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
         <Route path="/despachos/:orgSlug/libro-contable" element={<DespachosLibroContableRoute />} />
         <Route path="/despachos/:orgSlug/pagos-provisionales" element={<DespachosPagosProvisionalesRoute />} />
+        <Route path="/despachos/:orgSlug/honorarios" element={<DespachosHonorariosRoute />} />
         <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
         <Route path="/despachos/:orgSlug/configuracion" element={<DespachosConfiguracionRoute />} />
