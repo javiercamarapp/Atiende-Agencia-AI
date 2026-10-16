@@ -221,8 +221,8 @@ describe("sql: idempotencia e inocuidad", () => {
 
 describe("CLI: salvaguardas", () => {
   it("sin --apply es dry-run y los argumentos desconocidos se rechazan", () => {
-    expect(parseArgs([])).toEqual({ apply: false, confirmHost: null, help: false });
-    expect(parseArgs(["--", "--apply", "--confirm-host=db.example.com"])).toEqual({ apply: true, confirmHost: "db.example.com", help: false });
+    expect(parseArgs([])).toEqual({ apply: false, confirmHost: null, help: false, emitSql: null, ownerEmail: null });
+    expect(parseArgs(["--", "--apply", "--confirm-host=db.example.com"])).toEqual({ apply: true, confirmHost: "db.example.com", help: false, emitSql: null, ownerEmail: null });
     expect(() => parseArgs(["--demo"])).toThrow(SeedTargetError);
   });
 
