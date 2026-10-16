@@ -1,5 +1,5 @@
 // PDF del menu alojados por nosotros (apps/web/public/menu-pdf): existen, son PDF validos, pesan lo esperado, coinciden con el manifiesto y
-// su ruta NO la traga un rewrite de la SPA de vercel.json. Deterministas: solo leen archivos del repo (sin red, sin Meta, sin base real).
+// su ruta NO la traga un rewrite de la SPA de vercel.json. Deterministas: solo leen archivos del repo (sin red, sin Meta, sin base real). El content-type application/pdf lo pone Vercel por la extension del archivo estatico (vercel-headers.spec.ts prohibe cabeceras por ruta); se verifica con curl tras el despliegue.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -89,7 +89,7 @@ describe("PDF del menu alojados en apps/web/public/menu-pdf", () => {
 });
 
 interface ReglaVercel { source: string; destination?: string; has?: unknown[] }
-const vercel = JSON.parse(readFileSync(path.join(RAIZ, "vercel.json"), "utf8")) as { rewrites: ReglaVercel[]; redirects: ReglaVercel[]; headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }> };
+const vercel = JSON.parse(readFileSync(path.join(RAIZ, "vercel.json"), "utf8")) as { rewrites: ReglaVercel[]; redirects: ReglaVercel[] };
 
 /** Convierte el subconjunto de patrones de Vercel que usa este repo (`:p*`, `:p`, `(.*)`) en RegExp. */
 function patronARegExp(source: string): RegExp {
@@ -125,10 +125,5 @@ describe("vercel.json: la ruta /menu-pdf/*.pdf no cae en un rewrite ni en un red
   it("el comodin SI coincidiria (por eso el PDF debe existir como archivo estatico de la app: public/ -> dist/)", () => {
     expect(patronARegExp(vercel.rewrites.at(-1)!.source).test(rutas[0]!)).toBe(true);
     expect(existsSync(path.join(RAIZ, "apps/web/public/menu-pdf", Object.keys(PAGINAS)[0]!))).toBe(true);
-  });
-
-  it("los PDF se sirven con content-type application/pdf", () => {
-    const regla = vercel.headers.find((h) => patronARegExp(h.source).test(rutas[0]!) && h.source !== "/(.*)");
-    expect(regla?.headers).toContainEqual({ key: "Content-Type", value: "application/pdf" });
   });
 });

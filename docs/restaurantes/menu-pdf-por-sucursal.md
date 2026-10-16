@@ -6,7 +6,7 @@ Decisión de Javier: el menú por WhatsApp va como **PDF adjunto** y es el **de 
 
 `https://www.lostaquitosdepm.com` (Wix) **no tiene PDF**. Cada sucursal tiene una página de menú con una galería de imágenes de página completa (carta, 2550 × 3300 px): **9 imágenes** en Montejo/García Lavín/Altabrisa, Francisco de Montejo y Galerías, y **8** en Pensiones y Playa (Chicxulub). Los PDF antiguos de 3 páginas están obsoletos.
 
-Los PDF finales se arman con esas imágenes oficiales (sin agregar contenido) y se **alojan en la propia app**: `apps/web/public/menu-pdf/`. Vite los copia a `dist/` y Vercel los sirve como archivos estáticos (el sistema de archivos se resuelve antes que el comodín `/(.*)` → `/index.html` de `vercel.json`), así que Meta los descarga con un GET directo `200 application/pdf` sin redirecciones.
+Los PDF finales se arman con esas imágenes oficiales (sin agregar contenido) y se **alojan en la propia app**: `apps/web/public/menu-pdf/`. Vite los copia a `dist/` y Vercel los sirve como archivos estáticos con `content-type: application/pdf` por la extensión (el sistema de archivos se resuelve antes que el comodín `/(.*)` → `/index.html` de `vercel.json`, que no se tocó), así que Meta los descarga con un GET directo `200 application/pdf` sin redirecciones.
 
 | Menú publicado (`https://app.useatiende.ai/menu-pdf/…`) | `branch_slug` que lo usan | Páginas | Peso | Página oficial |
 |---|---|---|---|---|
