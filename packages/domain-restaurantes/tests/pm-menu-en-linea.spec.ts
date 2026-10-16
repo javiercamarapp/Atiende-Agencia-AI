@@ -95,11 +95,12 @@ describe("piezas por orden confirmadas por el menú público: el servidor las us
     }
   });
 
-  it("NO confirmado por el sitio: flautas, alitas y crujientes quedan sin pack_size (no se inventa); ni el JSON de las 9 imágenes trae sus piezas", async () => {
-    for (const q of ["Flauta de Pechuga", "Alitas de Pollo", "Crujientes de Pechuga de Pollo"]) {
+  it("NO confirmado por el sitio: alitas y crujientes quedan sin pack_size (no se inventa); flautas = 1 flauta grande por orden (Javier, 16-oct); el JSON de las 9 imágenes no trae piezas de ninguno", async () => {
+    for (const q of ["Alitas de Pollo", "Crujientes de Pechuga de Pollo"]) {
       const h = (await buscar(q))[0]!;
       expect(h.pack_size, q).toBeNull();
     }
+    expect((await buscar("Flauta de Pechuga"))[0]!.pack_size).toBe(1);
     const alitas = ramas["garcia-lavin"].productos.find((p) => p.nombre === "Alitas de pollo")!;
     expect(alitas.presentaciones[0]!.piezas_por_orden).toBeNull();
     // Con las 9 imágenes (la de «Comida regional y flautas» no se había leído) las flautas SÍ aparecen, pero tampoco traen número de piezas
@@ -111,7 +112,7 @@ describe("piezas por orden confirmadas por el menú público: el servidor las us
   });
 });
 
-describe("T7-031 con el catálogo real del seed: «4 flautas, una orden» = 1 orden; total $1,833", () => {
+describe("T7-031 con el catálogo real del seed: «1 orden de flautas» = 1 flauta grande; total $1,833", () => {
   it("1 kg de bistec ($1,100) + 500 g de pastor ($450) + 1 orden de flautas de pechuga ($283) = $1,833, no $2,682", async () => {
     const bistec = await exacto("Bistec de Res — 1 kg");
     const pastor = await exacto("Pastor — 500 g");
@@ -122,7 +123,7 @@ describe("T7-031 con el catálogo real del seed: «4 flautas, una orden» = 1 or
       [bistec, pastor, flauta],
     );
     expect(q.total).toBe(1833);
-    // la trampa: leer «4 flautas» como 4 órdenes con pack_size desconocido
+    // con «una orden = una flauta grande», «4 flautas» son 4 órdenes
     const mal = buildOrderQuoteFromProducts([{ productId: flauta.id, requestedQuantity: 4 }], [flauta]);
     expect(mal.total).toBe(1132);
   });

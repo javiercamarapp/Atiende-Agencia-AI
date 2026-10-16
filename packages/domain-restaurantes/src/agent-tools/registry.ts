@@ -26,7 +26,7 @@ import { normalizePhone } from "../phone.ts";
 import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
-import { pesoDeProductoEnGramos, unidadDeVentaSinPiezas } from "../product-search.ts";
+import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -506,9 +506,9 @@ export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrder
   });
 }
 
-/** `unidad_de_venta` solo sale para productos por orden sin número de piezas confirmado (ver product-search.ts::unidadDeVentaSinPiezas). */
-function unidadDeVentaWire(product: Parameters<typeof unidadDeVentaSinPiezas>[0]): { unidad_de_venta?: string } {
-  const unidad = unidadDeVentaSinPiezas(product);
+/** `unidad_de_venta` sale para flautas (1 flauta grande por orden) y para productos por orden sin piezas confirmadas (ver product-search.ts::unidadDeVenta). */
+function unidadDeVentaWire(product: Parameters<typeof unidadDeVenta>[0]): { unidad_de_venta?: string } {
+  const unidad = unidadDeVenta(product);
   return unidad ? { unidad_de_venta: unidad } : {};
 }
 

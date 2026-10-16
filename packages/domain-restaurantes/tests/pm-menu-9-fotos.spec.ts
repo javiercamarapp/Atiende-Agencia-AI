@@ -297,17 +297,21 @@ describe("piezas por orden: lo que las imágenes confirman es lo que el servidor
     expect(() => buildOrderQuoteFromProducts([{ productId: alambreSuizo.id, requestedQuantity: 3, tortilla: "maiz" }], [alambreSuizo])).toThrow(/órdenes de 5 piezas/);
   });
 
-  it("las piezas que ninguna imagen imprime siguen null en el JSON: flautas, alitas, crujientes y quesadillas; el seed tampoco inventa pack_size para flautas, alitas ni crujientes", async () => {
+  it("las piezas que ninguna imagen imprime siguen null en el JSON (flautas, alitas, crujientes, quesadillas); el seed solo carga pack_size 1 en flautas (decisión de Javier 16-oct) y NO inventa el de alitas ni crujientes", async () => {
     for (const slug of PAGINAS) {
       for (const prod of paginas[slug].productos) {
         if (/flauta|alitas|crujientes|quesadilla|chicharr/i.test(prod.nombre) || prod.categoria_canonica === "flautas de pm") expect(prod.piezas_por_orden, `${slug} ${prod.nombre}`).toBeNull();
       }
     }
-    for (const q of ["Flauta de Pechuga", "Alitas de Pollo", "Crujientes de Pechuga de Pollo"]) {
+    for (const q of ["Alitas de Pollo", "Crujientes de Pechuga de Pollo"]) {
       const h = (await buscar(q))[0]!;
       expect(h.pack_size, q).toBeNull();
       expect(h.unidad_de_venta, q).toMatch(/ORDEN/);
     }
+    // Flautas: la IMAGEN no dice el número, lo confirmó Javier: una orden = UNA flauta grande
+    const flauta = (await buscar("Flauta de Pechuga"))[0]!;
+    expect(flauta.pack_size).toBe(1);
+    expect(flauta.unidad_de_venta).toMatch(/Cada ORDEN de flautas es UNA flauta grande/);
     // Quesadillas: la imagen solo dice «de maíz o harina»; el «orden de 3» del seed es decisión de Javier (P11), no una lectura de la imagen
     const q = (await buscar("Quesadilla de Natural")).find((p) => p.name === "Quesadilla de Natural");
     expect(q?.pack_size).toBe(3);
@@ -324,7 +328,7 @@ describe("piezas por orden: lo que las imágenes confirman es lo que el servidor
   });
 });
 
-describe("T7-031 con el catálogo real: «4 flautas, una orden» no se cobra como 4 órdenes", () => {
+describe("T7-031 con el catálogo real: «una orden de flautas» es UNA flauta grande", () => {
   it("1 kg de bistec ($1,100) + 500 g de pastor ($450) + 1 orden de flautas de pechuga ($283) = $1,833", async () => {
     const bistec = await exacto("Bistec de Res — 1 kg");
     const pastor = await exacto("Pastor — 500 g");
@@ -332,19 +336,8 @@ describe("T7-031 con el catálogo real: «4 flautas, una orden» no se cobra com
     expect([bistec.price, pastor.price, flauta.price]).toEqual([1100, 450, 283]);
     const q = buildOrderQuoteFromProducts([{ productId: bistec.id, requestedQuantity: 1 }, { productId: pastor.id, requestedQuantity: 1 }, { productId: flauta.id, requestedQuantity: 1 }], [bistec, pastor, flauta]);
     expect(q.total).toBe(1833);
-    // la trampa que corrigió R10: con pack_size null «4» cuenta órdenes
+    // pack_size 1: «4 flautas» son 4 órdenes ($1,132), no 1
+    expect(flauta.packSize).toBe(1);
     expect(buildOrderQuoteFromProducts([{ productId: flauta.id, requestedQuantity: 4 }], [flauta]).total).toBe(1132);
-  });
-
-  it("SI PM confirma que la orden trae 4 piezas (SINTÉTICO, NO confirmado: las imágenes no lo dicen), 4 flautas = 4 piezas de 1 orden = $283 y el pedido completo = $1,833", async () => {
-    const real = await exacto("Flauta de Pechuga");
-    const sintetica: ProductoEncontrado = { ...real, name: "Flauta de Pechuga (orden de 4)", packSize: 4 };
-    const bistec = await exacto("Bistec de Res — 1 kg");
-    const pastor = await exacto("Pastor — 500 g");
-    const q4 = buildOrderQuoteFromProducts([{ productId: sintetica.id, requestedQuantity: 4 }], [sintetica]);
-    expect(q4.lines[0]!.quantity).toBe(1);
-    expect(q4.total).toBe(283);
-    const q = buildOrderQuoteFromProducts([{ productId: bistec.id, requestedQuantity: 1 }, { productId: pastor.id, requestedQuantity: 1 }, { productId: sintetica.id, requestedQuantity: 4 }], [bistec, pastor, sintetica]);
-    expect(q.total).toBe(1833);
   });
 });
