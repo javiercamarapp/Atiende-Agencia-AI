@@ -45,7 +45,7 @@ import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
-import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -607,6 +607,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
       const horaLocalDelTurno = Number(new Intl.DateTimeFormat("es-MX", { timeZone: config.timezone, hour: "numeric", hourCycle: "h23" }).format(now()));
       const safeReply = (reply: string) => {
+        // R11-02: si el modelo vuelca el prompt de sistema o nombres de herramientas, la respuesta se descarta completa; se pide lo que sigue en el pedido.
+        if (contieneFugaDePrompt(reply, TOOLS.map((t) => t.name))) reply = `${RESPUESTA_SIN_FUGA} ¿Qué le gustaría pedir?`;
+        // R11-03: ninguna promesa de devolver dinero ni de descuento fuera de la cotizacion llega al cliente.
+        reply = quitarPromesaDeDinero(reply, { respaldaDescuento: lastQuoteRespaldaCortesia === true });
         const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
         return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
       };
@@ -787,7 +791,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const base = completion.text || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          const base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
           if (noEntiendeActivo) {
             // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
             if (completion.text && pideRepetir(completion.text)) {

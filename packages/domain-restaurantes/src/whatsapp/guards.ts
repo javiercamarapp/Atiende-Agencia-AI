@@ -458,10 +458,14 @@ export interface HighRiskContext {
   readonly pedidoReciente?: PedidoReciente | null;
 }
 
+const CARACTERES_INVISIBLES = /\u034f|[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g;
+
 /** Texto comparable: minusculas y sin acentos. Asi "faltó" y "falto" son lo mismo (con `\b` y sin acentos el resultado ya no depende de si el cliente acentuó). */
 export function normalizarParaClasificar(text: string): string {
   if (typeof text !== "string") return "";
-  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // R11-07: NFKD pliega las formas de ancho completo ("ａｌｅｒｇｉｃｏ") y las ligaduras a su forma base, y se quitan los caracteres invisibles
+  // (ancho cero, guion suave, marcas de direccion, BOM) que partirian una palabra de riesgo sin cambiar lo que el cliente lee.
+  return text.normalize("NFKD").replace(CARACTERES_INVISIBLES, "").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 // Verbo en infinitivo (con o sin clitico): "me falto pedir", "me falto pedirle", "me falto agregar". Es el habla de quien SE OLVIDO de pedir algo
@@ -514,6 +518,145 @@ export function esConsultaDeCancelacion(text: string): boolean {
   return CONSULTA_DE_CANCELACION.test(normalizarParaClasificar(text));
 }
 
+// ── R11-04: alergia / cobro doble en ingles ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// Los patrones corren sobre texto sin acentos. «nuts» a secas es una palabra comun («this is nuts»): solo cuenta con contexto de comida.
+const ALERGIA_EN =
+  /\ballerg\w*|\bcoeliac\w*|\bceliac\w*|\bpeanuts?\b|\btree\s+nuts?\b|\bnut[\s-]free\b|\b(?:contain\w*|has|have|with|without|any|free\s+of|no)\s+nuts?\b|\bshellfish\b|\bintolerant\b|\bintolerance\b|\banaphyla\w*|\bepi[\s-]?pen\b/;
+const COBRO_DOBLE_EN =
+  /\bcharged\s+(?:me\s+|us\s+|my\s+card\s+)?(?:twice|two\s+times|double)\b|\bbilled\s+(?:me\s+|us\s+)?twice\b|\b(?:paid|pay)\s+twice\b|\b(?:double|duplicate)[\s-]+(?:charge\w*|payment|billing)\b|\b(?:charged|billed)\s+(?:me\s+)?(?:a\s+)?second\s+time\b/;
+const PREGUNTA_DE_CARGO_FUTURO_EN =
+  /\b(?:will|would|do|does|can|could)\s+(?:i|you|we|it|they|someone)\b[^.!?\n]{0,30}\b(?:charge|bill|pay)\b|\bif\s+i\s+(?:pay|use|choose|order)\b/;
+/** Alergia dicha en broma («soy alergico a los lunes», «allergic to mornings»): no es un riesgo de salud. Solo exime cuando NO hay ademas un termino de comida/salud. */
+const BROMA_DE_ALERGIA =
+  /\b(?:alergic[oa]s?|allergic)\s+(?:a|to)\s+(?:the\s+|los?\s+|las?\s+|el\s+|la\s+)?(?:lunes|mondays?|madrugar|mornings?|trabajar|work|working|ejercicio|exercise|cardio|tarea|homework|gym|gimnasio|mananas?|filas?|lines|people|gente|fiestas?)\b/;
+const ALERGIA_CON_COMIDA =
+  /\b(?:cacahuate|mariscos?|camarones?|nueces|nuez|gluten|lacteos?|lactosa|huevo|soya|ajonjoli|pescado|peanuts?|nuts?|shellfish|shrimp|dairy|lactose|eggs?|soybeans?|sesame|fish)\b/;
+export function esBromaDeAlergia(texto: string): boolean {
+  return BROMA_DE_ALERGIA.test(texto) && !ALERGIA_CON_COMIDA.test(texto);
+}
+/** «No tengo alergias», «no soy alergico», «no allergies», «not allergic»: lo dice para tranquilizar, no para avisar. Si ademas cuenta de OTRA persona o contrasta («pero mi hija si»), escala. */
+const NEGACION_DE_ALERGIA =
+  /\b(?:no\s+(?:soy|tengo|somos|tenemos|hay|existe)\s+(?:\w+\s+){0,2}(?:alergic[oa]s?|alergias?|intolerancias?)|sin\s+alergias?|no\s+allergies|not\s+allergic|no\s+(?:food\s+)?allergy|(?:i|we)\s+(?:don'?t|do\s+not)\s+have\s+(?:any\s+)?(?:food\s+)?allerg\w*|(?:i'?m|i\s+am)\s+not\s+allergic)\b/;
+const CONTRASTE_DE_ALERGIA =
+  /\b(?:pero|aunque|excepto|menos|salvo|but|except|however|mi\s+(?:hij\w*|espos\w*|novi\w*|amig\w*|mam\w*|papa|nino\w*|bebe)|my\s+(?:daughter|son|wife|husband|friend|kid|kids|child|baby|mom|dad)|alguien|someone|one\s+of)\b/;
+export function niegaTenerAlergia(texto: string): boolean {
+  if (!NEGACION_DE_ALERGIA.test(texto) || CONTRASTE_DE_ALERGIA.test(texto)) return false;
+  // Si tras quitar la negacion aun queda un termino de alergia afirmativo, escala.
+  const resto = texto.replace(new RegExp(NEGACION_DE_ALERGIA.source, "g"), " ");
+  return !/\b(?:alergic[oa]s?|alergias?|allerg\w*|celiac\w*|coeliac\w*|intolerante|intolerancia|intolerant|cacahuate|peanuts?|gluten|mariscos?|shellfish)\b/.test(resto);
+}
+
+// ── R11-06: reembolso ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const REEMBOLSO =
+  /\breembols\w*|\bdevoluci(?:on|ones)\s+(?:de|del)\s+(?:mi\s+|el\s+|su\s+|este\s+|todo\s+el\s+)?dinero|\bdevuel\w*\s+(?:mi|el|todo\s+mi|todo\s+el)\s+dinero|\bmi\s+dinero\s+de\s+vuelta|\bregres\w*\s+(?:mi|el)\s+dinero|\brefund\w*|\bmoney\s+back\b|\bgive\s+me\s+my\s+money\b/;
+const POLITICA_SIN_DEVOLUCIONES = "Por política no hacemos devoluciones de dinero, solo cambio de producto";
+export const RESPUESTA_REEMBOLSO_ESCALADO = `Lamento lo ocurrido. ${POLITICA_SIN_DEVOLUCIONES}; ya avisé al gerente para que revise su caso y lo contacte directamente. ¿Me puede decir qué faltó o qué llegó mal?`;
+/** «¿Tienen política de reembolso?», «do you have a refund policy?»: pregunta por la regla, no pide el dinero. La contesta el agente (regla 6b del prompt) y la guardia posterior cuida su respuesta. */
+const PREGUNTA_POLITICA_REEMBOLSO =
+  /\b(?:hacen|hay|tienen|tiene|aceptan|manejan|ofrecen|existe|cual\s+es|cuales\s+son|como\s+funciona\w*|politicas?|do\s+you|does|is\s+there|are\s+there|what\s+is|what'?s|policy|policies)\b/;
+const EXIGE_EL_DINERO = /\b(?:quiero|exijo|necesito|devuelvan\w*|devuelvame|i\s+want|i\s+need|give\s+me)\b/;
+export function preguntaPorLaPoliticaDeReembolso(texto: string): boolean {
+  return /[?¿]/.test(texto) && PREGUNTA_POLITICA_REEMBOLSO.test(texto) && !EXIGE_EL_DINERO.test(texto);
+}
+/** «No quiero reembolso, solo cambien el producto», «no refund needed»: lo descarta, no lo pide. */
+export function niegaQuererReembolso(texto: string): boolean {
+  return /\b(?:no|ni|not|never|nunca)\s+(?:\w+\s+){0,3}(?:reembols\w*|refund\w*)|\b(?:sin|without)\s+(?:\w+\s+)?(?:reembols\w*|refund\w*)|\bno\s+(?:\w+\s+){0,2}(?:quiero|necesito|pido|exijo|busco)\s+(?:que\s+me\s+)?(?:\w+\s+){0,2}(?:devoluci\w+\s+de\w*\s+dinero|mi\s+dinero)/.test(texto) &&
+    !/\b(?:pero|aunque|but)\b/.test(texto);
+}
+
+// ── R11-03a / R11-03b: promesas de dinero fuera de politica ──────────────────────────────────────────────────────────────────────────────────────
+// Decision vigente: NO hay devoluciones de dinero (solo cambio de producto) y el unico descuento es el que `cotizar_pedido` calcula. El prompt lo prohibe, pero si el modelo lo promete el
+// cliente lo lee tal cual. Esta guardia corre sobre la respuesta ya redactada: reemplaza SOLO la frase que promete (el resto de la respuesta se conserva). Corre sobre texto sin acentos.
+const OBJETO_DE_DINERO = "(?:dinero|pago|importe|monto|cobro|total|lo\\s+que\\s+pag\\w+|costo|su\\s+compra)";
+const PROMESA_DE_DEVOLUCION = new RegExp(
+  [
+    // «le devolvemos su dinero», «le vamos a reembolsar», «le regresamos el pago», «le reintegramos el importe»
+    `\\b(?:le|les|te|nos)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+|puedo\\s+|podemos\\s+|podre\\s+|podremos\\s+)?(?:devolv\\w+|devuelv\\w+|regres\\w+|reintegr\\w+|repon\\w+)\\b[^.!?\\n]{0,40}\\b${OBJETO_DE_DINERO}`,
+    `\\b(?:le|les|te|nos)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+|puedo\\s+|podemos\\s+|podre\\s+|podremos\\s+)?reembols\\w+`,
+    // sin pronombre: «devolveremos su dinero», «se le reembolsara», «procederemos al reembolso»
+    `\\b(?:devolver[ea]?mos|devolveremos|devolvere|devuelvo|devolvemos|reembolsar[ea]?mos|reembolsaremos|reembolsare|reintegraremos|reintegro)\\b[^.!?\\n]{0,40}\\b${OBJETO_DE_DINERO}`,
+    `\\bse\\s+(?:le|les)\\s+(?:devolvera|reembolsara|reintegrara|regresara)\\b`,
+    `\\b(?:procederemos|procedemos|vamos)\\s+(?:a|al)\\s+(?:el\\s+)?(?:reembolso|devolver|reembolsar)\\b`,
+    `\\b(?:le|les)\\s+(?:hare|haremos)\\s+(?:un\\s+|el\\s+)?reembolso\\b`,
+    `\\bwe(?:'ll|\\s+will|\\s+can)\\s+(?:issue\\s+(?:you\\s+)?a\\s+)?refund\\w*|\\bi(?:'ll|\\s+will|\\s+can)\\s+(?:issue\\s+(?:you\\s+)?a\\s+)?refund\\w*|\\bfull\\s+refund\\b`,
+  ].join("|"),
+  "u",
+);
+const NUMERO_DE_DESCUENTO = "\\d{1,3}\\s*%";
+const PROMESA_DE_DESCUENTO = new RegExp(
+  [
+    // «le aplico 50% de descuento», «le damos un descuento», «le ofrezco 20% menos», «le hacemos un descuento»
+    `\\b(?:le|les|te|nos)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+|puedo\\s+|podemos\\s+|podre\\s+|podremos\\s+)?(?:aplic\\w+|dam\\w+|doy|dar|ofrec\\w+|ofrezc\\w+|otorg\\w+|hag\\w+|regal\\w+|conced\\w+|cargar\\w+)\\b[^.!?\\n]{0,40}(?:\\bdescuento|${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?(?:menos|off|de\\s+descuento))`,
+    // «aplicaremos un descuento», «aplico 50% de descuento»
+    `\\b(?:aplic(?:o|amos|aremos|are)|otorg(?:o|amos|aremos|are))\\s+(?:un\\s+|el\\s+)?(?:${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?)?descuento`,
+    // «tendra 15% de descuento», «queda con 10% de descuento»
+    `\\b(?:tendra|tendran|queda|quedan|llevara|llevan)\\s+(?:con\\s+|un\\s+)?${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?descuento`,
+    `\\bwe(?:'ll|\\s+will|\\s+can)\\s+(?:give|offer|apply)\\s+(?:you\\s+)?(?:a\\s+|an\\s+)?(?:${NUMERO_DE_DESCUENTO}\\s*)?(?:discount|off)`,
+  ].join("|"),
+  "u",
+);
+const NEGACION_ANTES = /\b(?:no|nunca|jamas|tampoco|ni)\s+(?:\w+\s+){0,4}$/;
+const DESCUENTO_CONDICIONAL_DE_LA_CARTA =
+  /\b(?:si|cuando)\b[^.!?\n]*\b(?:recoger|recoja|recoge|domicilio|tarjeta|efectivo|pasa|pase|visita|visite|dia|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hora|despues\s+de)\b/;
+function promesaSinNegar(patron: RegExp, textoNormalizado: string): boolean {
+  const m = patron.exec(textoNormalizado);
+  if (!m) return false;
+  return !NEGACION_ANTES.test(textoNormalizado.slice(Math.max(0, m.index - 40), m.index));
+}
+/** La frase PROMETE devolver dinero («le devolvemos su dinero», «we will refund you»). Una negacion («no podemos devolver su dinero») o la politica («no hacemos devoluciones») no cuentan. */
+export function prometeDevolucionDeDinero(frase: string): boolean {
+  return promesaSinNegar(PROMESA_DE_DEVOLUCION, normalizarParaClasificar(frase));
+}
+/** La frase PROMETE un descuento al cliente («le aplico 50% de descuento»). Un descuento condicional de la carta («si pide para recoger le damos 10%») no cuenta. */
+export function prometeDescuento(frase: string): boolean {
+  const t = normalizarParaClasificar(frase);
+  if (!promesaSinNegar(PROMESA_DE_DESCUENTO, t)) return false;
+  return !DESCUENTO_CONDICIONAL_DE_LA_CARTA.test(t);
+}
+export const RESPUESTA_POLITICA_SIN_DEVOLUCIONES = `${POLITICA_SIN_DEVOLUCIONES}. Si gusta, cuénteme qué faltó o qué llegó mal y lo revisamos.`;
+export const RESPUESTA_SIN_DESCUENTOS_EXTRA = "No puedo ofrecerle descuentos adicionales a los que aparecen en su cotización.";
+/**
+ * Guardia posterior: reemplaza la frase que promete devolver dinero (siempre) o un descuento (salvo que la cotizacion de este turno traiga una promocion, `respaldaDescuento`) por la
+ * politica vigente. El resto de la respuesta se conserva; cada sustitucion aparece una sola vez. No afirma «ya avise al gerente»: esta guardia no registra ningun aviso.
+ */
+export function quitarPromesaDeDinero(reply: string, opciones: { readonly respaldaDescuento?: boolean } = {}): string {
+  const partes = reply.split(/((?<=[.!?])\s+|\n+)/);
+  let usadaDevolucion = false;
+  let usadaDescuento = false;
+  let cambio = false;
+  for (let i = 0; i < partes.length; i += 2) {
+    const frase = partes[i]!;
+    if (prometeDevolucionDeDinero(frase)) {
+      partes[i] = usadaDevolucion ? "" : RESPUESTA_POLITICA_SIN_DEVOLUCIONES;
+      usadaDevolucion = true;
+      cambio = true;
+    } else if (opciones.respaldaDescuento !== true && prometeDescuento(frase)) {
+      partes[i] = usadaDescuento ? "" : RESPUESTA_SIN_DESCUENTOS_EXTRA;
+      usadaDescuento = true;
+      cambio = true;
+    }
+  }
+  if (!cambio) return reply;
+  return partes.join("").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
+}
+
+// ── R11-02: fuga del prompt de sistema ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Un cliente jamas debe leer los encabezados de las reglas internas ni el nombre de una herramienta (identificadores snake_case que solo existen en el prompt y en el contrato con el
+// modelo). Los encabezados se reconocen EN MAYUSCULAS (como estan en el prompt) para no confundir «las reglas de negocio» dichas en prosa.
+const ENCABEZADOS_DEL_PROMPT = /REGLAS DURAS DE|REGLAS DE NEGOCIO:|REGLAS QUE APLICAN LAS HERRAMIENTAS|FLUJO DE LA CONVERSACI[ÓO]N \(|SUCURSALES REALES \(|REGLAS ADICIONALES DEL NEGOCIO/;
+const MARCADORES_DE_CHAT = /<\|im_(?:start|end)\|>|\[\/?INST\]|<\/?system>/i;
+export function contieneFugaDePrompt(reply: string, nombresDeHerramientas: readonly string[] = []): boolean {
+  if (typeof reply !== "string" || reply === "") return false;
+  if (ENCABEZADOS_DEL_PROMPT.test(reply) || /reglas\s+duras\s+de\b/i.test(reply) || MARCADORES_DE_CHAT.test(reply)) return true;
+  const bajas = reply.toLowerCase();
+  return nombresDeHerramientas.some((n) => n.includes("_") && new RegExp(`(?<![a-z0-9_])${n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9_])`).test(bajas));
+}
+export const RESPUESTA_SIN_FUGA = "Con gusto le ayudo con su pedido.";
+/** Si la respuesta vuelca el prompt de sistema o nombres de herramientas, se descarta COMPLETA (no se puede limpiar a medias) y se devuelve una respuesta neutra de pedido. */
+export function reemplazarFugaDePrompt(reply: string, nombresDeHerramientas: readonly string[] = []): string {
+  return contieneFugaDePrompt(reply, nombresDeHerramientas) ? RESPUESTA_SIN_FUGA : reply;
+}
+
 interface Patron {
   readonly intent: HighRiskIntent;
   readonly pattern: RegExp;
@@ -537,15 +680,24 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   },
   {
     intent: "alergia_salud",
-    pattern: /\b(?:alergic[oa]s?|alergias?|intolerante|intolerancia|celiac[oa]|cacahuate|gluten)\b/,
+    // R11-04: tambien en ingles (turistas en Merida): allergic / allergy, celiac / coeliac, peanut(s), tree nut(s), shellfish, intolerant, anaphylaxis.
+    pattern: new RegExp(
+      `${/\b(?:alergic[oa]s?|alergias?|intolerante|intolerancia|celiac[oa]|cacahuate|gluten)\b/.source}|${ALERGIA_EN.source}`,
+    ),
+    cuando: (texto) => !esBromaDeAlergia(texto) && !niegaTenerAlergia(texto),
     reply:
       "Por su seguridad no puedo asegurarle los ingredientes de un platillo ni si es apto para una alergia. Ya avisé al equipo del restaurante para que le confirme directamente antes de hacer su pedido.",
   },
   {
     intent: "cobro_duplicado",
-    pattern: /cobr(?:o|aron|e)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces|\bcarg(?:o|aron|aro)\s+(?:dos\s+veces|2\s+veces|doble|duplicado)|\b(?:doble|segundo)\s+cargo\b|\bcargo\s+(?:doble|duplicado)\b/,
+    pattern: new RegExp(
+      `${/cobr(?:o|aron|e)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces|\bcarg(?:o|aron|aro)\s+(?:dos\s+veces|2\s+veces|doble|duplicado)|\b(?:doble|segundo)\s+cargo\b|\bcargo\s+(?:doble|duplicado)\b/.source}|${COBRO_DOBLE_EN.source}`,
+    ),
     // Una PREGUNTA sobre si habra un cargo («¿me cobran cargo doble si pago con tarjeta?», «¿hay cargo doble al pagar?») no es un cobro que ya ocurrio: va al agente.
-    cuando: (texto) => !PREGUNTA_DE_CARGO_FUTURO.test(texto) && !(/[?¿]/.test(texto) && /\b(?:cobran|cobrarian|cobraran|cobraria|cobrara|van\s+a\s+cobrar)\b/.test(texto)),
+    cuando: (texto) =>
+      !PREGUNTA_DE_CARGO_FUTURO.test(texto) &&
+      !PREGUNTA_DE_CARGO_FUTURO_EN.test(texto) &&
+      !(/[?¿]/.test(texto) && /\b(?:cobran|cobrarian|cobraran|cobraria|cobrara|van\s+a\s+cobrar)\b/.test(texto)),
     reply: "Lamento el problema con el cobro. Ya avisé al equipo para que revise su caso directamente y lo contacte lo antes posible.",
   },
   {
@@ -584,6 +736,14 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     pattern: /\btransferencia\b|\bdeposito\b|\bspei\b|\bpagar\s+por\s+transfer/,
     reply:
       "Por este medio no puedo registrar pagos por transferencia. Ya avisé al equipo para que lo contacte y vea con usted esa forma de pago; si prefiere, puede pagar en efectivo o con tarjeta.",
+  },
+  {
+    // R11-06: pedir DINERO de vuelta. Decision vigente: no hay devoluciones de dinero, solo cambio de producto. No se deja a la improvisacion del modelo: respuesta fija con la
+    // politica, aviso al gerente (motivo `queja`) y la pregunta que el agente necesita para seguir. Una PREGUNTA por la politica o una negacion («no quiero reembolso») va al agente.
+    intent: "queja",
+    pattern: REEMBOLSO,
+    cuando: (texto) => !preguntaPorLaPoliticaDeReembolso(texto) && !niegaQuererReembolso(texto),
+    reply: RESPUESTA_REEMBOLSO_ESCALADO,
   },
   {
     intent: "queja",
