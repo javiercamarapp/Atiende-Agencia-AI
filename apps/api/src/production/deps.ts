@@ -57,7 +57,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, contextoPrecargadoDeEntorno, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp } from "@atiende/domain-restaurantes";
 import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
@@ -171,6 +171,8 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
     urlFacturacion: urlFacturacionDeEntorno(),
+    // R11 A: contexto precargado + llamadas en lote. APAGADO por omision; se enciende con `WHATSAPP_CONTEXTO_PRECARGADO=1` (para el A/B y, si gana, para produccion).
+    contextoPrecargado: contextoPrecargadoDeEntorno(),
     // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
     autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
     ...(observabilidad ? { observabilidad } : {}),
