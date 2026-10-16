@@ -133,8 +133,11 @@ test.describe("citas QA R1 botones: configuracion y staff", () => {
     await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 2_000 });
     expect(await mock.escrituras()).toEqual([]);
     await dialogo(page, "¿Revocar esta invitación?").getByRole("button", { name: "Volver" }).click();
+    // Se espera a que el dialogo cierre del todo (animacion de salida) antes de reabrirlo: si no, el clic cae en un boton que se desmonta.
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
     expect(await mock.escrituras()).toEqual([]);
     await page.getByRole("button", { name: "Revocar" }).first().click();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
     await dialogo(page, "¿Revocar esta invitación?").getByRole("button", { name: "Revocar invitación" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "DELETE", ruta: "/staff/invitaciones/" })).length).toBe(1);
     // Cambiar el rol de otra persona tambien pide confirmar; Volver deja el rol como estaba.

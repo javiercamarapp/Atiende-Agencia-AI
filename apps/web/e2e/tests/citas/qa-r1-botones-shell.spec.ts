@@ -3,6 +3,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { afirmarModo, afirmarSinScrollHorizontal } from "../../helpers/ds.ts";
+import { elegirValor } from "../../helpers/listas.ts";
 import { afirmarPantallaSana } from "../../helpers/humo.ts";
 import { barraMovil, enlacesMasMovil, esMovil, sidebar } from "../../helpers/navegacion.ts";
 import { citasQa } from "../../mock-api/fixtures/citas-qa.ts";
@@ -17,9 +18,9 @@ async function conDosSucursales(page: Page, mock: { agregarAEstado(c: string, v:
   await afirmarPantallaSana(page, ruta);
 }
 
-/** El selector de sucursal visible en este viewport (Sidebar en escritorio, cabecera en movil). */
+/** El selector de sucursal visible en este viewport (Sidebar en escritorio, cabecera en movil). Es un disparador `role=combobox` (SelectorSucursal), no un <select> nativo. */
 function selectorVisible(page: Page) {
-  return page.locator('select[id^="citas-sucursal-activa"]:visible');
+  return page.locator('[role="combobox"][id^="citas-sucursal-activa"]:visible');
 }
 
 test.describe("citas QA R1 botones: shell", () => {
@@ -31,7 +32,7 @@ test.describe("citas QA R1 botones: shell", () => {
     await expect(page.getByText("Jorge Ek")).toBeVisible();
 
     await mock.limpiarRegistro();
-    await selectorVisible(page).selectOption(NORTE.propertyId);
+    await elegirValor(selectorVisible(page), NORTE.propertyId);
     await expect(page.getByText("Rosa Canul")).toBeVisible();
     await expect(page.getByText("Ana Lilia Pech")).toHaveCount(0);
     await expect(page.getByText("Jorge Ek")).toHaveCount(0);
@@ -53,7 +54,7 @@ test.describe("citas QA R1 botones: shell", () => {
     await iniciarSesion("citas", "owner");
     await conDosSucursales(page, mock, "clientes");
     await page.getByLabel("Buscar cliente").fill("Ana");
-    await selectorVisible(page).selectOption(NORTE.propertyId);
+    await elegirValor(selectorVisible(page), NORTE.propertyId);
     await expect(page.getByLabel("Buscar cliente")).toHaveValue("");
     await expect(page.getByText("Rosa Canul")).toBeVisible();
     vigilante.verificar();
