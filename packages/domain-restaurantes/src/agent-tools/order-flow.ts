@@ -73,6 +73,17 @@ export interface OrderFlowContext {
   /** Id del ultimo pedido creado en la sesion: un pedido identico dentro de la ventana de deduplicacion devuelve ESE id y se marca `ya_registrado`. */
   readonly sessionUltimoPedidoId?: string;
   readonly confirmedAtMs?: number;
+  /** R11 (cierre como maquina de estados, `cierre-maquina.ts`): propina que se cotizo (pesos o porcentaje). Como pago/efectivo, NO entra a `quoteHash` pero SI es parte de lo que el cliente acepta:
+   * cambiarla tras mostrar el resumen es otra cotizacion que hay que volver a mostrar. */
+  readonly quotedPropinaMxn?: number;
+  readonly quotedPropinaPct?: number;
+  /** Turno del cliente en que se rechazo una confirmacion por mensaje ambiguo: en un turno POSTERIOR (resumen mostrado otra vez) el ambiguo ya no se rechaza. Salida contra el deadlock. */
+  readonly cierreAmbiguoTurn?: string;
+  /** Texto del resumen armado por el servidor para ESTA cotizacion (solo con la maquina de cierre activa). */
+  readonly resumenCanonico?: string;
+  /** Firma (pago|efectivo|propina) y turno de la confirmacion: `crear_pedido` exige los mismos datos. */
+  readonly confirmedFirma?: string;
+  readonly confirmedTurn?: string;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
 }
@@ -111,6 +122,9 @@ export type OrderFlowViolationCode =
   | "pedido_distinto_al_cotizado"
   | "confirmacion_mismo_turno"
   | "cliente_rechazo_resumen"
+  | "cierre_resumen_no_mostrado"
+  | "cierre_sin_si_explicito"
+  | "cierre_datos_cambiaron"
   | "hash_no_coincide"
   | "pedido_ya_creado"
   | "pedido_en_proceso"

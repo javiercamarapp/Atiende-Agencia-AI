@@ -65,6 +65,17 @@ import {
   type OrderFlowViolationCode,
   type QuotedItem,
 } from "./order-flow.ts";
+import {
+  cierreMaquinaActiva,
+  clasificarRespuestaCierre,
+  datosDeCierreDeContexto,
+  datosDeCierreDeEntrada,
+  decidirConfirmacion,
+  firmaDeCierre,
+  mensajeDatosCambiaron,
+  resumenCanonico,
+  type DatosDeCierre,
+} from "./cierre-maquina.ts";
 import type {
   CanalPedido,
   CreateOrderInput,
@@ -337,6 +348,9 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
         otro_pedido: { type: "boolean", description: "true SOLO si el cliente pidió expresamente OTRO pedido igual al que ya quedó registrado. Un 'sí' de más o repetir el resumen NO es otro pedido: no lo mande." },
+        efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Mándelo AQUÍ en cuanto lo dé para que el resumen lo muestre." },
+        propina: { type: "number", description: "Propina en pesos que dio el cliente (solo si preguntar_propina fue true). No suma al total. Mándela aquí en cuanto la dé para que el resumen la muestre." },
+        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta. Mándela aquí en cuanto la dé para que el resumen la muestre." },
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
         minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con zona, calculada con la HORA LOCAL de la sucursal (no UTC). El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
@@ -928,6 +942,22 @@ function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowConte
   return { ...(quotedPago ? { quotedPago } : {}), ...(quotedEfectivoCon !== undefined ? { quotedEfectivoCon } : {}) };
 }
 
+/** R11: propina de una cotizacion (pesos o porcentaje). Lo que manda el modelo; si no la menciona se conserva la de la cotizacion vigente; 0 / "sin propina" la quita. */
+function propinaDeCotizacion(input: Record<string, unknown>, previo: OrderFlowContext | undefined): { quotedPropinaMxn?: number; quotedPropinaPct?: number } {
+  const hayMonto = input.propina !== undefined && input.propina !== null;
+  const hayPct = input.propina_porcentaje !== undefined && input.propina_porcentaje !== null;
+  if (!hayMonto && !hayPct) {
+    return { ...(previo?.quotedPropinaMxn !== undefined ? { quotedPropinaMxn: previo.quotedPropinaMxn } : {}), ...(previo?.quotedPropinaPct !== undefined ? { quotedPropinaPct: previo.quotedPropinaPct } : {}) };
+  }
+  if (typeof input.propina === "number" && input.propina > 0) return { quotedPropinaMxn: input.propina };
+  const pct = porcentajeDePropina(input.propina_porcentaje) ?? (typeof input.propina === "string" ? porcentajeDePropina(input.propina) : null);
+  return pct !== null ? { quotedPropinaPct: pct } : {};
+}
+
+/** Texto que acompana a `resumen_canonico` (solo con la maquina de cierre activa). */
+const INSTRUCCION_RESUMEN_CANONICO =
+  "Cuando ya tenga todos los datos (producto, entrega, pago y, si aplica, propina), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
+
 const CONFLICT_MESSAGE ="La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
 
 /** Texto que acompana a una re-cotizacion identica de una cotizacion que el cliente ya vio (ver `runWithOrderFlow`). */
@@ -1050,6 +1080,18 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // hereda el turno de la cotizacion anterior (si no, confirmar_resumen y crear_pedido pasaban sin que el cliente viera nunca el resumen con su pago). Omitirlos conserva los previos.
       const previoVigente = previo && (snap.state === "cotizado" || snap.state === "confirmado") && flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS ? previo : undefined;
       const pagoCotizado = pagoDeCotizacion(input, previoVigente);
+      const propinaCotizada = propinaDeCotizacion(input, previoVigente);
+      // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
+      const canonico = cierreMaquinaActiva() && ctx.channel === "whatsapp"
+        ? resumenCanonico({
+            lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })),
+            total: quotedQuote.total,
+            descuento: quotedQuote.descuento,
+            canal: canalOf(input.canal),
+            datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct },
+          })
+        : undefined;
+      const conCanonico = (r: object): object => (canonico ? { ...r, resumen_canonico: canonico, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : r);
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&
@@ -1058,6 +1100,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         previo.quotedTotal === quotedQuote.total &&
         previo.quotedPago === pagoCotizado.quotedPago &&
         previo.quotedEfectivoCon === pagoCotizado.quotedEfectivoCon &&
+        previo.quotedPropinaMxn === propinaCotizada.quotedPropinaMxn &&
+        previo.quotedPropinaPct === propinaCotizada.quotedPropinaPct &&
         flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS
       ) {
         // El historial de WhatsApp no trae los resultados de herramientas: en el turno del "si" el modelo busca y cotiza de nuevo y despues repite el resumen
@@ -1066,7 +1110,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         const vistoEnHistorial = resumenMostradoEnHistorial(previo.quotedTotal, ctx.conversacionReciente);
         const yaMostrada = previo.quotedTurn !== null && flow.turn !== null && previo.quotedTurn !== flow.turn && vistoEnHistorial !== false;
         const aviso = yaMostrada ? { ya_mostrada_al_cliente: true, siguiente_paso: SIGUIENTE_PASO_COTIZACION_REPETIDA } : {};
-        return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash, ...aviso }, quoteHash };
+        return { ...outcome, result: conCanonico({ ...(outcome.result as object), quote_hash: quoteHash, ...aviso }), quoteHash };
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
         quoteHash,
@@ -1075,6 +1119,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedPrices,
         ...(pagoCotizado.quotedPago ? { quotedPago: pagoCotizado.quotedPago } : {}),
         ...(pagoCotizado.quotedEfectivoCon !== undefined ? { quotedEfectivoCon: pagoCotizado.quotedEfectivoCon } : {}),
+        ...propinaCotizada,
+        ...(canonico ? { resumenCanonico: canonico } : {}),
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
         ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
         ...(programadoCotizado ? { programadoPara: programadoCotizado } : {}),
@@ -1083,7 +1129,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
         ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0, sessionPedidos: snap.context.sessionPedidos ?? 0, ...(snap.context.sessionUltimoPedidoId ? { sessionUltimoPedidoId: snap.context.sessionUltimoPedidoId } : {}) } : {}),
       });
-      if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
+      if (res === "written") return { ...outcome, result: conCanonico({ ...(outcome.result as object), quote_hash: quoteHash }), quoteHash };
       if (res === "unavailable") return outcome;
     }
     throw new OrderValidationError(CONFLICT_MESSAGE);
@@ -1106,7 +1152,23 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (snap.state !== "cotizado") {
         return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       }
-      const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, confirmedAtMs: flowNow(flow) });
+      // R11: cierre como maquina de estados. Con historial de WhatsApp el servidor exige que el ULTIMO mensaje del asistente sea el resumen vigente y que el ultimo del cliente sea un «si»
+      // explicito. La negativa se devuelve como RESULTADO (no como excepcion): el SAVEPOINT revertiria la marca de «ambiguo» que habilita la salida segura del turno siguiente.
+      const cierreOn = cierreMaquinaActiva() && ctx.channel === "whatsapp" && ctx.conversacionReciente !== undefined;
+      if (cierreOn) {
+        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico });
+        if (!decision.ok) {
+          if (decision.marcarAmbiguo && flow.turn !== null && current.cierreAmbiguoTurn === undefined) {
+            await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, cierreAmbiguoTurn: flow.turn });
+          }
+          return { result: { error: decision.mensaje, ...(current.resumenCanonico ? { resumen_canonico: current.resumenCanonico } : {}) }, orderId: null, propertyId: null, rechazoDelFlujo: decision.code };
+        }
+      }
+      const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", {
+        ...current,
+        confirmedAtMs: flowNow(flow),
+        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(current)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
+      });
       if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };
     }
@@ -1162,6 +1224,31 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (existente) return { result: { order: orderToWire(existente), ya_registrado: true }, raw: existente, orderId: existente.id, propertyId: existente.propertyId, yaRegistrado: true };
     }
     const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
+    // R11: cierre como maquina de estados. (1) pago / efectivo / propina deben ser los del resumen confirmado; (2) si la confirmacion es de un turno ANTERIOR y el cliente despues rechazo o
+    // cambio el pedido, se vuelve a cotizado. Resultados (no excepciones) por el SAVEPOINT. Un reclamo viejo (`creando`) que se retoma NO se vuelve a revisar: ya paso por aqui.
+    if (cierreMaquinaActiva() && ctx.channel === "whatsapp" && snap.state === "confirmado" && current.confirmedFirma !== undefined) {
+      const datos = datosDeCierreDeEntrada(input, current);
+      if (firmaDeCierre(datos) !== current.confirmedFirma) {
+        return { result: { error: mensajeDatosCambiaron(), ...(current.resumenCanonico ? { resumen_canonico_anterior: current.resumenCanonico } : {}) }, orderId: null, propertyId: null, rechazoDelFlujo: "cierre_datos_cambiaron" };
+      }
+      if (ctx.conversacionReciente !== undefined && flow.turn !== null && current.confirmedTurn !== flow.turn) {
+        const ultimoCliente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "user")?.content;
+        const clase = clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: false });
+        if (clase === "no" || clase === "cambio") {
+          await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, confirmedAtMs: undefined, confirmedFirma: undefined, confirmedTurn: undefined, quotedTurn: flow.turn });
+          return {
+            result: { error: "NO se creó el pedido: después de confirmar, el cliente rechazó o quiere cambiar algo. Aplique el cambio, vuelva a llamar cotizar_pedido, muéstrele el resumen nuevo y espere su sí.", ...(current.resumenCanonico ? { resumen_canonico_anterior: current.resumenCanonico } : {}) },
+            orderId: null,
+            propertyId: null,
+            rechazoDelFlujo: "cierre_sin_si_explicito",
+          };
+        }
+      }
+      // La propina que el cliente vio en el resumen viaja al pedido aunque el modelo no la repita.
+      if (datos.heredaPropina && (datos.propinaMxn !== undefined || datos.propinaPct !== undefined)) {
+        input = { ...input, ...(datos.propinaMxn !== undefined ? { propina: datos.propinaMxn } : { propina_porcentaje: datos.propinaPct }) };
+      }
+    }
     const claimCtx: OrderFlowContext = { ...current, claimedAtMs: flowNow(flow) };
     const res = await writeFlow(repo, ctx, flow, snap.version, "creando", claimCtx);
     if (res === "written") claimed = { version: snap.version + 1, context: claimCtx };
