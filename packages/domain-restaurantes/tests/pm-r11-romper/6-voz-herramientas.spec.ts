@@ -65,6 +65,27 @@ describe("R11-6A voz: lo que el modelo de voz manda no cambia precio, telefono n
   });
 });
 
+describe("R11-6A2 voz: la guardia determinista de riesgo (en WhatsApp corre ANTES del modelo)", () => {
+  // ── HALLAZGO R11-17 (P1, salud / cobro, solo VOZ): la guardia de voz solo actua si el cliente PIDE una persona ──
+  // `evaluarPersonaVoz` sale con `null` salvo que `pideUnaPersona(texto)`; el clasificador de alto riesgo (alergia, cobro doble, ARCO, queja, urgencia) solo se
+  // consulta DESPUES de eso para elegir el motivo. Un cliente que dice «soy alergico al cacahuate, ¿es seguro?» o «me cobraron dos veces» sin pedir una persona
+  // depende de que el modelo se acuerde de la regla del prompt. Con Gemini Live real: 1 de 3 llamadas de alergia (en ingles) improviso un aviso medico y colgo sin
+  // avisar al equipo (RONDA-11-ROMPER.md, RV-2). Fix minimo: consultar `classifyHighRiskIntent` para cualquier habla inteligible y escalar con su respuesta fija.
+  const SIN_PEDIR_PERSONA: ReadonlyArray<readonly [string, string]> = [
+    ["alergia en espanol", "Tengo alergia severa al cacahuate, ¿sus tacos son seguros para mí?"],
+    ["cobro doble", "Ayer me cobraron dos veces en la terminal el mismo pedido"],
+    ["queja de entrega", "El pedido de ayer me llegó frío y faltó una bebida"],
+  ];
+  for (const [nombre, frase] of SIN_PEDIR_PERSONA) {
+    hallazgo(`R11-17 [P1] voz: ${nombre} (sin pedir una persona) se escala con la guardia determinista`, async () => {
+      const { evaluarPersonaVoz } = await import("../../src/voz/guardia-persona.ts");
+      // Control: pidiendo una persona SI escala, con el motivo especifico.
+      expect(evaluarPersonaVoz(`Quiero hablar con una persona. ${frase}`), "control: pidiendo una persona SI escala").not.toBeNull();
+      expect(evaluarPersonaVoz(frase), "sin pedir una persona").not.toBeNull();
+    });
+  }
+});
+
 describe("R11-6B voz: escalaciones y avisos", () => {
   it("escalar_a_humano por voz devuelve la frase fija para el cliente y deja UN aviso aunque el modelo lo repita durante la llamada", async () => {
     const f = buildRestaurantFixture();
