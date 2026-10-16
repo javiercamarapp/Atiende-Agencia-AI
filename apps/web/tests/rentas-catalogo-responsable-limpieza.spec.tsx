@@ -3,7 +3,7 @@
 // paridad3 rentas -- Catálogo: "Responsable de limpieza por omisión" por unidad. Solo se ofrece si hay lista del equipo (migración 033);
 // guardar manda PUT .../responsable-limpieza solo cuando cambió; null lo quita; el mensaje real del servidor queda dentro del formulario.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { notify } from "@atiende/ui";
 import { CatalogoPage } from "../src/verticals/rentas/pages/Catalogo.tsx";
 import { fijarResponsableLimpieza } from "../src/verticals/rentas/lib/catalogo-client.ts";
@@ -11,7 +11,7 @@ import type { LoginSession } from "../src/lib/auth-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
-let exito: ReturnType<typeof vi.spyOn>;
+let exito: MockInstance;
 beforeEach(() => {
   exito = vi.spyOn(notify, "success").mockImplementation((() => "") as never);
 });
