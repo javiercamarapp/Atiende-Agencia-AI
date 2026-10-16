@@ -229,7 +229,7 @@ describe("R12-B3 horario de verano (zona con DST) y dia de negocio", () => {
 });
 
 describe("R12-B4 el reloj retrocede (ajuste NTP o instancia con reloj atrasado)", () => {
-  hallazgo("R12-04 [P2, corregido] una cotizacion NO se vuelve inmortal si el reloj retrocede: con el reloj 3 h atras, crear se rechaza por vencida", async () => {
+  it("R12-04 [P2, corregido] una cotizacion NO se vuelve inmortal si el reloj retrocede: con el reloj 3 h atras, crear se rechaza por vencida", async () => {
     const f = buildRestaurantFixture();
     const { s } = await listoParaCrear(f);
     // Control: con el reloj hacia adelante dentro de la vigencia (10 min) SI se podria crear (no se crea aqui para no gastar el flujo).
