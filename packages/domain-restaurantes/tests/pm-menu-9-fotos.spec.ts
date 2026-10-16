@@ -1,6 +1,7 @@
 // Menú público de PM (lostaquitosdepm.com, capturado el 15-oct-2026): las imágenes COMPLETAS de cada página (9 u 8 por sucursal, no 3) contra el seed y el menú del arnés.
 // Deterministas (sin LLM, sin red, sin base real). Solo se afirma lo que las imágenes dicen; lo que no dicen queda como pendiente explícito (ver docs/demo-pm/menu-en-linea/README.md).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -114,7 +115,7 @@ describe("manifiesto de PDF (sin binarios)", () => {
 
   it("si el PDF de un clon local existe, su SHA256 coincide con el manifiesto (se omite en CI, donde no hay binarios)", async () => {
     const { createHash } = await import("node:crypto");
-    const carpeta = path.join(process.env.HOME ?? "", "atiende-loop/work/pm-menus-pdf");
+    const carpeta = path.join(homedir(), "atiende-loop/work/pm-menus-pdf");
     for (const pdf of manifiesto.pdfs) {
       const ruta = path.join(carpeta, pdf.archivo);
       if (!existsSync(ruta)) continue;
