@@ -18,7 +18,7 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, NativeSelect, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
 import { CalendarRange, Plus } from "lucide-react";
 import {
   createPromotion,
@@ -29,6 +29,7 @@ import {
 import type { Promotion, PromotionCanal, PromotionType } from "../lib/promotions-client.ts";
 import { fetchProducts } from "../lib/catalog-client.ts";
 import type { Product } from "../lib/catalog-client.ts";
+import { puedeEn } from "../lib/permisos.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const DAY_LABELS: readonly string[] = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -108,9 +109,26 @@ function alternarProducto(elegidos: readonly string[], id: string, marcado: bool
   return ordenados.length === set.size ? ordenados : [...set];
 }
 
-export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+/** PL-23: las promociones son de owner/admin. Un staff que llega por URL ve un estado honesto en vez de un 403 del servidor. */
+export function PromocionesPage(ctx: RestaurantesShellContext) {
+  if (!puedeEn(ctx.role, "promociones.ver")) {
+    return (
+      <PageContainer padding="none">
+        <h1 className="sr-only">Promociones</h1>
+        <Callout tone="info">Solo el dueño o un administrador puede ver y gestionar las promociones.</Callout>
+      </PageContainer>
+    );
+  }
+  return <PromocionesContenido {...ctx} />;
+}
+
+function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
   const [promotions, setPromotions] = useState<readonly Promotion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Los errores de crear/editar se pintan DENTRO de su dialogo (QA-restaurantes-R1-botones-17): el estado de la pagina queda
+  // detras del overlay y el boton parecia muerto.
+  const [errorCrear, setErrorCrear] = useState<string | null>(null);
+  const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
@@ -150,18 +168,26 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
     e.preventDefault();
     const sinValor = form.type === "bogo" || form.type === "cortesia";
     const value = sinValor ? 1 : Number(form.value);
-    if (!form.code.trim() || !form.name.trim() || !Number.isFinite(value) || value <= 0) return;
+    // QA-restaurantes-R2-botones-07: cada rechazo local explica por que no se creo (antes el boton parecia muerto).
+    if (!form.code.trim() || !form.name.trim()) {
+      setErrorCrear("Escribe el código y el nombre para el staff: no pueden quedar vacíos ni solo con espacios.");
+      return;
+    }
+    if (!Number.isFinite(value) || value <= 0) {
+      setErrorCrear(form.type === "percentage" ? "El valor del descuento debe ser mayor que 0 (y hasta 100)." : "El valor del descuento debe ser mayor que 0.");
+      return;
+    }
     // Mismas reglas que el servidor (que re-valida): automatica exige canal; cortesia exige listas y cantidad.
     if (form.autoApply && form.canal === "") {
-      setError("Una promoción automática necesita un canal (por ejemplo, solo recoger).");
+      setErrorCrear("Una promoción automática necesita un canal (por ejemplo, solo recoger).");
       return;
     }
     if (form.type === "cortesia" && (form.productIds.length === 0 || form.courtesyProductIds.length === 0 || !(Number(form.courtesyQuantity) >= 1))) {
-      setError("El combo de cortesía necesita los productos que lo disparan, los productos de cortesía y las piezas por producto.");
+      setErrorCrear("El combo de cortesía necesita los productos que lo disparan, los productos de cortesía y las piezas por producto.");
       return;
     }
     setCreating(true);
-    setError(null);
+    setErrorCrear(null);
     try {
       const minOrderTotal = form.minOrderTotal.trim() === "" ? undefined : Number(form.minOrderTotal);
       const maxUses = form.maxUses.trim() === "" ? undefined : Number(form.maxUses);
@@ -184,13 +210,14 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
       setModalCrearAbierto(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la promoción.");
+      setErrorCrear(err instanceof Error ? err.message : "No se pudo crear la promoción.");
     } finally {
       setCreating(false);
     }
   }
 
   function startEdit(p: Promotion) {
+    setErrorEdicion(null);
     setEditingId(p.id);
     setEditStartsAt(formatDateInput(p.startsAt));
     setEditEndsAt(formatDateInput(p.endsAt));
@@ -198,7 +225,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
 
   async function handleSaveEdit(promotionId: string) {
     setSavingEdit(true);
-    setError(null);
+    setErrorEdicion(null);
     try {
       await updatePromotion(fetch, apiBaseUrl, token, propertyId, promotionId, {
         startsAt: dateInputToIso(editStartsAt, false),
@@ -207,7 +234,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
       setEditingId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar la vigencia.");
+      setErrorEdicion(err instanceof Error ? err.message : "No se pudo actualizar la vigencia.");
     } finally {
       setSavingEdit(false);
     }
@@ -232,7 +259,13 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
     <PageContainer padding="none">
       <header className="flex flex-wrap items-center justify-end gap-3">
         <h1 className="sr-only">Promociones</h1>
-        <Button type="button" onClick={() => setModalCrearAbierto(true)}>
+        <Button
+          type="button"
+          onClick={() => {
+            setErrorCrear(null);
+            setModalCrearAbierto(true);
+          }}
+        >
           <Plus />
           Crear un código nuevo
         </Button>
@@ -307,6 +340,11 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         }
       >
         <form id="restaurantes-promocion-nueva" onSubmit={handleCreate} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {errorCrear && (
+            <div className="sm:col-span-2">
+              <EstadoError titulo="No se pudo crear el código" mensaje={errorCrear} compacto />
+            </div>
+          )}
           <FormField label="Código">
             <Input
               id="promocion-codigo"
@@ -328,7 +366,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
             />
           </FormField>
           <FormField label="Tipo de descuento">
-            <NativeSelect
+            <Selector
               id="promocion-tipo"
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as PromotionType }))}
@@ -337,7 +375,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
               <option value="fixed">$ fijo</option>
               <option value="bogo">2x1</option>
               <option value="cortesia">Combo de cortesía</option>
-            </NativeSelect>
+            </Selector>
           </FormField>
           {form.type !== "bogo" && form.type !== "cortesia" && (
             <FormField label="Valor">
@@ -354,11 +392,11 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
             </FormField>
           )}
           <FormField label="Canal">
-            <NativeSelect id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))}>
+            <Selector id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))}>
               <option value="">Todos los canales</option>
               <option value="recoger">Solo recoger</option>
               <option value="domicilio">Solo domicilio</option>
-            </NativeSelect>
+            </Selector>
           </FormField>
           <Checkbox
             id="promocion-auto"
@@ -466,6 +504,11 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         }}
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {errorEdicion && (
+            <div className="sm:col-span-2">
+              <EstadoError titulo="No se pudo actualizar la vigencia" mensaje={errorEdicion} compacto />
+            </div>
+          )}
           <FormField label="Vigente desde">
             <Input id="promocion-edit-desde" type="date" value={editStartsAt} onChange={(e) => setEditStartsAt(e.target.value)} />
           </FormField>

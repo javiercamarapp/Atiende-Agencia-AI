@@ -221,6 +221,21 @@ describe("puentes: excepciones de horario por fecha", () => {
     expect((await post({ branchIds: ["no-uuid"] })).status).toBe(400);
   });
 
+  // QA-restaurantes-R1-caos-16: cerrar una fecha completa (feriado, imprevisto) con `cerrado: true`.
+  it("`cerrado: true` registra un cierre de fecha completa (horario vacio); mezclado con turnos o con `cerrado` no booleano -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const post = (body: object) => app.request(url(ctx), authedJson(ctx.staff.owner.token, { branchIds: [ctx.propertyIdA], fechaDesde: "2099-09-16", fechaHasta: "2099-09-16", ...body }));
+    const ok = await post({ cerrado: true, motivo: "Feriado" });
+    expect(ok.status).toBe(201);
+    const { puentes } = (await ok.json()) as { puentes: Array<{ horario: unknown[]; motivo: string }> };
+    expect(puentes[0]!.horario).toEqual([]);
+    expect(puentes[0]!.motivo).toBe("Feriado");
+    expect((await post({ cerrado: true, turnos })).status).toBe(400);
+    expect((await post({ cerrado: "true" })).status).toBe(400);
+    expect((await post({ cerrado: false, turnos: [] })).status).toBe(400);
+  });
+
   it("solo owner/admin: staff de sucursal y repartidor -> 403", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);

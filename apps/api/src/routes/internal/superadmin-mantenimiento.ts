@@ -14,7 +14,7 @@
 // NUNCA envían nada por sí solas -- solo devuelven filas a `pending`/anotan
 // un prospecto, dejando el trabajo real (enviar/decidir) a los dispatchers y
 // al superadmin humano respectivamente.
-import { emitirNotificacion, isUndefinedFunctionError } from "@atiende/db";
+import { StaffSecurityUnavailableError, emitirNotificacion, isUndefinedFunctionError } from "@atiende/db";
 import { Hono } from "hono";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
@@ -89,6 +89,19 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
         }
       }
 
+      // Limpieza del consumo de step-up (migracion 038, L-P3-12): borra los `jti` de tokens ya vencidos (con una hora de holgura). Funcion de SOLO
+      // sistema en su PROPIA transaccion; best-effort: la 038 sin aplicar (o cualquier fallo) no altera el resto del cron. Sin cron nuevo.
+      let consumosStepUpPurgados: number | null = null;
+      if (deps.staffSecurityRepo) {
+        try {
+          consumosStepUpPurgados = await deps.staffSecurityRepo.purgeStepUpConsumptionForSystem();
+        } catch (err) {
+          if (!(err instanceof StaffSecurityUnavailableError)) {
+            logEvent(c, "warn", "superadmin_mantenimiento_purga_stepup_fallo", { sqlstate: err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "desconocido" });
+          }
+        }
+      }
+
       // Aviso 'organizacion lista' (SA-18, evento EVENTO_ORGANIZACION_LISTA): la funcion de SISTEMA core.avisar_organizaciones_listas_for_system
       // (0052) marca (core.org_onboarding_aviso, PK por organizacion) las que completaron su checklist y devuelve cuales avisar; aqui se emite UNA
       // notificacion de plataforma por cada una con el productor compartido, EN LA MISMA TRANSACCION: si una emision falla se lanza y la
@@ -119,6 +132,7 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
         filasDesatascadas,
         prospectosMarcados: prospectos.length,
         ...(agentRunRepo ? { corridasPurgadas } : {}),
+        ...(deps.staffSecurityRepo ? { consumosStepUpPurgados } : {}),
         ...(orgFichaRepo ? { organizacionesAvisadas, eventoOrganizacionLista: EVENTO_ORGANIZACION_LISTA } : {}),
       });
     })();

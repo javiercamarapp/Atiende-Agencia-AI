@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CANCELAR_ROLES, ESCRITURA_CALENDARIO_ROLES, FINANZAS_ESCRITURA_ROLES, FINANZAS_LECTURA_ROLES, isRentasVerticalRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, RENTAS_VERTICAL_ROLES } from "../src/roles.ts";
+import { CANCELAR_ROLES, ESCRITURA_CALENDARIO_ROLES, FINANZAS_ESCRITURA_ROLES, FINANZAS_LECTURA_ROLES, isRentasVerticalRole, MENSAJERIA_ESCRITURA_ROLES, MENSAJERIA_LECTURA_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, RENTAS_VERTICAL_ROLES } from "../src/roles.ts";
 
 describe("isRentasVerticalRole", () => {
   it("reconoce los 6 roles válidos", () => {
@@ -56,5 +56,13 @@ describe("PLATFORM_ROLE_BY_VERTICAL_ROLE", () => {
   });
   it("contador mapea a viewer", () => {
     expect(PLATFORM_ROLE_BY_VERTICAL_ROLE.contador).toBe("viewer");
+  });
+});
+
+describe("MENSAJERIA_LECTURA_ROLES: quien lee el hilo del huésped", () => {
+  it("es todo el staff menos limpieza, y contiene a quien escribe mensajería", () => {
+    expect([...MENSAJERIA_LECTURA_ROLES].sort()).toEqual(RENTAS_VERTICAL_ROLES.filter((r) => r !== "limpieza").sort());
+    for (const r of MENSAJERIA_ESCRITURA_ROLES) expect(MENSAJERIA_LECTURA_ROLES).toContain(r);
+    expect(MENSAJERIA_LECTURA_ROLES).not.toContain("limpieza");
   });
 });

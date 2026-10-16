@@ -8,14 +8,14 @@ export { firmarPreviewToken, verificarPreviewToken, PREVIEW_TOKEN_TTL_MAX_SEGUND
 export type { PreviewTokenPayload, PreviewTokenEntrada, PreviewTokenVerificacion } from "./preview-token.ts";
 export { redactarTranscripcion } from "./transcripcion.ts";
 export { VozNoConfiguradaError, VozProveedorError } from "./provider.ts";
-export type { VoiceAgentProvider, VozSalud, VozSesionPreviewEntrada, VozSesionPreviewProveedor } from "./provider.ts";
+export type { VoiceAgentProvider, VozHerramientaDeclaracion, VozSalud, VozSesionPreviewEntrada, VozSesionPreviewProveedor } from "./provider.ts";
 export { GeminiLiveProvider, GEMINI_LIVE_MODELO } from "./gemini-live-provider.ts";
 export type { GeminiLiveProviderOptions } from "./gemini-live-provider.ts";
 export { FakeVoiceProvider } from "./fake-voice-provider.ts";
 export type { FakeVoiceProviderOptions } from "./fake-voice-provider.ts";
 export * from "./kpi.ts";
 export { CallStateMachine, LIMITES_POR_DEFECTO } from "./llamada/maquina.ts";
-export type { AccionLlamada, EstadoLlamada, EventoLlamada, LimitesLlamada, MotivoEscalacionLlamada, ReglasCierreLlamada } from "./llamada/maquina.ts";
+export type { AccionLlamada, EstadoLlamada, EventoLlamada, LimitesLlamada, MotivoEscalacionLlamada, OpcionesMaquinaLlamada, ReglasCierreLlamada } from "./llamada/maquina.ts";
 export { MENSAJE_IDS, mensajeSaludoRespaldo, saludoPorHora } from "./llamada/mensajes.ts";
 export type { CatalogoMensajes, MensajeId, SaludoPorHora } from "./llamada/mensajes.ts";
 export { evaluarInicioLlamada } from "./llamada/inicio.ts";
@@ -24,20 +24,54 @@ export { extraerTelefonoSipFrom } from "./llamada/sip.ts";
 export type { CanonicalizarTelefono } from "./llamada/sip.ts";
 export { eventoSinPII, redactarPII, referenciaLlamada } from "./llamada/log-sin-pii.ts";
 export type { SumideroLog } from "./llamada/log-sin-pii.ts";
-export { crearEjecutorTools, sanearArgumentos, transporteHttp } from "./llamada/ejecutor-tools.ts";
-export type { EjecutorTools, EjecutorToolsOpciones, RegistroToolsVoz, ResultadoTool, ToolDefinicion, ToolJsonSchema, TransporteHttpOpciones, TransporteTools } from "./llamada/ejecutor-tools.ts";
-export { ControladorLlamada } from "./llamada/controlador.ts";
+export { CABECERA_TURNO_LLAMADA, crearEjecutorTools, sanearArgumentos, transporteHttp } from "./llamada/ejecutor-tools.ts";
+export type { ContextoEjecucionTool, EjecutorTools, EjecutorToolsOpciones, RegistroToolsVoz, ResultadoTool, ToolDefinicion, ToolJsonSchema, TransporteHttpOpciones, TransporteTools } from "./llamada/ejecutor-tools.ts";
+export { ControladorLlamada, limpiarTextoAgente } from "./llamada/controlador.ts";
 export type { DecisionGuardiaCliente, DepsControlador, EventoKpiLlamada, GuardiaCliente, ResultadoLlamada, TurnoTranscrito } from "./llamada/controlador.ts";
-export type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
-export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup } from "./llamada/gemini-live-sesion.ts";
-export type { CrearSocketLive, GeminiLiveSesionOpciones, ProveedorGeminiLlamada, SocketLive } from "./llamada/gemini-live-sesion.ts";
-export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoEstimadoMicroUsd, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
-export type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
-export { costoTotalMicroUsd, eventosCostoLlamada } from "./costo.ts";
-export type { EntradaEventosCosto, EventoCostoUso, TramoLlamada } from "./costo.ts";
+export type { AbrirSesionLlamada, AperturaLlamada, ComponenteSesionCosto, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
+export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup, vertexLiveWsUrl, vertexModelPath } from "./llamada/gemini-live-sesion.ts";
+export type { CrearSocketLive, GeminiLiveSesionOpciones, OpcionesSocketLive, ProveedorGeminiLlamada, SocketLive, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
+export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoEstimadoMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
+export type { ConfigCascadaV2, PromocionPrecio, RelojFecha } from "./config-plataforma.ts";
+export type { ConfigPlataformaVoz, EscalonVoz, UsoGemini } from "./config-plataforma.ts";
+export { COSTO_MAX_LLAMADA_MICRO_USD, ESCENARIOS_COSTO_GEMINI, TOKENS_AUDIO_POR_SEGUNDO, estimarCostoLlamadaGemini } from "./costo-gemini.ts";
+export type { CostoLlamadaGemini, EscenarioLlamadaGemini } from "./costo-gemini.ts";
+export { PROVEEDOR_COMPONENTE_RE, componenteReportaCosto, costoTotalMicroUsd, escalonAdmiteComponentes, eventosCostoLlamada, motivoComponenteInvalido, refIdComponente, unidadDeComponente } from "./costo.ts";
+export type { ComponenteCosto, EntradaEventosCosto, EventoCostoUso, TramoLlamada } from "./costo.ts";
 export { crearEscaleraLlamada } from "./escalera.ts";
 export type { EscalonLlamada, EscaleraLlamada, OpcionesEscalera } from "./escalera.ts";
-export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav } from "./llamada/cascada-openrouter.ts";
+export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav, pistaVocabulario } from "./llamada/cascada-openrouter.ts";
 export type { CascadaOpenRouterOpciones, MensajeLlmVoz, PeticionLlmVoz, ProveedorCascadaLlamada, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "./llamada/cascada-openrouter.ts";
+export { ColaAsync, DEEPGRAM_LISTEN_URL, DEEPGRAM_SPEAK_URL, VOCES_AURA2_ES, crearProveedorCascadaV2, crearRecortadorInicial, crearSegmentadorFrases, crearSttDeepgram, crearTtsDeepgram, ejecutarHerramientas, keytermsDe, limpiarParaVoz, partirTexto, resolverVozAura2, urlListenDeepgram, urlSpeakDeepgram } from "./llamada/cascada-v2/index.ts";
+export type { CascadaV2Opciones, ContextoTurnoLlm, CrearSocketDeepgram, DeepgramSttOpciones, DeepgramTtsOpciones, EventosStt, OpcionesSocketDeepgram, OpcionesStt, OpcionesTts, ProveedorCascadaV2Llamada, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts, SocketDeepgram } from "./llamada/cascada-v2/index.ts";
 export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";
 export type { CredencialesVoz, DepsPlataformaVoz, EstadoEscaleraVoz, EstadoEscalonVoz } from "./plataforma.ts";
+export { AJUSTES_HABLA_POR_DEFECTO, ESTILOS_HABLA, RITMOS_HABLA, TEMPERATURA_VOZ_LLAMADA_MAX, TEMPERATURA_VOZ_MAX, TEMPERATURA_VOZ_MIN, temperaturaParaLlamada, conInstruccionDeHabla, esEstiloHabla, esRitmoHabla, esTemperaturaVoz, instruccionDeHabla } from "./ajustes-habla.ts";
+export type { AjustesHabla, EstiloHabla, RitmoHabla } from "./ajustes-habla.ts";
+export { FONDO_VOLUMEN_MAX, FONDO_VOLUMEN_MIN, FONDO_VOLUMEN_POR_DEFECTO, FondoRestaurante, HZ_AUDIO_AGENTE, esVolumenFondo } from "./fondo-ambiente.ts";
+export type { OpcionesFondo } from "./fondo-ambiente.ts";
+export { AmbienteRestaurante, Ducking, ESCALA_POR_PRESET, PERFILES_AMBIENTE, PRESETS_AMBIENTE, PRESET_AMBIENTE_POR_DEFECTO, esPresetAmbiente } from "./ambiente-restaurante.ts";
+export type { OpcionesAmbiente, OpcionesDucking, PresetAmbiente } from "./ambiente-restaurante.ts";
+export { autocorrelacionEnvolvente, aDbfs, fraccionEnergiaEnBanda, lufsAprox, muestrasRecortadas, pico, rms, ventanasRepetidas } from "./analisis-audio.ts";
+export { conAvisosDeHerramienta } from "./llamada/ejecutor-con-tecleo.ts";
+export type { AvisosHerramienta } from "./llamada/ejecutor-con-tecleo.ts";
+export { OrquestadorTecleo, TECLEO_VOLUMEN_MAX, TECLEO_VOLUMEN_MIN, TECLEO_VOLUMEN_POR_DEFECTO, crearClic, crearPip, esVolumenTecleo } from "./tecleo.ts";
+export type { OpcionesTecleo, TipoTecla } from "./tecleo.ts";
+export { MezcladorSalida } from "./mezclador-salida.ts";
+export { HZ_MUESTRA, TIPOS_MUESTRA, aTelefono, escribirWav16, leerWav16, medirMuestra, medirTelefono, remuestrearLineal, renderizarMuestra, vozSinteticaDePrueba } from "./muestras-ambiente.ts";
+export type { EventoMuestra, MetricasMuestra, OpcionesMuestra, ResultadoMuestra, TipoMuestra } from "./muestras-ambiente.ts";
+export type { OpcionesMezclador } from "./mezclador-salida.ts";
+export {
+  BLOQUE_ACENTO_MEXICANO,
+  BLOQUE_NATURALIDAD,
+  CANDIDATAS_TTS_CASCADA_V2,
+  ID_PRESET_RESTAURANTE_HUMANO,
+  PRESET_RESTAURANTE_HUMANO,
+  MOTORES_VOZ_PRESET,
+  VOCES_FEMENINAS_REFERENCIA,
+  vozParaMotor,
+  conInstruccionHumana,
+  instruccionHumana,
+  validarPresetHumano,
+} from "./preset-restaurante-humano.ts";
+export type { MotorVozPreset, PresetVozHumano, ProblemaPreset, VozDeMotor } from "./preset-restaurante-humano.ts";

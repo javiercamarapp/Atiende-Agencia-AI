@@ -17,12 +17,10 @@
 // directo a esta URL ve el 403 real del servidor como mensaje de error, igual que
 // Mantenimiento.tsx/Fraude.tsx con sus propios roles).
 //
-// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
-// las tablas/tarjetas/inputs de estilos inline por Card/Table/Input/Label/Button/
-// Tabs reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. Ningún
-// cambio de lógica: mismos props, mismo estado, mismas llamadas de red.
+// Visual (UNI-C gestion): PageHeader con el selector de periodo, el alta de gasto en FormDialog con FormField,
+// historial con DataTable. Las dos tablas del estado de resultados USALI se quedan como `Table`: son un calculo
+// con filas de total y colSpan, no un listado. Ningún cambio de lógica: mismos props, mismo estado, mismas llamadas de red.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import { Plus } from "lucide-react";
 import {
   Button,
@@ -31,13 +29,15 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  DataTable,
   EstadoCargando,
   EstadoError,
-  EstadoVacio,
+  FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   Table,
   TableBody,
   TableCell,
@@ -59,6 +59,7 @@ import {
   USALI_REVENUE_DEPARTMENTS,
   USALI_UNDISTRIBUTED_DEPARTMENTS,
 } from "../lib/pl-client.ts";
+import type { DataTableColumna } from "@atiende/ui";
 import type { PlExpenseEntry, PlFullResponse, UsaliDepartment, UsaliExpenseCategory } from "../lib/pl-client.ts";
 import { hoyFechaSolo, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import { dineroMxConSigno } from "../lib/dinero.ts";
@@ -100,9 +101,7 @@ function DepartmentTable({ pl }: { pl: PlFullResponse["total"] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-          Ingresos por departamento → Utilidad departamental
-        </CardTitle>
+        <CardTitle>Ingresos por departamento → Utilidad departamental</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         <Table>
@@ -155,9 +154,7 @@ function SummaryStatement({ pl }: { pl: PlFullResponse["total"] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-          Gastos no distribuidos → GOP → EBITDA → Utilidad neta
-        </CardTitle>
+        <CardTitle>Gastos no distribuidos → GOP → EBITDA → Utilidad neta</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         <Table>
@@ -213,7 +210,7 @@ function BreakevenAndAlerts({ data }: { data: PlFullResponse }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">Punto de equilibrio dinámico</CardTitle>
+        <CardTitle>Punto de equilibrio dinámico</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         <div className="grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
@@ -255,7 +252,7 @@ function BreakevenAndAlerts({ data }: { data: PlFullResponse }) {
   );
 }
 
-function ExpenseForm({ apiBaseUrl, token, propertyId, defaultFecha, onCreated }: { apiBaseUrl: string; token: string; propertyId: string; defaultFecha: string; onCreated: () => void }) {
+function ExpenseDialog({ apiBaseUrl, token, propertyId, defaultFecha, open, onClose, onCreated }: { apiBaseUrl: string; token: string; propertyId: string; defaultFecha: string; open: boolean; onClose: () => void; onCreated: () => void }) {
   const [departamento, setDepartamento] = useState<UsaliDepartment>(USALI_ALL_DEPARTMENTS[0]);
   const [categoria, setCategoria] = useState<UsaliExpenseCategory>(USALI_EXPENSE_CATEGORIES[0]);
   const [descripcion, setDescripcion] = useState("");
@@ -264,8 +261,15 @@ function ExpenseForm({ apiBaseUrl, token, propertyId, defaultFecha, onCreated }:
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // La fecha por defecto es la del periodo vigente: se reprecarga cada vez que el dialogo se abre.
+  useEffect(() => {
+    if (open) {
+      setFecha(defaultFecha);
+      setFormError(null);
+    }
+  }, [open, defaultFecha]);
+
+  async function handleSubmit() {
     setFormError(null);
     const montoNum = Number(monto);
     if (!descripcion.trim()) return setFormError("Descripción requerida.");
@@ -285,88 +289,77 @@ function ExpenseForm({ apiBaseUrl, token, propertyId, defaultFecha, onCreated }:
   }
 
   return (
-    <Card className="max-w-md">
-      <CardContent className="p-4">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <p className="text-sm font-semibold text-foreground">Registrar gasto</p>
-          <div>
-            <Label htmlFor="pl-departamento">Departamento</Label>
-            <NativeSelect id="pl-departamento" value={departamento} onChange={(e) => setDepartamento(e.target.value as UsaliDepartment)}>
-              {USALI_ALL_DEPARTMENTS.map((d) => (
-                <option key={d} value={d}>
-                  {USALI_DEPARTMENT_LABELS[d]}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <Label htmlFor="pl-categoria">Categoría</Label>
-              <NativeSelect id="pl-categoria" value={categoria} onChange={(e) => setCategoria(e.target.value as UsaliExpenseCategory)}>
-                {USALI_EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {USALI_EXPENSE_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-            <div className="flex-1">
-              <Label htmlFor="pl-fecha">Fecha</Label>
-              <Input id="pl-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required className="mt-1" />
-            </div>
-          </div>
-          <div>
-            <Label htmlFor="pl-descripcion">Descripción</Label>
-            <Input id="pl-descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required className="mt-1" />
-          </div>
-          <div>
-            <Label htmlFor="pl-monto">Monto (MXN)</Label>
-            <Input id="pl-monto" type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required className="mt-1" />
-          </div>
-          {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
-          <Button type="submit" disabled={creating}>
-            {creating ? "Registrando…" : "Registrar gasto"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <FormDialog
+      open={open}
+      onOpenChange={(abierto) => {
+        if (!abierto && !creating) onClose();
+      }}
+      titulo="Registrar gasto"
+      subtitulo="Se suma al P&L del periodo en el departamento y la categoría elegidos."
+      anchoClase="max-w-3xl"
+      onGuardar={() => void handleSubmit()}
+      guardando={creating}
+      textoBotonGuardar="Registrar gasto"
+      bloquearCierre={creating}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {formError && <Callout tone="danger" className="sm:col-span-2">{formError}</Callout>}
+        <FormField label="Departamento" className="sm:col-span-2">
+          <NativeSelect id="pl-departamento" value={departamento} onChange={(e) => setDepartamento(e.target.value as UsaliDepartment)}>
+            {USALI_ALL_DEPARTMENTS.map((d) => (
+              <option key={d} value={d}>
+                {USALI_DEPARTMENT_LABELS[d]}
+              </option>
+            ))}
+          </NativeSelect>
+        </FormField>
+        <FormField label="Categoría">
+          <NativeSelect id="pl-categoria" value={categoria} onChange={(e) => setCategoria(e.target.value as UsaliExpenseCategory)}>
+            {USALI_EXPENSE_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {USALI_EXPENSE_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </NativeSelect>
+        </FormField>
+        <FormField label="Fecha" required>
+          <Input id="pl-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </FormField>
+        <FormField label="Descripción" required>
+          <Input id="pl-descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+        </FormField>
+        <FormField label="Monto (MXN)" required>
+          <Input id="pl-monto" type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} />
+        </FormField>
+      </div>
+    </FormDialog>
   );
 }
+
+const COLUMNAS_GASTOS: readonly DataTableColumna<PlExpenseEntry>[] = [
+  { id: "fecha", encabezado: "Fecha", principal: true, valorOrden: (e) => e.fecha, celda: (e) => e.fecha },
+  { id: "departamento", encabezado: "Departamento", valorOrden: (e) => USALI_DEPARTMENT_LABELS[e.departamento], celda: (e) => USALI_DEPARTMENT_LABELS[e.departamento] },
+  { id: "categoria", encabezado: "Categoría", valorOrden: (e) => USALI_EXPENSE_CATEGORY_LABELS[e.categoria], celda: (e) => USALI_EXPENSE_CATEGORY_LABELS[e.categoria] },
+  { id: "descripcion", encabezado: "Descripción", celda: (e) => e.descripcion },
+  { id: "monto", encabezado: "Monto", alinear: "right", valorOrden: (e) => e.monto, celda: (e) => <span className="tabular-nums">{dineroMxConSigno(e.monto)}</span> },
+];
 
 function ExpenseHistory({ expenses, error }: { expenses: readonly PlExpenseEntry[] | null; error: string | null }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">Historial de gastos del periodo</CardTitle>
+        <CardTitle>Historial de gastos del periodo</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        {error && <EstadoError mensaje={error} />}
-        {!expenses && !error && <EstadoCargando lineas={2} etiqueta="Cargando historial de gastos…" />}
-        {expenses && expenses.length === 0 && <EstadoVacio mensaje="Sin gastos registrados en este periodo." />}
-        {expenses && expenses.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Departamento</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {expenses.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell>{e.fecha}</TableCell>
-                  <TableCell>{USALI_DEPARTMENT_LABELS[e.departamento]}</TableCell>
-                  <TableCell>{USALI_EXPENSE_CATEGORY_LABELS[e.categoria]}</TableCell>
-                  <TableCell>{e.descripcion}</TableCell>
-                  <TableCell className="text-right">{dineroMxConSigno(e.monto)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <DataTable
+          etiqueta="Gastos del periodo"
+          columnas={COLUMNAS_GASTOS}
+          filas={expenses ?? []}
+          obtenerId={(e) => e.id}
+          estado={error ? "error" : !expenses ? "loading" : expenses.length === 0 ? "empty" : "ok"}
+          error={{ mensaje: error ?? undefined }}
+          vacio={{ mensaje: "Sin gastos registrados en este periodo." }}
+        />
       </CardContent>
     </Card>
   );
@@ -419,48 +412,45 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
   }
 
   return (
-    <PageContainer padding="none" className="gap-5">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-display font-semibold text-foreground">P&amp;L — Estado de resultados USALI</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Periodo {desde} — {hasta}. Formato-resumen 12ª edición: Ingresos por departamento → Utilidad departamental → Gastos no distribuidos → GOP → cuota de administración → EBITDA → Utilidad neta.
-          </p>
-        </div>
-        <Tabs value={String(days)} onValueChange={(v) => setDays(Number(v) as PeriodDays)}>
-          <TabsList>
-            {PERIOD_OPTIONS.map((opt) => (
-              <TabsTrigger key={opt.days} value={String(opt.days)}>
-                {opt.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </header>
+    <PageContainer padding="none" className="gap-4">
+      <PageHeader
+        titulo="P&L — Estado de resultados USALI"
+        descripcion={`Periodo ${desde} — ${hasta}. Formato-resumen 12ª edición: Ingresos por departamento → Utilidad departamental → Gastos no distribuidos → GOP → cuota de administración → EBITDA → Utilidad neta.`}
+        acciones={
+          <Tabs value={String(days)} onValueChange={(v) => setDays(Number(v) as PeriodDays)}>
+            <TabsList>
+              {PERIOD_OPTIONS.map((opt) => (
+                <TabsTrigger key={opt.days} value={String(opt.days)}>
+                  {opt.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        }
+      />
 
       {error && <EstadoError mensaje={error} />}
       {!data && !error && <EstadoCargando etiqueta="Cargando P&L…" />}
 
       {data && (
         <>
-          <div className="grid gap-4 items-start grid-cols-[repeat(auto-fit,minmax(320px,1fr))]">
+          <div className="grid gap-2.5 items-start grid-cols-[repeat(auto-fit,minmax(320px,1fr))]">
             <DepartmentTable pl={data.total} />
             <SummaryStatement pl={data.total} />
           </div>
 
           <BreakevenAndAlerts data={data} />
 
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">Gastos</p>
-            <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
-              {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
-              {showForm ? "Cancelar" : "Registrar gasto"}
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-foreground">Gastos</h2>
+            <Button type="button" iconLeft={<Plus className="size-4" strokeWidth={1.75} />} onClick={() => setShowForm(true)}>
+              Registrar gasto
             </Button>
           </div>
 
-          {showForm && <ExpenseForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} defaultFecha={hasta} onCreated={handleExpenseCreated} />}
-
           <ExpenseHistory expenses={expenses} error={expensesError} />
+
+          <ExpenseDialog apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} defaultFecha={hasta} open={showForm} onClose={() => setShowForm(false)} onCreated={handleExpenseCreated} />
         </>
       )}
     </PageContainer>

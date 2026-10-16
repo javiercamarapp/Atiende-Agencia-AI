@@ -33,8 +33,28 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "variantes de Button", viola: '<Button variant="hero">a</Button>', limpio: '<Button variant="default">a</Button>' },
   { regla: "variantes de Button", viola: "<Button variant={'gold'}>a</Button>", limpio: '<Button variant="outline">a</Button>' },
   { regla: "Table a mano en restaurantes", viola: "<Table><TableBody /></Table>", limpio: "<DataTable />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "Table a mano en listados de despachos", viola: "<Table><TableBody /></Table>", limpio: "<DataTable />", ruta: "verticals/despachos/pages/Cobranza.tsx" },
   { regla: "AlertDialog local en restaurantes", viola: "<AlertDialog open>x</AlertDialog>", limpio: "const { confirmar, dialogo } = useConfirm();", ruta: "verticals/restaurantes/pages/Y.tsx" },
   { regla: "Guardando a mano en restaurantes", viola: '<Button>{saving ? "Guardando…" : "Guardar"}</Button>', limpio: "<Button loading={saving}>Guardar</Button>", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "primitivo Radix de overlay", viola: 'import * as D from "@radix-ui/react-dialog";', limpio: 'import { Dialog } from "@atiende/ui";' },
+  { regla: "primitivo Radix de overlay", viola: "import { Root } from '@radix-ui/react-select';", limpio: 'import { Select } from "@atiende/ui";' },
+  { regla: "sonner importado directo", viola: 'import { toast } from "sonner";', limpio: 'import { notify } from "@atiende/ui";' },
+  { regla: "toast directo", viola: 'toast.success("Listo");', limpio: 'notify.success("Listo");', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "toast directo", viola: 'import { toast } from "@atiende/ui";', limpio: 'import { notify } from "@atiende/ui";', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "alert() nativo", viola: "alert(mensaje);", limpio: "notify.error(mensaje);" },
+  { regla: "overlay a mano en restaurantes", viola: "<div role='dialog' />", limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "overlay a mano en restaurantes", viola: '<div role={"listbox"} />', limpio: "<Selector />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "alert() nativo", viola: 'window.alert("Listo");', limpio: 'notify.success("Listo");' },
+  { regla: "alert() nativo", viola: '<div aria-modal="true" role="dialog" />', limpio: "<Dialog open />" },
+  { regla: "overlay a mano en restaurantes", viola: '<div role="dialog" className="x" />', limpio: "<FormDialog open />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "overlay a mano en restaurantes", viola: '<div className="fixed inset-0 z-50" />', limpio: '<div className="relative" />', ruta: "verticals/restaurantes/components/Z.tsx" },
+  { regla: "overlay a mano en restaurantes", viola: '<input list="x" /><datalist id="x" />', limpio: "<Selector />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "color funcional literal en restaurantes", viola: 'const c = "rgb(29 78 216)";', limpio: 'const c = "hsl(var(--primary))";', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "color funcional literal en restaurantes", viola: '<i className="bg-[hsl(224,76%,48%)]" />', limpio: '<i className="bg-primary" />', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "color funcional literal en restaurantes", viola: "const c = `oklch(0.5 0.2 260)`;", limpio: "const c = `hsl(var(--info) / 0.4)`;", ruta: "verticals/restaurantes/components/Z.tsx" },
+  { regla: "variante rest:", viola: '<Button className="rest:rounded-none">x</Button>', limpio: '<Button className="rounded-none">x</Button>', ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "variante rest:", viola: 'document.documentElement.setAttribute("data-ambito", "x");', limpio: 'document.documentElement.classList.add("dark");' },
+  { regla: "NativeSelect en restaurantes", viola: "<NativeSelect value={a} />", limpio: "<Selector value={a} />", ruta: "verticals/restaurantes/pages/Y.tsx" },
 ];
 
 const porRegla = (prefijo: string) => {
@@ -59,9 +79,51 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
   }
 
   it("las reglas de trinquete de restaurantes no aplican a otras zonas", () => {
-    for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes"]) {
-      expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'}", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
+    for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes", "overlay a mano en restaurantes", "toast directo en restaurantes", "color funcional literal en restaurantes"]) {
+      expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'} <div role='dialog' /> <datalist /> rgb(1 2 3)", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
     }
+  });
+
+  it("la regla de listados de despachos deja pasar las paginas de calculo, Dashboard y el portal, y atrapa cualquier otra", () => {
+    const regla = porRegla("Table a mano en listados de despachos");
+    for (const ruta of ["Bookkeeping", "DevolucionIva", "Declaraciones", "Nomina", "Reportes", "ContabilidadElectronica", "Conciliacion", "Dashboard"]) {
+      expect(infractores([fuente("<Table />", `verticals/despachos/pages/${ruta}.tsx`)], regla)).toEqual([]);
+    }
+    expect(infractores([fuente("<Table />", "verticals/despachos/portal/PortalClientePage.tsx")], regla)).toEqual([]);
+    for (const ruta of ["pages/Staff.tsx", "pages/NuevaPaginaListado.tsx", "components/Lista.tsx", "portal/OtraCosa.tsx"]) {
+      expect(infractores([fuente("<Table />", `verticals/despachos/${ruta}`)], regla)).toHaveLength(1);
+    }
+    expect(infractores([fuente("<Table />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
+  });
+
+  it("WidgetWhatsApp (panel no modal): exento solo de aria-modal y del overlay a mano; en cualquier otro archivo las reglas aplican", () => {
+    const panel = '<div role="dialog" aria-modal="false" />';
+    const ruta = "verticals/restaurantes/preview/WidgetWhatsApp.tsx";
+    expect(infractores([fuente(panel, ruta)], porRegla("alert() nativo"))).toEqual([]);
+    expect(infractores([fuente(panel, ruta)], porRegla("overlay a mano en restaurantes"))).toEqual([]);
+    expect(infractores([fuente(panel, "verticals/restaurantes/preview/Otro.tsx")], porRegla("alert() nativo"))).toHaveLength(1);
+    expect(infractores([fuente(panel, "verticals/restaurantes/preview/Otro.tsx")], porRegla("overlay a mano en restaurantes"))).toHaveLength(1);
+    // el resto de reglas siguen aplicando al widget
+    expect(infractores([fuente('<p className="text-[13px]" />', ruta)], porRegla("tamano de texto arbitrario"))).toHaveLength(1);
+  });
+
+  it("alert(: x.alert(, useAlert( y role=alert son codigo limpio; toast directo no aplica fuera de restaurantes", () => {
+    const alerta = porRegla("alert() nativo");
+    for (const limpio of ["avisos.alert(1);", "const a = useAlert();", '<p role="alert">x</p>', "const alertas = 1;"]) {
+      expect(infractores([fuente(limpio)], alerta), limpio).toEqual([]);
+    }
+    expect(infractores([fuente('toast.success("x");', "verticals/hoteles/pages/Y.tsx")], porRegla("toast directo en restaurantes"))).toEqual([]);
+  });
+
+  it("NativeSelect en restaurantes: solo AgenteWhatsappSeccion y DemoWhatsAppPage (lote R4) quedan exentas; WidgetWhatsApp y otras zonas no", () => {
+    const regla = porRegla("NativeSelect en restaurantes");
+    for (const ruta of ["pages/AgenteWhatsappSeccion.tsx", "demo/DemoWhatsAppPage.tsx"]) {
+      expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toEqual([]);
+    }
+    for (const ruta of ["pages/Otra.tsx", "preview/WidgetWhatsApp.tsx"]) {
+      expect(infractores([fuente("<NativeSelect />", `verticals/restaurantes/${ruta}`)], regla)).toHaveLength(1);
+    }
+    expect(infractores([fuente("<NativeSelect />", "verticals/hoteles/pages/Y.tsx")], regla)).toEqual([]);
   });
 
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {

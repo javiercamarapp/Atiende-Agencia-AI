@@ -25,7 +25,6 @@
 // verificar en un test de concurrencia, y sí se implementa como until real (una
 // segunda adquisición espera a que la primera libere).
 import { randomUUID } from "node:crypto";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import type { EstadoOcupacion, Razon } from "./tipos.ts";
 import type {
   BloqueoRecord,
@@ -195,6 +194,9 @@ export interface StoredNotificacionTarea {
   id: string;
   tareaId: string;
   evento: "asignada" | "completada";
+  creadoEn: string;
+  /** `rentas.notificacion_tarea.notificada_in_app_en` (migracion 033): `null` = aviso in-app pendiente. */
+  notificadaInAppEn: string | null;
 }
 
 /** Serializa operaciones por clave — equivalente en memoria de
@@ -254,6 +256,9 @@ export class InMemoryRentasCalendarStore {
    *  `CONFIGURACION_OPERATIVA_DEFECTO`, igual que un `SELECT` sin filas en Postgres
    *  real. */
   readonly configuracionesOperativas = new Map<string, { bufferLimpiezaNoches: number; slaLimpiezaHoras: number; slaMantenimientoHoras: number }>();
+  /** `rentas.property_config.zona_horaria` por property: la usa el barrido de limpieza para decidir el "hoy" de CADA
+   *  propiedad. Sin fila sembrada = sin `property_config` (un LEFT JOIN en Postgres): el barrido cae al default de plataforma. */
+  readonly zonasHorarias = new Map<string, string>();
 
   constructor() {
     // Mismo catálogo semilla que migrations/001_rentas_schema.sql.
@@ -712,24 +717,112 @@ export class InMemoryRentasCalendarStore {
     }
   }
 
-  /** `procesarCheckoutsPendientes` (H-049 desviación, ver comentario de cabecera de
-   *  aplicacion/tareas.ts, punto 5): reservas confirmadas y bloqueantes cuyo checkout
-   *  (`upper(rango)`) ya llegó y que todavía no tienen ninguna tarea `tipo='limpieza'`
-   *  vinculada por `ocupacion_unidad_id` -- idempotente por construcción (una
-   *  reserva con tarea ya creada nunca vuelve a aparecer aquí). */
-  // Paridad con `PostgresRentasRepository`/`procesarCheckoutsPendientes` (ver su
-  // comentario de cabecera): el default de "hoy" es el día de NEGOCIO
-  // (`hoyFechaNegocio()`), nunca el día UTC crudo del proceso -- este store respalda
-  // el `TenantDbSession` real de `InMemoryRentasTenancyEngine`, que SÍ recibe el
-  // `asOfDate` ya resuelto como parámetro (`$2`) en producción; el default de aquí
-  // solo cubre un caller directo de este store que lo omitiera.
-  findOcupacionesCheckoutPendientes(limite: number, hoyIso: string = hoyFechaNegocio()): { ocupacionId: string; unidadId: string; fin: string }[] {
+  seedZonaHoraria(propertyId: string, zonaHoraria: string): void {
+    this.zonasHorarias.set(propertyId, zonaHoraria);
+  }
+
+  // ---- ciclo de la tarea de limpieza ligada a la reserva + barrido (barrerLimpiezaPendiente) ----
+
+  /** `SELECT id, asignado_a FROM rentas.tarea_operativa WHERE tipo = 'limpieza' AND ocupacion_unidad_id = $1` (cualquier estado). */
+  findTareaLimpiezaPorOcupacion(ocupacionId: string): { id: string; asignado_a: string | null } | null {
+    const filas = [...this.tareas.values()].filter((t) => t.tipo === "limpieza" && t.ocupacionUnidadId === ocupacionId).sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : -1));
+    return filas[0] ? { id: filas[0].id, asignado_a: filas[0].asignadoA } : null;
+  }
+
+  /** Tarea NO terminada (ni completada ni cancelada) de una reserva -- la que reprogramar/cancelar tocan. */
+  findTareaActivaPorOcupacion(ocupacionId: string): StoredTareaOperativa | null {
+    const filas = [...this.tareas.values()].filter((t) => t.ocupacionUnidadId === ocupacionId && t.estado !== "completada" && t.estado !== "cancelada").sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : -1));
+    return filas[0] ?? null;
+  }
+
+  reprogramarTareaOperativa(tareaId: string, programadaPara: string): void {
+    const fila = this.tareas.get(tareaId);
+    if (fila) {
+      fila.programadaPara = programadaPara;
+      fila.actualizadoEn = new Date().toISOString();
+    }
+  }
+
+  cancelarTareaOperativa(tareaId: string): void {
+    const fila = this.tareas.get(tareaId);
+    if (fila) {
+      fila.estado = "cancelada";
+      fila.actualizadoEn = new Date().toISOString();
+    }
+  }
+
+  private reservaConfirmadaSinTarea(o: StoredOcupacion): boolean {
+    return o.capa === "reserva" && o.estado === "confirmado" && o.bloqueante && ![...this.tareas.values()].some((t) => t.tipo === "limpieza" && t.ocupacionUnidadId === o.id);
+  }
+
+  /** Propiedades con reservas confirmadas sin tarea y checkout <= `cota`, la salida mas antigua primero. */
+  propiedadesConCheckoutPendiente(cota: string): { property_id: string; zona_horaria: string | null }[] {
+    const porPropiedad = new Map<string, string>();
+    for (const o of this.ocupaciones.values()) {
+      if (!this.reservaConfirmadaSinTarea(o) || o.fin > cota) continue;
+      const previo = porPropiedad.get(o.propertyId);
+      if (previo === undefined || o.fin < previo) porPropiedad.set(o.propertyId, o.fin);
+    }
+    return [...porPropiedad.entries()]
+      .sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : a[0] < b[0] ? -1 : 1))
+      .map(([propertyId]) => ({ property_id: propertyId, zona_horaria: this.zonasHorarias.get(propertyId) ?? null }));
+  }
+
+  /** Reservas confirmadas sin tarea de UNA propiedad con checkout (`upper(rango)`) <= `hasta`, la salida mas antigua primero. */
+  ocupacionesCheckoutPendientesDePropiedad(propertyId: string, hasta: string, limite: number): { ocupacion_id: string; unidad_id: string; fin: string }[] {
     return [...this.ocupaciones.values()]
-      .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.bloqueante && o.fin <= hoyIso)
-      .filter((o) => ![...this.tareas.values()].some((t) => t.tipo === "limpieza" && t.ocupacionUnidadId === o.id))
-      .sort((a, b) => (a.fin < b.fin ? -1 : a.fin > b.fin ? 1 : 0))
+      .filter((o) => o.propertyId === propertyId && this.reservaConfirmadaSinTarea(o) && o.fin <= hasta)
+      .sort((a, b) => (a.fin < b.fin ? -1 : a.fin > b.fin ? 1 : a.id < b.id ? -1 : 1))
       .slice(0, limite)
-      .map((o) => ({ ocupacionId: o.id, unidadId: o.unidadId, fin: o.fin }));
+      .map((o) => ({ ocupacion_id: o.id, unidad_id: o.unidadId, fin: o.fin }));
+  }
+
+  /** Tareas de limpieza de reservas confirmadas que aun no tienen buffer, con salida <= `cota` y buffer configurado > 0. */
+  tareasLimpiezaSinBuffer(cota: string, limite: number): { tarea_id: string; unidad_id: string; fecha: string; zona_horaria: string | null }[] {
+    return [...this.tareas.values()]
+      .filter((t) => t.tipo === "limpieza" && t.estado !== "completada" && t.estado !== "cancelada" && t.bufferOcupacionId === null && t.ocupacionUnidadId !== null && t.programadaPara <= cota)
+      .filter((t) => {
+        const o = this.ocupaciones.get(t.ocupacionUnidadId!);
+        return o !== undefined && o.capa === "reserva" && o.estado === "confirmado" && (this.configuracionesOperativas.get(t.propertyId)?.bufferLimpiezaNoches ?? 1) > 0;
+      })
+      .sort((a, b) => (a.programadaPara < b.programadaPara ? -1 : a.programadaPara > b.programadaPara ? 1 : a.id < b.id ? -1 : 1))
+      .slice(0, limite)
+      .map((t) => ({ tarea_id: t.id, unidad_id: t.unidadId, fecha: t.programadaPara, zona_horaria: this.zonasHorarias.get(t.propertyId) ?? null }));
+  }
+
+  /** Tareas de limpieza vivas cuya reserva ya esta cancelada. */
+  tareasDeReservaCancelada(limite: number): { ocupacion_id: string }[] {
+    return [...this.tareas.values()]
+      .filter((t) => t.tipo === "limpieza" && t.estado !== "completada" && t.estado !== "cancelada" && t.ocupacionUnidadId !== null && this.ocupaciones.get(t.ocupacionUnidadId)?.estado === "cancelado")
+      .sort((a, b) => (a.creadoEn < b.creadoEn ? -1 : a.creadoEn > b.creadoEn ? 1 : a.id < b.id ? -1 : 1))
+      .slice(0, limite)
+      .map((t) => ({ ocupacion_id: t.ocupacionUnidadId! }));
+  }
+
+  /** Tareas de limpieza vivas cuya fecha ya no coincide con la salida de su reserva confirmada. */
+  tareasDesfasadasDeSuReserva(limite: number): { ocupacion_id: string; fin: string }[] {
+    return [...this.tareas.values()]
+      .filter((t) => t.tipo === "limpieza" && t.estado !== "completada" && t.estado !== "cancelada" && t.ocupacionUnidadId !== null)
+      .filter((t) => {
+        const o = this.ocupaciones.get(t.ocupacionUnidadId!);
+        return o !== undefined && o.capa === "reserva" && o.estado === "confirmado" && o.fin !== t.programadaPara;
+      })
+      .sort((a, b) => (a.creadoEn < b.creadoEn ? -1 : a.creadoEn > b.creadoEn ? 1 : a.id < b.id ? -1 : 1))
+      .slice(0, limite)
+      .map((t) => ({ ocupacion_id: t.ocupacionUnidadId!, fin: this.ocupaciones.get(t.ocupacionUnidadId!)!.fin }));
+  }
+
+  /** Tareas de limpieza pendientes sin responsable en una ventana de fechas, agrupadas por propiedad y dia. */
+  tareasSinAsignarEnRango(desde: string, hasta: string): { organization_id: string; property_id: string; zona_horaria: string | null; fecha: string; cantidad: number }[] {
+    const grupos = new Map<string, { organization_id: string; property_id: string; zona_horaria: string | null; fecha: string; cantidad: number }>();
+    for (const t of this.tareas.values()) {
+      if (t.tipo !== "limpieza" || t.estado !== "pendiente" || t.asignadoA !== null || t.programadaPara < desde || t.programadaPara > hasta) continue;
+      const clave = `${t.propertyId}|${t.programadaPara}`;
+      const previo = grupos.get(clave);
+      if (previo) previo.cantidad += 1;
+      else grupos.set(clave, { organization_id: t.organizationId, property_id: t.propertyId, zona_horaria: this.zonasHorarias.get(t.propertyId) ?? null, fecha: t.programadaPara, cantidad: 1 });
+    }
+    return [...grupos.values()].sort((a, b) => (a.property_id < b.property_id ? -1 : a.property_id > b.property_id ? 1 : a.fecha < b.fecha ? -1 : 1));
   }
 
   getTareaOperativa(tareaId: string): StoredTareaOperativa | null {
@@ -805,7 +898,32 @@ export class InMemoryRentasCalendarStore {
 
   insertNotificacionTarea(tareaId: string, evento: "asignada" | "completada"): void {
     const id = randomUUID();
-    this.notificacionesTarea.set(id, { id, tareaId, evento });
+    this.notificacionesTarea.set(id, { id, tareaId, evento, creadoEn: new Date().toISOString(), notificadaInAppEn: null });
+  }
+
+  /** Cola de avisos de asignacion pendientes (`notificada_in_app_en is null`), las mas antiguas primero, unidas a su tarea. */
+  listAvisosAsignacionPendientes(limite: number): { aviso_id: string; tarea_id: string; organization_id: string; property_id: string; asignado_a: string | null; estado: string }[] {
+    return [...this.notificacionesTarea.values()]
+      .filter((n) => n.evento === "asignada" && n.notificadaInAppEn === null && this.tareas.has(n.tareaId))
+      .sort((a, b) => (a.creadoEn < b.creadoEn ? -1 : a.creadoEn > b.creadoEn ? 1 : a.id < b.id ? -1 : 1))
+      .slice(0, limite)
+      .map((n) => {
+        const t = this.tareas.get(n.tareaId)!;
+        return { aviso_id: n.id, tarea_id: t.id, organization_id: t.organizationId, property_id: t.propertyId, asignado_a: t.asignadoA, estado: t.estado };
+      });
+  }
+
+  marcarAvisosNotificados(ids: readonly string[]): void {
+    for (const id of ids) {
+      const fila = this.notificacionesTarea.get(id);
+      if (fila && fila.notificadaInAppEn === null) fila.notificadaInAppEn = new Date().toISOString();
+    }
+  }
+
+  marcarAvisosDeTareaNotificados(tareaId: string): void {
+    for (const fila of this.notificacionesTarea.values()) {
+      if (fila.tareaId === tareaId && fila.evento === "asignada" && fila.notificadaInAppEn === null) fila.notificadaInAppEn = new Date().toISOString();
+    }
   }
 
   completarChecklistItemTarea(checklistItemId: string, completadoPor: string): { id: string } | null {

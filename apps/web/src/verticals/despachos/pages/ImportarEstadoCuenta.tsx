@@ -16,21 +16,17 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  DataTable,
   EstadoVacio,
   Input,
   Label,
   NativeSelect,
   PageContainer,
   StatusBadge,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { BANCOS_ESTADO_CUENTA, decodificarArchivoEstadoCuenta, formatoPorNombreArchivo, guardarEstadoCuenta, previsualizarEstadoCuenta } from "../lib/estado-cuenta-client.ts";
-import type { BancoEstadoCuenta, CoincidenciaImportacion, EntradaImportacion, ResultadoGuardadoEstadoCuenta, VistaPreviaImportacion } from "../lib/estado-cuenta-client.ts";
+import type { BancoEstadoCuenta, CoincidenciaImportacion, EntradaImportacion, ErrorRenglonEstado, MovimientoImportado, ResultadoGuardadoEstadoCuenta, VistaPreviaImportacion } from "../lib/estado-cuenta-client.ts";
 import { formatMoney } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
@@ -48,6 +44,12 @@ const NIVEL_LABELS: Record<string, string> = { exacto: "Exacto", fuzzy: "Aproxim
 function etiquetaBanco(id: string): string {
   return BANCOS_ESTADO_CUENTA.find((b) => b.id === id)?.nombre ?? id;
 }
+
+const COLUMNAS_ERRORES: DataTableColumna<ErrorRenglonEstado & { clave: string }>[] = [
+  { id: "renglon", encabezado: "Renglón", principal: true, alinear: "right", valorOrden: (e) => e.renglon, celda: (e) => <span className="tabular-nums">{e.renglon}</span> },
+  { id: "campo", encabezado: "Campo", valorOrden: (e) => e.campo ?? "", celda: (e) => e.campo ?? "—" },
+  { id: "problema", encabezado: "Problema", celda: (e) => e.mensaje },
+];
 
 export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
   const puedeGestionar = CONCILIACION_ROLES.has(role);
@@ -120,6 +122,35 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
   const coincidenciaPorHash = new Map<string, CoincidenciaImportacion>((vista?.coincidencias ?? []).map((c) => [c.hash, c]));
   const yaImportados = new Set(vista?.yaImportados ?? []);
   const parseo = vista?.parseo;
+
+  const columnasMovimientos: DataTableColumna<MovimientoImportado>[] = [
+    { id: "renglon", encabezado: "Renglón", principal: true, alinear: "right", valorOrden: (m) => m.renglon, celda: (m) => <span className="tabular-nums">{m.renglon}</span> },
+    { id: "fecha", encabezado: "Fecha", valorOrden: (m) => m.fecha, celda: (m) => m.fecha },
+    { id: "concepto", encabezado: "Concepto", valorOrden: (m) => m.descripcion, celda: (m) => m.descripcion || "—" },
+    { id: "referencia", encabezado: "Referencia", celda: (m) => <span className="font-mono text-xs">{m.referencia ?? "—"}</span> },
+    { id: "cargo", encabezado: "Cargo", alinear: "right", valorOrden: (m) => m.cargo, celda: (m) => <span className="tabular-nums">{m.cargo !== null ? formatMoney(m.cargo) : ""}</span> },
+    { id: "abono", encabezado: "Abono", alinear: "right", valorOrden: (m) => m.abono, celda: (m) => <span className="tabular-nums">{m.abono !== null ? formatMoney(m.abono) : ""}</span> },
+    { id: "saldo", encabezado: "Saldo", alinear: "right", valorOrden: (m) => m.saldo, celda: (m) => <span className="tabular-nums">{m.saldo !== null ? formatMoney(m.saldo) : ""}</span> },
+    {
+      id: "estado",
+      encabezado: "Estado",
+      celda: (m) => {
+        const coincidencia = coincidenciaPorHash.get(m.hash);
+        return yaImportados.has(m.hash) ? (
+          <StatusBadge tone="neutral">Ya importado</StatusBadge>
+        ) : coincidencia ? (
+          <div className="flex flex-col gap-0.5">
+            <StatusBadge tone="success" className="w-fit">
+              CFDI {NIVEL_LABELS[coincidencia.nivel] ?? coincidencia.nivel}
+            </StatusBadge>
+            {coincidencia.cobranzaPendienteIds.length > 0 && <span className="text-xs text-muted-foreground">Cuenta por cobrar pendiente: revisa si ya se pagó</span>}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">Sin conciliar</span>
+        );
+      },
+    },
+  ];
 
   return (
     <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
@@ -265,26 +296,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                 <CardTitle className="text-base">Errores por renglón ({parseo.errores.length})</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <Table className="text-xs">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="h-9">Renglón</TableHead>
-                        <TableHead className="h-9">Campo</TableHead>
-                        <TableHead className="h-9">Problema</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parseo.errores.map((e, i) => (
-                        <TableRow key={`${e.renglon}-${i}`}>
-                          <TableCell className="p-2 tabular-nums">{e.renglon}</TableCell>
-                          <TableCell className="p-2">{e.campo ?? "—"}</TableCell>
-                          <TableCell className="p-2">{e.mensaje}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                <DataTable etiqueta="Errores por renglón del estado de cuenta" columnas={COLUMNAS_ERRORES} filas={parseo.errores.map((e, i) => ({ ...e, clave: `${e.renglon}-${i}` }))} obtenerId={(e) => e.clave} />
               </CardContent>
             </Card>
           )}
@@ -323,52 +335,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
               {parseo.movimientos.length === 0 ? (
                 <EstadoVacio compacto titulo="Sin movimientos válidos" mensaje="Revisa los errores por renglón de arriba." />
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <Table className="min-w-[760px] text-xs">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="h-9">Renglón</TableHead>
-                        <TableHead className="h-9">Fecha</TableHead>
-                        <TableHead className="h-9">Concepto</TableHead>
-                        <TableHead className="h-9">Referencia</TableHead>
-                        <TableHead className="h-9 text-right">Cargo</TableHead>
-                        <TableHead className="h-9 text-right">Abono</TableHead>
-                        <TableHead className="h-9 text-right">Saldo</TableHead>
-                        <TableHead className="h-9">Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parseo.movimientos.slice(0, MAX_FILAS_VISTA).map((m) => {
-                        const coincidencia = coincidenciaPorHash.get(m.hash);
-                        return (
-                          <TableRow key={m.hash}>
-                            <TableCell className="p-2 tabular-nums">{m.renglon}</TableCell>
-                            <TableCell className="p-2">{m.fecha}</TableCell>
-                            <TableCell className="p-2">{m.descripcion || "—"}</TableCell>
-                            <TableCell className="p-2 font-mono text-xs">{m.referencia ?? "—"}</TableCell>
-                            <TableCell className="p-2 text-right tabular-nums">{m.cargo !== null ? formatMoney(m.cargo) : ""}</TableCell>
-                            <TableCell className="p-2 text-right tabular-nums">{m.abono !== null ? formatMoney(m.abono) : ""}</TableCell>
-                            <TableCell className="p-2 text-right tabular-nums">{m.saldo !== null ? formatMoney(m.saldo) : ""}</TableCell>
-                            <TableCell className="p-2">
-                              {yaImportados.has(m.hash) ? (
-                                <StatusBadge tone="neutral">Ya importado</StatusBadge>
-                              ) : coincidencia ? (
-                                <div className="flex flex-col gap-0.5">
-                                  <StatusBadge tone="success" className="w-fit">
-                                    CFDI {NIVEL_LABELS[coincidencia.nivel] ?? coincidencia.nivel}
-                                  </StatusBadge>
-                                  {coincidencia.cobranzaPendienteIds.length > 0 && <span className="text-xs text-muted-foreground">Cuenta por cobrar pendiente: revisa si ya se pagó</span>}
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground">Sin conciliar</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                <DataTable etiqueta="Movimientos del estado de cuenta" columnas={columnasMovimientos} filas={parseo.movimientos.slice(0, MAX_FILAS_VISTA)} obtenerId={(m) => m.hash} />
               )}
               {parseo.movimientos.length > MAX_FILAS_VISTA && (
                 <p className="text-xs text-muted-foreground">

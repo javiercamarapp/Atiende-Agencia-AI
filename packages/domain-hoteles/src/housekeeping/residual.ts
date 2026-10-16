@@ -21,12 +21,16 @@ export interface HousekeepingConfig {
   readonly minutesByType: Readonly<Record<HousekeepingTaskType, number>>;
   readonly photosRequiredOnInspection: boolean;
   readonly maxPhotosPerTask: number;
+  /** H-P3-04: hora LOCAL (0..23) a la que el cron arranca el dia de housekeeping de la property (default 7). */
+  readonly startHour: number;
+  /** false = la base aun no tiene la migracion 045 (columna `start_hour`): se usa el default 7 y no se puede cambiar. */
+  readonly startHourDisponible: boolean;
   /** false = la property aun no guardo configuracion propia: se muestran los valores por defecto. */
   readonly personalizada: boolean;
   readonly updatedAt: string | null;
 }
 
-export type HousekeepingConfigValues = Omit<HousekeepingConfig, "propertyId" | "personalizada" | "updatedAt">;
+export type HousekeepingConfigValues = Omit<HousekeepingConfig, "propertyId" | "personalizada" | "updatedAt" | "startHourDisponible">;
 
 /** Mismos DEFAULT que la tabla (migracion 039): sin fila, la aplicacion se comporta igual que con una fila nueva. */
 export const DEFAULT_HOUSEKEEPING_CONFIG: HousekeepingConfigValues = {
@@ -36,6 +40,7 @@ export const DEFAULT_HOUSEKEEPING_CONFIG: HousekeepingConfigValues = {
   minutesByType: { salida: 40, estancia: 20, profunda: 90, repaso: 10 },
   photosRequiredOnInspection: false,
   maxPhotosPerTask: 6,
+  startHour: 7,
 };
 
 export interface HousekeepingConfigPatch {
@@ -45,6 +50,7 @@ export interface HousekeepingConfigPatch {
   readonly minutesByType?: Partial<Record<HousekeepingTaskType, number>>;
   readonly photosRequiredOnInspection?: boolean;
   readonly maxPhotosPerTask?: number;
+  readonly startHour?: number;
 }
 
 function intInRange(value: unknown, field: string, min: number, max: number): number {
@@ -63,7 +69,7 @@ function bool(value: unknown, field: string): boolean {
 export function parseHousekeepingConfigPatch(raw: unknown): HousekeepingConfigPatch {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HousekeepingInvalidInputError("Cuerpo invalido: se esperaba un objeto.");
   const body = raw as Record<string, unknown>;
-  const known = new Set(["asignacionAutomatica", "maxTareasPorCamarista", "minutosJornada", "minutosPorTipo", "fotosObligatoriasEnInspeccion", "maxFotosPorTarea"]);
+  const known = new Set(["asignacionAutomatica", "maxTareasPorCamarista", "minutosJornada", "minutosPorTipo", "fotosObligatoriasEnInspeccion", "maxFotosPorTarea", "horaArranque"]);
   for (const key of Object.keys(body)) {
     if (!known.has(key)) throw new HousekeepingInvalidInputError(`Campo desconocido: ${key}.`);
   }
@@ -74,12 +80,14 @@ export function parseHousekeepingConfigPatch(raw: unknown): HousekeepingConfigPa
     minutesByType?: Partial<Record<HousekeepingTaskType, number>>;
     photosRequiredOnInspection?: boolean;
     maxPhotosPerTask?: number;
+    startHour?: number;
   } = {};
   if (body.asignacionAutomatica !== undefined) patch.autoAssignEnabled = bool(body.asignacionAutomatica, "asignacionAutomatica");
   if (body.maxTareasPorCamarista !== undefined) patch.maxTasksPerCamarista = intInRange(body.maxTareasPorCamarista, "maxTareasPorCamarista", 1, 60);
   if (body.minutosJornada !== undefined) patch.shiftMinutes = intInRange(body.minutosJornada, "minutosJornada", 60, 720);
   if (body.fotosObligatoriasEnInspeccion !== undefined) patch.photosRequiredOnInspection = bool(body.fotosObligatoriasEnInspeccion, "fotosObligatoriasEnInspeccion");
   if (body.maxFotosPorTarea !== undefined) patch.maxPhotosPerTask = intInRange(body.maxFotosPorTarea, "maxFotosPorTarea", 1, 10);
+  if (body.horaArranque !== undefined) patch.startHour = intInRange(body.horaArranque, "horaArranque", 0, 23);
   if (body.minutosPorTipo !== undefined) {
     if (!body.minutosPorTipo || typeof body.minutosPorTipo !== "object" || Array.isArray(body.minutosPorTipo)) {
       throw new HousekeepingInvalidInputError("minutosPorTipo: se esperaba un objeto por tipo de tarea.");
@@ -103,6 +111,7 @@ export function mergeHousekeepingConfig(base: HousekeepingConfigValues, patch: H
     minutesByType: { ...base.minutesByType, ...(patch.minutesByType ?? {}) },
     photosRequiredOnInspection: patch.photosRequiredOnInspection ?? base.photosRequiredOnInspection,
     maxPhotosPerTask: patch.maxPhotosPerTask ?? base.maxPhotosPerTask,
+    startHour: patch.startHour ?? base.startHour,
   };
 }
 

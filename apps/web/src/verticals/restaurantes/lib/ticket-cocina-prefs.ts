@@ -5,9 +5,11 @@
 // estado no se comparte entre dispositivos -- la auto-impresión debe activarse en el
 // equipo que está conectado a la impresora de cocina.
 //
-// Límites asumidos: (1) el estado se lee de localStorage al montar y no se sincroniza entre
-// pestañas, así que dos pestañas de Pedidos con auto-impresión activa en el mismo equipo
-// pueden imprimir un pedido dos veces: usar UNA sola pestaña por impresora. (2) El navegador
+// Varias pestañas (QA-restaurantes-R1-caos-18): `localStorage` es la fuente de verdad. Antes de imprimir, el ciclo de
+// auto-impresión RECLAMA los pedidos dentro de un candado entre pestañas (Web Locks) re-leyendo el storage, así dos
+// pestañas del mismo equipo no imprimen el mismo ticket dos veces; el evento `storage` mantiene la copia en memoria al
+// día. Límites asumidos: (1) sin Web Locks (navegadores viejos) el reclamo es lectura-escritura sin candado y una carrera
+// de milisegundos entre pestañas sigue siendo posible. (2) El navegador
 // no confirma que la impresión salió: un pedido queda marcado como impreso en cuanto se
 // abre el diálogo de impresión, aunque el usuario lo cancele (la reimpresión manual lo cubre).
 //
@@ -87,4 +89,33 @@ export function marcarImpresos(prefs: PrefsTicketCocina, ids: readonly string[])
 export function registrarReimpresion(prefs: PrefsTicketCocina, id: string): PrefsTicketCocina {
   const n = (prefs.reimpresiones[id] ?? 0) + 1;
   return { ...marcarImpresos(prefs, [id]), reimpresiones: { ...prefs.reimpresiones, [id]: n } };
+}
+
+/** Clave de localStorage de las preferencias de esta sucursal (para escuchar el evento `storage`). */
+export function clavePrefsTicketCocina(orgSlug: string, propertyId: string): string {
+  return keyFor(orgSlug, propertyId);
+}
+
+/** Serializa `fn` entre las pestañas del mismo origen con Web Locks; sin soporte, la ejecuta directo. */
+export async function conCandadoDeImpresion<T>(orgSlug: string, propertyId: string, fn: () => T): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: { request: (name: string, cb: () => Promise<T> | T) => Promise<T> } } }).navigator?.locks;
+  if (!locks?.request) return fn();
+  return locks.request(`${KEY_PREFIX}lock.${orgSlug}.${propertyId}`, fn);
+}
+
+/** Reclama para esta pestaña los `ids` que NINGUNA pestaña marco como impresos: re-lee el storage (no la memoria), marca los
+ * libres como impresos y los devuelve. Llamar dentro de `conCandadoDeImpresion`. */
+export function reclamarImpresion(storage: SessionStorageLike, orgSlug: string, propertyId: string, ids: readonly string[]): readonly string[] {
+  const frescas = leerPrefs(storage, orgSlug, propertyId);
+  const ya = new Set(frescas.impresos);
+  const libres = ids.filter((id) => !ya.has(id));
+  if (libres.length > 0) guardarPrefs(storage, orgSlug, propertyId, marcarImpresos(frescas, libres));
+  return libres;
+}
+
+/** Deshace un reclamo cuando la impresion no pudo abrirse (el pedido vuelve a quedar pendiente de imprimir). */
+export function liberarReclamo(storage: SessionStorageLike, orgSlug: string, propertyId: string, ids: readonly string[]): void {
+  const frescas = leerPrefs(storage, orgSlug, propertyId);
+  const quitar = new Set(ids);
+  guardarPrefs(storage, orgSlug, propertyId, { ...frescas, impresos: frescas.impresos.filter((id) => !quitar.has(id)) });
 }

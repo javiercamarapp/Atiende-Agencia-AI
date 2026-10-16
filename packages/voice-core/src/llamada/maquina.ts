@@ -11,6 +11,7 @@
 //   * duracion maxima y costo maximo por llamada: avisa, corta y deja callback (nunca cuelga un pedido ya creado);
 //   * proveedor caido: una reanudacion (`reconexionesMax`) y despues pregrabado + persona (falla_sistema);
 //   * herramienta lenta (timeout): avisa; dos seguidas pasan a una persona.
+import { COSTO_MAX_LLAMADA_MICRO_USD } from "../costo-gemini.ts";
 import type { VozResultadoBase } from "../types.ts";
 import type { MensajeId } from "./mensajes.ts";
 
@@ -33,7 +34,7 @@ export interface LimitesLlamada {
   readonly duracionMaxS: number;
   /** A partir de aqui se avisa que la llamada esta por terminar. */
   readonly avisoDuracionS: number;
-  /** Costo maximo estimado por llamada, en micro-USD (ADR: US$0.10). */
+  /** Costo maximo estimado por llamada, en micro-USD (antes US$0.10 del ADR; ver costo-gemini.ts). */
   readonly costoMaxMicroUsd: number;
   /** Silencio del cliente (tras hablar el agente) que cuenta como "no contesta". */
   readonly silencioMs: number;
@@ -48,10 +49,18 @@ export interface LimitesLlamada {
   readonly dtmf: boolean;
 }
 
+/** Opciones de comportamiento de la maquina (no son limites numericos). */
+export interface OpcionesMaquinaLlamada {
+  /** `false` = el PRIMER turno del agente (el saludo con el aviso de asistente virtual y grabacion) no se corta aunque el cliente hable encima: el
+   * barge-in se ignora hasta que el saludo termina. Cumplimiento (P37): el aviso se escucha completo. Por omision `true` (como siempre). */
+  readonly saludoInterrumpible?: boolean;
+}
+
 export const LIMITES_POR_DEFECTO: LimitesLlamada = {
   duracionMaxS: 8 * 60,
   avisoDuracionS: 7 * 60,
-  costoMaxMicroUsd: 100_000,
+  // US$0.50: la facturacion compuesta de Gemini Live deja una llamada media en ~US$0.17 y una larga en ~US$0.42 (src/costo-gemini.ts). Antes US$0.10.
+  costoMaxMicroUsd: COSTO_MAX_LLAMADA_MICRO_USD,
   silencioMs: 7_000,
   silenciosMax: 2,
   malentendidosMax: 2,
@@ -78,7 +87,19 @@ export type EventoLlamada =
   | { readonly tipo: "ruido" }
   | { readonly tipo: "no_entendido" }
   | { readonly tipo: "dtmf"; readonly digito: string }
-  | { readonly tipo: "tool_resultado"; readonly nombre: string; readonly ok: boolean; readonly entidadId?: string | null; readonly timeout?: boolean }
+  | {
+      readonly tipo: "tool_resultado";
+      readonly nombre: string;
+      readonly ok: boolean;
+      readonly entidadId?: string | null;
+      readonly timeout?: boolean;
+      /** La herramienta objetivo salio bien pero NO creo la entidad: el servidor retuvo el pedido para que una persona lo confirme (pedido grande). La llamada termina `escalado`. */
+      readonly retenido?: boolean;
+      /** El timeout de una herramienta de escritura dejo el resultado INCIERTO (el servidor pudo haberla registrado). */
+      readonly incierto?: boolean;
+    }
+  /** El agente ya se despidio (el controlador lo detecta en su texto): si el objetivo esta logrado, la llamada cuelga al terminar ese turno (checklist C02 / X51). */
+  | { readonly tipo: "despedida_dicha" }
   /** Costo adicional estimado (micro-USD) desde el ultimo evento de costo. */
   | { readonly tipo: "costo"; readonly microUsd: number }
   /** Segundos transcurridos desde que se conecto la llamada. */
@@ -113,11 +134,20 @@ export class CallStateMachine<R extends string = string> {
   private escalado = false;
   /** Una guardia de la vertical forzo la escalada: el resultado es `escalado` pase lo que pase. */
   private escaladoForzado = false;
+  /** El saludo (primer turno del agente) esta sonando y no es interrumpible. */
+  private saludoProtegido = false;
+  private saludoDicho = false;
   /** El agente ya paso a la persona por su cuenta: la llamada termina cuando acabe de despedirse. */
   private cerrarAlTerminar = false;
+  /** Ya se dejo el aviso de un resultado incierto de la herramienta objetivo (una sola vez). */
+  private avisoIncierto = false;
   private resultadoFinal: R | VozResultadoBase | null = null;
 
-  constructor(private readonly reglas: ReglasCierreLlamada<R>, private readonly limites: LimitesLlamada = LIMITES_POR_DEFECTO) {}
+  constructor(
+    private readonly reglas: ReglasCierreLlamada<R>,
+    private readonly limites: LimitesLlamada = LIMITES_POR_DEFECTO,
+    private readonly opciones: OpcionesMaquinaLlamada = {},
+  ) {}
 
   get estadoActual(): EstadoLlamada {
     return this.estado;
@@ -141,11 +171,19 @@ export class CallStateMachine<R extends string = string> {
         return [];
       case "agente_empieza":
         this.agenteHablando = true;
+        // El primer turno del agente ES el saludo; si no es interrumpible, queda protegido hasta que termine.
+        if (!this.saludoDicho) {
+          this.saludoDicho = true;
+          this.saludoProtegido = this.opciones.saludoInterrumpible === false;
+        }
         return [];
       case "agente_termina":
         this.agenteHablando = false;
+        this.saludoProtegido = false;
         return this.cerrarAlTerminar ? this.cerrar([]) : [];
       case "usuario_habla":
+        // Saludo no interrumpible: el cliente habla encima y el audio NO se corta (el agente sigue hablando hasta terminar el aviso).
+        if (this.saludoProtegido) return [];
         if (this.agenteHablando) {
           this.agenteHablando = false;
           return [{ tipo: "cortar_audio_agente" }];
@@ -167,8 +205,12 @@ export class CallStateMachine<R extends string = string> {
         return this.dtmf(ev.digito);
       case "tool_resultado":
         return this.herramienta(ev);
+      case "despedida_dicha":
+        if (this.objetivoLogrado) this.cerrarAlTerminar = true;
+        return [];
       case "costo":
-        this.costo += Math.max(0, ev.microUsd);
+        // Un NaN o infinito NO se suma (this.costo = NaN haria `>= tope` falso para siempre y apagaria el tope por llamada): se ignora.
+        if (Number.isFinite(ev.microUsd)) this.costo += Math.max(0, ev.microUsd);
         return this.costo >= this.limites.costoMaxMicroUsd ? this.cortar("limite_costo") : [];
       case "tick":
         return this.reloj(ev.segundos);
@@ -236,10 +278,19 @@ export class CallStateMachine<R extends string = string> {
     if (ev.timeout) {
       this.timeouts += 1;
       if (this.timeouts >= this.limites.timeoutsMax) return this.aPersona("falla_sistema", "proveedor_caido");
+      // QA-PM-R2-voz-04: el timeout de la herramienta objetivo deja un resultado INCIERTO (el pedido pudo quedar en cocina). Se promete "una persona le confirma",
+      // asi que esa persona SI debe enterarse: aviso inmediato (sin colgar) para que verifique, y la llamada termina `escalado`, no `abandonado`.
+      if (ev.incierto && this.esObjetivo(ev.nombre) && !this.objetivoLogrado && !this.avisoIncierto) {
+        this.avisoIncierto = true;
+        this.escalado = true;
+        return [{ tipo: "decir", mensaje: "tool_timeout" }, { tipo: "escalar", motivo: "falla_sistema" }];
+      }
       return [{ tipo: "decir", mensaje: "tool_timeout" }];
     }
     this.timeouts = 0;
     if (ev.ok && ev.entidadId && this.esObjetivo(ev.nombre)) this.objetivoLogrado = true;
+    // Pedido grande retenido por el servidor: el aviso ya existe; la llamada es `escalado` en los KPI (antes quedaba `abandonado`).
+    if (ev.ok && !ev.entidadId && ev.retenido && this.esObjetivo(ev.nombre)) this.escalado = true;
     if (ev.ok && ev.nombre === this.reglas.herramientaEscalar) {
       this.escalado = true;
       this.cerrarAlTerminar = !this.objetivoLogrado;
@@ -266,6 +317,7 @@ export class CallStateMachine<R extends string = string> {
       this.reconexiones += 1;
       this.estado = "reconectando";
       this.agenteHablando = false;
+      this.saludoProtegido = false;
       const espera = this.limites.reconexionEsperaMs[Math.min(this.reconexiones - 1, this.limites.reconexionEsperaMs.length - 1)] ?? 0;
       return [{ tipo: "reconectar", intento: this.reconexiones, esperaMs: espera }];
     }

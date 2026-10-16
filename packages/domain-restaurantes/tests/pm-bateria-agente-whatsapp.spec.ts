@@ -117,7 +117,7 @@ describe("E.3 post-guards del texto del LLM (el modelo se equivoca a proposito)"
   it("T-PG06 / P26 [P1] ninguna cadena fija que lee el cliente tutea (verificador de 'usted')", async () => {
     const f = dosSucursales();
     const respuestas: string[] = [providerFailureReply(null), providerFailureReply("orden-1"), FALLBACK_CONFIG.deliveryTimeText];
-    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente", "quiero borrar mis datos", "soy alérgico al cacahuate", "pagaré por transferencia", "llegó frío mi pedido", "quiero hablar con una persona"]) {
+    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente, necesito mi pedido", "quiero borrar mis datos", "soy alérgico al cacahuate", "pagaré por transferencia", "llegó frío mi pedido", "quiero hablar con una persona"]) {
       respuestas.push(classifyHighRiskIntent(frase)!.reply);
     }
     respuestas.push(enforcePendingQuestion("Hola", false, null), enforcePendingQuestion("Hola", true, null));
@@ -187,9 +187,8 @@ describe("E.7 / E.4 motivos de alto riesgo: se avisan al equipo ANTES del modelo
     }
   });
 
-  it.todo("T-HO07 / P32 [P1] BRECHA: 'no entiende dos veces' -> no_entiende (necesita contador por conversacion; hoy depende del modelo)");
+  // T-HO07 / P32 y T-HO10 ya no son brechas: los cubre `contadores-agente-whatsapp.spec.ts` y `callbacks-idempotentes.spec.ts` (rescate-orig-restaurantes-1).
   it.todo("T-HO09 / P35 [P1] facturacion/empleo escalan 'otro' con el nombre dado: cubierto por registrar_contacto y el prompt; la regla de 'nunca inventar el nombre' solo se mide con modelo real");
-  it.todo("T-HO10 [P1] BRECHA: un solo ticket por motivo y conversacion (callback_requests no deduplica; 3 mensajes iguales crean 3 avisos)");
   it.todo("T-HO11 / P07 [P0] BRECHA: pausa del agente mientras el humano atiende (la conversacion solo tiene estados active/completed/abandoned; no hay 'handoff')");
   it.todo("T-HO12 / X28 [P2] 'que me lo lleve Juan': decir con honestidad que no se puede elegir repartidor (regla de prompt; medir con modelo real)");
 });
@@ -239,7 +238,10 @@ describe("E.4 / E.12 datos de tarjeta, privacidad y logs", () => {
   });
 
   it.todo("T-PR01 [P0] DECISION DE DISENO: buscar_cliente entrega la direccion completa al modelo; 'nunca devuelve direccion completa' contradice '¿la misma direccion?' y hoy solo lo limita el prompt");
-  it.todo("T-PR04 / T-PR05 [P1] BRECHA: export/erase ARCO del cliente y purga de transcripciones por politica (hoy solo se registra el aviso al equipo)");
+  // H55 (import-orig-11): reconciliado con restaurantes-privacidad.spec.ts. La PURGA de transcripciones por retencion YA existe (T-PR05: endpoint interno + SQL;
+  // S/verify-restaurantes-privacidad-arco, A/restaurantes-privacidad.spec.ts "purga por retencion"). Lo que sigue siendo brecha real es la EJECUCION automatica del
+  // export/borrado del cliente: hoy la solicitud ARCO se registra, se confirma y la resuelve una persona desde el panel.
+  it.todo("T-PR04 [P1] BRECHA (H55, ver #403): ejecucion automatica de export/borrado ARCO del cliente (hoy la solicitud se registra y la resuelve una persona desde el panel de privacidad)");
 });
 
 describe("E.9 abuso e inyeccion: lo que el servidor garantiza aunque el modelo falle", () => {
@@ -301,13 +303,18 @@ describe("E.11 fallas del proveedor LLM", () => {
     const f = dosSucursales();
     const handler = createLlmWhatsAppTurnHandler(f.repo, gatewayDe([new FakeLlmProvider({ id: "a", failWith: () => new Error("500") }), new FakeLlmProvider({ id: "b", failWith: () => new Error("500") })]), { defaultRole: "default", escalatedRole: "escalated" });
     const turn = await handler.handleInboundMessage(entrada(f.organizationId, "hola"));
-    expect(turn.reply).toBe(providerFailureReply(null));
-    expect(turn.reply).toContain("inténtelo");
+    // Sin pedido creado el cliente no se queda con "inténtelo luego": el equipo recibe el aviso falla_sistema y se abre la toma de handoff (QA R1 agentes-03).
+    expect(turn.reply).toContain("problema técnico");
+    expect(turn.reply).toContain("avisé al equipo");
+    expect((turn as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
     expect(turn.orderId).toBeNull();
   });
 
   it("T-FP06 / X34 [P2] tras un crear_pedido fallido el siguiente paso del loop sube al modelo de respaldo caro", async () => {
     const f = dosSucursales();
+    // B04: solo un FALLO (error de sistema) sube de modelo; un rechazo de regla no. Aqui la base cae al crear el cliente.
+    await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "fco-montejo", canal: "recoger", items: [{ productId: f.products.cocaCola, productName: "Coca-Cola", requestedQuantity: 1 }] });
+    vi.spyOn(f.repo, "upsertCustomer").mockRejectedValue(new Error("base caida"));
     let paso = 0;
     const barato = new FakeLlmProvider({
       id: "barato",
@@ -330,7 +337,8 @@ describe("E.11 fallas del proveedor LLM", () => {
     const provider = new FakeLlmProvider({ id: "lento", script: () => texto("no debe llamarse") });
     const handler = createLlmWhatsAppTurnHandler(f.repo, gatewayDe([provider]), { defaultRole: "default", escalatedRole: "escalated", turnBudgetMs: -1 });
     const turn = await handler.handleInboundMessage(entrada(f.organizationId, "hola"));
-    expect(turn.reply).toBe(providerFailureReply(null));
+    expect(turn.reply).toContain("problema técnico");
+    expect((turn as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
     expect(provider.callCount).toBe(0);
   });
 
@@ -350,11 +358,12 @@ describe("PM-C3 -- prompt del perfil taqueria_pm tal como lo recibe el modelo", 
     expect(prompt).not.toContain("la confirma la sucursal al recoger");
   });
 
-  it("T-PC02 ya no afirma precios iguales y trae las 7 sucursales, el horario prudente de T2 y la regla de ultimo pedido", () => {
+  it("T-PC02 ya no afirma precios iguales, trae las 7 sucursales y el horario sale de los datos de la sucursal (sin franja fija en el prompt)", () => {
     expect(prompt).not.toContain("Precios iguales");
     for (const nombre of ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"]) expect(prompt).toContain(nombre);
-    expect(prompt).toMatch(/Francisco de Montejo: lunes a viernes de 6 pm a 12 am/);
-    expect(prompt).toMatch(/solo si la entrega .* cae antes del cierre/);
+    expect(prompt).not.toMatch(/Francisco de Montejo: lunes a viernes de 6 pm/);
+    expect(prompt).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
+    expect(prompt).toMatch(/solo si la entrega .* cae antes de esa hora/);
   });
 
   it("T-PC03 el saludo del prompt sigue la hora (martes 14:00 en Merida (UTC-6) = buenas tardes)", () => {

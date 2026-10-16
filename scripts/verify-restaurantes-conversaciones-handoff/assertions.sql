@@ -13,6 +13,8 @@
 --   G. Callbacks: intento, resolucion, sucursal nula, cross-tenant.
 --   H. Base SIN migrar: el SQL real que emite el repositorio falla con 42P01/42883 y el
 --      SAVEPOINT/ROLLBACK TO SAVEPOINT recupera la transaccion.
+--   K. Ventana de 24 h de la respuesta humana (migracion 045): dentro, fuera, ancla del agente, el staff no la reabre, autorizacion intacta.
+--   L. Acuse al cliente de una toma pendiente (045): temporizado, una vez por intervalo, solo-sistema, cross-tenant, anon, sin DML directo.
 --
 -- Los rechazos se afirman con un bloque DO que exige el SQLSTATE EXACTO (un error por otra causa
 -- hace fallar el escenario: no hay "falsos verdes" por un fallo distinto al esperado).
@@ -1174,6 +1176,255 @@ declare
 begin
   begin
     perform * from restaurantes.bandeja_conversaciones('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', null, null, 25, 0);
+    raise exception 'se esperaba SQLSTATE 42883, pero no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883, se obtuvo %', v_state;
+    end if;
+  end;
+end $$;
+rollback to savepoint sp_verify_handoff;
+release savepoint sp_verify_handoff;
+select count(*)::int as whatsapp_sigue_leyendo_deberia_ser_1 from restaurantes.whatsapp_conversations where id = '00000000-0000-0000-0000-0000000e00c1';
+rollback;
+
+\echo '=== K1. VENTANA 24 H (agentes-20): el cliente escribio hace 25 h -> la respuesta humana se rechaza con 55W24 y no se encola nada ==='
+begin;
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '25 hours' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+do $$ begin
+  perform restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Una disculpa por la demora');
+  raise exception 'DEBIO FALLAR con 55W24';
+exception when sqlstate '55W24' then null; end $$;
+reset role;
+select count(*)::int as outbox_sin_envio_deberia_ser_0 from restaurantes.messaging_outbox where event_type = 'whatsapp.handoff_reply';
+rollback;
+
+\echo '=== K1b. VENTANA 24 H: el rechazo no deja mensaje humano en el historial ==='
+begin;
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '25 hours' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+do $$ begin
+  perform restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Una disculpa por la demora');
+  raise exception 'DEBIO FALLAR con 55W24';
+exception when sqlstate '55W24' then null; end $$;
+reset role;
+select count(*)::int as historial_sin_mensaje_humano_deberia_ser_0 from restaurantes.whatsapp_conversations c, jsonb_array_elements(c.messages) m where c.id = '00000000-0000-0000-0000-0000000e00c1' and m ->> 'autor' = 'humano';
+rollback;
+
+\echo '=== K2. VENTANA 24 H: el cliente escribio hace 1 h -> la respuesta humana se encola (positivo) ==='
+begin;
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '1 hour' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+select restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Ya le atiendo');
+reset role;
+select count(*)::int as outbox_encolado_deberia_ser_1 from restaurantes.messaging_outbox where event_type = 'whatsapp.handoff_reply';
+rollback;
+
+\echo '=== K3. VENTANA 24 H: toma pedida por el agente hace 30 h y SIN mensajes nuevos del cliente -> 55W24 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('t.h', (restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '30 hours' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+do $$ begin
+  perform restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'hola');
+  raise exception 'DEBIO FALLAR con 55W24';
+exception when sqlstate '55W24' then null; end $$;
+rollback;
+
+\echo '=== K4. VENTANA 24 H: la misma toma pero el cliente volvio a escribir (ping del agente) -> la respuesta se encola ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('t.h', (restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '30 hours' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_whatsapp_estado('00000000-0000-0000-0000-0000000e0001', '5551000001');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+select restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Ya le atiendo');
+reset role;
+select count(*)::int as outbox_encolado_deberia_ser_1 from restaurantes.messaging_outbox where event_type = 'whatsapp.handoff_reply';
+rollback;
+
+\echo '=== K5. VENTANA 24 H: la propia respuesta del staff NO reabre la ventana (el ancla queda fijada antes de tocar updated_at) ==='
+begin;
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '23 hours' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+select restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Primera respuesta');
+reset role;
+select (h.ultimo_cliente_at < now() - interval '22 hours')::int as ancla_fijada_en_el_ultimo_mensaje_del_cliente_deberia_ser_1 from restaurantes.conversation_handoff h where h.id = current_setting('t.h')::uuid;
+rollback;
+
+\echo '=== K5b. VENTANA 24 H: una segunda respuesta, ya fuera de ventana, se rechaza aunque la primera haya tocado updated_at ==='
+begin;
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '23 hours' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+select restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Primera respuesta');
+reset role;
+update restaurantes.conversation_handoff set ultimo_cliente_at = now() - interval '25 hours' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Segunda respuesta fuera de ventana');
+  raise exception 'DEBIO FALLAR con 55W24';
+exception when sqlstate '55W24' then null; end $$;
+rollback;
+
+\echo '=== K6. AUTORIZACION INTACTA: fuera de ventana, quien no tiene la toma sigue recibiendo 42501 (no se filtra el estado de la ventana) ==='
+begin;
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '25 hours' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0015', true);
+do $$ begin
+  perform restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'hola');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== L1. ACUSE (viaje-14): toma pendiente RECIENTE -> false (el agente sigue callando, como antes) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x');
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60)::int as acuse_deberia_ser_0;
+rollback;
+
+\echo '=== L2. ACUSE: pendiente hace 20 min -> true UNA vez; la segunda llamada false ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('t.h', (restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '20 minutes' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60)::int as primer_acuse_deberia_ser_1;
+rollback;
+
+\echo '=== L2b. ACUSE: la segunda llamada dentro del intervalo da false (no se repite) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('t.h', (restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '20 minutes' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60);
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60)::int as segundo_acuse_deberia_ser_0;
+rollback;
+
+\echo '=== L3. ACUSE: pasado el intervalo de repeticion (61 min) vuelve a dar true ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('t.h', (restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '3 hours', acuse_cliente_at = now() - interval '61 minutes' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60)::int as acuse_deberia_ser_1;
+rollback;
+
+\echo '=== L4. ACUSE: con la toma ya TOMADA por una persona no se avisa (false) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '3 hours' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60)::int as acuse_deberia_ser_0;
+rollback;
+
+\echo '=== L5. CROSS-TENANT: la organizacion B no ve ni marca la toma pendiente de A (false, sin escritura) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('t.h', (restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '3 hours' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0002', '5551000001', 15, 60)::int as acuse_org_ajena_deberia_ser_0;
+rollback;
+
+\echo '=== L5b. CROSS-TENANT: la toma de A queda sin marcar ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('t.h', (restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'x'))::text, true);
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '3 hours' where id = current_setting('t.h')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0002', '5551000001', 15, 60);
+reset role;
+select count(*)::int as toma_de_A_sin_marcar_deberia_ser_0 from restaurantes.conversation_handoff where id = current_setting('t.h')::uuid and acuse_cliente_at is not null;
+rollback;
+
+\echo '=== L6. SOLO SISTEMA: un staff autenticado no usa el acuse (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== L7. ANON: sin EXECUTE sobre el acuse ==='
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== L8. DML DIRECTO: authenticated no escribe acuse_cliente_at (sin GRANT de UPDATE) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+do $$ begin
+  update restaurantes.conversation_handoff set acuse_cliente_at = now();
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== L9. BASE SIN MIGRAR: sin la 045 el acuse falla con 42883 y el SAVEPOINT recupera la transaccion ==='
+begin;
+drop function restaurantes.handoff_whatsapp_acuse_pendiente(uuid, text, integer, integer);
+savepoint sp_verify_handoff;
+do $$
+declare
+  v_state text;
+begin
+  begin
+    perform restaurantes.handoff_whatsapp_acuse_pendiente('00000000-0000-0000-0000-0000000e0001', '5551000001', 15, 60);
     raise exception 'se esperaba SQLSTATE 42883, pero no fallo';
   exception when others then
     get stacked diagnostics v_state = returned_sqlstate;

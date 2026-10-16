@@ -6,6 +6,8 @@
 // convierte en ROLLBACK.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isUndefinedColumnError, isUndefinedTableError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
+import { ServicioCfo, type EntradaServicioCfo } from "../cfo/servicio.ts";
+import { PostgresCfoRepository } from "../cfo/repositorio-postgres.ts";
 import {
   DataChatUnavailableError,
   type ChannelRow,
@@ -32,6 +34,8 @@ import {
   SQL_TOP_PRODUCTS_BY_QUANTITY,
   SQL_TOP_PRODUCTS_BY_REVENUE,
   SQL_VISIBLE_BRANCHES,
+  FECHA_PEDIDO,
+  FECHA_PEDIDO_LEGADA,
 } from "./sql.ts";
 
 function isMissingSchemaObject(err: unknown): boolean {
@@ -48,18 +52,35 @@ export class PostgresRestaurantesDataChatReader implements RestaurantesDataChatR
 
   constructor(private readonly db: TenantDbSession) {}
 
+  private async aplicarTope(): Promise<void> {
+    if (this.timeoutApplied) return;
+    this.timeoutApplied = true;
+    // `set local`: solo vive en la transaccion de esta request; un tope de tiempo real en la base,
+    // ademas del timeout del motor (que cancela la espera pero no la consulta).
+    await this.db.exec(`set local statement_timeout = ${DATA_CHAT_STATEMENT_TIMEOUT_MS}`);
+  }
+
   private async query<R>(what: string, sql: string, params: unknown[]): Promise<R[]> {
-    if (!this.timeoutApplied) {
-      this.timeoutApplied = true;
-      // `set local`: solo vive en la transaccion de esta request; un tope de tiempo real en la base,
-      // ademas del timeout del motor (que cancela la espera pero no la consulta).
-      await this.db.exec(`set local statement_timeout = ${DATA_CHAT_STATEMENT_TIMEOUT_MS}`);
-    }
+    await this.aplicarTope();
     return runWithSavepointFallback<R[]>({
       session: this.db,
       primary: async () => (await this.db.query<R>(sql, params)).rows,
       isRecoverable: isMissingSchemaObject,
-      fallback: async () => {
+      fallback: async (err) => {
+        // Base sin la migracion 034 (no existe `promovido_at`): el dia del pedido vuelve a ser `created_at` (comportamiento
+        // anterior) en vez de dejar el chat "no disponible". Corre tras el ROLLBACK TO SAVEPOINT de runWithSavepointFallback.
+        if (sql.includes(FECHA_PEDIDO) && isUndefinedColumnError(err)) {
+          const legacy = sql.split(FECHA_PEDIDO).join(FECHA_PEDIDO_LEGADA);
+          return runWithSavepointFallback<R[]>({
+            session: this.db,
+            savepointName: "sp_data_chat_legado",
+            primary: async () => (await this.db.query<R>(legacy, params)).rows,
+            isRecoverable: isMissingSchemaObject,
+            fallback: async () => {
+              throw new DataChatUnavailableError(what);
+            },
+          });
+        }
         throw new DataChatUnavailableError(what);
       },
     });
@@ -124,5 +145,11 @@ export class PostgresRestaurantesDataChatReader implements RestaurantesDataChatR
   async promotions(organizationId: string, limit: number): Promise<readonly PromotionRow[]> {
     const rows = await this.query<{ code: string; name: string; type: string; value: string; is_active: boolean; times_used: number; max_uses: number | null }>("promociones", SQL_PROMOTIONS, [organizationId, limit]);
     return rows.map((r) => ({ code: r.code, name: r.name, type: r.type, value: num(r.value), isActive: r.is_active, timesUsed: num(r.times_used), maxUses: r.max_uses }));
+  }
+
+  /** CFO-09: el servicio del CFO sobre la sesion RLS del usuario (cada lectura del adaptador abre su SAVEPOINT; base sin migrar = `disponible: false`). */
+  async cfo(entrada: Omit<EntradaServicioCfo, "repo">): Promise<ServicioCfo> {
+    await this.aplicarTope();
+    return new ServicioCfo({ ...entrada, repo: new PostgresCfoRepository(this.db) });
   }
 }

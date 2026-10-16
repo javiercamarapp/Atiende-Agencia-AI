@@ -34,22 +34,20 @@
 //     `../../aplicacion/reservas.ts` de ESTE monorepo NO escribe a ningún
 //     `outbox_evento` (ver su comentario de cabecera, punto 3: "sin consumidor en
 //     esta fase, tabla fuera del esquema mapeado") — no hay ningún evento que
-//     consumir. `procesarCheckoutsPendientes` (abajo) reemplaza ese consumidor por
-//     un POLL idempotente directo sobre `rentas.ocupacion` (reservas confirmadas
-//     cuyo checkout ya llegó y que todavía no tienen una tarea de limpieza
-//     vinculada), disparado explícitamente — mismo patrón exacto que
-//     `apps/api/src/routes/verticals/rentas/ical-sync-cron.ts` (cron interno,
-//     guardado por `x-atiende-internal-secret`, nunca un trigger de base de datos).
-//     La reprogramación/cancelación de la tarea vinculada al modificar/cancelar una
-//     reserva SÍ se conserva como una llamada síncrona explícita, pero ahora desde
-//     la RUTA HTTP de reservas (después de que `modificarFechasReserva`/
-//     `cancelarOcupacion` ya hicieron commit) — ver
-//     apps/api/src/routes/verticals/rentas/reservas.ts — en vez de un consumidor de
-//     eventos, porque aquí no existe ningún bus de eventos del que colgarse.
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { bloquearUnidadEnTransaccion, type EjecutorTransaccional } from "../../ejecutor.ts";
+//     consumir. Desde paridad3 el ciclo de la tarea es SINCRONO, igual que en el origen:
+//     `crearReservaConfirmada`, `modificarFechasReserva` y `cancelarOcupacion` (y por
+//     tanto el motor iCal, que las reutiliza) invocan los ganchos
+//     `crearTareaLimpiezaAlConfirmar`/`reprogramarTareaAlModificarReserva`/
+//     `cancelarTareaAlCancelarReserva` de este archivo, como EFECTOS ACCESORIOS aislados
+//     por SAVEPOINT (un fallo de la tarea nunca revierte ni rechaza la reserva).
+//     `barrerLimpiezaPendiente` (abajo) es la RED DE SEGURIDAD periodica: cubre las
+//     reservas anteriores al cambio y repara lo que un gancho no alcanzo a hacer.
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { isMigrationPendingError } from "@atiende/db";
+import { bloquearUnidadEnTransaccion, conSavepoint, conSavepointMejorEsfuerzo, type EjecutorTransaccional } from "../../ejecutor.ts";
 import { cancelarOcupacion, crearBloqueo } from "../../aplicacion/reservas.ts";
 import { RentasDomainError } from "../../errors.ts";
+import { sumarDias } from "../../fechas.ts";
 import { calcularRangoBuffer } from "../buffer.ts";
 import { checklistCompleto, plantillaChecklistPorTipo } from "../checklist.ts";
 import { requiereConfirmacionHumanaParaBloqueo } from "../incidencias.ts";
@@ -99,25 +97,65 @@ async function insertarChecklistPlantilla(ejecutor: EjecutorTransaccional, tarea
 // H-049/H-050: creación de tarea de limpieza + buffer al confirmarse el checkout
 // ---------------------------------------------------------------------------
 
+export interface EntradaCrearTareaCheckout {
+  readonly unidadId: string;
+  readonly ocupacionUnidadId: string;
+  readonly fechaCheckout: string;
+  /** `false` al confirmar la reserva: el bloqueo `BUFFER_LIMPIEZA` de calendario se materializa el DIA del checkout
+   *  (`materializarBuffersPendientes`), nunca antes -- crearlo dias antes bloquearia el calendario de canales y
+   *  registraria conflictos contra cada reserva pegada. Default `true` (comportamiento historico del barrido). */
+  readonly conBuffer?: boolean;
+}
+
 export interface ResultadoCrearTareaCheckout {
   readonly tareaId: string;
   readonly bufferOcupacionId: string | null;
+  /** Responsable por omision de la unidad con el que nacio la tarea (`null` = cola "Sin asignar"). */
+  readonly asignadoA: string | null;
+  /** `false` si la reserva ya tenia una tarea de limpieza (idempotente: no se duplica). */
+  readonly creada: boolean;
+}
+
+/** Responsable de limpieza por omision de la unidad (migracion 033), solo si sigue siendo miembro operativo con acceso a
+ *  la propiedad. Contra la base SIN migrar (42883/42P01/42703) devuelve `null`: la tarea nace en "Sin asignar" como antes.
+ *  Corre en su propio SAVEPOINT: el error de la base vieja no aborta la transaccion compartida. */
+async function leerResponsablePorOmision(ejecutor: EjecutorTransaccional, unidadId: string): Promise<string | null> {
+  try {
+    return await conSavepoint(ejecutor, "sp_responsable_limpieza", async () => {
+      const r = await ejecutor.query<{ responsable: string | null }>(`SELECT rentas.responsable_limpieza_vigente($1::uuid) AS responsable`, [unidadId]);
+      return r.rows[0]?.responsable ?? null;
+    });
+  } catch (error) {
+    if (isMigrationPendingError(error, "rentas.responsable_limpieza_vigente")) return null;
+    throw error;
+  }
 }
 
 /** Crea la tarea de limpieza vinculada a una reserva (H-049) y, si la property tiene
- * buffer configurado (>0 noches), el bloqueo `BUFFER_LIMPIEZA` real de calendario
- * (H-050) — vía `crearBloqueo`, la MISMA función transaccional de
- * `../../aplicacion/reservas.ts`, nunca reimplementada aquí. */
-export async function crearTareaLimpiezaPorCheckout(
-  ejecutor: EjecutorTransaccional,
-  entrada: { unidadId: string; ocupacionUnidadId: string; fechaCheckout: string },
-): Promise<ResultadoCrearTareaCheckout> {
+ * buffer configurado (>0 noches) y `conBuffer` no es `false`, el bloqueo `BUFFER_LIMPIEZA`
+ * real de calendario (H-050) — vía `crearBloqueo`, la MISMA función transaccional de
+ * `../../aplicacion/reservas.ts`, nunca reimplementada aquí. Idempotente por reserva (misma
+ * guarda `NOT EXISTS` del barrido, ahora tambien aqui): una segunda llamada devuelve la tarea
+ * existente con `creada: false`. La tarea nace asignada al responsable por omision de la unidad. */
+export async function crearTareaLimpiezaPorCheckout(ejecutor: EjecutorTransaccional, entrada: EntradaCrearTareaCheckout): Promise<ResultadoCrearTareaCheckout> {
   const config = await obtenerConfiguracion(ejecutor, entrada.unidadId);
 
   await ejecutor.exec("SAVEPOINT sp_crear_tarea_limpieza_checkout");
   let tareaId: string;
+  let asignadoA: string | null = null;
   try {
     await bloquearUnidadEnTransaccion(ejecutor, entrada.unidadId);
+
+    const existente = await ejecutor.query<{ id: string; asignado_a: string | null }>(
+      `SELECT id, asignado_a FROM rentas.tarea_operativa WHERE tipo = 'limpieza' AND ocupacion_unidad_id = $1 ORDER BY creado_en DESC LIMIT 1`,
+      [entrada.ocupacionUnidadId],
+    );
+    if (existente.rows.length > 0) {
+      await ejecutor.exec("RELEASE SAVEPOINT sp_crear_tarea_limpieza_checkout");
+      return { tareaId: existente.rows[0]!.id, bufferOcupacionId: null, asignadoA: existente.rows[0]!.asignado_a, creada: false };
+    }
+
+    const responsable = await leerResponsablePorOmision(ejecutor, entrada.unidadId);
 
     const prioridad: PrioridadTareaOperativa = "media";
     const creadaEn = new Date().toISOString();
@@ -132,6 +170,11 @@ export async function crearTareaLimpiezaPorCheckout(
     );
     tareaId = insertado.rows[0]!.id;
     await insertarChecklistPlantilla(ejecutor, tareaId, "limpieza");
+    if (responsable) {
+      // Mismo camino que una asignacion manual: estado `asignada` y fila de aviso en `rentas.notificacion_tarea`.
+      await asignarTarea(ejecutor, { tareaId, asignadoA: responsable, esProveedorExterno: false });
+      asignadoA = responsable;
+    }
 
     await ejecutor.exec("RELEASE SAVEPOINT sp_crear_tarea_limpieza_checkout");
   } catch (error) {
@@ -147,21 +190,37 @@ export async function crearTareaLimpiezaPorCheckout(
   // `dbSession`): un `BEGIN`/`COMMIT` propio aquí la confirmaría/revertiría de
   // verdad y perdería `set local role`/`set_config` para el resto del handler (ver
   // el comentario de cabecera de ../../aplicacion/reservas.ts).
-  const rangoBuffer = calcularRangoBuffer(entrada.fechaCheckout, config.bufferLimpiezaNoches);
   let bufferOcupacionId: string | null = null;
-  if (rangoBuffer) {
-    const bufferResultado = await crearBloqueo(ejecutor, {
-      organizationId: config.organizationId,
-      propertyId: config.propertyId,
-      unidadId: entrada.unidadId,
-      rango: rangoBuffer,
-      razon: "BUFFER_LIMPIEZA",
-    });
-    bufferOcupacionId = bufferResultado.ocupacionId;
-    await ejecutor.query(`UPDATE rentas.tarea_operativa SET buffer_ocupacion_id = $1 WHERE id = $2`, [bufferOcupacionId, tareaId]);
+  if (entrada.conBuffer !== false) {
+    bufferOcupacionId = await crearBufferParaTarea(ejecutor, tareaId, config, entrada.unidadId, entrada.fechaCheckout);
   }
 
-  return { tareaId, bufferOcupacionId };
+  return { tareaId, bufferOcupacionId, asignadoA, creada: true };
+}
+
+async function crearBufferParaTarea(ejecutor: EjecutorTransaccional, tareaId: string, config: ConfiguracionResuelta, unidadId: string, fechaCheckout: string): Promise<string | null> {
+  const rangoBuffer = calcularRangoBuffer(fechaCheckout, config.bufferLimpiezaNoches);
+  if (!rangoBuffer) return null;
+  const bufferResultado = await crearBloqueo(ejecutor, {
+    organizationId: config.organizationId,
+    propertyId: config.propertyId,
+    unidadId,
+    rango: rangoBuffer,
+    razon: "BUFFER_LIMPIEZA",
+  });
+  await ejecutor.query(`UPDATE rentas.tarea_operativa SET buffer_ocupacion_id = $1 WHERE id = $2`, [bufferResultado.ocupacionId, tareaId]);
+  return bufferResultado.ocupacionId;
+}
+
+/** Al confirmarse una reserva (`crearReservaConfirmada`): deja la tarea de limpieza del checkout en la MISMA transaccion,
+ *  como EFECTO ACCESORIO -- ningun fallo de la tarea (RLS, base sin migrar, tabla ausente) revierte ni rechaza la reserva;
+ *  el barrido de checkouts (`barrerLimpiezaPendiente`) es la red de seguridad. Devuelve `null` si no pudo crearla. */
+export async function crearTareaLimpiezaAlConfirmar(
+  ejecutor: EjecutorTransaccional,
+  entrada: { unidadId: string; ocupacionUnidadId: string; fechaCheckout: string },
+): Promise<ResultadoCrearTareaCheckout | null> {
+  const r = await conSavepointMejorEsfuerzo(ejecutor, "sp_limpieza_al_confirmar", () => crearTareaLimpiezaPorCheckout(ejecutor, { ...entrada, conBuffer: false }));
+  return r.ok ? r.valor : null;
 }
 
 /** H-049: reprograma la tarea vinculada cuando la reserva de origen cambia de fecha
@@ -215,53 +274,221 @@ export async function cancelarTareaPorCancelacionReserva(ejecutor: EjecutorTrans
   return { tareaId: fila.id };
 }
 
-// ---------------------------------------------------------------------------
-// H-049 (desviación documentada arriba, punto 5): poll idempotente que reemplaza al
-// consumidor de outbox_evento del origen — ninguna reserva confirmada cuyo checkout
-// ya llegó se queda sin tarea de limpieza vinculada, sin depender de un bus de
-// eventos que este monorepo no tiene para `rentas.ocupacion`.
-// ---------------------------------------------------------------------------
-
-export interface ResultadoProcesarCheckouts {
-  readonly procesados: number;
-  readonly tareasCreadas: readonly string[];
+/** Gancho de `modificarFechasReserva`: mueve la tarea al nuevo checkout conservando al responsable. EFECTO ACCESORIO (no
+ *  revierte el cambio de fechas si falla; el barrido corrige la deriva). */
+export async function reprogramarTareaAlModificarReserva(ejecutor: EjecutorTransaccional, entrada: { ocupacionUnidadId: string; nuevaFechaCheckout: string }): Promise<void> {
+  await conSavepointMejorEsfuerzo(ejecutor, "sp_limpieza_reprogramar", () => reprogramarTareaPorCambioReserva(ejecutor, entrada));
 }
 
-// Bug real: `current_date` corre en la sesión de Postgres (UTC en Vercel); entre las
-// 18:00 y las 23:59 CDMX el día UTC ya es MAÑANA, así que una reserva cuyo checkout es
-// MAÑANA (CDMX) se procesaba (tarea de limpieza creada) un día antes de tiempo. Este
-// sweep corre COMPLETO bajo `withAppSession({ userId: null })` (sesión de sistema,
-// `apps/api/.../rentas/checkout-sweep-cron.ts`) -- nunca hay un caller staff que
-// mezclar en la misma llamada. Resuelto UNA vez en TS con
-// `@atiende/core-tenancy::hoyFechaNegocio()`, con el mismo patrón de default que
-// `PostgresLicitacionesRepository`/`InMemoryLicitacionesRepository` ya usan
-// (`todayIsoDate: string = hoyFechaNegocio()`) -- el SQL ya no llama `current_date`.
-export async function procesarCheckoutsPendientes(ejecutor: EjecutorTransaccional, limite = 50, asOfDate: string = hoyFechaNegocio()): Promise<ResultadoProcesarCheckouts> {
-  const pendientes = await ejecutor.query<{ ocupacion_id: string; unidad_id: string; fin: string }>(
-    `SELECT o.id AS ocupacion_id, o.unidad_id, upper(o.rango)::text AS fin
-     FROM rentas.ocupacion o
-     WHERE o.capa = 'reserva' AND o.estado = 'confirmado' AND o.bloqueante
-       AND upper(o.rango) <= $2::date
-       AND NOT EXISTS (
-         SELECT 1 FROM rentas.tarea_operativa t WHERE t.ocupacion_unidad_id = o.id AND t.tipo = 'limpieza'
-       )
-     ORDER BY upper(o.rango)
-     LIMIT $1`,
-    [limite, asOfDate],
-  );
+/** Gancho de `cancelarOcupacion`: cancela la tarea (y su buffer) de la reserva cancelada. EFECTO ACCESORIO (el barrido
+ *  cancela las tareas huerfanas si esto falla). */
+export async function cancelarTareaAlCancelarReserva(ejecutor: EjecutorTransaccional, ocupacionUnidadId: string): Promise<void> {
+  await conSavepointMejorEsfuerzo(ejecutor, "sp_limpieza_cancelar", () => cancelarTareaPorCancelacionReserva(ejecutor, ocupacionUnidadId));
+}
 
+// ---------------------------------------------------------------------------
+// H-049 (desviación documentada arriba, punto 5): barrido idempotente que reemplaza al
+// consumidor de outbox_evento del origen. Desde paridad3 la tarea nace AL CONFIRMAR la
+// reserva (`crearTareaLimpiezaAlConfirmar`, gancho de `crearReservaConfirmada`); este barrido
+// es la RED DE SEGURIDAD y ademas:
+//   1. crea la tarea de las reservas que no la tienen (anteriores al cambio, o cuyo gancho fallo)
+//      cuyo checkout ya llego en la zona horaria de SU propiedad;
+//   2. materializa el bloqueo BUFFER_LIMPIEZA el dia del checkout;
+//   3. cancela las tareas de reservas ya canceladas y reprograma las que quedaron desfasadas de la
+//      fecha de salida de su reserva (cualquier camino de escritura, incluido el motor iCal);
+//   4. detecta las propiedades con tareas de MAÑANA sin responsable pasadas las 18:00 locales (el que
+//      llama emite el aviso: este modulo no conoce la bandeja de notificaciones).
+// Justo entre propiedades: tope por propiedad y orden por la salida mas antigua, de modo que una
+// organizacion con 120 salidas atrasadas no deja sin turno a las demas (ver `limitePorPropiedad`).
+// ---------------------------------------------------------------------------
+
+export interface OpcionesBarridoLimpieza {
+  /** Tope de tareas nuevas por corrida entre TODAS las propiedades. Default 200. */
+  readonly limiteTotal?: number;
+  /** Tope de tareas nuevas por propiedad y corrida. Default 40. */
+  readonly limitePorPropiedad?: number;
+  /** Tope de filas por fase de mantenimiento (buffers, cancelaciones, reprogramaciones). Default 100. */
+  readonly limitePorFase?: number;
+  /** Hora local (0-23) desde la que una tarea de mañana sin responsable se avisa. Default 18. */
+  readonly horaAvisoSinAsignar?: number;
+}
+
+export interface SinAsignarManana {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly fecha: string;
+  readonly cantidad: number;
+}
+
+export interface ResultadoBarridoLimpieza {
+  /** Reservas con checkout llegado y sin tarea que se intentaron procesar. */
+  readonly procesados: number;
+  readonly tareasCreadas: readonly string[];
+  readonly buffersCreados: number;
+  readonly tareasCanceladas: number;
+  readonly tareasReprogramadas: number;
+  /** Reservas/tareas cuyo procesamiento fallo (cada una aislada: no tumba al resto). */
+  readonly fallidos: number;
+  readonly sinAsignarManana: readonly SinAsignarManana[];
+}
+
+function fechaNegocioDe(zona: string | null): string {
+  return hoyFechaNegocio(resolverZonaHorariaNegocio(zona));
+}
+
+function horaNegocioDe(zona: string | null): number {
+  const partes = new Intl.DateTimeFormat("en-US", { timeZone: resolverZonaHorariaNegocio(zona), hour: "numeric", hourCycle: "h23" }).formatToParts(new Date());
+  return Number(partes.find((p) => p.type === "hour")?.value ?? "0");
+}
+
+export async function barrerLimpiezaPendiente(ejecutor: EjecutorTransaccional, opciones: OpcionesBarridoLimpieza = {}): Promise<ResultadoBarridoLimpieza> {
+  const limiteTotal = opciones.limiteTotal ?? 200;
+  const limitePorPropiedad = opciones.limitePorPropiedad ?? 40;
+  const limitePorFase = opciones.limitePorFase ?? 100;
+  const horaAviso = opciones.horaAvisoSinAsignar ?? 18;
+
+  // El "hoy" real es el de CADA propiedad (property_config.zona_horaria); la cota UTC+1 solo acota la consulta (ninguna
+  // zona del mundo va mas de un dia por delante de UTC+0 mas 14 h) y el filtro fino se hace en TS por propiedad.
+  const hoyUtc = new Date().toISOString().slice(0, 10);
+  const cotaUtc = sumarDias(hoyUtc, 1);
+
+  let fallidos = 0;
   const tareasCreadas: string[] = [];
-  for (const fila of pendientes.rows) {
-    const creada = await crearTareaLimpiezaPorCheckout(ejecutor, { unidadId: fila.unidad_id, ocupacionUnidadId: fila.ocupacion_id, fechaCheckout: fila.fin });
-    tareasCreadas.push(creada.tareaId);
+  let procesados = 0;
+
+  // --- 1. reservas sin tarea cuyo checkout ya llego, por propiedad ---
+  const propiedades = await ejecutor.query<{ property_id: string; zona_horaria: string | null }>(
+    `SELECT o.property_id, pc.zona_horaria, min(upper(o.rango))::text AS primer_fin
+     FROM rentas.ocupacion o
+     LEFT JOIN rentas.property_config pc ON pc.property_id = o.property_id
+     WHERE o.capa = 'reserva' AND o.estado = 'confirmado' AND o.bloqueante
+       AND upper(o.rango) <= $1::date
+       AND NOT EXISTS (SELECT 1 FROM rentas.tarea_operativa t WHERE t.ocupacion_unidad_id = o.id AND t.tipo = 'limpieza')
+     GROUP BY o.property_id, pc.zona_horaria
+     ORDER BY min(upper(o.rango)), o.property_id`,
+    [cotaUtc],
+  );
+  for (const propiedad of propiedades.rows) {
+    const restante = limiteTotal - tareasCreadas.length;
+    if (restante <= 0) break;
+    const hoyLocal = fechaNegocioDe(propiedad.zona_horaria);
+    const pendientes = await ejecutor.query<{ ocupacion_id: string; unidad_id: string; fin: string }>(
+      `SELECT o.id AS ocupacion_id, o.unidad_id, upper(o.rango)::text AS fin
+       FROM rentas.ocupacion o
+       WHERE o.property_id = $1 AND o.capa = 'reserva' AND o.estado = 'confirmado' AND o.bloqueante
+         AND upper(o.rango) <= $2::date
+         AND NOT EXISTS (SELECT 1 FROM rentas.tarea_operativa t WHERE t.ocupacion_unidad_id = o.id AND t.tipo = 'limpieza')
+       ORDER BY upper(o.rango), o.id
+       LIMIT $3`,
+      [propiedad.property_id, hoyLocal, Math.min(limitePorPropiedad, restante)],
+    );
+    for (const fila of pendientes.rows) {
+      procesados += 1;
+      try {
+        // Una transaccion de sistema por corrida, pero CADA reserva aislada por SAVEPOINT: una fila venenosa no tumba al resto.
+        const creada = await conSavepoint(ejecutor, "sp_barrido_limpieza_reserva", () =>
+          crearTareaLimpiezaPorCheckout(ejecutor, { unidadId: fila.unidad_id, ocupacionUnidadId: fila.ocupacion_id, fechaCheckout: fila.fin }),
+        );
+        if (creada.creada) tareasCreadas.push(creada.tareaId);
+      } catch {
+        fallidos += 1;
+      }
+    }
   }
 
-  return { procesados: pendientes.rows.length, tareasCreadas };
+  // --- 2. bloqueo BUFFER_LIMPIEZA de las tareas creadas al confirmar, el dia del checkout ---
+  let buffersCreados = 0;
+  const sinBuffer = await ejecutor.query<{ tarea_id: string; unidad_id: string; fecha: string; zona_horaria: string | null }>(
+    `SELECT t.id AS tarea_id, t.unidad_id, t.programada_para::text AS fecha, pc.zona_horaria
+     FROM rentas.tarea_operativa t
+     JOIN rentas.ocupacion o ON o.id = t.ocupacion_unidad_id
+     LEFT JOIN rentas.property_config pc ON pc.property_id = t.property_id
+     WHERE t.tipo = 'limpieza' AND t.estado NOT IN ('completada', 'cancelada') AND t.buffer_ocupacion_id IS NULL
+       AND o.capa = 'reserva' AND o.estado = 'confirmado'
+       AND COALESCE(pc.buffer_limpieza_noches, ${CONFIGURACION_OPERATIVA_DEFECTO.bufferLimpiezaNoches}) > 0
+       AND t.programada_para <= $1::date
+     ORDER BY t.programada_para, t.id
+     LIMIT $2`,
+    [cotaUtc, limitePorFase],
+  );
+  for (const fila of sinBuffer.rows) {
+    if (fila.fecha > fechaNegocioDe(fila.zona_horaria)) continue;
+    try {
+      const id = await conSavepoint(ejecutor, "sp_barrido_limpieza_buffer", async () => {
+        const config = await obtenerConfiguracion(ejecutor, fila.unidad_id);
+        return crearBufferParaTarea(ejecutor, fila.tarea_id, config, fila.unidad_id, fila.fecha);
+      });
+      if (id) buffersCreados += 1;
+    } catch {
+      fallidos += 1;
+    }
+  }
+
+  // --- 3a. tareas de reservas ya canceladas ---
+  let tareasCanceladas = 0;
+  const huerfanas = await ejecutor.query<{ ocupacion_id: string }>(
+    `SELECT t.ocupacion_unidad_id AS ocupacion_id
+     FROM rentas.tarea_operativa t
+     JOIN rentas.ocupacion o ON o.id = t.ocupacion_unidad_id
+     WHERE t.tipo = 'limpieza' AND t.estado NOT IN ('completada', 'cancelada') AND o.estado = 'cancelado'
+     ORDER BY t.creado_en, t.id
+     LIMIT $1`,
+    [limitePorFase],
+  );
+  for (const fila of huerfanas.rows) {
+    try {
+      const r = await conSavepoint(ejecutor, "sp_barrido_limpieza_cancelar", () => cancelarTareaPorCancelacionReserva(ejecutor, fila.ocupacion_id));
+      if (r) tareasCanceladas += 1;
+    } catch {
+      fallidos += 1;
+    }
+  }
+
+  // --- 3b. tareas desfasadas de la fecha de salida de su reserva ---
+  let tareasReprogramadas = 0;
+  const desfasadas = await ejecutor.query<{ ocupacion_id: string; fin: string }>(
+    `SELECT t.ocupacion_unidad_id AS ocupacion_id, upper(o.rango)::text AS fin
+     FROM rentas.tarea_operativa t
+     JOIN rentas.ocupacion o ON o.id = t.ocupacion_unidad_id
+     WHERE t.tipo = 'limpieza' AND t.estado NOT IN ('completada', 'cancelada')
+       AND o.capa = 'reserva' AND o.estado = 'confirmado' AND t.programada_para <> upper(o.rango)
+     ORDER BY t.creado_en, t.id
+     LIMIT $1`,
+    [limitePorFase],
+  );
+  for (const fila of desfasadas.rows) {
+    try {
+      const r = await conSavepoint(ejecutor, "sp_barrido_limpieza_reprogramar", () => reprogramarTareaPorCambioReserva(ejecutor, { ocupacionUnidadId: fila.ocupacion_id, nuevaFechaCheckout: fila.fin }));
+      if (r) tareasReprogramadas += 1;
+    } catch {
+      fallidos += 1;
+    }
+  }
+
+  // --- 4. tareas de MAÑANA sin responsable pasadas las 18:00 locales de su propiedad ---
+  const sinAsignarManana: SinAsignarManana[] = [];
+  const candidatas = await ejecutor.query<{ organization_id: string; property_id: string; zona_horaria: string | null; fecha: string; cantidad: number }>(
+    `SELECT t.organization_id, t.property_id, pc.zona_horaria, t.programada_para::text AS fecha, count(*)::int AS cantidad
+     FROM rentas.tarea_operativa t
+     LEFT JOIN rentas.property_config pc ON pc.property_id = t.property_id
+     WHERE t.tipo = 'limpieza' AND t.estado = 'pendiente' AND t.asignado_a IS NULL
+       AND t.programada_para BETWEEN $1::date AND $2::date
+     GROUP BY t.organization_id, t.property_id, pc.zona_horaria, t.programada_para
+     ORDER BY t.property_id, t.programada_para`,
+    [sumarDias(hoyUtc, -1), sumarDias(hoyUtc, 2)],
+  );
+  for (const fila of candidatas.rows) {
+    if (horaNegocioDe(fila.zona_horaria) < horaAviso) continue;
+    if (fila.fecha !== sumarDias(fechaNegocioDe(fila.zona_horaria), 1)) continue;
+    sinAsignarManana.push({ organizationId: fila.organization_id, propertyId: fila.property_id, fecha: fila.fecha, cantidad: Number(fila.cantidad) });
+  }
+
+  return { procesados, tareasCreadas, buffersCreados, tareasCanceladas, tareasReprogramadas, fallidos, sinAsignarManana };
 }
 
 // ---------------------------------------------------------------------------
 // Creación MANUAL de una tarea (fuera del sweep automático de checkout de arriba) --
-// cierra el segundo hallazgo de la ronda que expuso `procesarCheckoutsPendientes`
+// cierra el segundo hallazgo de la ronda que expuso el barrido de checkouts
 // por HTTP: admin_gestora/operador necesitan poder dar de alta una tarea de
 // limpieza/mantenimiento/inspección ad-hoc (una reparación reportada por el
 // propietario, una inspección programada) sin esperar a que un checkout real la

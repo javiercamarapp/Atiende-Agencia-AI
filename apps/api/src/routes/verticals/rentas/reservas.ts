@@ -250,6 +250,17 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!ocupacion) throw Errors.notFound("Reserva no encontrada en esta unidad.");
     if (ocupacion.capa !== "reserva") throw Errors.rentasReservaNoDirecta();
 
+    // Rn-P3-29 -- misma guarda que `modificar` (D-006/D-011): una reserva importada
+    // de un canal externo (Airbnb/Booking/Vrbo) NO se cancela desde aquí. Si se
+    // cancelara, las noches quedarían libres en Atiende y en los feeds de
+    // exportación mientras el canal sigue con la reserva viva (doble reserva
+    // provocada por el propio producto). Solo se admite cancelar una reserva sin
+    // canal de origen o del canal 'manual' (reserva directa).
+    const canalManual = await repo.findCanalPorCodigo("manual");
+    if (ocupacion.canalOrigenId !== null && ocupacion.canalOrigenId !== canalManual?.id) {
+      throw Errors.rentasReservaNoDirecta();
+    }
+
     try {
       const resultado = await cancelarOcupacion(db, ocupacionId);
       // r5 -- bitácora de auditoría (cancelación de reserva).

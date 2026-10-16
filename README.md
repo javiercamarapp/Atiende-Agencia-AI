@@ -24,7 +24,7 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 | Vertical | Funciona de punta a punta | Pendiente honesto |
 |---|---|---|
-| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Voz por teléfono (Gemini Live + LiveKit): núcleo de llamada, simulador, prueba ciega y llamada de prueba del panel listos; falta el worker de telefonía y las credenciales (ver `docs/VOZ-PM.md`). Crear un pedido por el checkout público (web/voz/WhatsApp) no funciona hoy contra Postgres real — ver "Problemas conocidos" abajo. |
+| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Voz por teléfono (Gemini Live + LiveKit): núcleo de llamada, simulador, prueba ciega y llamada de prueba del panel listos; falta el worker de telefonía y las credenciales (ver `docs/VOZ-PM.md`). El checkout público (web/voz/WhatsApp) sí crea pedidos contra Postgres real (verificado, ver "Problemas conocidos"); pendientes: pantalla de comandas del POS y credenciales/número de WhatsApp de cada sucursal. Documentación del agente y de la operación en `docs/restaurantes/`. |
 | **hoteles** | Reservas/folios/CFDI de hospedaje (timbrado real vía Finkok/SW Sapien, credencial pendiente), housekeeping, fraude, P&L (USALI), checador de asistencia. | El gate/estado de **revenue management** (shadow/propone/autopilot) es real, pero **no existe ningún motor que produzca una recomendación de tarifa** — solo la máquina de estados, el backtest y la explicación de un precio ya dado. Reputación clasifica reseñas y responde, pero sin ingesta automática de Google/Booking/TripAdvisor (requiere esas credenciales). |
 | **citas** | Agenda, reservar/cancelar/confirmar/completar/no-show, horarios y excepciones editables, staff, sincronización real de calendario — **Google Calendar, Cal.com y CalDAV**, credencial por profesional. | Receptor de webhooks de Google Calendar (hoy solo sincronización por lote). |
 | **licitaciones** | Conectores OCDS reales y verificados contra la fuente pública: **Nuevo León** (333 convocatorias vigentes confirmadas). Post-adjudicación, cobranza, inconformidades, renovaciones. | **CDMX**: conector real y completo, pero la fuente pública que consume está estancada desde 2023 (no produce convocatorias vigentes hoy). Cobertura nacional depende de un **agregador comercial de pago sin proveedor elegido todavía** (`LICITACIONES_AGGREGATOR_API_KEY`) — ComprasMX en vivo y el DOF no se automatizan (reCAPTCHA/Akamai). |
@@ -33,7 +33,7 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 ## Voz (patrón oficial)
 
-**Ninguna vertical usa ya ElevenLabs.** Restaurantes (1-oct-2026), hoteles y citas (3-oct-2026) montan SU agente de voz (persona, prompt, herramientas y
+Restaurantes (1-oct-2026), hoteles y citas (3-oct-2026) montan SU agente de voz (persona, prompt, herramientas y
 guardias propias) sobre `packages/voice-core`, con la misma escalera de plataforma (Gemini Live -> cascada OpenRouter -> persona/buzón) y el mismo costo
 por minuto; ver `packages/voice-core/README.md`, `packages/domain-hoteles/src/voz/`, `packages/domain-citas/src/voz/` y, para restaurantes, `docs/VOZ-PM.md`.
 
@@ -42,27 +42,19 @@ durante una llamada en curso, autenticadas con el secreto `x-atiende-tool-secret
 hoteles) y nunca con `authMiddleware`/`Origin`, porque el worker no los manda. El repo no inicia llamadas por sí mismo: el worker de telefonía (LiveKit SIP)
 aún no existe en el repo, así que la voz de las tres verticales se prueba hoy con el simulador y la vista previa del panel.
 
-Existió un paquete `packages/voice-gateway` para la dirección saliente hacia ElevenLabs; se retiró del árbol por falta de cualquier consumidor real. Detalle
+El paquete `packages/voice-gateway` (dirección saliente hacia un proveedor externo) se retiró del árbol por falta de cualquier consumidor real. Detalle
 en `docs/CREDENCIALES.md`.
 
 ## Problemas conocidos
 
-**Sesión de sistema sin acceso a `core.property` (verificado contra Postgres
-real, arreglo en curso en otra rama).** La policy de SELECT de `core.property`
-(`packages/db/migrations/0001_core_schema.sql`) exige `auth.uid()` real —
-nunca contempló la sesión de sistema (`auth.uid()` NULL) que usan los flujos
-sin usuario autenticado: checkout público, agente de voz, agente de WhatsApp.
-Cualquier consulta de ESOS flujos que haga JOIN contra `core.property` recibe
-cero filas, en silencio. Impacto demostrado hoy: **crear un pedido por el
-checkout público de restaurantes (web, voz o WhatsApp) falla contra Postgres
-real para cualquier organización** — ver `scripts/verify-restaurantes-sql/README.md`
-para la verificación completa. Es plausible que otros flujos de sistema de
-otras verticales con el mismo patrón (JOIN contra `core.property` bajo sesión
-de sistema) compartan el mismo gap; no se auditaron todos todavía. Es un bug
-de disponibilidad, no de fuga de datos (el resultado es "cero filas", nunca
-datos de otro tenant) — invisible para los tests en memoria de este repo
-(nunca aplican RLS real), por eso pasó sin detectarse hasta correr contra
-Postgres real.
+**Sesión de sistema y `core.property` (corregido y verificado el 4-oct-2026).** La policy de SELECT de `core.property` no contemplaba la sesión de
+sistema (`auth.uid()` NULL) que usan los flujos sin usuario autenticado (checkout público, agente de voz y de WhatsApp): todo JOIN contra `core.property`
+devolvía cero filas y crear un pedido por esos canales fallaba con "Sucursal no encontrada". Lo corrige `packages/db/migrations/0015_core_rls_sesion_sistema.sql`
+(espejo `supabase/migrations/20240101000136_...`). Se verificó contra un Postgres efímero real, con todas las migraciones del repo aplicadas, con los scripts
+`scripts/verify-restaurantes-sql` (24 de 24 escenarios, incluido el recorrido público completo búsqueda de sucursal -> pedido idempotente) y
+`scripts/verify-restaurantes-storefront` (14 de 14); ambos corren además en el gate de CI. Lo que **no** se auditó: otros flujos de sistema de las demás verticales
+con el mismo patrón (JOIN contra `core.property` bajo sesión de sistema); si alguno devuelve cero filas, es un bug de disponibilidad, no de fuga de datos.
+Contra una base de producción que aún no tenga la 0015 el síntoma sigue siendo ése: hay que confirmar que esa migración esté aplicada antes de dar por sano el checkout público.
 
 ## Servidores MCP (`packages/mcp-servers/`)
 

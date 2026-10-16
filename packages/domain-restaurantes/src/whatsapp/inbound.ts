@@ -5,16 +5,20 @@
 // teléfono corrompan el historial), append atómico (whatsapp_append_turn), y
 // redacción de datos sensibles ANTES de guardar cualquier mensaje real del cliente.
 import { redactarDatosDePago } from "@atiende/core-pii";
-import { actorHash } from "../rate-limit.ts";
+import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
+import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
-import { matchesHighRiskOtherThan } from "./guards.ts";
+import { matchesHighRiskOtherThan, pideUnaPersona, retractaPeticionDePersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import { PM_COPY } from "./perfil-pm.ts";
+import { TEXTO_BOTONES_APARTE, cabeEnMensajeInteractivo, construirBotonesDeConfirmacion, contenidoDeMensajeConToque, dentroDeVentanaDeServicio } from "./botones-confirmacion.ts";
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
+import { CLASE_FALLA_DEL_SISTEMA, claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
 // dijo a un cliente de prueba "no procesamos ni guardamos los datos que
@@ -44,6 +48,66 @@ export interface InboundMessageOutcome {
  * liberar el lease. Cualquier fallo se marca explícitamente como reintentable o no,
  * nunca se pierde en silencio — mismo contrato que el origen.
  */
+/** Turnos del agente que un mismo telefono puede consumir por ventana antes de que se le deje de contestar con el modelo. Un pedido normal usa unos 6-12. */
+/** Tope de caracteres de UN mensaje de cliente que llega al historial y al modelo. Un pedido real mide decenas de caracteres; un mensaje de miles ("quiero tacos por favor por favor ...") solo
+ * infla el prompt y la latencia hasta pasar el limite del turno, y el cliente se quedaba SIN respuesta (QA-PM-R3-whatsapp-12). Se conserva el inicio, que es donde esta la peticion. */
+export const MENSAJE_CLIENTE_MAX_CARACTERES = 1500;
+export function limitarLargoDelMensaje(texto: string): string {
+  return texto.length <= MENSAJE_CLIENTE_MAX_CARACTERES ? texto : `${texto.slice(0, MENSAJE_CLIENTE_MAX_CARACTERES).trimEnd()} […]`;
+}
+
+export const REMITENTE_MAX_TURNOS = 20;
+export const REMITENTE_VENTANA_SEGUNDOS = 600;
+export const REMITENTE_EXCEDIDO_TEXTO = "Hemos recibido muchos mensajes seguidos suyos. Para atenderle bien, espere unos minutos y escríbanos de nuevo, o llame directamente a la sucursal.";
+
+/** `null` = dentro del tope; `avisar` = primer mensaje fuera del tope de la ventana (se le avisa con un texto fijo, sin modelo); `callar` = los siguientes. Si el
+ * contador no esta disponible (base sin migrar, error) NO se limita: nunca se deja sin respuesta a un cliente por un fallo del limitador. */
+async function limiteDeRemitente(repo: RestaurantesRepository, organizationId: string, phone: string): Promise<"avisar" | "callar" | null> {
+  try {
+    const actor = `${organizationId}:${phone}`;
+    const dentro = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-turno-remitente", actor, REMITENTE_MAX_TURNOS, REMITENTE_VENTANA_SEGUNDOS));
+    if (dentro.allowed) return null;
+    const primeraVez = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-turno-remitente-aviso", actor, 1, REMITENTE_VENTANA_SEGUNDOS));
+    return primeraVez.allowed ? "avisar" : "callar";
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// INTERRUPTOR DURO DEL AGENTE POR SUCURSAL (migracion 053). Con el agente de WhatsApp apagado en la sucursal que recibio el mensaje NO se llama al modelo:
+// se responde con un texto fijo y honesto y se abre una toma de handoff (motivo `agente_apagado`) para que la conversacion quede en la bandeja de una persona.
+// Las tomas abiertas ya callan al agente (R-21), asi que la respuesta sale UNA vez por conversacion; el limitador de aviso es la red de seguridad si la toma no
+// se pudo abrir (base sin la 028 / sin conversacion). Base sin migrar, sin sucursal o sin fila: el agente esta ENCENDIDO (como hasta hoy).
+// ---------------------------------------------------------------------------------------------------------------------
+export const AGENTE_APAGADO_TEXTO = "En este momento le atiende una persona del equipo. En cuanto pueda le responderá por este mismo medio.";
+export const MOTIVO_AGENTE_APAGADO = "agente_apagado";
+export const AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS = 6 * 3600;
+
+/**
+ * `null` = agente encendido; `responder` = texto fijo + toma de handoff; `callar` = ya se aviso en esta ventana.
+ *
+ * Con `puedeAbrirToma` (hay compuerta de handoff) se responde SIEMPRE que se llegue hasta aqui: una toma abierta (pendiente o tomada) ya callo al agente
+ * antes de esta decision, asi que llegar aqui significa que NADIE tiene la conversacion (primera vez, o la toma se devolvio / cerro con el agente
+ * todavia apagado) y hay que volver a abrir una toma para que regrese a la bandeja (QA R2 caos-01: antes el limitador de 6 h callaba al cliente tras
+ * un "Devolver" y la conversacion quedaba huerfana). Sin compuerta el limitador de aviso es la unica red contra repetir el texto.
+ */
+async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined, puedeAbrirToma: boolean): Promise<"responder" | "callar" | null> {
+  if (!propertyId) return null;
+  try {
+    if (await repo.findAgenteWhatsappActivo(propertyId)) return null;
+  } catch {
+    return null; // un fallo al leer el interruptor nunca deja a un cliente sin respuesta: el agente atiende como hasta hoy
+  }
+  if (puedeAbrirToma) return "responder";
+  try {
+    const primera = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-agente-apagado-aviso", `${organizationId}:${phone}`, 1, AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS));
+    return primera.allowed ? "responder" : "callar";
+  } catch {
+    return "responder";
+  }
+}
+
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
@@ -67,6 +131,11 @@ export async function handleInboundWhatsAppMessage(
     /** R-32: el mensaje es una nota de voz. Con esto se intenta transcribirla DESPUES de reclamar el mensaje (un replay de Meta no la
      * transcribe dos veces); si no se puede, `body` (pedir que escriba) se conserva tal cual. */
     readonly transcripcion?: TranscripcionDeEntrada;
+    /** B03: id del boton de resumen que toco el cliente (`message.botonId` del extractor). Se guarda como marcador del mensaje para que el turno decida si ese
+     * resumen sigue vigente. Ausente = mensaje escrito. */
+    readonly botonId?: string;
+    /** Instante (ms) en que el cliente envio el mensaje: con mas de ~23 h ya no se encolan botones (ventana de 24 h de WhatsApp). Ausente = acaba de escribir. */
+    readonly recibidoEnMs?: number;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -100,8 +169,8 @@ export async function handleInboundWhatsAppMessage(
     // sesión UTILIZABLE de nuevo antes de repropagar, para que el `catch` de abajo
     // sí pueda registrar el fallo.
     return await repo.runWithRowSavepoint(async () => {
-      const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
-      const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
+      const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
+      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
       // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
@@ -118,20 +187,58 @@ export async function handleInboundWhatsAppMessage(
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff) {
+          const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+          if (acuse) {
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE }], null, null, null);
+            if (deliverReply) {
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+                to: phone,
+                phone_number_id: phoneNumberId,
+                body: ACUSE_HANDOFF_PENDIENTE,
+                transaccional: true,
+              });
+            }
+          }
           await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-          return { ok: true, retryable: false };
+          return acuse ? { ok: true, retryable: false, reply: ACUSE_HANDOFF_PENDIENTE, orderId: null, escalated: false } : { ok: true, retryable: false };
         }
+      }
+
+      // Tope por REMITENTE antes del LLM: cada mensaje de un mismo telefono es un turno pagado, y el unico tope del webhook es por NUMERO de la
+      // sucursal (compartido por todos sus clientes). Pasado el tope no se llama al modelo: se avisa UNA vez por ventana y despues se calla (el
+      // mensaje ya quedo en el historial para quien atienda). El ARCO (obligacion legal) no se limita.
+      // Interruptor duro de la sucursal (053): antes del limite y del modelo, sin costo de IA. El ARCO (obligacion legal) corre aunque el agente este apagado.
+      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
+      if (apagado === "callar") {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
+      const limite = arco || apagado ? null : await limiteDeRemitente(repo, organizationId, phone);
+      if (limite === "callar") {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
+
+      // Un sticker (el «gracias» de siempre) tras un pedido ya cerrado no se contesta: el mensaje queda en el historial y procesado.
+      if (!arco && limite === null && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, body))) {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
       }
 
       const turn = arco
         ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
-        : await turnHandler.handleInboundMessage({
-            organizationId,
-            phone,
-            messages: messagesAfterUser,
-            customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
-            propertyId: propertyId ?? null,
-          });
+        : apagado
+          ? { reply: AGENTE_APAGADO_TEXTO, orderId: null, propertyId: propertyId ?? null, escalacion: { motivo: MOTIVO_AGENTE_APAGADO } }
+          : limite === "avisar"
+            ? { reply: REMITENTE_EXCEDIDO_TEXTO, orderId: null, propertyId: propertyId ?? null }
+            : await turnHandler.handleInboundMessage({
+                organizationId,
+                phone,
+                messages: messagesAfterUser,
+                customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
+                propertyId: propertyId ?? null,
+                messageId,
+              });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
       // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
@@ -145,11 +252,11 @@ export async function handleInboundWhatsAppMessage(
         if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
       }
 
-      const assistantMessage: ConversationMessage = { role: "assistant", content: reply };
+      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
-      if (turn.escalacion && handoffGate) {
+      if (turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, messagesAfterUser)) {
         await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
       }
 
@@ -157,22 +264,59 @@ export async function handleInboundWhatsAppMessage(
       // solo se guardaba en el historial de la conversación y nunca llegaba de
       // verdad al cliente (ver @atiende/whatsapp-gateway/README.md).
       if (deliverReply) {
-        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
-          to: phone,
-          phone_number_id: phoneNumberId,
-          body: reply,
-          transaccional: true, // SA-L-46: respuesta/confirmacion que el cliente pidio; la lista de supresion no la bloquea.
-        });
+        await encolarRespuesta(repo, organizationId, { messageId, sufijo: "", phone, phoneNumberId, reply, confirmacion: turn.pedirConfirmacion, recibidoEnMs: args.recibidoEnMs });
+        if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, `inbound-ubicacion:${messageId}`, phone, phoneNumberId);
       }
 
-      await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) };
+      // QA-PM-R6-whatsapp-02: un turno que termino en «problema tecnico» (LLM sin credito, proveedor caido) responde y queda procesado, pero cuenta como FALLO para la alerta de racha.
+      await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", turn.escalacion?.motivo === "falla_sistema" ? CLASE_FALLA_DEL_SISTEMA : null);
+      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, messagesAfterUser)) };
     });
   } catch (err) {
-    const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
+    const errorClass = claseErrorTurno(err);
     await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
+}
+
+/**
+ * Encola la respuesta del agente. Con `confirmacion` (B03: el turno termino en un resumen por confirmar) y el cliente dentro de la ventana de 24 h, la respuesta sale
+ * como UN mensaje interactivo: el mismo texto de siempre + los botones «Confirmar pedido» / «Cambiar algo». Misma llave de idempotencia que el texto
+ * (`inbound-reply:<id de Meta>`): el reintento del mismo mensaje no duplica nada. Si el resumen no cabe en el cuerpo de un interactivo (1024 caracteres) sale el texto
+ * completo como siempre y los botones van en un segundo mensaje corto (`inbound-botones:<id de Meta>`). Sin `confirmacion` o fuera de la ventana: texto solo.
+ */
+async function encolarRespuesta(
+  repo: RestaurantesRepository,
+  organizationId: string,
+  a: { readonly messageId: string; readonly sufijo: string; readonly phone: string; readonly phoneNumberId: string; readonly reply: string; readonly confirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly recibidoEnMs?: number },
+): Promise<void> {
+  const base = { to: a.phone, phone_number_id: a.phoneNumberId, transaccional: true } as const; // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
+  const keyReply = `inbound-reply:${a.messageId}${a.sufijo}`;
+  const conBotones = a.confirmacion !== undefined && dentroDeVentanaDeServicio(a.recibidoEnMs, Date.now());
+  if (!conBotones || a.confirmacion === undefined) {
+    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply });
+    return;
+  }
+  const botones = construirBotonesDeConfirmacion(a.confirmacion);
+  if (cabeEnMensajeInteractivo(a.reply)) {
+    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply, buttons: botones });
+    return;
+  }
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply });
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-botones:${a.messageId}${a.sufijo}`, { ...base, body: TEXTO_BOTONES_APARTE, buttons: botones });
+}
+
+/** §5: encola, ademas de la respuesta de texto, el mensaje interactivo `location_request_message` (el cliente comparte su ubicacion con un toque).
+ * Va en el mismo outbox y con el mismo `phone_number_id`: se envia dentro de la ventana de 24 h abierta por el mensaje del cliente. La llave de
+ * idempotencia deriva del id del mensaje de Meta, asi un reintento del turno no la duplica. */
+async function encolarSolicitudUbicacion(repo: RestaurantesRepository, organizationId: string, key: string, phone: string, phoneNumberId: string): Promise<void> {
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", key, {
+    to: phone,
+    phone_number_id: phoneNumberId,
+    body: PM_COPY.pedirUbicacion,
+    solicitar_ubicacion: true,
+    transaccional: true,
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -198,6 +342,37 @@ export const MAX_PASADAS_RAFAGA = 3;
  * mensajes del telefono se absorben sin respuesta. 45 s cubre la vida maxima de la funcion (30 s) y, si el dueno muere, se libera pronto: el siguiente mensaje
  * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
 export const LEASE_RAFAGA_SEGUNDOS = 45;
+/** Una toma de handoff `pendiente` que nadie atiende: el agente calla (R-21), pero el cliente no puede quedarse horas sin NINGUNA respuesta. Pasados
+ * `ACUSE_PENDIENTE_ESPERA_MIN` minutos sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
+ * cada `ACUSE_PENDIENTE_REPETIR_MIN`. El tiempo y la unicidad los decide la base (migracion 045); sin ella el agente sigue callando como antes. */
+export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
+export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
+export const ACUSE_HANDOFF_PENDIENTE =
+  "Seguimos esperando a que una persona del equipo tome su conversación; su aviso ya está registrado y no se perdió. Si lo prefiere, puede dejar aquí los detalles de su pedido para que los vean en cuanto la atiendan.";
+
+/** Escalaciones INFORMATIVAS: el aviso al gerente queda registrado, pero el cliente sigue pidiendo (acepto el precio, cambio de pago, otro platillo). Abrir la toma de
+ * handoff callaba al agente y el pedido se perdia (QA-PM-R2-whatsapp-05: reposicion_descuento...). Las demas (queja, alergia, cancelacion, cobro,
+ * ARCO, "una persona", falla del sistema, pedido grande, zona/no entiendo por contador) si ceden la conversacion a una persona. */
+export const MOTIVOS_QUE_NO_ABREN_TOMA: ReadonlySet<string> = new Set(["reposicion_descuento", "producto_agotado", "tiempos_entrega", "pedido_especial", "zona_ambigua", "otro"]);
+
+/**
+ * ¿Esta escalacion cede la conversacion a una persona (abre la toma que calla al agente)? QA-PM-R4-whatsapp-01: el modelo escalaba `cliente_lo_pide` ante un
+ * "???" o ante "quiero una persona... bueno no, mejor sigo contigo", la toma callaba al agente y el pedido en curso se perdia. El motivo `cliente_lo_pide`
+ * solo abre toma si ALGUNO de los mensajes del cliente sin responder pide de verdad una persona (`pideUnaPersona`, que ya descarta negaciones y retractaciones);
+ * el aviso al equipo queda registrado de todos modos y el agente sigue atendiendo.
+ */
+export function abreTomaDeHandoff(motivo: string, mensajes: readonly ConversationMessage[]): boolean {
+  if (MOTIVOS_QUE_NO_ABREN_TOMA.has(motivo)) return false;
+  if (motivo !== "cliente_lo_pide") return true;
+  // El ultimo mensaje del cliente que traia la peticion, aunque el agente haya intercalado turnos (pregunto el nombre y escalo en el siguiente).
+  // Menor de #522: la ventana era de 6 mensajes y una peticion vieja (ya atendida, o retirada despues con "mejor sigo contigo") abria la toma por una escalacion posterior; ahora son los
+  // ultimos 4 mensajes del cliente y una retractacion POSTERIOR a la peticion la cancela.
+  const delCliente = mensajes.filter((m) => m.role === "user").slice(-4);
+  const idx = delCliente.map((m) => pideUnaPersona(m.content)).lastIndexOf(true);
+  if (idx === -1) return false;
+  return !delCliente.slice(idx + 1).some((m) => retractaPeticionDePersona(m.content));
+}
+
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
 export const FUNCION_MAX_MS = 30_000;
 /** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
@@ -281,7 +456,7 @@ export function analizarHistorial(
 
 export async function recibirMensajeConEspera(
   repo: RestaurantesRepository,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly transcripcion?: TranscripcionDeEntrada },
+  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly transcripcion?: TranscripcionDeEntrada; readonly botonId?: string },
 ): Promise<RecepcionConEspera> {
   const { organizationId, messageId, phone } = args;
   const phoneHash = actorHash(phone);
@@ -289,8 +464,8 @@ export async function recibirMensajeConEspera(
   if (!claimed) return { estado: "duplicado" };
   try {
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
-      const body = await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion });
-      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: redactSensitiveInfo(body) });
+      const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
+      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) });
       const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -321,6 +496,8 @@ export async function responderTrasEspera(
      * (la reserva de la fase B la garantiza). Sin esto no hay limite de tiempo. */
     readonly finFuncionMs?: number;
     readonly reloj?: () => number;
+    /** Instante (ms) en que el cliente envio el mensaje que tomo el turno (ver `handleInboundWhatsAppMessage`). */
+    readonly recibidoEnMs?: number;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -330,6 +507,7 @@ export async function responderTrasEspera(
   const leerHistorial = () => repo.whatsappAppendTurn(organizationId, phone, [], null, null, null);
   let owner = messageId;
   let ultimo: InboundMessageOutcome = { ok: true, retryable: false };
+  let falloDelSistema = false;
   let respondidos = -1; // se fija con el primer historial leido
   try {
     for (let pasada = 1; pasada <= MAX_PASADAS_RAFAGA; pasada++) {
@@ -338,7 +516,7 @@ export async function responderTrasEspera(
       const { pendientes, vista: historial, totalUsuarios } = analizarHistorial(historialCrudo, respondidos);
       if (pendientes.length === 0) {
         // Nada que contestar (lo hizo una pasada anterior): se suelta el turno y se revisa una vez mas por si llego un mensaje justo ahora.
-        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
+        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", falloDelSistema ? CLASE_FALLA_DEL_SISTEMA : null);
         if (analizarHistorial(await leerHistorial(), respondidos).pendientes.length === 0) return ultimo;
         owner = `${messageId}:p${pasada + 1}`;
         if (!(await repo.claimWhatsAppConversation(organizationId, phoneHash, owner, LEASE_RAFAGA_SEGUNDOS))) return ultimo; // otro mensaje tomo el turno: lo contestara
@@ -355,18 +533,39 @@ export async function responderTrasEspera(
         const arco = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
-          if (handoff) return { salida: { ok: true, retryable: false }, silencio: true };
+          if (handoff) {
+            const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+            if (!acuse) return { salida: { ok: true, retryable: false }, silencio: true };
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE }], null, null, null);
+            if (deliverReply) {
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
+                to: phone,
+                phone_number_id: phoneNumberId,
+                body: ACUSE_HANDOFF_PENDIENTE,
+                transaccional: true,
+              });
+            }
+            return { salida: { ok: true, retryable: false, reply: ACUSE_HANDOFF_PENDIENTE, orderId: null, escalated: false }, silencio: true };
+          }
         }
+        // Interruptor duro de la sucursal (053): sin modelo, texto fijo + toma de handoff; las pasadas siguientes las calla la propia toma abierta.
+        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
+        if (apagado === "callar") return { salida: { ok: true, retryable: false }, silencio: true };
+        if (!arco && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, textoPendiente))) return { salida: { ok: true, retryable: false }, silencio: true };
         const turn = arco
           ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
-          : await turnHandler.handleInboundMessage({
-              organizationId,
-              phone,
-              messages: historial,
-              customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
-              propertyId: propertyId ?? null,
-              ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
-            });
+          : apagado
+            ? { reply: AGENTE_APAGADO_TEXTO, orderId: null, propertyId: propertyId ?? null, escalacion: { motivo: MOTIVO_AGENTE_APAGADO } }
+            : await turnHandler.handleInboundMessage({
+                organizationId,
+                phone,
+                messages: historial,
+                customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
+                propertyId: propertyId ?? null,
+                messageId,
+                ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
+              });
+        if (turn.escalacion?.motivo === "falla_sistema") falloDelSistema = true;
         let reply = turn.reply;
         if (privacy) {
           const config = await privacy.getPrivacyConfig(organizationId);
@@ -375,19 +574,15 @@ export async function responderTrasEspera(
           const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
-        await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
-        if (turn.escalacion && handoffGate) {
+        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+        if (turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, historial)) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
         }
         if (deliverReply) {
-          await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
-            to: phone,
-            phone_number_id: phoneNumberId,
-            body: reply,
-            transaccional: true, // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
-          });
+          await encolarRespuesta(repo, organizationId, { messageId, sufijo: pasada === 1 ? "" : `:p${pasada}`, phone, phoneNumberId, reply, confirmacion: turn.pedirConfirmacion, recibidoEnMs: args.recibidoEnMs });
+          if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, pasada === 1 ? `inbound-ubicacion:${messageId}` : `inbound-ubicacion:${messageId}:p${pasada}`, phone, phoneNumberId);
         }
-        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) }, silencio: false };
+        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, historial)) }, silencio: false };
       });
       ultimo = turnoDePasada.salida;
       // Todo lo que el turno vio ya tuvo su respuesta; lo que llegue mientras tanto es lo siguiente.
@@ -395,11 +590,22 @@ export async function responderTrasEspera(
       // Con una toma de handoff abierta el agente calla: lo pendiente es de la persona que atiende, no se repite el intento.
       if (turnoDePasada.silencio) break;
     }
-    await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
+    await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", falloDelSistema ? CLASE_FALLA_DEL_SISTEMA : null);
     return ultimo;
   } catch (err) {
-    const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
+    const errorClass = claseErrorTurno(err);
     await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
+}
+
+/** Minutos tras la confirmacion durante los que un sticker del cliente se considera el «gracias» de un pedido cerrado. */
+export const STICKER_VENTANA_PEDIDO_CERRADO_MIN = 240;
+
+/** Un sticker (y nada mas) con un pedido vigente confirmado hace poco: no se contesta. Sin pedido reciente el turno sigue y el agente lo toma como un gesto. */
+async function stickerSobraTrasPedidoCerrado(repo: RestaurantesRepository, organizationId: string, phone: string, texto: string): Promise<boolean> {
+  if (!esSoloSticker(texto)) return false;
+  const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
+  const reciente = cliente.isNew ? undefined : cliente.pedidoReciente;
+  return reciente !== undefined && reciente !== null && reciente.minutosDesdeConfirmacion <= STICKER_VENTANA_PEDIDO_CERRADO_MIN;
 }

@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   CardContent,
+  cn,
   EstadoCargando,
   EstadoError,
   Input,
@@ -17,6 +18,7 @@ import {
   PageContainer,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -61,10 +63,11 @@ function SeccionTabla({ seccion }: { seccion: SeccionReporte }) {
         <Card>
           <CardContent className="overflow-x-auto p-0">
             <Table>
+              <TableCaption className="sr-only">{seccion.titulo}</TableCaption>
               <TableHeader>
                 <TableRow>
-                  {seccion.columnas.map((c) => (
-                    <TableHead key={c.clave} className={c.tipo === "texto" ? undefined : "text-right"}>
+                  {seccion.columnas.map((c, ci) => (
+                    <TableHead key={c.clave} className={cn(ci === 0 && "sticky left-0 z-10 bg-canvas", c.tipo !== "texto" && "text-right")}>
                       {c.titulo}
                     </TableHead>
                   ))}
@@ -73,8 +76,8 @@ function SeccionTabla({ seccion }: { seccion: SeccionReporte }) {
               <TableBody>
                 {seccion.filas.map((f, i) => (
                   <TableRow key={i}>
-                    {seccion.columnas.map((c) => (
-                      <TableCell key={c.clave} className={c.tipo === "texto" ? "text-muted-foreground" : "text-right tabular-nums text-muted-foreground"}>
+                    {seccion.columnas.map((c, ci) => (
+                      <TableCell key={c.clave} className={cn(ci === 0 && "sticky left-0 z-10 bg-card", c.tipo === "texto" ? "text-muted-foreground" : "text-right tabular-nums text-muted-foreground")}>
                         {formatearCeldaReporte(f[c.clave] ?? null, c)}
                       </TableCell>
                     ))}
@@ -82,8 +85,8 @@ function SeccionTabla({ seccion }: { seccion: SeccionReporte }) {
                 ))}
                 {seccion.totales && (
                   <TableRow className="font-semibold">
-                    {seccion.columnas.map((c) => (
-                      <TableCell key={c.clave} className={c.tipo === "texto" ? undefined : "text-right tabular-nums"}>
+                    {seccion.columnas.map((c, ci) => (
+                      <TableCell key={c.clave} className={cn(ci === 0 && "sticky left-0 z-10 bg-card", c.tipo !== "texto" && "text-right tabular-nums")}>
                         {formatearCeldaReporte(seccion.totales![c.clave] ?? null, c)}
                       </TableCell>
                     ))}

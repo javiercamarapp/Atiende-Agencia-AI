@@ -4,10 +4,13 @@
 // (solo recoger) con los campos que valida el servidor.
 import { act } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { PromocionesPage } from "../src/verticals/restaurantes/pages/Promociones.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -64,9 +67,9 @@ describe("PromocionesPage -- promociones automaticas", () => {
     await abrir();
     changeValue(q("#promocion-codigo") as HTMLInputElement, "LUNES2X1");
     changeValue(q("#promocion-nombre") as HTMLInputElement, "Lunes 2x1");
-    changeValue(q("#promocion-tipo") as HTMLSelectElement, "bogo");
+    elegirValor(q("#promocion-tipo"), "bogo");
     expect(document.body.querySelector("#promocion-valor")).toBeNull();
-    changeValue(q("#promocion-canal") as HTMLSelectElement, "recoger");
+    elegirValor(q("#promocion-canal"), "recoger");
     await act(async () => {
       click(q("#promocion-auto"));
       click(q('[data-testid="promocion-dia-1"]'));
@@ -80,7 +83,7 @@ describe("PromocionesPage -- promociones automaticas", () => {
     await abrir();
     changeValue(q("#promocion-codigo") as HTMLInputElement, "AUTO");
     changeValue(q("#promocion-nombre") as HTMLInputElement, "Auto");
-    changeValue(q("#promocion-tipo") as HTMLSelectElement, "bogo");
+    elegirValor(q("#promocion-tipo"), "bogo");
     await act(async () => {
       click(q("#promocion-auto"));
     });
@@ -89,13 +92,39 @@ describe("PromocionesPage -- promociones automaticas", () => {
     expect(document.body.textContent).toContain("necesita un canal");
   });
 
+  // QA-restaurantes-R1-botones-17: el error del formulario debe verse DENTRO del dialogo, no detras del overlay.
+  it("el error de validacion y el rechazo del servidor se muestran dentro del dialogo de 'Crear codigo'", async () => {
+    stub();
+    await abrir();
+    changeValue(q("#promocion-codigo") as HTMLInputElement, "AUTO");
+    changeValue(q("#promocion-nombre") as HTMLInputElement, "Auto");
+    elegirValor(q("#promocion-tipo"), "bogo");
+    await act(async () => {
+      click(q("#promocion-auto"));
+    });
+    await submitForm(q("#restaurantes-promocion-nueva") as HTMLFormElement);
+    const dialogo = q('[role="dialog"]');
+    expect(dialogo.textContent).toContain("necesita un canal");
+    expect(dialogo.querySelector('[role="alert"]')).not.toBeNull();
+
+    // Rechazo del servidor (400): tambien dentro del dialogo.
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      init?.method === "POST" ? ({ ok: false, status: 400, json: async () => ({ message: "Ya existe una promoción con ese código." }) } as unknown as Response) : original(url, init),
+    );
+    elegirValor(q("#promocion-canal"), "recoger");
+    await submitForm(q("#restaurantes-promocion-nueva") as HTMLFormElement);
+    expect(q('[role="dialog"]').textContent).toContain("Ya existe una promoción con ese código.");
+    expect(q('[role="dialog"]').querySelector('[role="alert"]')).not.toBeNull();
+  });
+
   it("combo de cortesia del martes: disparadores, aguas y piezas", async () => {
     stub();
     await abrir();
     changeValue(q("#promocion-codigo") as HTMLInputElement, "MARTESNACHOS");
     changeValue(q("#promocion-nombre") as HTMLInputElement, "Martes nachos");
-    changeValue(q("#promocion-tipo") as HTMLSelectElement, "cortesia");
-    changeValue(q("#promocion-canal") as HTMLSelectElement, "recoger");
+    elegirValor(q("#promocion-tipo"), "cortesia");
+    elegirValor(q("#promocion-canal"), "recoger");
     await act(async () => {
       click(q("#promocion-auto"));
       click(q('[data-testid="promocion-dia-2"]'));
@@ -120,7 +149,7 @@ describe("PromocionesPage -- promociones automaticas", () => {
     await abrir();
     changeValue(q("#promocion-codigo") as HTMLInputElement, "CORTESIA");
     changeValue(q("#promocion-nombre") as HTMLInputElement, "Cortesia");
-    changeValue(q("#promocion-tipo") as HTMLSelectElement, "cortesia");
+    elegirValor(q("#promocion-tipo"), "cortesia");
     await submitForm(q("#restaurantes-promocion-nueva") as HTMLFormElement);
     expect(post()).toBeUndefined();
   });

@@ -17,13 +17,15 @@ import {
   EstadoError,
   EstadoVacio,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-  toast,
+  notify,
+  useConfirm,
 } from "@atiende/ui";
 import { fetchFraudAlerts, resolveFraudAlert, runFraudScan, FRAUD_ALERT_STATUS_LABELS } from "../lib/fraude-client.ts";
 import type { FraudAlertStatus, FraudAlertSummary } from "../lib/fraude-client.ts";
@@ -38,6 +40,7 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { pedirTexto, dialogo } = useConfirm();
 
   async function load() {
     setError(null);
@@ -57,7 +60,7 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
     setError(null);
     try {
       const result = await runFraudScan(fetch, apiBaseUrl, token, propertyId);
-      toast.success(`Escaneo completo: ${result.generadas} alerta(s) nueva(s), ${result.yaExistentes} ya existían.`);
+      notify.success(`Escaneo completo: ${result.generadas} alerta(s) nueva(s), ${result.yaExistentes} ya existían.`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo ejecutar el escaneo.");
@@ -67,16 +70,15 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
   }
 
   async function handleResolve(alert: FraudAlertSummary, decision: "confirmar" | "descartar") {
-    // Hallazgo de auditoría (severidad ALTA, "el botón 'Cancelar' del prompt de
-    // confirmación de fraude no aborta la acción"): `window.prompt` devuelve `null`
-    // SOLO cuando el usuario da clic en su botón "Cancelar" (una cadena vacía, en
-    // cambio, significa que dio clic en "Aceptar" sin escribir nada) — el código
-    // anterior colapsaba ambos casos con `?? undefined` y seguía llamando a
-    // `resolveFraudAlert` de todas formas, así que "Cancelar" en el diálogo nativo
-    // nunca abortaba confirmar/descartar la alerta, solo dejaba la nota vacía. Ahora
-    // `nota === null` corta la función ANTES de tocar `setBusyId`/la llamada de red:
-    // ninguna reserva/alerta se resuelve si el staff canceló el diálogo.
-    const nota = window.prompt(`Nota de decisión (${decision}):`);
+    // Cancelar (o Escape) en el dialogo resuelve `null` y corta ANTES de tocar `setBusyId` o la red:
+    // ninguna alerta se resuelve si el staff cancela. Confirmar un fraude es irreversible: tono de peligro.
+    const nota = await pedirTexto({
+      titulo: decision === "confirmar" ? "Confirmar el fraude" : "Descartar la alerta",
+      descripcion: decision === "confirmar" ? "Se registra la alerta como fraude confirmado. Esta decision no se puede deshacer." : "Se registra la alerta como descartada.",
+      tono: decision === "confirmar" ? "danger" : "default",
+      confirmar: decision === "confirmar" ? "Confirmar fraude" : "Descartar",
+      campo: { etiqueta: `Nota de decisión (${decision})`, requerido: false, multilinea: true, maxLength: 500 },
+    });
     if (nota === null) return;
     setBusyId(alert.id);
     setError(null);
@@ -92,13 +94,15 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground">Fraude interno</h1>
-        <Button type="button" onClick={() => void handleScan()} disabled={scanning}>
-          <ShieldAlert className="w-4 h-4" strokeWidth={1.75} />
-          {scanning ? "Escaneando…" : "Ejecutar escaneo"}
-        </Button>
-      </header>
+      <PageHeader
+        titulo="Fraude interno"
+        descripcion="Alertas deterministas sobre folios y cargos del hotel."
+        acciones={
+          <Button type="button" onClick={() => void handleScan()} loading={scanning} loadingText="Escaneando…" iconLeft={<ShieldAlert className="size-4" strokeWidth={1.75} />}>
+            Ejecutar escaneo
+          </Button>
+        }
+      />
 
       <Tabs value={filter} onValueChange={(v) => setFilter(v as FraudAlertStatus | "todas")}>
         <TabsList>
@@ -147,6 +151,7 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
           </div>
         </TabsContent>
       </Tabs>
+      {dialogo}
     </PageContainer>
   );
 }

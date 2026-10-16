@@ -14,7 +14,7 @@ function toolOf(reader: FakeReader, name: string): DataChatTool {
 describe("catálogo de restaurantes — cerrado y sin escape", () => {
   const tools = buildRestaurantesDataChatTools(new FakeReader());
 
-  it("expone exactamente las 8 herramientas del catálogo", () => {
+  it("expone exactamente las 8 herramientas originales y las 9 del CFO (CFO-09), en ese orden", () => {
     expect(tools.map((t) => t.name)).toEqual([
       "ventas_por_dia",
       "ventas_por_sucursal",
@@ -24,6 +24,15 @@ describe("catálogo de restaurantes — cerrado y sin escape", () => {
       "horas_pico",
       "clientes_recurrentes",
       "promociones",
+      "cfo_resumen",
+      "cfo_lo_mas_importante",
+      "cfo_estado_resultados",
+      "cfo_comparar_sucursales",
+      "cfo_clientes",
+      "cfo_platillos",
+      "cfo_patrones",
+      "cfo_agente",
+      "cfo_softrestaurant",
     ]);
   });
 
@@ -256,7 +265,7 @@ describe("motor + catálogo de restaurantes (de punta a punta, con guion)", () =
     expect(a.status).toBe("ok");
     expect(a.text).toBe("Vendiste $2,480.75 MXN en 20 pedidos esta semana.");
     expect(a.blocks[0]!.chart).toEqual({ kind: "line", x: "periodo", y: "ventas" });
-    expect(a.sources[0]).toMatchObject({ source: "Pedidos de restaurantes (sin cancelados)", scopeLabel: "todas tus sucursales" });
+    expect(a.sources[0]).toMatchObject({ source: "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)", scopeLabel: "todas tus sucursales" });
     expect(a.sources[0]!.periodLabel).toContain("28 sep al 29 sep 2026");
   });
 

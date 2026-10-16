@@ -56,3 +56,33 @@ export class PropertyConfigUnavailableError extends Error {
     this.name = "PropertyConfigUnavailableError";
   }
 }
+
+/** H-P3-01 -- el folio ya esta cerrado: un cargo/pago nuevo, o un segundo cierre, llego despues (o a la vez) que el
+ *  cierre que lo gano. Lo lanzan los repositorios (el trigger de la migracion 045 en Postgres; la misma regla en el
+ *  espejo en memoria) y la ruta de folios lo traduce a 409 en UN solo lugar. */
+export class FolioCerradoError extends Error {
+  constructor(message = "El folio ya está cerrado.") {
+    super(message);
+    this.name = "FolioCerradoError";
+  }
+}
+
+/** H-P3-01 -- el cierre 'saldo_cero' llego con un saldo distinto de cero (un cargo o pago entro entre la lectura de la
+ *  app y el UPDATE). Mismo criterio que `FolioCerradoError`: la ruta lo traduce a 409. */
+export class FolioCierreSaldoError extends Error {
+  constructor(message = "El saldo del folio cambió y ya no es cero: revisa el folio antes de cerrarlo.") {
+    super(message);
+    this.name = "FolioCierreSaldoError";
+  }
+}
+
+/** Traduce un error crudo de Postgres de los triggers de la migracion 045 a su error de dominio; `null` si el error
+ *  no viene de ellos (el llamador lo relanza tal cual). */
+export function translateFolioTriggerError(err: unknown): FolioCerradoError | FolioCierreSaldoError | null {
+  const e = err as { code?: unknown; message?: unknown } | null;
+  if (!e || typeof e.message !== "string") return null;
+  if (e.code !== "P0001") return null;
+  if (e.message.startsWith("folio_cerrado")) return new FolioCerradoError("El folio está cerrado: no admite nuevos movimientos.");
+  if (e.message.startsWith("cierre_saldo_distinto_de_cero")) return new FolioCierreSaldoError();
+  return null;
+}

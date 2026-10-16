@@ -81,7 +81,7 @@ export function planNightlyHospedajeCharges(
       anomalies.push({
         reservationId: r.reservationId,
         type: "folio_cero",
-        message: `La reserva ${r.reservationId} está en casa pero no tiene folio primario -- no se posteó hospedaje (verificación de folio-cero).`,
+        message: `La reserva ${r.reservationId} está en casa pero no tiene folio primario abierto -- no se posteó hospedaje (verificación de folio-cero).`,
       });
       continue;
     }

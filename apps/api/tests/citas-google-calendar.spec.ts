@@ -191,7 +191,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
 
     const rescheduleRes = await app.request(
       `/v1/citas/clinica-dental-sonrisas/appointments/${appointment.id}/reschedule`,
-      jsonRequestInit({ new_starts_at: MONDAY_1030AM_MERIDA, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+      jsonRequestInit({ customer_phone: "9991112233", new_starts_at: MONDAY_1030AM_MERIDA, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
     );
     expect(rescheduleRes.status).toBe(200);
 
@@ -254,10 +254,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     const { appointment } = (await createRes.json()) as { appointment: { id: string } };
 
     port.failNextCall = new Error("Google Calendar 500");
-    const cancelRes = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointment.id}/cancel`, {
-      method: "POST",
-      headers: { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret },
-    });
+    const cancelRes = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointment.id}/cancel`, jsonRequestInit({ customer_phone: "9991112233" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }));
 
     expect(cancelRes.status).toBe(200); // la cancelación real de la cita nunca depende de Google
     const body = (await cancelRes.json()) as { appointment: { status: string } };
@@ -283,7 +280,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     port.failNextCall = new Error("Google Calendar timeout");
     const rescheduleRes = await app.request(
       `/v1/citas/clinica-dental-sonrisas/appointments/${appointment.id}/reschedule`,
-      jsonRequestInit({ new_starts_at: MONDAY_1030AM_MERIDA, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+      jsonRequestInit({ customer_phone: "9991112233", new_starts_at: MONDAY_1030AM_MERIDA, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
     );
 
     expect(rescheduleRes.status).toBe(200); // el reagendado real nunca depende de Google

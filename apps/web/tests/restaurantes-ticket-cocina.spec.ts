@@ -187,3 +187,57 @@ describe("pedidosPorImprimir", () => {
     expect(TICKET_COCINA_CSS_DOCUMENTO).toContain("html, body");
   });
 });
+
+describe("ticket de cocina: básicas, pedidas y pin de entrega (T7)", () => {
+  const notas = [
+    "Sin cilantro",
+    "Básicas: salsa roja, salsa verde, limones.",
+    "Pedidas (sin costo): salsa guacamolera, piña picada.",
+    "Ubicación de entrega (pin de WhatsApp): lat=21.012345 lng=-89.601234.",
+    "Canal: domicilio.",
+  ].join("\n");
+
+  it("imprime las básicas y las pedidas por separado y no las deja en NOTAS", () => {
+    const t = construirTicketCocina(pedido({ notes: notas }), TZ);
+    expect(t.salsas).toEqual(["Básicas: salsa roja, salsa verde, limones", "PEDIDAS (sin costo): salsa guacamolera, piña picada"]);
+    expect(t.notas).toEqual(["Sin cilantro"]);
+  });
+
+  it("imprime el pin a domicilio y lo omite al recoger", () => {
+    const dom = construirTicketCocina(pedido({ notes: notas }), TZ);
+    expect(dom.pin).toBe("21.012345, -89.601234");
+    expect(renderTicketCocinaHtml(dom)).toContain("Pin: 21.012345, -89.601234");
+    const rec = construirTicketCocina(pedido({ notes: notas.replace("Canal: domicilio.", "Canal: recoger en sucursal.") }), TZ);
+    expect(rec.pin).toBeNull();
+    expect(construirTicketCocina(pedido({ notes: "Sin cilantro" }), TZ).pin).toBeNull();
+  });
+
+  it("el enlace corto de Maps se imprime tal cual; otro host no se toma como pin", () => {
+    const corto = construirTicketCocina(pedido({ notes: "Ubicación de entrega (enlace corto de Maps): https://maps.app.goo.gl/AbC123\nCanal: domicilio." }), TZ);
+    expect(corto.pin).toBe("https://maps.app.goo.gl/AbC123");
+    const ajeno = construirTicketCocina(pedido({ notes: "Ubicación de entrega (enlace corto de Maps): https://evil.example/x\nCanal: domicilio." }), TZ);
+    expect(ajeno.pin).toBeNull();
+  });
+});
+
+describe("ticket de cocina: pago en efectivo, terminal y acceso (T7)", () => {
+  it("efectivo: imprime con cuánto paga y el cambio que se lleva", () => {
+    const t = construirTicketCocina(pedido({ paymentMethod: "efectivo", total: 90, notes: "Paga con: $500.00 (cambio: $410.00).\nCanal: domicilio.\nIndicaciones de acceso: timbre del depto 6.\nTeléfono alterno: 9991234568." }), TZ);
+    expect([t.pagaCon, t.cambio, t.acceso, t.telefonoAlterno, t.llevarTerminal]).toEqual(["$500.00", "$410.00", "timbre del depto 6", "9991234568", false]);
+    const html = renderTicketCocinaHtml(t);
+    expect(html).toContain("Cambio a llevar");
+    expect(html).toContain("Acceso: timbre del depto 6");
+    expect(html).toContain("Tel. alterno: 9991234568");
+  });
+
+  it("tarjeta a domicilio siempre dice LLEVAR TERMINAL; al recoger o en efectivo no", () => {
+    expect(construirTicketCocina(pedido({ paymentMethod: "tarjeta" }), TZ).llevarTerminal).toBe(true);
+    expect(renderTicketCocinaHtml(construirTicketCocina(pedido({ paymentMethod: "tarjeta" }), TZ))).toContain("LLEVAR TERMINAL");
+    expect(construirTicketCocina(pedido({ paymentMethod: "tarjeta", notes: "Canal: recoger en sucursal." }), TZ).llevarTerminal).toBe(false);
+    expect(construirTicketCocina(pedido({ paymentMethod: "efectivo" }), TZ).llevarTerminal).toBe(false);
+  });
+
+  it("al recoger no se imprime el acceso", () => {
+    expect(construirTicketCocina(pedido({ notes: "Indicaciones de acceso: timbre 6.\nCanal: recoger en sucursal." }), TZ).acceso).toBeNull();
+  });
+});

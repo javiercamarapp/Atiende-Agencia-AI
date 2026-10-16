@@ -38,7 +38,7 @@ import {
   UtensilsCrossed,
   Wrench,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
@@ -252,23 +252,8 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
 
   // Selector real, visible solo con más de un hotel (si no, solo el nombre). Va en el bloque de cuenta del Sidebar
   // (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
-  const hotelSelector =
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor="hoteles-hotel-activo" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Hotel activo
-        </label>
-        <NativeSelect id="hoteles-hotel-activo" size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
-          {branches.map((p) => (
-            <option key={p.propertyId} value={p.propertyId}>
-              {p.nombre}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.nombre}</p>
-    );
+  const hotelSelector = (idSelect: string) =>
+    <SelectorSucursal id={idSelect} etiqueta="Hotel activo" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
 
   return (
     <VerticalShellConectado
@@ -285,8 +270,8 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Hoteles · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/hoteles/${orgSlug}` }}
-      branchSelector={hotelSelector}
-      mobileSelector={branches.length > 1 ? hotelSelector : null}
+      branchSelector={hotelSelector("hoteles-hotel-activo")}
+      mobileSelector={branches.length > 1 ? hotelSelector("hoteles-hotel-activo-movil") : null}
       contentKey={propertyId}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, propertyName: activeBranch.nombre })}

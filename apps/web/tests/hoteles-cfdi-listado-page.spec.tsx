@@ -13,7 +13,7 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { CfdiListadoPage } from "../src/verticals/hoteles/pages/CfdiListado.tsx";
 import type { HotelesShellContext } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { CfdiEmisionSummary } from "../src/verticals/hoteles/lib/cfdi-client.ts";
-import { changeValue, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -80,6 +80,8 @@ function stubFetch(handlers: Handlers) {
   vi.stubGlobal("fetch", fetchMock);
 }
 
+const dialogo = () => document.body.querySelector('[role="dialog"]') as HTMLElement | null;
+
 function DestinoFolioCfdi() {
   const loc = useLocation();
   return <div>Página de CFDI del folio {loc.pathname}</div>;
@@ -124,7 +126,7 @@ describe("CfdiListadoPage (hoteles)", () => {
     await esperarCarga();
     expect(rendered.container.textContent).not.toContain("Cargando CFDI");
     expect(rendered.container.textContent).toContain("Ocurrió un problema");
-    expect(rendered.container.textContent).not.toContain("Subtotal");
+    expect(rendered.container.textContent).not.toContain("$2,380.00");
   });
 
   it("reintentar tras un error vuelve a pedir el listado", async () => {
@@ -157,8 +159,8 @@ describe("CfdiListadoPage (hoteles)", () => {
     expect(text).toContain("Hospedaje");
     expect(text).toContain("AAAA1111-BBBB-2222-CCCC-333344445555");
     expect(text).toContain("RFC XAXX010101000");
-    expect(text).toContain("Subtotal $2,000.00");
-    expect(text).toContain("IVA $320.00");
+    expect(text).toContain("$2,000.00");
+    expect(text).toContain("$320.00");
     expect(text).toContain("ISH $60.00");
     expect(text).toContain("$2,380.00");
     expect(text).toContain("Timbrado");
@@ -188,13 +190,12 @@ describe("CfdiListadoPage (hoteles)", () => {
 
     const cancelBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Cancelar CFDI")!;
     await act(async () => {
-      cancelBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      click(cancelBtn);
     });
-    expect(rendered.container.textContent).toContain("Confirmar cancelación");
+    expect(dialogo()!.textContent).toContain("Confirmar cancelación");
 
     current = [{ ...CFDI_TIMBRADO, estado: "cancelado", canceladoEn: "2026-09-19T00:00:00.000Z" }];
-    const confirmForm = [...rendered.container.querySelectorAll("form")].find((f) => f.textContent?.includes("Confirmar cancelación"))!;
-    await submitForm(confirmForm);
+    await submitForm(dialogo()!.querySelector("form")!);
     await esperarCarga();
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/hoteles/prop-1/cfdi/cfdi-1/cancelar" && init?.method === "POST");
@@ -205,6 +206,25 @@ describe("CfdiListadoPage (hoteles)", () => {
     expect(rendered.container.textContent).toContain("Cancelado");
   });
 
+  it("cerrar el dialogo (Cerrar) NUNCA llama a cancelar", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+
+    const cancelBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Cancelar CFDI")!;
+    await act(async () => {
+      click(cancelBtn);
+    });
+    const cerrar = [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent === "Cerrar")!;
+    await act(async () => {
+      click(cerrar);
+      await flushMicrotasks();
+    });
+
+    expect(dialogo()).toBeNull();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
   it("cancelar con motivo '01' (sustitución) manda folioSustitucion cuando se captura", async () => {
     stubFetch({});
     rendered = renderPage();
@@ -212,21 +232,39 @@ describe("CfdiListadoPage (hoteles)", () => {
 
     const cancelBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Cancelar CFDI")!;
     await act(async () => {
-      cancelBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      click(cancelBtn);
     });
 
-    const select = rendered.container.querySelector("select") as HTMLSelectElement;
+    const select = dialogo()!.querySelector("select") as HTMLSelectElement;
     changeValue(select, "01");
-    const sustInput = rendered.container.querySelector('input[placeholder*="sustituye"]') as HTMLInputElement;
+    const sustInput = dialogo()!.querySelector('input[placeholder*="sustituye"]') as HTMLInputElement;
     expect(sustInput).toBeTruthy();
     changeValue(sustInput, "UUID-SUSTITUTO-0001");
 
-    const confirmForm = [...rendered.container.querySelectorAll("form")].find((f) => f.textContent?.includes("Confirmar cancelación"))!;
-    await submitForm(confirmForm);
+    await submitForm(dialogo()!.querySelector("form")!);
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/hoteles/prop-1/cfdi/cfdi-1/cancelar" && init?.method === "POST");
     expect(call).toBeDefined();
     const [, init] = call!;
     expect(JSON.parse(init.body as string)).toEqual({ motivo: "01", folioSustitucion: "UUID-SUSTITUTO-0001" });
+  });
+
+  it("si cancelar falla, el dialogo sigue abierto con el error real", async () => {
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "GET") return jsonResponse([CFDI_TIMBRADO]);
+      return jsonResponse({ error: "PAC no disponible" }, false);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    const cancelBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Cancelar CFDI")!;
+    await act(async () => {
+      click(cancelBtn);
+    });
+    await submitForm(dialogo()!.querySelector("form")!);
+    await esperarCarga();
+    expect(dialogo()).not.toBeNull();
+    expect(dialogo()!.querySelector('[role="alert"]')).not.toBeNull();
+    expect(dialogo()!.textContent).toContain("Confirmar cancelación");
   });
 });

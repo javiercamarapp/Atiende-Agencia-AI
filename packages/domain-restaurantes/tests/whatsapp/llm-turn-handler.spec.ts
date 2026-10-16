@@ -126,7 +126,7 @@ describe("createLlmWhatsAppTurnHandler — el loop de tool-use", () => {
                   name: "crear_pedido",
                   argumentsJson: JSON.stringify({
                     branch_slug: "centro",
-                    customer_name: "Cliente",
+                    customer_name: "Carlos Prueba",
                     customer_address: "Calle 1",
                     items: [{ product_id: productId, product_name: "Agua", requested_quantity: 1 }],
                     payment_method: "efectivo",
@@ -175,6 +175,8 @@ describe("createLlmWhatsAppTurnHandler — el loop de tool-use", () => {
 
     expect(result.orderId).toBeNull();
     expect(result.reply).toMatch(/problema técnico/i);
+    expect(result.reply).toMatch(/avisé al equipo/i);
+    expect((result as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
   });
 
   it("un argumentsJson mal formado en una tool call se maneja como un resultado de error, sin tirar el turno completo", async () => {

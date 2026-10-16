@@ -509,18 +509,19 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '94000000-0000-0000-0000-0000000f0a02', true);
-insert into licitaciones.company_document (organization_id, document_type, label, approval_status)
-values ('94000000-0000-0000-0000-000000000001', 'opinion_cumplimiento', 'Opinión de cumplimiento flujos staff2', 'pendiente_aprobacion')
+-- Migración 036: el alta ya no nombra `approval_status` (GRANT por columna): nace 'pendiente_aprobacion' por default.
+insert into licitaciones.company_document (organization_id, document_type, label)
+values ('94000000-0000-0000-0000-000000000001', 'opinion_cumplimiento', 'Opinión de cumplimiento flujos staff2')
 returning (id is not null)::int as staff_captura_documento_empresa_deberia_ser_1;
 rollback;
 
-\echo '=== 33. writer APRUEBA el documento de empresa ya persistido (PATCH .../company/documents/:id, approvalStatus="aprobado") ==='
+\echo '=== 33. (migración 036) writer YA NO aprueba el documento de empresa por UPDATE directo -- permission denied for column approval_status; aprobar es decide_company_item (otra persona con rol de decisión) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '94000000-0000-0000-0000-0000000f0a02', true);
 update licitaciones.company_document set approval_status = 'aprobado'
 where id = '94000000-0000-0000-0000-000000090002' and organization_id = '94000000-0000-0000-0000-000000000001'
-returning (approval_status = 'aprobado')::int as staff_aprueba_documento_empresa_deberia_ser_1;
+returning (approval_status = 'aprobado')::int as should_fail;
 rollback;
 
 \echo '=== 34. (rol sin permiso) viewer NO puede capturar un documento de empresa -- licitaciones.can_write_org excluye viewer ==='

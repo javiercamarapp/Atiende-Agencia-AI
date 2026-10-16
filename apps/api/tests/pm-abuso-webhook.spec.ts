@@ -92,7 +92,7 @@ describe("T-AB11 cuerpos malformados y enormes", () => {
     expect(seen).toHaveLength(0);
   });
 
-  it("estructuras raras bien firmadas se acusan 200 sin lanzar ni procesar: entry no arreglo, changes null, messages objeto, from no numérico, id gigante, texto de 4001 chars", async () => {
+  it("estructuras raras bien firmadas se acusan 200 sin lanzar ni procesar: entry no arreglo, changes null, messages objeto, from no numérico, id gigante, texto de 4097 chars (mas que el limite de Meta)", async () => {
     const { app, seen } = await setup();
     const casos: unknown[] = [
       { entry: "x" },
@@ -101,7 +101,7 @@ describe("T-AB11 cuerpos malformados y enormes", () => {
       { entry: [{ changes: [{ value: { metadata: { phone_number_id: "1234567890" }, messages: { id: "x" } } }] }] },
       payload("1234567890", [msg("wamid.n1", { from: "abc'; DROP TABLE x;--" })]),
       payload("1234567890", [msg("a".repeat(300))]),
-      payload("1234567890", [msg("wamid.n2", { text: { body: "z".repeat(4001) } })]),
+      payload("1234567890", [msg("wamid.n2", { text: { body: "z".repeat(4097) } })]),
       payload("1234567890", [msg("wamid.n3", { text: { body: "   " } })]),
       payload("1234567890", [null, 5, "x"]),
       [],

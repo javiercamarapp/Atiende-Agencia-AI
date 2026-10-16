@@ -457,6 +457,15 @@ export interface EmailOutboxJobRow {
   readonly payload: Record<string, unknown>;
 }
 
+/**
+ * `emailOnlyIfNew`: el correo recibido SOLO se guarda si el cliente se crea en esta llamada. Para una reserva publica (canal web) el telefono NO esta verificado:
+ * cualquiera puede escribir el telefono de otro paciente y un correo propio, y con el coalesce de siempre ese correo quedaba en el expediente del paciente real
+ * (los correos de sus citas llegaban a un tercero). Sin la bandera (voz/WhatsApp, donde el canal ya identifica al titular) un cliente existente sin correo lo recibe.
+ */
+export interface UpsertCustomerOptions {
+  readonly emailOnlyIfNew?: boolean;
+}
+
 export interface CitasRepository {
   // ---- Resolución de organización/proveedor/servicio (usado por los 3 flujos) ----
   findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null>;
@@ -538,7 +547,7 @@ export interface CitasRepository {
   deleteAvailabilityOverride(providerId: string, overrideDate: string): Promise<boolean>;
 
   // ---- Clientes (Flujo 1) ----
-  upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null): Promise<CustomerRecord>;
+  upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null, options?: UpsertCustomerOptions): Promise<CustomerRecord>;
   /** Fase 2 §1.4/§5 — memoria de cliente por teléfono (agente de voz/WhatsApp).
    * `phone` debe llegar ya normalizado (ver `normalizePhone`) — nunca null en
    * cero-match, se resuelve devolviendo `null` para que el caller decida el

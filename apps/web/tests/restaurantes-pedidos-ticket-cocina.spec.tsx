@@ -99,9 +99,20 @@ async function flush(): Promise<void> {
 }
 
 function boton(texto: string): HTMLButtonElement {
-  const b = [...document.body.querySelectorAll("button")].find((x) => x.textContent?.includes(texto));
+  // Imprimir ticket / Vista previa / Historial son botones de icono con nombre accesible (aria-label) en el tablero nuevo.
+  const b = [...document.body.querySelectorAll("button")].find((x) => x.textContent?.includes(texto) || x.getAttribute("aria-label") === texto);
   if (!b) throw new Error(`boton no encontrado: ${texto}`);
   return b as HTMLButtonElement;
+}
+
+/** La casilla de auto-impresion vive en el menu «Herramientas» del tablero: se abre y se marca. */
+async function activarAutoImpresion(): Promise<void> {
+  await clic(boton("Herramientas de pedidos"));
+  await flush();
+  await act(async () => {
+    (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
+    await flushMicrotasks();
+  });
 }
 
 async function clic(el: Element): Promise<void> {
@@ -142,11 +153,7 @@ describe("PedidosPage -- ticket de cocina", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await flush();
-    await act(async () => {
-      const chk = document.getElementById("auto-imprimir-cocina") as HTMLInputElement;
-      chk.click();
-      await flushMicrotasks();
-    });
+    await activarAutoImpresion();
     await flush();
     expect(imprimir).not.toHaveBeenCalled();
 
@@ -173,10 +180,7 @@ describe("PedidosPage -- ticket de cocina", () => {
     pendientes = [pedido("ord-aaaaaa1"), pedido("ord-otra001", { propertyId: "prop-2", branch: "Norte" })];
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await flush();
-    await act(async () => {
-      (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
-      await flushMicrotasks();
-    });
+    await activarAutoImpresion();
     await flush();
     const urls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).filter((u) => u.includes("status=pending"));
     expect(urls.length).toBeGreaterThan(0);
@@ -196,5 +200,54 @@ describe("PedidosPage -- ticket de cocina", () => {
     const folios = (imprimir.mock.calls[0]![0] as TicketCocina[]).map((t) => t.folio);
     expect(folios).toEqual(["BBBBB2"]);
     expect(window.localStorage.getItem("atiende.restaurantes.ticketCocina.demo.prop-1")).not.toContain("ord-otra");
+  });
+
+  // QA R2 features-05: sin POS, imprimir el ticket es lo que habilita la aceptacion automatica -> se avisa al servidor de cada pedido PENDIENTE impreso.
+  describe("aviso de ticket impreso al servidor (aceptacion automatica sin POS)", () => {
+    const llamadasTicket = () =>
+      (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .filter((c) => String(c[0]).includes("/ticket-impreso"))
+        .map((c) => ({ url: String(c[0]), method: (c[1] as { method?: string } | undefined)?.method }));
+
+    it("Imprimir un pedido pendiente registra el ticket en el servidor (POST) una vez", async () => {
+      rendered = renderComponent(<PedidosPage {...CTX} />);
+      await flush();
+      await clic(boton("Imprimir ticket"));
+      await flush();
+      expect(llamadasTicket()).toEqual([{ url: "https://api.test/v1/restaurantes/prop-1/admin/autopiloto/pedidos/ord-aaaaaa1/ticket-impreso", method: "POST" }]);
+    });
+
+    it("la auto-impresion avisa SOLO de los pedidos nuevos que imprimio, no del rezago de la linea base", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      rendered = renderComponent(<PedidosPage {...CTX} />);
+      await flush();
+      await activarAutoImpresion();
+      await flush();
+      expect(llamadasTicket()).toHaveLength(0);
+      pendientes = [pedido("ord-aaaaaa1"), pedido("ord-bbbbbb2", { createdAt: "2026-09-19T10:05:00.000Z" })];
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      await flush();
+      expect(llamadasTicket().map((l) => l.url)).toEqual(["https://api.test/v1/restaurantes/prop-1/admin/autopiloto/pedidos/ord-bbbbbb2/ticket-impreso"]);
+    });
+
+    it("si el aviso falla, el ticket ya salio y la pantalla lo dice (no se calla el fallo)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url.includes("/ticket-impreso")) throw new Error("sin red");
+          if (url.includes("/admin/staff/repartidores")) return { ok: true, status: 200, json: async () => ({ repartidores: [] }) } as unknown as Response;
+          const status = new URL(url).searchParams.get("status");
+          return { ok: true, status: 200, json: async () => ({ orders: status === "pending" ? pendientes : [], nextCursor: null }) } as unknown as Response;
+        }),
+      );
+      rendered = renderComponent(<PedidosPage {...CTX} />);
+      await flush();
+      await clic(boton("Imprimir ticket"));
+      await flush();
+      expect(imprimir).toHaveBeenCalledTimes(1);
+      expect(document.body.textContent).toContain("no se pudo avisar al sistema");
+    });
   });
 });

@@ -76,6 +76,37 @@ describe("MetaGraphWhatsAppClient", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("B03: si Meta rechaza los botones por su FORMA (parametro invalido) reintenta UNA vez como texto con el mismo cuerpo", async () => {
+    const tipos: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { type: string; text?: { body: string } };
+      tipos.push(body.type);
+      if (body.type === "interactive") return jsonResponse({ error: { message: "(#100) Invalid parameter", code: 100 } }, 400);
+      expect(body.text?.body).toBe("Resumen del pedido");
+      return jsonResponse({ messages: [{ id: "wamid.texto" }] });
+    });
+    const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
+    const r = await client.sendMessage({ to: "+52999", phoneNumberId: "p1", body: "Resumen del pedido", buttons: [{ id: "rp1:confirmar:x", title: "Confirmar pedido" }, { id: "rp1:cambiar:x", title: "Cambiar algo" }] });
+    expect(r).toEqual({ providerMessageId: "wamid.texto", enviadoComo: "texto" });
+    expect(tipos).toEqual(["interactive", "text"]);
+  });
+
+  it("B03: un 4xx que NO es de forma (numero invalido) o un fallo transitorio con botones NO se reenvia como texto", async () => {
+    for (const [status, code] of [[400, 131030], [500, 1], [429, 4]] as const) {
+      const fetchImpl = vi.fn(async () => jsonResponse({ error: { message: "x", code } }, status));
+      const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
+      await expect(client.sendMessage({ to: "+52999", phoneNumberId: "p1", body: "x", buttons: ["a", "b"] })).rejects.toMatchObject({ retryable: status !== 400 });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("B03: un mensaje de texto (sin botones) con parametro invalido no se reintenta", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: { message: "x", code: 100 } }, 400));
+    const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.sendMessage({ to: "+52999", phoneNumberId: "p1", body: "x" })).rejects.toMatchObject({ retryable: false });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
   it("clasifica 500 como reintentable", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ error: { message: "internal" } }, 500));
     const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
@@ -113,5 +144,31 @@ describe("MetaGraphWhatsAppClient", () => {
     const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
     await expect(client.sendMessage({ to: "", phoneNumberId: "p1", body: "x" })).rejects.toThrow(WhatsAppInvalidPayloadError);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("una falla del proveedor lleva diagnostico estructurado: error 190 de Graph API (token invalido) y 5xx sin codigo; la config no es del proveedor", async () => {
+    const send = (response: () => Response | Promise<Response>) =>
+      new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: (async () => response()) as unknown as typeof fetch }).sendMessage({ to: "+5219991112233", phoneNumberId: "phone-123", body: "hola" });
+
+    const token = await send(() => jsonResponse({ error: { message: "token vencido", type: "OAuthException", code: 190 } }, 401)).catch((e: unknown) => e);
+    expect(token).toBeInstanceOf(WhatsAppSendError);
+    expect((token as WhatsAppSendError).info).toEqual({ proveedor: true, httpStatus: 401, graphCode: 190 });
+    expect((token as WhatsAppSendError).retryable).toBe(false);
+
+    const caido = await send(() => jsonResponse({}, 503)).catch((e: unknown) => e);
+    expect((caido as WhatsAppSendError).info).toEqual({ proveedor: true, httpStatus: 503 });
+
+    // 4xx causado por el mensaje (numero invalido, parametro de plantilla malo): NO es falla del proveedor.
+    const numero = await send(() => jsonResponse({ error: { message: "numero invalido", type: "OAuthException", code: 131030 } }, 400)).catch((e: unknown) => e);
+    expect((numero as WhatsAppSendError).info).toEqual({ proveedor: false, httpStatus: 400, graphCode: 131030 });
+    const limite = await send(() => jsonResponse({}, 429)).catch((e: unknown) => e);
+    expect((limite as WhatsAppSendError).info).toEqual({ proveedor: true, httpStatus: 429 });
+
+    const red = await send(() => {
+      throw new Error("ECONNRESET");
+    }).catch((e: unknown) => e);
+    expect((red as WhatsAppSendError).info).toEqual({ proveedor: true });
+
+    expect(() => new MetaGraphWhatsAppClient({ accessToken: "" })).toThrow(WhatsAppConfigError);
+    expect(new WhatsAppConfigError("falta algo").info).toBeUndefined();
   });
 });

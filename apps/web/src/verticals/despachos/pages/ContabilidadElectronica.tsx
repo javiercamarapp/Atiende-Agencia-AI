@@ -36,6 +36,7 @@ import {
   StatusBadge,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableFooter,
   TableHead,
@@ -109,9 +110,10 @@ function AsientosEditor({ filas, setFilas }: { filas: readonly AsientoFila[]; se
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
         <Table className="min-w-[560px] text-xs">
+          <TableCaption className="sr-only">Captura de asientos de la póliza</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">Cuenta *</TableHead>
+              <TableHead className="sticky left-0 z-10 bg-canvas h-9">Cuenta *</TableHead>
               <TableHead className="h-9">Debe</TableHead>
               <TableHead className="h-9">Haber</TableHead>
               <TableHead className="h-9">Fecha</TableHead>
@@ -121,7 +123,7 @@ function AsientosEditor({ filas, setFilas }: { filas: readonly AsientoFila[]; se
           <TableBody>
             {filas.map((a) => (
               <TableRow key={a.key}>
-                <TableCell className="p-1.5">
+                <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                   <Label htmlFor={`asiento-cuenta-${a.key}`} className="sr-only">
                     Cuenta
                   </Label>
@@ -382,35 +384,36 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
 
               <div className="overflow-x-auto rounded-xl border border-border">
                 <Table className="text-xs">
+                  <TableCaption className="sr-only">Balanza de comprobación del periodo</TableCaption>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">Cuenta</TableHead>
+                      <TableHead className="sticky left-0 z-10 bg-canvas h-9">Cuenta</TableHead>
                       <TableHead className="h-9">Descripción</TableHead>
-                      <TableHead className="h-9">Saldo inicial</TableHead>
-                      <TableHead className="h-9">Debe</TableHead>
-                      <TableHead className="h-9">Haber</TableHead>
-                      <TableHead className="h-9">Saldo final</TableHead>
+                      <TableHead className="text-right h-9">Saldo inicial</TableHead>
+                      <TableHead className="text-right h-9">Debe</TableHead>
+                      <TableHead className="text-right h-9">Haber</TableHead>
+                      <TableHead className="text-right h-9">Saldo final</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paquete.resumenBalanza.lineas.map((l) => (
                       <TableRow key={l.cuenta}>
-                        <TableCell className="p-2 font-mono">{l.cuenta}</TableCell>
+                        <TableCell className="sticky left-0 z-10 bg-card p-2 font-mono">{l.cuenta}</TableCell>
                         <TableCell className="p-2">{l.descripcion}</TableCell>
-                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.saldoInicial))}</TableCell>
-                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.debe))}</TableCell>
-                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.haber))}</TableCell>
-                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.saldoFinal))}</TableCell>
+                        <TableCell className="text-right p-2 tabular-nums">{formatMoney(Number(l.saldoInicial))}</TableCell>
+                        <TableCell className="text-right p-2 tabular-nums">{formatMoney(Number(l.debe))}</TableCell>
+                        <TableCell className="text-right p-2 tabular-nums">{formatMoney(Number(l.haber))}</TableCell>
+                        <TableCell className="text-right p-2 tabular-nums">{formatMoney(Number(l.saldoFinal))}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell className="p-2 font-semibold" colSpan={3}>
+                      <TableCell className="sticky left-0 z-10 bg-card p-2 font-semibold" colSpan={3}>
                         Totales
                       </TableCell>
-                      <TableCell className="p-2 font-semibold tabular-nums">{formatMoney(Number(paquete.resumenBalanza.totalDebe))}</TableCell>
-                      <TableCell className="p-2 font-semibold tabular-nums">{formatMoney(Number(paquete.resumenBalanza.totalHaber))}</TableCell>
+                      <TableCell className="p-2 text-right font-semibold tabular-nums">{formatMoney(Number(paquete.resumenBalanza.totalDebe))}</TableCell>
+                      <TableCell className="p-2 text-right font-semibold tabular-nums">{formatMoney(Number(paquete.resumenBalanza.totalHaber))}</TableCell>
                       <TableCell className="p-2" />
                     </TableRow>
                   </TableFooter>

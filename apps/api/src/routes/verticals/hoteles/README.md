@@ -197,6 +197,9 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
   `vercel.json`**: programarlo es una decisión de despliegue (ver `docs/DEPLOY.md`).
 - Base sin la migración 034: lecturas `disponible:false`, escrituras 503, el cron omite la property
   (`omitida: migracion_pendiente`).
+- `holds-vencidos-cron.ts` (H-P3-03) — `GET|POST /internal/hoteles/holds-vencidos` (`*/15 * * * *` en `vercel.json`): libera el inventario de las
+  pre-reservas del agente cuyo plazo venció (`booking_hold_expire_due`, migración 037), sesión de sistema y una transacción por property, reloj
+  inyectable e idempotente. Base sin la 037: la property se omite (`omitida: migracion_pendiente`).
 - `agentes.ts` (H-03, migración 035) — `GET /hoteles/:propertyId/agentes` (catálogo con estado, presupuesto y
   costo del mes), `PUT .../agentes/:agentKey` (kill switch con motivo y presupuesto en USD; owner/gm),
   `GET/PUT .../agentes/guardrails`, `GET .../agentes/politicas` + `PUT .../agentes/politicas/:accion`,

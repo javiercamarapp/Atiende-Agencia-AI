@@ -34,6 +34,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  DataTable,
   Input,
   Label,
   PageContainer,
@@ -41,11 +42,13 @@ import {
   statusTone,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import {
   clasificarDepositoConciliacion,
   correrMatchingConciliacion,
@@ -54,10 +57,13 @@ import {
 } from "../lib/conciliacion-client.ts";
 import type {
   AlertaConciliacion,
+  CoincidenciaConciliacion,
   ClasificacionDeposito,
+  MovimientoBancario,
   MovimientoBancarioInput,
   NivelCoincidencia,
   ResultadoClasificacionDeposito,
+  RegistroConciliable,
   ResultadoConciliacion,
   ResultadoVerificacionSpei,
   SeveridadAlerta,
@@ -134,9 +140,10 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
         <Table className="min-w-[720px] text-xs">
+          <TableCaption className="sr-only">Captura de movimientos bancarios del lote</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">Fecha *</TableHead>
+              <TableHead className="sticky left-0 z-10 bg-canvas h-9">Fecha *</TableHead>
               <TableHead className="h-9">Descripción</TableHead>
               <TableHead className="h-9">Referencia</TableHead>
               <TableHead className="h-9">Cargo</TableHead>
@@ -148,7 +155,7 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
           <TableBody>
             {filas.map((f) => (
               <TableRow key={f.key}>
-                <TableCell className="p-1.5">
+                <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                   <Label htmlFor={`mov-fecha-${f.key}`} className="sr-only">
                     Fecha
                   </Label>
@@ -215,6 +222,37 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
   );
 }
 
+type ConIndice<T> = T & { readonly _i: number };
+
+const COLUMNAS_COINCIDENCIAS: DataTableColumna<ConIndice<CoincidenciaConciliacion>>[] = [
+  { id: "nivel", encabezado: "Nivel", principal: true, valorOrden: (m) => m.score, celda: (m) => <NivelBadge level={m.level} /> },
+  { id: "score", encabezado: "Score", alinear: "right", valorOrden: (m) => m.score, celda: (m) => <span className="tabular-nums">{m.score.toFixed(0)}</span> },
+  { id: "montoBanco", encabezado: "Monto banco", alinear: "right", valorOrden: (m) => m.montoBanco, celda: (m) => <span className="tabular-nums">{formatMoney(m.montoBanco)}</span> },
+  { id: "montoCfdi", encabezado: "Monto CFDI", alinear: "right", valorOrden: (m) => m.montoRegistro, celda: (m) => <span className="tabular-nums">{formatMoney(m.montoRegistro)}</span> },
+  { id: "fechaBanco", encabezado: "Fecha banco", valorOrden: (m) => m.fechaBanco, celda: (m) => m.fechaBanco },
+  { id: "fechaCfdi", encabezado: "Fecha CFDI", valorOrden: (m) => m.fechaRegistro, celda: (m) => m.fechaRegistro },
+  { id: "detalle", encabezado: "Detalle", celda: (m) => <span className="text-muted-foreground">{m.detail}</span> },
+];
+
+const COLUMNAS_BANCO_SIN_CONCILIAR: DataTableColumna<ConIndice<MovimientoBancario>>[] = [
+  { id: "fecha", encabezado: "Fecha", principal: true, valorOrden: (m) => m.fecha, celda: (m) => m.fecha },
+  { id: "descripcion", encabezado: "Descripción", valorOrden: (m) => m.descripcion ?? "", celda: (m) => m.descripcion || "—" },
+  { id: "monto", encabezado: "Monto", alinear: "right", valorOrden: (m) => m.monto, celda: (m) => <span className="tabular-nums">{formatMoney(m.monto)}</span> },
+];
+
+const COLUMNAS_CFDI_SIN_CONCILIAR: DataTableColumna<ConIndice<RegistroConciliable>>[] = [
+  { id: "fecha", encabezado: "Fecha", principal: true, valorOrden: (r) => r.fecha, celda: (r) => r.fecha },
+  { id: "emisor", encabezado: "Emisor", valorOrden: (r) => r.descripcion ?? "", celda: (r) => r.descripcion ?? "—" },
+  { id: "folio", encabezado: "Folio fiscal", celda: (r) => <span className="font-mono text-xs">{r.folioFiscal ?? "—"}</span> },
+  {
+    id: "total",
+    encabezado: "Total",
+    alinear: "right",
+    valorOrden: (r) => (typeof r.total === "number" ? r.total : null),
+    celda: (r) => <span className="tabular-nums">{typeof r.total === "number" ? formatMoney(r.total) : (r.total ?? "—")}</span>,
+  },
+];
+
 function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) {
   return (
     <div className="flex flex-col gap-3">
@@ -239,90 +277,21 @@ function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) 
       {resultado.matched.length > 0 && (
         <div>
           <p className="mb-1 text-xs font-semibold text-foreground">Coincidencias ({resultado.matched.length})</p>
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <Table className="text-xs">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="h-9">Nivel</TableHead>
-                  <TableHead className="h-9">Score</TableHead>
-                  <TableHead className="h-9">Monto banco</TableHead>
-                  <TableHead className="h-9">Monto CFDI</TableHead>
-                  <TableHead className="h-9">Fecha banco</TableHead>
-                  <TableHead className="h-9">Fecha CFDI</TableHead>
-                  <TableHead className="h-9">Detalle</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {resultado.matched.map((m, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="p-2">
-                      <NivelBadge level={m.level} />
-                    </TableCell>
-                    <TableCell className="p-2 tabular-nums">{m.score.toFixed(0)}</TableCell>
-                    <TableCell className="p-2 tabular-nums">{formatMoney(m.montoBanco)}</TableCell>
-                    <TableCell className="p-2 tabular-nums">{formatMoney(m.montoRegistro)}</TableCell>
-                    <TableCell className="p-2">{m.fechaBanco}</TableCell>
-                    <TableCell className="p-2">{m.fechaRegistro}</TableCell>
-                    <TableCell className="p-2 text-muted-foreground">{m.detail}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <DataTable etiqueta="Coincidencias de conciliación" columnas={COLUMNAS_COINCIDENCIAS} filas={resultado.matched.map((m, i) => ({ ...m, _i: i }))} obtenerId={(m) => String(m._i)} />
         </div>
       )}
 
       {resultado.unmatchedBank.length > 0 && (
         <div>
           <p className="mb-1 text-xs font-semibold text-foreground">Movimientos bancarios sin conciliar ({resultado.unmatchedBank.length})</p>
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <Table className="text-xs">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="h-9">Fecha</TableHead>
-                  <TableHead className="h-9">Descripción</TableHead>
-                  <TableHead className="h-9">Monto</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {resultado.unmatchedBank.map((m, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="p-2">{m.fecha}</TableCell>
-                    <TableCell className="p-2">{m.descripcion || "—"}</TableCell>
-                    <TableCell className="p-2 tabular-nums">{formatMoney(m.monto)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <DataTable etiqueta="Movimientos bancarios sin conciliar" columnas={COLUMNAS_BANCO_SIN_CONCILIAR} filas={resultado.unmatchedBank.map((m, i) => ({ ...m, _i: i }))} obtenerId={(m) => String(m._i)} />
         </div>
       )}
 
       {resultado.unmatchedBooks.length > 0 && (
         <div>
           <p className="mb-1 text-xs font-semibold text-foreground">CFDI sin conciliar ({resultado.unmatchedBooks.length})</p>
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <Table className="text-xs">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="h-9">Fecha</TableHead>
-                  <TableHead className="h-9">Emisor</TableHead>
-                  <TableHead className="h-9">Folio fiscal</TableHead>
-                  <TableHead className="h-9">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {resultado.unmatchedBooks.map((r, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="p-2">{r.fecha}</TableCell>
-                    <TableCell className="p-2">{r.descripcion ?? "—"}</TableCell>
-                    <TableCell className="p-2 font-mono text-xs">{r.folioFiscal ?? "—"}</TableCell>
-                    <TableCell className="p-2 tabular-nums">{typeof r.total === "number" ? formatMoney(r.total) : (r.total ?? "—")}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <DataTable etiqueta="CFDI sin conciliar" columnas={COLUMNAS_CFDI_SIN_CONCILIAR} filas={resultado.unmatchedBooks.map((r, i) => ({ ...r, _i: i }))} obtenerId={(r) => String(r._i)} />
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 // Batería PM F3b — E.11 Fallas del proveedor de LLM (WhatsApp): caída, respaldo, timeout, basura.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeLlmProvider } from "@atiende/agent-core";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { buildRestaurantFixture } from "../fixtures.ts";
@@ -86,12 +86,14 @@ describe("E.11 LLM caído, lento o con basura", () => {
 
   it("T-FP06 si crear_pedido falla, la siguiente llamada del turno sube al modelo de respaldo caro", async () => {
     const f = buildRestaurantFixture();
+    // B04: solo un FALLO de sistema sube de modelo (un rechazo de regla, como crear sin cotizar, no): la base cae al crear el cliente.
+    await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "fco-montejo", canal: "recoger", items: [{ productId: f.products.cocaCola, productName: "Coca-Cola", requestedQuantity: 1 }] });
+    vi.spyOn(f.repo, "upsertCustomer").mockRejectedValue(new Error("base caida"));
     const gateway = makeGateway();
     const roles: string[] = [];
     let n = 0;
     const script = (rol: string) => () => {
       roles.push(rol);
-      // Sin cotizar/confirmar, crear_pedido es rechazado => cuenta como fallo de herramienta.
       return n++ === 0
         ? result({ calls: [{ name: "crear_pedido", args: { branch_slug: "fco-montejo", customer_name: "Ana", payment_method: "efectivo", canal: "recoger", items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }] } }] }, n)
         : result({ text: "Déjame cotizar primero." }, n);

@@ -191,3 +191,25 @@ export class TenantConfigNotMigratedError extends Error {
     this.name = "TenantConfigNotMigratedError";
   }
 }
+
+/**
+ * L-P3-05/06/07: la base todavia no tiene la migracion 037 (boveda de documentos, matriz estable, conflictos
+ * persistidos, comentarios de revision). La ruta lo traduce a un 503 honesto ("no disponible aun: requiere la
+ * migracion 037") -- nunca un 500 ni un 200 falso. Las lecturas, en cambio, devuelven un vacio con `disponible: false`.
+ */
+export class BovedaRevisionNoDisponibleError extends Error {
+  readonly funcion: "documentos" | "matriz" | "conflictos" | "comentarios";
+  constructor(funcion: "documentos" | "matriz" | "conflictos" | "comentarios") {
+    super(`Esta función aún no está disponible en esta base (${funcion}: requiere la migración 037).`);
+    this.name = "BovedaRevisionNoDisponibleError";
+    this.funcion = funcion;
+  }
+}
+
+/** La persona a la que se quiere asignar un requisito no es miembro de la organizacion. */
+export class RequirementAssigneeNotFoundError extends Error {
+  constructor() {
+    super("La persona asignada no pertenece a esta organización.");
+    this.name = "RequirementAssigneeNotFoundError";
+  }
+}

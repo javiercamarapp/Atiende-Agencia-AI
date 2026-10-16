@@ -11,14 +11,16 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
+import { extractMetaStatuses } from "@atiende/whatsapp-gateway";
+import type { EventoEntregaFallida } from "@atiende/domain-restaurantes";
 import { emitirNotificacion } from "@atiende/db";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, procesarBajaOAlta } from "../../../supresion/index.ts";
+import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, esPalabraBaja, procesarBajaOAlta } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -34,6 +36,14 @@ const diaMerida = (): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Am
 // tope. Ante negativa, 429 (no 200 silencioso ni 5xx) -- Meta reintenta con 429 igual
 // que con 5xx.
 const INBOUND_WEBHOOK_RATE_LIMIT = { max: 120, windowMs: 60_000 } as const;
+
+/** Eventos del catalogo de notificaciones que este webhook produce cuando Meta reporta una entrega fallida (`statuses[].status = "failed"`).
+ *  Sin PII: solo un codigo de motivo o un conteo. El catalogo y docs/NOTIFICACIONES.md los listan como conectados a ESTE archivo. */
+const EVENTOS_ENTREGA_FALLIDA = [
+  "restaurantes.whatsapp.entrega_fallida_pedido",
+  "restaurantes.whatsapp.entrega_fallida",
+  "restaurantes.whatsapp.entregas_fallidas_varias",
+] as const satisfies readonly EventoEntregaFallida[];
 
 export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -88,7 +98,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     // PM-C5 (espera de rafagas): los mensajes de un telefono con `replyDebounceSeconds` > 0 se reciben en una transaccion que SE CONFIRMA, el
     // webhook espera SIN transaccion abierta y recien entonces responde todo junto en otra transaccion. Con la espera apagada (lo normal)
     // este arreglo queda vacio y el camino es exactamente el de antes.
-    const diferidos: Array<{ organizationId: string; messageId: string; phone: string; phoneNumberId: string; propertyId: string | null; esperaSegundos: number }> = [];
+    const diferidos: Array<{ organizationId: string; messageId: string; phone: string; phoneNumberId: string; propertyId: string | null; esperaSegundos: number; recibidoEnMs?: number }> = [];
 
     // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
@@ -104,16 +114,37 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // sin numero o con numero desconocido se acusa en silencio sin arrastrar sus mensajes a otro tenant.
       let hadRetryableFailure = false;
       let processedAny = false;
+      // Correos de respaldo encolados por entregas fallidas (el WhatsApp no llego): se despachan al final aunque el webhook solo traiga statuses.
+      let correosDeRespaldo = 0;
       const channelCache = new Map<string, Awaited<ReturnType<typeof repo.resolveWhatsAppChannel>>>();
       for (const batch of splitMetaPayloadByChannel(payload)) {
         if (!batch.phoneNumberId) continue;
         const incomingMessages = extractMetaInboundMessages(batch.payload);
-        if (incomingMessages.length === 0) continue;
+        // Estados de entrega de mensajes SALIENTES (delivered/read/failed): no son mensajes del cliente.
+        const estadosEntrega = extractMetaStatuses(batch.payload);
+        if (incomingMessages.length === 0 && estadosEntrega.length === 0) continue;
         if (!channelCache.has(batch.phoneNumberId)) channelCache.set(batch.phoneNumberId, await repo.resolveWhatsAppChannel(batch.phoneNumberId));
         const channel = channelCache.get(batch.phoneNumberId) ?? null;
         const organizationId = channel?.organizationId ?? null;
-        // Número no configurado en la plataforma: ack silencioso, no reintento.
+        // Número no configurado en la plataforma: ack silencioso, no reintento (tambien para sus statuses: ningun wamid ajeno se procesa).
         if (!organizationId) continue;
+        if (estadosEntrega.length > 0) {
+          // El tenant sale del `phone_number_id` firmado: un wamid de otra organizacion nunca coincide. Un fallo aqui jamas cambia la respuesta a Meta.
+          const resumen = await procesarEstadosEntrega(
+            repo,
+            organizationId,
+            estadosEntrega.map((e) => ({ wamid: e.wamid, status: e.status, errorCode: e.errorCode, errorTitle: e.errorTitle })),
+            {
+              emitir: async (e) => {
+                if (!EVENTOS_ENTREGA_FALLIDA.includes(e.evento)) return;
+                await emitirNotificacion(db, { evento: e.evento, organizationId: e.organizationId, clave: e.clave, parametros: e.parametros, entidadTipo: e.entidadTipo ?? null, entidadId: e.entidadId ?? null });
+              },
+            },
+          );
+          correosDeRespaldo += resumen.correosEncolados;
+        }
+        // Un webhook solo de statuses no toca el ledger de entrada ni el turno del agente.
+        if (incomingMessages.length === 0) continue;
         processedAny = true;
         const phoneNumberIdOfBatch = batch.phoneNumberId;
 
@@ -132,6 +163,10 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
                 },
               }
             : undefined;
+          // Autopiloto 2: BAJA / ALTO tambien REVOCA el consentimiento de marketing de ese telefono en esta organizacion y mata los mensajes de campana
+          // aun pendientes (la lista de supresion de plataforma, de abajo, ya los frena en el despachador). Best-effort con SAVEPOINT: base sin la 052 ->
+          // no hace nada; nunca altera el turno ni la respuesta a Meta.
+          if (esPalabraBaja(message.body)) await revocarMarketingPorTelefono(db, organizationId, `+${message.from}`);
           // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva. No pasa al agente.
           const atendida = await procesarBajaOAlta(db, {
             telefono: `+${message.from}`,
@@ -150,9 +185,9 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             .runWithRowSavepoint(async () => (await resolveAgentConfig(repo, organizationId, channel?.propertyId ?? null)).replyDebounceSeconds ?? 0)
             .catch(() => 0);
           if (esperaSegundos > 0) {
-            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body, ...(transcripcion ? { transcripcion } : {}) });
+            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body, ...(transcripcion ? { transcripcion } : {}), ...(message.botonId ? { botonId: message.botonId } : {}) });
             if (recepcion.estado === "responder") {
-              diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos });
+              diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos, ...(message.recibidoEnMs !== undefined ? { recibidoEnMs: message.recibidoEnMs } : {}) });
             } else if (recepcion.estado === "fallo") {
               hadRetryableFailure = true;
             }
@@ -164,6 +199,9 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             phone: `+${message.from}`,
             body: message.body,
             ...(transcripcion ? { transcripcion } : {}),
+            // B03: toque a «Confirmar pedido» / «Cambiar algo» (id atado a un resumen) y cuando lo envio el cliente (ventana de 24 h de los botones).
+            ...(message.botonId ? { botonId: message.botonId } : {}),
+            ...(message.recibidoEnMs !== undefined ? { recibidoEnMs: message.recibidoEnMs } : {}),
             phoneNumberId: phoneNumberIdOfBatch,
             propertyId: channel?.propertyId ?? null,
             // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
@@ -190,7 +228,10 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         }
       }
       // Nada que procesar (sin mensajes de texto validos o ningun numero reconocido): ack silencioso.
-      if (!processedAny) return { ack: true as const };
+      if (!processedAny) {
+        if (correosDeRespaldo > 0) await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+        return { ack: true as const };
+      }
 
       // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
       // best-effort que citas/whatsapp.ts, ver comentario de cabecera de
@@ -229,6 +270,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               handoffGate: deps.handoffGate?.(db),
               finFuncionMs: inicioMs + FUNCION_MAX_MS,
               reloj: deps.relojMs ?? Date.now,
+              ...(d.recibidoEnMs !== undefined ? { recibidoEnMs: d.recibidoEnMs } : {}),
             });
             if (outcome.retryable) hayReintento = true;
           }

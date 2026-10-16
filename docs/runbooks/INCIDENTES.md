@@ -58,6 +58,10 @@ Los agentes de código **no** aplican migraciones a la base real, no tocan la co
 - **Exposición de datos personales**: además de lo anterior, evalúa el aviso a los titulares y a la autoridad según corresponda (ver `docs/PRIVACIDAD-PLATAFORMA.md` y consulta legal); no lo decide un agente.
 - **Repo público**: describe el fallo como disponibilidad o defensa en profundidad, sin receta de explotación, hasta que el arreglo esté desplegado.
 
+## 5b. Runbooks por sistema
+
+- Agente de restaurantes (WhatsApp y voz): pedidos duplicados, WhatsApp atrasado, proveedor de IA lento, agente callado, releer la config tras cambiarla y rotación del token de Meta en `docs/runbooks/RESTAURANTES-AGENTE.md`.
+
 ## 6. Postmortem (sin culpas, máx. una página)
 
 Plantilla, en el wiki y (si no revela nada sensible) como nota en `docs/`:

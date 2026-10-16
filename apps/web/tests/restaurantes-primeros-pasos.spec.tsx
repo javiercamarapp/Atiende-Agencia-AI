@@ -63,6 +63,21 @@ describe("fetchOnboarding", () => {
 });
 
 describe("RestaurantesPrimerosPasosPage", () => {
+  // QA-restaurantes-R1-viaje-13: un punto en "Listo" no muestra "Falta en: <sucursales inactivas>".
+  it("un punto 'hecho' con faltantes (sucursales inactivas) no pinta 'Falta en:'", async () => {
+    const checklist = { ...CHECKLIST, items: [{ ...CHECKLIST.items[0]!, id: "sucursales", titulo: "Sucursales activas", detalle: "1 sucursal(es) activa(s) de 2 registrada(s) (inactivas: Vieja).", faltantes: ["Vieja"] }] };
+    fetchMock.mockResolvedValue(json(checklist));
+    rendered = renderComponent(
+      <MemoryRouter>
+        <RestaurantesPrimerosPasosPage {...CTX} />
+      </MemoryRouter>,
+    );
+    await esperar();
+    const t = rendered.container.textContent ?? "";
+    expect(t).toContain("inactivas: Vieja");
+    expect(t).not.toContain("Falta en:");
+  });
+
   it("muestra el estado real: listo/parcial/pendiente/tercero, faltantes, responsable y enlace a la pantalla", async () => {
     fetchMock.mockResolvedValue(json(CHECKLIST));
     rendered = renderComponent(

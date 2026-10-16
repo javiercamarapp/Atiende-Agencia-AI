@@ -1,7 +1,7 @@
 // R-02 -- asignacion de sucursal por cercania en km (Haversine) con zonas conocidas como ajuste.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { assignBranch, rankBranchesByKm } from "../src/branch-assignment.ts";
+import { assignBranch, RADIO_REPARTO_POR_OMISION_KM, rankBranchesByKm } from "../src/branch-assignment.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { OrderValidationError } from "../src/errors.ts";
 import type { Branch } from "../src/types.ts";
@@ -79,13 +79,37 @@ describe("assignBranch -- coordenadas", () => {
     await expect(assignBranch(repo, { organizationId, ...coords })).rejects.toBeInstanceOf(OrderValidationError);
   });
 
+  // QA-PM-R6 (T7-041): el rechazo le dice al modelo que NO repita las mismas coordenadas (antes repetia hasta agotar vueltas y respondia «problema tecnico»).
+  it.each([["lng -614100", { lat: 21.0211, lng: -614100 }], ["lat 91", { lat: 91, lng: -89.6 }]])("el error de coordenadas invalidas (%s) es accionable: pide la ubicacion o la colonia", async (_n, coords) => {
+    const { repo, organizationId } = seed();
+    await expect(assignBranch(repo, { organizationId, ...coords })).rejects.toThrow(/NO las repita.*colonia/s);
+  });
+
   it("los polos y la fecha internacional no rompen el calculo", async () => {
     const { repo, organizationId } = seed();
     for (const [lat, lng] of [[90, 0], [-90, 180], [0, -180]] as const) {
       const r = await assignBranch(repo, { organizationId, lat, lng });
-      expect(r.estado).toBe("asignada");
-      if (r.estado === "asignada") expect(Number.isFinite(r.distanceKm)).toBe(true);
+      // Los polos quedan a miles de km: con el tope duro de reparto son `fuera_de_zona`, pero el calculo no se rompe (distancia finita).
+      expect(["asignada", "fuera_de_zona"]).toContain(r.estado);
+      if (r.estado === "asignada" || r.estado === "fuera_de_zona") expect(Number.isFinite(r.distanceKm)).toBe(true);
     }
+  });
+
+  it("QA-PM-R2-whatsapp-08: un pin a 28.8 km (Progreso) es fuera_de_zona aunque el modelo mande max_km 500 o nada", async () => {
+    const { repo, organizationId } = seed();
+    const progreso = { lat: 21.2817, lng: -89.665 };
+    for (const maxKm of [undefined, 500, 100]) {
+      const r = await assignBranch(repo, { organizationId, ...progreso, ...(maxKm === undefined ? {} : { maxKm }) });
+      expect(r.estado).toBe("fuera_de_zona");
+      if (r.estado === "fuera_de_zona") expect(r.maxKm).toBe(RADIO_REPARTO_POR_OMISION_KM);
+    }
+  });
+
+  it("el modelo puede BAJAR el radio pero no subirlo", async () => {
+    const { repo, organizationId } = seed();
+    const punto = { lat: 21.0156, lng: -89.5882 };
+    expect((await assignBranch(repo, { organizationId, ...punto, maxKm: 0.5 })).estado).toBe("fuera_de_zona");
+    expect((await assignBranch(repo, { organizationId, ...punto })).estado).toBe("asignada");
   });
 });
 
@@ -95,7 +119,7 @@ describe("assignBranch -- radio maximo (fuera de zona)", () => {
     const punto = { lat: 21.0156, lng: -89.5882 }; // ~1.04 km al este de Altabrisa
     const base = await assignBranch(repo, { organizationId, ...punto });
     expect(base.estado).toBe("asignada");
-    const exacto = base.estado === "asignada" ? base.distanceKm : 0;
+    const exacto = base.estado === "asignada" ? (base.distanceKm ?? 0) : 0;
     // maxKm mayor que la distancia real: asigna.
     expect(await assignBranch(repo, { organizationId, ...punto, maxKm: exacto + 0.5 })).toMatchObject({ estado: "asignada" });
     // maxKm menor que la distancia real: fuera de zona, con la sucursal mas cercana informada.
@@ -145,7 +169,7 @@ describe("assignBranch -- zonas conocidas", () => {
     expect(r).toMatchObject({ branchSlug: "prol-montejo", ajustePorZona: true });
   });
 
-  it("si la sucursal que cubre la zona no tiene coordenadas, cae a km puros (no se queda sin sucursal)", async () => {
+  it("si la sucursal que cubre la zona no tiene coordenadas, la cobertura del dueño MANDA (import-orig-01: override sobre la geometria; Mulsay -> Pensiones)", async () => {
     const { repo, organizationId } = seed();
     const sinCoords = randomUUID();
     repo.seedBranch({ propertyId: sinCoords, organizationId, name: "Pensiones", slug: "pensiones", status: "active", phone: null, address: null, lat: null, lng: null });
@@ -153,8 +177,8 @@ describe("assignBranch -- zonas conocidas", () => {
     const zone = (await repo.listKnownZones(organizationId))[0]!;
     repo.seedBranchDeliveryZones(sinCoords, [zone.id]);
     const r = await assignBranch(repo, { organizationId, colonia: "San Damián" });
-    expect(r.estado).toBe("asignada");
-    if (r.estado === "asignada") expect(r.branchSlug).not.toBe("pensiones");
+    // Antes (R-02) caia a km puros y asignaba otra sucursal; ahora la cobertura explicita del dueño gana aunque no se pueda medir (sin distancia inventada).
+    expect(r).toMatchObject({ estado: "asignada", branchSlug: "pensiones", distanceKm: null, origen: "cobertura_dueno" });
   });
 
   it("coordenadas + colonia: las coordenadas fijan el punto, la zona solo ajusta", async () => {
@@ -177,5 +201,51 @@ describe("assignBranch -- zonas conocidas", () => {
     const { repo, organizationId } = seed();
     repo.seedKnownZone({ organizationId: randomUUID(), name: "Vista Alegre", lat: 21.0152, lng: -89.5995 });
     expect(await assignBranch(repo, { organizationId, colonia: "Vista Alegre" })).toMatchObject({ estado: "no_reconocida" });
+  });
+});
+
+describe("colonia reconocida SIN coordenadas (migracion 056, colonias del piloto original)", () => {
+  async function mundoColonias() {
+    const repo = new InMemoryRestaurantesRepository();
+    const organizationId = randomUUID();
+    const t1 = randomUUID();
+    const t7 = randomUUID();
+    repo.seedOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM" });
+    repo.seedBranch({ propertyId: t1, organizationId, name: "Prolongación Montejo", slug: "prol-montejo", status: "active", phone: null, address: null, lat: 21.028, lng: -89.61 });
+    repo.seedBranch({ propertyId: t7, organizationId, name: "García Lavín", slug: "garcia-lavin", status: "active", phone: null, address: null, lat: 21.0205, lng: -89.615 });
+    const temozon = randomUUID();
+    const ambigua = randomUUID();
+    repo.seedKnownZone({ id: temozon, organizationId, name: "Temozón Norte", lat: null, lng: null });
+    repo.seedKnownZone({ id: ambigua, organizationId, name: "Alcalá Martín", lat: null, lng: null });
+    repo.seedBranchDeliveryZones(t7, [temozon]);
+    return { repo, organizationId, t1, t7, temozon, ambigua };
+  }
+
+  it("la sucursal sale de la cobertura cargada; sin distancia inventada", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await assignBranch(repo, { organizationId, colonia: "temozon norte" })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", distanceKm: null, via: "zona", recognizedZoneName: "Temozón Norte" });
+  });
+
+  // import-orig-01 (hallazgos c y f): ya NO es `no_reconocida` -- la colonia SI esta cargada; el detalle de cada caso vive en tests/sucursal-mas-cercana-8km.spec.ts.
+  it("colonia sin ninguna sucursal que la cubra ni referencia: no se adivina; es `sugerida` por confirmar (antes no_reconocida)", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await assignBranch(repo, { organizationId, colonia: "Alcalá Martín" })).toMatchObject({ estado: "sugerida", reparto: "por_confirmar", sugerida: null });
+  });
+
+  it("cubierta por dos sucursales sin referencia: orden ESTABLE por slug, no por orden de listado ni no_reconocida (antes devolvia no_reconocida)", async () => {
+    const { repo, organizationId, t1, temozon } = await mundoColonias();
+    repo.seedBranchDeliveryZones(t1, [temozon]);
+    expect(await assignBranch(repo, { organizationId, colonia: "Temozón Norte" })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", dobleCobertura: true });
+  });
+
+  it("con pin: el punto es el pin (via coordenadas) y la cobertura de la colonia sigue ganando sobre la geometria pura", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await assignBranch(repo, { organizationId, lat: 21.0281, lng: -89.6101 })).toMatchObject({ estado: "asignada", branchSlug: "prol-montejo", via: "coordenadas" });
+    expect(await assignBranch(repo, { organizationId, colonia: "Temozón Norte", lat: 21.0281, lng: -89.6101 })).toMatchObject({ estado: "asignada", branchSlug: "garcia-lavin", via: "coordenadas", ajustePorZona: true });
+  });
+
+  it("findNearestBranch (buscar por colonia) ignora la colonia sin coordenadas: silencio, nunca una sucursal inventada", async () => {
+    const { repo, organizationId } = await mundoColonias();
+    expect(await repo.findNearestBranchByColonia(organizationId, "Temozón Norte")).toBeNull();
   });
 });

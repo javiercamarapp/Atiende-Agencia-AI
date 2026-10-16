@@ -4,12 +4,16 @@
 // ZIP del expediente SÍ se escriben a disco real (bajo un directorio temporal
 // por defecto) — igual que el origen, que nunca modeló el ZIP como un blob de
 // base de datos (ver storage.ts).
+import { AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT } from "./audit-trail.ts";
+import type { AuditTrailEntry, AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit-trail.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { BovedaRevisionNoDisponibleError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, RequirementAssigneeNotFoundError, TenderResolutionRejectedError } from "./errors.ts";
+import { conflictStableKey, requirementStableKey, sha256OfBytes } from "./document-vault.ts";
+import type { TenderDocumentRecord, TenderDocumentWithPages } from "./document-vault.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -22,6 +26,10 @@ import type {
   CompanyExperienceUpdateInput,
   CompanySignerCreateInput,
   CompanySignerUpdateInput,
+  CompanyItemKind,
+  CompanyItemDecision,
+  CompanyItemDecisionInput,
+  CompanyItemDecisionOutcome,
   GoNoGoDecisionCreateInput,
   IdempotencyParams,
   IdempotentResult,
@@ -29,7 +37,20 @@ import type {
   LicitacionesTenantConfigPatch,
   LicitacionesTenantConfigRecord,
   MatchingProfileUpsertInput,
+  DetectedRequirementConflict,
+  ProposalCommentKind,
+  ProposalCommentRecord,
+  ProposalCommentScope,
+  ProposalSectionRecord,
+  RequirementConflictRecord,
+  RequirementItemDetail,
+  RequirementItemPatch,
+  RequirementUpsertItem,
+  RequirementUpsertResult,
+  SectionEditResult,
+  TenderAuditAction,
   TenderAuditLogPage,
+  TenderDocumentUploadInput,
   TenderResolutionCreateInput,
   TenderPage,
   TenderUpsertInput,
@@ -73,6 +94,7 @@ import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import { isoNow, sha256Hex } from "./types.ts";
+import { computeCompanyProfileHash } from "./company-profile-hash.ts";
 import { ApprovalWorkflow } from "./approval-workflow.ts";
 import type { Approval, ApprovalScope, ChangeDetected, ExpedienteApprovalStage } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
@@ -135,6 +157,12 @@ class KeyedMutex {
   }
 }
 
+/** Detalle con valores neutros para un requisito sin los campos de la matriz estable (migracion 037). */
+function toNeutralDetail(i: RequirementItemRecord): RequirementItemDetail {
+  const d = i as Partial<RequirementItemDetail> & RequirementItemRecord;
+  return { ...i, stableKey: d.stableKey ?? null, assignedTo: d.assignedTo ?? null, disqualifying: d.disqualifying ?? false, manuallyEditedAt: d.manuallyEditedAt ?? null, retiredAt: d.retiredAt ?? null, retiredInVersion: d.retiredInVersion ?? null };
+}
+
 function hashBody(body: unknown): string {
   return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
 }
@@ -152,6 +180,9 @@ interface StoredProposalSection {
   version: number;
   content: string;
 }
+
+type CompanyItemStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
+type CompanyDecidable = { id: string; approvalStatus: CompanyItemStatus; proposedBy?: string | null; approvedBy?: string | null; approvedAt?: string | null };
 
 export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly storageDir: string;
@@ -171,7 +202,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly sectionAuthors = new Map<string, Map<string, Set<string>>>(); // proposalId -> scopeRef("seccion:<key>") -> actorIds (AE-11)
   private readonly approvalChanges = new Map<string, ChangeDetected[]>(); // proposalId -> cambios detectados (historial)
   private readonly proposalVersions = new Map<string, PersistedProposalVersion[]>(); // proposalId -> versiones (historial, ordenado)
-  private readonly requirementItems = new Map<string, RequirementItemRecord[]>(); // `${orgId}:${tenderId}` -> items (reemplazo completo en cada extracción)
+  private readonly requirementItems = new Map<string, RequirementItemDetail[]>(); // `${orgId}:${tenderId}` -> items (activos y retirados)
+  private readonly tenderDocuments = new Map<string, (TenderDocumentRecord & { pages: readonly { page: number; text: string }[] | null; bytes: Uint8Array; organizationId: string })[]>(); // `${orgId}:${tenderId}` -> documentos (todas las versiones)
+  private readonly requirementConflicts = new Map<string, RequirementConflictRecord[]>(); // `${orgId}:${tenderId}` -> conflictos
+  private readonly conflictKeys = new Map<string, string>(); // conflictId -> huella
+  private readonly proposalComments = new Map<string, ProposalCommentRecord[]>(); // proposalId -> comentarios (solo de adicion)
+  private readonly orgMembers = new Map<string, Map<string, { nombre: string; rol: string }>>(); // orgId -> userId -> datos (para validar asignaciones)
+  /** Solo pruebas: simula una base SIN la migracion 037. */
+  boveda037 = true;
   private readonly fulfillmentMappings = new Map<string, Map<string, RequirementFulfillmentMappingRecord>>(); // orgId -> topicKey -> mapping
   private readonly packageManifests = new Map<string, PackageManifestRecord[]>(); // proposalId -> manifests (historial)
   private readonly submissions = new Map<string, SubmissionRecord[]>(); // proposalId -> submissions (historial)
@@ -612,6 +650,61 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   /** Solo pruebas/inspección -- no forma parte de `LicitacionesRepository` (ningún endpoint de Fase 3 la expone, ver diseño §6/§9). */
+  // ---- L-P3-17: bitacora de escrituras (misma semantica que `licitaciones.audit_trail`) ----
+  /** Solo para pruebas del doble: `false` simula la base sin la migracion 038. */
+  auditTrailAvailable = true;
+  private readonly auditTrail: (AuditTrailEntry & { organizationId: string })[] = [];
+  private auditTrailSeq = 0;
+
+  async appendAuditoria(organizationId: string, entry: AuditTrailInput): Promise<boolean> {
+    if (!this.auditTrailAvailable) return false;
+    this.auditTrailSeq += 1;
+    this.auditTrail.push({
+      organizationId,
+      id: randomUUID(),
+      seq: String(this.auditTrailSeq),
+      entity: entry.entity,
+      entityId: entry.entityId,
+      action: entry.action,
+      before: entry.before ?? null,
+      after: entry.after ?? null,
+      actorId: entry.actorId,
+      correlationId: entry.correlationId,
+      createdAt: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  async findTenderCorrelationId(organizationId: string, tenderId: string): Promise<string | null> {
+    if (!this.auditTrailAvailable) return null;
+    return this.auditTrail.find((r) => r.organizationId === organizationId && r.entity === "convocatoria" && r.entityId === tenderId && r.correlationId !== null)?.correlationId ?? null;
+  }
+
+  async listAuditoria(organizationId: string, filters: AuditTrailFilters, opts: { readonly limit?: number; readonly cursor?: string | null; readonly orden?: "asc" | "desc" } = {}): Promise<AuditTrailPage> {
+    if (!this.auditTrailAvailable) return { items: [], nextCursor: null, available: false };
+    const limit = Math.min(Math.max(Math.trunc(opts.limit ?? AUDIT_DEFAULT_LIMIT), 1), AUDIT_MAX_LIMIT);
+    const asc = opts.orden === "asc";
+    const cursor = opts.cursor && /^\d{1,18}$/u.test(opts.cursor) ? Number(opts.cursor) : null;
+    const origenes = filters.tenderId
+      ? this.auditTrail.filter((r) => r.organizationId === organizationId && r.entity === "convocatoria" && r.entityId === filters.tenderId && r.correlationId !== null).map((r) => r.correlationId as string)
+      : [];
+    let rows = this.auditTrail.filter(
+      (r) =>
+        r.organizationId === organizationId &&
+        (!filters.entity || r.entity === filters.entity) &&
+        (!filters.entityId || r.entityId === filters.entityId) &&
+        (!filters.actorId || r.actorId === filters.actorId) &&
+        (!filters.correlationId || r.correlationId === filters.correlationId) &&
+        (!filters.tenderId || r.entityId === filters.tenderId || (origenes.length > 0 && r.correlationId !== null && origenes.includes(r.correlationId))) &&
+        (!filters.desde || r.createdAt >= new Date(filters.desde).toISOString()) &&
+        (!filters.hasta || r.createdAt <= new Date(filters.hasta).toISOString()) &&
+        (cursor === null || (asc ? Number(r.seq) > cursor : Number(r.seq) < cursor)),
+    );
+    rows = rows.sort((a, b) => (asc ? Number(a.seq) - Number(b.seq) : Number(b.seq) - Number(a.seq)));
+    const page = rows.slice(0, limit).map(({ organizationId: _o, ...rest }) => rest);
+    return { items: page, nextCursor: rows.length > limit ? (page[page.length - 1]?.seq ?? null) : null, available: true };
+  }
+
   listTenderAuditLogForTests(tenderId: string): readonly { action: string; actorId: string; createdAt: string }[] {
     return this.tenderAuditLog.get(tenderId) ?? [];
   }
@@ -641,6 +734,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     let created = 0;
     let updated = 0;
     const tenders: TenderRecord[] = [];
+    const createdIds: string[] = [];
     const nowIso = new Date().toISOString();
 
     for (const rec of records) {
@@ -686,10 +780,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       this.tenders.set(createdTender.id, createdTender);
       this.tenderBySourceExternalKey.set(key, createdTender.id);
       tenders.push(createdTender);
+      createdIds.push(createdTender.id);
       created += 1;
     }
 
-    return { created, updated, tenders };
+    return { created, updated, tenders, createdIds };
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {
@@ -906,8 +1001,31 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // porqué -- sin esto, toda propuesta que dependiera de un dato ausente
   // quedaba PENDIENTE para siempre, sin ningún camino real para capturarlo). ----
 
+  /**
+   * Regla DB-03 (paridad con el trigger de la migración 036): si el patch cambia algún DATO, el registro vuelve a
+   * 'pendiente_aprobacion', se limpian `approvedBy`/`approvedAt` y `proposedBy` pasa a quien editó.
+   */
+  private editCompanyRecord<T extends { approvalStatus: CompanyItemStatus; proposedBy?: string | null; approvedBy?: string | null; approvedAt?: string | null }>(
+    existing: T,
+    input: { readonly actorId?: string },
+  ): T {
+    const { actorId, ...patch } = input as { actorId?: string } & Record<string, unknown>;
+    const changed = Object.entries(patch).some(([key, value]) => value !== undefined && (existing as Record<string, unknown>)[key] !== value);
+    const merged = { ...existing } as T;
+    for (const [key, value] of Object.entries(patch)) if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+    if (!changed) return merged;
+    return { ...merged, approvalStatus: "pendiente_aprobacion", approvedBy: null, approvedAt: null, proposedBy: actorId ?? existing.proposedBy ?? null };
+  }
+
+  private newCompanyAuthorship(actorId: string | undefined): { proposedBy: string | null; approvedBy: null; approvedAt: null } {
+    return { proposedBy: actorId ?? null, approvedBy: null, approvedAt: null };
+  }
+
+  /** Bitácora de decisiones (paridad con `licitaciones.company_data_audit`); solo para pruebas. */
+  readonly companyDataAudit: { organizationId: string; kind: CompanyItemKind; itemId: string; decision: CompanyItemDecision; actorId: string; createdAt: string }[] = [];
+
   async createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord> {
-    const record: CompanyDocumentRecord = { id: randomUUID(), type: input.type, label: input.label, expiresAt: input.expiresAt, approvalStatus: input.approvalStatus ?? "pendiente_aprobacion" };
+    const record: CompanyDocumentRecord = { id: randomUUID(), type: input.type, label: input.label, expiresAt: input.expiresAt, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     const list = this.companyDocuments.get(organizationId) ?? [];
     this.companyDocuments.set(organizationId, [...list, record]);
     return record;
@@ -917,7 +1035,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companyDocuments.get(organizationId) ?? [];
     const index = list.findIndex((d) => d.id === documentId);
     if (index === -1) throw new CompanyDataNotFoundError("Documento de empresa", documentId);
-    const updated: CompanyDocumentRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companyDocuments.set(organizationId, next);
@@ -932,7 +1050,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       concept: input.concept,
       unitPrice: input.unitPrice,
       currency: "MXN",
-      approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
+      approvalStatus: "pendiente_aprobacion",
+      ...this.newCompanyAuthorship(input.actorId),
       // Paridad con `PostgresLicitacionesRepository.createApprovedRate` (ver su
       // comentario de cabecera): el default de `validFrom` es el día de NEGOCIO
       // de ESTA organización (`this.todayForOrg`, que resuelve `resolverZonaHorariaNegocio`
@@ -959,7 +1078,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.approvedRates.get(organizationId) ?? [];
     const index = list.findIndex((r) => r.id === rateId);
     if (index === -1) throw new CompanyDataNotFoundError("Tarifa aprobada", rateId);
-    const updated: ApprovedRateRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.approvedRates.set(organizationId, next);
@@ -978,7 +1097,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       name: input.name,
       description: input.description,
       evidenceDocId: input.evidenceDocId ?? null,
-      approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
+      approvalStatus: "pendiente_aprobacion",
+      ...this.newCompanyAuthorship(input.actorId),
     };
     this.companyCapabilities.set(organizationId, [...list, record]);
     return record;
@@ -988,7 +1108,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companyCapabilities.get(organizationId) ?? [];
     const index = list.findIndex((c) => c.id === capabilityId);
     if (index === -1) throw new CompanyDataNotFoundError("Capacidad", capabilityId);
-    const updated: CompanyCapabilityRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companyCapabilities.set(organizationId, next);
@@ -996,7 +1116,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   async createCompanyExperience(organizationId: string, input: CompanyExperienceCreateInput): Promise<CompanyExperienceItemRecord> {
-    const record: CompanyExperienceItemRecord = { id: randomUUID(), description: input.description, evidenceDocId: input.evidenceDocId, approvalStatus: input.approvalStatus ?? "pendiente_aprobacion" };
+    const record: CompanyExperienceItemRecord = { id: randomUUID(), description: input.description, evidenceDocId: input.evidenceDocId, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     const list = this.companyExperience.get(organizationId) ?? [];
     this.companyExperience.set(organizationId, [...list, record]);
     return record;
@@ -1006,7 +1126,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companyExperience.get(organizationId) ?? [];
     const index = list.findIndex((e) => e.id === experienceId);
     if (index === -1) throw new CompanyDataNotFoundError("Experiencia", experienceId);
-    const updated: CompanyExperienceItemRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companyExperience.set(organizationId, next);
@@ -1016,7 +1136,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
     const list = this.companySigners.get(organizationId) ?? [];
     if (list.some((s) => s.role === input.role)) throw new CompanyDataDuplicateKeyError("firmante", input.role);
-    const record: CompanySignerRecord = { id: randomUUID(), name: input.name, role: input.role, authorized: input.authorized ?? false };
+    const record: CompanySignerRecord = { id: randomUUID(), name: input.name, role: input.role, authorized: input.authorized ?? false, approvalStatus: "pendiente_aprobacion", ...this.newCompanyAuthorship(input.actorId) };
     this.companySigners.set(organizationId, [...list, record]);
     return record;
   }
@@ -1025,11 +1145,35 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.companySigners.get(organizationId) ?? [];
     const index = list.findIndex((s) => s.id === signerId);
     if (index === -1) throw new CompanyDataNotFoundError("Firmante", signerId);
-    const updated: CompanySignerRecord = { ...list[index]!, ...input };
+    const updated = this.editCompanyRecord(list[index]!, input);
     const next = [...list];
     next[index] = updated;
     this.companySigners.set(organizationId, next);
     return updated;
+  }
+
+  async decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome> {
+    const store = {
+      rate: this.approvedRates,
+      document: this.companyDocuments,
+      capability: this.companyCapabilities,
+      experience: this.companyExperience,
+      signer: this.companySigners,
+    }[input.kind] as Map<string, (CompanyDecidable)[]>;
+    const decisionRoles = input.kind === "rate" ? ["owner", "admin"] : ["owner", "admin", "analyst"];
+    if (!decisionRoles.includes(input.actorRole)) return "rol";
+    const list = store.get(organizationId) ?? [];
+    const index = list.findIndex((r) => r.id === input.itemId);
+    if (index === -1) return "not_found";
+    const current = list[index]!;
+    if (current.approvalStatus !== "pendiente_aprobacion") return "conflict";
+    if (current.proposedBy === input.actorId) return "autor";
+    const now = isoNow();
+    const next = [...list];
+    next[index] = { ...current, approvalStatus: input.decision, approvedBy: input.actorId, approvedAt: now };
+    store.set(organizationId, next);
+    this.companyDataAudit.push({ organizationId, kind: input.kind, itemId: input.itemId, decision: input.decision, actorId: input.actorId, createdAt: now });
+    return "ok";
   }
 
   // ---- Flujo 2: propuesta económica ----
@@ -1123,10 +1267,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
     const raw: ExpedienteInputs = {
       tenderVersionHash: sha256Hex({ updatedAt: tender.updatedAt, submissionDeadline: tender.submissionDeadline }),
-      // Fase 1 §3.3: sin `company_profiles` portado, hash trivial fijo (no
-      // inventa datos: simplemente no distingue perfiles de empresa entre sí
-      // todavía — limitación conocida y documentada, no un dato fabricado).
-      companyProfileHash: sha256Hex("licitaciones:fase1:company-profile-fijo"),
+      // AE-08 / REQ-162: hash REAL de todo el perfil (documentos, capacidades, experiencia, firmantes y su estado de
+      // aprobación). Cambiar cualquiera de ellos invalida la aprobación del expediente.
+      companyProfileHash: computeCompanyProfileHash({
+        documents,
+        capabilities: this.companyCapabilities.get(organizationId) ?? [],
+        experience: this.companyExperience.get(organizationId) ?? [],
+        signers: this.companySigners.get(organizationId) ?? [],
+      }),
       companyDocuments: usedCompanyDocumentIds.map((id) => {
         const doc = documents.find((d) => d.id === id);
         return { documentId: id, hash: sha256Hex(doc ?? null), vigenteHasta: doc?.expiresAt ?? null };
@@ -1145,11 +1293,319 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 
   async replaceRequirementItems(organizationId: string, tenderId: string, items: readonly RequirementItemRecord[]): Promise<void> {
-    this.requirementItems.set(`${organizationId}:${tenderId}`, [...items]);
+    this.requirementItems.set(`${organizationId}:${tenderId}`, items.map((i) => toNeutralDetail(i)));
   }
 
   async listRequirementItems(organizationId: string, tenderId: string): Promise<readonly RequirementItemRecord[]> {
-    return this.requirementItems.get(`${organizationId}:${tenderId}`) ?? [];
+    return (this.requirementItems.get(`${organizationId}:${tenderId}`) ?? []).filter((i) => i.retiredAt === null);
+  }
+
+  /** Solo pruebas: registra a `userId` como miembro de `organizationId` (valida `assignedTo`). */
+  seedOrganizationMember(organizationId: string, userId: string, nombre = "Miembro", rol = "writer"): void {
+    const map = this.orgMembers.get(organizationId) ?? new Map<string, { nombre: string; rol: string }>();
+    map.set(userId, { nombre, rol });
+    this.orgMembers.set(organizationId, map);
+  }
+
+  async listRequirementAssignees(organizationId: string): Promise<readonly { userId: string; nombre: string; rol: string }[]> {
+    return [...(this.orgMembers.get(organizationId) ?? new Map()).entries()].map(([userId, v]) => ({ userId, nombre: v.nombre, rol: v.rol }));
+  }
+
+  async recordTenderAuditEvent(organizationId: string, tenderId: string, action: TenderAuditAction, actorId: string): Promise<void> {
+    if (!this.boveda037) return;
+    this.recordTenderAudit(organizationId, tenderId, action, actorId);
+  }
+
+  // ---- paridad3: boveda de documentos ----
+
+  async createTenderDocument(organizationId: string, tenderId: string, input: TenderDocumentUploadInput): Promise<TenderDocumentRecord> {
+    if (!this.boveda037) throw new BovedaRevisionNoDisponibleError("documentos");
+    const key = `${organizationId}:${tenderId}`;
+    const list = this.tenderDocuments.get(key) ?? [];
+    let lineageId: string = randomUUID();
+    let version = 1;
+    if (input.replacesDocumentId) {
+      const previous = list.find((d) => d.id === input.replacesDocumentId);
+      if (!previous) throw new Error("El documento que se reemplaza no existe en esta convocatoria.");
+      lineageId = previous.lineageId;
+      version = Math.max(...list.filter((d) => d.lineageId === lineageId).map((d) => d.version)) + 1;
+    }
+    const record: TenderDocumentRecord & { pages: readonly { page: number; text: string }[] | null; bytes: Uint8Array; organizationId: string } = {
+      id: randomUUID(),
+      organizationId,
+      tenderId,
+      documentType: input.documentType,
+      title: input.title,
+      filename: input.filename,
+      mimeType: input.mimeType,
+      sha256: sha256OfBytes(input.buffer),
+      sizeBytes: input.buffer.byteLength,
+      pageCount: input.pageCount,
+      extractionStatus: input.extractionStatus,
+      extractionDetail: input.extractionDetail,
+      lineageId,
+      version,
+      latest: true,
+      uploadedBy: input.actorId,
+      createdAt: new Date().toISOString(),
+      pages: input.pages ? input.pages.map((p) => ({ page: p.page, text: p.text })) : null,
+      bytes: new Uint8Array(input.buffer),
+    };
+    list.push(record);
+    this.tenderDocuments.set(key, list);
+    return this.publicDocument(list, record);
+  }
+
+  private publicDocument(list: readonly { lineageId: string; version: number }[], d: TenderDocumentRecord & { pages?: unknown; bytes?: unknown; organizationId?: string }): TenderDocumentRecord {
+    const maxVersion = Math.max(...list.filter((x) => x.lineageId === d.lineageId).map((x) => x.version));
+    const { pages: _pages, bytes: _bytes, organizationId: _org, ...rest } = d as TenderDocumentRecord & { pages?: unknown; bytes?: unknown; organizationId?: string };
+    return { ...rest, latest: d.version === maxVersion };
+  }
+
+  async listTenderDocuments(organizationId: string, tenderId: string): Promise<{ disponible: boolean; documents: readonly TenderDocumentRecord[] }> {
+    if (!this.boveda037) return { disponible: false, documents: [] };
+    const list = this.tenderDocuments.get(`${organizationId}:${tenderId}`) ?? [];
+    return { disponible: true, documents: [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((d) => this.publicDocument(list, d)) };
+  }
+
+  async getTenderDocument(organizationId: string, tenderId: string, documentId: string): Promise<TenderDocumentWithPages | null> {
+    if (!this.boveda037) return null;
+    const list = this.tenderDocuments.get(`${organizationId}:${tenderId}`) ?? [];
+    const d = list.find((x) => x.id === documentId);
+    if (!d) return null;
+    return { ...this.publicDocument(list, d), pages: d.pages };
+  }
+
+  // ---- paridad3: matriz estable ----
+
+  async upsertRequirementItems(
+    organizationId: string,
+    tenderId: string,
+    items: readonly RequirementUpsertItem[],
+    opts: { actorId: string; scope: { lineageIds: readonly string[]; includeUnlinked: boolean }; retiredInVersion: number | null },
+  ): Promise<RequirementUpsertResult> {
+    const key = `${organizationId}:${tenderId}`;
+    if (!this.boveda037) {
+      const records = items.map((i) => ({ ...i, id: randomUUID() }));
+      await this.replaceRequirementItems(organizationId, tenderId, records);
+      const detailed = (this.requirementItems.get(key) ?? []).filter((i) => i.retiredAt === null);
+      const idByInputId: Record<string, string> = {};
+      items.forEach((i, idx) => { idByInputId[i.id] = records[idx]!.id; });
+      return { mode: "reemplazo", items: detailed, idByInputId, created: items.length, updated: 0, unchanged: 0, retired: 0 };
+    }
+    const stored = [...(this.requirementItems.get(key) ?? [])];
+    const docs = this.tenderDocuments.get(key) ?? [];
+    const lineageOfDocument = (documentId: string | null): string | null => (documentId ? (docs.find((d) => d.id === documentId)?.lineageId ?? null) : null);
+    const active = stored.filter((i) => i.retiredAt === null);
+    const byKey = new Map<string, RequirementItemDetail>();
+    for (const row of active) {
+      const k = row.stableKey ?? requirementStableKey({ documentRef: lineageOfDocument(row.documentId) ?? "sin-documento", topicKey: row.topicKey, page: row.page, clause: row.clause, text: row.text });
+      if (!byKey.has(k)) byKey.set(k, row);
+    }
+    const nowIso = new Date().toISOString();
+    const seen = new Set<string>();
+    const occurrences = new Map<string, number>();
+    const idByInputId: Record<string, string> = {};
+    let created = 0;
+    let updated = 0;
+    let unchanged = 0;
+    const next = new Map<string, RequirementItemDetail>(active.map((r) => [r.id, r]));
+    for (const item of items) {
+      const base = requirementStableKey({ documentRef: item.documentRef, topicKey: item.topicKey, page: item.page, clause: item.clause, text: item.text });
+      const n = (occurrences.get(base) ?? 0) + 1;
+      occurrences.set(base, n);
+      const k = n === 1 ? base : `${base}#${n}`;
+      const existing = byKey.get(k);
+      if (existing) {
+        seen.add(existing.id);
+        idByInputId[item.id] = existing.id;
+        const manual = existing.manuallyEditedAt !== null;
+        const merged: RequirementItemDetail = {
+          ...existing,
+          stableKey: k,
+          documentId: item.documentId ?? existing.documentId,
+          obligatoriedad: item.obligatoriedad,
+          requirementKind: item.requirementKind,
+          topicKey: item.topicKey,
+          requiredEvidence: item.requiredEvidence,
+          extractedBy: item.extractedBy,
+          page: item.page,
+          clause: item.clause,
+          deadline: item.deadline,
+          confidence: item.confidence,
+          responsibleRole: manual ? existing.responsibleRole : item.responsibleRole,
+          status: manual ? existing.status : item.status,
+        };
+        if (JSON.stringify(merged) === JSON.stringify(existing)) unchanged += 1;
+        else updated += 1;
+        next.set(existing.id, merged);
+      } else {
+        const id = randomUUID();
+        idByInputId[item.id] = id;
+        created += 1;
+        next.set(id, { ...toNeutralDetail({ ...item, id }), stableKey: k });
+        seen.add(id);
+      }
+    }
+    let retired = 0;
+    for (const row of active) {
+      if (seen.has(row.id)) continue;
+      const lineage = lineageOfDocument(row.documentId);
+      const inScope = lineage === null ? opts.scope.includeUnlinked : opts.scope.lineageIds.includes(lineage);
+      if (!inScope) continue;
+      next.set(row.id, { ...row, retiredAt: nowIso, retiredInVersion: opts.retiredInVersion });
+      retired += 1;
+    }
+    const retiredPrevious = stored.filter((i) => i.retiredAt !== null);
+    this.requirementItems.set(key, [...retiredPrevious, ...next.values()]);
+    return { mode: "estable", items: [...next.values()].filter((i) => i.retiredAt === null), idByInputId, created, updated, unchanged, retired };
+  }
+
+  async listRequirementMatrix(organizationId: string, tenderId: string, opts: { includeRetired: boolean }): Promise<{ migrated: boolean; items: readonly RequirementItemDetail[] }> {
+    const all = this.requirementItems.get(`${organizationId}:${tenderId}`) ?? [];
+    if (!this.boveda037) return { migrated: false, items: all.filter((i) => i.retiredAt === null).map((i) => toNeutralDetail(i)) };
+    return { migrated: true, items: opts.includeRetired ? all : all.filter((i) => i.retiredAt === null) };
+  }
+
+  async updateRequirementItem(organizationId: string, tenderId: string, itemId: string, patch: RequirementItemPatch, actorId: string): Promise<RequirementItemDetail | null> {
+    const key = `${organizationId}:${tenderId}`;
+    const list = this.requirementItems.get(key) ?? [];
+    const idx = list.findIndex((i) => i.id === itemId && i.retiredAt === null);
+    if (idx === -1) return null;
+    if (!this.boveda037 && (patch.assignedTo !== undefined || patch.disqualifying !== undefined)) throw new BovedaRevisionNoDisponibleError("matriz");
+    if (patch.assignedTo) {
+      if (!(this.orgMembers.get(organizationId)?.has(patch.assignedTo) ?? false)) throw new RequirementAssigneeNotFoundError();
+    }
+    const current = list[idx]!;
+    const updated: RequirementItemDetail = {
+      ...current,
+      ...(patch.responsibleRole !== undefined ? { responsibleRole: patch.responsibleRole } : {}),
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      ...(patch.assignedTo !== undefined ? { assignedTo: patch.assignedTo } : {}),
+      ...(patch.disqualifying !== undefined ? { disqualifying: patch.disqualifying } : {}),
+      ...(this.boveda037 ? { manuallyEditedAt: new Date().toISOString() } : {}),
+    };
+    void actorId;
+    list[idx] = updated;
+    return updated;
+  }
+
+  // ---- paridad3: conflictos persistidos ----
+
+  async syncRequirementConflicts(organizationId: string, tenderId: string, detected: readonly DetectedRequirementConflict[]): Promise<{ disponible: boolean; conflicts: readonly RequirementConflictRecord[] }> {
+    if (!this.boveda037) return { disponible: false, conflicts: [] };
+    const key = `${organizationId}:${tenderId}`;
+    const list = this.requirementConflicts.get(key) ?? [];
+    const nowIso = new Date().toISOString();
+    const detectedKeys = new Set<string>();
+    for (const d of detected) {
+      const huella = conflictStableKey(d.kind, d.topicKey, d.stableKeys);
+      detectedKeys.add(huella);
+      const existing = list.find((c) => this.conflictKeys.get(c.id) === huella);
+      if (existing) {
+        if (existing.status === "abierto") {
+          const i = list.indexOf(existing);
+          list[i] = { ...existing, description: d.description, itemIds: [...d.itemIds] };
+        }
+        continue;
+      }
+      const record: RequirementConflictRecord = { id: randomUUID(), tenderId, kind: d.kind, topicKey: d.topicKey, description: d.description, itemIds: [...d.itemIds], status: "abierto", resolutionNotes: null, resolvedBy: null, resolvedAt: null, createdAt: nowIso };
+      this.conflictKeys.set(record.id, huella);
+      list.push(record);
+    }
+    for (let i = 0; i < list.length; i += 1) {
+      const c = list[i]!;
+      if (c.status === "abierto" && !detectedKeys.has(this.conflictKeys.get(c.id) ?? "")) {
+        list[i] = { ...c, status: "resuelto", resolutionNotes: "Cierre automático: la última extracción ya no detecta este conflicto.", resolvedBy: null, resolvedAt: nowIso };
+      }
+    }
+    this.requirementConflicts.set(key, list);
+    this.reblockItems(key);
+    return { disponible: true, conflicts: [...list] };
+  }
+
+  /** Bloquea los requisitos con plazo en un conflicto abierto y desbloquea los que ya no estan en ninguno (salvo edicion manual). */
+  private reblockItems(key: string): void {
+    const open = (this.requirementConflicts.get(key) ?? []).filter((c) => c.status === "abierto");
+    const blocked = new Set(open.flatMap((c) => c.itemIds));
+    const items = this.requirementItems.get(key) ?? [];
+    for (let i = 0; i < items.length; i += 1) {
+      const it = items[i]!;
+      if (it.retiredAt !== null || it.manuallyEditedAt !== null) continue;
+      if (blocked.has(it.id) && it.deadline !== null && it.status !== "bloqueado") items[i] = { ...it, status: "bloqueado" };
+      else if (!blocked.has(it.id) && it.status === "bloqueado") items[i] = { ...it, status: "pendiente" };
+    }
+  }
+
+  async listRequirementConflicts(organizationId: string, tenderId: string): Promise<{ disponible: boolean; conflicts: readonly RequirementConflictRecord[] }> {
+    if (!this.boveda037) return { disponible: false, conflicts: [] };
+    return { disponible: true, conflicts: [...(this.requirementConflicts.get(`${organizationId}:${tenderId}`) ?? [])] };
+  }
+
+  async resolveRequirementConflict(organizationId: string, tenderId: string, conflictId: string, input: { actorId: string; notes: string }): Promise<RequirementConflictRecord | null> {
+    if (!this.boveda037) throw new BovedaRevisionNoDisponibleError("conflictos");
+    const key = `${organizationId}:${tenderId}`;
+    const list = this.requirementConflicts.get(key) ?? [];
+    const i = list.findIndex((c) => c.id === conflictId && c.status === "abierto");
+    if (i === -1) return null;
+    const resolved: RequirementConflictRecord = { ...list[i]!, status: "resuelto", resolutionNotes: input.notes, resolvedBy: input.actorId, resolvedAt: new Date().toISOString() };
+    list[i] = resolved;
+    this.reblockItems(key);
+    return resolved;
+  }
+
+  async countOpenRequirementConflicts(organizationId: string, tenderId: string): Promise<number> {
+    if (!this.boveda037) return 0;
+    return (this.requirementConflicts.get(`${organizationId}:${tenderId}`) ?? []).filter((c) => c.status === "abierto").length;
+  }
+
+  // ---- paridad3: revision con comentarios y editor humano ----
+
+  /** Ultima solicitud de revision por alcance: quien la hizo no puede aprobar ese alcance. */
+  private reviewSubmitters(proposalId: string): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const c of this.proposalComments.get(proposalId) ?? []) if (c.kind === "solicitud_revision") out.set(c.scopeRef, c.authorId);
+    return out;
+  }
+
+  async addProposalComment(organizationId: string, proposalId: string, input: { scope: ProposalCommentScope; scopeRef: string; kind: ProposalCommentKind; body: string; authorId: string; authorRole: string }): Promise<ProposalCommentRecord> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    if (!this.boveda037) throw new BovedaRevisionNoDisponibleError("comentarios");
+    const record: ProposalCommentRecord = { id: randomUUID(), proposalId, scope: input.scope, scopeRef: input.scopeRef, kind: input.kind, body: input.body, authorId: input.authorId, authorRole: input.authorRole, createdAt: new Date().toISOString() };
+    this.proposalComments.set(proposalId, [...(this.proposalComments.get(proposalId) ?? []), record]);
+    return record;
+  }
+
+  async listProposalComments(organizationId: string, proposalId: string): Promise<{ disponible: boolean; comments: readonly ProposalCommentRecord[] }> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    if (!this.boveda037) return { disponible: false, comments: [] };
+    return { disponible: true, comments: [...(this.proposalComments.get(proposalId) ?? [])] };
+  }
+
+  async listProposalSections(organizationId: string, proposalId: string, viewerId: string): Promise<readonly ProposalSectionRecord[]> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const map = this.proposalSections.get(proposalId);
+    if (!map) return [];
+    const authors = this.sectionAuthors.get(proposalId) ?? new Map<string, Set<string>>();
+    return [...map.values()]
+      .sort((a, b) => a.sectionKey.localeCompare(b.sectionKey))
+      .map((s) => ({ sectionKey: s.sectionKey, label: s.label, content: s.content, version: s.version, authorCount: authors.get(`seccion:${s.sectionKey}`)?.size ?? 0, authoredByViewer: authors.get(`seccion:${s.sectionKey}`)?.has(viewerId) ?? false }));
+  }
+
+  async editProposalSection(organizationId: string, proposalId: string, sectionKey: string, input: { content: string; actorId: string }): Promise<SectionEditResult | null> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const map = this.proposalSections.get(proposalId);
+    const existing = map?.get(sectionKey);
+    if (!map || !existing) return null;
+    const authorCount = (): number => this.sectionAuthors.get(proposalId)?.get(`seccion:${sectionKey}`)?.size ?? 0;
+    if (existing.content === input.content) {
+      return { section: { sectionKey, label: existing.label, content: existing.content, version: existing.version, authorCount: authorCount(), authoredByViewer: this.sectionAuthors.get(proposalId)?.get(`seccion:${sectionKey}`)?.has(input.actorId) ?? false }, changed: false, invalidated: null };
+    }
+    map.set(sectionKey, { ...existing, content: input.content, version: existing.version + 1 });
+    this.recordSectionAuthor(proposalId, sectionKey, input.actorId);
+    const change = await this.recordChange(organizationId, proposalId, { scope: "seccion", scopeRef: `seccion:${sectionKey}`, reason: `seccion_editada:${sectionKey}` });
+    const updated = map.get(sectionKey)!;
+    return { section: { sectionKey, label: updated.label, content: updated.content, version: updated.version, authorCount: authorCount(), authoredByViewer: true }, changed: true, invalidated: change };
   }
 
   async listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]> {
@@ -1217,7 +1673,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const stageSnapshot = input.stage !== undefined ? (this.approvals.get(proposalId) ?? []).filter((a) => a.status === "vigente") : [];
 
     // Lanza `ApprovalRejectedError` si la regla rechaza -- ninguna fila se toca en ese caso.
-    new ApprovalWorkflow({ sectionAuthors, approvals: stageSnapshot }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash, stage: input.stage });
+    new ApprovalWorkflow({ sectionAuthors, approvals: stageSnapshot, submitters: this.reviewSubmitters(proposalId) }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash, stage: input.stage });
 
     const nowIso = new Date().toISOString();
     const existing = this.approvals.get(proposalId) ?? [];

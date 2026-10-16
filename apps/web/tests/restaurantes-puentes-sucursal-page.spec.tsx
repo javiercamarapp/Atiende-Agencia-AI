@@ -62,6 +62,15 @@ function render(ctx: RestaurantesShellContext = CTX) {
   );
 }
 
+async function pulsarEnDialogo(texto: string): Promise<void> {
+  const dialogo = document.body.querySelector('[role="alertdialog"]')!;
+  const b = [...dialogo.querySelectorAll("button")].find((x) => x.textContent?.trim() === texto)!;
+  await act(async () => {
+    b.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    for (let i = 0; i < 6; i++) await flushMicrotasks();
+  });
+}
+
 const botonReglas = () => [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Reglas de pedido"));
 const boton = (t: string) => [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent === t)!;
 
@@ -96,11 +105,19 @@ describe("puentes en las reglas de una sucursal (UI)", () => {
       motivo: "Navidad",
     });
     expect(rendered!.container.querySelector('[data-testid="puentes-prop-1"]')!.textContent).toContain("2026-12-24 → 2026-12-26: 12:00–16:00 y 18:00–01:00 (Navidad)");
+    // QA-restaurantes-R1-botones-15: Quitar pide confirmacion; Volver no borra, Quitar puente si.
     await act(async () => {
       click(boton("Quitar"));
       await flushMicrotasks();
+    });
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    await pulsarEnDialogo("Volver");
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    await act(async () => {
+      click(boton("Quitar"));
       await flushMicrotasks();
     });
+    await pulsarEnDialogo("Quitar puente");
     expect(calls.some((c) => c.method === "DELETE" && c.url.endsWith("/puentes/pu-1"))).toBe(true);
     expect(rendered!.container.querySelector('[data-testid="puentes-prop-1"]')!.textContent).not.toContain("2026-12-24");
   });

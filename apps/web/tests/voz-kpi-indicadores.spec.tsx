@@ -42,10 +42,12 @@ function res(r: Respuesta): Response {
   return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.body ?? {} } as unknown as Response;
 }
 
-function stub(rutas: { kpi?: Respuesta; alertas?: Respuesta; evaluar?: Respuesta; put?: (b: Record<string, unknown>) => Respuesta }) {
+function stub(rutas: { kpi?: Respuesta; alertas?: Respuesta; evaluar?: Respuesta; put?: (b: Record<string, unknown>) => Respuesta; desborde?: Respuesta }) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url === `${BASE}/kpi`) return res(rutas.kpi ?? { status: 200, body: KPI_CON_DATOS });
+    // Llamadas en desborde (migración 067): por omision la API aun no lo tiene (404 = "no disponible aun").
+    if (url === `${BASE}/kpi-desborde`) return res(rutas.desborde ?? { status: 404 });
     if (url === `${BASE}/alertas/evaluar` && method === "POST") return res(rutas.evaluar ?? { status: 200, body: { disponible: true, alertas: [] } });
     if (url === `${BASE}/alertas/config` && method === "PUT") return res(rutas.put ? rutas.put(JSON.parse(init!.body as string)) : { status: 500 });
     if (url === `${BASE}/alertas`) return res(rutas.alertas ?? { status: 200, body: { disponible: true, umbrales: UMBRALES_OFF, alertas: [] } });
@@ -194,5 +196,81 @@ describe("<PestanaIndicadores />", () => {
     await settle();
     expect(texto()).not.toContain("Umbrales guardados.");
     expect(rendered!.container.querySelector('[role="alert"]')).not.toBeNull();
+  });
+});
+
+const DESBORDE = {
+  disponible: true,
+  zonaHoraria: "America/Mexico_City",
+  desde: "2026-03-09",
+  hasta: "2026-03-10",
+  objetivoLatenciaP95Ms: 1500,
+  totales: { llamadasDesborde: 5, pedidosDesborde: 3, ventasRecuperadas: 650.5 },
+  ultimaLatencia: { fecha: "2026-03-10", p50Ms: 600, p95Ms: 1100, llamadas: 2 },
+  serie: [
+    { fecha: "2026-03-09", llamadasDesborde: 2, pedidosDesborde: 1, ventasRecuperadas: 250.5, llamadasConModo: 2, llamadasConLatencia: 1, latenciaP50Ms: 500, latenciaP95Ms: 900 },
+    { fecha: "2026-03-10", llamadasDesborde: 3, pedidosDesborde: 2, ventasRecuperadas: 400, llamadasConModo: 3, llamadasConLatencia: 2, latenciaP50Ms: 600, latenciaP95Ms: 1100 },
+  ],
+};
+const seccion = () => rendered!.container.querySelector('[data-testid="kpi-desborde"]')?.textContent ?? "";
+
+describe("<PestanaIndicadores /> llamadas no contestadas por el personal (desborde)", () => {
+  it("muestra las cifras reales: llamadas, pedidos, ventas recuperadas en pesos y la latencia p95 contra el objetivo", async () => {
+    await pintar(stub({ desborde: { status: 200, body: DESBORDE } }));
+    const t = seccion();
+    expect(t).toContain("Llamadas no contestadas");
+    expect(t).toContain("5");
+    expect(t).toContain("3");
+    expect(t).toContain("60% de esas llamadas");
+    expect(t).toContain("$650.50 MXN");
+    expect(t).toContain("1.1 s");
+    expect(t).toContain("Cumple el objetivo de 1.5 s");
+    expect(t).toContain("p50 600 ms");
+  });
+
+  it("una latencia p95 por encima del objetivo se dice sin adornos: no cumple", async () => {
+    await pintar(stub({ desborde: { status: 200, body: { ...DESBORDE, ultimaLatencia: { fecha: "2026-03-10", p50Ms: 1200, p95Ms: 2100, llamadas: 2 } } } }));
+    expect(seccion()).toContain("No cumple el objetivo de 1.5 s");
+  });
+
+  it("sin llamadas en desborde o sin latencia medida: guion y la razon, nunca un cero inventado", async () => {
+    await pintar(stub({ desborde: { status: 200, body: { ...DESBORDE, totales: { llamadasDesborde: 0, pedidosDesborde: 0, ventasRecuperadas: 0 }, ultimaLatencia: null, serie: [] } } }));
+    const t = seccion();
+    expect(t).toContain("Sin llamadas en desborde en el periodo.");
+    expect(t).toContain("Sin llamadas con latencia medida en el periodo.");
+    expect(t).toContain("$0.00 MXN"); // las ventas son una suma verificable: 0 pedidos = $0, no un dato faltante
+  });
+
+  it.each([
+    ["la API aun no la tiene (404)", { status: 404 }],
+    ["la base no esta migrada (disponible: false)", { status: 200, body: { disponible: false, totales: { llamadasDesborde: 0, pedidosDesborde: 0, ventasRecuperadas: 0 }, ultimaLatencia: null, serie: [] } }],
+  ])("%s: solo esta seccion dice 'no disponible aun: requiere ...' y el resto de los indicadores sigue funcionando", async (_n, desborde) => {
+    await pintar(stub({ desborde }));
+    expect(rendered!.container.querySelector('[data-testid="kpi-desborde-no-disponible"]')?.textContent).toMatch(/requiere el worker de telefonía y la migración 067/);
+    expect(texto()).toContain("Mes en curso");
+    expect(texto()).toContain("$1,234.56 MXN");
+  });
+
+  it("un error real de la seccion se muestra con Reintentar y no tumba los demas indicadores", async () => {
+    const f = stub({ desborde: { status: 500, body: { message: "falla de prueba" } } });
+    await pintar(f);
+    expect(seccion()).toContain("falla de prueba");
+    expect(texto()).toContain("Mes en curso");
+    const reintentar = Array.from(rendered!.container.querySelectorAll('[data-testid="kpi-desborde"] button')).find((b) => b.textContent?.includes("Reintentar"));
+    expect(reintentar).toBeDefined();
+    const antes = f.mock.calls.filter(([u]) => String(u).endsWith("/kpi-desborde")).length;
+    await act(async () => {
+      (reintentar as HTMLButtonElement).click();
+    });
+    await settle();
+    expect(f.mock.calls.filter(([u]) => String(u).endsWith("/kpi-desborde")).length).toBe(antes + 1);
+  });
+
+  it("pide la serie con el token de la sesion y no muestra telefonos ni transcripciones", async () => {
+    const f = stub({ desborde: { status: 200, body: DESBORDE } });
+    await pintar(f);
+    const llamada = f.mock.calls.find(([u]) => String(u).endsWith("/kpi-desborde"));
+    expect((llamada?.[1] as RequestInit | undefined)?.headers).toMatchObject({ authorization: "Bearer tok" });
+    expect(seccion()).not.toMatch(/\+?\d{3}[\s-]?\d{3}[\s-]?\d{4}/);
   });
 });
