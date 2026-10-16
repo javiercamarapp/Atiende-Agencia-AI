@@ -1,0 +1,105 @@
+{
+ "version": 1,
+ "capturado": "2026-10-15",
+ "confirmadas_por_imagen": [
+  {
+   "categoria": "Tacos individuales",
+   "piezas_por_orden": 1,
+   "cita": "- ORDENES INDIVIDUALES",
+   "imagen": "Tacos (2 ó 3 según la página)",
+   "certeza": "alta (el precio es por taco)",
+   "nota": "Pensiones publica Rajas o champiñones como un solo renglón ($32)."
+  },
+  {
+   "categoria": "Tacos (orden de 3)",
+   "piezas_por_orden": 3,
+   "cita": "- LAS ORDENES SON DE 3 TACOS.",
+   "certeza": "alta"
+  },
+  {
+   "categoria": "Gringas",
+   "piezas_por_orden": 2,
+   "cita": "- LAS ORDENES SON DE 2 TACOS.",
+   "certeza": "alta"
+  },
+  {
+   "categoria": "Mestizas",
+   "piezas_por_orden": 2,
+   "cita": "- LAS ORDENES SON DE 2 TACOS.",
+   "certeza": "alta"
+  },
+  {
+   "categoria": "Alambre",
+   "piezas_por_orden": 5,
+   "cita": "- LAS ORDENES SON DE 5 TACOS.",
+   "certeza": "alta"
+  },
+  {
+   "categoria": "Tacos suizos (incluye Alambre suizo y Tacos suizos de chile poblano y bistec/arrachera)",
+   "piezas_por_orden": 5,
+   "cita": "- LAS ORDENES SON DE 5 TACOS. (encabezado de la sección)",
+   "certeza": "alta para Suizo de X; media-alta para Alambre suizo y chile poblano (están bajo el mismo encabezado, sin leyenda propia)"
+  },
+  {
+   "categoria": "Papadzules",
+   "piezas_por_orden": 5,
+   "cita": "PAPADZULES (ORD.5)",
+   "solo_en": [
+    "montejo-altabrisa-victory",
+    "galerias"
+   ],
+   "certeza": "alta"
+  },
+  {
+   "categoria": "Codzitos",
+   "piezas_por_orden": 4,
+   "cita": "CODZITOS (ORD.4)",
+   "solo_en": [
+    "montejo-altabrisa-victory"
+   ],
+   "certeza": "alta"
+  },
+  {
+   "categoria": "Tacos de cochinita",
+   "piezas_por_orden": 4,
+   "cita": "TACOS DE COCHINITA (ORD.4)",
+   "solo_en": [
+    "montejo-altabrisa-victory",
+    "galerias"
+   ],
+   "certeza": "alta"
+  }
+ ],
+ "sin_numero_en_ninguna_imagen": [
+  {
+   "producto": "Flautas de PM",
+   "dato": "La imagen (solo la página Montejo/García Lavín/Altabrisa) describe UNA tortilla de maíz grande y frita rellena de carne y la foto muestra una sola flauta, pero NO imprime cuántas trae la orden.",
+   "certeza_de_que_es_1": "media (inferencia de la descripción en singular y de la foto, no un número impreso)"
+  },
+  {
+   "producto": "Alitas de pollo",
+   "dato": "Solo precio ($204 / $177 en Pensiones); la foto no es contable."
+  },
+  {
+   "producto": "Crujientes de pechuga de pollo",
+   "dato": "Solo precio ($329); platillo marcado con * (sin guarniciones)."
+  },
+  {
+   "producto": "Quesadillas",
+   "dato": "Solo dice DE MAÍZ O HARINA. El «orden de 3» del seed viene de la decisión de Javier (P11), no de las imágenes."
+  },
+  {
+   "producto": "Chicharrón de queso, nachos, papas, chetacos, francés suizo, boyo-hamburguesas, pizzas, fajitas, parrilladas",
+   "dato": "Un precio por orden o pieza; ninguna imagen da el número de piezas."
+  }
+ ],
+ "seed": {
+  "cambios": "Alambre suizo (6) y Tacos suizos de chile poblano y bistec/arrachera (2): descripción «Orden de 5 tacos» para que el servidor derive pack_size 5, igual que Suizo de X. Antes quedaban en pack_size null.",
+  "sin_cambio": "Las demás piezas confirmadas por imagen ya estaban en el seed (descripción u «(orden de N)» en el nombre). Flautas, alitas, crujientes y quesadillas no se tocaron."
+ },
+ "arnes": {
+  "archivo": "packages/domain-restaurantes/src/evals/agente-pm/menu-pm.json",
+  "estado": "NO se cambió",
+  "divergencia": "pack_size 1 en gringas, mestizas, alambre y los 17 suizos; las imágenes dicen 2, 2, 5 y 5. Alinear solo gringas/mestizas/alambre rompe 5 pruebas (los 68 casos del set, totales de comanda, contrato actual, y dos del arnés de graders: R1 mínimo y hora de recogida); alinear solo los suizos rompe 5 (C29 y los agregados). El arnés cuenta órdenes y los casos L03, L17, L22, L25, C04, C08, C09, C11 y C13 asumen pack 1. Alinearlo exige reescribir esos casos: decisión pendiente."
+ }
+}

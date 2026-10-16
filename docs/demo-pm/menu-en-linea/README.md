@@ -1,54 +1,49 @@
-# Menú en línea de PM por sucursal (captura del 15-oct-2026)
+# Menú en línea de PM por sucursal (captura del 15-oct-2026, 60 imágenes)
 
-Fuente: el sitio público del propio negocio, <https://www.lostaquitosdepm.com> (Wix). `robots.txt` permite todo salvo `?lightbox=` y rutas internas de galería;
-se leyó una página por vez y una imagen por vez con pausa de 2 s (sin ráfagas). Solo lectura: nada de esto toca la base real, Vercel ni WhatsApp.
-
-## Cómo está publicado el menú (hallazgo principal)
-
-- Cada sucursal tiene su página (`/menu-altabrisa-montejo-victory`, `/menufranciscodemontejo`, `/menupensiones`, `/menupmgalerias`, `/menuchicxulub`) y **el menú es una galería de 3 imágenes**, no texto. Se transcribió leyendo cada imagen (por eso cada JSON dice «lectura visual»).
-- La única página con texto es `/menu`, y es una **lista antigua** (taco al pastor $23, kilo de pastor $470): no coincide con ninguna sucursal. Se guardó en `sitio.json` (`pagina_menu_texto`) solo por su texto de tortilla, media orden y salsas; **no se usa para precios**.
-- **Ninguna imagen ni página dice cuántas piezas trae una orden de flautas, alitas o crujientes.** Las flautas y los crujientes ni aparecen en las imágenes. Por eso **T7-031 NO se puede cerrar con el menú público**: el aviso de «ORDEN sin piezas» del PR #564 se queda, y las piezas siguen pendientes de PM.
+Fuente única: el sitio público del propio negocio, <https://www.lostaquitosdepm.com> (Wix). El menú NO es texto: cada sucursal publica una **galería de imágenes**
+(9 u 8 por página, no 3: la versión estática del HTML solo trae las tres primeras; el resto sale de los datos de la galería). Se leyó cada imagen una por una.
+Solo lectura: nada de esto toca la base real, Vercel ni WhatsApp. **No hay binarios en el repo**: solo datos estructurados y SHA256.
 
 ## Archivos
 
 | Archivo | Qué es |
 |---|---|
-| `prol-montejo.json`, `garcia-lavin.json`, `altabrisa.json` | Misma página publicada («Victory Platz / Prolongación Montejo / Altabrisa»), lista T1-2026. 91 productos. |
-| `fco-montejo.json` | Promos + entradas/nachos + licores/kilos, lista T1-2026. Sin imagen de tacos. |
-| `pensiones.json` | Lista **T3-2025** (más barata). Sin imagen de tacos. |
-| `galerias.json` | Promo + entradas/nachos + refrescos/aguas/extras/kilos. Sin tacos ni licores. |
-| `playa.json` | Chicxulub: entradas/nachos + tacos + licores/kilos, lista T1-2026. La versión en inglés no se leyó. |
-| `sitio.json` | Preguntas frecuentes, contacto, WhatsApp por sucursal y la página `/menu` antigua. |
-| `diferencias.json` | Comparación completa contra el seed por sucursal (precio distinto, producto sin match, pack_size distinto). |
+| `montejo-altabrisa-victory.json` | Página `/menu-altabrisa-montejo-victory`, 9 imágenes. La usan **Prolongación Montejo, García Lavín (Victory Platz) y Altabrisa** (los tres botones del índice `/menupm` llevan a la misma página). 226 productos, 236 renglones. Lista T1-2026. |
+| `playa.json` | `/menuchicxulub`, 8 imágenes (Chicxulub / Playa). 215 productos. Lista T5-2026. |
+| `fco-montejo.json` | `/menufranciscodemontejo`, 9 imágenes (la 1.ª es la promo). 211 productos. Precios = T1-2026. |
+| `pensiones.json` | `/menupensiones`, 8 imágenes (la 1.ª es la promo). 200 productos. **Lista T3-2025 (más barata).** |
+| `galerias.json` | `/menupmgalerias`, 9 imágenes (la 1.ª es la promo). 154 productos. Precios = T1-2026, menú reducido (sin licores, cervezas, cocktails ni postres). |
+| `sitio.json` | Del PR #571: preguntas frecuentes, contacto, WhatsApp por sucursal y la página `/menu` antigua (lista vieja, no se usa para precios). Se le agregaron los **horarios por sucursal de la portada**. |
+| `reglas-piezas.json` | Piezas por orden que las imágenes confirman (con la cita), las que NO dicen, el cambio al seed y la divergencia del arnés. |
+| `manifiesto-pdf.json` | Los 7 PDF (5 en español, 2 en inglés): sucursal, páginas, SHA256 del PDF, URL fuente, fecha y cada imagen de origen con SHA256 e «incrustada sin recomprimir». |
 
-Cada JSON lleva URL fuente, fecha de captura, categorías, productos con presentaciones (porción, media orden, kilo), precio, `piezas_por_orden`, tortilla, extras (solo Galerías los publica), promociones y excepciones.
+Cada producto lleva imagen de origen, categoría, presentaciones con precio, `piezas_por_orden` + cita (solo si la imagen lo dice) y `seed_nombre` (a qué producto del seed corresponde).
+Las páginas en inglés (`/taquitospm-english-menu` = Montejo/García Lavín/Altabrisa; `/englishmenuchicxulub` = Playa) tienen exactamente los mismos precios que su versión en español y solo aparecen en el manifiesto de PDF.
 
-## Diferencias contra el repo
+## Hallazgos
 
-| Sucursal (id del seed) | Precios publicados | Resultado |
-|---|---|---|
-| Prolongación Montejo (T1), García Lavín (T7), Altabrisa (T8), Playa (T5) | 101 renglones | **101 iguales al seed**, 0 distintos, 0 faltantes |
-| Francisco de Montejo (T2) | 69 renglones | 69 iguales al seed (la imagen no trae Ensalada de PM) |
-| **Pensiones (T3)** | 69 renglones | **69 distintos**: la web publica la lista 2025 (frijol con tostada $83 vs $93 del seed; nachos de pastor $278 vs $328; kilo de pastor $750 vs $900). El seed usa T1-2026 en T3 (corrección CR01/CR02 del 3-oct). **Decide el dueño; no se tocó el seed.** |
-| Galerías (T4) | 64 renglones | El seed no tiene catálogo de T4 (sucursal informativa); precios = lista T1-2026. |
+1. **Montejo/García Lavín/Altabrisa, Francisco de Montejo y Galerías = lista T1-2026** (el seed ya la tiene): todos los precios publicados coinciden con el seed (T1, T7, T8, T2). Playa = T5-2026, con una sola diferencia: **Agua Mineral Cristal 300 ml sale a $50** (el impreso T5 y el seed dicen $53).
+2. **Pensiones sigue publicando la lista 2025** (idéntica a `menus-impresos/T3-2025.json`): ningún precio coincide con el T3 del seed (lista T1-2026, corrección CR01/CR02 del 3-oct) y todos son menores (frijol con tostada $83 vs $93, nachos de pastor $278 vs $328, kilo de pastor $750 vs $900). **Decide el dueño; no se tocó el precio del seed.**
+3. **Piezas por orden confirmadas por las imágenes**: tacos individuales 1, tacos 3, gringas 2, mestizas 2, alambre 5, **tacos suizos 5** (encabezado «las órdenes son de 5 tacos»), papadzules 5, codzitos 4, tacos de cochinita 4. El seed ya las traía salvo el alambre suizo y los dos «tacos suizos de chile poblano»: **se les puso «Orden de 5 tacos»** y el servidor ya devuelve `pack_size` 5 (antes `null`). Efecto: pedir «1 orden de alambre suizo» ahora va como 5 piezas, igual que el alambre normal (T7-052 se actualizó a 5 piezas con el mismo total, $948).
+4. **Flautas: ninguna imagen imprime cuántas trae la orden.** Solo salen en la página Montejo/García Lavín/Altabrisa (7 sabores; el seed solo las vende en T1, T7 y T8: coincide). La imagen describe una tortilla de maíz grande y frita rellena de carne y la foto muestra una sola flauta, pero eso es inferencia, no un número. Alitas ($204), crujientes ($329) y quesadillas (solo «de maíz o harina») tampoco traen número. **T7-031 no se puede cerrar con las imágenes**: el aviso «ORDEN sin piezas» de R10 se queda y no se carga `pack_size` en flautas, alitas ni crujientes. Con una orden de flautas = 1: $1,100 + $450 + $283 = **$1,833** (probado con el catálogo real).
+5. **Promociones** (solo en las imágenes de Francisco de Montejo, Pensiones y Galerías): lunes 2x1 en tacos al pastor; martes nachos al pastor + 2 aguas frescas **$328** (Pensiones **$278**). La leyenda las limita a esas tres sucursales, de apertura a cierre y **«no válido en servicio a domicilio»**; el seed las carga en todas las sucursales y solo para recoger. La imagen no dice qué aguas entran.
+6. **Qué se vende dónde** (según las imágenes): flautas y comida regional solo en la página de Montejo/García Lavín/Altabrisa (Galerías también trae comida regional, sin codzitos); Playa no tiene Sprite; Heineken Silver solo sale en Playa ($90) y Francisco de Montejo ($90; **el seed solo la carga en T5**).
+7. **Divergencia con el seed (pregunta P10 del dueño)**: Ensalada de PM, Jericallas y Café tienen precio en T2 y T3 del seed, pero **no salen** en las imágenes de Francisco de Montejo ni de Pensiones; Pensiones tampoco trae pizzas Quesobich ni Heineken 0.0. No se tocó el seed.
+8. **Horarios, envío y mínimo**: ninguna imagen los trae. El sitio sí publica horario **por sucursal** en la portada y las preguntas frecuentes (entrega de 40 a 50 min, con lluvia 1 h a 1 h 20; tarjeta o contra entrega; salsas extra con costo); los horarios por sucursal quedaron en `sitio.json` (`horarios_por_sucursal_portada`). Horario por producto, agotados, «solo fin de semana», límites de cantidad, pedido mínimo y costo de envío: **no aparecen** (`null` en cada JSON).
 
-- Producto de la web que falte en el seed: **ninguno**. Productos del seed que no salen en las imágenes: flautas, tacos suizos, chetacos, papas, francés suizo, Boyo-hamburguesa, Quesobich, platillos, comida regional, cervezas y postres (la web no los publica en estas páginas; no significa que no se vendan).
-- **pack_size**: el servidor (`extraerPackSize`) ya leía «Orden de N tacos» de la descripción del seed, así que `buscar_producto` ya devuelve gringas 2, mestizas 2 y alambre 5 (la web lo confirma: «las órdenes son de N tacos»), tacos 3 e individuales 1. **No hubo nada que cargar en el seed.** Divergencia que SÍ apareció: el menú del arnés (`menu-pm.json`) trae pack_size 1 en esos 20 productos porque solo lee el nombre. Se intentó alinearlo a 2, 2 y 5 y **rompe 9 casos** de `casos.json` (L03, L17, L22, L25, C04, C08, C09, C11, C13: piden «1 alambre» o «2 gringas» contando órdenes y sus totales salen de pack 1), así que se revirtió: quedó fijada como divergencia conocida en la prueba y alinearla exige reescribir esos casos (decisión pendiente).
+## Divergencia conocida del arnés (no corregida a propósito)
 
-## Pendientes de confirmación con PM (lo que el sitio NO dice)
-
-1. **Piezas por orden de flautas, alitas y crujientes** (T7-031 sigue cobrando de más hasta que se carguen como «(orden de N)»).
-2. **Quesadillas «orden de 3»**: el seed lo asume (menú impreso); la web no trae el número.
-3. **Tacos suizos «orden de 5»**: igual; el arnés dice 1 y el servidor 5, y el sitio no lo confirma.
-4. **Pensiones: ¿rige la lista 2025 o la T1-2026?** La web sigue con la de 2025.
-5. **Promos**: la imagen limita el 2x1 de los lunes y los nachos del martes a Fco. de Montejo, Pensiones y Galerías, de apertura a cierre y **no a domicilio**; el seed dice «todas las sucursales, solo recoger». En Pensiones el martes cuesta $278 (en las otras, $328). Tampoco dice qué aguas entran (P13).
-6. **Fracciones de kilo** (1/4, 1/2, 3/4, 1.5, 2 kg): el sitio publica solo el kilo; el seed las calcula proporcional (decisión de Javier A42).
-7. **Tortilla por producto**: solo la página `/menu` antigua la menciona (tacos maíz o harina, gringas harina, mestizas maíz); las imágenes no.
-8. **Horarios por producto, disponibilidad por sucursal, agotados, «solo fin de semana», mínimo de compra y costo de envío**: no aparecen en el sitio. Lo único publicado: entrega de 40 a 50 min (1 h a 1 h 20 min con lluvia), pago con tarjeta/contra entrega y salsas extra con costo.
-9. Fco. de Montejo, Pensiones y Galerías **no publican página de tacos**; Galerías tampoco licores. No se asume que no los vendan.
-10. Chicxulub: el sitio no habla de temporada (el seed dice Semana Santa y julio-agosto).
-11. Páginas en inglés (`/englishmenuchicxulub`, `/taquitospm-english-menu`): no leídas.
+`packages/domain-restaurantes/src/evals/agente-pm/menu-pm.json` trae `pack_size` 1 en gringas, mestizas, alambre y los 17 suizos; las imágenes dicen 2, 2, 5 y 5.
+Se probó alinearlos y **rompe 5 pruebas en cada intento** (gringas/mestizas/alambre: los 68 casos, totales de comanda, contrato actual, y dos pruebas de graders; suizos: C29 y los agregados), porque los casos L03, L17, L22, L25, C04, C08, C09, C11 y C13 piden esos platillos contando órdenes. No se cambió el arnés ni se debilitó ninguna prueba: alinearlo exige reescribir esos casos (decisión pendiente). Una prueba fija la divergencia.
 
 ## Pruebas
 
-`packages/domain-restaurantes/tests/pm-menu-en-linea.spec.ts` (deterministas, sin LLM ni red): forma y trazabilidad de los JSON, precios web = seed, la diferencia de Pensiones fijada como hallazgo, pack_size del servidor contra la web y la divergencia del arnés fijada, flautas/alitas/crujientes **sin** pack_size, T7-031 con el catálogo real ($1,100 + $450 + $283 = **$1,833**, y la trampa de leer «4 flautas» como 4 órdenes = $1,132 solo de flautas), tacos por orden, gringas, alambre, tortilla y kilos (1 kg + 250 g = $1,125).
+`packages/domain-restaurantes/tests/pm-menu-9-fotos.spec.ts` (deterministas, sin LLM, sin red, sin base): forma y trazabilidad de los JSON, manifiesto de PDF contra las imágenes de cada página, precios web = seed por sucursal, Pensiones = lista 2025, qué se vende dónde, promociones, piezas por orden (JSON = lo que el servidor deriva del seed), alambre suizo con `pack_size` 5, flautas/alitas/crujientes sin `pack_size`, divergencia del arnés y T7-031 ($1,833).
+
+## Relación con el PR #571
+
+Este directorio reemplaza los JSON de #571 (que solo habían leído 3 imágenes por sucursal): se retiraron `altabrisa.json`, `garcia-lavin.json`, `prol-montejo.json` (las tres plazas comparten `montejo-altabrisa-victory.json`) y `diferencias.json` (la comparación ahora vive en este README y en las pruebas). `pm-menu-en-linea.spec.ts` se adaptó a los nuevos archivos conservando sus aserciones de piezas, T7-031, tacos, kilos y tortilla; las de forma, promos y precios web = seed las cubre `pm-menu-9-fotos.spec.ts` con más datos. Una afirmación de #571 resultó falsa con las 9 imágenes (que las flautas «ni aparecen»): salen en la página Montejo/García Lavín/Altabrisa, imagen 4, sin número de piezas.
+
+## Regenerar
+
+Los JSON y el manifiesto se generan con `generar-docs-repo.py` y los PDF con el script de `work/pm-menus-pdf` (fuera del repo; ver su `LEEME-MENUS.md`). Después de regenerar, compara los SHA256 con `manifiesto-pdf.json`.

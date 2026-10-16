@@ -1,959 +1,3192 @@
 {
+ "version": 2,
  "sucursal": {
-  "slug": "pensiones",
-  "id_seed": "T3",
+  "slug_pagina": "pensiones",
   "nombre": "Pensiones",
-  "telefono_publico": "999 987 5410"
+  "slugs_seed": [
+   "pensiones"
+  ]
  },
  "fuente": {
   "sitio": "https://www.lostaquitosdepm.com",
+  "pagina": "https://www.lostaquitosdepm.com/menupensiones",
+  "indice": "https://www.lostaquitosdepm.com/menupm",
   "capturado": "2026-10-15",
-  "metodo": "Lectura visual de las imágenes de menú publicadas en la página (el menú es imagen, no texto). Sin ráfagas: una descarga por imagen con 2 s de pausa; robots.txt permite /.",
-  "paginas_leidas": [
-   {
-    "url": "https://www.lostaquitosdepm.com/menupensiones",
-    "imagenes": [
-     "PROMOCIONES PENSIONES TAQUITOS PM",
-     "ENTRADAS",
-     "LICORES"
-    ]
-   }
-  ],
-  "lista_de_precios": "T3-2025 (precios MÁS BAJOS que la lista T1-2026; coincide con el menú impreso T3-2025 del seed, p. ej. frijol con tostada $83, nachos de pastor $278)"
+  "metodo": "lectura visual de cada imagen (el menú es una galería de imágenes, no texto)",
+  "lista_de_precios": "T3-2025 (más barata)"
  },
- "paginas_o_secciones_no_publicadas": [
-  "La página NO publica tacos, postres, bebidas sin alcohol ni extras.",
-  "La imagen de entradas NO trae Ensalada de PM."
- ],
- "categorias": [
-  "Entradas",
-  "Frijoles charros",
-  "Quesadillas",
-  "Queso fundido",
-  "Nachos",
-  "Licores",
-  "Cocktails",
-  "Kilos a domicilio"
+ "imagenes": [
+  {
+   "n": 1,
+   "seccion": "PROMOCIONES PENSIONES TAQUITOS PM",
+   "url_original": "https://static.wixstatic.com/media/634cb5_fad7c97dc73b458a89979ad2ffb472b5~mv2.jpeg",
+   "sha256": "328c5378244f540f98667281907a96018fc789e0f34f07a38e56c59833da09a8",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 490385
+  },
+  {
+   "n": 2,
+   "seccion": "ENTRADAS",
+   "url_original": "https://static.wixstatic.com/media/634cb5_e347efc3988041408ce74a5e54233d1d~mv2.jpeg",
+   "sha256": "bc0187176b29abc040f5ffca81adc00aee95720c4eef0c6159d57fd8da38eaff",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 580576
+  },
+  {
+   "n": 3,
+   "seccion": "TACOS",
+   "url_original": "https://static.wixstatic.com/media/634cb5_4fa414ca92d345f1a22b9f1b66a2e7b7~mv2.jpeg",
+   "sha256": "7bbf46c7bffc434f089d1f9ec746800dc10f2b1e312256b73efbe1390b6d3eac",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 547596
+  },
+  {
+   "n": 4,
+   "seccion": "TACOS SUIZOS",
+   "url_original": "https://static.wixstatic.com/media/634cb5_d5ccb3f4af304ed8b5aac1da317bb539~mv2.jpeg",
+   "sha256": "e7cb9b0f2e6e208c534cbfc5889b83ee16a2b585f7789a9e2e61f71ad2d56d95",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 547563
+  },
+  {
+   "n": 5,
+   "seccion": "FRANCES SUIZO",
+   "url_original": "https://static.wixstatic.com/media/634cb5_5fd1a5e65e414ce59ca4591b056c82a7~mv2.jpeg",
+   "sha256": "0cfcb2631664efb356da3b4c3c5da568e17744d8d2fe8055a03ad6710293810d",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 516814
+  },
+  {
+   "n": 6,
+   "seccion": "PLATILLOS",
+   "url_original": "https://static.wixstatic.com/media/634cb5_d290bf079f534d94b52f9673d11bd63e~mv2.jpeg",
+   "sha256": "fbea9012beb2bc3509638e509320d8de59cdb0ed33fc08e3e3228748a5ec30d9",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 587392
+  },
+  {
+   "n": 7,
+   "seccion": "POSTRES",
+   "url_original": "https://static.wixstatic.com/media/634cb5_11a609fa324249dcb1e34ef2da89c8e3~mv2.jpeg",
+   "sha256": "4318db4dee972084a66389c1d30d6d1cb317686f8945185b29ef5ee15a4f7e73",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 531170
+  },
+  {
+   "n": 8,
+   "seccion": "LICORES",
+   "url_original": "https://static.wixstatic.com/media/634cb5_7007e091ef8348cba5f4df4eb85f157c~mv2.jpeg",
+   "sha256": "35ee41bf36806de987074024cb2d3c2420e0f2a148499da14dd0d17cebad7c1a",
+   "ancho": 2550,
+   "alto": 3300,
+   "bytes": 507490
+  }
  ],
  "productos": [
   {
+   "imagen": 2,
    "categoria": "Entradas",
+   "categoria_canonica": "entradas",
    "nombre": "Frijol con tostada",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 83,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
-     "seed_nombre": "Frijol con tostada"
+     "seed_nombre": "Frijol con Tostada"
     }
    ],
-   "notas": []
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Entradas",
+   "categoria_canonica": "entradas",
    "nombre": "Guacamole",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 127,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Guacamole"
     }
    ],
-   "notas": []
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Entradas",
+   "categoria_canonica": "entradas",
    "nombre": "Carbolla",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 90,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Carbolla"
     }
    ],
-   "notas": []
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Entradas",
+   "categoria_canonica": "entradas",
    "nombre": "Cebollas cambray",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 114,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
-     "seed_nombre": "Cebollas cambray"
+     "seed_nombre": "Cebollas Cambray"
     }
    ],
-   "notas": []
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Entradas",
+   "categoria_canonica": "entradas",
    "nombre": "Chicharrón de queso",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 146,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
-     "seed_nombre": "Chicharrón de queso"
+     "seed_nombre": "Chicharrón de Queso"
     }
    ],
-   "notas": []
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Entradas",
+   "categoria_canonica": "entradas",
    "nombre": "Alitas de pollo",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 177,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
-     "seed_nombre": "Alitas de pollo"
+     "seed_nombre": "Alitas de Pollo"
     }
    ],
-   "notas": [
-    "La imagen del menú NO dice cuántas piezas trae la orden."
-   ]
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Entradas",
+   "categoria_canonica": "entradas",
    "nombre": "Papas a la francesa",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 101,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
-     "seed_nombre": "Papas a la francesa"
+     "seed_nombre": "Papas a la Francesa"
     }
    ],
-   "notas": []
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Frijoles charros",
+   "categoria_canonica": "frijoles charros",
    "nombre": "Normal",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 114,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Frijoles Charros Normal"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 76,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Frijoles Charros Normal (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Frijoles charros",
+   "categoria_canonica": "frijoles charros",
    "nombre": "Con queso",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 127,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
-     "seed_nombre": "Frijoles Charros Con queso"
+     "seed_nombre": "Frijoles Charros con Queso"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 95,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
-     "seed_nombre": "Frijoles Charros Con queso (1/2 orden)"
+     "seed_nombre": "Frijoles Charros con Queso (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Frijoles charros",
+   "categoria_canonica": "frijoles charros",
    "nombre": "Especiales",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 159,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Frijoles Charros Especiales"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 121,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Frijoles Charros Especiales (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Quesadillas",
+   "categoria_canonica": "quesadillas",
    "nombre": "Natural",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 95,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Quesadilla de Natural"
     }
    ],
-   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
-   "notas": [
-    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
-   ]
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Quesadillas",
+   "categoria_canonica": "quesadillas",
    "nombre": "Rajas",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 108,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Quesadilla de Rajas"
     }
    ],
-   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
-   "notas": [
-    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
-   ]
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Quesadillas",
+   "categoria_canonica": "quesadillas",
    "nombre": "Champiñones",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 108,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Quesadilla de Champiñones"
     }
    ],
-   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
-   "notas": [
-    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
-   ]
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Quesadillas",
+   "categoria_canonica": "quesadillas",
    "nombre": "Chorizo",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 114,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Quesadilla de Chorizo"
     }
    ],
-   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
-   "notas": [
-    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
-   ]
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Queso fundido",
+   "categoria_canonica": "queso fundido",
    "nombre": "Natural",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 139,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Queso Fundido Natural"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Queso fundido",
+   "categoria_canonica": "queso fundido",
    "nombre": "Rajas",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 152,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Queso Fundido Rajas"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Queso fundido",
+   "categoria_canonica": "queso fundido",
    "nombre": "Champiñones",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 152,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Queso Fundido Champiñones"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Queso fundido",
+   "categoria_canonica": "queso fundido",
    "nombre": "Tocino",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 152,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Queso Fundido Tocino"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Queso fundido",
+   "categoria_canonica": "queso fundido",
    "nombre": "Chorizo",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 152,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Queso Fundido Chorizo"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Nachos",
+   "categoria_canonica": "nachos",
    "nombre": "Pastor",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 278,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Nachos de Pastor"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 202,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Nachos de Pastor (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Nachos",
+   "categoria_canonica": "nachos",
    "nombre": "Champiñón",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 278,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Nachos de Champiñón"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 202,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Nachos de Champiñón (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Nachos",
+   "categoria_canonica": "nachos",
    "nombre": "Bistec",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 316,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Nachos de Bistec"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 222,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Nachos de Bistec (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Nachos",
+   "categoria_canonica": "nachos",
    "nombre": "Pechuga",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 316,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Nachos de Pechuga"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 222,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Nachos de Pechuga (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Nachos",
+   "categoria_canonica": "nachos",
    "nombre": "Chuleta",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 311,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Nachos de Chuleta"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 222,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Nachos de Chuleta (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Nachos",
+   "categoria_canonica": "nachos",
    "nombre": "Costilla",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 311,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Nachos de Costilla"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 222,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Nachos de Costilla (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
+   "imagen": 2,
    "categoria": "Nachos",
+   "categoria_canonica": "nachos",
    "nombre": "Arrachera",
    "presentaciones": [
     {
      "etiqueta": "orden",
      "precio_mxn": 367,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "orden",
      "seed_nombre": "Nachos de Arrachera"
     },
     {
      "etiqueta": "1/2 orden",
      "precio_mxn": 253,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "media_orden",
      "seed_nombre": "Nachos de Arrachera (1/2 orden)"
     }
-   ]
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
   },
   {
-   "categoria": "Licores",
-   "nombre": "Ron Appleton Especial",
+   "imagen": 3,
+   "categoria": "Tacos de PM - individuales",
+   "categoria_canonica": "tacos individuales",
+   "nombre": "Al pastor",
    "presentaciones": [
     {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 108,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Ron Appleton Especial"
+     "etiqueta": "orden",
+     "precio_mxn": 36,
+     "seed_nombre": "Taco Al Pastor (individual)"
     }
    ],
-   "es_alcohol": true
+   "piezas_por_orden": 1,
+   "cita_piezas": "- ORDENES INDIVIDUALES"
   },
   {
-   "categoria": "Licores",
-   "nombre": "Ron Bacardi Añejo",
+   "imagen": 3,
+   "categoria": "Tacos de PM - individuales",
+   "categoria_canonica": "tacos individuales",
+   "nombre": "Rajas o champiñones",
    "presentaciones": [
     {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 101,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Ron Bacardi Añejo"
+     "etiqueta": "orden",
+     "precio_mxn": 32,
+     "seed_nombres": [
+      "Taco de Rajas (individual)",
+      "Taco de Champiñones (individual)"
+     ]
     }
    ],
-   "es_alcohol": true
+   "piezas_por_orden": 1,
+   "cita_piezas": "- ORDENES INDIVIDUALES"
   },
   {
-   "categoria": "Licores",
-   "nombre": "Ron Bacardi Blanco",
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
+   "nombre": "Chorizo",
    "presentaciones": [
     {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 95,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Ron Bacardi Blanco"
+     "etiqueta": "orden",
+     "precio_mxn": 127,
+     "seed_nombre": "Tacos de Chorizo (orden de 3)"
     }
    ],
-   "es_alcohol": true
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
   },
   {
-   "categoria": "Licores",
-   "nombre": "Ron Bacardi Solera",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 114,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Ron Bacardi Solera"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Tequila Don Julio Reposado",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 146,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Tequila Don Julio Reposado"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Tequila Herradura Reposado",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 121,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Tequila Herradura Reposado"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Tequila Jimador",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 95,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Tequila Jimador"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Tequila Tradicional",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 101,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Tequila Tradicional"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Vodka Absolut",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 114,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Vodka Absolut"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Vodka Smirnoff",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 101,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Vodka Smirnoff"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Whisky Buchanans",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 159,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Whisky Buchanans"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Whisky Chivas Regal",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 139,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Whisky Chivas Regal"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Licores",
-   "nombre": "Whisky J.W. Etiqueta Negra",
-   "presentaciones": [
-    {
-     "etiqueta": "copa/servicio",
-     "precio_mxn": 139,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Whisky J.W. Etiqueta Negra"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Caribe Cooler",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 97,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Caribe Cooler"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Conga",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 97,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Conga"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Conga sin alcohol",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 89,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Conga sin alcohol"
-    }
-   ],
-   "es_alcohol": false
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Daiquiri",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 97,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Daiquiri"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Daiquiri sin alcohol",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 89,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Daiquiri sin alcohol"
-    }
-   ],
-   "es_alcohol": false
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Limonada eléctrica",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 97,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Limonada eléctrica"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Margarita",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 97,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Margarita"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Margarita sin alcohol",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 89,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Margarita sin alcohol"
-    }
-   ],
-   "es_alcohol": false
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Piñada",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 89,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Piñada"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Piña colada",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 97,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Piña colada"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Sangría",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 97,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Sangría"
-    }
-   ],
-   "es_alcohol": true
-  },
-  {
-   "categoria": "Cocktails",
-   "nombre": "Sangría sin alcohol",
-   "presentaciones": [
-    {
-     "etiqueta": "vaso",
-     "precio_mxn": 89,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "servicio",
-     "seed_nombre": "Sangría sin alcohol"
-    }
-   ],
-   "es_alcohol": false
-  },
-  {
-   "categoria": "Kilos a domicilio",
-   "nombre": "Pastor",
-   "presentaciones": [
-    {
-     "etiqueta": "1 kg",
-     "precio_mxn": 750,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Pastor — 1 kg"
-    }
-   ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
-  },
-  {
-   "categoria": "Kilos a domicilio",
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
    "nombre": "Bistec de res",
    "presentaciones": [
     {
-     "etiqueta": "1 kg",
-     "precio_mxn": 950,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Bistec de res — 1 kg"
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Tacos de Bistec de Res (orden de 3)"
     }
    ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
   },
   {
-   "categoria": "Kilos a domicilio",
-   "nombre": "Bistec de res encebollado",
-   "presentaciones": [
-    {
-     "etiqueta": "1 kg",
-     "precio_mxn": 950,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Bistec de res encebollado — 1 kg"
-    }
-   ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
-  },
-  {
-   "categoria": "Kilos a domicilio",
-   "nombre": "Chuleta de cerdo",
-   "presentaciones": [
-    {
-     "etiqueta": "1 kg",
-     "precio_mxn": 800,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Chuleta de cerdo — 1 kg"
-    }
-   ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
-  },
-  {
-   "categoria": "Kilos a domicilio",
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
    "nombre": "Pechuga de pollo",
    "presentaciones": [
     {
-     "etiqueta": "1 kg",
-     "precio_mxn": 800,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Pechuga de pollo — 1 kg"
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Tacos de Pechuga de Pollo (orden de 3)"
     }
    ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
   },
   {
-   "categoria": "Kilos a domicilio",
-   "nombre": "Poc-chuc",
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
+   "nombre": "Chuleta de cerdo",
    "presentaciones": [
     {
-     "etiqueta": "1 kg",
-     "precio_mxn": 800,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Poc-chuc — 1 kg"
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Tacos de Chuleta de Cerdo (orden de 3)"
     }
    ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
   },
   {
-   "categoria": "Kilos a domicilio",
-   "nombre": "Arrachera",
-   "presentaciones": [
-    {
-     "etiqueta": "1 kg",
-     "precio_mxn": 1200,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Arrachera — 1 kg"
-    }
-   ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
-  },
-  {
-   "categoria": "Kilos a domicilio",
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
    "nombre": "Costilla de res",
    "presentaciones": [
     {
-     "etiqueta": "1 kg",
-     "precio_mxn": 800,
-     "piezas_por_orden": null,
-     "unidad_de_venta": "kg",
-     "seed_nombre": "Costilla de res — 1 kg"
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Tacos de Costilla de Res (orden de 3)"
     }
    ],
-   "notas": [
-    "Incluye salsa roja, verde, limones y tortillas.",
-    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
-   ]
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 215,
+     "seed_nombre": "Tacos de Arrachera (orden de 3)"
+    }
+   ],
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
+   "nombre": "Poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Tacos de Poc-Chuc (orden de 3)"
+    }
+   ],
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Tacos de PM - órdenes de 3",
+   "categoria_canonica": "tacos (orden de 3)",
+   "nombre": "Bistec encebollado",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 171,
+     "seed_nombre": "Tacos de Bistec Encebollado (orden de 3)"
+    }
+   ],
+   "piezas_por_orden": 3,
+   "cita_piezas": "- LAS ORDENES SON DE 3 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Gringas",
+   "categoria_canonica": "gringas (orden de 2)",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Gringa de Pastor"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Gringas",
+   "categoria_canonica": "gringas (orden de 2)",
+   "nombre": "Bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 190,
+     "seed_nombre": "Gringa de Bistec"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Gringas",
+   "categoria_canonica": "gringas (orden de 2)",
+   "nombre": "Pechuga de pollo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 184,
+     "seed_nombre": "Gringa de Pechuga de Pollo"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Gringas",
+   "categoria_canonica": "gringas (orden de 2)",
+   "nombre": "Chuleta",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 184,
+     "seed_nombre": "Gringa de Chuleta"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Gringas",
+   "categoria_canonica": "gringas (orden de 2)",
+   "nombre": "Costilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 184,
+     "seed_nombre": "Gringa de Costilla"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Gringas",
+   "categoria_canonica": "gringas (orden de 2)",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 253,
+     "seed_nombre": "Gringa de Arrachera"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Gringas",
+   "categoria_canonica": "gringas (orden de 2)",
+   "nombre": "Poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 184,
+     "seed_nombre": "Gringa de Poc-Chuc"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Mestizas",
+   "categoria_canonica": "mestizas (orden de 2)",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 146,
+     "seed_nombre": "Mestiza de Pastor"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Mestizas",
+   "categoria_canonica": "mestizas (orden de 2)",
+   "nombre": "Poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 152,
+     "seed_nombre": "Mestiza de Poc-Chuc"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Mestizas",
+   "categoria_canonica": "mestizas (orden de 2)",
+   "nombre": "Bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Mestiza de Bistec"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Mestizas",
+   "categoria_canonica": "mestizas (orden de 2)",
+   "nombre": "Pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Mestiza de Pechuga"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Mestizas",
+   "categoria_canonica": "mestizas (orden de 2)",
+   "nombre": "Chuleta",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Mestiza de Chuleta"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Mestizas",
+   "categoria_canonica": "mestizas (orden de 2)",
+   "nombre": "Costilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Mestiza de Costilla"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Mestizas",
+   "categoria_canonica": "mestizas (orden de 2)",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 228,
+     "seed_nombre": "Mestiza de Arrachera"
+    }
+   ],
+   "piezas_por_orden": 2,
+   "cita_piezas": "- LAS ORDENES SON DE 2 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Alambre",
+   "categoria_canonica": "alambre (orden de 5)",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Alambre de Pastor"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Alambre",
+   "categoria_canonica": "alambre (orden de 5)",
+   "nombre": "Bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Alambre de Bistec"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Alambre",
+   "categoria_canonica": "alambre (orden de 5)",
+   "nombre": "Pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Alambre de Pechuga"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Alambre",
+   "categoria_canonica": "alambre (orden de 5)",
+   "nombre": "Chuleta",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Alambre de Chuleta"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Alambre",
+   "categoria_canonica": "alambre (orden de 5)",
+   "nombre": "Costilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Alambre de Costilla"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 3,
+   "categoria": "Alambre",
+   "categoria_canonica": "alambre (orden de 5)",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 298,
+     "seed_nombre": "Alambre de Arrachera"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 209,
+     "seed_nombre": "Suizo de Pastor"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 247,
+     "seed_nombre": "Suizo de Bistec"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de chuleta",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 247,
+     "seed_nombre": "Suizo de Chuleta"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 247,
+     "seed_nombre": "Suizo de Pechuga"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de costilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 247,
+     "seed_nombre": "Suizo de Costilla"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 316,
+     "seed_nombre": "Suizo de Arrachera"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 247,
+     "seed_nombre": "Suizo de Poc-Chuc"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de chorizo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 177,
+     "seed_nombre": "Suizo de Chorizo"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Suizo de chile poblano",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 177,
+     "seed_nombre": "Suizo de Chile Poblano"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Alambre suizo de pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Alambre Suizo de Pastor"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Alambre suizo de bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Alambre Suizo de Bistec"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Alambre suizo de pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Alambre Suizo de Pechuga"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Alambre suizo de chuleta",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Alambre Suizo de Chuleta"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Alambre suizo de costilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Alambre Suizo de Costilla"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Alambre suizo de arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 323,
+     "seed_nombre": "Alambre Suizo de Arrachera"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Tacos suizos de chile poblano y bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 278,
+     "seed_nombre": "Tacos Suizos de Chile Poblano y Bistec"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Tacos suizos",
+   "categoria_canonica": "tacos suizos (orden de 5)",
+   "nombre": "Tacos suizos de chile poblano y arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 329,
+     "seed_nombre": "Tacos Suizos de Chile Poblano y Arrachera"
+    }
+   ],
+   "piezas_por_orden": 5,
+   "cita_piezas": "- LAS ORDENES SON DE 5 TACOS."
+  },
+  {
+   "imagen": 4,
+   "categoria": "Boyo-hamburguesas",
+   "categoria_canonica": "boyohamburguesas",
+   "nombre": "Boyo-hamburguesa sencilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 164,
+     "seed_nombre": "Boyo-Hamburguesa Sencilla"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 4,
+   "categoria": "Boyo-hamburguesas",
+   "categoria_canonica": "boyohamburguesas",
+   "nombre": "Boyo-hamburguesa con queso",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 190,
+     "seed_nombre": "Boyo-Hamburguesa con Queso"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 4,
+   "categoria": "Boyo-hamburguesas",
+   "categoria_canonica": "boyohamburguesas",
+   "nombre": "Boyo-hamburguesa con queso y tocino",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 202,
+     "seed_nombre": "Boyo-Hamburguesa con Queso y Tocino"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 253,
+     "seed_nombre": "Chetaco de Pastor"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Champiñón",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Chetaco de Champiñón"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Bistec de res",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Chetaco de Bistec de Res"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Chuleta de cerdo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Chetaco de Chuleta de Cerdo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Chetaco de Pechuga"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Costilla de res",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Chetaco de Costilla de Res"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 266,
+     "seed_nombre": "Chetaco de Poc-Chuc"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Chetacos",
+   "categoria_canonica": "chetacos",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 316,
+     "seed_nombre": "Chetaco de Arrachera"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne. Acompañado de ensalada de lechuga y tomate."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Papas de PM",
+   "categoria_canonica": "papas de pm",
+   "nombre": "Tradicional",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 177,
+     "seed_nombre": "Papa Tradicional"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Papa rellena de la carne de su elección."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Papas de PM",
+   "categoria_canonica": "papas de pm",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 228,
+     "seed_nombre": "Papa Pastor"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Papa rellena de la carne de su elección."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Papas de PM",
+   "categoria_canonica": "papas de pm",
+   "nombre": "Bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Papa Bistec"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Papa rellena de la carne de su elección."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Papas de PM",
+   "categoria_canonica": "papas de pm",
+   "nombre": "Chuleta",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Papa Chuleta"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Papa rellena de la carne de su elección."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Papas de PM",
+   "categoria_canonica": "papas de pm",
+   "nombre": "Pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Papa Pechuga"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Papa rellena de la carne de su elección."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Papas de PM",
+   "categoria_canonica": "papas de pm",
+   "nombre": "Costilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Papa Costilla"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Papa rellena de la carne de su elección."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Papas de PM",
+   "categoria_canonica": "papas de pm",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 298,
+     "seed_nombre": "Papa Arrachera"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Papa rellena de la carne de su elección."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 228,
+     "seed_nombre": "Francés Suizo de Pastor"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Champiñón",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 228,
+     "seed_nombre": "Francés Suizo de Champiñón"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Bistec de res",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Francés Suizo de Bistec de Res"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Chuleta de cerdo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Francés Suizo de Chuleta de Cerdo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Francés Suizo de Pechuga"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Costilla de res",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Francés Suizo de Costilla de Res"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 240,
+     "seed_nombre": "Francés Suizo de Poc-Chuc"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 5,
+   "categoria": "Francés suizo",
+   "categoria_canonica": "frances suizo",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 298,
+     "seed_nombre": "Francés Suizo de Arrachera"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne. Hecho en nuestro horno."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Crujientes de pechuga de pollo *",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 304,
+     "seed_nombre": "Crujientes de Pechuga de Pollo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Platillo de pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 291,
+     "seed_nombre": "Platillo de Pastor"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Platillo de bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 342,
+     "seed_nombre": "Platillo de Bistec"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Platillo de pechuga de pollo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 329,
+     "seed_nombre": "Platillo de Pechuga de Pollo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Platillo de chuleta de cerdo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 329,
+     "seed_nombre": "Platillo de Chuleta de Cerdo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Platillo de costilla de res",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 329,
+     "seed_nombre": "Platillo de Costilla de Res"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Platillo de arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 417,
+     "seed_nombre": "Platillo de Arrachera"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Platillo de poc-chuc *",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 329,
+     "seed_nombre": "Platillo de Poc-Chuc"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Fajitas de bistec *",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 342,
+     "seed_nombre": "Fajitas de Bistec"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Fajitas de pechuga *",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 342,
+     "seed_nombre": "Fajitas de Pechuga"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Fajitas de arrachera *",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 417,
+     "seed_nombre": "Fajitas de Arrachera"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Parrillada para 2 *",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 519,
+     "seed_nombre": "Parrillada para 2"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 6,
+   "categoria": "Platillos PM",
+   "categoria_canonica": "platillos pm",
+   "nombre": "Parrillada para 4 *",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 886,
+     "seed_nombre": "Parrillada para 4"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga, salvo los marcados con (*)."
+  },
+  {
+   "imagen": 7,
+   "categoria": "Postres",
+   "categoria_canonica": "postres",
+   "nombre": "Crema española",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 70,
+     "seed_nombre": "Crema Española"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Postres",
+   "categoria_canonica": "postres",
+   "nombre": "Crema de coco",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 70,
+     "seed_nombre": "Crema de Coco"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Postres",
+   "categoria_canonica": "postres",
+   "nombre": "Flan",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 70,
+     "seed_nombre": "Flan"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Postres",
+   "categoria_canonica": "postres",
+   "nombre": "Queso napolitano",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 95,
+     "seed_nombre": "Queso Napolitano"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Receta de la casa"
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Coca-Cola (botella o lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Coca-Cola"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Coca-Cola Light (botella o lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Coca-Cola Light"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Coca-Cola sin azúcar (botella o lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Coca-Cola sin Azúcar"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Toronja Cristal",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Toronja Cristal"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Fanta (botella)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Fanta"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Sidral Mundet (botella)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Sidral Mundet"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Sprite (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Sprite"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Sprite Cero (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Sprite Cero"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Agua mineral Cristal 300 ml",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Agua Mineral Cristal"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Agua purificada 600 ml",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Agua Purificada"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Refrescos 355 ml",
+   "categoria_canonica": "refrescos",
+   "nombre": "Topo Chico 355 ml (marcada NUEVA)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 63,
+     "seed_nombre": "Topo Chico"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Aguas frescas (rellenable una vez)",
+   "categoria_canonica": "aguas frescas",
+   "nombre": "Jamaica",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 51,
+     "seed_nombre": "Agua de Jamaica"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Aguas frescas (rellenable una vez)",
+   "categoria_canonica": "aguas frescas",
+   "nombre": "Horchata",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 51,
+     "seed_nombre": "Horchata"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Aguas frescas (rellenable una vez)",
+   "categoria_canonica": "aguas frescas",
+   "nombre": "Té",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 51,
+     "seed_nombre": "Té"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Limonada",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 51,
+     "seed_nombre": "Limonada"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Limonada con soda",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 62,
+     "seed_nombre": "Limonada con Soda"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Limonada con Topo Chico",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 83,
+     "seed_nombre": "Limonada con Topo Chico"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Naranjada",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 51,
+     "seed_nombre": "Naranjada"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Naranjada con soda",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 62,
+     "seed_nombre": "Naranjada con Soda"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Naranjada con Topo Chico",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 83,
+     "seed_nombre": "Naranjada con Topo Chico"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Suero con soda",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 62,
+     "seed_nombre": "Suero con Soda"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Bebidas preparadas",
+   "categoria_canonica": "limonadas, naranjadas y suero",
+   "nombre": "Suero con Topo Chico",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 83,
+     "seed_nombre": "Suero con Topo Chico"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Sol",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 66,
+     "seed_nombre": "Sol"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Superior",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 66,
+     "seed_nombre": "Superior"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Tecate Light",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 66,
+     "seed_nombre": "Tecate Light"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Heineken",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 76,
+     "seed_nombre": "Heineken"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Indio",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 66,
+     "seed_nombre": "Indio"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "XX Lager",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 67,
+     "seed_nombre": "XX Lager"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "XX Ámbar",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 67,
+     "seed_nombre": "XX Ámbar"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Amstel Ultra",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 76,
+     "seed_nombre": "Amstel Ultra"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Bohemia Clara",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 76,
+     "seed_nombre": "Bohemia Clara"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Bohemia Oscura",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 76,
+     "seed_nombre": "Bohemia Oscura"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Ceiba Dorada Premium",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Ceiba Dorada Premium"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Ceiba Light Lager",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Ceiba Light Lager"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Ceiba Mestiza",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Ceiba Mestiza"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Ceiba Stout",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Ceiba Stout"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Patito Oscura",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Patito Oscura"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Patito Lager",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Patito Lager"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Ojo Rojo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 38,
+     "seed_nombre": "Ojo Rojo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Vaso de chelada",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 20,
+     "seed_nombre": "Vaso de Chelada"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Cervezas",
+   "categoria_canonica": "cervezas",
+   "nombre": "Vaso de michelada",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 25,
+     "seed_nombre": "Vaso de Michelada"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Digestivos",
+   "categoria_canonica": "digestivos",
+   "nombre": "Vino tinto Concha y Toro (copa)",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 89,
+     "seed_nombre": "Vino Tinto Selección (copa)"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Extra champiñón",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 32,
+     "seed_nombre": "Extra Champiñón"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Extra chile poblano",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 32,
+     "seed_nombre": "Extra Chile Poblano"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Extra chorizo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 32,
+     "seed_nombre": "Extra Chorizo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Extra guacamole",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Extra Guacamole"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Extra rajas",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 32,
+     "seed_nombre": "Extra Rajas"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Extra tocino",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 32,
+     "seed_nombre": "Extra Tocino"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Orden de tortilla harina",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 20,
+     "seed_nombre": "Orden Tortilla de Harina"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Orden tortilla maíz",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 20,
+     "seed_nombre": "Orden Tortilla de Maíz"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 7,
+   "categoria": "Guarniciones extra",
+   "categoria_canonica": "guarniciones extra",
+   "nombre": "Queso",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 45,
+     "seed_nombre": "Extra Queso"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Ron Appleton Especial",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 108,
+     "seed_nombre": "Ron Appleton Especial"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Ron Bacardi Añejo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Ron Bacardí Añejo"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Ron Bacardi Blanco",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 95,
+     "seed_nombre": "Ron Bacardí Blanco"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Ron Bacardi Solera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 114,
+     "seed_nombre": "Ron Bacardí Solera"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Tequila Don Julio Reposado",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 146,
+     "seed_nombre": "Tequila Don Julio Reposado"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Tequila Herradura Reposado",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 121,
+     "seed_nombre": "Tequila Herradura Reposado"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Tequila Jimador",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 95,
+     "seed_nombre": "Tequila Jimador"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Tequila Tradicional",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Tequila Tradicional"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Vodka Absolut",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 114,
+     "seed_nombre": "Vodka Absolut"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Vodka Smirnoff",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 101,
+     "seed_nombre": "Vodka Smirnoff"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Whisky Buchanans",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 159,
+     "seed_nombre": "Whisky Buchanan's"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Whisky Chivas Regal",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 139,
+     "seed_nombre": "Whisky Chivas Regal"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Licores",
+   "categoria_canonica": "licores",
+   "nombre": "Whisky J.W. Etiqueta Negra",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 139,
+     "seed_nombre": "Whisky J.W. Etiqueta Negra"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Caribe Cooler",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 97,
+     "seed_nombre": "Caribe Cooler"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Conga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 97,
+     "seed_nombre": "Conga"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Conga sin alcohol",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 89,
+     "seed_nombre": "Conga sin Alcohol"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Daiquiri",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 97,
+     "seed_nombre": "Daiquiri"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Daiquiri sin alcohol",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 89,
+     "seed_nombre": "Daiquiri sin Alcohol"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Limonada eléctrica",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 97,
+     "seed_nombre": "Limonada Eléctrica"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Margarita",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 97,
+     "seed_nombre": "Margarita"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Margarita sin alcohol",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 89,
+     "seed_nombre": "Margarita sin Alcohol"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Piñada",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 89,
+     "seed_nombre": "Piñada"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Piña colada",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 97,
+     "seed_nombre": "Piña Colada"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Sangría sin alcohol",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 89,
+     "seed_nombre": "Sangría sin Alcohol"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Cocktails",
+   "categoria_canonica": "cocktails",
+   "nombre": "Sangría",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 97,
+     "seed_nombre": "Sangría"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 750,
+     "seed_nombre": "Pastor — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Bistec de res",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 950,
+     "seed_nombre": "Bistec de Res — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Bistec de res encebollado",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 950,
+     "seed_nombre": "Bistec de Res Encebollado — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Chuleta de cerdo",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 800,
+     "seed_nombre": "Chuleta de Cerdo — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Pechuga de pollo",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 800,
+     "seed_nombre": "Pechuga de Pollo — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 800,
+     "seed_nombre": "Poc-Chuc — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 1200,
+     "seed_nombre": "Arrachera — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
+  },
+  {
+   "imagen": 8,
+   "categoria": "Kilos a domicilio",
+   "categoria_canonica": "kilos a domicilio",
+   "nombre": "Costilla res",
+   "presentaciones": [
+    {
+     "etiqueta": "kilo",
+     "precio_mxn": 800,
+     "seed_nombre": "Costilla de Res — 1 kg"
+    }
+   ],
+   "piezas_por_orden": null,
+   "cita_piezas": null,
+   "nota": "Incluye salsa roja, verde, limones y tortillas."
   }
  ],
  "promociones": [
@@ -961,21 +3194,94 @@
    "dia": "lunes",
    "nombre": "2x1 en tacos al pastor",
    "precio_mxn": null,
-   "restricciones": "Aplican restricciones: promociones válidas únicamente en sucursales Francisco de Montejo, Pensiones y Plaza Galerías, a partir del horario de apertura al cierre. No válido en servicio a domicilio."
+   "imagen": 1,
+   "aplica_domicilio": false,
+   "sucursales_segun_imagen": [
+    "fco-montejo",
+    "pensiones",
+    "galerias"
+   ],
+   "cita": "LUNES 2x1 EN TACOS AL PASTOR",
+   "restriccion": "*APLICAN RESTRICCIONES: PROMOCIONES VÁLIDAS ÚNICAMENTE EN SUCURSALES FRANCISCO DE MONTEJO, PENSIONES Y PLAZA GALERÍAS A PARTIR DEL HORARIO DE APERTURA AL CIERRE. *NO VÁLIDO EN SERVICIO A DOMICILIO."
   },
   {
    "dia": "martes",
    "nombre": "Nachos al pastor + 2 aguas frescas",
    "precio_mxn": 278,
-   "restricciones": "Aplican restricciones: promociones válidas únicamente en sucursales Francisco de Montejo, Pensiones y Plaza Galerías, a partir del horario de apertura al cierre. No válido en servicio a domicilio."
+   "imagen": 1,
+   "aplica_domicilio": false,
+   "sucursales_segun_imagen": [
+    "fco-montejo",
+    "pensiones",
+    "galerias"
+   ],
+   "cita": "MARTES NACHOS AL PASTOR + 2 AGUAS FRESCAS x $278",
+   "restriccion": "*APLICAN RESTRICCIONES: PROMOCIONES VÁLIDAS ÚNICAMENTE EN SUCURSALES FRANCISCO DE MONTEJO, PENSIONES Y PLAZA GALERÍAS A PARTIR DEL HORARIO DE APERTURA AL CIERRE. *NO VÁLIDO EN SERVICIO A DOMICILIO.",
+   "aguas_que_entran": null
   }
  ],
- "horarios_por_producto": null,
- "horarios_por_producto_nota": "El sitio no publica horarios por producto ni por sucursal en estas páginas: PENDIENTE de confirmar con PM.",
- "disponibilidad_por_sucursal_nota": "Solo se afirma lo que la imagen de ESTA sucursal muestra; lo que no aparece NO quiere decir que no se venda.",
- "excepciones_y_notas": [
-  "Aplican restricciones: promociones válidas únicamente en sucursales Francisco de Montejo, Pensiones y Plaza Galerías, a partir del horario de apertura al cierre. No válido en servicio a domicilio.",
-  "La web de Pensiones sigue publicando la lista de 2025; el seed (corrección CR01/CR02 del 3-oct-2026) usa la lista T1-2026 en T3. Decide el dueño cuál rige (PENDIENTE).",
-  "Costo de envío, pedido mínimo, agotados y «solo fin de semana»: el sitio no publica nada de esto; PENDIENTE de confirmar con PM."
- ]
+ "tortilla": [
+  {
+   "producto": "Quesadillas",
+   "tortilla": "de maíz o harina (a elegir)",
+   "cita": "DE MAÍZ O HARINA",
+   "imagen": "la de Entradas y nachos"
+  },
+  {
+   "producto": "Chetacos",
+   "tortilla": "harina extra grande",
+   "cita": "Tortilla de harina extra grande"
+  },
+  {
+   "producto": "Flautas de PM (solo página Montejo/Altabrisa/Victory)",
+   "tortilla": "maíz grande y frita",
+   "cita": "TORTILLA DE MAÍZ GRANDE Y FRITA, CUBIERTA CON QUESO GRATINADO, CREMA Y RELLENA DE CARNE"
+  },
+  {
+   "producto": "Platillos de PM",
+   "tortilla": "incluyen tortillas; el tipo no se dice",
+   "cita": "TODOS LOS PLATILLOS INCLUYEN TORTILLAS, FRIJOLES CHARROS, CARBOLLA, GUACAMOLE CON TOSTADAS Y ENSALADA DE TOMATE Y LECHUGA. NO APLICA EN PLATILLOS MARCADOS ( * )."
+  },
+  {
+   "producto": "Orden de tortilla extra",
+   "tortilla": "harina o maíz (se cobran aparte)",
+   "cita": "ORDEN TORTILLA HARINA / MAÍZ"
+  },
+  {
+   "producto": "Tacos, gringas, mestizas, alambre, suizos",
+   "tortilla": null,
+   "cita": "ninguna imagen dice el tipo de tortilla"
+  }
+ ],
+ "excepciones": [
+  {
+   "tema": "sin_guarniciones",
+   "texto": "Los platillos marcados con (*) NO incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas ni ensalada: crujientes de pechuga, poc-chuc, fajitas (bistec, pechuga, arrachera), parrillada para 2 y para 4."
+  },
+  {
+   "tema": "promos_solo_3_sucursales_y_no_domicilio",
+   "texto": "*APLICAN RESTRICCIONES: PROMOCIONES VÁLIDAS ÚNICAMENTE EN SUCURSALES FRANCISCO DE MONTEJO, PENSIONES Y PLAZA GALERÍAS A PARTIR DEL HORARIO DE APERTURA AL CIERRE. *NO VÁLIDO EN SERVICIO A DOMICILIO."
+  },
+  {
+   "tema": "tiempo_de_preparacion",
+   "texto": "Todos nuestros platillos son elaborados al momento y al carbón por lo que le pedimos su comprensión por el tiempo."
+  },
+  {
+   "tema": "aguas_frescas",
+   "texto": "Aguas frescas «rellenable una vez»: la leyenda sale en las imágenes de Francisco de Montejo, Pensiones y Galerías; NO sale en Montejo/García Lavín/Altabrisa ni en Playa (no se asume que apliquen)."
+  },
+  {
+   "tema": "kilos_incluyen",
+   "texto": "INCLUYE SALSA ROJA, VERDE, LIMONES Y TORTILLAS (solo la sección Kilos a domicilio)."
+  }
+ ],
+ "no_aparece_en_las_imagenes": {
+  "horarios_por_producto": null,
+  "agotados": null,
+  "solo_fin_de_semana": null,
+  "limites_de_cantidad": null,
+  "minimo_de_compra": null,
+  "costo_de_envio": null,
+  "combos_aparte_de_la_promo_del_martes": []
+ }
 }
