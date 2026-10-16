@@ -76,7 +76,6 @@ import {
   firmaDeCierre,
   mensajeDatosCambiaron,
   resumenCanonico,
-  type DatosDeCierre,
 } from "./cierre-maquina.ts";
 import type {
   CanalPedido,
@@ -1186,6 +1185,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
           }
           if (decision.marcarAmbiguo && flow.turn !== null && current.cierreAmbiguoTurn === undefined) {
             await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, cierreAmbiguoTurn: flow.turn });
+          } else if (decision.marcarNoVisto && flow.turn !== null && current.cierreNoVistoTurn === undefined) {
+            await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, cierreNoVistoTurn: flow.turn });
           }
           return { result: { error: decision.mensaje, ...(current.resumenCanonico ? { resumen_canonico: current.resumenCanonico, ...(current.resumenBase ? { resumen_total: current.resumenBase.total } : {}) } : {}) }, orderId: null, propertyId: null, rechazoDelFlujo: decision.code };
         }

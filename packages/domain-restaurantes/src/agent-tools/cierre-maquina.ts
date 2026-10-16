@@ -14,8 +14,9 @@
 //   * «No gracias» / «nada mas» contestados al resumen (que pregunta si esta correcto o si desea cambiar algo) SI son el visto bueno; contestados a una
 //     pregunta de propina son una respuesta de propina. Se decide por la ULTIMA pregunta del asistente (bloqueante de la revision de #566).
 //   * crear_pedido exige que pago / efectivo / propina coincidan con los de la confirmacion; si cambian, se vuelve a cotizar y a mostrar el resumen.
-//   * SALIDA SEGURA: toda negativa del servidor entrega el resumen canonico listo para pegar y deja un contador acotado: un mensaje ambiguo
-//     (ni si, ni no, ni cambio, ni dato) pasa en el SEGUNDO intento despues de haber vuelto a mostrar el resumen. El cierre nunca se traba mas de un turno.
+//   * SALIDA SEGURA: toda negativa del servidor entrega el resumen canonico listo para pegar y deja un contador acotado: un titubeo INOCUO («mmm», «a ver») pasa en el SEGUNDO intento
+//     despues de haber vuelto a mostrar el resumen, y un «sí» claro pasa un turno despues de un rechazo por «resumen no mostrado» (falso negativo del texto). Preguntas, dudas,
+//     negaciones, datos y cambios NUNCA pasan por la salida. El cierre nunca se traba mas de un turno.
 //   * El texto del resumen lo arma el SERVIDOR (`resumenCanonico`): el LLM solo redacta el tono, no el total.
 //
 // Limite honesto: el servidor no puede oir al cliente; clasifica TEXTO. La clasificacion es conservadora (ante la duda NO confirma y pide un «si»).
@@ -85,6 +86,18 @@ const PREGUNTA = /\?|^\W*(?:cuanto|cuando|cual|cuales|que|como|donde|quien|por\s
 
 const AFIRMACION = /^\W*(?:si+|sii+|sip|sep|simon|sale|dale|va|vale|ok(?:ey|ay)?|okis|listo|claro|correcto|correcta|confirmo|confirmado|confirmada|confirmalo|confirmelo|confirmar(?:\s+pedido)?|de\s+acuerdo|adelante|perfecto|asi\s+es|asi\s+esta\s+bien|esta\s+bien|esta\s+correcto|todo\s+bien|todo\s+correcto|andale|hazlo|procede|proceda|exacto|eso\s+es|de\s+una|va\s+que\s+va|jalo|cierto|asi\s+quedo|bien)\b/;
 
+/** Rechazo corto y suelto («no», «nop», «nel», «ya no», «mejor no», «claro que no», «no no», con cortesia final). Nunca confirma. */
+const RECHAZO_SUELTO = /^\W*(?:(?:no+|nop|nope|nel|nah|nanai|nanay|negativo)(?:\s*,?\s*(?:no+|nop|nope|nel))*|(?:ya\s+no(?:\s+(?:quiero|lo\s+quiero))?|olvidalo|olvida|mejor\s+no|para\s+nada|claro\s+que\s+no|ni\s+madres|de\s+ninguna\s+manera)(?:\s*,?\s*(?:gracias|por\s+favor|porfa|porfis))?)\W*$/;
+
+/** Dudas y titubeos: «sí, creo», «tal vez», «no sé». Nunca confirman ni se aceptan por la salida segura. */
+const TITUBEO = /\b(?:creo|supongo|tal\s+vez|quiza|quizas|a\s+lo\s+mejor|igual\s+y|no\s+se|no\s+estoy|dejame\s+pensar|dejame\s+ver|no\s+tengo\s+claro|puede\s+ser|depende)\b/;
+
+/** Direccion o referencias de entrega dichas DESPUES del resumen: es un cambio y exige volver a confirmar. */
+const DIRECCION = /\b(?:direccion|calle|avenida|colonia|fraccionamiento|fracc|entre\s+calles|esquina|referencias?|mandalo\s+a|llevalo\s+a|enviarlo\s+a|a\s+la\s+otra)\b|#\s*\d+|\bav\.\s|\bcol\.\s/;
+
+/** Cantidad dicha suelta: «dos mas», «que sean 3», «solo uno». */
+const CANTIDAD = /\b(?:un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+mas\b|\bque\s+sean\b|\bsolo\s+(?:un|una|uno|dos|tres|cuatro|cinco|\d+)\b/;
+
 /** Visto bueno al resumen expresado en negativo («no gracias», «nada mas»): SOLO cuenta cuando se contesta a un resumen que pregunta si esta correcto o si desea cambiar algo. */
 const VISTO_BUENO_EN_NEGATIVO = /^\W*(?:no+\s*,?\s*(?:gracias|nada\s*mas|asi\s*esta(?:\s*bien)?|es\s*todo|eso\s*es\s*todo|todo\s*bien)|nada\s*mas|eso\s*es\s*todo|es\s*todo|asi\s*esta(?:\s*bien|\s*perfecto)?|ninguno|nada\s*que\s*cambiar|no\s*cambio\s*nada)\W*$/;
 
@@ -105,18 +118,53 @@ export interface DatosDelMensaje {
   readonly sinPropina?: boolean;
 }
 
-const MONTO_FINAL = /(?:\bcon|\bde|\bcambio\s+de|\bpago\s+con|\bpagare\s+con|\bpaga(?:ria)?\s+con)?\s*\$?\s*(\d{2,5}(?:[.,]\d{1,2})?)\s*(?:pesos|varos|mxn)?\s*(?:porfa|por favor|gracias|ok)?\W*$/;
+// Monto en cifras («600», «$1,000», «1,000.50», «1000 pesos») o en palabras («mil», «dos mil», «mil quinientos», «quinientos»).
+const CIFRA = String.raw`\$?\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)`;
+const CENTENAS: Record<string, number> = { cien: 100, ciento: 100, doscientos: 200, trescientos: 300, cuatrocientos: 400, quinientos: 500, seiscientos: 600, setecientos: 700, ochocientos: 800, novecientos: 900 };
+const UNIDADES_MIL: Record<string, number> = { un: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10 };
+const PALABRA_MONTO = String.raw`((?:(?:${Object.keys(UNIDADES_MIL).join("|")})\s+)?mil(?:\s+(?:${Object.keys(CENTENAS).join("|")}))?|${Object.keys(CENTENAS).join("|")})`;
+const MONTO = String.raw`(?:${CIFRA}|${PALABRA_MONTO})`;
+const NO_ES_PROPINA = String.raw`(?!\s*(?:%|por\s*ciento|(?:pesos\s*)?de\s+propina))`;
 
-/** Extrae pago / efectivo / propina del texto del cliente. Un monto solo cuenta como «efectivo con» si cierra el mensaje y alcanza el total (si se conoce). */
+function numeroDeCifra(c: string): number {
+  return /^\d{1,3}(?:,\d{3})+/.test(c) ? Number(c.replace(/,/g, "")) : Number(c.replace(",", "."));
+}
+
+function numeroDePalabras(p: string): number {
+  const w = p.trim().split(/\s+/);
+  let total = 0;
+  const iMil = w.indexOf("mil");
+  if (iMil >= 0) {
+    total += (iMil > 0 ? (UNIDADES_MIL[w[0]!] ?? 1) : 1) * 1000;
+    const resto = w[iMil + 1];
+    if (resto) total += CENTENAS[resto] ?? 0;
+  } else total += CENTENAS[w[0]!] ?? 0;
+  return total;
+}
+
+function valorDeMonto(m: RegExpExecArray, desde: number): number {
+  return m[desde] !== undefined ? numeroDeCifra(m[desde]!) : numeroDePalabras(m[desde + 1]!);
+}
+
+/** Monto «con el que paga» el cliente: tras «con», «pago con», «cambio de», «billete de»... en cualquier parte del mensaje; o una cifra que cierra el mensaje. */
+export function montoDePago(t: string): number | undefined {
+  const explicito = new RegExp(String.raw`(?:\bcon|\bcambio\s+de|\bpago\s+con|\bpagare\s+con|\bpaga(?:ria)?\s+con|\bbillete\s+de|\bmanejo|\btraigo)\s+${MONTO}\s*(?:pesos|varos|mxn)?${NO_ES_PROPINA}\b`).exec(t);
+  if (explicito) return valorDeMonto(explicito, 1);
+  const final = new RegExp(String.raw`(?:^|\s)${MONTO}\s*(?:pesos|varos|mxn)?\s*(?:porfa|por favor|gracias|ok)?\W*$`).exec(t);
+  if (final) return valorDeMonto(final, 1);
+  return undefined;
+}
+
+/** Extrae pago / efectivo / propina del texto del cliente. Un monto solo cuenta como «efectivo con» si alcanza el total (si se conoce). */
 export function datosDelMensaje(mensaje: string, total?: number): DatosDelMensaje {
   const t = normalizar(mensaje);
   const out: { -readonly [K in keyof DatosDelMensaje]: DatosDelMensaje[K] } = {};
   const tarjeta = /\b(?:tarjeta|terminal|debito|credito)\b/.test(t);
   const efectivoPalabra = /\b(?:efectivo|cash)\b/.test(t);
-  const efectivoMonto = /\b(?:cambio\s+de|pago\s+con|pagare\s+con|paga(?:ria)?\s+con)\s*\$?\s*\d/.test(t);
   if (tarjeta && !efectivoPalabra) out.pago = "tarjeta";
-  else if ((efectivoPalabra || efectivoMonto) && !tarjeta) out.pago = "efectivo";
-  if (/\bsin\s+propina\b|\bno\s+(?:quiero|dejo|voy\s+a\s+dejar)\s+propina\b/.test(t)) out.sinPropina = true;
+  else if (efectivoPalabra && !tarjeta) out.pago = "efectivo";
+  const dicePropina = /\bpropina\b|\d\s*%|\bpor\s*ciento\b/.test(t);
+  if (/\bsin\s+propina\b|\bno\s+(?:quiero|dejo|voy\s+a\s+dejar|le\s+(?:quiero|dejo))\s+(?:dejar\s+)?propina\b|\bno\s+propina\b/.test(t)) out.sinPropina = true;
   else {
     const pct = /\b(\d{1,3}(?:[.,]\d{1,2})?)\s*%/.exec(t) ?? /\b(\d{1,3})\s*por\s*ciento\b/.exec(t);
     if (pct) out.propinaPct = Number(pct[1]!.replace(",", "."));
@@ -125,16 +173,15 @@ export function datosDelMensaje(mensaje: string, total?: number): DatosDelMensaj
       if (mxn) out.propinaMxn = Number(mxn[1]!.replace(",", "."));
     }
   }
-  if (out.pago !== "tarjeta" && out.propinaPct === undefined && out.propinaMxn === undefined) {
-    const m = MONTO_FINAL.exec(t);
-    if (m) {
-      const n = Number(m[1]!.replace(",", "."));
-      if (Number.isFinite(n) && (total === undefined || n >= total)) {
-        out.efectivoCon = n;
-        out.pago = out.pago ?? "efectivo";
-      }
+  if (out.pago !== "tarjeta" && !(dicePropina && out.sinPropina !== true)) {
+    const n = montoDePago(t);
+    if (n !== undefined && Number.isFinite(n) && n > 0 && (total === undefined || n >= total)) {
+      out.efectivoCon = n;
+      out.pago = out.pago ?? "efectivo";
     }
   }
+  // «No gracias, pago con 1000»: el «no gracias» contesta la pregunta de propina.
+  if (out.sinPropina === undefined && out.propinaMxn === undefined && out.propinaPct === undefined && out.pago !== undefined && /^\W*no\s*,?\s*gracias\b/.test(t)) out.sinPropina = true;
   return out;
 }
 
@@ -174,23 +221,41 @@ export function clasificarRespuestaCierre(mensaje: unknown, opciones: OpcionesCl
   if (/^cambiar algo$/.test(t)) return "cambio";
   // Rechazo o correccion explicita del resumen.
   if (rechazaElResumen(crudo)) return "no";
-  if (/^no+\W*$/.test(t) || /^(?:no|nel|nop|nope)\s*,?\s*(?:todavia|aun)?\s*no\W*$/.test(t) || /^\W*(?:no\s+lo\s+(?:confirmo|quiero)|espera|esperate|alto|cancela|cancelar|cancelalo)\b/.test(t)) return "no";
+  if (RECHAZO_SUELTO.test(t) || /^(?:no|nel|nop|nope)\s*,?\s*(?:todavia|aun)?\s*no\W*$/.test(t) || /^\W*(?:no\s+lo\s+(?:confirmo|quiero)|espera|esperate|alto|cancela|cancelar|cancelalo)\b/.test(t)) return "no";
   // Visto bueno en negativo: solo si contesta al resumen.
   if (VISTO_BUENO_EN_NEGATIVO.test(t)) return opciones.despuesDelResumen ? "si" : "dato";
   const palabras = t.split(" ").length;
   const conAfirmacion = AFIRMACION.test(t);
   // Preguntas: ni confirman ni cambian; el modelo debe contestarlas y volver a pedir el si.
+  if (CANTIDAD.test(t)) return "cambio";
   if (PREGUNTA.test(t)) return "ambiguo";
-  if (MARCADORES_DE_CAMBIO.test(t)) return "cambio";
-  const datoPagoOPropina = PAGO_O_PROPINA.some((re) => re.test(t));
+  if (TITUBEO.test(t)) return "ambiguo";
+  if (MARCADORES_DE_CAMBIO.test(t) || DIRECCION.test(t) || CANTIDAD.test(t)) return "cambio";
+  const dichos = datosDelMensaje(crudo, opciones.total);
+  const datoPagoOPropina = PAGO_O_PROPINA.some((re) => re.test(t)) || Object.values(dichos).some((v) => v !== undefined);
   // «si, con tarjeta» / «ok, 500»: el cliente da un dato; el si no responde a un resumen con ese dato. No confirma.
   if (datoPagoOPropina) {
     // «sí, efectivo» / «sí confirmo, pago en efectivo» a un resumen que YA muestra efectivo es un sí; si el dato es otro (o el resumen no lo traia) es un dato nuevo: no confirma.
-    if (conAfirmacion && coincideConElResumen(datosDelMensaje(crudo, opciones.total), opciones.datosCotizados)) return "si";
+    if (conAfirmacion && coincideConElResumen(dichos, opciones.datosCotizados)) return "si";
     return "dato";
   }
+  // Una negacion que no es un dato de pago: «claro que no», «ya no quiero», «no, mejor otro dia». Con un sí por delante («sí, no hay problema») queda ambigua; sin él es un rechazo.
+  if (/\bno\b/.test(t)) return conAfirmacion && !/\b(?:que|pero|pues|eso)\s+no\b/.test(t) ? "ambiguo" : "no";
   if (conAfirmacion && palabras <= 7) return "si";
   return "ambiguo";
+}
+
+/**
+ * ¿Un mensaje clasificado «ambiguo» es tan inocuo («mmm», «a ver», «pues») que la salida segura puede aceptarlo en el segundo intento? Preguntas, titubeos, negaciones, cambios y
+ * datos NUNCA se aceptan por esa salida: el cliente que sigue dudando sigue hablando con el asistente (o con una persona), no se le crea un pedido.
+ */
+export function ambiguoAceptablePorSalida(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string") return false;
+  const t = normalizar(mensaje);
+  if (!t) return false;
+  if (PREGUNTA.test(t) || TITUBEO.test(t) || /\bno\b|\bnada\b|\bnunca\b|\bni\b/.test(t)) return false;
+  if (MARCADORES_DE_CAMBIO.test(t) || DIRECCION.test(t) || CANTIDAD.test(t) || PAGO_O_PROPINA.some((re) => re.test(t))) return false;
+  return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -336,6 +401,8 @@ export type DecisionConfirmacion =
       readonly mensaje: string;
       readonly respuesta: RespuestaCierre | "sin_resumen";
       readonly marcarAmbiguo: boolean;
+      /** El resumen no se reconocio como mostrado: el llamador guarda el turno para abrir la salida segura en el turno siguiente. */
+      readonly marcarNoVisto?: boolean;
       /** Respuesta de pago / propina: el servidor adopta estos datos y rearma el resumen (no confirma). */
       readonly datosNuevos?: DatosDeCierre;
     };
@@ -356,6 +423,13 @@ const COMO_MOSTRAR = (canonico: string | undefined): string =>
 export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
   const ultimoAsistente = ultimoDe(e.historial, "assistant");
   const ultimoCliente = ultimoDe(e.historial, "user");
+  const salidaNoVisto = e.ctx.cierreNoVistoTurn !== undefined && e.turn !== null && e.ctx.cierreNoVistoTurn !== e.turn;
+  // SALIDA SEGURA contra la heuristica de texto (falso negativo: el resumen salio con el total en letras, otra pregunta final o fuera de la ventana de historial): si ya se rechazo UNA vez por
+  // «resumen no mostrado» y en un turno POSTERIOR el cliente contesta un «si» claro, se acepta. El cierre se retrasa a lo mucho un turno y nunca se queda trabado.
+  if (salidaNoVisto && !esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente)) {
+    const totalVisto = resumenMostradoEnHistorial(e.ctx.quotedTotal, [{ role: "assistant", content: ultimoAsistente ?? "" }]) === true;
+    if (clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: totalVisto, datosCotizados: datosDeCierreDeContexto(e.ctx), total: e.ctx.quotedTotal }) === "si") return { ok: true };
+  }
   if (!esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente)) {
     // El cliente contesto un dato de pago / propina antes de ver el resumen: el servidor lo adopta para que el resumen que se le muestre ya lo lleve.
     const previos = datosDeCierreDeContexto(e.ctx);
@@ -366,6 +440,7 @@ export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
       code: "cierre_resumen_no_mostrado",
       respuesta: "sin_resumen",
       marcarAmbiguo: false,
+      marcarNoVisto: true,
       ...(nuevos && firmaDeCierre(nuevos) !== firmaDeCierre(previos) ? { datosNuevos: nuevos } : {}),
       mensaje: `NO se confirmó el pedido: el cliente todavía no ha visto el resumen final con el total de $${e.ctx.quotedTotal ?? "?"} y la pregunta de confirmación (un sí a otra pregunta, como el pago o la propina, no es la confirmación).${COMO_MOSTRAR(e.canonico)}`,
     };
@@ -374,13 +449,13 @@ export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
   if (clase === "si") return { ok: true };
   if (clase === "ambiguo") {
     // Salida segura: la primera vez se pide un si claro; si el cliente vuelve a contestar algo ambiguo DESPUES de que se le mostro el resumen otra vez, el modelo decide.
-    if (e.ctx.cierreAmbiguoTurn !== undefined && e.turn !== null && e.ctx.cierreAmbiguoTurn !== e.turn) return { ok: true };
+    if (e.ctx.cierreAmbiguoTurn !== undefined && e.turn !== null && e.ctx.cierreAmbiguoTurn !== e.turn && ambiguoAceptablePorSalida(ultimoCliente)) return { ok: true };
     return {
       ok: false,
       code: "cierre_sin_si_explicito",
       respuesta: clase,
       marcarAmbiguo: true,
-      mensaje: "NO se confirmó el pedido: el último mensaje del cliente no es un sí claro al resumen. Contéstele lo que haya preguntado (si preguntó algo) y pídale que responda «sí» para confirmar o que le diga qué desea cambiar. Si su siguiente mensaje sigue siendo ambiguo, el sistema lo aceptará.",
+      mensaje: "NO se confirmó el pedido: el último mensaje del cliente no es un sí claro al resumen. Contéstele lo que haya preguntado (si preguntó algo) y pídale que responda «sí» para confirmar o que le diga qué desea cambiar. Si su siguiente mensaje sigue siendo un titubeo inocuo (sin preguntas, negaciones ni cambios), el sistema lo aceptará; si duda, rechaza o pregunta, siga conversando con él.",
     };
   }
   const guia: Record<Exclude<RespuestaCierre, "si" | "ambiguo">, string> = {
@@ -389,7 +464,8 @@ export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
     dato: "El último mensaje del cliente es un dato de pago o propina, NO el sí al resumen. No confirme: guarde el dato, vuelva a llamar cotizar_pedido con el pago (y la propina si la dio) y muéstrele el resumen completo con ese dato para que diga sí.",
   };
   const mensaje = `NO se confirmó el pedido. ${guia[clase]}`;
-  if (clase === "dato" && ultimoCliente) {
+  // Un dato de pago o propina dicho junto con un cambio («mejor con tarjeta», «sí, pero con 600»): tampoco confirma, y el servidor igual adopta el dato.
+  if ((clase === "dato" || clase === "cambio") && ultimoCliente) {
     const d = datosDelMensaje(ultimoCliente, e.ctx.quotedTotal);
     const nuevos = aplicarDatosDelMensaje(datosDeCierreDeContexto(e.ctx), d);
     if (firmaDeCierre(nuevos) !== firmaDeCierre(datosDeCierreDeContexto(e.ctx))) return { ok: false, code: "cierre_sin_si_explicito", respuesta: clase, marcarAmbiguo: false, mensaje, datosNuevos: nuevos };

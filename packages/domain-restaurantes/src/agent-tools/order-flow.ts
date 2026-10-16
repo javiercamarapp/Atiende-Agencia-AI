@@ -79,6 +79,8 @@ export interface OrderFlowContext {
   readonly quotedPropinaPct?: number;
   /** Turno del cliente en que se rechazo una confirmacion por mensaje ambiguo: en un turno POSTERIOR (resumen mostrado otra vez) el ambiguo ya no se rechaza. Salida contra el deadlock. */
   readonly cierreAmbiguoTurn?: string;
+  /** Turno del cliente en que se rechazo una confirmacion por «resumen no mostrado»: en un turno POSTERIOR un «si» claro ya se acepta (la heuristica de texto puede dar falsos negativos). */
+  readonly cierreNoVistoTurn?: string;
   /** Texto del resumen armado por el servidor para ESTA cotizacion (solo con la maquina de cierre activa). */
   readonly resumenCanonico?: string;
   /** Datos con que se armo `resumenCanonico` (renglones, total, descuento, canal): permiten rearmarlo cuando cambian el pago o la propina sin volver a cotizar. */
