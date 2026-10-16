@@ -80,7 +80,7 @@ describe("activacion por variable de entorno", () => {
     expect(cierreMaquinaActiva({ [CIERRE_MAQUINA_ENV]: "" })).toBe(false);
     for (const v of ["1", "true", "TRUE", "on", "si"]) expect(cierreMaquinaActiva({ [CIERRE_MAQUINA_ENV]: v })).toBe(true);
   });
-  it("desactivada: el camino anterior queda intacto (sin resumen canonico y confirmar sin resumen mostrado pasa)", async () => {
+  it("desactivada: el camino es el de main (sin resumen canonico; confirmar pasa y la guarda de #566 rechaza crear sin resumen visto)", async () => {
     vi.stubEnv(CIERRE_MAQUINA_ENV, "");
     const s = setup();
     s.cliente("dos cocas para recoger, soy Nora");
@@ -90,6 +90,10 @@ describe("activacion por variable de entorno", () => {
     s.cliente("con 500");
     const c = (await s.confirm()) as { result: Record<string, unknown> };
     expect(c.result.confirmado).toBe(true);
+    await expect(s.create()).rejects.toMatchObject({ code: "resumen_no_mostrado" });
+    const total = await s.total();
+    s.asistente(`Su total es $${total}. ¿Es correcto?`);
+    s.cliente("sí");
     expect((await s.create()).orderId).not.toBeNull();
   });
 });

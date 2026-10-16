@@ -54,7 +54,14 @@ function normalizar(texto: string): string {
     .trim();
 }
 
-const SOLO_PULGAR_O_PALOMA = /^[\s👍👌✅🙌🤝💯👏\u{1F44D}\u{1F3FB}-\u{1F3FF}]+$/u;
+const EMOJIS_AFIRMATIVOS: ReadonlySet<string> = new Set(["👍", "👌", "✅", "🙌", "🤝", "💯", "👏"]);
+
+/** El mensaje son SOLO pulgares / palomas (con o sin tono de piel). Sin clases de caracteres con emojis (no-misleading-character-class): se parte por caracteres. */
+function esSoloPulgarOPaloma(crudo: string): boolean {
+  const quitado = crudo.replace(/\p{Emoji_Modifier}|\u200d|\ufe0f|\s/gu, "");
+  if (!quitado) return false;
+  return Array.from(quitado).every((c) => EMOJIS_AFIRMATIVOS.has(c));
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Clasificacion del ultimo mensaje del cliente
@@ -159,7 +166,7 @@ export function clasificarRespuestaCierre(mensaje: unknown, opciones: OpcionesCl
   if (typeof mensaje !== "string") return "ambiguo";
   const crudo = sinMarcadores(mensaje).trim();
   if (!crudo) return "ambiguo";
-  if (SOLO_PULGAR_O_PALOMA.test(crudo)) return "si";
+  if (esSoloPulgarOPaloma(crudo)) return "si";
   const t = normalizar(crudo);
   if (!t) return "ambiguo";
   // Botones del resumen.

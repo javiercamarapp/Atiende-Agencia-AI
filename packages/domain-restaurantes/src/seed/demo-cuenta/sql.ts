@@ -11,6 +11,16 @@ import { renderSchemaPreflightSql } from "../pm-demo.ts";
 import { DemoCuentaError, type DemoCuentaPlan } from "./plan.ts";
 
 const DELIMITADOR = "$dc$";
+/** Delimitadores que envuelven el JSON en algun contexto (CLI `do`, funcion del gate, archivo emitido): ningun dato puede contenerlos. */
+const DELIMITADORES_RESERVADOS = [DELIMITADOR, "$seed_dc$", "$seed_fn$", "$preflight$"] as const;
+
+/** Normaliza y valida el correo del dueno que se embebe como literal SQL (sin comillas, espacios ni `$`). */
+export function normalizarOwnerEmail(ownerEmail: string | null | undefined): string | null {
+  if (!ownerEmail) return null;
+  const email = ownerEmail.trim().toLowerCase();
+  if (!/^[^\s@'"$\\]+@[^\s@'"$\\]+\.[^\s@'"$\\]+$/.test(email)) throw new DemoCuentaError("owner-email invalido.");
+  return email;
+}
 
 /** SQL de solo lectura que devuelve una fila por columna FALTANTE del esquema (vacio = la base ya tiene lo que el seed escribe). Incluye `demo_organization`. */
 export function renderEsquemaRequeridoDemoCuenta(): string {
@@ -18,7 +28,7 @@ export function renderEsquemaRequeridoDemoCuenta(): string {
 }
 
 /** Cuerpo (`declare ... begin ... end`) del bloque plpgsql idempotente. */
-export function renderDemoCuentaPlpgsql(plan: DemoCuentaPlan): string {
+export function renderDemoCuentaPlpgsql(plan: DemoCuentaPlan, options: { readonly ownerEmail?: string | null } = {}): string {
   const doc = {
     organization: plan.organization,
     branches: plan.branches.map((b) => ({
@@ -49,11 +59,24 @@ export function renderDemoCuentaPlpgsql(plan: DemoCuentaPlan): string {
     demo: plan.demo,
   };
   const json = JSON.stringify(doc);
-  if (json.includes(DELIMITADOR)) throw new DemoCuentaError(`Los datos contienen el delimitador ${DELIMITADOR} reservado del seed.`);
+  for (const d of DELIMITADORES_RESERVADOS) if (json.includes(d)) throw new DemoCuentaError(`Los datos contienen el delimitador ${d} reservado del seed.`);
+  const email = normalizarOwnerEmail(options.ownerEmail);
+  const owner = email
+    ? `
+  -- 12) dueno (opcional): membresia owner de un usuario de staff que YA existe con ese correo. Nunca crea usuarios ni credenciales.
+  select id into v_user from core.staff_user where lower(email) = '${email}';
+  if v_user is null then
+    raise notice 'seed-demo-cuenta: no existe un usuario de staff con ese correo; la cuenta queda sin duenos (re-ejecutar con el correo correcto lo agrega).';
+  else
+    insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role)
+      values (v_user, v_org, null, 'owner', 'owner')
+      on conflict do nothing;
+  end if;`
+    : "";
   return `declare
   v jsonb := ${DELIMITADOR}${json}${DELIMITADOR}::jsonb;
   v_org uuid;
-  v_vertical text;
+  v_vertical text;${email ? "\n  v_user uuid;" : ""}
 begin
   -- 1) organizacion (por slug). Nunca pisa una organizacion de otra vertical.
   select id, vertical into v_org, v_vertical from core.organization where slug = v->'organization'->>'slug';
@@ -208,11 +231,11 @@ begin
 
   -- 11) marca de organizacion demo (migracion 037); re-ejecutar no reactiva un widget que el operador apago.
   insert into restaurantes.demo_organization (organization_id, seed_version) values (v_org, v->'demo'->>'seedVersion')
-    on conflict (organization_id) do update set seed_version = excluded.seed_version;
+    on conflict (organization_id) do update set seed_version = excluded.seed_version;${owner}
 end`;
 }
 
 /** Envuelve el cuerpo como bloque anonimo (CLI). */
-export function renderDemoCuentaDoBlock(plan: DemoCuentaPlan): string {
-  return `do $seed_dc$\n${renderDemoCuentaPlpgsql(plan)}\n$seed_dc$;`;
+export function renderDemoCuentaDoBlock(plan: DemoCuentaPlan, options: { readonly ownerEmail?: string | null } = {}): string {
+  return `do $seed_dc$\n${renderDemoCuentaPlpgsql(plan, options)}\n$seed_dc$;`;
 }
