@@ -10,6 +10,7 @@ import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { esMovil, sidebar } from "../helpers/navegacion.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
+import { esperarValor } from "../helpers/listas.ts";
 
 const BASE = `/restaurantes/${restaurantes.orgSlug}/cfo`;
 const RANGO = "desde=2026-09-21&hasta=2026-09-27&comparar=periodo_anterior";
@@ -121,8 +122,8 @@ test.describe("restaurantes CFO @humo", () => {
     await nomina.getByRole("button", { name: "Capturar costos: nómina" }).click();
     const dialogo = page.getByRole("dialog", { name: "Capturar costos" });
     await expect(dialogo).toBeVisible();
-    await expect(page.getByTestId("captura-concepto")).toHaveValue("nomina");
-    await expect(page.getByTestId("captura-ambito")).toHaveValue(T3);
+    await esperarValor(page.getByTestId("captura-concepto"), "nomina");
+    await esperarValor(page.getByTestId("captura-ambito"), T3);
     await expect(page.getByTestId("captura-historial")).toContainText("Todavía no hay una captura");
     // Sin monto no se puede guardar.
     await expect(dialogo.getByRole("button", { name: "Guardar costo" })).toBeDisabled();

@@ -52,12 +52,11 @@ describe.each(["whatsapp", "voz"] as const)("%s: minutos_para_recoger", (channel
     expect(q.result).toHaveProperty("quote_hash");
   });
 
-  it("una hora_recogida explicita manda sobre el plazo, y un plazo fuera de rango se ignora", async () => {
+  it("una hora_recogida explicita manda sobre el plazo, y un plazo fuera de rango se rechaza (QA-PM-R5-reglas-08)", async () => {
     const s = setup(channel);
     const q = await s.quote({ minutos_para_recoger: 40, hora_recogida: "2026-10-06T19:00:00-06:00" });
     expect(q.result).toHaveProperty("quote_hash");
-    const lejos = await s.quote({ minutos_para_recoger: 99999 });
-    expect(lejos.result).toHaveProperty("quote_hash"); // se ignora: es recogida inmediata
+    await expect(s.quote({ minutos_para_recoger: 99999 })).rejects.toThrow(/minutos_para_recoger debe ser/); // antes se ignoraba en silencio y salia "para ya"
   });
 
   it("un plazo que cae despues del cierre se rechaza con el motivo (horario de la sucursal), no con otra hora adivinada", async () => {

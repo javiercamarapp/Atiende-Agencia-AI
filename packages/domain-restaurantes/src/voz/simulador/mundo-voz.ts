@@ -73,6 +73,8 @@ export function crearMundoVoz(): MundoVoz {
     // Carnes por peso (QA-PM-R4-reglas-03): el kilo y el cuarto son productos distintos; la cantidad es de piezas, nunca gramos.
     arracheraKilo: sembrar("Arrachera — 1 kg", catTacos, 900, ["arrachera", "arrachera kilo"]),
     arrachera250: sembrar("Arrachera — 250 g", catTacos, 225, ["arrachera", "arrachera cuarto"]),
+    // QA-PM-R5-voz-01: "tres cuartos de kilo" es la presentacion de 750 g, no el kilo.
+    arrachera750: sembrar("Arrachera — 750 g", catTacos, 675, ["arrachera", "arrachera tres cuartos"]),
   } as const;
   repo.seedNoDomicilio({ productIds: [productos.cerveza.id] });
 

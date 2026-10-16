@@ -99,4 +99,88 @@ describe("POST /orders de voz: pedido grande de PM", () => {
     expect(store.todas()).toHaveLength(0);
     expect((auto as unknown as { solicitudes: { tipo: string; estado: string }[] }).solicitudes).toMatchObject([{ tipo: "pedido_grande", estado: "pendiente" }]);
   });
+
+  // VZ19 (ronda 5, D31): con el autopiloto el pedido de mas de $4,000 por voz quedaba `por_aprobar` SIN ningun aviso para la sucursal (callbacks=[]); en WhatsApp si escalaba.
+  it("VZ19: CON autopiloto, el pedido grande por voz queda por_aprobar Y registra el aviso escalada:pedido_grande para la sucursal (un solo aviso)", async () => {
+    const base = await buildTestDeps();
+    const { restaurantesRepo, organizationId, products } = base;
+    await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const auto = new InMemoryAutopilotoRepository();
+    const retener = auto.retenerPedidoGrande.bind(auto);
+    auto.retenerPedidoGrande = async (org, orderId, detalle) => {
+      const o = await restaurantesRepo.findOrderById(org, orderId);
+      if (o) auto.pedidos.set(o.id, { id: o.id, organizationId: o.organizationId, propertyId: o.propertyId, status: "pending", total: o.total, clienteNombre: o.customerName, telefono: o.customerPhone, canal: "recoger", numero: o.orderNumber ?? 1, renglones: [] });
+      return retener(org, orderId, detalle);
+    };
+    const avisos: Array<{ reason?: string; message?: string; propertyId?: string | null }> = [];
+    const original = restaurantesRepo.createCallbackRequest.bind(restaurantesRepo);
+    restaurantesRepo.createCallbackRequest = async (input) => {
+      avisos.push(input);
+      return original(input);
+    };
+    const app = buildApp({ ...base.deps, autopilotoRepo: () => auto });
+    const body = { branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230019", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo", canal: "recoger" };
+    const res = await app.request(`/v1/restaurantes/${ORG_SLUG}/orders`, jsonRequestInit(body, TOOL_SECRET_HEADERS));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ pedido_grande: true, por_aprobar: true });
+    const grandes = avisos.filter((c) => c.reason === "escalada:pedido_grande");
+    expect(grandes).toHaveLength(1);
+    expect(grandes[0]?.message).toMatch(/por_aprobar/);
+    expect(grandes[0]?.propertyId).toBeTruthy();
+    expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(1);
+  });
+
+  // D31 (revision de #530): el aviso corre en el mismo SAVEPOINT que el pedido. Con un repositorio que SI revierte (aqui: copia y restaura las filas de pedidos), si el aviso no se puede dejar el
+  // pedido por aprobar NO queda: nunca hay un pedido grande retenido sin que nadie en la sucursal lo sepa.
+  it("D31: si el aviso de pedido grande falla, el SAVEPOINT revierte tambien el pedido por_aprobar", async () => {
+    const base = await buildTestDeps();
+    const { restaurantesRepo, organizationId, products } = base;
+    await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const auto = new InMemoryAutopilotoRepository();
+    const retener = auto.retenerPedidoGrande.bind(auto);
+    auto.retenerPedidoGrande = async (org, orderId, detalle) => {
+      const o = await restaurantesRepo.findOrderById(org, orderId);
+      if (o) auto.pedidos.set(o.id, { id: o.id, organizationId: o.organizationId, propertyId: o.propertyId, status: "pending", total: o.total, clienteNombre: o.customerName, telefono: o.customerPhone, canal: "recoger", numero: o.orderNumber ?? 1, renglones: [] });
+      return retener(org, orderId, detalle);
+    };
+    const repo = restaurantesRepo as unknown as { orders: unknown[]; runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> };
+    repo.runWithRowSavepoint = async <T,>(fn: () => Promise<T>): Promise<T> => {
+      const copia = [...repo.orders];
+      try {
+        return await fn();
+      } catch (err) {
+        repo.orders.splice(0, repo.orders.length, ...copia);
+        throw err;
+      }
+    };
+    restaurantesRepo.createCallbackRequest = async () => {
+      throw new Error("no se pudo dejar el aviso");
+    };
+    const app = buildApp({ ...base.deps, autopilotoRepo: () => auto });
+    const res = await app.request(
+      `/v1/restaurantes/${ORG_SLUG}/orders`,
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Evento", customer_phone: "9991230021", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 100 }], payment_method: "efectivo", canal: "recoger" }, TOOL_SECRET_HEADERS),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect((await restaurantesRepo.listOrders(organizationId, { propertyIds: null, limit: 10 })).orders).toHaveLength(0);
+  });
+
+  it("VZ19 (negativo): un pedido bajo los umbrales con autopiloto NO registra aviso de pedido grande", async () => {
+    const base = await buildTestDeps();
+    const { restaurantesRepo, organizationId, products } = base;
+    await restaurantesRepo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const avisos: Array<{ reason?: string }> = [];
+    const original = restaurantesRepo.createCallbackRequest.bind(restaurantesRepo);
+    restaurantesRepo.createCallbackRequest = async (input) => {
+      avisos.push(input);
+      return original(input);
+    };
+    const app = buildApp({ ...base.deps, autopilotoRepo: () => new InMemoryAutopilotoRepository() });
+    const res = await app.request(
+      `/v1/restaurantes/${ORG_SLUG}/orders`,
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "Ana", customer_phone: "9991230020", customer_address: "Calle 20 #300, Mérida", items: [{ product_id: products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }], payment_method: "efectivo", canal: "recoger" }, TOOL_SECRET_HEADERS),
+    );
+    expect(res.status).toBe(200);
+    expect(avisos.filter((c) => c.reason === "escalada:pedido_grande")).toHaveLength(0);
+  });
 });

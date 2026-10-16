@@ -12,10 +12,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { LayoutGrid, MessageCircle } from "lucide-react";
-import { Button, NotificationBell, SheetClose, VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import { Button, SheetClose, VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
+import { CampanaNotificaciones } from "../components/CampanaNotificaciones.tsx";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
@@ -98,7 +99,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
 
   const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin", nombre: session.fullName, rolEtiqueta: loggingOut ? "Saliendo…" : "Superadmin" };
   const campana = (className?: string) => (
-    <NotificationBell className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
+    <CampanaNotificaciones apiBaseUrl={apiBaseUrl} token={session.token} className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
   );
 
   /** `enHoja` = el boton vive en la hoja del menu de cuenta movil: al pulsarlo la hoja se cierra y el panel (pantalla completa) queda a la vista. */

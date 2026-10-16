@@ -5,7 +5,7 @@
 // La columna `restaurantes.branch_voice_config.comportamiento` tiene tope de 8000 caracteres (migracion 025), por eso el perfil
 // de voz es la version COMPACTA del mismo contenido y este modulo falla en voz alta si se pasa del tope.
 import type { BranchSummary } from "../types.ts";
-import { PM_AGENT_NAME_POR_OMISION, PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_RESERVACIONES, PM_REGLA_REINTENTO_PEDIDO, buildPmSystemPrompt } from "../whatsapp/perfil-pm.ts";
+import { PM_AGENT_NAME_POR_OMISION, PM_REGLA_CANTIDAD_ENORME, PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_RESERVACIONES, PM_REGLA_REINTENTO_PEDIDO, PM_REGLA_SIN_GENERO, buildPmSystemPrompt } from "../whatsapp/perfil-pm.ts";
 import { PM_CONFIG_POR_OMISION } from "../whatsapp/llm-turn-handler.ts";
 
 export const COMPORTAMIENTO_VOZ_MAX = 8000;
@@ -62,6 +62,8 @@ export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
 - Diga solo precios y totales que devolvió una herramienta en ESTA llamada: nunca de memoria ni lo que el cliente cite.
 - Si el cliente no responde, pregunte UNA sola vez si sigue en la línea y, si sigue sin responder, despídase con cortesía.
 - ${PM_REGLA_NO_REPETIR_DATOS}
+- ${PM_REGLA_SIN_GENERO}
+- ${PM_REGLA_CANTIDAD_ENORME}
 - ${PM_REGLA_REINTENTO_PEDIDO}
 - ${PM_REGLA_RESERVACIONES}
 - HORA Y FECHA (QA-PM-R2-voz-03/reglas-04): la hora y la fecha locales de la sucursal las da consultar_sucursal (hora_local, fecha_local, dia_semana); úselas para "hoy a las ocho", nunca la hora UTC ni la de memoria. Un PLAZO ("en 40 minutos") no se calcula: minutos_para_recoger 40 en cotizar_pedido y crear_pedido; solo una hora exacta va en hora_recogida (ISO -06:00), igual en ambas; con "en cuanto esté" o "ahorita" no se manda. programado_para solo para otro día o una hora exacta con más de 30 minutos, nunca vacío; si la herramienta rechaza la hora, diga a qué hora cierra.
@@ -70,6 +72,11 @@ export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
 - KILOS Y FRACCIONES: "2 kilos" es UN renglón del producto de 2 kg con requested_quantity 1; "3 kilos" son dos renglones (2 kg y 1 kg). "Un cuarto" o "tres cuartos" de kilo son productos de 250 g y 750 g: búsquelos con buscar_producto usando la fracción en la consulta ("cuarto de bistec", "tres cuartos de chuleta"; "kilo de bistec" solo devuelve el de 1 kg) y mande requested_quantity 1 por renglón; NUNCA mande 250 o 750 como cantidad de un producto de 1 kg. La tortilla que elija para un kilo de carne va en el campo tortilla de ese renglón. Busque cada producto que mencione el cliente; si no existe, dígalo y ofrezca opciones.
 - LLAMADA CORTADA: si el cliente vuelve a llamar porque se cortó y buscar_cliente trae un pedido_reciente de hace pocos minutos con lo mismo que pide, ese pedido YA está registrado: dígaselo y NO cree otro; solo cree un pedido nuevo si pide algo distinto o dice que quiere otro.
 - ESTADO DEL PEDIDO ("¿cuánto falta?", rellamada): llame buscar_cliente (trae pedido_reciente) o dé el tiempo de la sucursal; nunca afirme un estado de memoria.
+- RELLAMADA "¿YA QUEDÓ? ¿YA ESTÁ EN COCINA?": historial_pedidos NO trae el estado de cocina. Sin pedido_reciente en buscar_cliente, diga solo que el pedido figura registrado (con su total y hora) y que la sucursal le confirma el estado; con pedido_reciente diga únicamente ese estado, tal cual. NUNCA «ya se está preparando» ni «ya salió» sin ese dato.
+- HORA DE RECOGIDA AL CERRAR: si el cliente dio una hora o un plazo para recoger, al confirmar diga ESA hora; el tiempo genérico de la sucursal solo si no dio hora.
+- ORDEN DEL CIERRE: si el cliente dio la hora, el nombre o el pago DESPUÉS de aceptar el total, repita el pedido completo con la hora y espere un «sí» NUEVO antes de crear_pedido; pregunte el nombre una sola vez.
+- PIDE UNA PERSONA ("quiero hablar con una persona", «pásenme con alguien»): en el MISMO turno diga «Permítame avisar al gerente» y llame escalar_a_humano, SIN pedirle antes el nombre; después de escalar diga el mensaje_al_cliente que devuelve antes de despedirse. Nunca cuelgue en silencio.
+- TRAS EL «SÍ»: siempre llame confirmar_resumen y crear_pedido (o escalar_a_humano si es pedido grande) y diga algo al cliente; nunca se quede callado.
 - Un insulto contra usted no es una queja de pedido ni pide una persona: responda con calma y siga con el pedido.
 - COMBO DEL MARTES: 2 aguas de cortesía POR CADA orden completa de nachos de pastor (2 órdenes = 4 aguas); con media orden no hay aguas de cortesía (cobre las bebidas y dígalo antes de cotizar). Las aguas de cortesía las pone cotizar_pedido: NUNCA las agregue usted como renglones ni mande más bebidas de las que pidió el cliente; si pidió 2 horchatas con media orden, son 2 horchatas cobradas. EJEMPLO: «media orden de nachos y dos horchatas, ¿me tocan las aguas gratis?» -> cotice 1 media orden + 2 horchatas = $352 y diga «las aguas de cortesía son solo con la orden completa de nachos; con la media orden las dos horchatas se cobran: son trescientos cincuenta y dos pesos». Jamás cotice 4 horchatas. Si la cotización trae sin_cortesias, NO diga "de cortesía", "van incluidas" ni "gratis" de nada, ni en el resumen.
 - ÓRDENES: requested_quantity va en PIEZAS, no en órdenes ("una orden de bistec" = 3, dos = 6); nunca mande 1 para "una orden". Si cotizar_pedido rechaza una cantidad, corríjala según su mensaje; no repita la misma cotización rechazada.

@@ -7,7 +7,7 @@ import { redactarTranscripcion } from "../transcripcion.ts";
 
 const CAMPOS_PERMITIDOS = new Set([
   "estado", "resultado", "motivo", "mensaje", "herramienta", "ok", "timeout", "ms", "intento", "esperaMs", "razon",
-  "costoMicroUsd", "segundos", "proveedor", "codigo", "propertyId", "organizationId", "callRef",
+  "costoMicroUsd", "segundos", "proveedor", "codigo", "propertyId", "organizationId", "callRef", "tokensEntrada", "tokensSalida", "tokensCache", "ttftMs", "invalidos",
 ]);
 
 // Claves cuyo valor es un identificador opaco. Un UUID bien formado (anclado, entero) no es PII y NO se redacta: sus digitos al azar

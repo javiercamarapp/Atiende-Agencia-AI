@@ -67,7 +67,7 @@ export type {
 } from "./types.ts";
 export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
-export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
+export { OrderConflictError, OrderValidationError, PromotionError, esGuardaSqlDeNegocioDePedido, WhatsappNumberInUseError } from "./errors.ts";
 
 export {
   validarHorario,
@@ -234,6 +234,8 @@ export {
   computeCustomerKpis,
 } from "./kpis.ts";
 export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export { MENU_PDF_BASE_POR_OMISION, MENU_PDF_POR_SUCURSAL, normalizarBaseMenuPdf, resolverMenuPdf } from "./menu-pdf.ts";
+export type { MenuPdfSucursal, ResultadoMenuPdf } from "./menu-pdf.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";

@@ -18,7 +18,7 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm, StatusBadge, FormField } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Selector, PageContainer, useConfirm, StatusBadge, FormField } from "@atiende/ui";
 import { Clock, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
@@ -47,7 +47,7 @@ const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly label: s
  * `null` antes de llamar a la API. */
 const SIN_CONFIGURAR = "";
 
-export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreSucursal }: RestaurantesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
   const { confirmar, dialogo } = useConfirm();
 
@@ -232,7 +232,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
             <form onSubmit={handleSaveZonaHoraria} className="flex flex-wrap items-end gap-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="config-zona-horaria">Zona horaria de esta sucursal</Label>
-                <NativeSelect
+                <Selector
                   id="config-zona-horaria"
                   value={zonaHorariaSelect}
                   onChange={(e) => {
@@ -247,7 +247,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                       {opt.label}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </div>
               <Button type="submit" loading={savingZonaHoraria}>
                 Guardar
@@ -305,7 +305,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
         </CardContent>
       </Card>
 
-      <AgenteWhatsappSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
+      <AgenteWhatsappSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} {...(nombreSucursal ? { nombreSucursal } : {})} />
       {dialogo}
     </PageContainer>
   );

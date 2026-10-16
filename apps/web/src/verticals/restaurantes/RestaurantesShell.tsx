@@ -37,7 +37,7 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { SelectorSucursal, useAmbitoVertical, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
@@ -84,6 +84,8 @@ export interface RestaurantesShellContext {
    * cae a `staffEmail` en ese caso. */
   readonly staffFullName: string | undefined;
   readonly staffEmail: string;
+  /** Nombre de la sucursal activa (encabezado del chat de prueba y de la vista previa de voz). Opcional: los contextos de prueba pueden omitirlo. */
+  readonly nombreSucursal?: string;
 }
 
 export interface RestaurantesShellProps {
@@ -208,6 +210,8 @@ function buildMobileItems(orgSlug: string): BottomNavItem[] {
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
   useDocumentTitle("Restaurantes", orgSlug);
+  // Ambito visual del repo suelto (UNI-R0b): tokens, botones en pildora y overlays; el sidebar conserva su paleta.
+  useAmbitoVertical("restaurantes");
   const s = useVerticalSession({ adapter: RESTAURANTES_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
@@ -243,23 +247,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // El MISMO selector se pinta en el Sidebar y en el MobileHeader (ambos viven en el DOM; CSS oculta uno): cada copia lleva su
   // propio id y su propio <label for>, para que no haya ids duplicados y el select visible tenga nombre accesible
   // (QA-restaurantes-R1-botones-03).
-  const sucursalSelector = (idSelect: string) =>
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor={idSelect} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Sucursal activa
-        </label>
-        <NativeSelect id={idSelect} size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
-          {branches.map((b) => (
-            <option key={b.propertyId} value={b.propertyId}>
-              {b.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
-    );
+  const sucursalSelector = (idSelect: string) => (
+    <SelectorSucursal id={idSelect} etiqueta="Sucursal activa" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />
+  );
 
   return (
     <VerticalShellConectado
@@ -282,7 +272,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     >
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
       <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
-        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+        <VarianteEstadoVacioProvider value="centrado">
+          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, nombreSucursal: activeBranch.name })}
+        </VarianteEstadoVacioProvider>
       </PuertaOnboarding>
     </VerticalShellConectado>
   );

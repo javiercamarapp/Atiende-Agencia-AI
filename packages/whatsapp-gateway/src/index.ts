@@ -1,6 +1,6 @@
 export { WhatsAppConfigError, WhatsAppInvalidPayloadError, WhatsAppSendError } from "./errors.ts";
-export type { EnviadoComo, OutboundButton, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "./types.ts";
-export { MAX_TEMPLATE_PARAMS, MAX_TEMPLATE_PARAM_LENGTH, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
+export type { EnviadoComo, OutboundButton, OutboundDocument, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "./types.ts";
+export { DOCUMENT_FILENAME_PATTERN, DOCUMENT_URL_MAX_LENGTH, esUrlHttpsPublica, MAX_TEMPLATE_PARAMS, MAX_TEMPLATE_PARAM_LENGTH, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
 export type { MensajeEnviadoDetalle, MessagingOutboxItem, MessagingOutboxPort } from "./outbox-port.ts";
 export {
   computeBackoffSeconds,

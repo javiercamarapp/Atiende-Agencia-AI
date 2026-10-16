@@ -7,7 +7,8 @@
 // que siempre se limpia, o las pruebas con tiempo manual).
 import type { AudioWav } from "./audio/pcm.ts";
 import { bytesAMuestras, energiaMuestras, muestrasABytes } from "./audio/pcm.ts";
-import { Remuestreador } from "./audio/remuestreo.ts";
+import { Remuestreador, remuestrearPcm16 } from "./audio/remuestreo.ts";
+import type { MezcladorSalida } from "@atiende/voice-core";
 import type { LlamadaTelefonica } from "./telefonia/puerto.ts";
 
 export const HZ_ENTRADA_ESCALON = 16_000;
@@ -29,6 +30,10 @@ export interface OpcionesPuente {
   readonly ahora: () => number;
   /** RMS (0..1) desde el cual un trozo cuenta como voz. */
   readonly umbralVoz?: number;
+  /** Si se pasa, la voz del agente va por el mezclador (ambiente + tecleo + voz en una sola secuencia que la telefonia bombea) en vez de `tel.reproducir`. */
+  readonly mezclador?: MezcladorSalida;
+  /** Espera inyectable (por omision `setTimeout`) para el tope de `vaciar`. */
+  readonly dormir?: (ms: number) => Promise<void>;
   /** Silencio (ms) que da por terminado el turno del cliente. */
   readonly finVozMs?: number;
   /** Voz continua (ms) necesaria para considerar que el cliente empezo a hablar (descarta chasquidos). */
@@ -55,11 +60,16 @@ export class PuenteAudio {
   private ultimoAudioAgenteFin: number;
   private segundos = 0;
   private cerrado = false;
+  /** El mezclador activo; null = voz por `tel.reproducir` (sin mezclador o tras un fallo del bombeo). */
+  private mezclador: MezcladorSalida | null;
+  /** Retraso (ms) que anadio la cola de salida del bombeo a cada respuesta del agente (cuando se pudo medir). */
+  readonly colasSalidaMs: number[] = [];
 
   /** Latencia de voz a voz (ms) de cada respuesta del agente que siguio a una voz del cliente, en orden. El saludo inicial no tiene (nadie hablo antes). */
   readonly latenciasMs: number[] = [];
 
   constructor(private readonly o: OpcionesPuente) {
+    this.mezclador = o.mezclador ?? null;
     this.umbral = o.umbralVoz ?? 0.015;
     this.finVozMs = o.finVozMs ?? 500;
     this.inicioVozMs = o.inicioVozMs ?? 80;
@@ -82,6 +92,7 @@ export class PuenteAudio {
       if (!this.clienteHablando && this.vozAcumuladaMs >= this.inicioVozMs) {
         this.clienteHablando = true;
         this.esperandoRespuesta = false;
+        this.mezclador?.fijarClienteHablando(true);
         void this.o.eventos.usuarioHabla();
       }
     } else {
@@ -89,6 +100,7 @@ export class PuenteAudio {
       if (!this.clienteHablando) this.vozAcumuladaMs = 0;
       else if (this.silencioAcumuladoMs >= this.finVozMs) {
         this.clienteHablando = false;
+        this.mezclador?.fijarClienteHablando(false);
         this.vozAcumuladaMs = 0;
         this.esperandoRespuesta = true;
         this.finVozEn = this.ultimaVozEn;
@@ -123,17 +135,41 @@ export class PuenteAudio {
   /** Barge-in o corte del controlador: calla lo que suena y lo encolado. */
   cortarAudio(): void {
     this.generacion += 1;
+    this.mezclador?.cortarAgente();
     this.o.tel.detenerReproduccion();
   }
 
-  /** Espera a que termine lo que esta encolado (la despedida antes de colgar). */
-  async vaciar(): Promise<void> {
-    await this.cola;
+  /** Espera a que termine lo que esta encolado (la despedida antes de colgar). Con salida mezclada espera ademas a que lo entregado TERMINE DE SONAR en la linea.
+   * `topeMs`: si la cola no termina a tiempo (bombeo parado, linea caida) se corta lo pendiente y devuelve false: la llamada NUNCA se queda esperando para siempre. */
+  async vaciar(topeMs?: number): Promise<boolean> {
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const tope = topeMs === undefined ? null : (this.o.dormir ?? ((ms: number) => new Promise<void>((r) => (temporizador = setTimeout(r, ms)))))(topeMs).then(() => false as const);
+    const termino = await (tope ? Promise.race([this.cola.then(() => true as const), tope]) : this.cola.then(() => true as const));
+    if (temporizador) clearTimeout(temporizador);
+    if (!termino) {
+      this.cortarAudio();
+      return false;
+    }
+    if (this.mezclador) await this.o.tel.vaciarSalidaMezclada?.();
+    return true;
+  }
+
+  /** El bombeo de la salida mezclada fallo: la voz vuelve a `tel.reproducir` (sin ambiente ni tecleo) y se libera lo que esperaba en la cola del mezclador. */
+  desactivarMezclador(): void {
+    const m = this.mezclador;
+    this.mezclador = null;
+    m?.cortarAgente();
+  }
+
+  /** Cola (ms) con la que el bombeo tomo la voz de una respuesta: se resume al final de la llamada (retraso anadido por el bombeo). */
+  registrarColaSalida(ms: number): void {
+    if (Number.isFinite(ms) && ms >= 0) this.colasSalidaMs.push(ms);
   }
 
   cerrar(): void {
     this.cerrado = true;
     this.generacion += 1;
+    this.mezclador?.cerrar();
   }
 
   /** Se llama una vez por segundo: reloj de la llamada y silencio del cliente (solo cuando nadie esta hablando). */
@@ -153,7 +189,11 @@ export class PuenteAudio {
     this.enCola += 1;
     const p = this.cola.then(async () => {
       try {
-        if (gen === this.generacion && !this.cerrado) await this.o.tel.reproducir(muestras, hz);
+        if (gen === this.generacion && !this.cerrado) {
+          const m = this.mezclador;
+          if (m) await m.encolarAgente(hz === m.hz ? muestras : remuestrearPcm16(muestras, hz, m.hz));
+          else await this.o.tel.reproducir(muestras, hz);
+        }
       } finally {
         this.enCola -= 1;
         if (this.enCola === 0) this.ultimoAudioAgenteFin = this.o.ahora();

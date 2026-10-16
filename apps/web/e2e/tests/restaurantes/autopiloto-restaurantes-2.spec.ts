@@ -6,6 +6,7 @@ import type { ClienteMock } from "../../mock-api/cliente.ts";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
+import { esperarValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -42,18 +43,18 @@ test.describe("restaurantes: autopiloto 2 @recorrido", () => {
     vigilante.verificar();
   });
 
-  test("Pedidos: al pasar a Preparando un pedido a domicilio aparece «Asignar a Ramon Uc» (solo sugiere) y un clic hace el PATCH assign-repartidor", async ({ page, mock, vigilante }) => {
+  test("Pedidos: al pasar a Preparando, «Asignar repartidor» trae preseleccionado y con «Sugerido: Ramon Uc» al repartidor del autopiloto (solo sugiere) y «Confirmar envío» hace el PATCH assign-repartidor", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
-    const tarjeta = main(page).locator("div.card, [class*=card]").filter({ hasText: "Marisol Pech" }).first();
-    await tarjeta.getByRole("button", { name: "Marcar Preparando" }).click();
-    const boton = main(page).getByRole("button", { name: "Asignar a Ramon Uc" });
-    await expect(boton).toBeVisible();
-    // La sugerencia es de solo lectura: ningun assign-repartidor hasta el clic.
+    const fila = main(page).locator('[data-testid^="pedido-"]').filter({ hasText: "Marisol Pech" }).first();
+    await fila.getByRole("button", { name: "Marcar Preparando" }).click();
+    await fila.getByRole("button", { name: "Asignar repartidor" }).click();
+    await expect(fila.getByText("Sugerido: Ramon Uc")).toBeVisible();
+    await esperarValor(fila.getByLabel("Elegir repartidor"), "usr-2");
+    // La sugerencia es de solo lectura: ningun assign-repartidor hasta confirmar.
     expect((await mock.buscar({ metodo: "PATCH", ruta: "/assign-repartidor" })).length).toBe(0);
-    await boton.click();
+    await fila.getByRole("button", { name: "Confirmar envío" }).click();
     const [patch] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/assign-repartidor" });
     expect(cuerpoDe(patch)).toMatchObject({ repartidorId: "usr-2" });
-    await expect(main(page).getByRole("button", { name: "Asignar a Ramon Uc" })).toHaveCount(0);
     vigilante.verificar();
   });
 });

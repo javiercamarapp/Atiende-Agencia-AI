@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DATOS_VACIOS, InMemoryCierreRepository } from "@atiende/domain-restaurantes";
 import { buildApp } from "../../src/app.ts";
 import { authedGet, authedJson } from "../restaurantes-admin-kpis-fixtures.ts";
-import { call, say, startCicloStack, startVoiceCall } from "../support/e2e-ciclo-restaurantes.ts";
+import { call, say, sayResumen, startCicloStack, startVoiceCall } from "../support/e2e-ciclo-restaurantes.ts";
 import type { CicloStack } from "../support/e2e-ciclo-restaurantes.ts";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -36,7 +36,7 @@ describe("e2e cocina, avisos al comensal y cierre del dia", () => {
     const dom = canal === "domicilio" ? { colonia_entrega: "Francisco de Montejo", customer_address: "Calle 21 #310 x 36 y 38, Francisco de Montejo" } : {};
     stack.setScript([
       call("cotizar_pedido", { branch_slug: "fco-montejo", canal, ...(canal === "domicilio" ? { colonia_entrega: "Francisco de Montejo" } : {}), items }),
-      say("Te confirmo el total. Confirmas?"),
+      sayResumen("Te confirmo el total. Confirmas?"),
       call("confirmar_resumen", {}),
       call("crear_pedido", { branch_slug: "fco-montejo", canal, customer_name: nombre, payment_method: "efectivo", items, ...dom }),
       say("Listo, tu pedido quedo registrado."),

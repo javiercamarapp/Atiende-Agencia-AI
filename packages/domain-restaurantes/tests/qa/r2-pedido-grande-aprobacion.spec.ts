@@ -5,7 +5,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryAutopilotoRepository, crearHookPedidoGrande, crearHooksAutopilotoTurno } from "../../src/autopiloto/index.ts";
 import type { AutopilotoTurnoHooks, PedidoGrandeHook } from "../../src/autopiloto/index.ts";
 import { PEDIDO_GRANDE_VENTANA_ACUMULADO_MS, acumuladoReciente } from "../../src/pedido-grande.ts";
-import { banco, call, item, say } from "./r1-arnes-whatsapp-pm.ts";
+import { banco, call, item, say, sayResumen } from "./r1-arnes-whatsapp-pm.ts";
 import type { Banco } from "./r1-arnes-whatsapp-pm.ts";
 
 afterEach(() => {
@@ -65,14 +65,14 @@ async function bancoConAutopiloto(opts: { readonly disponible?: boolean } = {}) 
 }
 
 async function cotizarYConfirmar(b: Banco, tel: string, items: ReturnType<typeof item>[], pago: "efectivo" | "tarjeta", extra: Record<string, unknown> = {}) {
-  b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items, ...extra }), say("Total cotizado. ¿Confirma?")]);
+  b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items, ...extra }), sayResumen("Total cotizado. ¿Confirma?")]);
   await b.enviar(tel, "quiero para recoger");
   b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Fiesta", payment_method: pago, items }), say("Listo, su pedido quedó registrado.")]);
   return b.enviar(tel, `si ${pago}`);
 }
 
 describe("WhatsApp (T7, PM): el pedido grande queda por_aprobar con su solicitud", () => {
-  it("features-01 / viaje-01: 3 x Bistec 2 kg ($6,600) en efectivo -> pedido CREADO, solicitud pedido_grande, aviso a la campana, SIN comanda ni handoff ni callback", async () => {
+  it("features-01 / viaje-01: 3 x Bistec 2 kg ($6,600) en efectivo -> pedido CREADO, solicitud pedido_grande, aviso a la campana, SIN comanda ni handoff (el aviso al equipo SI queda, D31)", async () => {
     const t = await bancoConAutopiloto();
     const items = [item(t.b.pid("Bistec de Res — 2 kg"), "Bistec de Res — 2 kg", 3)];
     const r = await cotizarYConfirmar(t.b, "+5219990000041", items, "efectivo");
@@ -85,8 +85,22 @@ describe("WhatsApp (T7, PM): el pedido grande queda por_aprobar con su solicitud
     expect(t.db.emisiones.map((e) => e.evento)).toEqual(["restaurantes.aprobacion.pedido_grande"]);
     // El pedido NO sale a cocina por este camino: la comanda la encola la aprobacion con un clic.
     expect(t.comandas).toHaveLength(0);
-    expect(t.b.callbacks().some((c) => c.reason === "escalada:pedido_grande")).toBe(false);
+    // D31 (QA-PM-R5-voz-19): tambien queda el aviso `escalada:pedido_grande` para la sucursal; lo que no hay es handoff de la conversacion.
+    expect(t.b.callbacks().filter((c) => c.reason === "escalada:pedido_grande")).toHaveLength(1);
     expect(r.escalated).toBeFalsy();
+  });
+
+  // A24 (ronda 5) con autopiloto: numero nuevo + efectivo + $2,700 (> $2,500) queda por_aprobar Y deja el aviso pedido_grande para la sucursal; antes (con autopiloto) no quedaba aviso.
+  it("A24 con autopiloto: numero nuevo + efectivo + $2,700 -> por_aprobar con su solicitud y el aviso escalada:pedido_grande (sin falla_sistema)", async () => {
+    const t = await bancoConAutopiloto();
+    const items = [item(t.b.pid("Pastor — 2 kg"), "Pastor — 2 kg", 1), item(t.b.pid("Pastor — 1 kg"), "Pastor — 1 kg", 1)];
+    const r = await cotizarYConfirmar(t.b, "+5219990000124", items, "efectivo");
+    expect(r.orderId).toBeTruthy();
+    expect(t.retenerLlamadas[0]).toMatchObject({ motivo: "sin_historial_efectivo", pago: "efectivo" });
+    const avisos = t.b.callbacks();
+    expect(avisos.filter((c) => c.reason === "escalada:pedido_grande")).toHaveLength(1);
+    expect(avisos.some((c) => (c.reason ?? "").includes("falla_sistema"))).toBe(false);
+    expect(t.comandas).toHaveLength(0);
   });
 
   it("un pedido bajo los umbrales sigue su camino normal: comanda encolada, sin solicitud", async () => {

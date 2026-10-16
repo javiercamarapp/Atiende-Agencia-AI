@@ -29,11 +29,21 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",
   // Ronda 2 del loop de PM: hora de recogida y programado validados contra el reloj del servidor; reloj local de consultar_sucursal.
   "packages/domain-restaurantes/tests/pm-r2-flujo-pedido-y-hora.spec.ts",
+  // Ronda 5 del loop de PM: reloj fijo (miercoles 12:00 / martes 13:00 Merida) para hora de recogida, kilos, relleno del modelo y entradas hostiles.
+  "packages/domain-restaurantes/tests/pm-r5-contrato-relleno-del-modelo.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-entradas-hostiles.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-hora-recoger-unificada.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-kilos.spec.ts",
   "packages/domain-restaurantes/tests/pm-r2-prompt-y-reloj.spec.ts",
   "packages/domain-restaurantes/tests/recoger-estados-y-columnas.spec.ts",
   // Hora de recogida (+30 min aceptado, -5/-11 min, +6/+8 dias): reloj fijo, sin depender de la hora UTC en que corra el CI.
   "packages/domain-restaurantes/tests/qa-r2-caos.spec.ts",
   "packages/domain-restaurantes/tests/cliente-llego-recoger.spec.ts",
+  // Ronda 6 del loop de PM: pedido igual entre llamadas (ventana de 10 min con reloj fijo), saludo de las 19:00 vs 20:00 en zona explicita y turnos con falla del sistema.
+  "packages/domain-restaurantes/tests/pm-r6-pedido-igual-entre-llamadas.spec.ts",
+  "packages/domain-citas/tests/pm-r6-saludo-franja.spec.ts",
+  "apps/web/tests/saludo-misma-franja-r5.spec.ts",
+  "apps/api/tests/pm-r6-voz-quote-reenvia-plazo.spec.ts",
   "packages/domain-restaurantes/tests/evals-agente-pm-k.spec.ts",
   // Prueba ciega de voz: reloj fijo (miercoles 12:00 Merida); V27 calcula la hora de recogida con el reloj del servidor.
   "packages/domain-restaurantes/tests/voz-simulador-prueba-ciega.spec.ts",
@@ -76,6 +86,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/data-chat-cfo-roles-y-guardia.spec.ts",
   "packages/domain-restaurantes/tests/cfo-alertas.spec.ts",
   "apps/api/tests/restaurantes-cierres-alertas-cfo.spec.ts",
+  // R11 romper: horarios limite (cierre 01:00, medianoche, cambio de dia de negocio) y programado_para con reloj fijo (martes 13:00 Merida).
+  "packages/domain-restaurantes/tests/pm-r11-romper/5-negocio-y-privacidad.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.

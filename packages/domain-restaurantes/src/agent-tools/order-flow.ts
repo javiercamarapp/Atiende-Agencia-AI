@@ -38,6 +38,8 @@ export interface OrderFlowContext {
   readonly quotedPrices?: string;
   /** Hora de recogida (ISO UTC al minuto) con la que se cotizo, si la llevaba: `crear_pedido` con otra hora distinta ya no coincide con la huella. */
   readonly horaRecogida?: string;
+  /** Hora PROGRAMADA (ISO UTC) con la que se cotizo un pedido para recoger: en recoger `programado_para` y `hora_recogida` son la misma hora (QA-PM-R5-reglas-02) y crear la reutiliza. */
+  readonly programadoPara?: string;
   /** Plazo en minutos (`minutos_para_recoger`) con el que el SERVIDOR calculo `horaRecogida`: una re-cotizacion identica con el mismo plazo conserva esa hora (no es una cotizacion nueva
    * por haber pasado un minuto) y un `crear_pedido` con OTRO plazo obliga a re-cotizar. Ausente si la hora la mando el modelo explicita. */
   readonly minutosPlazo?: number;
@@ -56,6 +58,10 @@ export interface OrderFlowContext {
   /** Sucursal y canal con los que se cotizo: con `quotedItems` el servidor puede decirle al agente, en el turno del "si", exactamente que cotizo (ver `bloqueCotizacionVigente`). */
   readonly quotedBranchSlug?: string;
   readonly quotedCanal?: string;
+  /** Forma de pago y monto de efectivo con los que se cotizo (no entran a `quoteHash`). Un cambio (cotizar sin pago y luego con pago) es OTRA cotizacion: el cliente debe ver el resumen con ese
+   * pago antes de confirmar (la cotizacion temprana del paso 6 del prompt no puede dejar pasar un pedido sin resumen mostrado). Omitirlos al re-cotizar conserva los previos. */
+  readonly quotedPago?: "efectivo" | "tarjeta";
+  readonly quotedEfectivoCon?: number;
   /** Huella del CARRITO (sucursal + canal + renglones) sin hora, pago ni salsas: sirve para reconocer "el mismo pedido" aunque el modelo cambie la hora (QA-PM-R3-whatsapp-03). */
   readonly cartHash?: string;
   /** Pedidos YA creados en esta conversacion/llamada: total y kilos acumulados. La guardia de pedido grande los suma al siguiente pedido para que partir un pedido
@@ -67,6 +73,24 @@ export interface OrderFlowContext {
   /** Id del ultimo pedido creado en la sesion: un pedido identico dentro de la ventana de deduplicacion devuelve ESE id y se marca `ya_registrado`. */
   readonly sessionUltimoPedidoId?: string;
   readonly confirmedAtMs?: number;
+  /** R11 (cierre como maquina de estados, `cierre-maquina.ts`): propina que se cotizo (pesos o porcentaje). Como pago/efectivo, NO entra a `quoteHash` pero SI es parte de lo que el cliente acepta:
+   * cambiarla tras mostrar el resumen es otra cotizacion que hay que volver a mostrar. */
+  readonly quotedPropinaMxn?: number;
+  readonly quotedPropinaPct?: number;
+  /** Turno del cliente en que se rechazo una confirmacion por mensaje ambiguo: en un turno POSTERIOR (resumen mostrado otra vez) el ambiguo ya no se rechaza. Salida contra el deadlock. */
+  readonly cierreAmbiguoTurn?: string;
+  /** Turno del cliente en que se rechazo una confirmacion por «resumen no mostrado»: en un turno POSTERIOR un «si» claro ya se acepta (la heuristica de texto puede dar falsos negativos). */
+  readonly cierreNoVistoTurn?: string;
+  /** Texto del resumen armado por el servidor para ESTA cotizacion (solo con la maquina de cierre activa). */
+  readonly resumenCanonico?: string;
+  /** Datos con que se armo `resumenCanonico` (renglones, total, descuento, canal): permiten rearmarlo cuando cambian el pago o la propina sin volver a cotizar. */
+  readonly resumenBase?: { readonly lineas: readonly { readonly name: string; readonly quantity: number; readonly lineTotal?: number; readonly tortilla?: string | null }[]; readonly total: number; readonly descuento?: number; readonly canal?: string };
+  /** Firma (pago|efectivo|propina) y turno de la confirmacion: `crear_pedido` exige los mismos datos. */
+  readonly confirmedFirma?: string;
+  readonly confirmedTurn?: string;
+  /** Turno del cliente en que `crear_pedido` fue rechazado por `resumen_no_mostrado`. Salida contra el deadlock: si la heuristica de texto da un falso negativo, el SIGUIENTE turno
+   * (distinto de este) ya no se rechaza por esa causa, de modo que el cierre se retrasa a lo mucho un turno y nunca se queda trabado. */
+  readonly resumenRechazadoTurn?: string;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
 }
@@ -78,6 +102,8 @@ export interface QuotedItem {
   readonly qty: number;
   /** Solo si el producto exige tortilla; `null` en bebidas y demas (el modelo manda ahi cualquier valor y no debe afectar la huella). */
   readonly tortilla: string | null;
+  /** QA-PM-R5-reglas-03: la tortilla que el cliente eligio para un KILO de carne (ese renglon no exige tortilla y `tortilla` queda null). No entra a la huella: solo viaja a la comanda. */
+  readonly tortillaKilo?: string;
 }
 
 export interface OrderFlowSnapshot {
@@ -102,6 +128,11 @@ export type OrderFlowViolationCode =
   | "sin_confirmacion"
   | "pedido_distinto_al_cotizado"
   | "confirmacion_mismo_turno"
+  | "cliente_rechazo_resumen"
+  | "cierre_resumen_no_mostrado"
+  | "cierre_sin_si_explicito"
+  | "cierre_datos_cambiaron"
+  | "resumen_no_mostrado"
   | "hash_no_coincide"
   | "pedido_ya_creado"
   | "pedido_en_proceso"
@@ -288,6 +319,23 @@ function assertFresh(ctx: OrderFlowContext, now: number): void {
   }
 }
 
+/**
+ * QA-PM-R6 (A13): el ultimo mensaje del cliente RECHAZA o corrige el resumen («No, así no», «no es correcto», «está mal»). Confirmar el pedido con un rechazo creo un pedido
+ * que el cliente no aceptaba («ya quedó registrado» tras un «No, así no»). Conservador a proposito: un «no» suelto o «no, nada más» contestan «¿algo más?» y NO cuentan; si el
+ * mensaje trae tambien un sí («no, así no... mejor sí»), la decision queda en el modelo.
+ */
+export function rechazaElResumen(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string" || !mensaje.trim()) return false;
+  const t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // «asi no» solo rechaza cuando NO va seguido de la consecuencia buena de confirmar («así no se me olvida», «así no tengo que salir», «así no me complico»).
+  const rechazo =
+    /\basi\s+no\b(?!\s+(?:se\s+(?:me|nos)|tengo|tenemos|hay\s+que|necesito|me\s+compli|me\s+olvido|voy\s+a\s+tener))|\bno\s+(?:es|esta|estan|son)\s+(?:correct[oa]s?|bien|asi)\b|(?<!\bno\s)(?<!\bnada\s)(?<!\bmuy\s)\b(?:esta|estan)\s+mal\b|\bincorrect[oa]s?\b|\bno\s+(?:lo\s+|la\s+)?(?:quiero|acepto)\s+(?:asi|a\s+ese|con\s+ese)\b|(?:^|[.,;!?]\s*)no\s*,\s*(?:cambia|corrige|quita|mejor)\b/;
+  if (!rechazo.test(t)) return false;
+  // Una afirmacion al inicio («perfecto, ...», «va, ...», «confirmalo...») o dentro del mensaje deja la decision al modelo.
+  if (/^\W*(?:va|listo|perfecto|claro|adelante|correcto|confirm\w*)\b/.test(t)) return false;
+  return !/\b(?:si|sip|simon|confirmo|confirmado|confirmalo|confirmelo|dale|ok|okey|de\s+acuerdo|(?<!\bno\s)esta\s+bien\s+asi|asi\s+esta\s+bien)\b/.test(t);
+}
+
 /** Precondicion de `confirmar_resumen`. Lanza `OrderFlowViolationError` si no procede. */
 export function assertCanConfirm(snap: OrderFlowSnapshot, args: FlowCheckArgs): OrderFlowContext {
   const ctx = snap.context;
@@ -326,7 +374,7 @@ export function assertCanCreate(snap: OrderFlowSnapshot, args: FlowCheckArgs): O
   }
   assertFresh(ctx, args.now);
   if (args.fingerprint && args.fingerprint !== ctx.quoteHash) {
-    throw new OrderFlowViolationError("pedido_distinto_al_cotizado", "El pedido no coincide con el que se cotizó y confirmó (sucursal, canal o productos). Vuelve a cotizar el pedido final y pide confirmación.");
+    throw new OrderFlowViolationError("pedido_distinto_al_cotizado", "El pedido no coincide con el que se cotizó y confirmó (sucursal, canal, productos u hora de recogida). Vuelve a cotizar el pedido final y pide confirmación.");
   }
   return ctx;
 }
@@ -371,24 +419,114 @@ export function resetOrderFlowWarningForTests(): void {
  * "si" el modelo volvia a buscar sucursal y productos (2-4 llamadas de 1.5-3 s) solo para recuperar los ids, y re-cotizaba (con lo que el cierre se perdia). Con esto sabe que cotizo el
  * servidor y puede confirmar y crear de inmediato. Vacio si no hay una cotizacion fresca con renglones resueltos.
  */
-export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs: number): string {
+export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs: number, opciones?: { readonly resumenMostrado?: boolean }): string {
   const ctx = snap?.context;
   if (!snap || !ctx || (snap.state !== "cotizado" && snap.state !== "confirmado")) return "";
   if (!ctx.quotedItems || ctx.quotedItems.length === 0 || !ctx.quotedBranchSlug) return "";
   if (ahoraMs - ctx.quotedAtMs > QUOTE_TTL_MS) return "";
   const renglones = ctx.quotedItems.map((i) => `  - product_id ${i.id} | ${i.name} | requested_quantity ${i.qty}${i.tortilla ? ` | tortilla ${i.tortilla}` : ""}`).join("\n");
   const total = typeof ctx.quotedTotal === "number" ? `, total a pagar $${ctx.quotedTotal}` : "";
+  // Una cotizacion TEMPRANA (el paso 6 cotiza en cuanto hay canal, producto y tortilla) no es lo que el cliente vio: solo cuenta como mostrada si el historial trae un mensaje del asistente con ese total.
+  const sinResumen = opciones?.resumenMostrado === false && snap.state === "cotizado";
   return [
-    "COTIZACIÓN VIGENTE DE ESTA CONVERSACIÓN (la dejó el sistema; es la que el cliente vio en el resumen):",
+    sinResumen
+      ? "COTIZACIÓN PRELIMINAR DE ESTA CONVERSACIÓN (la dejó el sistema; el cliente TODAVÍA NO ha visto el resumen con este total):"
+      : "COTIZACIÓN VIGENTE DE ESTA CONVERSACIÓN (la dejó el sistema; es la que el cliente vio en el resumen):",
     `- branch_slug ${ctx.quotedBranchSlug}${ctx.quotedCanal ? `, canal ${ctx.quotedCanal}` : ""}${total}${ctx.horaRecogida ? ", hora de recogida ya fijada por el sistema (en crear_pedido no la recalcule: el sistema usa la cotizada)" : ""}.`,
     renglones,
     snap.state === "confirmado"
       ? "- Ya está CONFIRMADA: si falta crear el pedido, llame crear_pedido con estos mismos datos."
-      : "- Si el ÚLTIMO mensaje del cliente es un sí claro a ese resumen y no cambió nada, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN buscar de nuevo ni cotizar otra vez. Si cambió algo (producto, cantidad, tortilla, canal, dirección, pago), vuelva a cotizar normalmente.",
+      : sinResumen
+        ? "- NO llame confirmar_resumen ni crear_pedido todavía: un \"sí\" del cliente ahora responde a otra pregunta (número, propina, ¿algo más?), no a un resumen. Complete los datos que falten, vuelva a llamar cotizar_pedido (con la forma de pago si ya la dio), muéstrele el resumen completo con el total y espere su respuesta en un mensaje posterior."
+        : "- Si el ÚLTIMO mensaje del cliente es un sí claro a ese resumen y no cambió nada, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN buscar de nuevo ni cotizar otra vez. Si cambió algo (producto, cantidad, tortilla, canal, dirección, pago), vuelva a cotizar normalmente.",
   ].join("\n");
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Variantes con que un total puede aparecer escrito ("245", "245.00", "1,245.50"). */
+function variantesDeTotal(total: number): string[] {
+  const base = [total.toFixed(2), String(total), ...(Number.isInteger(total) ? [total.toFixed(0)] : [])];
+  const conMiles = base.map((v) => {
+    const [entera = "", dec] = v.split(".");
+    return `${entera.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${dec === undefined ? "" : `.${dec}`}`;
+  });
+  return [...new Set([...base, ...conMiles])];
+}
+
+/**
+ * Defensa en profundidad: el cliente VIO el resumen si algun mensaje del asistente en el historial reciente trae el total de la cotizacion vigente.
+ * `undefined` = no hay historial o total (voz, pruebas): el llamador conserva el comportamiento anterior.
+ */
+export function resumenMostradoEnHistorial(
+  quotedTotal: number | undefined,
+  historial: readonly { readonly role: string; readonly content: string }[] | undefined,
+): boolean | undefined {
+  if (historial === undefined || typeof quotedTotal !== "number" || !Number.isFinite(quotedTotal)) return undefined;
+  const vars = variantesDeTotal(quotedTotal).map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(?<![\\d.,])(?:${vars.join("|")})(?!\\d|[.,]\\d)`);
+  return historial.some((m) => m.role === "assistant" && re.test(m.content));
+}
+
+/**
+ * El mensaje del asistente ERA el resumen para confirmar: trae el total de la cotizacion vigente Y su ULTIMA pregunta es de confirmacion del resumen («¿Es correcto o desea agregar algo más?», «¿Confirma?»).
+ * Un «No gracias», «Efectivo» o «con 600» contestado a ESE mensaje es el sí, no una respuesta suelta de pago/propina. NO cuenta si la ultima pregunta es de propina o de pago («El total es de $275. ¿Desea agregar propina?»,
+ * «Total $275. ¿Con cuánto paga? Para confirmar necesito el monto.») ni si solo pregunta «¿algo más?»: ahi «No gracias» es «sin propina» / «nada más», no el sí al resumen.
+ */
+export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, contenido: string | undefined): boolean {
+  if (contenido === undefined) return false;
+  if (resumenMostradoEnHistorial(quotedTotal, [{ role: "assistant", content: contenido }]) !== true) return false;
+  const t = contenido.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trimEnd();
+  const idx = t.lastIndexOf("¿");
+  const ultima = idx >= 0 ? t.slice(idx) : (t.split(/[.!\n]+/).map((x) => x.trim()).filter(Boolean).pop() ?? "").slice(-160);
+  if (/(propina|cuanto paga|con cuanto|monto|billete)/.test(ultima)) return false;
+  return /(confirm|correcto|esta bien|de acuerdo|procedo|asi lo dejo)/.test(ultima);
+}
+
+/** Quita emojis, caritas ASCII y cortesias finales («gracias», «porfa», «por favor») de una respuesta corta de WhatsApp; deja minusculas sin acentos y sin puntuacion. */
+function limpiarRespuestaCorta(mensaje: string): string {
+  let t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  t = t.replace(/\p{Extended_Pictographic}|\p{Emoji_Modifier}|\u200d|\ufe0f/gu, " ").replace(/(^|\s)[:;=]-?[)(dp]+(?=\s|$)/g, " ");
+  t = t.replace(/[!¡?¿]+/g, " ").replace(/[.,;:]+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  // «no gracias» es una respuesta completa por si sola; en lo demas la cortesia final no cambia el sentido.
+  if (t === "no gracias") return t;
+  for (;;) {
+    const sin = t.replace(/\s+(?:muchas\s+)?(?:gracias|porfa|porfis|porfavor|por\s+favor|pls|plis|please)$/, "").trim();
+    if (sin === t || sin === "" || sin === "no") return t;
+    t = sin;
+  }
+}
+
+/**
+ * QA-PM-R10 §6: el ultimo mensaje del cliente es solo una respuesta de PAGO o PROPINA («con 600», «$600», «efectivo», «tarjeta», «sin propina», «no gracias», «propina de 20»), con o sin emojis,
+ * puntuacion o cortesia final («No, gracias 🙂», «Con tarjeta, gracias», «efectivo porfa», «No quiero propina»).
+ * Esa respuesta NO es el «si» al resumen: el pedido no puede crearse en ese turno. Conservador: el mensaje completo debe ser eso (un «si, con 600» no cuenta).
+ */
+export function esRespuestaDePagoOPropina(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string") return false;
+  const t = limpiarRespuestaCorta(mensaje);
+  if (!t) return false;
+  const monto = "\\$?\\s*\\d[\\d,.]*\\s*(?:pesos|mxn|varos)?";
+  return new RegExp(
+    `^(?:(?:pago\\s+)?(?:con|de)\\s+(?:un\\s+)?(?:billete\\s+de\\s+)?${monto}|${monto}|(?:pago\\s+)?(?:en\\s+|con\\s+)?(?:efectivo|tarjeta|cash)|no\\s+gracias|(?:no\\s+)?(?:(?:le\\s+)?(?:quiero|deseo|dejo|doy|pon(?:le)?|voy\\s+a\\s+dejar)\\s+)?(?:sin\\s+)?(?:de\\s+)?propina(?:\\s+de)?\\s*(?:${monto})?|(?:dejo|doy|pon(?:le)?)\\s+${monto}\\s+de\\s+propina|(?:de\\s+)?propina\\s+${monto})$`,
+  ).test(t);
+}
+
+/**
+ * Lo que decide la guarda de `crear_pedido`: `true` = el cliente VIO el resumen y su ultimo mensaje puede ser el «si»; `false` = no (el total no aparece en ningun mensaje del asistente, o el ultimo
+ * mensaje del cliente es solo pago/propina y el asistente no acababa de pedir confirmar el resumen); `undefined` = sin historial (voz, pruebas): el llamador conserva el comportamiento anterior.
+ */
+export function resumenVistoPorElCliente(
+  quotedTotal: number | undefined,
+  historial: readonly { readonly role: string; readonly content: string }[] | undefined,
+): boolean | undefined {
+  const mostrado = resumenMostradoEnHistorial(quotedTotal, historial);
+  if (mostrado === undefined) return undefined;
+  const ultimoDelCliente = [...(historial ?? [])].reverse().find((m) => m.role === "user")?.content;
+  const ultimoDelAsistente = [...(historial ?? [])].reverse().find((m) => m.role === "assistant")?.content;
+  if (esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(quotedTotal, ultimoDelAsistente)) return false;
+  return mostrado;
+}
+
+const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Los `product_id` que mando el modelo, distintos de los cotizados, que SI existen en el catalogo de la organizacion (son OTRO producto, no un error de tecleo). */
 export async function idsDeOtrosProductosReales(

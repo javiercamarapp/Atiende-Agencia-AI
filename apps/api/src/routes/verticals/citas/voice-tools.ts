@@ -132,10 +132,10 @@ export function citasVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.get(`${base}/estado`, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const motivoPreview = await motivoSinPreview();
-    const escalera = estadoEscalera({ geminiApiKey: deps.env.geminiApiKey ?? null, openrouterApiKey: deps.env.llmProviders.openrouter?.apiKey ?? null, llm: deps.llmGateway ? { completar: () => Promise.reject(new Error("solo estado")) } : null });
+    const escalera = estadoEscalera({ geminiApiKey: deps.env.geminiApiKey ?? null, deepgramApiKey: deps.env.deepgramApiKey ?? null, cascadaV2Habilitada: deps.env.cascadaV2Habilitada === true, openrouterApiKey: deps.env.llmProviders.openrouter?.apiKey ?? null, llm: deps.llmGateway ? { completar: () => Promise.reject(new Error("solo estado")) } : null });
     return c.json({
       escalera,
-      precioMicroUsdPorMinuto: { "gemini-3.8-live": VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto, "cascada-openrouter": VOZ_PLATAFORMA.cascada.precioMicroUsdPorMinuto },
+      precioMicroUsdPorMinuto: { "gemini-3.8-live": VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto, "cascada-v2": VOZ_PLATAFORMA.cascadaV2.precioMicroUsdPorMinuto, "cascada-openrouter": VOZ_PLATAFORMA.cascada.precioMicroUsdPorMinuto },
       preview: { disponible: motivoPreview === null, motivo: motivoPreview },
     });
   });

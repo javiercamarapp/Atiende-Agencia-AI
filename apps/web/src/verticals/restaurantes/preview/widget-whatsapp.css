@@ -1,0 +1,218 @@
+/*
+ * Chat de WhatsApp de demostración del panel (WidgetWhatsApp.tsx). Réplica del widget del repo original (components/WidgetWhatsApp.tsx):
+ * mismas medidas, posición, sombras y animaciones, pero con CSS en vez de framer-motion (apps/web no lo usa) y respetando
+ * prefers-reduced-motion.
+ *
+ * Colores: los verdes y el fondo beige son la marca de WhatsApp y NO existen en los tokens de @atiende/ui; viven aquí como variables
+ * locales (--wa-*) con los valores exactos del original en claro y una paleta oscura propia (la de WhatsApp en modo oscuro) para el tema
+ * oscuro del panel. Todo lo demás (bandeja de opciones, tarjeta del pedido simulado) usa los tokens del sistema de diseño.
+ */
+.wa-widget {
+  --wa-verde: #25d366;
+  --wa-cabecera: #075e54;
+  --wa-fondo: #e5ddd5;
+  --wa-burbuja-cliente: #d9fdd3;
+  --wa-burbuja-agente: #ffffff;
+  --wa-texto: #111b21;
+  --wa-texto-tenue: rgb(0 0 0 / 0.4);
+  --wa-barra: #f0f0f0;
+  --wa-campo: #ffffff;
+  --wa-palomitas: #53bdeb;
+  --wa-sistema-fondo: rgb(7 94 84 / 0.1);
+  --wa-sistema-texto: #075e54;
+  --wa-error-fondo: hsl(var(--destructive) / 0.12);
+  --wa-borde: rgb(0 0 0 / 0.1);
+  --wa-boton-texto: #ffffff;
+}
+.dark .wa-widget {
+  --wa-cabecera: #1f2c34;
+  --wa-fondo: #0b141a;
+  --wa-burbuja-cliente: #005c4b;
+  --wa-burbuja-agente: #1f2c34;
+  --wa-texto: #e9edef;
+  --wa-texto-tenue: rgb(255 255 255 / 0.55);
+  --wa-barra: #1f2c34;
+  --wa-campo: #2a3942;
+  --wa-sistema-fondo: rgb(37 211 102 / 0.14);
+  --wa-sistema-texto: #7ee0a8;
+  --wa-borde: rgb(255 255 255 / 0.12);
+}
+
+/* ---- Botón flotante «Iniciar chat» (original: fixed bottom-6 right-6 z-50 h-14 pl-3 pr-5 rounded-full) ---- */
+.wa-boton {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 3.5rem;
+  padding: 0 1.25rem 0 0.75rem;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--wa-verde);
+  color: var(--wa-boton-texto);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px -6px rgb(37 211 102 / 0.6);
+  transition: filter 150ms, transform 150ms;
+  animation: wa-entra-boton 200ms ease-out both;
+}
+.wa-boton:hover { filter: brightness(1.05); }
+.wa-boton:active { transform: scale(0.97); }
+.wa-boton:focus-visible { outline: 3px solid hsl(var(--ring, 221 83% 53%)); outline-offset: 2px; }
+.wa-boton[data-saliendo="true"] { animation: wa-sale-boton 200ms ease-in both; pointer-events: none; }
+.wa-boton__glifo { width: 2rem; height: 2rem; flex-shrink: 0; }
+
+/* ---- Panel (original: fixed bottom-6 right-6 z-50 w-[368px] max-w-[92vw] h-[600px] max-h-[80vh] rounded-2xl shadow-2xl) ---- */
+.wa-panel {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: 368px;
+  max-width: 92vw;
+  height: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  border: 1px solid var(--wa-borde);
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  color: var(--wa-texto);
+  animation: wa-entra-panel 180ms ease-out both;
+}
+.wa-panel[data-saliendo="true"] { animation: wa-sale-panel 180ms ease-in both; pointer-events: none; }
+
+/* ---- Encabezado: avatar, nombre, estado y acciones ---- */
+.wa-cabecera {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--wa-cabecera);
+  color: #fff;
+}
+.wa-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.15);
+}
+.wa-avatar svg { width: 1.5rem; height: 1.5rem; }
+.wa-cabecera__texto { min-width: 0; flex: 1; }
+.wa-cabecera__nombre { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 1.25; }
+.wa-cabecera__estado { margin: 0; font-size: 11.5px; line-height: 1.25; color: rgb(255 255 255 / 0.7); }
+.wa-cabecera__acciones { display: flex; flex-shrink: 0; align-items: center; gap: 0.125rem; }
+.wa-icono {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: rgb(255 255 255 / 0.8);
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+.wa-icono:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+.wa-icono[aria-expanded="true"] { background: rgb(255 255 255 / 0.18); color: #fff; }
+.wa-icono:disabled { opacity: 0.4; cursor: not-allowed; }
+.wa-icono:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.wa-icono svg { width: 1.125rem; height: 1.125rem; }
+/* Cierre como el original: la X llevaba el tamaño por omisión de lucide (24 px) y trazo 2. */
+.wa-icono--cerrar svg { width: 1.5rem; height: 1.5rem; }
+
+/* ---- Cuerpo del chat ---- */
+.wa-cuerpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+  background: var(--wa-fondo);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.wa-vacio { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 1.5rem; }
+.wa-vacio p { margin: 0; text-align: center; font-size: 12.5px; line-height: 1.625; color: var(--wa-texto-tenue); }
+.wa-fila { display: flex; }
+.wa-fila--cliente { justify-content: flex-end; }
+.wa-fila--agente { justify-content: flex-start; }
+.wa-burbuja {
+  max-width: 80%;
+  padding: 7px 10px;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  color: var(--wa-texto);
+  font-size: 13.5px;
+  line-height: 1.375;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wa-burbuja--cliente { background: var(--wa-burbuja-cliente); border-radius: 12px 8px 12px 12px; }
+.wa-burbuja--agente { background: var(--wa-burbuja-agente); border-radius: 8px 12px 12px 12px; }
+.wa-hora { float: right; display: flex; align-items: center; gap: 0.25rem; margin: 0.25rem 0 0 0.5rem; font-size: 10.5px; color: var(--wa-texto-tenue); user-select: none; }
+.wa-palomitas { display: inline-block; width: 13px; height: 9px; }
+.wa-palomitas path { stroke: var(--wa-palomitas); }
+.wa-sistema { display: flex; flex-direction: column; align-items: center; gap: 0.375rem; padding: 0.25rem 0; }
+.wa-sistema__pildora { padding: 4px 10px; border-radius: 10px; background: var(--wa-sistema-fondo); color: var(--wa-sistema-texto); font-size: 11px; font-weight: 500; text-align: center; }
+.wa-sistema__tarjeta { width: 100%; }
+.wa-burbuja--error { border: 1px solid var(--wa-error-fondo); }
+.wa-burbuja__detalle { display: block; margin-top: 0.25rem; font-size: 12px; color: var(--wa-texto-tenue); }
+.wa-escribiendo { display: flex; align-items: center; gap: 0.25rem; padding: 10px 12px; background: var(--wa-burbuja-agente); border-radius: 8px 12px 12px 12px; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+.wa-punto { width: 6px; height: 6px; border-radius: 9999px; background: var(--wa-texto-tenue); animation: wa-rebote 900ms ease-in-out infinite; }
+.wa-punto:nth-child(2) { animation-delay: 150ms; }
+.wa-punto:nth-child(3) { animation-delay: 300ms; }
+
+/* ---- Bandeja de opciones de prueba (Simular cliente, cambios sin guardar): usa los tokens del panel ---- */
+.wa-opciones { flex-shrink: 0; padding: 0.75rem; border-bottom: 1px solid var(--wa-borde); background: hsl(var(--card)); color: hsl(var(--foreground)); display: flex; flex-direction: column; gap: 0.625rem; }
+
+/* ---- Barra de entrada ---- */
+.wa-barra { flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.625rem; background: var(--wa-barra); border-top: 1px solid rgb(0 0 0 / 0.05); }
+.wa-campo { flex: 1; min-width: 0; height: 2.25rem; padding: 0 1rem; border: 0; border-radius: 9999px; background: var(--wa-campo); color: var(--wa-texto); font: inherit; font-size: 13.5px; outline: none; }
+.wa-campo::placeholder { color: var(--wa-texto-tenue); }
+.wa-campo:disabled { opacity: 0.7; }
+.wa-campo:focus-visible { box-shadow: 0 0 0 2px var(--wa-verde); }
+.wa-enviar { display: flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; flex-shrink: 0; border: 0; border-radius: 9999px; background: var(--wa-verde); color: #fff; cursor: pointer; transition: filter 150ms, transform 150ms; }
+.wa-enviar:hover { filter: brightness(1.05); }
+.wa-enviar:active { transform: scale(0.95); }
+.wa-enviar:disabled { opacity: 0.4; cursor: not-allowed; }
+.wa-enviar:focus-visible { outline: 2px solid var(--wa-texto); outline-offset: 2px; }
+.wa-enviar svg { width: 1rem; height: 1rem; margin-left: -1px; }
+
+.wa-solo-lectores { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---- Móvil (375 px): el original ocupaba 345 px de ancho sobre la barra inferior; aquí el panel casi llena la pantalla y el botón sube sobre la barra ---- */
+@media (max-width: 767px) {
+  .wa-boton { right: 1rem; bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 639px) {
+  .wa-panel { right: 0.5rem; bottom: 0.5rem; left: 0.5rem; width: auto; max-width: none; height: min(600px, calc(100dvh - 1rem)); max-height: none; }
+}
+
+@keyframes wa-entra-boton { from { opacity: 0; transform: translateY(10px) scale(0.85); } to { opacity: 1; transform: none; } }
+@keyframes wa-sale-boton { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(10px) scale(0.85); } }
+@keyframes wa-entra-panel { from { opacity: 0; transform: translateY(24px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes wa-sale-panel { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(24px) scale(0.97); } }
+@keyframes wa-rebote { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-boton, .wa-panel, .wa-boton[data-saliendo="true"], .wa-panel[data-saliendo="true"] { animation: none; }
+  .wa-boton[data-saliendo="true"], .wa-panel[data-saliendo="true"] { opacity: 0; }
+  .wa-boton, .wa-enviar, .wa-icono { transition: none; }
+  .wa-punto { animation: none; opacity: 0.7; }
+}
+.wa-widget .wa-glifo-blanco { color: #fff; }
