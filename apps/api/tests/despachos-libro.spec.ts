@@ -203,7 +203,7 @@ describe("base sin migrar (migracion 020 pendiente)", () => {
   it("lecturas: estado no_disponible y vacio; escrituras: 503; nunca 500", async () => {
     ctx.libroRepo.disponible = false;
     const app = buildApp(ctx.deps);
-    expect(await (await app.request(`${base()}/cuentas`, req(ctx.staff.admin.token, "GET"))).json()).toEqual({ estado: "no_disponible", cuentas: [] });
+    expect(await (await app.request(`${base()}/cuentas`, req(ctx.staff.admin.token, "GET"))).json()).toEqual({ estado: "no_disponible", cuentas: [], sinCodigoAgrupador: 0 });
     expect(((await (await app.request(`${base()}/polizas?ejercicio=2026`, req(ctx.staff.admin.token, "GET"))).json()) as { estado: string }).estado).toBe("no_disponible");
     expect(((await (await app.request(`${base()}/balanza?periodo=2026-07`, req(ctx.staff.admin.token, "GET"))).json()) as { estado: string }).estado).toBe("no_disponible");
     expect((await app.request(`${base()}/polizas`, req(ctx.staff.admin.token, "POST", POLIZA))).status).toBe(503);

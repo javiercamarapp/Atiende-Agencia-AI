@@ -1,7 +1,9 @@
 export * from "./types.ts";
-export { construirCatalogoBase, naturalezaPorDefecto, CUENTA_CLIENTES, CUENTA_INGRESOS_SERVICIOS, CUENTA_DEVOLUCIONES_VENTAS, CUENTA_IVA_TRASLADADO, CUENTA_IVA_ACREDITABLE } from "./catalogo-base.ts";
+export { construirCatalogoBase, naturalezaPorDefecto, CODIGO_AGRUPADOR_BASE, CUENTA_CLIENTES, CUENTA_INGRESOS_SERVICIOS, CUENTA_DEVOLUCIONES_VENTAS, CUENTA_IVA_TRASLADADO, CUENTA_IVA_ACREDITABLE, CUENTA_BANCOS, CUENTA_PROVEEDORES, CUENTA_IVA_ACREDITABLE_PAGADO, CUENTA_IEPS_ACREDITABLE, CUENTA_IVA_TRASLADADO_COBRADO, CUENTA_ISR_RETENIDO_POR_PAGAR, CUENTA_IVA_RETENIDO_POR_PAGAR, CUENTA_IEPS_POR_PAGAR, CUENTA_ISR_RETENIDO_A_FAVOR, CUENTA_IVA_RETENIDO_A_FAVOR } from "./catalogo-base.ts";
 export { validarPolizaEntrada, construirPolizaDesdeCfdi, esFechaValida, centavosATexto, MAX_PARTIDAS_POLIZA } from "./poliza.ts";
 export type { ErrorCampoLibro, ResultadoValidacion, ResultadoPolizaCfdi } from "./poliza.ts";
+export { construirPolizaDesdeRep, polizaEmitidoConImpuestos, polizaRecibidoConImpuestos } from "./poliza-impuestos.ts";
+export type { OpcionesPolizaRep, OpcionesPolizaCfdi, ResultadoPolizaImpuestos, MontosCfdi } from "./poliza-impuestos.ts";
 export { totalesBalanza, catalogoLibroAAnexo24, generarPaqueteDesdeLibro } from "./balanza.ts";
 export type { TotalesBalanzaLibro } from "./balanza.ts";
 export { PostgresLibroRepository, traducirErrorLibro } from "./postgres-repository.ts";

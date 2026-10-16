@@ -151,7 +151,8 @@ describe("catálogo base", () => {
 });
 
 describe("balanza del libro -> paquete de contabilidad electrónica", () => {
-  const cuentas = construirCatalogoBase().filter((c) => ["1050000", "4080000", "2600400"].includes(c.codigo));
+  // El catálogo completo: una subcuenta (2600400) necesita a su cuenta de mayor (2600000) en el XML.
+  const cuentas = construirCatalogoBase();
   const balanza = [
     { cuenta: "1050000", descripcion: "Clientes", naturaleza: "D" as const, saldoInicialCentavos: 0, debeCentavos: 116000, haberCentavos: 0, saldoFinalCentavos: 116000 },
     { cuenta: "2600400", descripcion: "IVA trasladado", naturaleza: "A" as const, saldoInicialCentavos: 0, debeCentavos: 0, haberCentavos: 16000, saldoFinalCentavos: 16000 },
@@ -168,6 +169,7 @@ describe("balanza del libro -> paquete de contabilidad electrónica", () => {
     expect(p.balanza.cuadrada).toBe(true);
     expect(p.resumenBalanza.totalDebe).toBe("1160.00");
     expect(p.balanza.xml).toContain('NumCta="1050000"');
+    expect(p.catalogo.xml).toContain('SubCtaDe="2600000"');
     expect(p.balanza.xml).toContain('Debe="1160.00"');
     expect(catalogoLibroAAnexo24(cuentas)[0]).toMatchObject({ grupo: expect.any(String) });
   });

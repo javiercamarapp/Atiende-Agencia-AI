@@ -298,10 +298,25 @@ Sin llamadas al SAT ni a un PAC.
   (1, 2, 3) acumulan todo lo anterior; cuentas de resultados solo desde enero (no hay póliza de cierre de ejercicio). **A validar con el
   contador**: sin traspaso de resultados al capital, la balanza de un ejercicio posterior no refleja el resultado acumulado del anterior.
 - **Póliza de un CFDI** (`construirPolizaDesdeCfdi`): solo arma lo no ambiguo (emitido I, nota de crédito emitida E, recibido I con categoría
-  `honorarios` o `gasto_operativo`); el resto (retenciones, IEPS, moneda extranjera, nómina, activo fijo, sentido indeterminado) devuelve el
-  motivo para registrar la póliza a mano. La póliza es **devengada**; el cobro/pago (Bancos contra Clientes/Proveedores) es otra póliza.
-- **Contabilidad electrónica** desde el libro (`generarPaqueteDesdeLibro`): catálogo + balanza XML con SHA-1, reutilizando el generador
-  existente. **XML sin cotejar con el validador del SAT** (misma reserva que el DIOT).
+  `honorarios` o `gasto_operativo`); el resto (moneda extranjera, nómina, activo fijo, sentido indeterminado) devuelve el motivo para registrar la
+  póliza a mano. La póliza es **devengada**; el cobro/pago (Bancos contra Clientes/Proveedores) es otra póliza.
+  Desde la migración 028 / D-P3-17 también arma el CFDI **con retenciones de ISR/IVA** (honorarios y arrendamiento de persona física: recibido ->
+  abono a «ISR/IVA retenido por pagar»; emitido -> cargo a «ISR/IVA retenido a favor») y **con IEPS** (recibido: al costo por omisión o acreditable si el
+  staff lo declara; emitido: abono a «IEPS por pagar»). El total debe ser base + IVA + IEPS - retenciones (centavos) o no sale la póliza
+  (`poliza-impuestos.ts`; supuestos marcados «validar con el fiscalista»).
+- **Cobro/pago de un REP** (`construirPolizaDesdeRep`, `POST .../libro/polizas/desde-rep`): una póliza vigente por pago de `pago_cfdi`
+  (`libro_poliza_rep` + `libro_poliza_registrar_rep`), con el traspaso del IVA no cobrado/no pagado a cobrado/pagado por el IVA proporcional que ya
+  guardó el servidor (prorrateo BigInt de `cfdi/rep.ts`). Lista para que el job «pólizas del periodo» (#453) la llame cuando exista en `main`.
+- **Contabilidad electrónica** desde el libro (`generarPaqueteDesdeLibro`): catálogo + balanza XML con SHA-1, **conformes al XSD 1.3 del SAT y
+  validados en las pruebas contra los XSD oficiales** (`tests/fixtures/contabilidad-electronica-xsd/`, `xmllint-wasm` como dependencia de desarrollo).
+  Cada cuenta lleva nivel, cuenta padre (`SubCtaDe`) y código agrupador del SAT (`CodAgrup`, lista cerrada de 1080 valores en
+  `normas/anexo-24-codigo-agrupador.yaml`); **el XML se niega a generarse si falta algún código** y lo dice. Balanza N/C (`FechaModBal` solo en C);
+  sin `FechaModificacion` ni sellos vacíos (no existen en el XSD / lo llena la e.firma, que no se usa). XML de pólizas del periodo
+  (`generarXmlPolizasPeriodo`, PolizasPeriodo 1.3) con tipo de solicitud y número de orden/trámite como entrada, sin nodos de complemento (CFDI,
+  cheque, transferencia: opcionales en el XSD; el libro aún no guarda esos datos). Importación del catálogo y la balanza del proveedor anterior
+  (`importar-xml.ts`, mismas defensas que el parser de CFDI): vista previa, rechazos con motivo y confirmación con segundo factor; la balanza
+  se registra como póliza de apertura fechada el último día del mes anterior. NumCta no numéricos (guiones, letras) NO se importan: el libro
+  solo maneja cuentas de 4 a 10 dígitos.
 
 ### D-25 — Pagos provisionales (`src/pagos-provisionales/`)
 
@@ -345,4 +360,7 @@ Sin llamadas al SAT ni a un PAC.
 3. Nómina emitida por el cliente: ¿se deduce por la fecha del CFDI o por la fecha de pago de la nómina?
 4. RESICO: tope de $3,500,000.00 acumulado del ejercicio (hoy solo se advierte) y retención de 1.25% por personas morales.
 5. IVA acreditable de CFDI con uso I01-I08 y de gastos con IVA parcialmente no acreditable (se acredita el IVA completo).
-6. Layout/validación del XML de contabilidad electrónica contra el validador del SAT (no se cotejó).
+6. XML de contabilidad electrónica: ya se valida contra el XSD oficial en las pruebas, pero no contra el validador en línea del SAT ni con un envío real.
+7. Códigos agrupadores del catálogo base (`CODIGO_AGRUPADOR_BASE`) y cuentas nuevas de retenidos/IEPS/IVA cobrado: son propuestas todas válidas en la
+   lista del Anexo 24 pero la correspondencia cuenta -> código la debe validar el fiscalista (ficha `anexo-24-codigo-agrupador`, `por_verificar`).
+8. IEPS recibido: ¿al costo (por omisión) o acreditable? Retenciones de IVA en un pago de REP: no se traspasan.

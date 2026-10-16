@@ -12,7 +12,7 @@
 // mismo patrón que el resto de `cierre-mensual/`), que ahora puede
 // calcularlo a partir de `PaqueteContabilidadElectronica.estado`.
 //
-// NOTA SOBRE "PÓLIZAS" DEL TÍTULO DEL GAP: verificado leyendo el origen
+// NOTA SOBRE "PÓLIZAS" DEL TÍTULO DEL GAP (histórica; ver al final): verificado leyendo el origen
 // completo (`b2b_ai/services/`, `b2b_ai/templates/`) — el Python NO tiene
 // ningún generador de XML de pólizas Anexo 24 (no existe
 // `polizas.py`/`PolizasContables.xsd` ni plantilla equivalente a
@@ -24,6 +24,11 @@
 // fabricar comportamiento SAT. Este módulo cierra la parte REAL y verificada
 // del gap: catálogo de cuentas + balanza de comprobación (los dos XML que sí
 // genera el origen) + el orquestador de estado del paquete.
+//
+// ACTUALIZACIÓN (D-P3-16): el XML de catálogo y balanza ahora se valida en las pruebas contra los XSD OFICIALES del SAT (1.3) vendorizados en
+// tests/fixtures/contabilidad-electronica-xsd/. Eso destapó que el generador heredado del origen NO era conforme (nodo `Cta` inexistente
+// bajo `Ctas`, `FechaModificacion` inexistente, `TipoEnvio="B"` fuera del patrón [NC], sello vacío). El generador de pólizas del periodo
+// (`polizas-periodo.ts`) se escribió contra PolizasPeriodo_1_3.xsd y se alimenta del libro persistido, no del origen Python.
 export type NaturalezaCuenta = "D" | "A"; // D = deudora, A = acreedora
 
 /** `Cuenta` del origen (`catalogo_cuentas.py`) — una cuenta del catálogo
@@ -39,6 +44,11 @@ export interface CuentaAnexo24 {
   readonly nivel: number;
   readonly naturaleza: NaturalezaCuenta;
   readonly grupo: string;
+  /** `SubCtaDe` del XSD: código de la cuenta de la que esta es subcuenta. Obligatorio para nivel > 1 al generar el XML. */
+  readonly subCtaDe?: string | null;
+  /** `CodAgrup` del XSD: código agrupador del SAT (lista cerrada del Anexo 24). Obligatorio en CADA cuenta al generar el XML; si falta,
+   * el generador se niega y devuelve la lista de cuentas sin código (nunca se inventa uno). */
+  readonly codAgrup?: string | null;
 }
 
 /** Un asiento contable de entrada — puerto de los dicts `{cuenta, debe,

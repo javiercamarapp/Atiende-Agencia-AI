@@ -1,6 +1,7 @@
 // D-24 -- puente entre la balanza derivada del libro (centavos enteros) y el generador del paquete de contabilidad electrónica
 // (que trabaja con cuentas del catálogo Anexo 24 y montos decimales). Los montos se convierten a texto EXACTO (sin flotantes).
 import { generarPaqueteContabilidadElectronica } from "../contabilidad-electronica/paquete.ts";
+import type { TipoEnvioBalanza } from "../contabilidad-electronica/balanza.ts";
 import type { AsientoContable, CuentaAnexo24, PaqueteContabilidadElectronica } from "../contabilidad-electronica/types.ts";
 import { centavosATexto } from "./poliza.ts";
 import type { CuentaLibro, LineaBalanzaLibro } from "./types.ts";
@@ -19,12 +20,21 @@ export function totalesBalanza(lineas: readonly LineaBalanzaLibro[]): TotalesBal
 
 const GRUPOS: Readonly<Record<string, string>> = { "1": "Activo", "2": "Pasivo", "3": "Capital", "4": "Ingresos", "5": "Costos", "6": "Gastos" };
 
-/** Catálogo del libro como `CuentaAnexo24` (nivel 1 = cuenta de mayor, 2 = subcuenta, 3 = auxiliar según los ceros finales). */
+/** Catálogo del libro como `CuentaAnexo24`: nivel, cuenta padre (`SubCtaDe`) y código agrupador (`CodAgrup`) son los GUARDADOS en el libro
+ * (migración 028), ya no se infieren por los ceros del código. Una cuenta sin código agrupador sigue sin él: el XML se niega a generarse. */
 export function catalogoLibroAAnexo24(cuentas: readonly CuentaLibro[]): readonly CuentaAnexo24[] {
-  return cuentas.map((c) => ({ codigo: c.codigo, descripcion: c.descripcion, nivel: c.codigo.endsWith("0000") ? 1 : c.codigo.endsWith("00") ? 2 : 3, naturaleza: c.naturaleza, grupo: GRUPOS[c.codigo.charAt(0)] ?? "Otros" }));
+  return cuentas.map((c) => ({
+    codigo: c.codigo,
+    descripcion: c.descripcion,
+    nivel: c.nivel ?? 1,
+    naturaleza: c.naturaleza,
+    grupo: GRUPOS[c.codigo.charAt(0)] ?? "Otros",
+    subCtaDe: c.cuentaPadre ?? null,
+    codAgrup: c.codigoAgrupador ?? null,
+  }));
 }
 
-/** Paquete (catálogo + balanza XML con SHA-1) del mes a partir del libro. SIN cotejar con el validador del SAT. */
+/** Paquete (catálogo + balanza XML con SHA-1) del mes a partir del libro. SIN cotejar con el validador del SAT en línea (las pruebas lo cotejan con el XSD). */
 export function generarPaqueteDesdeLibro(args: {
   readonly cuentas: readonly CuentaLibro[];
   readonly balanza: readonly LineaBalanzaLibro[];
@@ -33,6 +43,8 @@ export function generarPaqueteDesdeLibro(args: {
   readonly rfc: string;
   readonly razonSocial: string;
   readonly generadoEn: string;
+  readonly tipoEnvio?: TipoEnvioBalanza;
+  readonly fechaModBal?: string;
 }): PaqueteContabilidadElectronica {
   const periodo = `${args.ejercicio}-${String(args.mes).padStart(2, "0")}`;
   const asientos: AsientoContable[] = args.balanza.map((l) => ({ cuenta: l.cuenta, debe: centavosATexto(l.debeCentavos), haber: centavosATexto(l.haberCentavos), fecha: `${periodo}-01` }));
@@ -47,6 +59,7 @@ export function generarPaqueteDesdeLibro(args: {
     asientos,
     saldosIniciales,
     generadoEn: args.generadoEn,
-    fechaModificacionXml: args.generadoEn.slice(0, 19),
+    tipoEnvio: args.tipoEnvio,
+    fechaModBal: args.fechaModBal,
   });
 }

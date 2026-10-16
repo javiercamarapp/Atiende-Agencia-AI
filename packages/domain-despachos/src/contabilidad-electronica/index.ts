@@ -10,8 +10,8 @@
 // `nomina/index.ts`): el SELLADO/TIMBRADO real ante el SAT, RPA al portal
 // del SAT, y la persistencia del paquete/`package_id` (a cargo de un
 // repositorio de más arriba).
-export { NATURALEZAS_VALIDAS, CATALOGO_ANEXO24_BASE, CATEGORIA_A_CUENTA_ANEXO24, crearCatalogoBase, findCuenta, erroresCatalogo, validarCatalogo, mergeCuentas, asignarAutomatico, generarXmlCatalogo } from "./catalogo-cuentas.ts";
-export type { OpcionesXmlCatalogo } from "./catalogo-cuentas.ts";
+export { NATURALEZAS_VALIDAS, CATALOGO_ANEXO24_BASE, CATEGORIA_A_CUENTA_ANEXO24, crearCatalogoBase, findCuenta, erroresCatalogo, validarCatalogo, mergeCuentas, asignarAutomatico, generarXmlCatalogo, cuentasSinCodigoAgrupador, erroresJerarquiaCatalogo, CatalogoSinCodigoAgrupadorError } from "./catalogo-cuentas.ts";
+export type { OpcionesXmlCatalogo, CuentaSinCodigoAgrupador } from "./catalogo-cuentas.ts";
 
 export { acumularAsientos, generarBalanza, resumenBalanza, validarCuadratura, detectarSaldosAnomalos, generarXmlBalanza } from "./balanza.ts";
 export type { TipoEnvioBalanza, OpcionesXmlBalanza } from "./balanza.ts";
@@ -31,3 +31,22 @@ export type {
   PaqueteContabilidadElectronica,
   ResumenMensualContabilidad,
 } from "./types.ts";
+
+export { CODIGOS_AGRUPADORES_SAT, CODIGO_AGRUPADOR_FORMATO, esCodigoAgrupadorSat } from "./codigos-agrupadores.ts";
+export { ContabilidadElectronicaDatosInvalidosError, RFC_SAT_RE, importeDesdeCentavos } from "./xml-comun.ts";
+
+export { generarXmlPolizasPeriodo, TIPOS_SOLICITUD_POLIZAS, NUM_ORDEN_RE, NUM_TRAMITE_RE } from "./polizas-periodo.ts";
+export type { PolizaParaXml, MovimientoParaXml, OpcionesXmlPolizas, TipoSolicitudPolizas } from "./polizas-periodo.ts";
+
+export {
+  ImportacionXmlContabilidadError,
+  MAX_CUENTAS_IMPORTADAS,
+  MAX_PARTIDAS_APERTURA,
+  MAX_CARACTERES_XML_CONTABILIDAD,
+  leerCatalogoXml,
+  leerBalanzaXml,
+  importeACentavos,
+  fechaAperturaDe,
+  construirAperturaDesdeBalanza,
+} from "./importar-xml.ts";
+export type { CuentaImportada, CuentaRechazada, CatalogoImportado, LineaBalanzaImportada, BalanzaImportada, PartidaApertura, ResultadoApertura } from "./importar-xml.ts";

@@ -29,7 +29,7 @@ import {
 import { TransicionPaqueteContabilidadInvalidaError } from "../src/errors.ts";
 import type { AsientoContable, CuentaAnexo24 } from "../src/contabilidad-electronica/types.ts";
 
-const FECHA_MOD = "2026-01-31T23:59:59";
+const RFC = "DESP820101AB1";
 
 // ---------------------------------------------------------------------------
 // Catálogo de cuentas
@@ -38,8 +38,8 @@ const FECHA_MOD = "2026-01-31T23:59:59";
 describe("catálogo de cuentas Anexo 24", () => {
   it("trae el catálogo base por defecto con 31 cuentas, mismos códigos que el origen", () => {
     expect(CATALOGO_ANEXO24_BASE.length).toBe(31);
-    expect(findCuenta(CATALOGO_ANEXO24_BASE, "1101")).toEqual({ codigo: "1101", descripcion: "BANCOS", nivel: 3, naturaleza: "D", grupo: "ACTIVO" });
-    expect(findCuenta(CATALOGO_ANEXO24_BASE, "4100")).toEqual({ codigo: "4100", descripcion: "INGRESOS POR SERVICIOS", nivel: 2, naturaleza: "A", grupo: "INGRESOS" });
+    expect(findCuenta(CATALOGO_ANEXO24_BASE, "1101")).toEqual({ codigo: "1101", descripcion: "BANCOS", nivel: 3, naturaleza: "D", grupo: "ACTIVO", subCtaDe: "1100", codAgrup: "102.01" });
+    expect(findCuenta(CATALOGO_ANEXO24_BASE, "4100")).toEqual({ codigo: "4100", descripcion: "INGRESOS POR SERVICIOS", nivel: 2, naturaleza: "A", grupo: "INGRESOS", subCtaDe: "4000", codAgrup: "401.01" });
     expect(findCuenta(CATALOGO_ANEXO24_BASE, "9999")).toBeNull();
   });
 
@@ -98,24 +98,23 @@ describe("catálogo de cuentas Anexo 24", () => {
     expect(asign).toEqual({ gasto_operativo: "6102", nomina: "6101", ingreso: "4200" });
   });
 
-  it("generarXmlCatalogo produce el XML del catálogo conforme al XSD del SAT (namespace, atributos Cta)", () => {
-    const xml = generarXmlCatalogo(CATALOGO_ANEXO24_BASE, { rfc: "DESP820101AB1", ejercicio: 2026, mes: 1, fechaModificacion: FECHA_MOD });
+  it("generarXmlCatalogo produce el XML del catálogo con el namespace y los atributos del XSD (la validación XSD real está en contabilidad-electronica-xsd.spec.ts)", () => {
+    const xml = generarXmlCatalogo(CATALOGO_ANEXO24_BASE, { rfc: RFC, ejercicio: 2026, mes: 1 });
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
-    expect(xml).toContain('xmlns:Cat="http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/CatalogoCuentas"');
-    expect(xml).toContain('Version="1.3" RFC="DESP820101AB1" Anio="2026" Mes="01"');
-    expect(xml).toContain(`FechaModificacion="${FECHA_MOD}"`);
-    expect(xml).toContain('<Cat:Cta NumCta="1101" Desc="BANCOS" Nivel="3" Natur="D"/>');
-    expect(xml).toContain('<Cat:Cta NumCta="4100" Desc="INGRESOS POR SERVICIOS" Nivel="2" Natur="A"/>');
+    expect(xml).toContain('xmlns:catalogocuentas="http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/CatalogoCuentas"');
+    expect(xml).toContain('Version="1.3" RFC="DESP820101AB1" Mes="01" Anio="2026"');
+    expect(xml).toContain('<catalogocuentas:Ctas CodAgrup="102.01" NumCta="1101" Desc="BANCOS" SubCtaDe="1100" Nivel="3" Natur="D"/>');
+    expect(xml).toContain('<catalogocuentas:Ctas CodAgrup="401.01" NumCta="4100" Desc="INGRESOS POR SERVICIOS" SubCtaDe="4000" Nivel="2" Natur="A"/>');
   });
 
   it("generarXmlCatalogo lanza si el catálogo es inválido (valida antes de generar)", () => {
     const malo: CuentaAnexo24[] = [{ codigo: "1000", descripcion: "", nivel: 1, naturaleza: "D", grupo: "" }];
-    expect(() => generarXmlCatalogo(malo, { ejercicio: 2026, mes: 1, fechaModificacion: FECHA_MOD })).toThrow(/Catálogo inválido/);
+    expect(() => generarXmlCatalogo(malo, { rfc: RFC, ejercicio: 2026, mes: 1 })).toThrow(/Catálogo inválido/);
   });
 
   it("generarXmlCatalogo escapa atributos con caracteres especiales XML", () => {
-    const conAmpersand: CuentaAnexo24[] = [{ codigo: "1000", descripcion: 'Gastos "raros" & <especiales>', nivel: 1, naturaleza: "D", grupo: "" }];
-    const xml = generarXmlCatalogo(conAmpersand, { ejercicio: 2026, mes: 1, fechaModificacion: FECHA_MOD });
+    const conAmpersand: CuentaAnexo24[] = [{ codigo: "1000", descripcion: 'Gastos "raros" & <especiales>', nivel: 1, naturaleza: "D", grupo: "", codAgrup: "100" }];
+    const xml = generarXmlCatalogo(conAmpersand, { rfc: RFC, ejercicio: 2026, mes: 1 });
     expect(xml).toContain("Gastos &quot;raros&quot; &amp; &lt;especiales&gt;");
   });
 });
@@ -141,11 +140,11 @@ describe("balanza de comprobación", () => {
       { cuenta: "4100", descripcion: "INGRESOS POR SERVICIOS", nivel: 2, naturaleza: "A", saldoInicial: "0.00", debe: "0.00", haber: "1000.00", saldoFinal: "1000.00" },
     ]);
 
-    const xml = generarXmlBalanza(resumen.lineas, { rfc: "DESP820101AB1", ejercicio: 2026, mes: 1, fechaModificacion: FECHA_MOD });
+    const xml = generarXmlBalanza(resumen.lineas, { rfc: "DESP820101AB1", ejercicio: 2026, mes: 1 });
     expect(xml).toContain('xmlns:BCE="http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/BalanzaComprobacion"');
-    expect(xml).toContain('Version="1.3" TipoEnvio="B" RFC="DESP820101AB1" Mes="01" Anio="2026"');
-    expect(xml).toContain('<BCE:Cta NumCta="1101" SaldoIni="0.00" Debe="1000.00" Haber="0.00" SaldoFin="1000.00"/>');
-    expect(xml).toContain('<BCE:Cta NumCta="4100" SaldoIni="0.00" Debe="0.00" Haber="1000.00" SaldoFin="1000.00"/>');
+    expect(xml).toContain('Version="1.3" RFC="DESP820101AB1" Mes="01" Anio="2026" TipoEnvio="N"');
+    expect(xml).toContain('<BCE:Ctas NumCta="1101" SaldoIni="0.00" Debe="1000.00" Haber="0.00" SaldoFin="1000.00"/>');
+    expect(xml).toContain('<BCE:Ctas NumCta="4100" SaldoIni="0.00" Debe="0.00" Haber="1000.00" SaldoFin="1000.00"/>');
   });
 
   it("acumularAsientos suma debe/haber por cuenta e ignora asientos sin cuenta", () => {
@@ -220,7 +219,6 @@ describe("paquete de contabilidad electrónica", () => {
       mes: 1,
       asientos,
       generadoEn: "2026-02-01T09:00:00",
-      fechaModificacionXml: FECHA_MOD,
     });
   }
 
@@ -274,13 +272,21 @@ describe("paquete de contabilidad electrónica", () => {
   it("mes default es 1 cuando no se especifica, igual que el origen", () => {
     const paquete = generarPaqueteContabilidadElectronica({
       catalogo: CATALOGO_ANEXO24_BASE,
+      rfc: RFC,
       ejercicio: 2026,
-      asientos: [],
+      asientos,
       generadoEn: "2026-02-01T09:00:00",
-      fechaModificacionXml: FECHA_MOD,
     });
     expect(paquete.mes).toBe(1);
     expect(paquete.periodo).toBe("2026-01");
+  });
+
+  it("sin asientos no hay balanza que declarar: el paquete se niega en vez de emitir un XML vacío (el XSD exige al menos una cuenta)", () => {
+    expect(() => generarPaqueteContabilidadElectronica({ catalogo: CATALOGO_ANEXO24_BASE, rfc: RFC, ejercicio: 2026, asientos: [], generadoEn: "2026-02-01T09:00:00" })).toThrow(/no hay nada que declarar/);
+  });
+
+  it("sin RFC válido el paquete se niega (el XSD lo exige)", () => {
+    expect(() => generarPaqueteContabilidadElectronica({ catalogo: CATALOGO_ANEXO24_BASE, rfc: "", ejercicio: 2026, asientos, generadoEn: "2026-02-01T09:00:00" })).toThrow(/RFC/);
   });
 
   describe("ciclo de estados: borrador -> listo_para_timbrar -> timbrado -> enviado", () => {

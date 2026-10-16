@@ -7,6 +7,7 @@
 // explícito.
 import type { AsientoContable, CuentaAnexo24, LineaBalanza, LineaBalanzaAnomala, NaturalezaCuenta, ResumenBalanza } from "./types.ts";
 import { findCuenta } from "./catalogo-cuentas.ts";
+import { ContabilidadElectronicaDatosInvalidosError, escaparAtributoXml, exigirEjercicioYMes, exigirRfcSat, mesDosDigitos } from "./xml-comun.ts";
 
 // `_round2`/`_fmt` del origen usan `Decimal.quantize(..., ROUND_HALF_UP)` —
 // redondeo "mitad hacia arriba" explícito (NO el round-half-to-even de
@@ -144,36 +145,61 @@ export function detectarSaldosAnomalos(lineas: readonly LineaBalanza[], umbral =
   return anomalos;
 }
 
-function escapeXmlAttr(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-}
-
-export type TipoEnvioBalanza = "B" | "C";
+/** `N` = envío normal, `C` = complementaria (patrón `[NC]` del XSD; el `B` del generador heredado NO existe en el XSD 1.3). */
+export type TipoEnvioBalanza = "N" | "C";
 
 export interface OpcionesXmlBalanza {
-  readonly rfc?: string;
+  readonly rfc: string;
   readonly ejercicio: number;
   readonly mes: number;
-  /** "B" = balanza de comprobación, "C" = catálogo de cuentas — default "B"
-   * igual que el origen. */
+  /** Default `N` (normal). */
   readonly tipoEnvio?: TipoEnvioBalanza;
-  /** "YYYY-MM-DDTHH:MM:SS" — mismo criterio de `catalogo-
-   * cuentas.ts::OpcionesXmlCatalogo.fechaModificacion` (DESVIACIÓN
-   * DOCUMENTADA: el original defaultea a `datetime.now()`; aquí es
-   * obligatorio y explícito). */
-  readonly fechaModificacion: string;
+  /** `FechaModBal` (YYYY-MM-DD): fecha de la última modificación de la balanza. SOLO con `TipoEnvio="C"` (obligatoria entonces); con `N` no se emite. */
+  readonly fechaModBal?: string;
 }
 
-/** `BalanzaComprobacion.generar_xml` — XML de la balanza de comprobación
- * conforme al XSD del SAT (`BalanzaComprobacion_1_3.xsd`), igual estructura
- * que `b2b_ai/templates/balanza_comprobacion.xml`. */
-export function generarXmlBalanza(lineas: readonly LineaBalanza[], opciones: OpcionesXmlBalanza): string {
-  const rfc = opciones.rfc ?? "";
-  const tipoEnvio = opciones.tipoEnvio ?? "B";
-  const mesS = String(opciones.mes).padStart(2, "0");
-  const esc = (v: string) => escapeXmlAttr(v);
+const FECHA_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const IMPORTE_RE = /^-?\d+\.\d{2}$/;
 
-  const ctas = lineas.map((l) => `      <BCE:Cta NumCta="${esc(l.cuenta)}" SaldoIni="${esc(l.saldoInicial)}" Debe="${esc(l.debe)}" Haber="${esc(l.haber)}" SaldoFin="${esc(l.saldoFinal)}"/>`).join("\n");
+function fechaModBalValida(valor: string): boolean {
+  const m = FECHA_RE.exec(valor);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (y < 2015) return false;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
+/**
+ * Balanza de comprobación conforme a `BalanzaComprobacion_1_3.xsd` (validada en las pruebas contra el XSD oficial). Estructura: la raíz
+ * `Balanza` contiene una secuencia de nodos `Ctas` (uno por cuenta) con NumCta, SaldoIni, Debe, Haber y SaldoFin (importes con 2 decimales).
+ *
+ * Decisiones documentadas:
+ *  - TipoEnvio es `N`/`C` (no `B`). `FechaModBal` solo va con `C`, y entonces es obligatoria.
+ *  - NO hay `FechaModificacion` (no existe en el XSD 1.3). Sello/noCertificado/Certificado son opcionales y se omiten (los llena la e.firma,
+ *    que esta aplicación no usa).
+ *  - Los saldos iniciales vienen en cada línea (`saldoInicial`), con el signo y la naturaleza de la cuenta.
+ */
+export function generarXmlBalanza(lineas: readonly LineaBalanza[], opciones: OpcionesXmlBalanza): string {
+  const rfc = exigirRfcSat(opciones.rfc);
+  exigirEjercicioYMes(opciones.ejercicio, opciones.mes, 13);
+  const tipoEnvio = opciones.tipoEnvio ?? "N";
+  if (tipoEnvio !== "N" && tipoEnvio !== "C") throw new ContabilidadElectronicaDatosInvalidosError("TipoEnvio de la balanza: N (normal) o C (complementaria).");
+  if (tipoEnvio === "C") {
+    if (!opciones.fechaModBal || !fechaModBalValida(opciones.fechaModBal)) throw new ContabilidadElectronicaDatosInvalidosError("Una balanza complementaria (C) requiere FechaModBal (AAAA-MM-DD, desde 2015).");
+  } else if (opciones.fechaModBal !== undefined) {
+    throw new ContabilidadElectronicaDatosInvalidosError("FechaModBal solo se declara en una balanza complementaria (C).");
+  }
+  if (lineas.length === 0) throw new ContabilidadElectronicaDatosInvalidosError("La balanza no tiene cuentas con saldo ni movimientos: no hay nada que declarar.");
+  const esc = escaparAtributoXml;
+  for (const l of lineas) {
+    for (const [campo, valor] of [["SaldoIni", l.saldoInicial], ["Debe", l.debe], ["Haber", l.haber], ["SaldoFin", l.saldoFinal]] as const) {
+      if (!IMPORTE_RE.test(valor)) throw new ContabilidadElectronicaDatosInvalidosError(`Cuenta ${l.cuenta}: ${campo} no es un importe con 2 decimales.`);
+    }
+  }
+
+  const ctas = lineas.map((l) => `  <BCE:Ctas NumCta="${esc(l.cuenta)}" SaldoIni="${l.saldoInicial}" Debe="${l.debe}" Haber="${l.haber}" SaldoFin="${l.saldoFinal}"/>`).join("\n");
+  const fechaMod = tipoEnvio === "C" ? ` FechaModBal="${esc(opciones.fechaModBal as string)}"` : "";
 
   return (
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -181,9 +207,8 @@ export function generarXmlBalanza(lineas: readonly LineaBalanza[], opciones: Opc
     'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ' +
     'xsi:schemaLocation="http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/BalanzaComprobacion ' +
     'http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/BalanzaComprobacion/BalanzaComprobacion_1_3.xsd" ' +
-    `Version="1.3" TipoEnvio="${esc(tipoEnvio)}" RFC="${esc(rfc)}" Mes="${mesS}" Anio="${opciones.ejercicio}" ` +
-    `FechaModificacion="${esc(opciones.fechaModificacion)}" Sello="" noCertificado="" Certificado="">\n` +
-    `  <BCE:Ctas>\n${ctas}\n  </BCE:Ctas>\n` +
+    `Version="1.3" RFC="${esc(rfc)}" Mes="${mesDosDigitos(opciones.mes)}" Anio="${opciones.ejercicio}" TipoEnvio="${tipoEnvio}"${fechaMod}>\n` +
+    `${ctas}\n` +
     "</BCE:Balanza>\n"
   );
 }

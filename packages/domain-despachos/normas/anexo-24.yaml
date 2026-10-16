@@ -8,8 +8,10 @@ vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en es
 estado_verificacion: por_verificar
 verificada_por: null
 fecha: null
-nota_verificacion: "La URL es el índice oficial del SAT; el código reconoce que no genera XML de pólizas del Anexo 24."
+nota_verificacion: "La URL es el índice oficial del SAT. El XML de catálogo, balanza y pólizas del periodo se valida en las pruebas contra los XSD oficiales 1.3 (tests/fixtures/contabilidad-electronica-xsd/); el envío al SAT y la firma con e.firma son humanos y no se hacen aquí."
 usado_en_codigo:
   - "src/contabilidad-electronica/types.ts:1"
   - "src/contabilidad-electronica/catalogo-cuentas.ts:1"
   - "src/libro/balanza.ts:23"
+  - "src/contabilidad-electronica/balanza.ts:1"
+  - "src/contabilidad-electronica/polizas-periodo.ts:1"

@@ -2,6 +2,8 @@
 // Todo en centavos enteros; el cuadre (debe = haber) se exige aquí Y en la función SQL de la migración 020.
 import { DEFAULT_MAPPINGS, mappingKey } from "../bookkeeping/catalogo.ts";
 import type { CategoriaContable, InvoiceRecord } from "../types.ts";
+import { polizaEmitidoConImpuestos, polizaRecibidoConImpuestos } from "./poliza-impuestos.ts";
+import type { OpcionesPolizaCfdi } from "./poliza-impuestos.ts";
 import { CUENTA_CLIENTES, CUENTA_DEVOLUCIONES_VENTAS, CUENTA_INGRESOS_SERVICIOS, CUENTA_IVA_TRASLADADO } from "./catalogo-base.ts";
 import { TIPOS_POLIZA } from "./types.ts";
 import type { MovimientoPolizaInput, PolizaInput, TipoPoliza } from "./types.ts";
@@ -86,31 +88,41 @@ export type ResultadoPolizaCfdi =
   | { readonly ok: false; readonly motivo: string };
 
 /**
- * Póliza (devengada) de un CFDI persistido. Solo arma las que se pueden armar sin inventar: CFDI en pesos, sin retenciones
- * ni IEPS, con montos en centavos (D-22) y total = base + IVA.
+ * Póliza (devengada) de un CFDI persistido. Solo arma las que se pueden armar sin inventar: CFDI en pesos, con montos en centavos (D-22) y
+ * total = base + IVA + IEPS - retenciones (D-P3-17: con retenciones de ISR/IVA o con IEPS la póliza lleva las cuentas de poliza-impuestos.ts).
  *  - Emitido, tipo I:  cargo Clientes (total); abono Ingresos por servicios (base) e IVA trasladado.
  *  - Emitido, tipo E:  nota de crédito: cargo Devoluciones sobre ventas (base) e IVA trasladado; abono Clientes (total).
  *  - Recibido, tipo I: cargo la cuenta de gasto de su categoría (base) e IVA acreditable; abono la cuenta de pasivo/banco del mapeo.
  * Cualquier otro (nómina, traslado, pago, nota de crédito recibida, categoría sin clasificar, sentido indeterminado) devuelve el motivo
  * para que el staff registre la póliza a mano. El cobro/pago (Bancos contra Clientes/Proveedores) es otra póliza y no se arma aquí.
  */
-export function construirPolizaDesdeCfdi(f: InvoiceRecord): ResultadoPolizaCfdi {
+export function construirPolizaDesdeCfdi(f: InvoiceRecord, opciones: OpcionesPolizaCfdi = {}): ResultadoPolizaCfdi {
   const noAplica = (motivo: string): ResultadoPolizaCfdi => ({ ok: false, motivo });
   if (f.estadoSat === "cancelado") return noAplica("El CFDI está cancelado ante el SAT: no se contabiliza.");
   if (f.direccion !== "emitido" && f.direccion !== "recibido") return noAplica("No se sabe si el CFDI es emitido o recibido: captura la ficha del cliente (RFC) y vuelve a ingerirlo.");
   if (f.totalCentavos == null || f.subtotalCentavos == null) return noAplica("El CFDI se ingirió antes del modelo completo (D-22) y no tiene montos en centavos: vuelve a cargar el XML.");
   if ((f.moneda ?? "MXN") !== "MXN") return noAplica("CFDI en moneda extranjera: la póliza requiere el tipo de cambio y se registra a mano.");
-  if ((f.isrRetenidoCentavos ?? 0) > 0 || (f.ivaRetenidoCentavos ?? 0) > 0 || (f.iepsCentavos ?? 0) > 0) return noAplica("El CFDI trae retenciones o IEPS: requiere cuentas adicionales; regístralo a mano.");
+  const isrRetenido = f.isrRetenidoCentavos ?? 0;
+  const ivaRetenido = f.ivaRetenidoCentavos ?? 0;
+  const ieps = f.iepsCentavos ?? 0;
+  const conImpuestos = isrRetenido > 0 || ivaRetenido > 0 || ieps > 0;
+  if (conImpuestos && f.tipo !== "I") return noAplica("Un CFDI que no es de ingreso y trae retenciones o IEPS no genera póliza automática: regístrala a mano.");
   const base = f.subtotalCentavos - (f.descuentoCentavos ?? 0);
   const iva = f.ivaTrasladadoCentavos ?? 0;
   if (base <= 0) return noAplica("El CFDI no tiene base gravable positiva.");
-  if (base + iva !== f.totalCentavos) return noAplica("El total del CFDI no es igual a base más IVA (centavos): revisa el comprobante antes de contabilizarlo.");
+  // D-P3-17: total = base + IVA + IEPS - retenciones (centavos). Con retenciones o IEPS la póliza lleva sus cuentas (ver poliza-impuestos.ts).
+  if (base + iva + ieps - isrRetenido - ivaRetenido !== f.totalCentavos) return noAplica("El total del CFDI no es igual a base más IVA e IEPS menos retenciones (centavos): revisa el comprobante antes de contabilizarlo.");
+  const montos = { base, iva, ieps, isrRetenido, ivaRetenido, total: f.totalCentavos };
   const concepto = `CFDI ${f.folioFiscal}`;
 
   // PENDIENTE DE VALIDAR CON EL CONTADOR: estas pólizas son DEVENGADAS (Clientes/Proveedores contra ingreso/gasto), pero se rotulan
   // `ingreso`/`egreso`, que en contabilidad electrónica suelen significar cobro/pago; las notas de crédito van como `diario`. Las cuentas
   // (1050000 clientes, 4080000 ingresos, 4020000 devoluciones, 2600400/2600300 IVA y el mapeo de gastos) son supuestos del catálogo base.
   if (f.direccion === "emitido" && f.tipo === "I") {
+    if (conImpuestos) {
+      const r = polizaEmitidoConImpuestos(f, montos, concepto);
+      return r.ok ? { ok: true, poliza: r.poliza } : r;
+    }
     const movimientos: MovimientoPolizaInput[] = [
       { cuenta: CUENTA_CLIENTES, concepto, debeCentavos: f.totalCentavos, haberCentavos: 0 },
       { cuenta: CUENTA_INGRESOS_SERVICIOS, concepto, debeCentavos: 0, haberCentavos: base },
@@ -129,7 +141,11 @@ export function construirPolizaDesdeCfdi(f: InvoiceRecord): ResultadoPolizaCfdi 
     const mapeo = clave ? DEFAULT_MAPPINGS[mappingKey("I", clave)] : undefined;
     if (!mapeo) return noAplica("La categoría del CFDI no tiene una cuenta de gasto que se pueda asignar sola (activo fijo, inversión, nómina o sin clasificar): regístrala a mano.");
     if (iva > 0 && !mapeo.ivaCargo) return noAplica("La categoría del CFDI no tiene cuenta de IVA acreditable: regístralo a mano.");
-    const movimientos: MovimientoPolizaInput[] = [{ cuenta: mapeo.cargo, concepto, debeCentavos: base, haberCentavos: 0 }];
+    if (conImpuestos) {
+      const r = polizaRecibidoConImpuestos(f, montos, concepto, mapeo, opciones);
+      return r.ok ? { ok: true, poliza: r.poliza } : r;
+    }
+    const movimientos: MovimientoPolizaInput[] = [{ cuenta: opciones.cuentaGasto ?? mapeo.cargo, concepto, debeCentavos: base, haberCentavos: 0 }];
     if (iva > 0 && mapeo.ivaCargo) movimientos.push({ cuenta: mapeo.ivaCargo, concepto: "IVA acreditable", debeCentavos: iva, haberCentavos: 0 });
     movimientos.push({ cuenta: mapeo.abono, concepto, debeCentavos: 0, haberCentavos: f.totalCentavos });
     return { ok: true, poliza: { tipo: "egreso", fecha: f.fecha, concepto, movimientos } };

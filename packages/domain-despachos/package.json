@@ -15,6 +15,7 @@
     "@atiende/billing": "*",
     "@atiende/core-authz": "*",
     "@atiende/core-tenancy": "*",
-    "@atiende/db": "*"
+    "@atiende/db": "*",
+    "fast-xml-parser": "5.11.1"
   }
 }

@@ -4,7 +4,7 @@
 // roles). Esta pantalla solo da retroalimentacion inmediata y oculta acciones que el servidor rechazaria. Todo en centavos.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Download, FilePlus2, FileText, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { FilePlus2, FileText, Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   Button,
   Callout,
@@ -31,10 +31,8 @@ import {
   fetchBalanza,
   fetchCfdiLibro,
   fetchCuentas,
-  fetchPaquete,
   fetchPoliza,
   fetchPolizas,
-  guardarCuenta,
   PARTIDA_VACIA,
   periodoActual,
   polizaDesdeCfdi,
@@ -42,24 +40,17 @@ import {
   registrarPoliza,
   resumenCuadre,
   reversarPoliza,
-  sembrarCatalogo,
   TIPOS_POLIZA,
 } from "../lib/libro-client.ts";
-import type { BalanzaRespuesta, CfdiLibro, CuentaLibro, PaqueteContabilidad, PartidaFormulario, PolizaDetalle, PolizaFormulario, PolizaResumen, TipoPoliza } from "../lib/libro-client.ts";
+import type { BalanzaRespuesta, CfdiLibro, CuentaLibro, PartidaFormulario, PolizaDetalle, PolizaFormulario, PolizaResumen, TipoPoliza } from "../lib/libro-client.ts";
+import { CatalogoCuentasPanel } from "../components/CatalogoCuentasPanel.tsx";
+import { ContabilidadElectronicaLibroPanel } from "../components/ContabilidadElectronicaLibroPanel.tsx";
+import { PagosRepPanel } from "../components/PagosRepPanel.tsx";
 import { formatFechaSolo, hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Espejo cosmetico de GESTIONAR_LIBRO_ROLES (@atiende/domain-despachos/src/roles.ts); el servidor es la autoridad.
 const GESTIONAR_ROLES: ReadonlySet<string> = new Set(["admin", "contador"]);
-
-function descargarTexto(nombre: string, contenido: string, tipo: string): void {
-  const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = nombre;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 function mensajeDe(err: unknown, porDefecto: string): string {
   return err instanceof Error ? err.message : porDefecto;
@@ -188,16 +179,12 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
   const [detalle, setDetalle] = useState<PolizaDetalle | null>(null);
   const [reversando, setReversando] = useState<PolizaResumen | null>(null);
   const [reversa, setReversa] = useState({ fecha: hoy, concepto: "" });
-  const [paquete, setPaquete] = useState<PaqueteContabilidad | null>(null);
-  const [paqueteError, setPaqueteError] = useState<string | null>(null);
-  const [cuentaNueva, setCuentaNueva] = useState({ codigo: "", descripcion: "", naturaleza: "D" as "D" | "A" });
 
   const puedeGestionar = GESTIONAR_ROLES.has(role);
 
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
-    setPaquete(null);
     try {
       // Secuencial a proposito (mismo criterio que el servidor: una sola transaccion por request).
       const c = await fetchCuentas(fetch, apiBaseUrl, token, propertyId);
@@ -269,16 +256,6 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
     });
   }
 
-  async function generarPaquete() {
-    setPaqueteError(null);
-    try {
-      setPaquete(await fetchPaquete(fetch, apiBaseUrl, token, propertyId, periodo));
-    } catch (err) {
-      setPaquete(null);
-      setPaqueteError(mensajeDe(err, "No se pudo generar el paquete."));
-    }
-  }
-
   const periodoValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(periodo);
 
   return (
@@ -320,7 +297,7 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
       {cargando && polizas.length === 0 && !balanza && <EstadoCargando etiqueta="Cargando libro contable…" />}
       {noDisponible && (
         <Callout tone="warning" role="status">
-          El libro contable todavía no está disponible en esta base: falta aplicar la migración 020. Hasta entonces no se pueden registrar pólizas.
+          El libro contable todavía no está disponible en esta base: falta aplicar la migración 020 (el libro) y la 028 (código agrupador del SAT y pólizas de REP). Hasta entonces no se pueden registrar pólizas.
         </Callout>
       )}
 
@@ -430,6 +407,7 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
                 ]}
               />
             )}
+            {periodoValido && <PagosRepPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} periodo={periodo} puedeGestionar={puedeGestionar} onCambio={() => void cargar()} />}
           </TabsContent>
 
           <TabsContent value="balanza" className="mt-0 flex flex-col gap-3">
@@ -454,91 +432,12 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
             />
           </TabsContent>
 
-          <TabsContent value="catalogo" className="mt-0 flex flex-col gap-3">
-            {puedeGestionar && cuentas.length === 0 && (
-              <Callout tone="info" role="status">
-                Este cliente aún no tiene catálogo de cuentas.{" "}
-                <Button type="button" size="sm" className="ml-2" onClick={() => void ejecutar(async () => `Catálogo base sembrado (${(await sembrarCatalogo(fetch, apiBaseUrl, token, propertyId)).agregadas} cuentas).`)}>
-                  Sembrar catálogo base
-                </Button>
-              </Callout>
-            )}
-            {puedeGestionar && (
-              <form
-                className="flex flex-wrap items-end gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void ejecutar(async () => {
-                    const c = await guardarCuenta(fetch, apiBaseUrl, token, propertyId, { codigo: cuentaNueva.codigo.trim(), descripcion: cuentaNueva.descripcion.trim(), naturaleza: cuentaNueva.naturaleza });
-                    setCuentaNueva({ codigo: "", descripcion: "", naturaleza: "D" });
-                    return `Cuenta ${c.codigo} guardada.`;
-                  });
-                }}
-              >
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="cuenta-codigo">Código</Label>
-                  <Input id="cuenta-codigo" value={cuentaNueva.codigo} inputMode="numeric" maxLength={10} className="w-32 font-mono" onChange={(e) => setCuentaNueva({ ...cuentaNueva, codigo: e.target.value.replace(/\D/g, "") })} />
-                </div>
-                <div className="flex min-w-48 flex-1 flex-col gap-1">
-                  <Label htmlFor="cuenta-descripcion">Descripción</Label>
-                  <Input id="cuenta-descripcion" value={cuentaNueva.descripcion} maxLength={200} onChange={(e) => setCuentaNueva({ ...cuentaNueva, descripcion: e.target.value })} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="cuenta-naturaleza">Naturaleza</Label>
-                  <NativeSelect id="cuenta-naturaleza" value={cuentaNueva.naturaleza} onChange={(e) => setCuentaNueva({ ...cuentaNueva, naturaleza: e.target.value as "D" | "A" })}>
-                    <option value="D">Deudora</option>
-                    <option value="A">Acreedora</option>
-                  </NativeSelect>
-                </div>
-                <Button type="submit" size="sm" variant="outline" disabled={!/^\d{4,10}$/.test(cuentaNueva.codigo) || cuentaNueva.descripcion.trim() === ""}>
-                  <Plus />
-                  Guardar cuenta
-                </Button>
-              </form>
-            )}
-            <DataTable
-              etiqueta="Catálogo de cuentas"
-              obtenerId={(c) => c.codigo}
-              filas={cuentas}
-              paginacion={{ tamano: 20 }}
-              vacio={{ mensaje: "Sin cuentas." }}
-              columnas={[
-                { id: "codigo", encabezado: "Código", principal: true, valorOrden: (c) => c.codigo, celda: (c) => <span className="font-mono text-xs">{c.codigo}</span> },
-                { id: "descripcion", encabezado: "Descripción", celda: (c) => c.descripcion },
-                { id: "naturaleza", encabezado: "Naturaleza", celda: (c) => <span className="text-muted-foreground">{c.naturaleza === "D" ? "Deudora" : "Acreedora"}</span> },
-              ]}
-            />
+          <TabsContent value="catalogo" className="mt-0">
+            <CatalogoCuentasPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeGestionar={puedeGestionar} cuentas={cuentas} ejecutar={ejecutar} onCambio={() => void cargar()} />
           </TabsContent>
 
-          <TabsContent value="electronica" className="mt-0 flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">Genera el catálogo y la balanza de comprobación del mes en XML (contabilidad electrónica), con su huella SHA-1, desde el libro. No se envía al SAT desde Atiende.</p>
-            <div>
-              <Button type="button" size="sm" disabled={!periodoValido} onClick={() => void generarPaquete()}>
-                Generar paquete de {periodo}
-              </Button>
-            </div>
-            {paqueteError && <EstadoError mensaje={paqueteError} />}
-            {paquete && (
-              <div className="flex flex-col gap-2">
-                <Callout tone={paquete.balanza.cuadrada ? "success" : "warning"} role="status">
-                  Balanza {paquete.balanza.cuadrada ? "cuadrada" : "descuadrada"}: {paquete.resumen.cuentas} cuentas, debe ${paquete.resumen.totalDebe} · haber ${paquete.resumen.totalHaber}. {paquete.nota}
-                </Callout>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => descargarTexto(`catalogo-${paquete.periodo}.xml`, paquete.catalogo.xml, "application/xml")}>
-                    <Download />
-                    Catálogo XML
-                  </Button>
-                  <span className="font-mono text-2xs text-muted-foreground">SHA-1 {paquete.catalogo.sha1}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => descargarTexto(`balanza-${paquete.periodo}.xml`, paquete.balanza.xml, "application/xml")}>
-                    <Download />
-                    Balanza XML
-                  </Button>
-                  <span className="font-mono text-2xs text-muted-foreground">SHA-1 {paquete.balanza.sha1}</span>
-                </div>
-              </div>
-            )}
+          <TabsContent value="electronica" className="mt-0">
+            <ContabilidadElectronicaLibroPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} periodo={periodo} periodoValido={periodoValido} />
           </TabsContent>
         </Tabs>
       )}

@@ -55,6 +55,7 @@ function stubFetch(opciones: { cuentas?: unknown; polizas?: unknown; escritura?:
         if (url.endsWith("/libro/cuentas")) return new Response(JSON.stringify(opciones.cuentas ?? { estado: "disponible", cuentas: CUENTAS }), { status: 200 });
         if (url.includes("/libro/polizas?")) return new Response(JSON.stringify(opciones.polizas ?? { estado: "disponible", polizas: [POLIZA] }), { status: 200 });
         if (url.includes("/libro/balanza")) return new Response(JSON.stringify(BALANZA), { status: 200 });
+        if (url.includes("/libro/pagos-rep")) return new Response(JSON.stringify({ estado: "disponible", pagos: [] }), { status: 200 });
         if (url.includes("/libro/cfdi")) return new Response(JSON.stringify(CFDI), { status: 200 });
         if (url.includes(`/libro/polizas/${POLIZA.id}`)) return new Response(JSON.stringify({ ...POLIZA, movimientos: [{ linea: 1, cuenta: "1050000", concepto: "", debeCentavos: 116000, haberCentavos: 0 }, { linea: 2, cuenta: "4080000", concepto: "", debeCentavos: 0, haberCentavos: 116000 }] }), { status: 200 });
       }

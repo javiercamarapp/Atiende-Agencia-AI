@@ -45,12 +45,12 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/catalogo", () => 
     const app = buildApp(ctx.deps);
     const res = await app.request(
       `/despachos/${ctx.propertyId}/contabilidad-electronica/catalogo`,
-      authedJson(ctx.staff.contador.token, { rfc: "CON950820K12", ejercicio: 2026, mes: 7, fechaModificacion: "2026-08-01T10:00:00" }),
+      authedJson(ctx.staff.contador.token, { rfc: "CON950820K12", ejercicio: 2026, mes: 7 }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { catalogo: readonly unknown[]; xml: string; sha1: string };
     expect(body.catalogo).toEqual(CATALOGO_ANEXO24_BASE);
-    const xmlDirecto = generarXmlCatalogo(CATALOGO_ANEXO24_BASE, { rfc: "CON950820K12", ejercicio: 2026, mes: 7, fechaModificacion: "2026-08-01T10:00:00" });
+    const xmlDirecto = generarXmlCatalogo(CATALOGO_ANEXO24_BASE, { rfc: "CON950820K12", ejercicio: 2026, mes: 7 });
     expect(body.xml).toBe(xmlDirecto);
     expect(body.sha1).toBe(calcularHashSha1(xmlDirecto));
   });
@@ -82,7 +82,7 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/balanza", () => {
     ];
     const res = await app.request(
       `/despachos/${ctx.propertyId}/contabilidad-electronica/balanza`,
-      authedJson(ctx.staff.contador.token, { asientos, ejercicio: 2026, mes: 7, fechaModificacion: "2026-08-01T10:00:00" }),
+      authedJson(ctx.staff.contador.token, { rfc: "CON950820K12", asientos, ejercicio: 2026, mes: 7 }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { resumen: { cuadrada: boolean; totalDebe: string; totalHaber: string }; xml: string; sha1: string };
@@ -91,7 +91,7 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/balanza", () => {
     expect(body.resumen.totalHaber).toBe("1000.00");
 
     const resumenDirecto = generarBalanza(CATALOGO_ANEXO24_BASE, asientos, "2026-07", null);
-    const xmlDirecto = generarXmlBalanza(resumenDirecto.lineas, { ejercicio: 2026, mes: 7, fechaModificacion: "2026-08-01T10:00:00" });
+    const xmlDirecto = generarXmlBalanza(resumenDirecto.lineas, { rfc: "CON950820K12", ejercicio: 2026, mes: 7 });
     expect(body.xml).toBe(xmlDirecto);
     expect(body.sha1).toBe(calcularHashSha1(xmlDirecto));
   });
@@ -100,9 +100,12 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/balanza", () => {
     const app = buildApp(ctx.deps);
     const res = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/balanza`, authedJson(ctx.staff.contador.token, { ejercicio: 2026, mes: 1 }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { resumen: { cuentas: number; cuadrada: boolean } };
+    const body = (await res.json()) as { resumen: { cuentas: number; cuadrada: boolean }; xml: string | null; sha1: string | null };
     expect(body.resumen.cuentas).toBe(0);
     expect(body.resumen.cuadrada).toBe(true);
+    // D-P3-16: sin cuentas no hay balanza que declarar; nunca un XML vacío que el XSD rechazaría.
+    expect(body.xml).toBeNull();
+    expect(body.sha1).toBeNull();
   });
 
   it("readonly/auditor no pueden -- 403", async () => {
@@ -111,6 +114,13 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/balanza", () => {
     expect(resReadonly.status).toBe(403);
   });
 });
+
+// D-P3-16: el paquete exige RFC válido y al menos una cuenta con movimiento (el XSD no admite una balanza vacía).
+const ASIENTOS_MINIMOS = [
+  { cuenta: "1101", debe: 10, haber: 0 },
+  { cuenta: "4100", debe: 0, haber: 10 },
+];
+const RFC_PRUEBA = "CON950820K12";
 
 describe("POST /despachos/:propertyId/contabilidad-electronica/paquete", () => {
   it("genera el paquete completo en estado listo_para_timbrar -- invoca el motor real", async () => {
@@ -144,7 +154,7 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/paquete", () => {
 
   it("ejercicio/mes omitidos -> defaults del servidor (año de negocio, mes 1), sin 400", async () => {
     const app = buildApp(ctx.deps);
-    const res = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/paquete`, authedJson(ctx.staff.admin.token, { asientos: [] }));
+    const res = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/paquete`, authedJson(ctx.staff.admin.token, { rfc: RFC_PRUEBA, asientos: ASIENTOS_MINIMOS }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { mes: number; ejercicio: number };
     expect(body.mes).toBe(1);
@@ -170,7 +180,7 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/paquete", () => {
       const app = buildApp(finDeAnioCtx.deps);
       const res = await app.request(
         `/despachos/${finDeAnioCtx.propertyId}/contabilidad-electronica/paquete`,
-        authedJson(finDeAnioCtx.staff.admin.token, { asientos: [] }),
+        authedJson(finDeAnioCtx.staff.admin.token, { rfc: RFC_PRUEBA, asientos: ASIENTOS_MINIMOS }),
       );
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ejercicio: number };
@@ -183,6 +193,24 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/paquete", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("sin RFC válido o sin movimientos el paquete se niega con 400 (nunca un XML que el XSD rechazaría)", async () => {
+    const app = buildApp(ctx.deps);
+    const sinRfc = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/paquete`, authedJson(ctx.staff.admin.token, { asientos: ASIENTOS_MINIMOS }));
+    expect(sinRfc.status).toBe(400);
+    const sinMovimientos = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/paquete`, authedJson(ctx.staff.admin.token, { rfc: RFC_PRUEBA, asientos: [] }));
+    expect(sinMovimientos.status).toBe(400);
+  });
+
+  it("catálogo propio sin código agrupador -> 400 con la lista de las cuentas que faltan", async () => {
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/contabilidad-electronica/paquete`,
+      authedJson(ctx.staff.admin.token, { rfc: RFC_PRUEBA, catalogo: [{ codigo: "1101", descripcion: "BANCOS", nivel: 1, naturaleza: "D" }, { codigo: "4100", descripcion: "INGRESOS", nivel: 1, naturaleza: "A" }], asientos: ASIENTOS_MINIMOS }),
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain("1101");
   });
 
   it("mes fuera de rango -> 400", async () => {
