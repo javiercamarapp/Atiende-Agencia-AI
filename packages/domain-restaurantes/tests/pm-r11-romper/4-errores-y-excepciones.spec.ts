@@ -5,7 +5,7 @@ import { FakeLlmProvider } from "@atiende/agent-core";
 import { describe, expect, it, vi } from "vitest";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { handleInboundWhatsAppMessage } from "../../src/whatsapp/inbound.ts";
-import { NEW_CUSTOMER, PHONE, buildRestaurantFixture, gatewayDe, handlerConGuion, itemsCoca, llamada, llamadas, ordenes, pasoDelTurno, scriptedHandler, texto, hallazgo } from "./arnes.ts";
+import { NEW_CUSTOMER, PHONE, buildRestaurantFixture, gatewayDe, handlerConGuion, itemsCoca, llamada, llamadas, ordenes, pasoDelTurno, scriptedHandler, texto } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 const TUTEO = /\b(?:t[úu]|tus|tienes|puedes|quieres|necesitas|dime|dinos|av[íi]same|intenta)\b/i;
