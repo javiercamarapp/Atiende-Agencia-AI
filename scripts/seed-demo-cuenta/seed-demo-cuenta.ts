@@ -8,7 +8,7 @@
 //   npx vite-node scripts/seed-demo-cuenta/seed-demo-cuenta.ts -- --emit-sql=demo-cuenta.sql [--owner-email=correo@existente]   (genera un .sql para pegar en el SQL Editor de Supabase; sin conexion)
 //   SEED_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/atiende_demo npx vite-node scripts/seed-demo-cuenta/seed-demo-cuenta.ts -- --apply
 import { createHash } from "node:crypto";
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "../../packages/domain-restaurantes/src/seed/demo-cuenta/args.ts";
 import { DEMO_CUENTA } from "../../packages/domain-restaurantes/src/seed/demo-cuenta/definicion.ts";
@@ -41,14 +41,14 @@ async function main(): Promise<number> {
 
   if (args.emitSql !== null) {
     const destino = path.resolve(args.emitSql);
-    try {
-      if (statSync(destino).isDirectory()) throw new SeedTargetError(`--emit-sql apunta a un directorio: ${destino}`);
-    } catch (err) {
-      if (err instanceof SeedTargetError) throw err; // si no existe, se crea
-    }
     const sql = renderDemoCuentaArchivoSql(plan, { ownerEmail: args.ownerEmail });
     mkdirSync(path.dirname(destino), { recursive: true });
-    writeFileSync(destino, sql, "utf8");
+    try {
+      writeFileSync(destino, sql, "utf8"); // sin chequeo previo con stat (carrera TOCTOU): si es un directorio, el propio write falla con EISDIR
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EISDIR") throw new SeedTargetError(`--emit-sql apunta a un directorio: ${destino}`);
+      throw err;
+    }
     const duenio = normalizarOwnerEmail(args.ownerEmail);
     console.log(`\nSQL generado SIN abrir ninguna conexion: ${destino}`);
     console.log(`  ${sql.split("\n").length} lineas, ${Buffer.byteLength(sql, "utf8")} bytes, sha256 ${createHash("sha256").update(sql).digest("hex")}`);
