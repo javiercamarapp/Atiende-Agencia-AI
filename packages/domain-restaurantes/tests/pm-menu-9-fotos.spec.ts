@@ -72,7 +72,10 @@ describe("JSON por página: forma, trazabilidad y nada inventado", () => {
     expect(new Set(p.imagenes.map((i) => i.sha256)).size).toBe(p.imagenes.length);
     expect(renglones(p)).toHaveLength(RENGLONES[slug]);
     for (const { prod, pr } of renglones(p)) expect(Number.isFinite(pr.precio_mxn) && pr.precio_mxn > 0, `${prod.nombre} ${pr.etiqueta}`).toBe(true);
-    for (const prod of p.productos) expect(prod.imagen).toBeGreaterThanOrEqual(1), expect(prod.imagen).toBeLessThanOrEqual(IMAGENES[slug]);
+    for (const prod of p.productos) {
+      expect(prod.imagen).toBeGreaterThanOrEqual(1);
+      expect(prod.imagen).toBeLessThanOrEqual(IMAGENES[slug]);
+    }
   });
 
   it.each(PAGINAS)("%s: horarios por producto, agotados, mínimo de compra y costo de envío NO aparecen en las imágenes (null; no se inventan)", (slug) => {
