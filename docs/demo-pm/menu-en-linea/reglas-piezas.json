@@ -74,7 +74,7 @@
   {
    "producto": "Flautas de PM",
    "dato": "La imagen (solo la página Montejo/García Lavín/Altabrisa) describe UNA tortilla de maíz grande y frita rellena de carne y la foto muestra una sola flauta, pero NO imprime cuántas trae la orden.",
-   "certeza_de_que_es_1": "media (inferencia de la descripción en singular y de la foto, no un número impreso)"
+   "confirmado_por": "Javier, 16-oct-2026: «una orden de flautas es UNA flauta grande» (pack_size 1). No sale de la imagen; el seed lo carga con la descripción «Orden de 1 flauta grande»."
   },
   {
    "producto": "Alitas de pollo",
@@ -95,7 +95,7 @@
  ],
  "seed": {
   "cambios": "Alambre suizo (6) y Tacos suizos de chile poblano y bistec/arrachera (2): descripción «Orden de 5 tacos» para que el servidor derive pack_size 5, igual que Suizo de X. Antes quedaban en pack_size null.",
-  "sin_cambio": "Las demás piezas confirmadas por imagen ya estaban en el seed (descripción u «(orden de N)» en el nombre). Flautas, alitas, crujientes y quesadillas no se tocaron."
+  "sin_cambio": "Las demás piezas confirmadas por imagen ya estaban en el seed (descripción u «(orden de N)» en el nombre). Alitas, crujientes y quesadillas no se tocaron. Flautas: descripción «Orden de 1 flauta grande» (pack_size 1, decisión de Javier del 16-oct-2026)."
  },
  "arnes": {
   "archivo": "packages/domain-restaurantes/src/evals/agente-pm/menu-pm.json",
