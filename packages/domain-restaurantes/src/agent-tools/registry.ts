@@ -809,7 +809,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     programadoPara: textoOpcional(input.programado_para),
   };
   if (lenient) return base;
-  // Campos que solo trae el canal de voz (correo, transcripcion, promo, idempotencia, nombre de sucursal).
+  // Campos que solo trae el canal de voz (correo, transcripcion, idempotencia, nombre de sucursal).
   return {
     ...base,
     // Un valor que no es hora (numero, objeto) se rechaza con 400 en vez de ignorarse y mandar el pedido a cocina de inmediato.
@@ -819,7 +819,8 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     idempotencyKey: str(input.idempotency_key),
     callTranscript: str(input.call_transcript),
     callRecordingUrl: str(input.call_recording_url),
-    promoCode: str(input.promo_code),
+    // R12-13: NO se lee `promo_code` del modelo ni de quien le habla (decision T-AB01: ninguna herramienta acepta promocion, descuento ni total). Un codigo valido que el modelo mencionara bajaba
+    // el total por debajo de lo que el cliente confirmo y permitia canjear el codigo de compensacion de OTRO telefono. El servidor aplica solo lo automatico y el codigo emitido a ESTE telefono.
   };
 }
 

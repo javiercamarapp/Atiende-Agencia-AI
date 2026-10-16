@@ -65,7 +65,7 @@ describe("R12-D2 cupones, descuentos y promociones", () => {
   const ctxVoz = (f: Fixture, turn = 1, phone = "9991112222"): AgentToolContext => ({ organizationId: f.organizationId, channel: "voz", phone, flow: { key: `voz:r12-${phone}`, turn: String(turn) }, sourceEventId: "call-r12" });
   const base = (f: Fixture) => ({ branch_slug: "fco-montejo", canal: "recoger", items: itemsCoca(f, 2) });
 
-  hallazgo("R12-13c [P1, corregido] un cupon INVENTADO que mande el modelo de voz no baja el precio: se ignora y el pedido sale al total cotizado ($90), sin descuento", async () => {
+  it("R12-13c [P1, corregido] un cupon INVENTADO que mande el modelo de voz no baja el precio: se ignora y el pedido sale al total cotizado ($90), sin descuento", async () => {
     const f = buildRestaurantFixture();
     await invokeAgentTool(f.repo, ctxVoz(f, 1), "cotizar_pedido", base(f));
     await invokeAgentTool(f.repo, ctxVoz(f, 2), "confirmar_resumen", {});
@@ -90,7 +90,7 @@ describe("R12-D2 cupones, descuentos y promociones", () => {
   // La decision vigente (T-AB01) es que ninguna herramienta acepta promocion, descuento ni total del modelo: el servidor aplica solo lo automatico y el codigo de compensacion de ESE
   // telefono. En WhatsApp se ignora, pero `mapCreateOrderToolInput` lo mapea en el canal de voz: un codigo valido que el modelo (o quien le habla) mencione baja el total por debajo de lo
   // que el cliente confirmo, y un codigo de compensacion emitido a OTRO telefono se podria canjear.
-  hallazgo("R12-13 [P1, corregido] por voz, un codigo de promocion VALIDO que manda el modelo no cambia el total que el cliente confirmo", async () => {
+  it("R12-13 [P1, corregido] por voz, un codigo de promocion VALIDO que manda el modelo no cambia el total que el cliente confirmo", async () => {
     const f = buildRestaurantFixture();
     await f.repo.createPromotion(f.organizationId, { code: "BIENVENIDA50", name: "50%", type: "percentage", value: 50 });
     await invokeAgentTool(f.repo, ctxVoz(f, 1), "cotizar_pedido", base(f));
@@ -101,7 +101,7 @@ describe("R12-D2 cupones, descuentos y promociones", () => {
     expect((await f.repo.findPromotionByCode(f.organizationId, "BIENVENIDA50"))?.timesUsed).toBe(0);
   });
 
-  hallazgo("R12-13b [P1, corregido] por voz, el codigo de compensacion emitido a OTRO telefono no se canjea (el de ese telefono si, solo)", async () => {
+  it("R12-13b [P1, corregido] por voz, el codigo de compensacion emitido a OTRO telefono no se canjea (el de ese telefono si, solo)", async () => {
     const f = buildRestaurantFixture();
     await f.repo.createPromotion(f.organizationId, { code: "GRACIAS-AB12CD34", name: "Compensacion", type: "percentage", value: 10, maxUses: 1 });
     f.repo.seedCompensationCode(f.organizationId, "9990000001", "GRACIAS-AB12CD34");
