@@ -17,7 +17,7 @@ export const ORDEN_ESTADO_ETIQUETAS: Readonly<Record<OrderStatus, string>> = {
   por_aprobar: "Por aprobar",
 };
 
-export const ORDEN_CANAL_ETIQUETAS: Readonly<Record<Order["source"], string>> = { web: "Pedido en línea", whatsapp: "WhatsApp", voice: "Llamada", admin: "Capturado por el equipo" };
+export const ORDEN_CANAL_ETIQUETAS: Readonly<Record<Order["source"], string>> = { web: "Pedido en línea (histórico)", whatsapp: "WhatsApp", voice: "Llamada", admin: "Capturado por el equipo" };
 
 /** "2026-10-03 12:30" en la zona IANA dada (UTC si la zona es invalida). Vacio si el instante no es una fecha valida. */
 export function fechaHoraLocal(iso: string, zonaHoraria: string): string {

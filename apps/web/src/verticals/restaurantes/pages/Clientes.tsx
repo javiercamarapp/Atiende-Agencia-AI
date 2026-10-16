@@ -20,7 +20,7 @@ import {
   FormField,
   Input,
   Label,
-  NativeSelect,
+  Selector,
   PageContainer,
   StatCard,
   StatusBadge,
@@ -171,42 +171,42 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
             </div>
           </div>
           <FormField label="Nivel">
-            <NativeSelect id="restaurantes-clientes-nivel" size="sm" value={nivel} onChange={(e) => setNivel(e.target.value as CustomerTier | "")} wrapperClassName="w-auto min-w-36">
+            <Selector id="restaurantes-clientes-nivel" size="sm" value={nivel} onChange={(e) => setNivel(e.target.value as CustomerTier | "")} wrapperClassName="w-auto min-w-36">
               <option value="">Todos los niveles</option>
               {NIVELES.map((n) => (
                 <option key={n} value={n}>
                   {CUSTOMER_TIER_META[n].label}
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
           <FormField label="Frecuencia">
-            <NativeSelect id="restaurantes-clientes-frecuencia" size="sm" value={frecuencia} onChange={(e) => setFrecuencia(e.target.value as FrecuenciaCliente | "")} wrapperClassName="w-auto min-w-40">
+            <Selector id="restaurantes-clientes-frecuencia" size="sm" value={frecuencia} onChange={(e) => setFrecuencia(e.target.value as FrecuenciaCliente | "")} wrapperClassName="w-auto min-w-40">
               <option value="">Cualquiera</option>
               <option value="una_vez">Con 1 pedido</option>
               <option value="recurrentes">Recurrentes (2 o más)</option>
-            </NativeSelect>
+            </Selector>
           </FormField>
           <FormField label="Sin pedir en">
-            <NativeSelect id="restaurantes-clientes-inactivo" size="sm" value={String(inactivoDias)} onChange={(e) => setInactivoDias(e.target.value === "" ? "" : Number(e.target.value))} wrapperClassName="w-auto min-w-36">
+            <Selector id="restaurantes-clientes-inactivo" size="sm" value={String(inactivoDias)} onChange={(e) => setInactivoDias(e.target.value === "" ? "" : Number(e.target.value))} wrapperClassName="w-auto min-w-36">
               <option value="">Cualquier momento</option>
               {DIAS_SIN_PEDIR.map((d) => (
                 <option key={d} value={d}>
                   {d} días
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
           {sucursales.length > 1 && (
             <FormField label="Sucursal">
-              <NativeSelect id="restaurantes-clientes-sucursal" size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto min-w-40">
+              <Selector id="restaurantes-clientes-sucursal" size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto min-w-40">
                 <option value="">Todas las sucursales</option>
                 {sucursales.map((b) => (
                   <option key={b.propertyId} value={b.propertyId}>
                     {b.name}
                   </option>
                 ))}
-              </NativeSelect>
+              </Selector>
             </FormField>
           )}
         </div>

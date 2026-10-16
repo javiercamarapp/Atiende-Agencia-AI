@@ -129,7 +129,7 @@ describe("InMemoryLicitacionesRepository.ingestTendersFromSource -- vigilante de
     const repo = new InMemoryLicitacionesRepository();
     const r = await repo.ingestTendersFromSource(ORG, "compras_mx_historico", [candidato()]);
     expect(r.created).toBe(1);
-    expect(r.createdTenderIds).toEqual([r.tenders[0]!.id]);
+    expect(r.createdIds).toEqual([r.tenders[0]!.id]);
     expect(r.basesModificadas).toEqual([]);
     expect(await repo.listTenderVersions(ORG, r.tenders[0]!.id)).toHaveLength(1);
     expect(await repo.listTenderChangeNotifications(ORG, r.tenders[0]!.id)).toHaveLength(0);
@@ -146,7 +146,7 @@ describe("InMemoryLicitacionesRepository.ingestTendersFromSource -- vigilante de
     const segunda = await repo.ingestTendersFromSource(ORG, "compras_mx_historico", [candidato({ submissionDeadline: "2026-12-30T18:00:00-06:00" })]);
 
     expect(segunda.created).toBe(0);
-    expect(segunda.createdTenderIds).toEqual([]);
+    expect(segunda.createdIds).toEqual([]);
     expect(segunda.basesModificadas).toEqual([{ tenderId, tenderTitle: "Servicio de limpieza", version: 2, changedFieldNames: ["submissionDeadline"], invalidatedApprovals: 1, invalidatedApproverIds: ["owner-1"] }]);
     expect(await repo.activeApprovalsCovering(ORG, proposal.id, "expediente")).toHaveLength(0);
     const [aviso] = await repo.listTenderChangeNotifications(ORG, tenderId);

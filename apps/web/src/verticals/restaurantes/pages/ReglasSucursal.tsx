@@ -3,8 +3,9 @@
 // WhatsApp propio. Solo owner/admin (el servidor, admin-modelo-pm.ts + RLS, es el enforcement
 // real). Se monta bajo demanda desde Sucursales.tsx: no carga nada hasta que se abre.
 import { useEffect, useState } from "react";
-import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, useConfirm } from "@atiende/ui";
+import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, useConfirm } from "@atiende/ui";
 import { fetchKnownZones } from "../lib/config-client.ts";
+import { ColoniasAmbiguas } from "./ColoniasAmbiguas.tsx";
 import type { KnownZone } from "../lib/config-client.ts";
 import {
   NOMBRES_DIAS,
@@ -346,19 +347,19 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           <Label htmlFor={`propina-${branchId}`} className="text-xs text-muted-foreground">
             Propina
           </Label>
-          <NativeSelect id={`propina-${branchId}`} size="sm" value={propina} onChange={(e) => setPropina(e.target.value as PropinaPolitica | "")} wrapperClassName="w-auto min-w-48">
+          <Selector id={`propina-${branchId}`} size="sm" value={propina} onChange={(e) => setPropina(e.target.value as PropinaPolitica | "")} wrapperClassName="w-auto min-w-48">
             <option value="">No preguntar</option>
             <option value="solo_tarjeta">Solo si paga con tarjeta</option>
             <option value="siempre">Siempre</option>
             <option value="nunca">Nunca</option>
-          </NativeSelect>
+          </Selector>
         </div>
       </section>
 
       <section className="flex flex-col gap-2">
         <h3 className="m-0 text-sm font-semibold text-foreground">Zonas de reparto</h3>
         <p className="m-0 text-xs text-muted-foreground">
-          Sin zonas marcadas = sin restricción. Con zonas marcadas, los pedidos a domicilio fuera de ellas se rechazan. Las zonas se dan de alta en Configuración.
+          Con zonas marcadas, los pedidos a domicilio fuera de ellas se rechazan. Sin zonas marcadas no se valida la colonia; en Los Taquitos de PM el agente entonces pide el pin de ubicación o pasa el pedido a una persona. Las zonas se dan de alta en Configuración.
         </p>
         {zonas.length === 0 ? (
           <p className="m-0 text-xs text-muted-foreground">Todavía no hay zonas conocidas.</p>
@@ -383,6 +384,8 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           </div>
         )}
       </section>
+
+      <ColoniasAmbiguas apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
 
       <div>
         <Button type="button" size="sm" onClick={() => void handleGuardarReglas()} loading={saving}>

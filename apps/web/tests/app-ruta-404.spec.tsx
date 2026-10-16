@@ -43,4 +43,11 @@ describe("App — ruta 404", () => {
     rendered = await renderEn("/terminos");
     expect(rendered.container.querySelector("h1")?.textContent).toBe("Términos de Servicio");
   });
+
+  it.each(["/pedir/los-taquitos-de-pm", "/pedir/los-taquitos-de-pm/sucursales", "/pedir/los-taquitos-de-pm/fco-montejo", "/pedir/los-taquitos-de-pm/pedido/token"])("%s (tienda en línea eliminada) redirige a la raíz y no pinta carrito ni checkout", async (ruta) => {
+    rendered = await renderEn(ruta);
+    expect(window.location.pathname).toBe("/");
+    const texto = rendered.container.textContent ?? "";
+    expect(texto).not.toMatch(/carrito|Revisar pedido|Pedir en línea|Confirma tu pedido/i);
+  });
 });

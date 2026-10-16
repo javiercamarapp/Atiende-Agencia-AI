@@ -19,6 +19,7 @@ export interface Destino {
 export const DESTINOS: readonly Destino[] = [
   { sub: "", nombre: "Resumen", soloGestion: false },
   { sub: "/copiloto", nombre: "Copiloto", soloGestion: false },
+  { sub: "/cfo", nombre: "CFO", soloGestion: true },
   { sub: "/pedidos", nombre: "Pedidos", soloGestion: false },
   { sub: "/comandas-pos", nombre: "Comandas al POS", soloGestion: false },
   { sub: "/conversaciones", nombre: "Conversaciones", soloGestion: false },
@@ -29,6 +30,7 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "/productos", nombre: "Productos", soloGestion: false },
   { sub: "/promociones", nombre: "Promociones", soloGestion: true },
   { sub: "/clientes", nombre: "Clientes", soloGestion: false },
+  { sub: "/campanas", nombre: "Campañas", soloGestion: true },
   { sub: "/sucursales", nombre: "Sucursales", soloGestion: false },
   { sub: "/agente-voz", nombre: "Agente de voz", soloGestion: true },
   { sub: "/agente-whatsapp", nombre: "Agente de WhatsApp", soloGestion: true },

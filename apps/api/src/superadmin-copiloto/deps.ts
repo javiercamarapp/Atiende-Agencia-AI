@@ -15,6 +15,7 @@ import { dataChatRateLimiter } from "../data-chat/deps.ts";
 import { SUPERADMIN_COPILOTO_ROLE } from "../production/llm-models.ts";
 import { PLATAFORMA_ORG_CLAVE } from "./alcance.ts";
 import type { FuentesPlataforma } from "./fuentes.ts";
+import type { PinsPlataformaRepository } from "./pins.ts";
 
 /** Tope mensual por defecto del Copiloto de plataforma: 25 USD. Valor PROVISIONAL de seguridad hasta que Javier fije el presupuesto real (SA-44). */
 export const TOPE_MENSUAL_COPILOTO_MICRO_USD = 25_000_000;
@@ -58,6 +59,8 @@ export interface SuperadminCopilotoDeps {
   readonly fuentes?: (db: TenantDbSession, callerId: string) => FuentesPlataforma;
   /** Para pruebas: repositorio de conversaciones en lugar del de Postgres. */
   readonly conversaciones?: (db: TenantDbSession) => ConversacionesRepository;
+  /** Para pruebas: repositorio de fijados de plataforma en lugar del de Postgres. */
+  readonly pins?: (db: TenantDbSession) => PinsPlataformaRepository;
   /** Para pruebas: bitacora en lugar de `PostgresPlataformaAuditSink`. */
   readonly audit?: (db: TenantDbSession) => DataChatAuditSink;
 }

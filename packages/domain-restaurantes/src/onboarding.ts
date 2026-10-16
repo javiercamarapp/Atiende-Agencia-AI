@@ -104,7 +104,7 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     detalle:
       activas.length > 0
         ? `${activas.length} sucursal(es) activa(s) de ${snapshot.sucursales.length} registrada(s)${snapshot.sucursales.length > activas.length ? ` (inactivas: ${lista(snapshot.sucursales.filter((b) => !b.activa).map((b) => b.nombre))})` : ""}.`
-        : "No hay ninguna sucursal activa: el agente y el storefront no tienen a donde mandar pedidos.",
+        : "No hay ninguna sucursal activa: el agente no tiene a donde mandar pedidos.",
     faltantes: snapshot.sucursales.filter((b) => !b.activa).map((b) => b.nombre),
     responsable: "dueno",
     pantalla: "sucursales",
@@ -214,7 +214,7 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
   });
 
   // Voz por sucursal: hecho = habilitada con proveedor listo, o deshabilitada EXPLICITAMENTE por el dueño. Habilitada pero sin credenciales
-  // del proveedor depende de la plataforma (externo). No es obligatoria: un restaurante sin voz opera por WhatsApp y storefront.
+  // del proveedor depende de la plataforma (externo). No es obligatoria: un restaurante sin voz opera por WhatsApp.
   const vozPend = activas.filter((b) => b.voz === "sin_configurar").map((b) => b.nombre);
   const vozSinCredenciales = activas.filter((b) => b.voz === "habilitada").map((b) => b.nombre);
   const vozEstado: OnboardingEstado =
@@ -285,7 +285,7 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     titulo: "Pedido de prueba",
     estado: snapshot.pedidos > 0 ? "hecho" : "pendiente",
     obligatorio: false,
-    detalle: snapshot.pedidos > 0 ? "Ya hay pedidos registrados." : "Aún no hay pedidos: haga uno de prueba (storefront o widget demo) y confirme que llega a cocina.",
+    detalle: snapshot.pedidos > 0 ? "Ya hay pedidos registrados." : "Aún no hay pedidos: haga uno de prueba (WhatsApp o widget demo) y confirme que llega a cocina.",
     faltantes: [],
     responsable: "plataforma",
     pantalla: "pedidos",

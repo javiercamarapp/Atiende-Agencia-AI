@@ -45,6 +45,7 @@ import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
+import { RevisionExpediente } from "../components/RevisionExpediente.tsx";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchRequirementItems } from "../lib/requirements-client.ts";
@@ -622,6 +623,9 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
           )}
         </CardContent>
       </Card>
+
+      {/* paridad3 (L-P3-07): editor humano de secciones, hilo de comentarios y solicitud de revisión. */}
+      <RevisionExpediente apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} role={role} />
     </PageContainer>
   );
 }

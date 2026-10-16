@@ -44,7 +44,12 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
     const propertyId = newId("sucursal", b.slug);
     propertyBySlug.set(b.slug, propertyId);
     repo.seedBranch({ propertyId, organizationId, name: b.name, slug: b.slug, status: b.status, phone: b.phone, address: b.address, lat: b.lat, lng: b.lng });
-    if (b.catalogSize === 0) continue;
+    // Directorio y domicilio (migracion 057): se siembran aunque la sucursal no tenga catalogo (Galerias es solo informativa).
+    const directorio = { visibleEnDirectorio: b.visibleEnDirectorio, aceptaDomicilio: b.aceptaDomicilio, diasDomicilio: b.diasDomicilio, deTemporada: b.deTemporada };
+    if (b.catalogSize === 0) {
+      repo.seedBranchPolicy(propertyId, directorio);
+      continue;
+    }
     // Precio y disponibilidad POR SUCURSAL: sin llave en branchPrices el producto no existe en esa sucursal.
     for (const p of plan.products) {
       const price = p.branchPrices[b.id];
@@ -55,7 +60,32 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
       pedidoMinimoDomicilio: plan.policy.pedidoMinimoDomicilio,
       pedidoMinimoRecoger: plan.policy.pedidoMinimoRecoger,
       propinaPolitica: plan.policy.propinaPolitica as never,
+      ...directorio,
     });
+  }
+  // Zonas conocidas y cobertura de entrega, igual que el SQL del seed (pasos 6, 6b y 6c): puntos de las sucursales con coordenadas y colonias sin
+  // coordenadas; cada una cubre solo la sucursal que le asigno el plan (las sin asignar no cubren ninguna).
+  const zonaIds = new Map<string, string>();
+  const coberturas = new Map<string, string[]>();
+  const cubrir = (zoneName: string, branchIds: readonly string[], lat: number | null, lng: number | null, extra: Partial<Parameters<typeof repo.seedKnownZone>[0]> = {}) => {
+    const id = newId("zona", zoneName);
+    zonaIds.set(zoneName, id);
+    repo.seedKnownZone({ id, organizationId, name: zoneName, lat, lng, ...extra });
+    // Cobertura multiple: una fila por sucursal (igual que el SQL del seed).
+    for (const branchId of branchIds) {
+      const slug = plan.branches.find((b) => b.id === branchId)?.slug;
+      const propertyId = slug ? propertyBySlug.get(slug) : undefined;
+      if (propertyId) coberturas.set(propertyId, [...(coberturas.get(propertyId) ?? []), id]);
+    }
+  };
+  for (const z of plan.zones) cubrir(z.name, [z.branchId], z.lat, z.lng);
+  for (const c of plan.colonias) {
+    cubrir(c.name, c.branchIds, null, null, { fuente: c.fuente, asignacionFuente: c.asignacionFuente, refSucursalSlug: c.refSlug, refKm: c.refKm, ref2SucursalSlug: c.ref2Slug, ref2Km: c.ref2Km });
+  }
+  for (const [propertyId, ids] of coberturas) repo.seedBranchDeliveryZones(propertyId, ids);
+  // Conocimiento publicado del negocio (paso 6d del SQL): mismas entradas, para toda la organizacion, origen importado.
+  for (const c of plan.conocimiento) {
+    await repo.crearConocimiento(organizationId, newId("actor", "seed"), { titulo: c.titulo, texto: c.texto, tipo: c.tipo as "politica" | "faq" | "aviso_temporal", prioridad: c.prioridad, estado: "publicado", origen: "importado" });
   }
   for (const promo of plan.promotions) {
     await repo.createPromotion(organizationId, {

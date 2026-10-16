@@ -6,7 +6,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { describe, expect, it } from "vitest";
 import {
   AutopilotoAccesoError, AutopilotoValidacionError, InMemoryAutopilotoRepository, aplicarEstadosSinClic, avanzarDesdePos, confirmarPedidoRecibido, destinoDesdeEstadoPos,
-  devolverHandoffsVencidos, escalarSolicitudesVencidas, reponerAgotadosDelDia, resolverSolicitudAprobacion, retenerPedidoGrande, solicitarCancelacion,
+  devolverHandoffsVencidos, escalarHandoffsSinTomar, escalarSolicitudesVencidas, reponerAgotadosDelDia, resolverSolicitudAprobacion, retenerPedidoGrande, solicitarCancelacion,
   registrarQuejaConPedido, estimarTiempoSucursal,
 } from "../src/autopiloto/index.ts";
 import type { AutopilotoServicioDeps, PedidoMemoria } from "../src/autopiloto/index.ts";
@@ -421,6 +421,30 @@ describe("avance de estados sin clic", () => {
     expect(t.outbox("order.status.preparando")).toHaveLength(1);
   });
 
+  it("QA R2 viaje-05: un pedido para recoger SIN hora (storefront) pasa a no_recogido a los X minutos de quedar listo (su evento), no antes", async () => {
+    const t = await montar();
+    const { mem } = await t.pedido({ status: "listo_para_recoger", canal: "recoger" });
+    mem.horaRecogida = null;
+    mem.listoDesde = new Date(ahora.getTime() - 59 * 60_000);
+    await aplicarEstadosSinClic(t.deps, ahora);
+    expect(mem.status).toBe("listo_para_recoger");
+    mem.listoDesde = new Date(ahora.getTime() - 70 * 60_000);
+    await aplicarEstadosSinClic(t.deps, ahora);
+    expect(mem.status).toBe("no_recogido");
+  });
+
+  it("QA R2 features-05: sin POS, el ticket de cocina impreso habilita la aceptacion automatica (solo con la bandera)", async () => {
+    const t = await montar();
+    const { mem, order } = await t.pedido();
+    await t.auto.registrarTicketImpreso(order.organizationId, order.id);
+    await aplicarEstadosSinClic(t.deps, ahora);
+    expect(mem.status).toBe("pending");
+    t.auto.configs.set(order.propertyId, { ...(await t.auto.leerConfig("", order.propertyId)).valor, aceptacionAuto: true, configurada: true });
+    await aplicarEstadosSinClic(t.deps, ahora);
+    expect(mem.status).toBe("preparando");
+    expect(t.auto.eventos.find((e) => e.hacia === "preparando")).toMatchObject({ actor: "sistema", motivo: "aceptacion_automatica" });
+  });
+
   it("jamas toca pedidos por_aprobar ni cancelados", async () => {
     const t = await montar();
     const a = await t.pedido({ status: "por_aprobar" });
@@ -498,6 +522,43 @@ describe("avance desde el POS", () => {
     const r = await avanzarDesdePos(t.deps, puerto("en_preparacion", false), sucursal);
     expect(r).toEqual({ disponible: true, consultadas: 0, avanzadas: 0, sinAdaptadorReal: true });
     expect(mem.status).toBe("pending");
+  });
+});
+
+describe("toma PENDIENTE que nadie toma (QA R2 viaje-06)", () => {
+  const ahora = new Date("2026-10-04T18:00:00Z");
+  function pendiente(t: Awaited<ReturnType<typeof montar>>, minutos: number) {
+    t.auto.handoffs.push({
+      id: `hp-${t.auto.handoffs.length + 1}`, organizationId: t.fixture.organizationId, propertyId: t.propertyId, conversationId: randomUUID(), telefono: "9995550002", estado: "pendiente",
+      tomadaAt: new Date(ahora.getTime() - minutos * 60_000), solicitadaAt: new Date(ahora.getTime() - minutos * 60_000), ultimaHumanaAt: null, ultimoClienteAt: null,
+    });
+  }
+
+  it("pasado el umbral avisa al owner (critica) UNA sola vez y NO devuelve la conversacion al agente", async () => {
+    const t = await montar();
+    pendiente(t, 20);
+    expect((await escalarHandoffsSinTomar(t.deps, ahora)).escalados).toBe(1);
+    expect((await escalarHandoffsSinTomar(t.deps, ahora)).escalados).toBe(0);
+    expect(t.db.emisiones.filter((e) => e.evento === "restaurantes.handoff.sin_tomar")).toHaveLength(1);
+    expect(t.auto.handoffs[0]!.estado).toBe("pendiente");
+    expect(t.auto.mensajesRegreso).toHaveLength(0);
+  });
+
+  it("antes del umbral no avisa; una toma ya tomada tampoco", async () => {
+    const t = await montar();
+    pendiente(t, 5);
+    t.auto.handoffs.push({ ...t.auto.handoffs[0]!, id: "tomada", estado: "tomada", tomadaAt: new Date(ahora.getTime() - 40 * 60_000), solicitadaAt: new Date(ahora.getTime() - 40 * 60_000) });
+    expect((await escalarHandoffsSinTomar(t.deps, ahora)).escalados).toBe(0);
+    expect(t.db.emisiones).toHaveLength(0);
+  });
+
+  it("respeta el umbral configurado por sucursal y la base sin migrar devuelve 'no disponible'", async () => {
+    const t = await montar();
+    pendiente(t, 8);
+    t.auto.configs.set(t.propertyId, { ...(await t.auto.leerConfig("", t.propertyId)).valor, handoffRegresoMinutos: 5, configurada: true });
+    expect((await escalarHandoffsSinTomar(t.deps, ahora)).escalados).toBe(1);
+    t.auto.disponible = false;
+    expect(await escalarHandoffsSinTomar(t.deps, ahora)).toEqual({ disponible: false, escalados: 0 });
   });
 });
 

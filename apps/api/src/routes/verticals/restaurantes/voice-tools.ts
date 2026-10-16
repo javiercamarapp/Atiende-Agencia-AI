@@ -173,7 +173,7 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // cual; con llamada identificada (token) agrega `quote_hash` y avanza la máquina de estados.
   app.post("/v1/restaurantes/:orgSlug/orders/quote", async (c) => {
     if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
-    const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown; doble_salsas?: unknown }>(c.req.raw, 24 * 1024);
+    const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown; doble_salsas?: unknown; programado_para?: unknown; hora_recogida?: unknown; minutos_para_recoger?: unknown; otro_pedido?: unknown }>(c.req.raw, 24 * 1024);
     const branchSlug = typeof body.branch_slug === "string" ? body.branch_slug : "";
     if (!branchSlug.trim()) throw Errors.validation("branch_slug es requerido");
     return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "cotizar_pedido", accept: "legacy_ok", legacyLimit: { scope: "voice-orders-quote", secondary: branchSlug, max: 120 } }, async ({ repo, toolCtx }) => {
@@ -187,6 +187,14 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
         colonia_entrega: body.colonia_entrega,
         payment_method: body.payment_method,
         doble_salsas: body.doble_salsas,
+        // La misma hora que luego llega a crear_pedido: sin ella la huella de cotizar y la de crear diferian y el pedido
+        // programado nunca cerraba por voz (QA-PM-R2-voz-01 / reglas-03).
+        programado_para: body.programado_para,
+        hora_recogida: body.hora_recogida,
+        // QA-PM-R6: el prompt de voz manda `minutos_para_recoger` en cotizar_pedido Y en crear_pedido (el mismo valor) y `otro_pedido` cuando el cliente pide OTRO igual; la ruta de
+        // cotizar los descartaba (solo crear los recibia): la cotizacion salia sin hora y el pedido repetido por voz nunca se podia cotizar otra vez.
+        minutos_para_recoger: body.minutos_para_recoger,
+        otro_pedido: body.otro_pedido,
       });
       // Contrato historico de voz: `quote` es el OrderQuote de dominio sin transformar (+ quote_hash aditivo).
       // PM PR-4: `total` es el TOTAL A PAGAR (ya con la promocion automatica del dia, si aplica);

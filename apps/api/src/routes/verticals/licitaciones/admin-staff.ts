@@ -24,6 +24,7 @@ import type { PlatformRole } from "@atiende/core-tenancy";
 import { correoInvitacionStaff, isLicitacionesRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-licitaciones";
 import { MembershipRoleUpdateError } from "@atiende/db";
 import type { OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
+import { auditar } from "./auditoria.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -234,6 +235,8 @@ export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       expiresAtTexto: new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(expiresAt)),
     });
     c.get("postCommitTasks").push(() => enqueueStaffInviteEmailPostCommit(deps, organizationId, invite.id, email, correo));
+    // Bitacora (L-P3-17): sin el correo ni el token del invitado -- solo el rol que se otorga.
+    await auditar(deps, c, { entity: "staff_invitacion", entityId: invite.id, action: "staff_invitacion.creada", before: null, after: { verticalRole, platformRole: targetPlatformRole, status: "pendiente" } });
 
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
@@ -251,6 +254,7 @@ export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const inviteId = c.req.param("inviteId");
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
+    await auditar(deps, c, { entity: "staff_invitacion", entityId: inviteId ?? null, action: "staff_invitacion.revocada", before: { status: "pendiente" }, after: { status: "revocada" } });
     return c.json({ ok: true });
   });
 
@@ -292,6 +296,13 @@ export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
     try {
       const updated = await deps.coreStaffRepo(c.get("db")).updateMemberVerticalRole(organizationId, targetUserId, newPlatformRole, newVerticalRole);
+      await auditar(deps, c, {
+        entity: "staff_miembro",
+        entityId: targetUserId,
+        action: "staff_miembro.rol_cambiado",
+        before: { verticalRole: target.verticalRole, platformRole: target.platformRole },
+        after: { verticalRole: newVerticalRole, platformRole: newPlatformRole },
+      });
       return c.json(serializeMemberWithRole(updated));
     } catch (err) {
       if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);

@@ -7,8 +7,8 @@ comentario de cabecera. Los efectos y casos de punta a punta están en `docs/CIC
 
 | Grupo | Archivos | Qué hacen |
 |---|---|---|
-| Canales públicos / de sistema (sin `authMiddleware`) | `public.ts`, `storefront.ts`, `demo-widget.ts`, `whatsapp.ts`, `voice-tools.ts`, `voice-auth.ts`, `transcripcion-voz.ts` | checkout y storefront por token de rastreo, widget demo, webhook de WhatsApp (HMAC), herramientas HTTP del agente de voz con token por llamada, notas de voz de WhatsApp |
-| Efectos tras el commit | `efectos-post-commit.ts`, `email-dispatch.ts`, `softrestaurant-dispatch.ts`, `softrestaurant-wiring.ts`, `programados-interno.ts` | correo y comanda al POS del pedido recién creado, drenado de correo y de comandas, promoción de programados (crons de `vercel.json`) |
+| Canales públicos / de sistema (sin `authMiddleware`) | `public.ts`, `demo-widget.ts`, `whatsapp.ts`, `voice-tools.ts`, `voice-auth.ts`, `transcripcion-voz.ts` | `POST .../orders` y `customers/lookup` solo con credenciales de voz (el checkout web público ya no existe), widget demo, webhook de WhatsApp (HMAC), herramientas HTTP del agente de voz con token por llamada, notas de voz de WhatsApp |
+| Efectos tras el commit | `email-dispatch.ts`, `softrestaurant-dispatch.ts`, `softrestaurant-wiring.ts`, `programados-interno.ts` | drenado de correo y de comandas, promoción de programados (crons de `vercel.json`) |
 | Panel de staff (`MANAGER_ROLES` u owner/admin) | `restaurantes.ts` (agregador), `admin-scope.ts`, `admin-catalog.ts`, `admin-branches.ts`, `admin-orders.ts`, `admin-customers.ts`, `admin-promotions.ts`, `admin-staff.ts`, `admin-config.ts`, `admin-modelo-pm.ts`, `admin-avisos.ts`, `admin-onboarding.ts` (+ `onboarding-aviso.ts`, `onboarding-carga.ts`), `auditoria.ts`, `exportaciones.ts` (+ `exportar-pdf.ts`), `privacidad.ts` | catálogo, sucursales, pedidos y su máquina de estados, clientes, promociones, cuentas, configuración, avisos, checklist de onboarding, bitácora, exportaciones y derechos ARCO |
 | Agente, voz y conversaciones | `conversaciones-admin.ts`, `voz-admin.ts`, `admin-voice-secret.ts`, `voz-interno.ts`, `voz-kpi.ts`, `whatsapp-kpi.ts`, `admin-data-chat.ts`, `admin-softrestaurant.ts` | bandeja de handoff (tomar, responder, devolver, cerrar), callbacks y turnos; configuración y secreto de voz por sucursal; registro de llamadas; KPI; "Chatea con tus datos"; bandeja de comandas del POS |
 | Repartidor | `repartidor-orders.ts`, `repartidor-historial.ts`, `repartidor-perfil.ts`, `repartidor-licencias-interno.ts` | solo sus pedidos asignados (`en_camino`, `entregado`, `problema`), su día, su perfil y el barrido de licencias |
@@ -22,8 +22,7 @@ públicos/de sistema, ver diseño Fase 1 §3) y `whatsapp.ts`
 
 **Sesión de sistema (verificado contra Postgres real, 4-oct-2026).** Estas rutas públicas corren con `withAppSession({userId: null})`. La policy de
 `core.property` no contemplaba esa sesión y `findBranch()` devolvía `null`; lo corrige `packages/db/migrations/0015_core_rls_sesion_sistema.sql`. El recorrido
-público completo (sucursal más cercana -> pedido idempotente) se verifica con `scripts/verify-restaurantes-sql` (24/24) y `scripts/verify-restaurantes-storefront`
-(14/14), ambos en el gate de CI. Los tests de este directorio corren contra el repositorio en memoria (no aplican RLS): el SQL real lo cubren los `scripts/verify-restaurantes-*`.
+completo de sistema (sucursal -> pedido idempotente) se verifica con `scripts/verify-restaurantes-sql` (24/24), en el gate de CI. Los tests de este directorio corren contra el repositorio en memoria (no aplican RLS): el SQL real lo cubren los `scripts/verify-restaurantes-*`.
 
 Fase 3 agregó las primeras rutas de staff autenticado: `admin-kpis.ts` (dashboards de
 KPIs — ver `restaurantes-admin-kpis.spec.ts`).
@@ -221,12 +220,9 @@ documentados aquí mismo:
 - Los agentes de WhatsApp y voz también pueden programar: `cotizar_pedido`/`crear_pedido` aceptan `programado_para` (mismas reglas; ver
   `docs/restaurantes/agente-system-prompt.md`).
 
-## Consentimiento del aviso de privacidad del checkout (migración 063)
+## Consentimiento del aviso de privacidad del checkout (migración 063) — retirado
 
-`POST /v1/restaurantes/:orgSlug/storefront/:sucursal/orders` exige `acepta_aviso_privacidad: true` (400 `aviso_privacidad_requerido` si falta, antes de
-tocar la base) y, creado el pedido, guarda la evidencia con `PrivacidadRepository.recordOrderPrivacyConsent` (versión del aviso vigente que decide la base, fecha,
-canal `web`; sin teléfono ni nombre) en `restaurantes.order_privacy_consent` (la ven owner y admin). Best-effort con SAVEPOINT: base sin la 063 el pedido se
-crea igual; un fallo real se registra y no tumba un pedido ya creado. SQL verificado en `scripts/verify-restaurantes-consentimiento-aviso/`.
+El checkout web ya no existe, así que el servidor ya no guarda esta evidencia. La tabla `restaurantes.order_privacy_consent` y su función SQL se conservan (datos históricos; migraciones intactas).
 
 ## Cierre del día y resumen semanal (R-42, migración 041)
 

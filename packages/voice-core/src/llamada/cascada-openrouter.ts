@@ -33,14 +33,28 @@ export interface PeticionLlmVoz {
   /** Modelo de texto elegido por la organizacion (de la lista permitida); el puerto lo manda al gateway como modelo preferido. */
   readonly modeloPreferido?: string;
   readonly senal?: AbortSignal;
-  /** Temperatura que debe usar el puerto (`VOZ_PLATAFORMA.cascada.temperatura`). */
+  /** Temperatura que debe usar el puerto (`VOZ_PLATAFORMA.cascada.temperatura`). La cascada v2 NO la manda nunca. */
   readonly temperatura?: number;
+  /** Streaming (cascada v2): el puerto llama a esto con cada trozo de texto conforme el modelo lo escribe; la respuesta final trae el mismo texto completo. */
+  readonly onTextDelta?: (delta: string) => void;
+  /** Esfuerzo de razonamiento para este turno (`reasoning.effort` de OpenRouter); sin valor, el del puerto. */
+  readonly esfuerzo?: "low" | "medium" | "high";
 }
 export interface RespuestaLlmVoz {
   readonly texto: string;
   readonly toolCalls: readonly ToolCallLlmVoz[];
   /** Costo real del turno segun el gateway (micro-USD, entero). */
   readonly costoMicroUsd: number;
+  /** El costo lo reporto el proveedor (`usage.cost` de OpenRouter) y no sale de una tabla: el evento de costo se registra con `costo_estimado = false`. */
+  readonly costoReal?: boolean;
+  /** Modelo que contesto (cascada v2: para el registro por turno y el desglose de costo). */
+  readonly modelo?: string;
+  /** Uso de tokens del turno (cascada v2: verificar la lectura de cache del system prompt). `tokensCache` = tokens de entrada servidos desde la cache. */
+  readonly tokensEntrada?: number;
+  readonly tokensSalida?: number;
+  readonly tokensCache?: number;
+  /** Motivo de fin que reporto el proveedor (`stop`, `length`...). `length` con texto vacio = el razonamiento agoto el tope de tokens. */
+  readonly finishReason?: string;
 }
 export interface PuertoLlmVoz {
   completar(peticion: PeticionLlmVoz): Promise<RespuestaLlmVoz>;
@@ -277,8 +291,9 @@ class SesionCascada implements VozSesionLlamada {
         mensajes: this.mensajes,
         herramientas: this.apertura.herramientas,
         ...(this.apertura.modeloLlm ? { modeloPreferido: this.apertura.modeloLlm } : {}),
-        // Temperatura de la organizacion (ajustes del agente); sin ajuste, la de la plataforma.
-        temperatura: typeof this.apertura.temperatura === "number" ? this.apertura.temperatura : this.o.config.cascada.temperatura,
+        // SIEMPRE la de la plataforma: la temperatura de la organizacion (ajustes del agente) llega solo a Gemini Live. En la cascada los modelos de Anthropic y OpenAI de OpenRouter
+        // no aceptan `temperature` con require_parameters (docs/LLM-GATEWAY.md) y las reglas de temperatura las fijan P4 y MODELOS_AGENTE.
+        temperatura: this.o.config.cascada.temperatura,
         senal,
       });
     } catch {

@@ -3,7 +3,8 @@
 //   - Lado "telefonia" (secreto de la sucursal, `x-atiende-tool-secret`): emitir el token de llamada. Las herramientas del agente usan despues el
 //     token por llamada (`x-atiende-call-token`) desde `transporteHttp`, nunca el secreto.
 // Los errores llevan solo el estado HTTP y un codigo corto: jamas el cuerpo de la respuesta ni los secretos.
-import type { TramoLlamada } from "@atiende/voice-core";
+import { esPresetAmbiente, esVolumenFondo, esVolumenTecleo, temperaturaParaLlamada } from "@atiende/voice-core";
+import type { PresetAmbiente, TramoLlamada } from "@atiende/voice-core";
 import { sinDiagonalFinal } from "./config.ts";
 import type { VozProveedorFallo } from "@atiende/voice-core";
 
@@ -31,6 +32,30 @@ export interface ContextoLlamada {
   readonly gastoMesMicroUsd: number | null;
   /** Hora local (0-23) de la sucursal. */
   readonly horaLocal: number;
+  /** Ambiente de restaurante y tecleo de la organizacion (ajustes del agente). null = la API no lo manda (base sin migrar / API vieja): la llamada suena como siempre. */
+  readonly sonido: SonidoLlamada | null;
+  /** Temperatura de la voz (0..1) de los ajustes del agente; null = la de la plataforma. */
+  readonly temperatura: number | null;
+}
+
+export interface SonidoLlamada {
+  readonly fondo: { readonly activo: boolean; readonly volumen: number; readonly preset: PresetAmbiente };
+  readonly tecleo: { readonly activo: boolean; readonly volumen: number };
+}
+
+/** Valida lo que manda la API (nunca confia en el cuerpo): cualquier cosa fuera de rango o de forma se descarta como "sin sonido". */
+export function leerSonidoLlamada(v: unknown): SonidoLlamada | null {
+  if (typeof v !== "object" || v === null) return null;
+  const { fondo, tecleo } = v as { fondo?: unknown; tecleo?: unknown };
+  const f = fondo as { activo?: unknown; volumen?: unknown; preset?: unknown } | null | undefined;
+  const t = tecleo as { activo?: unknown; volumen?: unknown } | null | undefined;
+  const fondoOk = typeof f === "object" && f !== null && typeof f.activo === "boolean" && esVolumenFondo(f.volumen) && esPresetAmbiente(f.preset);
+  const tecleoOk = typeof t === "object" && t !== null && typeof t.activo === "boolean" && esVolumenTecleo(t.volumen);
+  if (!fondoOk && !tecleoOk) return null;
+  return {
+    fondo: fondoOk ? { activo: f?.activo as boolean, volumen: f?.volumen as number, preset: f?.preset as PresetAmbiente } : { activo: false, volumen: 0, preset: "cocina-taqueria" },
+    tecleo: tecleoOk ? { activo: t?.activo as boolean, volumen: t?.volumen as number } : { activo: false, volumen: 0 },
+  };
 }
 
 /** Guion de apertura de la llamada (asistente virtual + aviso de privacidad + pregunta de grabacion) de `privacidad/apertura`. */
@@ -137,6 +162,8 @@ export class ClienteApi {
       instruccion: r.instruccion,
       gastoMesMicroUsd: typeof r.gastoMesMicroUsd === "number" ? r.gastoMesMicroUsd : null,
       horaLocal: r.horaLocal,
+      sonido: leerSonidoLlamada((r as { sonido?: unknown }).sonido),
+      temperatura: temperaturaParaLlamada((r as { temperatura?: unknown }).temperatura).valor,
     };
   }
 

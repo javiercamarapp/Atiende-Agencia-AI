@@ -38,6 +38,7 @@
 import {
   LICITACIONES_CONNECTOR_REGISTRY,
   classifySourceFailure,
+  newCorrelationId,
 } from "@atiende/domain-licitaciones";
 import type {
   ConnectorLogger,
@@ -119,6 +120,9 @@ export async function runDiscoverTendersForOrganization(
   for (const descriptor of connectors) {
     const startedAt = now().toISOString();
     let droppedCount = 0;
+    // L-P3-17: `correlation_id` de la corrida (organizacion + fuente) para el `source_run`. Cada convocatoria NUEVA recibe ademas SU PROPIA correlacion
+    // (version, aprobaciones y manifiesto la heredan): compartir una sola entre todas las altas de la corrida mezclaba sus trazas.
+    const correlationId = newCorrelationId();
 
     try {
       const candidates: TenderSourceIngestCandidate[] = [];
@@ -131,6 +135,19 @@ export async function runDiscoverTendersForOrganization(
 
       const { ingest: ingestResult, runNotPersistedReason } = await withRepo(async (repo) => {
         const ingest = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
+        // Bitacora (038, sesion de sistema: sin actor). Solo el alta; con la 038 pendiente `appendAuditoria` devuelve false sin abortar la transaccion.
+        for (const tender of ingest.tenders) {
+          if (!(ingest.createdIds ?? []).includes(tender.id)) continue;
+          await repo.appendAuditoria(organizationId, {
+            entity: "convocatoria",
+            entityId: tender.id,
+            action: "convocatoria.ingerida",
+            before: null,
+            after: { externalId: tender.externalId ?? null, source: descriptor.id, title: tender.title, submissionDeadline: tender.submissionDeadline, runCorrelationId: correlationId },
+            actorId: null,
+            correlationId: newCorrelationId(),
+          });
+        }
         const run = await repo.recordSourceRun(organizationId, {
           source: descriptor.id,
           state: "ok",
@@ -140,7 +157,7 @@ export async function runDiscoverTendersForOrganization(
             message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
             coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated },
           },
-          correlationId: null,
+          correlationId,
         });
         return { ingest, runNotPersistedReason: run.notPersistedReason };
       });
@@ -154,7 +171,7 @@ export async function runDiscoverTendersForOrganization(
       if (ingestResult.vigilanteNoDisponible !== undefined) {
         options.logger?.warn(`discover-tenders: ${ingestResult.vigilanteNoDisponible}`, { organizationId, source: descriptor.id });
       }
-      const idsNuevas = new Set(ingestResult.createdTenderIds ?? []);
+      const idsNuevas = new Set(ingestResult.createdIds ?? []);
       results.push({
         source: descriptor.id,
         state: "ok",

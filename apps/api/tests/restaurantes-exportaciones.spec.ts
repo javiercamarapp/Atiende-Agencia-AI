@@ -44,7 +44,7 @@ describe("GET .../admin/exportar/historial", () => {
     const mx = l.find((x) => x.includes("Francisco de Montejo"))!;
     expect(mx).toContain(',2026-10-03 23:30,Francisco de Montejo,"Pech, Marisol",9991234567,WhatsApp,Entregado,Efectivo,150.50');
     const nz = l.find((x) => x.includes("Centro"))!;
-    expect(nz).toContain(',2026-10-04 18:30,Centro,"Luis ""El Güero"" Uc",+52 999 765 4321,Pedido en línea,Recibido,,99.00');
+    expect(nz).toContain(',2026-10-04 18:30,Centro,"Luis ""El Güero"" Uc",+52 999 765 4321,Pedido en línea (histórico),Recibido,,99.00');
     expect(l).toHaveLength(3);
   });
 

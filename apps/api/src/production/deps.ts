@@ -57,7 +57,8 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
+import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -109,7 +110,9 @@ import {
   PostgresStaffSecurityRepository,
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
-import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { MetaGraphWhatsAppClient, MetaGraphWhatsAppReader, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { crearLectorTokenMetaGraph } from "../salud/salud-meta.ts";
+import type { SaludMetaDeps } from "../salud/salud-meta.ts";
 import { cifradorAccesoDeEntorno } from "../routes/verticals/rentas/acceso-cipher.ts";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -169,6 +172,8 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
     urlFacturacion: urlFacturacionDeEntorno(),
+    // PDF del menu por sucursal (enviar_menu): sin la variable el agente comparte el enlace de la pagina oficial del menu.
+    menuPdfBaseUrl: menuPdfBaseDeEntorno(),
     // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
     autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
     ...(observabilidad ? { observabilidad } : {}),
@@ -189,6 +194,11 @@ export function urlFacturacionDeEntorno(env: NodeJS.ProcessEnv = process.env): s
   } catch {
     return null;
   }
+}
+
+/** Base https de los PDF del menu por sucursal: SOLO sobre-escritura opcional (`PM_MENU_PDF_BASE_URL`, sin credenciales ni query). Sin ella (o invalida) devuelve null y el dominio usa `MENU_PDF_BASE_POR_OMISION` (https://app.useatiende.ai/menu-pdf); no hace falta definirla. */
+export function menuPdfBaseDeEntorno(env: NodeJS.ProcessEnv = process.env): string | null {
+  return normalizarBaseMenuPdf(env.PM_MENU_PDF_BASE_URL);
 }
 
 /** R-PM-15: eventos por turno de WhatsApp a stdout (linea JSON, mismo transporte que `logEvent`) pasando por el
@@ -349,7 +359,14 @@ export function buildProductionDeps(): AppDeps {
   // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
-  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates }) }) : undefined;
+  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) }) : undefined;
+
+  // Vigilancia de salud de Meta (token por vencer, timeouts del agente): el lector del token existe solo con WHATSAPP_ACCESS_TOKEN; sin el no se llama a Meta.
+  const saludMeta: SaludMetaDeps = {
+    ...(env.whatsappAccessToken
+      ? { lectorToken: crearLectorTokenMetaGraph(new MetaGraphWhatsAppReader({ accessToken: env.whatsappAccessToken, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }), env.whatsappAccessToken) }
+      : {}),
+  };
 
   // R-32: notas de voz de WhatsApp de restaurantes. Necesita el token de Meta (descarga de media) Y el gateway LLM (transcripcion); sin alguno de
   // los dos queda `undefined` y el webhook conserva el comportamiento anterior (pedir al cliente que escriba).
@@ -382,8 +399,12 @@ export function buildProductionDeps(): AppDeps {
     vozLlamadaRepo: (db) => new PostgresVozLlamadaRepository(db),
     // KPI de voz, costo y alertas (migración 035): cada consulta degrada con SAVEPOINT contra la base sin migrar.
     vozKpiRepo: (db) => new PostgresVozKpiRepository(db),
+    // Alertas de voz evaluadas solas en el tick (migración 076): SAVEPOINT contra la base sin migrar.
+    vozAlertasSistema: (db) => evaluarAlertasVozDelSistema(db),
     whatsappKpiRepo: (db) => new PostgresWhatsappKpiRepository(db),
     cierreRepo: (db) => new PostgresCierreRepository(db),
+    // CFO de restaurantes (081/082/083): SAVEPOINT por llamada; contra la base sin migrar responde `disponible: false`.
+    cfoRestaurantesRepo: (db) => new PostgresCfoRestaurantesRepository(db),
     // Autopiloto (migración 050): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
     autopilotoRepo: (db) => new PostgresAutopilotoRepository(db),
     repartidorPerfilRepo: (db) => new PostgresRepartidorPerfilRepository(db),
@@ -632,6 +653,7 @@ export function buildProductionDeps(): AppDeps {
     resumenDiarioLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
+    saludMeta,
     notasDeVoz,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en

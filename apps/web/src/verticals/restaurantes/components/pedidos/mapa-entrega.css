@@ -1,0 +1,52 @@
+/* Mapa «Entrega en curso» de Pedidos (UNI-R1): pines de Leaflet y color de «Incidencia».
+   Sin hex ni estilos en linea (guard del DS v2): todo lee tokens de packages/ui/src/index.css.
+   TOKENS LOCALES (el DS aun no tiene estos tonos; se declaran aqui y se documentan en el PR, el lote R0 de tokens puede absorberlos):
+     --pedido-pin-cliente       celeste del pin del cliente (en el original #0EA5E9)
+     --pedido-pin-repartidor    ambar del pin del repartidor (en el original #F59E0B)
+     --pedido-incidencia        fucsia de «Incidencia» (en el original fuchsia-700 / fuchsia-600)
+   El pin de la sucursal usa --primary (en el original #1D4ED8, el azul de marca). */
+:root {
+  --pedido-pin-cliente: 199 89% 48%;
+  --pedido-pin-repartidor: 38 92% 50%;
+  --pedido-incidencia: 295 70% 34%;
+  --pedido-incidencia-fuerte: 295 70% 38%;
+}
+.dark {
+  --pedido-pin-cliente: 199 89% 60%;
+  --pedido-pin-repartidor: 38 92% 58%;
+  --pedido-incidencia: 295 80% 78%;
+  --pedido-incidencia-fuerte: 295 60% 46%;
+}
+/* Pines (divIcon): circulo con borde blanco y sombra, como el original. */
+.pedido-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2.5px solid hsl(0 0% 100%);
+  border-radius: 9999px;
+  box-shadow: 0 1px 4px hsl(0 0% 0% / 0.35);
+  color: hsl(0 0% 100%);
+}
+.pedido-pin-sucursal { width: 30px; height: 30px; background: hsl(var(--primary)); font-size: 14px; }
+.pedido-pin-cliente { width: 26px; height: 26px; background: hsl(var(--pedido-pin-cliente)); font-size: 12px; }
+.pedido-pin-repartidor { width: 32px; height: 32px; background: hsl(var(--pedido-pin-repartidor)); font-size: 15px; box-shadow: 0 1px 6px hsl(0 0% 0% / 0.4); }
+
+/* «Incidencia»: botones y avisos fucsia (borde y fondo suaves sobre el token local). */
+.pedido-incidencia-boton {
+  color: hsl(var(--pedido-incidencia));
+  border-color: hsl(var(--pedido-incidencia) / 0.3);
+}
+.pedido-incidencia-boton:hover { background: hsl(var(--pedido-incidencia) / 0.1); }
+.pedido-incidencia-aviso {
+  border-color: hsl(var(--pedido-incidencia) / 0.3);
+  background: hsl(var(--pedido-incidencia) / 0.05);
+}
+.pedido-incidencia-texto { color: hsl(var(--pedido-incidencia)); }
+.pedido-incidencia-confirmar { background: hsl(var(--pedido-incidencia-fuerte)); color: hsl(0 0% 100%); }
+.pedido-incidencia-confirmar:hover { background: hsl(var(--pedido-incidencia-fuerte) / 0.9); }
+.pedido-incidencia-chip { background: hsl(var(--pedido-incidencia) / 0.12); color: hsl(var(--pedido-incidencia)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pedido-mapa .leaflet-fade-anim .leaflet-tile,
+  .pedido-mapa .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; }
+}

@@ -7,6 +7,7 @@
 // `capacidades` marca lo que el servidor REAL todavia no tiene (PR-3 tortilla mixta, PR-4 promociones
 // automaticas): con `contratoObjetivo` el mundo se comporta como lo pide el set dorado; con `contratoActual`
 // se comporta como el registro de hoy (rechaza "mixta", no aplica promociones).
+import { resolverMenuPdf } from "../../menu-pdf.ts";
 import { readFileSync } from "node:fs";
 import type { CasoEval, ClienteConocido, ComandaRegistrada, EventoTraza, FixturesExtra, ProductoMenu, SuiteEval } from "./tipos.ts";
 
@@ -33,6 +34,7 @@ export const HERRAMIENTAS_REGISTRO = [
   "confirmar_resumen",
   "crear_pedido",
   "registrar_contacto",
+  "enviar_menu",
   "escalar_a_humano",
 ] as const;
 
@@ -177,6 +179,11 @@ export class Mundo {
         return this.crear(args);
       case "registrar_contacto":
         return { ok: true };
+      case "enviar_menu": {
+        // Mundo de evaluacion: nunca manda nada; solo dice lo que diria la herramienta real con una base de PDF configurada.
+        const slug = String(args.branch_slug ?? "");
+        return resolverMenuPdf(slug, "https://menus.ejemplo.test/pm").tipo === "sin_menu" ? { ok: true, enviado: "sin_menu", branch_slug: slug } : { ok: true, enviado: "pdf", branch_slug: slug };
+      }
       case "escalar_a_humano":
         return this.escalar(args);
       default:
@@ -407,7 +414,7 @@ export class Mundo {
       promoId: q.promoId,
       cortesias: q.cortesias,
       propina: pago === "tarjeta" ? "en_terminal" : "no_aplica",
-      horaRecogerMin: canal === "recoger" ? minutosDesdeHoraRecogida(args.hora_recogida, this.caso.contexto.hora_local) : null,
+      horaRecogerMin: canal === "recoger" ? minutosDeRecogida(args, this.caso.contexto.hora_local) : null,
       totalMxn: q.total,
       colonia: typeof args.colonia_entrega === "string" ? args.colonia_entrega : null,
       direccion: typeof args.customer_address === "string" ? args.customer_address : null,
@@ -453,6 +460,14 @@ export function ajustesDeNotas(notas: string | null): string[] {
   // Una nota con forma de clave ("mucha_pina") tambien cuenta.
   for (const k of AJUSTES_PERMITIDOS) if (notas.includes(k) && !encontrados.includes(k)) encontrados.push(k);
   return encontrados;
+}
+
+/** Minutos para recoger: `minutos_para_recoger` (el servidor real calcula la hora con su reloj, R3) o, si no viene, la diferencia con `hora_recogida`. */
+export function minutosDeRecogida(args: Record<string, unknown>, horaLocal: string): number | null {
+  const hora = minutosDesdeHoraRecogida(args.hora_recogida, horaLocal);
+  if (hora !== null) return hora;
+  const plazo = typeof args.minutos_para_recoger === "number" ? args.minutos_para_recoger : Number(args.minutos_para_recoger);
+  return Number.isFinite(plazo) && plazo >= 1 && plazo <= 720 ? Math.round(plazo) : null;
 }
 
 /** Minutos entre la hora local del caso y `hora_recogida` (ISO 8601 con zona, el parametro real de crear_pedido). Solo cuenta ese

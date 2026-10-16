@@ -1,6 +1,6 @@
 export { WhatsAppConfigError, WhatsAppInvalidPayloadError, WhatsAppSendError } from "./errors.ts";
-export type { EnviadoComo, OutboundButton, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "./types.ts";
-export { MAX_TEMPLATE_PARAMS, MAX_TEMPLATE_PARAM_LENGTH, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
+export type { EnviadoComo, OutboundButton, OutboundDocument, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "./types.ts";
+export { DOCUMENT_FILENAME_PATTERN, DOCUMENT_URL_MAX_LENGTH, esUrlHttpsPublica, MAX_TEMPLATE_PARAMS, MAX_TEMPLATE_PARAM_LENGTH, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
 export type { MensajeEnviadoDetalle, MessagingOutboxItem, MessagingOutboxPort } from "./outbox-port.ts";
 export {
   computeBackoffSeconds,
@@ -21,3 +21,16 @@ export { DEFAULT_ALLOWED_AUDIO_MIMES, DEFAULT_MEDIA_MAX_BYTES, DEFAULT_MEDIA_TIM
 export type { DownloadedMedia, MediaDownloadLimits, MediaDownloader, MetaMediaDownloaderOptions, WhatsAppMediaErrorCode } from "./media.ts";
 export { ESTADOS_ENTREGA, avanzarEstadoEntrega, extractMetaStatuses, motivoFalloEntrega } from "./statuses.ts";
 export type { EstadoEntrega, MetaDeliveryStatus, MotivoFalloEntrega } from "./statuses.ts";
+export {
+  CAMPOS_NUMERO,
+  CAMPOS_PLANTILLA,
+  CAMPOS_WABA,
+  DEFAULT_GRAPH_READER_API_VERSION,
+  GRAPH_API_VERSION_PATTERN,
+  MetaGraphReadError,
+  MetaGraphReaderConfigError,
+  MetaGraphWhatsAppReader,
+  esVersionGraphValida,
+  redactarSecretos,
+} from "./providers/meta-graph-reader.ts";
+export type { MetaAppSuscrita, MetaGraphReadErrorInfo, MetaGraphWhatsAppReaderOptions, MetaNumero, MetaPlantilla, MetaWaba } from "./providers/meta-graph-reader.ts";
