@@ -234,7 +234,7 @@ export {
   computeCustomerKpis,
 } from "./kpis.ts";
 export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
-export { MENU_PDF_POR_SUCURSAL, normalizarBaseMenuPdf, resolverMenuPdf } from "./menu-pdf.ts";
+export { MENU_PDF_BASE_POR_OMISION, MENU_PDF_POR_SUCURSAL, normalizarBaseMenuPdf, resolverMenuPdf } from "./menu-pdf.ts";
 export type { MenuPdfSucursal, ResultadoMenuPdf } from "./menu-pdf.ts";
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
