@@ -1,6 +1,6 @@
 export { WhatsAppConfigError, WhatsAppInvalidPayloadError, WhatsAppSendError } from "./errors.ts";
-export type { EnviadoComo, OutboundButton, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "./types.ts";
-export { MAX_TEMPLATE_PARAMS, MAX_TEMPLATE_PARAM_LENGTH, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
+export type { EnviadoComo, OutboundButton, OutboundDocument, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "./types.ts";
+export { DOCUMENT_FILENAME_PATTERN, DOCUMENT_URL_MAX_LENGTH, esUrlHttpsPublica, MAX_TEMPLATE_PARAMS, MAX_TEMPLATE_PARAM_LENGTH, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
 export type { MensajeEnviadoDetalle, MessagingOutboxItem, MessagingOutboxPort } from "./outbox-port.ts";
 export {
   computeBackoffSeconds,
@@ -11,7 +11,7 @@ export {
   WhatsAppOutboundDispatcher,
 } from "./dispatcher.ts";
 export type { CatalogoPlantillas, ContextoMedicion, DispatchItemOutcome, DispatchItemResult, DispatchPendingOptions, DispatchSummary, MedidorMensajes, SuppressionGuard, WhatsAppOutboundDispatcherOptions } from "./dispatcher.ts";
-export { DEFAULT_GRAPH_API_VERSION, MAX_BUTTON_ID_LENGTH, MAX_BUTTON_TITLE_LENGTH, MAX_INTERACTIVE_BUTTONS, MetaGraphWhatsAppClient } from "./providers/meta-graph-client.ts";
+export { DEFAULT_GRAPH_API_VERSION, MAX_BUTTON_ID_LENGTH, MAX_BUTTON_TITLE_LENGTH, MAX_INTERACTIVE_BUTTONS, MAX_TEXT_BODY_LENGTH, MetaGraphWhatsAppClient } from "./providers/meta-graph-client.ts";
 export type { MetaGraphWhatsAppClientOptions } from "./providers/meta-graph-client.ts";
 export { FakeWhatsAppGraphClient } from "./providers/fake-graph-client.ts";
 export type { FakeWhatsAppGraphClientOptions } from "./providers/fake-graph-client.ts";

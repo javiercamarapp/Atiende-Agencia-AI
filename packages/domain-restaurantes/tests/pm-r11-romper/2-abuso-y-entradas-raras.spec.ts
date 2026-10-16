@@ -6,7 +6,7 @@ import { HISTORIAL_MAX_CARACTERES, HISTORIAL_MAX_MENSAJES, ventanaDeHistorial } 
 import { NotaDeVozError, resolverCuerpoConNotaDeVoz, transcribirNotaDeVoz } from "../../src/whatsapp/nota-de-voz.ts";
 import type { AudioDescargado, PuertoNotasDeVoz } from "../../src/whatsapp/nota-de-voz.ts";
 import type { ConversationMessage } from "../../src/repository.ts";
-import { PHONE, buildRestaurantFixture, flujo, ordenes, hallazgo } from "./arnes.ts";
+import { PHONE, buildRestaurantFixture, flujo, ordenes } from "./arnes.ts";
 
 const SUBSTITUTO_SUELTO = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
@@ -50,7 +50,7 @@ describe("R11-2A mensajes gigantes y unicode raro que llegan al historial", () =
   // transaccion entera del mensaje; el webhook lo marca reintentable y Meta lo reenvia: ese cliente nunca recibe respuesta.
   // El camino de entrada quita controles en otros modulos (demo, preview) pero NO aqui. (Verificado contra Postgres real en
   // scripts/verify-restaurantes-pm-r11-romper.)
-  hallazgo("R11-08 [P2] un NUL dentro del mensaje del cliente se elimina ANTES de llegar al historial / al modelo", async () => {
+  it("R11-08 [P2] un NUL dentro del mensaje del cliente se elimina ANTES de llegar al historial / al modelo", async () => {
     const f = buildRestaurantFixture();
     const { vistos, turnHandler } = grabador();
     const out = await handleInboundWhatsAppMessage(f.repo, turnHandler as never, entrada(f, "quiero dos tacos\u0000 por favor"));
@@ -62,7 +62,7 @@ describe("R11-2A mensajes gigantes y unicode raro que llegan al historial", () =
   // ── HALLAZGO R11-09 (P2, disponibilidad): el acotado por largo puede partir un emoji por la mitad ──
   // `limitarLargoDelMensaje` corta en la unidad 1500 de UTF-16. Un emoji ocupa 2 unidades: si el corte cae en medio queda un
   // sustituto suelto, que JSON.stringify escapa como \udXXX y que jsonb RECHAZA (22P05): mismo efecto que R11-08.
-  hallazgo("R11-09 [P2] un mensaje largo con emojis no queda con un sustituto UTF-16 suelto tras acotarse", async () => {
+  it("R11-09 [P2] un mensaje largo con emojis no queda con un sustituto UTF-16 suelto tras acotarse", async () => {
     const f = buildRestaurantFixture();
     const { vistos, turnHandler } = grabador();
     // 'a' desplaza la paridad: la unidad 1500 cae entre las dos mitades de un emoji.

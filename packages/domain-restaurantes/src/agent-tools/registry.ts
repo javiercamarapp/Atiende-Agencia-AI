@@ -22,11 +22,12 @@ import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
-import { normalizePhone } from "../phone.ts";
+import { normalizePhone, toWhatsAppRecipient } from "../phone.ts";
+import { resolverMenuPdf } from "../menu-pdf.ts";
 import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
-import { pesoDeProductoEnGramos, unidadDeVentaSinPiezas } from "../product-search.ts";
+import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -57,6 +58,8 @@ import {
   OrderFlowViolationError,
   rechazaElResumen,
   resumenMostradoEnHistorial,
+  esRespuestaDePagoOPropina,
+  asistentePidioConfirmarResumen,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -65,6 +68,16 @@ import {
   type OrderFlowViolationCode,
   type QuotedItem,
 } from "./order-flow.ts";
+import {
+  cierreMaquinaActiva,
+  clasificarRespuestaCierre,
+  datosDeCierreDeContexto,
+  datosDeCierreDeEntrada,
+  decidirConfirmacion,
+  firmaDeCierre,
+  mensajeDatosCambiaron,
+  resumenCanonico,
+} from "./cierre-maquina.ts";
 import type {
   CanalPedido,
   CreateOrderInput,
@@ -116,6 +129,7 @@ export type AgentToolName =
   | "confirmar_resumen"
   | "crear_pedido"
   | "registrar_contacto"
+  | "enviar_menu"
   | "escalar_a_humano";
 
 /** Subconjunto de JSON Schema que usan las tools (mismo shape que `LlmToolDefinition.parameters`). */
@@ -171,6 +185,8 @@ export interface AgentToolContext {
   /** Ultimos mensajes (cliente y agente) de esta conversacion de WhatsApp. Solo lo fija el servidor; alimenta guardas que comparan lo que dijo el cliente, y si ya se le aclaro, con lo que cotiza el
    * modelo (p. ej. «guacamole» contra «Extra Guacamole»). Ausente (voz, camino legado) = esas guardas no opinan. */
   readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+  /** Base https publica donde estan los PDF del menu por sucursal (`PM_MENU_PDF_BASE_URL`). Solo la fija el servidor. Ausente = `enviar_menu` comparte el enlace de la pagina oficial del menu. */
+  readonly menuPdfBaseUrl?: string | null;
 }
 
 export interface AgentToolOutcome {
@@ -337,6 +353,9 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
         otro_pedido: { type: "boolean", description: "true SOLO si el cliente pidió expresamente OTRO pedido igual al que ya quedó registrado. Un 'sí' de más o repetir el resumen NO es otro pedido: no lo mande." },
+        efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Mándelo AQUÍ en cuanto lo dé para que el resumen lo muestre." },
+        propina: { type: "number", description: "Propina en pesos que dio el cliente (solo si preguntar_propina fue true). No suma al total. Mándela aquí en cuanto la dé para que el resumen la muestre." },
+        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta. Mándela aquí en cuanto la dé para que el resumen la muestre." },
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
         minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con zona, calculada con la HORA LOCAL de la sucursal (no UTC). El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
@@ -403,6 +422,17 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     channels: ["whatsapp", "voz"],
   },
   {
+    name: "enviar_menu",
+    description:
+      "Manda al cliente por WhatsApp el menú en PDF de UNA sucursal (el publicado en internet por esa sucursal). Úsela cuando pida el menú o la carta; no lo pegue en texto. Devuelve enviado 'pdf' (ya salió el documento), 'enlace' (no hay PDF: comparta ese enlace oficial tal cual) o 'sin_menu' (esa sucursal no tiene menú publicado). Solo WhatsApp.",
+    parameters: {
+      type: "object",
+      properties: { branch_slug: { type: "string", description: "Sucursal cuyo menú pide el cliente (la del chat por omisión; si pide otra, esa). Solo slugs de la lista de sucursales." } },
+      required: ["branch_slug"],
+    },
+    channels: ["whatsapp"],
+  },
+  {
     name: "escalar_a_humano",
     description:
       "Pasa la conversación a una persona del restaurante cuando el cliente lo pide, hay una queja, o no puedes resolver lo que necesita. Deja un aviso con el motivo para que alguien le responda.",
@@ -441,6 +471,8 @@ export const VOICE_TOOL_HTTP_PATHS: Readonly<Record<AgentToolName, string>> = {
   confirmar_resumen: "/orders/confirm",
   crear_pedido: "/orders",
   registrar_contacto: "/callbacks",
+  // Solo WhatsApp (no se exporta al manifiesto de voz): la ruta existe unicamente porque el Record exige todas las tools.
+  enviar_menu: "/menu/send",
   escalar_a_humano: "/callbacks",
 };
 
@@ -489,11 +521,19 @@ function tortillaDeEntrada(raw: unknown): TortillaChoice | undefined {
   return isTortillaChoice(t) ? t : undefined;
 }
 
+/** R11-11: solo un numero o una cadena de digitos ("2", " 3 ") es una cantidad. `true`, `[2]`, "0x10", "1e3" o "" ya no se coercionan en silencio: dan NaN y el
+ * dominio (voz/web) o la validacion lenient (WhatsApp) los rechazan con un error accionable. */
+function cantidadEstricta(valor: unknown): number {
+  if (typeof valor === "number") return valor;
+  if (typeof valor === "string" && /^\s*\d+\s*$/.test(valor)) return Number(valor);
+  return Number.NaN;
+}
+
 export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrderItemInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
     const item = (entry ?? {}) as RawItemInput;
-    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity);
+    const qty = cantidadEstricta(item.requested_quantity);
     if (lenient && (!Number.isInteger(qty) || qty < 1)) throw new OrderValidationError(CANTIDAD_NO_NUMERICA_MENSAJE);
     return {
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
@@ -504,9 +544,9 @@ export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrder
   });
 }
 
-/** `unidad_de_venta` solo sale para productos por orden sin número de piezas confirmado (ver product-search.ts::unidadDeVentaSinPiezas). */
-function unidadDeVentaWire(product: Parameters<typeof unidadDeVentaSinPiezas>[0]): { unidad_de_venta?: string } {
-  const unidad = unidadDeVentaSinPiezas(product);
+/** `unidad_de_venta` sale para flautas (1 flauta grande por orden) y para productos por orden sin piezas confirmadas (ver product-search.ts::unidadDeVenta). */
+function unidadDeVentaWire(product: Parameters<typeof unidadDeVenta>[0]): { unidad_de_venta?: string } {
+  const unidad = unidadDeVenta(product);
   return unidad ? { unidad_de_venta: unidad } : {};
 }
 
@@ -829,7 +869,13 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
  * quien ejecute dentro de una transaccion compartida debe envolver la llamada (ver
  * `executeAgentToolSafely`).
  */
-export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>): Promise<AgentToolOutcome> {
+/** `rechazoComoResultado`: el rechazo `resumen_no_mostrado` se DEVUELVE como resultado `{error}` en vez de lanzarse. Lo usa `executeAgentToolSafely`: ahi cada tool call corre dentro de un SAVEPOINT
+ * que se revierte ante CUALQUIER excepcion, y el marcador del rechazo (la salida contra el deadlock) se perderia junto con el throw. */
+export interface InvokeAgentToolOpts {
+  readonly rechazoComoResultado?: boolean;
+}
+
+export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>, opts: InvokeAgentToolOpts = {}): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   // `plazo_minutos_servidor` es un campo INTERNO que solo pone `conHoraDeRecogidaRelativa`: lo que mande el modelo se descarta.
@@ -856,7 +902,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
-  return runWithOrderFlow(repo, ctx, ctx.flow, name, input);
+  return runWithOrderFlow(repo, ctx, ctx.flow, name, input, opts);
 }
 
 
@@ -928,6 +974,22 @@ function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowConte
   return { ...(quotedPago ? { quotedPago } : {}), ...(quotedEfectivoCon !== undefined ? { quotedEfectivoCon } : {}) };
 }
 
+/** R11: propina de una cotizacion (pesos o porcentaje). Lo que manda el modelo; si no la menciona se conserva la de la cotizacion vigente; 0 / "sin propina" la quita. */
+function propinaDeCotizacion(input: Record<string, unknown>, previo: OrderFlowContext | undefined): { quotedPropinaMxn?: number; quotedPropinaPct?: number } {
+  const hayMonto = input.propina !== undefined && input.propina !== null;
+  const hayPct = input.propina_porcentaje !== undefined && input.propina_porcentaje !== null;
+  if (!hayMonto && !hayPct) {
+    return { ...(previo?.quotedPropinaMxn !== undefined ? { quotedPropinaMxn: previo.quotedPropinaMxn } : {}), ...(previo?.quotedPropinaPct !== undefined ? { quotedPropinaPct: previo.quotedPropinaPct } : {}) };
+  }
+  if (typeof input.propina === "number" && input.propina > 0) return { quotedPropinaMxn: input.propina };
+  const pct = porcentajeDePropina(input.propina_porcentaje) ?? (typeof input.propina === "string" ? porcentajeDePropina(input.propina) : null);
+  return pct !== null ? { quotedPropinaPct: pct } : {};
+}
+
+/** Texto que acompana a `resumen_canonico` (solo con la maquina de cierre activa). */
+const INSTRUCCION_RESUMEN_CANONICO =
+  "Cuando ya tenga todos los datos (producto, entrega, pago y, si aplica, propina), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
+
 const CONFLICT_MESSAGE ="La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
 
 /** Texto que acompana a una re-cotizacion identica de una cotizacion que el cliente ya vio (ver `runWithOrderFlow`). */
@@ -952,7 +1014,7 @@ const PEDIDO_RETENIDO_AVISO =
   "Este pedido NO está registrado todavía: quedó pendiente de que la sucursal lo confirme (ya se le avisó y la sucursal contactará al cliente). Dígaselo así, de usted; NO diga que ya quedó registrado ni confirmado, no prometa hora, no lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido.";
 
 /** Aplica la maquina de estados alrededor de cotizar/confirmar/crear. Base sin migrar => camino anterior. */
-async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>, opts: InvokeAgentToolOpts = {}): Promise<AgentToolOutcome> {
   const lenient = ctx.channel === "whatsapp";
   const canalOf = (raw: unknown) => (raw === "recoger" ? "recoger" : "domicilio");
 
@@ -1050,6 +1112,16 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // hereda el turno de la cotizacion anterior (si no, confirmar_resumen y crear_pedido pasaban sin que el cliente viera nunca el resumen con su pago). Omitirlos conserva los previos.
       const previoVigente = previo && (snap.state === "cotizado" || snap.state === "confirmado") && flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS ? previo : undefined;
       const pagoCotizado = pagoDeCotizacion(input, previoVigente);
+      const propinaCotizada = propinaDeCotizacion(input, previoVigente);
+      // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
+      const resumenBase =
+        cierreMaquinaActiva() && ctx.channel === "whatsapp"
+          ? { lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })), total: quotedQuote.total, descuento: quotedQuote.descuento, canal: canalOf(input.canal) }
+          : undefined;
+      const canonico = resumenBase
+        ? resumenCanonico({ ...resumenBase, datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct } })
+        : undefined;
+      const conCanonico = (r: object): object => (canonico ? { ...r, resumen_canonico: canonico, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : r);
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&
@@ -1058,6 +1130,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         previo.quotedTotal === quotedQuote.total &&
         previo.quotedPago === pagoCotizado.quotedPago &&
         previo.quotedEfectivoCon === pagoCotizado.quotedEfectivoCon &&
+        previo.quotedPropinaMxn === propinaCotizada.quotedPropinaMxn &&
+        previo.quotedPropinaPct === propinaCotizada.quotedPropinaPct &&
         flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS
       ) {
         // El historial de WhatsApp no trae los resultados de herramientas: en el turno del "si" el modelo busca y cotiza de nuevo y despues repite el resumen
@@ -1066,7 +1140,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         const vistoEnHistorial = resumenMostradoEnHistorial(previo.quotedTotal, ctx.conversacionReciente);
         const yaMostrada = previo.quotedTurn !== null && flow.turn !== null && previo.quotedTurn !== flow.turn && vistoEnHistorial !== false;
         const aviso = yaMostrada ? { ya_mostrada_al_cliente: true, siguiente_paso: SIGUIENTE_PASO_COTIZACION_REPETIDA } : {};
-        return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash, ...aviso }, quoteHash };
+        return { ...outcome, result: conCanonico({ ...(outcome.result as object), quote_hash: quoteHash, ...aviso }), quoteHash };
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
         quoteHash,
@@ -1075,6 +1149,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedPrices,
         ...(pagoCotizado.quotedPago ? { quotedPago: pagoCotizado.quotedPago } : {}),
         ...(pagoCotizado.quotedEfectivoCon !== undefined ? { quotedEfectivoCon: pagoCotizado.quotedEfectivoCon } : {}),
+        ...propinaCotizada,
+        ...(canonico && resumenBase ? { resumenCanonico: canonico, resumenBase } : {}),
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
         ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
         ...(programadoCotizado ? { programadoPara: programadoCotizado } : {}),
@@ -1083,7 +1159,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         quotedAmounts: knownAmountsOfQuote(quotedQuote).slice(0, 60),
         ...(snap.context?.sessionTotal ? { sessionTotal: snap.context.sessionTotal, sessionPesoKg: snap.context.sessionPesoKg ?? 0, sessionPedidos: snap.context.sessionPedidos ?? 0, ...(snap.context.sessionUltimoPedidoId ? { sessionUltimoPedidoId: snap.context.sessionUltimoPedidoId } : {}) } : {}),
       });
-      if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
+      if (res === "written") return { ...outcome, result: conCanonico({ ...(outcome.result as object), quote_hash: quoteHash }), quoteHash };
       if (res === "unavailable") return outcome;
     }
     throw new OrderValidationError(CONFLICT_MESSAGE);
@@ -1106,7 +1182,45 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (snap.state !== "cotizado") {
         return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       }
-      const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, confirmedAtMs: flowNow(flow) });
+      // R11: cierre como maquina de estados. Con historial de WhatsApp el servidor exige que el ULTIMO mensaje del asistente sea el resumen vigente y que el ultimo del cliente sea un «si»
+      // explicito. La negativa se devuelve como RESULTADO (no como excepcion): el SAVEPOINT revertiria la marca de «ambiguo» que habilita la salida segura del turno siguiente.
+      const cierreOn = cierreMaquinaActiva() && ctx.channel === "whatsapp" && ctx.conversacionReciente !== undefined;
+      if (cierreOn) {
+        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico });
+        if (!decision.ok) {
+          // Respuesta de pago / propina: el servidor ADOPTA el dato (avanza), vuelve a `cotizado` y rearma el resumen; el modelo solo lo muestra. Nunca confirma.
+          if (decision.datosNuevos && current.resumenBase) {
+            const d = decision.datosNuevos;
+            const nuevo = resumenCanonico({ ...current.resumenBase, datos: d });
+            await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
+              ...current,
+              ...(d.pago ? { quotedPago: d.pago } : {}),
+              quotedEfectivoCon: d.efectivoCon,
+              quotedPropinaMxn: d.propinaMxn,
+              quotedPropinaPct: d.propinaPct,
+              resumenCanonico: nuevo,
+              cierreAmbiguoTurn: undefined,
+            });
+            return {
+              result: { error: `${decision.mensaje} El sistema ya guardó el dato (pago / efectivo / propina) y actualizó el resumen. Muéstreselo AHORA al cliente, copiado tal cual, y espere su sí en el mensaje siguiente:\n${nuevo}`, resumen_canonico: nuevo, resumen_total: current.resumenBase.total },
+              orderId: null,
+              propertyId: null,
+              rechazoDelFlujo: decision.code,
+            };
+          }
+          if (decision.marcarAmbiguo && flow.turn !== null && current.cierreAmbiguoTurn === undefined) {
+            await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, cierreAmbiguoTurn: flow.turn });
+          } else if (decision.marcarNoVisto && flow.turn !== null && current.cierreNoVistoTurn === undefined) {
+            await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, cierreNoVistoTurn: flow.turn });
+          }
+          return { result: { error: decision.mensaje, ...(current.resumenCanonico ? { resumen_canonico: current.resumenCanonico, ...(current.resumenBase ? { resumen_total: current.resumenBase.total } : {}) } : {}) }, orderId: null, propertyId: null, rechazoDelFlujo: decision.code };
+        }
+      }
+      const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", {
+        ...current,
+        confirmedAtMs: flowNow(flow),
+        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(current)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
+      });
       if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };
     }
@@ -1162,6 +1276,73 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (existente) return { result: { order: orderToWire(existente), ya_registrado: true }, raw: existente, orderId: existente.id, propertyId: existente.propertyId, yaRegistrado: true };
     }
     const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
+    // R11: cierre como maquina de estados. (1) pago / efectivo / propina deben ser los del resumen confirmado; (2) si la confirmacion es de un turno ANTERIOR y el cliente despues rechazo o
+    // cambio el pedido, se vuelve a cotizado. Resultados (no excepciones) por el SAVEPOINT. Un reclamo viejo (`creando`) que se retoma NO se vuelve a revisar: ya paso por aqui.
+    if (cierreMaquinaActiva() && ctx.channel === "whatsapp" && snap.state === "confirmado" && current.confirmedFirma !== undefined) {
+      const datos = datosDeCierreDeEntrada(input, current);
+      if (firmaDeCierre(datos) !== current.confirmedFirma) {
+        // El servidor adopta el dato nuevo, vuelve a `cotizado` y rearma el resumen: el modelo solo tiene que mostrarlo y esperar el sí (no depende de que re-cotice bien).
+        const nuevoCanonico = current.resumenBase ? resumenCanonico({ ...current.resumenBase, datos }) : undefined;
+        await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
+          ...current,
+          ...(datos.pago ? { quotedPago: datos.pago } : {}),
+          quotedEfectivoCon: datos.efectivoCon,
+          quotedPropinaMxn: datos.propinaMxn,
+          quotedPropinaPct: datos.propinaPct,
+          quotedTurn: flow.turn,
+          confirmedAtMs: undefined,
+          confirmedFirma: undefined,
+          confirmedTurn: undefined,
+          cierreAmbiguoTurn: undefined,
+          ...(nuevoCanonico ? { resumenCanonico: nuevoCanonico } : {}),
+        });
+        return {
+          result: { error: mensajeDatosCambiaron(nuevoCanonico), ...(nuevoCanonico ? { resumen_canonico: nuevoCanonico, resumen_total: current.resumenBase!.total } : {}) },
+          orderId: null,
+          propertyId: null,
+          rechazoDelFlujo: "cierre_datos_cambiaron",
+        };
+      }
+      if (ctx.conversacionReciente !== undefined && flow.turn !== null && current.confirmedTurn !== flow.turn) {
+        const ultimoCliente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "user")?.content;
+        const clase = clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: false });
+        if (clase === "no" || clase === "cambio") {
+          await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, confirmedAtMs: undefined, confirmedFirma: undefined, confirmedTurn: undefined, quotedTurn: flow.turn });
+          return {
+            result: { error: "NO se creó el pedido: después de confirmar, el cliente rechazó o quiere cambiar algo. Aplique el cambio, vuelva a llamar cotizar_pedido, muéstrele el resumen nuevo y espere su sí.", ...(current.resumenCanonico ? { resumen_canonico_anterior: current.resumenCanonico } : {}) },
+            orderId: null,
+            propertyId: null,
+            rechazoDelFlujo: "cierre_sin_si_explicito",
+          };
+        }
+      }
+      // La propina que el cliente vio en el resumen viaja al pedido aunque el modelo no la repita.
+      if (datos.heredaPropina && (datos.propinaMxn !== undefined || datos.propinaPct !== undefined)) {
+        input = { ...input, ...(datos.propinaMxn !== undefined ? { propina: datos.propinaMxn } : { propina_porcentaje: datos.propinaPct }) };
+      }
+    }
+    // Guarda de #566 / QA-PM-R10 §6. Corre con la maquina de cierre APAGADA, o encendida pero con una confirmacion que no paso por ella (sin `confirmedFirma`).
+    // Con la maquina encendida y su firma, el bloque de arriba la sustituye (misma idea, mas estricta) y esta NO corre: asi las dos guardas nunca se contradicen.
+    // Con historial de WhatsApp, el cliente tiene que haber VISTO el resumen y su ultimo mensaje no puede ser solo el pago o la propina. Sin historial (voz) no aplica.
+    // Dos causas de rechazo, con UNA misma salida acotada contra el deadlock:
+    //  - totalNoVisto: ningun mensaje del asistente trae el total (heuristica de texto con falsos negativos: total en letras, otro formato, resumen fuera de la ventana).
+    //  - soloPago: el ultimo mensaje del cliente es solo pago/propina Y el ultimo mensaje del asistente NO traia el total (no era el resumen). Si el asistente acababa de mostrar el resumen y pedir confirmacion,
+    //    «No gracias» / «Efectivo» / «con 600» son la respuesta a su «¿Es correcto?», es decir el sí, y NO se rechazan (antes: deadlock sin limite).
+    //  El primer rechazo guarda el turno en el flujo (sobrevive al SAVEPOINT); en un turno POSTERIOR ya no se rechaza. El cierre se retrasa a lo mucho un turno, nunca se traba.
+    else if (snap.state === "confirmado" && flow.turn !== null && ctx.conversacionReciente !== undefined) {
+      const ultimoDelCliente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "user")?.content;
+      const ultimoDelAsistente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "assistant")?.content;
+      const soloPago = esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(current.quotedTotal, ultimoDelAsistente);
+      const totalNoVisto = resumenMostradoEnHistorial(current.quotedTotal, ctx.conversacionReciente) === false;
+      const salidaAbierta = current.resumenRechazadoTurn !== undefined && current.resumenRechazadoTurn !== flow.turn;
+      if ((soloPago || totalNoVisto) && !salidaAbierta) {
+        if (current.resumenRechazadoTurn === undefined) await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, resumenRechazadoTurn: flow.turn });
+        const mensaje =
+          "El cliente todavía no ha visto el resumen final con el total, o su último mensaje es solo el pago o la propina (eso NO es el sí). NO se creó el pedido. Muéstrele ahora el resumen completo en lista (renglones, total a pagar, forma de pago) y pregúntele si confirma; espere su sí en el mensaje siguiente y entonces llame crear_pedido.";
+        if (opts.rechazoComoResultado) return { result: { error: mensaje }, orderId: null, propertyId: null, rechazoDelFlujo: "resumen_no_mostrado" };
+        throw new OrderFlowViolationError("resumen_no_mostrado", mensaje);
+      }
+    }
     const claimCtx: OrderFlowContext = { ...current, claimedAtMs: flowNow(flow) };
     const res = await writeFlow(repo, ctx, flow, snap.version, "creando", claimCtx);
     if (res === "written") claimed = { version: snap.version + 1, context: claimCtx };
@@ -1644,6 +1825,8 @@ async function dispatchTool(
       }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
+    case "enviar_menu":
+      return enviarMenuPdf(repo, ctx, input);
     case "registrar_contacto":
     case "escalar_a_humano": {
       // Preview: exito simulado, sin crear aviso (callback) ni notificacion para el equipo.
@@ -1673,6 +1856,47 @@ async function dispatchTool(
       return { result: { ok: true, ...aviso }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
+}
+
+/**
+ * `enviar_menu`: encola el menu en PDF de la sucursal como documento de WhatsApp (outbox, mismo canal y numero del chat; el despachador lo manda con el cliente de Meta).
+ * Nunca envia nada real desde aqui: solo escribe en el outbox. Sin base de PDF configurada o con una sucursal sin menu, NO encola y devuelve el enlace oficial / `sin_menu`
+ * para que el agente lo diga en texto. Idempotente por mensaje del cliente y sucursal (un reintento del turno no manda dos PDF).
+ */
+async function enviarMenuPdf(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const slug = typeof input.branch_slug === "string" ? input.branch_slug.trim() : "";
+  const branch = slug ? await repo.findBranch(ctx.organizationId, { slug }) : null;
+  if (!branch || branch.status !== "active") {
+    throw new OrderValidationError(`Sucursal '${slug}' no encontrada o inactiva: use un branch_slug de la lista de sucursales (o pregunte al cliente de cuál quiere el menú).`);
+  }
+  const menu = resolverMenuPdf(branch.slug, ctx.menuPdfBaseUrl);
+  const hecho = (result: Record<string, unknown>, simulated = false): AgentToolOutcome => ({ result, raw: result, orderId: null, propertyId: branch.propertyId, ...(simulated ? { simulated: true } : {}) });
+  if (menu.tipo === "sin_menu") {
+    return hecho({ ok: true, enviado: "sin_menu", branch_slug: branch.slug, instruccion: "Esa sucursal no tiene menú publicado: diga que la sucursal se lo puede enviar y deje el aviso con registrar_contacto (reason menu_pdf)." });
+  }
+  if (menu.tipo === "enlace") {
+    return hecho({ ok: true, enviado: "enlace", branch_slug: branch.slug, enlace: menu.paginaWeb, instruccion: `Comparta ESTE enlace tal cual: es la página oficial con el menú de ${menu.etiqueta}. No invente otro.` });
+  }
+  // Vista previa del dueño: exito simulado, sin encolar nada.
+  if (ctx.modo === "preview") return hecho({ ok: true, simulado: true, enviado: "pdf", branch_slug: branch.slug, archivo: menu.archivo, instruccion: "Diga que ya le mandó el menú en PDF." }, true);
+  if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede mandar el menú.");
+  const to = toWhatsAppRecipient(ctx.phone);
+  if (!to) throw new OrderValidationError("El teléfono de esta conversación no es válido para WhatsApp; no se puede mandar el menú.");
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(ctx.organizationId, ctx.entryPropertyId ?? ctx.lockedPropertyId ?? null);
+  if (!phoneNumberId) {
+    // Sin numero activo no hay por donde mandar el documento: el agente comparte el enlace oficial en texto.
+    return hecho({ ok: true, enviado: "enlace", branch_slug: branch.slug, enlace: menu.paginaWeb, instruccion: `No se pudo mandar el PDF. Comparta ESTE enlace tal cual: es la página oficial con el menú de ${menu.etiqueta}.` });
+  }
+  const bucket = Math.floor(Date.now() / (10 * 60 * 1000));
+  const dedupeKey = `menu-pdf:${ctx.sourceEventId ?? `${to}:${bucket}`}:${branch.slug}`.slice(0, 255);
+  await repo.enqueueMessagingOutbox(ctx.organizationId, "whatsapp", "whatsapp.menu_pdf", dedupeKey, {
+    to,
+    phone_number_id: phoneNumberId,
+    body: `Menú de Los Taquitos de PM · ${menu.etiqueta}`,
+    documento: { url: menu.url, filename: menu.archivo, fallbackUrl: menu.paginaWeb },
+    transaccional: true, // lo pidio el cliente en esta conversacion (ventana de 24 h abierta): la supresion de plataforma no lo bloquea
+  });
+  return hecho({ ok: true, enviado: "pdf", branch_slug: branch.slug, archivo: menu.archivo, instruccion: `Ya se le manda el menú en PDF de ${menu.etiqueta}. Dígaselo en una frase (llegará como documento) y pregunte qué se le antoja; no pegue el menú.` });
 }
 
 /** Resultado de buscar_cliente sin `pedidoReciente`: no hay dato del estado en cocina. */
@@ -1905,7 +2129,7 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
  */
 export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   try {
-    return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
+    return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input, { rechazoComoResultado: true }));
   } catch (err) {
     // QA-PM-R3-reglas-10: la guarda SQL `raise exception ... using errcode = '22023'` (p. ej. "programado_para debe ser una hora futura") es una REGLA de negocio con un mensaje
     // pensado para el agente: antes salia como "Error interno" (y como fallo del sistema, que sube de rol), sin dejar rastro de la causa.

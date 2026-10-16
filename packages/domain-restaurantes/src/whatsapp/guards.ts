@@ -815,6 +815,50 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   },
 ];
 
+// ── Queja en dos tiempos (decision de Javier, PM R10 P4) ─────────────────────────────────────────────────────────────────────────────────────
+// Una queja SIN detalle ("quiero poner una queja") ya avisa al equipo, pero NO abre la toma de handoff: el texto fijo pregunta «¿qué faltó o qué llegó mal?» y el agente
+// sigue atendiendo (paso 14 del prompt). El siguiente mensaje del cliente es el detalle: se agrega como nota al MISMO aviso abierto, se responde con texto fijo y ahi si se cede
+// la conversacion a una persona (toma de handoff, R-21). Una queja que ya trae el detalle, o cualquier riesgo de salud, cede de inmediato como siempre.
+
+/** Fragmento que identifica, en el historial, que la ultima pregunta del asistente fue la del detalle de la queja (el aviso de privacidad puede ir antepuesto). */
+export const QUEJA_PREGUNTA_MARCA = "¿Qué faltó o qué llegó mal?";
+export const QUEJA_PREGUNTA_DETALLE =
+  `Lamento mucho lo ocurrido, disculpe el inconveniente. ${QUEJA_PREGUNTA_MARCA} Cuénteme el detalle y se lo paso de inmediato al gerente, que ya está avisado, para que revise su caso. Yo no puedo prometerle una reposición ni un descuento.`;
+export const QUEJA_DETALLE_RECIBIDO =
+  "Gracias por contármelo, ya quedó registrado el detalle y se lo pasé al gerente para que revise su caso y lo contacte directamente. Yo no puedo prometerle una reposición ni un descuento.";
+const ACLARACION_SIN_DEVOLUCIONES = "Le aclaro que no hacemos devoluciones de dinero; lo que el gerente puede revisar es un cambio de producto.";
+export const QUEJA_DETALLE_RECIBIDO_DINERO = `${QUEJA_DETALLE_RECIBIDO} ${ACLARACION_SIN_DEVOLUCIONES}`;
+
+const PIDE_DINERO = /\b(?:mi\s+dinero|reembols\w*|rembols\w*|devoluci(?:on|ones)|devuelv\w+|devolv\w+|me\s+(?:regresen|regresan|reintegren|reembolsen)|que\s+me\s+(?:regresen|paguen))\b/;
+/** Pura: ¿el texto del cliente reclama dinero de vuelta? Solo cambia el texto fijo (se aclara que no hay devoluciones de dinero, solo cambio de producto). */
+export function pideDineroDeVuelta(text: string): boolean {
+  return PIDE_DINERO.test(normalizarParaClasificar(text));
+}
+/** Texto fijo de una queja que YA trae el detalle (la respuesta de siempre) con la aclaracion de dinero si el cliente lo reclama. */
+export function respuestaDeQuejaConDetalle(replyBase: string, text: string): string {
+  return pideDineroDeVuelta(text) ? `${replyBase} ${ACLARACION_SIN_DEVOLUCIONES}` : replyBase;
+}
+
+/** Pura: ¿el mensaje de queja ya dice QUE paso (algo que faltó, llegó frío / incompleto / mal / tarde, vino equivocado)? Un «quiero poner una queja» a secas NO. */
+export function quejaTraeDetalle(text: string): boolean {
+  const t = normalizarParaClasificar(text);
+  if (/\b(?:me|le|les|nos)\s+falt(?:o|aron)\s+\w+/.test(t) || /\bfalt(?:o|aron)\s+(?:un|una|unos|unas|el|la|los|las|mi|mis|\d+)\b/.test(t)) return true;
+  if (/\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bmal\s+armado\b/.test(t)) return true;
+  return QUEJA_DE_ENTREGA.test(t);
+}
+
+/** Pura: ¿la ultima respuesta del asistente fue la pregunta del detalle de la queja? Entonces el siguiente mensaje del cliente ES ese detalle. */
+export function esperaDetalleDeQueja(messages: readonly { readonly role: string; readonly content: string }[]): boolean {
+  const ultimo = messages.findLast((m) => m.role === "assistant");
+  return ultimo !== undefined && ultimo.content.includes(QUEJA_PREGUNTA_MARCA);
+}
+
+/** Pura: el mensaje, esperando el detalle de la queja, NO es el detalle sino que el cliente se retracta o retoma un pedido nuevo: el turno sigue por el agente. */
+export function noEsDetalleDeQueja(text: string): boolean {
+  const t = normalizarParaClasificar(text);
+  return retractaPeticionDePersona(text) || /\b(?:ya\s+no|olvid(?:alo|elo|a)|no\s+(?:es\s+)?nada|nada\s+(?:gracias|mejor))\b/.test(t) || /\bquiero\s+(?:hacer\s+(?:un|otro)\s+pedido|pedir|ordenar)\b/.test(t);
+}
+
 /** Contexto de riesgo a partir de la ficha del cliente (la que ya trae el turno). */
 export function contextoDeCliente(customer: CustomerLookupResult): HighRiskContext {
   return customer.isNew ? {} : { pedidoReciente: customer.pedidoReciente };

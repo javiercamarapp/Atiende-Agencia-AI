@@ -1,0 +1,148 @@
+{
+ "descripcion": "Menus en PDF por sucursal de Los Taquitos de PM, armados con las 8 o 9 imagenes de pagina completa que publica https://www.lostaquitosdepm.com, reescaladas y recomprimidas para telefono (<= 3 MB por PDF), sin agregar contenido. Los aloja la propia app web (apps/web/public/menu-pdf) y se sirven en https://app.useatiende.ai/menu-pdf/<archivo>.",
+ "fecha_lectura": "2026-10-15",
+ "excluidos": [
+  {
+   "sucursal": "pensiones",
+   "motivo": "su menu publica la lista de precios 2025; el agente cotiza 2026. Sin PDF: el agente manda el enlace de la pagina oficial hasta que haya imagen actualizada.",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menupensiones"
+  },
+  {
+   "menus": [
+    "menu en ingles y su version Chicxulub"
+   ],
+   "motivo": "fuera de alcance"
+  }
+ ],
+ "menus": [
+  {
+   "archivo": "menu-montejo-altabrisa-victory.pdf",
+   "ruta_en_repo": "apps/web/public/menu-pdf/menu-montejo-altabrisa-victory.pdf",
+   "url_publica": "https://app.useatiende.ai/menu-pdf/menu-montejo-altabrisa-victory.pdf",
+   "sucursales": [
+    "prol-montejo",
+    "garcia-lavin",
+    "altabrisa"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menu-altabrisa-montejo-victory",
+   "fecha_descarga": "2026-10-15",
+   "paginas": 9,
+   "bytes": 2857329,
+   "sha256": "c3aa47daccf464422c2a798ef15d90cd60341440e1bdc840011c5836be903678",
+   "ancho_px_por_pagina": 1600,
+   "calidad_jpeg": 40,
+   "origen": {
+    "pdf_completo_sin_recomprimir": "~/atiende-loop/work/pm-menus-pdf/menu-montejo-altabrisa-victory.pdf (fuera del repo)",
+    "sha256": "3707aed7c2809fd658b50984dc4e68dfd4ebfca866366cb82eec4feaf6eeda0f",
+    "bytes": 8492578,
+    "paginas_coinciden_con_las_fotos_oficiales": true
+   },
+   "imagenes_origen_sha256": [
+    "c63d77b2cc63bb32c79ffbc23971cff7b8c0719d3616adda6b1e0c1bdd462210",
+    "31b7e784318871e4c98d789a271919d61c6301bb925ab09c4b0466f8e4c013d3",
+    "4115ec552952c6bfddabe5d9fafd1d5fb081b9721084d46d3717fe9196502ae2",
+    "0878480cd0ffda13b9883edbde102ea2db26eb1a256319eb56f4d35cd7925147",
+    "dac821c5a3ce9d344059356163a9e5cc66b3577886d9f27c94314b882717d893",
+    "c676cfb3309b00a1a44de7b8bfee46fbeeceef752d0249cab1c40372fec4a2a3",
+    "7a91bcd1e4c235a71e73ac3b639192c8ddda7be0dcb6b573e09c3b4bc5738baa",
+    "fb95e41b863ee71a7428132dc6a0f4dcd142e25157cac7d9cbaed21af1cb8aab",
+    "05d9a2496fb3d769827bcde4a1768f11a71716f47397348e5460bd3c9350ae23"
+   ]
+  },
+  {
+   "archivo": "menu-fco-montejo.pdf",
+   "ruta_en_repo": "apps/web/public/menu-pdf/menu-fco-montejo.pdf",
+   "url_publica": "https://app.useatiende.ai/menu-pdf/menu-fco-montejo.pdf",
+   "sucursales": [
+    "fco-montejo"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menufranciscodemontejo",
+   "fecha_descarga": "2026-10-15",
+   "paginas": 9,
+   "bytes": 2845636,
+   "sha256": "dbca7d204a9f287cfe60216f2a205e86d0a222a269219b532f7c1980bbe731ca",
+   "ancho_px_por_pagina": 1600,
+   "calidad_jpeg": 42,
+   "origen": {
+    "pdf_completo_sin_recomprimir": "~/atiende-loop/work/pm-menus-pdf/menu-fco-montejo.pdf (fuera del repo)",
+    "sha256": "4233b92ba0bda8e0af19a50d0f2f3f8af7a834bb998557b48b4906474202c5bb",
+    "bytes": 8065435,
+    "paginas_coinciden_con_las_fotos_oficiales": true
+   },
+   "imagenes_origen_sha256": [
+    "792221914ad93a4b196dc2e21a13b12e2f6b1945de4ef59a33aaabdd31ecb7f4",
+    "2ae4e12a2b895776bc8176cb2440efef09a3991385beb037e301b966a3bb5d3d",
+    "0ac15a740c1c3a53cfd615697e681402ea4e3ab8f3e81dcbc1302ff2479feed5",
+    "babcc20fea620cb422f2282d95a11000e9297b667975ede6cbf436df4c00530e",
+    "a68538ab865ff7c8b470689e7a1f024eb5c992acf0c2b1f3bd6d6b3fd3a14d35",
+    "d169b95c9f5f0da766f4776aee146aabe50bfa0e284231f70499294ae6554084",
+    "668b3a564e9458e341e631fd87ede658fa1e63c10e646db880a0d87284cb4b7b",
+    "4363c966f3b9f8e5ebd34478ab805cd18c9e0d1151802139c0d3b45988d8c567",
+    "35dc7418f89fbe4fafb8895fab4dba137a006b6f6d1315caa6e5fa49233d4a7d"
+   ]
+  },
+  {
+   "archivo": "menu-galerias.pdf",
+   "ruta_en_repo": "apps/web/public/menu-pdf/menu-galerias.pdf",
+   "url_publica": "https://app.useatiende.ai/menu-pdf/menu-galerias.pdf",
+   "sucursales": [
+    "galerias"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menupmgalerias",
+   "fecha_descarga": "2026-10-15",
+   "paginas": 9,
+   "bytes": 2797852,
+   "sha256": "85ee409998f2ab71a27d5111cb4b91b6dad9e75aeb8ec578d6a9ff0277edd576",
+   "ancho_px_por_pagina": 1600,
+   "calidad_jpeg": 42,
+   "origen": {
+    "pdf_completo_sin_recomprimir": "~/atiende-loop/work/pm-menus-pdf/menu-galerias.pdf (fuera del repo)",
+    "sha256": "bbf89fc5d28394764371fa92221f688a64197e19cf34663bd7bcd65105ba0a0e",
+    "bytes": 7902633,
+    "paginas_coinciden_con_las_fotos_oficiales": true
+   },
+   "imagenes_origen_sha256": [
+    "15213f20481189751061f195e50ea242cce8cb030cc27087971a702983172eae",
+    "84e6958f4d2f4df7b79ddb7c156642d9c52bec83d1ecb10721dcefe482cd2181",
+    "1ec339c6020b4b2c46e7140db8dd19032e154a9919771c9a8f567cdd9b4562ed",
+    "4470a5ac1e344496c71a78598b63b14166a2679c0f7a9f69ea8f8db6203f2800",
+    "68d134cbf2c29d1ff6d8645a30d167ebd1198204f52ff7d3eb65ccb5e9b36280",
+    "d5120df5d49e802f3251792e17579f9a96d2801e551409dbba2381ad1dbab51e",
+    "68f5603b696ccceb40c1604c1d3e4909e9bf4b00c64abe84cc32c991e6306d6f",
+    "d5a38736f164901a7d4942bffb0729832fcafb894dcb5c328a9d96c4665d2dca",
+    "cdcb13f20e57165b765d42c96a0b1199282d599fc8ac745dd76ac0053398de08"
+   ]
+  },
+  {
+   "archivo": "menu-playa.pdf",
+   "ruta_en_repo": "apps/web/public/menu-pdf/menu-playa.pdf",
+   "url_publica": "https://app.useatiende.ai/menu-pdf/menu-playa.pdf",
+   "sucursales": [
+    "playa"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menuchicxulub",
+   "fecha_descarga": "2026-10-15",
+   "paginas": 8,
+   "bytes": 2839228,
+   "sha256": "d399b246888125950de08cb80f3647a66708049e49fe57b60b95b8470a4973df",
+   "ancho_px_por_pagina": 1700,
+   "calidad_jpeg": 42,
+   "origen": {
+    "pdf_completo_sin_recomprimir": "~/atiende-loop/work/pm-menus-pdf/menu-playa.pdf (fuera del repo)",
+    "sha256": "5a225c0b96e11145c8e6c78642586bff8607ecaa722a1cbabd9486f4fc77a1da",
+    "bytes": 6867475,
+    "paginas_coinciden_con_las_fotos_oficiales": true
+   },
+   "imagenes_origen_sha256": [
+    "f8912e962dbfe09a70e3b492dce8915d7c116557e9fa81fab5bf2648ce92b651",
+    "006a0077ca6d17dbd69890dbb3848c47d3045b3bd07b983fe1b998b322afafa5",
+    "db7743a2df0b42168f63dbdc1aab3ca6150b682f09e799836764243b55be2682",
+    "f0eb8af04f9ce946b165ddc0a9eda4ef9a880c550f7e5c60930699c059794719",
+    "28c0338ec756dd54aea4c66a315d2259310e51044c90c89e2f3b2b22a1eda703",
+    "cb5af8e9581c3610ca3be2a5ce236b200ba845abfa0b4fb79492434ad0b747bb",
+    "3d1948af01f8ffb07edc0cb60551f008cd77f619635a9b7e109fbeb94e7bf904",
+    "a0f28dcbdf613ab3515e7e9857c227237b0d47fdd2bb1c262491c0ab692449d0"
+   ]
+  }
+ ]
+}

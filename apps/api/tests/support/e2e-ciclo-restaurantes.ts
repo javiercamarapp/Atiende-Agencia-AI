@@ -65,6 +65,12 @@ export type ScriptStep = (req: LlmCompletionRequest) => LlmCompletionResult;
 
 const base = { model: "fake/scripted", tokensIn: 1, tokensOut: 1, costUsd: 0 };
 export const say = (text: string): ScriptStep => () => ({ text, ...base });
+/** QA-PM-R10: responde texto y repite el total de la cotizacion que acaba de devolver la tool (el resumen que ve el cliente; crear_pedido lo exige en el historial). */
+export const sayResumen = (text: string): ScriptStep => (req) => {
+  const r = lastTool<{ quote?: { total?: number }; total?: number }>(req);
+  const total = r.quote?.total ?? r.total;
+  return { text: typeof total === "number" ? `${text} Total a pagar $${total}.` : text, ...base };
+};
 export const call = (name: string, args: Record<string, unknown> | ((req: LlmCompletionRequest) => Record<string, unknown>)): ScriptStep => (req) => ({
   text: "",
   toolCalls: [{ id: `call-${name}-${Math.random().toString(36).slice(2, 8)}`, name, argumentsJson: JSON.stringify(typeof args === "function" ? args(req) : args) }],

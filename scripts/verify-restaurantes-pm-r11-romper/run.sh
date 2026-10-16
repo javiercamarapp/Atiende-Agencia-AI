@@ -48,12 +48,23 @@ for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1
 done
 
+echo "==> idempotencia: la migracion 089 se re-ejecuta sin error y sin duplicar CHECKs"
+"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$REPO_ROOT"/supabase/migrations/20240101000401_089_defensa_en_profundidad_pedidos_y_avisos.sql >/dev/null
+
 echo "==> USAGE de schema para authenticated/anon (post-migrations.sql)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/post-migrations.sql" >/dev/null
 
 echo "==> gate: assertions.sql (los escenarios con deberia_ser_N deben devolver N; ningun ERROR de psql)"
 echo ""
 "${PSQL_DB[@]}" -f "$HERE/assertions.sql"
+
+echo ""
+echo "==> R12: lo que produce el codigo de ENTRADA (TypeScript real) cabe en jsonb (K1..K7; requiere node 22 con --experimental-transform-types)"
+if command -v node >/dev/null 2>&1; then
+  node --experimental-transform-types --no-warnings "$HERE/entradas-contra-pg.mjs" | "${PSQL_DB[@]}" -v ON_ERROR_STOP=1
+else
+  echo "   (omitido: no hay node en PATH; el gate SQL puro ya corrio)"
+fi
 
 echo ""
 echo "==> hallazgos abiertos de la capa SQL (informativo; ABIERTO = el defecto se reproduce)"

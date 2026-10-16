@@ -141,7 +141,8 @@ describe("alcance del servidor", () => {
     const h = await harness([SALES_TODAY, { text: "Vendiste $350.00 MXN." }]);
     await h.app.request(url(h), post(h.ctx.staff.owner.token, { question: "ventas del último mes" }));
     expect(h.audit[0]).toMatchObject({ organizationId: h.ctx.organizationId, userId: h.ctx.staff.owner.id, vertical: "restaurantes", tool: "ventas_por_dia", params: { periodo: "ultimos_30_dias" }, outcome: "ok" });
-    expect(JSON.stringify(h.audit)).not.toMatch(/350|ventas del último mes/);
+    // Con limites de palabra: un UUID o una marca de tiempo aleatorios que contengan «350» por azar NO deben hacer fallar la prueba (~2 % de las corridas).
+    expect(JSON.stringify(h.audit)).not.toMatch(/\b350\b|ventas del último mes/);
   });
 });
 

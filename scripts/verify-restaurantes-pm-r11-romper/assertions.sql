@@ -207,6 +207,45 @@ reset role;
 select order_count as una_vez_deberia_ser_1 from restaurantes.customers where id = '00000000-0000-0000-0000-0000000f11c1';
 rollback;
 
+\echo '=== O12-O19. defensa en profundidad (migracion 089; antes eran los hallazgos ABIERTOS R11-15 y R11-16) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+-- R11-15: sucursal / cliente de OTRA organizacion -> 42501
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11b1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o12')$q$, '42501');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c2', 90, 'o13')$q$, '42501');
+-- R11-16: total negativo, items que no es arreglo, cantidad negativa o cero, items vacio, renglon que no es objeto -> 22023
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', -100, 'o14')$q$, '22023');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 'NaN'::numeric, 'o14n')$q$, '22023');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o15', null, '{"items":"hola"}'::jsonb)$q$, '22023');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o16', null, '{"items":[{"name":"Taco","price":45,"quantity":-2}]}'::jsonb)$q$, '22023');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o17', null, '{"items":[]}'::jsonb)$q$, '22023');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o18', null, '{"items":[{"name":"Taco","price":45,"quantity":0}]}'::jsonb)$q$, '22023');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o19', null, '{"items":[1,2]}'::jsonb)$q$, '22023');
+select public.t_esperar_error($q$select public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o19b', null, '{"items":[{"name":"Taco","quantity":"dos"}]}'::jsonb)$q$, '22023');
+rollback;
+
+\echo '=== O20. un pedido valido SIGUE funcionando tras el endurecimiento: con cliente, sin cliente (null), total 0 y renglon sin quantity ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o20a')->>'id') is not null as con_cliente_deberia_ser_t;
+select (public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', null, 90, 'o20b')->>'id') is not null as sin_cliente_deberia_ser_t;
+select (public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 0, 'o20c')->>'id') is not null as total_cero_deberia_ser_t;
+select (public.t_orden('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', '00000000-0000-0000-0000-0000000f11c1', 90, 'o20d', null, '{"items":[{"name":"Agua","price":20}]}'::jsonb)->>'id') is not null as sin_quantity_deberia_ser_t;
+rollback;
+
+\echo '=== O21. CHECK de tabla: quien escribe SIN la funcion tampoco mete total negativo o NaN, items que no es arreglo ni un aviso de 1 MB -> 23514 ==='
+begin;
+select public.t_esperar_error($q$insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, items, source, status) values ('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', 'X', '+529990000001', -5, '[{"name":"Taco","quantity":1}]'::jsonb, 'whatsapp', 'pending')$q$, '23514');
+select public.t_esperar_error($q$insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, items, source, status) values ('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', 'X', '+529990000001', 'NaN'::numeric, '[{"name":"Taco","quantity":1}]'::jsonb, 'whatsapp', 'pending')$q$, '23514');
+select public.t_esperar_error($q$insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, items, source, status) values ('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', 'X', '+529990000001', 5, '{"a":1}'::jsonb, 'whatsapp', 'pending')$q$, '23514');
+select public.t_esperar_error($q$insert into restaurantes.callback_requests (organization_id, property_id, customer_name, customer_phone, reason, message, source) values ('00000000-0000-0000-0000-0000000f1101', '00000000-0000-0000-0000-0000000f11a1', 'X', '+529990000002', 'queja', repeat('x', 1000000), 'whatsapp')$q$, '23514');
+rollback;
+
+\echo '=== O22. los 3 CHECK de la migracion 089 existen y estan VALIDADOS (la re-ejecucion idempotente la prueba run.sh) ==='
+select count(*) as checks_deberia_ser_3 from pg_constraint where conname in ('callback_requests_message_largo', 'orders_total_no_negativo', 'orders_items_es_arreglo') and convalidated;
+
 \echo '=== R1. el owner de B no ve pedidos, clientes, conversaciones ni avisos de A ==='
 begin;
 set local role authenticated;
@@ -292,6 +331,42 @@ select * from restaurantes.callback_registrar_agente('00000000-0000-0000-0000-00
 select * from restaurantes.callback_registrar_agente('00000000-0000-0000-0000-0000000f1102', null, 'Ana', '+529990000078', 'escalada:queja', 'b', 'whatsapp', 'evt-c2:escalada:queja');
 reset role;
 select count(*) as dos_filas_deberia_ser_2 from restaurantes.callback_requests where customer_phone = '+529990000078';
+rollback;
+
+\echo '=== P1. R12: las partes de UNA respuesta larga (misma transaccion) salen del claim en el orden en que se encolaron (migracion 088) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply',
+  case when n = 0 then 'ord-p1:wamid.r12' else 'ord-p1:wamid.r12:' || n end, jsonb_build_object('body', 'parte ' || n)) from generate_series(0, 11) n;
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p1:botones-wamid.r12', '{"body":"botones"}'::jsonb);
+do $$
+declare
+  v_esperado text[] := array['ord-p1:wamid.r12'] || array(select 'ord-p1:wamid.r12:' || n from generate_series(1, 11) n) || array['ord-p1:botones-wamid.r12'];
+  v_visto text;
+  i integer;
+begin
+  -- el cron reclama de a UNA fila por sesion: aqui se reclama de a una hasta agotar la cola de esta organizacion
+  for i in 1 .. 13 loop
+    select c.dedupe_key into v_visto from restaurantes.claim_messaging_outbox_batch(1, 120) c;
+    if v_visto is distinct from v_esperado[i] then
+      raise exception 'la fila % salio del claim como % y se esperaba %', i, v_visto, v_esperado[i];
+    end if;
+  end loop;
+end $$;
+reset role;
+select count(*) as reclamadas_en_orden_deberia_ser_13 from restaurantes.messaging_outbox where dedupe_key like 'ord-p1:%' and status = 'processing';
+rollback;
+
+\echo '=== P2. R12: re-encolar con la misma llave no crea fila nueva y conserva el orden original ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p2:a', '{"body":"a"}'::jsonb);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p2:a:1', '{"body":"b"}'::jsonb);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p2:a', '{"body":"a"}'::jsonb);
+reset role;
+select count(*) as filas_deberia_ser_2 from restaurantes.messaging_outbox where dedupe_key like 'ord-p2:%';
 rollback;
 
 \echo '=== listo: los escenarios con alias deberia_ser_N deben devolver N; los demas deben terminar sin error ==='

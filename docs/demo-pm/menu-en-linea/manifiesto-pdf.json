@@ -1,0 +1,472 @@
+{
+ "version": 1,
+ "nota": "Manifiesto de los PDF de menú por sucursal. NO hay binarios en el repo: cada PDF se arma incrustando, sin recomprimir, las imágenes originales de la página pública (una por página, 612x792 pt). Regenerar con work/pm-menus-pdf (ver LEEME-MENUS.md fuera del repo) y comparar los SHA256.",
+ "capturado": "2026-10-15",
+ "pdfs": [
+  {
+   "archivo": "menu-montejo-altabrisa-victory.pdf",
+   "slug_pagina": "montejo-altabrisa-victory",
+   "sucursales_seed": [
+    "prol-montejo",
+    "garcia-lavin",
+    "altabrisa"
+   ],
+   "idioma": "es",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menu-altabrisa-montejo-victory",
+   "fecha_captura": "2026-10-15",
+   "paginas": 9,
+   "bytes": 8492578,
+   "sha256": "3707aed7c2809fd658b50984dc4e68dfd4ebfca866366cb82eec4feaf6eeda0f",
+   "imagenes_de_origen": [
+    {
+     "n": 1,
+     "url_original": "https://static.wixstatic.com/media/634cb5_f942e39e55cb4458a0c3f9a30940bc27~mv2.jpg",
+     "sha256": "c63d77b2cc63bb32c79ffbc23971cff7b8c0719d3616adda6b1e0c1bdd462210",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 2,
+     "url_original": "https://static.wixstatic.com/media/634cb5_92e49a00f6a446ce92945e284e4b6fe7~mv2.jpg",
+     "sha256": "31b7e784318871e4c98d789a271919d61c6301bb925ab09c4b0466f8e4c013d3",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 3,
+     "url_original": "https://static.wixstatic.com/media/634cb5_02a92fb6afbd49e49a9a7afd47972642~mv2.jpg",
+     "sha256": "4115ec552952c6bfddabe5d9fafd1d5fb081b9721084d46d3717fe9196502ae2",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 4,
+     "url_original": "https://static.wixstatic.com/media/634cb5_4e844f9ca4f242d785ffa9f9f5796c25~mv2.jpg",
+     "sha256": "0878480cd0ffda13b9883edbde102ea2db26eb1a256319eb56f4d35cd7925147",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 5,
+     "url_original": "https://static.wixstatic.com/media/634cb5_fe218a452b3d482b914b0f9feb9e964a~mv2.jpg",
+     "sha256": "dac821c5a3ce9d344059356163a9e5cc66b3577886d9f27c94314b882717d893",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 6,
+     "url_original": "https://static.wixstatic.com/media/634cb5_cf93de92ee864f6b85e9f5925bb57c6b~mv2.jpg",
+     "sha256": "c676cfb3309b00a1a44de7b8bfee46fbeeceef752d0249cab1c40372fec4a2a3",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 7,
+     "url_original": "https://static.wixstatic.com/media/634cb5_32482fbf16f4476b9ee81bc301d24701~mv2.jpg",
+     "sha256": "7a91bcd1e4c235a71e73ac3b639192c8ddda7be0dcb6b573e09c3b4bc5738baa",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 8,
+     "url_original": "https://static.wixstatic.com/media/634cb5_7e7114e8fc6949519b679106e3c6e5bf~mv2.jpg",
+     "sha256": "fb95e41b863ee71a7428132dc6a0f4dcd142e25157cac7d9cbaed21af1cb8aab",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 9,
+     "url_original": "https://static.wixstatic.com/media/634cb5_e478302c49094d599b111c78eb6c4db9~mv2.jpg",
+     "sha256": "05d9a2496fb3d769827bcde4a1768f11a71716f47397348e5460bd3c9350ae23",
+     "incrustada_sin_recomprimir": true
+    }
+   ]
+  },
+  {
+   "archivo": "menu-playa.pdf",
+   "slug_pagina": "playa",
+   "sucursales_seed": [
+    "playa"
+   ],
+   "idioma": "es",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menuchicxulub",
+   "fecha_captura": "2026-10-15",
+   "paginas": 8,
+   "bytes": 6867475,
+   "sha256": "5a225c0b96e11145c8e6c78642586bff8607ecaa722a1cbabd9486f4fc77a1da",
+   "imagenes_de_origen": [
+    {
+     "n": 1,
+     "url_original": "https://static.wixstatic.com/media/634cb5_3a4e53bb1d3840c18519c209f85c803d~mv2.jpeg",
+     "sha256": "f8912e962dbfe09a70e3b492dce8915d7c116557e9fa81fab5bf2648ce92b651",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 2,
+     "url_original": "https://static.wixstatic.com/media/634cb5_cb48785eeacc4e23b082170629fe0306~mv2.jpeg",
+     "sha256": "006a0077ca6d17dbd69890dbb3848c47d3045b3bd07b983fe1b998b322afafa5",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 3,
+     "url_original": "https://static.wixstatic.com/media/634cb5_e14ebec843934926af1ab7b421991656~mv2.jpeg",
+     "sha256": "db7743a2df0b42168f63dbdc1aab3ca6150b682f09e799836764243b55be2682",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 4,
+     "url_original": "https://static.wixstatic.com/media/634cb5_1d0beb753ce34d3e8cbdcf774eca9d52~mv2.jpeg",
+     "sha256": "f0eb8af04f9ce946b165ddc0a9eda4ef9a880c550f7e5c60930699c059794719",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 5,
+     "url_original": "https://static.wixstatic.com/media/634cb5_1f42685f98c34cb1bd58116bb2df354a~mv2.jpeg",
+     "sha256": "28c0338ec756dd54aea4c66a315d2259310e51044c90c89e2f3b2b22a1eda703",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 6,
+     "url_original": "https://static.wixstatic.com/media/634cb5_4d21dd98e8e44914a14cc0a4f3604d48~mv2.jpeg",
+     "sha256": "cb5af8e9581c3610ca3be2a5ce236b200ba845abfa0b4fb79492434ad0b747bb",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 7,
+     "url_original": "https://static.wixstatic.com/media/634cb5_8a548ac496614058baec49d5a8062b26~mv2.jpeg",
+     "sha256": "3d1948af01f8ffb07edc0cb60551f008cd77f619635a9b7e109fbeb94e7bf904",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 8,
+     "url_original": "https://static.wixstatic.com/media/634cb5_bfdf696e887e4f018d31027cdcb4991d~mv2.jpeg",
+     "sha256": "a0f28dcbdf613ab3515e7e9857c227237b0d47fdd2bb1c262491c0ab692449d0",
+     "incrustada_sin_recomprimir": true
+    }
+   ]
+  },
+  {
+   "archivo": "menu-fco-montejo.pdf",
+   "slug_pagina": "fco-montejo",
+   "sucursales_seed": [
+    "fco-montejo"
+   ],
+   "idioma": "es",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menufranciscodemontejo",
+   "fecha_captura": "2026-10-15",
+   "paginas": 9,
+   "bytes": 8065435,
+   "sha256": "4233b92ba0bda8e0af19a50d0f2f3f8af7a834bb998557b48b4906474202c5bb",
+   "imagenes_de_origen": [
+    {
+     "n": 1,
+     "url_original": "https://static.wixstatic.com/media/634cb5_34a6d7ed7e3c4962ad7fdc4f24139af1~mv2.jpg",
+     "sha256": "792221914ad93a4b196dc2e21a13b12e2f6b1945de4ef59a33aaabdd31ecb7f4",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 2,
+     "url_original": "https://static.wixstatic.com/media/634cb5_02a1a6d56fd048fe83c7da7b1eb89deb~mv2.jpg",
+     "sha256": "2ae4e12a2b895776bc8176cb2440efef09a3991385beb037e301b966a3bb5d3d",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 3,
+     "url_original": "https://static.wixstatic.com/media/634cb5_2ef1b401c2a1439189902e8541f45696~mv2.jpg",
+     "sha256": "0ac15a740c1c3a53cfd615697e681402ea4e3ab8f3e81dcbc1302ff2479feed5",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 4,
+     "url_original": "https://static.wixstatic.com/media/634cb5_fef9fc44f657456890e6e6c44639b2cb~mv2.jpg",
+     "sha256": "babcc20fea620cb422f2282d95a11000e9297b667975ede6cbf436df4c00530e",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 5,
+     "url_original": "https://static.wixstatic.com/media/634cb5_cc26824dc88e43aba3618d147ef513cf~mv2.jpg",
+     "sha256": "a68538ab865ff7c8b470689e7a1f024eb5c992acf0c2b1f3bd6d6b3fd3a14d35",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 6,
+     "url_original": "https://static.wixstatic.com/media/634cb5_22298b22d0a04692b69988afeff17f1a~mv2.jpg",
+     "sha256": "d169b95c9f5f0da766f4776aee146aabe50bfa0e284231f70499294ae6554084",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 7,
+     "url_original": "https://static.wixstatic.com/media/634cb5_fc18d639f91b4833803903358faa1336~mv2.jpg",
+     "sha256": "668b3a564e9458e341e631fd87ede658fa1e63c10e646db880a0d87284cb4b7b",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 8,
+     "url_original": "https://static.wixstatic.com/media/634cb5_531fc3ede80947bbaf257f06c977310d~mv2.jpg",
+     "sha256": "4363c966f3b9f8e5ebd34478ab805cd18c9e0d1151802139c0d3b45988d8c567",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 9,
+     "url_original": "https://static.wixstatic.com/media/634cb5_2fcf7735b2394baaa00e84b5526594e2~mv2.jpg",
+     "sha256": "35dc7418f89fbe4fafb8895fab4dba137a006b6f6d1315caa6e5fa49233d4a7d",
+     "incrustada_sin_recomprimir": true
+    }
+   ]
+  },
+  {
+   "archivo": "menu-pensiones.pdf",
+   "slug_pagina": "pensiones",
+   "sucursales_seed": [
+    "pensiones"
+   ],
+   "idioma": "es",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menupensiones",
+   "fecha_captura": "2026-10-15",
+   "paginas": 8,
+   "bytes": 4313098,
+   "sha256": "d296de55e8a30d70d3727927f10c355b36ac3b64b432f78ada9bef9696e77752",
+   "imagenes_de_origen": [
+    {
+     "n": 1,
+     "url_original": "https://static.wixstatic.com/media/634cb5_fad7c97dc73b458a89979ad2ffb472b5~mv2.jpeg",
+     "sha256": "328c5378244f540f98667281907a96018fc789e0f34f07a38e56c59833da09a8",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 2,
+     "url_original": "https://static.wixstatic.com/media/634cb5_e347efc3988041408ce74a5e54233d1d~mv2.jpeg",
+     "sha256": "bc0187176b29abc040f5ffca81adc00aee95720c4eef0c6159d57fd8da38eaff",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 3,
+     "url_original": "https://static.wixstatic.com/media/634cb5_4fa414ca92d345f1a22b9f1b66a2e7b7~mv2.jpeg",
+     "sha256": "7bbf46c7bffc434f089d1f9ec746800dc10f2b1e312256b73efbe1390b6d3eac",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 4,
+     "url_original": "https://static.wixstatic.com/media/634cb5_d5ccb3f4af304ed8b5aac1da317bb539~mv2.jpeg",
+     "sha256": "e7cb9b0f2e6e208c534cbfc5889b83ee16a2b585f7789a9e2e61f71ad2d56d95",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 5,
+     "url_original": "https://static.wixstatic.com/media/634cb5_5fd1a5e65e414ce59ca4591b056c82a7~mv2.jpeg",
+     "sha256": "0cfcb2631664efb356da3b4c3c5da568e17744d8d2fe8055a03ad6710293810d",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 6,
+     "url_original": "https://static.wixstatic.com/media/634cb5_d290bf079f534d94b52f9673d11bd63e~mv2.jpeg",
+     "sha256": "fbea9012beb2bc3509638e509320d8de59cdb0ed33fc08e3e3228748a5ec30d9",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 7,
+     "url_original": "https://static.wixstatic.com/media/634cb5_11a609fa324249dcb1e34ef2da89c8e3~mv2.jpeg",
+     "sha256": "4318db4dee972084a66389c1d30d6d1cb317686f8945185b29ef5ee15a4f7e73",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 8,
+     "url_original": "https://static.wixstatic.com/media/634cb5_7007e091ef8348cba5f4df4eb85f157c~mv2.jpeg",
+     "sha256": "35ee41bf36806de987074024cb2d3c2420e0f2a148499da14dd0d17cebad7c1a",
+     "incrustada_sin_recomprimir": true
+    }
+   ]
+  },
+  {
+   "archivo": "menu-galerias.pdf",
+   "slug_pagina": "galerias",
+   "sucursales_seed": [
+    "galerias"
+   ],
+   "idioma": "es",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menupmgalerias",
+   "fecha_captura": "2026-10-15",
+   "paginas": 9,
+   "bytes": 7902633,
+   "sha256": "bbf89fc5d28394764371fa92221f688a64197e19cf34663bd7bcd65105ba0a0e",
+   "imagenes_de_origen": [
+    {
+     "n": 1,
+     "url_original": "https://static.wixstatic.com/media/634cb5_421ae163fd564717ab988a2a27647235~mv2.jpg",
+     "sha256": "15213f20481189751061f195e50ea242cce8cb030cc27087971a702983172eae",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 2,
+     "url_original": "https://static.wixstatic.com/media/634cb5_2422dfb72b554f3397b3627cde1aed3b~mv2.jpg",
+     "sha256": "84e6958f4d2f4df7b79ddb7c156642d9c52bec83d1ecb10721dcefe482cd2181",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 3,
+     "url_original": "https://static.wixstatic.com/media/634cb5_9f4f8e2b542a48fd9fa8d803ebdb2261~mv2.jpg",
+     "sha256": "1ec339c6020b4b2c46e7140db8dd19032e154a9919771c9a8f567cdd9b4562ed",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 4,
+     "url_original": "https://static.wixstatic.com/media/634cb5_40ac30319e344d88a3c1ed29998fa116~mv2.jpg",
+     "sha256": "4470a5ac1e344496c71a78598b63b14166a2679c0f7a9f69ea8f8db6203f2800",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 5,
+     "url_original": "https://static.wixstatic.com/media/634cb5_38614ac8fc0b4fda893b5802aef3aeba~mv2.jpg",
+     "sha256": "68d134cbf2c29d1ff6d8645a30d167ebd1198204f52ff7d3eb65ccb5e9b36280",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 6,
+     "url_original": "https://static.wixstatic.com/media/634cb5_7e5ece60613c428fa8103d8f4b6de575~mv2.jpg",
+     "sha256": "d5120df5d49e802f3251792e17579f9a96d2801e551409dbba2381ad1dbab51e",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 7,
+     "url_original": "https://static.wixstatic.com/media/634cb5_5cbf6ef7d3ca40a093bc96fec4866371~mv2.jpg",
+     "sha256": "68f5603b696ccceb40c1604c1d3e4909e9bf4b00c64abe84cc32c991e6306d6f",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 8,
+     "url_original": "https://static.wixstatic.com/media/634cb5_b75286a0b15c4d61bbf077cd59458e24~mv2.jpg",
+     "sha256": "d5a38736f164901a7d4942bffb0729832fcafb894dcb5c328a9d96c4665d2dca",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 9,
+     "url_original": "https://static.wixstatic.com/media/634cb5_842792cac8074fe1a64ddc07ca72450b~mv2.jpg",
+     "sha256": "cdcb13f20e57165b765d42c96a0b1199282d599fc8ac745dd76ac0053398de08",
+     "incrustada_sin_recomprimir": true
+    }
+   ]
+  },
+  {
+   "archivo": "menu-english-menu.pdf",
+   "slug_pagina": "english-menu",
+   "sucursales_seed": [],
+   "idioma": "en",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/taquitospm-english-menu",
+   "fecha_captura": "2026-10-15",
+   "paginas": 9,
+   "bytes": 8431755,
+   "sha256": "665407483f1d7ff34d3c67d75e1fbda3c274c200b72d0d4202a79b6b07c2af04",
+   "imagenes_de_origen": [
+    {
+     "n": 1,
+     "url_original": "https://static.wixstatic.com/media/634cb5_d6967dd992334c87a5def7d87c2bb68c~mv2.jpg",
+     "sha256": "b8ae31653c8d49180f95de0ff7062a7933e869b29da0abf953cdde00a58c37d9",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 2,
+     "url_original": "https://static.wixstatic.com/media/634cb5_2ddfdd7157724010a98611d5e68e3d9e~mv2.jpg",
+     "sha256": "779637678dfc9f60b8ee4678275afa3505d00c0f0897b8abaed34ce9a7ed3f16",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 3,
+     "url_original": "https://static.wixstatic.com/media/634cb5_018752a9d4434254a275803812d24426~mv2.jpg",
+     "sha256": "2f31654694ee15b597b14402bba6e3d2193e7a9169f4d8618a7660f9028c63d4",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 4,
+     "url_original": "https://static.wixstatic.com/media/634cb5_303db9e72d6a4df6960a83fcab3b9e30~mv2.jpg",
+     "sha256": "bfbeea64fbaf6bc1864aa743ee4164a816f2ef22260cfb65ecfa2203bd322087",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 5,
+     "url_original": "https://static.wixstatic.com/media/634cb5_c928753c17724a0eaed30729c347273d~mv2.jpg",
+     "sha256": "1fa11680a7ebfa38b62588332a6bceefddc1a6abf34bc8976f5f2a2dd151a8e8",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 6,
+     "url_original": "https://static.wixstatic.com/media/634cb5_333c7486a5154446bbf7baf85c7afa1c~mv2.jpg",
+     "sha256": "e7b48593577799c3220ab4fc4a2426a54caf9937bc34092812a5c0f16964e0f7",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 7,
+     "url_original": "https://static.wixstatic.com/media/634cb5_8ac3ca92b22647a08075c071742ef7a8~mv2.jpg",
+     "sha256": "32a81a55f7019e3d9ea667e0d8df5acc3c8ff84d62ae79cbf648ee223cd68486",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 8,
+     "url_original": "https://static.wixstatic.com/media/634cb5_9097b6a76526482384f216409c4cea65~mv2.jpg",
+     "sha256": "53d84f4378b7218e00f43258262cfb08cc5df176fc72989991c68f2a05f9252a",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 9,
+     "url_original": "https://static.wixstatic.com/media/634cb5_d998c73d187040ebb6909a8392921ddd~mv2.jpg",
+     "sha256": "401756e411f7765c64bacd8609afeb82e801d6341cc674b9669bc9c877ba8f19",
+     "incrustada_sin_recomprimir": true
+    }
+   ],
+   "equivale_a": "montejo-altabrisa-victory"
+  },
+  {
+   "archivo": "menu-english-chicxulub.pdf",
+   "slug_pagina": "english-chicxulub",
+   "sucursales_seed": [],
+   "idioma": "en",
+   "pagina_fuente": "https://www.lostaquitosdepm.com/englishmenuchicxulub",
+   "fecha_captura": "2026-10-15",
+   "paginas": 8,
+   "bytes": 6917219,
+   "sha256": "ff97ee17fe49270dbd35084f36c211a081b7b5ec37b5c2cc60771710c9e558bb",
+   "imagenes_de_origen": [
+    {
+     "n": 1,
+     "url_original": "https://static.wixstatic.com/media/634cb5_1d20725f3acd4a23a69084d992882bc5~mv2.jpeg",
+     "sha256": "4b20691f2ca6af63d31f2a5881f8c87ad737efc273b0f26702195c9e9bf99f89",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 2,
+     "url_original": "https://static.wixstatic.com/media/634cb5_0427579985b24220958deb6ee1bbab8d~mv2.jpeg",
+     "sha256": "0bdef14d26eb3dd327b69b114924cd1bda75110fcc0f28f540e7015b99ae0f2e",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 3,
+     "url_original": "https://static.wixstatic.com/media/634cb5_d270063eb70142388b757a1c0722e53c~mv2.jpeg",
+     "sha256": "604015fceab6d72456accb239d6aeb58af823936d0eb436748b92c1630f77f9a",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 4,
+     "url_original": "https://static.wixstatic.com/media/634cb5_605ceb6ab3ac4cae830afc53517aea9d~mv2.jpeg",
+     "sha256": "f3a96e6f7d11d17fdfd91b4894af038a3ac994dbb2d2be2daf0d31d3b51cde27",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 5,
+     "url_original": "https://static.wixstatic.com/media/634cb5_ada1aad1a5d44395acafdda61acf5fdf~mv2.jpeg",
+     "sha256": "6b657139771b85f4762754d5c26e891180ab660e813dbd71d722638cb6c4e6f7",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 6,
+     "url_original": "https://static.wixstatic.com/media/634cb5_5ec4aeb1ecff40efa037d019c4084951~mv2.jpeg",
+     "sha256": "558e1872e62e87f405c9a8ee5d88c95fe7c43a878df9aca973512ee0bb39c046",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 7,
+     "url_original": "https://static.wixstatic.com/media/634cb5_9497b92b906d4416ba8a7707c7a87a37~mv2.jpeg",
+     "sha256": "e7c75dc390f041df3f9ff0e42acfce3973440866d014868fd57e62703466b086",
+     "incrustada_sin_recomprimir": true
+    },
+    {
+     "n": 8,
+     "url_original": "https://static.wixstatic.com/media/634cb5_254eb6cdcc004f2d8ecf546655d184d7~mv2.jpeg",
+     "sha256": "4580f35948274cbef2e66ece0b5c390173a72d8233e75a6b79781401e49daf99",
+     "incrustada_sin_recomprimir": true
+    }
+   ],
+   "equivale_a": "playa"
+  }
+ ]
+}

@@ -18,6 +18,7 @@
 // entrega y fuera Meta lo rechaza con un 4xx de negocio que el dispatcher marca `dead`, nunca `sent` fingido.
 // Crear y aprobar la plantilla en el Business Manager de Meta sigue siendo un paso externo (ver README).
 import { WhatsAppConfigError, WhatsAppInvalidPayloadError, WhatsAppSendError } from "../errors.ts";
+import { DOCUMENT_FILENAME_PATTERN, esUrlHttpsPublica } from "../types.ts";
 import type { EnviadoComo, OutboundTemplate, OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "../types.ts";
 
 /** Versión de Graph API por defecto — estable, sin fecha de retiro anunciada al
@@ -30,6 +31,9 @@ export const MAX_INTERACTIVE_BUTTONS = 3;
 export const MAX_BUTTON_TITLE_LENGTH = 20;
 /** Límite real de Graph API para el id de un botón de respuesta rápida. */
 export const MAX_BUTTON_ID_LENGTH = 256;
+
+/** Límite real de Graph API para el cuerpo de un mensaje de texto (R11-12b). Más largo = 400 no reintentable; se rechaza ANTES de la red con un error explicado. */
+export const MAX_TEXT_BODY_LENGTH = 4096;
 
 export interface MetaGraphWhatsAppClientOptions {
   /** `WHATSAPP_ACCESS_TOKEN` — token de acceso permanente/de sistema de la Meta App
@@ -73,6 +77,22 @@ function buildTemplateBody(to: string, template: OutboundTemplate): Record<strin
 }
 
 function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTemplates: ReadonlySet<string>): Record<string, unknown> {
+  if (message.documento) {
+    const d = message.documento;
+    if ((message.buttons && message.buttons.length > 0) || message.template || message.solicitarUbicacion === true) {
+      throw new WhatsAppInvalidPayloadError("el documento no se combina con botones, plantilla ni solicitud de ubicacion");
+    }
+    if (!esUrlHttpsPublica(d.url)) throw new WhatsAppInvalidPayloadError("el documento exige un enlace https publico de hasta 2048 caracteres");
+    if (!DOCUMENT_FILENAME_PATTERN.test(d.filename)) throw new WhatsAppInvalidPayloadError("el nombre del documento debe terminar en .pdf (1-240 caracteres, sin barras ni saltos de linea)");
+    if (message.body.length === 0 || message.body.length > 1024) throw new WhatsAppInvalidPayloadError("el pie del documento debe medir de 1 a 1024 caracteres");
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: message.to,
+      type: "document",
+      document: { link: d.url, filename: d.filename, caption: message.body },
+    };
+  }
   if (message.solicitarUbicacion === true) {
     if ((message.buttons && message.buttons.length > 0) || message.template) {
       throw new WhatsAppInvalidPayloadError("la solicitud de ubicacion no se combina con botones ni plantilla");
@@ -118,11 +138,26 @@ function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTempl
       },
     };
   }
+  if (message.body.length > MAX_TEXT_BODY_LENGTH) {
+    throw new WhatsAppInvalidPayloadError(`el texto mide ${message.body.length} caracteres y Graph API acepta máximo ${MAX_TEXT_BODY_LENGTH}: debe dividirse antes de encolarse`);
+  }
   return { messaging_product: "whatsapp", to: message.to, type: "text", text: { body: message.body, preview_url: false } };
 }
 
-/** Tipo real del cuerpo que se mando a Meta (para explicar despues un fallo de entrega). */
-function enviadoComoDe(body: Record<string, unknown>): EnviadoComo {
+/** Codigos de Graph API de «no pude traer o procesar el archivo»: 131052 (descarga del medio), 131053 (subida del medio), 131055/131056 no aplican; ademas los de forma. */
+const CODIGOS_DE_MEDIO = new Set([100, 131008, 131009, 131052, 131053]);
+
+/** `true` si el mensaje era un documento y Meta lo rechazo por el ARCHIVO o su forma (4xx no reintentable): se degrada UNA vez a texto con el enlace. */
+function esRechazoDeDocumento(body: Record<string, unknown>, err: unknown): boolean {
+  if (body.type !== "document") return false;
+  if (!(err instanceof WhatsAppSendError) || err.retryable) return false;
+  const info = err.info;
+  return info?.httpStatus !== undefined && info.httpStatus >= 400 && info.httpStatus < 500 && info.graphCode !== undefined && CODIGOS_DE_MEDIO.has(info.graphCode);
+}
+
+/** Tipo real del cuerpo que se mando a Meta (para explicar despues un fallo de entrega). El documento no tiene valor propio (ver `EnviadoComo`): devuelve `undefined`. */
+function enviadoComoDe(body: Record<string, unknown>): EnviadoComo | undefined {
+  if (body.type === "document") return undefined;
   if (body.type === "template") return "plantilla";
   if (body.type === "interactive") {
     const tipo = (body.interactive as { type?: unknown } | undefined)?.type;
@@ -170,8 +205,15 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
     const body = buildRequestBody(message, this.approvedTemplates);
     const url = `${this.baseUrl}/${this.apiVersion}/${message.phoneNumberId}/messages`;
     try {
-      return { providerMessageId: await this.post(url, body), enviadoComo: enviadoComoDe(body) };
+      const enviadoComo = enviadoComoDe(body);
+      return { providerMessageId: await this.post(url, body), ...(enviadoComo ? { enviadoComo } : {}) };
     } catch (err) {
+      // Degradacion a texto del documento: si Meta no puede traer el PDF (enlace caido, tipo no valido) el cliente recibe el pie con el enlace en vez de quedarse sin menu.
+      if (message.documento && esRechazoDeDocumento(body, err)) {
+        const enlace = message.documento.fallbackUrl && esUrlHttpsPublica(message.documento.fallbackUrl) ? message.documento.fallbackUrl : message.documento.url;
+        const texto = { messaging_product: "whatsapp", to: message.to, type: "text", text: { body: `${message.body}\n${enlace}`.slice(0, 4096), preview_url: true } };
+        return { providerMessageId: await this.post(url, texto), enviadoComo: "texto" };
+      }
       // Degradacion a texto (B03): si Meta rechaza un mensaje de botones por su FORMA (parametro invalido: cuerpo de mas de 1024 caracteres, canal o version que no admite
       // interactivos), el cliente recibe el mismo texto sin botones en vez de quedarse sin respuesta. Solo para esos codigos de formato: un numero invalido, el token o
       // un fallo transitorio siguen su camino (reintento / dead) sin duplicar la llamada.

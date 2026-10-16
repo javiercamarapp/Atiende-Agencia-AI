@@ -5,7 +5,7 @@ import { FakeLlmProvider } from "@atiende/agent-core";
 import { describe, expect, it, vi } from "vitest";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { handleInboundWhatsAppMessage } from "../../src/whatsapp/inbound.ts";
-import { NEW_CUSTOMER, PHONE, buildRestaurantFixture, gatewayDe, handlerConGuion, itemsCoca, llamada, llamadas, ordenes, pasoDelTurno, scriptedHandler, texto, hallazgo } from "./arnes.ts";
+import { NEW_CUSTOMER, PHONE, buildRestaurantFixture, gatewayDe, handlerConGuion, itemsCoca, llamada, llamadas, ordenes, pasoDelTurno, scriptedHandler, texto } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 const TUTEO = /\b(?:t[úu]|tus|tienes|puedes|quieres|necesitas|dime|dinos|av[íi]same|intenta)\b/i;
@@ -19,7 +19,7 @@ describe("R11-4A tool_call con argumentos que no son un objeto", () => {
   // gasto del modelo. Las demas herramientas ya devuelven "Error interno" controlado. Lo emite el MODELO (algunos devuelven "null" para
   // una herramienta sin argumentos), no el cliente.
   for (const herramienta of ["crear_pedido", "cotizar_pedido"]) {
-    hallazgo(`R11-01 [P1] ${herramienta} con argumentos "null": el turno responde al cliente en vez de lanzar`, async () => {
+    it(`R11-01 [P1] ${herramienta} con argumentos "null": el turno responde al cliente en vez de lanzar`, async () => {
       const f = buildRestaurantFixture();
       // Control: la misma herramienta con argumentos {} (objeto vacio) no lanza.
       const { handler: ok } = scriptedHandler(f.repo, [{ calls: [{ name: herramienta, args: "{}" }] }, { text: "ok" }]);
@@ -98,7 +98,7 @@ describe("R11-4B el modelo responde con basura", () => {
   // El camino determinista (clasificador) recorta el resumen a 500; el camino del MODELO (`escalar_a_humano`, `registrar_contacto`) guarda
   // `resumen` / `message` / `customer_name` tal cual: `callback_requests.message` y `.customer_name` son `text` sin CHECK de largo. Un modelo
   // desbocado (o inducido a copiar un mensaje enorme) deja filas de MB que luego carga el panel del equipo.
-  hallazgo("R11-13 [P2] el resumen que manda el modelo en escalar_a_humano se guarda acotado (<= 1000 caracteres)", async () => {
+  it("R11-13 [P2] el resumen que manda el modelo en escalar_a_humano se guarda acotado (<= 1000 caracteres)", async () => {
     const f = buildRestaurantFixture();
     const { handler } = handlerConGuion(f.repo, (req) => (pasoDelTurno(req) === 0 ? llamada("escalar_a_humano", JSON.stringify({ customer_name: "Ana", motivo: "otro", resumen: "x".repeat(200_000) })) : texto("Listo.")));
     await turnoSimple(f, handler as never);
@@ -110,7 +110,7 @@ describe("R11-4B el modelo responde con basura", () => {
   // ── HALLAZGO R11-12 (P2, entrega): la respuesta del agente no se acota al maximo de Meta (4096) ──
   // El mensaje ENTRANTE si se valida contra 4096; la respuesta SALIENTE no. Meta rechaza un texto mayor (error de parametro, no
   // reintentable): el mensaje se marca `dead` y el cliente nunca lo lee, aunque el historial diga que se envio.
-  hallazgo("R11-12 [P2] una respuesta del modelo de mas de 4096 caracteres se acota / divide antes de encolarse", async () => {
+  it("R11-12 [P2] una respuesta del modelo de mas de 4096 caracteres se acota / divide antes de encolarse", async () => {
     const f = buildRestaurantFixture();
     const largo = `Claro. ${"Tenemos tacos de bistec, pastor y arrachera. ".repeat(150)}`;
     expect(largo.length).toBeGreaterThan(4096); // control del insumo
@@ -153,7 +153,7 @@ describe("R11-4C proveedor del LLM caido, lento o con error raro", () => {
   // El presupuesto (`turnBudgetMs`) solo se revisa ENTRE llamadas. Con un proveedor que tarda mas que el presupuesto, el turno espera a
   // que la llamada termine (en produccion hasta el timeout del cliente HTTP, 30 s por intento), pasa el limite de la funcion y el cliente
   // no recibe nada. Ya estaba documentado como decision abierta (T-FP05b, pm-bateria-agente-whatsapp.spec.ts): aqui queda ejecutable.
-  hallazgo("R11-10 [P1] con presupuesto de 150 ms y un proveedor que tarda 1.2 s, el turno responde (mensaje honesto) sin esperar al proveedor", async () => {
+  it("R11-10 [P1] con presupuesto de 150 ms y un proveedor que tarda 1.2 s, el turno responde (mensaje honesto) sin esperar al proveedor", async () => {
     const f = buildRestaurantFixture();
     const { handler } = handlerConGuion(f.repo, async () => {
       await new Promise((r) => setTimeout(r, 1200));
@@ -231,7 +231,7 @@ describe("R11-4E herramientas en masa dentro de UNA respuesta del modelo", () =>
   // ── HALLAZGO R11-05 (P2, abuso de costo / avisos): no hay tope de herramientas por respuesta ──
   // `maxToolUseTurns` limita las VUELTAS (8 en PM), no cuantas herramientas trae cada respuesta: un modelo inducido puede pedir cientos en una
   // sola, y cada una consulta la base. Las `escalar_a_humano` con motivos distintos generan un aviso al equipo cada una.
-  hallazgo("R11-05a [P2] una respuesta con 80 tool_calls no ejecuta mas de 16 herramientas", async () => {
+  it("R11-05a [P2] una respuesta con 80 tool_calls no ejecuta mas de 16 herramientas", async () => {
     const f = buildRestaurantFixture();
     const espia = vi.spyOn(f.repo, "findBranch");
     const { handler } = handlerConGuion(f.repo, (req) =>
@@ -242,7 +242,7 @@ describe("R11-4E herramientas en masa dentro de UNA respuesta del modelo", () =>
     expect(espia.mock.calls.length).toBeLessThanOrEqual(16);
   });
 
-  hallazgo("R11-05b [P2] una respuesta con 11 'escalar_a_humano' de motivos distintos genera a lo mas 3 avisos al equipo", async () => {
+  it("R11-05b [P2] una respuesta con 11 'escalar_a_humano' de motivos distintos genera a lo mas 3 avisos al equipo", async () => {
     const f = buildRestaurantFixture();
     const motivos = ["queja", "alergia_salud", "cobro_duplicado", "urgencia", "transferencia", "producto_agotado", "zona_no_reconocida", "no_entiende", "falla_sistema", "tiempos_entrega", "privacidad_arco"];
     const { handler } = handlerConGuion(f.repo, (req) =>
