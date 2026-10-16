@@ -1,0 +1,30 @@
+# verify-restaurantes-pm-r11-romper
+
+Capa **Postgres real** de la ronda "romper" (R11) del agente de PM (WhatsApp y voz). Solo pruebas: no hay migracion ni se toca la base real.
+Las pruebas con modelo simulado y repositorio en memoria viven en `packages/domain-restaurantes/tests/pm-r11-romper/`; esta carpeta cubre lo
+que el repositorio en memoria **no puede ver**: lo que `jsonb` acepta, RLS / GRANT / `auth.uid()` reales y las RPC de solo-sistema.
+
+| Archivo | Que hace |
+|---|---|
+| `assertions.sql` | El gate (25 escenarios). Lo descubre solo `scripts/verify-real-postgres-ci/run-gate.mjs` (contrato de 3 archivos). Debe pasar siempre. |
+| `hallazgos-abiertos.sql` | Informe `ABIERTO` / `CORREGIDO` de defectos de la capa SQL que siguen abiertos (R11-13, R11-15, R11-16). **No** es parte del gate. |
+| `run.sh` | `initdb` efimero + migraciones reales + gate + informe de hallazgos abiertos. |
+
+## Que cubre `assertions.sql`
+
+| # | Escenarios | Resultado esperado |
+|---|---|---|
+| J1-J4 | Un NUL (U+0000) o un sustituto UTF-16 suelto en un mensaje del cliente | `whatsapp_append_turn` falla con 22P05 / 22P02: es la **evidencia** de R11-08 y R11-09 (el TypeScript hoy puede mandarlos). Un emoji completo si se guarda; el error dentro de un sub-bloque no deja la sesion inservible. |
+| O1-O11 | `create_order_idempotent` | Solo sistema (42501 con `auth.uid`), huella/llave mal formada, misma llave en dos organizaciones = dos pedidos, llave reutilizada con otro contenido = `PT409`, doble envio = mismo pedido, huella igual en otra organizacion no colapsa, programado en el pasado = 22023, CHECK de `source` y `propina`, desbordamiento numerico, `order_count` sube una vez. |
+| R1-R7 | Aislamiento entre organizaciones | El owner de B no ve pedidos / clientes / conversaciones / avisos de A; `anon` sin SELECT; las funciones de solo-sistema (`whatsapp_append_turn`, `claim_whatsapp_message`, `callback_registrar_agente`) no las llama un usuario; el mismo telefono en dos organizaciones guarda conversaciones separadas. |
+| C1-C2 | Avisos del agente | Idempotentes por evento y motivo; la misma llave de evento en dos organizaciones no se pisa. |
+
+## Uso
+
+```
+TMPDIR=/tmp bash scripts/verify-restaurantes-pm-r11-romper/run.sh        # local: initdb/pg_ctl efimeros (el socket de Postgres tiene tope de 103 caracteres)
+node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-restaurantes-pm-r11-romper   # solo el gate, contra un Postgres ya corriendo (PGHOST/PGPORT/PGUSER)
+```
+
+Hallazgos de seguridad: este repo es publico. `hallazgos-abiertos.sql` describe la **clase** del problema (la funcion acepta datos que el TypeScript nunca
+manda), no una receta; el arreglo propuesto esta en `RONDA-11-ROMPER.md` (fuera del repo).
