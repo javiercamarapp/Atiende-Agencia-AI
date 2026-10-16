@@ -466,7 +466,7 @@ export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, 
 /** Quita emojis, caritas ASCII y cortesias finales («gracias», «porfa», «por favor») de una respuesta corta de WhatsApp; deja minusculas sin acentos y sin puntuacion. */
 function limpiarRespuestaCorta(mensaje: string): string {
   let t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  t = t.replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200d\ufe0f]/gu, " ").replace(/(^|\s)[:;=]-?[)(dp]+(?=\s|$)/g, " ");
+  t = t.replace(/\p{Extended_Pictographic}|\p{Emoji_Modifier}|\u200d|\ufe0f/gu, " ").replace(/(^|\s)[:;=]-?[)(dp]+(?=\s|$)/g, " ");
   t = t.replace(/[!¡?¿]+/g, " ").replace(/[.,;:]+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
   // «no gracias» es una respuesta completa por si sola; en lo demas la cortesia final no cambia el sentido.
   if (t === "no gracias") return t;
