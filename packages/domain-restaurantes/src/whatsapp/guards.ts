@@ -596,6 +596,10 @@ export function niegaQuererReembolso(texto: string): boolean {
 //   - Perifrasis sin la senal exacta: «Le pagamos de vuelta lo que cobramos», «We'll make it up to you with $50», «We will pay you back».
 //   - Verbos de envio o transferencia: «Le mandamos su dinero de regreso» (solo cae por «de regreso»), «Le transferimos el importe de su pedido», «Le depositamos lo pagado».
 //   - Reembolso con sujeto distinto o sin verbo de promesa: «Procesaremos su solicitud de reembolso», «El gerente autorizara el reembolso».
+//   - «Su dinero de vuelta/de regreso» (modismo del VUELTO) ya NO es senal A: «Su dinero de regreso a su tarjeta en 3 dias» se reemplaza, pero con billete/cambio/efectivo/«a su mano»/«son $X»/
+//     «no a su tarjeta» NO. Tampoco se reemplaza si una negacion del destino va DESPUES del objeto («Le devolvemos $15 a su mano, no a su tarjeta»).
+//   - Observaciones menores del revisor (se mantienen): «Le puedo ofrecer el combo con descuento de la carta.» se reemplaza (verbo de oferta + descuento sin respaldo en la cotizacion) y
+//     «Le damos un descuento en su proxima visita si nos sigue en Instagram.» se reemplaza (aceptable: es una promesa que el modelo no puede cumplir).
 //   - Descuento ya hecho o en pasado: «Ya le aplique el descuento» (sin herramienta, no tiene efecto real; escala el prompt).
 const NO_ES_COSA_DE_DINERO = /\b(?:link|liga|enlace|llamada|mensaje|cotizacion|comprobante|ticket|recibo|resumen|desglose|detalle|puntos?|reciba|recibamos|refleje|reflejen|corregid\w*|charolas?|envases?|garrafon\w*|para\s+que\s+(?:\w+\s+)?(?:confirme|revise|verifique|valide|apruebe))\b/;
 const CAMBIO_O_PAGO =
@@ -630,10 +634,18 @@ const PROMESA_A_SIN_CONTEXTO = new RegExp(
     `\\b(?:su|tu)\\s+reembolso\\s+(?:sera|se\\s+(?:procesara|aplicara|acreditara)|llegara)\\b`,
     `\\b(?:will|'ll|can|going\\s+to|shall)\\s+(?:\\w+\\s+){0,2}(?:refund|reimburse)\\w*|\\byour\\s+(?:full\\s+)?refund\\s+(?:is|will|has)|\\bget\\s+(?:a\\s+|your\\s+)?(?:full\\s+)?refund\\b|\\bmoney[\\s-]back\\b|\\bback\\s+your\\s+money\\b`,
     `\\bdevolucion(?:es)?\\s+(?:de|del)\\s+(?:${SU_DINERO}|${LO_PAGADO})`,
-    `\\b${SU_DINERO}\\s+de\\s+(?:regreso|vuelta)\\b`,
   ].join("|"),
   "u",
 );
+// R12 revision 5: «su dinero de vuelta/de regreso» NO es senal fuerte: en Mexico es el modismo del VUELTO («Le damos su dinero de vuelta: $120 de su billete»). Pasa por la misma exclusion
+// de cambio/efectivo/pago que la senal B. Solo las raices reembols*/refund*/money back y «devolucion de su dinero» siguen sin exclusion.
+const PROMESA_DINERO_DE_VUELTA = new RegExp(`\\b${SU_DINERO}\\s+de\\s+(?:regreso|vuelta)\\b`, "u");
+// Senales extra de vuelto en efectivo que solo aplican a este modismo (no se agregan a CAMBIO_O_PAGO para no ampliar la exclusion de B/descuentos).
+const CONTEXTO_DE_VUELTO =
+  /\b(?:billete|billetes|a\s+su\s+mano|en\s+la\s+puerta|en\s+su\s+puerta|repartidor|mesero|cajero|caja|mostrador|en\s+mano|son\s+\$\s?\d|\$\s?\d[\d.,]*\s+de\s+su\s+(?:billete|pago))/;
+// Negacion DESPUES del objeto: «Le devolvemos $15 a su mano, no a su tarjeta», «no es reembolso», «sin tarjeta».
+const NEGACION_DEL_DESTINO =
+  /\b(?:no|ni|sin)\s+(?:\w+\s+){0,2}(?:a\s+su\s+)?(?:tarjeta|cuenta)\b|\bno\s+(?:es|son|seria|se\s+trata\s+de)\s+(?:un\s+|una\s+)?(?:reembolso|devolucion|refund)/;
 // Tras «la devolucion de su dinero» / «su dinero de regreso» una negacion posterior («... no es posible», «... no esta disponible») la vuelve politica.
 const NEGACION_DESPUES = /^[^.!?\n]{0,25}\bno\s+(?:es|son|esta|estan|hay|aplica\w*|procede\w*|se\s+(?:puede|permite|hace|hacen)|depende|disponible\w*|posible\w*)\b/;
 const PROMESA_B = new RegExp(
@@ -685,7 +697,11 @@ export function prometeDevolucionDeDinero(frase: string): boolean {
   if (promesaSinNegar(PROMESA_A_SIN_CONTEXTO, t)) return true;
   // Senal B (verbo + dinero/lo pagado/a su tarjeta): el vuelto y la confirmacion de pagos son operacion normal.
   if (contextoDeCambioOPago(t)) return false;
-  return promesaSinNegar(PROMESA_B, t);
+  // Ante la duda (la negacion va despues del objeto) NO se reemplaza: precision primero.
+  if (NEGACION_DEL_DESTINO.test(t)) return false;
+  if (promesaSinNegar(PROMESA_B, t)) return true;
+  // «su dinero de vuelta/de regreso»: solo promesa si no hay contexto de vuelto en efectivo.
+  return !CONTEXTO_DE_VUELTO.test(t) && promesaSinNegar(PROMESA_DINERO_DE_VUELTA, t);
 }
 /** La frase PROMETE un descuento al cliente («le aplico 50% de descuento»). Un descuento condicional de la carta, el CAMBIO/pago en efectivo o una negacion no cuentan. */
 export function prometeDescuento(frase: string): boolean {
