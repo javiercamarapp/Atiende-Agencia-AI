@@ -16,6 +16,7 @@
 // correo son de solo-sistema (`userId: null`).
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError } from "./sql-errors.ts";
+import { runWithSavepointFallback } from "./savepoint-fallback.ts";
 
 export interface TotpStatus {
   /** Segundo factor confirmado y activo. */
@@ -117,6 +118,19 @@ export interface StaffSecurityRepository {
   revokeSession(staffId: string, sessionId: string): Promise<boolean>;
   /** Corte por fecha (truncado a segundo) de TODAS las sesiones previas de la propia cuenta, incluso las no registradas. */
   revokeAllSessions(staffId: string): Promise<void>;
+  /**
+   * Consume UNA vez el `jti` de un token de step-up (migracion 038, `core.consume_step_up`). A diferencia del resto de
+   * metodos, corre en la SESION RECIBIDA -- la MISMA transaccion de la accion que el token autoriza --: si la accion falla y se
+   * revierte, el token no se gasta; dos peticiones concurrentes con el mismo `jti` se serializan sobre la llave primaria y
+   * exactamente una obtiene `true`. `false` = reuso. Lanza `StaffSecurityUnavailableError` si la 038 aun no esta aplicada
+   * (la transaccion compartida queda intacta: se recupera con SAVEPOINT).
+   */
+  consumeStepUpToken(
+    session: TenantDbSession,
+    input: { readonly jti: string; readonly userId: string; readonly organizationId: string; readonly scope: string; readonly expiresAt: string },
+  ): Promise<boolean>;
+  /** Solo sistema: borra consumos de tokens ya vencidos (con holgura). Devuelve cuantos borro. Barrido de mantenimiento. */
+  purgeStepUpConsumptionForSystem(): Promise<number>;
   listGoogleIdentities(staffId: string): Promise<GoogleIdentityRow[]>;
   /** Desvincula una identidad de Google de la propia cuenta. `false` si no existe o es de otra cuenta. */
   unlinkGoogleIdentity(staffId: string, identityId: string): Promise<boolean>;
@@ -151,6 +165,38 @@ export class PostgresStaffSecurityRepository implements StaffSecurityRepository 
       if (isMigrationPendingError(err)) throw new StaffSecurityUnavailableError();
       throw err;
     }
+  }
+
+  consumeStepUpToken(
+    session: TenantDbSession,
+    input: { readonly jti: string; readonly userId: string; readonly organizationId: string; readonly scope: string; readonly expiresAt: string },
+  ): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session,
+      savepointName: "sp_step_up_consume",
+      primary: async () => {
+        const { rows } = await session.query<{ ok: boolean }>(`select core.consume_step_up($1, $2, $3, $4, $5::timestamptz) as ok;`, [
+          input.jti,
+          input.userId,
+          input.organizationId,
+          input.scope,
+          input.expiresAt,
+        ]);
+        return rows[0]?.ok === true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => {
+        throw new StaffSecurityUnavailableError();
+      },
+    });
+  }
+
+  async purgeStepUpConsumptionForSystem(): Promise<number> {
+    // Su propia transaccion (sesion de sistema): la migracion pendiente se traduce fuera de ella.
+    return this.run(null, async (db) => {
+      const { rows } = await db.query<{ n: number | string }>(`select core.purge_step_up_consumption() as n;`);
+      return Number(rows[0]?.n ?? 0);
+    });
   }
 
   getTotpStatus(staffId: string): Promise<TotpStatus> {

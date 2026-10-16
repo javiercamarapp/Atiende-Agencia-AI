@@ -1,7 +1,7 @@
 // Mundo de pruebas del worker: la API REAL de Atiende en proceso (Hono + repositorios en memoria, sin red) con el restaurante sembrado del simulador
 // de voz (Los Taquitos de PM: menu, sucursales, colonias, politica de $200). El `fetch` del worker se apunta a `app.request`.
 import type { VozCerrarConversacionInput } from "@atiende/domain-restaurantes";
-import { InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository, InMemoryPrivacidadRepository } from "@atiende/domain-restaurantes";
+import { InMemoryAjustesAgenteRepository, InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository, InMemoryPrivacidadRepository } from "@atiende/domain-restaurantes";
 import { FakeSoftRestaurantAdapter, InMemoryComandaOutboxStore, MapaProductoCodigo, crearResolverSucursalPos } from "@atiende/domain-restaurantes/softrestaurant";
 import type { SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import { MENSAJE_IDS } from "@atiende/voice-core";
@@ -67,6 +67,8 @@ export interface OpcionesMundoApi {
   readonly sinVozRepo?: boolean;
   /** `true` = la API no tiene el repositorio de privacidad (503 en apertura): el worker debe atender sin aviso y sin grabar. */
   readonly sinPrivacidad?: boolean;
+  /** Repositorio de ajustes del agente (ambiente, tecleo, naturalidad). Sin el, el contexto no trae sonido. */
+  readonly ajustesAgente?: InMemoryAjustesAgenteRepository;
 }
 
 export interface MundoApi {
@@ -107,6 +109,7 @@ export async function crearMundoApi(opts: OpcionesMundoApi = {}): Promise<MundoA
     env: { ...base.deps.env, voiceRequireCallToken: true },
     restaurantesRepo: () => mundo.repo,
     ...(opts.sinVozRepo ? {} : { vozRepo: () => voz }),
+    ...(opts.ajustesAgente ? { ajustesAgenteRepo: () => opts.ajustesAgente! } : {}),
     vozKpiRepo: () => kpi,
     vozLlamadaRepo: () => llamadaRepo,
     ...(opts.sinPrivacidad ? {} : { privacidadRepo: () => privacidad }),

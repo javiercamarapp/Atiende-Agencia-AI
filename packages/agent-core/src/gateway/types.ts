@@ -108,6 +108,9 @@ export interface LlmCompletionResult {
    *  usage accounting); 'table' = tabla de precios de respaldo; 'conservative' = modelo sin
    *  precio ni costo reportado, se uso un tope conservador. */
   costSource?: 'provider' | 'table' | 'conservative';
+  /** Motivo con el que termino la generacion segun el proveedor (`stop`, `length`, `tool_calls`...). `length` = se agoto el tope de tokens; con razonamiento activo el contenido
+   *  puede llegar VACIO (OpenRouter: los tokens de razonamiento cuentan contra `max_tokens`). Ausente si el proveedor no lo reporto. */
+  finishReason?: string;
 }
 
 /**

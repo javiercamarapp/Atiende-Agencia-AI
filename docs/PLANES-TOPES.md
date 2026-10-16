@@ -29,8 +29,8 @@ Verificación contra Postgres real: `scripts/verify-planes-topes-prueba/` (45 es
 
 - `core.organization.trial_ends_at` (nullable). **Sin fecha no se avisa nunca.** Hoy la fecha se fija por SQL de soporte: no hay
   todavía un control de superadmin para editarla (hueco declarado en el PR).
-- Cron `/internal/plataforma/prueba-avisos` (secreto interno; **no está en `vercel.json`**: programarlo, una vez al día, es una
-  decisión de despliegue). `core.trial_notice_claim` reclama cada aviso una sola vez por (organización, días, fecha de fin); el día se
+- Cron `/internal/plataforma/prueba-avisos` (secreto interno; agendado una vez al día en `vercel.json`, `0 14 * * *` = 08:00 en
+  Mérida, con latido y kill switch). `core.trial_notice_claim` reclama cada aviso una sola vez por (organización, días, fecha de fin); el día se
   cuenta en la zona del negocio. Cada aviso emite la notificación in-app y manda un correo (Resend, con clave de idempotencia) a
   owner/admin; un correo fallido o sin `RESEND_API_KEY` se reintenta hasta 3 veces (cada 30 min como mínimo).
 - El correo sale directo por Resend y no por el outbox de correo de una vertical: esos outboxes son por vertical y por sucursal y este
@@ -56,5 +56,5 @@ disponible. La pantalla no está en el menú lateral de las verticales (se llega
 
 1. Desplegar el código (funciona contra la base vieja: medidor, avisos y lecturas degradan a "no disponible", sin 500).
 2. Aplicar la migración 0046 (`supabase/migrations/20240101000275_0046_...`). Es solo aditiva.
-3. Fijar `core.organization.trial_ends_at` de las organizaciones en prueba y programar el cron `/internal/plataforma/prueba-avisos`.
+3. Fijar `core.organization.trial_ends_at` de las organizaciones en prueba (el cron `/internal/plataforma/prueba-avisos` ya corre a diario desde `vercel.json`).
 4. Con `STRIPE_SECRET_KEY` configurada y el portal configurado en Stripe, el botón de facturación queda operativo.

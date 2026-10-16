@@ -23,7 +23,7 @@ import type {
   RegisterDataRightsOutcome,
   UpdateDataRightsStatusResult,
 } from "./data-rights.ts";
-import type { PrivacidadRepository, PurgeOutcome, RecordOrderPrivacyConsentResult, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
+import type { PrivacidadRepository, PurgeOutcome, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
 
 let advertido = false;
 function advertirNoDisponible(operacion: string, err: unknown): void {
@@ -131,23 +131,6 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
       fallback: (err) => {
         advertirNoDisponible("claimPrivacyNotice", err);
         return Promise.resolve(null);
-      },
-    });
-  }
-
-  async recordOrderPrivacyConsent(organizationId: string, orderId: string, channel: "web"): Promise<RecordOrderPrivacyConsentResult> {
-    return runWithSavepointFallback<RecordOrderPrivacyConsentResult>({
-      session: this.db,
-      savepointName: "sp_order_privacy_consent",
-      primary: async () => {
-        const { rows } = await this.db.query<{ version: string | null }>(`select restaurantes.system_record_order_privacy_consent($1, $2, $3) as version;`, [organizationId, orderId, channel]);
-        const version = rows[0]?.version;
-        return version ? { outcome: "registrado", noticeVersion: version } : { outcome: "ya_registrado" };
-      },
-      isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.system_record_order_privacy_consent"),
-      fallback: (err) => {
-        advertirNoDisponible("recordOrderPrivacyConsent", err);
-        return Promise.resolve({ outcome: "no_disponible" });
       },
     });
   }

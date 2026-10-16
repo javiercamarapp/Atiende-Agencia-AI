@@ -23,20 +23,24 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
+  AJUSTES_AGENTE_POR_DEFECTO,
   FRANJAS_VOZ,
   LATENCIA_VOZ_OBJETIVO_P95_MS,
   MODOS_ENTRADA_VOZ,
   STAFF_INVITE_ROLES,
   VOZ_POR_DEFECTO,
+  ajustesDeLlamada,
   armarInstruccionLlamada,
   canonicalizeMexicanPhone,
   diaLocalSucursal,
+  instruccionConAjustes,
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
-import { emitirNotificacion } from "@atiende/db";
-import { ESCALERA_VOZ, eventosCostoLlamada } from "@atiende/voice-core";
-import type { EscalonVoz, TramoLlamada } from "@atiende/voice-core";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
+import { ESCALERA_VOZ, escalonAdmiteComponentes, eventosCostoLlamada, motivoComponenteInvalido, temperaturaParaLlamada } from "@atiende/voice-core";
+import type { ComponenteCosto, EscalonVoz, TramoLlamada } from "@atiende/voice-core";
 import { Errors } from "../../../errors.ts";
+import { logEvent } from "../../../logger.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
@@ -58,6 +62,37 @@ function uuid(value: unknown, campo: string): string {
   return value;
 }
 
+const COMPONENTES_MAX = 8;
+/** Hasta 8 tramos x 8 componentes (~150 bytes cada uno) caben con holgura; 8 KB no alcanzaban en el peor caso. */
+const COSTO_CUERPO_MAX_BYTES = 32 * 1024;
+
+/** Desglose opcional por componente (`deepgram`, `deepgram-aura-2`, `heygen`, `openrouter:<modelo>`): un worker anterior no lo manda. Ausente = sin desglose; presente
+ * pero invalido = 400. Solo la cascada lo admite (Gemini Live no). Cada componente es coherente (unidad del proveedor; `costoReal` solo donde el proveedor reporta el
+ * costo), su costo es un entero de micro-USD y la SUMA no pasa del costo reportado del tramo: lo no desglosado es el remanente del escalon. */
+function parsearComponentes(value: unknown, donde: string, escalon: EscalonVoz, costoTramo: number): ComponenteCosto[] | undefined {
+  if (value === undefined) return undefined;
+  if (!escalonAdmiteComponentes(escalon)) throw Errors.validation(`${donde}: ${escalon} no admite desglose por componente.`);
+  if (!Array.isArray(value) || value.length === 0 || value.length > COMPONENTES_MAX) throw Errors.validation(`${donde}: se esperaba una lista de 1 a ${COMPONENTES_MAX} componentes.`);
+  const vistos = new Set<string>();
+  let suma = 0;
+  const lista = value.map((c, j) => {
+    const o = (c !== null && typeof c === "object" && !Array.isArray(c) ? c : {}) as Record<string, unknown>;
+    const motivo = motivoComponenteInvalido({ proveedor: o.proveedor, unidad: o.unidad, costoReal: o.costoReal });
+    if (motivo === "proveedor") throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, deepgram-aura-2, heygen u openrouter:<modelo> (hasta 80 caracteres).`);
+    if (motivo === "unidad") throw Errors.validation(`${donde}[${j}].unidad: no corresponde al proveedor (deepgram: segundo; los demás: unidad).`);
+    if (motivo === "costoReal") throw Errors.validation(`${donde}[${j}].costoReal: debe ser booleano y solo openrouter:<modelo> reporta su costo.`);
+    const proveedor = o.proveedor as string;
+    if (vistos.has(proveedor)) throw Errors.validation(`${donde}[${j}].proveedor: repetido en el tramo.`);
+    vistos.add(proveedor);
+    if (typeof o.cantidad !== "number" || !Number.isFinite(o.cantidad) || o.cantidad < 0 || o.cantidad > 1_000_000_000) throw Errors.validation(`${donde}[${j}].cantidad: se esperaba un número entre 0 y 1000000000.`);
+    if (typeof o.costoMicroUsd !== "number" || !Number.isInteger(o.costoMicroUsd) || o.costoMicroUsd < 0 || o.costoMicroUsd > TRAMO_COSTO_MAX_MICRO_USD) throw Errors.validation(`${donde}[${j}].costoMicroUsd: se esperaba un entero entre 0 y ${TRAMO_COSTO_MAX_MICRO_USD}.`);
+    suma += o.costoMicroUsd;
+    return { proveedor, unidad: o.unidad as ComponenteCosto["unidad"], cantidad: o.cantidad, costoMicroUsd: o.costoMicroUsd, costoReal: o.costoReal as boolean };
+  });
+  if (suma > costoTramo) throw Errors.validation(`${donde}: los componentes suman ${suma}, más que el costo reportado del tramo (${costoTramo}).`);
+  return lista;
+}
+
 function parsearTramos(value: unknown): TramoLlamada[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 8) throw Errors.validation("tramos: se esperaba una lista de 1 a 8 tramos.");
   return value.map((t, i) => {
@@ -66,7 +101,8 @@ function parsearTramos(value: unknown): TramoLlamada[] {
     if (typeof o.duracionS !== "number" || !Number.isFinite(o.duracionS) || o.duracionS < 0 || o.duracionS > TRAMO_MAX_S) throw Errors.validation(`tramos[${i}].duracionS: se esperaba un número entre 0 y ${TRAMO_MAX_S}.`);
     if (typeof o.costoReportadoMicroUsd !== "number" || !Number.isFinite(o.costoReportadoMicroUsd) || o.costoReportadoMicroUsd < 0 || o.costoReportadoMicroUsd > TRAMO_COSTO_MAX_MICRO_USD) throw Errors.validation(`tramos[${i}].costoReportadoMicroUsd: se esperaba un número entre 0 y ${TRAMO_COSTO_MAX_MICRO_USD}.`);
     // `costoReal` (opcional: un worker anterior no lo manda): el costo sale de los tokens que informo el proveedor, no de una tarifa.
-    return { escalon: o.escalon as EscalonVoz, duracionS: o.duracionS, costoReportadoMicroUsd: o.costoReportadoMicroUsd, ...(o.costoReal === true ? { costoReal: true } : {}) };
+    const componentes = parsearComponentes(o.componentes, `tramos[${i}].componentes`, o.escalon as EscalonVoz, Math.ceil(o.costoReportadoMicroUsd));
+    return { escalon: o.escalon as EscalonVoz, duracionS: o.duracionS, costoReportadoMicroUsd: o.costoReportadoMicroUsd, ...(o.costoReal === true ? { costoReal: true } : {}), ...(componentes ? { componentes } : {}) };
   });
 }
 
@@ -110,7 +146,24 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (!sucursal) throw Errors.notFound("La sucursal no existe para esa organización.");
       const lectura = await deps.vozRepo!(db).getConfig(propertyId);
       const ahora = new Date();
-      const { instruccion, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
+      const { instruccion: instruccionBase, horaLocal } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
+      // Ajustes del agente de la organización (ritmo, estilo, naturalidad, ambiente, tecleo; migraciones 055/087). Base sin migrar o despliegue sin el repositorio: valores de siempre.
+      // Si la lectura falla por cualquier motivo (no solo la base sin migrar, que el repositorio ya recupera) la llamada NO se cae: se atiende con los valores de siempre.
+      // Va con SAVEPOINT (regla de la casa): dentro de la transaccion unica del request un error SQL deja la transaccion abortada (25P02) y la consulta siguiente (gasto del mes) tambien fallaria.
+      const repoAjustes = deps.ajustesAgenteRepo;
+      const ajustes = repoAjustes
+        ? await runWithSavepointFallback({
+            session: db,
+            primary: async () => (await repoAjustes(db).leer(organizationId)).valor,
+            isRecoverable: () => true,
+            fallback: async (err) => {
+              logEvent(c, "warn", "voz_contexto_ajustes_no_leidos", { organizationId, codigo: typeof (err as { code?: unknown } | null)?.code === "string" ? (err as { code: string }).code : "error" });
+              return AJUSTES_AGENTE_POR_DEFECTO;
+            },
+          })
+        : AJUSTES_AGENTE_POR_DEFECTO;
+      const instruccion = instruccionConAjustes(instruccionBase, ajustes, null);
+      const llamada = ajustesDeLlamada(ajustes);
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.
       const gasto = deps.vozLlamadaRepo ? await deps.vozLlamadaRepo(db).gastoMesMicroUsd(organizationId, ahora) : null;
       return c.json({
@@ -118,6 +171,10 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         configurada: lectura.valor.configurada,
         voiceId: lectura.valor.voiceId || VOZ_POR_DEFECTO,
         instruccion,
+        // Lo que el worker mezcla en la salida de audio: ambiente de restaurante y tecleo (apagados por omision).
+        sonido: { fondo: llamada.fondo, tecleo: llamada.tecleo },
+        // Temperatura de la voz de los ajustes del agente para Gemini Live, con tope 0.4 (null = la de la plataforma).
+        temperatura: temperaturaParaLlamada(llamada.temperatura).valor,
         gastoMesMicroUsd: gasto,
         horaLocal,
       });
@@ -127,7 +184,7 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.post(`${base}/conversaciones/:conversationId/costo`, async (c) => {
     exigirSecreto(deps, c.req.raw);
     const conversationId = uuid(c.req.param("conversationId"), "conversationId");
-    const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 8 * 1024);
+    const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, COSTO_CUERPO_MAX_BYTES);
     const organizationId = uuid(body.organizationId, "organizationId");
     const propertyId = uuid(body.propertyId, "propertyId");
     if (typeof body.llamadaId !== "string" || !CALL_ID_RE.test(body.llamadaId)) throw Errors.validation("llamadaId: 1-128 caracteres (letras, números, . _ : -).");

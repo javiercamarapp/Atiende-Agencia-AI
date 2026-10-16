@@ -88,8 +88,8 @@ describe("05a9798 / 6091e17 -- cascada barato -> caro", () => {
     expect(r.orderId).toBeNull();
   });
 
-  // QA agentes-26: hoy CUALQUIER error de crear_pedido sube de rol, incluido un rechazo correcto de regla de negocio.
-  it.fails("X34 / 6091e17 [lote B1, agentes-26]: un rechazo de regla de negocio (pedido minimo a domicilio) NO escala de rol", async () => {
+  // QA agentes-26 / B04: un rechazo correcto de regla de negocio NO sube de rol; solo un fallo de sistema lo hace (ver X34 / 05a9798).
+  it("X34 / 6091e17 [lote B1, agentes-26]: un rechazo de regla de negocio (pedido minimo a domicilio) NO escala de rol", async () => {
     const f = pmFixture();
     f.repo.seedBranchPolicy(f.t1, { pedidoMinimoDomicilio: 200 });
     await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "t1-montejo", canal: "domicilio", items: [{ productId: f.p.cocaCola, productName: "Coca-Cola", requestedQuantity: 1 }] });

@@ -60,3 +60,17 @@ targetRules = ["generic-api-key"]
 paths = [
   '''(^|/)scripts/verify-hoteles-hk-canal/assertions\.sql$''',
 ]
+
+# Inventario de credenciales (apps/api/src/integrations-status.ts): la linea `variables: ["DEEPGRAM_API_KEY", "VOZ_CASCADA_V2_HABILITADA"]` lista NOMBRES de
+# variables de entorno (no valores); la heuristica generica la confunde con una llave de API por el sufijo `_API_KEY` y la entropia del nombre contiguo.
+# Excepcion estrecha: una regla, un archivo y esa linea exacta (el escaneo es del historial completo, asi que el commit que la introdujo tambien debe quedar cubierto).
+[[allowlists]]
+description = "Nombres (no valores) de variables de entorno del inventario de credenciales de voz"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(^|/)apps/api/src/integrations-status\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''variables:\s*\["DEEPGRAM_API_KEY",\s*"VOZ_CASCADA_V2_HABILITADA"\]''',
+]

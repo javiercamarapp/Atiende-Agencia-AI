@@ -197,7 +197,8 @@ análisis >= 4. La recomendación es el brazo **más barato que pasa todas**; So
 
 ## Huecos conocidos
 
-- 60 casos por vertical en vez de 150; sin superadmin/CFO (sin catálogo en `main`); no se corrió el piloto ni el barrido.
+- 60 casos por vertical en vez de 150; sin superadmin; no se corrió el piloto ni el barrido.
+- «Pregunta a tu CFO» (CFO-09): 8 casos en `scripts/eval-copiloto/casos/restaurantes-cfo.ts`, corridos con el motor real y el servicio del CFO en memoria (`packages/domain-restaurantes/tests/data-chat-cfo-evals.spec.ts`). NO están en la suite congelada: `congelados.spec.ts` fija 60 casos por vertical y congelar exige las migraciones 081-084 en el Postgres efímero. Pasarlos a `restaurantes.ts` (RES-061..) y regenerar el congelado es una ronda posterior.
 - Las semillas de hoteles, rentas, despachos y licitaciones son pequeñas (28-30 sep); los periodos sin datos se usan a propósito.
 - Los modelos se comparan con el prompt y las herramientas de hoy; no hay canario en producción (`core.data_chat_query_log`) todavía.
 - La puerta de latencia usa el tiempo del modelo contra OpenRouter desde una Mac, no desde Vercel.

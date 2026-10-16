@@ -59,11 +59,13 @@ describe("step-up en acciones sensibles de despachos (D-30)", () => {
 
   it("con TOTP pero sin token: 403 step_up_required; con token valido la guardia deja pasar (el resto lo decide la validacion de cada ruta, nunca 403)", async () => {
     const { ctx, app, acciones } = await setup();
-    const token = await enrolarYObtenerToken(app, ctx.staff.admin.token);
+    await enrolarYObtenerToken(app, ctx.staff.admin.token);
     for (const a of acciones) {
       const sin = await llamar(app, a, ctx.staff.admin.token);
       expect(sin.status, a.nombre).toBe(403);
       expect(await codigo(sin), a.nombre).toBe("step_up_required");
+      // Un token NUEVO por accion (el step-up es de un solo uso).
+      const token = await signContractStepUpToken({ userId: ctx.staff.admin.id, organizationId: ctx.organizationId, scope: "despachos_sensitive" }, TEST_ENV.jwtSecret);
       const con = await llamar(app, a, ctx.staff.admin.token, { "x-step-up-token": token });
       expect(con.status, `${a.nombre} con token`).not.toBe(403);
       expect(con.status, `${a.nombre} con token`).toBeLessThan(500);

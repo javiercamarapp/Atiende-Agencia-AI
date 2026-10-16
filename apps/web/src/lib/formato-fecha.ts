@@ -21,6 +21,12 @@ export function horaEsMx(iso: string | Date, zonaHoraria: string = "America/Mexi
   return new Date(iso).toLocaleTimeString("es-MX", { timeZone: zonaHoraria, timeStyle: "short" });
 }
 
+// Hora de un timestamp en 24 horas ("20:15"), en la zona del negocio: la que muestran las burbujas del chat de prueba del agente de WhatsApp
+// (igual que el widget original). Intl.DateTimeFormat con hourCycle h23: la medianoche es "00:05", nunca "24:05".
+export function hora24EsMx(fecha: Date | string, zonaHoraria: string | undefined = "America/Mexico_City"): string {
+  return new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zonaHoraria }).format(new Date(fecha));
+}
+
 // --- Fechas de "solo día" (columnas `date` de Postgres: "YYYY-MM-DD", sin ---
 // --- hora ni zona) -- vencimientos, fecha límite fiscal, check-in/check-out, ---
 // --- periodos de estado de cuenta, fechas de factura, etc. -----------------
@@ -203,4 +209,25 @@ export function sumarDiasFechaSolo(fecha: string, dias: number): string {
   const d = parseFechaSolo(fecha);
   d.setUTCDate(d.getUTCDate() + dias);
   return d.toISOString().slice(0, 10);
+}
+
+// --- Fechas del tablero de Pedidos (UNI-R1) -- mismo formato que el repo original ("8 oct, 14:58") ---
+// Hora de 24 h y mes corto, en la zona del negocio. Intl en vez de toLocale*String para no sumar llamadas al
+// baseline del guard de formato unico; el locale sigue siendo es-MX.
+function partesFecha(iso: string | Date, zonaHoraria: string, conAnio: boolean): { dia: string; mes: string; anio: string; hora: string; minuto: string } {
+  const partes = new Intl.DateTimeFormat("es-MX", { timeZone: zonaHoraria, day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  const dato = (tipo: string): string => partes.find((p) => p.type === tipo)?.value ?? "";
+  return { dia: dato("day"), mes: dato("month").replace(/\.$/, ""), anio: conAnio ? dato("year") : "", hora: dato("hour"), minuto: dato("minute") };
+}
+
+/** "8 oct, 14:58" (dia, mes corto y hora de 24 h en la zona del negocio). */
+export function fechaCortaHoraEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
+  const f = partesFecha(iso, zonaHoraria, false);
+  return `${f.dia} ${f.mes}, ${f.hora}:${f.minuto}`;
+}
+
+/** "8 oct 2026, 14:58". */
+export function fechaAnioHoraEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
+  const f = partesFecha(iso, zonaHoraria, true);
+  return `${f.dia} ${f.mes} ${f.anio}, ${f.hora}:${f.minuto}`;
 }

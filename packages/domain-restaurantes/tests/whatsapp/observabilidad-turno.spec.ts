@@ -1,12 +1,13 @@
 // R-PM-15: un evento estructurado por turno y por tool de WhatsApp, sin texto del cliente, sin PAN/CVV y
 // sin telefono en claro (equivalente a `observability.test.ts` del original atiende-restaurantes).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeLlmProvider } from "@atiende/agent-core";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { hashTelefonoParaLogs } from "../../src/whatsapp/observabilidad-turno.ts";
 import type { EventoObservabilidadWhatsApp, EventoTurnoWhatsApp, ObservabilidadTurno } from "../../src/whatsapp/observabilidad-turno.ts";
 import { buildRestaurantFixture } from "../fixtures.ts";
 import { makeGateway, NEW_CUSTOMER, result } from "../pm/harness.ts";
+import { seedConfirmedOrderFlow } from "../support/order-flow-seed.ts";
 import type { ScriptStep } from "../pm/harness.ts";
 
 const PHONE = "+5219991234567";
@@ -99,14 +100,17 @@ describe("R-PM-15 observabilidad por turno de WhatsApp", () => {
     expect(t.rolModelo).toBeNull();
   });
 
-  it("tras un error de crear_pedido el turno sube de rol y el evento lo reporta como fallo_crear_pedido", async () => {
-    const { eventos, correr } = armar(
+  it("tras un fallo de sistema en crear_pedido el turno sube de rol y el evento lo reporta como fallo_crear_pedido", async () => {
+    const { eventos, correr, f } = armar(
       [
-        { calls: [{ name: "crear_pedido", args: { branch_slug: "fco-montejo", canal: "recoger", items: [] } }] },
+        { calls: [{ name: "crear_pedido", args: { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Ana", payment_method: "efectivo", items: [{ product_name: "Coca-Cola", requested_quantity: 1 }] } }] },
         { text: "Intento de nuevo, ¿me confirma?" },
       ],
       { escalada: [{ text: "Un momento por favor, ¿me confirma su pedido?" }] },
     );
+    // B04: solo un FALLO de sistema sube de rol (un rechazo de regla no): la base cae al crear el cliente.
+    await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "fco-montejo", canal: "recoger", items: [{ productName: "Coca-Cola", requestedQuantity: 1 }] });
+    vi.spyOn(f.repo, "upsertCustomer").mockRejectedValue(new Error("base caida"));
     await correr("confirmo");
     const t = turno(eventos);
     expect(t.rolesUsados).toEqual(["default", "escalated"]);

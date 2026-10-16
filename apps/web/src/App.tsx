@@ -1,16 +1,18 @@
 // Shell mínimo de apps/web para esta fase — solo lo necesario para que la pantalla
 // de login del vertical restaurantes sea real y navegable, sin portar el resto del
 // dashboard visual (fuera de alcance explícito de Fase 1, ver el brief).
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { Suspense } from "react";
-import type { ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
+import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Suspense, useCallback } from "react";
+import type { ComponentProps, ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { cargaPerezosa, ErrorBoundaryRaiz } from "./lib/carga-perezosa.tsx";
 import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/roles-nav.ts";
 
 // R-37: cada pantalla es su propio chunk (ver lib/carga-perezosa.tsx: reintento, recarga protegida y ErrorBoundary raíz).
+// UNI-R0: catalogo de overlays, SOLO en `vite dev` (import.meta.env.DEV es false y el chunk se descarta en el build).
+const CatalogoOverlaysPage = import.meta.env.DEV ? cargaPerezosa(() => import("./pages/CatalogoOverlays.tsx"), "CatalogoOverlaysPage") : null;
 const RestaurantesLoginPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Login.tsx"), "RestaurantesLoginPage");
 const RestaurantesDashboardPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Dashboard.tsx"), "RestaurantesDashboardPage");
 const RestaurantesShell = cargaPerezosa(() => import("./verticals/restaurantes/RestaurantesShell.tsx"), "RestaurantesShell");
@@ -30,6 +32,7 @@ const RestaurantesAgenteVozPage = cargaPerezosa(() => import("./verticals/restau
 const RestaurantesAjustesAgentePage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AjustesAgente.tsx"), "AjustesAgentePage");
 const RestaurantesIndicadoresWhatsappPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx"), "IndicadoresWhatsappPage");
 const RestaurantesCierresPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Cierres.tsx"), "CierresPage");
+const RestaurantesCampanasPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Campanas.tsx"), "CampanasPage");
 const RestaurantesPrivacidadPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Privacidad.tsx"), "PrivacidadPage");
 const RestaurantesConversacionesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Conversaciones.tsx"), "ConversacionesPage");
 const RestaurantesTurnosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Turnos.tsx"), "TurnosPage");
@@ -57,6 +60,7 @@ const SuperAdminSaludPage = cargaPerezosa(() => import("./superadmin/pages/Salud
 const SuperAdminResumenPage = cargaPerezosa(() => import("./superadmin/pages/Resumen.tsx"), "SuperAdminResumenPage");
 const SuperAdminConsolaResumenPage = cargaPerezosa(() => import("./superadmin/pages/ConsolaResumen.tsx"), "SuperAdminConsolaResumenPage");
 const SuperAdminAccionesPage = cargaPerezosa(() => import("./superadmin/pages/Acciones.tsx"), "SuperAdminAccionesPage");
+const SuperAdminCopilotoPage = cargaPerezosa(() => import("./superadmin/pages/Copiloto.tsx"), "SuperAdminCopilotoPage");
 const SuperAdminSeguridadPage = cargaPerezosa(() => import("./superadmin/pages/Seguridad.tsx"), "SuperAdminSeguridadPage");
 const SuperAdminInterruptoresPage = cargaPerezosa(() => import("./superadmin/pages/Interruptores.tsx"), "SuperAdminInterruptoresPage");
 const SuperAdminPrivacidadPage = cargaPerezosa(() => import("./superadmin/pages/Privacidad.tsx"), "SuperAdminPrivacidadPage");
@@ -73,14 +77,10 @@ const SuperAdminZonaCfoPage = cargaPerezosa(() => import("./superadmin/pages/Zon
 const SuperAdminPlanesPage = cargaPerezosa(() => import("./superadmin/pages/Planes.tsx"), "SuperAdminPlanesPage");
 const NotificacionesPagina = cargaPerezosa(() => import("./components/NotificacionesPagina.tsx"), "NotificacionesPagina");
 const PlanYUsoPagina = cargaPerezosa(() => import("./components/PlanYUsoPagina.tsx"), "PlanYUsoPagina");
-const StorefrontRestaurantePage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RestaurantePage.tsx"), "RestaurantePage");
-const StorefrontSucursalPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/SucursalPage.tsx"), "SucursalPage");
-const StorefrontRastreoPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/RastreoPage.tsx"), "RastreoPage");
 const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
-const StorefrontEventosPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/EventosPage.tsx"), "EventosPage");
-const PrivacidadStorefrontPage = cargaPerezosa(() => import("./verticals/restaurantes/storefront/PrivacidadStorefront.tsx"), "PrivacidadStorefrontPage");
 const RestaurantesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerosPasos.tsx"), "RestaurantesPrimerosPasosPage");
 const RestaurantesCopilotoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Copiloto.tsx"), "RestaurantesCopilotoPage");
+const RestaurantesCfoPage = cargaPerezosa(() => import("./verticals/restaurantes/cfo/CfoLayout.tsx"), "CfoLayout");
 const RentasCopilotoPage = cargaPerezosa(() => import("./verticals/rentas/pages/Copiloto.tsx"), "RentasCopilotoPage");
 const DemoWhatsAppPage = cargaPerezosa(() => import("./verticals/restaurantes/demo/DemoWhatsAppPage.tsx"), "DemoWhatsAppPage");
 const HotelesLoginPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Login.tsx"), "HotelesLoginPage");
@@ -119,6 +119,7 @@ const RentasDashboardPage = cargaPerezosa(() => import("./verticals/rentas/pages
 const RentasCalendarioPage = cargaPerezosa(() => import("./verticals/rentas/pages/Calendario.tsx"), "CalendarioPage");
 const RentasPreciosPage = cargaPerezosa(() => import("./verticals/rentas/pages/Precios.tsx"), "PreciosPage");
 const RentasAprobacionesPage = cargaPerezosa(() => import("./verticals/rentas/pages/Aprobaciones.tsx"), "AprobacionesPage");
+const RentasHiloPage = cargaPerezosa(() => import("./verticals/rentas/pages/aprobaciones/Hilo.tsx"), "HiloPage");
 const RentasFinanzasPage = cargaPerezosa(() => import("./verticals/rentas/pages/Finanzas.tsx"), "FinanzasPage");
 const RentasMisTareasPage = cargaPerezosa(() => import("./verticals/rentas/pages/MisTareas.tsx"), "MisTareasPage");
 const RentasIcalSyncPage = cargaPerezosa(() => import("./verticals/rentas/pages/IcalSync.tsx"), "IcalSyncPage");
@@ -171,6 +172,7 @@ const RadarRenovacionesPage = cargaPerezosa(() => import("./verticals/licitacion
 const PerfilMatchingPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/PerfilMatching.tsx"), "PerfilMatchingPage");
 const DatosEmpresaPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/DatosEmpresa.tsx"), "DatosEmpresaPage");
 const LicitacionesStaffPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Staff.tsx"), "StaffPage");
+const LicitacionesBitacoraPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Bitacora.tsx"), "BitacoraPage");
 const LicitacionesSeguridadPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Seguridad.tsx"), "SeguridadPage");
 const LicitacionesWhatsappPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Whatsapp.tsx"), "WhatsappPage");
 const LicitacionesDiasInhabilesPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/DiasInhabiles.tsx"), "DiasInhabilesPage");
@@ -314,6 +316,7 @@ const RestaurantesAjustesAgenteRoute = shellRoute(RestaurantesShell, "/restauran
 // R-31: indicadores del agente de WhatsApp (owner/admin).
 const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
 const RestaurantesCierresRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCierresPage {...ctx} />);
+const RestaurantesCampanasRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCampanasPage {...ctx} />);
 // PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
 const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
 // PL-13 -- privacidad de la organizacion (ARCO de todos los verticales, retencion, bloqueo de purga, aviso versionado).
@@ -326,20 +329,9 @@ const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/log
 const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAvisosPage {...ctx} />);
 // CHAT-08 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de restaurantes.
 const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCopilotoPage {...ctx} />);
+// CFO-07 -- apartado CFO (Resumen, Ventas, Sucursales, Estado de resultados); owner/admin (el marco también lo exige: fail-closed).
+const RestaurantesCfoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCfoPage {...ctx} />);
 
-// Storefront PUBLICO de restaurantes (R-09): sin login ni shell de panel; solo necesita el slug del restaurante.
-function StorefrontRestauranteRoute() {
-  const { orgSlug = "" } = useParams();
-  return <StorefrontRestaurantePage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
-}
-function StorefrontSucursalRoute() {
-  const { orgSlug = "", branchSlug = "" } = useParams();
-  return <StorefrontSucursalPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} branchSlug={branchSlug} />;
-}
-function StorefrontRastreoRoute() {
-  const { orgSlug = "", token = "" } = useParams();
-  return <StorefrontRastreoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
-}
 // Demo de WhatsApp (R-19): chat publico contra el agente real, solo para organizaciones marcadas como demo.
 function DemoWhatsAppRoute() {
   const { orgSlug = "" } = useParams();
@@ -358,14 +350,6 @@ function HotelesMisDatosRoute() {
 function ReservarCitasRoute() {
   const { orgSlug = "" } = useParams();
   return <ReservarPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
-}
-function StorefrontEventosRoute() {
-  const { orgSlug = "" } = useParams();
-  return <StorefrontEventosPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
-}
-function StorefrontPrivacidadRoute() {
-  const { orgSlug = "" } = useParams();
-  return <PrivacidadStorefrontPage orgSlug={orgSlug} />;
 }
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
@@ -391,254 +375,173 @@ function GoogleCallbackRoute() {
   return <GoogleCallbackPage apiBaseUrl={API_BASE_URL} />;
 }
 
+/** Contexto que el layout del back office (`SuperAdminLayoutRoute`) entrega a cada pagina: API, token y datos de la sesion. */
+type SuperAdminCtx = Parameters<ComponentProps<typeof SuperAdminShell>["children"]>[0];
+function useSuperAdminCtx(): SuperAdminCtx {
+  return useOutletContext<SuperAdminCtx>();
+}
+
+/** Layout de TODAS las rutas /superadmin/*: el shell (sidebar, barra, banner de impersonacion, dialogo de step-up y el panel Cmd+J del Copiloto) se monta UNA
+ * sola vez y las paginas entran por el `Outlet`; navegar no lo desmonta, asi el panel conserva su conversacion (CHAT-17). */
+function SuperAdminLayoutRoute() {
+  const navigate = useNavigate();
+  const alPedirLogin = useCallback(() => navigate("/", { replace: true }), [navigate]);
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={alPedirLogin}>
+      {(ctx) => (
+        <Suspense fallback={<EstadoCargando variante="pantalla" />}>
+          <Outlet context={ctx} />
+        </Suspense>
+      )}
+    </SuperAdminShell>
+  );
+}
+
 /** Back office de plataforma — igual patrón de shell+ruta que cada vertical,
  * pero sin `orgSlug` (el superadmin no está dentro de ninguna organización). */
 function SuperAdminRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminConsolaResumenPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminConsolaResumenPage {...ctx} />;
 }
 
 /** El parte diario (antes en la raíz): ruta propia sin item de menú; el Resumen lo enlaza con "Ver parte diario". */
 function SuperAdminParteDiarioRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminResumenPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminResumenPage {...ctx} />;
 }
 
 /** SA-L-01: el listado de organizaciones (antes en la raíz /superadmin) vive en su propia ruta; la raíz es el Resumen. */
 function SuperAdminOrganizacionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminOrganizacionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminOrganizacionesPage {...ctx} />;
 }
 
 /** SA-07: ficha 360 de una organizacion. */
 function SuperAdminOrganizacionFichaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminOrganizacionFichaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminOrganizacionFichaPage {...ctx} />;
 }
 
 function SuperAdminProspectosRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminProspectosPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminProspectosPage {...ctx} />;
 }
 
 /** SA-L-42: el mapa del Cerebro de ventas (el mundo virtual de la cartera). */
 function SuperAdminCerebroMapaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminCerebroMapaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCerebroMapaPage {...ctx} />;
 }
 
 /** SA-L-43: la ficha de un prospecto del Cerebro. */
 function SuperAdminFichaProspectoRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminFichaProspectoPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminFichaProspectoPage {...ctx} />;
 }
 
 function SuperAdminPanelesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminPanelesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminPanelesPage {...ctx} />;
 }
 
 function SuperAdminConsumoIaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminConsumoIaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminConsumoIaPage {...ctx} />;
 }
 
 function SuperAdminIntegracionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminIntegracionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminIntegracionesPage {...ctx} />;
 }
 
 function SuperAdminSaludRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminSaludPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminSaludPage {...ctx} />;
+}
+
+function SuperAdminCopilotoRoute() {
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCopilotoPage apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />;
 }
 
 function SuperAdminAccionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAccionesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAccionesPage {...ctx} />;
 }
 
 function SuperAdminSeguridadRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminSeguridadPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminSeguridadPage {...ctx} />;
 }
 
 function SuperAdminInterruptoresRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminInterruptoresPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminInterruptoresPage {...ctx} />;
 }
 
 function SuperAdminPrivacidadRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminPrivacidadPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminPrivacidadPage {...ctx} />;
 }
 
 function SuperAdminTaxonomiaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminTaxonomiaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminTaxonomiaPage {...ctx} />;
 }
 
 function SuperAdminSupresionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminSupresionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminSupresionPage {...ctx} />;
 }
 
 function SuperAdminAgentesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgentesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgentesPage {...ctx} />;
 }
 
 function SuperAdminAgenteExtractorRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgenteExtractorPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgenteExtractorPage {...ctx} />;
 }
 
 function SuperAdminAgenteConciliacionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgenteConciliacionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgenteConciliacionPage {...ctx} />;
 }
 
 function SuperAdminAgenteWhatsappRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAgenteWhatsappPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAgenteWhatsappPage {...ctx} />;
 }
 
 function SuperAdminModelOpsRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminModelOpsPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminModelOpsPage {...ctx} />;
 }
 
 function SuperAdminEjecutivoRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminEjecutivoPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminEjecutivoPage {...ctx} />;
 }
 
 function SuperAdminZonaCfoRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminZonaCfoPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminZonaCfoPage {...ctx} />;
 }
 
 function SuperAdminCostosFacturacionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminCostosFacturacionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCostosFacturacionPage {...ctx} />;
 }
 
 function SuperAdminPlanesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminPlanesPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminPlanesPage {...ctx} />;
 }
 
 function SuperAdminNotificacionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <NotificacionesPagina {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <NotificacionesPagina {...ctx} />;
 }
 
 // Pagina de notificaciones (campana): una sola pagina compartida, montada en el shell de cada vertical.
@@ -664,30 +567,18 @@ const CitasSeguridadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <Seg
 const DespachosSeguridadRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosSeguridadPage {...ctx} />);
 
 function SuperAdminBreakGlassRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminBreakGlassPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminBreakGlassPage {...ctx} />;
 }
 
 function SuperAdminImpersonacionRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminImpersonacionPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminImpersonacionPage {...ctx} />;
 }
 
 function SuperAdminAuthzAuditoriaRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminAuthzAuditoriaPage {...ctx} />}
-    </SuperAdminShell>
-  );
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminAuthzAuditoriaPage {...ctx} />;
 }
 
 function HotelesLoginRoute() {
@@ -842,6 +733,9 @@ const RentasPreciosRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <Re
  * ALTA "la cola de aprobación no tiene botón de aprobar". Mismo patrón de ruta hija
  * que RentasCalendarioRoute/RentasPreciosRoute. */
 const RentasAprobacionesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAprobacionesPage {...ctx} />);
+
+/** Hilo de una conversación (Rn-P3-20): mensajes del huésped con sus borradores, dentro de Aprobaciones. */
+const RentasHiloRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasHiloPage {...ctx} />);
 
 /** Finanzas (Fase 16) — movimiento por reserva, owner statements, payouts/
  * conciliación. Cierra el hallazgo de auditoría ALTA "Finanzas sin UI para
@@ -1058,6 +952,8 @@ const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
+// L-P3-17: bitácora de escrituras de la organización (solo owner/admin; el servidor y la RLS lo exigen).
+const LicitacionesBitacoraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesBitacoraPage {...ctx} />);
 const LicitacionesDiasInhabilesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesDiasInhabilesPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -1145,6 +1041,7 @@ export function App() {
       <ErrorBoundaryRaiz>
       <Suspense fallback={<div data-atiende-carga-ruta><EstadoCargando variante="pantalla" /></div>}>
       <Routes>
+        {CatalogoOverlaysPage ? <Route path="/dev/catalogo" element={<CatalogoOverlaysPage />} /> : null}
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
         {/* PL-21: enlaces del correo de restaurantes (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
         <Route path="/restaurantes/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />
@@ -1169,12 +1066,14 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/agente-ajustes" element={<RestaurantesAjustesAgenteRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
         <Route path="/restaurantes/:orgSlug/cierres" element={<RestaurantesCierresRoute />} />
+        <Route path="/restaurantes/:orgSlug/campanas" element={<RestaurantesCampanasRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
         <Route path="/restaurantes/:orgSlug/avisos" element={<RestaurantesAvisosRoute />} />
         <Route path="/restaurantes/:orgSlug/copiloto" element={<RestaurantesCopilotoRoute />} />
+        <Route path="/restaurantes/:orgSlug/cfo/*" element={<RestaurantesCfoRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/plan" element={<RestaurantesPlanRoute />} />
@@ -1187,45 +1086,45 @@ export function App() {
         <Route path="/privacidad" element={<PrivacidadPage />} />
         <Route path="/demo/:orgSlug" element={<DemoWhatsAppRoute />} />
         <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
-        <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
-        <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
-        <Route path="/pedir/:orgSlug/eventos" element={<StorefrontEventosRoute />} />
-        <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
-        <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
-        <Route path="/superadmin" element={<SuperAdminRoute />} />
-        <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
-        <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
-        <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
-        <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
-        <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
-        <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
-        <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
-        <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
-        <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
-        <Route path="/superadmin/organizaciones/:id" element={<SuperAdminOrganizacionFichaRoute />} />
+        {/* La tienda en línea (/pedir/*) ya no existe: los pedidos entran por WhatsApp o por llamada. */}
+        <Route path="/pedir/*" element={<Navigate to="/" replace />} />
+        <Route element={<SuperAdminLayoutRoute />}>
+          <Route path="/superadmin" element={<SuperAdminRoute />} />
+          <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
+          <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
+          <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
+          <Route path="/superadmin/mapa-prospectos" element={<SuperAdminCerebroMapaRoute />} />
+          <Route path="/superadmin/mapa-prospectos/:id" element={<SuperAdminFichaProspectoRoute />} />
+          <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
+          <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
+          <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
+          <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
+          <Route path="/superadmin/organizaciones/:id" element={<SuperAdminOrganizacionFichaRoute />} />
+          <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
+          <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
+          <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
+          <Route path="/superadmin/privacidad" element={<SuperAdminPrivacidadRoute />} />
+          <Route path="/superadmin/supresion" element={<SuperAdminSupresionRoute />} />
+          <Route path="/superadmin/agentes" element={<SuperAdminAgentesRoute />} />
+          <Route path="/superadmin/agente-extractor" element={<SuperAdminAgenteExtractorRoute />} />
+          <Route path="/superadmin/agente-conciliacion" element={<SuperAdminAgenteConciliacionRoute />} />
+          <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
+          <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
+          <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
+          <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
+          <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
+          <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
+          <Route path="/superadmin/notificaciones" element={<SuperAdminNotificacionesRoute />} />
+          <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
+          <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
+          <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
+          <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
+          <Route path="/superadmin/copiloto" element={<SuperAdminCopilotoRoute />} />
+        </Route>
         {/* Rutas que cambiaron de lugar (SA-L-01): la vieja redirige a la nueva, sin 404. */}
         {Object.entries(REDIRECCIONES_SUPERADMIN).map(([desde, hacia]) => (
           <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
         ))}
-        <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
-        <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
-        <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
-        <Route path="/superadmin/privacidad" element={<SuperAdminPrivacidadRoute />} />
-        <Route path="/superadmin/supresion" element={<SuperAdminSupresionRoute />} />
-        <Route path="/superadmin/agentes" element={<SuperAdminAgentesRoute />} />
-        <Route path="/superadmin/agente-extractor" element={<SuperAdminAgenteExtractorRoute />} />
-        <Route path="/superadmin/agente-conciliacion" element={<SuperAdminAgenteConciliacionRoute />} />
-        <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
-        <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
-        <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
-        <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
-        <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
-        <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
-        <Route path="/superadmin/notificaciones" element={<SuperAdminNotificacionesRoute />} />
-        <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
-        <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
-        <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
-        <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         {/* PL-21: enlaces del correo de hoteles (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
@@ -1270,6 +1169,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
+        <Route path="/rentas/:orgSlug/aprobaciones/:conversacionId" element={<RentasHiloRoute />} />
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
@@ -1343,6 +1243,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
+        <Route path="/licitaciones/:orgSlug/bitacora" element={<LicitacionesBitacoraRoute />} />
         <Route path="/licitaciones/:orgSlug/notificaciones" element={<LicitacionesNotificacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/plan" element={<LicitacionesPlanRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />

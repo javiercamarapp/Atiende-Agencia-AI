@@ -90,6 +90,11 @@ function textoDeNodo(el: Element | null): string {
   return el?.textContent ?? "";
 }
 
+/** Elementos por NOMBRE LOCAL en cualquier espacio de nombres: `<row>` y `<x:row>` (OpenXML SDK / exportaciones .NET) son lo mismo. */
+function porNombre(raiz: Document | Element, nombre: string): Element[] {
+  return Array.from(raiz.getElementsByTagNameNS("*", nombre));
+}
+
 function indiceDeColumna(ref: string): number {
   const letras = /^[A-Z]+/i.exec(ref)?.[0].toUpperCase() ?? "A";
   let n = 0;
@@ -113,9 +118,9 @@ export function parsearXlsx(bytes: Uint8Array): string[][] {
   const sst = archivos["xl/sharedStrings.xml"];
   if (sst) {
     const doc = parser.parseFromString(decodificar(sst), "application/xml");
-    for (const si of Array.from(doc.getElementsByTagName("si"))) {
+    for (const si of porNombre(doc, "si")) {
       compartidas.push(
-        Array.from(si.getElementsByTagName("t"))
+        porNombre(si, "t")
           .map((t) => t.textContent ?? "")
           .join(""),
       );
@@ -123,15 +128,15 @@ export function parsearXlsx(bytes: Uint8Array): string[][] {
   }
   const doc = parser.parseFromString(decodificar(hoja), "application/xml");
   const filas: string[][] = [];
-  for (const row of Array.from(doc.getElementsByTagName("row"))) {
+  for (const row of porNombre(doc, "row")) {
     const fila: string[] = [];
-    for (const c of Array.from(row.getElementsByTagName("c"))) {
+    for (const c of porNombre(row, "c")) {
       const col = indiceDeColumna(c.getAttribute("r") ?? "A1");
       const tipo = c.getAttribute("t");
       let valor = "";
-      if (tipo === "s") valor = compartidas[Number(textoDeNodo(c.getElementsByTagName("v")[0] ?? null))] ?? "";
-      else if (tipo === "inlineStr") valor = Array.from(c.getElementsByTagName("t")).map((t) => t.textContent ?? "").join("");
-      else valor = textoDeNodo(c.getElementsByTagName("v")[0] ?? null);
+      if (tipo === "s") valor = compartidas[Number(textoDeNodo(porNombre(c, "v")[0] ?? null))] ?? "";
+      else if (tipo === "inlineStr") valor = porNombre(c, "t").map((t) => t.textContent ?? "").join("");
+      else valor = textoDeNodo(porNombre(c, "v")[0] ?? null);
       while (fila.length < col) fila.push("");
       fila[col] = valor;
     }
@@ -148,11 +153,33 @@ export async function huellaSha256(bytes: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Huella de UNA importacion: el archivo + el mapeo de columnas con que se importa (QA R2 caos-07). El mismo archivo con otro mapeo es otra importacion:
+ * asi se puede corregir un mapeo equivocado reimportando, y el mismo archivo con el MISMO mapeo sigue siendo idempotente.
+ */
+export async function huellaConMapeo(huellaArchivo: string, mapeo: MapeoColumnas): Promise<string> {
+  const bytes = new TextEncoder().encode(`${huellaArchivo}|${CAMPOS_IMPORTACION.map((c) => `${c}=${mapeo[c] ?? "-"}`).join(",")}`);
+  return huellaSha256(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+}
+
 export interface ArchivoLeido {
   readonly nombre: string;
   readonly huella: string;
   /** Todas las filas, encabezado incluido. */
   readonly filas: string[][];
+}
+
+/**
+ * Texto de un CSV: UTF-8 estricto y, si los bytes no son UTF-8 valido (el "CSV (delimitado por comas)" de Excel en espanol de Windows
+ * guarda Windows-1252: "Jose" con acento es un solo byte 0xE9), se lee como Windows-1252. Nunca deja pasar el caracter de reemplazo en
+ * silencio: la importacion no pisa un nombre ya conocido y un nombre corrupto seria permanente.
+ */
+export function decodificarTexto(buffer: ArrayBuffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buffer);
+  }
 }
 
 export async function leerArchivoClientes(file: File): Promise<ArchivoLeido> {
@@ -162,7 +189,7 @@ export async function leerArchivoClientes(file: File): Promise<ArchivoLeido> {
   const nombre = file.name;
   let filas: string[][];
   if (/\.xlsx$/i.test(nombre)) filas = parsearXlsx(new Uint8Array(buffer));
-  else if (/\.(csv|txt|tsv)$/i.test(nombre) || /text\//i.test(file.type)) filas = parsearCsv(new TextDecoder("utf-8").decode(buffer));
+  else if (/\.(csv|txt|tsv)$/i.test(nombre) || /text\//i.test(file.type)) filas = parsearCsv(decodificarTexto(buffer));
   else throw new ArchivoImportacionError("Formato no admitido: sube un .csv o un .xlsx. (Un .xls antiguo: guárdalo como .xlsx o CSV.)");
   if (filas.length === 0) throw new ArchivoImportacionError("El archivo está vacío.");
   return { nombre, huella, filas };

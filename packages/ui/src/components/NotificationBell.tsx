@@ -10,6 +10,7 @@
 import { Bell } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { CentroNotificaciones, type CentroNotificacionesProps } from "./CentroNotificaciones";
 
 export interface NotificationBellProps {
   /** Ruta de la pagina de notificaciones de la consola (p. ej. `/restaurantes/mi-org/notificaciones`). */
@@ -17,9 +18,15 @@ export interface NotificationBellProps {
   /** `true` = hay al menos una notificacion sin leer: se pinta el punto rojo. Nunca un numero. */
   readonly hayNoLeidas: boolean;
   readonly className?: string;
+  /**
+   * Con `centro`, la campana abre el centro de notificaciones (popover con las recientes) en vez de
+   * navegar; "Ver todas" lleva a `href`. Sin el, conserva el comportamiento de enlace de Likida.
+   */
+  readonly centro?: Omit<CentroNotificacionesProps, "href" | "hayNoLeidas" | "className">;
 }
 
-export function NotificationBell({ href, hayNoLeidas, className }: NotificationBellProps) {
+export function NotificationBell({ href, hayNoLeidas, className, centro }: NotificationBellProps) {
+  if (centro) return <CentroNotificaciones href={href} hayNoLeidas={hayNoLeidas} className={className} {...centro} />;
   return (
     <Link
       to={href}

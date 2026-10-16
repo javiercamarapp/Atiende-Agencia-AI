@@ -126,7 +126,7 @@ describe("createLlmWhatsAppTurnHandler — el loop de tool-use", () => {
                   name: "crear_pedido",
                   argumentsJson: JSON.stringify({
                     branch_slug: "centro",
-                    customer_name: "Cliente",
+                    customer_name: "Carlos Prueba",
                     customer_address: "Calle 1",
                     items: [{ product_id: productId, product_name: "Agua", requested_quantity: 1 }],
                     payment_method: "efectivo",
