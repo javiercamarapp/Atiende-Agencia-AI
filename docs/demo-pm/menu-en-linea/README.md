@@ -13,6 +13,7 @@ Solo lectura: nada de esto toca la base real, Vercel ni WhatsApp. **No hay binar
 | `fco-montejo.json` | `/menufranciscodemontejo`, 9 imágenes (la 1.ª es la promo). 211 productos. Precios = T1-2026. |
 | `pensiones.json` | `/menupensiones`, 8 imágenes (la 1.ª es la promo). 200 productos. **Lista T3-2025 (más barata).** |
 | `galerias.json` | `/menupmgalerias`, 9 imágenes (la 1.ª es la promo). 154 productos. Precios = T1-2026, menú reducido (sin licores, cervezas, cocktails ni postres). |
+| `sitio.json` | Del PR #571: preguntas frecuentes, contacto, WhatsApp por sucursal y la página `/menu` antigua (lista vieja, no se usa para precios). Se le agregaron los **horarios por sucursal de la portada**. |
 | `reglas-piezas.json` | Piezas por orden que las imágenes confirman (con la cita), las que NO dicen, el cambio al seed y la divergencia del arnés. |
 | `manifiesto-pdf.json` | Los 7 PDF (5 en español, 2 en inglés): sucursal, páginas, SHA256 del PDF, URL fuente, fecha y cada imagen de origen con SHA256 e «incrustada sin recomprimir». |
 
@@ -28,7 +29,7 @@ Las páginas en inglés (`/taquitospm-english-menu` = Montejo/García Lavín/Alt
 5. **Promociones** (solo en las imágenes de Francisco de Montejo, Pensiones y Galerías): lunes 2x1 en tacos al pastor; martes nachos al pastor + 2 aguas frescas **$328** (Pensiones **$278**). La leyenda las limita a esas tres sucursales, de apertura a cierre y **«no válido en servicio a domicilio»**; el seed las carga en todas las sucursales y solo para recoger. La imagen no dice qué aguas entran.
 6. **Qué se vende dónde** (según las imágenes): flautas y comida regional solo en la página de Montejo/García Lavín/Altabrisa (Galerías también trae comida regional, sin codzitos); Playa no tiene Sprite; Heineken Silver solo sale en Playa ($90) y Francisco de Montejo ($90; **el seed solo la carga en T5**).
 7. **Divergencia con el seed (pregunta P10 del dueño)**: Ensalada de PM, Jericallas y Café tienen precio en T2 y T3 del seed, pero **no salen** en las imágenes de Francisco de Montejo ni de Pensiones; Pensiones tampoco trae pizzas Quesobich ni Heineken 0.0. No se tocó el seed.
-8. **Horarios, envío y mínimo**: ninguna imagen los trae. El sitio sí publica horario **por sucursal** en la portada y las preguntas frecuentes (entrega de 40 a 50 min, con lluvia 1 h a 1 h 20; tarjeta o contra entrega; salsas extra con costo); eso no se carga aquí (ver `LEEME-MENUS.md` fuera del repo). Horario por producto, agotados, «solo fin de semana», límites de cantidad, pedido mínimo y costo de envío: **no aparecen** (`null` en cada JSON).
+8. **Horarios, envío y mínimo**: ninguna imagen los trae. El sitio sí publica horario **por sucursal** en la portada y las preguntas frecuentes (entrega de 40 a 50 min, con lluvia 1 h a 1 h 20; tarjeta o contra entrega; salsas extra con costo); los horarios por sucursal quedaron en `sitio.json` (`horarios_por_sucursal_portada`). Horario por producto, agotados, «solo fin de semana», límites de cantidad, pedido mínimo y costo de envío: **no aparecen** (`null` en cada JSON).
 
 ## Divergencia conocida del arnés (no corregida a propósito)
 
@@ -38,6 +39,10 @@ Se probó alinearlos y **rompe 5 pruebas en cada intento** (gringas/mestizas/ala
 ## Pruebas
 
 `packages/domain-restaurantes/tests/pm-menu-9-fotos.spec.ts` (deterministas, sin LLM, sin red, sin base): forma y trazabilidad de los JSON, manifiesto de PDF contra las imágenes de cada página, precios web = seed por sucursal, Pensiones = lista 2025, qué se vende dónde, promociones, piezas por orden (JSON = lo que el servidor deriva del seed), alambre suizo con `pack_size` 5, flautas/alitas/crujientes sin `pack_size`, divergencia del arnés y T7-031 ($1,833).
+
+## Relación con el PR #571
+
+Este directorio reemplaza los JSON de #571 (que solo habían leído 3 imágenes por sucursal): se retiraron `altabrisa.json`, `garcia-lavin.json`, `prol-montejo.json` (las tres plazas comparten `montejo-altabrisa-victory.json`) y `diferencias.json` (la comparación ahora vive en este README y en las pruebas). `pm-menu-en-linea.spec.ts` se adaptó a los nuevos archivos conservando sus aserciones de piezas, T7-031, tacos, kilos y tortilla; las de forma, promos y precios web = seed las cubre `pm-menu-9-fotos.spec.ts` con más datos. Una afirmación de #571 resultó falsa con las 9 imágenes (que las flautas «ni aparecen»): salen en la página Montejo/García Lavín/Altabrisa, imagen 4, sin número de piezas.
 
 ## Regenerar
 
