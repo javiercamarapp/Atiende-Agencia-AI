@@ -2,6 +2,7 @@
 // sala de guerra, go/no-go, aprobaciones y presentacion) en orden temporal, con filtros por fuente y rango de
 // fechas y paginacion del servidor (GET .../bitacora). Solo lectura: ningun boton escribe nada.
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, DataTable, Input, Label, NativeSelect, StatusBadge } from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
 import { BITACORA_FUENTE_LABEL, fetchBitacora } from "../lib/sala-guerra-client.ts";
@@ -28,9 +29,11 @@ export interface BitacoraConvocatoriaProps {
   readonly token: string;
   readonly propertyId: string;
   readonly tenderId: string;
+  /** L-P3-17: solo owner/admin -- enlace a la traza de punta a punta (ingesta, versiones, aprobaciones y manifiesto) en la bitacora de la organizacion. */
+  readonly trazaHref?: string;
 }
 
-export function BitacoraConvocatoria({ apiBaseUrl, token, propertyId, tenderId }: BitacoraConvocatoriaProps) {
+export function BitacoraConvocatoria({ apiBaseUrl, token, propertyId, tenderId, trazaHref }: BitacoraConvocatoriaProps) {
   const [fuente, setFuente] = useState<BitacoraFuente | "">("");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
@@ -66,7 +69,18 @@ export function BitacoraConvocatoria({ apiBaseUrl, token, propertyId, tenderId }
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Bitácora de la convocatoria</CardTitle>
-        <CardDescription>Todo lo que ha pasado con esta convocatoria, del más reciente al más antiguo. Solo lectura.</CardDescription>
+        <CardDescription>
+          Todo lo que ha pasado con esta convocatoria, del más reciente al más antiguo. Solo lectura.
+          {trazaHref && (
+            <>
+              {" "}
+              <Link to={trazaHref} className="font-semibold text-foreground hover:underline">
+                Ver la traza de cambios de punta a punta
+              </Link>
+              .
+            </>
+          )}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end gap-3">

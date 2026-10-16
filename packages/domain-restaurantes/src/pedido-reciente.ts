@@ -10,7 +10,7 @@ export const VENTANA_PEDIDO_RECIENTE_MIN = 12 * 60;
 /** Sucursal sin zona horaria propia (`branch_detail.zona_horaria` nula): la del negocio (Los Taquitos de PM es de Merida). */
 const ZONA_POR_OMISION = "America/Merida";
 
-export type EstadoPedidoParaCliente = "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido" | "por_confirmar";
+export type EstadoPedidoParaCliente = "registrado" | "preparando" | "salio" | "listo_para_recoger" | "entregado" | "programado" | "con_problema" | "no_recogido" | "por_confirmar";
 
 export interface PedidoReciente {
   readonly estado: EstadoPedidoParaCliente;
@@ -24,7 +24,9 @@ export interface PedidoReciente {
 /** Lo que el cliente puede entender de cada estado interno; `cancelado` no es un pedido vigente (devuelve null). */
 export function estadoParaCliente(status: OrderStatus): EstadoPedidoParaCliente | null {
   switch (status) {
+    // `pending` = el pedido figura registrado pero la sucursal todavia no lo marco en preparacion (QA-PM-R6-voz-04: antes se le decia al cliente «ya lo estan preparando» sin ese dato).
     case "pending":
+      return "registrado";
     case "preparando":
       return "preparando";
     case "en_camino":
@@ -53,19 +55,31 @@ function horaLocal(iso: string, zona: string): string {
 
 /** Pedido mas reciente de este telefono dentro de la ventana; null = no hay; undefined = no se pudo leer (base sin migrar). Solo lee columnas de `orders` de las migraciones 001, 003 y 008
  * y `canal` por el camino que ya degrada contra la base sin migrar (`listOrderPickupInfo`). */
-export async function buscarPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<PedidoReciente | null | undefined> {
+export async function buscarPedidoRecienteConSucursal(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<{ readonly reciente: PedidoReciente; readonly propertyId: string | null } | null | undefined> {
   const desde = new Date(now.getTime() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString();
   const order = await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), desde);
   if (order === undefined) return undefined; // la lectura no estuvo disponible: estado desconocido
   if (!order) return null;
   const estado = estadoParaCliente(order.status);
   if (!estado) return null;
-  const [zona, info] = await Promise.all([repo.findBranchZonaHoraria(order.propertyId), repo.listOrderPickupInfo(organizationId, [order.id])]);
+  // En serie (no Promise.all): cada lectura corre en su propio SAVEPOINT sobre la MISMA sesion; intercalados, el RELEASE de uno liberaba el del otro y el turno terminaba en 500
+  // (savepoint "sp_restaurantes_order_pickup_info" does not exist) para todo cliente con un pedido reciente.
+  const zona = await repo.findBranchZonaHoraria(order.propertyId);
+  const info = await repo.listOrderPickupInfo(organizationId, [order.id]);
   return {
-    estado,
-    canal: info[0]?.canal ?? null,
-    sucursal: order.branch,
-    confirmadoHoraLocal: horaLocal(order.createdAt, zona.zonaHoraria ?? ZONA_POR_OMISION),
-    minutosDesdeConfirmacion: Math.max(0, Math.round((now.getTime() - Date.parse(order.createdAt)) / 60_000)),
+    propertyId: order.propertyId ?? null,
+    reciente: {
+      estado,
+      canal: info[0]?.canal ?? null,
+      sucursal: order.branch,
+      confirmadoHoraLocal: horaLocal(order.createdAt, zona.zonaHoraria ?? ZONA_POR_OMISION),
+      minutosDesdeConfirmacion: Math.max(0, Math.round((now.getTime() - Date.parse(order.createdAt)) / 60_000)),
+    },
   };
+}
+
+/** Igual que `buscarPedidoRecienteConSucursal` pero solo con lo que ve el cliente (sin el id de la sucursal). */
+export async function buscarPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<PedidoReciente | null | undefined> {
+  const r = await buscarPedidoRecienteConSucursal(repo, organizationId, phone, now);
+  return r === undefined || r === null ? r : r.reciente;
 }

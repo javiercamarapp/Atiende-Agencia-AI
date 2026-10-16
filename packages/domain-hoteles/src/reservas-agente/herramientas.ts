@@ -140,6 +140,8 @@ export interface ReservasToolOutcome {
   readonly moneyCents: readonly number[];
   readonly holdCreated: HoldRecord | null;
   readonly handoff: boolean;
+  /** true SOLO si el contacto para una persona quedo insertado de verdad (`handoff()` termino sin error). `handoff: true` solo pide la derivacion. */
+  readonly contactoRegistrado?: boolean;
 }
 
 export function formatMxn(cents: number): string {
@@ -343,19 +345,21 @@ export async function executeReservasTool(ctx: ReservasToolContext, name: Reserv
         const resumenRaw = cleanText(input.resumen, 1000);
         const resumen = resumenRaw ? redactSensitive(resumenRaw) : null;
         await handoff(ctx, redactSensitive(motivo), resumen);
-        return { result: { ok: true, mensaje: "Se registro para que una persona del hotel continue. Avisa al huesped que alguien le dara seguimiento." }, moneyCents: [], holdCreated: null, handoff: true };
+        return { result: { ok: true, mensaje: "Se registro para que una persona del hotel continue. Avisa al huesped que alguien le dara seguimiento." }, moneyCents: [], holdCreated: null, handoff: true, contactoRegistrado: true };
       }
     }
   } catch (err) {
     if (err instanceof ReservasAgenteError) {
       const outcome = errorOutcome(err);
       if (outcome.handoff) {
+        let contactoRegistrado = false;
         try {
           await handoff(ctx, `herramienta ${name}: ${err.code}`, null);
+          contactoRegistrado = true;
         } catch {
           // El registro del handoff es de mejor esfuerzo: si falla, el modelo igual recibe `requiere_humano:true`.
         }
-        return { ...outcome, result: { ...outcome.result, derivado: true } };
+        return { ...outcome, result: { ...outcome.result, derivado: true }, contactoRegistrado };
       }
       return outcome;
     }

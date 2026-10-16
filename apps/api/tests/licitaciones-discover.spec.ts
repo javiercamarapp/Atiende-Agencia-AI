@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemorySaludRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { buildLicitacionesTestContext } from "./licitaciones-fixtures.ts";
+import { conEmisiones } from "./support/emisiones.ts";
 
 const REAL_HEADER = "codigo_contrato,codigo_expediente,proveedor,titulo_contrato,descripcion_contrato,contract_type,work_category_id,tipo_contratacion,tipo_expediente,importe,moneda,fecha_inicio,fecha_fin,project_code,ff_fecha_inicio,ff_fecha_fin";
 
@@ -130,6 +131,89 @@ describe("latido de /internal/licitaciones/discover-tenders -- 'not_configured' 
     const latido = await readLatido();
     expect(latido?.lastStatus).toBe("ok");
     expect(latido?.consecutiveFailures).toBe(0);
+  });
+
+  const fetchFailed = (code: string) => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error(code), { code }) });
+  /** compras 403 (WAF), guadalajara TLS vencido, cdmx connect timeout; `cdmxResponde500` convierte cdmx en un fallo REAL. */
+  function stubFuentesNoDisponibles(opciones: { cdmxResponde500?: boolean } = {}): ReturnType<typeof vi.fn> {
+    return vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("api-ocds.nl.gob.mx")) return new Response(JSON.stringify({ current_page: 1, data: [], last_page: 1, per_page: 10, total: 0 }), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.includes("datos.cdmx.gob.mx")) {
+        if (opciones.cdmxResponde500) return new Response("boom", { status: 500 });
+        throw fetchFailed("UND_ERR_CONNECT_TIMEOUT");
+      }
+      if (url.includes("guadalajara")) throw fetchFailed("CERT_HAS_EXPIRED");
+      if (url.includes("contratacionesabiertas")) {
+        if (url.endsWith("/edca/fiscalYears")) return new Response(JSON.stringify({ fiscalYears: [{ id: 1, year: 2025, status: true }] }), { status: 200, headers: { "content-type": "application/json" } });
+        return new Response(JSON.stringify({ arrayReleasePackage: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("<HTML><TITLE>Access Denied</TITLE></HTML>", { status: 403, headers: { "content-type": "text/html" } });
+    });
+  }
+
+  async function setupNoDisponibles() {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const alertas: { tipo: string; severidad: string }[] = [];
+    const { deps, emisiones } = conEmisiones({ ...ctx.deps, alertas: { notificar: async (a: { tipo: string; severidad: string }) => (alertas.push({ tipo: a.tipo, severidad: a.severidad }), { resultados: [] }) } }, {});
+    const app = buildApp(deps);
+    const readLatido = heartbeatReaderFor(ctx.deps.saludRepo as InMemorySaludRepository);
+    const run = () => app.request("/internal/licitaciones/discover-tenders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    return { ctx, alertas, emisiones, readLatido, run };
+  }
+
+  it("(c) fuentes no disponibles (WAF 403, TLS vencido, inalcanzable) que NUNCA tuvieron exito -- latido 'ok', pero ESCALAN: alerta alta + campana, una por fuente", async () => {
+    const s = await setupNoDisponibles();
+    vi.stubGlobal("fetch", stubFuentesNoDisponibles());
+
+    const res = await s.run();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { fuentes_escaladas: string[]; failures: { source: string | null; error: string; no_disponible?: boolean }[] };
+    expect(body.failures.filter((f) => f.no_disponible).map((f) => f.source).sort()).toEqual(["cdmx_ocds", "compras_mx_historico", "guadalajara_ocds"]);
+    expect(body.failures.find((f) => f.source === "guadalajara_ocds")!.error).toContain("CERT_HAS_EXPIRED");
+    expect([...body.fuentes_escaladas].sort()).toEqual(["cdmx_ocds", "compras_mx_historico", "guadalajara_ocds"]);
+
+    expect(s.alertas.filter((a) => a.tipo.startsWith("licitaciones_fuente_no_disponible:")).map((a) => a.severidad)).toEqual(["alta", "alta", "alta"]);
+    const campana = s.emisiones.filter((e) => e.evento === "superadmin.cron.fallo");
+    expect(campana.map((e) => e.dedupeKey).sort()).toEqual(
+      ["cdmx_ocds", "compras_mx_historico", "guadalajara_ocds"].map((f) => `superadmin.cron.fallo:licitaciones.discover-tenders.${f}:${new Date().toISOString().slice(0, 10)}`),
+    );
+
+    const latido = await s.readLatido();
+    expect(latido?.lastStatus).toBe("ok");
+    expect(latido?.consecutiveFailures).toBe(0);
+  });
+
+  it("(d) fuente no disponible pero DENTRO de su umbral de obsolescencia (exito reciente) -- no escala ni alerta, latido 'ok'", async () => {
+    const s = await setupNoDisponibles();
+    const ahora = new Date().toISOString();
+    for (const source of ["compras_mx_historico", "cdmx_ocds", "guadalajara_ocds"] as const) {
+      await s.ctx.repo.recordSourceRun(s.ctx.organizationId, { source, state: "ok", startedAt: ahora, finishedAt: ahora, evidence: { message: "ok previo", coverage: { expected: 1, obtained: 1 } }, correlationId: null });
+    }
+    vi.stubGlobal("fetch", stubFuentesNoDisponibles());
+
+    const body = (await (await s.run()).json()) as { fuentes_escaladas: string[] };
+    expect(body.fuentes_escaladas).toEqual([]);
+    expect(s.alertas.filter((a) => a.tipo.startsWith("licitaciones_fuente_no_disponible:"))).toEqual([]);
+    expect(s.emisiones.filter((e) => e.evento === "superadmin.cron.fallo")).toEqual([]);
+    expect((await s.readLatido())?.lastStatus).toBe("ok");
+  });
+
+  it("(e) caso mixto: fuentes no disponibles MAS una falla real (cdmx responde 500) en la misma corrida -- el latido queda 'error' y nombra solo la falla real", async () => {
+    const s = await setupNoDisponibles();
+    vi.stubGlobal("fetch", stubFuentesNoDisponibles({ cdmxResponde500: true }));
+
+    const res = await s.run();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { failures: { source: string | null; no_disponible?: boolean }[] };
+    expect(body.failures.find((f) => f.source === "cdmx_ocds")!.no_disponible).toBeUndefined();
+    expect(body.failures.find((f) => f.source === "compras_mx_historico")!.no_disponible).toBe(true);
+
+    const latido = await s.readLatido();
+    expect(latido?.lastStatus).toBe("error");
+    expect(latido?.lastError).toContain("cdmx_ocds");
+    expect(latido?.lastError).not.toContain("compras_mx_historico");
+    expect(latido?.lastError).not.toContain("guadalajara_ocds");
   });
 
   it("(b) una fuente configurada que falla de verdad (con aggregator TAMBIÉN configurado y ok) -- SÍ lanza CronPartialFailureError, latido 'error'", async () => {

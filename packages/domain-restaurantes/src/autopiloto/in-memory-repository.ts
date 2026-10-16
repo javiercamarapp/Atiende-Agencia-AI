@@ -2,12 +2,13 @@
 // pedido, compare-and-set de estados, "doble clic = un efecto", zona horaria de la sucursal); la SEMANTICA REAL de SQL (RLS, bloqueos,
 // concurrencia) la prueba scripts/verify-restaurantes-autopiloto contra Postgres. No es produccion.
 import { randomUUID } from "node:crypto";
-import { diaLocalSucursal } from "../voz/kpi.ts";
+import { diaDeNegocio, type HorarioSucursal } from "../horarios.ts";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { CanalPedido, OrderStatus } from "../types.ts";
 import { MOTIVOS_CANCELACION } from "./taxonomia.ts";
 import { AutopilotoAccesoError, AutopilotoValidacionError, AUTOPILOTO_CONFIG_POR_OMISION, DECISIONES_POR_TIPO } from "./tipos.ts";
 import type {
-  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, Lectura,
+  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, HandoffPendienteSinTomar, Lectura,
   MuestrasTiempo, OpcionesResolver, ResultadoCancelarCliente, ResultadoCrearSolicitud, ResultadoResolver, ResultadoRetener, SolicitudDecision, SolicitudPorEscalar,
   SolicitudTipo, SolicitudVista,
 } from "./tipos.ts";
@@ -26,6 +27,10 @@ export interface PedidoMemoria {
   programadoPara?: Date | null;
   entregadoAt?: Date | null;
   horaRecogida?: Date | null;
+  /** El staff imprimio el ticket de cocina (habilita la aceptacion automatica sin POS). */
+  ticketImpreso?: boolean;
+  /** Cuando el pedido quedo `listo_para_recoger` por ULTIMA vez (la base lo deriva de order_status_events; el plazo de no_recogido cuenta desde aqui). */
+  listoDesde?: Date | null;
   /** Comanda en el outbox del POS (null = ninguna). */
   comanda?: { estado: "pendiente" | "enviada" | "confirmada" | "capturada_manual"; folio: string | null } | null;
 }
@@ -38,6 +43,10 @@ export interface HandoffMemoria {
   telefono: string;
   estado: "pendiente" | "tomada" | "devuelta" | "cerrada";
   tomadaAt: Date;
+  /** Cuando el agente pidio una persona (por omision, `tomadaAt`). */
+  solicitadaAt?: Date;
+  /** Se avisó al owner de una toma PENDIENTE sin tomar. */
+  escaladaAt?: Date | null;
   ultimaHumanaAt: Date | null;
   ultimoClienteAt: Date | null;
 }
@@ -73,6 +82,10 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
   readonly agotados: AgotadoMemoria[] = [];
   readonly eventos: (EventoEstadoPedido & { orderId: string })[] = [];
   readonly zonaPorSucursal = new Map<string, string>();
+  /** Horario por sucursal (la base lo lee de branch_policy para calcular el dia de negocio: el turno que cruza la medianoche). */
+  readonly horarioPorSucursal = new Map<string, HorarioSucursal>();
+  /** Sucursales con el agente de WhatsApp APAGADO (053): sus tomas no regresan al agente. */
+  readonly agentesApagados = new Set<string>();
   readonly configs = new Map<string, AutopilotoConfig>();
   readonly muestras = new Map<string, MuestrasTiempo>();
   /** Mensajes "Gracias por esperar" que habrian salido (la base los encola en el outbox). */
@@ -96,6 +109,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
   private mover(p: PedidoMemoria, hacia: OrderStatus, actor: string, motivo: string | null): void {
     const desde = p.status;
     p.status = hacia;
+    if (hacia === "listo_para_recoger") p.listoDesde = this.ahora();
     this.evento(p, desde, hacia, actor, motivo);
   }
 
@@ -180,7 +194,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     const p = s.orderId ? this.pedidos.get(s.orderId) : undefined;
     const base = (aplicado: boolean, extra: Partial<ResultadoResolver> = {}): ResultadoResolver => ({
       aplicado, tipo: s.tipo, decision: s.decision, orderId: s.orderId, propertyId: s.propertyId, estadoPedido: p?.status ?? null, codigoDescuento: s.codigoDescuento,
-      reposicionOrderId: s.reposicionOrderId, ...extra,
+      reposicionOrderId: s.reposicionOrderId, motivo: s.motivoResolucion, ...extra,
     });
     if (s.estado === "resuelta") return base(false);
     if (!DECISIONES_POR_TIPO[s.tipo].includes(decision)) throw new AutopilotoValidacionError(`decision invalida para ${s.tipo}`);
@@ -191,7 +205,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     if (s.tipo === "pedido_grande" && p) {
       if (p.status !== "por_aprobar") {
         cerrar({ motivoResolucion: "pedido_ya_no_estaba_por_aprobar" });
-        return base(false);
+        return base(false, { motivo: "pedido_ya_no_estaba_por_aprobar" });
       }
       if (decision === "aprobar") {
         this.mover(p, p.programadoPara && p.programadoPara > this.ahora() ? "programado" : "pending", "staff", "aprobado");
@@ -205,8 +219,9 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     if (s.tipo === "cancelacion" && decision === "cancelar" && p) {
       if (!motivoOk) throw new AutopilotoValidacionError("cancelar exige un motivo de la lista cerrada");
       if (!["pending", "programado", "preparando", "listo_para_recoger", "no_recogido", "problema", "por_aprobar"].includes(p.status)) {
+        // La decision SI se aplico en esta llamada (se cerro como "mantener"): aplicado = true para que salga el aviso al cliente (migracion 073).
         cerrar({ decision: "mantener", motivoResolucion: `no_cancelable_${p.status}` });
-        return base(false, { decision: "mantener" });
+        return base(true, { decision: "mantener", motivo: `no_cancelable_${p.status}` });
       }
       this.mover(p, "cancelado", "staff", o.motivo ?? null);
       cerrar();
@@ -254,10 +269,20 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
       const cfg = this.configs.get(p.propertyId) ?? AUTOPILOTO_CONFIG_POR_OMISION;
       const base = { orderId: p.id, organizationId: p.organizationId, propertyId: p.propertyId, desde: p.status };
       if (p.status === "entregado" && p.entregadoAt && p.entregadoAt.getTime() <= ahora.getTime() - cfg.completadoHoras * 3_600_000) out.push({ ...base, hacia: "completado", motivo: "limpieza_entregado" });
-      else if (p.status === "listo_para_recoger" && p.horaRecogida && p.horaRecogida.getTime() <= ahora.getTime() - cfg.noRecogidoMinutos * 60_000) out.push({ ...base, hacia: "no_recogido", motivo: "limpieza_no_recogido" });
-      else if (p.status === "pending" && cfg.aceptacionAuto && p.comanda && ["confirmada", "capturada_manual"].includes(p.comanda.estado)) out.push({ ...base, hacia: "preparando", motivo: "aceptacion_automatica" });
+      else if (p.status === "listo_para_recoger" && this.referenciaNoRecogido(p) !== null && this.referenciaNoRecogido(p)! <= ahora.getTime() - cfg.noRecogidoMinutos * 60_000) out.push({ ...base, hacia: "no_recogido", motivo: "limpieza_no_recogido" });
+      else if (p.status === "pending" && cfg.aceptacionAuto && (p.ticketImpreso === true || (p.comanda && ["confirmada", "capturada_manual"].includes(p.comanda.estado)))) out.push({ ...base, hacia: "preparando", motivo: "aceptacion_automatica" });
     }
     return this.lec(out.slice(0, limite));
+  }
+
+  /** max(hora de recogida, cuando quedo listo); sin hora de recogida cuenta solo desde que quedo listo. `null` = sin referencia. */
+  private referenciaNoRecogido(p: PedidoMemoria): number | null {
+    const t = [p.horaRecogida?.getTime(), p.listoDesde?.getTime()].filter((x): x is number => typeof x === "number");
+    return t.length > 0 ? Math.max(...t) : null;
+  }
+
+  private diaDeNegocio(instante: Date, propertyId: string): string {
+    return diaDeNegocio(instante, resolverZonaHorariaNegocio(this.zonaPorSucursal.get(propertyId) ?? null), this.horarioPorSucursal.get(propertyId) ?? null);
   }
 
   async aplicarTransicion(organizationId: string, orderId: string, desde: OrderStatus, hacia: OrderStatus, actor: "agente" | "pos" | "sistema", motivo: string): Promise<boolean> {
@@ -284,6 +309,8 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     const out: HandoffDevuelto[] = [];
     for (const h of this.handoffs) {
       if (out.length >= limite || h.estado !== "tomada") continue;
+      // Con el agente de WhatsApp apagado la toma NO regresa al agente: nadie contestaria (QA R2 caos-01).
+      if (this.agentesApagados.has(h.propertyId)) continue;
       const mins = (this.configs.get(h.propertyId) ?? AUTOPILOTO_CONFIG_POR_OMISION).handoffRegresoMinutos;
       const ultima = Math.max(h.tomadaAt.getTime(), h.ultimaHumanaAt?.getTime() ?? 0);
       if (ultima > ahora.getTime() - mins * 60_000) continue;
@@ -298,6 +325,33 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     return this.lec(out);
   }
 
+  async handoffsPendientesPorEscalar(ahora: Date, limite: number): Promise<Lectura<readonly HandoffPendienteSinTomar[]>> {
+    const out: HandoffPendienteSinTomar[] = [];
+    for (const h of this.handoffs) {
+      if (out.length >= limite || h.estado !== "pendiente" || h.escaladaAt) continue;
+      const mins = (this.configs.get(h.propertyId) ?? AUTOPILOTO_CONFIG_POR_OMISION).handoffRegresoMinutos;
+      const solicitada = (h.solicitadaAt ?? h.tomadaAt).getTime();
+      if (solicitada > ahora.getTime() - mins * 60_000) continue;
+      h.escaladaAt = ahora;
+      out.push({ handoffId: h.id, organizationId: h.organizationId, propertyId: h.propertyId, conversationId: h.conversationId, canal: "whatsapp", minutos: Math.floor((ahora.getTime() - solicitada) / 60_000) });
+    }
+    return this.lec(out);
+  }
+
+  async diaNegocio(_org: string, propertyId: string): Promise<string | null> {
+    if (!this.disponible) return null;
+    return this.diaDeNegocio(this.ahora(), propertyId);
+  }
+
+  async registrarTicketImpreso(organizationId: string, orderId: string): Promise<{ readonly disponible: boolean; readonly registrado: boolean }> {
+    if (!this.disponible) return { disponible: false, registrado: false };
+    const p = this.pedidos.get(orderId);
+    if (!p || p.organizationId !== organizationId) throw new AutopilotoAccesoError("pedido inexistente en la organizacion o fuera de su sucursal");
+    if (p.status !== "pending") return { disponible: true, registrado: false };
+    p.ticketImpreso = true;
+    return { disponible: true, registrado: true };
+  }
+
   async cancelarPorCliente(organizationId: string, orderId: string, motivo: string): Promise<ResultadoCancelarCliente> {
     if (!this.disponible) return null;
     if (!(MOTIVOS_CANCELACION as readonly string[]).includes(motivo)) throw new AutopilotoValidacionError("motivo fuera de la lista cerrada");
@@ -310,11 +364,11 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     return { aplicado: true, estado: "cancelado" };
   }
 
-  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
+  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string, _hastaCalendario?: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
     if (!this.disponible) return { disponible: false, aplicado: false };
     const a = this.agotados.find((x) => x.organizationId === organizationId && x.propertyId === propertyId && x.productId === productId);
     if (!a) return { disponible: true, aplicado: false };
-    const hoy = diaLocalSucursal(this.ahora(), this.zonaPorSucursal.get(propertyId) ?? null).fecha;
+    const hoy = this.diaDeNegocio(this.ahora(), propertyId);
     if (hasta <= hoy) throw new AutopilotoValidacionError("la fecha de reposicion debe ser posterior a hoy");
     a.disponible = false;
     a.agotadoHasta = hasta;
@@ -325,7 +379,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
     const out: AgotadoRepuesto[] = [];
     for (const a of this.agotados) {
       if (!a.agotadoHasta || a.disponible) continue;
-      const hoy = diaLocalSucursal(ahora, this.zonaPorSucursal.get(a.propertyId) ?? null).fecha;
+      const hoy = this.diaDeNegocio(ahora, a.propertyId);
       if (hoy < a.agotadoHasta) continue;
       out.push({ organizationId: a.organizationId, propertyId: a.propertyId, productId: a.productId, agotadoHasta: a.agotadoHasta });
       a.disponible = true;

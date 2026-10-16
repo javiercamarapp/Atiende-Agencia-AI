@@ -7,6 +7,7 @@
 import { buscarPedidoReciente } from "./pedido-reciente.ts";
 import { proponerGustos } from "./cliente-360/gustos.ts";
 import { cargarMemoria, evaluarReincidencia } from "./cliente-360/memoria.ts";
+import { fusionarRenglonesPorProducto } from "./promotions.ts";
 import type { CustomerMemory } from "./cliente-360/types.ts";
 import { normalizePhone } from "./phone.ts";
 import type { RestaurantesRepository } from "./repository.ts";
@@ -55,11 +56,10 @@ export async function lookupCustomer(repo: RestaurantesRepository, organizationI
   const customer = await repo.findCustomerByPhone(organizationId, phoneKey);
   if (!customer) return { isNew: true };
 
-  const [addresses, history, tier] = await Promise.all([
-    repo.listCustomerAddresses(customer.id),
-    repo.listEligibleOrderHistory(customer.id),
-    repo.calcCustomerTier(organizationId, customer.id),
-  ]);
+  // En serie (no Promise.all): cada lectura corre en su propio SAVEPOINT sobre la MISMA sesion y los savepoints intercalados se pisarian.
+  const addresses = await repo.listCustomerAddresses(customer.id, organizationId);
+  const history = await repo.listEligibleOrderHistory(customer.id, organizationId);
+  const tier = await repo.calcCustomerTier(organizationId, customer.id);
 
   const lastOrder = history[0] ?? null;
   const frequentItems = countFrequentItems(history);
@@ -79,7 +79,7 @@ export async function lookupCustomer(repo: RestaurantesRepository, organizationI
     name: customer.name,
     orderCount: customer.orderCount,
     addresses,
-    lastOrderItems: lastOrder ? lastOrder.items.map((i) => ({ name: i.name, quantity: i.quantity })) : null,
+    lastOrderItems: lastOrder ? fusionarRenglonesPorProducto(lastOrder.items).map((i) => ({ name: i.name, quantity: i.quantity })) : null,
     frequentItems,
     tier,
     agentNotes,
@@ -108,11 +108,10 @@ export async function getCustomerDetailById(repo: RestaurantesRepository, organi
   const customer = await repo.findCustomerById(organizationId, customerId);
   if (!customer) return null;
 
-  const [addresses, history, tier] = await Promise.all([
-    repo.listCustomerAddresses(customer.id),
-    repo.listEligibleOrderHistory(customer.id),
-    repo.calcCustomerTier(organizationId, customer.id),
-  ]);
+  // En serie (no Promise.all): cada lectura corre en su propio SAVEPOINT sobre la MISMA sesion y los savepoints intercalados se pisarian.
+  const addresses = await repo.listCustomerAddresses(customer.id, organizationId);
+  const history = await repo.listEligibleOrderHistory(customer.id, organizationId);
+  const tier = await repo.calcCustomerTier(organizationId, customer.id);
 
   const lastOrder = history[0] ?? null;
   const frequentItems = countFrequentItems(history);
@@ -132,7 +131,7 @@ export async function getCustomerDetailById(repo: RestaurantesRepository, organi
     name: customer.name,
     orderCount: customer.orderCount,
     addresses,
-    lastOrderItems: lastOrder ? lastOrder.items.map((i) => ({ name: i.name, quantity: i.quantity })) : null,
+    lastOrderItems: lastOrder ? fusionarRenglonesPorProducto(lastOrder.items).map((i) => ({ name: i.name, quantity: i.quantity })) : null,
     frequentItems,
     tier,
     agentNotes,
@@ -169,7 +168,7 @@ async function resultadoDesdeMemoria(repo: RestaurantesRepository, organizationI
     name: memoria.customer.name,
     orderCount: memoria.customer.orderCount,
     addresses: memoria.addresses.map((a) => ({ address: a.address, label: a.label, isDefault: a.isDefault })),
-    lastOrderItems: lastOrder ? lastOrder.items.map((i) => ({ name: i.name, quantity: i.quantity })) : null,
+    lastOrderItems: lastOrder ? fusionarRenglonesPorProducto(lastOrder.items).map((i) => ({ name: i.name, quantity: i.quantity })) : null,
     frequentItems,
     tier,
     agentNotes,
@@ -181,7 +180,7 @@ async function resultadoDesdeMemoria(repo: RestaurantesRepository, organizationI
       canal: o.canal,
       sucursal: o.branch,
       total: o.total,
-      productos: o.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+      productos: fusionarRenglonesPorProducto(o.items).map((i) => ({ name: i.name, quantity: i.quantity })),
     })),
     ...(reincidencia.requiereConfirmacion ? { requiereConfirmacionSucursal: true } : {}),
   };

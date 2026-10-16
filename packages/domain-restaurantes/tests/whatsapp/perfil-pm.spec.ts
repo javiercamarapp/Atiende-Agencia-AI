@@ -43,7 +43,7 @@ describe("prompt de PM", () => {
     const p = promptPm();
     expect(p).not.toMatch(/habanero y la crema de ajo solo si/);
     expect(p).toMatch(/Por omisión van solo las básicas \(roja, verde, cebolla con cilantro y limones\)/);
-    expect(p).toMatch(/Las demás \(crema de ajo, guacamolera, mexicana \(pico de gallo\) y habanero picado o soasado\) van sin costo, pero solo si el cliente las pide/);
+    expect(p).toMatch(/Las demás \(crema de ajo, guacamolera, mexicana \(pico de gallo, también le dicen xnipec[^)]*\), piña picada \([^)]*\) y habanero picado o soasado \(le dicen sauceada\)\) van sin costo, pero solo si el cliente las pide/);
   });
 
   it("saluda con el nombre de la sucursal y sigue el orden del cuestionario", () => {
@@ -192,7 +192,9 @@ describe("saludoPorHora (X40: el saludo sigue la hora local de Merida)", () => {
     ["11:59", "buenos días"],
     ["12:00", "buenas tardes"],
     ["18:59", "buenas tardes"],
-    ["19:00", "buenas noches"],
+    ["19:00", "buenas tardes"],
+    ["19:59", "buenas tardes"],
+    ["20:00", "buenas noches"],
     ["00:30", "buenas noches"],
     ["04:59", "buenas noches"],
     ["05:00", "buenos días"],
@@ -209,10 +211,11 @@ describe("saludoPorHora (X40: el saludo sigue la hora local de Merida)", () => {
   });
 
   it("el saludo de WhatsApp (saludoSegunHora) usa la misma regla con la zona del negocio", () => {
-    // 2026-10-02 17:30 UTC = 11:30 en Merida (UTC-6): buenos dias; 18:00 UTC = 12:00: tardes; 01:00 UTC del dia 3 = 19:00: noches.
+    // 2026-10-02 17:30 UTC = 11:30 en Merida (UTC-6): buenos dias; 18:00 UTC = 12:00: tardes; 02:00 UTC del dia 3 = 20:00: noches (VZ17: tardes llega hasta las 19:59).
     expect(saludoSegunHora("America/Merida", new Date("2026-10-02T17:30:00Z"))).toBe("Buenos días");
     expect(saludoSegunHora("America/Merida", new Date("2026-10-02T18:00:00Z"))).toBe("Buenas tardes");
-    expect(saludoSegunHora("America/Merida", new Date("2026-10-03T01:00:00Z"))).toBe("Buenas noches");
+    expect(saludoSegunHora("America/Merida", new Date("2026-10-03T01:00:00Z"))).toBe("Buenas tardes");
+    expect(saludoSegunHora("America/Merida", new Date("2026-10-03T02:00:00Z"))).toBe("Buenas noches");
   });
 
   it("el prompt saluda con la franja que recibe, aunque llegue en minusculas", () => {
@@ -231,7 +234,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
   it("el combo del martes lo aplica cotizar_pedido (CR09): el agente dice lo que devuelve y no lo promete si la cotizacion no lo muestra", () => {
     expect(p).not.toContain("la confirma la sucursal al recoger");
     expect(p).not.toMatch(/no lo prometa ni lo aplique|cotice los nachos a precio de lista/);
-    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía, solo para recoger\): lo aplica cotizar_pedido; diga lo que devuelve\./);
+    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía POR CADA orden completa de nachos, solo para recoger: 2 órdenes = 4 aguas\): lo aplica cotizar_pedido; diga lo que devuelve y cuente las aguas por orden\./);
     expect(p).toMatch(/Si el cliente pide el combo y la cotización no lo muestra .* no lo prometa/);
   });
 
@@ -269,7 +272,8 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
     expect(p).toMatch(/consultar_sucursal \(abierto_ahora, cierra_a, horario\)/);
     expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes de esa hora/);
-    expect(p).toMatch(/no tome el pedido ni lo deje programado para la apertura/);
+    expect(p).not.toMatch(/no tome el pedido ni lo deje programado/);
+    expect(p).toMatch(/TOME el pedido y PROGRÁMELO/);
     expect(p).toMatch(/Horario: no lo afirme de memoria: lo da consultar_sucursal/);
   });
 
@@ -287,7 +291,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
 
   it("nunca inventar folio, lluvia, repartidor, precio viejo, presentaciones y alias", () => {
     expect(p).toMatch(/Nunca invente un folio/);
-    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia puede tardar de 1 hora a 1 hora 20 minutos/);
+    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia puede tardar un poco más que lo normal: el tiempo de la sucursal \(paso 8\) más unos 20 minutos/);
     expect(p).toMatch(/no la mencione por su cuenta/);
     expect(p).toMatch(/El cliente no elige repartidor/);
     expect(p).toContain("El precio vigente es de $X");
@@ -315,5 +319,24 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
   it("el flujo es coherente: ninguna referencia a un paso que ya no existe", () => {
     expect(p).toContain("(paso 4)");
     expect(p).not.toContain("(paso 7)");
+  });
+});
+
+describe("QA-PM-R4: reglas de prompt de WhatsApp que no entran a la voz (limite de 8000 caracteres)", () => {
+  it("WhatsApp lleva propina en porcentaje, tiempo unico, no dar 'a partir de las 12' con la sucursal abierta, pedido ya salido, menu con precios y minimo propio", () => {
+    const p = promptPm();
+    expect(p).toContain("propina_porcentaje");
+    expect(p).toMatch(/NO conteste "sí" ni garantice ese plazo/);
+    expect(p).toMatch(/NUNCA diga "a partir de las 12 del día"/);
+    expect(p).toMatch(/YA SALIÓ a reparto \(o está entregado\), no dé minutos/);
+    expect(p).toMatch(/3 o 4 platillos con su precio REAL/);
+    expect(p).toMatch(/dígalo usted antes de que el cliente lo deduzca/);
+    expect(p).toMatch(/Antes de escalar, cotice con cotizar_pedido/);
+    expect(p).toMatch(/no repita el rechazo ni el teléfono de la otra/);
+  });
+  it("la voz NO recibe esas reglas (tope de 8000 caracteres)", () => {
+    const p = promptPm({ canal: "voz" });
+    expect(p).not.toContain("propina_porcentaje");
+    expect(p).not.toMatch(/3 o 4 platillos con su precio REAL/);
   });
 });

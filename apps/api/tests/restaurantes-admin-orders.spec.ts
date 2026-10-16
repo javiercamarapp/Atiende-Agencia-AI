@@ -34,6 +34,23 @@ describe("GET /v1/restaurantes/:propertyId/admin/orders", () => {
     expect(body.orders[0]?.status).toBe("pending");
   });
 
+  it("serializa el folio (`orderNumber`) y la entrega (`deliveredAt`) para el detalle del pedido; sin ellos devuelve null, nunca un campo ausente", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const conFolio = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "entregado", total: 80, orderNumber: 1001, deliveredAt: "2026-10-03T17:00:00.000Z" });
+    const sinFolio = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "pending", total: 60 });
+    ctx.restaurantesRepo.seedOrder(conFolio);
+    ctx.restaurantesRepo.seedOrder(sinFolio);
+    const app = buildApp(ctx.deps);
+
+    const lista = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders`, authedGet(ctx.staff.owner.token));
+    const body = (await lista.json()) as { orders: Array<{ id: string; orderNumber: number | null; deliveredAt: string | null }> };
+    expect(body.orders.find((o) => o.id === conFolio.id)).toMatchObject({ orderNumber: 1001, deliveredAt: "2026-10-03T17:00:00.000Z" });
+    expect(body.orders.find((o) => o.id === sinFolio.id)).toMatchObject({ orderNumber: null, deliveredAt: null });
+
+    const uno = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${conFolio.id}`, authedGet(ctx.staff.owner.token));
+    expect(((await uno.json()) as { order: { orderNumber: number | null } }).order.orderNumber).toBe(1001);
+  });
+
   it("status desconocido -> 400", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
@@ -260,5 +277,57 @@ describe("POST /v1/restaurantes/:propertyId/admin/order-notifications/:notificat
     // Nunca se escribió a pesar del rechazo -- sigue sin reconocer.
     const stillUnacknowledged = await ctx.restaurantesRepo.listStaffOrderNotifications(ctx.organizationId, null);
     expect(stillUnacknowledged.find((n) => n.id === notification.id)?.acknowledgedAt).toBeNull();
+  });
+});
+
+describe("GET /v1/restaurantes/:propertyId/admin/repartidor-sugerido", () => {
+  const sugerido = async (ctx: Awaited<ReturnType<typeof buildRestaurantesKpiTestContext>>, token: string, ids: readonly string[]) => {
+    const app = buildApp(ctx.deps);
+    return app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/repartidor-sugerido?orderIds=${ids.join(",")}`, authedGet(token));
+  };
+
+  it("sugiere al repartidor de un pedido a domicilio en preparando SIN asignarlo (solo lectura)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const pedido = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "preparando", total: 100 });
+    ctx.restaurantesRepo.seedOrder(pedido);
+    const res = await sugerido(ctx, ctx.staff.owner.token, [pedido.id]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { sugerencias: Record<string, { repartidorId: string; nombre: string; enCamino: number }> };
+    expect(body.sugerencias[pedido.id]).toEqual({ repartidorId: ctx.staff.repartidor.id, nombre: "repartidor", enCamino: 0 });
+    expect((await ctx.restaurantesRepo.findOrderById(ctx.organizationId, pedido.id))?.assignedRepartidorId).toBeNull();
+  });
+
+  it("omite pedidos que no aplican: ya asignados, fuera de preparando, de otra organizacion o de una sucursal fuera del alcance", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const asignado = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "preparando", total: 1, assignedRepartidorId: ctx.staff.repartidor.id });
+    const pendiente = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "pending", total: 1 });
+    const sucursalB = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdB, status: "preparando", total: 1 });
+    const ajeno = makeOrder({ organizationId: ctx.otherOrganizationId, propertyId: ctx.otherPropertyId, status: "preparando", total: 1 });
+    for (const o of [asignado, pendiente, sucursalB, ajeno]) ctx.restaurantesRepo.seedOrder(o);
+    // El staff acotado a la sucursal A no ve la B; el owner si ve la B pero nunca el pedido de otra organizacion.
+    const comoStaff = await sugerido(ctx, ctx.staff.staffSucursalA.token, [asignado.id, pendiente.id, sucursalB.id, ajeno.id]);
+    expect(((await comoStaff.json()) as { sugerencias: object }).sugerencias).toEqual({});
+    const comoOwner = await sugerido(ctx, ctx.staff.owner.token, [asignado.id, pendiente.id, sucursalB.id, ajeno.id]);
+    expect(Object.keys(((await comoOwner.json()) as { sugerencias: object }).sugerencias)).toEqual([sucursalB.id]);
+  });
+
+  it("la carga cuenta: con un pedido en_camino asignado, la sugerencia lo refleja", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    ctx.restaurantesRepo.seedOrder(makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "en_camino", total: 1, assignedRepartidorId: ctx.staff.repartidor.id }));
+    const pedido = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "preparando", total: 1 });
+    ctx.restaurantesRepo.seedOrder(pedido);
+    const body = (await (await sugerido(ctx, ctx.staff.owner.token, [pedido.id])).json()) as { sugerencias: Record<string, { enCamino: number }> };
+    expect(body.sugerencias[pedido.id]?.enCamino).toBe(1);
+  });
+
+  it("repartidor -> 403, otra organizacion -> 403/404, ids invalidos -> 400, mas de 30 -> 400, sin ids -> vacio", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    expect((await sugerido(ctx, ctx.staff.repartidor.token, ["00000000-0000-0000-0000-000000000000"])).status).toBe(403);
+    expect([403, 404]).toContain((await sugerido(ctx, ctx.staff.otroOrgOwner.token, ["00000000-0000-0000-0000-000000000000"])).status);
+    expect((await sugerido(ctx, ctx.staff.owner.token, ["no-es-un-id"])).status).toBe(400);
+    const muchos = Array.from({ length: 31 }, (_, i) => `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`);
+    expect((await sugerido(ctx, ctx.staff.owner.token, muchos)).status).toBe(400);
+    const vacio = await sugerido(ctx, ctx.staff.owner.token, []);
+    expect(((await vacio.json()) as { sugerencias: object }).sugerencias).toEqual({});
   });
 });

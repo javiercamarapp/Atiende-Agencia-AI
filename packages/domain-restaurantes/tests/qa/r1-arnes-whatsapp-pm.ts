@@ -60,7 +60,7 @@ export interface Banco {
   readonly callbacks: () => ReadonlyArray<{ reason?: string; message?: string; propertyId: string | null; customerPhone: string }>;
 }
 
-export async function banco(opts: { readonly now?: string; readonly killSwitch?: boolean; readonly proveedorCae?: boolean } = {}): Promise<Banco> {
+export async function banco(opts: { readonly now?: string; readonly killSwitch?: boolean; readonly proveedorCae?: boolean; readonly handlerOptions?: Partial<Parameters<typeof createLlmWhatsAppTurnHandler>[2]> } = {}): Promise<Banco> {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(opts.now ?? MARTES_14));
   const w = await buildInMemoryPmWorld(plan);
@@ -92,7 +92,7 @@ export async function banco(opts: { readonly now?: string; readonly killSwitch?:
   // El rol escalado (turno siguiente a un error de crear_pedido) sigue el MISMO guion: el banco mide al servidor, no al modelo.
   gateway.registerLadder("default", [guionado("qa")]);
   gateway.registerLadder("escalated", [guionado("qa-escalado")]);
-  const handler = createLlmWhatsAppTurnHandler(w.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+  const handler = createLlmWhatsAppTurnHandler(w.repo, gateway, { defaultRole: "default", escalatedRole: "escalated", ...(opts.handlerOptions ?? {}) });
   const conversaciones = new InMemoryConversacionesRepository({ actorUserId: STAFF, actorEsAdministrador: true });
   const gateBase = new InMemoryHandoffAgentGate(conversaciones);
   const gate = {

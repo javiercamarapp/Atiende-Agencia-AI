@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { WRITE_ROLES } from "@atiende/domain-licitaciones";
+import { auditar } from "./auditoria.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -69,7 +70,9 @@ export function licitacionesMatchingProfileRoutes(deps: AppDeps): Hono<CoreAuthH
     const budgetMax = parseOptionalNumber(raw.budgetMax, "budgetMax");
     if (budgetMin !== null && budgetMax !== null && budgetMin > budgetMax) throw Errors.validation("budgetMin no puede ser mayor que budgetMax.");
 
+    const antes = await repo.findMatchingProfile(organizationId);
     const profile = await repo.upsertMatchingProfile(organizationId, { keywords, excludedKeywords, classifierCodes, entities, states, budgetMin, budgetMax, actorId });
+    await auditar(deps, c, { entity: "perfil_matching", entityId: organizationId, action: antes ? "perfil_matching.editado" : "perfil_matching.creado", before: antes, after: profile });
     return c.json(profile, 200);
   });
 

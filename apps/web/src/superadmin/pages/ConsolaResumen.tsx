@@ -12,7 +12,7 @@
 // Huecos declarados (ver cuerpo del PR): fichas de agente (SA-L-09: las tarjetas no llevan enlace), tareas x/y de las
 // corridas (SA-L-07: "no medido"), plan/operaciones/costo de IA POR organizacion (sin endpoint), y la politica del MRR
 // sin step-up (la decide Javier).
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
@@ -33,6 +33,7 @@ import {
   PillLink,
   ResumenLayout,
   ResumenSeccion,
+  SeccionFijadosCopiloto,
   SectionLabel,
   StatCard,
   StatusBadge,
@@ -79,6 +80,7 @@ import {
 } from "../lib/consola-client.ts";
 import type { AgentesActividad, CorridaCron, ConsolaResumen, OrganizacionConsola } from "../lib/consola-client.ts";
 import { fetchImpersonacionJson } from "./Impersonacion.tsx";
+import { crearClienteFijadosSuperadmin } from "../lib/copiloto-cliente.ts";
 
 const MOTIVO_MINIMO = 20;
 
@@ -151,6 +153,7 @@ export function SuperAdminConsolaResumenPage({ apiBaseUrl, token, staffFullName,
   const r = resolverRango(params.get("rango"), "30");
 
   const [entrando, setEntrando] = useState<OrganizacionConsola | null>(null);
+  const clienteFijados = useMemo(() => crearClienteFijadosSuperadmin(apiBaseUrl, token), [apiBaseUrl, token]);
 
   async function entrar(motivo?: string): Promise<void> {
     if (!entrando) return;
@@ -260,6 +263,8 @@ export function SuperAdminConsolaResumenPage({ apiBaseUrl, token, staffFullName,
       >
         <BloqueOrquestacion agentes={agentes} onReintentar={recargarAgentes} />
         <BloqueCorridas agentes={agentes} onReintentar={recargarAgentes} />
+        {/* CHAT-17: tablero de fijados del Copiloto de plataforma (personal; se re-ejecuta con tu rol y tu step-up de ahora; `finanzas` no lo ve). */}
+        <SeccionFijadosCopiloto cliente={clienteFijados} sinCompartir rutaCopiloto="/superadmin/copiloto" />
 
         <ChartCard
           titulo="Operaciones atendidas por día"

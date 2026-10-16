@@ -106,6 +106,10 @@ export interface ReservationPage {
 export interface HotelesRepository {
   // ---- Folios/cargos (flujo 1) ----
   findFolio(propertyId: string, folioId: string): Promise<FolioRecord | null>;
+  /** Toma el candado de fila del folio (select ... for update) dentro de la transaccion actual y devuelve su estado, o
+   *  null si no existe. Un cierre concurrente espera a que esta transaccion termine, asi que quien lo llame ANTES de un
+   *  efecto externo irreversible (cobro con tarjeta) sabe que el folio no se cerrara hasta registrar el pago. */
+  lockFolioStatus(propertyId: string, folioId: string): Promise<FolioRecord["status"] | null>;
   listFoliosByReservation(propertyId: string, reservationId: string): Promise<readonly FolioRecord[]>;
   loadFolioGuestIdentity(reservationId: string): Promise<GuestIdentity>;
   /** true si `userId` pertenece al staff de `propertyId` con un rol administrativo
@@ -800,6 +804,10 @@ export interface HotelesRepository {
    *  de este repo -- nunca vuelvas a comparar contra `current_date` en SQL aquí. */
   listExpirableRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]>;
   expireRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord>;
+  /** H-P3-02: recomendaciones "aprobada" por staff (gate "propone") cuya `fecha` es `todayIso` o posterior -- las que el cron de
+   *  sistema debe APLICAR en su siguiente corrida (migracion 029, seccion 6). `todayIso` lo resuelve el llamador en la zona de la
+   *  property. Contra una base sin la migracion 029 devuelve lista vacia (SAVEPOINT). */
+  listApprovedRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]>;
 
   // ---- Fase 11/13 (REQ-CRM-002/003) — reputación/CRM: wiring de
   // hoteles.guest_review/hoteles.guest_review_action (migrations/013_reputacion.sql)

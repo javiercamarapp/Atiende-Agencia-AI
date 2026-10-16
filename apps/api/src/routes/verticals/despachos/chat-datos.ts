@@ -25,6 +25,7 @@ import { NO_LLM_COMPLETION, auxiliaryTurnOptions, directTurnOptions } from "../.
 import { resolveMembershipPropertyScope } from "../../../data-chat/property-scope.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
+import { mountAdjuntosRoutes } from "../../../data-chat/adjuntos-routes.ts";
 import { DESPACHOS_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -107,6 +108,8 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   mountConversacionesRoutes(app, deps, { base, vertical: "despachos", roles: VER_DASHBOARD_ROLES });
   mountPinsRoutes(app, deps, { base, vertical: "despachos", roles: VER_DASHBOARD_ROLES, turnContext });
+  // Adjuntar archivo (CSV / Excel / PDF): analisis determinista en el servidor, sin guardar el archivo.
+  mountAdjuntosRoutes(app, deps, { base, vertical: "despachos", roles: VER_DASHBOARD_ROLES, role: DESPACHOS_DATA_CHAT_ROLE });
   // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance que el chat.
   mountReporteRoutes(app, deps, {
     base,

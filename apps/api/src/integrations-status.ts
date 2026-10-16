@@ -215,6 +215,13 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
       "Emisión de la sesión de preview de voz del panel (POST /v1/restaurantes/:propertyId/admin/voz/preview/sesion y POST /hoteles/:propertyId/voz/preview/sesion): GEMINI_API_KEY pide a Gemini un token efímero de un solo uso (la llave nunca sale del servidor) y VOICE_PREVIEW_TOKEN_SECRET (mínimo 16 caracteres, lo generas tú) firma el token propio ligado a organización+sucursal+sesión. Sin cualquiera de las dos, la ruta responde 503 \"voz no configurada\" (nunca un falso éxito); la configuración de voz y las conversaciones siguen disponibles. La escalera de voz de la plataforma (@atiende/voice-core) usa además OPENROUTER_API_KEY (la misma del texto, ver \"llm-openrouter\") para la cascada de respaldo STT -> LLM -> TTS cuando Gemini falla o no hay GEMINI_API_KEY; GET /hoteles/:propertyId/voz/estado muestra qué escalones tienen credencial.",
     variables: ["GEMINI_API_KEY", "VOICE_PREVIEW_TOKEN_SECRET"],
   },
+  {
+    id: "voz-cascada-v2",
+    nombre: "Voz de restaurantes y hoteles — cascada v2 en streaming (Deepgram STT y TTS + LLM por OpenRouter)",
+    habilita:
+      "Escalón `cascada-v2` de la escalera de voz de la plataforma (@atiende/voice-core): Deepgram Nova-3 (STT en streaming por WebSocket) -> LLM por OpenRouter -> Deepgram Aura-2 (TTS en streaming, voz femenina mexicana). La corre el worker de voz (Fly) con UNA sola DEEPGRAM_API_KEY para el STT y el TTS, más OPENROUTER_API_KEY (ver \"llm-openrouter\"). En la API la variable solo alimenta el estado honesto: GET /hoteles/:propertyId/voz/estado y el equivalente de citas dicen \"No disponible aún: requiere DEEPGRAM_API_KEY\" si falta (nunca un falso éxito). Sin ella la escalera salta ese escalón y sigue con Gemini Live o la cascada de respaldo. VOZ_CASCADA_V2_HABILITADA es el interruptor (apagado por omisión): aunque exista la llave, el escalón no abre hasta que alguien lo encienda tras la prueba real (scripts/voz-cascada-v2-smoke).",
+    variables: ["DEEPGRAM_API_KEY", "VOZ_CASCADA_V2_HABILITADA"],
+  },
 
   // ---- Proveedores LLM ----
   {
@@ -324,6 +331,12 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // R-27 -- plantillas HSM de WhatsApp declaradas aprobadas por Meta (lista separada por comas); vacia = todo
   // sale como texto libre. Opcional, nunca bloquea el arranque.
   "WHATSAPP_APPROVED_TEMPLATES",
+  // WhatsApp multinumero (paquete 01): version de Graph API, id de la Meta App, WABA de la plataforma y config de Embedded Signup v4.
+  // Todas opcionales; nunca bloquean el arranque.
+  "WHATSAPP_GRAPH_API_VERSION",
+  "META_APP_ID",
+  "WHATSAPP_WABA_IDS",
+  "WHATSAPP_ES_CONFIG_ID",
   // MFA del superadmin (ver docs/CREDENCIALES.md): ambas son opcionales y nunca
   // bloquean el arranque.
   "SUPERADMIN_MFA_REQUIRED",

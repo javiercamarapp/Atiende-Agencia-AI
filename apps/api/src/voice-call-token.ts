@@ -16,6 +16,8 @@ export interface VoiceCallClaims {
   readonly call: string;
   /** telefono del llamante, canonico de 10 digitos */
   readonly ph: string;
+  /** `true` cuando el telefono lo DICTO el cliente (el caller ID no era confiable): sirve para pedido y callback, pero NO identifica al cliente (sin historial ni direcciones). */
+  readonly decl?: boolean;
   /** emitido / expira (segundos desde epoch) */
   readonly iat: number;
   readonly exp: number;
@@ -71,6 +73,7 @@ export function verifyVoiceCallToken(key: Buffer, token: string, nowMs: number =
     !CALL_ID_RE.test(claims.call) ||
     typeof claims.ph !== "string" ||
     !/^\d{10}$/.test(claims.ph) ||
+    (claims.decl !== undefined && typeof claims.decl !== "boolean") ||
     typeof claims.iat !== "number" ||
     typeof claims.exp !== "number"
   ) {

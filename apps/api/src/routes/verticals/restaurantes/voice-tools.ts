@@ -61,6 +61,7 @@ export function voiceToolContext(orgId: string, caller: VoiceCaller, turn: strin
     organizationId: orgId,
     channel: "voz",
     phone: caller.phone,
+    ...(caller.phoneDeclared ? { phoneDeclared: true } : {}),
     lockedPropertyId: caller.propertyId,
     // Maquina de estados del pedido: solo con llamada identificada (token). Sin token (camino legado)
     // no hay callId confiable sobre el que llevar estado.
@@ -172,7 +173,7 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // cual; con llamada identificada (token) agrega `quote_hash` y avanza la máquina de estados.
   app.post("/v1/restaurantes/:orgSlug/orders/quote", async (c) => {
     if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
-    const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown; doble_salsas?: unknown }>(c.req.raw, 24 * 1024);
+    const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown; doble_salsas?: unknown; programado_para?: unknown; hora_recogida?: unknown; minutos_para_recoger?: unknown; otro_pedido?: unknown }>(c.req.raw, 24 * 1024);
     const branchSlug = typeof body.branch_slug === "string" ? body.branch_slug : "";
     if (!branchSlug.trim()) throw Errors.validation("branch_slug es requerido");
     return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "cotizar_pedido", accept: "legacy_ok", legacyLimit: { scope: "voice-orders-quote", secondary: branchSlug, max: 120 } }, async ({ repo, toolCtx }) => {
@@ -186,6 +187,14 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
         colonia_entrega: body.colonia_entrega,
         payment_method: body.payment_method,
         doble_salsas: body.doble_salsas,
+        // La misma hora que luego llega a crear_pedido: sin ella la huella de cotizar y la de crear diferian y el pedido
+        // programado nunca cerraba por voz (QA-PM-R2-voz-01 / reglas-03).
+        programado_para: body.programado_para,
+        hora_recogida: body.hora_recogida,
+        // QA-PM-R6: el prompt de voz manda `minutos_para_recoger` en cotizar_pedido Y en crear_pedido (el mismo valor) y `otro_pedido` cuando el cliente pide OTRO igual; la ruta de
+        // cotizar los descartaba (solo crear los recibia): la cotizacion salia sin hora y el pedido repetido por voz nunca se podia cotizar otra vez.
+        minutos_para_recoger: body.minutos_para_recoger,
+        otro_pedido: body.otro_pedido,
       });
       // Contrato historico de voz: `quote` es el OrderQuote de dominio sin transformar (+ quote_hash aditivo).
       // PM PR-4: `total` es el TOTAL A PAGAR (ya con la promocion automatica del dia, si aplica);
@@ -259,7 +268,7 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // devuelve el token por llamada que las herramientas presentan despues. El telefono NUNCA lo decide el modelo.
   app.post("/v1/restaurantes/:orgSlug/voice/call-token", async (c) => {
     if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
-    const body = await readJsonCapped<{ call_id?: unknown; caller_phone?: unknown; branch_slug?: unknown; ttl_seconds?: unknown }>(c.req.raw, 2 * 1024);
+    const body = await readJsonCapped<{ call_id?: unknown; caller_phone?: unknown; telefono_declarado?: unknown; branch_slug?: unknown; ttl_seconds?: unknown }>(c.req.raw, 2 * 1024);
     if (typeof body.call_id !== "string" || !CALL_ID_RE.test(body.call_id)) throw Errors.validation("call_id es requerido (1-128 caracteres: letras, números, . _ : -)");
     const phone = typeof body.caller_phone === "string" ? canonicalizeMexicanPhone(body.caller_phone) : null;
     if (!phone) throw Errors.validation("caller_phone inválido: se esperan 10 dígitos (con o sin +52/521)");
@@ -267,6 +276,8 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
       VOICE_CALL_TOKEN_MAX_TTL_SECONDS,
       Math.max(60, typeof body.ttl_seconds === "number" && Number.isFinite(body.ttl_seconds) ? Math.floor(body.ttl_seconds) : VOICE_CALL_TOKEN_DEFAULT_TTL_SECONDS),
     );
+    if (body.telefono_declarado !== undefined && typeof body.telefono_declarado !== "boolean") throw Errors.validation("telefono_declarado debe ser booleano");
+    const declarado = body.telefono_declarado === true;
     const callId = body.call_id;
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
@@ -298,7 +309,7 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
       }
 
       const nowSec = Math.floor(Date.now() / 1000);
-      const token = signVoiceCallToken(voiceCallTokenKey(deps.env.internalSecret), { org: org.id, prop: branch.propertyId, call: callId, ph: phone, iat: nowSec, exp: nowSec + ttl });
+      const token = signVoiceCallToken(voiceCallTokenKey(deps.env.internalSecret), { org: org.id, prop: branch.propertyId, call: callId, ph: phone, ...(declarado ? { decl: true } : {}), iat: nowSec, exp: nowSec + ttl });
       await auditVoice(repo, org, { propertyId: branch.propertyId, callId, phone }, "emitir_token_de_llamada", "token_issued", null);
       return c.json({ call_token: token, expires_at: new Date((nowSec + ttl) * 1000).toISOString(), branch_slug: branch.slug, call_id: callId });
     });

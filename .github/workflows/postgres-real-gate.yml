@@ -84,10 +84,31 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Un push nuevo al mismo PR cancela el gate anterior de ese PR (cada update-branch/push lo
+# reiniciaba y acumulaba corridas de ~50 min). El grupo incluye el workflow y el número de PR,
+# así que PRs distintos nunca se cancelan entre sí. En push a main NO se cancela: cada commit
+# de main conserva su propio veredicto (mismo criterio que ci-checks.yml). workflow_dispatch
+# agrupa por ref y tampoco cancela.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Sharding del gate (ver .github/workflows/README.md, sección postgres-real-gate.yml, con la medición):
+# el job único aplicaba bootstrap.sql + ~300 migraciones UNA VEZ POR CARPETA (~16 s de ~18 s cada una) para
+# ~170 carpetas en serie (~3.100 s). Ahora:
+#   - run-gate.mjs construye una base plantilla por bootstrap.sql distinto y clona cada carpeta de ella.
+#   - `postgres-real-gate-shard` reparte las carpetas en 6 shards en paralelo (`--shard i/6`).
+#   - `postgres-real-gate` es el agregador que CONSERVA el nombre histórico del check: pasa solo si los 6
+#     shards pasaron Y si los reportes de los shards cubren EXACTAMENTE las carpetas descubiertas.
 jobs:
-  postgres-real-gate:
-    name: Migraciones reales + assertions RLS/GRANT contra Postgres real
+  postgres-real-gate-shard:
+    name: Gate Postgres real (shard ${{ matrix.shard }}/6)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     services:
       postgres:
         image: postgres:16
@@ -142,8 +163,56 @@ jobs:
           echo "Postgres nunca quedó listo" >&2
           exit 1
 
-      - name: Migraciones reales + gate de assertions RLS/GRANT (todos los scripts/verify-*/)
-        run: node scripts/verify-real-postgres-ci/run-gate.mjs
+      - name: Migraciones reales + gate de assertions RLS/GRANT (shard ${{ matrix.shard }}/6 de scripts/verify-*/)
+        run: node scripts/verify-real-postgres-ci/run-gate.mjs --shard ${{ matrix.shard }}/6 --report "$RUNNER_TEMP/shard-report.json"
+
+      # Se sube aunque el paso anterior falle: el agregador necesita el reporte de CADA shard para demostrar la cobertura.
+      - name: Subir reporte del shard
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: postgres-gate-report-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-report.json
+          if-no-files-found: warn
+          retention-days: 3
+
+  # Conserva el nombre histórico del check. if: always() para que un shard fallido/cancelado/omitido produzca
+  # rojo y no un "skipped" (que cuenta como éxito para la protección de rama).
+  postgres-real-gate:
+    name: Migraciones reales + assertions RLS/GRANT contra Postgres real
+    needs: [postgres-real-gate-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Veredicto de los shards
+        env:
+          SHARDS: ${{ needs.postgres-real-gate-shard.result }}
+        run: |
+          echo "postgres-real-gate-shard=$SHARDS"
+          if [ "$SHARDS" != "success" ]; then
+            echo "::error::Algún shard del gate de Postgres real no terminó en success"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Descargar reportes de los shards
+        uses: actions/download-artifact@v8
+        with:
+          pattern: postgres-gate-report-*
+          path: ${{ runner.temp }}/reportes
+
+      # Cobertura idéntica: la unión de lo EJECUTADO por los 6 shards debe ser exactamente lo que descubre
+      # run-gate.mjs (cada scripts/verify-*/ con los 3 archivos, una sola vez), con los 6 reportes presentes.
+      - name: Cobertura exacta (reportes de shards == carpetas descubiertas)
+        run: node scripts/verify-real-postgres-ci/run-gate.mjs --verify-reports "$RUNNER_TEMP/reportes"
 
   fallback-savepoint-gate:
     name: SAVEPOINT real para fallback por SQLSTATE (scripts/verify-fallback-savepoint)
@@ -233,6 +302,49 @@ jobs:
 
       - name: scripts/verify-whatsapp-concurrencia/run.sh
         run: bash scripts/verify-whatsapp-concurrencia/run.sh
+
+  restaurantes-agente-preview-pg-real-gate:
+    name: Preview de agente y de voz con sesion de staff contra Postgres real (scripts/verify-restaurantes-agente-preview-rate-limit)
+    runs-on: ubuntu-latest
+    # Job APARTE: la parte 2 de scripts/verify-restaurantes-agente-preview-rate-limit/run.sh es un spec de vitest (apps/api/tests/restaurantes-agente-preview-pg-real.spec.ts)
+    # que levanta la RUTA HTTP real con el motor de produccion contra un Postgres efimero (initdb, puerto alto) con TODAS las migraciones. `run-gate.mjs` solo corre
+    # el assertions.sql de esa carpeta (parte 1) y `npm run test:unit` omite el spec (sin VERIFY_PGURL): sin este job, el defecto «herramienta de voz del preview
+    # ejecutada con la sesion del staff => 42501 => "Error interno" con 200» solo lo vigilaban dobles en memoria. Cubre ademas que el preview NO escribe pedidos,
+    # clientes, comandas ni avisos aunque corra en sesion de sistema. No hace build ni deploy.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Confirmar initdb/pg_ctl/psql disponibles
+        run: |
+          if ! command -v initdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          # El paquete `postgresql` de Ubuntu/Debian deja initdb/pg_ctl fuera de PATH (ver el job fallback-savepoint-gate).
+          if ! command -v initdb >/dev/null 2>&1; then
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 3 -name initdb -print -quit)")"
+            if [ -z "$PG_BIN" ] || [ "$PG_BIN" = "." ]; then
+              echo "verify-restaurantes-agente-preview-rate-limit (CI): no se encontro initdb bajo /usr/lib/postgresql" >&2
+              exit 1
+            fi
+            echo "$PG_BIN" >> "$GITHUB_PATH"
+            export PATH="$PG_BIN:$PATH"
+          fi
+          initdb --version
+          pg_ctl --version
+          psql --version
+
+      - name: scripts/verify-restaurantes-agente-preview-rate-limit/run.sh
+        run: bash scripts/verify-restaurantes-agente-preview-rate-limit/run.sh
 
   citas-concurrencia-gate:
     name: Doble cita con 2+ conexiones simultaneas (scripts/verify-citas-concurrencia)
@@ -344,6 +456,59 @@ jobs:
       - name: scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh
         run: bash scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh
 
+  stepup-concurrencia-gate:
+    name: Consumo del step-up con 2 conexiones simultaneas (scripts/verify-licitaciones-stepup-y-bitacora/concurrencia.sh)
+    runs-on: ubuntu-latest
+    # Job APARTE (mismo servicio postgres que el gate de arriba): el consumo de un solo uso del step-up (`core.consume_step_up`, migracion 038) necesita
+    # DOS conexiones SIMULTANEAS con el mismo jti: una retiene el consumo sin confirmar y se comprueba que la otra espera un Lock; despues, 10 rondas con
+    # "pistola de salida": exactamente una pasa. El concurrencia.sh NO se llama run.sh, asi que run-gate.mjs solo corre el assertions.sql de ese directorio.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      VERIFY_USE_EXISTING_PG: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Confirmar cliente psql disponible
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Esperar a que el servicio Postgres acepte conexiones
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
+              echo "Postgres listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres nunca quedó listo" >&2
+          exit 1
+
+      - name: scripts/verify-licitaciones-stepup-y-bitacora/concurrencia.sh
+        run: bash scripts/verify-licitaciones-stepup-y-bitacora/concurrencia.sh
+
   restaurantes-whatsapp-concurrencia-gate:
     name: WhatsApp y pedidos de restaurantes con 2+ conexiones simultaneas (scripts/verify-restaurantes-whatsapp-concurrencia)
     runs-on: ubuntu-latest
@@ -453,3 +618,58 @@ jobs:
         run: |
           export COPILOTO_EVAL_DATABASE_URL="postgresql://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/atiende_eval_copiloto"
           npx vite-node scripts/eval-copiloto/congelar.ts -- --check
+
+  rentas-concurrencia-gate:
+    name: Concurrencia real de rentas con N conexiones (scripts/verify-rentas-concurrencia)
+    runs-on: ubuntu-latest
+    # Job APARTE (mismo servicio postgres que el gate de arriba), mismo patron que citas-concurrencia-gate: el runner generico run-gate.mjs
+    # ejecuta cada escenario en UNA conexion y esta verificacion necesita N conexiones SIMULTANEAS (Rn-P3-12). run.sh aplica las
+    # migraciones reales, dispara las conexiones con una "pistola de salida" (advisory lock) y comprueba: 30 reservas misma unidad/fechas
+    # (1 gana, 0 deadlocks), back-to-back, statements concurrentes, claim/lease del lote iCal y aceptacion de invitaciones de staff.
+    # Sin assertions.sql a proposito: asi el auto-descubrimiento de run-gate.mjs no lo toma como un verify de una sola conexion.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      VERIFY_USE_EXISTING_PG: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Confirmar cliente psql disponible
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Esperar a que el servicio Postgres acepte conexiones
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
+              echo "Postgres listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres nunca quedó listo" >&2
+          exit 1
+
+      - name: scripts/verify-rentas-concurrencia/run.sh
+        run: bash scripts/verify-rentas-concurrencia/run.sh

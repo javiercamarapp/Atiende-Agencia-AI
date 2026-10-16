@@ -1,6 +1,8 @@
 // Configuración leída de variables de entorno (mismo patrón que
 // hoteles/apps/api/src/env.ts) — los paquetes de dominio/auth nunca leen
 // `process.env` directamente, para quedar testeables sin variables globales.
+import { esVersionGraphValida } from "@atiende/whatsapp-gateway";
+
 export interface ApiEnv {
   readonly jwtSecret: string;
   readonly accessTokenTtlSeconds: number;
@@ -27,6 +29,15 @@ export interface ApiEnv {
    *  (`WHATSAPP_APPROVED_TEMPLATES`, lista separada por comas). Solo esas se envian como `type: "template"`;
    *  vacia/ausente = todo sale como texto libre (comportamiento anterior). OPCIONAL: ningun fixture la exige. */
   readonly whatsappApprovedTemplates?: readonly string[];
+  /** Version de Graph API para ENVIAR por WhatsApp (`WHATSAPP_GRAPH_API_VERSION`, formato `v23.0`). `null`/ausente = el default del cliente
+   *  (`DEFAULT_GRAPH_API_VERSION`). Un valor con otra forma se ignora con una advertencia. OPCIONAL: ningun fixture la exige. */
+  readonly whatsappGraphApiVersion?: string | null;
+  /** Id de la Meta App (`META_APP_ID`): la usan la verificacion de solo lectura y el alta por Embedded Signup. `null` si no existe. OPCIONAL. */
+  readonly metaAppId?: string | null;
+  /** WABA de la plataforma (`WHATSAPP_WABA_IDS`, lista separada por comas). Vacia si no existe. OPCIONAL. */
+  readonly whatsappWabaIds?: readonly string[];
+  /** Id de configuracion de Embedded Signup v4 (`WHATSAPP_ES_CONFIG_ID`). `null` si no existe. OPCIONAL. */
+  readonly whatsappEsConfigId?: string | null;
   /** L-05: `phone_number_id` de Meta del numero remitente de licitaciones (avisos y botones go/no-go). Sin esto el webhook de licitaciones acusa recibo sin procesar y el envio se omite. OPCIONAL: ningun fixture lo exige. */
   readonly licitacionesWhatsappPhoneNumberId?: string | null;
   /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
@@ -124,6 +135,10 @@ export interface ApiEnv {
    *  tiene un factor activo -- ningun flujo actual se rompe antes de enrolar.
    *  OPCIONAL: los fixtures de tests no necesitan declararla. */
   readonly superadminMfaRequired?: boolean;
+  /** `true` en el ambiente de PRODUCCION (`VERCEL_ENV=production`, o `NODE_ENV=production` si no hay `VERCEL_ENV`). Con el, el step-up
+   *  de las acciones sensibles FALLA CERRADO (503) si falta el puerto de 2FA o su migracion, en vez de dejar pasar. OPCIONAL: ausente
+   *  = desarrollo/pruebas (se conserva el comportamiento anterior: sin 2FA disponible no se exige nada). */
+  readonly production?: boolean;
   /** Material de llave para cifrar el secreto TOTP en reposo (>= 16 caracteres).
    *  Sin ella se deriva de `jwtSecret` (HKDF con etiqueta propia) -- rotar
    *  JWT_SECRET entonces invalida los factores enrolados (hay que re-enrolar), por
@@ -151,6 +166,10 @@ export interface ApiEnv {
    * 16 caracteres) tampoco se firma el token efímero de preview. Nunca se inventa un valor.
    */
   readonly geminiApiKey?: string | null;
+  /** `DEEPGRAM_API_KEY` (STT y TTS de la cascada v2). La usa el worker de voz; aqui solo alimenta el estado honesto de la escalera del panel. Opcional: nunca se inventa. */
+  readonly deepgramApiKey?: string | null;
+  /** `VOZ_CASCADA_V2_HABILITADA`: interruptor de la cascada v2 (apagado por omision); aqui solo alimenta el estado honesto del panel. */
+  readonly cascadaV2Habilitada?: boolean;
   readonly voicePreviewTokenSecret?: string | null;
   readonly llmProviders: {
     /** PROVEEDOR PRIMARIO Y UNICO POR DEFECTO: OpenRouter (`providers/openrouter.ts`). Basta la llave:
@@ -239,9 +258,19 @@ export function breakerEnvName(raw: string | undefined): string {
   return clean.length > 0 ? clean.slice(0, 32) : "development";
 }
 
+/** `WHATSAPP_GRAPH_API_VERSION`: devuelve la version si cumple `^v\d{2}\.0$`; si no, `null` con una advertencia (nunca rompe el arranque ni imprime el valor). */
+export function parseGraphApiVersion(raw: string | undefined): string | null {
+  const valor = raw?.trim();
+  if (!valor) return null;
+  if (esVersionGraphValida(valor)) return valor;
+  console.warn("WHATSAPP_GRAPH_API_VERSION ignorada: se espera el formato v23.0; se usa la version por defecto del cliente.");
+  return null;
+}
+
 export function loadApiEnv(): ApiEnv {
   return {
     jwtSecret: requireEnv("JWT_SECRET"),
+    production: (process.env.VERCEL_ENV || process.env.NODE_ENV) === "production",
     superadminMfaRequired: ["1", "true"].includes((process.env.SUPERADMIN_MFA_REQUIRED ?? "").toLowerCase()),
     mfaEncryptionKey: process.env.SUPERADMIN_MFA_ENCRYPTION_KEY || undefined,
     accessTokenTtlSeconds: Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900),
@@ -252,6 +281,10 @@ export function loadApiEnv(): ApiEnv {
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
     whatsappApprovedTemplates: (process.env.WHATSAPP_APPROVED_TEMPLATES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    whatsappGraphApiVersion: parseGraphApiVersion(process.env.WHATSAPP_GRAPH_API_VERSION),
+    metaAppId: process.env.META_APP_ID?.trim() || null,
+    whatsappWabaIds: (process.env.WHATSAPP_WABA_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    whatsappEsConfigId: process.env.WHATSAPP_ES_CONFIG_ID?.trim() || null,
     licitacionesWhatsappPhoneNumberId: process.env.LICITACIONES_WHATSAPP_PHONE_NUMBER_ID || null,
     hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
@@ -287,6 +320,8 @@ export function loadApiEnv(): ApiEnv {
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
     geminiApiKey: process.env.GEMINI_API_KEY || null,
+    deepgramApiKey: process.env.DEEPGRAM_API_KEY || null,
+    cascadaV2Habilitada: ["1", "true", "si", "sí"].includes((process.env.VOZ_CASCADA_V2_HABILITADA ?? "").trim().toLowerCase()),
     voicePreviewTokenSecret: process.env.VOICE_PREVIEW_TOKEN_SECRET || null,
     llmProviders: {
       openrouter: process.env.OPENROUTER_API_KEY

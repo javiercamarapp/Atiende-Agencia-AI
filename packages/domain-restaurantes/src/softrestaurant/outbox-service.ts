@@ -96,7 +96,15 @@ export function construirPayloadComanda(pedido: PedidoParaComanda, deps: Pick<De
   const sucursalParaCodigos: SucursalPos = sucursal ?? "T1";
   // Un producto sin codigo POS queda con codigo vacio (nunca inventado): la fila va a captura
   // manual y el staff ve `nombre` y `cantidad` para capturarla a mano.
-  const items: ItemComanda[] = order.items.map((i) => ({
+  // D12: la unidad regalada por una promocion viaja en un renglon aparte a $0; la cocina y el POS la ven como UNA sola linea del producto (4 tacos, no 2 + 2).
+  // Solo se unen renglones del mismo producto y la misma tortilla.
+  const renglonesDeCocina = order.items.reduce<(typeof order.items)[number][]>((acc, i) => {
+    const previo = acc.find((x) => x.id === i.id && (x.tortilla ?? null) === (i.tortilla ?? null));
+    if (previo) acc[acc.indexOf(previo)] = { ...previo, quantity: previo.quantity + i.quantity };
+    else acc.push(i);
+    return acc;
+  }, []);
+  const items: ItemComanda[] = renglonesDeCocina.map((i) => ({
     codigo: deps.resolverCodigos.codigoDeProducto(i.id, sucursalParaCodigos) ?? "",
     cantidad: i.quantity,
     modificadores: [],

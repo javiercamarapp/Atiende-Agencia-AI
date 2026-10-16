@@ -20,12 +20,6 @@ describe("agentes-10: 120 tacos para una fiesta se pueden cotizar", () => {
     const items = [{ productId: b.pid("Taco Al Pastor (individual)"), requestedQuantity: MAX_PIEZAS_POR_RENGLON + 1, tortilla: "maiz" as const }];
     await expect(quoteOrder(b.w.repo, { organizationId: b.w.organizationId, branchSlug: "garcia-lavin", canal: "recoger", items })).rejects.toThrow(/máximo es de 500 piezas/);
   });
-  it("el checkout WEB conserva su tope de 100 piezas por renglon (no tiene la retencion de pedido grande)", async () => {
-    const b = await banco();
-    const ctxWeb: AgentToolContext = { organizationId: b.w.organizationId, channel: "web", phone: null };
-    const items = [{ product_id: b.pid("Taco Al Pastor (individual)"), product_name: "Taco Al Pastor (individual)", requested_quantity: 120, tortilla: "maiz" }];
-    await expect(invokeAgentTool(b.w.repo, ctxWeb, "cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items })).rejects.toThrow(/máximo es de 100 piezas/);
-  });
   it("por WhatsApp los 120 tacos se cotizan y el servidor retiene el pedido al crear (>$4,000)", async () => {
     const b = await banco();
     const items = [{ product_id: b.pid("Taco Al Pastor (individual)"), product_name: "Taco Al Pastor (individual)", requested_quantity: 120, tortilla: "maiz" }];

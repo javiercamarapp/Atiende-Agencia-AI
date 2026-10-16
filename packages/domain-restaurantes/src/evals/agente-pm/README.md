@@ -35,3 +35,21 @@ para un juez (LLM o persona): no se evaluan con graders deterministas ni corren 
   prueba `tests/pm-c5-escenarios-t7.spec.ts` lo vigila con patrones. Nunca copies aqui texto de la muestra cruda.
 - La prueba tambien ata las cifras que citan los escenarios (fracciones de kilo, extras a $19, totales) al motor real de pedidos sobre el
   catalogo sembrado de T7.
+
+## Escenarios K y KH (lo que enseñan los chats reales de T7 y los huecos finales)
+`escenarios-k.json` (+ `escenarios-k.ts`): 22 escenarios K y 10 KH, todos SINTETICOS (ningun texto, nombre ni telefono sale de los chats privados;
+`tests/evals-agente-pm-k.spec.ts` lo vigila con patrones). Mismos campos de texto libre que `escenarios-t7.json`, mas:
+- `verificacion: determinista`: el escenario esta atado en esa prueba a una comprobacion REAL contra el servidor (registro de herramientas, motor de pedidos,
+  busqueda, entrada de Meta, prompt). Hoy son 20 (K01-K20).
+- `verificacion: juez`: texto libre para un LLM o una persona (KH09 activo; los demas jueces estan pendientes de construccion).
+- `estado: pendiente_construccion` + `depende_de`: depende de algo que main aun no tiene (cobertura por turnos en
+  servidor, descripciones del menu en el seed, venta sugerida con interruptor, rastreo, subtipos de queja, cliente-360, botones de Meta). Se listan
+  como `it.todo` citando de que dependen; no fallan el CI ni se fingen como aprobados.
+- Falta (hueco conocido): un corredor que pase los 71 escenarios T7 y los K por el agente con un LLM guionado en CI, y un grader de juez; los T7 siguen
+  validando solo su estructura.
+
+## Escenarios de la ronda 3 (R3)
+`escenarios-r3.json` (+ `escenarios-r3.ts`): 32 escenarios sinteticos de lo que rompio la medida de la ronda 3 contra la cuenta real (WhatsApp, voz con Gemini Live y motor de reglas;
+defectos `QA-PM-R3-whatsapp|voz|reglas-NN`). Misma forma que los de la ronda 2; `tests/pm-r3-escenarios.spec.ts` vigila estructura, ausencia de datos personales y que cada
+`cubierto_por` apunte a un spec que existe. Los que dependen de un dato de la base real o de una decision (`estado: pendiente_decision`, con `dudas`) se listan sin fallar el CI.
+Los guiones de voz nuevos de esta ronda (V27 a V30) viven en `src/voz/simulador/guiones-es-mx.ts` y corren en `tests/voz-simulador-prueba-ciega.spec.ts`.

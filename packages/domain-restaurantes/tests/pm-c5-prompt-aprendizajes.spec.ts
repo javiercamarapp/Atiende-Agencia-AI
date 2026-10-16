@@ -51,7 +51,7 @@ describe("1. aclarar lo ambiguo antes de cotizar", () => {
     expect(p).toMatch(/termine el resumen con "¿Es correcto o desea agregar algo más\?"/);
     expect(p).toMatch(/en LISTA \(un renglón por producto\)/);
     expect(p).toMatch(/salsas \(las básicas más las que pidió\)/);
-    expect(p).toMatch(/forma de pago \(efectivo, o tarjeta con "llevar terminal"; solo diga con cuánto paga si el cliente ya lo dijo\)/);
+    expect(p).toMatch(/forma de pago \(efectivo con "paga con \$X", o tarjeta con "llevar terminal"\)/);
   });
   it("con salsas personalizadas por el dueño no se mezclan con las del perfil", () => {
     const personalizado = prompt({ salsasTexto: "roja, verde y de la casa" });
@@ -89,18 +89,19 @@ describe("4. cliente recurrente", () => {
 });
 
 describe("5. pin a reparto: ayuda opcional, nunca requisito", () => {
-  it("la direccion escrita (calle, numero y colonia) basta; el pin se ofrece una sola vez antes de confirmar y se anota", () => {
+  it("la direccion escrita (calle, numero y colonia) basta; el pin se ofrece una sola vez antes de confirmar y se guarda solo en el pedido", () => {
     expect(p).toMatch(/DIRECCIÓN ESCRITA: con calle, número y colonia basta/);
     expect(p).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ y ANTES de confirmar el pedido/);
     expect(p).toMatch(/NUNCA condicione el pedido al pin/);
-    expect(p).toMatch(/Si lo manda .* anótelo en las notas del pedido/);
-    expect(p).toMatch(/"avisar al llegar" o "tocar en \[depto\]"/);
+    expect(p).toMatch(/el pin o el link se guardan solos en el pedido y le llegan al repartidor: no los repita ni los anote en notes/);
+    expect(p).toMatch(/van en indicaciones_acceso de crear_pedido/);
+    expect(p).toMatch(/"timbre del depto 6", "avisar al llegar" o "tocar en \[depto\]"/);
   });
   it("regresion del eval real (12/68): ya no exige pin, casa o depto, referencia ni con cuanto paga para cerrar", () => {
     expect(p).not.toMatch(/pida el pin .* UNA SOLA VEZ y ANTES de confirmar el pedido, junto con privada o edificio/);
     expect(p).not.toMatch(/casa o depto y una referencia visible/);
     expect(p).toMatch(/OBJETIVO: cerrar el pedido\. Lo INDISPENSABLE es:/);
-    expect(p).toMatch(/NO condicione el pedido a nada más: no exija pin de ubicación, casa o depto, referencias, con cuánto paga ni propina en efectivo/);
+    expect(p).toMatch(/NO condicione el pedido a nada más: no exija pin de ubicación, casa o depto, referencias ni propina en efectivo\. Con cuánto paga SÍ se pregunta/);
   });
 });
 
@@ -173,7 +174,7 @@ describe("13 y 14. queja por faltante y factura", () => {
     expect(p).toMatch(/no prometa reposición, cambio ni descuento/);
   });
   it("factura: enlace en linea y QR del ticket, sin pedir RFC", () => {
-    expect(p).toMatch(/FACTURA: no pida ni guarde RFC\. Dé el enlace de facturación en línea .* código QR/);
+    expect(p).toMatch(/FACTURA: no pida ni guarde RFC\. No tiene el enlace de facturación: NO lo invente .* código QR/);
   });
 });
 
@@ -244,8 +245,8 @@ describe("8. P2 del eval real: escalacion, hora de recogida, nombre y promocione
     expect(p).toMatch(/va por escalar_a_humano; no use registrar_contacto para eso/);
     expect(prompt({ canal: "voz" })).toMatch(/Avise primero al cliente que consulta al gerente y, en ese mismo turno, llame escalar_a_humano/);
   });
-  it("la hora que dice el cliente se acepta y va en hora_recogida: no se escala por 'paso en 20 minutos'", () => {
-    expect(p).toMatch(/La hora a la que el cliente dice que pasará es suya: acéptela tal cual y mándela en hora_recogida; no escale por ella/);
+  it("la hora que dice el cliente se acepta (plazo en minutos_para_recoger, hora exacta en hora_recogida): no se escala por 'paso en 20 minutos'", () => {
+    expect(p).toMatch(/La hora a la que el cliente dice que pasará es suya: acéptela tal cual \(plazo en minutos_para_recoger, hora exacta en hora_recogida\); no escale por ella/);
     expect(p).toMatch(/Solo si el cliente EXIGE una hora garantizada o un tiempo menor al normal de la sucursal, escale \(tiempos_entrega\)/);
   });
   it("el nombre completo va en customer_name; el alambre pedido de pastor no se cambia por el suizo", () => {

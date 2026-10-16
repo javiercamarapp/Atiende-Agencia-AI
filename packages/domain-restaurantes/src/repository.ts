@@ -47,6 +47,7 @@ import type {
   FilaImportacionCliente,
   ResultadoImportacionClientes,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -69,11 +70,8 @@ import type {
   RestaurantesAuditLogPaginacion,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
-  StorefrontMarca,
-  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
-  StorefrontTrackingResult,
 } from "./types.ts";
 
 export interface SearchableProduct {
@@ -123,6 +121,9 @@ export interface NewOrderRecord {
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+  /** Solo en el mensaje del asistente de un turno que dejo un pedido creado: marca el limite entre un pedido y el siguiente
+   * (el pin o link de Maps de antes de esa marca ya no pertenece al pedido en curso). Es metadato del historial: no se manda al modelo. */
+  readonly pedidoCreado?: true;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----
@@ -215,10 +216,6 @@ export interface RestaurantesRepository {
   /** R-09: menu publico de la sucursal INCLUYENDO los productos de hoy no disponibles
    * (para mostrarlos como "hoy no hay"). Precio y disponibilidad salen de `branch_products`. */
   listStorefrontCatalog(propertyId: string): Promise<readonly StorefrontCatalogRow[]>;
-  /** R-09: lectura publica y acotada de un pedido (migracion 032). Base sin migrar ->
-   * `{ disponible: false, pedido: null }` (SAVEPOINT + 42883). Nunca expone datos personales. */
-  findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult>;
-
   findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null>;
   /** Insert-or-update race-safe: nunca sobreescribe un nombre ya conocido con uno
    * posiblemente mal escuchado (mismo comportamiento que upsertCustomer del origen,
@@ -227,10 +224,11 @@ export interface RestaurantesRepository {
   upsertCustomer(organizationId: string, phone: string, name: string): Promise<Customer>;
   /** `organizationId` es obligatorio: la escritura real (funcion solo-sistema de la migracion 048) exige que el cliente pertenezca a esa organizacion. */
   addCustomerAddressIfNew(customerId: string, address: string, organizationId: string): Promise<void>;
-  listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]>;
+  /** `organizationId` (migracion 071): la sesion de sistema de los agentes solo ve las direcciones por la funcion solo-sistema, que lo exige. Sin el, lectura directa. */
+  listCustomerAddresses(customerId: string, organizationId?: string): Promise<readonly CustomerAddress[]>;
   /** Historial de pedidos ELEGIBLES para memoria/recomendación (pending/preparando/
    * en_camino/entregado/completado — nunca cancelado/problema), orden desc. */
-  listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>;
+  listEligibleOrderHistory(customerId: string, organizationId?: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>>;
   calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null>;
 
   // ---- Cliente 360 (migracion 049, ver cliente-360/) ----
@@ -370,7 +368,12 @@ export interface RestaurantesRepository {
   // encolaba para envío real (ver @atiende/whatsapp-gateway/README.md). ----
   enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
   claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
-  markMessagingOutboxSent(id: string): Promise<void>;
+  /** `detalle` (wamid y tipo de envio) llega del despachador: con la migracion 066 se guarda para que los `statuses` de Meta encuentren el
+   *  mensaje; contra una base sin ella se cierra como siempre, sin wamid. */
+  markMessagingOutboxSent(id: string, detalle?: { readonly providerMessageId: string; readonly enviadoComo?: "texto" | "plantilla" | "botones" | "ubicacion" }): Promise<void>;
+  /** Avanza el estado de entrega (migracion 066) de un mensaje saliente por su wamid. Solo sesion de sistema (el webhook). Contra una base sin
+   *  la migracion NO lanza ni aborta la transaccion: devuelve `resultado: "no_disponible"`. */
+  registrarEstadoEntregaWhatsapp(organizationId: string, estado: EstadoEntregaEntrante): Promise<RegistroEstadoEntrega>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   // ---- Dispatcher real de correo (migrations/011_email_outbox_dispatch.sql) —
@@ -447,6 +450,12 @@ export interface RestaurantesRepository {
    * forma de que un producto aparezca (o deje de aparecer) en
    * `listAvailableProductsForBranch`, y por tanto en búsqueda/cotización real. */
   upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState>;
+  /** Solo `is_available` de una fila YA existente de `branch_products` (agotado/disponible, PL-23): nunca toca el precio ni da de alta.
+   *  `null` cuando el producto no esta dado de alta en esa sucursal. Es lo unico que puede escribir un `staff`. */
+  setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null>;
+  /** Cancela la reposición programada (`agotado_hasta`, migración 050) de un producto en una sucursal: el dueño lo apagó a propósito y
+   * el cron `agotados_reponer` no debe volver a ponerlo a la venta. No-op en una base sin la 050. */
+  limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void>;
 
   findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
   /** Pedido MAS RECIENTE (no cancelado) de un telefono (10 digitos, `normalizePhone`) creado desde `sinceIso`, o null. Para "¿ya salio?". */
@@ -537,6 +546,10 @@ export interface RestaurantesRepository {
    * principio que `updateOrderStatus`: el repositorio solo resuelve datos, nunca
    * decide reglas de negocio). */
   findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null>;
+  /** QA R2 features-07: codigo de compensacion («Descuento en el proximo pedido», GRACIAS-XXXXXXXX) que el dueno emitio a ESTE telefono y que
+   * sigue vigente y sin usar; `null` si no hay. Solo la sesion de sistema (agentes): el modelo nunca lo dicta. Contra la base sin migrar
+   * (funcion de la migracion 077 ausente) devuelve `null` dentro de un SAVEPOINT, nunca aborta la transaccion de la request. */
+  findCompensationCode(organizationId: string, phone: string): Promise<string | null>;
   /** Promociones ACTIVAS con `auto_apply` (migracion 031) para aplicarlas sin codigo. `[]` contra la base
    * sin migrar (SAVEPOINT): nunca lanza ni deja la transaccion abortada. */
   listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]>;
@@ -582,19 +595,13 @@ export interface RestaurantesRepository {
    *  primary key de la tabla) -- nunca dos filas por organización. */
   upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
 
-  // ---- R-38 (migración 062): marca pública del storefront ----
-
-  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 062 (la portada pública cae a una
-   *  genérica con el nombre del restaurante). Nunca lanza por tabla/columna ausente. */
-  findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null>;
-  /** Alta o reemplazo completo de la marca (owner/admin por RLS). Lanza `RestaurantesConfigUnavailableError` si la base aún no tiene
-   *  la migración 062 (la ruta responde 503, nunca 500). */
-  upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca>;
-
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */
   listKnownZones(organizationId: string): Promise<readonly KnownZone[]>;
   createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone>;
+  /** Colonias con la referencia del piloto original (migracion 056) para el reporte de colonias ambiguas. Contra la base sin migrar
+   *  devuelve `{ disponible: false, zonas: [] }` (con SAVEPOINT: nunca aborta la transaccion del request). */
+  listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura>;
   /** `true` si borró una zona de ESTA organización; `false` si no existía o
    *  pertenecía a otra organización (nunca lanza por "no encontrado" -- el
    *  caller decide el 404, mismo contrato que `revokeStaffInvite`). */
@@ -747,6 +754,34 @@ export class RestaurantesConfigUnavailableError extends Error {
     super("Esta configuración todavía no se puede editar en esta base de datos.");
     this.name = "RestaurantesConfigUnavailableError";
   }
+}
+
+/** Un status de Meta ya filtrado por el extractor: solo lo necesario, sin telefono ni texto. */
+export interface EstadoEntregaEntrante {
+  readonly wamid: string;
+  readonly status: "sent" | "delivered" | "read" | "failed";
+  readonly errorCode: number | null;
+  readonly errorTitle: string | null;
+}
+
+export type MotivoFalloEntregaGuardado = "fuera_de_ventana" | "fuera_de_ventana_plantilla_sin_usar" | "numero_no_entregable" | "plantilla" | "limite_marketing" | "otro";
+
+/** Resultado de `registrarEstadoEntregaWhatsapp`. `desconocido` = ningun mensaje de ESTA organizacion con ese wamid; `no_disponible` = base sin la
+ *  migracion 066 (el webhook sigue respondiendo 200). */
+export interface RegistroEstadoEntrega {
+  readonly resultado: "actualizado" | "sin_cambio" | "desconocido" | "no_disponible";
+  readonly outboxId: string | null;
+  readonly estado: "sent" | "delivered" | "read" | "failed" | null;
+  readonly eventType: string | null;
+  readonly motivoFallo: MotivoFalloEntregaGuardado | null;
+  /** Solo si el mensaje era un aviso de estado de pedido. */
+  readonly orderId: string | null;
+  readonly orderStatus: string | null;
+  /** Mensajes de la organizacion con entrega fallida en la ultima hora (incluye este). */
+  readonly fallidasUltimaHora: number;
+  /** Datos del pedido para el respaldo por correo: SOLO cuando este status hace pasar un aviso de pedido a `failed` y el cliente dejo correo (la
+   *  sesion de sistema no puede leer `orders`, asi que los entrega la funcion SQL ya acotada por organizacion). */
+  readonly respaldoCorreo: { readonly to: string; readonly clienteNombre: string; readonly sucursal: string | null; readonly total: number } | null;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

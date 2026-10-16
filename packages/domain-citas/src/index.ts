@@ -141,6 +141,7 @@ export { OAUTH_STATE_TTL_MS, signGoogleCalendarOAuthState, verifyGoogleCalendarO
 export type { GoogleCalendarOAuthState } from "./google-calendar-oauth-state.ts";
 
 export {
+  assertCustomerOwnsAppointment,
   BUSY_APPOINTMENT_STATUSES,
   cancelAppointment,
   cancelAppointmentFromPanel,
@@ -149,6 +150,7 @@ export {
   createAppointment,
   createAppointmentFromPanel,
   findAppointmentsForCustomerPhone,
+  isUsablePhone,
   isValidVoiceConversationId,
   markAppointmentNoShowFromPanel,
   normalizePhone,
@@ -170,7 +172,7 @@ export { lookupCitasCustomer, updateCustomerEmailFromPanel } from "./customers.t
 export type { CitasCustomerContext, UpcomingAppointmentContext } from "./customers.ts";
 
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
-export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
+export type { CitasTurnOutcome, WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { computeCitasResumen, RESUMEN_HORIZONTE_PENDIENTES_DIAS, RESUMEN_VENTANA_DIAS } from "./resumen.ts";
 export type { CitasResumen, ResumenPorEstado } from "./resumen.ts";
