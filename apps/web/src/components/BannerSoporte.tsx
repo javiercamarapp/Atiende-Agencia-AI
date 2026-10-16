@@ -53,11 +53,13 @@ function BannerSoporteActivo({ apiBaseUrl, token, ahora = Date.now, recargar = (
 
   const terminarLocal = useCallback(
     (mensaje?: string) => {
+      // Best-effort: intenta revocar la concesión temporal en el servidor (si el token ya venció la API puede negarlo; el cierre local siempre ocurre).
+      void salirDeSoporte(doFetch, apiBaseUrl, token);
       limpiarSesionSoporteLocal(window.localStorage, soporte.vertical);
       if (mensaje) notify.error(mensaje);
       navigate(DESTINO_AL_SALIR, { replace: true });
     },
-    [navigate, soporte.vertical],
+    [navigate, soporte.vertical, doFetch, apiBaseUrl, token],
   );
 
   // Cuenta regresiva y vencimiento local.

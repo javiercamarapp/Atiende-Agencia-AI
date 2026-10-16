@@ -136,6 +136,12 @@ describe("BannerSoporte", () => {
     expect(rendered!.container.querySelector('[data-testid="ubicacion"]')?.textContent).toBe("/superadmin/organizaciones");
   });
 
+  it("al vencer o terminar localmente intenta revocar la concesión en el servidor (POST /soporte/salir)", async () => {
+    render(tokenSoporteFalso({ expMs: T0 - MIN }));
+    await esperar();
+    expect(llamadas("/soporte/salir").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("si el servidor dice que la sesión terminó (sondeo cada 30 s), cierra la sesión local", async () => {
     vi.useFakeTimers();
     fetchMock = vi.fn(async (url: string) => (url.endsWith("/soporte/estado") ? json({ active: false, elevated: false }) : json({})));
