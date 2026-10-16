@@ -44,6 +44,8 @@ export interface EventoTurnoWhatsApp {
   readonly motivoEscalacion: string | null;
   /** Por que se subio de rol de modelo barato a caro dentro del turno; null si no se subio. */
   readonly motivoEscaladaDeRol: "fallo_crear_pedido" | null;
+  /** Solo con el contexto precargado encendido (R11 A): consultas de lectura que el servidor hizo antes de la primera vuelta (cliente conocido y numero de busquedas de producto). */
+  readonly precargado?: { readonly cliente: boolean; readonly productos: number };
   readonly telefonoHash: string | null;
 }
 
