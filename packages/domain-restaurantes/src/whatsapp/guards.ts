@@ -599,7 +599,7 @@ export function niegaQuererReembolso(texto: string): boolean {
 //   - Descuento ya hecho o en pasado: «Ya le aplique el descuento» (sin herramienta, no tiene efecto real; escala el prompt).
 const NO_ES_COSA_DE_DINERO = /\b(?:link|liga|enlace|llamada|mensaje|cotizacion|comprobante|ticket|recibo|resumen|desglose|detalle|puntos?|reciba|recibamos|refleje|reflejen|corregid\w*|charolas?|envases?|garrafon\w*|para\s+que\s+(?:\w+\s+)?(?:confirme|revise|verifique|valide|apruebe))\b/;
 const CAMBIO_O_PAGO =
-  /\b(?:cambio|vuelto|feria|efectivo|billetes?|monedas?|propinas?|terminal|acredit\w*|abon\w*|paga\s+con|pagas\s+con|pagando\s+con|pago\s+(?:en\s+efectivo|recibido|confirmado|registrado|aprobado|exitoso)|recibimos\s+su\s+pago|change|cash|tips?|credited|payment\s+(?:received|confirmed|approved))\b/;
+  /\b(?:que\s+sobre|sobrante|sobrantes|sobra|sobren|de\s+mas|cambio|vuelto|feria|efectivo|billetes?|monedas?|propinas?|terminal|acredit\w*|abon\w*|paga\s+con|pagas\s+con|pagando\s+con|pago\s+(?:en\s+efectivo|recibido|confirmado|registrado|aprobado|exitoso)|recibimos\s+su\s+pago|change|cash|tips?|credited|payment\s+(?:received|confirmed|approved))\b/;
 // «cambio de producto/platillo/pedido» es la politica, no el vuelto: se quita antes de buscar el contexto de efectivo.
 const CAMBIO_DE_PRODUCTO = /\bcambios?\s+(?:de|del|por)\s+(?:producto|productos|platillo|platillos|pedido|orden|articulo)\b|\bcambiar(?:le)?\s+(?:el|su|la)\s+(?:producto|platillo|pedido|orden)\b/g;
 const SOLO_CAMBIO_DE_PRODUCTO = /\b(?:solo|unicamente|nada\s+mas)\s+(?:hacemos\s+|damos\s+|ofrecemos\s+|hay\s+)?cambio|\bonly\s+(?:an?\s+|product\s+)?exchange/;
@@ -609,11 +609,14 @@ function contextoDeCambioOPago(t: string): boolean {
 // Solo formas conjugadas/infinitivo en las que EL RESTAURANTE devuelve («devolvemos», «regresaremos», «devolverle»). Quedan fuera mandar/enviar/transferir/depositar (instruccion de pago o
 // envio de pedido al cliente: «mande el dinero exacto», «transfiera el pago completo», «le enviamos el importe») y los gerundios/imperativos («Regresando a su pedido...», «devuelvame»).
 const VERBO_DEVOLVER =
-  "(?:devolv(?:emos|eremos|er|ere|erle|erles|eria|eriamos)|devuelv(?:o|e|en)|regres(?:amos|aremos|ar|arle|arles|are|aria|o)|reintegr(?:amos|aremos|ar|arle|arles|o|are)|retorn(?:amos|aremos|ar|arle|arles|o|are))";
+  "(?:devolv(?:emos|eremos|er|erle|erles|eria|eriamos)|devuelv(?:e|en)|regres(?:amos|aremos|ar|arle|arles|aria)|reintegr(?:amos|aremos|ar|arle|arles)|retorn(?:amos|aremos|ar|arle|arles))";
+// R12 revision 4: se quitaron las formas de primera persona del SINGULAR («regreso», «devuelvo», «regresare», «reintegro», «retorno»): en un chat son casi siempre «vuelvo» («Regreso con el
+// importe de su pedido»), no una promesa de dinero.
 const VERBO_DEVOLVER_A_TARJETA = VERBO_DEVOLVER;
 // Hueco entre el verbo y el objeto: si en medio aparece el pedido/platillo, el verbo es de envio de comida («le regresamos su pedido ... el pago completo»), no de dinero.
-const HUECO = "(?:(?!\\b(?:pedido|platillo|orden|comida|paquete)\\b)[^.!?\\n]){0,40}";
-const SU_DINERO = "(?:(?:su|tu|mi|el)\\s+dinero|todo\\s+su\\s+dinero)";
+const HUECO = "(?:(?!\\b(?:pedido|platillo|orden|comida|paquete|con|para|cuando|cuanto|hasta|despues|luego)\\b)[^.!?\\n]){0,40}";
+// «el dinero» a secas NO cuenta (puede ser el sobrante del cambio): solo «su/tu/mi dinero» o «el dinero que pago / de su pedido».
+const SU_DINERO = "(?:(?:su|tu|mi)\\s+dinero|todo\\s+su\\s+dinero|el\\s+dinero\\s+(?:que\\s+pag\\w+|de\\s+su\\s+(?:pedido|compra|orden)))";
 const LO_PAGADO =
   "(?:lo\\s+pagado|lo\\s+que\\s+pag\\w+|(?:el\\s+)?importe\\s+(?:total\\s+)?de\\s+su\\s+(?:pedido|compra|orden)|(?:el|su)\\s+pago\\s+(?:completo|total|integro)|\\$\\s?\\d[\\d.,]*\\s+que\\s+pag\\w+)";
 // Senal A: solo VERBOS DE PROMESA con reembolso («reembolsamos», «haremos el reembolso», «se le reembolsara», «we will refund you»). Mencionar la palabra (la politica, «su solicitud de reembolso»,
@@ -642,6 +645,10 @@ const PROMESA_B = new RegExp(
     // pasiva: «su dinero sera devuelto a su tarjeta», «su dinero se devolvera», «se le devolvera su dinero»
     `\\b(?:${SU_DINERO}|${LO_PAGADO})\\b[^.!?\\n]{0,30}\\b(?:sera(?:n)?\\s+(?:devuelt|regresad|reintegrad|retornad)\\w*|se\\s+(?:le\\s+)?(?:devolvera|regresara|reintegrara|retornara)\\b)`,
     `\\bse\\s+(?:le\\s+|les\\s+)?(?:devolvera|regresara|reintegrara|retornara)\\b[^.!?\\n]{0,30}\\b(?:${SU_DINERO}|${LO_PAGADO})`,
+    // primera persona del singular SOLO con «le» y objeto inequivoco: «Le regreso su dinero hoy mismo» (sin «le» es «vuelvo»: «Regreso con el importe...»)
+    `\\ble\\s+(?:devuelvo|regreso|reintegro|retorno|devolvere|regresare|reintegrare)\\b${HUECO}(?<!\\w)(?:(?:su|tu)\\s+dinero|lo\\s+pagado|lo\\s+que\\s+pag\\w+)`,
+    // pasiva dirigida al cliente con «el dinero» a secas: «Se le devolvera el dinero en 3 dias» (el dinero sobrante del cambio queda excluido por el contexto de efectivo)
+    `\\bse\\s+(?:le\\s+|les\\s+)(?:devolvera|regresara|reintegrara|retornara)\\s+el\\s+dinero\\b`,
     // ingles
     `\\b(?:return|send|give|refund)\\w*\\b[^.!?\\n]{0,15}\\byour\\s+money\\b|\\byour\\s+money\\s+(?:will|would)\\s+be\\s+(?:returned|sent|given)\\b|\\bcredit\\s+your\\s+(?:card|account)\\b`,
   ].join("|"),
@@ -663,7 +670,7 @@ const PROMESA_DE_DESCUENTO = new RegExp(
 );
 const NEGACION_ANTES = /\b(?:no|nunca|jamas|tampoco|ni|not|never|cannot)\s+(?:\w+\s+){0,4}$|n't\s+(?:\w+\s+){0,4}$|\b(?:sin|without)\s+(?:\w+\s+)?$/;
 const DESCUENTO_CONDICIONAL_DE_LA_CARTA =
-  /\b(?:si|cuando)\s+[^.!?\n]*\b(?:recoger|recoja|recoge|domicilio|tarjeta|efectivo|pasa|pase|visita|visite|dia|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hora|despues\s+de)\b|\b(?:para|al|por|de)\s+recoger\b|\bpedido\s+(?:para\s+)?recoger\b|\b(?:total|precio|pedido)\s+con\s+descuento\b|\b(?:los|todos\s+los|cada)\s+(?:lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)\b|\bpromocion(?:es)?\b/;
+  /\b(?:si|cuando)\s+[^.!?\n]*\b(?:recoger|recoja|recoge|domicilio|tarjeta|efectivo|pasa|pase|visita|visite|dia|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hora|despues\s+de)\b|\b(?:para|al|por|de)\s+recoger\b|\bpedido\s+(?:para\s+)?recoger\b|\b(?:total|precio|pedido)\s+con\s+descuento\b|\b(?:los|todos\s+los|cada)\s+(?:lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)\b|\bpromocion(?:es)?\b|\b(?:credencial|estudiantes?|inapam|adultos?\s+mayores|maestros?|cumpleaneros?|familiares?)\b|\bdescuentos?\s+(?:en|a|para)\s+(?!(?:su|tu|el|la|esta|este|mi|usted|ustedes|ti)\b)\w+/;
 function promesaSinNegar(patron: RegExp, textoNormalizado: string): boolean {
   const m = patron.exec(textoNormalizado);
   if (!m) return false;
