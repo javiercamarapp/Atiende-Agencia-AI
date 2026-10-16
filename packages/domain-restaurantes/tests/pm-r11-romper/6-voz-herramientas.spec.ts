@@ -77,7 +77,7 @@ describe("R11-6A2 voz: la guardia determinista de riesgo (en WhatsApp corre ANTE
     ["queja de entrega", "El pedido de ayer me llegó frío y faltó una bebida"],
   ];
   for (const [nombre, frase] of SIN_PEDIR_PERSONA) {
-    hallazgo(`R11-17 [P1] voz: ${nombre} (sin pedir una persona) se escala con la guardia determinista`, async () => {
+    it(`R11-17 [P1] voz: ${nombre} (sin pedir una persona) se escala con la guardia determinista`, async () => {
       const { evaluarPersonaVoz } = await import("../../src/voz/guardia-persona.ts");
       // Control: pidiendo una persona SI escala, con el motivo especifico.
       expect(evaluarPersonaVoz(`Quiero hablar con una persona. ${frase}`), "control: pidiendo una persona SI escala").not.toBeNull();
