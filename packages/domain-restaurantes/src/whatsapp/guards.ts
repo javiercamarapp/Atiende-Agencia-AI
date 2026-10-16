@@ -518,15 +518,34 @@ export function esConsultaDeCancelacion(text: string): boolean {
 
 // R12-01: cambios sobre un pedido ya hecho. Todos exigen ademas (en `cuando`) que el texto hable del pedido que ya existe y que el telefono tenga uno vigente.
 const VERBO_DE_CAMBIO = "(?:cambi(?:a|ame|ar|arme|en|ale)|modific(?:a|ame|ar|arme|quen?)|corrig(?:e|eme|ir)|actualiz(?:a|ame|ar)|agreg(?:a|ame|ale|alo|ar|uen|uele)|anad(?:e|eme|ele|ir)|sum(?:a|ale|ame)|quit(?:a|ale|ame|ar|en)|elimin(?:a|ale|ar))";
-const MODIFICACION_DE_PEDIDO_RE = new RegExp(
+// Alternativa FUERTE: el original «cambia/modifica (el|mi|ese|este) pedido». Es la unica que existia antes de R12-01 y sigue escalando tal cual (estado vigente, sin «?»), sin pasar por las
+// exenciones de «pedido nuevo»: «cambia mi pedido de 5 tacos a 7 tacos», «cambiame el pedido, quiero 2 tacos mas» o «cambia mi pedido para el proximo viernes» son cambios del que ya existe.
+const MODIFICACION_FUERTE_RE = /\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\s+(?:el|mi|ese|este)\s+pedido\b/;
+// Verbos de MOVER el pedido (sin la palabra «pedido»): «mandalo», «llevalo», «dejalo»...
+const VERBO_DE_MOVER = "(?:mand\\w*|envi\\w*|lleva\\w*|pas(?:a|e|en|ar)\\w*|entreg\\w*|dej(?:a|e|en|ar)\\w*)";
+// Alternativas DEBILES con «pedido» explicito (la exencion de pedido nuevo y MENCIONA_UN_PEDIDO_YA_HECHO si les aplican).
+const MODIFICACION_DEBIL_RE = new RegExp(
   [
-    "\\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\\s+(?:el|mi|ese|este)\\s+pedido\\b",
     `\\b${VERBO_DE_CAMBIO}\\b[^.!?\\n]{0,60}\\b(?:a|al|en|de|del|para)\\s+(?:mi|el|este|ese|su)\\s+pedido\\b`,
     // «otra direccion» sola no basta (tambien la dice quien arma un pedido nuevo): exige un verbo de mover/cambiar antes.
     "\\b(?:mand\\w*|envi\\w*|lleva\\w*|cambi\\w*|pas(?:a|e|en|ar)\\w*|entreg\\w*|dej(?:a|e|en|ar)\\w*)\\b[^.!?\\n]{0,50}\\b(?:otra|nueva|diferente)\\s+(?:direccion|ubicacion|domicilio)\\b",
     "\\bya\\s+no\\s+(?:a\\s+domicilio|para\\s+domicilio|lo\\s+quiero\\s+a\\s+domicilio)\\b|\\bmejor\\s+(?:que\\s+sea\\s+)?(?:para\\s+)?recoger\\b",
   ].join("|"),
 );
+// Referencia IMPLICITA al pedido que ya existe, sin la palabra «pedido» («mandalo a otra direccion», «cambiale la direccion», «agregale una coca», «mejor para recoger»). Solo cuenta con un
+// pedido vigente del telefono, sin carrito en curso, sin cantidades ni frases de pedido nuevo.
+const MODIFICACION_IMPLICITA_RE = new RegExp(
+  [
+    `\\b${VERBO_DE_MOVER}\\b[^.!?\\n]{0,50}\\b(?:otra|nueva|diferente)\\s+(?:direccion|ubicacion|domicilio)\\b`,
+    "\\bcambi(?:a|ame|ale|ar|arle|arme)\\s+(?:la|el)\\s+(?:direccion|domicilio|ubicacion)\\b",
+    "\\bya\\s+no\\s+(?:a\\s+domicilio|para\\s+domicilio|lo\\s+quiero\\s+a\\s+domicilio)\\b|\\bmejor\\s+(?:que\\s+sea\\s+)?(?:para\\s+)?recoger\\b",
+    // Con el clitico «-le» el verbo ya refiere a algo existente («agregale una coca»); «agrega una coca» a secas es el carrito.
+    "\\b(?:agreg|anad|sum|quit)(?:ale|ele)\\b",
+  ].join("|"),
+);
+const MODIFICACION_DE_PEDIDO_RE = new RegExp(`${MODIFICACION_FUERTE_RE.source}|${MODIFICACION_DEBIL_RE.source}|${MODIFICACION_IMPLICITA_RE.source}`);
+// Cantidades escritas con palabra: una frase con ellas arma un pedido, no cambia uno («mejor recoger, dos tacos»).
+const CANTIDAD_EN_PALABRAS = /\b(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|docena|media|medio)\b/;
 const MENCIONA_UN_PEDIDO_YA_HECHO = /\bpedido\b|\bya\s+(?:hice|hicimos|pedi|pedimos|salio)\b/;
 // «quiero otro pedido a otra direccion»: es un pedido NUEVO (flujo normal con otro_pedido), no un cambio del que ya existe.
 const PIDE_OTRO_PEDIDO = /\b(?:otro|nuevo)\s+pedido\b|\bpedido\s+(?:nuevo|aparte|adicional)\b/;
@@ -600,16 +619,16 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     cuando: (texto, ctx) => {
       const estado = ctx.pedidoReciente?.estado;
       // `salio` (en camino) tambien: cambiar la direccion o el contenido de lo que ya salio lo decide la sucursal, no el modelo.
-      return (
-        (estado === "registrado" || estado === "preparando" || estado === "salio" || estado === "listo_para_recoger" || estado === "con_problema" || estado === "programado" || estado === "por_confirmar") &&
-        ctx.carritoEnCurso !== true &&
-        !CONSULTA_DE_CANCELACION.test(texto) &&
-        (!/\?/.test(texto) || (PETICION_EN_PREGUNTA.test(texto) && new RegExp(`\\b${VERBO_DE_CAMBIO}\\b`).test(texto))) &&
-        !HACE_UN_PEDIDO_NUEVO.test(texto) &&
-        !ARMA_UN_PEDIDO_NUEVO.test(texto) &&
-        !PIDE_OTRO_PEDIDO.test(texto) &&
-        MENCIONA_UN_PEDIDO_YA_HECHO.test(texto)
-      );
+      const vigente = estado === "registrado" || estado === "preparando" || estado === "salio" || estado === "listo_para_recoger" || estado === "con_problema" || estado === "programado" || estado === "por_confirmar";
+      if (!vigente || CONSULTA_DE_CANCELACION.test(texto)) return false;
+      const esPeticion = PETICION_EN_PREGUNTA.test(texto) && (new RegExp(`\\b${VERBO_DE_CAMBIO}\\b`).test(texto) || new RegExp(`\\b${VERBO_DE_MOVER}\\b`).test(texto));
+      if (/\?/.test(texto) && !esPeticion) return false;
+      // El original «cambia/modifica mi pedido» escala siempre (como antes de R12-01), con o sin carrito y sin exenciones.
+      if (MODIFICACION_FUERTE_RE.test(texto)) return true;
+      if (ctx.carritoEnCurso === true || HACE_UN_PEDIDO_NUEVO.test(texto) || ARMA_UN_PEDIDO_NUEVO.test(texto) || PIDE_OTRO_PEDIDO.test(texto)) return false;
+      if (MENCIONA_UN_PEDIDO_YA_HECHO.test(texto) && MODIFICACION_DEBIL_RE.test(texto)) return true;
+      // Sin la palabra «pedido»: solo si la frase es de mover/agregarle al que ya existe y no trae cantidades (eso es armar uno nuevo).
+      return MODIFICACION_IMPLICITA_RE.test(texto) && !/\d/.test(texto) && !CANTIDAD_EN_PALABRAS.test(texto);
     },
     reply:
       "Entendido, desea cambiar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",

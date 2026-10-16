@@ -22,9 +22,10 @@ import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, OR
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
-/** Dinero a centavos (el redondeo comun de todo el modulo): una fraccion de centavo no existe. */
-const DIRECCION_DE_RELLENO = /^(?:no\s*se|nose|n\/?a|na|ninguna?|nada|sin\s+(?:direccion|dato|datos)|desconocid[oa]|pendiente|despues|luego|ahorita|aqui|alla|x+|\?+)$/;
-const DIRECCION_APLAZADA = /^(?:pendiente|luego|despues|ahorita|aqui|alla|mas\s+tarde|te\s+(?:la|lo)\s+(?:mando|paso|doy)|despues\s+te)\b/;
+/** Relleno exacto (tras normalizar) o remisiones a algo que el servidor no tiene como direccion («la de siempre», «ya te la di»): el agente debe volver a pedirla. */
+const DIRECCION_DE_RELLENO = /^(?:no\s*se|nose|n\/?a|na|ninguna?|nada|sin\s+(?:direccion|dato|datos)|desconocid[oa]|pendiente|despues|luego|ahorita|aqui|alla|x+|\?+|la\s+(?:de\s+siempre|misma|de\s+antes|que\s+(?:ya\s+)?(?:tienes|sabes|te\s+di))|ya\s+(?:la\s+sabes|te\s+la\s+(?:di|dije|mande|pase)|la\s+tienes)|donde\s+siempre|la\s+conoces)$/;
+// Aplazar o no dar la direccion («luego te la mando», «aqui mismo», «despues te digo»). Una referencia verbal real («Aqui en mi casa», «Despues del puente, casa azul») NO es aplazar.
+const DIRECCION_APLAZADA = /^(?:pendiente|luego|ahorita|mas\s+tarde|te\s+(?:la|lo)\s+(?:mando|paso|doy)|despues(?!\s+(?:del?|de\s+la|de\s+los|de\s+las)\b)|(?:aqui|alla)(?:\s+(?:mismo|nomas|donde\s+siempre))?$)/;
 /** true si el texto pasa como direccion de entrega: al menos 6 letras o digitos (3 si trae numero), con al menos una letra, y no es una frase de relleno. No valida que exista: solo descarta lo que no puede ser una direccion. */
 export function direccionUtilizable(direccion: string): boolean {
   const compacta = direccion.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s/]/g, " ").replace(/\s+/g, " ").trim();
@@ -37,6 +38,7 @@ export function direccionUtilizable(direccion: string): boolean {
   return largoSuficiente && tieneLetra && !relleno;
 }
 
+/** Dinero a centavos (el redondeo comun de todo el modulo): una fraccion de centavo no existe. */
 export function redondearACentavos(value: number): number {
   return Math.round(value * 100) / 100;
 }

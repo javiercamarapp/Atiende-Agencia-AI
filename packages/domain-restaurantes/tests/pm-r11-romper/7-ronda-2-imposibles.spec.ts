@@ -10,7 +10,7 @@ import { InMemoryAutopilotoRepository, solicitarCancelacion } from "../../src/au
 import type { AutopilotoServicioDeps } from "../../src/autopiloto/index.ts";
 import { createOrder, direccionUtilizable } from "../../src/orders.ts";
 import { invokeAgentTool } from "../../src/agent-tools/registry.ts";
-import { buildRestaurantFixture, flujo, itemsCoca, ordenes, pedidoCompleto } from "./arnes.ts";
+import { PHONE, buildRestaurantFixture, flujo, handlerConGuion, itemsCoca, ordenes, pedidoCompleto, texto } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 // Martes 2026-10-06 13:00 en Merida (UTC-6).
@@ -341,12 +341,79 @@ describe("R12-01 (revision) el cliente que repite o arma un pedido NUEVO no se c
   });
 });
 
+describe("R12-01 (revision 2) sin regresion contra main: el original «cambia/modifica el|mi pedido» sigue escalando; las frases sin la palabra «pedido» tambien", () => {
+  const ped = (estado: "registrado" | "preparando" | "salio") => ({ estado, canal: "domicilio" as const, sucursal: "Fco", confirmadoHoraLocal: "12:50", minutosDesdeConfirmacion: 10 });
+  const originales = [
+    "cambia mi pedido de 5 tacos a 7 tacos",
+    "modifica mi pedido de 3 tacos por favor",
+    "cambiame el pedido de 2 tortas",
+    "cambiame el pedido, quiero 2 tacos mas",
+    "cambia mi pedido para el proximo viernes",
+    "cambiame el pedido, mismo pedido pero con 1 taco menos",
+    "cambia el pedido, no estuvo bien la direccion",
+  ];
+  it.each(["registrado", "preparando", "salio"] as const)("las 7 frases originales escalan con el pedido '%s' (con y sin carrito, igual que en main)", (estado) => {
+    for (const frase of originales) {
+      expect(classifyHighRiskIntent(frase, { pedidoReciente: ped(estado) })?.motivo, frase).toBe("cancelacion_modificacion");
+      expect(classifyHighRiskIntent(frase, { pedidoReciente: ped(estado), carritoEnCurso: true })?.motivo, `${frase} (carrito)`).toBe("cancelacion_modificacion");
+    }
+  });
+
+  const sinPalabraPedido = ["mandalo a otra direccion", "mejor para recoger", "ya no a domicilio", "cambiale la direccion por favor", "puedes mandarlo a otra direccion?", "agregale una coca"];
+  it.each(["registrado", "preparando", "salio"] as const)("(falso negativo cerrado) sin la palabra «pedido», con el pedido '%s' y sin carrito: escalan", (estado) => {
+    for (const frase of sinPalabraPedido) expect(classifyHighRiskIntent(frase, { pedidoReciente: ped(estado) })?.motivo, frase).toBe("cancelacion_modificacion");
+  });
+  it("esas mismas frases NO escalan sin pedido vigente, con el pedido entregado, ni con un carrito en curso", () => {
+    for (const frase of sinPalabraPedido) {
+      expect(classifyHighRiskIntent(frase, { pedidoReciente: null }), `${frase} sin pedido`).toBeNull();
+      expect(classifyHighRiskIntent(frase, { pedidoReciente: { ...ped("salio"), estado: "entregado" } }), `${frase} entregado`).toBeNull();
+      expect(classifyHighRiskIntent(frase, { pedidoReciente: ped("salio"), carritoEnCurso: true }), `${frase} carrito`).toBeNull();
+    }
+  });
+  it("(corpus negativo) pedidos nuevos y consultas sin la palabra «pedido» no escalan", () => {
+    const nuevos = ["quiero agregar una coca", "mejor recoger, 2 tacos", "mejor recoger, dos tacos", "agrega una coca", "quiero 3 tacos para otra direccion", "quiero un taco, mandalo a otra direccion", "¿mandan a otra direccion?", "ponme 2 tacos mejor para recoger"];
+    for (const frase of nuevos) expect(classifyHighRiskIntent(frase, { pedidoReciente: ped("salio") }), frase).toBeNull();
+  });
+});
+
+describe("R12-01 (revision 2) carritoEnCurso en el turno real: solo cuenta una cotizacion vigente (QUOTE_TTL_MS) y se lee el flujo una sola vez", () => {
+  const cliente = { isNew: false, name: "Ana", orderCount: 3, addresses: [], tier: null, frequentItems: [], lastOrderItems: [], lastOrder: null, pedidoReciente: { estado: "registrado", canal: "domicilio", sucursal: "Fco", confirmadoHoraLocal: "12:50", minutosDesdeConfirmacion: 10 } };
+  async function turnoConCotizacion(hace: number, estado: "cotizado" | "creando") {
+    const f = buildRestaurantFixture();
+    await f.repo.writeOrderFlow(f.organizationId, `wa:${PHONE}`, 0, { state: estado, context: { quoteHash: "h", quotedAtMs: Date.now() - hace, quotedTurn: "1" } }, 7200);
+    const lecturas = vi.spyOn(f.repo, "readOrderFlow");
+    let lecturasAntesDelModelo = -1;
+    const { handler } = handlerConGuion(f.repo, () => {
+      if (lecturasAntesDelModelo < 0) lecturasAntesDelModelo = lecturas.mock.calls.length;
+      return texto("respuesta del modelo");
+    });
+    const r = await handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: [{ role: "user", content: "agrega 3 cocas a mi pedido" }], customer: cliente } as never);
+    return { r, lecturas: lecturasAntesDelModelo };
+  }
+  it("cotizacion de hace 5 min = carrito: el modelo contesta y no se escala", async () => {
+    expect((await turnoConCotizacion(5 * 60_000, "cotizado")).r.reply).toMatch(/^respuesta del modelo/);
+  });
+  it("cotizacion abandonada hace 30 min (la fila vive 2 h) ya no es carrito: «agrega 3 cocas a mi pedido» escala a una persona", async () => {
+    const { r } = await turnoConCotizacion(30 * 60_000, "cotizado");
+    expect(r.reply).toMatch(/cambiar su pedido/);
+  });
+  it("un reclamo `creando` sigue contando como carrito aunque tenga mas de 20 min", async () => {
+    expect((await turnoConCotizacion(30 * 60_000, "creando")).r.reply).toMatch(/^respuesta del modelo/);
+  });
+  it("el turno lee el flujo del pedido UNA sola vez antes de llamar al modelo (clasificador + cotizacion vigente)", async () => {
+    expect((await turnoConCotizacion(5 * 60_000, "cotizado")).lecturas).toBe(1);
+  });
+});
+
 describe("R12-02 (revision) direccionUtilizable: cortas reales si, relleno fuera de la lista cerrada no", () => {
   it.each(["C. 5 #20", "C 60 #5", "C 7 x 8", "Km 5"])("direccion corta real «%s» se acepta", (d) => {
     expect(direccionUtilizable(d)).toBe(true);
   });
-  it.each(["Pendiente de confirmar", "luego te la mando", "Aqui mismo", "no se", "xxxxxxx", "123", "."])("relleno «%s» se rechaza", (d) => {
+  it.each(["Pendiente de confirmar", "luego te la mando", "Aqui mismo", "no se", "xxxxxxx", "123", ".", "la de siempre", "la misma", "ya la sabes", "ya te la di"])("relleno o remision «%s» se rechaza", (d) => {
     expect(direccionUtilizable(d)).toBe(false);
+  });
+  it.each(["Aqui en mi casa", "Aqui en la oficina", "Despues del puente, casa azul", "Alla por el parque, casa verde"])("referencia verbal real «%s» se acepta", (d) => {
+    expect(direccionUtilizable(d)).toBe(true);
   });
 });
 
