@@ -514,6 +514,20 @@ export function esConsultaDeCancelacion(text: string): boolean {
   return CONSULTA_DE_CANCELACION.test(normalizarParaClasificar(text));
 }
 
+// R12-01: cambios sobre un pedido ya hecho. Todos exigen ademas (en `cuando`) que el texto hable del pedido que ya existe y que el telefono tenga uno vigente.
+const VERBO_DE_CAMBIO = "(?:cambi(?:a|ame|ar|arme|en|ale)|modific(?:a|ame|ar|arme|quen?)|corrig(?:e|eme|ir)|actualiz(?:a|ame|ar)|agreg(?:a|ame|ale|alo|ar|uen|uele)|anad(?:e|eme|ele|ir)|sum(?:a|ale|ame)|quit(?:a|ale|ame|ar|en)|elimin(?:a|ale|ar))";
+const MODIFICACION_DE_PEDIDO_RE = new RegExp(
+  [
+    "\\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\\s+(?:el|mi|ese|este)\\s+pedido\\b",
+    `\\b${VERBO_DE_CAMBIO}\\b[^.!?\\n]{0,60}\\b(?:a|al|en|de|del|para)\\s+(?:mi|el|este|ese|su)\\s+pedido\\b`,
+    "\\b(?:otra|nueva|diferente)\\s+(?:direccion|ubicacion|domicilio)\\b",
+    "\\bya\\s+no\\s+(?:a\\s+domicilio|para\\s+domicilio|lo\\s+quiero\\s+a\\s+domicilio)\\b|\\bmejor\\s+(?:que\\s+sea\\s+)?(?:para\\s+)?recoger\\b",
+  ].join("|"),
+);
+const MENCIONA_UN_PEDIDO_YA_HECHO = /\bpedido\b|\bya\s+(?:hice|hicimos|pedi|pedimos|salio)\b/;
+// «quiero otro pedido a otra direccion»: es un pedido NUEVO (flujo normal con otro_pedido), no un cambio del que ya existe.
+const PIDE_OTRO_PEDIDO = /\b(?:otro|nuevo)\s+pedido\b|\bpedido\s+(?:nuevo|aparte|adicional)\b/;
+
 interface Patron {
   readonly intent: HighRiskIntent;
   readonly pattern: RegExp;
@@ -571,10 +585,20 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     // reciente (o ya entregado) es el carrito y va al agente. Intent PROPIO: avisa al equipo igual (motivo `cancelacion_modificacion`) pero NUNCA pasa por el autopiloto de
     // cancelacion (que cancelaria el pedido o abriria una solicitud de cancelacion por un simple cambio).
     intent: "modificacion_pedido",
-    pattern: /\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\s+(?:el|mi|ese|este)\s+pedido\b/,
+    // R12-01: ademas de «cambiame el pedido», los cambios que el cliente pide sobre un pedido YA HECHO con otras palabras («agrega 3 cocas a mi pedido», «cambia la direccion de mi
+    // pedido», «mandalo a otra direccion», «mejor para recoger») tambien son de una persona: el agente no tiene herramienta para editar pedidos y un modelo distraido diria «listo, ya lo cambie».
+    pattern: MODIFICACION_DE_PEDIDO_RE,
     cuando: (texto, ctx) => {
       const estado = ctx.pedidoReciente?.estado;
-      return (estado === "registrado" || estado === "preparando" || estado === "programado" || estado === "por_confirmar") && !CONSULTA_DE_CANCELACION.test(texto) && !/\?/.test(texto);
+      // `salio` (en camino) tambien: cambiar la direccion o el contenido de lo que ya salio lo decide la sucursal, no el modelo.
+      return (
+        (estado === "registrado" || estado === "preparando" || estado === "salio" || estado === "programado" || estado === "por_confirmar") &&
+        !CONSULTA_DE_CANCELACION.test(texto) &&
+        !/\?/.test(texto) &&
+        !ARMA_UN_PEDIDO_NUEVO.test(texto) &&
+        !PIDE_OTRO_PEDIDO.test(texto) &&
+        MENCIONA_UN_PEDIDO_YA_HECHO.test(texto)
+      );
     },
     reply:
       "Entendido, desea cambiar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",

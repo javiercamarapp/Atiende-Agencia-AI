@@ -292,7 +292,7 @@ describe("R12-A5 cancelar o cambiar un pedido que ya avanzo (estados de cocina y
   ];
   for (const frase of cambios) {
     for (const estado of ["registrado", "preparando", "salio"] as const) {
-      hallazgo(`R12-01 [P1, corregido] «${frase.slice(0, 48)}…» con el pedido '${estado}' escala a una persona en vez de dejarlo al modelo`, async () => {
+      it(`R12-01 [P1, corregido] «${frase.slice(0, 48)}…» con el pedido '${estado}' escala a una persona en vez de dejarlo al modelo`, async () => {
         const control = classifyHighRiskIntent("cancela mi pedido", { pedidoReciente: pedido(estado) });
         expect(control?.motivo).toBe("cancelacion_modificacion"); // control: la cancelacion si escala
         const m = classifyHighRiskIntent(frase, { pedidoReciente: pedido(estado) });
