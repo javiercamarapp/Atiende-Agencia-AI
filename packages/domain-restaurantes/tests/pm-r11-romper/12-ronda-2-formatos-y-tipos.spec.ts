@@ -1,7 +1,7 @@
 // R12 romper (ronda 2) -- categoria F (cierre de huecos): FORMATOS y TIPOS que el modelo o el cliente pueden mandar mal. Horas en formatos raros, plazos extremos, campos con el tipo
 // equivocado, listas con otra forma, busquedas con caracteres especiales, sucursal que no reparte hoy o de otra organizacion. Herramientas y repositorio reales (en memoria).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildRestaurantFixture, flujo, hallazgo, itemsCoca, ordenes, seedSecondTenant } from "./arnes.ts";
+import { buildRestaurantFixture, flujo, itemsCoca, ordenes, seedSecondTenant } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 beforeEach(() => {
@@ -84,7 +84,7 @@ describe("R12-F3 campos con el tipo equivocado en crear_pedido", () => {
 
   // R12-16 (P2): un objeto / arreglo / booleano no es un nombre; `String(...)` los guardaba como «[object Object]», «Ana,Beto» o «true» en la comanda.
   for (const [etiqueta, nombre] of [["objeto", { a: 1 }], ["arreglo", ["Ana", "Beto"]], ["booleano", true]] as const) {
-    hallazgo(`R12-16 [P2, corregido] customer_name ${etiqueta}: no se guarda como nombre del cliente`, async () => {
+    it(`R12-16 [P2, corregido] customer_name ${etiqueta}: no se guarda como nombre del cliente`, async () => {
       const { orden } = await creaCon({ customer_name: nombre });
       expect(orden).toBeUndefined();
     });

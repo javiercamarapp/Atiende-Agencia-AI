@@ -767,7 +767,8 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
   const base: CreateOrderInput = {
     organizationId: ctx.organizationId,
     branchSlug: lenient ? String(input.branch_slug ?? "") : str(input.branch_slug),
-    customerName: lenient ? String(input.customer_name ?? "") : (str(input.customer_name) ?? ""),
+    // R12-16: en WhatsApp solo un TEXTO es un nombre. `String({})`, `String(["Ana","Beto"])` o `String(true)` daban «[object Object]», «Ana,Beto» o «true» como nombre del cliente en la comanda.
+    customerName: lenient ? (typeof input.customer_name === "string" ? input.customer_name : "") : (str(input.customer_name) ?? ""),
     customerPhone: ctx.phone ?? (lenient ? "" : (str(input.customer_phone) ?? "")),
     customerAddress: str(input.customer_address),
     items: toCreateOrderItems(input.items, lenient),
