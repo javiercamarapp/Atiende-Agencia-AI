@@ -73,6 +73,24 @@ export interface OrderFlowContext {
   /** Id del ultimo pedido creado en la sesion: un pedido identico dentro de la ventana de deduplicacion devuelve ESE id y se marca `ya_registrado`. */
   readonly sessionUltimoPedidoId?: string;
   readonly confirmedAtMs?: number;
+  /** R11 (cierre como maquina de estados, `cierre-maquina.ts`): propina que se cotizo (pesos o porcentaje). Como pago/efectivo, NO entra a `quoteHash` pero SI es parte de lo que el cliente acepta:
+   * cambiarla tras mostrar el resumen es otra cotizacion que hay que volver a mostrar. */
+  readonly quotedPropinaMxn?: number;
+  readonly quotedPropinaPct?: number;
+  /** Turno del cliente en que se rechazo una confirmacion por mensaje ambiguo: en un turno POSTERIOR (resumen mostrado otra vez) el ambiguo ya no se rechaza. Salida contra el deadlock. */
+  readonly cierreAmbiguoTurn?: string;
+  /** Turno del cliente en que se rechazo una confirmacion por «resumen no mostrado»: en un turno POSTERIOR un «si» claro ya se acepta (la heuristica de texto puede dar falsos negativos). */
+  readonly cierreNoVistoTurn?: string;
+  /** Texto del resumen armado por el servidor para ESTA cotizacion (solo con la maquina de cierre activa). */
+  readonly resumenCanonico?: string;
+  /** Datos con que se armo `resumenCanonico` (renglones, total, descuento, canal): permiten rearmarlo cuando cambian el pago o la propina sin volver a cotizar. */
+  readonly resumenBase?: { readonly lineas: readonly { readonly name: string; readonly quantity: number; readonly lineTotal?: number; readonly tortilla?: string | null }[]; readonly total: number; readonly descuento?: number; readonly canal?: string };
+  /** Firma (pago|efectivo|propina) y turno de la confirmacion: `crear_pedido` exige los mismos datos. */
+  readonly confirmedFirma?: string;
+  readonly confirmedTurn?: string;
+  /** Turno del cliente en que `crear_pedido` fue rechazado por `resumen_no_mostrado`. Salida contra el deadlock: si la heuristica de texto da un falso negativo, el SIGUIENTE turno
+   * (distinto de este) ya no se rechaza por esa causa, de modo que el cierre se retrasa a lo mucho un turno y nunca se queda trabado. */
+  readonly resumenRechazadoTurn?: string;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
 }
@@ -111,6 +129,10 @@ export type OrderFlowViolationCode =
   | "pedido_distinto_al_cotizado"
   | "confirmacion_mismo_turno"
   | "cliente_rechazo_resumen"
+  | "cierre_resumen_no_mostrado"
+  | "cierre_sin_si_explicito"
+  | "cierre_datos_cambiaron"
+  | "resumen_no_mostrado"
   | "hash_no_coincide"
   | "pedido_ya_creado"
   | "pedido_en_proceso"
@@ -448,6 +470,66 @@ export function resumenMostradoEnHistorial(
   const vars = variantesDeTotal(quotedTotal).map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const re = new RegExp(`(?<![\\d.,])(?:${vars.join("|")})(?!\\d|[.,]\\d)`);
   return historial.some((m) => m.role === "assistant" && re.test(m.content));
+}
+
+/**
+ * El mensaje del asistente ERA el resumen para confirmar: trae el total de la cotizacion vigente Y su ULTIMA pregunta es de confirmacion del resumen («¿Es correcto o desea agregar algo más?», «¿Confirma?»).
+ * Un «No gracias», «Efectivo» o «con 600» contestado a ESE mensaje es el sí, no una respuesta suelta de pago/propina. NO cuenta si la ultima pregunta es de propina o de pago («El total es de $275. ¿Desea agregar propina?»,
+ * «Total $275. ¿Con cuánto paga? Para confirmar necesito el monto.») ni si solo pregunta «¿algo más?»: ahi «No gracias» es «sin propina» / «nada más», no el sí al resumen.
+ */
+export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, contenido: string | undefined): boolean {
+  if (contenido === undefined) return false;
+  if (resumenMostradoEnHistorial(quotedTotal, [{ role: "assistant", content: contenido }]) !== true) return false;
+  const t = contenido.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trimEnd();
+  const idx = t.lastIndexOf("¿");
+  const ultima = idx >= 0 ? t.slice(idx) : (t.split(/[.!\n]+/).map((x) => x.trim()).filter(Boolean).pop() ?? "").slice(-160);
+  if (/(propina|cuanto paga|con cuanto|monto|billete)/.test(ultima)) return false;
+  return /(confirm|correcto|esta bien|de acuerdo|procedo|asi lo dejo)/.test(ultima);
+}
+
+/** Quita emojis, caritas ASCII y cortesias finales («gracias», «porfa», «por favor») de una respuesta corta de WhatsApp; deja minusculas sin acentos y sin puntuacion. */
+function limpiarRespuestaCorta(mensaje: string): string {
+  let t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  t = t.replace(/\p{Extended_Pictographic}|\p{Emoji_Modifier}|\u200d|\ufe0f/gu, " ").replace(/(^|\s)[:;=]-?[)(dp]+(?=\s|$)/g, " ");
+  t = t.replace(/[!¡?¿]+/g, " ").replace(/[.,;:]+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  // «no gracias» es una respuesta completa por si sola; en lo demas la cortesia final no cambia el sentido.
+  if (t === "no gracias") return t;
+  for (;;) {
+    const sin = t.replace(/\s+(?:muchas\s+)?(?:gracias|porfa|porfis|porfavor|por\s+favor|pls|plis|please)$/, "").trim();
+    if (sin === t || sin === "" || sin === "no") return t;
+    t = sin;
+  }
+}
+
+/**
+ * QA-PM-R10 §6: el ultimo mensaje del cliente es solo una respuesta de PAGO o PROPINA («con 600», «$600», «efectivo», «tarjeta», «sin propina», «no gracias», «propina de 20»), con o sin emojis,
+ * puntuacion o cortesia final («No, gracias 🙂», «Con tarjeta, gracias», «efectivo porfa», «No quiero propina»).
+ * Esa respuesta NO es el «si» al resumen: el pedido no puede crearse en ese turno. Conservador: el mensaje completo debe ser eso (un «si, con 600» no cuenta).
+ */
+export function esRespuestaDePagoOPropina(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string") return false;
+  const t = limpiarRespuestaCorta(mensaje);
+  if (!t) return false;
+  const monto = "\\$?\\s*\\d[\\d,.]*\\s*(?:pesos|mxn|varos)?";
+  return new RegExp(
+    `^(?:(?:pago\\s+)?(?:con|de)\\s+(?:un\\s+)?(?:billete\\s+de\\s+)?${monto}|${monto}|(?:pago\\s+)?(?:en\\s+|con\\s+)?(?:efectivo|tarjeta|cash)|no\\s+gracias|(?:no\\s+)?(?:(?:le\\s+)?(?:quiero|deseo|dejo|doy|pon(?:le)?|voy\\s+a\\s+dejar)\\s+)?(?:sin\\s+)?(?:de\\s+)?propina(?:\\s+de)?\\s*(?:${monto})?|(?:dejo|doy|pon(?:le)?)\\s+${monto}\\s+de\\s+propina|(?:de\\s+)?propina\\s+${monto})$`,
+  ).test(t);
+}
+
+/**
+ * Lo que decide la guarda de `crear_pedido`: `true` = el cliente VIO el resumen y su ultimo mensaje puede ser el «si»; `false` = no (el total no aparece en ningun mensaje del asistente, o el ultimo
+ * mensaje del cliente es solo pago/propina y el asistente no acababa de pedir confirmar el resumen); `undefined` = sin historial (voz, pruebas): el llamador conserva el comportamiento anterior.
+ */
+export function resumenVistoPorElCliente(
+  quotedTotal: number | undefined,
+  historial: readonly { readonly role: string; readonly content: string }[] | undefined,
+): boolean | undefined {
+  const mostrado = resumenMostradoEnHistorial(quotedTotal, historial);
+  if (mostrado === undefined) return undefined;
+  const ultimoDelCliente = [...(historial ?? [])].reverse().find((m) => m.role === "user")?.content;
+  const ultimoDelAsistente = [...(historial ?? [])].reverse().find((m) => m.role === "assistant")?.content;
+  if (esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(quotedTotal, ultimoDelAsistente)) return false;
+  return mostrado;
 }
 
 const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

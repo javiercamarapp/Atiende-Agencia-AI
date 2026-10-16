@@ -57,7 +57,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
 import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
@@ -171,6 +171,8 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
     urlFacturacion: urlFacturacionDeEntorno(),
+    // PDF del menu por sucursal (enviar_menu): sin la variable el agente comparte el enlace de la pagina oficial del menu.
+    menuPdfBaseUrl: menuPdfBaseDeEntorno(),
     // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
     autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
     ...(observabilidad ? { observabilidad } : {}),
@@ -191,6 +193,11 @@ export function urlFacturacionDeEntorno(env: NodeJS.ProcessEnv = process.env): s
   } catch {
     return null;
   }
+}
+
+/** Base https de los PDF del menu por sucursal: SOLO sobre-escritura opcional (`PM_MENU_PDF_BASE_URL`, sin credenciales ni query). Sin ella (o invalida) devuelve null y el dominio usa `MENU_PDF_BASE_POR_OMISION` (https://app.useatiende.ai/menu-pdf); no hace falta definirla. */
+export function menuPdfBaseDeEntorno(env: NodeJS.ProcessEnv = process.env): string | null {
+  return normalizarBaseMenuPdf(env.PM_MENU_PDF_BASE_URL);
 }
 
 /** R-PM-15: eventos por turno de WhatsApp a stdout (linea JSON, mismo transporte que `logEvent`) pasando por el
