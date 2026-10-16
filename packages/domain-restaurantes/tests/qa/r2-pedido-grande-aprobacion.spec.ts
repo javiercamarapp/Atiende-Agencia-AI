@@ -5,7 +5,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryAutopilotoRepository, crearHookPedidoGrande, crearHooksAutopilotoTurno } from "../../src/autopiloto/index.ts";
 import type { AutopilotoTurnoHooks, PedidoGrandeHook } from "../../src/autopiloto/index.ts";
 import { PEDIDO_GRANDE_VENTANA_ACUMULADO_MS, acumuladoReciente } from "../../src/pedido-grande.ts";
-import { banco, call, item, say } from "./r1-arnes-whatsapp-pm.ts";
+import { banco, call, item, say, sayResumen } from "./r1-arnes-whatsapp-pm.ts";
 import type { Banco } from "./r1-arnes-whatsapp-pm.ts";
 
 afterEach(() => {
@@ -65,7 +65,7 @@ async function bancoConAutopiloto(opts: { readonly disponible?: boolean } = {}) 
 }
 
 async function cotizarYConfirmar(b: Banco, tel: string, items: ReturnType<typeof item>[], pago: "efectivo" | "tarjeta", extra: Record<string, unknown> = {}) {
-  b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items, ...extra }), say("Total cotizado. ¿Confirma?")]);
+  b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items, ...extra }), sayResumen("Total cotizado. ¿Confirma?")]);
   await b.enviar(tel, "quiero para recoger");
   b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Fiesta", payment_method: pago, items }), say("Listo, su pedido quedó registrado.")]);
   return b.enviar(tel, `si ${pago}`);

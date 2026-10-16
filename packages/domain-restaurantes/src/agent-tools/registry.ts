@@ -57,6 +57,8 @@ import {
   OrderFlowViolationError,
   rechazaElResumen,
   resumenMostradoEnHistorial,
+  esRespuestaDePagoOPropina,
+  asistentePidioConfirmarResumen,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -829,7 +831,13 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
  * quien ejecute dentro de una transaccion compartida debe envolver la llamada (ver
  * `executeAgentToolSafely`).
  */
-export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>): Promise<AgentToolOutcome> {
+/** `rechazoComoResultado`: el rechazo `resumen_no_mostrado` se DEVUELVE como resultado `{error}` en vez de lanzarse. Lo usa `executeAgentToolSafely`: ahi cada tool call corre dentro de un SAVEPOINT
+ * que se revierte ante CUALQUIER excepcion, y el marcador del rechazo (la salida contra el deadlock) se perderia junto con el throw. */
+export interface InvokeAgentToolOpts {
+  readonly rechazoComoResultado?: boolean;
+}
+
+export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>, opts: InvokeAgentToolOpts = {}): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   // `plazo_minutos_servidor` es un campo INTERNO que solo pone `conHoraDeRecogidaRelativa`: lo que mande el modelo se descarta.
@@ -856,7 +864,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
-  return runWithOrderFlow(repo, ctx, ctx.flow, name, input);
+  return runWithOrderFlow(repo, ctx, ctx.flow, name, input, opts);
 }
 
 
@@ -952,7 +960,7 @@ const PEDIDO_RETENIDO_AVISO =
   "Este pedido NO está registrado todavía: quedó pendiente de que la sucursal lo confirme (ya se le avisó y la sucursal contactará al cliente). Dígaselo así, de usted; NO diga que ya quedó registrado ni confirmado, no prometa hora, no lo cotice de nuevo ni llame confirmar_resumen ni crear_pedido.";
 
 /** Aplica la maquina de estados alrededor de cotizar/confirmar/crear. Base sin migrar => camino anterior. */
-async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>, opts: InvokeAgentToolOpts = {}): Promise<AgentToolOutcome> {
   const lenient = ctx.channel === "whatsapp";
   const canalOf = (raw: unknown) => (raw === "recoger" ? "recoger" : "domicilio");
 
@@ -1162,6 +1170,26 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (existente) return { result: { order: orderToWire(existente), ya_registrado: true }, raw: existente, orderId: existente.id, propertyId: existente.propertyId, yaRegistrado: true };
     }
     const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
+    // QA-PM-R10 §6: con historial de WhatsApp, el cliente tiene que haber VISTO el resumen y su ultimo mensaje no puede ser solo el pago o la propina. Sin historial (voz) no aplica.
+    // Dos causas de rechazo, con UNA misma salida acotada contra el deadlock:
+    //  - totalNoVisto: ningun mensaje del asistente trae el total (heuristica de texto con falsos negativos: total en letras, otro formato, resumen fuera de la ventana).
+    //  - soloPago: el ultimo mensaje del cliente es solo pago/propina Y el ultimo mensaje del asistente NO traia el total (no era el resumen). Si el asistente acababa de mostrar el resumen y pedir confirmacion,
+    //    «No gracias» / «Efectivo» / «con 600» son la respuesta a su «¿Es correcto?», es decir el sí, y NO se rechazan (antes: deadlock sin limite).
+    //  El primer rechazo guarda el turno en el flujo (sobrevive al SAVEPOINT); en un turno POSTERIOR ya no se rechaza. El cierre se retrasa a lo mucho un turno, nunca se traba.
+    if (snap.state === "confirmado" && flow.turn !== null && ctx.conversacionReciente !== undefined) {
+      const ultimoDelCliente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "user")?.content;
+      const ultimoDelAsistente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "assistant")?.content;
+      const soloPago = esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(current.quotedTotal, ultimoDelAsistente);
+      const totalNoVisto = resumenMostradoEnHistorial(current.quotedTotal, ctx.conversacionReciente) === false;
+      const salidaAbierta = current.resumenRechazadoTurn !== undefined && current.resumenRechazadoTurn !== flow.turn;
+      if ((soloPago || totalNoVisto) && !salidaAbierta) {
+        if (current.resumenRechazadoTurn === undefined) await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, resumenRechazadoTurn: flow.turn });
+        const mensaje =
+          "El cliente todavía no ha visto el resumen final con el total, o su último mensaje es solo el pago o la propina (eso NO es el sí). NO se creó el pedido. Muéstrele ahora el resumen completo en lista (renglones, total a pagar, forma de pago) y pregúntele si confirma; espere su sí en el mensaje siguiente y entonces llame crear_pedido.";
+        if (opts.rechazoComoResultado) return { result: { error: mensaje }, orderId: null, propertyId: null, rechazoDelFlujo: "resumen_no_mostrado" };
+        throw new OrderFlowViolationError("resumen_no_mostrado", mensaje);
+      }
+    }
     const claimCtx: OrderFlowContext = { ...current, claimedAtMs: flowNow(flow) };
     const res = await writeFlow(repo, ctx, flow, snap.version, "creando", claimCtx);
     if (res === "written") claimed = { version: snap.version + 1, context: claimCtx };
@@ -1905,7 +1933,7 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
  */
 export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   try {
-    return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
+    return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input, { rechazoComoResultado: true }));
   } catch (err) {
     // QA-PM-R3-reglas-10: la guarda SQL `raise exception ... using errcode = '22023'` (p. ej. "programado_para debe ser una hora futura") es una REGLA de negocio con un mensaje
     // pensado para el agente: antes salia como "Error interno" (y como fallo del sistema, que sube de rol), sin dejar rastro de la causa.
