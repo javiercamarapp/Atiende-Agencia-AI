@@ -16,7 +16,7 @@ import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fe
 import type { CompanyDataApprovalStatus, CompanyDataAuthorship, CompanyItemKind } from "../lib/company-data-client.ts";
 import { DecisionButtons, useCompanyDecision } from "../components/DecisionActions.tsx";
 import { authorshipLine, userIdFromToken } from "../lib/company-decision.ts";
-import { fetchTenders } from "../lib/tenders-client.ts";
+import { fetchOpenTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { requestReview } from "../lib/revision-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -56,8 +56,8 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   useEffect(() => {
     if (!canRequestReview) return;
-    fetchTenders(fetch, apiBaseUrl, token, propertyId)
-      .then((list) => setTenders(list))
+    fetchOpenTenders(fetch, apiBaseUrl, token, propertyId)
+      .then((pagina) => setTenders(pagina.items))
       .catch(() => setTenders([]));
   }, [apiBaseUrl, token, propertyId, canRequestReview]);
 
