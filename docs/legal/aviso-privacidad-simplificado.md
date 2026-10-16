@@ -18,7 +18,7 @@ WhatsApp admite mensajes largos, pero el primero debe leerse rápido: se propone
 
 ```
 Soy el asistente virtual (una inteligencia artificial) de [[POR COMPLETAR: nombre comercial]]. Responsable de sus datos: [[POR COMPLETAR: razón social]], [[POR COMPLETAR: domicilio]].
-Uso su nombre, teléfono, dirección, ubicación (si la comparte), mensajes y pedido para tomar y entregar su pedido y atenderle; no pedimos datos de tarjeta. Si nos cuenta una alergia, la usamos solo para su pedido.
+Uso su nombre, teléfono, dirección, ubicación (si la comparte), mensajes y pedido para tomar y entregar su pedido y atenderle; no pedimos datos de tarjeta. No pedimos datos sensibles; si tiene una alergia, se la pasamos a una persona de la sucursal. [[POR COMPLETAR: texto final de consentimiento expreso y por escrito para datos sensibles (Art. 8), definido con abogado]]
 Además, con su permiso guardamos su historial para recordar "su pedido de siempre". Si no quiere, escriba "sin historial" y le atendemos igual.
 Compartimos datos con proveedores tecnológicos (WhatsApp/Meta, modelos de IA, voz) que pueden estar fuera de México, solo para dar el servicio.
 Para acceder, rectificar, cancelar u oponerse (ARCO), o revocar su permiso, escriba "mis datos personales". Aviso integral: [[POR COMPLETAR: URL del aviso integral]]

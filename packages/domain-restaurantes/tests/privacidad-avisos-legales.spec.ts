@@ -64,11 +64,22 @@ describe("los borradores siguen siendo borrador mientras tengan datos por comple
     expect(texto).toMatch(/no es asesor[ií]a legal/i);
     expect(marcadoresPendientes(texto).length).toBeGreaterThan(0);
   });
-  it("los campos de identidad del responsable están marcados y no inventados", () => {
+  it("los campos que no se conocen siguen marcados y los datos dados por el dueño del negocio no se inventan de más", () => {
     const integral = leer(join(DIR_LEGAL, "aviso-privacidad-integral.md"));
-    for (const campo of ["razón social", "domicilio", "correo", "teléfono"]) {
+    for (const campo of ["razón social del restaurante", "código postal", "correo ARCO", "teléfono"]) {
       expect(integral).toMatch(new RegExp(`\\[\\[POR COMPLETAR:[^\\]]*${campo}`, "i"));
     }
+    expect(integral).toContain("Atiende AI, S.A. de C.V.");
+    expect(integral).toContain("Calle 43 No. 147A por 38 y 36D, Colonia Benito Juárez Norte");
+    expect(integral).toMatch(/Mérida, Yucatán \(confirmar/);
+    // el correo exacto no se conoce: solo puede aparecer dentro de un marcador a confirmar
+    expect(integral.replace(/\[\[POR COMPLETAR:[^\]]*\]\]/g, "")).not.toMatch(/ventas@likida\.ai/);
+  });
+  it("datos sensibles: no afirma que el consentimiento por WhatsApp baste (Art. 8)", () => {
+    const integral = leer(join(DIR_LEGAL, "aviso-privacidad-integral.md"));
+    expect(integral).toMatch(/expreso y por escrito/);
+    expect(integral).toMatch(/no afirma que un mensaje de WhatsApp/);
+    expect(integral).not.toMatch(/nos da su consentimiento expreso\s+al hacerlo/);
   });
   it("cita la ley vigente y la autoridad actual, no el INAI como autoridad", () => {
     const integral = leer(join(DIR_LEGAL, "aviso-privacidad-integral.md"));

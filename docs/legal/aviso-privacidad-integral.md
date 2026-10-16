@@ -17,11 +17,11 @@ El responsable del tratamiento de sus datos personales es:
 - **Razón social o nombre:** `[[POR COMPLETAR: razón social del restaurante]]`
 - **Nombre comercial:** `[[POR COMPLETAR: nombre comercial, por ejemplo el de la taquería]]`
 - **Domicilio:** `[[POR COMPLETAR: calle, número, colonia, código postal, municipio y estado]]`
-- **Correo para asuntos de privacidad y derechos ARCO:** `[[POR COMPLETAR: correo de privacidad]]`
+- **Correo para asuntos de privacidad y derechos ARCO:** `[[POR COMPLETAR: correo ARCO, probablemente ventas@likida.ai — CONFIRMAR]]`
 - **Teléfono:** `[[POR COMPLETAR: teléfono de contacto]]`
 - **Persona o departamento de datos personales** (Art. 29 de la Ley): `[[POR COMPLETAR: nombre o área que atiende las solicitudes]]`
 
-**Quién opera la tecnología.** El restaurante atiende a sus clientes con un asistente virtual de **Atiende** (`[[POR COMPLETAR: razón social y domicilio de Atiende]]`),
+**Quién opera la tecnología.** El restaurante atiende a sus clientes con un asistente virtual de **Atiende** (**Atiende AI, S.A. de C.V.**, domicilio: Calle 43 No. 147A por 38 y 36D, Colonia Benito Juárez Norte, Mérida, Yucatán (confirmar ciudad y estado), C.P. `[[POR COMPLETAR: código postal]]`),
 que trata los datos **por cuenta del restaurante** como persona encargada. Atiende no usa sus datos para fines propios distintos de prestar el servicio
 al restaurante. Sobre los datos de sus propios usuarios y prospectos, Atiende es responsable y tiene su propio aviso (Anexo B).
 
@@ -46,10 +46,7 @@ en cualquier momento hablar con una persona. Si no desea que un asistente automa
 | Pago | **No recabamos número de tarjeta, vencimiento ni código.** El pago con tarjeta se hace en terminal en la sucursal o mediante un proveedor de pagos externo `[[POR COMPLETAR: confirmar si hay pasarela de pago en línea y cuál]]` | Directamente del proveedor, que nos informa solo si el pago se realizó |
 | Sitio web | Datos técnicos del navegador y cookies (sección 14) | Automáticamente |
 
-**Datos sensibles.** No solicitamos datos personales sensibles (Art. 2, fr. VI). Si usted nos comunica una **alergia o condición de salud** para su pedido,
-esa información es un dato de salud y sensible: **solo la usamos para atender ese pedido** y, si decide compartirla, nos da su consentimiento expreso
-al hacerlo (Art. 8). Le pedimos no compartir información sensible que no sea necesaria. La **voz** no se trata como dato sensible; se graba solo con su
-autorización expresa (sección 4). `[[POR COMPLETAR: criterio del abogado sobre voz y alergias]]`
+**Datos sensibles.** No solicitamos datos personales sensibles (Art. 2, fr. VI). Le pedimos no compartir información sensible que no sea necesaria. Una **alergia o condición de salud** es un dato de salud y, por tanto, sensible. La Ley exige para tratar datos sensibles el consentimiento **expreso y por escrito** de la persona titular, mediante firma autógrafa, firma electrónica o cualquier mecanismo de autenticación (Art. 8). **Este borrador no afirma que un mensaje de WhatsApp o una llamada baste para cumplir ese requisito**: un abogado debe definir qué mecanismo lo cumple. Mientras eso no esté definido, el asistente no debe tratar las alergias como un dato más del pedido y las pasa a una persona de la sucursal (sección 2). `[[POR COMPLETAR: mecanismo de consentimiento expreso y por escrito para alergias y otros datos sensibles, definido con abogado; confirmar también el criterio sobre voz]]` La **voz** no se trata como dato sensible en este borrador (no está en la lista del Art. 2 fr. VI, que es enunciativa); se graba solo con su autorización expresa (sección 4).
 
 ## 4. Para qué usamos sus datos (finalidades)
 
@@ -70,7 +67,7 @@ autorización expresa (sección 4). `[[POR COMPLETAR: criterio del abogado sobre
 9. **Análisis estadístico** del servicio con datos que no lo identifican (volumen de pedidos, productos, tiempos).
 10. `[[POR COMPLETAR: promociones o mensajes comerciales, solo si el restaurante los envía; si no, borrar esta línea]]`
 
-**Cómo negarse a las finalidades secundarias:** escríbanos por WhatsApp "mis datos personales" y elija oposición, o escriba a `[[POR COMPLETAR: correo ARCO]]`.
+**Cómo negarse a las finalidades secundarias:** escríbanos por WhatsApp "mis datos personales" y elija oposición, o escriba a `[[POR COMPLETAR: correo ARCO, probablemente ventas@likida.ai — CONFIRMAR]]`.
 Para la grabación basta decir "no" cuando se le pregunte. Mientras no manifieste lo contrario, entendemos que consiente el tratamiento de las finalidades
 que no requieren consentimiento expreso (Art. 7, consentimiento tácito).
 
@@ -150,7 +147,7 @@ Usted, o su representante legal, puede ejercer en cualquier momento (Arts. 21 y 
 El ejercicio de un derecho no es requisito para ejercer otro (Art. 21).
 
 **Dónde:** (1) por **WhatsApp**, escribiendo "mis datos personales" al número de la sucursal; el asistente le mostrará las opciones, registrará su solicitud y le dará una referencia;
-(2) por **llamada**, diciéndolo al asistente o en la sucursal; (3) por correo a `[[POR COMPLETAR: correo ARCO]]`; (4) por escrito en `[[POR COMPLETAR: domicilio para recibir solicitudes]]`.
+(2) por **llamada**, diciéndolo al asistente o en la sucursal; (3) por correo a `[[POR COMPLETAR: correo ARCO, probablemente ventas@likida.ai — CONFIRMAR]]`; (4) por escrito en `[[POR COMPLETAR: domicilio para recibir solicitudes]]`.
 
 **Qué debe incluir su solicitud** (Art. 28): su nombre y un medio para responderle; documentos que acrediten su identidad (o la de su representante); descripción clara de los datos y del derecho
 que desea ejercer; y cualquier elemento que ayude a localizar sus datos. Para proteger sus datos le pediremos **verificar su identidad** (por ejemplo, desde el mismo número de WhatsApp) antes de entregar información.
@@ -188,7 +185,7 @@ suprimir esa información. `[[POR COMPLETAR: fundamento legal y criterio sobre m
 ## 13. Cambios a este aviso
 
 Cualquier cambio se publicará en `[[POR COMPLETAR: URL del aviso integral]]` con su número de versión y fecha, y se lo daremos a conocer de nuevo en su siguiente conversación por WhatsApp o
-llamada cuando cambie de versión. Si cambiamos las finalidades, le pediremos de nuevo su consentimiento (Art. 11). El historial de versiones está disponible con `[[POR COMPLETAR: correo ARCO]]`.
+llamada cuando cambie de versión. Si cambiamos las finalidades, le pediremos de nuevo su consentimiento (Art. 11). El historial de versiones está disponible con `[[POR COMPLETAR: correo ARCO, probablemente ventas@likida.ai — CONFIRMAR]]`.
 
 ## 14. Cookies y tecnologías de rastreo en el sitio
 
@@ -207,7 +204,7 @@ Si considera que su derecho a la protección de datos ha sido vulnerado, puede a
 
 > BORRADOR técnico, no asesoría legal; marcadores por completar como en el resto del documento.
 
-**Responsable:** `[[POR COMPLETAR: razón social de Atiende]]`, domicilio `[[POR COMPLETAR: domicilio de Atiende]]`, correo de privacidad `[[POR COMPLETAR: correo de privacidad de Atiende]]`.
+**Responsable:** **Atiende AI, S.A. de C.V.**, domicilio: Calle 43 No. 147A por 38 y 36D, Colonia Benito Juárez Norte, Mérida, Yucatán (confirmar ciudad y estado), C.P. `[[POR COMPLETAR: código postal]]`; correo de privacidad: `[[POR COMPLETAR: correo ARCO, probablemente ventas@likida.ai — CONFIRMAR]]`; teléfono: `[[POR COMPLETAR: teléfono]]`; persona o área de datos personales: `[[POR COMPLETAR: nombre o área]]`.
 
 **A quién aplica:** personas que usan el panel de Atiende (personal de restaurantes y administradores), prospectos y clientes que contratan el servicio. No aplica a los comensales de un restaurante: para ellos
 el responsable es el restaurante y Atiende solo es encargada (secciones 1 a 15).

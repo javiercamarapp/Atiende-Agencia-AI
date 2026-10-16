@@ -12,9 +12,13 @@
 | `aviso-privacidad-simplificado.md` | Textos **simplificados**: primer mensaje de WhatsApp, guion de apertura de la llamada, texto corto para web y el mensaje de revocación. |
 | `publicable/` | Aquí solo entra una versión **ya completada y revisada por el abogado**. La prueba `privacidad-avisos-legales.spec.ts` falla si un archivo de esta carpeta conserva un marcador sin completar. |
 
+## Datos de Atiende ya capturados (16-oct, dados por el dueño del negocio)
+
+Razón social «Atiende AI, S.A. de C.V.»; domicilio Calle 43 No. 147A por 38 y 36D, Colonia Benito Juárez Norte, Mérida, Yucatán (ciudad y estado por confirmar). Se usan para Atiende (encargada y responsable del Anexo B). El correo ARCO se escribió «ventaslikida.ai»: la dirección exacta NO se conoce y queda como marcador (probablemente ventas@likida.ai). Los campos del restaurante cliente (sección 1) siguen por completar.
+
 ## Marcadores por completar
 
-Todo dato del negocio que el repo no conoce va como `[[POR COMPLETAR: descripción]]` (razón social, domicilio, correo ARCO, teléfono,
+Todo dato del negocio que el repo no conoce va como `[[POR COMPLETAR: descripción]]` (código postal, correo ARCO exacto, teléfono, persona o área de datos personales, URL del aviso,
 RFC, regiones de los proveedores, plazos de conservación definitivos). **No se inventan.** El detector es
 `packages/domain-restaurantes/src/privacidad/marcadores.ts` (`marcadoresPendientes`, `assertSinMarcadores`).
 
@@ -55,6 +59,7 @@ Fuente consultada el 15-oct-2026: texto vigente publicado en
 - **Derecho de portabilidad: no existe en el texto vigente.** Busqué la palabra en la ley completa y no aparece; un resumen automático que la mencionaba no se corresponde con el articulado que leí. El aviso **no lo presenta como derecho legal**: ofrece, como cortesía, entregar los datos en un documento electrónico (el Art. 32 permite cumplir el acceso con "documentos electrónicos"). Confirmar con abogado por si hay norma secundaria.
 - **Reglamento y lineamientos**: la ley remite a un Reglamento (Art. 2 fr. XIII; procedimientos de los Arts. 40-57) y no verifiqué si ya hay uno nuevo ni si el Reglamento de 2011 o los Lineamientos del Aviso de 2013 siguen aplicándose en lo que no se opongan. **Pendiente.**
 - **Menores de edad**: no encontré en la ley vigente un artículo específico sobre datos de menores; el aviso trae una cláusula prudente (no se dirige a menores) cuyo fundamento legal queda **por confirmar**.
+- **Datos sensibles (alergias)**: el Art. 8 exige consentimiento expreso y por escrito (firma autógrafa, electrónica o mecanismo de autenticación). No se afirma que un mensaje de WhatsApp lo cumpla; el abogado debe definir el mecanismo. Mientras tanto el aviso dice que las alergias se pasan a una persona de la sucursal.
 - **Voz / audio**: no está en la lista de sensibles del Art. 2 fr. VI. No se trató como sensible; el aviso la declara dato personal y pide autorización expresa antes de grabar (ya es el diseño del repo). **Confirmar** si el abogado la considera sensible.
 - **Transferencias internacionales**: no hay un artículo especial más allá de Arts. 35-36; no verifiqué cláusulas adicionales ni normas secundarias.
 - **Cookies**: la ley no las regula expresamente; se tratan bajo el Art. 15 y el principio de información.
