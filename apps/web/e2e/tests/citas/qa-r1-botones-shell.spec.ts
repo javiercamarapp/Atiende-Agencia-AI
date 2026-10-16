@@ -98,7 +98,7 @@ test.describe("citas QA R1 botones: shell", () => {
     test.skip(esMovil(page), "la barra superior es de escritorio");
     await iniciarSesion("citas", "owner");
     const barra = page.getByTestId("barra-pagina-titulo");
-    for (const [enlace, titulo] of [["Copiloto", "Copiloto"], ["Agenda", "Agenda"], ["Avisos", "Avisos"], ["Resumen", `Citas · ${citasQa.orgSlug}`]] as const) {
+    for (const [enlace, titulo] of [["Copiloto", "Pregunta a tus datos"], ["Agenda", "Agenda"], ["Avisos", "Avisos"], ["Resumen", `Citas · ${citasQa.orgSlug}`]] as const) {
       await sidebar(page).getByRole("link", { name: enlace, exact: true }).click();
       await expect(barra).toHaveText(titulo);
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
