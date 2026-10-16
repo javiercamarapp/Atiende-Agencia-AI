@@ -77,7 +77,7 @@ describe("R12-B1 el menu cambia entre cotizar y crear", () => {
     expect((await ordenes(f))[0]!.total).toBe(72);
   });
 
-  hallazgo("R12-03 [P1, corregido] la promocion deja de aplicar (cambia el dia) entre confirmar y crear: no se cobra un total distinto al confirmado", async () => {
+  it("R12-03 [P1, corregido] la promocion deja de aplicar (cambia el dia) entre confirmar y crear: no se cobra un total distinto al confirmado", async () => {
     const f = buildRestaurantFixture();
     await conPromoDelMartes(f);
     vi.setSystemTime(new Date("2026-10-06T23:55:00-06:00")); // martes, 5 minutos antes de medianoche
@@ -93,7 +93,7 @@ describe("R12-B1 el menu cambia entre cotizar y crear", () => {
     expect(err(out)).toMatch(/total cambi|precio/i);
   });
 
-  hallazgo("R12-03b [P1, corregido] la promocion se DESACTIVA (el dueno la apaga) entre confirmar y crear: no se cobra un total distinto al confirmado", async () => {
+  it("R12-03b [P1, corregido] la promocion se DESACTIVA (el dueno la apaga) entre confirmar y crear: no se cobra un total distinto al confirmado", async () => {
     const f = buildRestaurantFixture();
     await f.repo.createPromotion(f.organizationId, { code: "PROMO10", name: "10%", type: "percentage", value: 10, channels: ["recoger"], autoApply: true });
     const { s, q } = await listoParaCrear(f);

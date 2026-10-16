@@ -1183,7 +1183,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
           }),
         }
       : input;
-    let outcome = await dispatchTool(repo, ctx, name, inputConciliado, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0, ...(claimed.context.sessionUltimoPedidoId ? { ultimoPedidoId: claimed.context.sessionUltimoPedidoId } : {}) });
+    let outcome = await dispatchTool(repo, ctx, name, inputConciliado, claimed.context.quotedPrices, { total: claimed.context.sessionTotal ?? 0, pesoKg: claimed.context.sessionPesoKg ?? 0, pedidos: claimed.context.sessionPedidos ?? 0, ...(claimed.context.sessionUltimoPedidoId ? { ultimoPedidoId: claimed.context.sessionUltimoPedidoId } : {}) }, claimed.context.quotedTotal);
     // Un pedido IDENTICO al ultimo de esta sesion (misma ventana de deduplicacion de 5 min) devuelve ese mismo pedido: el agente debe saber que NO se creo otro (QA-PM-R2-reglas-15).
     const repetido = outcome.orderId !== null && outcome.orderId === claimed.context.sessionUltimoPedidoId;
     if (repetido) {
@@ -1215,11 +1215,20 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
  * (`prepareCreateOrder` -> `validateCreateOrderPayload`, reglas de horario/zona/minimo/precios del catalogo) y devuelve el
  * pedido simulado con el total del servidor. NO llama a `createOrder`: no hay `upsertCustomer`, ni `createOrderIdempotent`
  * (que a su vez encolaria la comanda de SoftRestaurant), ni avisos al staff, ni correo, ni uso de promocion. */
-async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentToolContext, createInput: CreateOrderInput, expectedPrices: string | undefined): Promise<AgentToolOutcome> {
+/** R12-03: el cliente confirmo un TOTAL (con la promocion de ese momento). Los precios de renglon pueden seguir iguales y aun asi el total subir (la promocion vencio, cambio de dia, la apagaron):
+ * cobrar mas de lo confirmado se rechaza y se pide re-cotizar. Un total MENOR (descuento nuevo) no perjudica al cliente y se deja pasar. */
+function assertTotalNoSubio(prepared: { readonly total: number }, expectedTotal: number | undefined): void {
+  if (typeof expectedTotal === "number" && Number.isFinite(expectedTotal) && prepared.total > expectedTotal + 0.004) {
+    throw new OrderFlowViolationError("precio_cambio", `El total cambió después de que el cliente confirmó (era $${expectedTotal.toFixed(2)} y ahora sería $${prepared.total.toFixed(2)}: una promoción o un precio ya no aplica). Vuelva a cotizar, dígale el total actualizado y pida su confirmación otra vez.`);
+  }
+}
+
+async function simulatePreviewOrder(repo: RestaurantesRepository, ctx: AgentToolContext, createInput: CreateOrderInput, expectedPrices: string | undefined, expectedTotal?: number): Promise<AgentToolOutcome> {
   const prepared = await prepareCreateOrder(repo, createInput);
   if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
     throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
   }
+  assertTotalNoSubio(prepared, expectedTotal);
   // Pedido grande (PM): el preview muestra lo mismo que haria el real (el pedido NO se crea), pero sin dejar el aviso para la sucursal.
   try {
     await assertNoEsPedidoGrande(repo, prepared);
@@ -1257,6 +1266,8 @@ async function dispatchTool(
   expectedPrices?: string,
   /** Total y kilos de los pedidos ya creados en esta sesion (solo crear_pedido con maquina de estados activa): la guardia de pedido grande los suma. */
   sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number; readonly ultimoPedidoId?: string },
+  /** Total que el cliente vio y confirmo (solo crear_pedido con maquina de estados activa). Si al crear el total CALCULADO es mayor (una promocion dejo de aplicar), se pide re-cotizar. */
+  expectedTotal?: number,
 ): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -1574,7 +1585,7 @@ async function dispatchTool(
       if (esPerfilPm && ctx.channel === "whatsapp" && (createInput.canal ?? "domicilio") === "domicilio" && !ctx.sharedLocation && !ctx.ubicacionEntrega && !createInput.mapsUrl && requierePinAntesDeCrear(ctx.conversacionReciente, createInput.customerAddress)) {
         throw new OrderValidationError(PIN_ANTES_DE_CREAR_MENSAJE);
       }
-      if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices);
+      if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices, expectedTotal);
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
       if (retenido) return retenido;
       let order: Order;
@@ -1592,6 +1603,7 @@ async function dispatchTool(
             if (expectedPrices && priceSignature(prepared.orderItems) !== expectedPrices) {
               throw new OrderFlowViolationError("precio_cambio", "Los precios del menú cambiaron después de que confirmaste. Vuelve a revisar tu pedido para ver el total actualizado.");
             }
+            assertTotalNoSubio(prepared, expectedTotal);
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
             const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia);
             if (!grande) return;
