@@ -23,6 +23,14 @@ import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
 /** Dinero a centavos (el redondeo comun de todo el modulo): una fraccion de centavo no existe. */
+const DIRECCION_DE_RELLENO = /^(?:no\s*se|nose|n\/?a|na|ninguna?|nada|sin\s+(?:direccion|dato|datos)|desconocid[oa]|pendiente|despues|luego|ahorita|aqui|alla|x+|\?+)$/;
+/** true si el texto pasa como direccion de entrega: al menos 6 letras o digitos, con al menos una letra, y no es una frase de relleno. No valida que exista: solo descarta lo que no puede ser una direccion. */
+export function direccionUtilizable(direccion: string): boolean {
+  const compacta = direccion.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s/]/g, " ").replace(/\s+/g, " ").trim();
+  const alfanumericos = compacta.replace(/[^a-z0-9]/g, "");
+  return alfanumericos.length >= 6 && /[a-z]/.test(alfanumericos) && !DIRECCION_DE_RELLENO.test(compacta);
+}
+
 export function redondearACentavos(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -313,6 +321,10 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (!cleanName) throw new OrderValidationError("branchSlug (o branchName), customerName y customerPhone son requeridos");
   const cleanAddress = raw.customerAddress === undefined ? undefined : sanitizeInlineText(raw.customerAddress);
   if (agentOrder && canal === "domicilio" && !cleanAddress) throw new OrderValidationError("La dirección completa de entrega es requerida");
+  // R12-02: una direccion de relleno («.», «no se», «n/a», «xxx») no la puede entregar el repartidor; se rechaza como si faltara, en vez de mandar a cocina un domicilio sin destino.
+  if (agentOrder && canal === "domicilio" && cleanAddress && !direccionUtilizable(cleanAddress)) {
+    throw new OrderValidationError("La dirección de entrega no es utilizable (falta calle y número o una referencia clara): pida al cliente la dirección completa antes de crear el pedido.");
+  }
   // La referencia parcial del prompt no es una direccion de entrega: si el modelo la copia tal cual, se rechaza.
   if (cleanAddress && (cleanAddress.includes(ADDRESS_MASK_MARKER) || cleanAddress.includes(ADDRESS_OMITTED_MARKER))) {
     throw new OrderValidationError("La dirección guardada solo es una referencia parcial: pide al cliente la dirección completa (o consúltala con buscar_cliente) y vuelve a intentar.");

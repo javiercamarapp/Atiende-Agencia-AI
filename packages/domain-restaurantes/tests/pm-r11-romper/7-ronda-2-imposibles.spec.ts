@@ -10,7 +10,7 @@ import { InMemoryAutopilotoRepository, solicitarCancelacion } from "../../src/au
 import type { AutopilotoServicioDeps } from "../../src/autopiloto/index.ts";
 import { createOrder } from "../../src/orders.ts";
 import { invokeAgentTool } from "../../src/agent-tools/registry.ts";
-import { buildRestaurantFixture, flujo, hallazgo, itemsCoca, ordenes, pedidoCompleto } from "./arnes.ts";
+import { buildRestaurantFixture, flujo, itemsCoca, ordenes, pedidoCompleto } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 // Martes 2026-10-06 13:00 en Merida (UTC-6).
@@ -213,7 +213,7 @@ describe("R12-A4 domicilio fuera de zona y direcciones", () => {
 
   // R12-02 (P2): una direccion de relleno («.», «no se», «n/a», «xxxxxxx») la dejaba pasar el servidor y el pedido llegaba a cocina sin destino para el repartidor.
   for (const direccion of [".", "no se", "n/a", "ninguna", "xxxxxxx", "???", "123", "sin direccion"]) {
-    hallazgo(`R12-02 [P2, corregido] direccion de relleno «${direccion}»: crear_pedido a domicilio se rechaza`, async () => {
+    it(`R12-02 [P2, corregido] direccion de relleno «${direccion}»: crear_pedido a domicilio se rechaza`, async () => {
       const f = buildRestaurantFixture();
       const s = flujo(f);
       const base = { branch_slug: "fco-montejo", canal: "domicilio", items: itemsCoca(f, 2) };
