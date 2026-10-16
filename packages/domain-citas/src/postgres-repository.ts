@@ -1514,6 +1514,9 @@ export class PostgresCitasRepository implements CitasRepository {
       preferredTimeWindow: r.preferred_time_window,
       createdAt: r.created_at,
     });
+    // Lock consultivo por (organizacion, telefono), igual que la funcion de sistema: la sesion es una transaccion por request,
+    // asi dos envios simultaneos del mismo telefono se serializan y no duplican ni pasan el tope.
+    await this.db.query(`select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0));`, [input.organizationId, input.customerPhone]);
     // Una sola anotacion activa por (telefono, proveedor, servicio, fechas, franja): reintentar no duplica.
     const { rows: existentes } = await this.db.query<Fila>(
       `select ${columnas} from citas.appointment_waitlist
