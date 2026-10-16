@@ -86,6 +86,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/data-chat-cfo-roles-y-guardia.spec.ts",
   "packages/domain-restaurantes/tests/cfo-alertas.spec.ts",
   "apps/api/tests/restaurantes-cierres-alertas-cfo.spec.ts",
+  // R11 romper: horarios limite (cierre 01:00, medianoche, cambio de dia de negocio) y programado_para con reloj fijo (martes 13:00 Merida).
+  "packages/domain-restaurantes/tests/pm-r11-romper/5-negocio-y-privacidad.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.
