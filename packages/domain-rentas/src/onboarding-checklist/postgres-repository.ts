@@ -35,7 +35,8 @@ export class PostgresRentasOnboardingChecklistRepository implements RentasOnboar
       );
       return { activos: Number(r.rows[0]?.activos ?? 0), enCuarentena: Number(r.rows[0]?.en_cuarentena ?? 0), sincronizados: Number(r.rows[0]?.sincronizados ?? 0) };
     });
-    const unidadesConTarifaBase = await this.contar(`select count(distinct unidad_id)::text as n from rentas.tarifa_base where organization_id = $1;`, organizationId);
+    // Solo cuenta la tarifa ya vigente (`vigente_desde` no es futura): una tarifa programada para despues aun no permite cotizar.
+    const unidadesConTarifaBase = await this.contar(`select count(distinct unidad_id)::text as n from rentas.tarifa_base where organization_id = $1 and vigente_desde <= current_date;`, organizationId);
     // Una organizacion nueva nace con reglas SUGERIDAS (fuente `default_sugerido...`, migracion 027): no cuentan hasta que alguien
     // las confirma o edita (su fuente deja de empezar asi), igual que la pantalla de reglas las marca como "sugerida".
     const reglasComision = await this.contar(`select count(*)::text as n from rentas.regla_comision_canal where organization_id = $1 and fuente not like 'default\\_sugerido%';`, organizationId);
