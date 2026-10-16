@@ -1,14 +1,18 @@
 // Menu en PDF por sucursal (decision de Javier: el menu por WhatsApp va como PDF ADJUNTO y es el de CADA sucursal publicado en internet).
 //
-// El sitio publico de PM (Wix) no publica PDF: cada sucursal tiene una pagina de menu con 3 imagenes de pagina completa (carta, 2550x3300). Los PDF se arman
-// con esas mismas imagenes, sin recomprimir ni agregar contenido (ver `docs/restaurantes/menu-pdf-por-sucursal.md`) y se publican en una URL https publica.
-// NO hay binarios en el repo: aqui solo vive el mapa sucursal -> archivo + pagina web oficial. La base de las URLs es configuracion del servidor
-// (`PM_MENU_PDF_BASE_URL`, ver apps/api/src/production/deps.ts); sin ella el agente comparte el enlace de la pagina web oficial del menu de esa sucursal.
+// Los PDF los aloja la propia app web (apps/web/public/menu-pdf/*.pdf, mismo dominio, GET directo 200 application/pdf sin redireccion: Meta los descarga asi).
+// Se arman con las fotos oficiales del sitio de PM (8 o 9 imagenes de pagina completa por sucursal), reescaladas para telefono (ver `docs/restaurantes/menu-pdf-por-sucursal.md`).
+// La base por omision es `MENU_PDF_BASE_POR_OMISION`; `PM_MENU_PDF_BASE_URL` (ver apps/api/src/production/deps.ts) solo la sobre-escribe, NO hace falta definirla.
+// PENSIONES NO tiene PDF a proposito (su menu publica precios 2025 que contradicen lo que cotiza el agente): comparte el enlace de la pagina oficial.
+// Los menus en ingles del sitio quedan fuera de alcance.
 
-/** Menu publicado: archivo PDF (bajo la base configurada) y pagina web oficial del mismo menu (respaldo si el PDF no esta disponible). */
+/** Base https donde la app web sirve los PDF (carpeta `apps/web/public/menu-pdf`). Sobre-escribible con `PM_MENU_PDF_BASE_URL`. */
+export const MENU_PDF_BASE_POR_OMISION = "https://app.useatiende.ai/menu-pdf";
+
+/** Menu publicado: archivo PDF (bajo la base) y pagina web oficial del mismo menu (respaldo si el PDF no esta disponible). */
 export interface MenuPdfSucursal {
-  /** Nombre del archivo bajo `PM_MENU_PDF_BASE_URL` (tambien es el nombre que ve el cliente). */
-  readonly archivo: string;
+  /** Nombre del archivo bajo la base (tambien es el nombre que ve el cliente). `null` = esa sucursal NO tiene PDF (se comparte el enlace de la pagina oficial). */
+  readonly archivo: string | null;
   /** Pagina publica oficial del menu de esa sucursal en https://www.lostaquitosdepm.com (leida el 15-oct-2026). */
   readonly paginaWeb: string;
   /** Texto corto para el pie del documento: a que sucursal(es) corresponde. */
@@ -25,16 +29,17 @@ const MONTEJO_ALTABRISA_VICTORY: MenuPdfSucursal = {
 
 /**
  * `branch_slug` (seed de PM) -> menu publicado. El sitio publica UN menu compartido para Montejo, Altabrisa y Victory: la sucursal T7 (García Lavín, en Victory
- * Platz) usa ese. Pendiente de confirmar por el dueño que el titulo «Victory» del sitio es T7 (hoy es la lectura mas razonable, no una confirmacion).
+ * Platz) usa ese. En la cuenta real (fixtures/cuenta-real-pm-estado.json) NO existe un slug `victory-platz`: «Victory Platz» es el NOMBRE de `garcia-lavin` y «Victory Altabrisa» el de `altabrisa`, asi que el menu «Victory» del sitio sirve a ambos.
  */
 export const MENU_PDF_POR_SUCURSAL: Readonly<Record<string, MenuPdfSucursal>> = {
   "prol-montejo": MONTEJO_ALTABRISA_VICTORY,
   "garcia-lavin": MONTEJO_ALTABRISA_VICTORY,
   altabrisa: MONTEJO_ALTABRISA_VICTORY,
-  "fco-montejo": { archivo: "menu-francisco-de-montejo.pdf", paginaWeb: `${SITIO}/menufranciscodemontejo`, etiqueta: "Francisco de Montejo" },
-  pensiones: { archivo: "menu-pensiones.pdf", paginaWeb: `${SITIO}/menupensiones`, etiqueta: "Pensiones" },
+  "fco-montejo": { archivo: "menu-fco-montejo.pdf", paginaWeb: `${SITIO}/menufranciscodemontejo`, etiqueta: "Francisco de Montejo" },
+  // Sin PDF: el sitio publica la lista de precios 2025 (el agente cotiza 2026). Se vuelve a habilitar cuando Javier consiga la imagen actualizada.
+  pensiones: { archivo: null, paginaWeb: `${SITIO}/menupensiones`, etiqueta: "Pensiones" },
   galerias: { archivo: "menu-galerias.pdf", paginaWeb: `${SITIO}/menupmgalerias`, etiqueta: "Galerías" },
-  playa: { archivo: "menu-chicxulub.pdf", paginaWeb: `${SITIO}/menuchicxulub`, etiqueta: "Chicxulub (Playa)" },
+  playa: { archivo: "menu-playa.pdf", paginaWeb: `${SITIO}/menuchicxulub`, etiqueta: "Chicxulub (Playa)" },
 };
 
 export type ResultadoMenuPdf =
@@ -42,7 +47,7 @@ export type ResultadoMenuPdf =
   | { readonly tipo: "enlace"; readonly paginaWeb: string; readonly etiqueta: string }
   | { readonly tipo: "sin_menu" };
 
-/** `base` valida = https sin credenciales; se normaliza sin barras finales. Cualquier otra cosa = sin base (el agente cae al enlace de la pagina web). */
+/** `base` valida = https sin credenciales; se normaliza sin barras finales. Cualquier otra cosa = null (`resolverMenuPdf` usa entonces la base por omision). */
 export function normalizarBaseMenuPdf(base: string | null | undefined): string | null {
   const v = base?.trim();
   if (!v || v.length > 300) return null;
@@ -55,11 +60,12 @@ export function normalizarBaseMenuPdf(base: string | null | undefined): string |
   }
 }
 
-/** Que se le manda al cliente para `branchSlug`: el PDF (si hay base configurada), el enlace de la pagina oficial, o nada (sucursal sin menu publicado). */
+/** Que se le manda al cliente para `branchSlug`: el PDF (base por omision o la de `PM_MENU_PDF_BASE_URL`), el enlace de la pagina oficial (sucursal sin PDF, como Pensiones), o nada (sucursal sin menu publicado). */
 export function resolverMenuPdf(branchSlug: string, baseUrl: string | null | undefined): ResultadoMenuPdf {
   const menu = Object.hasOwn(MENU_PDF_POR_SUCURSAL, branchSlug) ? MENU_PDF_POR_SUCURSAL[branchSlug]! : null;
   if (!menu) return { tipo: "sin_menu" };
-  const base = normalizarBaseMenuPdf(baseUrl);
-  if (!base) return { tipo: "enlace", paginaWeb: menu.paginaWeb, etiqueta: menu.etiqueta };
+  if (menu.archivo === null) return { tipo: "enlace", paginaWeb: menu.paginaWeb, etiqueta: menu.etiqueta };
+  // Base invalida o ausente = la por omision (nunca se manda una URL no https ni con credenciales).
+  const base = normalizarBaseMenuPdf(baseUrl) ?? MENU_PDF_BASE_POR_OMISION;
   return { tipo: "pdf", url: `${base}/${encodeURIComponent(menu.archivo)}`, archivo: menu.archivo, paginaWeb: menu.paginaWeb, etiqueta: menu.etiqueta };
 }

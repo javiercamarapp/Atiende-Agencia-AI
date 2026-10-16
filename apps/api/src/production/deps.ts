@@ -195,7 +195,7 @@ export function urlFacturacionDeEntorno(env: NodeJS.ProcessEnv = process.env): s
   }
 }
 
-/** Base https publica de los PDF del menu por sucursal (variable `PM_MENU_PDF_BASE_URL`, sin credenciales ni query). Sin ella (o invalida) el agente no manda PDF: comparte el enlace oficial. */
+/** Base https de los PDF del menu por sucursal: SOLO sobre-escritura opcional (`PM_MENU_PDF_BASE_URL`, sin credenciales ni query). Sin ella (o invalida) devuelve null y el dominio usa `MENU_PDF_BASE_POR_OMISION` (https://app.useatiende.ai/menu-pdf); no hace falta definirla. */
 export function menuPdfBaseDeEntorno(env: NodeJS.ProcessEnv = process.env): string | null {
   return normalizarBaseMenuPdf(env.PM_MENU_PDF_BASE_URL);
 }
