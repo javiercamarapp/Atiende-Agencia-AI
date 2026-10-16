@@ -3,11 +3,15 @@
 // FINANZAS_LECTURA_ROLES; el servidor y la RLS lo vuelven a exigir). Sin periodo muestra el
 // mes en curso de la property. Exporta a CSV (abre en Excel) y a PDF. Las reservas que
 // cruzan meses se prorratean por noche: ningún peso ni noche se cuenta dos veces.
+// UNI-C-rentas: PageHeader (único h1) + PageContainer a ancho completo, filtros con FormField, KPIs con StatCard,
+// DataTable, Callout y notify; montos con el formateador único (sin sufijo MXN) y fechas con formatFechaSolo.
 import { useEffect, useState } from "react";
-import { Download, RefreshCcw } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { BedDouble, Download, Percent, RefreshCcw, Wallet } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, FormField, Input, NativeSelect, notify, PageContainer, PageHeader, StatCard, StatusBadge } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { descargarReporte, ETIQUETA_AGRUPACION, fetchReporte, formatearMoneda, formatearOcupacion } from "../lib/reportes-client.ts";
-import type { AgrupacionReporte, ReporteOcupacionIngresos } from "../lib/reportes-client.ts";
+import type { AgrupacionReporte, GrupoReporte, ReporteOcupacionIngresos } from "../lib/reportes-client.ts";
+import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 // Espejo web de FINANZAS_LECTURA_ROLES (packages/domain-rentas/src/roles.ts).
@@ -66,6 +70,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
       const blob = await descargarReporte(fetch, apiBaseUrl, token, propertyId, params, formato);
       const rango = reporte ? `${reporte.desde}_${reporte.hasta}` : "periodo";
       guardarArchivo(blob, `reporte-ocupacion-ingresos_${rango}.${formato}`);
+      notify.success(`Reporte ${formato.toUpperCase()} descargado.`);
     } catch (err) {
       setErrorDescarga(err instanceof Error ? err.message : "No se pudo descargar el reporte.");
     } finally {
@@ -74,46 +79,52 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
   }
 
   const encabezado = (
-    <header>
-      <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Reportes de ocupación e ingresos</h1>
-      <p className="m-0 text-sm text-muted-foreground">
-        Por unidad, propietario, canal y mes. Una reserva que cruza meses se prorratea por noche, así que ninguna noche ni ningún peso se cuenta dos veces. Montos en la moneda de la propiedad,
-        sin conversión.
-      </p>
-    </header>
+    <PageHeader
+      titulo="Reportes de ocupación e ingresos"
+      descripcion="Por unidad, propietario, canal y mes. Una reserva que cruza meses se prorratea por noche, así que ninguna noche ni ningún peso se cuenta dos veces. Montos en la moneda de la propiedad, sin conversión."
+    />
   );
 
   if (!puedeLeer) {
     return (
-      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
+      <PageContainer>
         {encabezado}
-        <p className="m-0 text-sm text-muted-foreground">
-          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso a los reportes financieros. Roles con acceso: <strong className="text-foreground">admin_gestora</strong>{" "}
-          y <strong className="text-foreground">contador</strong>.
-        </p>
+        <Callout tone="info" titulo="Sin acceso a los reportes">
+          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso a los reportes financieros. Roles con acceso: <strong className="text-foreground">admin_gestora</strong> y{" "}
+          <strong className="text-foreground">contador</strong>.
+        </Callout>
       </PageContainer>
     );
   }
 
   const grupos = reporte ? reporte.grupos[agrupar] : [];
   const mostrarDisponibles = agrupar !== "canal";
+  const moneda = reporte?.moneda ?? "MXN";
+
+  const columnas: readonly DataTableColumna<GrupoReporte>[] = [
+    { id: "grupo", encabezado: ETIQUETA_AGRUPACION[agrupar], principal: true, valorOrden: (g) => g.etiqueta, celda: (g) => <span className="font-medium text-foreground">{g.etiqueta}</span> },
+    { id: "llegadas", encabezado: "Llegadas", alinear: "right", valorOrden: (g) => g.llegadas, celda: (g) => <span className="tabular-nums">{g.llegadas}</span> },
+    { id: "noches", encabezado: "Noches", alinear: "right", valorOrden: (g) => g.nochesOcupadas, celda: (g) => <span className="tabular-nums">{g.nochesOcupadas}</span> },
+    ...(mostrarDisponibles ? [{ id: "ocupacion", encabezado: "Ocupación", alinear: "right" as const, celda: (g: GrupoReporte) => <span className="tabular-nums">{formatearOcupacion(g.ocupacionBasisPoints)}</span> }] : []),
+    { id: "bruto", encabezado: "Ingreso bruto", alinear: "right", valorOrden: (g) => g.ingresoBrutoCentavos, celda: (g) => <span className="tabular-nums">{formatearMoneda(g.ingresoBrutoCentavos, moneda)}</span> },
+    { id: "comision", encabezado: "Comisión canal", alinear: "right", celda: (g) => <span className="tabular-nums">{formatearMoneda(g.comisionCanalCentavos, moneda)}</span> },
+    { id: "neto", encabezado: "Neto", alinear: "right", valorOrden: (g) => g.netoCentavos, celda: (g) => <span className="tabular-nums">{formatearMoneda(g.netoCentavos, moneda)}</span> },
+    { id: "adr", encabezado: "ADR", alinear: "right", celda: (g) => <span className="tabular-nums">{formatearMoneda(g.adrCentavos, moneda)}</span> },
+  ];
 
   return (
-    <PageContainer padding="none" size="lg" className="gap-5 [&>*]:min-w-0">
+    <PageContainer>
       {encabezado}
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 pt-4">
-          <Label className="flex flex-col gap-1 text-xs font-normal text-muted-foreground">
-            Desde
-            <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="h-9 w-auto" />
-          </Label>
-          <Label className="flex flex-col gap-1 text-xs font-normal text-muted-foreground">
-            Hasta (exclusivo)
-            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="h-9 w-auto" />
-          </Label>
-          <Label className="flex flex-col gap-1 text-xs font-normal text-muted-foreground">
-            Agrupar por
+          <FormField label="Desde">
+            <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="w-auto" />
+          </FormField>
+          <FormField label="Hasta (exclusivo)">
+            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-auto" />
+          </FormField>
+          <FormField label="Agrupar por">
             <NativeSelect size="sm" value={agrupar} onChange={(e) => setAgrupar(e.target.value as AgrupacionReporte)}>
               {AGRUPACIONES.map((a) => (
                 <option key={a} value={a}>
@@ -121,104 +132,69 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
                 </option>
               ))}
             </NativeSelect>
-          </Label>
+          </FormField>
           <Button type="button" variant="outline" size="sm" onClick={() => setRecarga((n) => n + 1)}>
-            <RefreshCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Actualizar
+            <RefreshCcw /> Actualizar
           </Button>
           <div className="ml-auto flex gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={descargando !== null || periodoIncompleto} onClick={() => descargar("csv")}>
-              <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden /> {descargando === "csv" ? "Generando…" : "CSV (Excel)"}
+            <Button type="button" size="sm" variant="outline" disabled={descargando !== null || periodoIncompleto} loading={descargando === "csv"} loadingText="Generando…" onClick={() => void descargar("csv")}>
+              <Download /> CSV (Excel)
             </Button>
-            <Button type="button" size="sm" variant="outline" disabled={descargando !== null || periodoIncompleto} onClick={() => descargar("pdf")}>
-              <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden /> {descargando === "pdf" ? "Generando…" : "PDF"}
+            <Button type="button" size="sm" variant="outline" disabled={descargando !== null || periodoIncompleto} loading={descargando === "pdf"} loadingText="Generando…" onClick={() => void descargar("pdf")}>
+              <Download /> PDF
             </Button>
           </div>
           {periodoIncompleto && <p className="m-0 w-full text-xs text-destructive">Indica «desde» y «hasta» juntos, o deja ambos vacíos para ver el mes en curso.</p>}
         </CardContent>
       </Card>
 
-      {errorDescarga && <EstadoError mensaje={errorDescarga} />}
+      {errorDescarga && <EstadoError titulo="No se pudo descargar" mensaje={errorDescarga} />}
       {error && <EstadoError mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
       {!error && reporte === null && !periodoIncompleto && <EstadoCargando lineas={4} />}
 
       {!error && reporte !== null && (
         <>
           {!reporte.financieroDisponible && (
-            <p className="m-0 rounded-md border border-border bg-muted px-3 py-2 text-xs text-foreground">
+            <Callout tone="warning" titulo="Movimientos financieros no disponibles aún">
               Los movimientos financieros todavía no están disponibles en esta base de datos: ves noches y ocupación, pero los montos aparecen en cero.
-            </p>
+            </Callout>
           )}
           {(reporte.advertencias.reservasSinMovimientoFinanciero > 0 || reporte.advertencias.reservasMonedaDistinta > 0 || reporte.advertencias.nochesSolapadasOmitidas > 0) && (
-            <p className="m-0 rounded-md border border-border bg-muted px-3 py-2 text-xs text-foreground">
+            <Callout tone="info">
               {reporte.advertencias.reservasSinMovimientoFinanciero > 0 && <span>{reporte.advertencias.reservasSinMovimientoFinanciero} reserva(s) sin movimiento financiero registrado (suman noches, no dinero). </span>}
               {reporte.advertencias.reservasMonedaDistinta > 0 && <span>{reporte.advertencias.reservasMonedaDistinta} reserva(s) en otra moneda no se suman (no se convierte tipo de cambio). </span>}
               {reporte.advertencias.nochesSolapadasOmitidas > 0 && <span>{reporte.advertencias.nochesSolapadasOmitidas} noche(s) reclamadas por dos reservas se contaron una sola vez.</span>}
-            </p>
+            </Callout>
           )}
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              ["Noches ocupadas", String(reporte.totales.nochesOcupadas)],
-              ["Ocupación", formatearOcupacion(reporte.totales.ocupacionBasisPoints)],
-              ["Ingreso bruto", formatearMoneda(reporte.totales.ingresoBrutoCentavos, reporte.moneda)],
-              ["Neto", formatearMoneda(reporte.totales.netoCentavos, reporte.moneda)],
-            ].map(([titulo, valor]) => (
-              <Card key={titulo}>
-                <CardContent className="pt-4">
-                  <div className="text-xs text-muted-foreground">{titulo}</div>
-                  <div className="text-base font-semibold text-foreground">{valor}</div>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            <StatCard icon={BedDouble} label="Noches ocupadas" value={String(reporte.totales.nochesOcupadas)} />
+            <StatCard icon={Percent} label="Ocupación" value={formatearOcupacion(reporte.totales.ocupacionBasisPoints)} />
+            <StatCard icon={Wallet} label="Ingreso bruto" value={formatearMoneda(reporte.totales.ingresoBrutoCentavos, reporte.moneda)} />
+            <StatCard icon={Wallet} label="Neto" value={formatearMoneda(reporte.totales.netoCentavos, reporte.moneda)} />
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
+              <CardTitle className="flex items-center gap-2">
                 Por {ETIQUETA_AGRUPACION[agrupar].toLowerCase()}
                 <StatusBadge tone="neutral" dot={false} className="text-2xs">
-                  {reporte.desde} → {reporte.hasta}
+                  {formatFechaSolo(reporte.desde)} → {formatFechaSolo(reporte.hasta)}
                 </StatusBadge>
               </CardTitle>
             </CardHeader>
-            <CardContent className={grupos.length > 0 ? "p-0" : undefined}>
-              {grupos.length === 0 ? (
-                <EstadoVacio titulo="Sin datos en el periodo" mensaje="No hay reservas confirmadas ni unidades para este periodo." />
-              ) : (
-                <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{ETIQUETA_AGRUPACION[agrupar]}</TableHead>
-                      <TableHead className="text-right">Llegadas</TableHead>
-                      <TableHead className="text-right">Noches</TableHead>
-                      {mostrarDisponibles && <TableHead className="text-right">Ocupación</TableHead>}
-                      <TableHead className="text-right">Ingreso bruto</TableHead>
-                      <TableHead className="text-right">Comisión canal</TableHead>
-                      <TableHead className="text-right">Neto</TableHead>
-                      <TableHead className="text-right">ADR</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {grupos.map((g) => (
-                      <TableRow key={g.clave}>
-                        <TableCell className="text-xs">{g.etiqueta}</TableCell>
-                        <TableCell className="text-right text-xs">{g.llegadas}</TableCell>
-                        <TableCell className="text-right text-xs">{g.nochesOcupadas}</TableCell>
-                        {mostrarDisponibles && <TableCell className="text-right text-xs">{formatearOcupacion(g.ocupacionBasisPoints)}</TableCell>}
-                        <TableCell className="text-right text-xs">{formatearMoneda(g.ingresoBrutoCentavos, reporte.moneda)}</TableCell>
-                        <TableCell className="text-right text-xs">{formatearMoneda(g.comisionCanalCentavos, reporte.moneda)}</TableCell>
-                        <TableCell className="text-right text-xs">{formatearMoneda(g.netoCentavos, reporte.moneda)}</TableCell>
-                        <TableCell className="text-right text-xs">{formatearMoneda(g.adrCentavos, reporte.moneda)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <p className="px-4 py-3 text-xs text-muted-foreground">
-                  Llegadas cuenta cada reserva solo en el periodo de su check-in; noches e ingresos suman únicamente las noches que caen dentro del periodo.
-                </p>
-                </>
-              )}
+            <CardContent className="p-0">
+              <DataTable
+                etiqueta={`Reporte de ocupación e ingresos por ${ETIQUETA_AGRUPACION[agrupar].toLowerCase()}`}
+                columnas={columnas}
+                filas={grupos}
+                obtenerId={(g) => g.clave}
+                paginacion={false}
+                vacio={{ titulo: "Sin datos en el periodo", mensaje: "No hay reservas confirmadas ni unidades para este periodo." }}
+              />
+              <p className="px-4 py-3 text-xs text-muted-foreground">
+                Llegadas cuenta cada reserva solo en el periodo de su check-in; noches e ingresos suman únicamente las noches que caen dentro del periodo.
+              </p>
             </CardContent>
           </Card>
         </>

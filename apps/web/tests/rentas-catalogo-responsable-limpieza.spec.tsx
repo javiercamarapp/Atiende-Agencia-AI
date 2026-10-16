@@ -3,14 +3,20 @@
 // paridad3 rentas -- Catálogo: "Responsable de limpieza por omisión" por unidad. Solo se ofrece si hay lista del equipo (migración 033);
 // guardar manda PUT .../responsable-limpieza solo cuando cambió; null lo quita; el mensaje real del servidor queda dentro del formulario.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { notify } from "@atiende/ui";
 import { CatalogoPage } from "../src/verticals/rentas/pages/Catalogo.tsx";
 import { fijarResponsableLimpieza } from "../src/verticals/rentas/lib/catalogo-client.ts";
 import type { LoginSession } from "../src/lib/auth-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
+let exito: MockInstance;
+beforeEach(() => {
+  exito = vi.spyOn(notify, "success").mockImplementation((() => "") as never);
+});
 afterEach(() => {
+  exito.mockRestore();
   rendered?.unmount();
   rendered = undefined;
   vi.unstubAllGlobals();
@@ -50,7 +56,11 @@ function red(opciones: { responsable?: string | null; asignables?: unknown; put?
 }
 
 const dialogo = () => document.body.querySelector('[role="dialog"]');
-const campo = (etiqueta: string) => [...dialogo()!.querySelectorAll("label")].find((l) => l.textContent?.trim().startsWith(etiqueta))?.querySelector("input, select") as HTMLInputElement | HTMLSelectElement | undefined;
+// FormField (UNI-C) enlaza la etiqueta con su control por htmlFor/id; se acepta también el control anidado.
+const campo = (etiqueta: string) => {
+  const l = [...dialogo()!.querySelectorAll("label")].find((x) => x.textContent?.trim().startsWith(etiqueta));
+  return (l?.control ?? l?.querySelector("input, select")) as HTMLInputElement | HTMLSelectElement | undefined;
+};
 const guardar = () => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Guardar") as HTMLButtonElement;
 
 describe("Catálogo -- responsable de limpieza por omisión", () => {
@@ -81,7 +91,7 @@ describe("Catálogo -- responsable de limpieza por omisión", () => {
     });
     expect(mutaciones().map((m) => `${m.method} ${m.url.replace("http://api.local/v1/rentas/prop-1/admin/catalogo", "")}`)).toEqual(["PATCH /unidades/u1", "PUT /unidades/u1/responsable-limpieza"]);
     expect(mutaciones()[1]!.body).toEqual({ responsableId: "beto" });
-    expect(rendered.container.textContent).toContain("Cambios guardados");
+    expect(exito).toHaveBeenCalledWith("Cambios guardados.");
   });
 
   it("dejarlo en «Sin responsable» manda null; si no cambió, NO llama al PUT", async () => {

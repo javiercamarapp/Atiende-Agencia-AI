@@ -18,20 +18,19 @@
 //    todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, NativeSelect, PageContainer, PageHeader, StatusBadge } from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const AUDITORIA_LECTURA_ROLES = new Set(["admin_gestora"]);
 const PAGE_SIZE = 25;
 
-const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
-
 function formatearFechaHora(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
+    return fechaHoraEsMx(iso);
   } catch {
     return iso;
   }
@@ -152,14 +151,11 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
   }
 
   return (
-    <PageContainer padding="none" size="lg" className="gap-5 [&>*]:min-w-0">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Auditoría</h1>
-        <p className="m-0 text-sm text-muted-foreground">Qué hizo cada miembro del staff: cambios de precio, reservas, payouts, estados de cuenta y canales.</p>
-      </header>
+    <PageContainer>
+      <PageHeader titulo="Auditoría" descripcion="Qué hizo cada miembro del staff: cambios de precio, reservas, payouts, estados de cuenta y canales." />
 
       {!puedeLeer ? (
-        <p className="m-0 text-sm text-muted-foreground">
+        <Callout tone="info" titulo="Sin acceso a la bitácora">
           Solo el rol <strong className="text-foreground">admin_gestora</strong> puede leer la bitácora de auditoría
           {org ? (
             <>
@@ -169,16 +165,15 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
           ) : (
             "."
           )}
-        </p>
+        </Callout>
       ) : (
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Filtros</CardTitle>
+              <CardTitle>Filtros</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-4">
-              <Label className={`${LABEL_CLASES} min-w-[180px]`}>
-                Tipo de acción
+            <CardContent className="flex flex-wrap gap-3">
+              <FormField label="Tipo de acción" className="min-w-[180px]">
                 <NativeSelect value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")}>
                   <option value="">Todos</option>
                   {AUDIT_LOG_ENTITY_TYPES.map((t) => (
@@ -187,15 +182,13 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
                     </option>
                   ))}
                 </NativeSelect>
-              </Label>
-              <Label className={`${LABEL_CLASES} min-w-[160px]`}>
-                Desde
+              </FormField>
+              <FormField label="Desde" className="min-w-[160px]">
                 <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-              </Label>
-              <Label className={`${LABEL_CLASES} min-w-[160px]`}>
-                Hasta
+              </FormField>
+              <FormField label="Hasta" className="min-w-[160px]">
                 <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
-              </Label>
+              </FormField>
             </CardContent>
           </Card>
 
@@ -239,8 +232,8 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
                 {items.length} de {total}
               </span>
               {nextOffset !== null && (
-                <Button type="button" variant="outline" size="sm" onClick={cargarMas} disabled={cargandoMas}>
-                  {cargandoMas ? "Cargando…" : "Cargar más"}
+                <Button type="button" variant="outline" size="sm" onClick={cargarMas} loading={cargandoMas} loadingText="Cargando…">
+                  Cargar más
                 </Button>
               )}
             </div>

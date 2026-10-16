@@ -44,7 +44,10 @@ function red(estado: { reglas: unknown[]; canalesSinRegla: string[] }, extra: (u
 const montar = (puedeEscribir: boolean) => renderComponent(<ReglasComisionSection apiBaseUrl="http://api.local" token="tok" propertyId="prop-1" puedeEscribir={puedeEscribir} />);
 const dialogo = () => document.body.querySelector('[role="dialog"]');
 const botonPagina = (r: RenderedComponent, texto: string) => [...r.container.querySelectorAll("button")].find((b) => b.textContent?.trim().includes(texto)) as HTMLButtonElement | undefined;
-const campo = (etiqueta: string) => [...dialogo()!.querySelectorAll("label")].find((l) => l.textContent?.trim().startsWith(etiqueta))!.querySelector("input, select") as HTMLInputElement | HTMLSelectElement;
+const campo = (etiqueta: string) => {
+  const label = [...dialogo()!.querySelectorAll("label")].find((l) => l.textContent?.trim().startsWith(etiqueta))!;
+  return (label.getAttribute("for") ? dialogo()!.querySelector(`#${label.getAttribute("for")}`) : label.querySelector("input, select")) as HTMLInputElement | HTMLSelectElement;
+};
 const guardar = () => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Guardar regla") as HTMLButtonElement;
 
 describe("ReglasComisionSection", () => {
