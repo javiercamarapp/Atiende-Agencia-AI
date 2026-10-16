@@ -896,9 +896,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             fallaSistema = executed.fallaSistema === true;
             anyToolCalled = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
-            if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result)) {
-              const rc = result as { resumen_canonico?: unknown; quote?: { total?: unknown } } | null;
-              if (typeof rc?.resumen_canonico === "string" && typeof rc.quote?.total === "number") resumenCanonicoDelTurno = { texto: rc.resumen_canonico, total: rc.quote.total };
+            {
+              // Lo entrega cotizar_pedido y, cuando el servidor rechaza el cierre (resumen no mostrado, pago/propina distintos), el propio rechazo.
+              const rc = result as { resumen_canonico?: unknown; resumen_total?: unknown; quote?: { total?: unknown } } | null;
+              const total = typeof rc?.quote?.total === "number" ? rc.quote.total : typeof rc?.resumen_total === "number" ? rc.resumen_total : null;
+              if (typeof rc?.resumen_canonico === "string" && total !== null) resumenCanonicoDelTurno = { texto: rc.resumen_canonico, total };
             }
             if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
               const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;

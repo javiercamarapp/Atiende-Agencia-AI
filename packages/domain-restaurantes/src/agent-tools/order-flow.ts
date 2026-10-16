@@ -81,6 +81,8 @@ export interface OrderFlowContext {
   readonly cierreAmbiguoTurn?: string;
   /** Texto del resumen armado por el servidor para ESTA cotizacion (solo con la maquina de cierre activa). */
   readonly resumenCanonico?: string;
+  /** Datos con que se armo `resumenCanonico` (renglones, total, descuento, canal): permiten rearmarlo cuando cambian el pago o la propina sin volver a cotizar. */
+  readonly resumenBase?: { readonly lineas: readonly { readonly name: string; readonly quantity: number; readonly lineTotal?: number; readonly tortilla?: string | null }[]; readonly total: number; readonly descuento?: number; readonly canal?: string };
   /** Firma (pago|efectivo|propina) y turno de la confirmacion: `crear_pedido` exige los mismos datos. */
   readonly confirmedFirma?: string;
   readonly confirmedTurn?: string;

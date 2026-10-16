@@ -1082,14 +1082,12 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const pagoCotizado = pagoDeCotizacion(input, previoVigente);
       const propinaCotizada = propinaDeCotizacion(input, previoVigente);
       // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
-      const canonico = cierreMaquinaActiva() && ctx.channel === "whatsapp"
-        ? resumenCanonico({
-            lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })),
-            total: quotedQuote.total,
-            descuento: quotedQuote.descuento,
-            canal: canalOf(input.canal),
-            datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct },
-          })
+      const resumenBase =
+        cierreMaquinaActiva() && ctx.channel === "whatsapp"
+          ? { lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })), total: quotedQuote.total, descuento: quotedQuote.descuento, canal: canalOf(input.canal) }
+          : undefined;
+      const canonico = resumenBase
+        ? resumenCanonico({ ...resumenBase, datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct } })
         : undefined;
       const conCanonico = (r: object): object => (canonico ? { ...r, resumen_canonico: canonico, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : r);
       if (
@@ -1120,7 +1118,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         ...(pagoCotizado.quotedPago ? { quotedPago: pagoCotizado.quotedPago } : {}),
         ...(pagoCotizado.quotedEfectivoCon !== undefined ? { quotedEfectivoCon: pagoCotizado.quotedEfectivoCon } : {}),
         ...propinaCotizada,
-        ...(canonico ? { resumenCanonico: canonico } : {}),
+        ...(canonico && resumenBase ? { resumenCanonico: canonico, resumenBase } : {}),
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
         ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
         ...(programadoCotizado ? { programadoPara: programadoCotizado } : {}),
@@ -1158,10 +1156,30 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       if (cierreOn) {
         const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico });
         if (!decision.ok) {
+          // Respuesta de pago / propina: el servidor ADOPTA el dato (avanza), vuelve a `cotizado` y rearma el resumen; el modelo solo lo muestra. Nunca confirma.
+          if (decision.datosNuevos && current.resumenBase) {
+            const d = decision.datosNuevos;
+            const nuevo = resumenCanonico({ ...current.resumenBase, datos: d });
+            await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
+              ...current,
+              ...(d.pago ? { quotedPago: d.pago } : {}),
+              quotedEfectivoCon: d.efectivoCon,
+              quotedPropinaMxn: d.propinaMxn,
+              quotedPropinaPct: d.propinaPct,
+              resumenCanonico: nuevo,
+              cierreAmbiguoTurn: undefined,
+            });
+            return {
+              result: { error: `${decision.mensaje} El sistema ya guardó el dato (pago / efectivo / propina) y actualizó el resumen. Muéstreselo AHORA al cliente, copiado tal cual, y espere su sí en el mensaje siguiente:\n${nuevo}`, resumen_canonico: nuevo, resumen_total: current.resumenBase.total },
+              orderId: null,
+              propertyId: null,
+              rechazoDelFlujo: decision.code,
+            };
+          }
           if (decision.marcarAmbiguo && flow.turn !== null && current.cierreAmbiguoTurn === undefined) {
             await writeFlow(repo, ctx, flow, snap.version, "cotizado", { ...current, cierreAmbiguoTurn: flow.turn });
           }
-          return { result: { error: decision.mensaje, ...(current.resumenCanonico ? { resumen_canonico: current.resumenCanonico } : {}) }, orderId: null, propertyId: null, rechazoDelFlujo: decision.code };
+          return { result: { error: decision.mensaje, ...(current.resumenCanonico ? { resumen_canonico: current.resumenCanonico, ...(current.resumenBase ? { resumen_total: current.resumenBase.total } : {}) } : {}) }, orderId: null, propertyId: null, rechazoDelFlujo: decision.code };
         }
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", {
@@ -1229,7 +1247,27 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     if (cierreMaquinaActiva() && ctx.channel === "whatsapp" && snap.state === "confirmado" && current.confirmedFirma !== undefined) {
       const datos = datosDeCierreDeEntrada(input, current);
       if (firmaDeCierre(datos) !== current.confirmedFirma) {
-        return { result: { error: mensajeDatosCambiaron(), ...(current.resumenCanonico ? { resumen_canonico_anterior: current.resumenCanonico } : {}) }, orderId: null, propertyId: null, rechazoDelFlujo: "cierre_datos_cambiaron" };
+        // El servidor adopta el dato nuevo, vuelve a `cotizado` y rearma el resumen: el modelo solo tiene que mostrarlo y esperar el sí (no depende de que re-cotice bien).
+        const nuevoCanonico = current.resumenBase ? resumenCanonico({ ...current.resumenBase, datos }) : undefined;
+        await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
+          ...current,
+          ...(datos.pago ? { quotedPago: datos.pago } : {}),
+          quotedEfectivoCon: datos.efectivoCon,
+          quotedPropinaMxn: datos.propinaMxn,
+          quotedPropinaPct: datos.propinaPct,
+          quotedTurn: flow.turn,
+          confirmedAtMs: undefined,
+          confirmedFirma: undefined,
+          confirmedTurn: undefined,
+          cierreAmbiguoTurn: undefined,
+          ...(nuevoCanonico ? { resumenCanonico: nuevoCanonico } : {}),
+        });
+        return {
+          result: { error: mensajeDatosCambiaron(nuevoCanonico), ...(nuevoCanonico ? { resumen_canonico: nuevoCanonico, resumen_total: current.resumenBase!.total } : {}) },
+          orderId: null,
+          propertyId: null,
+          rechazoDelFlujo: "cierre_datos_cambiaron",
+        };
       }
       if (ctx.conversacionReciente !== undefined && flow.turn !== null && current.confirmedTurn !== flow.turn) {
         const ultimoCliente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "user")?.content;

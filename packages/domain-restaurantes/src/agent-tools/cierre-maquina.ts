@@ -84,6 +84,74 @@ const VISTO_BUENO_EN_NEGATIVO = /^\W*(?:no+\s*,?\s*(?:gracias|nada\s*mas|asi\s*e
 export interface OpcionesClasificar {
   /** El ultimo mensaje del asistente fue el resumen y su ultima pregunta es de confirmacion / «desea cambiar algo». */
   readonly despuesDelResumen: boolean;
+  /** Pago / efectivo / propina que muestra el resumen vigente y total cotizado: «sí, efectivo» a un resumen que YA dice efectivo es un sí; «sí, tarjeta» a uno que dice efectivo es un cambio de dato. */
+  readonly datosCotizados?: DatosDeCierre;
+  readonly total?: number;
+}
+
+/** Lo que el mensaje del cliente dice de pago, efectivo y propina (solo lo que dice; `undefined` = no lo menciona). `sinPropina` = dijo que no deja propina. */
+export interface DatosDelMensaje {
+  readonly pago?: "efectivo" | "tarjeta";
+  readonly efectivoCon?: number;
+  readonly propinaMxn?: number;
+  readonly propinaPct?: number;
+  readonly sinPropina?: boolean;
+}
+
+const MONTO_FINAL = /(?:\bcon|\bde|\bcambio\s+de|\bpago\s+con|\bpagare\s+con|\bpaga(?:ria)?\s+con)?\s*\$?\s*(\d{2,5}(?:[.,]\d{1,2})?)\s*(?:pesos|varos|mxn)?\s*(?:porfa|por favor|gracias|ok)?\W*$/;
+
+/** Extrae pago / efectivo / propina del texto del cliente. Un monto solo cuenta como «efectivo con» si cierra el mensaje y alcanza el total (si se conoce). */
+export function datosDelMensaje(mensaje: string, total?: number): DatosDelMensaje {
+  const t = normalizar(mensaje);
+  const out: { -readonly [K in keyof DatosDelMensaje]: DatosDelMensaje[K] } = {};
+  const tarjeta = /\b(?:tarjeta|terminal|debito|credito)\b/.test(t);
+  const efectivoPalabra = /\b(?:efectivo|cash)\b/.test(t);
+  const efectivoMonto = /\b(?:cambio\s+de|pago\s+con|pagare\s+con|paga(?:ria)?\s+con)\s*\$?\s*\d/.test(t);
+  if (tarjeta && !efectivoPalabra) out.pago = "tarjeta";
+  else if ((efectivoPalabra || efectivoMonto) && !tarjeta) out.pago = "efectivo";
+  if (/\bsin\s+propina\b|\bno\s+(?:quiero|dejo|voy\s+a\s+dejar)\s+propina\b/.test(t)) out.sinPropina = true;
+  else {
+    const pct = /\b(\d{1,3}(?:[.,]\d{1,2})?)\s*%/.exec(t) ?? /\b(\d{1,3})\s*por\s*ciento\b/.exec(t);
+    if (pct) out.propinaPct = Number(pct[1]!.replace(",", "."));
+    else {
+      const mxn = /\bpropina\s+(?:de|del)?\s*\$?\s*(\d{1,5}(?:[.,]\d{1,2})?)\b/.exec(t) ?? /\b(\d{1,5})\s*(?:pesos\s*)?de\s+propina\b/.exec(t);
+      if (mxn) out.propinaMxn = Number(mxn[1]!.replace(",", "."));
+    }
+  }
+  if (out.pago !== "tarjeta" && out.propinaPct === undefined && out.propinaMxn === undefined) {
+    const m = MONTO_FINAL.exec(t);
+    if (m) {
+      const n = Number(m[1]!.replace(",", "."));
+      if (Number.isFinite(n) && (total === undefined || n >= total)) {
+        out.efectivoCon = n;
+        out.pago = out.pago ?? "efectivo";
+      }
+    }
+  }
+  return out;
+}
+
+/** ¿Todo lo que dice el mensaje coincide con lo que el resumen vigente ya muestra? */
+function coincideConElResumen(d: DatosDelMensaje, c: DatosDeCierre | undefined): boolean {
+  if (!c) return false;
+  if (d.pago === undefined && d.efectivoCon === undefined && d.propinaMxn === undefined && d.propinaPct === undefined && d.sinPropina === undefined) return false;
+  if (d.pago !== undefined && d.pago !== c.pago) return false;
+  if (d.efectivoCon !== undefined && d.efectivoCon !== c.efectivoCon) return false;
+  if (d.propinaMxn !== undefined && d.propinaMxn !== c.propinaMxn) return false;
+  if (d.propinaPct !== undefined && d.propinaPct !== c.propinaPct) return false;
+  if (d.sinPropina === true && (c.propinaMxn !== undefined || c.propinaPct !== undefined)) return false;
+  return true;
+}
+
+/** Mezcla lo que dijo el cliente con los datos cotizados (la propina dicha reemplaza la anterior; «sin propina» la quita). */
+export function aplicarDatosDelMensaje(base: DatosDeCierre, d: DatosDelMensaje): DatosDeCierre {
+  const pago = d.pago ?? base.pago;
+  return {
+    pago,
+    efectivoCon: pago === "tarjeta" ? undefined : (d.efectivoCon ?? base.efectivoCon),
+    propinaMxn: d.sinPropina ? undefined : d.propinaPct !== undefined ? undefined : (d.propinaMxn ?? base.propinaMxn),
+    propinaPct: d.sinPropina ? undefined : d.propinaMxn !== undefined ? undefined : (d.propinaPct ?? base.propinaPct),
+  };
 }
 
 /** Clasifica el mensaje del cliente frente a un resumen. SOLO `si` confirma. */
@@ -109,7 +177,11 @@ export function clasificarRespuestaCierre(mensaje: unknown, opciones: OpcionesCl
   if (MARCADORES_DE_CAMBIO.test(t)) return "cambio";
   const datoPagoOPropina = PAGO_O_PROPINA.some((re) => re.test(t));
   // «si, con tarjeta» / «ok, 500»: el cliente da un dato; el si no responde a un resumen con ese dato. No confirma.
-  if (datoPagoOPropina) return "dato";
+  if (datoPagoOPropina) {
+    // «sí, efectivo» / «sí confirmo, pago en efectivo» a un resumen que YA muestra efectivo es un sí; si el dato es otro (o el resumen no lo traia) es un dato nuevo: no confirma.
+    if (conAfirmacion && coincideConElResumen(datosDelMensaje(crudo, opciones.total), opciones.datosCotizados)) return "si";
+    return "dato";
+  }
   if (conAfirmacion && palabras <= 7) return "si";
   return "ambiguo";
 }
@@ -251,7 +323,15 @@ export type CodigoCierre = "cierre_resumen_no_mostrado" | "cierre_sin_si_explici
 
 export type DecisionConfirmacion =
   | { readonly ok: true }
-  | { readonly ok: false; readonly code: CodigoCierre; readonly mensaje: string; readonly respuesta: RespuestaCierre | "sin_resumen"; readonly marcarAmbiguo: boolean };
+  | {
+      readonly ok: false;
+      readonly code: CodigoCierre;
+      readonly mensaje: string;
+      readonly respuesta: RespuestaCierre | "sin_resumen";
+      readonly marcarAmbiguo: boolean;
+      /** Respuesta de pago / propina: el servidor adopta estos datos y rearma el resumen (no confirma). */
+      readonly datosNuevos?: DatosDeCierre;
+    };
 
 export interface EntradaDecision {
   readonly ctx: OrderFlowContext;
@@ -270,15 +350,20 @@ export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
   const ultimoAsistente = ultimoDe(e.historial, "assistant");
   const ultimoCliente = ultimoDe(e.historial, "user");
   if (!esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente)) {
+    // El cliente contesto un dato de pago / propina antes de ver el resumen: el servidor lo adopta para que el resumen que se le muestre ya lo lleve.
+    const previos = datosDeCierreDeContexto(e.ctx);
+    const claseFuera = clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: false, datosCotizados: previos, total: e.ctx.quotedTotal });
+    const nuevos = claseFuera === "dato" && ultimoCliente ? aplicarDatosDelMensaje(previos, datosDelMensaje(ultimoCliente, e.ctx.quotedTotal)) : undefined;
     return {
       ok: false,
       code: "cierre_resumen_no_mostrado",
       respuesta: "sin_resumen",
       marcarAmbiguo: false,
+      ...(nuevos && firmaDeCierre(nuevos) !== firmaDeCierre(previos) ? { datosNuevos: nuevos } : {}),
       mensaje: `NO se confirmó el pedido: el cliente todavía no ha visto el resumen final con el total de $${e.ctx.quotedTotal ?? "?"} y la pregunta de confirmación (un sí a otra pregunta, como el pago o la propina, no es la confirmación).${COMO_MOSTRAR(e.canonico)}`,
     };
   }
-  const clase = clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true });
+  const clase = clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, datosCotizados: datosDeCierreDeContexto(e.ctx), total: e.ctx.quotedTotal });
   if (clase === "si") return { ok: true };
   if (clase === "ambiguo") {
     // Salida segura: la primera vez se pide un si claro; si el cliente vuelve a contestar algo ambiguo DESPUES de que se le mostro el resumen otra vez, el modelo decide.
@@ -296,7 +381,13 @@ export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
     cambio: "El cliente quiere cambiar algo del pedido. No confirme: aplique el cambio, vuelva a llamar cotizar_pedido con el pedido corregido y muéstrele el resumen nuevo para que lo confirme.",
     dato: "El último mensaje del cliente es un dato de pago o propina, NO el sí al resumen. No confirme: guarde el dato, vuelva a llamar cotizar_pedido con el pago (y la propina si la dio) y muéstrele el resumen completo con ese dato para que diga sí.",
   };
-  return { ok: false, code: "cierre_sin_si_explicito", respuesta: clase, marcarAmbiguo: false, mensaje: `NO se confirmó el pedido. ${guia[clase]}` };
+  const mensaje = `NO se confirmó el pedido. ${guia[clase]}`;
+  if (clase === "dato" && ultimoCliente) {
+    const d = datosDelMensaje(ultimoCliente, e.ctx.quotedTotal);
+    const nuevos = aplicarDatosDelMensaje(datosDeCierreDeContexto(e.ctx), d);
+    if (firmaDeCierre(nuevos) !== firmaDeCierre(datosDeCierreDeContexto(e.ctx))) return { ok: false, code: "cierre_sin_si_explicito", respuesta: clase, marcarAmbiguo: false, mensaje, datosNuevos: nuevos };
+  }
+  return { ok: false, code: "cierre_sin_si_explicito", respuesta: clase, marcarAmbiguo: false, mensaje };
 }
 
 /**
@@ -323,7 +414,7 @@ export function datosDeCierreDeEntrada(input: Record<string, unknown>, ctx: Orde
   return { pago, efectivoCon, propinaMxn, propinaPct, heredaPropina };
 }
 
-/** Mensaje cuando crear_pedido llega con pago / efectivo / propina distintos a los del resumen confirmado. */
+/** Mensaje cuando crear_pedido llega con pago / efectivo / propina distintos a los del resumen confirmado. El servidor ya adopto el dato y rearmo el resumen. */
 export function mensajeDatosCambiaron(canonicoNuevo?: string): string {
-  return `NO se creó el pedido: el pago, el efectivo o la propina que intenta registrar NO son los del resumen que el cliente confirmó. Vuelva a llamar cotizar_pedido con esos datos (payment_method, efectivo_con, propina o propina_porcentaje), muéstrele el resumen nuevo y espere su sí.${canonicoNuevo ? `\n${canonicoNuevo}` : ""}`;
+  return `NO se creó el pedido: el pago, el efectivo o la propina que intenta registrar NO son los del resumen que el cliente confirmó. El sistema ya actualizó el resumen con ese dato.${canonicoNuevo ? ` Muéstreselo AHORA al cliente, copiado tal cual, y espere su sí en el mensaje siguiente (no vuelva a llamar crear_pedido en este turno):\n${canonicoNuevo}` : " Vuelva a llamar cotizar_pedido con esos datos (payment_method, efectivo_con, propina o propina_porcentaje), muéstrele el resumen nuevo y espere su sí."}`;
 }

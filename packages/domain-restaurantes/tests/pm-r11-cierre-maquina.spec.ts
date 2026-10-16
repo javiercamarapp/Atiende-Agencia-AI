@@ -10,6 +10,7 @@ import {
   cierreMaquinaActiva,
   clasificarRespuestaCierre,
   componerRespuestaConResumen,
+  datosDelMensaje,
   esResumenParaConfirmar,
   estadoDeCierre,
   firmaDeCierre,
@@ -117,6 +118,30 @@ describe("clasificador del ultimo mensaje del cliente", () => {
   }
   it("un mensaje largo con un «sí» perdido NO confirma", () => {
     expect(clasificarRespuestaCierre("sí oye pero resulta que mi mamá también quiere algo y no sé si llegue a tiempo", { despuesDelResumen: true })).not.toBe("si");
+  });
+});
+
+describe("«sí» con el dato de pago que el resumen YA muestra", () => {
+  const efectivo500 = { datosCotizados: { pago: "efectivo" as const, efectivoCon: 500 }, total: 90, despuesDelResumen: true };
+  const tarjeta = { datosCotizados: { pago: "tarjeta" as const }, total: 90, despuesDelResumen: true };
+  it("coincide con el resumen => es un sí", () => {
+    for (const m of ["Sí confirmo, pago en efectivo", "si efectivo", "Si, en efectivo", "sí, con 500", "sí, cambio de 500"]) expect(clasificarRespuestaCierre(m, efectivo500)).toBe("si");
+    for (const m of ["si tarjeta", "sí, con tarjeta", "Sí confirmo, pago con tarjeta"]) expect(clasificarRespuestaCierre(m, tarjeta)).toBe("si");
+  });
+  it("NO coincide (otro pago o monto) => dato nuevo, no confirma", () => {
+    expect(clasificarRespuestaCierre("sí, tarjeta", efectivo500)).toBe("dato");
+    expect(clasificarRespuestaCierre("sí, con 600", efectivo500)).toBe("dato");
+    expect(clasificarRespuestaCierre("sí, efectivo", tarjeta)).toBe("dato");
+    expect(clasificarRespuestaCierre("sí, con 10% de propina", tarjeta)).toBe("dato");
+    expect(clasificarRespuestaCierre("sí, efectivo", { despuesDelResumen: true })).toBe("dato"); // el resumen no traia pago
+  });
+  it("extrae pago, efectivo y propina del texto", () => {
+    expect(datosDelMensaje("con 600")).toEqual({ pago: "efectivo", efectivoCon: 600 });
+    expect(datosDelMensaje("efectivo, cambio de 500", 90)).toMatchObject({ pago: "efectivo", efectivoCon: 500 });
+    expect(datosDelMensaje("tarjeta con 10% de propina")).toEqual({ pago: "tarjeta", propinaPct: 10 });
+    expect(datosDelMensaje("de propina 20 pesos")).toEqual({ propinaMxn: 20 });
+    expect(datosDelMensaje("sin propina")).toEqual({ sinPropina: true });
+    expect(datosDelMensaje("con 50", 90)).toEqual({}); // no alcanza el total: no es un efectivo valido
   });
 });
 
@@ -252,16 +277,41 @@ describe("confirmar_resumen: solo con el resumen visto y un si explicito", () =>
     s.cliente("sí");
     expect(((await s.confirm()) as { result: { confirmado?: boolean } }).result.confirmado).toBe(true);
   });
-  it("el pago llega justo despues del resumen (cliente: «con 500») => dato, no confirma", async () => {
+  it("el pago llega justo despues del resumen (cliente: «con 600») => no confirma; el servidor lo adopta y rearma el resumen", async () => {
     const s = setup();
     s.cliente("dos cocas para recoger, soy Nora");
     await s.quote();
     await s.muestraResumen();
     s.cliente("con 600");
-    const r = (await s.confirm()) as { rechazoDelFlujo?: string; result: { error: string } };
+    const r = (await s.confirm()) as { rechazoDelFlujo?: string; result: { error: string; resumen_canonico: string } };
     expect(r.rechazoDelFlujo).toBe("cierre_sin_si_explicito");
     expect(r.result.error).toContain("dato de pago o propina");
-    await expect(s.create()).rejects.toMatchObject({ code: "sin_confirmacion" });
+    expect(r.result.resumen_canonico).toContain("paga con $600");
+    expect((await s.snap())?.context?.quotedEfectivoCon).toBe(600);
+    await expect(s.create({ efectivo_con: 600 })).rejects.toMatchObject({ code: "sin_confirmacion" });
+    s.asistente(r.result.resumen_canonico);
+    s.cliente("sí");
+    expect(((await s.confirm()) as { result: { confirmado?: boolean } }).result.confirmado).toBe(true);
+    expect((await s.create({ efectivo_con: 600 })).orderId).not.toBeNull();
+  });
+  it("«sí, pago en efectivo» a un resumen que ya dice efectivo => confirma de una vez (sin turno extra)", async () => {
+    const s = setup();
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    await s.muestraResumen();
+    s.cliente("Sí confirmo, pago en efectivo");
+    expect(((await s.confirm()) as { result: { confirmado?: boolean } }).result.confirmado).toBe(true);
+  });
+  it("«sí, mejor con tarjeta» a un resumen en efectivo => cambio de dato: no confirma y el resumen ya dice tarjeta", async () => {
+    const s = setup();
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    await s.muestraResumen();
+    s.cliente("sí, con tarjeta");
+    const r = (await s.confirm()) as { rechazoDelFlujo?: string; result: { resumen_canonico: string } };
+    expect(r.rechazoDelFlujo).toBe("cierre_sin_si_explicito");
+    expect(r.result.resumen_canonico).toContain("Pago: tarjeta");
+    expect((await s.snap())?.context?.quotedPago).toBe("tarjeta");
   });
   it("«No gracias» a «¿Es correcto o desea cambiar algo?» ES el visto bueno (bloqueante de #566)", async () => {
     const s = setup();
@@ -369,27 +419,40 @@ describe("crear_pedido: pago, efectivo y propina deben ser los del resumen confi
     // 10% de $90 = $9: la propina del resumen viaja al pedido sin que el modelo la repita.
     expect((r.raw as { propina?: number }).propina).toBeGreaterThan(0);
   });
-  it("propina DESPUES del resumen: crear la rechaza (cierre_datos_cambiaron) y exige re-cotizar y volver a mostrar", async () => {
+  it("propina DESPUES del resumen: crear la rechaza, el SERVIDOR adopta el dato y rearma el resumen; hace falta otro sí", async () => {
     const s = await confirmado({ payment_method: "tarjeta", efectivo_con: undefined });
-    const r = (await s.create({ payment_method: "tarjeta", efectivo_con: undefined, propina: 20 })) as unknown as { rechazoDelFlujo?: string; result: { error: string } };
+    const r = (await s.create({ payment_method: "tarjeta", efectivo_con: undefined, propina: 20 })) as unknown as { rechazoDelFlujo?: string; result: { error: string; resumen_canonico: string; resumen_total: number } };
     expect(r.rechazoDelFlujo).toBe("cierre_datos_cambiaron");
-    expect(r.result.error).toContain("cotizar_pedido");
-    // re-cotiza con la propina => cotizacion nueva (otra firma) => necesita otro sí
-    s.cliente("de propina 20 pesos");
-    await s.quote({ payment_method: "tarjeta", efectivo_con: undefined, propina: 20 });
+    expect(r.result.resumen_canonico).toContain("Propina: $20 (no suma al total)");
+    expect(r.result.error).toContain(r.result.resumen_canonico);
+    expect(r.result.resumen_total).toBe(await s.total());
     expect((await s.snap())?.state).toBe("cotizado");
-    expect(await s.canonico()).toContain("Propina: $20");
-    await s.muestraResumen();
+    // crear de nuevo en el mismo turno sigue sin confirmacion
+    await expect(s.create({ payment_method: "tarjeta", efectivo_con: undefined, propina: 20 })).rejects.toMatchObject({ code: "sin_confirmacion" });
+    s.asistente(r.result.resumen_canonico);
     s.cliente("sí");
     expect(((await s.confirm()) as { result: { confirmado?: boolean } }).result.confirmado).toBe(true);
     expect((await s.create({ payment_method: "tarjeta", efectivo_con: undefined, propina: 20 })).orderId).not.toBeNull();
   });
-  it("cambiar el pago o el efectivo despues del resumen tambien obliga a mostrarlo otra vez", async () => {
+  it("propina dicha y el modelo re-cotiza con ella: cotizacion nueva, otro sí", async () => {
+    const s = await confirmado({ payment_method: "tarjeta", efectivo_con: undefined });
+    s.cliente("ah, de propina 20 pesos");
+    await s.quote({ payment_method: "tarjeta", efectivo_con: undefined, propina: 20 });
+    expect((await s.snap())?.state).toBe("cotizado");
+    expect(await s.canonico()).toContain("Propina: $20");
+  });
+  it("cambiar el efectivo despues del resumen tambien lo rearma", async () => {
     const s = await confirmado();
-    const r1 = (await s.create({ efectivo_con: 200 })) as unknown as { rechazoDelFlujo?: string };
+    const r1 = (await s.create({ efectivo_con: 200 })) as unknown as { rechazoDelFlujo?: string; result: { resumen_canonico: string } };
     expect(r1.rechazoDelFlujo).toBe("cierre_datos_cambiaron");
-    const r2 = (await s.create({ payment_method: "tarjeta", efectivo_con: undefined })) as unknown as { rechazoDelFlujo?: string };
+    expect(r1.result.resumen_canonico).toContain("paga con $200");
+  });
+  it("cambiar de efectivo a tarjeta despues del resumen tambien lo rearma", async () => {
+    const s = await confirmado();
+    const r2 = (await s.create({ payment_method: "tarjeta", efectivo_con: undefined })) as unknown as { rechazoDelFlujo?: string; result: { resumen_canonico: string } };
     expect(r2.rechazoDelFlujo).toBe("cierre_datos_cambiaron");
+    expect(r2.result.resumen_canonico).toContain("Pago: tarjeta");
+    expect(r2.result.resumen_canonico).not.toContain("paga con");
   });
   it("relleno del modelo (propina 0, efectivo_con 0 con tarjeta) NO traba el cierre", async () => {
     const s = await confirmado({ payment_method: "tarjeta", efectivo_con: undefined });
