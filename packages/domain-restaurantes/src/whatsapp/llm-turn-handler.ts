@@ -24,15 +24,17 @@
 // propio historial de tool_calls.
 import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
-import { bloqueCotizacionVigente } from "../agent-tools/order-flow.ts";
+import { bloqueCotizacionVigente, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
+import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
@@ -41,7 +43,9 @@ import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, P
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
-import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { confirmacionDePedido } from "./confirmacion-pedido.ts";
+import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
+import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -296,7 +300,7 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
       const estado = estaAbiertoAhora(policy.horario, ahora, zona);
       if (estado.abierto) return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${estado.cierraA}` : ""}. Un pedido para recoger cuya hora caiga después del cierre no se puede tomar.`;
       const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${estado.proximaApertura.hora}` : "";
-      return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; NO tome el pedido ni acepte una hora de recogida o de entrega mientras esté cerrada (H16); si insiste, escale (otro).`;
+      return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; tome el pedido y PROGRÁMELO con programado_para para la apertura u otra hora dentro del horario (H16), sin decir que ya está en cocina.`;
     });
   } catch {
     return "";
@@ -391,7 +395,7 @@ export function enforceBistecPackNotice(reply: string, messages: readonly LlmMes
   if (
     typeof latestUserText !== "string" ||
     !/(?:\btacos?\b.{0,30}\bbistec(?:es)?\b|\bbistec(?:es)?\b.{0,30}\btacos?\b)/i.test(latestUserText) ||
-    /\b[oó]rdenes?\s+de\s+(?:3|tres)\b/i.test(reply)
+    /(?<![\p{L}\p{N}_])[oó]rdenes?\s+de\s+(?:3|tres)(?![\p{L}\p{N}_])/iu.test(reply)
   ) {
     return reply;
   }
@@ -593,6 +597,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let anyToolCalled = false;
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
+      // Ultimo `crear_pedido` EXITOSO de este turno (real o simulado), con los datos del servidor: si el modelo no alcanza a redactar la respuesta final
+      // (agota vueltas, el proveedor cae o contesta vacio) el cliente recibe SU confirmacion, nunca un texto de fallo ni un aviso falso al equipo.
+      const pedidosCreadosDelTurno: Array<{ readonly clave: string; readonly raw: unknown; readonly mensajeAlCliente: string | null; readonly timezone: string }> = [];
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
       // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
@@ -602,6 +609,23 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const safeReply = (reply: string) => {
         const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
         return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+      };
+      /** Zona horaria de la SUCURSAL del pedido (la misma que usa el servidor para validar la hora de recogida); si no se puede leer, la del agente. */
+      const zonaDeLaSucursal = async (propertyIdDelPedido: string | null | undefined, branchSlug: unknown): Promise<string> => {
+        try {
+          const pid = propertyIdDelPedido ?? (typeof branchSlug === "string" && branchSlug ? (await repo.findBranch(organizationId, { slug: branchSlug }))?.propertyId : null) ?? null;
+          if (pid) return resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(pid)).zonaHoraria);
+        } catch {
+          // Sin zona de sucursal se usa la del agente.
+        }
+        return config.timezone;
+      };
+      /** Confirmacion del pedido que SI se creo en este turno (null = no hubo, o no se puede redactar con datos del servidor). */
+      const confirmacionDelTurno = (): string | null => {
+        const textos = [...new Set(pedidosCreadosDelTurno.flatMap((p) => { const t = p.mensajeAlCliente ?? confirmacionDePedido(p.raw, { timezone: p.timezone }); return t ? [t] : []; }))];
+        if (textos.length === 0) return null;
+        // Con dos pedidos en el mismo turno no se reescribe el total (enforceQuotedTotal solo conoce el del ultimo): cada texto ya lleva su total del servidor.
+        return textos.length === 1 ? safeReply(textos[0]!) : textos.join("\n\n");
       };
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
@@ -646,22 +670,36 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
       // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
       const pendientes = mensajesSinResponder(messages).slice(-5);
-      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      const riesgoClasificado = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
+      const textoPendiente = pendientes.map((m) => m.content).join(" / ");
+      const recibeDetalle =
+        esperaDetalleDeQueja(messages) &&
+        pendientes.length > 0 &&
+        (riesgoClasificado === null || riesgoClasificado.motivo === "queja") &&
+        !pendientes.every((m) => noEsDetalleDeQueja(m.content));
+      const quejaSinDetalle = !recibeDetalle && riesgoClasificado?.motivo === "queja" && !quejaTraeDetalle(riesgoClasificado.text);
+      const riesgo: ReturnType<typeof classifyHighRiskIntentInMessages> = recibeDetalle
+        ? { intent: "queja", motivo: "queja", text: textoPendiente, reply: respuestaDeQuejaConDetalle(QUEJA_DETALLE_RECIBIDO, textoPendiente) }
+        : riesgoClasificado && riesgoClasificado.motivo === "queja"
+          ? { ...riesgoClasificado, reply: quejaSinDetalle ? QUEJA_PREGUNTA_DETALLE : respuestaDeQuejaConDetalle(riesgoClasificado.reply, riesgoClasificado.text) }
+          : riesgoClasificado;
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
         // cancelacion automatica que la sucursal haya permitido); si no aplica, `null` y todo sigue por el camino de siempre.
-        if (riesgo.motivo === "cancelacion_modificacion" && options.autopiloto) {
+        // `modificacion_pedido` (cambiar el pedido) tiene motivo `cancelacion_modificacion` para el equipo, pero NO es una cancelacion: no pasa por el autopiloto.
+        if (riesgo.intent === "cancelacion_modificacion" && options.autopiloto) {
           const resuelta = await intentarCancelacionConAutopiloto(repo, options.autopiloto, { organizationId, phone, ahora: now(), texto: riesgo.text });
           if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
         }
         // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).
-        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto ? subtipoQueja(riesgo.text) : null;
+        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle ? subtipoQueja(riesgo.text) : null;
         const aviso = await executeAgentToolSafely(
           repo,
           { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
           "escalar_a_humano",
-          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${riesgo.text}`.slice(0, 500) },
+          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${recibeDetalle ? "[detalle de la queja] " : quejaSinDetalle ? "[queja sin detalle, se le pregunto que paso] " : ""}${riesgo.text}`.slice(0, 500) },
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
@@ -670,9 +708,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
         // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
-        escalarMotivo = riesgo.motivo;
+        // Queja sin detalle: el aviso ya quedo registrado, pero NO se abre la toma (el agente sigue y recibe el detalle en el siguiente mensaje).
+        if (!quejaSinDetalle) escalarMotivo = riesgo.motivo;
         // Autopiloto: la queja queda ligada al ultimo pedido del telefono (solicitud de compensacion, decide una persona); no cambia la respuesta.
-        if (riesgo.motivo === "queja" && options.autopiloto) {
+        if (riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle) {
           await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: riesgo.text, ahora: now() });
         }
         tele.resultado = "escalado_alto_riesgo";
@@ -689,8 +728,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         lastQuoteAmounts = flowVigente.quotedAmounts;
       }
       // La cotizacion vigente del servidor le llega al modelo (solo PM): en el turno del "si" confirma y crea sin volver a buscar ni cotizar.
-      const cotizacionVigenteBloque = perfil === "taqueria_pm" && !preview ? bloqueCotizacionVigente(flowSnapshot, now().getTime()) : "";
-      const systemFinal = cotizacionVigenteBloque ? `${systemPrompt}\n\n${cotizacionVigenteBloque}` : systemPrompt;
+      const cotizacionVigenteBloque = perfil === "taqueria_pm" && !preview ? bloqueCotizacionVigente(flowSnapshot, now().getTime(), { resumenMostrado: resumenMostradoEnHistorial(flowVigente?.quotedTotal, messages) }) : "";
+      // R10 P1: lo que el servidor ya consulto y daria el mismo resultado que la herramienta se le dice al modelo (una vuelta menos). Vacio = prompt identico al de antes.
+      const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
+      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -712,6 +753,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // tecnico" a secas pierde el pedido sin que nadie del restaurante se entere. Se deja el aviso `falla_sistema` (con la sucursal de entrada)
       // y la toma de handoff para que una persona tome el pedido, como ya hace la voz. Solo se promete el aviso si quedo registrado de verdad.
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
+        const confirmacion = confirmacionDelTurno();
+        if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
         if (orderId) return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const ultimo = [...messages].reverse().find((m) => m.role === "user");
@@ -758,7 +801,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const base = completion.text || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          const base = completion.text || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
           if (noEntiendeActivo) {
             // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
             if (completion.text && pideRepetir(completion.text)) {
@@ -813,12 +856,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // puede responder "ya quedo registrado" (QA-PM-R3 revisor: hueco en el segundo pedido). Un pedido retenido (estado creado SIN orderId) no esta registrado: lo confirma la sucursal.
           const flowFinal = await repo.readOrderFlow(organizationId, `wa:${phone}`);
           const retenidoVigente = retenidoEnTurno || (flowFinal?.state === "creado" && !flowFinal.context?.orderId);
-          const creadoEnFlujo = flowFinal ? (flowFinal.state === "creado" && Boolean(flowFinal.context?.orderId)) || flowFinal.state === "creando" : messages.some((m) => m.role === "assistant" && m.pedidoCreado === true);
+          // Evidencia = un pedido con id (estado `creado` + orderId). `creando` es solo el reclamo en vuelo (si crear_pedido fallo a medias queda ahi SIN pedido): no es un pedido registrado (QA-PM-R8 A41).
+          const creadoEnFlujo = flowFinal ? flowFinal.state === "creado" && Boolean(flowFinal.context?.orderId) : messages.some((m) => m.role === "assistant" && m.pedidoCreado === true);
           const pedidoExiste = orderId !== null || pedidoSimulado !== undefined || yaRegistradoEnTurno || (!retenidoEnTurno && tele.tools.some((t) => t.tool === "crear_pedido" && t.resultado === "ok") && !retenidoVigente) || (!retenidoEnTurno && creadoEnFlujo);
           // Un pedido ACTIVO reciente del telefono (voz, hace mas de 2 h, de otro flujo) tambien existe: la respuesta a «¿ya salio mi pedido?» ("va en preparacion", "ya esta en camino") es
           // verdad y no se borra. Retenido (por_confirmar), no recogido, con problema y cancelado NO cuentan. Si el turno esta armando OTRO pedido (cotizacion de este turno o flujo
           // cotizado/confirmado) solo se quitan las afirmaciones de REGISTRO, no las de ESTADO, del pedido anterior.
-          const previoActivo = !customer.isNew && customer.pedidoReciente != null && ["preparando", "salio", "listo_para_recoger", "entregado", "programado"].includes(customer.pedidoReciente.estado);
+          const previoActivo = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "entregado", "programado"].includes(customer.pedidoReciente.estado);
           const armandoOtro = cotizacionDelTurno !== null ? true : flowFinal?.state === "cotizado" || flowFinal?.state === "confirmado";
           const guardiaSoloRegistro = !pedidoExiste && previoActivo && !retenidoEnTurno && armandoOtro;
           const pedidoExisteFinal = pedidoExiste || (previoActivo && !retenidoEnTurno && !armandoOtro);
@@ -876,6 +920,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               });
             }
             if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
+            if (call.name === "crear_pedido" && !isToolErrorResult(result)) {
+              const rc = result as { mensaje_al_cliente?: unknown; pedido_grande?: unknown } | null;
+              const mensaje = typeof rc?.mensaje_al_cliente === "string" && rc.mensaje_al_cliente.trim() ? rc.mensaje_al_cliente : null;
+              // Pedido grande retenido (con o sin autopiloto, real o preview): lo unico que se le dice al cliente es el mensaje del servidor; NO es un pedido registrado.
+              const retenido = rc?.pedido_grande === true || executed.pedidoRetenido === true;
+              if (retenido ? mensaje !== null : Boolean(executed.simulated || executed.orderId)) {
+                const idCrudo = (executed.raw as { id?: unknown } | null)?.id;
+                const clave = executed.orderId ?? (typeof idCrudo === "string" ? idCrudo : "retenido");
+                if (!pedidosCreadosDelTurno.some((p) => p.clave === clave)) {
+                  pedidosCreadosDelTurno.push({ clave, raw: executed.raw, mensajeAlCliente: retenido ? mensaje : null, timezone: retenido ? config.timezone : await zonaDeLaSucursal(executed.propertyId, input.branch_slug) });
+                }
+              }
+            }
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
@@ -926,6 +983,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       tele.resultado = "loop_agotado";
+      const confirmacionTrasAgotar = confirmacionDelTurno();
+      if (confirmacionTrasAgotar) return done({ reply: confirmacionTrasAgotar, orderId, propertyId });
       if (orderId) {
         return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
       }
@@ -952,7 +1011,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
-        salida = await ejecutarTurno(entrada, tele);
+        const turno = await ejecutarTurno(entrada, tele);
+        // Unico punto de salida del texto: WhatsApp y la preview del panel leen *negrita* con un asterisco, no markdown (ver formato-whatsapp.ts).
+        salida = { ...turno, reply: normalizarFormatoWhatsApp(turno.reply) };
         return salida;
       } catch (err) {
         tele.resultado = "error_sistema";

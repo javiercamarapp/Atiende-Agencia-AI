@@ -13,7 +13,7 @@
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
 import { ControladorLlamada, canonicalizeMexicanPhone, detectArcoIntent, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
-import { costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
+import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
@@ -64,6 +64,8 @@ export interface DepsAtencion {
   readonly limites?: LimitesLlamada;
   /** Silencio maximo del agente tras el resultado de una herramienta antes de decir "un momento, por favor" (ms). Por omision `VIGILAR_SILENCIO_AGENTE_MS`. */
   readonly vigilarSilencioAgenteMs?: number;
+  /** Tope (ms) de espera a que la despedida termine de sonar antes de colgar. Por omision `TOPE_VACIAR_SALIDA_MS`. */
+  readonly topeVaciarSalidaMs?: number;
   /** Cada cuanto se vuelcan los turnos nuevos al registrador (ms). */
   readonly volcadoTurnosMs?: number;
 }
@@ -90,6 +92,22 @@ const programarPorDefecto = (tarea: () => void, ms: number): (() => void) => {
   return () => clearInterval(id);
 };
 
+/** Semilla estable (FNV-1a) del `callId`: el ambiente de cada llamada es distinto pero reproducible. */
+export function semillaDeLlamada(callId: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < callId.length; i++) {
+    h ^= callId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** Herramientas durante las cuales NO suena el tecleo. */
+export const HERRAMIENTAS_SIN_TECLEO: ReadonlySet<string> = new Set(["escalar_a_humano", TOOL_CONFIRMAR_TELEFONO]);
+
+/** Tope (ms) de espera a que la despedida termine de sonar antes de colgar. Pasado el tope se corta y se cuelga: la llamada nunca espera para siempre. */
+export const TOPE_VACIAR_SALIDA_MS = 20_000;
+
 const CALL_ID_INVALIDO = /[^A-Za-z0-9._:-]/g;
 const sanearCallId = (id: string): string => id.replace(CALL_ID_INVALIDO, "-").slice(0, 128) || "llamada";
 
@@ -101,6 +119,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   const ref = referenciaLlamada(callId);
   const log = (evento: string, campos: Record<string, unknown> = {}): void => eventoSinPII(deps.log, evento, { callRef: ref, ...campos });
   const iniciadaEn = ahora();
+  const topeVaciarMs = deps.topeVaciarSalidaMs ?? TOPE_VACIAR_SALIDA_MS;
 
   const entrada: EntradaDnis | undefined = deps.config.dnis.get(normalizarNumero(tel.dnis) ?? "");
   if (!entrada) {
@@ -118,9 +137,12 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
 
   // Cuelgue del cliente: se aplica al controlador cuando exista y se recuerda para el cierre.
   let clienteColgo = false;
+  // Cierra la salida mezclada (si hay) cuando el cliente cuelga: la voz que el puente encole despues no se va a consumir y no debe dejar la llamada esperando.
+  let cerrarSalidaMezclada: (() => void) | null = null;
   let alColgarCliente: (() => void) | null = null;
   tel.alColgar(() => {
     clienteColgo = true;
+    cerrarSalidaMezclada?.();
     alColgarCliente?.();
   });
 
@@ -219,9 +241,36 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return salida;
   };
   let sesionActual: VozSesionLlamada | null = null;
+  // Ambiente de restaurante y tecleo (ajustes del agente). Solo si la telefonia sabe bombear una salida mezclada Y hay algo activo; si no, la llamada suena como siempre.
+  const sonido = contexto.sonido;
+  const mezclador =
+    tel.abrirSalidaMezclada && sonido
+      ? new MezcladorSalida({
+          ...(sonido.fondo.activo ? { ambiente: { volumen: sonido.fondo.volumen, preset: sonido.fondo.preset, semilla: semillaDeLlamada(callId) } } : {}),
+          ...(sonido.tecleo.activo ? { tecleo: { volumen: sonido.tecleo.volumen, semilla: semillaDeLlamada(callId) + 1 } } : {}),
+        })
+      : null;
+  const salidaMezclada = mezclador !== null && mezclador.conEfectos ? mezclador : null;
+  // Si el bombeo falla, la llamada vuelve al audio sin mezcla (tel.reproducir) en vez de quedarse muda o colgada; el codigo es corto y sin PII.
+  let alFalloSonido: (() => void) | null = null;
+  let alTomarVozSonido: ((ms: number) => void) | null = null;
+  if (salidaMezclada) {
+    cerrarSalidaMezclada = () => salidaMezclada.cerrar();
+    // El cliente pudo colgar ANTES de que se abriera la salida (mientras se pedia el contexto): se cierra ya.
+    if (clienteColgo) salidaMezclada.cerrar();
+    tel.abrirSalidaMezclada!(salidaMezclada, {
+      alFallo: (codigo) => {
+        log("sonido_mezclador_fallo", { codigo });
+        alFalloSonido?.();
+      },
+      alTomarVoz: (ms) => alTomarVozSonido?.(ms),
+    });
+    log("sonido_ambiente", { mensaje: salidaMezclada.ambiente !== null && salidaMezclada.tecleo !== null ? "fondo+tecleo" : salidaMezclada.ambiente !== null ? "fondo" : "tecleo" });
+  }
   const puente = new PuenteAudio({
     tel,
     ahora,
+    ...(salidaMezclada ? { mezclador: salidaMezclada } : {}),
     eventos: {
       usuarioHabla: () => controlador.usuarioHabla(),
       silencio: (ms) => controlador.silencio(ms),
@@ -230,6 +279,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     },
     enviarASesion: (pcm) => sesionActual?.enviarAudio?.(pcm),
   });
+  alFalloSonido = () => puente.desactivarMezclador();
+  alTomarVozSonido = (ms) => puente.registrarColaSalida(ms);
   // Consentimiento de grabacion: la primera respuesta clara del cliente DESPUES de que el agente termino el aviso se manda al servidor, que la interpreta
   // (conservador: lo ambiguo es "no grabar"). Una respuesta ambigua repite la pregunta hasta REINTENTOS_CONSENTIMIENTO veces.
   const pideConsentimiento = aviso?.pideConsentimientoGrabacion === true && conversationId !== null;
@@ -297,7 +348,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     segundoPlano.push(colaArco);
   };
   const abrirSesion: AbrirSesionLlamada = async (apertura, h) => {
-    const sesion = await escalera.abrirSesion(apertura, {
+    const sesion = await escalera.abrirSesion(contexto.temperatura !== null ? { ...apertura, temperatura: contexto.temperatura } : apertura, {
       ...h,
       audioAgente: (pcm) => puente.audioAgente(pcm),
       agenteTermino: () => {
@@ -337,7 +388,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return { ok: true, mensaje: "Teléfono registrado." };
   };
   const ejecutorBase = crearEjecutorTools({ transporte, timeoutMs: limites.toolTimeoutMs });
-  const ejecutor: EjecutorTools = telefonoPendiente
+  const ejecutorSinSonido: EjecutorTools = telefonoPendiente
     ? {
         definiciones: () => [...ejecutorBase.definiciones(), DEFINICION_CONFIRMAR_TELEFONO as unknown as ReturnType<EjecutorTools["definiciones"]>[number]],
         async ejecutar(nombre, args, contexto) {
@@ -349,6 +400,15 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         },
       }
     : ejecutorBase;
+  // Tecleo sincronizado con la duracion REAL de cada herramienta (mismo punto para Gemini Live y para la cascada: ambos pasan por el ejecutor del controlador).
+  const ejecutor: EjecutorTools = salidaMezclada?.tecleo
+    ? conAvisosDeHerramienta(ejecutorSinSonido, {
+        inicia: (id) => salidaMezclada.herramientaInicia(id),
+        termina: (id, ok) => salidaMezclada.herramientaTermina(id, ok),
+        // Pasar con una persona (incluida la guardia de crisis) y registrar el telefono dictado no son «anotar el pedido»: no suena tecleo.
+        incluir: (nombre) => !HERRAMIENTAS_SIN_TECLEO.has(nombre),
+      })
+    : ejecutorSinSonido;
   const controlador = new ControladorLlamada({
     callId,
     propertyId,
@@ -426,8 +486,9 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     if (iniciada) (sesionActual as VozSesionLlamada | null)?.enviarTexto(disparadorDeApertura(aviso));
     const fin = await controlador.terminada;
     resultado = fin.resultado;
-    // La despedida o el pregrabado terminal tienen que sonar antes de colgar.
-    await puente.vaciar();
+    // La despedida o el pregrabado terminal tienen que sonar antes de colgar (con tope). Si el cliente ya colgo, nadie la oye y la voz en cola no se va a consumir: se descarta.
+    if (clienteColgo || senal?.aborted === true) puente.cortarAudio();
+    else if (!(await puente.vaciar(topeVaciarMs))) log("salida_no_vacio", { ms: topeVaciarMs });
   } finally {
     cancelarReloj();
     cancelarVolcado();
@@ -438,6 +499,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
 
   // 6) Cierre: costo por escalon (en `core.usage_cost_event`), turnos, conversacion. La duracion y el p95 los calcula la base desde los turnos.
   const tramos = escalera.tramos();
+  // Avisos de costo no finitos o negativos que la escalera descarto (sin PII: solo el conteo). Si hubo, el costo de la llamada podria estar subestimado.
+  if (escalera.costosInvalidos() > 0) log("costos_invalidos", { invalidos: escalera.costosInvalidos() });
   const eventos = eventosCostoLlamada({ vertical: "restaurantes", llamadaId: callId, organizationId, propertyId, ocurridoEn: new Date(iniciadaEn).toISOString(), tramos });
   costoMicroUsd = costoTotalMicroUsd(eventos);
   if (conversationId && tramos.length > 0) {
@@ -448,6 +511,13 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     }
   }
   await volcarTurnos(true, costoMicroUsd);
+  // Retraso que anadio la cola del bombeo de la salida mezclada a cada respuesta (solo con ambiente/tecleo).
+  if (puente.colasSalidaMs.length > 0) {
+    const ord = [...puente.colasSalidaMs].sort((a, b) => a - b);
+    const pc = (p: number): number => ord[Math.min(ord.length - 1, Math.max(0, Math.ceil(p * ord.length) - 1))] ?? 0;
+    log("salida_cola_p50", { ms: Math.round(pc(0.5)), intento: ord.length });
+    log("salida_cola_p95", { ms: Math.round(pc(0.95)), intento: ord.length });
+  }
   // Latencia de voz a voz de cada respuesta (B-36) como EVENTO operativo (sin texto): se mide aunque la llamada no se grabe.
   if (puente.latenciasMs.length > 0) {
     const ordenadas = [...puente.latenciasMs].sort((a, b) => a - b);

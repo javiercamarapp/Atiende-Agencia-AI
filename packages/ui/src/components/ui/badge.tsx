@@ -8,7 +8,7 @@ import { cn } from "../../lib/utils";
 // reemplazan los pares bg-green-100 text-green-800 dark:... escritos a mano.
 // Para un estado de negocio (pendiente, pagado, vencido) prefiere <StatusBadge>.
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-colors",
+  "inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-colors rest:px-2.5 rest:font-semibold",
   {
     variants: {
       variant: {

@@ -135,11 +135,23 @@ export interface OpcionesClasificadorArco {
   readonly ahoraMs?: () => number;
 }
 
+/** Quita una cerca de codigo (```json ... ```) sin regex cuantificada (evita ReDoS). */
+function quitarCercaDeCodigo(texto: string): string {
+  let t = texto.trim();
+  if (t.startsWith("```")) {
+    t = t.slice(3);
+    if (t.slice(0, 4).toLowerCase() === "json") t = t.slice(4);
+    t = t.trimStart();
+  }
+  if (t.endsWith("```")) t = t.slice(0, -3).trimEnd();
+  return t;
+}
+
 /** Valida y normaliza la salida del modelo; `null` si no cumple el esquema. */
 export function parsearSalidaClasificador(texto: string): ResultadoClasificadorArco | null {
   let crudo: unknown;
   try {
-    crudo = JSON.parse(texto.trim().replace(/^```(?:json)?\s*|\s*```$/g, ""));
+    crudo = JSON.parse(quitarCercaDeCodigo(texto));
   } catch {
     return null;
   }

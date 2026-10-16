@@ -2,6 +2,7 @@ export { cn } from "./lib/utils.js";
 export { GRAFICA_TEMA, duracionEntradaGrafica } from "./lib/graficas-tema.js";
 export { formatMoney } from "./lib/formatMoney.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
+export { useAmbitoVertical, ATRIBUTO_AMBITO } from "./lib/ambito.js";
 
 // Ticket de cocina imprimible (restaurantes, PM PR-7).
 export {
@@ -118,6 +119,7 @@ export {
   type SelectTriggerProps,
 } from "./components/ui/select.js";
 export { TAMANOS_MODAL, CHIP_ICONO_MODAL, SUPERFICIE_FLOTANTE, type TamanoModal } from "./components/ui/superficies.js";
+export { SelectorSucursal, type SelectorSucursalProps, type SelectorSucursalOpcion } from "./components/SelectorSucursal.js";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { FormField, type FormFieldControlProps, type FormFieldProps } from "./components/ui/form-field.js";

@@ -10,7 +10,10 @@ Contrato de API: `apps/api/src/routes/verticals/restaurantes/ajustes-agente.ts`.
 | Temperatura de la voz | Parámetro real de Gemini Live (`generationConfig.temperature`) | Vista previa ahora; llamadas reales con el servicio de llamadas |
 | Ritmo y estilo de habla | Gemini no tiene velocidad numérica: se piden por instrucción, anexada **al final** (no cambia reglas ni el trato de usted) | Vista previa ahora; llamadas reales con el servicio de llamadas |
 | Modelo de la cascada de voz | Mismo catálogo con costo por minuto | Solo existe en llamadas reales (el escalón 2 de la escalera) |
-| Sonido de fondo de restaurante | Murmullo sintetizado, apagado por omisión, volumen 0 a 20 % | La mezcla (`FondoRestaurante`) está probada en aislado; se aplica cuando el worker de telefonía la use |
+| Sonido de fondo de restaurante | Ambiente sintetizado con tres presets (`cocina-taqueria`, `sala-tranquila`, `calle-ocupada`), apagado por omisión, volumen 0 a 20 % (pico), baja bajo la voz | Llamadas reales: el worker lo mezcla en la salida (`MezcladorSalida`; sin probar contra LiveKit real). **No suena en la vista previa del panel** (la pantalla dice «No disponible aún») |
+| Tecleo al anotar | Clics de teclado/POS sintetizados mientras una herramienta está en vuelo (cotizar, confirmar, crear pedido, buscar cliente); se corta si el cliente habla; apagado por omisión, volumen 0 a 25 % | Igual que el fondo (migración 087) |
+| Naturalidad en español de México | Anexa al final de la instrucción el bloque de acento/léxico mexicano y de naturalidad (`BLOQUE_NATURALIDAD`) | Llamadas reales (llegan con el contexto de la llamada) y vista previa (migración 087) |
+| Preset «restaurante humano» | Rellena ritmo, estilo, temperatura, ambiente, tecleo y naturalidad (no guarda solo ni cambia la voz); ver `docs/VOZ-RESTAURANTE-HUMANO.md` | Ahora |
 | Voz y saludo por sucursal | Catálogo de 30 voces con muestra y frase de saludo (config de voz existente) | Ya |
 | Conocimiento automático | Documentos generados **al momento** de los datos (ver abajo) | Vista previa de voz ya; llamadas reales con el servicio de llamadas |
 | Clonación de voz | **No se construye**: Gemini no clona | Estado honesto "No disponible con el proveedor actual" |
@@ -46,10 +49,19 @@ de `cotizar_pedido`.
 
 1. Mergear el código (compatible con la base sin migrar: GET devuelve los valores de siempre con `disponible: false`; PUT responde 503; el agente se comporta igual).
 2. Aplicar `packages/domain-restaurantes/migrations/055_ajustes_agente_modelo_voz_fondo.sql` (espejo `supabase/migrations/20240101000330_...`). Después de aplicarla se pueden guardar ajustes.
+2b. Aplicar `packages/domain-restaurantes/migrations/087_ajustes_agente_ambiente_tecleo_humano.sql` (espejo `supabase/migrations/20240101000398_...`): cuatro columnas en la misma tabla (preset de ambiente, tecleo, volumen del tecleo, naturalidad). Sin ella, GET devuelve `ambienteDisponible: false`, los ajustes de siempre siguen funcionando y guardar lo nuevo responde 503 («No disponible aún: requiere la migración 087»). Verificación: `scripts/verify-restaurantes-voz-ambiente-tecleo/` (Postgres real, puerto 55787). **Esta migración no se ha aplicado a ninguna base.**
 3. Sin variables nuevas ni crons nuevos. Cambiar el modelo de WhatsApp requiere `OPENROUTER_API_KEY` (sin ella, el gateway real no existe y la elección no tiene efecto).
 
-## Dependencia: servicio de llamadas (PR #418, `apps/voice-worker`)
+## Lo que el worker de llamadas aplica hoy (`apps/voice-worker`)
 
-Para que la voz real use estos ajustes el worker debe: leer `GET /internal/restaurantes/voz/ajustes-llamada?organizationId=` (secreto interno), pasar `temperatura` y
-`modeloLlm` en `AperturaLlamada`, anexar el bloque con `instruccionConAjustes`, resolver `PeticionLlmVoz.modeloPreferido` con la misma política de proveedores y mezclar
-el fondo con `FondoRestaurante.mezclar`. Esos puntos de entrada ya existen y están probados; conectarlos es del PR del worker.
+`POST /internal/restaurantes/voz/llamada/contexto` ahora devuelve, además de la instrucción: `sonido` (fondo con preset y volumen, tecleo con volumen) y `temperatura`. La instrucción
+ya incluye ritmo, estilo y, si está activa, la naturalidad (`instruccionConAjustes`). El worker:
+
+- abre un `MezcladorSalida` solo si la telefonía sabe bombear una salida mezclada y hay fondo o tecleo activos (si no, la llamada suena como siempre); en LiveKit un bombeo continuo de
+  tramas de 20 ms alimenta la pista del agente (`bombearSalida`);
+- avisa inicio y fin de CADA herramienta al tecleo desde el ejecutor del controlador (el mismo punto para Gemini Live y para la cascada);
+- baja el ambiente y corta el tecleo cuando el puente de audio oye hablar al cliente, y vacía la cola de voz del agente en un barge-in;
+- pone la temperatura en la apertura de la sesión (la leen Gemini Live y la cascada).
+
+Sigue SIN aplicarse en llamadas reales: `modeloCascada` (el modelo de la cascada de los ajustes) y la verbalización por umbral en milisegundos (la espera se enmascara con la frase pedida en la
+instrucción y con el tecleo, no con un temporizador). Nada de esto se ha probado contra LiveKit, Twilio ni Gemini reales.

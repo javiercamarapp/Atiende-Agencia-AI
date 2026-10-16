@@ -211,7 +211,7 @@ const VERIFICACIONES: Readonly<Record<string, () => Promise<void> | void>> = {
       { product_id: f.p.pastor, product_name: "Taco al Pastor (individual)", requested_quantity: 2, tortilla: "maiz" },
       { product_id: f.p.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 },
     ];
-    const crear = { branch_slug: SUC, customer_name: "[NOMBRE]", canal: "recoger", payment_method: "efectivo", items };
+    const crear = { branch_slug: SUC, customer_name: "Carlos Prueba", canal: "recoger", payment_method: "efectivo", items };
     await invokeAgentTool(f.repo, ctxWa(f, "1"), "cotizar_pedido", { branch_slug: SUC, canal: "recoger", items });
     await invokeAgentTool(f.repo, ctxWa(f, "2"), "confirmar_resumen", {});
     const creado = await invokeAgentTool(f.repo, ctxWa(f, "2"), "crear_pedido", crear);

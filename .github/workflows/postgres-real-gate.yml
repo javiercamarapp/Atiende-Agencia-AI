@@ -204,7 +204,7 @@ jobs:
           node-version: "22"
 
       - name: Descargar reportes de los shards
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: postgres-gate-report-*
           path: ${{ runner.temp }}/reportes

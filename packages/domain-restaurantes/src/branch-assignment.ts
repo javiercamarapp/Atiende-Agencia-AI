@@ -56,6 +56,12 @@ export function radioRepartoDelPerfil(perfil: PerfilAgenteWhatsApp, configuradoK
   return perfil === "taqueria_pm" ? RADIO_REPARTO_PM_KM : null;
 }
 
+/**
+ * Un pin a mas de esta distancia de TODA sucursal no es un domicilio «fuera de zona» al que se le pueda ofrecer recoger: es una coordenada mal formada (un signo, un digito de mas:
+ * QA-PM-R8 T7-002, «2,922 km») o un pin de otra ciudad. `fuera_de_zona` lo marca `ubicacionImplausible` y `buscar_sucursal_cercana` no nombra sucursal ni distancia. 1000 km deja como domicilios reales Valladolid, Campeche o Cancun y atrapa el error de T7-002 (2,923 km).
+ */
+export const UBICACION_IMPLAUSIBLE_KM = 1000;
+
 export const FUERA_DE_ZONA_MENSAJE = "Ese domicilio queda fuera de la zona de reparto: no se envía. Ofrezca recoger en sucursal.";
 
 export interface AssignBranchInput {
@@ -115,6 +121,8 @@ export type BranchAssignment =
       readonly origen: "pin" | "distancia" | "referencia_piloto";
       /** false = alguna sucursal de despacho no se puede medir: `branchSlug` es solo la mejor medible y NO se debe presentar como «la mas cercana». */
       readonly medicionConfiable: boolean;
+      /** true = el pin queda a mas de `UBICACION_IMPLAUSIBLE_KM` de toda sucursal: coordenada mal formada u otra ciudad, no un domicilio al que ofrecer recoger. */
+      readonly ubicacionImplausible?: true;
       readonly recognizedZoneName: string | null;
       readonly message: string;
     }
@@ -167,7 +175,7 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   const hasLat = input.lat !== undefined;
   const hasLng = input.lng !== undefined;
   if (hasLat !== hasLng) throw new OrderValidationError("lat y lng deben venir juntas.");
-  if (hasLat && !esCoordenadaValida(input.lat, input.lng)) throw new OrderValidationError("Coordenadas inválidas: lat entre -90 y 90, lng entre -180 y 180.");
+  if (hasLat && !esCoordenadaValida(input.lat, input.lng)) throw new OrderValidationError("Coordenadas inválidas: lat entre -90 y 90, lng entre -180 y 180. NO las repita ni reintente con las mismas: pídale al cliente que comparta de nuevo su ubicación de WhatsApp o que le diga su colonia, y vuelva a llamar buscar_sucursal_cercana con la colonia.");
   if (input.maxKm !== undefined && (typeof input.maxKm !== "number" || !Number.isFinite(input.maxKm) || input.maxKm <= 0 || input.maxKm > 500)) {
     throw new OrderValidationError("maxKm debe ser un número entre 0 y 500.");
   }
@@ -320,6 +328,7 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
       maxKm: topeEfectivo,
       origen: via === "coordenadas" ? "pin" : "distancia",
       medicionConfiable: confiable,
+      ...(via === "coordenadas" && nearest.km > UBICACION_IMPLAUSIBLE_KM ? { ubicacionImplausible: true as const } : {}),
       recognizedZoneName: zone ? zone.name : null,
       // Sin medicion confiable no se nombra una «mas cercana» calculada con sucursales que no se pueden medir.
       message: mensajeFueraDeZonaHabitual({ masCercana: confiable ? aCercana(nearest.branch, nearest.km) : null, radioKm: confiable ? radioTexto : null, kmFuera: confiable ? nearest.km : null }),

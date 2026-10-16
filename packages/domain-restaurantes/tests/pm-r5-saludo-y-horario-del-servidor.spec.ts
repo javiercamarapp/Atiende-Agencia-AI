@@ -56,7 +56,7 @@ describe("VZ17: la instruccion de la llamada lleva el saludo y el estado de la s
     expect(t).toMatch(/Salude solo al inicio \("Buenos días, gracias por llamar a/);
     expect(t).not.toMatch(/Salude solo al inicio \("Buenas tardes/);
     expect(t).toMatch(/CERRADA ahora; abre hoy a las 12:00/);
-    expect(t).toMatch(/NO tome el pedido ni acepte una hora/);
+    expect(t).toMatch(/tome el pedido y PROGRÁMELO con programado_para/);
   });
 
   it("13:00: «buenas tardes» y ABIERTA hasta la 01:00 (la sucursal no se declara cerrada de dia)", async () => {

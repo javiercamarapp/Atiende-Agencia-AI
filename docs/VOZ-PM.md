@@ -86,8 +86,9 @@ redactados.
   solo "¿sigue ahi?", no repetir datos, reintento honesto de `crear_pedido`, reservaciones) y el apendice de la llamada. El bloque no cuenta para el tope
   del panel. Lo usa la vista previa del panel (solo organizaciones con perfil `taqueria_pm`; las demas conservan su texto tal cual) **y la instruccion de la llamada real**:
   `armarInstruccionLlamada` delega en ella cuando el dueno edito el comportamiento (el bloque de reglas va despues de su texto).
-- **Temperatura 0** (`VOZ_PLATAFORMA.gemini.temperatura` y `.cascada.temperatura`): va en `generationConfig` del setup de Gemini Live y en la peticion del
-  LLM de la cascada (`PeticionLlmVoz.temperatura`; el puerto que la implemente debe respetarla).
+- **Temperatura 0 por omision** (`VOZ_PLATAFORMA.gemini.temperatura` y `.cascada.temperatura`): va en `generationConfig` del setup de Gemini Live y en la peticion del
+  LLM de la cascada (`PeticionLlmVoz.temperatura`; el puerto que la implemente debe respetarla). La temperatura que el dueno elige en Ajustes del agente se aplica **solo a Gemini Live** y con tope
+  **0.4** (`TEMPERATURA_VOZ_LLAMADA_MAX`); una organizacion que guardo una mayor se baja a 0.4 en las llamadas reales y el panel lo informa. La cascada NO usa la temperatura de la organizacion.
 - **Idioma:** los modelos de audio nativo de la **Gemini API** eligen el idioma solos y no admiten `languageCode` (investigación 4-oct): `VOZ_PLATAFORMA.gemini.idioma` es `null` y el español de México
   y el trato de usted van en la primera línea de la instrucción (`instruccionIdioma`). El adaptador de **Vertex AI** sí manda `es-US`. `gemini-3.8-live` no admite `thinkingLevel`: el setup nunca lo manda
   (prueba en `parametros-voz.spec.ts`). **Sin verificar contra la API real.**

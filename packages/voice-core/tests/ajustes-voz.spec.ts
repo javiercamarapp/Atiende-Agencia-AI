@@ -13,6 +13,8 @@ import {
   esVolumenFondo,
   instruccionDeHabla,
   VOZ_PLATAFORMA,
+  TEMPERATURA_VOZ_LLAMADA_MAX,
+  temperaturaParaLlamada,
   mensajeSetup,
 } from "../src/index.ts";
 import type { AperturaLlamada, ManejadoresSesion, PeticionLlmVoz, PuertoLlmVoz } from "../src/index.ts";
@@ -29,6 +31,22 @@ describe("temperatura de voz hacia Gemini Live", () => {
     expect((mensajeSetup("m", { ...BASE, temperatura: 0.4 }).setup.generationConfig as Record<string, unknown>).temperature).toBe(0.4);
     expect((mensajeSetup("m", { ...BASE, temperatura: 0 }).setup.generationConfig as Record<string, unknown>).temperature).toBe(0);
     expect((mensajeSetup("m", { ...BASE, temperatura: null }).setup.generationConfig as Record<string, unknown>).temperature).toBe(0);
+  });
+
+  it("en llamadas reales la temperatura de la organizacion tiene tope 0.4 (una mayor, guardada antes, se baja); la vista previa no se toca", () => {
+    const t = (x: number | null) => (mensajeSetup("m", { ...BASE, temperatura: x }).setup.generationConfig as Record<string, unknown>).temperature;
+    expect(t(0.9)).toBe(TEMPERATURA_VOZ_LLAMADA_MAX);
+    expect(t(1)).toBe(0.4);
+    expect(t(0.4)).toBe(0.4);
+    expect(t(0.2)).toBe(0.2);
+  });
+
+  it("temperaturaParaLlamada: invalida/ausente = la de la plataforma (null); mayor al tope = el tope e informa que se ajusto", () => {
+    expect(temperaturaParaLlamada(0.3)).toEqual({ valor: 0.3, ajustada: false });
+    expect(temperaturaParaLlamada(0)).toEqual({ valor: 0, ajustada: false });
+    expect(temperaturaParaLlamada(0.4)).toEqual({ valor: 0.4, ajustada: false });
+    expect(temperaturaParaLlamada(0.8)).toEqual({ valor: 0.4, ajustada: true });
+    for (const malo of ["", null, false, [], {}, undefined, -1, 1.5, Number.NaN, "0.2"]) expect(temperaturaParaLlamada(malo)).toEqual({ valor: null, ajustada: false });
   });
 
   it("la sesion de preview manda la temperatura al token efimero", async () => {
@@ -48,7 +66,7 @@ describe("temperatura de voz hacia Gemini Live", () => {
 });
 
 describe("temperatura y modelo elegido en la cascada", () => {
-  it("la peticion al puerto del LLM lleva el modelo preferido y la temperatura de la apertura", async () => {
+  it("la peticion al puerto del LLM lleva el modelo preferido y la temperatura de la PLATAFORMA (ignora la de la organizacion)", async () => {
     const peticiones: PeticionLlmVoz[] = [];
     const llm: PuertoLlmVoz = {
       completar: async (p) => {
@@ -65,7 +83,8 @@ describe("temperatura y modelo elegido en la cascada", () => {
     const s2 = await prov.abrirSesion(BASE, h);
     s2.enviarTexto("hola");
     await prov.inactivo();
-    expect(peticiones[0]).toMatchObject({ modeloPreferido: "google/gemini-3.8-flash", temperatura: 0.2 });
+    // La temperatura de la organizacion NO llega al LLM de texto de la cascada (solo a Gemini Live): manda siempre la de la plataforma.
+    expect(peticiones[0]).toMatchObject({ modeloPreferido: "google/gemini-3.8-flash", temperatura: VOZ_PLATAFORMA.cascada.temperatura });
     expect("modeloPreferido" in peticiones[1]!).toBe(false);
     // Sin ajuste de la organizacion manda la temperatura de la plataforma (VOZ_PLATAFORMA.cascada), nunca omitida.
     expect(peticiones[1]!.temperatura).toBe(VOZ_PLATAFORMA.cascada.temperatura);
