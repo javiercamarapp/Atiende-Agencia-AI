@@ -528,6 +528,10 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 }
 
 /** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
+/** R11-05a: tope de herramientas que se EJECUTAN por respuesta del modelo (las demas reciben un resultado de error para mantener el protocolo). */
+export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
+/** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
+export const PISO_TOPE_LLAMADA_LLM_MS = 500;
 export const TURN_BUDGET_POR_OMISION_MS = FUNCION_MAX_MS - MARGEN_CIERRE_TURNO_MS - 6_000;
 
 /**
@@ -598,6 +602,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       /** Si la ultima cotizacion DE ESTE TURNO traia `promocion_aplicada` o una promocion sugerida con cortesias (null = no se cotizo en este turno: no se puede verificar). */
       let lastQuoteRespaldaCortesia: boolean | null = null;
       let anyToolCalled = false;
+      let escalacionOkEnTurno = false;
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
       // Ultimo `crear_pedido` EXITOSO de este turno (real o simulado), con los datos del servidor: si el modelo no alcanza a redactar la respuesta final
@@ -757,6 +762,29 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Modo sin IA (interruptor de plataforma, tope de gasto agotado, proveedor caido o turno sin tiempo): si NO hay pedido creado, "problema
       // tecnico" a secas pierde el pedido sin que nadie del restaurante se entere. Se deja el aviso `falla_sistema` (con la sucursal de entrada)
       // y la toma de handoff para que una persona tome el pedido, como ya hace la voz. Solo se promete el aviso si quedo registrado de verdad.
+      // R11-10: tope de tiempo POR LLAMADA al proveedor. El presupuesto del turno solo se revisaba entre llamadas; una llamada colgada (30 s por intento en el
+      // cliente HTTP real) dejaba al cliente sin respuesta. Se aborta con AbortController y ademas se corre con Promise.race por si el proveedor ignora la senal.
+      // Abortar solo corta la ESPERA del modelo: ninguna herramienta (pedido) se ejecuta dentro de la llamada, asi que no queda nada a medias.
+      const completarConTope = async <T>(limiteMs: number, llamar: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+        const controller = new AbortController();
+        const tope = Math.max(PISO_TOPE_LLAMADA_LLM_MS, limiteMs - Date.now());
+        let temporizador: ReturnType<typeof setTimeout> | undefined;
+        const vencido = new Promise<never>((_, reject) => {
+          temporizador = setTimeout(() => {
+            controller.abort();
+            reject(new Error("tope de tiempo de la llamada al LLM"));
+          }, tope);
+        });
+        const trabajo = llamar(controller.signal);
+        // Si pierde la carrera, su rechazo tardio no debe quedar sin manejar.
+        trabajo.catch(() => undefined);
+        try {
+          return await Promise.race([trabajo, vencido]);
+        } finally {
+          clearTimeout(temporizador);
+        }
+      };
+
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
@@ -786,15 +814,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
         let completion: { text: string; toolCalls?: LlmToolCall[] };
         try {
-          completion = await gateway.complete({
+          completion = await completarConTope(deadline, (signal) => gateway.complete({
             tenantId: organizationId,
             runId: randomUUID(),
             lane: "interactive",
             role,
             // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
             ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
-            request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0 },
-          });
+            request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0, signal },
+          }));
         } catch {
           tele.resultado = "error_proveedor";
           // Escalera de proveedores agotada / presupuesto excedido / gate de
@@ -888,14 +916,26 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
 
-        for (const call of toolCalls) {
+        for (const [indice, call] of toolCalls.entries()) {
           let input: Record<string, unknown> = {};
           let result: unknown;
           let fallaSistema = false;
           let argumentosInvalidos = false;
           const toolInicio = Date.now();
+          // R11-05a: pasado el tope por respuesta NO se ejecuta nada, pero cada tool_call recibe su resultado (el protocolo exige uno por id).
+          if (indice >= MAX_HERRAMIENTAS_POR_RESPUESTA) {
+            working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify({ error: "Demasiadas herramientas en una sola respuesta; no se ejecutó. Pida solo lo necesario." }) });
+            continue;
+          }
+          // R11-05b: una sola escalar_a_humano EXITOSA por turno; las demas no avisan otra vez al equipo.
+          if (call.name === "escalar_a_humano" && escalacionOkEnTurno) {
+            working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify({ error: "El equipo ya fue avisado en este turno; no se envía otro aviso." }) });
+            continue;
+          }
           try {
-            input = JSON.parse(call.argumentsJson || "{}") as Record<string, unknown>;
+            const parsed: unknown = JSON.parse(call.argumentsJson || "{}");
+            // R11-01: "null" es JSON valido; equivale a una herramienta sin argumentos ({}), no a un objeto sobre el que leer campos.
+            input = (parsed === null ? {} : parsed) as Record<string, unknown>;
           } catch {
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
             argumentosInvalidos = true;
@@ -958,6 +998,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             }
           }
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
+            escalacionOkEnTurno = true;
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
             tele.motivoEscalacion = escalarMotivo;
           }
