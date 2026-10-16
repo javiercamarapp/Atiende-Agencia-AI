@@ -23,8 +23,8 @@
 import type { CircuitBreaker } from "@atiende/agent-core/gateway";
 import { WhatsAppInvalidPayloadError, WhatsAppSendError } from "./errors.ts";
 import type { MessagingOutboxItem, MessagingOutboxPort } from "./outbox-port.ts";
-import { MAX_TEMPLATE_PARAM_LENGTH, MAX_TEMPLATE_PARAMS, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
-import type { OutboundButton, OutboundTemplate, WhatsAppGraphClient } from "./types.ts";
+import { DOCUMENT_FILENAME_PATTERN, esUrlHttpsPublica, MAX_TEMPLATE_PARAM_LENGTH, MAX_TEMPLATE_PARAMS, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
+import type { OutboundButton, OutboundDocument, OutboundTemplate, WhatsAppGraphClient } from "./types.ts";
 
 /** Tope de intentos antes de `dead` — nunca reintento infinito. */
 export const DEFAULT_MAX_ATTEMPTS = 5;
@@ -56,6 +56,18 @@ interface ValidWhatsAppOutboxPayload {
   readonly critico: boolean;
   /** Mensaje interactivo de solicitud de ubicacion (`location_request_message`); `body` es el texto que lo acompana. */
   readonly solicitar_ubicacion: boolean;
+  /** Documento adjunto por enlace publico (menu en PDF): `body` es su pie. Exclusivo (no se combina con botones, plantilla ni ubicacion). */
+  readonly documento?: OutboundDocument;
+}
+
+/** Valida el `documento` del payload. Una forma invalida es un error de ENCOLADO (el mensaje va a `dead`, no se manda nada a Meta). */
+function parseDocumento(raw: unknown): OutboundDocument {
+  if (typeof raw !== "object" || raw === null) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "documento" invalido (debe ser un objeto)');
+  const d = raw as Record<string, unknown>;
+  if (!esUrlHttpsPublica(d.url)) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "documento.url" invalido (https publico de hasta 2048 caracteres)');
+  if (typeof d.filename !== "string" || !DOCUMENT_FILENAME_PATTERN.test(d.filename)) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "documento.filename" invalido (debe terminar en .pdf)');
+  if (d.fallbackUrl !== undefined && !esUrlHttpsPublica(d.fallbackUrl)) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "documento.fallbackUrl" invalido (https publico)');
+  return { url: d.url as string, filename: d.filename, ...(typeof d.fallbackUrl === "string" ? { fallbackUrl: d.fallbackUrl } : {}) };
 }
 
 /** R-27: valida la plantilla HSM opcional del payload. Una plantilla mal formada es un error de ENCOLADO (el
@@ -109,7 +121,11 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
   if (p.solicitar_ubicacion !== undefined && typeof p.solicitar_ubicacion !== "boolean") {
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "solicitar_ubicacion" invalido (debe ser booleano)');
   }
-  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true, solicitar_ubicacion: p.solicitar_ubicacion === true };
+  const documento = p.documento === undefined || p.documento === null ? undefined : parseDocumento(p.documento);
+  if (documento && ((Array.isArray(p.buttons) && p.buttons.length > 0) || template || p.solicitar_ubicacion === true)) {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "documento" no se combina con botones, plantilla ni solicitar_ubicacion');
+  }
+  return { ...(documento ? { documento } : {}), to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true, solicitar_ubicacion: p.solicitar_ubicacion === true };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {
@@ -345,7 +361,7 @@ export class WhatsAppOutboundDispatcher {
     }
 
     try {
-      const enviado = await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}) });
+      const enviado = await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}), ...(payload.documento ? { documento: payload.documento } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
       await port.markSent(item.id, { providerMessageId: enviado.providerMessageId, ...(enviado.enviadoComo ? { enviadoComo: enviado.enviadoComo } : {}) });
       if (medidor && medicion) {

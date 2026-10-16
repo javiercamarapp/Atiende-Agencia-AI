@@ -1,0 +1,133 @@
+{
+ "descripcion": "Menus en PDF por sucursal de Los Taquitos de PM, armados con las imagenes de pagina completa que publica https://www.lostaquitosdepm.com (sin recomprimir, sin contenido agregado). Los PDF NO estan en el repo: se suben a la URL publica que se configura en PM_MENU_PDF_BASE_URL.",
+ "fecha_lectura": "2026-10-15",
+ "menus": [
+  {
+   "archivo": "menu-montejo-altabrisa-victory.pdf",
+   "sucursales": [
+    "prol-montejo",
+    "garcia-lavin",
+    "altabrisa"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menu-altabrisa-montejo-victory",
+   "fecha_descarga": "2026-10-15",
+   "sha256": "570258c8c221eb585dfb6b07b15dd230f2d7755d070d5f9ebed6d84922d86f5e",
+   "paginas": 3,
+   "bytes": 2858429,
+   "imagenes_fuente": [
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_f942e39e55cb4458a0c3f9a30940bc27~mv2.jpg",
+     "sha256": "c63d77b2cc63bb32c79ffbc23971cff7b8c0719d3616adda6b1e0c1bdd462210"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_92e49a00f6a446ce92945e284e4b6fe7~mv2.jpg",
+     "sha256": "31b7e784318871e4c98d789a271919d61c6301bb925ab09c4b0466f8e4c013d3"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_e478302c49094d599b111c78eb6c4db9~mv2.jpg",
+     "sha256": "05d9a2496fb3d769827bcde4a1768f11a71716f47397348e5460bd3c9350ae23"
+    }
+   ]
+  },
+  {
+   "archivo": "menu-chicxulub.pdf",
+   "sucursales": [
+    "playa"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menuchicxulub",
+   "fecha_descarga": "2026-10-15",
+   "sha256": "8efbb2cc8f5c5c445b1b89546818c2b7da40e0ca53c80df717f01a1abe91c412",
+   "paginas": 3,
+   "bytes": 2566206,
+   "imagenes_fuente": [
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_3a4e53bb1d3840c18519c209f85c803d~mv2.jpeg",
+     "sha256": "f8912e962dbfe09a70e3b492dce8915d7c116557e9fa81fab5bf2648ce92b651"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_cb48785eeacc4e23b082170629fe0306~mv2.jpeg",
+     "sha256": "006a0077ca6d17dbd69890dbb3848c47d3045b3bd07b983fe1b998b322afafa5"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_bfdf696e887e4f018d31027cdcb4991d~mv2.jpeg",
+     "sha256": "a0f28dcbdf613ab3515e7e9857c227237b0d47fdd2bb1c262491c0ab692449d0"
+    }
+   ]
+  },
+  {
+   "archivo": "menu-francisco-de-montejo.pdf",
+   "sucursales": [
+    "fco-montejo"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menufranciscodemontejo",
+   "fecha_descarga": "2026-10-15",
+   "sha256": "917983c5279a27c9adc7e256f12fa14059e78d441352324c1cca55376dd1267e",
+   "paginas": 3,
+   "bytes": 2348688,
+   "imagenes_fuente": [
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_34a6d7ed7e3c4962ad7fdc4f24139af1~mv2.jpg",
+     "sha256": "792221914ad93a4b196dc2e21a13b12e2f6b1945de4ef59a33aaabdd31ecb7f4"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_02a1a6d56fd048fe83c7da7b1eb89deb~mv2.jpg",
+     "sha256": "2ae4e12a2b895776bc8176cb2440efef09a3991385beb037e301b966a3bb5d3d"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_2fcf7735b2394baaa00e84b5526594e2~mv2.jpg",
+     "sha256": "35dc7418f89fbe4fafb8895fab4dba137a006b6f6d1315caa6e5fa49233d4a7d"
+    }
+   ]
+  },
+  {
+   "archivo": "menu-pensiones.pdf",
+   "sucursales": [
+    "pensiones"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menupensiones",
+   "fecha_descarga": "2026-10-15",
+   "sha256": "4bccdc48c89ce33555d1946ad98fcefb89b164e5a7d08ae29315ee66291c385e",
+   "paginas": 3,
+   "bytes": 1580166,
+   "imagenes_fuente": [
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_fad7c97dc73b458a89979ad2ffb472b5~mv2.jpeg",
+     "sha256": "328c5378244f540f98667281907a96018fc789e0f34f07a38e56c59833da09a8"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_e347efc3988041408ce74a5e54233d1d~mv2.jpeg",
+     "sha256": "bc0187176b29abc040f5ffca81adc00aee95720c4eef0c6159d57fd8da38eaff"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_7007e091ef8348cba5f4df4eb85f157c~mv2.jpeg",
+     "sha256": "35ee41bf36806de987074024cb2d3c2420e0f2a148499da14dd0d17cebad7c1a"
+    }
+   ]
+  },
+  {
+   "archivo": "menu-galerias.pdf",
+   "sucursales": [
+    "galerias"
+   ],
+   "pagina_fuente": "https://www.lostaquitosdepm.com/menupmgalerias",
+   "fecha_descarga": "2026-10-15",
+   "sha256": "498138e9e02269381cce50c7aeafd985376a34bb2f933512845692d2f254d2c4",
+   "paginas": 3,
+   "bytes": 2351450,
+   "imagenes_fuente": [
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_421ae163fd564717ab988a2a27647235~mv2.jpg",
+     "sha256": "15213f20481189751061f195e50ea242cce8cb030cc27087971a702983172eae"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_2422dfb72b554f3397b3627cde1aed3b~mv2.jpg",
+     "sha256": "84e6958f4d2f4df7b79ddb7c156642d9c52bec83d1ecb10721dcefe482cd2181"
+    },
+    {
+     "url": "https://static.wixstatic.com/media/634cb5_842792cac8074fe1a64ddc07ca72450b~mv2.jpg",
+     "sha256": "cdcb13f20e57165b765d42c96a0b1199282d599fc8ac745dd76ac0053398de08"
+    }
+   ]
+  }
+ ]
+}

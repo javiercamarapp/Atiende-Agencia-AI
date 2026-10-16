@@ -51,7 +51,9 @@ export interface SimulatedOutboundMessage {
   readonly id: string;
   readonly phoneNumberId: string;
   readonly to: string;
-  readonly type: "text" | "interactive" | "template";
+  readonly type: "text" | "interactive" | "template" | "document";
+  /** Solo `document`: enlace, nombre y pie tal como llegaron a la API. */
+  readonly document?: { readonly link: string; readonly filename: string; readonly caption: string | null };
   readonly text: string | null;
   readonly buttons: readonly { readonly id: string; readonly title: string }[];
   readonly templateName: string | null;
@@ -131,6 +133,8 @@ function graphError(status: number, code: number, message: string): Response {
 
 export class MetaCloudSimulator {
   readonly accepted: SimulatedOutboundMessage[] = [];
+  /** Prefijos de enlaces de documento que Meta «no puede descargar» (131052): prueba de la degradacion a texto. */
+  readonly unreachableMedia: string[] = [];
   readonly rejected: SimulatedRejection[] = [];
   readonly deliveries: WebhookDelivery[] = [];
   /** Ventana de 24 h por PAR `phone_number_id|wa_id`: escribirle al numero A no abre ventana en el B. */
@@ -472,12 +476,25 @@ export class MetaCloudSimulator {
     const to = typeof body.to === "string" ? body.to : "";
     const type = body.type;
     if (body.messaging_product !== "whatsapp" || !to) return graphError(400, 100, "messaging_product y to son obligatorios.");
-    if (type !== "text" && type !== "interactive" && type !== "template") return graphError(400, 100, `type no soportado: ${String(type)}`);
+    if (type !== "text" && type !== "interactive" && type !== "template" && type !== "document") return graphError(400, 100, `type no soportado: ${String(type)}`);
 
     let text: string | null = null;
     let buttons: { id: string; title: string }[] = [];
     let templateName: string | null = null;
-    if (type === "text") {
+    let document: SimulatedOutboundMessage["document"];
+    if (type === "document") {
+      const d = body.document as { link?: unknown; filename?: unknown; caption?: unknown } | undefined;
+      if (typeof d?.link !== "string" || !/^https:\/\/\S+$/.test(d.link)) return graphError(400, 100, "document.link es obligatorio y debe ser https.");
+      if (typeof d.filename !== "string" || d.filename.length === 0) return graphError(400, 100, "document.filename es obligatorio.");
+      const unreachable = this.unreachableMedia.some((u) => (d.link as string).startsWith(u));
+      if (unreachable) {
+        const message = "Media download error: no se pudo descargar el documento del enlace.";
+        this.rejected.push({ to, status: 400, code: 131052, message });
+        return graphError(400, 131052, message);
+      }
+      text = typeof d.caption === "string" ? d.caption : null;
+      document = { link: d.link, filename: d.filename, caption: text };
+    } else if (type === "text") {
       text = ((body.text as { body?: unknown } | undefined)?.body as string | undefined) ?? null;
       if (!text) return graphError(400, 100, "text.body es obligatorio.");
     } else if (type === "interactive") {
@@ -503,7 +520,7 @@ export class MetaCloudSimulator {
     }
 
     const id = `wamid.SIMOUT${++this.counter}`;
-    this.accepted.push({ id, phoneNumberId: match[2]!, to, type, text, buttons, templateName, acceptedAt: this.now() });
+    this.accepted.push({ id, phoneNumberId: match[2]!, to, type, text, buttons, templateName, ...(document ? { document } : {}), acceptedAt: this.now() });
     return json(200, { messaging_product: "whatsapp", contacts: [{ input: to, wa_id: normalizeWaId(to) }], messages: [{ id }] });
   }
 }

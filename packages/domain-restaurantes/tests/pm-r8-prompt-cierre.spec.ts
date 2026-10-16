@@ -91,12 +91,19 @@ describe("R8 decisión de Javier 1: sucursal cerrada = tomar y PROGRAMAR", () =>
   });
 });
 
-describe("R8 decisión de Javier 2: el menú va como PDF, no pegado ni como enlace", () => {
-  it("pedir 'el menú': no pegarlo ni dar enlace; la sucursal envía el PDF (registrar_contacto menu_pdf); dudas puntuales por texto", () => {
-    expect(p).toMatch(/MENÚ: si pide "el menú" o "la carta", no lo pegue ni dé un enlace\./);
-    expect(p).toMatch(/hoy no hay herramienta de envío: diga que la sucursal se lo puede enviar en PDF.*registrar_contacto con reason "menu_pdf"/s);
+describe("R8 decisión de Javier 2: el menú va como PDF de la sucursal, no pegado", () => {
+  it("WhatsApp: pedir 'el menú' llama enviar_menu con el branch_slug; enlace oficial o registrar_contacto menu_pdf solo como respaldo; dudas puntuales por texto", () => {
+    expect(p).toMatch(/MENÚ: si pide "el menú" o "la carta", llame enviar_menu con el branch_slug de la sucursal/);
+    expect(p).toMatch(/No lo pegue en texto\./);
+    expect(p).toMatch(/enviado "pdf": diga en una frase que ya le mandó el menú en PDF/);
+    expect(p).toMatch(/"enlace": comparta ESE enlace tal cual.*nunca otro/s);
+    expect(p).toMatch(/"sin_menu" o da error:.*registrar_contacto con reason "menu_pdf"/s);
     expect(p).toMatch(/ofrezca resolver dudas puntuales por texto/);
-    expect(p).not.toMatch(/https?:\/\/\S*menu/i);
+    expect(p).not.toMatch(/https?:\/\/\S*menu/i); // el prompt nunca trae un enlace de menu inventado: lo da la herramienta
+    expect(p).not.toMatch(/hoy no hay herramienta de envío/);
+  });
+  it("voz: el prompt compacto de llamada no promete ni usa enviar_menu (la herramienta es solo de WhatsApp)", () => {
+    expect(prompt({ canal: "voz" })).not.toMatch(/enviar_menu/);
   });
 });
 
@@ -120,10 +127,10 @@ describe("R8 revisión: coherencia entre pasos", () => {
     expect(p).toMatch(/ofrezca pasar antes o programarlo para otro día \(programado_para\)/);
     expect(p).toMatch(/prográmelo para la siguiente apertura \(programado_para\)/);
   });
-  it("menú: sin garantizar el envío, usa registrar_contacto como los pasos 17 y 18 y da categorías", () => {
+  it("menú: el respaldo (sin_menu o error) no garantiza el envío, usa registrar_contacto como los pasos 17 y 18 y da categorías", () => {
     expect(p).toMatch(/la sucursal se lo puede enviar en PDF y que le dejó el aviso \(sin garantizar cuándo\)/);
     expect(p).not.toMatch(/única excepción a escalar|hará llegar el menú/);
-    expect(p).toMatch(/igual que en los pasos 17 y 18, no es escalar/);
+    expect(p).toMatch(/registrar_contacto con reason "menu_pdf" \(branch_slug en message; no es escalar\)/);
     expect(p).toMatch(/dé las categorías y 3 o 4 platillos con su precio de buscar_producto/);
     expect(p).toMatch(/Si piden "el menú" \(vea la regla MENÚ\)/);
   });

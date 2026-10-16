@@ -22,6 +22,7 @@ export class FakeWhatsAppGraphClient implements WhatsAppGraphClient {
     this.sent.push(message);
     const err = this.opts.onSend?.(message, callIndex);
     if (err) throw err;
+    if (message.documento) return { providerMessageId: `fake-msg-${callIndex}` }; // el documento no tiene `enviadoComo` propio (ver EnviadoComo)
     return { providerMessageId: `fake-msg-${callIndex}`, enviadoComo: message.template && message.templateApproved === true ? "plantilla" : message.buttons && message.buttons.length > 0 ? "botones" : "texto" };
   }
 }
