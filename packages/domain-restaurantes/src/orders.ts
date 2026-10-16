@@ -24,11 +24,17 @@ import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQu
 
 /** Dinero a centavos (el redondeo comun de todo el modulo): una fraccion de centavo no existe. */
 const DIRECCION_DE_RELLENO = /^(?:no\s*se|nose|n\/?a|na|ninguna?|nada|sin\s+(?:direccion|dato|datos)|desconocid[oa]|pendiente|despues|luego|ahorita|aqui|alla|x+|\?+)$/;
-/** true si el texto pasa como direccion de entrega: al menos 6 letras o digitos, con al menos una letra, y no es una frase de relleno. No valida que exista: solo descarta lo que no puede ser una direccion. */
+const DIRECCION_APLAZADA = /^(?:pendiente|luego|despues|ahorita|aqui|alla|mas\s+tarde|te\s+(?:la|lo)\s+(?:mando|paso|doy)|despues\s+te)\b/;
+/** true si el texto pasa como direccion de entrega: al menos 6 letras o digitos (3 si trae numero), con al menos una letra, y no es una frase de relleno. No valida que exista: solo descarta lo que no puede ser una direccion. */
 export function direccionUtilizable(direccion: string): boolean {
   const compacta = direccion.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s/]/g, " ").replace(/\s+/g, " ").trim();
   const alfanumericos = compacta.replace(/[^a-z0-9]/g, "");
-  return alfanumericos.length >= 6 && /[a-z]/.test(alfanumericos) && !DIRECCION_DE_RELLENO.test(compacta);
+  const tieneLetra = /[a-z]/.test(alfanumericos);
+  // Direcciones cortas pero reales de Merida («C. 5 #20», «C 60 #5», «C 7 x 8», «Km 5») llevan letra Y numero: bastan 3 caracteres. Sin numero se exigen 6.
+  const largoSuficiente = alfanumericos.length >= 6 || (alfanumericos.length >= 3 && /\d/.test(alfanumericos));
+  // Frases de relleno que empiezan con una palabra de aplazar/vaguedad y no traen ningun numero («pendiente de confirmar», «luego te la mando», «aqui mismo»).
+  const relleno = DIRECCION_DE_RELLENO.test(compacta) || (!/\d/.test(compacta) && DIRECCION_APLAZADA.test(compacta));
+  return largoSuficiente && tieneLetra && !relleno;
 }
 
 export function redondearACentavos(value: number): number {

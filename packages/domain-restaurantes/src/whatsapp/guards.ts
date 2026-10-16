@@ -456,6 +456,8 @@ export function pideUnaPersona(text: string): boolean {
 export interface HighRiskContext {
   /** Pedido de las ultimas 12 h de este telefono: `null` = no hay; ausente = desconocido (cliente nuevo o lectura no disponible). */
   readonly pedidoReciente?: PedidoReciente | null;
+  /** El servidor tiene una cotizacion / confirmacion en curso para este telefono: el cliente esta armando un pedido NUEVO y «agrega X a mi pedido» es el carrito, no un cambio del anterior. */
+  readonly carritoEnCurso?: boolean;
 }
 
 /** Texto comparable: minusculas y sin acentos. Asi "faltó" y "falto" son lo mismo (con `\b` y sin acentos el resultado ya no depende de si el cliente acentuó). */
@@ -520,13 +522,20 @@ const MODIFICACION_DE_PEDIDO_RE = new RegExp(
   [
     "\\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\\s+(?:el|mi|ese|este)\\s+pedido\\b",
     `\\b${VERBO_DE_CAMBIO}\\b[^.!?\\n]{0,60}\\b(?:a|al|en|de|del|para)\\s+(?:mi|el|este|ese|su)\\s+pedido\\b`,
-    "\\b(?:otra|nueva|diferente)\\s+(?:direccion|ubicacion|domicilio)\\b",
+    // «otra direccion» sola no basta (tambien la dice quien arma un pedido nuevo): exige un verbo de mover/cambiar antes.
+    "\\b(?:mand\\w*|envi\\w*|lleva\\w*|cambi\\w*|pas(?:a|e|en|ar)\\w*|entreg\\w*|dej(?:a|e|en|ar)\\w*)\\b[^.!?\\n]{0,50}\\b(?:otra|nueva|diferente)\\s+(?:direccion|ubicacion|domicilio)\\b",
     "\\bya\\s+no\\s+(?:a\\s+domicilio|para\\s+domicilio|lo\\s+quiero\\s+a\\s+domicilio)\\b|\\bmejor\\s+(?:que\\s+sea\\s+)?(?:para\\s+)?recoger\\b",
   ].join("|"),
 );
 const MENCIONA_UN_PEDIDO_YA_HECHO = /\bpedido\b|\bya\s+(?:hice|hicimos|pedi|pedimos|salio)\b/;
 // «quiero otro pedido a otra direccion»: es un pedido NUEVO (flujo normal con otro_pedido), no un cambio del que ya existe.
 const PIDE_OTRO_PEDIDO = /\b(?:otro|nuevo)\s+pedido\b|\bpedido\s+(?:nuevo|aparte|adicional)\b/;
+// R12-01 (revision): el cliente que REPITE o hace un pedido nuevo («quiero un pedido de 5 tacos», «quiero pedir otra vez», «mismo pedido pero otra direccion») o habla del anterior en
+// pasado / para el proximo («mi pedido de hoy estuvo bien») no pide cambiar el que ya existe.
+const HACE_UN_PEDIDO_NUEVO =
+  /\b(?:quiero|quisiera|queria|ponme|pongame|dame|deme|me\s+pone[sn]?|voy\s+a\s+pedir|quiero\s+pedir)\s+(?:un|una|unos|unas|\d+|otra\s+vez|el\s+mismo|lo\s+mismo)\b|\bpedir\s+(?:otra\s+vez|de\s+nuevo)\b|\b(?:mismo|igual)\s+pedido\b|\bpedido\s+de\s+\d+|\bpara\s+(?:el|la)\s+(?:proximo|siguiente)\b|\bestuvo\s+(?:muy\s+)?(?:bien|bueno|rico|buenisimo)\b/;
+// «¿me puedes agregar algo a mi pedido?» es una PETICION (el modelo diria «claro»); «¿puedo agregar...?» es una consulta de politica y sigue yendo al agente.
+const PETICION_EN_PREGUNTA = /\b(?:me\s+)?(?:puedes|podrias|podria|podrian|pueden|quieres|me\s+haces\s+el\s+favor\s+de)\b/;
 
 interface Patron {
   readonly intent: HighRiskIntent;
@@ -592,9 +601,11 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
       const estado = ctx.pedidoReciente?.estado;
       // `salio` (en camino) tambien: cambiar la direccion o el contenido de lo que ya salio lo decide la sucursal, no el modelo.
       return (
-        (estado === "registrado" || estado === "preparando" || estado === "salio" || estado === "programado" || estado === "por_confirmar") &&
+        (estado === "registrado" || estado === "preparando" || estado === "salio" || estado === "listo_para_recoger" || estado === "con_problema" || estado === "programado" || estado === "por_confirmar") &&
+        ctx.carritoEnCurso !== true &&
         !CONSULTA_DE_CANCELACION.test(texto) &&
-        !/\?/.test(texto) &&
+        (!/\?/.test(texto) || (PETICION_EN_PREGUNTA.test(texto) && new RegExp(`\\b${VERBO_DE_CAMBIO}\\b`).test(texto))) &&
+        !HACE_UN_PEDIDO_NUEVO.test(texto) &&
         !ARMA_UN_PEDIDO_NUEVO.test(texto) &&
         !PIDE_OTRO_PEDIDO.test(texto) &&
         MENCIONA_UN_PEDIDO_YA_HECHO.test(texto)

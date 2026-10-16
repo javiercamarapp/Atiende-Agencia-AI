@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { diaDeNegocio, estaAbiertoAhora } from "../../src/horarios.ts";
-import { QUOTE_TTL_MS } from "../../src/agent-tools/order-flow.ts";
+import { assertCanCreate, OrderFlowViolationError, QUOTE_TTL_MS } from "../../src/agent-tools/order-flow.ts";
 import { buildRestaurantFixture, flujo, ordenes } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
@@ -244,6 +244,25 @@ describe("R12-B4 el reloj retrocede (ajuste NTP o instancia con reloj atrasado)"
     const { s } = await listoParaCrear(f);
     vi.setSystemTime(new Date(Date.now() - 1000));
     expect((await crear(s)).orderId).toBeTruthy();
+  });
+});
+
+describe("R12-04 (documentado) la tolerancia de reloj tambien aplica al claim `creando`", () => {
+  const snap = (claimedAtMs: number, now: number) =>
+    ({ state: "creando", version: 1, context: { quoteHash: "h", quotedAtMs: now, quotedTurn: null, claimedAtMs } }) as unknown as Parameters<typeof assertCanCreate>[0];
+  const codigo = (claimedAtMs: number, now: number): string | null => {
+    try {
+      assertCanCreate(snap(claimedAtMs, now), { now, turn: null });
+      return null;
+    } catch (e) {
+      return e instanceof OrderFlowViolationError ? e.code : "otro";
+    }
+  };
+  it("un claim vigente con desfase <= 60 s entre instancias bloquea el segundo crear; con desfase > 60 s deja de bloquear (limite conocido: lo frena la deduplicacion de 5 min)", () => {
+    const now = 1_800_000_000_000;
+    expect(codigo(now - 5_000, now)).toBe("pedido_en_proceso");
+    expect(codigo(now + 30_000, now)).toBe("pedido_en_proceso");
+    expect(codigo(now + 120_000, now)).not.toBe("pedido_en_proceso");
   });
 });
 

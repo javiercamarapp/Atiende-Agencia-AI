@@ -670,7 +670,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
       // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
       const pendientes = mensajesSinResponder(messages).slice(-5);
-      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      // Cotizacion/confirmacion en curso = el cliente arma un pedido NUEVO: «agrega X a mi pedido» es el carrito, no un cambio del pedido anterior (R12-01).
+      const flowPrevio = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+      const carritoEnCurso = flowPrevio?.state === "cotizado" || flowPrevio?.state === "confirmado" || flowPrevio?.state === "creando";
+      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), { ...contextoDeCliente(customer), carritoEnCurso });
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la

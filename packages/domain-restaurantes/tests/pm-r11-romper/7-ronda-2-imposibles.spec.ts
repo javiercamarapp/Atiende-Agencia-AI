@@ -8,7 +8,7 @@ import { classifyHighRiskIntent } from "../../src/whatsapp/guards.ts";
 import { intentarCancelacionConAutopiloto } from "../../src/whatsapp/autopiloto-turno.ts";
 import { InMemoryAutopilotoRepository, solicitarCancelacion } from "../../src/autopiloto/index.ts";
 import type { AutopilotoServicioDeps } from "../../src/autopiloto/index.ts";
-import { createOrder } from "../../src/orders.ts";
+import { createOrder, direccionUtilizable } from "../../src/orders.ts";
 import { invokeAgentTool } from "../../src/agent-tools/registry.ts";
 import { buildRestaurantFixture, flujo, itemsCoca, ordenes, pedidoCompleto } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
@@ -309,6 +309,44 @@ describe("R12-A5 cancelar o cambiar un pedido que ya avanzo (estados de cocina y
     for (const frase of ["quiero otro pedido a otra direccion, ya el primero salio", "hago un pedido nuevo para otra direccion", "¿puedo agregar 3 cocas a mi pedido?", "quiero hacer mi pedido: 3 tacos, agrega una coca"]) {
       expect(classifyHighRiskIntent(frase, { pedidoReciente: pedido("salio") }), frase).toBeNull();
     }
+  });
+});
+
+describe("R12-01 (revision) el cliente que repite o arma un pedido NUEVO no se confunde con un cambio del anterior", () => {
+  const nuevos = [
+    "hola quiero un pedido de 5 tacos, otra direccion por favor",
+    "quiero pedir otra vez, mismo pedido pero otra direccion",
+    "mi pedido de hoy estuvo bien, gracias, otra direccion para el proximo",
+    "quisiera un pedido de 2 tortas, mandalo a otra direccion",
+    "ponme un pedido igual al de ayer pero a otra direccion",
+  ];
+  it.each(["registrado", "preparando", "salio", "listo_para_recoger"] as const)("frases de pedido nuevo con el anterior '%s': no escalan", (estado) => {
+    const ped = { estado, canal: "domicilio" as const, sucursal: "Fco", confirmadoHoraLocal: "12:50", minutosDesdeConfirmacion: 10 };
+    for (const frase of nuevos) expect(classifyHighRiskIntent(frase, { pedidoReciente: ped }), frase).toBeNull();
+  });
+
+  it("«agrega 3 cocas a mi pedido» en medio de armar un pedido NUEVO (cotizacion en curso) es el carrito; sin carrito en curso sigue escalando", () => {
+    const ped = { estado: "registrado" as const, canal: "domicilio" as const, sucursal: "Fco", confirmadoHoraLocal: "12:50", minutosDesdeConfirmacion: 10 };
+    expect(classifyHighRiskIntent("agrega 3 cocas a mi pedido", { pedidoReciente: ped, carritoEnCurso: true })).toBeNull();
+    expect(classifyHighRiskIntent("agrega 3 cocas a mi pedido", { pedidoReciente: ped, carritoEnCurso: false })?.motivo).toBe("cancelacion_modificacion");
+  });
+
+  it("(huecos) con el pedido listo para recoger o con problema tambien escala, y una PETICION en pregunta («¿me puedes agregar algo a mi pedido?») tambien; la consulta «¿puedo...?» no", () => {
+    for (const estado of ["listo_para_recoger", "con_problema"] as const) {
+      const ped = { estado, canal: "recoger" as const, sucursal: "Fco", confirmadoHoraLocal: "12:50", minutosDesdeConfirmacion: 10 };
+      expect(classifyHighRiskIntent("agrega 3 cocas a mi pedido", { pedidoReciente: ped })?.motivo, estado).toBe("cancelacion_modificacion");
+      expect(classifyHighRiskIntent("¿me puedes agregar algo a mi pedido?", { pedidoReciente: ped })?.motivo, estado).toBe("cancelacion_modificacion");
+      expect(classifyHighRiskIntent("¿puedo agregar 3 cocas a mi pedido?", { pedidoReciente: ped }), estado).toBeNull();
+    }
+  });
+});
+
+describe("R12-02 (revision) direccionUtilizable: cortas reales si, relleno fuera de la lista cerrada no", () => {
+  it.each(["C. 5 #20", "C 60 #5", "C 7 x 8", "Km 5"])("direccion corta real «%s» se acepta", (d) => {
+    expect(direccionUtilizable(d)).toBe(true);
+  });
+  it.each(["Pendiente de confirmar", "luego te la mando", "Aqui mismo", "no se", "xxxxxxx", "123", "."])("relleno «%s» se rechaza", (d) => {
+    expect(direccionUtilizable(d)).toBe(false);
   });
 });
 

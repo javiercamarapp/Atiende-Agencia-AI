@@ -348,6 +348,8 @@ export function assertCanCreate(snap: OrderFlowSnapshot, args: FlowCheckArgs): O
   if (snap.state === "creado") {
     throw new OrderFlowViolationError("pedido_ya_creado", "Este pedido ya quedó registrado; no lo crees otra vez. Repite el resumen al cliente.", ctx.orderId);
   }
+  // Limite conocido (R12-04): la misma tolerancia de 60 s se aplica al claim `creando`. Con un desfase entre instancias MAYOR a 60 s, un claim vigente de otra instancia (con
+  // `claimedAtMs` en el "futuro" de esta) se lee como viejo y deja pasar un segundo crear_pedido; lo frena la deduplicacion de pedidos (ventana de 5 min), no esta guarda.
   if (snap.state === "creando" && args.now - (ctx.claimedAtMs ?? 0) <= CLAIM_STALE_MS && args.now - (ctx.claimedAtMs ?? 0) >= -RELOJ_TOLERANCIA_MS) {
     throw new OrderFlowViolationError("pedido_en_proceso", "El pedido se está registrando en este momento; espera un momento antes de reintentar.");
   }
