@@ -435,6 +435,25 @@ export function extraerPackSize(name: string, description: string | null): numbe
   return null;
 }
 
+/**
+ * Productos que PM vende por ORDEN con un número de piezas que el menú NO registra (flautas, alitas, crujientes). Mientras `packSize` sea null, el precio
+ * es el de la orden completa y `requested_quantity` cuenta ÓRDENES. El modelo no sabía esa unidad: tomó «4 flautas, una orden» como 4 órdenes (R10 T7-031,
+ * $2,682 en vez de $1,833). Cuando PM confirme cuántas piezas trae cada orden se carga como «(orden de N)» en el producto y este aviso deja de salir solo.
+ */
+const PRODUCTO_POR_ORDEN_SIN_PIEZAS = /\b(?:flautas?|alitas?|crujientes?)\b/i;
+
+export function unidadDeVentaSinPiezas(
+  product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
+): string | null {
+  if (product.packSize !== null) return null;
+  if (!PRODUCTO_POR_ORDEN_SIN_PIEZAS.test(`${product.name} ${product.categoryName ?? ""}`)) return null;
+  return (
+    "El precio es por ORDEN completa y el menú no registra cuántas piezas trae. requested_quantity cuenta ÓRDENES, no piezas: «una orden» = 1, «dos órdenes» = 2, " +
+    "y «4 flautas, una orden» sigue siendo 1 (NO la multipliques por las piezas que mencionó el cliente). No inventes cuántas piezas trae la orden: si el cliente la pregunta, " +
+    "dile que la cantidad exacta la confirma la sucursal. Si pide piezas sueltas sin decir cuántas órdenes, pregunta cuántas órdenes quiere antes de cotizar."
+  );
+}
+
 /** El agente debe obtener un sí claro de mayoría de edad antes de cotizar alcohol. */
 export function requiresAdultConfirmation(productName: string, categoryName: string | null | undefined): boolean {
   if (!/^(cervezas|licores y cocktails)$/i.test(categoryName ?? "")) return false;
