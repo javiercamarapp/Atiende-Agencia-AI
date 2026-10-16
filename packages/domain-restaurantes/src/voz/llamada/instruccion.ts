@@ -5,14 +5,15 @@
 // editado el comportamiento (`branch_voice_config.comportamiento`): ese texto manda como base y se le anexa el contexto de la llamada, con
 // el cliente.
 //
-// PUNTO DE INYECCION de las reglas duras H1-H18 no borrables (brief rescate-orig-restaurantes-1 §1, PR #411): cuando `instruccionVozConReglas`
-// llegue a main, `armarInstruccionLlamada` debe delegar en ella; la prueba `voz-instruccion-llamada.spec.ts` lo deja marcado con `test.fail`.
+// Reglas duras H1-H18 no borrables (brief rescate-orig-restaurantes-1 §1, PR #411): con comportamiento editado, la instruccion final la arma
+// `instruccionVozConReglas` (texto del dueno + contexto + saludo + BLOQUE de reglas al final, donde un "ignore lo anterior" ya no llega).
 import { PM_AGENT_NAME_POR_OMISION, buildPmSystemPrompt } from "../../whatsapp/perfil-pm.ts";
-import { PM_CONFIG_POR_OMISION, customerContextBlock, resolveAgentConfig, saludoSegunHora } from "../../whatsapp/llm-turn-handler.ts";
+import { PM_CONFIG_POR_OMISION, customerContextBlock, estadoSucursalParaPrompt, resolveAgentConfig, saludoSegunHora } from "../../whatsapp/llm-turn-handler.ts";
+import { resolverMarcadorSaludo } from "../saludo-marcador.ts";
 import { lookupCustomerConPedidoReciente } from "../../customers.ts";
 import type { RestaurantesRepository } from "../../repository.ts";
 import type { CustomerLookupResult } from "../../types.ts";
-import { APENDICE_VOZ } from "../perfil-voz-pm.ts";
+import { APENDICE_VOZ, instruccionVozConReglas } from "../perfil-voz-pm.ts";
 import type { VozConfig } from "../types.ts";
 
 export interface EntradaInstruccionLlamada {
@@ -49,7 +50,11 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
   const dia = new Intl.DateTimeFormat("es-MX", { timeZone: zonaHoraria, weekday: "long" }).format(e.ahora);
   const saludo = saludoSegunHora(zonaHoraria, e.ahora);
   const marcada = entrada ? { name: entrada.name, slug: entrada.slug } : null;
-
+  // VZ17 (ronda 5): a las 8:00 el agente saludaba «Buenas tardes» y pedia el nombre ANTES de saber si la sucursal estaba abierta. El saludo y el estado abierta/cerrada
+  // (con el horario de la sucursal marcada) los calcula el SERVIDOR con la hora de la sucursal y viajan en la instruccion: el modelo no los adivina. Un `{saludo}` en el
+  // mensaje inicial se resuelve aqui (antes se mandaba literal).
+  const estadoSucursalAhora = await estadoSucursalParaPrompt(repo, entrada, e.ahora);
+  const inicial = e.config.configurada ? resolverMarcadorSaludo(e.config.mensajeInicial.trim(), zonaHoraria, e.ahora) : "";
   let instruccion: string;
   if (editable === "") {
     instruccion =
@@ -64,6 +69,7 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
         customer: cliente,
         fechaHoraLocal: fechaHora,
         diaSemana: dia,
+        ...(estadoSucursalAhora ? { estadoSucursalAhora } : {}),
         saludoPersonalizado: config.greetingText ?? null,
         salsasTexto: config.salsasText ?? null,
         promosTexto: config.promosText ?? null,
@@ -74,13 +80,23 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
     const contexto = [
       "# CONTEXTO DE ESTA LLAMADA (lo pone el sistema, no el cliente)",
       `- Fecha y hora local (${zonaHoraria}): ${fechaHora}; día de la semana: ${dia}.`,
-      `- Saludo según la hora: "${saludo}".`,
+      `- Saludo según la hora: "${saludo}". Use SOLO ese saludo (nunca otro de «buenos días», «buenas tardes» o «buenas noches»).`,
+      ...(estadoSucursalAhora ? [`- ESTADO DE LA SUCURSAL AHORA (lo calcula el sistema; consúltelo ANTES de pedir el nombre): ${estadoSucursalAhora}`] : []),
       marcada ? `- El cliente llamó a la sucursal "${marcada.name}" (branch_slug: "${marcada.slug}").` : "- Esta llamada no pertenece a una sucursal en particular.",
       `- ${customerContextBlock(cliente).replace(/\n/g, "\n  ")}`,
     ].join("\n");
-    instruccion = `${editable}\n\n${contexto}`;
+    instruccion = instruccionVozConReglas({
+      comportamiento: `${editable}\n\n${contexto}`,
+      mensajeInicial: inicial,
+      businessName: config.businessName,
+      agentName: config.agentName ?? PM_AGENT_NAME_POR_OMISION,
+      deliveryTimeText: config.deliveryTimeText,
+      promosTexto: config.promosText ?? null,
+      salsasTexto: config.salsasText ?? null,
+      pedidoGrandeTexto: config.largeOrderText ?? null,
+      motivosDesactivados: config.motivosDesactivados ?? [],
+    });
   }
-  const inicial = e.config.configurada ? e.config.mensajeInicial.trim() : "";
-  if (inicial !== "") instruccion += `\n\n# PRIMER MENSAJE\nAl contestar, diga exactamente: "${inicial}"`;
+  if (editable === "" && inicial !== "") instruccion += `\n\n# PRIMER MENSAJE\nAl contestar, diga exactamente: "${inicial}"`;
   return { instruccion, horaLocal: horaLocalEn(zonaHoraria, e.ahora), zonaHoraria };
 }

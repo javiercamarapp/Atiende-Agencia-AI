@@ -126,3 +126,44 @@ export function describirTurno(turno: TurnoHorario): string {
   const cruza = turno.cierra <= turno.abre ? " (cierra al día siguiente)" : "";
   return `${dias} ${turno.abre} a ${turno.cierra}${cruza}`;
 }
+
+// ---- reporte de colonias ambiguas (X42): solo lectura, GET .../admin/config/colonias-ambiguas ----
+
+export type MotivoRevisionColonia = "ambigua" | "sin_asignar" | "contradice_distancia" | "reasignada_desde_galerias" | "distancia_de_otra_direccion_de_pensiones";
+
+export interface FilaColoniaAmbigua {
+  readonly zoneId: string;
+  readonly colonia: string;
+  readonly sucursalAsignada: { readonly slug: string; readonly nombre: string } | null;
+  readonly variasSucursales: boolean;
+  readonly kmAsignada: number | null;
+  readonly segundaSucursal: { readonly slug: string; readonly nombre: string } | null;
+  readonly segundaKm: number | null;
+  readonly diferenciaKm: number | null;
+  readonly origenKm: "piloto_original" | "calculada" | null;
+  readonly procedencia: string | null;
+  readonly revisar: boolean;
+  readonly motivos: readonly MotivoRevisionColonia[];
+}
+
+export interface ReporteColoniasAmbiguas {
+  /** `false` = la base todavía no tiene la migración 056. */
+  readonly disponible: boolean;
+  readonly total: number;
+  readonly paraRevisar: number;
+  readonly sinAsignar: number;
+  readonly ambiguas: number;
+  readonly filas: readonly FilaColoniaAmbigua[];
+}
+
+export const ETIQUETA_MOTIVO_COLONIA: Readonly<Record<MotivoRevisionColonia, string>> = {
+  ambigua: "Las dos sucursales más cercanas quedan a menos de 1 km",
+  sin_asignar: "Ninguna sucursal la cubre todavía: el agente la pasa a una persona",
+  contradice_distancia: "La sucursal asignada no es la más cercana según el piloto",
+  reasignada_desde_galerias: "La más cercana (Galerías) no reparte: se asignó la siguiente",
+  distancia_de_otra_direccion_de_pensiones: "La distancia del piloto a Pensiones se calculó desde otra dirección",
+};
+
+export async function fetchColoniasAmbiguas(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<ReporteColoniasAmbiguas> {
+  return fetchJson<ReporteColoniasAmbiguas>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/colonias-ambiguas`, token);
+}

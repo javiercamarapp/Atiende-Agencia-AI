@@ -30,7 +30,11 @@ async function construir(opts: { sinLlm?: boolean; script?: (r: LlmCompletionReq
   const guion = (req: LlmCompletionRequest): LlmCompletionResult => {
     prompts.push(req.system ?? "");
     const ultimo = req.messages.at(-1)!;
-    if (ultimo.role === "tool") return ok("Listo.");
+    if (ultimo.role === "tool") {
+      // crear_pedido exige que el total de la cotizacion aparezca en un mensaje del asistente (el resumen que el cliente vio): la respuesta a la cotizacion lo repite.
+      const total = (JSON.parse(ultimo.content) as { quote?: { total?: number } }).quote?.total;
+      return ok(typeof total === "number" ? `Listo. Total a pagar $${total}.` : "Listo.");
+    }
     const texto = String((ultimo as { content: string }).content);
     if (texto.includes("cotiza")) return ok("", [{ id: "t1", name: "cotizar_pedido", argumentsJson: JSON.stringify(base) }]);
     if (texto.includes("confirmo")) return ok("", [{ id: "t2", name: "confirmar_resumen", argumentsJson: "{}" }]);

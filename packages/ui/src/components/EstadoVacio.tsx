@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import type { ComponentType } from "react";
 import { Info } from "lucide-react";
 
@@ -5,8 +6,12 @@ import { cn } from "../lib/utils";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
+/** Variante por defecto de EstadoVacio en un subarbol: restaurantes la pone en "centrado" (el del repo suelto); el resto queda en "fila" (Likida). */
+const VarianteEstadoVacioContext = createContext<"centrado" | "fila">("fila");
+export const VarianteEstadoVacioProvider = VarianteEstadoVacioContext.Provider;
+
 /**
- * Estado vacio identico al `EstadoVacio` de Likida (kit.tsx; spec UNI-3c 6.5):
+ * Estado vacio: `variante="fila"` es el de Likida (kit.tsx; spec UNI-3c 6.5):
  * tarjeta p-4 con chip de icono de 36 px (canvas + hairline, icono de 17 px en el
  * color de marca) y el texto a la derecha. Patron "nunca inventar una cifra":
  * se muestra cuando no hay dato real, en vez de simular un cero o dejar la
@@ -18,6 +23,7 @@ export function EstadoVacio({
   mensaje,
   accion,
   compacto = false,
+  variante: varianteProp,
   className,
 }: {
   icon?: IconType;
@@ -26,8 +32,25 @@ export function EstadoVacio({
   accion?: React.ReactNode;
   /** Relleno p-3 en lugar de p-4, para vacíos dentro de una tarjeta o tabla. */
   compacto?: boolean;
+  /**
+   * "centrado" (el del repo suelto; es el valor por defecto dentro de restaurantes via VarianteEstadoVacioProvider): icono grande tenue centrado, texto debajo, `py-10`.
+   * "fila": chip de icono a la izquierda y texto a la derecha, para vacios dentro de una lista o celda.
+   */
+  variante?: "centrado" | "fila";
   className?: string;
 }) {
+  const porDefecto = useContext(VarianteEstadoVacioContext);
+  const variante = varianteProp ?? porDefecto;
+  if (variante === "centrado") {
+    return (
+      <div role="status" className={cn("card grid min-w-0 justify-items-center gap-1 rounded-lg border border-border bg-card px-4 text-center", compacto ? "py-6" : "py-10", className)}>
+        <Icon aria-hidden="true" className="mb-2 size-10 text-muted-foreground/40" strokeWidth={1.5} />
+        <p className="text-sm font-medium text-foreground">{titulo}</p>
+        <p className="max-w-sm text-ui text-muted-foreground">{mensaje}</p>
+        {accion ? <div className="mt-3">{accion}</div> : null}
+      </div>
+    );
+  }
   return (
     <div role="status" className={cn("card flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card shadow-card", compacto ? "p-3" : "p-4", className)}>
       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-canvas">

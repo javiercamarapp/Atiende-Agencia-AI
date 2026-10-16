@@ -168,6 +168,35 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/bloqueos/:ocupacionId/canc
     expect(res.status).toBe(400);
   });
 
+  it("Rn-P3-29: un bloqueo con canal de origen externo NO se cancela -- 409 reserva_no_directa", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const canalAirbnb = ctx.engine.calendarStore.findCanalPorCodigo("airbnb")!;
+    // El motor en memoria no modela el canal de origen de un bloqueo (los bloqueos se crean siempre manuales): se marca la fila como la dejaria un sync de canal.
+    const creado = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/bloqueos`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-10-01", fin: "2026-10-03" }, razon: "MANTENIMIENTO" }),
+    );
+    const { id } = (await creado.json()) as { id: string };
+    const fila = (ctx.engine.calendarStore as unknown as { ocupaciones: Map<string, { canalOrigenId: string | null }> }).ocupaciones.get(id)!;
+    fila.canalOrigenId = canalAirbnb.id;
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/bloqueos/${id}/cancelar`, authedJson(ctx.staff.adminGestora.token, {}));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe("reserva_no_directa");
+  });
+
+  it("Rn-P3-29: un bloqueo manual (sin canal de origen) SI se cancela -- 200", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const creado = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/bloqueos`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-10-01", fin: "2026-10-03" }, razon: "MANTENIMIENTO" }),
+    );
+    const { id } = (await creado.json()) as { id: string };
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/bloqueos/${id}/cancelar`, authedJson(ctx.staff.adminGestora.token, {}));
+    expect(res.status).toBe(200);
+  });
+
   it("cancelar un bloqueo ya cancelado -> 409", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);

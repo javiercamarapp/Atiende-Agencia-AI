@@ -1,6 +1,7 @@
 // Puente de audio de una llamada: remuestreo hacia el escalon, barge-in, silencio, reloj, DTMF y latencia de voz a voz. Tiempo manual: ninguna prueba espera.
 import { describe, expect, it } from "vitest";
 import { muestrasABytes } from "../src/audio/pcm.ts";
+import { MezcladorSalida } from "@atiende/voice-core";
 import { PuenteAudio } from "../src/puente-audio.ts";
 import type { DestinoEventosLlamada } from "../src/puente-audio.ts";
 import { LlamadaFalsa } from "../src/telefonia/falsa.ts";
@@ -173,5 +174,65 @@ describe("latencia de voz a voz", () => {
     await puente.reproducirPregrabado({ muestras: silencio(8_000, 20), hz: 8_000 });
     puente.audioAgente(muestrasABytes(tono(24_000, 20)));
     expect(puente.latenciasMs).toEqual([]);
+  });
+});
+
+describe("salida mezclada: cierre sin cuelgues", () => {
+  const flush = (): Promise<void> => new Promise((r) => setImmediate(r));
+  function armarMezclado(opts: { dormir?: (ms: number) => Promise<void> } = {}) {
+    const reloj = new RelojManual();
+    const tel = new LlamadaFalsa({ id: "sala-m", dnis: "+529991110001", desde: "+5219991234567", vaciarMezclada: false });
+    const mezclador = new MezcladorSalida({ ambiente: { volumen: 8, semilla: 1 } });
+    tel.abrirSalidaMezclada(mezclador);
+    const destino: DestinoEventosLlamada = { usuarioHabla: async () => undefined, silencio: async () => undefined, dtmf: async () => undefined, tick: async () => undefined };
+    const puente = new PuenteAudio({ tel, eventos: destino, enviarASesion: () => undefined, ahora: reloj.ahora, mezclador, ...(opts.dormir ? { dormir: opts.dormir } : {}) });
+    return { tel, mezclador, puente };
+  }
+
+  it("vaciar con tope: si nadie consume la voz en cola (bombeo parado) NO espera para siempre: corta lo pendiente y devuelve false", async () => {
+    let despertar!: () => void;
+    const { mezclador, puente } = armarMezclado({ dormir: () => new Promise<void>((r) => (despertar = r)) });
+    puente.audioAgente(muestrasABytes(tono(24_000, 500)));
+    await flush();
+    expect(mezclador.pendientes).toBeGreaterThan(0);
+    const espera = puente.vaciar(15_000);
+    despertar(); // vence el tope
+    expect(await espera).toBe(false);
+    expect(mezclador.pendientes).toBe(0);
+  });
+
+  it("vaciar con la voz ya consumida devuelve true y pide a la telefonia esperar a que termine de SONAR (la despedida no se corta)", async () => {
+    const { tel, mezclador, puente } = armarMezclado();
+    puente.audioAgente(muestrasABytes(tono(24_000, 40)));
+    await flush();
+    mezclador.siguiente(960); // el bombeo la toma
+    expect(await puente.vaciar(15_000)).toBe(true);
+    expect(tel.esperasDeSalida).toBe(1);
+  });
+
+  it("sin mezclador (camino de siempre) vaciar no pide esperas extra", async () => {
+    const { tel, puente } = armar();
+    puente.audioAgente(muestrasABytes(tono(24_000, 20)));
+    await puente.vaciar();
+    expect(tel.salida).toHaveLength(1);
+  });
+
+  it("si el bombeo falla, desactivarMezclador libera lo que esperaba y la voz siguiente va por tel.reproducir", async () => {
+    const { tel, mezclador, puente } = armarMezclado();
+    puente.audioAgente(muestrasABytes(tono(24_000, 200)));
+    await flush();
+    expect(mezclador.pendientes).toBeGreaterThan(0);
+    puente.desactivarMezclador();
+    expect(mezclador.pendientes).toBe(0);
+    await puente.vaciar(1_000);
+    puente.audioAgente(muestrasABytes(tono(24_000, 20)));
+    await puente.vaciar(1_000);
+    expect(tel.salida).toHaveLength(1);
+  });
+
+  it("registra la cola de salida con la que entro la voz (solo valores validos)", () => {
+    const { puente } = armarMezclado();
+    for (const ms of [60, Number.NaN, -5, Infinity, 0]) puente.registrarColaSalida(ms);
+    expect(puente.colasSalidaMs).toEqual([60, 0]);
   });
 });

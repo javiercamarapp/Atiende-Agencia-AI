@@ -38,6 +38,31 @@ export const TEMPLATE_LANGUAGE_PATTERN = /^[a-z]{2,3}(_[A-Z]{2})?$/;
 export const MAX_TEMPLATE_PARAMS = 10;
 export const MAX_TEMPLATE_PARAM_LENGTH = 1024;
 
+/** Documento adjunto (p. ej. el menu en PDF): Meta lo descarga del enlace PUBLICO https (`type: "document"` + `link`), no se suben binarios. Con documento,
+ *  `body` es el pie (caption, 1-1024 caracteres). Exclusivo: no se combina con botones, plantilla ni solicitud de ubicacion. */
+export interface OutboundDocument {
+  /** https publico, hasta 2048 caracteres. */
+  readonly url: string;
+  /** Nombre que ve el cliente; debe terminar en `.pdf` (1-240 caracteres, sin `/`, `\\` ni saltos de linea). */
+  readonly filename: string;
+  /** Si Meta no puede traer el archivo (4xx de forma/medio), el cliente recibe `body` + este enlace como texto en vez de quedarse sin respuesta. Ausente = el propio `url`. */
+  readonly fallbackUrl?: string;
+}
+
+export const DOCUMENT_URL_MAX_LENGTH = 2048;
+export const DOCUMENT_FILENAME_PATTERN = /^[^/\\\r\n]{1,236}\.pdf$/i;
+
+/** `true` si es un https bien formado, sin credenciales incrustadas y dentro del tope de longitud (Meta descarga el archivo desde internet). */
+export function esUrlHttpsPublica(valor: unknown): boolean {
+  if (typeof valor !== "string" || valor.length === 0 || valor.length > DOCUMENT_URL_MAX_LENGTH) return false;
+  try {
+    const u = new URL(valor);
+    return u.protocol === "https:" && u.username === "" && u.password === "";
+  } catch {
+    return false;
+  }
+}
+
 export interface OutboundWhatsAppMessagePayload {
   /** Número del destinatario en formato E.164 con o sin "+" (Graph API acepta
    *  ambos; se pasa tal cual llegó del encolador). */
@@ -61,11 +86,15 @@ export interface OutboundWhatsAppMessagePayload {
   /** Mensaje interactivo `location_request_message` de la Cloud API: el cliente comparte su ubicacion con un toque. `body` es el texto que
    *  acompana al boton. Exclusivo (no se combina con botones ni plantilla) y solo vale dentro de la ventana de 24 h del cliente. */
   readonly solicitarUbicacion?: boolean;
+  /** Documento adjunto por enlace publico (ver `OutboundDocument`); `body` es su pie. Exclusivo. Solo vale dentro de la ventana de 24 h del cliente. */
+  readonly documento?: OutboundDocument;
 }
 
 /** Como salio de verdad el mensaje hacia Meta. Sirve para explicar un fallo de entrega: un 131047 (fuera de la ventana de 24 h) con
  *  `texto` y una plantilla disponible en el payload significa "habia plantilla pero no se uso" (no estaba declarada aprobada). */
 export type EnviadoComo = "texto" | "plantilla" | "botones" | "ubicacion";
+// Un documento NO tiene valor propio: la columna `enviado_como` tiene un check de 4 valores (migracion 066) y no se tocan migraciones; el envio de un documento
+// devuelve `enviadoComo` ausente (se guarda NULL) salvo cuando degrada a texto.
 
 export interface WhatsAppSendResult {
   /** `messages[0].id` (wamid) que devuelve Graph API en un envío exitoso. El despachador lo entrega a `MessagingOutboxPort.markSent`

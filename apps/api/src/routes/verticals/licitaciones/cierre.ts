@@ -44,6 +44,7 @@ import type { Approval, LicitacionesRepository, LicitacionesRole } from "@atiend
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { requireStepUp } from "../../../second-factor.ts";
+import { auditar, correlationParaConvocatoria } from "./auditoria.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 function overallStatusOf(items: readonly { result: "verde" | "ambar" | "rojo" }[]): "verde" | "ambar" | "rojo" {
@@ -209,7 +210,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (mode === "doble") {
       if (!isExpedienteApprovalStage(raw.stage)) throw Errors.validation(`stage requerido: ${EXPEDIENTE_APPROVAL_STAGES.join(" | ")}.`);
       stage = raw.stage;
-      await requireStepUp(deps, { userId, organizationId, scope: "expediente_approval", token: c.req.header("x-step-up-token") });
+      await requireStepUp(deps, { userId, organizationId, scope: "expediente_approval", token: c.req.header("x-step-up-token"), db: c.get("db") });
     } else if (raw.stage !== undefined) {
       throw Errors.conflict("La doble aprobación del expediente aún no está disponible en esta base (falta la migración 033).");
     }
@@ -228,6 +229,15 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // sección, ver approval-workflow.ts).
       const approval = await repo.approve(organizationId, proposal.id, { scope: "expediente", scopeRef: "expediente", actorId: userId, actorRole: verticalRole, inputsHash: sealed, ...(stage ? { stage } : {}) });
       if (stage) await avisarEtapaAprobada(c.get("db"), { organizationId, proposalId: proposal.id, stage, hash: sealed.hash });
+      // L-P3-17: bitacora; hereda la correlacion de origen de la convocatoria (o el header saneado). El expediente se indexa por la convocatoria.
+      await auditar(deps, c, {
+        entity: "expediente",
+        entityId: tenderId,
+        action: stage ? "expediente.etapa_aprobada" : "expediente.aprobado",
+        before: null,
+        after: { stage: stage ?? null, mode, inputsHash: sealed.hash, proposalId: proposal.id },
+        correlationId: await correlationParaConvocatoria(c, repo, tenderId),
+      });
       return c.json({ id: approval.id, scope: approval.scope, scopeRef: approval.scopeRef, status: approval.status, inputsHash: approval.inputsHash, decidedAt: approval.approvedAt, ...(stage ? { stage } : {}) }, 201);
     } catch (err) {
       throw mapApprovalRejectedError(err);
@@ -317,13 +327,14 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const organizationId = c.get("organizationId");
     const userId = c.get("userId");
-    const requestId = c.get("requestId");
     const tenderId = c.req.param("tenderId");
 
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
     const proposal = await repo.findProposal(organizationId, tenderId);
     if (!proposal) throw Errors.notFound("Genere primero la propuesta antes de ensamblar el paquete.");
+    // L-P3-17: la correlacion del manifiesto es la de origen de la convocatoria (header saneado, o la heredada, o la de la peticion).
+    const requestId = await correlationParaConvocatoria(c, repo, tenderId);
 
     try {
       const result = await repo.withIdempotency({ organizationId, scope: "package.assemble", key: idempotencyKey, body: { proposalId: proposal.id } }, async () => {
@@ -346,6 +357,14 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           inputsHash: input.currentInputsHash.hash,
           correlationId: requestId ?? null,
           generatedBy: userId,
+        });
+        await auditar(deps, c, {
+          entity: "paquete",
+          entityId: tenderId,
+          action: "paquete.manifiesto_generado",
+          before: null,
+          after: { status: assembled.manifest.status, proposalId: proposal.id, inputsHash: input.currentInputsHash.hash },
+          correlationId: requestId,
         });
 
         return { status: 200, body: { id: assembled.manifest.expedienteId, status: assembled.manifest.status, draftReasons: assembled.manifest.draftReasons, missing: assembled.manifest.missing, generatedAt: assembled.manifest.generatedAt, notice: assembled.manifest.notice } };

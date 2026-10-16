@@ -35,6 +35,7 @@ import type {
   PlatformSwitchRow,
   ProspectoRow,
   SecurityEventRow,
+  SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
 } from "@atiende/db";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
@@ -56,6 +57,19 @@ export interface CopilotoUsoRow {
   readonly filas: number;
   readonly duracionMs: number;
   readonly costoMicroUsd: number;
+}
+
+/** Fila agregada por organizacion (core.get_operaciones_por_organizacion_for_superadmin): SOLO conteos y sumas, nunca datos de clientes finales. `null` = la vertical no guarda ese dato. */
+export interface OperacionOrganizacionRow {
+  readonly organizationId: string;
+  readonly vertical: string;
+  readonly operaciones: number | null;
+  /** MXN; solo restaurantes (pedidos) y hoteles (reservas). */
+  readonly ingresos: number | null;
+  readonly escalaciones: number | null;
+  readonly abiertos: number | null;
+  readonly vencidos: number | null;
+  readonly razon: "fuente_no_migrada" | null;
 }
 
 export type AccionAccesoCfo = "consulta" | "denegado";
@@ -92,6 +106,13 @@ export interface FuentesPlataforma {
   cfoFotos(desde: string, hasta: string): Promise<Fuente<readonly BillingSnapshotRow[]>>;
   infra(desde: string, hasta: string): Promise<Fuente<readonly InfraCostRow[]>>;
   contratos(): Promise<Fuente<readonly ContratoVersionRow[]>>;
+  /** Facturacion por organizacion (core.list_organization_billing_for_superadmin): estado de la suscripcion, asientos y fin del periodo. Sin correos ni ids de Stripe en el catalogo. */
+  facturacion(): Promise<Fuente<readonly SuperadminOrganizationBillingRow[]>>;
+  // ---- Lecturas por organizacion (seguimiento de CHAT-17): agregados sin datos personales, con bitacora por organizacion ----
+  /** `desde`/`hasta`/`hoy` = `YYYY-MM-DD` (dia de la plataforma). Con `organizationId` solo esa; sin el, TODAS (las sin actividad salen con 0). */
+  operacionesPorOrganizacion(desde: string, hasta: string, hoy: string, organizationId?: string | null): Promise<Fuente<readonly OperacionOrganizacionRow[]>>;
+  /** Una fila en core.superadmin_org_access_log por organizacion consultada (transaccion PROPIA, confirmada ANTES de leer el dato). */
+  registrarAccesoOrganizaciones(organizationIds: readonly string[], herramienta: string, filtros: Readonly<Record<string, unknown>>): Promise<ResultadoAccesoCfo>;
   /** Registra el acceso en core.cfo_access_log (transaccion PROPIA, confirmada antes de leer el dato). */
   registrarAccesoCfo(accion: AccionAccesoCfo, recurso: string, filtros: Readonly<Record<string, unknown>>): Promise<ResultadoAccesoCfo>;
 }
@@ -237,6 +258,52 @@ export function fuentesDeProduccion(deps: AppDeps, db: TenantDbSession, callerId
             return conDisponibilidad(r, () => r.versions);
           })
         : Promise.resolve(SIN_REPO),
+    facturacion: () => propio(() => deps.coreRepo.listOrganizationBillingForSuperadmin(callerId)),
+    operacionesPorOrganizacion: (desde, hasta, hoy, organizationId) =>
+      enSesion(async () => {
+        const { rows } = await db.query<{
+          organization_id: string;
+          vertical: string;
+          operaciones: string | number | null;
+          ingresos: string | number | null;
+          escalaciones: string | number | null;
+          abiertos: string | number | null;
+          vencidos: string | number | null;
+          razon: string | null;
+        }>(
+          `select organization_id, vertical, operaciones, ingresos, escalaciones, abiertos, vencidos, razon
+             from core.get_operaciones_por_organizacion_for_superadmin($1::uuid, $2::date, $3::date, $4::date, $5::uuid);`,
+          [callerId, desde, hasta, hoy, organizationId ?? null],
+        );
+        const nulo = (v: string | number | null): number | null => (v === null ? null : num(v));
+        return {
+          ok: true as const,
+          data: rows.map((r) => ({
+            organizationId: r.organization_id,
+            vertical: r.vertical,
+            operaciones: nulo(r.operaciones),
+            ingresos: nulo(r.ingresos),
+            escalaciones: nulo(r.escalaciones),
+            abiertos: nulo(r.abiertos),
+            vencidos: nulo(r.vencidos),
+            razon: r.razon === "fuente_no_migrada" ? ("fuente_no_migrada" as const) : null,
+          })),
+        };
+      }),
+    async registrarAccesoOrganizaciones(organizationIds, herramienta, filtros) {
+      if (organizationIds.length === 0) return "ok";
+      try {
+        // Transaccion PROPIA (como la huella CFO): la fila queda confirmada antes de leer y sobrevive a cualquier fallo posterior del turno.
+        await deps.engine.withAppSession({ userId: callerId }, async (s) => {
+          for (let i = 0; i < organizationIds.length; i += 1000) {
+            await s.query(`select core.log_superadmin_org_access($1::uuid, $2::uuid[], $3::text, $4::jsonb);`, [callerId, organizationIds.slice(i, i + 1000), herramienta, JSON.stringify(filtros)]);
+          }
+        });
+        return "ok";
+      } catch (err) {
+        return isMigrationPendingError(err) ? "no_migrado" : "error";
+      }
+    },
     async registrarAccesoCfo(accion, recurso, filtros) {
       const repo = deps.cfoZoneRepo;
       // Sin repositorio de la zona CFO no hay rol restringido ni bitacora (mismo criterio que zona-cfo.ts: comportamiento anterior).

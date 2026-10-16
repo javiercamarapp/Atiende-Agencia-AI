@@ -9,9 +9,15 @@ const ORG = orgDe("restaurantes");
 const B = "/v1/restaurantes/:id/admin";
 
 export const ORDENES_SEMILLA = [
-  { id: "ord-1001", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 286, status: "pending", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 2 }, { id: "p-2", name: "Horchata", price: 48, quantity: 2 }], source: "whatsapp", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-30T18:20:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "domicilio", propina: 20, horaRecogida: null },
-  { id: "ord-1002", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-2", customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: null, total: 190, status: "preparando", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 2 }], source: "web", notes: "Sin cebolla", paymentMethod: "tarjeta", createdAt: "2026-09-30T18:05:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "recoger", propina: null, horaRecogida: "2026-09-30T19:00:00.000Z" },
-  { id: "ord-0999", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 143, status: "completado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], source: "voice", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-29T20:10:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "domicilio", propina: null, horaRecogida: null },
+  { id: "ord-1001", orderNumber: 1001, propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 286, status: "pending", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 2 }, { id: "p-2", name: "Horchata", price: 48, quantity: 2 }], source: "whatsapp", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-30T18:20:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "domicilio", propina: 20, horaRecogida: null, deliveredAt: null as string | null },
+  { id: "ord-1002", orderNumber: 1002, propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-2", customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: null, total: 190, status: "preparando", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 2 }], source: "web", notes: "Sin cebolla", paymentMethod: "tarjeta", createdAt: "2026-09-30T18:05:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "recoger", propina: null, horaRecogida: "2026-09-30T19:00:00.000Z", deliveredAt: null as string | null },
+  { id: "ord-0999", orderNumber: 999, propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 143, status: "completado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], source: "voice", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-29T20:10:00.000Z", assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "domicilio", propina: null, horaRecogida: null, deliveredAt: "2026-09-29T20:50:00.000Z" as string | null },
+];
+
+/** Pedidos programados (R-11, `GET admin/scheduled-orders`): se siembran relativos al arranque del mock para que su hora siempre sea futura. */
+export const PROGRAMADOS_SEMILLA = [
+  { id: "ord-2001", orderNumber: 1003, propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-3", customerName: "Lucia Xool", customerPhone: "+529995550103", customerAddress: "Calle 21 #88, Itzimna", total: 143, status: "programado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], source: "whatsapp", notes: null, paymentMethod: "efectivo", createdAt: new Date().toISOString(), assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "domicilio", propina: null, horaRecogida: null, programadoPara: new Date(Date.now() + 3 * 3_600_000).toISOString(), deliveredAt: null as string | null },
+  { id: "ord-2002", orderNumber: 1004, propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-2", customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: null, total: 380, status: "programado", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 4 }], source: "web", notes: null, paymentMethod: "tarjeta", createdAt: new Date().toISOString(), assignedRepartidorId: null as string | null, estimatedDeliveryAt: null as string | null, incidentNote: null as string | null, canal: "recoger", propina: null, horaRecogida: null, programadoPara: new Date(Date.now() + 26 * 3_600_000).toISOString(), deliveredAt: null as string | null },
 ];
 
 // Entregas asignadas al repartidor (GET/PATCH repartidor/orders). Forma = RepartidorOrder de lib/repartidor-client.ts.
@@ -166,13 +172,14 @@ export const rutasRestaurantes: readonly Ruta[] = [
       return conStatus(204, undefined);
     },
   },
-  { metodo: "GET", patron: "/v1/restaurantes/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }] }) },
+  // Lista en el estado del escenario: una prueba puede sembrar una segunda sucursal con `mock.agregarAEstado("rest.branches", ...)` y recargar.
+  { metodo: "GET", patron: "/v1/restaurantes/:org/admin/branches", manejador: (p) => ({ branches: p.estado.obtener("rest.branches", () => [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }]) }) },
   { metodo: "GET", patron: `${B}/kpis/sales`, manejador: () => kpisVentas },
   { metodo: "GET", patron: `${B}/kpis/sales/trend`, manejador: () => ({ buckets: ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"].map((label, i) => ({ label, revenue: 2100 + i * 310, orders: 11 + i })) }) },
   { metodo: "GET", patron: `${B}/kpis/channels`, manejador: () => canales },
   { metodo: "GET", patron: `${B}/kpis/customers`, manejador: () => clientesKpis },
 
-  { metodo: "GET", patron: `${B}/scheduled-orders`, manejador: () => ({ disponible: true, orders: [], promovidos: [], serverNow: "2026-09-30T19:00:00.000Z" }) },
+  { metodo: "GET", patron: `${B}/scheduled-orders`, manejador: (p) => ({ disponible: true, orders: p.estado.obtener("rest.programados", () => structuredClone(PROGRAMADOS_SEMILLA)), promovidos: [], serverNow: new Date().toISOString() }) },
 
   { metodo: "GET", patron: `${B}/customers`, manejador: (p) => {
       const nivel = p.query.get("nivel");
@@ -305,6 +312,20 @@ export const rutasRestaurantes: readonly Ruta[] = [
       p.estado.guardar("rest.voz-config", nueva);
       return nueva;
     } },
+
+  // ---- Pruebas del agente (UNI-R4): el chat de WhatsApp de demostracion y la llamada de prueba. Solo existen en la API simulada de e2e; el
+  // contrato es el del servidor real (agente-preview.ts y voz-admin.ts): respuesta {respuesta, escalado, pedidoSimulado} y pedido PRUEBA-xxxx. ----
+  { metodo: "POST", patron: `${B}/agente-whatsapp/preview/mensaje`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { mensajes?: { rol: string; texto: string }[] };
+      if ((c.mensajes ?? []).length > 40) return fallo(400, "mensajes: se esperaba una lista de 1 a 40 mensajes.");
+      const ultimo = [...(c.mensajes ?? [])].reverse().find((m) => m.rol === "usuario")?.texto ?? "";
+      if (/pedido|quiero|tacos/i.test(ultimo)) {
+        return { respuesta: "Listo, le anoto 3 tacos al pastor y una horchata para recoger. Son $183.00. ¿Confirmo su pedido?", escalado: false, pedidoSimulado: { id: "PRUEBA-AB12", branch: PROP.nombre, total: 183, status: "simulado", payment_method: "efectivo", simulado: true, items: [{ name: "Tacos al pastor (orden)", quantity: 3, price: 45 }, { name: "Horchata", quantity: 1, price: 48 }] } };
+      }
+      return { respuesta: "Hola, bienvenido a Taquería El Faro. ¿En qué le puedo ayudar hoy?", escalado: false, pedidoSimulado: null };
+    } },
+  { metodo: "POST", patron: `${B}/voz/preview/sesion`, roles: ["owner", "admin"], manejador: () => ({ sesionId: "ses-prueba-1", proveedor: "gemini", modelo: "gemini-3.8-live", voiceId: "Kore", websocketUrl: "wss://gemini.e2e.test/live", tokenProveedor: "tok-efimero", tokenPreview: "tok-preview", expiraEn: "2099-01-01T00:00:00.000Z" }) },
+  { metodo: "POST", patron: `${B}/voz/preview/:sesionId/herramienta`, roles: ["owner", "admin"], manejador: () => ({ resultado: { ok: true }, simulado: true }) },
 ];
 
 // ---- Ajustes del agente (migración 055) y conocimiento automatico. Solo existe en la API simulada de e2e: reproduce el contrato de

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
 
 import {
   AlertDialog,
@@ -145,7 +145,7 @@ export function ConfirmDialog({
         }
       >
         <form onSubmit={enviar} className="grid gap-3" noValidate>
-          <AlertDialogHeader>
+          <AlertDialogHeader icono={tono === "danger" ? AlertTriangle : HelpCircle} tono={tono === "danger" ? "danger" : "default"}>
             <AlertDialogTitle>{titulo}</AlertDialogTitle>
             {descripcion !== undefined ? (
               <AlertDialogDescription>{descripcion}</AlertDialogDescription>
@@ -194,7 +194,7 @@ export function ConfirmDialog({
             <AlertDialogCancel type="button" data-confirm-cancelar="" disabled={enCurso}>
               {cancelar}
             </AlertDialogCancel>
-            <Button type="submit" variant={tono === "danger" ? "danger" : "default"} disabled={bloqueado} aria-busy={enCurso || undefined}>
+            <Button type="submit" variant={tono === "danger" ? "danger" : "default"} className={tono === "danger" ? "ambito-peligro-solido" : undefined} disabled={bloqueado} aria-busy={enCurso || undefined}>
               {enCurso && <Loader2 aria-hidden="true" className="animate-spin" />}
               {confirmar}
             </Button>

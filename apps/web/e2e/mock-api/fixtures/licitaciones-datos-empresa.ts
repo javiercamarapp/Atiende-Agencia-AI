@@ -5,6 +5,7 @@
 import { conStatus, fallo } from "../respuestas.ts";
 import { personaDe } from "../personas.ts";
 import type { Peticion, Ruta } from "../tipos.ts";
+import { consumirStepUp } from "./step-up.ts";
 
 const L = "/licitaciones/:id";
 
@@ -37,7 +38,13 @@ const semilla = (): Datos => ({
   signers: [{ id: "sig-1", name: "Representante legal", role: "Apoderado", authorized: true, approvalStatus: "aprobado", proposedBy: STAFF.id, approvedBy: OWNER.id, approvedAt: "2026-09-20T16:00:00.000Z" }],
 });
 
-const datos = (p: Peticion): Datos => p.estado.obtener<Datos>("licitaciones.datosEmpresa", semilla);
+const datos = (p: Peticion): Datos => {
+  const d = p.estado.obtener<Datos>("licitaciones.datosEmpresa", semilla);
+  // Control de pruebas: `mock.agregarAEstado("licitaciones.tarifasExtra", {...})` simula una tarifa nueva propuesta por otra persona.
+  const extra = p.estado.obtener<Dato[]>("licitaciones.tarifasExtra", () => []);
+  while (extra.length > 0) d.rates.push(extra.shift()!);
+  return d;
+};
 const PEOPLE = { [OWNER.id]: OWNER.fullName, [STAFF.id]: STAFF.fullName, [ADMIN.id]: ADMIN.fullName };
 
 const listado = (clave: Tipo): Ruta => ({ metodo: "GET", patron: `${L}/company/${clave}`, manejador: (p) => ({ [clave]: datos(p)[clave], people: PEOPLE }) });
@@ -49,7 +56,7 @@ function decidir(tipo: Tipo, parametro: string, decision: "aprobado" | "rechazad
     roles: ["owner", "admin"],
     manejador: (p) => {
       // Solo las tarifas exigen el token de step-up del propio usuario (igual que `requireStepUp` en el servidor).
-      if (tipo === "rates" && p.cabeceras["x-step-up-token"] !== `mock-step-up.${p.persona!.id}`) return fallo(403, "Esta acción requiere confirmar tu identidad con el código de tu app de autenticación.");
+      if (tipo === "rates") { const sinStepUp = consumirStepUp(p); if (sinStepUp) return fallo(403, sinStepUp); }
       const dato = datos(p)[tipo].find((d) => d.id === p.params[parametro]);
       if (!dato) return fallo(404, "Dato de empresa no encontrado.");
       if (dato.proposedBy === p.persona!.id) return fallo(403, "La persona que propuso o editó por última vez este dato no puede decidirlo: lo debe decidir otra persona con rol de decisión.");

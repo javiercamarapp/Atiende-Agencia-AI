@@ -68,7 +68,21 @@ const preset: Omit<Config, "content"> = {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
           tint: "hsl(var(--destructive-tint))",
+          // Rojo del boton destructivo solido del ambito restaurantes (blanco encima >= 4.5:1).
+          solido: "hsl(var(--destructive-solido))",
+          "solido-foreground": "hsl(var(--destructive-solido-foreground))",
         },
+        // Azul solido del repo suelto (`terracotta`): toast y superficie del menu; menu-activo = elemento resaltado.
+        solido: {
+          DEFAULT: "hsl(var(--solido))",
+          foreground: "hsl(var(--solido-foreground))",
+        },
+        "menu-activo": {
+          DEFAULT: "hsl(var(--menu-activo))",
+          foreground: "hsl(var(--menu-activo-foreground))",
+        },
+        // Velo de los modales (el original: negro al 80 %, sin desenfoque). Valor completo con alfa.
+        scrim: "var(--scrim)",
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -97,6 +111,8 @@ const preset: Omit<Config, "content"> = {
           DEFAULT: "hsl(var(--info))",
           tint: "hsl(var(--info-tint))",
         },
+        // Final de la franja de marca de los formularios (original: secondary; claro = azul, oscuro = cielo).
+        franja: "hsl(var(--franja-fin))",
         // Neutrales de Likida: gris sumido, lienzo, hairline fuerte, texto secundario y tenue.
         sunken: "hsl(var(--sunken))",
         canvas: "hsl(var(--canvas))",
@@ -115,6 +131,7 @@ const preset: Omit<Config, "content"> = {
           3: "hsl(var(--chart-3))",
           4: "hsl(var(--chart-4))",
           5: "hsl(var(--chart-5))",
+          ventas: "hsl(var(--chart-ventas))",
         },
         // Marca Atiende: solo el logo.
         "marca-atiende": "hsl(var(--marca-atiende))",
@@ -140,6 +157,8 @@ const preset: Omit<Config, "content"> = {
         card: "var(--radius-card)",
         shell: "var(--radius-shell)",
         dialog: "var(--radius-dialog)",
+        menu: "var(--radius-menu)",
+        item: "var(--radius-item)",
       },
       transitionDuration: {
         instant: "var(--dur-instant)",
@@ -155,6 +174,10 @@ const preset: Omit<Config, "content"> = {
       boxShadow: {
         card: "var(--shadow-card)",
         elevated: "var(--shadow-elevated)",
+        // Elevacion del boton primario al hover (repo suelto: 0 10px 26px primary/26 %). En otras verticales = sin sombra.
+        boton: "var(--shadow-boton)",
+        hundido: "var(--shadow-hundido)",
+        "hundido-abierto": "var(--shadow-hundido-abierto)",
       },
       keyframes: {
         "accordion-down": {

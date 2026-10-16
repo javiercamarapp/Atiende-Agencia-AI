@@ -1,0 +1,897 @@
+{
+ "sucursal": {
+  "slug": "galerias",
+  "id_seed": "T4",
+  "nombre": "Galerías",
+  "telefono_publico": "999 941 9612"
+ },
+ "fuente": {
+  "sitio": "https://www.lostaquitosdepm.com",
+  "capturado": "2026-10-15",
+  "metodo": "Lectura visual de las imágenes de menú publicadas en la página (el menú es imagen, no texto). Sin ráfagas: una descarga por imagen con 2 s de pausa; robots.txt permite /.",
+  "paginas_leidas": [
+   {
+    "url": "https://www.lostaquitosdepm.com/menupmgalerias",
+    "imagenes": [
+     "PROMO",
+     "ENTARDAS Y NACHOS",
+     "POSTRES Y BEBIDAS"
+    ]
+   }
+  ],
+  "lista_de_precios": "T1-2026 (mismos precios que Prolongación Montejo)"
+ },
+ "paginas_o_secciones_no_publicadas": [
+  "La página NO publica tacos ni licores. La imagen «Postres y bebidas» trae refrescos, aguas, guarniciones extra y kilos; NO trae postres.",
+  "La imagen de entradas NO trae Cebollas cambray, Alitas de pollo ni Ensalada de PM."
+ ],
+ "categorias": [
+  "Entradas",
+  "Frijoles charros",
+  "Quesadillas",
+  "Queso fundido",
+  "Nachos",
+  "Refrescos",
+  "Aguas frescas",
+  "Guarniciones extra",
+  "Kilos a domicilio"
+ ],
+ "productos": [
+  {
+   "categoria": "Entradas",
+   "nombre": "Frijol con tostada",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 93,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Frijol con tostada"
+    }
+   ],
+   "notas": []
+  },
+  {
+   "categoria": "Entradas",
+   "nombre": "Guacamole",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 142,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Guacamole"
+    }
+   ],
+   "notas": []
+  },
+  {
+   "categoria": "Entradas",
+   "nombre": "Carbolla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 106,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Carbolla"
+    }
+   ],
+   "notas": []
+  },
+  {
+   "categoria": "Entradas",
+   "nombre": "Chicharrón de queso",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 172,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Chicharrón de queso"
+    }
+   ],
+   "notas": []
+  },
+  {
+   "categoria": "Entradas",
+   "nombre": "Papas a la francesa",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 113,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Papas a la francesa"
+    }
+   ],
+   "notas": []
+  },
+  {
+   "categoria": "Frijoles charros",
+   "nombre": "Normal",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 123,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Frijoles Charros Normal"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 82,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Frijoles Charros Normal (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Frijoles charros",
+   "nombre": "Con queso",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 142,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Frijoles Charros Con queso"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 106,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Frijoles Charros Con queso (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Frijoles charros",
+   "nombre": "Especiales",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 178,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Frijoles Charros Especiales"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 136,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Frijoles Charros Especiales (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Quesadillas",
+   "nombre": "Natural",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 109,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Quesadilla de Natural"
+    }
+   ],
+   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
+   "notas": [
+    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
+   ]
+  },
+  {
+   "categoria": "Quesadillas",
+   "nombre": "Rajas",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 124,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Quesadilla de Rajas"
+    }
+   ],
+   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
+   "notas": [
+    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
+   ]
+  },
+  {
+   "categoria": "Quesadillas",
+   "nombre": "Champiñones",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 127,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Quesadilla de Champiñones"
+    }
+   ],
+   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
+   "notas": [
+    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
+   ]
+  },
+  {
+   "categoria": "Quesadillas",
+   "nombre": "Chorizo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 135,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Quesadilla de Chorizo"
+    }
+   ],
+   "tortilla": "maíz o harina (lo dice la imagen: «de maíz o harina»)",
+   "notas": [
+    "La imagen del menú NO dice cuántas piezas trae la orden. El seed carga 3 quesadillas por orden (menú impreso); la web no lo confirma."
+   ]
+  },
+  {
+   "categoria": "Queso fundido",
+   "nombre": "Natural",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 160,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Queso Fundido Natural"
+    }
+   ]
+  },
+  {
+   "categoria": "Queso fundido",
+   "nombre": "Rajas",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 175,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Queso Fundido Rajas"
+    }
+   ]
+  },
+  {
+   "categoria": "Queso fundido",
+   "nombre": "Champiñones",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 175,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Queso Fundido Champiñones"
+    }
+   ]
+  },
+  {
+   "categoria": "Queso fundido",
+   "nombre": "Tocino",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 179,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Queso Fundido Tocino"
+    }
+   ]
+  },
+  {
+   "categoria": "Queso fundido",
+   "nombre": "Chorizo",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 179,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Queso Fundido Chorizo"
+    }
+   ]
+  },
+  {
+   "categoria": "Nachos",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 328,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Nachos de Pastor"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 232,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Nachos de Pastor (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Nachos",
+   "nombre": "Champiñón",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 320,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Nachos de Champiñón"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 232,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Nachos de Champiñón (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Nachos",
+   "nombre": "Bistec",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 373,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Nachos de Bistec"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 262,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Nachos de Bistec (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Nachos",
+   "nombre": "Pechuga",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 363,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Nachos de Pechuga"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 249,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Nachos de Pechuga (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Nachos",
+   "nombre": "Chuleta",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 358,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Nachos de Chuleta"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 249,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Nachos de Chuleta (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Nachos",
+   "nombre": "Costilla",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 367,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Nachos de Costilla"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 255,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Nachos de Costilla (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Nachos",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "orden",
+     "precio_mxn": 433,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "orden",
+     "seed_nombre": "Nachos de Arrachera"
+    },
+    {
+     "etiqueta": "1/2 orden",
+     "precio_mxn": 299,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "media_orden",
+     "seed_nombre": "Nachos de Arrachera (1/2 orden)"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Coca-Cola (lata 355 ml)",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Coca-Cola"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Coca-Cola Light (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Coca-Cola Light"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Coca-Cola sin azúcar (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Coca-Cola sin Azúcar"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Fanta (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Fanta"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Sprite (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Sprite"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Sprite Cero (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Sprite Cero"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Sidral Mundet (lata)",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Sidral Mundet"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Agua mineral Cristal 300 ml",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Agua Mineral Cristal"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Agua purificada 600 ml",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 53,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Agua Purificada"
+    }
+   ]
+  },
+  {
+   "categoria": "Refrescos",
+   "nombre": "Topo Chico 355 ml",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 74,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Topo Chico"
+    }
+   ]
+  },
+  {
+   "categoria": "Aguas frescas",
+   "nombre": "Jamaica",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 60,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Agua de Jamaica"
+    }
+   ],
+   "notas": [
+    "Agua fresca rellenable una vez."
+   ]
+  },
+  {
+   "categoria": "Aguas frescas",
+   "nombre": "Horchata",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 60,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Horchata"
+    }
+   ],
+   "notas": [
+    "Agua fresca rellenable una vez."
+   ]
+  },
+  {
+   "categoria": "Aguas frescas",
+   "nombre": "Té",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 60,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Té"
+    }
+   ],
+   "notas": [
+    "Agua fresca rellenable una vez."
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Extra champiñón",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 35,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Extra Champiñón"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Extra chile poblano",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 35,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Extra Chile Poblano"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Extra chorizo",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 36,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Extra Chorizo"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Extra guacamole",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 49,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Extra Guacamole"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Extra rajas",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 35,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Extra Rajas"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Extra tocino",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 36,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Extra Tocino"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Orden de tortilla de harina",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 24,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Orden Tortilla de Harina"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Orden de tortilla de maíz",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 22,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Orden Tortilla de Maíz"
+    }
+   ]
+  },
+  {
+   "categoria": "Guarniciones extra",
+   "nombre": "Queso",
+   "presentaciones": [
+    {
+     "etiqueta": "pieza",
+     "precio_mxn": 52,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "pieza",
+     "seed_nombre": "Extra Queso"
+    }
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Pastor",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 900,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Pastor — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Bistec de res",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 1100,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Bistec de res — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Bistec de res encebollado",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 1150,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Bistec de res encebollado — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Chuleta de cerdo",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 950,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Chuleta de cerdo — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Pechuga de pollo",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 950,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Pechuga de pollo — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Poc-chuc",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 950,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Poc-chuc — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Arrachera",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 1400,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Arrachera — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  },
+  {
+   "categoria": "Kilos a domicilio",
+   "nombre": "Costilla de res",
+   "presentaciones": [
+    {
+     "etiqueta": "1 kg",
+     "precio_mxn": 950,
+     "piezas_por_orden": null,
+     "unidad_de_venta": "kg",
+     "seed_nombre": "Costilla de res — 1 kg"
+    }
+   ],
+   "notas": [
+    "Incluye salsa roja, verde, limones y tortillas.",
+    "La web publica SOLO el precio del kilo; no publica 1/4, 1/2, 3/4, 1.5 ni 2 kg (el seed los calcula proporcional)."
+   ]
+  }
+ ],
+ "promociones": [
+  {
+   "dia": "lunes",
+   "nombre": "2x1 en tacos al pastor",
+   "precio_mxn": null,
+   "restricciones": "Aplican restricciones: promociones válidas únicamente en sucursales Francisco de Montejo, Pensiones y Plaza Galerías, a partir del horario de apertura al cierre. No válido en servicio a domicilio."
+  },
+  {
+   "dia": "martes",
+   "nombre": "Nachos al pastor + 2 aguas frescas",
+   "precio_mxn": 328,
+   "restricciones": "Aplican restricciones: promociones válidas únicamente en sucursales Francisco de Montejo, Pensiones y Plaza Galerías, a partir del horario de apertura al cierre. No válido en servicio a domicilio."
+  }
+ ],
+ "horarios_por_producto": null,
+ "horarios_por_producto_nota": "El sitio no publica horarios por producto ni por sucursal en estas páginas: PENDIENTE de confirmar con PM.",
+ "disponibilidad_por_sucursal_nota": "Solo se afirma lo que la imagen de ESTA sucursal muestra; lo que no aparece NO quiere decir que no se venda.",
+ "excepciones_y_notas": [
+  "Aplican restricciones: promociones válidas únicamente en sucursales Francisco de Montejo, Pensiones y Plaza Galerías, a partir del horario de apertura al cierre. No válido en servicio a domicilio.",
+  "El seed registra Galerías como solo informativa (inactiva, sin catálogo).",
+  "Costo de envío, pedido mínimo, agotados y «solo fin de semana»: el sitio no publica nada de esto; PENDIENTE de confirmar con PM."
+ ]
+}

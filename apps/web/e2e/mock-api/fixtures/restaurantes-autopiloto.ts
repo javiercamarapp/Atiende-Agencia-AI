@@ -79,12 +79,12 @@ export const rutasRestaurantesAutopiloto: readonly Ruta[] = [
       const s = todas.find((x) => x.id === p.params.sid);
       const cuerpo = (p.cuerpo ?? {}) as { decision?: string; motivo?: string };
       if (!s) return { status: 404, cuerpo: { code: "not_found", message: "Solicitud no encontrada." } };
-      if (s.estado === "resuelta") return { aplicado: false, tipo: s.tipo, decision: s.decision, estadoPedido: null, codigoDescuento: null, reposicionOrderId: null, efectos: [] };
+      if (s.estado === "resuelta") return { aplicado: false, tipo: s.tipo, decision: s.decision, estadoPedido: null, codigoDescuento: null, reposicionOrderId: null, motivo: null, efectos: [] };
       s.estado = "resuelta";
       s.decision = cuerpo.decision ?? null;
       s.motivoResolucion = cuerpo.motivo ?? null;
       s.resueltaAt = new Date().toISOString();
-      return { aplicado: true, tipo: s.tipo, decision: s.decision, estadoPedido: cuerpo.decision === "aprobar" ? "pending" : "cancelado", codigoDescuento: null, reposicionOrderId: null, efectos: ["aviso_cliente"] };
+      return { aplicado: true, tipo: s.tipo, decision: s.decision, estadoPedido: cuerpo.decision === "aprobar" ? "pending" : "cancelado", codigoDescuento: null, reposicionOrderId: null, motivo: null, efectos: ["aviso_cliente"] };
     },
   },
   {

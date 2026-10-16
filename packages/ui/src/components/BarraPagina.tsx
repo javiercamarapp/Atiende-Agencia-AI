@@ -26,6 +26,8 @@ export interface BarraPaginaProps {
   readonly notificationBell: ReactNode;
   /** Tipicamente `<BotonChatDatos />` de apps/web; las consolas que no lo tienen lo omiten. */
   readonly chatButton?: ReactNode;
+  /** Acciones propias de la pagina activa (p. ej. «Vista previa» del agente de voz), a la izquierda del chat/campana, como en la barra del original. */
+  readonly acciones?: ReactNode;
   /**
    * Solo cuando la pagina activa no pinta ningun `<h1>` (el shell lo detecta): el nombre hace de
    * encabezado de nivel 1 para que la pantalla no se quede sin ninguno. Nunca coexiste con el de la pagina.
@@ -34,7 +36,7 @@ export interface BarraPaginaProps {
   readonly className?: string;
 }
 
-export function BarraPagina({ icon, title, fecha, notificationBell, chatButton, comoH1 = false, className }: BarraPaginaProps) {
+export function BarraPagina({ icon, title, fecha, notificationBell, chatButton, acciones, comoH1 = false, className }: BarraPaginaProps) {
   return (
     <header data-testid="barra-pagina" className={cn("flex items-center justify-between h-11 px-5 gap-3 shrink-0 border-b border-border bg-card", className)}>
       <div className="flex items-center gap-2 text-ui font-medium min-w-0 text-foreground">
@@ -44,6 +46,7 @@ export function BarraPagina({ icon, title, fecha, notificationBell, chatButton, 
         </p>
       </div>
       <div className="flex items-center gap-2">
+        {acciones}
         {chatButton}
         {notificationBell}
         <span data-testid="barra-pagina-fecha" className="inline-flex items-center gap-1.5 text-ui font-medium px-3 h-8 rounded-lg border border-border bg-card shrink-0 text-foreground">

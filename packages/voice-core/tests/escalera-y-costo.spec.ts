@@ -215,17 +215,77 @@ describe("estado honesto de la escalera", () => {
   it("sin llaves: no operativa y dice que falta", () => {
     const s = estadoEscalera({ geminiApiKey: null, openrouterApiKey: null, llm: null });
     expect(s.operativa).toBe(false);
-    expect(s.escalones.map((x) => [x.escalon, x.configurado])).toEqual([["gemini-3.8-live", false], ["cascada-openrouter", false]]);
+    expect(s.escalones.map((x) => [x.escalon, x.configurado])).toEqual([["gemini-3.8-live", false], ["cascada-v2", false], ["cascada-openrouter", false]]);
     expect(s.escalones[0]!.detalle).toContain("GEMINI_API_KEY");
-    expect(s.escalones[1]!.detalle).toContain("OPENROUTER_API_KEY");
+    expect(s.escalones[1]!.detalle).toContain("No disponible aún: requiere habilitar cascada-v2");
+    expect(s.escalones[2]!.detalle).toContain("OPENROUTER_API_KEY");
   });
   it("solo OpenRouter + gateway: operativa por la cascada; sin gateway la cascada no cuenta", () => {
     expect(estadoEscalera({ geminiApiKey: null, openrouterApiKey: "k", llm }).operativa).toBe(true);
     const sinGateway = estadoEscalera({ geminiApiKey: null, openrouterApiKey: "k", llm: null });
     expect(sinGateway.operativa).toBe(false);
-    expect(sinGateway.escalones[1]!.detalle).toContain("gateway");
+    expect(sinGateway.escalones[2]!.detalle).toContain("gateway");
   });
   it("nunca devuelve la llave", () => {
-    expect(JSON.stringify(estadoEscalera({ geminiApiKey: "AIza-secreta", openrouterApiKey: "sk-or-secreta", llm }))).not.toMatch(/secreta/);
+    expect(JSON.stringify(estadoEscalera({ geminiApiKey: "AIza-secreta", openrouterApiKey: "sk-or-secreta", deepgramApiKey: "dg-secreta", llm }))).not.toMatch(/secreta/);
+  });
+  it("cascada v2: necesita DEEPGRAM_API_KEY, OPENROUTER_API_KEY y el gateway; cada faltante se dice con el mensaje honesto «No disponible aún: requiere X»", () => {
+    const solo = (o: Parameters<typeof estadoEscalera>[0]) => estadoEscalera(o).escalones.find((e) => e.escalon === "cascada-v2")!;
+    expect(solo({ geminiApiKey: null, openrouterApiKey: "k", cascadaV2Habilitada: true, llm })).toMatchObject({ configurado: false, detalle: "No disponible aún: requiere DEEPGRAM_API_KEY." });
+    expect(solo({ geminiApiKey: null, openrouterApiKey: null, deepgramApiKey: "d", cascadaV2Habilitada: true, llm })).toMatchObject({ configurado: false, detalle: "No disponible aún: requiere OPENROUTER_API_KEY." });
+    expect(solo({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "d", cascadaV2Habilitada: true, llm: null }).detalle).toContain("gateway de texto");
+    expect(solo({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "  ", cascadaV2Habilitada: true, llm }).configurado).toBe(false);
+    const listo = estadoEscalera({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "d", cascadaV2Habilitada: true, llm });
+    expect(listo.escalones.find((e) => e.escalon === "cascada-v2")!.configurado).toBe(true);
+    expect(listo.operativa).toBe(true);
+  });
+  it("INTERRUPTOR: con todas las llaves pero sin habilitar, la cascada v2 NO esta disponible y dice que requiere habilitarla", () => {
+    for (const habilitada of [undefined, false]) {
+      const s = estadoEscalera({ geminiApiKey: null, openrouterApiKey: "k", deepgramApiKey: "d", llm, ...(habilitada === undefined ? {} : { cascadaV2Habilitada: habilitada }) });
+      const v2 = s.escalones.find((e) => e.escalon === "cascada-v2")!;
+      expect(v2.configurado).toBe(false);
+      expect(v2.detalle).toContain("No disponible aún: requiere habilitar cascada-v2");
+    }
+  });
+});
+
+describe("reintentosPorEscalon (reconexion al MISMO escalon, voz-05)", () => {
+  const manejadores = { caido: () => undefined } as unknown as ManejadoresSesion;
+  it("por omision un escalon caido no se reabre (comportamiento original)", async () => {
+    const gemini = escalon("gemini-3.8-live");
+    const e = crearEscaleraLlamada([gemini]);
+    await e.abrirSesion(APERTURA, manejadores);
+    gemini.caer("ws_1011");
+    await expect(e.abrirSesion(APERTURA, manejadores)).rejects.toThrow();
+    expect(e.fallidos()).toEqual(["gemini-3.8-live"]);
+  });
+  it("con reintentos, la caida reabre el mismo escalon sin darlo por fallido y sin saltar a la cascada", async () => {
+    const gemini = escalon("gemini-3.8-live");
+    const cascada = escalon("cascada-openrouter");
+    const e = crearEscaleraLlamada([gemini, cascada], { reintentosPorEscalon: 2 });
+    await e.abrirSesion(APERTURA, manejadores);
+    gemini.caer("ws_1011");
+    expect(e.fallidos()).toEqual([]);
+    await e.abrirSesion(APERTURA, manejadores);
+    expect(e.escalonActual()).toBe("gemini-3.8-live");
+    expect(gemini.aperturas).toHaveLength(2);
+    expect(cascada.aperturas).toHaveLength(0);
+  });
+  it("un fallo al abrir con reintentos pendientes hace fallar el intento (el controlador espera y reintenta); agotados, pasa a la cascada", async () => {
+    const falla = escalon("gemini-3.8-live", { falla: new Error("ws_1011") });
+    const cascada = escalon("cascada-openrouter");
+    const e = crearEscaleraLlamada([falla, cascada], { reintentosPorEscalon: 1 });
+    await expect(e.abrirSesion(APERTURA, manejadores)).rejects.toThrow("ws_1011");
+    expect(e.fallidos()).toEqual([]);
+    await e.abrirSesion(APERTURA, manejadores);
+    expect(e.fallidos()).toEqual(["gemini-3.8-live"]);
+    expect(e.escalonActual()).toBe("cascada-openrouter");
+  });
+  it("sin credencial (VozNoConfiguradaError) no se reintenta aunque haya reintentos", async () => {
+    const gemini = escalon("gemini-3.8-live", { falla: new VozNoConfiguradaError("falta GEMINI_API_KEY") });
+    const cascada = escalon("cascada-openrouter");
+    const e = crearEscaleraLlamada([gemini, cascada], { reintentosPorEscalon: 3 });
+    await e.abrirSesion(APERTURA, manejadores);
+    expect(e.escalonActual()).toBe("cascada-openrouter");
   });
 });
