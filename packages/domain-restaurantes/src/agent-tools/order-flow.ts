@@ -58,6 +58,10 @@ export interface OrderFlowContext {
   /** Sucursal y canal con los que se cotizo: con `quotedItems` el servidor puede decirle al agente, en el turno del "si", exactamente que cotizo (ver `bloqueCotizacionVigente`). */
   readonly quotedBranchSlug?: string;
   readonly quotedCanal?: string;
+  /** Forma de pago y monto de efectivo con los que se cotizo (no entran a `quoteHash`). Un cambio (cotizar sin pago y luego con pago) es OTRA cotizacion: el cliente debe ver el resumen con ese
+   * pago antes de confirmar (la cotizacion temprana del paso 6 del prompt no puede dejar pasar un pedido sin resumen mostrado). Omitirlos al re-cotizar conserva los previos. */
+  readonly quotedPago?: "efectivo" | "tarjeta";
+  readonly quotedEfectivoCon?: number;
   /** Huella del CARRITO (sucursal + canal + renglones) sin hora, pago ni salsas: sirve para reconocer "el mismo pedido" aunque el modelo cambie la hora (QA-PM-R3-whatsapp-03). */
   readonly cartHash?: string;
   /** Pedidos YA creados en esta conversacion/llamada: total y kilos acumulados. La guardia de pedido grande los suma al siguiente pedido para que partir un pedido
@@ -393,24 +397,54 @@ export function resetOrderFlowWarningForTests(): void {
  * "si" el modelo volvia a buscar sucursal y productos (2-4 llamadas de 1.5-3 s) solo para recuperar los ids, y re-cotizaba (con lo que el cierre se perdia). Con esto sabe que cotizo el
  * servidor y puede confirmar y crear de inmediato. Vacio si no hay una cotizacion fresca con renglones resueltos.
  */
-export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs: number): string {
+export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs: number, opciones?: { readonly resumenMostrado?: boolean }): string {
   const ctx = snap?.context;
   if (!snap || !ctx || (snap.state !== "cotizado" && snap.state !== "confirmado")) return "";
   if (!ctx.quotedItems || ctx.quotedItems.length === 0 || !ctx.quotedBranchSlug) return "";
   if (ahoraMs - ctx.quotedAtMs > QUOTE_TTL_MS) return "";
   const renglones = ctx.quotedItems.map((i) => `  - product_id ${i.id} | ${i.name} | requested_quantity ${i.qty}${i.tortilla ? ` | tortilla ${i.tortilla}` : ""}`).join("\n");
   const total = typeof ctx.quotedTotal === "number" ? `, total a pagar $${ctx.quotedTotal}` : "";
+  // Una cotizacion TEMPRANA (el paso 6 cotiza en cuanto hay canal, producto y tortilla) no es lo que el cliente vio: solo cuenta como mostrada si el historial trae un mensaje del asistente con ese total.
+  const sinResumen = opciones?.resumenMostrado === false && snap.state === "cotizado";
   return [
-    "COTIZACIÓN VIGENTE DE ESTA CONVERSACIÓN (la dejó el sistema; es la que el cliente vio en el resumen):",
+    sinResumen
+      ? "COTIZACIÓN PRELIMINAR DE ESTA CONVERSACIÓN (la dejó el sistema; el cliente TODAVÍA NO ha visto el resumen con este total):"
+      : "COTIZACIÓN VIGENTE DE ESTA CONVERSACIÓN (la dejó el sistema; es la que el cliente vio en el resumen):",
     `- branch_slug ${ctx.quotedBranchSlug}${ctx.quotedCanal ? `, canal ${ctx.quotedCanal}` : ""}${total}${ctx.horaRecogida ? ", hora de recogida ya fijada por el sistema (en crear_pedido no la recalcule: el sistema usa la cotizada)" : ""}.`,
     renglones,
     snap.state === "confirmado"
       ? "- Ya está CONFIRMADA: si falta crear el pedido, llame crear_pedido con estos mismos datos."
-      : "- Si el ÚLTIMO mensaje del cliente es un sí claro a ese resumen y no cambió nada, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN buscar de nuevo ni cotizar otra vez. Si cambió algo (producto, cantidad, tortilla, canal, dirección, pago), vuelva a cotizar normalmente.",
+      : sinResumen
+        ? "- NO llame confirmar_resumen ni crear_pedido todavía: un \"sí\" del cliente ahora responde a otra pregunta (número, propina, ¿algo más?), no a un resumen. Complete los datos que falten, vuelva a llamar cotizar_pedido (con la forma de pago si ya la dio), muéstrele el resumen completo con el total y espere su respuesta en un mensaje posterior."
+        : "- Si el ÚLTIMO mensaje del cliente es un sí claro a ese resumen y no cambió nada, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN buscar de nuevo ni cotizar otra vez. Si cambió algo (producto, cantidad, tortilla, canal, dirección, pago), vuelva a cotizar normalmente.",
   ].join("\n");
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Variantes con que un total puede aparecer escrito ("245", "245.00", "1,245.50"). */
+function variantesDeTotal(total: number): string[] {
+  const base = [total.toFixed(2), String(total), ...(Number.isInteger(total) ? [total.toFixed(0)] : [])];
+  const conMiles = base.map((v) => {
+    const [entera = "", dec] = v.split(".");
+    return `${entera.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${dec === undefined ? "" : `.${dec}`}`;
+  });
+  return [...new Set([...base, ...conMiles])];
+}
+
+/**
+ * Defensa en profundidad: el cliente VIO el resumen si algun mensaje del asistente en el historial reciente trae el total de la cotizacion vigente.
+ * `undefined` = no hay historial o total (voz, pruebas): el llamador conserva el comportamiento anterior.
+ */
+export function resumenMostradoEnHistorial(
+  quotedTotal: number | undefined,
+  historial: readonly { readonly role: string; readonly content: string }[] | undefined,
+): boolean | undefined {
+  if (historial === undefined || typeof quotedTotal !== "number" || !Number.isFinite(quotedTotal)) return undefined;
+  const vars = variantesDeTotal(quotedTotal).map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(?<![\\d.,])(?:${vars.join("|")})(?!\\d|[.,]\\d)`);
+  return historial.some((m) => m.role === "assistant" && re.test(m.content));
+}
+
+const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Los `product_id` que mando el modelo, distintos de los cotizados, que SI existen en el catalogo de la organizacion (son OTRO producto, no un error de tecleo). */
 export async function idsDeOtrosProductosReales(
