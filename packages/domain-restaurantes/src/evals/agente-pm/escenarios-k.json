@@ -256,7 +256,7 @@
    "turnos_cliente": [
     "Lo quiero a domicilio hoy a las [HORA], dentro de 3 horas"
    ],
-   "comportamiento_esperado": "Usa programado_para (ISO 8601 con zona) con la hora pedida, la misma al cotizar y al crear; la ventana (30 min a 7 días) y el horario de la sucursal los valida el servidor. Para otro día o antes de abrir sigue escalando (decisión P1/P18 abierta).",
+   "comportamiento_esperado": "Usa programado_para (ISO 8601 con zona) con la hora pedida, la misma al cotizar y al crear; la ventana (30 min a 7 días) y el horario de la sucursal los valida el servidor. Para otro día o antes de abrir también se programa (decisión de Javier, ronda 8), sin escalar.",
    "que_no_debe_hacer": "Prometer la hora sin programarlo; decir que solo hay pedidos inmediatos.",
    "dudas": [],
    "estado": "activo",

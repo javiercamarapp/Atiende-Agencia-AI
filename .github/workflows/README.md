@@ -66,7 +66,7 @@ Vercel/Supabase, todos declaran `permissions: contents: read` (con las dos excep
   Javier, nunca desde CI).
 - `e2e.yml` — pruebas de navegador (Playwright, solo chromium con cache) de `apps/web` contra el build estatico
   y una API simulada en loopback (`apps/web/e2e/mock-api`): `pull_request` (con `paths`) y `workflow_dispatch`,
-  sin secretos, `permissions: contents: read`, `timeout-minutes: 25`, reporte y trazas como artefacto 7 dias.
+  sin secretos, `permissions: contents: read`, `timeout-minutes: 40`, reporte y trazas como artefacto 7 dias.
   **No es un check requerido y NO entra al agregador `ci-checks`**; informativo hasta medir el flake. Guia:
   `docs/QA-E2E.md`.
 
@@ -82,7 +82,8 @@ de quien lo construyó. Corre en tres jobs sobre `ubuntu-latest` (sin matriz):
 | Job | Nombre del check | Pasos | `timeout-minutes` |
 |---|---|---|---|
 | `estatico` | `typecheck + lint + build de apps/web` | `npm ci` → typecheck → lint → trinquete de lint → build de `apps/web` | 15 |
-| `unit` | `test:unit` | `npm ci` → `npm run test:unit` | 25 |
+| `unit-shard` (x3) | `test:unit (shard i/3)` | `npm ci` → `npm run test:unit -- --shard=i/3` (matrix, en paralelo) | 25 |
+| `unit` | `test:unit` | agregador de los 3 shards (`if: always()`) | 5 |
 | `ci-checks` | `typecheck + lint + test:unit + build de apps/web` | agregador (`needs` de los dos anteriores, `if: always()`): falla si alguno no terminó en `success` | 5 |
 
 El job agregador conserva el nombre histórico del check, de modo que una
@@ -208,6 +209,50 @@ aplica RLS ni GRANT. Este job:
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
 `scripts/verify-*/` para el alcance exacto de lo que cada uno verifica.
+
+### Sharding y plantillas de base (7-oct-2026)
+
+**Problema medido** (run de `main` 37503996161, 6-oct): el job único tardó 2.847 s (47 min; otros
+runs de `main`: 47-86 min) mientras los demás jobs del mismo run duran 30-143 s. El log trae la
+causa: por cada una de las ~154-170 carpetas `scripts/verify-*/`, `run-gate.mjs` creaba una base
+nueva y aplicaba `bootstrap.sql` + las ~300 migraciones (~16 s de ~18 s por carpeta, mediana
+17,8 s); los escenarios de la carpeta eran el ~10 %. Con ~7 PRs en vuelo y cada push reiniciándolo
+era el cuello de botella del loop.
+
+**Diseño**:
+
+1. *Plantillas*: `run-gate.mjs` construye una base plantilla por `bootstrap.sql` distinto (hoy 7
+   variantes; 159 de 170 carpetas comparten la misma) con bootstrap + todas las migraciones, y cada
+   carpeta hace `create database … template …` (copia exacta del estado) y luego aplica SU
+   `post-migrations.sql` y sus escenarios, igual que antes. Mismo SQL, mismo orden, mismas
+   aserciones. `--no-template` restituye el camino antiguo.
+2. *Shards*: `postgres-real-gate-shard` corre `run-gate.mjs --shard i/6` en una matrix (`fail-fast:
+   false`). El reparto es determinista por costo (nº de escenarios + constante por carpeta,
+   voraz de mayor a menor); no hay duraciones por carpeta guardadas, y el log muestra que el costo
+   por carpeta es casi constante, por eso este estimador. N=6: con plantillas cada shard trabaja
+   ~28 carpetas (~1-3 s cada una) + hasta 7 plantillas (~16 s c/u) y paga ~1 min de `npm ci`/setup;
+   más shards solo añaden setup repetido, menos dejaría un shard dominado por las plantillas.
+3. *Agregador*: el job `postgres-real-gate` conserva el nombre del check
+   «Migraciones reales + assertions RLS/GRANT contra Postgres real» (`needs` + `if: always()`, como
+   `unit` en `ci-checks.yml`): falla si el resultado de los shards no es `success` (fallido,
+   cancelado u omitido) Y, además, descarga el reporte JSON que cada shard sube y ejecuta
+   `run-gate.mjs --verify-reports`, que exige: los 6 reportes presentes, cada carpeta descubierta
+   ejecutada en exactamente un shard, ninguna sobrante, ninguna con fallo.
+4. *Cobertura idéntica*: antes de correr, cada shard recalcula la partición completa y aborta si
+   alguna carpeta queda sin shard o en dos (`assertExactPartition`). `node
+   scripts/verify-real-postgres-ci/run-gate.mjs --list-shards 6` imprime el reparto y comprueba la
+   partición sin tocar Postgres. Ninguna aserción se debilita ni se omite.
+5. *Concurrencia*: grupo `${{ github.workflow }}-${{ github.event.pull_request.number ||
+   github.ref }}` con `cancel-in-progress` solo en `pull_request`: un push nuevo al mismo PR
+   cancela el gate anterior de ese PR; PRs distintos y `main` nunca se cancelan entre sí (antes no
+   había `concurrency` en este workflow).
+
+**Si cambias N** (hoy 6): edita la matrix `shard: [1..N]` y el `/N` del paso; el agregador lo detecta
+solo (exige los N reportes que declaran los propios shards, y cobertura exacta). Los otros jobs del
+workflow (concurrencia, savepoint, eval-copiloto, …) no cambian.
+
+**Revertir**: revertir el commit del PR restaura el job único (la ejecución local sin argumentos
+sigue funcionando igual en ambos casos).
 
 ### Qué NO cubre
 

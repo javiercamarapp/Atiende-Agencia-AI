@@ -19,12 +19,37 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-citas/tests/whatsapp-llm-turn-handler-zona-horaria.spec.ts",
   "packages/domain-citas/tests/reminders-ventana-cron.spec.ts",
   "packages/domain-restaurantes/tests/zona-horaria-branch-savepoint.spec.ts",
+  // import-orig-11: regresiones del historial con reloj fijo (miercoles 12:00 America/Merida).
+  "packages/domain-restaurantes/tests/regresiones-original/historial-completitud.spec.ts",
   // QA R1 automatizacion-03: el "Hoy" del tablero de ventas sigue la zona del negocio, no la del proceso.
   "packages/domain-restaurantes/tests/qa-r1-automatizacion-kpis-hoy-zona.spec.ts",
   "packages/domain-restaurantes/tests/kpis-zona-horaria.spec.ts",
   "packages/domain-restaurantes/tests/pm-c4-herramientas.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-escenarios-t7.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",
+  // Ronda 2 del loop de PM: hora de recogida y programado validados contra el reloj del servidor; reloj local de consultar_sucursal.
+  "packages/domain-restaurantes/tests/pm-r2-flujo-pedido-y-hora.spec.ts",
+  // Ronda 5 del loop de PM: reloj fijo (miercoles 12:00 / martes 13:00 Merida) para hora de recogida, kilos, relleno del modelo y entradas hostiles.
+  "packages/domain-restaurantes/tests/pm-r5-contrato-relleno-del-modelo.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-entradas-hostiles.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-hora-recoger-unificada.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r5-kilos.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r2-prompt-y-reloj.spec.ts",
+  "packages/domain-restaurantes/tests/recoger-estados-y-columnas.spec.ts",
+  // Hora de recogida (+30 min aceptado, -5/-11 min, +6/+8 dias): reloj fijo, sin depender de la hora UTC en que corra el CI.
+  "packages/domain-restaurantes/tests/qa-r2-caos.spec.ts",
+  "packages/domain-restaurantes/tests/cliente-llego-recoger.spec.ts",
+  // Ronda 6 del loop de PM: pedido igual entre llamadas (ventana de 10 min con reloj fijo), saludo de las 19:00 vs 20:00 en zona explicita y turnos con falla del sistema.
+  "packages/domain-restaurantes/tests/pm-r6-pedido-igual-entre-llamadas.spec.ts",
+  "packages/domain-citas/tests/pm-r6-saludo-franja.spec.ts",
+  "apps/web/tests/saludo-misma-franja-r5.spec.ts",
+  "apps/api/tests/pm-r6-voz-quote-reenvia-plazo.spec.ts",
+  "packages/domain-restaurantes/tests/evals-agente-pm-k.spec.ts",
+  // Prueba ciega de voz: reloj fijo (miercoles 12:00 Merida); V27 calcula la hora de recogida con el reloj del servidor.
+  "packages/domain-restaurantes/tests/voz-simulador-prueba-ciega.spec.ts",
+  "apps/api/tests/pm-r2-voz-programado.spec.ts",
+  // Cotizacion a domicilio valida horario de la sucursal: reloj fijo (miercoles 12:00 Merida), no la hora UTC del CI.
+  "packages/domain-restaurantes/tests/sucursal-mas-cercana-8km.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",
@@ -44,10 +69,25 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/e2e-ciclo/whatsapp-cliente-nuevo.spec.ts",
   "apps/api/tests/e2e-ciclo/whatsapp-casos.spec.ts",
   "apps/api/tests/e2e-ciclo/voz-ciclo.spec.ts",
-  "apps/api/tests/e2e-ciclo/storefront-ciclo.spec.ts",
   "apps/api/tests/e2e-ciclo/programado-pos-ciclo.spec.ts",
   // R-16: alertas operativas (entrega tardia / programado por vencer) del tick de programados: reloj fijo en Merida/Cancun/CDMX.
   "apps/api/tests/restaurantes-avisos-operativos-tick.spec.ts",
+  // Autopiloto 2: alertas al dueno (dedupe por dia de Merida con reloj fijo en Merida/Cancun/CDMX) y borradores de campana del tick.
+  "packages/domain-restaurantes/tests/alertas-duenio-proveedor.spec.ts",
+  "packages/domain-restaurantes/tests/alertas-duenio-silencio.spec.ts",
+  "packages/domain-restaurantes/tests/alertas-duenio-token-meta.spec.ts",
+  "packages/domain-restaurantes/tests/alertas-duenio-timeouts-agente.spec.ts",
+  "apps/api/tests/restaurantes-marketing-tick.spec.ts",
+  "apps/api/tests/restaurantes-silencio-tick.spec.ts",
+  "apps/api/tests/restaurantes-presupuesto-ia-duenio.spec.ts",
+  // CFO-09: copiloto CFO (periodos relativos a "hoy" en la zona del negocio) y alertas de hallazgos (dia de negocio = ayer en la zona de la organizacion).
+  "packages/domain-restaurantes/tests/data-chat-cfo-tools.spec.ts",
+  "packages/domain-restaurantes/tests/data-chat-cfo-evals.spec.ts",
+  "packages/domain-restaurantes/tests/data-chat-cfo-roles-y-guardia.spec.ts",
+  "packages/domain-restaurantes/tests/cfo-alertas.spec.ts",
+  "apps/api/tests/restaurantes-cierres-alertas-cfo.spec.ts",
+  // R11 romper: horarios limite (cierre 01:00, medianoche, cambio de dia de negocio) y programado_para con reloj fijo (martes 13:00 Merida).
+  "packages/domain-restaurantes/tests/pm-r11-romper/5-negocio-y-privacidad.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.

@@ -9,13 +9,14 @@
 // informe de diseno-ux, F-01: antes no había navegación móvil). Protege también
 // que campana, chat y cerrar sesión sean alcanzables en móvil.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { HotelesShell } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { PropertyOption } from "../src/verticals/hoteles/lib/discovery-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
+import { elegirValor, etiquetasDe, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
 
 const fetchPropertiesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly PropertyOption[]>>();
 
@@ -61,6 +62,8 @@ async function renderShell(properties: readonly PropertyOption[] = [{ propertyId
   });
   return result;
 }
+
+beforeAll(() => prepararJsdomParaRadix());
 
 describe("HotelesShell — nav móvil", () => {
   it("mantiene el Sidebar oculto en mobile (hidden md:flex) y agrega MobileHeader + BottomNav", async () => {
@@ -172,7 +175,7 @@ describe("HotelesShell — nav móvil", () => {
   it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
     rendered = await renderShell();
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('a[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect(hoja.textContent).toContain("Chatea con tus datos");
@@ -207,9 +210,13 @@ describe("HotelesShell — nav móvil", () => {
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];
     const mobileHeader = headers.find((h) => h.className.includes("md:hidden"))!;
-    const select = mobileHeader.querySelector("select#hoteles-hotel-activo");
+    const select = mobileHeader.querySelector("button#hoteles-hotel-activo-movil");
     expect(select).not.toBeNull();
-    expect([...select!.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Hotel Centro", "Hotel Norte"]);
+    expect(etiquetasDe(select)).toEqual(["Hotel Centro", "Hotel Norte"]);
+    // Cada copia (Sidebar y cabecera movil) lleva su propio id y su propia etiqueta: sin ids duplicados.
+    expect(root.querySelectorAll("#hoteles-hotel-activo")).toHaveLength(1);
+    expect(root.querySelectorAll("#hoteles-hotel-activo-movil")).toHaveLength(1);
+    expect(root.querySelector('label[for="hoteles-hotel-activo-movil"]')?.textContent).toBe("Hotel activo");
   });
 
   it("PR-6: expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical hoteles", async () => {
@@ -227,14 +234,13 @@ describe("HotelesShell — nav móvil", () => {
       { propertyId: "prop-1", nombre: "Hotel Centro" },
       { propertyId: "prop-2", nombre: "Hotel Norte" },
     ]);
-    const select = rendered.container.querySelector<HTMLSelectElement>("aside select#hoteles-hotel-activo")!;
-    expect(select.value).toBe("prop-1");
+    const select = rendered.container.querySelector<HTMLElement>("aside button#hoteles-hotel-activo")!;
+    expect(valorDe(select)).toBe("prop-1");
+    elegirValor(select, "prop-2");
     await act(async () => {
-      select.value = "prop-2";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
       await flushMicrotasks();
     });
-    expect(rendered.container.querySelector<HTMLSelectElement>("aside select#hoteles-hotel-activo")!.value).toBe("prop-2");
+    expect(valorDe(rendered.container.querySelector<HTMLElement>("aside button#hoteles-hotel-activo"))).toBe("prop-2");
     expect(window.localStorage.getItem("atiende.hoteles.selectedProperty.demo")).toBe("prop-2");
   });
 });

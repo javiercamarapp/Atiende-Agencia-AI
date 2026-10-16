@@ -18,6 +18,8 @@
 #   6. Mensajes simultaneos del mismo cliente: exactamente un lease de conversacion; los demas son reintentables.
 #   7. Tres mensajes del mismo cliente anexados en paralelo: el historial conserva los 3 (sin actualizacion perdida).
 #   8. Control negativo de sobre-bloqueo: clientes y mensajes distintos NO se bloquean entre si.
+#  10. Outbox de mensajeria (rescate de messaging_outbox_concurrency.sh): N conexiones reclaman a la vez (WhatsApp y correo); cada fila
+#      se reclama UNA vez, ninguna se pierde y las huerfanas se reclaman al vencer el lease.
 #
 # Modos: local (por defecto) levanta un cluster efimero con initdb/pg_ctl; CI: VERIFY_USE_EXISTING_PG=1 usa el servidor ya corriendo
 # de PGHOST/PGPORT/PGUSER/PGPASSWORD. Sin assertions.sql a proposito: run-gate.mjs no lo toma como un verify de una conexion;
@@ -229,6 +231,80 @@ race "$(claim_conv_sql "$(phone_hash "9-x")" "wamid-9-x")" "$(claim_conv_sql "$(
 expect "2 leases de clientes distintos: los 2 verdaderos" "$(count_of true)/$(count_of false)" "2/0"
 race "$(order_sql $CUST_1 11 "f9-a" "'k9-a'")" "$(order_sql $CUST_2 22 "f9-b" "'k9-b'")"
 expect "2 pedidos de clientes distintos: ambos ok con ids distintos" "$(kind "${RES[0]}")/$(kind "${RES[1]}")/$([ "${RES[0]}" = "${RES[1]}" ] && echo igual || echo distinto)" "ok/ok/distinto"
+
+# --- helpers del outbox de mensajeria (escenario 10) ---
+ORG_B=00000000-0000-0000-0000-0000000c1802
+q "insert into core.organization (id, vertical, name, slug) values ('$ORG_B', 'restaurantes', 'Taqueria Concurrencia B', 'taqueria-concurrencia-b') on conflict do nothing"
+# seed_outbox canal prefijo n_org_A n_org_B  -> siembra filas 'pending' (created_at distintos) en dos organizaciones
+seed_outbox() {
+  q "insert into restaurantes.messaging_outbox (organization_id, channel, event_type, dedupe_key, payload, created_at)
+     select v.o, '$1', 'concurrencia', '$2-' || v.o::text || '-' || i, '{}'::jsonb, now() - interval '1 hour' + i * interval '1 second'
+     from (values ('$ORG'::uuid, $3), ('$ORG_B'::uuid, $4)) v(o, n), generate_series(1, v.n) i"
+}
+# claim_hold_sql funcion argumentos -> reclama y MANTIENE la transaccion abierta 0.4 s (los bloqueos de fila siguen tomados mientras
+# los demas reclaman: es ahi donde FOR UPDATE SKIP LOCKED debe repartir); devuelve los ids reclamados separados por coma
+claim_hold_sql() {
+  echo "create temp table t as select id from restaurantes.$1($2); select pg_sleep(0.4); select coalesce(string_agg(id::text, ',' order by id), '') from t;"
+}
+outbox_count() { q "select count(*) from restaurantes.messaging_outbox where channel='$1' and status='$2'"; } # canal estado
+# drain funcion argumentos trabajadores rondas -> rondas de N conexiones simultaneas hasta que no quede nada reclamable;
+# deja en ALL todos los ids reclamados (con repeticiones) y en FIRST los resultados de la primera carrera
+drain() {
+  local fn="$1" lim="$2" workers="$3" max="$4" r w args out x
+  ALL=""; FIRST=()
+  for ((r = 1; r <= max; r++)); do
+    args=()
+    for ((w = 0; w < workers; w++)); do args+=("$(claim_hold_sql "$fn" "$lim")"); done
+    race "${args[@]}"
+    [ "$r" -eq 1 ] && FIRST=("${RES[@]}")
+    out=""
+    for x in "${RES[@]}"; do [ -n "$x" ] && out="$out,$x"; done
+    [ -z "$out" ] && break
+    ALL="$ALL$out"
+  done
+}
+total_ids() { echo "$ALL" | tr ',' '\n' | grep -c . || true; }
+distinct_ids() { echo "$ALL" | tr ',' '\n' | grep . | sort -u | wc -l | tr -d ' '; }
+
+echo
+echo "=== 10. Outbox de mensajeria (WhatsApp y correo): N conexiones reclaman a la vez; cada fila se reclama UNA vez y ninguna se pierde ==="
+# 10a. 60 mensajes de WhatsApp de dos organizaciones, 4 conexiones simultaneas con lotes de 10, transaccion abierta mientras reclaman.
+seed_outbox whatsapp wa 30 30
+expect "10a: sembrados 60 mensajes pendientes de WhatsApp" "$(outbox_count whatsapp pending)" "60"
+drain claim_messaging_outbox_batch "10, 120" 4 12
+primera="$(printf '%s\n' "${FIRST[@]}" | tr ',' '\n' | grep -c . || true)"
+primera_u="$(printf '%s\n' "${FIRST[@]}" | tr ',' '\n' | grep . | sort -u | wc -l | tr -d ' ')"
+expect "10a: en la primera carrera simultanea ninguna fila se entrega a dos conexiones ($primera filas, $primera_u distintas)" "$primera" "$primera_u"
+con_filas=0; for x in "${FIRST[@]}"; do [ -n "$x" ] && con_filas=$((con_filas + 1)); done
+expect "10a: la primera carrera reparte trabajo (al menos 2 conexiones obtuvieron filas)" "$([ "$con_filas" -ge 2 ] && echo si || echo no)" "si"
+expect "10a: en total se reclamaron exactamente 60 filas, sin repeticiones ($(total_ids) reclamos, $(distinct_ids) distintas)" "$(total_ids)/$(distinct_ids)" "60/60"
+expect "10a: ninguna fila de WhatsApp quedo pendiente (nada se perdio)" "$(outbox_count whatsapp pending)" "0"
+expect "10a: las 60 estan en processing con claimed_at" "$(q "select count(*) from restaurantes.messaging_outbox where channel='whatsapp' and status='processing' and claimed_at is not null")" "60"
+
+# 10b. Huerfanos: el trabajador muere sin completar; con el lease vigente nadie las reclama, con el lease vencido se reclaman UNA vez.
+drain claim_messaging_outbox_batch "10, 120" 4 3
+expect "10b: con el lease vigente nadie reclama las filas en processing" "$(total_ids)" "0"
+q "update restaurantes.messaging_outbox set claimed_at = now() - interval '10 minutes' where channel='whatsapp' and status='processing'"
+q "update restaurantes.messaging_outbox set claimed_at = now() where channel='whatsapp' and dedupe_key like '%-1' and status='processing'"
+vivos="$(q "select count(*) from restaurantes.messaging_outbox where channel='whatsapp' and claimed_at > now() - interval '1 minute'")"
+drain claim_messaging_outbox_batch "10, 120" 4 12
+expect "10b: tras vencer el lease se reclaman solo las vencidas, exactamente una vez ($(total_ids) reclamos, $(distinct_ids) distintas, $vivos con lease vigente)" "$(total_ids)/$(distinct_ids)" "$((60 - vivos))/$((60 - vivos))"
+expect "10b: ninguna fila quedo huerfana (todas con lease vigente de nuevo)" "$(q "select count(*) from restaurantes.messaging_outbox where channel='whatsapp' and status='processing' and claimed_at < now() - interval '1 minute'")" "0"
+
+# 10c. Mismo reclamo concurrente en el canal de correo (claim_email_outbox_batch): 40 filas, 3 conexiones, lotes de 10.
+q "update restaurantes.messaging_outbox set status='sent' where channel='whatsapp'"
+seed_outbox email em 20 20
+drain claim_email_outbox_batch "10" 3 12
+expect "10c: correo, 40 filas reclamadas exactamente una vez ($(total_ids) reclamos, $(distinct_ids) distintas)" "$(total_ids)/$(distinct_ids)" "40/40"
+expect "10c: correo, nada quedo pendiente" "$(outbox_count email pending)" "0"
+expect "10c: cada fila de correo cuenta un solo intento (attempts = 1)" "$(q "select count(*) from restaurantes.messaging_outbox where channel='email' and attempts <> 1")" "0"
+
+# 10d. Control de canal: el reclamo de WhatsApp no toca el correo pendiente.
+q "update restaurantes.messaging_outbox set status='sent'"
+seed_outbox whatsapp wb 5 5
+seed_outbox email eb 5 5
+drain claim_messaging_outbox_batch "10, 120" 3 6
+expect "10d: WhatsApp reclama sus 10 filas y deja las 10 de correo pendientes" "$(total_ids)/$(outbox_count email pending)" "10/10"
 
 echo
 echo "=== resumen: $((CHECKS - FAILS))/$CHECKS comprobaciones OK ==="

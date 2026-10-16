@@ -103,6 +103,8 @@ import { createLicitacionesMessagingOutboxPort } from "@atiende/domain-licitacio
 import type { DispatchItemResult, DispatchSummary, MessagingOutboxItem, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion } from "@atiende/db";
+import { emitirAlertasProveedor, evaluarSaludProveedor } from "@atiende/domain-restaurantes";
+import type { ItemDespachoOrg } from "@atiende/domain-restaurantes";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
@@ -111,6 +113,7 @@ import type { AppDeps } from "../../deps.ts";
 import { crearGuardTelefono } from "../../supresion/index.ts";
 import { crearMedidorMensajes } from "../../plan-topes/medidor.ts";
 import { crearCatalogoPlantillas } from "../../mensajeria/catalogo-plantillas.ts";
+import { vigilarSaludMetaBestEffort } from "../../salud/salud-meta.ts";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 200;
@@ -179,6 +182,8 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
 
   const total = { label: vertical as string, claimed: 0, sent: 0, retried: 0, dead: 0, skipped: 0, suppressed: 0, omitidosCuota: 0 };
   const items: DispatchItemResult[] = [];
+  /** Items de restaurantes con su organizacion, para evaluar al final la salud del proveedor (alertas al dueño). */
+  const itemsOrg: ItemDespachoOrg[] = [];
   let errores = 0;
   let ultimoError: string | null = null;
   for (let i = 0; i < limit; i++) {
@@ -197,7 +202,13 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
       const r = await deps.engine.withAppSession({ userId: null }, async (db) =>
         dispatcher.dispatchClaimed(construirPuerto(db), reclamados, { suppression: crearGuardTelefono(db), medidor: crearMedidorMensajes(db, vertical), plantillas: crearCatalogoPlantillas(db) }),
       );
-      if (vertical === "restaurantes") await avisarMensajesMuertosBestEffort(deps, reclamados, r.items);
+      if (vertical === "restaurantes") {
+        await avisarMensajesMuertosBestEffort(deps, reclamados, r.items);
+        for (const it of r.items) {
+          const organizationId = reclamados.find((x) => x.id === it.id)?.organizationId;
+          if (organizationId) itemsOrg.push({ organizationId, outcome: it.outcome, ...(it.proveedor ? { proveedor: true } : {}), ...(it.graphCode !== undefined ? { graphCode: it.graphCode } : {}) });
+        }
+      }
       total.claimed += r.claimed;
       total.sent += r.sent;
       total.retried += r.retried;
@@ -213,6 +224,7 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
       ultimoError = err instanceof Error ? err.message : String(err);
     }
   }
+  if (vertical === "restaurantes") await avisarSaludProveedorBestEffort(deps, itemsOrg);
   return {
     label: total.label,
     claimed: total.claimed,
@@ -242,6 +254,19 @@ async function avisarMensajesMuertosBestEffort(deps: AppDeps, reclamados: readon
         await emitirNotificacion(db, { evento: "restaurantes.whatsapp.mensaje_muerto", organizationId, clave: m.id, entidadTipo: "messaging_outbox", entidadId: m.id });
       }
     });
+  } catch {
+    // best-effort
+  }
+}
+
+/** Alertas al dueño por falla del proveedor (N fallas seguidas) o token de Meta invalido (error 190), evaluadas sobre la corrida
+ *  completa. Una sesion de sistema propia (nunca la del envio): un fallo aqui no toca ningun mensaje. Contra la base sin la 0039
+ *  `emitirNotificacion` degrada a `no_disponible` dentro de su SAVEPOINT. Best-effort: nunca lanza. */
+async function avisarSaludProveedorBestEffort(deps: AppDeps, itemsOrg: readonly ItemDespachoOrg[]): Promise<void> {
+  const diagnosticos = evaluarSaludProveedor(itemsOrg);
+  if (diagnosticos.length === 0) return;
+  try {
+    await deps.engine.withAppSession({ userId: null }, (db) => emitirAlertasProveedor(db, diagnosticos, new Date()));
   } catch {
     // best-effort
   }
@@ -383,6 +408,12 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
           totalDead,
         });
       }
+
+      // Salud de Meta/agente (token por vencer, timeouts, fallos seguidos): best-effort en sesiones de sistema propias; jamas altera esta respuesta.
+      const salud = await vigilarSaludMetaBestEffort(deps);
+      // OJO con los nombres de clave: el logger tapa toda clave que case con CLAVE_SENSIBLE (p. ej. "token" o "estadoToken"), asi que el estado se llama estadoMeta.
+      const nivelSalud = salud.token === "error" || salud.agente === "error" ? "error" : salud.token === "no_leido" ? "warn" : "info";
+      logEvent(c, nivelSalud, "whatsapp_dispatch_salud_meta", { estadoMeta: salud.token, estadoAgente: salud.agente });
 
       return c.json({ ok: !anyFailure, results });
     })();

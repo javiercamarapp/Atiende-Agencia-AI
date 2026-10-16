@@ -1,8 +1,5 @@
-# Atiende. Se permite rastrear las paginas publicas de pedidos de restaurantes (menu y sucursales);
-# se bloquea el seguimiento de un pedido concreto (lleva un token), la API y los paneles privados.
+# Atiende. Se bloquean la API y los paneles privados.
 User-agent: *
-Allow: /pedir/
-Disallow: /pedir/*/pedido/
 Disallow: /v1/
 Disallow: /auth/
 Disallow: /internal/

@@ -7,7 +7,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { CanalPedido, OrderStatus } from "../types.ts";
 import { AutopilotoAccesoError, AutopilotoValidacionError, AUTOPILOTO_CONFIG_POR_OMISION } from "./tipos.ts";
 import type {
-  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, Lectura,
+  AgotadoRepuesto, AutopilotoConfig, AutopilotoOrgConfig, AutopilotoRepository, CandidatoEstado, ComandaParaAvance, EventoEstadoPedido, FiltroSolicitudes, HandoffDevuelto, HandoffPendienteSinTomar, Lectura,
   MuestrasTiempo, OpcionesResolver, ResultadoCancelarCliente, ResultadoCrearSolicitud, ResultadoResolver, ResultadoRetener, SolicitudDecision, SolicitudPorEscalar,
   SolicitudTipo, SolicitudVista,
 } from "./tipos.ts";
@@ -191,6 +191,8 @@ export class PostgresAutopilotoRepository implements AutopilotoRepository {
         estadoPedido: (f.estado_pedido as OrderStatus | null) ?? null,
         codigoDescuento: (f.codigo_descuento as string | null) ?? null,
         reposicionOrderId: f.reposicion_order_id === null ? null : String(f.reposicion_order_id),
+        // Columna agregada por la migracion 079: contra la 050 original no viene (undefined -> null).
+        motivo: typeof f.motivo_resolucion === "string" ? f.motivo_resolucion : null,
       };
     });
     return r.valor;
@@ -234,6 +236,29 @@ export class PostgresAutopilotoRepository implements AutopilotoRepository {
     });
   }
 
+  async handoffsPendientesPorEscalar(ahora: Date, limite: number): Promise<Lectura<readonly HandoffPendienteSinTomar[]>> {
+    return this.lectura<readonly HandoffPendienteSinTomar[]>("handoffs_pendientes", [], async () => {
+      const { rows } = await this.db.query<Record<string, unknown>>("select handoff_id, organization_id, property_id, conversation_id, canal, minutos from restaurantes.handoffs_pendientes_por_escalar($1::timestamptz, $2);", [ahora.toISOString(), limite]);
+      return rows.map((r) => ({ handoffId: String(r.handoff_id), organizationId: String(r.organization_id), propertyId: String(r.property_id), conversationId: String(r.conversation_id), canal: r.canal === "voz" ? "voz" : "whatsapp", minutos: num(r.minutos) }));
+    });
+  }
+
+  async diaNegocio(organizationId: string, propertyId: string): Promise<string | null> {
+    const r = await this.lectura<string | null>("dia_negocio", null, async () => {
+      const { rows } = await this.db.query<{ dia: string | null }>("select to_char(restaurantes.dia_negocio_sucursal_actual($1::uuid, $2::uuid), 'YYYY-MM-DD') as dia;", [organizationId, propertyId]).catch(traducir);
+      return rows[0]?.dia ?? null;
+    });
+    return r.valor;
+  }
+
+  async registrarTicketImpreso(organizationId: string, orderId: string): Promise<{ readonly disponible: boolean; readonly registrado: boolean }> {
+    const r = await this.lectura("ticket_impreso", false, async () => {
+      const { rows } = await this.db.query<{ ok: boolean }>("select restaurantes.pedido_ticket_impreso_registrar($1::uuid, $2::uuid) as ok;", [organizationId, orderId]).catch(traducir);
+      return rows[0]?.ok === true;
+    });
+    return { disponible: r.disponible, registrado: r.valor };
+  }
+
   async cancelarPorCliente(organizationId: string, orderId: string, motivo: string): Promise<ResultadoCancelarCliente> {
     const r = await this.lectura<ResultadoCancelarCliente>("cancelar_cliente", null, async () => {
       const { rows } = await this.db.query<{ aplicado: boolean; estado: string }>("select aplicado, estado from restaurantes.pedido_cancelar_cliente($1::uuid, $2::uuid, $3);", [organizationId, orderId, motivo]).catch(traducir);
@@ -243,12 +268,23 @@ export class PostgresAutopilotoRepository implements AutopilotoRepository {
     return r.valor;
   }
 
-  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
-    const r = await this.lectura("agotado_marcar", false, async () => {
-      const { rows } = await this.db.query<{ ok: boolean }>("select restaurantes.agotado_marcar($1::uuid, $2::uuid, $3::uuid, $4::date) as ok;", [organizationId, propertyId, productId, hasta]).catch(traducir);
-      return rows[0]?.ok === true;
-    });
-    return { disponible: r.disponible, aplicado: r.valor };
+  async marcarAgotado(organizationId: string, propertyId: string, productId: string, hasta: string, hastaCalendario?: string): Promise<{ readonly disponible: boolean; readonly aplicado: boolean }> {
+    const intentar = async (fecha: string) => {
+      const r = await this.lectura("agotado_marcar", false, async () => {
+        const { rows } = await this.db.query<{ ok: boolean }>("select restaurantes.agotado_marcar($1::uuid, $2::uuid, $3::uuid, $4::date) as ok;", [organizationId, propertyId, productId, fecha]).catch(traducir);
+        return rows[0]?.ok === true;
+      });
+      return { disponible: r.disponible, aplicado: r.valor };
+    };
+    try {
+      return await intentar(hasta);
+    } catch (err) {
+      // QA R2 (compatibilidad con la base sin migrar): la funcion de la 050 compara `hasta` con la fecha CALENDARIO y rechaza (22023) un
+      // dia de negocio que aun es "hoy" en calendario (p. ej. 00:30 del domingo con turno que cruza medianoche). Se reintenta con calendario + 1
+      // (el comportamiento de antes). `lectura` ya revirtio su SAVEPOINT, asi que la sesion sigue utilizable para el reintento.
+      if (err instanceof AutopilotoValidacionError && hastaCalendario !== undefined && hastaCalendario > hasta) return intentar(hastaCalendario);
+      throw err;
+    }
   }
 
   async reponerAgotados(ahora: Date): Promise<Lectura<readonly AgotadoRepuesto[]>> {

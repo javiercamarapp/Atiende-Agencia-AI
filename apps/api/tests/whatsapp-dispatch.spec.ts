@@ -4,7 +4,7 @@
 // llegaba al cliente (ver @atiende/whatsapp-gateway/README.md). Usa
 // FakeWhatsAppGraphClient — NUNCA toca la red ni usa un WHATSAPP_ACCESS_TOKEN real.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
@@ -30,6 +30,8 @@ import { FakeWhatsAppGraphClient, WhatsAppOutboundDispatcher, WhatsAppSendError 
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
+import { conEmisiones } from "./support/emisiones.ts";
+import type { TurnoAgente } from "@atiende/domain-restaurantes";
 
 interface DispatchTestContext {
   readonly deps: AppDeps;
@@ -259,5 +261,128 @@ describe("POST /internal/whatsapp/dispatch", () => {
     expect(body.ok).toBe(true); // un mensaje 'dead' no es un fallo de la RUTA
     expect(body.results.citas).toMatchObject({ claimed: 1, sent: 0, dead: 1 });
     expect(body.results.restaurantes).toMatchObject({ claimed: 1, sent: 1, dead: 0 });
+  });
+});
+
+// Salud de Meta enganchada al cron existente: token por vencer y timeouts/fallos del agente. Reloj fijo: miercoles 7-oct-2026 12:00 America/Merida
+// (18:00 UTC). Los lectores son dobles inyectados: ninguna prueba llama a Meta.
+describe("POST /internal/whatsapp/dispatch: salud de Meta y del agente", () => {
+  const AHORA = new Date("2026-10-07T18:00:00Z");
+  const DIA = 86_400_000;
+  const ORG = "00000000-0000-0000-0000-00000000a001";
+  const turnos = (n: number, timeouts: number): TurnoAgente[] => Array.from({ length: n }, (_, i) => ({ organizationId: ORG, at: new Date(AHORA.getTime() - ((i % 9) + 0.5) * 60_000), resultado: i < timeouts ? "timeout" : "ok" }));
+  const request = (deps: AppDeps) => buildApp(deps).request("/internal/whatsapp/dispatch", { method: "POST", headers: { "x-atiende-internal-secret": deps.env.internalSecret } });
+
+  it("token a 7 dias y 2 % de timeouts: la corrida emite ambos avisos de plataforma y responde igual que sin vigilancia", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const { deps, emisiones } = conEmisiones({
+      ...base.deps,
+      saludMeta: {
+        lectorToken: { leer: async () => ({ valido: true, expiraEn: new Date(AHORA.getTime() + 7 * DIA) }) },
+        lectorTurnos: () => ({ leer: async () => turnos(100, 2) }),
+        reloj: () => AHORA,
+      },
+    });
+    const res = await request(deps);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+    expect(emisiones.map((e) => e.evento).sort()).toEqual(["superadmin.agente.timeouts_altos", "superadmin.whatsapp.token_por_vencer"]);
+    expect(emisiones.every((e) => e.organizationId === null && e.enlace === "/superadmin/salud")).toBe(true);
+  });
+
+  it("un lector del token que lanza y un lector de turnos que lanza NO alteran la respuesta del cron", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const { deps, emisiones } = conEmisiones({
+      ...base.deps,
+      saludMeta: {
+        lectorToken: { leer: async () => { throw new Error("Graph caido"); } },
+        lectorTurnos: () => ({ leer: async () => { throw new Error("base caida"); } }),
+        reloj: () => AHORA,
+      },
+    });
+    const res = await request(deps);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+    expect(emisiones).toHaveLength(0);
+  });
+
+  it("el token se consulta solo en el primer tick de cada hora (minutos 0-4 UTC): a las 12:05 no se llama a Meta, a las 12:04 si", async () => {
+    let llamadas = 0;
+    const lectorToken = { leer: async () => { llamadas += 1; return { valido: true, expiraEn: null }; } };
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const con = (reloj: Date) => ({ ...base.deps, saludMeta: { lectorToken, lectorTurnos: () => ({ leer: async () => [] }), reloj: () => reloj } });
+    await request(con(new Date("2026-10-07T18:05:00Z")));
+    expect(llamadas).toBe(0);
+    await request(con(new Date("2026-10-07T18:04:59Z")));
+    expect(llamadas).toBe(1);
+  });
+
+  it("si withAppSession RECHAZA durante la vigilancia (token y agente), la respuesta del cron no cambia", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const normal = await (await request(base.deps)).json();
+    let sesionesVigilancia = 0;
+    const engine = {
+      withAppSession: (claims: never, fn: (s: never) => Promise<unknown>) => {
+        // las sesiones de la vigilancia se reconocen porque se piden DESPUES del despacho: las rechazamos todas desde que se activa la bandera
+        if (sesionesVigilancia >= 0 && vigilando) { sesionesVigilancia += 1; return Promise.reject(new Error("base caida")); }
+        return base.deps.engine.withAppSession(claims, fn as never);
+      },
+    } as unknown as AppDeps["engine"];
+    let vigilando = false;
+    const deps: AppDeps = {
+      ...base.deps,
+      engine,
+      saludMeta: {
+        lectorToken: { leer: async () => { vigilando = true; return { valido: true, expiraEn: new Date(AHORA.getTime() + DIA) }; } },
+        lectorTurnos: () => { vigilando = true; return { leer: async () => turnos(100, 5) }; },
+        reloj: () => { vigilando = true; return AHORA; },
+      },
+    };
+    const res = await request(deps);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(normal);
+    expect(sesionesVigilancia).toBeGreaterThanOrEqual(2);
+  });
+
+  it("un Graph colgado (debug_token que nunca responde) no bloquea el despacho: corta por su tope y la respuesta es la normal", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const normal = await (await request(base.deps)).json();
+    const { deps } = conEmisiones({ ...base.deps, saludMeta: { lectorToken: { leer: () => new Promise<{ valido: boolean | null; expiraEn: Date | null }>(() => undefined) }, limiteLecturaTokenMs: 30, lectorTurnos: () => ({ leer: async () => [] }), reloj: () => AHORA } });
+    const t0 = Date.now();
+    const res = await request(deps);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(await res.json()).toEqual(normal);
+  });
+
+  it("el log de la vigilancia muestra el estado (no redactado): no_leido sale en nivel warn y nunca lleva secretos", async () => {
+    const base = buildDispatchTestContext({ withDispatcher: true });
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const info = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const deps = { ...base.deps, saludMeta: { lectorToken: { leer: async () => { throw new Error("Graph caido EAAsecreto-12345"); } }, lectorTurnos: () => ({ leer: async () => [] }), reloj: () => AHORA } };
+    try {
+      await request(deps);
+      const lineas = aviso.mock.calls.map((a) => String(a[0])).filter((l) => l.includes("whatsapp_dispatch_salud_meta"));
+      expect(lineas).toHaveLength(1);
+      const log = JSON.parse(lineas[0]!) as Record<string, unknown>;
+      expect(log).toMatchObject({ level: "warn", evento: "whatsapp_dispatch_salud_meta", estadoMeta: "no_leido", estadoAgente: "ok" });
+      expect(lineas[0]).not.toContain("redactado");
+      expect(lineas[0]).not.toContain("EAAsecreto");
+      // con token leido bien, el nivel es info y el estado tambien es visible
+      aviso.mockClear();
+      info.mockClear();
+      await request({ ...deps, saludMeta: { ...deps.saludMeta, lectorToken: { leer: async () => ({ valido: true, expiraEn: null }) } } });
+      const infoLinea = info.mock.calls.map((a) => String(a[0])).find((l) => l.includes("whatsapp_dispatch_salud_meta"));
+      expect(JSON.parse(infoLinea!)).toMatchObject({ level: "info", estadoMeta: "sin_fecha", estadoAgente: "ok" });
+    } finally {
+      aviso.mockRestore();
+      info.mockRestore();
+    }
+  });
+
+  it("sin saludMeta configurado (sin token) el cron se comporta como antes: ninguna llamada a Meta y la base sin migrar no rompe", async () => {
+    const ctx = buildDispatchTestContext({ withDispatcher: true });
+    const res = await request(ctx.deps);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
   });
 });

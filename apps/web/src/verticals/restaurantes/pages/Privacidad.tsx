@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
 import type { SolicitudArcoAccion, SolicitudArcoDerecho, SolicitudArcoEstado, SolicitudArcoVista } from "@atiende/ui";
 import { actualizarEstadoSolicitudArco, fetchConfiguracionPrivacidad, fetchSolicitudesArco, guardarConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
 import type { ConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
@@ -220,25 +220,25 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[200px]`}>
                 Estado
-                <NativeSelect value={estado} onChange={(e) => setEstado(e.target.value as SolicitudArcoEstado | "")}>
+                <Selector value={estado} onChange={(e) => setEstado(e.target.value as SolicitudArcoEstado | "")}>
                   <option value="">Todos</option>
                   {(Object.keys(SOLICITUD_ARCO_ESTADO_LABEL) as SolicitudArcoEstado[]).map((e) => (
                     <option key={e} value={e}>
                       {SOLICITUD_ARCO_ESTADO_LABEL[e]}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
                 Derecho
-                <NativeSelect value={derecho} onChange={(e) => setDerecho(e.target.value as SolicitudArcoDerecho | "")}>
+                <Selector value={derecho} onChange={(e) => setDerecho(e.target.value as SolicitudArcoDerecho | "")}>
                   <option value="">Todos</option>
                   {(Object.keys(SOLICITUD_ARCO_DERECHO_LABEL) as SolicitudArcoDerecho[]).map((d) => (
                     <option key={d} value={d}>
                       {SOLICITUD_ARCO_DERECHO_LABEL[d]}
                     </option>
                   ))}
-                </NativeSelect>
+                </Selector>
               </Label>
             </CardContent>
           </Card>

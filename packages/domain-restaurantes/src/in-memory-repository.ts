@@ -10,7 +10,7 @@ import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
-import { ClienteMemoriaNoDisponibleError, OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { ClienteMemoriaNoDisponibleError, OrderConflictError, OrderValidationError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
@@ -44,6 +44,7 @@ import type {
   FilaImportacionCliente,
   ResultadoImportacionClientes,
   CustomerTier,
+  ColoniasReferenciaLectura,
   KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
@@ -71,11 +72,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
-  StorefrontMarca,
-  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
-  StorefrontTrackingResult,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -234,6 +232,7 @@ interface StoredBranchProduct {
   readonly productId: string;
   price: number;
   isAvailable: boolean;
+  agotadoHasta?: string | null;
 }
 
 type StoredPromotion = Promotion;
@@ -248,9 +247,16 @@ interface StoredKnownZone {
   readonly id?: string;
   readonly organizationId: string;
   readonly name: string;
-  readonly lat: number;
-  readonly lng: number;
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly createdAt?: string;
+  /** Procedencia y referencia del piloto original (migracion 056); solo las siembran los mundos de prueba del seed. */
+  readonly fuente?: string | null;
+  readonly asignacionFuente?: string | null;
+  readonly refSucursalSlug?: string | null;
+  readonly refKm?: number | null;
+  readonly ref2SucursalSlug?: string | null;
+  readonly ref2Km?: number | null;
 }
 
 interface StoredWhatsAppEvent {
@@ -315,7 +321,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly cliente360 = new Cliente360Store();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
-  private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
   private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
   /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
@@ -515,6 +520,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     let bestZone: StoredKnownZone | null = null;
     for (const zone of this.knownZones) {
       if (zone.organizationId !== organizationId) continue;
+      // Una colonia sin coordenadas (migracion 056) no sirve de punto para medir distancias: la funcion SQL tampoco la considera.
+      if (zone.lat === null || zone.lng === null) continue;
       const zoneNorm = normalizeZoneText(zone.name);
       if (!zoneNorm) continue;
       if (inputNorm.includes(zoneNorm) || zoneNorm.includes(inputNorm)) {
@@ -528,7 +535,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     for (const branch of this.branches.values()) {
       if (branch.organizationId !== organizationId || branch.status !== "active") continue;
       if (branch.lat === null || branch.lng === null) continue;
-      const distance = haversineKm(bestZone.lat, bestZone.lng, branch.lat, branch.lng);
+      const distance = haversineKm(bestZone.lat as number, bestZone.lng as number, branch.lat, branch.lng);
       if (distance < nearestDistance) {
         nearestDistance = distance;
         nearestBranch = branch;
@@ -584,31 +591,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return rows.sort((a, b) => a.categoryDisplayOrder - b.categoryDisplayOrder || (a.categoryName ?? "~").localeCompare(b.categoryName ?? "~") || a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
   }
 
-  /** Solo pruebas: simula una base sin la migracion 032 (`findStorefrontOrderTracking` -> no disponible). */
-  simulateStorefrontTrackingUnavailable(): void {
-    this.storefrontTrackingUnavailable = true;
-  }
-  private storefrontTrackingUnavailable = false;
-
-  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
-    if (this.storefrontTrackingUnavailable) return { disponible: false, pedido: null };
-    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
-    if (!order) return { disponible: true, pedido: null };
-    const notes = order.notes ?? "";
-    return {
-      disponible: true,
-      pedido: {
-        status: order.status,
-        branch: order.branch,
-        total: order.total,
-        paymentMethod: order.paymentMethod,
-        canal: notes.includes("Canal: recoger en sucursal.") ? "recoger" : "domicilio",
-        createdAt: order.createdAt,
-        items: order.items.map((i) => ({ name: i.name, quantity: i.quantity, tortilla: i.tortilla ?? null })),
-      },
-    };
-  }
-
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
     const id = this.customerIdByOrgPhone.get(`${organizationId}:${phone}`);
     return id ? (this.customers.get(id) ?? null) : null;
@@ -645,12 +627,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     this.addresses.set(customerId, list);
   }
 
-  async listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]> {
+  async listCustomerAddresses(customerId: string, _organizationId?: string): Promise<readonly CustomerAddress[]> {
     const list = this.addresses.get(customerId) ?? [];
     return [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault)).map((a) => ({ address: a.address, label: a.label, isDefault: a.isDefault }));
   }
 
-  async listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
+  async listEligibleOrderHistory(customerId: string, _organizationId?: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
     const eligibleStatuses = new Set(["pending", "preparando", "en_camino", "entregado", "completado"]);
     return this.orders
       .filter((o) => o.customerId === customerId && eligibleStatuses.has(o.status))
@@ -1030,8 +1012,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
         // R-30 + QA R1 viaje-09: ventas netas; un pedido cancelado, no recogido (no se cobro) o programado (aun no es venta) no cuenta.
-        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado") return false;
-        const createdMs = Date.parse(o.createdAt);
+        // QA R2 viaje-04: un pedido retenido (por_aprobar) tampoco es venta. QA R2 viaje-03: el dia es el de la promocion si la hay.
+        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado" || o.status === "por_aprobar") return false;
+        const createdMs = Date.parse(o.promovidoAt ?? o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
       const revenue = enRango.reduce((sum, o) => sum + o.total, 0);
@@ -1205,7 +1188,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       }
 
       const programadoPara = this.scheduledOrdersSupported ? (order.programadoPara ?? null) : null;
-      if (programadoPara && Date.parse(programadoPara) <= Date.now()) throw new Error("programado_para debe ser una hora futura");
+      if (programadoPara && Date.parse(programadoPara) <= Date.now()) throw new OrderValidationError("programado_para debe ser una hora futura");
       const created: Order = {
         id: randomUUID(),
         organizationId: order.organizationId,
@@ -1819,6 +1802,23 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return found ? { ...found } : null;
   }
 
+  private readonly compensationCodes = new Map<string, string>();
+
+  /** Solo pruebas: emite a `phone` un codigo de compensacion (espejo de solicitud_resolver con `descuento_proximo`). */
+  seedCompensationCode(organizationId: string, phone: string, code: string): void {
+    this.compensationCodes.set(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`, code);
+  }
+
+  async findCompensationCode(organizationId: string, phone: string): Promise<string | null> {
+    const code = this.compensationCodes.get(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`);
+    if (!code) return null;
+    const p = await this.findPromotionByCode(organizationId, code);
+    const now = Date.now();
+    if (!p || !p.isActive || (p.maxUses !== null && p.timesUsed >= p.maxUses)) return null;
+    if ((p.startsAt && Date.parse(p.startsAt) > now) || (p.endsAt && Date.parse(p.endsAt) < now)) return null;
+    return code;
+  }
+
   async listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]> {
     return [...this.promotions.values()]
       .filter((p) => p.organizationId === organizationId && p.autoApply && p.isActive)
@@ -1901,7 +1901,31 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
     const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
-    return entry ? { propertyId: entry.propertyId, productId: entry.productId, price: entry.price, isAvailable: entry.isAvailable } : null;
+    return entry ? { propertyId: entry.propertyId, productId: entry.productId, price: entry.price, isAvailable: entry.isAvailable, ...(entry.agotadoHasta !== undefined ? { agotadoHasta: entry.agotadoHasta } : {}) } : null;
+  }
+
+  async limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void> {
+    const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (entry) entry.agotadoHasta = null;
+  }
+
+  /** Pruebas: deja la reposición programada (`agotado_hasta`) que escribe `agotado_marcar` (migración 050). */
+  marcarAgotadoHastaParaPruebas(propertyId: string, productId: string, hasta: string): void {
+    const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (entry) entry.agotadoHasta = hasta;
+  }
+
+  /** Doble de `restaurantes.agotados_reponer` (migración 050) para pruebas: devuelve a la venta lo que está apagado CON reposición
+   * programada que ya venció (`agotadoHasta <= hoy`). Lo apagado sin `agotadoHasta` nunca se reactiva solo. */
+  reponerAgotadosVencidos(hoy: string): readonly { readonly propertyId: string; readonly productId: string }[] {
+    const repuestos: { propertyId: string; productId: string }[] = [];
+    for (const bp of this.branchProducts) {
+      if (!bp.agotadoHasta || bp.isAvailable || bp.agotadoHasta > hoy) continue;
+      bp.isAvailable = true;
+      bp.agotadoHasta = null;
+      repuestos.push({ propertyId: bp.propertyId, productId: bp.productId });
+    }
+    return repuestos;
   }
 
   async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {
@@ -2107,6 +2131,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   }
 
   private readonly customerNotes = new Map<string, string>();
+  /** Lo que escribio una importacion (procedencia: customers.import_nombre / import_notas / customer_addresses.from_import). */
+  private readonly importNombre = new Map<string, string>();
+  private readonly importNotas = new Map<string, string>();
+  private readonly direccionesImportadas = new Set<string>();
   private readonly importacionesClientes = new Map<string, Extract<ResultadoImportacionClientes, { disponible: true }>>();
 
   async importarClientes(organizationId: string, huella: string, filas: readonly FilaImportacionCliente[]): Promise<ResultadoImportacionClientes> {
@@ -2118,6 +2146,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     let actualizados = 0;
     let sinCambios = 0;
     let rechazados = 0;
+    const vistos = new Set<string>();
     for (const f of filas) {
       if (!/^[0-9]{10}$/.test(f.phone)) {
         rechazados += 1;
@@ -2130,20 +2159,44 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         id = randomUUID();
         this.customers.set(id, { id, organizationId, phone: f.phone, name: f.name, orderCount: 0 });
         this.customerIdByOrgPhone.set(key, id);
-        if (f.notes) this.customerNotes.set(id, f.notes);
+        if (f.name) this.importNombre.set(id, f.name);
+        if (f.notes) {
+          this.customerNotes.set(id, f.notes);
+          this.importNotas.set(id, f.notes);
+        }
         creados += 1;
       } else {
         id = existenteId;
         const actual = this.customers.get(id)!;
-        // Nunca pisa el nombre ni la nota conocidos: solo completa lo vacio.
-        const completaNombre = actual.name === null && f.name !== null;
-        const completaNota = !this.customerNotes.has(id) && f.notes !== null;
-        if (completaNombre) this.customers.set(id, { ...actual, name: f.name });
-        if (completaNota) this.customerNotes.set(id, f.notes!);
-        if (completaNombre || completaNota) actualizados += 1;
+        // Completa lo vacio y CORRIGE solo lo que una importacion anterior escribio y nadie cambio despues (mismo contrato que la funcion SQL).
+        const nota = this.customerNotes.get(id) ?? null;
+        const repetido = vistos.has(f.phone); // un telefono repetido dentro del MISMO archivo no se corrige a si mismo
+        const nombreFinal = f.name === null ? actual.name : actual.name === null ? f.name : !repetido && this.importNombre.get(id) === actual.name ? f.name : actual.name;
+        const notaFinal = f.notes === null ? nota : nota === null ? f.notes : !repetido && this.importNotas.get(id) === nota ? f.notes : nota;
+        if (nombreFinal !== actual.name) {
+          this.customers.set(id, { ...actual, name: nombreFinal });
+          if (nombreFinal) this.importNombre.set(id, nombreFinal);
+        }
+        if (notaFinal !== nota && notaFinal !== null) {
+          this.customerNotes.set(id, notaFinal);
+          this.importNotas.set(id, notaFinal);
+        }
+        if (nombreFinal !== actual.name || notaFinal !== nota) actualizados += 1;
         else sinCambios += 1;
       }
-      if (f.address) await this.addCustomerAddressIfNew(id, f.address, organizationId);
+      vistos.add(f.phone);
+      if (f.address) {
+        const existia = (this.addresses.get(id) ?? []).some((a) => a.address === f.address);
+        await this.addCustomerAddressIfNew(id, f.address, organizationId);
+        if (!existia) {
+          this.direccionesImportadas.add(`${id}|${f.address}`);
+          const lista = this.addresses.get(id) ?? [];
+          // Domicilio nuevo de esta importacion: si el predeterminado actual tambien vino de una importacion, pasa a ser este.
+          if (lista.some((a) => a.isDefault && a.address !== f.address && this.direccionesImportadas.has(`${id}|${a.address}`))) {
+            this.addresses.set(id, lista.map((a) => ({ ...a, isDefault: a.address === f.address })));
+          }
+        }
+      }
     }
     const resultado = { disponible: true as const, yaImportado: false, total: filas.length, creados, actualizados, sinCambios, rechazados };
     this.importacionesClientes.set(clave, resultado);
@@ -2236,16 +2289,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { phoneNumberId };
   }
 
-  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
-    return this.storefrontMarcas.get(organizationId) ?? null;
-  }
-
-  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
-    const guardada: StorefrontMarca = { ...input, updatedAt: new Date().toISOString() };
-    this.storefrontMarcas.set(organizationId, guardada);
-    return guardada;
-  }
-
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
     return this.knownZones
       .filter((z) => z.organizationId === organizationId)
@@ -2253,8 +2296,29 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id.localeCompare(a.id)));
   }
 
+  async listColoniasReferencia(organizationId: string): Promise<ColoniasReferenciaLectura> {
+    return {
+      disponible: true,
+      zonas: this.knownZones
+        .filter((z) => z.organizationId === organizationId)
+        .map((z) => ({
+          zoneId: z.id!,
+          name: z.name,
+          lat: z.lat,
+          lng: z.lng,
+          fuente: z.fuente ?? null,
+          asignacionFuente: z.asignacionFuente ?? null,
+          refSucursalSlug: z.refSucursalSlug ?? null,
+          refKm: z.refKm ?? null,
+          ref2SucursalSlug: z.ref2SucursalSlug ?? null,
+          ref2Km: z.ref2Km ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, "es")),
+    };
+  }
+
   async createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone> {
-    const zone: Required<StoredKnownZone> = { id: randomUUID(), organizationId, name: input.name, lat: input.lat, lng: input.lng, createdAt: new Date().toISOString() };
+    const zone: StoredKnownZone & { readonly id: string; readonly createdAt: string } = { id: randomUUID(), organizationId, name: input.name, lat: input.lat, lng: input.lng, createdAt: new Date().toISOString() };
     this.knownZones.push(zone);
     return zone;
   }

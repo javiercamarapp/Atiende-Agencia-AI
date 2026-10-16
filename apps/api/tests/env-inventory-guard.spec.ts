@@ -36,10 +36,22 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // Vite lo expone automáticamente (base path del build) — no es una variable de
   // entorno que el proyecto configure, ni una credencial.
   "BASE_URL",
+  // Bandera de Vite (true solo en `vite dev`): descarta del build el catalogo de overlays de apps/web (/dev/catalogo). No es una
+  // variable de entorno que el proyecto configure ni una credencial.
+  "DEV",
   // No aparece nunca en este repo hoy, pero es el ejemplo canónico de "variable de
   // plataforma que no es una credencial de integración" — se excluye a propósito
   // por si algún día se lee.
   "NODE_ENV",
+  // Bandera opt-in para correr la prueba de integración del CFO contra un Postgres efímero local
+  // (scripts/verify-restaurantes-cfo-repos/run.sh); no es una credencial.
+  "CFO_REAL_PG",
+  // Cadena de conexion de un Postgres efimero local para la prueba opt-in de la ruta «Probar agente»
+  // (scripts/verify-restaurantes-agente-preview-rate-limit/run.sh); no es una credencial.
+  "VERIFY_PGURL",
+  // Bandera de pruebas de la suite «romper» R11 (packages/domain-restaurantes/tests/pm-r11-romper/arnes.ts y el spec del gateway): con R11_VER_FALLAS=1 los
+  // hallazgos abiertos (it.fails) corren como pruebas normales para ver el mensaje real del defecto; no es una credencial.
+  "R11_VER_FALLAS",
 ]);
 
 const SOURCE_ROOTS = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/web/src", "packages"];

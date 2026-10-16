@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { WRITE_ROLES, assertExplicitOffset } from "@atiende/domain-licitaciones";
+import { auditar, correlationDe, correlationParaConvocatoria } from "./auditoria.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -166,6 +167,21 @@ export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     // convocatoria (REQ-153) y además notifica (REQ-151/155) -- ya ocurrió
     // dentro de `upsertTenderManual` arriba, en la MISMA operación; esta ruta
     // ya no necesita disparar nada por su cuenta.
+
+    // L-P3-17: bitacora + `correlation_id`. Nace aqui al crear (header saneado o id de la peticion); una actualizacion HEREDA la correlacion de
+    // origen de la convocatoria, y la version nueva (si la hubo) comparte la misma.
+    const correlationId = result.created ? correlationDe(c) : await correlationParaConvocatoria(c, repo, result.tender.id);
+    await auditar(deps, c, {
+      entity: "convocatoria",
+      entityId: result.tender.id,
+      action: result.created ? "convocatoria.creada" : "convocatoria.actualizada",
+      before: null,
+      after: result.tender,
+      correlationId,
+    });
+    if (result.versionCambiada) {
+      await auditar(deps, c, { entity: "convocatoria", entityId: result.tender.id, action: "convocatoria.version_registrada", before: null, after: { version: result.versionCambiada }, correlationId });
+    }
 
     // L-30: aviso in-app solo si esta actualizacion creo una version nueva sobre una convocatoria ya versionada.
     await avisarCambioDeBases(c.get("db"), { organizationId, tenderId: result.tender.id, version: result.versionCambiada });

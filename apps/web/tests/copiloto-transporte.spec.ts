@@ -303,3 +303,68 @@ describe("consultarEstadoCopiloto", () => {
     expect(await consultarEstadoCopiloto(cfg((async () => json(200, { available: true, usoHoyPct: 250 })) as unknown as typeof fetch))).toMatchObject({ usoHoyPct: 100 });
   });
 });
+
+describe("adjuntar archivo (POST <base>/adjuntos)", () => {
+  const archivo = (nombre = "ventas.csv", contenido = "a,b\n1,2"): File => new File([contenido], nombre, { type: "text/csv" });
+  const RESPUESTA = { status: "ok", text: "«ventas.csv» tiene 1 fila de datos", blocks: [{ kind: "table", tool: "archivo_adjunto", title: "Perfil del archivo", columns: [{ key: "columna", label: "Columna", kind: "text" }], rows: [{ columna: "a" }], truncated: false }], sources: [{ tool: "archivo_adjunto", source: "Archivo adjunto", scopeLabel: "Solo este archivo" }], toolsUsed: ["archivo_adjunto"] };
+
+  it("declara `adjuntos` y manda SOLO nombre + contenido en base64 al servidor (sin conversacion ni pregunta), con el token", async () => {
+    const llamadas: { url: string; init: RequestInit }[] = [];
+    const t = crear((async (url: string, init: RequestInit) => {
+      llamadas.push({ url, init });
+      return json(200, RESPUESTA);
+    }) as unknown as typeof fetch);
+    expect(t.adjuntos).toEqual({ accept: ".csv,.tsv,.txt,.xlsx,.pdf", maxBytes: 5 * 1024 * 1024 });
+    const eventos: CopilotoEvento[] = [];
+    const r = await t.enviar({ pregunta: "Adjunté «ventas.csv»", conversacionId: "c-1", adjunto: archivo(), senal: new AbortController().signal, onEvento: (e) => eventos.push(e) });
+    expect(llamadas).toHaveLength(1);
+    expect(llamadas[0]!.url).toBe(`${BASE}/adjuntos`);
+    expect(llamadas[0]!.init.method).toBe("POST");
+    expect((llamadas[0]!.init.headers as Record<string, string>)["authorization"]).toBe("Bearer tok");
+    expect(JSON.parse(String(llamadas[0]!.init.body))).toEqual({ nombre: "ventas.csv", contenidoBase64: btoa("a,b\n1,2") });
+    expect(r.status).toBe("ok");
+    expect(r.blocks?.[0]?.tool).toBe("archivo_adjunto");
+    expect(eventos.at(-1)).toMatchObject({ t: "fin" });
+  });
+
+  it("el archivo no entra al hilo local: la siguiente pregunta sigue abriendo una conversacion nueva", async () => {
+    const cuerpos: Record<string, unknown>[] = [];
+    const t = crear((async (url: string, init: RequestInit) => {
+      if (url.endsWith("/adjuntos")) return json(200, RESPUESTA);
+      cuerpos.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return ndjson([JSON.stringify({ t: "fin", respuesta: { status: "ok", text: "hola" } })]);
+    }) as unknown as typeof fetch);
+    await t.enviar({ pregunta: "Adjunté «a.csv»", adjunto: archivo(), senal: new AbortController().signal, onEvento: () => undefined });
+    await t.enviar({ pregunta: "hola", senal: new AbortController().signal, onEvento: () => undefined });
+    expect(cuerpos[0]).toEqual({ question: "hola", conversationId: "new" });
+  });
+
+  it("mas de 5 MB se rechaza sin subir; 413, 404/503, 429 y 403 del servidor se traducen a avisos honestos", async () => {
+    let llamadas = 0;
+    const con = (status: number, headers: Record<string, string> = {}) =>
+      crear((async () => {
+        llamadas++;
+        return json(status, { code: "x" }, headers);
+      }) as unknown as typeof fetch);
+    const enviar = (t: ReturnType<typeof crear>, f: File = archivo()) => t.enviar({ pregunta: "x", adjunto: f, senal: new AbortController().signal, onEvento: () => undefined });
+    const grande = { size: 6 * 1024 * 1024, name: "g.csv", arrayBuffer: async () => new ArrayBuffer(0) } as unknown as File;
+    await expect(enviar(con(200), grande)).rejects.toMatchObject({ status: "invalid_input", message: "El archivo supera los 5 MB." });
+    expect(llamadas).toBe(0);
+    await expect(enviar(con(413))).rejects.toMatchObject({ status: "invalid_input" });
+    for (const s of [404, 503]) await expect(enviar(con(s))).rejects.toMatchObject({ status: "invalid_input", message: expect.stringContaining("todavía no está disponible") });
+    await expect(enviar(con(429, { "retry-after": "90" }))).rejects.toMatchObject({ status: "invalid_input", message: expect.stringContaining("muchos archivos") });
+    await expect(enviar(con(403))).rejects.toMatchObject({ status: "forbidden" });
+  });
+
+  it("un motivo de rechazo del servidor (200 con status invalid_input) llega tal cual al chat", async () => {
+    const t = crear((async () => json(200, { status: "invalid_input", text: "Solo puedo leer archivos CSV, Excel (.xlsx) y PDF.", blocks: [], sources: [], toolsUsed: [] })) as unknown as typeof fetch);
+    const r = await t.enviar({ pregunta: "x", adjunto: archivo("a.exe"), senal: new AbortController().signal, onEvento: () => undefined });
+    expect(r).toMatchObject({ status: "invalid_input", text: "Solo puedo leer archivos CSV, Excel (.xlsx) y PDF." });
+  });
+
+  it("`adjuntos: false` quita la capacidad (la ruta de chat no tiene /adjuntos)", () => {
+    const t = crearTransporteCopiloto({ baseUrl: BASE, fetchImpl: (async () => json(200, {})) as unknown as typeof fetch, token: "tok", adjuntos: false });
+    expect(t.adjuntos).toBeUndefined();
+    expect(crearTransporteCopiloto({ baseUrl: BASE, fetchImpl: (async () => json(200, {})) as unknown as typeof fetch, token: "tok", adjuntos: false, fijados: false }).fijar).toBeUndefined();
+  });
+});

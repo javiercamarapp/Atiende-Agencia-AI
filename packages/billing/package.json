@@ -11,6 +11,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "fast-xml-parser": "5.11.1"
+    "fast-xml-parser": "5.11.2"
   }
 }

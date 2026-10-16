@@ -7,27 +7,31 @@
 // Label reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. Ningún
 // cambio de lógica: mismos props, mismo estado, mismas llamadas de red.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import { Plus, Wrench } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   Textarea,
+  notify,
   useConfirm,
 } from "@atiende/ui";
+import { dineroMx } from "../lib/dinero.ts";
 import { closeTicket, createTicket, fetchTickets, TICKET_SEVERITY_LABELS, TICKET_STATUS_LABELS } from "../lib/housekeeping-client.ts";
 import type { MaintenanceTicketSeverity, MaintenanceTicketStatus, MaintenanceTicketSummary } from "../lib/housekeeping-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
@@ -63,8 +67,7 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
     void load();
   }, [apiBaseUrl, token, propertyId, filter]);
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleCreate() {
     setFormError(null);
     if (!titulo.trim() || !descripcion.trim()) return setFormError("Título y descripción son requeridos.");
     setCreating(true);
@@ -75,6 +78,7 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
       setRoomId("");
       setSeveridad("media");
       setShowForm(false);
+      notify.success("Ticket creado.");
       await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "No se pudo crear el ticket.");
@@ -101,6 +105,7 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
     setError(null);
     try {
       await closeTicket(fetch, apiBaseUrl, token, propertyId, ticket.id, actualCost, nota || undefined);
+      notify.success("Ticket cerrado.");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cerrar el ticket.");
@@ -111,59 +116,53 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground">Mantenimiento</h1>
-        <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
-          {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
-          {showForm ? "Cancelar" : "Nuevo ticket"}
-        </Button>
-      </header>
+      <PageHeader
+        titulo="Mantenimiento"
+        descripcion="Tickets correctivos de la propiedad: crea, sigue y cierra con costo real."
+        acciones={
+          <Button type="button" iconLeft={<Plus className="size-4" strokeWidth={1.75} />} onClick={() => setShowForm(true)}>
+            Nuevo ticket
+          </Button>
+        }
+      />
 
-      {showForm && (
-        <Card className="max-w-md">
-          <CardContent className="p-4">
-            <form onSubmit={handleCreate} className="flex flex-col gap-3">
-              <div>
-                <Label htmlFor="mant-titulo">Título</Label>
-                <Input id="mant-titulo" value={titulo} onChange={(e) => setTitulo(e.target.value)} required className="mt-1" />
-              </div>
-              <div>
-                <Label htmlFor="mant-descripcion">Descripción</Label>
-                <Textarea
-                  id="mant-descripcion"
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <Label htmlFor="mant-severidad">Severidad</Label>
-                  <NativeSelect
-                    id="mant-severidad"
-                    value={severidad}
-                    onChange={(e) => setSeveridad(e.target.value as MaintenanceTicketSeverity)}
-                  >
-                    {SEVERITIES.map((s) => (
-                      <option key={s} value={s}>
-                        {TICKET_SEVERITY_LABELS[s]}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="mant-room">Habitación (opcional)</Label>
-                  <Input id="mant-room" value={roomId} onChange={(e) => setRoomId(e.target.value)} className="mt-1" />
-                </div>
-              </div>
-              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
-              <Button type="submit" disabled={creating}>
-                {creating ? "Creando…" : "Crear ticket"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+      <FormDialog
+        open={showForm}
+        onOpenChange={(o) => {
+          setShowForm(o);
+          if (!o) setFormError(null);
+        }}
+        titulo="Nuevo ticket"
+        subtitulo="Reporta un desperfecto para que mantenimiento lo atienda."
+        onGuardar={() => void handleCreate()}
+        guardando={creating}
+        textoBotonGuardar="Crear ticket"
+        anchoClase="max-w-xl"
+      >
+        <div className="grid gap-4">
+          <FormField label="Título" required>
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+          </FormField>
+          <FormField label="Descripción" required>
+            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+          </FormField>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Severidad">
+              <NativeSelect value={severidad} onChange={(e) => setSeveridad(e.target.value as MaintenanceTicketSeverity)}>
+                {SEVERITIES.map((s) => (
+                  <option key={s} value={s}>
+                    {TICKET_SEVERITY_LABELS[s]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormField>
+            <FormField label="Habitación (opcional)">
+              <Input value={roomId} onChange={(e) => setRoomId(e.target.value)} />
+            </FormField>
+          </div>
+          {formError && <Callout tone="danger">{formError}</Callout>}
+        </div>
+      </FormDialog>
 
       <Tabs value={filter} onValueChange={(v) => setFilter(v as MaintenanceTicketStatus | "todos")}>
         <TabsList>
@@ -190,7 +189,7 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
                         {t.titulo}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {t.roomId ? `Habitación ${t.roomId}` : "Sin habitación"} · Origen: {t.origen} · Estimado: ${t.costoEstimado.toLocaleString("es-MX")}
+                        {t.roomId ? `Habitación ${t.roomId}` : "Sin habitación"} · Origen: {t.origen} · {t.costoEstimado > 0 ? `Estimado: ${dineroMx(t.costoEstimado)}` : "Sin estimar"}
                       </p>
                     </div>
                     <StatusBadge tone={t.severidad === "alta" ? "danger" : "neutral"} className="self-start">
@@ -201,8 +200,8 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
                   {t.notaResolucion && <p className="mt-1.5 text-xs text-muted-foreground">Resolución: {t.notaResolucion}</p>}
                   {(t.estado === "abierto" || t.estado === "en_progreso") && (
                     <div className="mt-2.5">
-                      <Button type="button" variant="outline" size="sm" onClick={() => void handleClose(t)} disabled={busyId === t.id}>
-                        {busyId === t.id ? "…" : "Cerrar ticket"}
+                      <Button type="button" variant="outline" size="sm" onClick={() => void handleClose(t)} loading={busyId === t.id} disabled={busyId === t.id}>
+                        Cerrar ticket
                       </Button>
                     </div>
                   )}

@@ -36,6 +36,12 @@ export interface ConfigWorker {
   readonly geminiBackend: "api" | "vertex";
   readonly vertex: { readonly project: string; readonly location: string; readonly serviceAccountJson: string } | null;
   readonly openrouterApiKey: string | null;
+  /** `DEEPGRAM_API_KEY`: UNA sola llave para el STT y el TTS de la cascada v2; null = el escalon `cascada-v2` se salta. */
+  readonly deepgramApiKey: string | null;
+  /** `VOZ_CASCADA_V2_HABILITADA` (1/true/si): interruptor de la cascada v2. APAGADO por omision aunque exista la llave de Deepgram. */
+  readonly cascadaV2Habilitada: boolean;
+  /** `VOZ_LLM_PROVEEDORES_ZDR` (slugs de OpenRouter separados por coma): sobreescribe los proveedores ZDR permitidos del cerebro de voz; vacio = los de `VOZ_PLATAFORMA`. */
+  readonly proveedoresZdr: readonly string[];
   /** Ajuste fino del VAD de Gemini (`VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN`); vacio = los valores de `VOZ_PLATAFORMA.gemini.vad`. */
   readonly vad: { readonly silencioFinMs?: number; readonly sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null };
   /** Tope de costo por llamada en micro-USD (`VOICE_COSTO_MAX_LLAMADA_USD`); null = el de la plataforma (US$0.50, `COSTO_MAX_LLAMADA_MICRO_USD`). */
@@ -156,6 +162,11 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   if (!internalSecret) motivos.push("Falta INTERNAL_SECRET (el mismo de la API; registra conversaciones y costos).");
   const gemini = lleno(env.GEMINI_API_KEY) ? env.GEMINI_API_KEY.trim() : null;
   const openrouter = lleno(env.OPENROUTER_API_KEY) ? env.OPENROUTER_API_KEY.trim() : null;
+  const deepgram = lleno(env.DEEPGRAM_API_KEY) ? env.DEEPGRAM_API_KEY.trim() : null;
+  const zdrCrudo = lleno(env.VOZ_LLM_PROVEEDORES_ZDR) ? env.VOZ_LLM_PROVEEDORES_ZDR.split(",").map((x) => x.trim()).filter((x) => x !== "") : [];
+  const proveedoresZdr = zdrCrudo.filter((x) => /^[a-z0-9][a-z0-9-]*(\/[a-z0-9-]+)?$/.test(x));
+  if (proveedoresZdr.length !== zdrCrudo.length) motivos.push("VOZ_LLM_PROVEEDORES_ZDR: cada proveedor debe ser un slug de OpenRouter (p. ej. google-vertex o google-vertex/us).");
+  const v2Habilitada = lleno(env.VOZ_CASCADA_V2_HABILITADA) && ["1", "true", "si", "sí"].includes(env.VOZ_CASCADA_V2_HABILITADA.trim().toLowerCase());
   const backendCrudo = lleno(env.GEMINI_BACKEND) ? env.GEMINI_BACKEND.trim().toLowerCase() : "api";
   let geminiBackend: "api" | "vertex" = "api";
   let vertex: ConfigWorker["vertex"] = null;
@@ -209,6 +220,9 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     geminiBackend,
     vertex,
     openrouterApiKey: openrouter,
+    deepgramApiKey: deepgram,
+    cascadaV2Habilitada: v2Habilitada,
+    proveedoresZdr,
     vad,
     costoMaxLlamadaMicroUsd: costoMax,
     dnis: tabla,

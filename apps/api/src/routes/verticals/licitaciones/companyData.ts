@@ -30,6 +30,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import type { Context } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, DECISION_ROLES, WRITE_ROLES, assertExplicitOffset, assertValidDecimalString, isoNow } from "@atiende/domain-licitaciones";
 import type { CompanyItemDecision, CompanyItemKind, CompanyItemDecisionOutcome, LicitacionesRole } from "@atiende/domain-licitaciones";
@@ -37,6 +38,8 @@ import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import { requireStepUp } from "../../../second-factor.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { auditar } from "./auditoria.ts";
+import type { AuditEntity } from "@atiende/domain-licitaciones";
 import type { AppDeps } from "../../../deps.ts";
 
 /** `approvalStatus` en el cuerpo de un alta/edición es un intento de auto-aprobación: se rechaza (422), nunca se ignora en silencio. */
@@ -162,6 +165,25 @@ function decisionStatus(outcome: Exclude<CompanyItemDecisionOutcome, "ok">): nev
   }
 }
 
+/** Estado ANTERIOR de un dato de empresa (para el `antes` de la bitacora). `null` si no existe (el update lanzara su 404 propio). */
+async function antesDe(deps: AppDeps, c: Context<CoreAuthHonoEnv>, kind: CompanyItemKind, id: string): Promise<object | null> {
+  const repo = deps.licitacionesRepo(c.get("db"));
+  const organizationId = c.get("organizationId");
+  const lista: readonly { readonly id: string }[] =
+    kind === "rate"
+      ? await repo.listAllApprovedRates(organizationId)
+      : kind === "document"
+        ? await repo.listCompanyDocuments(organizationId, isoNow())
+        : kind === "capability"
+          ? await repo.listCompanyCapabilities(organizationId)
+          : kind === "experience"
+            ? await repo.listCompanyExperience(organizationId)
+            : await repo.listCompanySigners(organizationId);
+  return lista.find((r) => r.id === id) ?? null;
+}
+
+const ENTIDAD_DE: Readonly<Record<CompanyItemKind, AuditEntity>> = { rate: "tarifa", document: "documento_empresa", capability: "capacidad", experience: "experiencia", signer: "firmante" };
+
 export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const propertyBase = "/licitaciones/:propertyId";
@@ -200,6 +222,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const expiresAt = raw.expiresAt === null || raw.expiresAt === undefined ? null : parseOptionalExplicitOffsetDate(raw.expiresAt, "expiresAt")!;
     rejectApprovalStatusInBody(raw);
     const document = await repo.createCompanyDocument(c.get("organizationId"), { type, label, expiresAt, actorId: c.get("userId") });
+    await auditar(deps, c, { entity: ENTIDAD_DE.document, entityId: document.id, action: `${ENTIDAD_DE.document}.creado`, before: null, after: document });
     await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "document", document.id);
     return c.json(document, 201);
   });
@@ -213,7 +236,9 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (raw.expiresAt !== undefined) input.expiresAt = raw.expiresAt === null ? null : parseOptionalExplicitOffsetDate(raw.expiresAt, "expiresAt")!;
     rejectApprovalStatusInBody(raw);
     try {
+      const antes = await antesDe(deps, c, "document", c.req.param("documentId") ?? "");
       const document = await repo.updateCompanyDocument(c.get("organizationId"), c.req.param("documentId"), { ...input, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.document, entityId: document.id, action: `${ENTIDAD_DE.document}.editado`, before: antes, after: document });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "document", document.id);
       return c.json(document, 200);
     } catch (err) {
@@ -245,6 +270,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     rejectApprovalStatusInBody(raw);
     try {
       const rate = await repo.createApprovedRate(c.get("organizationId"), { concept, unitPrice, validFrom, validUntil, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.rate, entityId: rate.id, action: `${ENTIDAD_DE.rate}.creado`, before: null, after: rate });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "rate", rate.id);
       return c.json(rate, 201);
     } catch (err) {
@@ -271,7 +297,9 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (raw.validUntil !== undefined) input.validUntil = raw.validUntil === null ? null : parseOptionalExplicitOffsetDate(raw.validUntil, "validUntil")!;
     rejectApprovalStatusInBody(raw);
     try {
+      const antes = await antesDe(deps, c, "rate", c.req.param("rateId") ?? "");
       const rate = await repo.updateApprovedRate(c.get("organizationId"), c.req.param("rateId"), { ...input, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.rate, entityId: rate.id, action: `${ENTIDAD_DE.rate}.editado`, before: antes, after: rate });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "rate", rate.id);
       return c.json(rate, 200);
     } catch (err) {
@@ -297,6 +325,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     rejectApprovalStatusInBody(raw);
     try {
       const capability = await repo.createCompanyCapability(c.get("organizationId"), { name, description, evidenceDocId, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.capability, entityId: capability.id, action: `${ENTIDAD_DE.capability}.creado`, before: null, after: capability });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "capability", capability.id);
       return c.json(capability, 201);
     } catch (err) {
@@ -313,7 +342,9 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (raw.evidenceDocId !== undefined) input.evidenceDocId = parseOptionalNullableString(raw.evidenceDocId, "evidenceDocId") ?? null;
     rejectApprovalStatusInBody(raw);
     try {
+      const antes = await antesDe(deps, c, "capability", c.req.param("capabilityId") ?? "");
       const capability = await repo.updateCompanyCapability(c.get("organizationId"), c.req.param("capabilityId"), { ...input, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.capability, entityId: capability.id, action: `${ENTIDAD_DE.capability}.editado`, before: antes, after: capability });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "capability", capability.id);
       return c.json(capability, 200);
     } catch (err) {
@@ -341,6 +372,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const evidenceDocId = parseRequiredString(raw.evidenceDocId, "evidenceDocId");
     rejectApprovalStatusInBody(raw);
     const experience = await repo.createCompanyExperience(c.get("organizationId"), { description, evidenceDocId, actorId: c.get("userId") });
+    await auditar(deps, c, { entity: ENTIDAD_DE.experience, entityId: experience.id, action: `${ENTIDAD_DE.experience}.creado`, before: null, after: experience });
     await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "experience", experience.id);
     return c.json(experience, 201);
   });
@@ -354,7 +386,9 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (raw.evidenceDocId !== undefined) input.evidenceDocId = parseRequiredString(raw.evidenceDocId, "evidenceDocId");
     rejectApprovalStatusInBody(raw);
     try {
+      const antes = await antesDe(deps, c, "experience", c.req.param("experienceId") ?? "");
       const experience = await repo.updateCompanyExperience(c.get("organizationId"), c.req.param("experienceId"), { ...input, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.experience, entityId: experience.id, action: `${ENTIDAD_DE.experience}.editado`, before: antes, after: experience });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "experience", experience.id);
       return c.json(experience, 200);
     } catch (err) {
@@ -380,6 +414,7 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (raw.authorized !== undefined && typeof raw.authorized !== "boolean") throw Errors.validation("authorized: se esperaba un booleano.");
     try {
       const signer = await repo.createCompanySigner(c.get("organizationId"), { name, role, authorized: raw.authorized as boolean | undefined, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.signer, entityId: signer.id, action: `${ENTIDAD_DE.signer}.creado`, before: null, after: signer });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "signer", signer.id);
       return c.json(signer, 201);
     } catch (err) {
@@ -399,7 +434,9 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       input.authorized = raw.authorized;
     }
     try {
+      const antes = await antesDe(deps, c, "signer", c.req.param("signerId") ?? "");
       const signer = await repo.updateCompanySigner(c.get("organizationId"), c.req.param("signerId"), { ...input, actorId: c.get("userId") });
+      await auditar(deps, c, { entity: ENTIDAD_DE.signer, entityId: signer.id, action: `${ENTIDAD_DE.signer}.editado`, before: antes, after: signer });
       await avisarAprobacionPendiente(c.get("db"), c.get("organizationId"), "signer", signer.id);
       return c.json(signer, 200);
     } catch (err) {
@@ -426,10 +463,17 @@ export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         const itemId = c.req.param(target.param) ?? "";
         if (!UUID_RE.test(itemId)) throw Errors.notFound("Dato de empresa no encontrado.");
         // Las tarifas son la decisión económica: segundo factor reciente (token atado a usuario + organización + alcance).
-        if (target.stepUp) await requireStepUp(deps, { userId, organizationId, scope: "company_rate_approval", token: c.req.header("x-step-up-token") });
+        if (target.stepUp) await requireStepUp(deps, { userId, organizationId, scope: "company_rate_approval", token: c.req.header("x-step-up-token"), db: c.get("db") });
         const repo = deps.licitacionesRepo(c.get("db"));
         const outcome = await repo.decideCompanyItem(organizationId, { kind: target.kind, itemId, decision, actorId: userId, actorRole: c.get("verticalRole")! });
         if (outcome !== "ok") decisionStatus(outcome);
+        await auditar(deps, c, {
+          entity: ENTIDAD_DE[target.kind],
+          entityId: itemId,
+          action: `${ENTIDAD_DE[target.kind]}.${decision}`,
+          before: { approvalStatus: "pendiente_aprobacion" },
+          after: { approvalStatus: decision },
+        });
         return c.json({ id: itemId, kind: target.kind, approvalStatus: decision, decidedBy: userId }, 200);
       });
     }

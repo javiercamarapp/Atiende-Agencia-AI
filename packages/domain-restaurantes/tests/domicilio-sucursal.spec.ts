@@ -1,12 +1,10 @@
 // Domicilio por sucursal (migracion 057): helpers puros + regla aplicada al cotizar y al crear pedidos
-// (el agente de WhatsApp y de voz pasan por el mismo dominio) + directorio publico.
+// (el agente de WhatsApp y de voz pasan por el mismo dominio)
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
 import { createOrder, quoteOrder } from "../src/orders.ts";
 import { OrderValidationError } from "../src/errors.ts";
 import { aplicarReglasDeSucursal } from "../src/reglas-pedido.ts";
 import { describirDiasDomicilio, evaluarDomicilioSucursal, insigniaDomicilio, mensajeDomicilioNoDisponible } from "../src/domicilio-sucursal.ts";
-import { buildStorefrontBranches, buildStorefrontDirectorio, enlaceComoLlegar } from "../src/storefront.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 afterEach(() => {
@@ -103,58 +101,5 @@ describe("la regla corre en cotizar y crear pedido (mismo dominio para WhatsApp,
     const f = buildRestaurantFixture();
     const branch = (await f.repo.findBranch(f.organizationId, { slug: "fco-montejo" }))!;
     await expect(aplicarReglasDeSucursal(f.repo, { branch, canal: "domicilio", subtotal: 100, now: MARTES_MEDIODIA })).resolves.toBeTruthy();
-  });
-});
-
-describe("directorio publico de sucursales", () => {
-  function conSucursales() {
-    const f = buildRestaurantFixture();
-    const base = { organizationId: f.organizationId, phone: "+529990000000", lat: null, lng: null } as const;
-    const inactiva = randomUUID();
-    const oculta = randomUUID();
-    const temporada = randomUUID();
-    f.repo.seedBranch({ ...base, propertyId: inactiva, name: "Galerías", slug: "galerias", status: "inactive", address: "Plaza Galerías, Mérida" });
-    f.repo.seedBranch({ ...base, propertyId: oculta, name: "Bodega", slug: "bodega", status: "active", address: "Calle 9" });
-    f.repo.seedBranch({ ...base, propertyId: temporada, name: "Chicxulub", slug: "chicxulub", status: "active", address: "Chicxulub Puerto" });
-    f.repo.seedBranchPolicy(inactiva, { visibleEnDirectorio: true });
-    f.repo.seedBranchPolicy(oculta, { visibleEnDirectorio: false });
-    f.repo.seedBranchPolicy(temporada, { aceptaDomicilio: false, deTemporada: true });
-    f.repo.seedBranchPolicy(f.propertyId, { diasDomicilio: VIE_A_DOM, horario: [{ dias: [1, 2, 3, 4, 5], abre: "12:00", cierra: "22:00" }] });
-    return f;
-  }
-
-  it("lista las visibles (activas por omision + inactivas marcadas visibles), con insignias; oculta las que no", async () => {
-    const f = conSucursales();
-    const dir = await buildStorefrontDirectorio(f.repo, f.organizationId, VIERNES_MEDIODIA);
-    expect(dir.map((d) => d.slug).sort()).toEqual(["chicxulub", "fco-montejo", "galerias"]);
-    const montejo = dir.find((d) => d.slug === "fco-montejo")!;
-    expect(montejo).toMatchObject({ pideEnLinea: true, soloRecoger: false, insigniaDomicilio: "Domicilio vie-dom", soloInformativa: false, abiertoAhora: true });
-    expect(montejo.horario).toEqual([{ dias: [1, 2, 3, 4, 5], abre: "12:00", cierra: "22:00" }]);
-    expect(dir.find((d) => d.slug === "galerias")).toMatchObject({ pideEnLinea: false, soloInformativa: true, abiertoAhora: null });
-    expect(dir.find((d) => d.slug === "chicxulub")).toMatchObject({ pideEnLinea: true, soloRecoger: true, deTemporada: true, insigniaDomicilio: null });
-  });
-
-  it("solo expone campos publicos: ningun id, coordenada ni minimo", async () => {
-    const f = conSucursales();
-    const dir = await buildStorefrontDirectorio(f.repo, f.organizationId);
-    for (const item of dir) {
-      expect(Object.keys(item).sort()).toEqual(
-        ["abiertoAhora", "address", "comoLlegarUrl", "deTemporada", "horario", "insigniaDomicilio", "name", "phone", "pideEnLinea", "slug", "soloInformativa", "soloRecoger"],
-      );
-    }
-  });
-
-  it("'Cómo llegar' usa solo nombre y direccion del negocio, escapados", () => {
-    expect(enlaceComoLlegar("Galerías", "Calle 7 #1 & 2")).toBe("https://www.google.com/maps/search/?api=1&query=Galer%C3%ADas%20Calle%207%20%231%20%26%202");
-    expect(enlaceComoLlegar("X", null)).toBeNull();
-    expect(enlaceComoLlegar("X", "   ")).toBeNull();
-  });
-
-  it("la lista de pedir sigue mostrando solo activas, ahora con banderas de domicilio", async () => {
-    const f = conSucursales();
-    const vistas = await buildStorefrontBranches(f.repo, f.organizationId);
-    expect(vistas.map((v) => v.slug).sort()).toEqual(["bodega", "chicxulub", "fco-montejo"]);
-    expect(vistas.find((v) => v.slug === "chicxulub")).toMatchObject({ aceptaDomicilio: false });
-    expect(vistas.find((v) => v.slug === "fco-montejo")).toMatchObject({ aceptaDomicilio: true, diasDomicilio: [5, 6, 0] });
   });
 });

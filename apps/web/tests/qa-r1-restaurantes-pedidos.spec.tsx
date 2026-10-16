@@ -70,26 +70,36 @@ const montar = () => {
   rendered.push(renderComponent(<PedidosPage {...CTX} />));
 };
 const texto = () => document.body.textContent ?? "";
-async function abrirPestana(nombre: string) {
-  const tab = [...document.body.querySelectorAll('[role="tab"]')].find((t) => t.textContent === nombre)!;
+/** Los estados reales (Preparando, Por aprobar...) son chips de filtro dentro de «Órdenes recibidas». */
+async function abrirFiltro(nombre: string) {
+  const chip = [...document.body.querySelectorAll("button[aria-pressed]")].find((t) => t.textContent?.trim() === nombre)!;
   await act(async () => {
-    tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    chip.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flushMicrotasks();
   });
   await flush();
 }
-const boton = (t: string) => [...document.body.querySelectorAll("button")].find((b) => b.textContent?.includes(t)) as HTMLButtonElement;
+const botones = (t: string) => [...document.body.querySelectorAll("button")].filter((b) => b.textContent?.includes(t) || b.getAttribute("aria-label") === t) as HTMLButtonElement[];
+const boton = (t: string) => botones(t)[0] as HTMLButtonElement;
+/** Sondeo, sonido y auto-impresion viven en el menu «Herramientas» (una por pantalla montada; `indice` elige la pestana del navegador). */
+async function abrirHerramientas(indice = 0) {
+  await act(async () => {
+    botones("Herramientas de pedidos")[indice]!.click();
+    await flushMicrotasks();
+  });
+  await flush();
+}
 
 describe("Pedidos: carrera de pestanas (botones-01)", () => {
   it("la respuesta lenta de 'Todos' no pisa la pestana 'Preparando' ya elegida", async () => {
-    // "Todos" = una consulta por estado operativo; la de en_camino tarda y devuelve un pedido que NO es de Preparando.
+    // "Todos" = una consulta por estado de «Órdenes recibidas»; la de problema (Incidencia) tarda y devuelve un pedido que NO es de Preparando.
     let soltar!: () => void;
-    retrasos["en_camino"] = new Promise<void>((r) => (soltar = r));
-    porEstado["en_camino"] = [pedido("ord-camino01", "Pedro EnCamino", "en_camino")];
+    retrasos["problema"] = new Promise<void>((r) => (soltar = r));
+    porEstado["problema"] = [pedido("ord-camino01", "Pedro EnCamino", "problema")];
     porEstado["preparando"] = [pedido("ord-prep0001", "Jorge Canul", "preparando")];
     montar();
     await flush();
-    await abrirPestana("Preparando");
+    await abrirFiltro("Preparando");
     expect(texto()).toContain("Jorge Canul");
     soltar();
     await flush();
@@ -106,6 +116,7 @@ describe("Pedidos: pedido que llega antes del primer sondeo (botones-02)", () =>
     expect(texto()).toContain("Marisol Pech");
     // Entra un pedido nuevo DESPUES de la carga inicial y ANTES del primer sondeo.
     porEstado["pending"] = [pedido("ord-nuevo002", "Cliente Nuevo", "pending", { createdAt: "2026-09-19T10:05:00.000Z" }), ...porEstado["pending"]!];
+    await abrirHerramientas();
     await act(async () => {
       boton("Actualizar ahora").click();
       await flushMicrotasks();
@@ -120,6 +131,7 @@ describe("Pedidos: pedido que llega antes del primer sondeo (botones-02)", () =>
     window.localStorage.setItem("restaurantes:sonido-pedidos:demo:prop-1", "1");
     montar();
     await flush();
+    await abrirHerramientas();
     await act(async () => {
       boton("Actualizar ahora").click();
       await flushMicrotasks();
@@ -135,15 +147,24 @@ describe("Pedidos: dos pestanas con auto-impresion (caos-18)", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     montar();
     await flush();
+    await abrirHerramientas(0);
     await act(async () => {
       (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
       await flushMicrotasks();
     });
     await flush();
-    // Segunda pestana del mismo equipo (mismo localStorage): lee la preferencia ya activa.
+    // Se cierra el menu de la primera pestana (Escape) y se monta la segunda del mismo equipo (mismo localStorage): lee la preferencia ya activa.
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await flush();
     montar();
     await flush();
-    expect(document.body.querySelectorAll("#auto-imprimir-cocina")).toHaveLength(2);
+    expect(botones("Herramientas de pedidos")).toHaveLength(2);
+    await abrirHerramientas(1);
+    const casillas = [...document.body.querySelectorAll("#auto-imprimir-cocina")] as HTMLInputElement[];
+    expect(casillas.length).toBeGreaterThanOrEqual(1);
+    expect(casillas.every((c) => c.checked)).toBe(true);
     expect(imprimir).not.toHaveBeenCalled();
 
     porEstado["pending"] = [...porEstado["pending"]!, pedido("ord-bbbbbb2", "Cliente B", "pending", { createdAt: "2026-09-19T10:05:00.000Z" })];

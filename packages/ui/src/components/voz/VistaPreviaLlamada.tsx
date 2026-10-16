@@ -1,5 +1,6 @@
 import { Mic, MicOff, PlayCircle, XCircle } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { KeyboardEvent as TecladoReact, ReactNode } from "react";
 import { CampoPixeles } from "./CampoPixeles.js";
 import { OrbeAgente } from "./OrbeAgente.js";
@@ -14,6 +15,10 @@ export interface VistaPreviaLlamadaProps {
   readonly onCerrar: () => void;
   /** Video del orbe original (cargador en reposo/conectando). */
   readonly videoSrc?: string;
+  /** Mantiene el video del orbe en todos los estados de la llamada (el original nunca lo reemplaza por una animación CSS). */
+  readonly videoSiempre?: boolean;
+  /** Reemplaza el texto del chip de estado por modo (p. ej. «● Llamada en curso» en lugar de «● Escuchando»); el modo real sigue en `data-modo` y en el orbe. */
+  readonly etiquetasChip?: Partial<Readonly<Record<ModoOrb, string>>>;
   /**
    * Si la llamada es una simulación (modo demo) se muestra una etiqueta visible: la
    * persona nunca debe confundirla con una llamada al agente real.
@@ -21,6 +26,11 @@ export interface VistaPreviaLlamadaProps {
   readonly etiquetaSimulacion?: string;
   /** Si no se puede iniciar (p. ej. el servicio no está disponible), motivo honesto que se muestra en vez del botón activo. */
   readonly motivoNoDisponible?: string;
+  /**
+   * Marco de contenido de escritorio (barra superior + pagina; `useMarcoShell`): si se pasa y la pantalla es de escritorio, la vista previa se monta ahi
+   * y cubre TAMBIEN la barra superior, como el original (absolute inset-0 sobre todo el contenido). En movil (sin esa barra) queda en su sitio.
+   */
+  readonly portalEn?: HTMLElement | null;
   /** Contenido extra bajo el botón (avisos). */
   readonly pie?: ReactNode;
 }
@@ -34,6 +44,22 @@ const ETIQUETA_CHIP: Readonly<Record<ModoOrb, string>> = {
   error: "Error",
 };
 
+const CONSULTA_ESCRITORIO = "(min-width: 768px)";
+
+/** `true`/`false` según el ancho de la ventana (reacciona al cambio de tamaño); `null` si el entorno no tiene matchMedia (pruebas). */
+function useEscritorio(): boolean | null {
+  return useSyncExternalStore(
+    (aviso) => {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
+      const mq = window.matchMedia(CONSULTA_ESCRITORIO);
+      mq.addEventListener("change", aviso);
+      return () => mq.removeEventListener("change", aviso);
+    },
+    () => (typeof window.matchMedia === "function" ? window.matchMedia(CONSULTA_ESCRITORIO).matches : null),
+    () => null,
+  );
+}
+
 const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
@@ -42,12 +68,15 @@ const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), sele
  * Desacoplado del proveedor: solo consume un `VoiceSessionController`. Portado del
  * panel original, con el orbe reactivo en lugar del video fijo y sin framer-motion.
  */
-export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, onCerrar, videoSrc, etiquetaSimulacion, motivoNoDisponible, pie }: VistaPreviaLlamadaProps) {
+export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, onCerrar, videoSrc, videoSiempre, etiquetasChip, portalEn, etiquetaSimulacion, motivoNoDisponible, pie }: VistaPreviaLlamadaProps) {
   const { estado, silenciado } = controller;
   const activa = sesionActiva(estado.modo);
   const conectando = estado.modo === "conectando";
   const bloqueada = Boolean(motivoNoDisponible) && !activa;
   const panel = useRef<HTMLDivElement>(null);
+  const escritorio = useEscritorio();
+  // Móvil: pantalla completa fija sobre TODO (cabecera y barra inferior incluidas), montada en <body>. Escritorio con marco del shell: cubre barra y página.
+  const enBody = escritorio === false;
   // Se comporta como un dialogo: el foco entra al panel al abrirse, Tab no sale de el, Escape lo cierra (igual que "‹ Atrás") y al cerrarse
   // el foco vuelve al control que lo abrio (QA-restaurantes-R1-botones-09).
   const alCerrar = useRef(onCerrar);
@@ -91,7 +120,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
     void (activa ? controller.terminar() : controller.iniciar());
   };
 
-  return (
+  const contenido = (
     <div
       ref={panel}
       role="dialog"
@@ -99,7 +128,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
       aria-label={`Vista previa de llamada: ${nombreAgente}`}
       tabIndex={-1}
       onKeyDown={atraparTab}
-      className="voz-aparece absolute inset-0 z-30 bg-background flex flex-col outline-none"
+      className={`voz-aparece ${enBody ? "fixed inset-0 z-50" : "absolute inset-0 z-30"} bg-background flex flex-col outline-none`}
       data-modo={estado.modo}
     >
       <header className="h-12 shrink-0 border-b border-border flex items-center justify-between px-4">
@@ -123,7 +152,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
               estado.modo === "error" ? "text-destructive border-destructive/30 bg-destructive/10" : activa ? "text-primary border-primary/30 bg-primary/10" : "text-muted-foreground border-border"
             }`}
           >
-            {ETIQUETA_CHIP[estado.modo]}
+            {etiquetasChip?.[estado.modo] ?? ETIQUETA_CHIP[estado.modo]}
           </span>
         </div>
       </header>
@@ -139,7 +168,7 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
             aria-label={activa ? "Terminar llamada" : "Iniciar llamada de prueba"}
             className="relative rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:hover:scale-100"
           >
-            <OrbeAgente modo={estado.modo} volumenEntrada={estado.volumenEntrada} volumenSalida={estado.volumenSalida} videoSrc={videoSrc} />
+            <OrbeAgente modo={estado.modo} volumenEntrada={estado.volumenEntrada} volumenSalida={estado.volumenSalida} videoSrc={videoSrc} videoSiempre={videoSiempre} />
           </button>
         </div>
 
@@ -203,4 +232,6 @@ export function VistaPreviaLlamada({ controller, nombreAgente, nombreSucursal, o
       </div>
     </div>
   );
+  if (enBody) return createPortal(contenido, document.body);
+  return escritorio && portalEn ? createPortal(contenido, portalEn) : contenido;
 }
