@@ -353,7 +353,7 @@ describe("confirmar_resumen: solo con el resumen visto y un si explicito", () =>
     s.cliente("pues a ver, ps órale entonces");
     const r1 = (await s.confirm()) as { rechazoDelFlujo?: string; result: { error: string } };
     expect(r1.rechazoDelFlujo).toBe("cierre_sin_si_explicito");
-    expect(r1.result.error).toContain("sigue siendo ambiguo");
+    expect(r1.result.error).toContain("sigue siendo un titubeo inocuo");
     // En el MISMO turno el reintento sigue rechazado.
     expect(((await s.confirm()) as { rechazoDelFlujo?: string }).rechazoDelFlujo).toBe("cierre_sin_si_explicito");
     await s.muestraResumen();
