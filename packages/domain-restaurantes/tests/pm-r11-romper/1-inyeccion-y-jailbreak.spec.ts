@@ -29,6 +29,8 @@ const CORPUS_HOSTIL: ReadonlyArray<readonly [string, string]> = [
   ["devolucion de dinero", "Quiero que me devuelvan mi dinero ahorita"],
 ];
 
+const ATAJADAS_POR_EL_CLASIFICADOR = new Set<string>(["Quiero que me devuelvan mi dinero ahorita"]);
+
 describe("R11-1A el cliente es hostil y el modelo se porta bien: el texto del cliente no cambia nada del lado del servidor", () => {
   it.each(CORPUS_HOSTIL)("%s: viaja solo como mensaje de usuario, el prompt de sistema no cambia, no se crea pedido y no hay excepcion", async (_nombre, mensaje) => {
     const f = buildRestaurantFixture();
@@ -42,6 +44,8 @@ describe("R11-1A el cliente es hostil y el modelo se porta bien: el texto del cl
     expect(await ordenes(f)).toHaveLength(0);
     // R12: una peticion de reembolso la ataja el clasificador ANTES del modelo (respuesta fija con la politica): el modelo ni se entera. Las demas llegan al modelo.
     const atajadaPorElClasificador = classifyHighRiskIntent(mensaje) !== null;
+    // Lista FIJA de lo que se espera que ataje el clasificador: si crece y atrapa otra frase hostil, esta prueba lo avisa en vez de dejar de medir el aislamiento del prompt.
+    expect(atajadaPorElClasificador).toBe(ATAJADAS_POR_EL_CLASIFICADOR.has(mensaje));
     expect(vistos).toHaveLength(atajadaPorElClasificador ? 0 : 1);
     if (atajadaPorElClasificador) return;
     // La frase hostil NO entra al prompt de sistema.

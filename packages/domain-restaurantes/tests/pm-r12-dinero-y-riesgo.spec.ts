@@ -259,3 +259,56 @@ describe("R12-F fuga del prompt de sistema", () => {
     expect(reemplazarFugaDePrompt(frase, TOOLS_FAKE)).toBe(frase);
   });
 });
+
+describe("R12-G revision #576: pago en efectivo con 'devolver' y huecos de la lista negra", () => {
+  it.each([
+    "Le devolvemos su cambio de $180 de su pago de $500.",
+    "Le devolvemos el cambio de su billete de $500, el total es $270.",
+    "Le devuelvo el total actualizado: $320.",
+    "Le regreso el importe total para que lo confirme: $200.",
+    "Le devolvemos el total cotizado si cambia de opinión antes de confirmar.",
+    "Devolvemos el cambio de su pago en cuanto llegue el repartidor.",
+    "Le devolvemos el vuelto de su pago de $500.",
+    "Puede depositar en la cuenta que le compartimos para su pedido.",
+  ])("(negativo) %s -> intacta", (frase) => {
+    expect(prometeDevolucionDeDinero(frase)).toBe(false);
+    expect(quitarPromesaDeDinero(frase)).toBe(frase);
+  });
+  it.each([
+    "Le hacemos un reembolso completo.",
+    "Será reembolsado en 3 días.",
+    "Su dinero será devuelto a su tarjeta.",
+    "Procedemos con el reembolso.",
+    "Le acreditamos el monto a su tarjeta.",
+    "Le bonificamos el total.",
+    "Se lo regalamos.",
+    "Your money will be returned.",
+    "Le devolvemos el pago completo.",
+  ])("(positivo) %s -> se reemplaza", (frase) => {
+    expect(quitarPromesaDeDinero(frase)).not.toBe(frase);
+  });
+  it.each([
+    "Le hacemos un descuento.",
+    "Le hacemos un descuento del 30%.",
+    "Su pedido sale gratis.",
+    "I'll give you 50% off.",
+  ])("(positivo) %s -> descuento inventado, se reemplaza", (frase) => {
+    expect(prometeDescuento(frase)).toBe(true);
+    expect(quitarPromesaDeDinero(frase)).toContain("No puedo ofrecerle descuentos adicionales");
+  });
+  it("(limite documentado) con promocion en la cotizacion el descuento queda abierto: no se compara el porcentaje", () => {
+    expect(quitarPromesaDeDinero("Le aplico 50% de descuento.", { respaldaDescuento: true })).toBe("Le aplico 50% de descuento.");
+  });
+  it.each(["¿Me devuelven mi dinero?", "¿Si me equivoco de platillo me devuelven el dinero?", "¿Cuánto tarda el reembolso?"])(
+    "(negativo) %s -> pregunta de politica, no escala al gerente",
+    (frase) => {
+      expect(classifyHighRiskIntent(frase, { pedidoReciente: null })?.reply).not.toBe(RESPUESTA_REEMBOLSO_ESCALADO);
+    },
+  );
+  it.each(["Me cobraron mal, ¿me devuelven mi dinero?", "Llegó frío, ¿me devuelven el dinero?", "Quiero que me devuelvan mi dinero"])(
+    "(positivo) %s -> queja real, escala",
+    (frase) => {
+      expect(classifyHighRiskIntent(frase, { pedidoReciente: { estado: "entregado" } as never })?.reply).toBe(RESPUESTA_REEMBOLSO_ESCALADO);
+    },
+  );
+});
