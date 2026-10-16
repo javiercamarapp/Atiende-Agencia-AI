@@ -206,7 +206,7 @@ export function fechaAnterior(fecha: string): string {
   return t.toISOString().slice(0, 10);
 }
 
-/** Valida los datos de una excepcion de horario (fechas reales, rango <= 31 dias, horario valido). */
+/** Valida los datos de una excepcion de horario (fechas reales, rango <= 31 dias, horario valido; `[]` = cerrado todo el rango). */
 export function validarExcepcionHorario(raw: { readonly fechaDesde: unknown; readonly fechaHasta: unknown; readonly horario: unknown; readonly motivo?: unknown }): {
   readonly fechaDesde: string;
   readonly fechaHasta: string;
@@ -222,7 +222,8 @@ export function validarExcepcionHorario(raw: { readonly fechaDesde: unknown; rea
     throw new OrderValidationError(`Una excepción de horario cubre como máximo ${MAX_DIAS_EXCEPCION} días (un puente, no un cambio permanente).`);
   }
   const horario = validarHorario(raw.horario);
-  if (horario.length === 0) throw new OrderValidationError("La excepción necesita al menos un turno (para cerrar todo el puente, no la registre).");
+  // QA-restaurantes-R1-caos-16: un horario vacio es un cierre COMPLETO del rango (feriado, corte de luz): la sucursal no abre
+  // esas fechas para WhatsApp ni voz (aplicarReglasDeSucursal ya trata una excepcion que cubre hoy como horario vigente).
   let motivo: string | null = null;
   if (raw.motivo !== undefined && raw.motivo !== null) {
     if (typeof raw.motivo !== "string" || raw.motivo.trim().length === 0 || raw.motivo.length > 200) {
@@ -279,4 +280,26 @@ export function aperturaConExcepciones(
   // Solo es "dia de ayer" si ese turno de ayer es realmente el que tiene abierta la sucursal ahora.
   const diaNegocio = estado.abierto && enColaDeAyer && !horarioHoy.some((t) => t.dias.includes(dia) && minutos >= aMinutos(t.abre)) ? diaAnterior : dia;
   return { estado, diaNegocio, fechaNegocio: diaNegocio === dia ? hoy : ayer };
+}
+
+// ---------------------------------------------------------------------------
+// Dia de negocio por CORTE (QA R2 automatizacion-02/08/11). Misma regla que `restaurantes.dia_negocio` de la migracion 076:
+// el corte es la hora de cierre mas tardia, despues de medianoche, de los turnos que cruzan la medianoche (PM 12:00-01:00 => 60 min) y el dia de
+// negocio de un instante es la fecha local de (instante - corte). No considera excepciones por fecha (igual que SQL).
+// ---------------------------------------------------------------------------
+
+/** Minutos despues de medianoche en que termina el dia de negocio (0 si ningun turno cruza la medianoche). */
+export function corteDiaNegocioMinutos(horario: HorarioSucursal | null | undefined): number {
+  let corte = 0;
+  for (const t of horario ?? []) {
+    const cierra = aMinutos(t.cierra);
+    if (cierra <= aMinutos(t.abre)) corte = Math.max(corte, cierra);
+  }
+  return corte;
+}
+
+/** Dia de negocio (YYYY-MM-DD) de un instante en la zona de la sucursal: el turno que cierra a la 01:00 sigue siendo el dia anterior. */
+export function diaDeNegocio(instante: Date, zonaHoraria: string | null | undefined, horario: HorarioSucursal | null | undefined): string {
+  const zona = resolverZonaHorariaNegocio(zonaHoraria);
+  return fechaLocal(new Date(instante.getTime() - corteDiaNegocioMinutos(horario) * 60_000), zona);
 }

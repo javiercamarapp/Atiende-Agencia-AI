@@ -1,6 +1,6 @@
 # Guion de demo: Los Taquitos de PM en T7 García Lavín
 
-Guion para **presentar a Los Taquitos de PM** el producto funcionando **sin credenciales de Meta, Twilio, ElevenLabs ni SoftRestaurant**. El
+Guion para **presentar a Los Taquitos de PM** el producto funcionando **sin credenciales de Meta, Twilio ni SoftRestaurant**. El
 agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, toma pedidos reales contra el menú real de **T7 García Lavín
 (Victory Platz)**, la comanda cae en el panel y el panel trae **8 semanas de operación de demostración con el ritmo real de T7**.
 
@@ -65,7 +65,7 @@ Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden d
 - **Se dice**: «El 73 % de sus pedidos son de recurrentes y casi todos pegan siempre el mismo mensaje. El agente lo toma completo, sin bienvenida larga.»
 - **Se hace**: abra el chat de la demo en la **pestaña A** (la que se conserva hasta el escenario 10).
 - **Se escribe**:
-  1. `Hola!!! Buenas noches. Un pedido a domicilio porfi. 9990000001 Ana Prueba, Privada Los Almendros casa 13, Santa Gertrudis Copó. Orden: 2 orden de tacos de bistec tortilla de maíz. 1 guacamole. Pago con tarjeta`
+  1. `Hola!!! Buenas noches. Un pedido a domicilio porfi. 9990000001 Ana Prueba, Privada Los Almendros casa 13, Cumbres de Montejo. Orden: 2 orden de tacos de bistec tortilla de maíz. 1 guacamole. Pago con tarjeta`
   2. (cuando pida el pin) `[Ubicación compartida por WhatsApp] lat=21.021100 lng=-89.614100`
   3. `No, es todo` y, después de la lista, `Sí, es correcto`
 - **Se ve [Agente]**: sin saludo ni bienvenida larga; **no vuelve a preguntar** nombre, dirección, platillos ni pago; la colonia no está en el mapa de colonias (sigue pendiente del dueño), así que **pide el pin una sola vez**;
@@ -184,7 +184,7 @@ Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden d
 | **Fotos, audios, ticket** | El widget solo manda texto | n/a (WhatsApp real) |
 | **Respuesta humana por WhatsApp** | Requiere un número conectado | Dueño + Meta |
 | **Combo del martes** | Cargado (cortesía, solo recoger, 2 aguas); el agente dice lo que devuelve la cotización. Falta confirmar con el dueño cuáles aguas entran (P13) | Dueño (aguas de cortesía) |
-| **Notificaciones in-app** | Conectados: la escalación a una persona y el tope diario del chat. La campana con punto rojo y la página de notificaciones son la parte B (otro PR) | Parte B |
+| **Notificaciones in-app** | Conectados los eventos de restaurantes del catálogo (`docs/NOTIFICACIONES.md`): escalación a una persona, pedido nuevo del agente, tope diario del chat, **pedido programado que entra a cocina** y cierres. En la demo los pedidos programados se promueven por el cron o al abrir *Pedidos* | n/a |
 | La organización demo en **superadmin/costos** | Aparece como una más (no se filtra por demo) | Pendiente |
 
 ## Reinicio entre demos

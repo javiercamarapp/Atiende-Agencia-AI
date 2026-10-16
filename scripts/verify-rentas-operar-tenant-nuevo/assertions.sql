@@ -75,7 +75,7 @@ on conflict do nothing;
 
 -- Un movimiento financiero ya registrado en Casa Playa (PA1): su moneda deja de poder cambiarse.
 insert into rentas.ocupacion (id, organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante)
-values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', daterange('2027-01-01', '2027-01-05', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true)
+values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', daterange(current_date + 30, current_date + 34, '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true)
 on conflict do nothing;
 insert into rentas.reserva_financiero (organization_id, property_id, ocupacion_id, moneda, monto_bruto_centavos)
 values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000d1', 'MXN', 100000)
@@ -364,12 +364,47 @@ select rentas.actualizar_propiedad('00000000-0000-0000-0000-0000000000b3', 'Casa
 select count(*) as editada_deberia_ser_1 from core.property p join rentas.property_config c on c.property_id = p.id where p.id = '00000000-0000-0000-0000-0000000000b3' and p.name = 'Casa Centro Renovada' and c.zona_horaria = 'America/Tijuana' and c.moneda = 'USD';
 rollback;
 
-\echo '--- 39. editar solo la zona horaria de Casa Playa (que ya tiene movimientos) funciona y conserva la moneda ---'
+\echo '--- 39. D-DSD-07: cambiar la zona horaria de Casa Playa con una reserva vigente (fin >= hoy) -- RECHAZADO (55000) ---'
 begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.actualizar_propiedad('00000000-0000-0000-0000-0000000000b1', null, 'America/Merida', null) as should_fail;
+rollback;
+
+\echo '--- 39b. reenviar la MISMA zona (y cambiar solo el nombre) con una reserva vigente funciona: no es un cambio de zona ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.actualizar_propiedad('00000000-0000-0000-0000-0000000000b1', 'Casa Playa Mar', 'America/Mexico_City', null);
+select count(*) as misma_zona_deberia_ser_1 from rentas.property_config where property_id = '00000000-0000-0000-0000-0000000000b1' and zona_horaria = 'America/Mexico_City' and moneda = 'MXN';
+rollback;
+
+\echo '--- 39c. cancelada la unica reserva, la zona de Casa Playa SI se puede cambiar y se conserva la moneda ---'
+begin;
+update rentas.ocupacion set estado = 'cancelado' where id = '00000000-0000-0000-0000-0000000000d1';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
 select rentas.actualizar_propiedad('00000000-0000-0000-0000-0000000000b1', null, 'America/Merida', null);
 select count(*) as zona_deberia_ser_1 from rentas.property_config where property_id = '00000000-0000-0000-0000-0000000000b1' and zona_horaria = 'America/Merida' and moneda = 'MXN';
+rollback;
+
+\echo '--- 39d. una ocupacion ya terminada (fin < hoy) no bloquea el cambio de zona ---'
+begin;
+insert into rentas.ocupacion (organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante)
+values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-0000000000c3', daterange(current_date - 10, current_date - 5, '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.actualizar_propiedad('00000000-0000-0000-0000-0000000000b3', null, 'America/Tijuana', null);
+select count(*) as pasada_deberia_ser_1 from rentas.property_config where property_id = '00000000-0000-0000-0000-0000000000b3' and zona_horaria = 'America/Tijuana';
+rollback;
+
+\echo '--- 39e. un BLOQUEO vigente tambien impide cambiar la zona -- RECHAZADO (55000) ---'
+begin;
+insert into rentas.ocupacion (organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante)
+values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-0000000000c3', daterange(current_date + 2, current_date + 4, '[)'), 'bloqueo', 'MANTENIMIENTO', 'confirmado', true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.actualizar_propiedad('00000000-0000-0000-0000-0000000000b3', null, 'America/Tijuana', null) as should_fail;
 rollback;
 
 \echo '--- 40. cambiar la moneda de una propiedad con movimientos financieros (55000) -- RECHAZADO ---'

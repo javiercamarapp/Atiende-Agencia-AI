@@ -292,7 +292,7 @@ export function ConfiguracionHkPanel({ apiBaseUrl, token, propertyId, role }: Om
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState<{ max: string; jornada: string; fotos: string; minutos: Record<TareaTipo, string> } | null>(null);
+  const [draft, setDraft] = useState<{ max: string; jornada: string; fotos: string; hora: string; minutos: Record<TareaTipo, string> } | null>(null);
   const puedeEditar = HK_CONFIG_ROLES.has(role);
 
   const aplicar = useCallback((c: HkConfig) => {
@@ -301,6 +301,7 @@ export function ConfiguracionHkPanel({ apiBaseUrl, token, propertyId, role }: Om
       max: String(c.maxTareasPorCamarista),
       jornada: String(c.minutosJornada),
       fotos: String(c.maxFotosPorTarea),
+      hora: String(c.horaArranque),
       minutos: { salida: String(c.minutosPorTipo.salida), estancia: String(c.minutosPorTipo.estancia), profunda: String(c.minutosPorTipo.profunda), repaso: String(c.minutosPorTipo.repaso) },
     });
   }, []);
@@ -373,7 +374,11 @@ export function ConfiguracionHkPanel({ apiBaseUrl, token, propertyId, role }: Om
             <FormField label="Máx. fotos por tarea" hint="1 a 10">
               <Input type="number" min={1} max={10} value={draft.fotos} disabled={!editable} onChange={(e) => setDraft({ ...draft, fotos: e.target.value })} />
             </FormField>
+            <FormField label="Hora de arranque del día" hint={cfg.horaArranqueDisponible ? "0 a 23, hora local del hotel" : "No disponible aún: requiere la actualización 045"}>
+              <Input type="number" min={0} max={23} value={draft.hora} disabled={!editable || !cfg.horaArranqueDisponible} onChange={(e) => setDraft({ ...draft, hora: e.target.value })} />
+            </FormField>
           </div>
+          <p className="text-xs text-muted-foreground">A esa hora el sistema genera solo las tareas del día (respetando los opt-out de limpieza) y, si la asignación automática está encendida, las reparte entre las camaristas.</p>
           <div className="grid gap-3 sm:grid-cols-4">
             {TIPOS.map((t) => (
               <FormField key={t} label={`Minutos: ${TAREA_TIPO_LABELS[t].toLowerCase()}`} hint="5 a 240">
@@ -392,6 +397,7 @@ export function ConfiguracionHkPanel({ apiBaseUrl, token, propertyId, role }: Om
                     maxTareasPorCamarista: numero(draft.max),
                     minutosJornada: numero(draft.jornada),
                     maxFotosPorTarea: numero(draft.fotos),
+                    ...(cfg.horaArranqueDisponible ? { horaArranque: numero(draft.hora) } : {}),
                     minutosPorTipo: { salida: numero(draft.minutos.salida), estancia: numero(draft.minutos.estancia), profunda: numero(draft.minutos.profunda), repaso: numero(draft.minutos.repaso) },
                   },
                   "Configuración guardada.",

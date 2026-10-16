@@ -48,4 +48,7 @@ export interface HandoffAgentGate {
   /** El agente pide un humano. Devuelve el id del handoff o `null` si no hay forma de crearlo (base sin
    * migrar, sin conversacion o sin sucursal determinable). Nunca lanza por falta de migracion. */
   solicitarHumano(input: { organizationId: string; propertyId: string | null; phone: string; motivo: string }): Promise<string | null>;
+  /** `true` UNA vez por intervalo mientras la toma sigue `pendiente` (nadie la toma): el agente manda entonces un acuse honesto al cliente. Primero a los
+   * `esperaMin` minutos de espera y luego cada `repetirMin`. Base sin migrar (045) o sin toma pendiente -> `false` (el agente sigue callando). Opcional. */
+  acusePendiente?(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean>;
 }

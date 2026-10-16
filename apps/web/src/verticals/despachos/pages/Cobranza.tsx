@@ -17,9 +17,8 @@ import type { FormEvent } from "react";
 import { AlarmClock, AlertTriangle, CheckCircle2, Clock, HandCoins, Hourglass, Send, TrendingUp, Wallet } from "lucide-react";
 import {
   Button,
-  Card,
-  CardContent,
   Checkbox,
+  DataTable,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -31,13 +30,8 @@ import {
   StatCard,
   StatusBadge,
   statusTone,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { fetchInvoices } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import {
@@ -238,6 +232,107 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
     }
   }
 
+  const columnasCuentas: DataTableColumna<CuentaCobranza>[] = [
+    {
+      id: "factura",
+      encabezado: "Factura",
+      principal: true,
+      valorOrden: (c) => c.facturaId ?? "",
+      celda: (c) => <span className="font-mono text-xs">{c.facturaId ? `${c.facturaId.slice(0, 13)}…` : "—"}</span>,
+    },
+    {
+      id: "cliente",
+      encabezado: "Cliente",
+      valorOrden: (c) => c.clienteNombre ?? "",
+      celda: (c) => (
+        <div className="text-muted-foreground">
+          {c.clienteNombre ?? "Sin nombre"}
+          <div className="text-xs text-muted-foreground">{c.clienteEmail ?? "sin correo capturado"}</div>
+        </div>
+      ),
+    },
+    {
+      id: "monto",
+      encabezado: "Monto",
+      alinear: "right",
+      valorOrden: (c) => c.monto,
+      celda: (c) => <span className="tabular-nums text-muted-foreground">{formatMoney(c.monto)}</span>,
+    },
+    {
+      id: "vence",
+      encabezado: "Vence",
+      valorOrden: (c) => c.fechaVencimiento,
+      celda: (c) => (
+        <div className="text-muted-foreground">
+          {/* `fechaVencimiento` es columna `date` (solo día, sin hora): `formatFechaSolo` (no `formatDate`) evita que se
+              pinte un día antes en America/Mexico_City (ver apps/web/src/lib/formato-fecha.ts). `pagadoEn` SÍ es un
+              timestamp real (`timestamptz`) y se queda con `formatDate`. */}
+          {formatFechaSolo(c.fechaVencimiento)}
+          <div className="text-xs text-muted-foreground">{c.diasVencido > 0 ? `${c.diasVencido} días de atraso` : c.diasVencido < 0 ? `vence en ${-c.diasVencido} días` : "vence hoy"}</div>
+        </div>
+      ),
+    },
+    { id: "antiguedad", encabezado: "Antigüedad", valorOrden: (c) => c.diasVencido, celda: (c) => <BucketBadge bucket={c.bucket} /> },
+    { id: "score", encabezado: "Score", valorOrden: (c) => c.score, celda: (c) => <ScoreBar score={c.score} /> },
+    {
+      id: "estatus",
+      encabezado: "Estatus",
+      valorOrden: (c) => (c.pagadoEn ? 1 : 0),
+      celda: (c) =>
+        c.pagadoEn ? <StatusBadge tone="success">Pagada {formatDate(c.pagadoEn)}</StatusBadge> : <StatusBadge tone="warning">Pendiente</StatusBadge>,
+    },
+    ...(puedeGestionar
+      ? [
+          {
+            id: "acciones",
+            encabezado: "Acciones",
+            celda: (cuenta: CuentaCobranza) => {
+              const rowState = rowActions[cuenta.id];
+              return (
+                <>
+                  {!cuenta.pagadoEn && (
+                        <div className="flex min-w-56 flex-col gap-1.5">
+                          <div className="flex gap-1.5">
+                            <Label htmlFor={`cobranza-etapa-${cuenta.id}`} className="sr-only">
+                              Etapa del recordatorio
+                            </Label>
+                            <NativeSelect
+                              id={`cobranza-etapa-${cuenta.id}`}
+                              value={stageChoice[cuenta.id] ?? ""}
+                              onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
+                              size="sm" wrapperClassName="min-w-36 flex-1"
+                            >
+                              <option value="">Etapa sugerida</option>
+                              {COBRANZA_REMINDER_STAGES.map((s) => (
+                                <option key={s} value={s}>
+                                  {STAGE_LABELS[s]}
+                                </option>
+                              ))}
+                            </NativeSelect>
+                            <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEnviarRecordatorio(cuenta)} disabled={rowState?.loading}>
+                              <Send />
+                              {rowState?.loading ? "…" : "Enviar recordatorio"}
+                            </Button>
+                          </div>
+                          <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleMarcarPagada(cuenta)} disabled={rowState?.loading}>
+                            <CheckCircle2 />
+                            Marcar pagada
+                          </Button>
+                          {rowState?.message && (
+                            <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
+                              {rowState.message}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                </>
+              );
+            },
+          } satisfies DataTableColumna<CuentaCobranza>,
+        ]
+      : []),
+  ];
+
   return (
     <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -324,104 +419,13 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
       )}
 
       {cuentas && cuentas.length > 0 && (
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Factura</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Monto</TableHead>
-                  <TableHead>Vence</TableHead>
-                  <TableHead>Antigüedad</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Estatus</TableHead>
-                  {puedeGestionar && <TableHead>Acciones</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cuentas.map((cuenta) => {
-                  const rowState = rowActions[cuenta.id];
-                  return (
-                    <TableRow key={cuenta.id} className="align-top">
-                      <TableCell className="font-mono text-xs">{cuenta.facturaId ? `${cuenta.facturaId.slice(0, 13)}…` : "—"}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {cuenta.clienteNombre ?? "Sin nombre"}
-                        <div className="text-xs text-muted-foreground">{cuenta.clienteEmail ?? "sin correo capturado"}</div>
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{formatMoney(cuenta.monto)}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {/* `fechaVencimiento` es columna `date` (solo día, sin hora) --
-                            `formatFechaSolo` (no `formatDate`) evita que se pinte un día
-                            antes en America/Mexico_City (bug real corregido de raíz, ver
-                            apps/web/src/lib/formato-fecha.ts). `pagadoEn` abajo SÍ es un
-                            timestamp real (`timestamptz`) y se queda con `formatDate`. */}
-                        {formatFechaSolo(cuenta.fechaVencimiento)}
-                        <div className="text-xs text-muted-foreground">{cuenta.diasVencido > 0 ? `${cuenta.diasVencido} días de atraso` : cuenta.diasVencido < 0 ? `vence en ${-cuenta.diasVencido} días` : "vence hoy"}</div>
-                      </TableCell>
-                      <TableCell>
-                        <BucketBadge bucket={cuenta.bucket} />
-                      </TableCell>
-                      <TableCell>
-                        <ScoreBar score={cuenta.score} />
-                      </TableCell>
-                      <TableCell>
-                        {cuenta.pagadoEn ? (
-                          <StatusBadge tone="success">
-                            Pagada {formatDate(cuenta.pagadoEn)}
-                          </StatusBadge>
-                        ) : (
-                          <StatusBadge tone="warning">
-                            Pendiente
-                          </StatusBadge>
-                        )}
-                      </TableCell>
-                      {puedeGestionar && (
-                        <TableCell>
-                          {!cuenta.pagadoEn && (
-                            <div className="flex min-w-56 flex-col gap-1.5">
-                              <div className="flex gap-1.5">
-                                <Label htmlFor={`cobranza-etapa-${cuenta.id}`} className="sr-only">
-                                  Etapa del recordatorio
-                                </Label>
-                                <NativeSelect
-                                  id={`cobranza-etapa-${cuenta.id}`}
-                                  value={stageChoice[cuenta.id] ?? ""}
-                                  onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
-                                  size="sm" wrapperClassName="min-w-36 flex-1"
-                                >
-                                  <option value="">Etapa sugerida</option>
-                                  {COBRANZA_REMINDER_STAGES.map((s) => (
-                                    <option key={s} value={s}>
-                                      {STAGE_LABELS[s]}
-                                    </option>
-                                  ))}
-                                </NativeSelect>
-                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEnviarRecordatorio(cuenta)} disabled={rowState?.loading}>
-                                  <Send />
-                                  {rowState?.loading ? "…" : "Enviar recordatorio"}
-                                </Button>
-                              </div>
-                              <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleMarcarPagada(cuenta)} disabled={rowState?.loading}>
-                                <CheckCircle2 />
-                                Marcar pagada
-                              </Button>
-                              {rowState?.message && (
-                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
-                                  {rowState.message}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable
+          etiqueta="Cuentas por cobrar"
+          columnas={columnasCuentas}
+          filas={cuentas}
+          obtenerId={(c) => c.id}
+          atributosFila={(c) => ({ "data-cuenta-id": c.id })}
+        />
       )}
     </PageContainer>
   );

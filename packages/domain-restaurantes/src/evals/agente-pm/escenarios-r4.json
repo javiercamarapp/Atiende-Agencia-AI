@@ -1,0 +1,410 @@
+{
+ "suite": "escenarios-r4",
+ "version": "2026-10-08",
+ "nota": "Escenarios de regresion de la ronda 4 del loop de pulido del agente de PM (medida contra la config REAL de los-taquitos-de-pm con Postgres efimero; WhatsApp, voz Gemini Live y motor de reglas). Texto parafraseado y anonimizado (marcadores [N], [NOMBRE], [HORA], [DIRECCION], [TEL], [COLONIA]); ningun texto de chats reales. Cada uno apunta al spec determinista que lo cubre; `pendiente_decision` = depende de un dato o decision que no es de codigo.",
+ "escenarios": [
+  {
+   "id": "R4-001",
+   "defecto": "QA-PM-R4-whatsapp-01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "retractacion_de_pedir_una_persona",
+   "turnos_cliente": [
+    "Quiero hablar con una persona... bueno no, mejor sigo contigo: [N] tacos de pastor para recoger",
+    "[NOMBRE], efectivo, maíz",
+    "No, es todo",
+    "Sí"
+   ],
+   "comportamiento_esperado": "No abre toma de handoff: sigue atendiendo, cotiza, repite el resumen y crea el pedido con el sí.",
+   "que_no_debe_hacer": "Callar al agente por una petición que el cliente retiró en el mismo mensaje; perder el pedido en curso.",
+   "cubierto_por": "tests/pm-r4-handoff-retractacion.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-002",
+   "defecto": "QA-PM-R4-whatsapp-01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "signos_de_interrogacion_no_piden_persona",
+   "turnos_cliente": [
+    "Hola",
+    "???",
+    "¿Alguien me atiende??",
+    "Quiero [N] tacos de pastor para recoger a nombre de [NOMBRE]"
+   ],
+   "comportamiento_esperado": "Un '???' o un '¿alguien me atiende?' no cede la conversación: el agente responde con calma y toma el pedido; si el modelo escaló cliente_lo_pide, el aviso queda registrado pero no se abre toma.",
+   "que_no_debe_hacer": "Abrir la toma de handoff por un falso positivo y dejar sin respuesta el pedido posterior.",
+   "cubierto_por": "tests/pm-r4-handoff-retractacion.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-003",
+   "defecto": "QA-PM-R4-whatsapp-02",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "promesa_de_aviso_en_infinitivo",
+   "turnos_cliente": [
+    "Quiero reservar una mesa para [N] personas el sábado",
+    "¿Me pueden dar un descuento por el grupo?"
+   ],
+   "comportamiento_esperado": "Si dice 'permítame avisar al gerente', el servidor deja el aviso de verdad (escalar_a_humano) en el mismo turno.",
+   "que_no_debe_hacer": "Prometer un aviso al equipo que no existe en la base.",
+   "cubierto_por": "tests/pm-r4-aviso-honesto.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-004",
+   "defecto": "QA-PM-R4-reglas-01",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_grande_con_aviso_prometido_sin_herramienta",
+   "turnos_cliente": [
+    "Quiero [N] kg de bistec y [N] kg de pastor para recoger a las [HORA]",
+    "[NOMBRE], efectivo"
+   ],
+   "comportamiento_esperado": "Un pedido cotizado por más de $4,000 con aviso prometido escala como pedido_grande: aviso registrado con el total y la conversación pasa a la sucursal.",
+   "que_no_debe_hacer": "Decir 'el aviso quedó registrado' sin pedido, sin aviso y sin toma.",
+   "cubierto_por": "tests/pm-r4-aviso-honesto.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-005",
+   "defecto": "QA-PM-R4-whatsapp-03",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "propina_en_porcentaje_con_tarjeta",
+   "turnos_cliente": [
+    "A domicilio [N] orden de alambre de pastor y [N] orden de flauta de pastor a [DIRECCION], maíz, [NOMBRE], pago con [N]",
+    "¿Llevan terminal? Mejor pago con tarjeta",
+    "Sí, con tarjeta; de propina 10%",
+    "No, es todo"
+   ],
+   "comportamiento_esperado": "Manda la propina como propina_porcentaje y el servidor calcula los pesos sobre el total; cierra el pedido con tarjeta y propina.",
+   "que_no_debe_hacer": "Preguntar la cantidad en pesos, agotar el presupuesto del turno y escalar por 'problema técnico'.",
+   "cubierto_por": "tests/reglas-pedido.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-006",
+   "defecto": "QA-PM-R4-whatsapp-04",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "plazo_menor_al_normal_no_se_garantiza",
+   "turnos_cliente": [
+    "Quiero [N] tacos de pastor para recoger, ¿lo puedo recoger en 20 minutos?",
+    "¿A poco 40 minutos? Bueno"
+   ],
+   "comportamiento_esperado": "Da un solo tiempo, el estimado de la sucursal para el canal y la hora, y no garantiza el plazo menor; el resumen usa el mismo tiempo.",
+   "que_no_debe_hacer": "Contestar 'sí' a 20 minutos y luego decir 25 a 35, 40 y 45 a 60 minutos.",
+   "cubierto_por": "tests/whatsapp/perfil-pm.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-007",
+   "defecto": "QA-PM-R4-whatsapp-05",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "promesa_nocturna_con_la_sucursal_abierta",
+   "turnos_cliente": [
+    "Para una fiesta quiero [N] gringas de pastor para recoger"
+   ],
+   "comportamiento_esperado": "Con la sucursal abierta (13:00) no dice 'a partir de las 12 del día': dice que le contestan en cuanto puedan; entre la 1 am y las 12 pm sí lo dice.",
+   "que_no_debe_hacer": "Aplicar la regla nocturna a cualquier hora.",
+   "cubierto_por": "tests/pm-r4-horario-nocturno.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-008",
+   "defecto": "QA-PM-R4-whatsapp-06",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_grande_se_cotiza_antes_de_escalar",
+   "turnos_cliente": [
+    "Para una fiesta [N] gringas de pastor y [N] mestizas de pastor para recoger",
+    "Son [N] piezas",
+    "Sí"
+   ],
+   "comportamiento_esperado": "Cotiza con cotizar_pedido, da el total exacto, confirma la cantidad una sola vez, escala pedido_grande con el resumen y no se queda mudo si el cliente sigue escribiendo.",
+   "que_no_debe_hacer": "Preguntar dos veces piezas u órdenes y dejar solo 'la sucursal recibió el aviso'.",
+   "cubierto_por": "tests/whatsapp/perfil-pm.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-009",
+   "defecto": "QA-PM-R4-whatsapp-07",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_ya_salido_no_se_modifica",
+   "turnos_cliente": [
+    "¿Ya viene mi pedido? ¿Cuánto falta?",
+    "Agrégale una coca"
+   ],
+   "comportamiento_esperado": "Si la sucursal ya lo marcó como salido, no inventa minutos de un pedido nuevo ni dice 'lo paso a cocina': explica que ya salió y ofrece un pedido nuevo o una persona.",
+   "que_no_debe_hacer": "Prometer modificar un pedido en camino.",
+   "cubierto_por": "tests/whatsapp/perfil-pm.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-010",
+   "defecto": "QA-PM-R4-whatsapp-08",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cliente_cambia_de_sucursal_y_regresa",
+   "turnos_cliente": [
+    "Quiero [N] tacos de pastor para recoger pero en la sucursal de Pensiones",
+    "Entonces ya lo hago aquí",
+    "[NOMBRE], efectivo, maíz",
+    "No, es todo",
+    "Sí"
+   ],
+   "comportamiento_esperado": "Ofrece recoger en la sucursal del chat sin repetir el rechazo y cierra el pedido.",
+   "que_no_debe_hacer": "Repetir 'este chat no puede tomar el pedido para Pensiones' cuatro turnos.",
+   "cubierto_por": "tests/whatsapp/perfil-pm.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-011",
+   "defecto": "QA-PM-R4-whatsapp-09",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "menu_completo_con_precios",
+   "turnos_cliente": [
+    "Mándame el menú completo con precios",
+    "¿Cuáles son los más vendidos? ¿Cuál me recomiendas para [N] personas?"
+   ],
+   "comportamiento_esperado": "Da categorías, 3 o 4 platillos con su precio real de buscar_producto y una recomendación concreta; no inventa 'los más vendidos'.",
+   "que_no_debe_hacer": "Contestar 'el menú es amplio' sin un solo precio.",
+   "cubierto_por": "tests/whatsapp/perfil-pm.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-012",
+   "defecto": "QA-PM-R4-whatsapp-10",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "minimo_a_domicilio_por_iniciativa",
+   "turnos_cliente": [
+    "[N] tacos de pastor a domicilio"
+   ],
+   "comportamiento_esperado": "Dice por iniciativa propia que el mínimo a domicilio es de $200 y cuánto falta, e invita a agregar algo o a recoger.",
+   "que_no_debe_hacer": "Esperar a que el cliente deduzca el mínimo.",
+   "cubierto_por": "tests/whatsapp/perfil-pm.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-013",
+   "defecto": "QA-PM-R4-voz-02",
+   "canal": "llamada",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_grande_por_aprobar_dice_pendiente",
+   "turnos_cliente": [
+    "Dos kilos de arrachera para recoger, [NOMBRE], efectivo, en una hora",
+    "Sí"
+   ],
+   "comportamiento_esperado": "Con pedido_grande/por_aprobar dice solo el mensaje_al_cliente: la sucursal lo confirma primero y le avisa.",
+   "que_no_debe_hacer": "Decir 'ha quedado registrado' o 'confirmado' de un pedido retenido.",
+   "cubierto_por": "tests/pm-r4-voz-pedido-grande-mensaje.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-014",
+   "defecto": "QA-PM-R4-voz-04",
+   "canal": "llamada",
+   "sucursal": "garcia-lavin",
+   "intencion": "telefono_dictado_no_se_adopta",
+   "turnos_cliente": [
+    "[N] tacos de pastor para recoger, mi teléfono es [TEL], guárdelo con ese"
+   ],
+   "comportamiento_esperado": "Explica en una frase que el pedido se registra con el número de la llamada y no repite las cifras dictadas.",
+   "que_no_debe_hacer": "Decir 'confirmo su número' del dictado.",
+   "cubierto_por": "tests/perfil-pm-voz.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-015",
+   "defecto": "QA-PM-R4-voz-01",
+   "canal": "llamada",
+   "sucursal": "prol-montejo",
+   "intencion": "sucursal_cerrada_no_toma_pedido",
+   "turnos_cliente": [
+    "Tres tacos de pastor para recoger ahorita",
+    "Anótemelo ya"
+   ],
+   "comportamiento_esperado": "La guarda de horario del servidor rechaza cotizar y crear con la hora de apertura; el agente dice que está cerrada y cuándo abre.",
+   "que_no_debe_hacer": "Crear el pedido en una sucursal cerrada (en la copia real las 7 sucursales abren a las 12:00, por eso ese horario era un supuesto del caso).",
+   "cubierto_por": "tests/pm-r4-voz-sucursal-cerrada.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-016",
+   "defecto": "QA-PM-R4-reglas-02",
+   "canal": "llamada",
+   "sucursal": "garcia-lavin",
+   "intencion": "martes_media_orden_de_nachos_no_regala_aguas",
+   "turnos_cliente": [
+    "Media orden de nachos de pastor y dos horchatas para recoger, ¿me tocan las aguas gratis de la promoción del martes?",
+    "Sí, es correcto"
+   ],
+   "comportamiento_esperado": "Explica que la cortesía es solo con la orden completa y cierra con exactamente las dos horchatas que pidió ($352 en la copia real).",
+   "que_no_debe_hacer": "Prometer dos aguas gratis y cobrar cuatro horchatas.",
+   "cubierto_por": "tests/entradas-invalidas-y-avisos-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-017",
+   "defecto": "QA-PM-R4-reglas-03",
+   "canal": "llamada",
+   "sucursal": "garcia-lavin",
+   "intencion": "un_cuarto_de_bistec_y_tres_cuartos_de_chuleta",
+   "turnos_cliente": [
+    "Un cuarto de bistec y tres cuartos de chuleta para recoger, efectivo"
+   ],
+   "comportamiento_esperado": "Busca las presentaciones de 250 g y 750 g y manda requested_quantity 1 por renglón; si manda gramos como cantidad el servidor lo rechaza explicando la presentación.",
+   "que_no_debe_hacer": "Mandar 250 y 750 como cantidad del producto de 1 kg, decir un total que nunca cotizó y escalar.",
+   "cubierto_por": "tests/pm-r4-peso-como-cantidad.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-018",
+   "defecto": "QA-PM-R4-reglas-04",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "martes_dos_ordenes_de_nachos_son_cuatro_aguas",
+   "turnos_cliente": [
+    "Martes: [N] nachos de pastor, [N] aguas de jamaica y [N] de horchata para recoger"
+   ],
+   "comportamiento_esperado": "Dice que son 2 aguas de cortesía por cada orden completa (2 órdenes = 4) y que el total es el cotizado.",
+   "que_no_debe_hacer": "Decir que solo 2 aguas son gratis mientras el servidor aplica 4.",
+   "cubierto_por": "tests/whatsapp/perfil-pm.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-019",
+   "defecto": "QA-PM-R4-reglas-05",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "colonia_de_doble_cobertura_por_la_sucursal_de_entrada",
+   "turnos_cliente": [
+    "[N] tacos de pastor a domicilio",
+    "Estoy en Montecristo, [DIRECCION]"
+   ],
+   "comportamiento_esperado": "Si la sucursal del chat cubre la colonia, la acepta ahí sin mandar al cliente a otra sucursal.",
+   "que_no_debe_hacer": "Mandar a Prolongación Montejo y luego atender en García Lavín.",
+   "cubierto_por": "tests/pm-r4-doble-cobertura-sucursal-de-entrada.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-020",
+   "defecto": "QA-PM-R4-reglas-06",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "colonia_sin_asignar_a_menos_de_8_km",
+   "turnos_cliente": [
+    "[N] tacos de pastor a domicilio a [COLONIA]"
+   ],
+   "comportamiento_esperado": "Con el seed de cobertura de #500 aplicado en la base real, las colonias a 8 km o menos de una sucursal de despacho quedan asignadas a la más cercana.",
+   "que_no_debe_hacer": "Rechazar a domicilio una colonia que el seed ya asigna (la copia de QA no tenía ese seed).",
+   "cubierto_por": "tests/sucursal-mas-cercana-8km.spec.ts",
+   "dudas": [
+    "Aplicar el seed de cobertura de #500 a la base real (acción de Javier) y decidir Centro/Centro Histórico entre T1 y T3."
+   ],
+   "estado": "pendiente_decision"
+  },
+  {
+   "id": "R4-021",
+   "defecto": "QA-PM-R4-reglas-08",
+   "canal": "ambos",
+   "sucursal": "garcia-lavin",
+   "intencion": "tortilla_de_un_kilo_en_la_comanda",
+   "turnos_cliente": [
+    "Un kilo de pastor con tortillas de harina para recoger"
+   ],
+   "comportamiento_esperado": "La tortilla de harina viaja en el renglón (campo tortilla) y llega a las notas de la comanda.",
+   "que_no_debe_hacer": "Confirmar 'con tortillas de harina' y guardar el pedido sin ella.",
+   "cubierto_por": "tests/tortilla-de-kilo-r3.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-022",
+   "defecto": "QA-PM-R4-reglas-09",
+   "canal": "ambos",
+   "sucursal": "garcia-lavin",
+   "intencion": "doble_salsas_con_tipo_incorrecto",
+   "turnos_cliente": [
+    "[N] tacos de pastor para recoger con doble salsa roja"
+   ],
+   "comportamiento_esperado": "doble_salsas que no es una lista se rechaza con un mensaje claro; no se crea el pedido sin cobrar ni anotar el extra.",
+   "que_no_debe_hacer": "Crear el pedido en silencio sin los $19.",
+   "cubierto_por": "tests/pm-r4-doble-salsas-entrada.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-023",
+   "defecto": "QA-PM-R4-reglas-10",
+   "canal": "ambos",
+   "sucursal": "garcia-lavin",
+   "intencion": "salsa_basica_ya_incluida",
+   "turnos_cliente": [
+    "[N] tacos de pastor con salsa verde"
+   ],
+   "comportamiento_esperado": "Una salsa básica en requested_complements no se rechaza: ya viene incluida sin costo.",
+   "que_no_debe_hacer": "Decir que no manejan la salsa verde.",
+   "cubierto_por": "tests/pm-r4-doble-salsas-entrada.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-024",
+   "defecto": "QA-PM-R4-reglas-11",
+   "canal": "ambos",
+   "sucursal": "garcia-lavin",
+   "intencion": "hora_recogida_numerica",
+   "turnos_cliente": [
+    "[N] tacos de pastor para recoger a una hora dada como número"
+   ],
+   "comportamiento_esperado": "Una hora_recogida que no es texto se rechaza con la instrucción de usar ISO 8601 o minutos_para_recoger.",
+   "que_no_debe_hacer": "Crear el pedido sin hora y que cocina lo trate como para ya.",
+   "cubierto_por": "tests/pm-r4-doble-salsas-entrada.spec.ts",
+   "dudas": [],
+   "estado": "activo"
+  },
+  {
+   "id": "R4-025",
+   "defecto": "QA-PM-R4-voz-03",
+   "canal": "llamada",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_pending_se_dice_preparando",
+   "turnos_cliente": [
+    "¿Ya salió mi pedido?"
+   ],
+   "comportamiento_esperado": "Decisión de producto: ¿un pedido pending recién creado se dice 'recibido' o 'en preparación'?",
+   "que_no_debe_hacer": "(pendiente)",
+   "cubierto_por": "tests/pm-c5-pedido-reciente.spec.ts",
+   "dudas": [
+    "pending se mapea a 'preparando' a propósito (la comanda ya fue a cocina); cambiarlo es decisión de producto."
+   ],
+   "estado": "pendiente_decision"
+  }
+ ]
+}

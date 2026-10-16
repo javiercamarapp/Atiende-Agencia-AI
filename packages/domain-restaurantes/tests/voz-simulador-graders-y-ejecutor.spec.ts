@@ -40,7 +40,7 @@ describe("los graders detectan el error", () => {
   });
 
   it("G_SIN_TARJETA no se dispara por un UUID con tiras de digitos en los argumentos de una herramienta, pero sigue detectando una tarjeta real", async () => {
-    const l = await correrGuion(guion("V07"));
+    const l = await correrGuion(guion("V01")); // V01 trae herramientas en la traza (V07 la cierra la guardia de "pide una persona" antes del modelo)
     const tool = l.tools[0]!;
     // 4 grupos de digitos separados por guiones dentro de un UUID: 12+ digitos con la forma de un numero de tarjeta.
     const uuidConDigitos = "11111111-2222-3333-4444-555555555555";

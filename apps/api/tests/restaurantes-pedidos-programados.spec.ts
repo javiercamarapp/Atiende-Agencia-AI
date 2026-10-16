@@ -116,7 +116,7 @@ describe("PATCH .../status de un pedido programado", () => {
     const b = programado(ctx.propertyIdA, 600);
     const salto = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${b.id}/status`, authedJson(ctx.staff.owner.token, { status: "preparando" }, "PATCH"));
     expect(salto.status).toBe(409);
-    const cancel = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${a.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado" }, "PATCH"));
+    const cancel = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${a.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado", motivo: "otro" }, "PATCH"));
     expect(cancel.status).toBe(200);
     const adelanto = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${b.id}/status`, authedJson(ctx.staff.owner.token, { status: "pending" }, "PATCH"));
     expect(adelanto.status).toBe(200);
@@ -134,8 +134,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     const res = await app.request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
       jsonRequestInit(
-        { branch_slug: "fco-montejo", customer_name: "Cliente Programado", customer_phone: "9991112222", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web", canal: "recoger", payment_method: "efectivo", programado_para: programado },
-        { origin: "http://localhost:5173" },
+        { branch_slug: "fco-montejo", customer_name: "Cliente Programado", customer_phone: "9991112222", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "voice", canal: "recoger", payment_method: "efectivo", programado_para: programado },
+        { "x-atiende-tool-secret": "test-voice-tool-secret" },
       ),
     );
     return { res, restaurantesRepo };
@@ -169,9 +169,9 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     expect(JSON.stringify(await res.json())).toContain("no atiende a la hora elegida");
   });
 
-  it("base SIN migrar -> 503 honesto y no se crea ningun pedido", async () => {
+  it("base SIN migrar -> 400 (canal de voz) y no se crea ningun pedido", async () => {
     const { res, restaurantesRepo } = await crear(enMin(180), (repo) => repo.setScheduledOrdersSupported(false));
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(400);
     expect(restaurantesRepo.getOutbox()).toHaveLength(0);
   });
 });

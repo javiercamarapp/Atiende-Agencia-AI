@@ -15,6 +15,8 @@ function envolver(app: ReturnType<typeof buildApp>): { request(input: string, in
 }
 
 const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente_query_del_request/, respond: () => [{ ok: true }] };
+/** La ruta tambien lee la entrega de los avisos de pedido (migracion 066): por defecto "migrada y sin datos", salvo que el caso la sobreescriba. */
+const ENTREGA_SIN_DATOS: FakeSessionHandler = { match: /whatsapp_entrega_diaria/i, respond: () => [] };
 
 function pgError(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
@@ -24,7 +26,7 @@ function pgError(code: string, message: string): Error & { code: string } {
 
 async function construir(handlers: readonly FakeSessionHandler[]) {
   const ctx = await buildRestaurantesKpiTestContext(buildApp);
-  const session = new AbortAwareFakeSession([...handlers, SIGUIENTE]);
+  const session = new AbortAwareFakeSession([...handlers, ENTREGA_SIN_DATOS, SIGUIENTE]);
   const deps: AppDeps = { ...ctx.deps, whatsappKpiRepo: () => new PostgresWhatsappKpiRepository(session) };
   return { ctx, session, app: envolver(buildApp(deps)), url: `/v1/restaurantes/${ctx.propertyIdA}/admin/whatsapp/kpi` };
 }
@@ -56,6 +58,43 @@ describe("ruta de KPI de WhatsApp contra la base sin migrar, con la transacción
 
   it("un error de Postgres que NO es de base sin migrar (42501) no se traga: la ruta falla en vez de mostrar ceros", async () => {
     const { ctx, app, url } = await construir([{ match: /whatsapp_kpis_diarios/i, respond: () => { throw pgError("42501", "sin acceso a la sucursal"); } }]);
+    const res = await app.request(url, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it("base con la 040 y SIN la 066: el KPI de siempre sigue disponible, entrega.disponible=false y la sesion sigue viva (SAVEPOINT)", async () => {
+    const fila = {
+      fecha: "2026-03-10", zona_horaria: "America/Mexico_City", conversaciones: 4, conversaciones_con_pedido: 1, conversaciones_con_handoff: 2,
+      pedidos: 2, handoffs: 1, pedidos_org: "3", org_es_demo: false, costo_llm_org_micro_usd: "3000000", costo_llm_org_centavos_mxn: null,
+    };
+    const { ctx, app, url, session } = await construir([
+      { match: /whatsapp_kpis_diarios/i, respond: () => [fila] },
+      { match: /whatsapp_entrega_diaria/i, respond: () => { throw pgError("42883", "function restaurantes.whatsapp_entrega_diaria(uuid, uuid, date, date) does not exist"); } },
+    ]);
+    const res = await app.request(`${url}?dias=1`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.disponible).toBe(true);
+    expect(r.entrega).toMatchObject({ disponible: false, serie: [] });
+    await expect(session.query("select 1 as siguiente_query_del_request;")).resolves.toEqual({ rows: [{ ok: true }] });
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+  });
+
+  it("base migrada (066): entrega mapea la serie y calcula las tasas", async () => {
+    const { ctx, app, url } = await construir([
+      { match: /whatsapp_kpis_diarios/i, respond: () => [] },
+      { match: /whatsapp_entrega_diaria/i, respond: () => [{ fecha: "2026-03-10", enviados: 4, entregados: 2, leidos: 1, fallidos: 1, sin_estado: 1, fallos_por_motivo: { numero_no_entregable: 1 } }] },
+    ]);
+    const r = await (await app.request(`${url}?dias=1`, authedGet(ctx.staff.owner.token))).json();
+    expect(r.entrega.disponible).toBe(true);
+    expect(r.entrega.resumen).toMatchObject({ enviados: 4, entregaPct: 50, lecturaPct: 50, fallosPorMotivo: { numero_no_entregable: 1 } });
+  });
+
+  it("un 42501 en la lectura de entrega no se traga: la ruta falla en vez de mostrar ceros", async () => {
+    const { ctx, app, url } = await construir([
+      { match: /whatsapp_kpis_diarios/i, respond: () => [] },
+      { match: /whatsapp_entrega_diaria/i, respond: () => { throw pgError("42501", "sin acceso a la sucursal"); } },
+    ]);
     const res = await app.request(url, authedGet(ctx.staff.owner.token));
     expect(res.status).toBeGreaterThanOrEqual(400);
   });

@@ -4,9 +4,10 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, X } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, notify } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, Label, NativeSelect, PageContainer, StatusBadge, Textarea, notify } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { fetchInvoice, registrarEstadoSat, verificarEstatusSat } from "../lib/cfdi-client.ts";
-import type { EstadoSatCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
+import type { EstadoSatCfdi, ImpuestoDesglosado, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatCentavos, formatDate, formatDireccionCfdi, formatEstadoSat, formatFormaPago, formatMetodoPago, formatMoney, formatTasaImpuesto, tonoEstadoSat } from "../lib/format.ts";
@@ -160,6 +161,18 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
   if (error) return <EstadoError mensaje={error} />;
   if (!invoice) return null;
 
+  const columnasImpuestos: DataTableColumna<ImpuestoDesglosado & { clave: string }>[] = [
+    { id: "impuesto", encabezado: "Impuesto", principal: true, valorOrden: (i) => i.nombre, celda: (i) => i.nombre },
+    { id: "tipo", encabezado: "Tipo", valorOrden: (i) => i.naturaleza, celda: (i) => (i.naturaleza === "traslado" ? "Trasladado" : "Retenido") },
+    {
+      id: "tasa",
+      encabezado: "Tasa o cuota",
+      celda: (i) => (i.tipoFactor === "Exento" ? "Exento" : i.tipoFactor === "Cuota" ? i.tasaOCuota ?? "—" : formatTasaImpuesto(i.tasaOCuota)),
+    },
+    { id: "base", encabezado: "Base", alinear: "right", valorOrden: (i) => i.baseCentavos, celda: (i) => <span className="tabular-nums">{formatCentavos(i.baseCentavos)}</span> },
+    { id: "importe", encabezado: "Importe", alinear: "right", valorOrden: (i) => i.importeCentavos, celda: (i) => <span className="tabular-nums">{formatCentavos(i.importeCentavos)}</span> },
+  ];
+
   return (
     <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
       <div>
@@ -276,28 +289,13 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
             <CardTitle className="text-sm">Impuestos desglosados</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Impuesto</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Tasa o cuota</TableHead>
-                  <TableHead>Base</TableHead>
-                  <TableHead>Importe</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoice.impuestos.map((i, idx) => (
-                  <TableRow key={`${i.naturaleza}-${i.impuesto}-${i.tasaOCuota ?? "exento"}-${idx}`}>
-                    <TableCell>{i.nombre}</TableCell>
-                    <TableCell>{i.naturaleza === "traslado" ? "Trasladado" : "Retenido"}</TableCell>
-                    <TableCell>{i.tipoFactor === "Exento" ? "Exento" : i.tipoFactor === "Cuota" ? i.tasaOCuota ?? "—" : formatTasaImpuesto(i.tasaOCuota)}</TableCell>
-                    <TableCell className="tabular-nums">{formatCentavos(i.baseCentavos)}</TableCell>
-                    <TableCell className="tabular-nums">{formatCentavos(i.importeCentavos)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              etiqueta="Impuestos desglosados del CFDI"
+              columnas={columnasImpuestos}
+              filas={invoice.impuestos.map((i, idx) => ({ ...i, clave: `${i.naturaleza}-${i.impuesto}-${i.tasaOCuota ?? "exento"}-${idx}` }))}
+              obtenerId={(i) => i.clave}
+              paginacion={false}
+            />
           </CardContent>
         </Card>
       )}

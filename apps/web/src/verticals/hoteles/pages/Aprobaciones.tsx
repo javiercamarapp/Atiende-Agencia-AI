@@ -4,24 +4,28 @@
 // Consume apps/api/.../hoteles/agentes.ts. Los botones se muestran segun el rol (cosmetico: el servidor es la unica
 // barrera real, 403). Contra una base sin la migracion 035 la pantalla avisa y no rompe (sin 500).
 import { useCallback, useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import { ClipboardCheck } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   Button,
   Card,
   CardContent,
+  Callout,
   DataTable,
   EstadoCargando,
   EstadoError,
+  FormDialog,
+  FormField,
   Input,
   NativeSelect,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   Textarea,
+  notify,
   useConfirm,
 } from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
@@ -43,6 +47,7 @@ import {
   proponerAprobacion,
 } from "../lib/agentes-client.ts";
 import type { AccionAprobacion, Aprobacion, AprobacionDetalle, AprobacionesResultado, EstadoAprobacion } from "../lib/agentes-client.ts";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 function estadoTono(e: EstadoAprobacion): "warning" | "success" | "danger" | "neutral" | "info" {
@@ -60,10 +65,11 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
   const [historial, setHistorial] = useState<AprobacionesResultado | null>(null);
   const [detalle, setDetalle] = useState<AprobacionDetalle | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [tab, setTab] = useState<"abiertas" | "historial" | "proponer">("abiertas");
+  const [tab, setTab] = useState<"abiertas" | "historial">("abiertas");
+  const [proponiendo, setProponiendo] = useState(false);
   const [nueva, setNueva] = useState({ accion: "descuento_tarifa" as AccionAprobacion, resumen: "", valor: "", contenido: "" });
+  const [errorForm, setErrorForm] = useState<string | null>(null);
   const { pedirTexto, confirmar, dialogo } = useConfirm();
 
   const puedeProponer = AGENT_AUTHOR_ROLES.has(role);
@@ -85,10 +91,9 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
   async function run(key: string, fn: () => Promise<unknown>, okMessage: string) {
     setBusy(key);
     setError(null);
-    setAviso(null);
     try {
       await fn();
-      setAviso(okMessage);
+      notify.success(okMessage);
       setDetalle(null);
       await load();
     } catch (err) {
@@ -139,15 +144,15 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
     }
   }
 
-  async function handleProponer(e: FormEvent) {
-    e.preventDefault();
+  async function handleProponer() {
     const valor = Number(nueva.valor);
     const sinValor = needsValue(nueva.accion) && !(Number.isFinite(valor) && valor > 0);
     const sinContenido = (nueva.accion === "mensaje_masivo" || nueva.accion === "respuesta_resena") && nueva.contenido.trim().length < 1;
     if (nueva.resumen.trim().length < 1 || sinValor || sinContenido) {
-      setError("Completa el resumen, el valor y el texto (si aplica) de la solicitud.");
+      setErrorForm("Completa el resumen, el valor y el texto (si aplica) de la solicitud.");
       return;
     }
+    setErrorForm(null);
     const input = {
       accion: nueva.accion,
       resumen: nueva.resumen.trim(),
@@ -160,6 +165,7 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
     await run("proponer", async () => {
       await proponerAprobacion(fetch, apiBaseUrl, token, propertyId, input);
       setNueva({ ...nueva, resumen: "", valor: "", contenido: "" });
+      setProponiendo(false);
       setTab("abiertas");
     }, "Solicitud enviada a revisión: otra persona con rol de aprobador debe decidirla.");
   }
@@ -216,24 +222,33 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
-          <ClipboardCheck className="w-5 h-5" strokeWidth={1.75} />
-          Aprobaciones
-        </h1>
-        {abiertas?.disponible && <p className="text-sm text-muted-foreground">{abiertas.aprobaciones.filter((a) => a.estado === "pendiente").length} pendientes · {abiertas.aprobaciones.filter((a) => a.estado === "aprobada").length} aprobadas sin ejecutar</p>}
-      </header>
+      <PageHeader
+        titulo="Aprobaciones"
+        descripcion="Acciones sensibles que propone el agente y que una persona con rol aprueba o rechaza con motivo."
+        meta={abiertas?.disponible ? <span>{abiertas.aprobaciones.filter((a) => a.estado === "pendiente").length} pendientes · {abiertas.aprobaciones.filter((a) => a.estado === "aprobada").length} aprobadas sin ejecutar</span> : undefined}
+        acciones={
+          puedeProponer && abiertas?.disponible ? (
+            <Button
+              type="button"
+              iconLeft={<Plus className="size-4" strokeWidth={1.75} />}
+              onClick={() => {
+                setErrorForm(null);
+                setProponiendo(true);
+              }}
+            >
+              Nueva solicitud
+            </Button>
+          ) : undefined
+        }
+      />
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
-      {aviso && <p role="status" className="text-sm text-foreground">{aviso}</p>}
       {cargando && <EstadoCargando etiqueta="Cargando aprobaciones…" />}
 
       {noDisponible && (
-        <Card>
-          <CardContent className="p-4 text-sm text-foreground">
-            Las aprobaciones humanas aún no están activas en esta base de datos: se activan cuando se aplique la actualización pendiente. Mientras tanto el agente no ejecuta acciones sensibles por su cuenta.
-          </CardContent>
-        </Card>
+        <Callout tone="info">
+          Las aprobaciones humanas aún no están activas en esta base de datos: se activan cuando se aplique la actualización pendiente. Mientras tanto el agente no ejecuta acciones sensibles por su cuenta.
+        </Callout>
       )}
 
       {abiertas?.disponible && (
@@ -241,7 +256,6 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
           <TabsList>
             <TabsTrigger value="abiertas">Por decidir</TabsTrigger>
             <TabsTrigger value="historial">Historial</TabsTrigger>
-            {puedeProponer && <TabsTrigger value="proponer">Nueva solicitud</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="abiertas" className="mt-4">
@@ -265,58 +279,54 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
             />
           </TabsContent>
 
-          {puedeProponer && (
-            <TabsContent value="proponer" className="mt-4">
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Una solicitud tuya la decide otra persona con rol de aprobador (nadie aprueba lo que propuso). Por encima de los topes configurados queda bloqueada.
-                  </p>
-                  <form className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => void handleProponer(e)}>
-                    <label className="text-xs text-muted-foreground flex flex-col gap-1">
-                      Acción
-                      <NativeSelect value={nueva.accion} onChange={(e) => setNueva({ ...nueva, accion: e.target.value as AccionAprobacion })}>
-                        {ACCIONES.map((a) => (
-                          <option key={a} value={a}>
-                            {ACCION_LABELS[a]}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </label>
-                    {needsValue(nueva.accion) && (
-                      <label className="text-xs text-muted-foreground flex flex-col gap-1">
-                        {valorEtiqueta(nueva.accion)}
-                        <Input type="number" min={0} step="any" value={nueva.valor} onChange={(e) => setNueva({ ...nueva, valor: e.target.value })} className="h-11" />
-                      </label>
-                    )}
-                    <label className="text-xs text-muted-foreground flex flex-col gap-1 sm:col-span-2">
-                      Resumen
-                      <Input value={nueva.resumen} maxLength={300} onChange={(e) => setNueva({ ...nueva, resumen: e.target.value })} placeholder="Ej. Descuento por baja ocupación el fin de semana" className="h-11" />
-                    </label>
-                    {(nueva.accion === "mensaje_masivo" || nueva.accion === "respuesta_resena") && (
-                      <label className="text-xs text-muted-foreground flex flex-col gap-1 sm:col-span-2">
-                        Texto que se enviará
-                        <Textarea value={nueva.contenido} maxLength={4000} onChange={(e) => setNueva({ ...nueva, contenido: e.target.value })} rows={4} />
-                      </label>
-                    )}
-                    <div className="sm:col-span-2">
-                      <Button type="submit" disabled={busy === "proponer"}>
-                        {busy === "proponer" ? "Enviando…" : "Enviar a revisión"}
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          )}
         </Tabs>
       )}
+
+      <FormDialog
+        open={proponiendo}
+        onOpenChange={(abierto) => {
+          if (!abierto && busy !== "proponer") setProponiendo(false);
+        }}
+        titulo="Nueva solicitud"
+        subtitulo="Una solicitud tuya la decide otra persona con rol de aprobador (nadie aprueba lo que propuso). Por encima de los topes configurados queda bloqueada."
+        anchoClase="max-w-3xl"
+        onGuardar={() => void handleProponer()}
+        guardando={busy === "proponer"}
+        textoBotonGuardar="Enviar a revisión"
+        bloquearCierre={busy === "proponer"}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {errorForm && <Callout tone="danger" className="sm:col-span-2">{errorForm}</Callout>}
+          <FormField label="Acción">
+            <NativeSelect value={nueva.accion} onChange={(e) => setNueva({ ...nueva, accion: e.target.value as AccionAprobacion })}>
+              {ACCIONES.map((a) => (
+                <option key={a} value={a}>
+                  {ACCION_LABELS[a]}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+          {needsValue(nueva.accion) && (
+            <FormField label={valorEtiqueta(nueva.accion)} required>
+              <Input type="number" min={0} step="any" value={nueva.valor} onChange={(e) => setNueva({ ...nueva, valor: e.target.value })} />
+            </FormField>
+          )}
+          <FormField label="Resumen" required className="sm:col-span-2">
+            <Input value={nueva.resumen} maxLength={300} onChange={(e) => setNueva({ ...nueva, resumen: e.target.value })} placeholder="Ej. Descuento por baja ocupación el fin de semana" />
+          </FormField>
+          {(nueva.accion === "mensaje_masivo" || nueva.accion === "respuesta_resena") && (
+            <FormField label="Texto que se enviará" required className="sm:col-span-2">
+              <Textarea value={nueva.contenido} maxLength={4000} onChange={(e) => setNueva({ ...nueva, contenido: e.target.value })} rows={4} />
+            </FormField>
+          )}
+        </div>
+      </FormDialog>
 
       {detalle && (
         <Card>
           <CardContent className="p-4 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-foreground">Bitácora — {ACCION_LABELS[detalle.accion]}</h2>
+              <h2 className="text-sm font-medium text-foreground">Bitácora — {ACCION_LABELS[detalle.accion]}</h2>
               <Button type="button" size="sm" variant="ghost" onClick={() => setDetalle(null)}>
                 Cerrar
               </Button>
@@ -327,7 +337,7 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
             <ul className="text-sm flex flex-col gap-1">
               {detalle.bitacora.map((ev) => (
                 <li key={ev.id} className="flex flex-wrap gap-2">
-                  <span className="text-muted-foreground">{new Date(ev.creadoEn).toLocaleString("es-MX")}</span>
+                  <span className="text-muted-foreground">{fechaHoraEsMx(ev.creadoEn)}</span>
                   <span>{ev.tipo}</span>
                   <span className="text-muted-foreground">{ev.sistema ? "(sistema)" : ""}</span>
                 </li>

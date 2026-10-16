@@ -3,9 +3,9 @@
 // en el origen (ver diseño Fase 1 citas §5.2) y como Fase 4/7 extienden el mismo
 // criterio:
 //
-//   POST /v1/citas/:orgSlug/appointments/:appointmentId/cancel            (agente, x-atiende-tool-secret)
-//   POST /v1/citas/:orgSlug/appointments/:appointmentId/reschedule        (agente, x-atiende-tool-secret)
-//   POST /v1/citas/:orgSlug/appointments/:appointmentId/reassign          (agente, x-atiende-tool-secret) — Fase 4
+//   POST /v1/citas/:orgSlug/appointments/:appointmentId/cancel            (agente, x-atiende-tool-secret + customer_phone)
+//   POST /v1/citas/:orgSlug/appointments/:appointmentId/reschedule        (agente, x-atiende-tool-secret + customer_phone)
+//   POST /v1/citas/:orgSlug/appointments/:appointmentId/reassign          (agente, x-atiende-tool-secret + customer_phone) — Fase 4
 //   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/cancel    (staff panel, JWT)
 //   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/confirm   (staff panel, JWT) — Fase 7
 //   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/complete  (staff panel, JWT) — Fase 7
@@ -29,11 +29,13 @@ import {
   AppointmentForbiddenError,
   AppointmentNotFoundError,
   AppointmentValidationError,
+  assertCustomerOwnsAppointment,
   cancelAppointment,
   cancelAppointmentFromPanel,
   completeAppointmentFromPanel,
   confirmAppointmentFromPanel,
   consumeRateLimit,
+  isUsablePhone,
   markAppointmentNoShowFromPanel,
   notifyWaitlistAfterReschedule,
   reassignAppointment,
@@ -51,17 +53,33 @@ import { readJsonCapped, requestActor, secretMatches } from "../../../http-secur
 import { INLINE_BATCH_SIZE, runCitasEmailDispatch, triggerCitasEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
+interface CancelBody {
+  readonly customer_phone?: unknown;
+}
+
 interface RescheduleBody {
+  readonly customer_phone?: unknown;
   readonly new_starts_at?: unknown;
   readonly actor_channel?: unknown;
   readonly actor_note?: unknown;
 }
 
 interface ReassignBody {
+  readonly customer_phone?: unknown;
   readonly new_provider_id?: unknown;
   readonly new_service_id?: unknown;
   readonly actor_channel?: unknown;
   readonly actor_note?: unknown;
+}
+
+/**
+ * Rutas legadas del agente (cancelar/reagendar/modificar por id): el secreto `x-atiende-tool-secret` es UNICO de plataforma (no por negocio ni por llamada), asi que
+ * por si solo no prueba que quien llama represente al paciente. Igual que las herramientas vigentes de voz y WhatsApp (`assertCustomerOwnsAppointment`), la cita debe
+ * ser del telefono que se manda en `customer_phone`; una cita ajena o inexistente responde igual (404). Sin telefono valido, 400.
+ */
+async function assertAppointmentOfPhone(citasRepo: CitasRepository, organizationId: string, appointmentId: string, rawPhone: unknown): Promise<void> {
+  if (typeof rawPhone !== "string" || !isUsablePhone(rawPhone)) throw new AppointmentValidationError("customer_phone es requerido (el telefono del cliente dueno de la cita)");
+  await assertCustomerOwnsAppointment(citasRepo, organizationId, rawPhone, appointmentId);
 }
 
 function serializeAppointment(appointment: AppointmentRecord) {
@@ -203,6 +221,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
   app.post("/v1/citas/:orgSlug/appointments/:appointmentId/cancel", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
     const appointmentId = c.req.param("appointmentId");
+    const raw = await readJsonCapped<CancelBody>(c.req.raw, 4 * 1024);
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const citasRepo = deps.citasRepo(db);
@@ -212,6 +231,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       if (!limited.allowed) throw Errors.tooManyRequests();
 
       try {
+        await assertAppointmentOfPhone(citasRepo, org.id, appointmentId, raw.customer_phone);
         const appointment = await cancelAppointment(citasRepo, { organizationId: org.id, appointmentId });
         await tryNotifyWaitlistAfterCancel(citasRepo, org.id, appointment);
         await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.cancelled", appointment.id);
@@ -243,6 +263,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       if (!limited.allowed) throw Errors.tooManyRequests();
 
       try {
+        await assertAppointmentOfPhone(citasRepo, org.id, appointmentId, raw.customer_phone);
         const { appointment, previousStartsAt } = await rescheduleAppointment(citasRepo, {
           organizationId: org.id,
           appointmentId,
@@ -277,6 +298,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       if (!limited.allowed) throw Errors.tooManyRequests();
 
       try {
+        await assertAppointmentOfPhone(citasRepo, org.id, appointmentId, raw.customer_phone);
         const { appointment, previousProviderId, previousServiceId } = await reassignAppointment(citasRepo, {
           organizationId: org.id,
           appointmentId,

@@ -39,6 +39,7 @@ export const VOZ_CONFIG_POR_DEFECTO: VozConfig = {
   voiceId: VOZ_POR_DEFECTO,
   comportamiento: "",
   mensajeInicial: "",
+  mensajeInicialInterrumpible: true,
   configurada: false,
 };
 
@@ -84,6 +85,8 @@ interface ConfigRow {
   voice_id: string;
   comportamiento: string;
   mensaje_inicial: string;
+  /** Migracion 053; ausente contra la base sin migrar (= interrumpible, como siempre). */
+  mensaje_inicial_interrumpible?: boolean;
 }
 
 function mapConfig(row: ConfigRow): VozConfig {
@@ -93,6 +96,7 @@ function mapConfig(row: ConfigRow): VozConfig {
     voiceId: row.voice_id,
     comportamiento: row.comportamiento ?? "",
     mensajeInicial: row.mensaje_inicial ?? "",
+    mensajeInicialInterrumpible: row.mensaje_inicial_interrumpible !== false,
     configurada: true,
   };
 }
@@ -145,13 +149,29 @@ export class PostgresVozRepository implements VozRepository {
       savepointName: "sp_voz_config_read",
       primary: async () => {
         const { rows } = await this.db.query<ConfigRow>(
-          `select habilitado, proveedor, voice_id, comportamiento, mensaje_inicial from restaurantes.branch_voice_config where property_id = $1;`,
+          `select habilitado, proveedor, voice_id, comportamiento, mensaje_inicial, mensaje_inicial_interrumpible from restaurantes.branch_voice_config where property_id = $1;`,
           [propertyId],
         );
         return { disponible: true, valor: rows[0] ? mapConfig(rows[0]) : VOZ_CONFIG_POR_DEFECTO };
       },
       isRecoverable: esBaseSinMigrar,
       fallback: async (err) => {
+        // Base con la 025 pero SIN la 053: falta solo la columna del saludo -> se lee como siempre (interrumpible). Cualquier otra falta = no disponible.
+        if (code(err) === "42703") {
+          return runWithSavepointFallback<VozLectura<VozConfig>>({
+            session: this.db,
+            savepointName: "sp_voz_config_read_025",
+            primary: async () => {
+              const { rows } = await this.db.query<ConfigRow>(`select habilitado, proveedor, voice_id, comportamiento, mensaje_inicial from restaurantes.branch_voice_config where property_id = $1;`, [propertyId]);
+              return { disponible: true, valor: rows[0] ? mapConfig(rows[0]) : VOZ_CONFIG_POR_DEFECTO };
+            },
+            isRecoverable: esBaseSinMigrar,
+            fallback: async (err2) => {
+              advertirNoDisponible(err2);
+              return { disponible: false, valor: VOZ_CONFIG_POR_DEFECTO };
+            },
+          });
+        }
         advertirNoDisponible(err);
         return { disponible: false, valor: VOZ_CONFIG_POR_DEFECTO };
       },
@@ -159,27 +179,57 @@ export class PostgresVozRepository implements VozRepository {
   }
 
   async upsertConfig(organizationId: string, propertyId: string, config: VozConfigEntrada): Promise<VozConfig> {
+    const interrumpible = config.mensajeInicialInterrumpible !== false;
     return runWithSavepointFallback<VozConfig>({
       session: this.db,
       savepointName: "sp_voz_config_write",
       primary: async () => {
         const { rows } = await this.db.query<ConfigRow>(
-          `insert into restaurantes.branch_voice_config (property_id, organization_id, habilitado, proveedor, voice_id, comportamiento, mensaje_inicial, updated_at)
-           values ($1, $2, $3, $4, $5, $6, $7, now())
+          `insert into restaurantes.branch_voice_config (property_id, organization_id, habilitado, proveedor, voice_id, comportamiento, mensaje_inicial, mensaje_inicial_interrumpible, updated_at)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, now())
            on conflict (property_id) do update set
              habilitado = excluded.habilitado,
              proveedor = excluded.proveedor,
              voice_id = excluded.voice_id,
              comportamiento = excluded.comportamiento,
              mensaje_inicial = excluded.mensaje_inicial,
+             mensaje_inicial_interrumpible = excluded.mensaje_inicial_interrumpible,
              updated_at = excluded.updated_at
-           returning habilitado, proveedor, voice_id, comportamiento, mensaje_inicial;`,
-          [propertyId, organizationId, config.habilitado, config.proveedor, config.voiceId, config.comportamiento, config.mensajeInicial],
+           returning habilitado, proveedor, voice_id, comportamiento, mensaje_inicial, mensaje_inicial_interrumpible;`,
+          [propertyId, organizationId, config.habilitado, config.proveedor, config.voiceId, config.comportamiento, config.mensajeInicial, interrumpible],
         );
         return mapConfig(rows[0]!);
       },
       isRecoverable: esErrorEscrituraConocido,
-      fallback: aErrorDeEscritura,
+      fallback: async (err) => {
+        // Base con la 025 pero SIN la 053 y un saludo interrumpible (el valor de siempre): se guarda como antes, sin romper el guardado de voz.
+        // Pedir un saludo NO interrumpible contra esa base no se finge: 503 honesto (requiere la migracion 053).
+        if (code(err) === "42703" && interrumpible) {
+          return runWithSavepointFallback<VozConfig>({
+            session: this.db,
+            savepointName: "sp_voz_config_write_025",
+            primary: async () => {
+              const { rows } = await this.db.query<ConfigRow>(
+                `insert into restaurantes.branch_voice_config (property_id, organization_id, habilitado, proveedor, voice_id, comportamiento, mensaje_inicial, updated_at)
+                 values ($1, $2, $3, $4, $5, $6, $7, now())
+                 on conflict (property_id) do update set
+                   habilitado = excluded.habilitado,
+                   proveedor = excluded.proveedor,
+                   voice_id = excluded.voice_id,
+                   comportamiento = excluded.comportamiento,
+                   mensaje_inicial = excluded.mensaje_inicial,
+                   updated_at = excluded.updated_at
+                 returning habilitado, proveedor, voice_id, comportamiento, mensaje_inicial;`,
+                [propertyId, organizationId, config.habilitado, config.proveedor, config.voiceId, config.comportamiento, config.mensajeInicial],
+              );
+              return mapConfig(rows[0]!);
+            },
+            isRecoverable: esErrorEscrituraConocido,
+            fallback: aErrorDeEscritura,
+          });
+        }
+        return aErrorDeEscritura(err);
+      },
     });
   }
 
@@ -311,6 +361,19 @@ export class PostgresVozRepository implements VozRepository {
         return rows[0]!.cerrada === true;
       },
       isRecoverable: esErrorEscrituraConocido,
+      fallback: aErrorDeEscritura,
+    });
+  }
+
+  async cerrarHuerfanas(opciones: { inactivasMinutos: number; limite: number }): Promise<number> {
+    return runWithSavepointFallback<number>({
+      session: this.db,
+      savepointName: "sp_voz_cerrar_huerfanas",
+      primary: async () => {
+        const { rows } = await this.db.query<{ cerradas: number | string }>(`select restaurantes.voz_cerrar_huerfanas($1::integer, $2::integer) as cerradas;`, [opciones.inactivasMinutos, opciones.limite]);
+        return Number(rows[0]!.cerradas);
+      },
+      isRecoverable: esBaseSinMigrar,
       fallback: aErrorDeEscritura,
     });
   }

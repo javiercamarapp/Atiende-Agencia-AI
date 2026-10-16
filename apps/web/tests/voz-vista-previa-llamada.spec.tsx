@@ -2,10 +2,11 @@
 //
 // VistaPreviaLlamada: layout desacoplado del proveedor. Se prueba contra un
 // controlador falso (contrato neutro VoiceSessionController).
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ESTADO_SESION_INICIAL, VistaPreviaLlamada } from "@atiende/ui";
 import type { VoiceSessionController, VoiceSessionState } from "@atiende/ui";
-import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 
@@ -139,8 +140,90 @@ describe("<VistaPreviaLlamada />", () => {
     expect(c.iniciar).not.toHaveBeenCalled();
   });
 
+  it("etiquetasChip reemplaza solo el texto del chip por modo (el modo real queda en data-modo) y videoSiempre mantiene el video del orbe en la llamada", () => {
+    const etiquetasChip = { escuchando: "● Llamada en curso" } as const;
+    pintar(controlador({ modo: "escuchando" }), { etiquetasChip, videoSrc: "/media/orbe.mp4", videoSiempre: true });
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')?.textContent).toBe("● Llamada en curso");
+    expect(rendered!.container.querySelector('[role="dialog"]')?.getAttribute("data-modo")).toBe("escuchando");
+    expect(rendered!.container.querySelector(".voz-orbe")?.getAttribute("data-video")).toBe("visible");
+    rendered!.unmount();
+    pintar(controlador({ modo: "hablando" }), { etiquetasChip });
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')?.textContent).toBe("● Hablando");
+    expect(rendered!.container.querySelector(".voz-orbe")?.getAttribute("data-video")).toBe("oculto");
+  });
+
+  it("en móvil (matchMedia < 768 px) se monta por portal en <body> como pantalla fija completa y reacciona al cambio de tamaño", () => {
+    let escritorio = false;
+    const oyentes = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return escritorio;
+      },
+      addEventListener: (_: string, f: () => void) => oyentes.add(f),
+      removeEventListener: (_: string, f: () => void) => oyentes.delete(f),
+    }));
+    const marco = document.createElement("div");
+    document.body.appendChild(marco);
+    pintar(controlador(), { portalEn: marco });
+    const dialogo = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialogo().parentElement).toBe(document.body);
+    expect(dialogo().className).toContain("fixed inset-0 z-50");
+    act(() => {
+      escritorio = true;
+      oyentes.forEach((f) => f());
+    });
+    expect(dialogo().parentElement).toBe(marco);
+    expect(dialogo().className).toContain("absolute inset-0 z-30");
+    rendered!.unmount();
+    rendered = undefined;
+    marco.remove();
+    vi.unstubAllGlobals();
+  });
+
   it("etiqueta visible de simulación cuando se le pasa", () => {
     pintar(controlador(), { etiquetaSimulacion: "Simulación" });
     expect(rendered!.container.textContent).toContain("Simulación");
+  });
+});
+
+describe("<VistaPreviaLlamada /> como dialogo (QA-restaurantes-R1-botones-09)", () => {
+  it("es un dialogo modal con nombre, el foco entra al panel al abrirse y Escape la cierra", () => {
+    const c = controlador();
+    const { onCerrar } = pintar(c);
+    const dialogo = rendered!.container.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialogo.getAttribute("aria-modal")).toBe("true");
+    expect(dialogo.getAttribute("aria-label")).toContain("Agente Los Taquitos");
+    expect(document.activeElement).toBe(dialogo);
+    keydown(document.body, "Escape");
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+  });
+
+  it("Tab no sale del panel (da la vuelta del ultimo al primero y con Shift del primero al ultimo)", () => {
+    pintar(controlador());
+    const dialogo = rendered!.container.querySelector<HTMLElement>('[role="dialog"]')!;
+    const items = Array.from(dialogo.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    const primero = items[0]!;
+    const ultimo = items[items.length - 1]!;
+    ultimo.focus();
+    act(() => {
+      ultimo.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    });
+    expect(document.activeElement).toBe(primero);
+    act(() => {
+      primero.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+    });
+    expect(document.activeElement).toBe(ultimo);
+  });
+
+  it("al cerrarse devuelve el foco al control que la abrio", () => {
+    const abre = document.createElement("button");
+    document.body.appendChild(abre);
+    abre.focus();
+    pintar(controlador());
+    expect(document.activeElement).not.toBe(abre);
+    rendered!.unmount();
+    rendered = undefined;
+    expect(document.activeElement).toBe(abre);
+    abre.remove();
   });
 });

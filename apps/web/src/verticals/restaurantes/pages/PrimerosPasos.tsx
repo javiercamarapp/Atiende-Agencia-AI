@@ -74,7 +74,7 @@ export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, o
                       <StatusBadge tone={TONO[item.estado]}>{ESTADO_LABEL[item.estado]}</StatusBadge>
                     </div>
                     <p className="m-0 text-xs text-muted-foreground">{item.detalle}</p>
-                    {item.faltantes.length > 0 && <p className="m-0 text-xs text-foreground">Falta en: {item.faltantes.join(", ")}</p>}
+                    {item.estado !== "hecho" && item.faltantes.length > 0 && <p className="m-0 text-xs text-foreground">Falta en: {item.faltantes.join(", ")}</p>}
                     {item.estado !== "hecho" && (
                       <p className="m-0 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
                         <span>Lo cierra: {RESPONSABLE_LABEL[item.responsable]}</span>

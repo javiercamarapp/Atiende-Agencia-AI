@@ -54,7 +54,7 @@ function fakeSessionCapturing(responses: ReadonlyArray<{ rows: unknown[] }>): { 
 const INSTANTE_1930_CDMX_DIA_1 = "2026-01-02T01:30:00.000Z";
 
 describe("PostgresLicitacionesRepository.createApprovedRate -- el parámetro real que llega al INSERT usa el día de NEGOCIO", () => {
-  it("sin validFrom en el input, a las 19:30 CDMX, el parámetro valid_from ($5) es '2026-01-01' (día de negocio), NO '2026-01-02' (día UTC)", async () => {
+  it("sin validFrom en el input, a las 19:30 CDMX, el parámetro valid_from ($4) es '2026-01-01' (día de negocio), NO '2026-01-02' (día UTC)", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(INSTANTE_1930_CDMX_DIA_1));
 
@@ -76,8 +76,8 @@ describe("PostgresLicitacionesRepository.createApprovedRate -- el parámetro rea
     expect(insertCall.sql.toLowerCase()).toContain("insert into licitaciones.approved_rate");
     // Orden real de params en el insert: [organizationId, concept, unitPrice,
     // approvalStatus, validFrom, validUntil] -- ver postgres-repository.ts.
-    expect(insertCall.params[4]).toBe("2026-01-01");
-    expect(insertCall.params[4]).not.toBe("2026-01-02");
+    expect(insertCall.params[3]).toBe("2026-01-01");
+    expect(insertCall.params[3]).not.toBe("2026-01-02");
 
     // Guard de deriva: si alguien reintroduce `current_date` en el propio SQL (en
     // vez de pasar la fecha como parámetro), este test debe tronar aunque el
@@ -105,6 +105,6 @@ describe("PostgresLicitacionesRepository.createApprovedRate -- el parámetro rea
 
     await repo.createApprovedRate("org-1", { concept: "supervision_obra", unitPrice: "1200.00", validFrom: "2030-06-15" });
 
-    expect(calls[1]!.params[4]).toBe("2030-06-15");
+    expect(calls[1]!.params[3]).toBe("2030-06-15");
   });
 });

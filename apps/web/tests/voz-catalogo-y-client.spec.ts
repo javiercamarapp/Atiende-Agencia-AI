@@ -37,7 +37,7 @@ describe("catálogo de voces", () => {
 });
 
 const WIRE_CONFIG = { disponible: true, configurada: true, habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "p", mensajeInicial: "m" };
-const ENTRADA = { vozId: "Puck", promptSistema: "Habla en español de México", mensajeInicial: "Hola, asistente virtual", habilitado: true } as const;
+const ENTRADA = { vozId: "Puck", promptSistema: "Habla en español de México", mensajeInicial: "Hola, asistente virtual", mensajeInicialInterrumpible: true, habilitado: true } as const;
 
 describe("voz-client (contrato real de apps/api voz-admin.ts)", () => {
   it("GET config: mapea el formato de la API; null si la sucursal aún no tiene", async () => {
@@ -46,7 +46,7 @@ describe("voz-client (contrato real de apps/api voz-admin.ts)", () => {
       expect((init?.headers as Record<string, string>).authorization).toBe("Bearer tok");
       return JSON_RESP(WIRE_CONFIG);
     }) as unknown as typeof fetch;
-    await expect(fetchVozConfig(f1, "http://api.local", "tok", "prop-1")).resolves.toEqual({ vozId: "Kore", promptSistema: "p", mensajeInicial: "m", habilitado: true });
+    await expect(fetchVozConfig(f1, "http://api.local", "tok", "prop-1")).resolves.toEqual({ vozId: "Kore", promptSistema: "p", mensajeInicial: "m", mensajeInicialInterrumpible: true, habilitado: true });
     const f2 = vi.fn(async () => JSON_RESP({ ...WIRE_CONFIG, configurada: false, habilitado: false, voiceId: "" })) as unknown as typeof fetch;
     await expect(fetchVozConfig(f2, "http://api.local", "tok", "prop-1")).resolves.toBeNull();
   });
@@ -79,11 +79,11 @@ describe("voz-client (contrato real de apps/api voz-admin.ts)", () => {
     const f = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/v1/restaurantes/prop-1/admin/voz/config");
       expect(init?.method).toBe("PUT");
-      expect(JSON.parse(init!.body as string)).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: "Habla en español de México", mensajeInicial: "Hola, asistente virtual" });
+      expect(JSON.parse(init!.body as string)).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: "Habla en español de México", mensajeInicial: "Hola, asistente virtual", mensajeInicialInterrumpible: true });
       return JSON_RESP({ ...WIRE_CONFIG, voiceId: "Puck", comportamiento: ENTRADA.promptSistema, mensajeInicial: ENTRADA.mensajeInicial });
     }) as unknown as typeof fetch;
     const r = await updateVozConfig(f, "http://api.local", "tok", "prop-1", ENTRADA);
-    expect(r).toEqual({ vozId: "Puck", promptSistema: ENTRADA.promptSistema, mensajeInicial: ENTRADA.mensajeInicial, habilitado: true });
+    expect(r).toEqual({ vozId: "Puck", promptSistema: ENTRADA.promptSistema, mensajeInicial: ENTRADA.mensajeInicial, mensajeInicialInterrumpible: true, habilitado: true });
   });
 
   it("PUT sin voz elegida no llama a la red (la API exige voiceId)", async () => {

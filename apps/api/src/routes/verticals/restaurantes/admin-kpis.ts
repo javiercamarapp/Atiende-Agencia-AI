@@ -27,8 +27,9 @@ import {
   getSalesTrendKpis,
   getChannelKpis,
   getCustomerKpis,
+  horasAbiertasHoy,
 } from "@atiende/domain-restaurantes";
-import type { StatsPeriod } from "@atiende/domain-restaurantes";
+import type { RestaurantesRepository, StatsPeriod } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
@@ -38,6 +39,19 @@ function parsePeriod(raw: string | undefined): StatsPeriod {
     throw Errors.validation("period: se esperaba uno de today|7|30|90|180|365|historico.");
   }
   return raw;
+}
+
+/** Zona horaria con la que se calcula "Hoy", los dias y los meses del tablero (QA-restaurantes-R1-automatizacion-03): la de la
+ *  sucursal elegida (`branchId`) o, sin filtro, la de la sucursal desde la que se consulta. Sin zona propia, la de plataforma.
+ *  Para "Hoy" tambien devuelve las horas en que atiende el alcance (union de los horarios de sus sucursales). */
+async function contextoDeTiempo(repo: RestaurantesRepository, organizationId: string, propertyIds: readonly string[] | null, propertyIdRuta: string, branchId: string | null, period: StatsPeriod, now: Date) {
+  const { zonaHoraria } = await repo.findBranchZonaHoraria(branchId ?? propertyIdRuta);
+  if (period !== "today") return { zonaHoraria, horasHoy: null };
+  const ids = propertyIds ?? (await repo.listBranchesForOrganization(organizationId)).map((b) => b.propertyId);
+  // Secuencial a proposito: comparten UNA sesion y cada lectura abre su SAVEPOINT con nombre fijo; en paralelo se intercalarian.
+  const horarios = [];
+  for (const id of ids) horarios.push((await repo.findBranchPolicy(id)).horario);
+  return { zonaHoraria, horasHoy: horasAbiertasHoy(horarios, now, zonaHoraria) };
 }
 
 export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -53,7 +67,9 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const branchId = parseBranchId(c.req.query("branchId"));
     const propertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, branchId);
 
-    const summary = await getSalesKpis(repo, organizationId, propertyIds, period, new Date());
+    const ahora = new Date();
+    const { zonaHoraria } = await contextoDeTiempo(repo, organizationId, propertyIds, c.req.param("propertyId"), branchId, "7", ahora);
+    const summary = await getSalesKpis(repo, organizationId, propertyIds, period, ahora, zonaHoraria);
     return c.json({
       revenue: summary.revenue,
       orders: summary.orders,
@@ -81,7 +97,9 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     // sobre un array de pedidos ya truncado).
     const firstOrderAt = period === "historico" ? await repo.getFirstOrderCreatedAt(organizationId, propertyIds) : null;
 
-    const buckets = await getSalesTrendKpis(repo, organizationId, propertyIds, period, new Date(), firstOrderAt);
+    const ahora = new Date();
+    const { zonaHoraria, horasHoy } = await contextoDeTiempo(repo, organizationId, propertyIds, c.req.param("propertyId"), branchId, period, ahora);
+    const buckets = await getSalesTrendKpis(repo, organizationId, propertyIds, period, ahora, firstOrderAt, { zonaHoraria, horasHoy });
     return c.json({ buckets: buckets.map((b) => ({ label: b.label, revenue: b.revenue, orders: b.orders })) });
   });
 
@@ -96,7 +114,9 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const rawPeriod = c.req.query("period");
     const period = rawPeriod === undefined ? "historico" : parsePeriod(rawPeriod);
 
-    const kpis = await getChannelKpis(repo, organizationId, propertyIds, period, new Date());
+    const ahora = new Date();
+    const { zonaHoraria } = await contextoDeTiempo(repo, organizationId, propertyIds, c.req.param("propertyId"), branchId, "7", ahora);
+    const kpis = await getChannelKpis(repo, organizationId, propertyIds, period, ahora, zonaHoraria);
     return c.json(kpis);
   });
 

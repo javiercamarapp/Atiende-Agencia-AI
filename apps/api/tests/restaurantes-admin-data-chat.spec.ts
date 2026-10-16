@@ -106,7 +106,7 @@ describe("alcance del servidor", () => {
     const body = (await res.json()) as DataChatAnswer;
     expect(body.status).toBe("ok");
     expect(body.blocks[0]!.rows).toEqual([{ periodo: "2026-09-29", ventas: 350, pedidos: 2 }]);
-    expect(body.sources[0]).toMatchObject({ scopeLabel: "todas tus sucursales", source: "Pedidos de restaurantes (sin cancelados)" });
+    expect(body.sources[0]).toMatchObject({ scopeLabel: "todas tus sucursales", source: "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)" });
     expect(h.reader.windows[0]).toMatchObject({ propertyIds: null, organizationId: h.ctx.organizationId, timezone: "America/Merida" });
     expect(h.llmRequests[0]!.system).toContain("America/Merida");
   });

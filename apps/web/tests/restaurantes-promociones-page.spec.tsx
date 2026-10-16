@@ -15,6 +15,9 @@ import { PromocionesPage } from "../src/verticals/restaurantes/pages/Promociones
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { Promotion } from "../src/verticals/restaurantes/lib/promotions-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -276,7 +279,7 @@ describe("PromocionesPage (restaurantes)", () => {
 
     changeValue(document.body.querySelector("#promocion-codigo") as HTMLInputElement, "verano25");
     changeValue(document.body.querySelector("#promocion-nombre") as HTMLInputElement, "Promo de verano");
-    changeValue(document.body.querySelector("#promocion-tipo") as HTMLSelectElement, "fixed");
+    elegirValor(document.body.querySelector("#promocion-tipo") as HTMLElement, "fixed");
     changeValue(document.body.querySelector("#promocion-valor") as HTMLInputElement, "50");
     changeValue(document.body.querySelector("#promocion-minimo") as HTMLInputElement, "300");
     changeValue(document.body.querySelector("#promocion-tope") as HTMLInputElement, "20");

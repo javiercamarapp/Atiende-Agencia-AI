@@ -17,6 +17,8 @@ export interface UnidadRecord {
    *  todavía. Solo lo necesita el owner statement (Fase 2, Flujo 5); opcional para no
    *  romper los seeds de Fase 1 que no lo pasan. */
   readonly ownerId?: string | null;
+  /** `rentas.unidad.responsable_limpieza_default` (migracion 033): responsable por omision de la tarea de limpieza. */
+  readonly responsableLimpiezaDefaultId?: string | null;
   /** `rentas.unidad.name` -- opcional para no romper los seeds de fases anteriores
    *  que no lo pasan (`findUnidad` nunca lo necesitó hasta Fase 9). Solo lo necesita
    *  el correo transaccional al huésped (Fase 9, `findOcupacionParaCorreo`), que cae a

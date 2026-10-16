@@ -82,6 +82,20 @@ describe("propiedades", () => {
     expect((await app.request(`${raiz(ctx)}/propiedad`, enviar(ctx.staff.adminGestora.token, { zonaHoraria: "America/Tijuana" }, "PATCH"))).status).toBe(200);
   });
 
+  it("D-DSD-07 (Rn-P3-11): cambiar la zona horaria con reservas o bloqueos activos -> 409 y nada se escribe; sin ocupaciones -> 200; misma zona -> 200", async () => {
+    const { ctx, catalogo, app } = await preparar();
+    catalogo.propiedadesConOcupacionesActivas.add(ctx.propertyId);
+    const res = await app.request(`${raiz(ctx)}/propiedad`, enviar(ctx.staff.adminGestora.token, { zonaHoraria: "America/Tijuana" }, "PATCH"));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { message?: string; error?: string }).message ?? "").toContain("zona horaria");
+    expect(catalogo.propiedades.get(ctx.propertyId)).toMatchObject({ zonaHoraria: "America/Cancun" });
+    // Reenviar la misma zona (la web manda el formulario completo) no cuenta como cambio.
+    expect((await app.request(`${raiz(ctx)}/propiedad`, enviar(ctx.staff.adminGestora.token, { nombre: "Matriz 2", zonaHoraria: "America/Cancun" }, "PATCH"))).status).toBe(200);
+    catalogo.propiedadesConOcupacionesActivas.delete(ctx.propertyId);
+    expect((await app.request(`${raiz(ctx)}/propiedad`, enviar(ctx.staff.adminGestora.token, { zonaHoraria: "America/Tijuana" }, "PATCH"))).status).toBe(200);
+    expect(catalogo.propiedades.get(ctx.propertyId)).toMatchObject({ zonaHoraria: "America/Tijuana" });
+  });
+
   it("POST propiedades: crea una propiedad nueva de la organizacion (201); nombre repetido -> 409", async () => {
     const { ctx, catalogo, app } = await preparar();
     const body = { nombre: "Casa Nueva", zonaHoraria: "America/Cancun", moneda: "USD" };

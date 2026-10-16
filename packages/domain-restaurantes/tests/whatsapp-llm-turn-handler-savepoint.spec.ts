@@ -51,8 +51,9 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     const session = new AbortAwareFakeSession([
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
+      { match: /read_order_flow_state/, respond: () => [{ state: null, context: null, version: 0 }] },
       { match: /from core\.property/, respond: () => [] },
-      { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
+      { match: /callback_registrar|insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
     ]);
     const repo = new PostgresRestaurantesRepository(session);
@@ -121,7 +122,7 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     const session = new AbortAwareFakeSession([
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
-      { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
+      { match: /callback_registrar|insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
     ]);
     const repo = new PostgresRestaurantesRepository(session);
@@ -138,6 +139,30 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     expect(result.reply).not.toMatch(/ya avisé/i);
     expect(session.calls.some((c) => c.startsWith("savepoint sp_fallback_"))).toBe(true);
     expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_fallback_"))).toBe(true);
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
+  });
+});
+
+describe("lectura de la cotizacion vigente al arrancar el turno (guardia de cifras entre turnos) contra una base sin la maquina de estados", () => {
+  it("read_order_flow_state no existe (42883): el turno sigue, usa SAVEPOINT y la sesion queda utilizable (nunca 25P02)", async () => {
+    const organizationId = randomUUID();
+    const sinFuncion = Object.assign(new Error("function restaurantes.read_order_flow_state does not exist"), { code: "42883" });
+    const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
+      { match: /read_order_flow_state/, respond: () => sinFuncion },
+      { match: /from core\.property/, respond: () => [] },
+      { match: /select 1/, respond: () => [] },
+    ]);
+    const repo = new PostgresRestaurantesRepository(session);
+    const gateway = makeGateway();
+    gateway.registerLadder("default", [new FakeLlmProvider({ id: "p", script: (): LlmCompletionResult => ({ text: "Hola, ¿qué le gustaría pedir?", model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 }) })]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
+    const handler = createLlmWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+
+    const result = await handler.handleInboundMessage({ organizationId, phone: "+5219990000000", messages: [{ role: "user", content: "hola" }], customer: NEW_CUSTOMER });
+
+    expect(result.reply).toMatch(/pedir/i);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
     await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
   });
 });

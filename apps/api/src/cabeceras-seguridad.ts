@@ -3,11 +3,10 @@
 // estática (ver `docs/SEGURIDAD-CABECERAS.md` para el detalle y para cómo
 // promover la CSP de la SPA de Report-Only a enforcing).
 //
-// Esta API responde SOLO JSON/redirecciones/texto plano (ninguna ruta
-// devuelve HTML), así que aquí la CSP SÍ es enforcing y restrictiva:
-// `default-src 'none'` no puede romper nada que una respuesta JSON necesite.
-// La CSP de la SPA (que sí carga scripts/estilos/fuentes) vive aparte y es
-// Report-Only.
+// Esta API responde JSON/redirecciones/texto plano, así que aquí la CSP SÍ es
+// enforcing y restrictiva: `default-src 'none'` no puede romper nada que una
+// respuesta JSON necesite. Una respuesta text/html queda fuera de esa CSP (la CSP de
+// la SPA vive en `vercel.json` y es Report-Only).
 //
 // Política "no pisar": si una ruta ya fijó una de estas cabeceras a propósito,
 // se respeta (se asigna solo si falta). Se aplica también a respuestas de
@@ -33,7 +32,9 @@ export const CABECERAS_SEGURIDAD_API: Readonly<Record<string, string>> = {
 export function cabecerasSeguridadApi(): MiddlewareHandler {
   return async (c, next) => {
     await next();
+    const esHtml = (c.res.headers.get("Content-Type") ?? "").toLowerCase().startsWith("text/html");
     for (const [nombre, valor] of Object.entries(CABECERAS_SEGURIDAD_API)) {
+      if (nombre === "Content-Security-Policy" && esHtml) continue;
       if (!c.res.headers.has(nombre)) c.header(nombre, valor);
     }
   };

@@ -127,3 +127,9 @@ Comprobación tras `--modo=todo`: `select count(*) from core.organization where 
 - Pruebas unitarias: el perfil de volumen (cifras reales de T7), el comando `demo:pm` (orden y salvaguardas), el evaluador del verificador y **las cifras del guion contra el motor de pedidos** (`demo-pm-guion.spec.ts`).
 - **No** verifica el comportamiento del LLM (depende de la llave y del modelo): las reglas duras (mínimo, alcohol, múltiplos, propina, horario, alergia) las aplica el servidor y están cubiertas por pruebas;
   la conversación libre se valida con el guion, que marca qué es **[Servidor]** y qué **[Agente]**.
+
+## Pendiente de PM: piezas por orden de flautas, alitas y crujientes
+
+El menú vende estos productos por **orden** y el repo **no trae confirmado** cuántas piezas trae cada una (el pendiente P-v2-08 y el cuestionario dicen «alitas: creemos 7», «crujientes: 14 a 16»; de las flautas no hay cifra). Por eso `buscar_producto` devuelve `pack_size: null` y, en su lugar, un `unidad_de_venta` que le dice al agente que el precio es por orden, que `requested_quantity` cuenta órdenes y que no invente piezas (R10 T7-031).
+
+Falta que PM confirme: (1) piezas por orden de las 7 Flautas de PM (¿todas iguales?), (2) piezas por orden de Alitas de Pollo, (3) piezas por orden de Crujientes de Pechuga de Pollo. Cargarlo en la base real es decisión de Javier: al agregar «(orden de N)» al nombre del producto, `extraerPackSize` lo toma y el aviso deja de salir solo. El seed del repo no cambia datos de la base real.

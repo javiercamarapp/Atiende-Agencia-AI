@@ -22,22 +22,27 @@
 // de lógica: mismos props, mismo estado, mismas llamadas de red, misma condición
 // de cada rama.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import { Plus, X } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   Checkbox,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
+  FormField,
   Input,
-  Label,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Textarea,
+  notify,
+  useConfirm,
 } from "@atiende/ui";
+import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import {
   asegurarSeguridadFnb,
   confirmarCocinaFnb,
@@ -61,6 +66,7 @@ const EMPTY_DRAFT_ITEM: DraftItem = { nombre: "", notas: "" };
 export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesShellContext) {
   const canTomarPedido = TOMAR_PEDIDO_ROLES.has(role);
   const canConfirmarCocina = CONFIRMAR_COCINA_ROLES.has(role);
+  const { pedirTexto, dialogo } = useConfirm();
 
   const [pedidos, setPedidos] = useState<readonly FnbPedido[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,8 +115,7 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
     setFormError(null);
   }
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleCreate() {
     setFormError(null);
     const items: FnbOrderItem[] = draftItems
       .map((it) => ({ nombre: it.nombre.trim(), notas: it.notas.trim() }))
@@ -128,6 +133,7 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
       });
       resetForm();
       setShowForm(false);
+      notify.success("Pedido tomado.");
       await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "No se pudo crear el pedido.");
@@ -137,11 +143,18 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
   }
 
   async function handleConfirmarCocina(pedido: FnbPedido) {
-    const nota = window.prompt("Nota de confirmación de cocina (opcional):") ?? undefined;
+    const nota = await pedirTexto({
+      titulo: "Confirmar en cocina",
+      descripcion: "Confirma que cocina revisó la alergia o restricción declarada de este pedido.",
+      confirmar: "Confirmar en cocina",
+      campo: { etiqueta: "Nota de confirmación de cocina (opcional)", requerido: false, multilinea: true },
+    });
+    if (nota === null) return;
     setBusyId(pedido.id);
     setError(null);
     try {
       await confirmarCocinaFnb(fetch, apiBaseUrl, token, propertyId, pedido.id, nota || undefined);
+      notify.success("Pedido confirmado en cocina.");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo confirmar en cocina.");
@@ -155,6 +168,7 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
     setError(null);
     try {
       await asegurarSeguridadFnb(fetch, apiBaseUrl, token, propertyId, pedido.id);
+      notify.success("Seguridad al huésped asegurada.");
       await load();
     } catch (err) {
       // El servidor responde 409 (fail-closed) si intenta asegurar sin confirmación
@@ -168,70 +182,67 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-display font-semibold text-foreground">Pedidos F&amp;B</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Guardia de alergias (REQ-AB-004): con alergia/restricción declarada, nadie puede afirmarle al huésped que el platillo es seguro hasta que cocina lo confirme.
-          </p>
-        </div>
-        {canTomarPedido && (
-          <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
-            {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
-            {showForm ? "Cancelar" : "Tomar pedido"}
-          </Button>
-        )}
-      </header>
+      <PageHeader
+        titulo="Pedidos F&B"
+        descripcion="Guardia de alergias (REQ-AB-004): con alergia o restricción declarada, nadie puede afirmarle al huésped que el platillo es seguro hasta que cocina lo confirme."
+        acciones={
+          canTomarPedido ? (
+            <Button type="button" iconLeft={<Plus className="size-4" strokeWidth={1.75} />} onClick={() => setShowForm(true)}>
+              Tomar pedido
+            </Button>
+          ) : undefined
+        }
+      />
 
-      {showForm && canTomarPedido && (
-        <Card className="max-w-lg">
-          <CardContent className="p-4">
-            <form onSubmit={handleCreate} className="flex flex-col gap-3">
-              <div>
-                <Label htmlFor="fnb-room">Habitación (opcional)</Label>
-                <Input id="fnb-room" value={roomId} onChange={(e) => setRoomId(e.target.value)} className="mt-1" />
-              </div>
+      {canTomarPedido && (
+        <FormDialog
+          open={showForm}
+          onOpenChange={(o) => {
+            setShowForm(o);
+            if (!o) setFormError(null);
+          }}
+          titulo="Tomar pedido"
+          subtitulo="Captura los platillos y declara cualquier alergia o restricción."
+          onGuardar={() => void handleCreate()}
+          guardando={creating}
+          textoBotonGuardar="Tomar pedido"
+          anchoClase="max-w-2xl"
+        >
+          <div className="grid gap-4">
+            <FormField label="Habitación (opcional)">
+              <Input value={roomId} onChange={(e) => setRoomId(e.target.value)} />
+            </FormField>
 
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-semibold text-foreground">Platillos</span>
-                {draftItems.map((item, index) => (
-                  <div key={index} className="flex gap-2 items-start">
-                    <Input value={item.nombre} onChange={(e) => updateDraftItem(index, { nombre: e.target.value })} placeholder="Nombre del platillo" className="flex-1" />
-                    <Input value={item.notas} onChange={(e) => updateDraftItem(index, { notas: e.target.value })} placeholder="Notas (opcional)" className="flex-1" />
-                    <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={() => removeDraftItem(index)} disabled={draftItems.length <= 1}>
-                      <X className="w-4 h-4" strokeWidth={1.75} />
-                    </Button>
-                  </div>
-                ))}
-                <Button type="button" variant="outline" size="sm" className="self-start" onClick={addDraftItem}>
-                  + Agregar platillo
-                </Button>
-              </div>
-
-              <div>
-                <Label htmlFor="fnb-notas">Notas generales (opcional)</Label>
-                <Textarea
-                  id="fnb-notas"
-                  value={notas}
-                  onChange={(e) => setNotas(e.target.value)}
-                />
-              </div>
-
-              <label className="flex items-center gap-2 text-sm text-foreground">
-                <Checkbox checked={alergiaDeclarada} onChange={(e) => setAlergiaDeclarada(e.target.checked)} />
-                El huésped declaró una alergia/restricción alimentaria
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Aunque dejes esto sin marcar, el servidor revisa las notas de texto libre y marca el pedido igual si detecta (o no logra descartar) una alergia — fail-closed, ver fnbAllergyGuard.ts.
-              </p>
-
-              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
-              <Button type="submit" disabled={creating}>
-                {creating ? "Enviando…" : "Tomar pedido"}
+            <div className="grid gap-2">
+              <span className="text-sm font-semibold text-foreground">Platillos</span>
+              {draftItems.map((item, index) => (
+                <div key={index} className="flex gap-2 items-start">
+                  <Input aria-label={`Platillo ${index + 1}`} value={item.nombre} onChange={(e) => updateDraftItem(index, { nombre: e.target.value })} placeholder="Nombre del platillo" className="flex-1" />
+                  <Input aria-label={`Notas del platillo ${index + 1}`} value={item.notas} onChange={(e) => updateDraftItem(index, { notas: e.target.value })} placeholder="Notas (opcional)" className="flex-1" />
+                  <Button type="button" variant="outline" size="icon" aria-label={`Quitar platillo ${index + 1}`} onClick={() => removeDraftItem(index)} disabled={draftItems.length <= 1}>
+                    <X className="size-4" strokeWidth={1.75} />
+                  </Button>
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="self-start" onClick={addDraftItem}>
+                + Agregar platillo
               </Button>
-            </form>
-          </CardContent>
-        </Card>
+            </div>
+
+            <FormField label="Notas generales (opcional)">
+              <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} />
+            </FormField>
+
+            <FormField
+              label="El huésped declaró una alergia/restricción alimentaria"
+              hint="Aunque dejes esto sin marcar, el servidor revisa las notas de texto libre y marca el pedido igual si detecta (o no logra descartar) una alergia — fail-closed, ver fnbAllergyGuard.ts."
+            >
+              <Checkbox checked={alergiaDeclarada} onChange={(e) => setAlergiaDeclarada(e.target.checked)} />
+            </FormField>
+
+            {formError && <Callout tone="danger">{formError}</Callout>}
+          </div>
+        </FormDialog>
       )}
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
@@ -248,7 +259,7 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
                   <div>
                     <p className="font-semibold text-foreground">{p.roomId ? `Habitación ${p.roomId}` : "Sin habitación"}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {p.items.map((it) => it.nombre).join(", ")} · Tomado: {new Date(p.creadoEn).toLocaleString("es-MX")}
+                      {p.items.map((it) => it.nombre).join(", ")} · Tomado: {fechaHoraEsMx(p.creadoEn)}
                     </p>
                   </div>
                   {p.alergiaDeclarada && (
@@ -274,14 +285,14 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
                 )}
 
                 <p className={`mt-2 text-sm ${p.seguridadAseguradaEn ? "text-success" : "text-foreground"}`}>{p.mensajeSeguridad}</p>
-                {p.seguridadAseguradaEn && <p className="mt-0.5 text-xs text-muted-foreground">Asegurado el {new Date(p.seguridadAseguradaEn).toLocaleString("es-MX")}</p>}
-                {p.cocineroConfirmoEn && <p className="mt-0.5 text-xs text-muted-foreground">Cocina confirmó el {new Date(p.cocineroConfirmoEn).toLocaleString("es-MX")}</p>}
+                {p.seguridadAseguradaEn && <p className="mt-0.5 text-xs text-muted-foreground">Asegurado el {fechaHoraEsMx(p.seguridadAseguradaEn)}</p>}
+                {p.cocineroConfirmoEn && <p className="mt-0.5 text-xs text-muted-foreground">Cocina confirmó el {fechaHoraEsMx(p.cocineroConfirmoEn)}</p>}
 
                 {canConfirmarCocina && (
                   <div className="mt-2.5 flex gap-2 flex-wrap">
                     {pendienteConfirmar && (
-                      <Button type="button" size="sm" onClick={() => void handleConfirmarCocina(p)} disabled={busyId === p.id}>
-                        {busyId === p.id ? "…" : "Confirmar en cocina"}
+                      <Button type="button" size="sm" onClick={() => void handleConfirmarCocina(p)} loading={busyId === p.id} disabled={busyId === p.id}>
+                        Confirmar en cocina
                       </Button>
                     )}
                     {!p.seguridadAseguradaEn && (
@@ -290,10 +301,11 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
                         variant="outline"
                         size="sm"
                         onClick={() => void handleAsegurarSeguridad(p)}
+                        loading={busyId === p.id}
                         disabled={busyId === p.id || !p.puedeAsegurarSeguridad}
                         title={!p.puedeAsegurarSeguridad ? "Falta la confirmación de cocina para poder asegurar seguridad." : undefined}
                       >
-                        {busyId === p.id ? "…" : "Asegurar seguridad al huésped"}
+                        Asegurar seguridad al huésped
                       </Button>
                     )}
                   </div>
@@ -303,6 +315,7 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
           );
         })}
       </div>
+      {dialogo}
     </PageContainer>
   );
 }

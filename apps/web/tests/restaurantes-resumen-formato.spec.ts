@@ -5,7 +5,9 @@ describe("resumen-formato (Resumen de restaurantes)", () => {
   it("el saludo usa la hora de la zona de la sucursal", () => {
     const f = new Date("2026-10-02T01:30:00Z");
     expect(horaEnZona(f, "America/Mexico_City")).toBe(19);
-    expect(saludoEnZona(f, "America/Mexico_City")).toBe("Buenas noches");
+    // Misma franja que el backend (saludoPorHora): buenas tardes hasta las 19:59, buenas noches desde las 20:00.
+    expect(saludoEnZona(f, "America/Mexico_City")).toBe("Buenas tardes");
+    expect(saludoEnZona(new Date("2026-10-02T02:00:00Z"), "America/Mexico_City")).toBe("Buenas noches");
     expect(saludoEnZona(f, "Asia/Tokyo")).toBe("Buenos días");
     expect(saludoEnZona(new Date("2026-10-02T20:00:00Z"), "America/Mexico_City")).toBe("Buenas tardes");
   });

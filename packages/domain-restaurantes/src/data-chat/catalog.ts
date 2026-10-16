@@ -1,4 +1,4 @@
-// Catalogo CERRADO de "Chatea con tus datos" para RESTAURANTES. Ocho herramientas de solo lectura,
+// Catalogo CERRADO de "Chatea con tus datos" para RESTAURANTES. Ocho herramientas de solo lectura (mas las nueve `cfo_*` de CFO-09, en cfo-tools.ts),
 // todas con parametros tipados (periodo, sucursal por nombre, limite, orden) y alcance fijado por
 // el servidor. Para agregar otra vertical: ver docs/DATA-CHAT.md.
 import {
@@ -15,9 +15,11 @@ import {
   type ParsedArgs,
   type ResolvedPeriod,
 } from "@atiende/agent-core/data-chat";
+import { puedeEjecutar } from "../roles.ts";
+import { buildCfoDataChatTools } from "./cfo-tools.ts";
 import { DataChatUnavailableError, type DataChatWindow, type RestaurantesDataChatReader, type SalesGranularity, type VisibleBranch } from "./reader.ts";
 
-const SOURCE_ORDERS = "Pedidos de restaurantes (sin cancelados)";
+const SOURCE_ORDERS = "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)";
 const UNAVAILABLE_MESSAGE = "Esa información todavía no está disponible para tu cuenta (falta activar una actualización). Tus tableros siguen funcionando.";
 
 const BRANCH_PARAM: ParamsSpec = {
@@ -295,7 +297,7 @@ export function buildRestaurantesDataChatTools(reader: RestaurantesDataChatReade
       const r = await reader.recurringCustomers(p.window);
       return {
         status: r.customers === 0 ? "empty" : "ok",
-        ...base(p, "Pedidos de restaurantes (sin cancelados); cliente = por identificador o teléfono, sin mostrar datos personales"),
+        ...base(p, "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cliente = por identificador o teléfono, sin mostrar datos personales"),
         columns: [
           { key: "clientes", label: "Clientes", kind: "integer" },
           { key: "recurrentes", label: "Recurrentes", kind: "integer" },
@@ -337,14 +339,20 @@ export function buildRestaurantesDataChatTools(reader: RestaurantesDataChatReade
     },
   };
 
-  return [ventasPorDia, ventasPorSucursal, productos, ticket, canal, horas, recurrentes, promociones];
+  return [ventasPorDia, ventasPorSucursal, productos, ticket, canal, horas, recurrentes, promociones, ...buildCfoDataChatTools(reader)];
 }
 
-export function buildRestaurantesDataChatCatalog(reader: RestaurantesDataChatReader): DataChatCatalog {
+/** Rol de vertical de quien pregunta: las herramientas `cfo_*` solo existen para quien tiene `cfo.ver` (owner/admin). Sin rol o con un rol desconocido: fail-closed. */
+export interface OpcionesCatalogoRestaurantes {
+  readonly verticalRole?: string | null;
+}
+
+export function buildRestaurantesDataChatCatalog(reader: RestaurantesDataChatReader, opciones: OpcionesCatalogoRestaurantes = {}): DataChatCatalog {
+  const conCfo = puedeEjecutar(opciones.verticalRole, "cfo.ver");
   return {
     vertical: "restaurantes",
     domain: "un restaurante con una o varias sucursales (pedidos por web, llamada de voz y WhatsApp)",
-    tools: buildRestaurantesDataChatTools(reader),
+    tools: buildRestaurantesDataChatTools(reader).filter((t) => conCfo || !t.name.startsWith("cfo_")),
     async describeScope(scope) {
       const visible = await reader.listVisibleBranches(scope.organizationId, scope.allowedPropertyIds);
       if (visible.length === 0) return "No tiene sucursales activas asignadas.";

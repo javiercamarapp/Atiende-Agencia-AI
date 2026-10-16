@@ -17,10 +17,10 @@ export function catalogoRepo(deps: AppDeps, db: TenantDbSession): RentasCatalogo
  *  - `no_disponible` (la migracion 027 aun no esta aplicada en esta base) -> 503 honesto, nunca un 500;
  *  - `rechazado` (regla de negocio de la funcion SQL) -> 403/400/409/404 con su mensaje.
  */
-export function valorOError<T>(res: ResultadoCatalogo<T>, accion: string): T {
+export function valorOError<T>(res: ResultadoCatalogo<T>, accion: string, migracion = "027"): T {
   if (res.estado === "ok") return res.valor;
   if (res.estado === "no_disponible") {
-    throw Errors.serviceUnavailable(`${accion} todavía no está disponible en esta base de datos (falta aplicar la migración 027 de rentas).`);
+    throw Errors.serviceUnavailable(`${accion} todavía no está disponible en esta base de datos (falta aplicar la migración ${migracion} de rentas).`);
   }
   throw errorDeRechazo(res.motivo, res.mensaje);
 }

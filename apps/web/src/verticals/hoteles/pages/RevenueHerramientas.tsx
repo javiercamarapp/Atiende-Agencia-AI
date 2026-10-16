@@ -3,7 +3,7 @@
 // tarifas; capturan el insumo, el servidor valida y calcula, y se muestra su respuesta tal cual (un rechazo se ve como rechazo).
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input, Label, NativeSelect, StatusBadge } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Callout, Checkbox, FormField, Input, NativeSelect, StatusBadge } from "@atiende/ui";
 import { explicarPrecio, verificarCompset, verificarParidad } from "../lib/revenue-client.ts";
 import type { CanalParidad, ExplicacionPrecio, FactorPrecio, VerificacionCompset, VerificacionParidad } from "../lib/revenue-client.ts";
 import { dineroMx } from "../lib/dinero.ts";
@@ -51,71 +51,56 @@ function ExplicarPrecio({ apiBaseUrl, token, propertyId }: RevenueHerramientasPr
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3" aria-label="Explicar un precio">
-      <p className="text-sm font-semibold text-foreground">Explicar un precio recomendado</p>
+      <h3 className="text-sm font-medium text-foreground">Explicar un precio recomendado</h3>
       <div className="grid gap-2 sm:grid-cols-4">
-        <div>
-          <Label htmlFor="exp-fecha">Noche</Label>
+        <FormField label="Noche">
           <Input id="exp-fecha" type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
-        </div>
-        <div>
-          <Label htmlFor="exp-actual">Precio actual</Label>
+        </FormField>
+        <FormField label="Precio actual">
           <Input id="exp-actual" type="number" min="0" step="0.01" value={f.actual} onChange={(e) => setF({ ...f, actual: e.target.value })} />
-        </div>
-        <div>
-          <Label htmlFor="exp-reco">Precio recomendado</Label>
+        </FormField>
+        <FormField label="Precio recomendado">
           <Input id="exp-reco" type="number" min="0" step="0.01" value={f.recomendado} onChange={(e) => setF({ ...f, recomendado: e.target.value })} />
-        </div>
-        <div>
-          <Label htmlFor="exp-moneda">Moneda</Label>
+        </FormField>
+        <FormField label="Moneda">
           <Input id="exp-moneda" value={f.moneda} maxLength={3} onChange={(e) => setF({ ...f, moneda: e.target.value })} />
-        </div>
+        </FormField>
       </div>
       <p className="text-xs text-muted-foreground">Factores (deja vacío el que no aplique):</p>
       <div className="grid gap-2 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="exp-pickup">Pickup vs. esperado (%)</Label>
+        <FormField label="Pickup vs. esperado (%)">
           <Input id="exp-pickup" type="number" step="0.1" value={f.pickup} onChange={(e) => setF({ ...f, pickup: e.target.value })} />
-        </div>
-        <div>
-          <Label htmlFor="exp-compset">Tarifa propia vs. mediana del compset (%)</Label>
+        </FormField>
+        <FormField label="Tarifa propia vs. mediana del compset (%)">
           <Input id="exp-compset" type="number" step="0.1" value={f.compset} onChange={(e) => setF({ ...f, compset: e.target.value })} />
-        </div>
+        </FormField>
         <div className="flex gap-2 sm:col-span-2 flex-wrap">
-          <div className="flex-[2] min-w-[140px]">
-            <Label htmlFor="exp-ev-nombre">Evento</Label>
+          <FormField label="Evento" className="flex-[2] min-w-[140px]">
             <Input id="exp-ev-nombre" value={f.eventoNombre} onChange={(e) => setF({ ...f, eventoNombre: e.target.value })} />
-          </div>
-          <div>
-            <Label htmlFor="exp-ev-impacto">Impacto</Label>
+          </FormField>
+          <FormField label="Impacto">
             <NativeSelect id="exp-ev-impacto" value={f.eventoImpacto} onChange={(e) => setF({ ...f, eventoImpacto: e.target.value as "alza_demanda" | "baja_demanda" })}>
               <option value="alza_demanda">Alza de demanda</option>
               <option value="baja_demanda">Baja de demanda</option>
             </NativeSelect>
-          </div>
-          <div className="flex-1 min-w-[90px]">
-            <Label htmlFor="exp-ev-mag">Magnitud (%)</Label>
+          </FormField>
+          <FormField label="Magnitud (%)" className="flex-1 min-w-[90px]">
             <Input id="exp-ev-mag" type="number" min="0" step="0.1" value={f.eventoMagnitud} onChange={(e) => setF({ ...f, eventoMagnitud: e.target.value })} />
-          </div>
+          </FormField>
         </div>
         <div className="flex gap-2 sm:col-span-2 flex-wrap">
-          <div className="min-w-[90px]">
-            <Label htmlFor="exp-tc-moneda">Divisa</Label>
+          <FormField label="Divisa" className="min-w-[90px]">
             <Input id="exp-tc-moneda" value={f.cambioMoneda} maxLength={3} placeholder="USD" onChange={(e) => setF({ ...f, cambioMoneda: e.target.value })} />
-          </div>
-          <div className="flex-1 min-w-[140px]">
-            <Label htmlFor="exp-tc-var">Variación del tipo de cambio (%)</Label>
+          </FormField>
+          <FormField label="Variación del tipo de cambio (%)" className="flex-1 min-w-[140px]">
             <Input id="exp-tc-var" type="number" step="0.1" value={f.cambioVar} onChange={(e) => setF({ ...f, cambioVar: e.target.value })} />
-          </div>
+          </FormField>
         </div>
       </div>
-      <Button type="submit" size="sm" disabled={busy} className="self-start">
-        {busy ? "Explicando…" : "Explicar precio"}
+      <Button type="submit" size="sm" loading={busy} loadingText="Explicando…" className="self-start">
+        Explicar precio
       </Button>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <Callout tone="danger">{error}</Callout>}
       {res && (
         <div className="flex flex-col gap-1 border-t border-border pt-3 text-sm text-foreground">
           <p className="font-medium">{res.headline}</p>
@@ -170,34 +155,29 @@ function VerificarParidad({ apiBaseUrl, token, propertyId }: RevenueHerramientas
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3" aria-label="Verificar paridad">
-      <p className="text-sm font-semibold text-foreground">Verificar paridad con canales (OTAs)</p>
+      <h3 className="text-sm font-medium text-foreground">Verificar paridad con canales (OTAs)</h3>
       <div className="flex gap-2 flex-wrap">
-        <div>
-          <Label htmlFor="par-modo">Modo</Label>
+        <FormField label="Modo">
           <NativeSelect id="par-modo" value={modo} onChange={(e) => setModo(e.target.value as "bloquea" | "alerta")}>
             <option value="bloquea">Bloquea</option>
             <option value="alerta">Solo alerta</option>
           </NativeSelect>
-        </div>
-        <div>
-          <Label htmlFor="par-propuesta">Tarifa directa propuesta</Label>
+        </FormField>
+        <FormField label="Tarifa directa propuesta">
           <Input id="par-propuesta" type="number" min="0" step="0.01" value={propuesta} onChange={(e) => setPropuesta(e.target.value)} />
-        </div>
+        </FormField>
       </div>
       {canales.map((c, i) => (
         <div key={i} className="flex gap-2 flex-wrap items-end">
-          <div className="flex-[2] min-w-[140px]">
-            <Label htmlFor={`par-canal-${i}`}>Canal</Label>
+          <FormField label="Canal" className="flex-[2] min-w-[140px]">
             <Input id={`par-canal-${i}`} placeholder="booking.com" value={c.channel} onChange={(e) => setCanal(i, { channel: e.target.value })} />
-          </div>
-          <div className="flex-1 min-w-[110px]">
-            <Label htmlFor={`par-ref-${i}`}>Tarifa en el canal</Label>
+          </FormField>
+          <FormField label="Tarifa en el canal" className="flex-1 min-w-[110px]">
             <Input id={`par-ref-${i}`} type="number" min="0" step="0.01" value={c.referenceRate} onChange={(e) => setCanal(i, { referenceRate: e.target.value })} />
-          </div>
-          <div className="flex-1 min-w-[110px]">
-            <Label htmlFor={`par-tol-${i}`}>Tolerancia (%)</Label>
+          </FormField>
+          <FormField label="Tolerancia (%)" className="flex-1 min-w-[110px]">
             <Input id={`par-tol-${i}`} type="number" min="0" max="99.99" step="0.1" value={c.tolerance} onChange={(e) => setCanal(i, { tolerance: e.target.value })} />
-          </div>
+          </FormField>
           {canales.length > 1 && (
             <Button type="button" size="sm" variant="ghost" onClick={() => setCanales((prev) => prev.filter((_, j) => j !== i))}>
               Quitar
@@ -209,15 +189,11 @@ function VerificarParidad({ apiBaseUrl, token, propertyId }: RevenueHerramientas
         <Button type="button" size="sm" variant="outline" onClick={() => setCanales((prev) => [...prev, { channel: "", referenceRate: "", tolerance: "0" }])}>
           Agregar canal
         </Button>
-        <Button type="submit" size="sm" disabled={busy}>
-          {busy ? "Verificando…" : "Verificar paridad"}
-        </Button>
+        <Button type="submit" size="sm" loading={busy} loadingText="Verificando…">
+        Verificar paridad
+      </Button>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <Callout tone="danger">{error}</Callout>}
       {res && (
         <div className="flex flex-col gap-1 border-t border-border pt-3 text-sm text-foreground">
           <StatusBadge tone={res.violations.length === 0 ? "success" : res.allowed ? "warning" : "danger"} className="self-start">
@@ -261,27 +237,21 @@ function VerificarCompset({ apiBaseUrl, token, propertyId }: RevenueHerramientas
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3" aria-label="Verificar compset">
-      <p className="text-sm font-semibold text-foreground">Verificar el benchmark de compset</p>
+      <h3 className="text-sm font-medium text-foreground">Verificar el benchmark de compset</h3>
       <p className="text-xs text-muted-foreground">Un agregado de competidores solo se puede usar con al menos 10 hoteles, 12 meses de histórico y una opinión antimonopolio documentada.</p>
       <div className="flex gap-2 flex-wrap items-end">
-        <div>
-          <Label htmlFor="cs-n">Hoteles competidores</Label>
+        <FormField label="Hoteles competidores">
           <Input id="cs-n" type="number" min="0" step="1" value={competidores} onChange={(e) => setCompetidores(e.target.value)} />
-        </div>
-        <div>
-          <Label htmlFor="cs-m">Meses de histórico</Label>
+        </FormField>
+        <FormField label="Meses de histórico">
           <Input id="cs-m" type="number" min="0" step="1" value={meses} onChange={(e) => setMeses(e.target.value)} />
-        </div>
+        </FormField>
         <Checkbox label="Opinión antimonopolio documentada" checked={opinion} onChange={(e) => setOpinion(e.target.checked)} wrapperClassName="pb-2" />
-        <Button type="submit" size="sm" disabled={busy}>
-          {busy ? "Verificando…" : "Verificar compset"}
-        </Button>
+        <Button type="submit" size="sm" loading={busy} loadingText="Verificando…">
+        Verificar compset
+      </Button>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <Callout tone="danger">{error}</Callout>}
       {res && (
         <div className="flex flex-col gap-1 border-t border-border pt-3 text-sm text-foreground">
           <StatusBadge tone={res.allowed ? "success" : "danger"} className="self-start">

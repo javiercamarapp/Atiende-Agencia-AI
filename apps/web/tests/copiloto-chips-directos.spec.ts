@@ -14,12 +14,13 @@ import { COPILOTO_DESPACHOS } from "../src/lib/copiloto/config/despachos.ts";
 import { COPILOTO_HOTELES } from "../src/lib/copiloto/config/hoteles.ts";
 import { COPILOTO_LICITACIONES } from "../src/lib/copiloto/config/licitaciones.ts";
 import { COPILOTO_RENTAS } from "../src/lib/copiloto/config/rentas.ts";
-import { COPILOTO_RESTAURANTES } from "../src/lib/copiloto/config/restaurantes.ts";
+import { COPILOTO_RESTAURANTES, COPILOTO_RESTAURANTES_SIN_CFO } from "../src/lib/copiloto/config/restaurantes.ts";
 import type { CopilotoConfigVertical } from "../src/lib/copiloto/config/tipos.ts";
 
 const stub = {} as never;
 const CASOS: readonly [string, CopilotoConfigVertical, DataChatCatalog][] = [
-  ["restaurantes", COPILOTO_RESTAURANTES, buildRestaurantesDataChatCatalog(stub)],
+  ["restaurantes", COPILOTO_RESTAURANTES, buildRestaurantesDataChatCatalog(stub, { verticalRole: "owner" })],
+  ["restaurantes (sin cfo.ver)", COPILOTO_RESTAURANTES_SIN_CFO, buildRestaurantesDataChatCatalog(stub, { verticalRole: "staff" })],
   ["hoteles", COPILOTO_HOTELES, buildHotelesDataChatCatalog(stub)],
   ["rentas", COPILOTO_RENTAS, buildRentasDataChatCatalog(stub)],
   ["citas", COPILOTO_CITAS, buildCitasDataChatCatalog(stub)],

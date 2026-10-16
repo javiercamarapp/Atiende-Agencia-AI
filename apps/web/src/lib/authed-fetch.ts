@@ -225,6 +225,12 @@ export async function withAuthRefresh<S extends AuthedSession>(
  * `apiBaseUrl`), `new URL()` lanza — se deja propagar tal cual, un `url` mal
  * formado es un bug del caller, no algo que este helper deba fingir manejar. */
 export function apiBaseUrlFromRequestUrl(url: string): string {
+  // En produccion el bundle se compila con VITE_API_BASE_URL="" (API en el mismo
+  // origen via rewrites de Vercel): `url` llega relativa ("/v1/...") y
+  // `new URL(url)` sin base lanzaba "Failed to construct 'URL': Invalid URL",
+  // tumbando cada panel. Una URL relativa es mismo origen: base "" para que
+  // `${apiBaseUrl}/auth/refresh` (tryRefresh) tambien salga relativa.
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) return "";
   return new URL(url).origin;
 }
 

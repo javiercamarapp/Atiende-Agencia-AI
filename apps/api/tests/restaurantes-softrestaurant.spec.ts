@@ -54,9 +54,9 @@ describe("POST /v1/restaurantes/:orgSlug/orders con SoftRestaurant", () => {
           customer_phone: "9991234567",
           customer_address: "Calle 10 x 5 y 7",
           items: [{ product_id: base.products.cocaCola, requested_quantity: 2 }],
-          source: "web",
+          source: "voice",
           payment_method: "efectivo",
-        }, { origin: "http://localhost:5173" }),
+        }, { "x-atiende-tool-secret": "test-voice-tool-secret" }),
       );
     return { base, store, fake, crear };
   }
@@ -77,7 +77,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders con SoftRestaurant", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const res = await buildApp(base.deps).request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
-      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "C", customer_phone: "9991234567", canal: "recoger", payment_method: "efectivo", items: [{ product_id: base.products.cocaCola, requested_quantity: 1 }], source: "web" }, { origin: "http://localhost:5173" }),
+      jsonRequestInit({ branch_slug: "fco-montejo", customer_name: "C", customer_phone: "9991234567", canal: "recoger", payment_method: "efectivo", items: [{ product_id: base.products.cocaCola, requested_quantity: 1 }], source: "voice" }, { "x-atiende-tool-secret": "test-voice-tool-secret" }),
     );
     expect(res.status).toBe(200);
     expect(Object.keys((await res.json()) as object)).toEqual(["order"]);
@@ -148,7 +148,12 @@ describe("rutas de staff de SoftRestaurant", () => {
     const t = await setup();
     const res = await t.app.request(`${t.base}/config`, authedGet(t.ctx.staff.staffSucursalA.token));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ modo: "apagado", disponible: true, adaptador: { nombre: "fake", esReal: false } });
+    expect(await res.json()).toEqual({
+      modo: "apagado",
+      disponible: true,
+      adaptador: { nombre: "fake", esReal: false },
+      umbralCapturaManual: { porOmisionMin: 5, minimo: 1, maximo: 240, disponible: true, porSucursal: {} },
+    });
     expect((await t.app.request(`${t.base}/config`, authedGet(t.ctx.staff.repartidor.token))).status).toBe(403);
     expect((await t.app.request(`${t.base}/config`)).status).toBe(401);
   });

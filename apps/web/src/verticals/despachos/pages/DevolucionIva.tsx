@@ -39,6 +39,7 @@ import {
   statusTone,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -199,9 +200,10 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
         <Table className="min-w-[1200px] text-xs">
+          <TableCaption className="sr-only">Captura de facturas del expediente de devolución de IVA</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">UUID *</TableHead>
+              <TableHead className="sticky left-0 z-10 bg-canvas h-9">UUID *</TableHead>
               <TableHead className="h-9">RFC emisor *</TableHead>
               <TableHead className="h-9">Emisor</TableHead>
               <TableHead className="h-9">RFC receptor *</TableHead>
@@ -219,7 +221,7 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
           <TableBody>
             {filas.map((f) => (
               <TableRow key={f.key}>
-                <TableCell className="p-1.5">
+                <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                   <Label htmlFor={`fac-uuid-${f.key}`} className="sr-only">
                     UUID
                   </Label>
@@ -357,9 +359,10 @@ function DeclaracionesEditor({ filas, setFilas }: { filas: readonly DeclaracionF
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
         <Table className="min-w-[640px] text-xs">
+          <TableCaption className="sr-only">Captura de la declaración de IVA</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">Mes *</TableHead>
+              <TableHead className="sticky left-0 z-10 bg-canvas h-9">Mes *</TableHead>
               <TableHead className="h-9">Año *</TableHead>
               <TableHead className="h-9">IVA cobrado</TableHead>
               <TableHead className="h-9">IVA pagado</TableHead>
@@ -371,7 +374,7 @@ function DeclaracionesEditor({ filas, setFilas }: { filas: readonly DeclaracionF
           <TableBody>
             {filas.map((d) => (
               <TableRow key={d.key}>
-                <TableCell className="p-1.5">
+                <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                   <Label htmlFor={`decl-mes-${d.key}`} className="sr-only">
                     Mes
                   </Label>
@@ -770,25 +773,26 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
           {diotEntries && diotEntries.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-border">
               <Table className="text-xs">
+                <TableCaption className="sr-only">Proveedores reportados en la DIOT</TableCaption>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9">RFC tercero</TableHead>
+                    <TableHead className="sticky left-0 z-10 bg-canvas h-9">RFC tercero</TableHead>
                     <TableHead className="h-9">Nombre</TableHead>
-                    <TableHead className="h-9">Monto neto</TableHead>
-                    <TableHead className="h-9">IVA trasladado</TableHead>
-                    <TableHead className="h-9">IVA acreditable</TableHead>
-                    <TableHead className="h-9"># CFDI</TableHead>
+                    <TableHead className="text-right h-9">Monto neto</TableHead>
+                    <TableHead className="text-right h-9">IVA trasladado</TableHead>
+                    <TableHead className="text-right h-9">IVA acreditable</TableHead>
+                    <TableHead className="text-right h-9"># CFDI</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {diotEntries.map((e, i) => (
                     <TableRow key={i}>
-                      <TableCell className="p-2 font-mono">{e.rfcTercero}</TableCell>
+                      <TableCell className="sticky left-0 z-10 bg-card p-2 font-mono">{e.rfcTercero}</TableCell>
                       <TableCell className="p-2">{e.nombre || "—"}</TableCell>
-                      <TableCell className="p-2 tabular-nums">{formatMoney(e.montoNeto)}</TableCell>
-                      <TableCell className="p-2 tabular-nums">{formatMoney(e.ivaTrasladado)}</TableCell>
-                      <TableCell className="p-2 tabular-nums">{formatMoney(e.ivaAcreditable)}</TableCell>
-                      <TableCell className="p-2 tabular-nums">{e.foliosFiscales.length}</TableCell>
+                      <TableCell className="text-right p-2 tabular-nums">{formatMoney(e.montoNeto)}</TableCell>
+                      <TableCell className="text-right p-2 tabular-nums">{formatMoney(e.ivaTrasladado)}</TableCell>
+                      <TableCell className="text-right p-2 tabular-nums">{formatMoney(e.ivaAcreditable)}</TableCell>
+                      <TableCell className="text-right p-2 tabular-nums">{e.foliosFiscales.length}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -829,9 +833,10 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
               <p className="mb-1 text-xs font-semibold text-foreground">Facturas vs DIOT</p>
               <div className="overflow-x-auto rounded-xl border border-border">
                 <Table className="text-xs">
+                  <TableCaption className="sr-only">Comparativo de facturas contra DIOT</TableCaption>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">Factura</TableHead>
+                      <TableHead className="sticky left-0 z-10 bg-canvas h-9">Factura</TableHead>
                       <TableHead className="h-9">Estatus</TableHead>
                       <TableHead className="h-9">Detalle</TableHead>
                     </TableRow>
@@ -839,7 +844,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
                   <TableBody>
                     {facturasVsDiot.map((r, i) => (
                       <TableRow key={i}>
-                        <TableCell className="p-2 font-mono text-xs">{r.facturaUuid}</TableCell>
+                        <TableCell className="sticky left-0 z-10 bg-card p-2 font-mono text-xs">{r.facturaUuid}</TableCell>
                         <TableCell className="p-2">
                           <EstatusBadge status={r.status} />
                         </TableCell>
@@ -856,20 +861,21 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
               <p className="mb-1 text-xs font-semibold text-foreground">DIOT vs declaración</p>
               <div className="overflow-x-auto rounded-xl border border-border">
                 <Table className="text-xs">
+                  <TableCaption className="sr-only">Comparativo de DIOT contra declaración</TableCaption>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="h-9">IVA DIOT</TableHead>
-                      <TableHead className="h-9">IVA declaración</TableHead>
-                      <TableHead className="h-9">Diferencia</TableHead>
+                      <TableHead className="text-right sticky left-0 z-10 bg-canvas h-9">IVA DIOT</TableHead>
+                      <TableHead className="text-right h-9">IVA declaración</TableHead>
+                      <TableHead className="text-right h-9">Diferencia</TableHead>
                       <TableHead className="h-9">Estatus</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {diotVsDeclaracion.map((r, i) => (
                       <TableRow key={i}>
-                        <TableCell className="p-2 tabular-nums">{formatMoney(r.diotIvaTotal)}</TableCell>
-                        <TableCell className="p-2 tabular-nums">{formatMoney(r.declaracionIvaAcreditable)}</TableCell>
-                        <TableCell className="p-2 tabular-nums">{formatMoney(r.diferencia)}</TableCell>
+                        <TableCell className="text-right sticky left-0 z-10 bg-card p-2 tabular-nums">{formatMoney(r.diotIvaTotal)}</TableCell>
+                        <TableCell className="text-right p-2 tabular-nums">{formatMoney(r.declaracionIvaAcreditable)}</TableCell>
+                        <TableCell className="text-right p-2 tabular-nums">{formatMoney(r.diferencia)}</TableCell>
                         <TableCell className="p-2">
                           <EstatusBadge status={r.status} />
                         </TableCell>

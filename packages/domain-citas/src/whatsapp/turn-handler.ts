@@ -7,6 +7,17 @@
 import type { ConversationMessage } from "../repository.ts";
 import type { CitasCustomerContext } from "../customers.ts";
 
+/**
+ * Resultado de un turno. `handoff`: el asistente no pudo responder y pide que una persona continue. `motivo` es el texto que ve el equipo;
+ * `replyConAviso` reemplaza a `reply` SOLO si la solicitud de humano quedo registrada (nunca se dice "ya avise" sin aviso).
+ */
+export interface CitasTurnOutcome {
+  readonly reply: string;
+  readonly appointmentId: string | null;
+  readonly propertyId: string | null;
+  readonly handoff?: { readonly motivo: string; readonly replyConAviso: string };
+}
+
 export interface WhatsAppTurnHandler {
   handleInboundMessage(args: {
     readonly organizationId: string;
@@ -15,7 +26,7 @@ export interface WhatsAppTurnHandler {
      * diseño Fase 2 §2.5) — nunca tool_calls/resultados crudos. */
     readonly messages: readonly ConversationMessage[];
     readonly customer: CitasCustomerContext;
-  }): Promise<{ readonly reply: string; readonly appointmentId: string | null; readonly propertyId: string | null }>;
+  }): Promise<CitasTurnOutcome>;
 }
 
 /**

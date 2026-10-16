@@ -38,6 +38,19 @@ describe("GeminiLiveProvider", () => {
     expect(body.bidiGenerateContentSetup.systemInstruction.parts[0].text).toContain("Hola, le atiende el asistente virtual.");
   });
 
+  it("con herramientas: el token efimero las fija como functionDeclarations; sin ellas no lleva tools", async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ name: "auth_tokens/abc123" }), { status: 200 }));
+    const p = new GeminiLiveProvider({ apiKey: "test-gemini-api-key", fetchFn: fetchFn as unknown as typeof fetch, ahora: () => AHORA });
+    await p.emitirSesionPreview(entrada);
+    await p.emitirSesionPreview({ ...entrada, herramientas: [{ name: "cotizar_pedido", description: "Cotiza", parameters: { type: "object", properties: { branch_slug: { type: "string" } }, required: ["branch_slug"] } }] });
+    const sin = JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    const con = JSON.parse((fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1].body as string);
+    expect(sin.bidiGenerateContentSetup.tools).toBeUndefined();
+    expect(con.bidiGenerateContentSetup.tools[0].functionDeclarations).toEqual([
+      { name: "cotizar_pedido", description: "Cotiza", parameters: { type: "object", properties: { branch_slug: { type: "string" } }, required: ["branch_slug"] } },
+    ]);
+  });
+
   it("errores del proveedor: HTTP no ok, respuesta ilegible, sin token, red caida y voz fuera del catalogo", async () => {
     const con = (fetchFn: unknown) => new GeminiLiveProvider({ apiKey: "k", fetchFn: fetchFn as typeof fetch, ahora: () => AHORA });
     await expect(con(async () => new Response("no", { status: 403 })).emitirSesionPreview(entrada)).rejects.toMatchObject({ name: "VozProveedorError", estado: 403 });

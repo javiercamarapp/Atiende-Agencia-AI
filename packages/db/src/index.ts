@@ -47,7 +47,7 @@ export type { SeedOrganization, SeedMembership } from "./in-memory-core-reposito
 export { PostgresCoreRepository } from "./postgres-core-repository.ts";
 export { InMemoryTenancyEngine } from "./in-memory-tenancy-engine.ts";
 export type { SeedTenancyProperty, SeedTenancyMembership } from "./in-memory-tenancy-engine.ts";
-export { openManagedPostgres, AbortedTransactionCommitError } from "./managed-postgres-engine.ts";
+export { openManagedPostgres, AbortedTransactionCommitError, DatabaseBusyError, admissionLimits } from "./managed-postgres-engine.ts";
 export type { ManagedPostgresConfig, ManagedPostgresEngine } from "./managed-postgres-engine.ts";
 export { runWithSavepointFallback } from "./savepoint-fallback.ts";
 export * from "./notificaciones/index.ts";
@@ -270,3 +270,23 @@ export type {
   OrgOnboardingResumenRow,
 } from "./superadmin-organizaciones-ficha-repository.ts";
 export { InMemoryOrgFichaRepository, PostgresOrgFichaRepository } from "./superadmin-organizaciones-ficha-repository.ts";
+export type {
+  AceptacionSuperadmin,
+  EquipoFuente,
+  EquipoInvitacionCodigo,
+  EquipoInvitacionPendiente,
+  EquipoMiembro,
+  EquipoSucursal,
+  InvitacionEquipo,
+  InvitarEquipoInput,
+  OrgEquipo,
+  OrgEquipoRepository,
+} from "./superadmin-alta-equipo-repository.ts";
+export {
+  EquipoInvitacionError,
+  EquipoNoDisponibleError,
+  InMemoryOrgEquipoRepository,
+  PostgresOrgEquipoRepository,
+  enmascararCorreo,
+  traducirErrorEquipo,
+} from "./superadmin-alta-equipo-repository.ts";

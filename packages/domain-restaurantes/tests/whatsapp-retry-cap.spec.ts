@@ -50,7 +50,9 @@ describe("handleInboundWhatsAppMessage (restaurantes) — tope de reintentos: el
       },
       { match: /select restaurantes\.claim_whatsapp_conversation/, respond: () => [{ claim_whatsapp_conversation: true }] },
       { match: /select restaurantes\.append_whatsapp_user_message_once/, respond: () => [] },
-      // Cliente nunca visto -- `lookupCustomer` corta ahí, sin más consultas.
+      // Cliente nunca visto -- `lookupCustomer` corta ahí, sin más consultas. Cliente 360: la memoria llega por
+      // `cliente_memoria` (devuelve null = cliente nuevo); la consulta directa queda para la base sin migrar.
+      { match: /select restaurantes\.cliente_memoria/, respond: () => [{ r: null }] },
       { match: /select id, organization_id, phone, name, order_count from restaurantes\.customers/, respond: () => [] },
       { match: /select restaurantes\.whatsapp_append_turn/, respond: () => [] },
       { match: /select restaurantes\.finish_whatsapp_message/, respond: () => [] },

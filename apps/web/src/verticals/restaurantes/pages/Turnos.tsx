@@ -23,6 +23,31 @@ function mensaje(err: unknown, porDefecto: string): string {
   return err instanceof Error ? err.message : porDefecto;
 }
 
+/** Primer "Turno N" libre (N desde `turnos.length + 1`): un nombre repetido lo rechaza el servidor (QA-restaurantes-R1-botones-08). */
+export function nombreTurnoLibre(turnos: readonly Pick<TurnoWire, "nombre">[]): string {
+  const usados = new Set(turnos.map((t) => t.nombre.trim().toLowerCase()));
+  let n = turnos.length + 1;
+  while (usados.has(`turno ${n}`)) n += 1;
+  return `Turno ${n}`;
+}
+
+/** Mismas reglas que `validarTurnos` del servidor, para avisar en el cliente sin mandar un guardado que se sabe invalido
+ * (QA-restaurantes-R1-botones-05). `null` = valido. */
+export function validarTurnosLocal(turnos: readonly TurnoWire[]): string | null {
+  const nombres = new Set<string>();
+  for (const [i, t] of turnos.entries()) {
+    const n = i + 1;
+    const nombre = t.nombre.trim();
+    if (nombre.length < 1 || nombre.length > 60) return `El turno ${n} necesita un nombre de 1 a 60 caracteres.`;
+    if (nombres.has(nombre.toLowerCase())) return `El nombre "${nombre}" está repetido: cada turno necesita un nombre distinto.`;
+    nombres.add(nombre.toLowerCase());
+    if (t.dias.length < 1) return `El turno "${nombre}" necesita al menos un día.`;
+    if (!t.inicia || !t.termina) return `El turno "${nombre}" necesita hora de inicio y de fin.`;
+    if (t.inicia === t.termina) return `En el turno "${nombre}" la hora de inicio y la de fin no pueden ser iguales.`;
+  }
+  return null;
+}
+
 export function TurnosPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   const puedeEditar = EDITAN.has(role);
   const [turnos, setTurnos] = useState<readonly TurnoWire[] | null>(null);
@@ -30,7 +55,7 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
   const [disponible, setDisponible] = useState(true);
   const [personal, setPersonal] = useState<readonly OrgMember[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<{ readonly tipo: "ok" | "error"; readonly texto: string } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [version, setVersion] = useState(0);
 
@@ -75,14 +100,19 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
 
   async function guardar() {
     if (!turnos) return;
+    const invalido = validarTurnosLocal(turnos);
+    if (invalido) {
+      setAviso({ tipo: "error", texto: invalido });
+      return;
+    }
     setGuardando(true);
     setAviso(null);
     try {
       await guardarTurnos(fetch, apiBaseUrl, token, propertyId, turnos);
-      setAviso("Turnos guardados.");
+      setAviso({ tipo: "ok", texto: "Turnos guardados." });
       setVersion((n) => n + 1);
     } catch (err) {
-      setAviso(mensaje(err, "No se pudieron guardar los turnos."));
+      setAviso({ tipo: "error", texto: mensaje(err, "No se pudieron guardar los turnos.") });
     } finally {
       setGuardando(false);
     }
@@ -192,7 +222,7 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
           {puedeEditar && (
             <div className="flex flex-wrap gap-2">
               {turnos.length < 4 && (
-                <Button variant="outline" onClick={() => setTurnos((a) => [...(a ?? []), turnos.length === 0 ? TURNOS_SUGERIDOS[0]! : { nombre: `Turno ${turnos.length + 1}`, dias: [0, 1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "18:00", miembros: [] }])}>
+                <Button variant="outline" onClick={() => setTurnos((a) => [...(a ?? []), turnos.length === 0 ? TURNOS_SUGERIDOS[0]! : { nombre: nombreTurnoLibre(turnos), dias: [0, 1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "18:00", miembros: [] }])}>
                   Agregar turno
                 </Button>
               )}
@@ -206,7 +236,11 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
               </Button>
             </div>
           )}
-          {aviso && <p role="status" className="m-0 text-sm text-foreground">{aviso}</p>}
+          {aviso && (
+            <p role={aviso.tipo === "error" ? "alert" : "status"} className={aviso.tipo === "error" ? "m-0 text-sm text-destructive" : "m-0 text-sm text-foreground"}>
+              {aviso.texto}
+            </p>
+          )}
         </>
       )}
     </PageContainer>

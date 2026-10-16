@@ -62,7 +62,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -240,6 +240,29 @@ function hasAnyProvider(env: ApiEnv): boolean {
   return Boolean(env.llmProviders.openrouter || env.llmProviders.openai);
 }
 
+/** Modelos que una organizacion de restaurantes puede ELEGIR para un rol (lista permitida de domain-restaurantes). Se registran como alternativas del
+ *  rol (`LlmGateway.registerAlternatives`): no entran a la escalera por defecto y pasan por la MISMA politica de proveedores de EE.UU. (`routingForModel`),
+ *  con el mismo id de escalon (`openrouter:<modelo>`) para compartir el circuit breaker. Sin llave de OpenRouter no hay alternativas (el legado de un
+ *  solo modelo de OpenAI no puede elegir). */
+export function buildAgentModelAlternatives(env: ApiEnv, role: string, models: LlmModelsConfig): LlmProvider[] {
+  const { openrouter } = env.llmProviders;
+  if (!openrouter) return [];
+  const route = resolveRoleRoute(role, models);
+  return rungsDeModelosAgente().map(
+    (rung) =>
+      new OpenRouterProvider({
+        id: `openrouter:${rung.model}`,
+        apiKey: openrouter.apiKey,
+        model: rung.model,
+        params: rung,
+        routing: routingForModel(route, rung.model, openrouter.zdr),
+        countryOfResidence: openrouter.countryOfResidence ?? undefined,
+        appUrl: env.appBaseUrl,
+        appName: OPENROUTER_APP_NAME,
+      }),
+  );
+}
+
 /**
  * Devuelve el `LlmGateway` real con las 8 escaleras (3 pares default/escalated de
  * WhatsApp + 1 de licitaciones + 1 de mensajería de rentas) registradas contra la
@@ -278,6 +301,9 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   for (const role of new Set([...ALL_PRODUCTION_ROLES, SUPERADMIN_COPILOTO_ROLE, ...DATA_CHAT_RETRY_ROLES, ...NEW_PLATFORM_LLM_ROLES])) {
     gateway.registerLadder(role, buildRoleLadder(env, role, models)!);
   }
+  // Modelo elegido por la organizacion para el agente de WhatsApp de restaurantes (ajustes del agente): alternativas del MISMO rol, asi el interruptor
+  // de plataforma, el tope y el registro de uso siguen siendo los del rol.
+  gateway.registerAlternatives(RESTAURANTES_WHATSAPP_AGENT_ROLE, buildAgentModelAlternatives(env, RESTAURANTES_WHATSAPP_AGENT_ROLE, models));
 
   return gateway;
 }

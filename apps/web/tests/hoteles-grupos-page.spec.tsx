@@ -5,6 +5,10 @@
 // y la creacion de la cotizacion con importes en centavos (DS v2: DataTable + useConfirm, nunca window.prompt).
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toastMock, Toaster: () => null }));
+
 import { GruposPage } from "../src/verticals/hoteles/pages/Grupos.tsx";
 import type { HotelesShellContext } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { Bloqueo, BloqueoDetalle, Cotizacion } from "../src/verticals/hoteles/lib/grupos-client.ts";
@@ -13,6 +17,7 @@ import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type 
 let rendered: RenderedComponent | undefined;
 
 afterEach(() => {
+  toastMock.success.mockClear();
   rendered?.unmount();
   rendered = undefined;
   vi.unstubAllGlobals();
@@ -110,7 +115,7 @@ describe("GruposPage", () => {
     rendered = renderComponent(<GruposPage {...ctx("frontdesk")} />);
     await settle();
     expect(buttons("Aceptar y bloquear")).toHaveLength(0);
-    expect(tab("Nueva cotización")).toBeUndefined();
+    expect(buttons("Nueva cotización")).toHaveLength(0);
   });
 
   it("aceptar pide confirmacion (explica cutoff y no sobreventa) y manda POST .../aceptar; luego muestra el pickup", async () => {
@@ -124,7 +129,7 @@ describe("GruposPage", () => {
     await pulsarEnDialogo("Bloquear cuartos");
     await settle();
     expect(writes).toEqual([{ method: "POST", url: "https://api.test/hoteles/prop-1/grupos/cotizaciones/q1/aceptar", body: {} }]);
-    expect(text()).toContain("Cuartos bloqueados.");
+    expect(toastMock.success).toHaveBeenCalledWith("Cuartos bloqueados.", expect.anything());
     expect(text()).toContain("Rooming list — Boda Garcia");
     expect(text()).toContain("3 de 15 cuartos-noche confirmados (20 %)");
   });
@@ -195,14 +200,48 @@ describe("GruposPage", () => {
     expect(writes[0]).toEqual({ method: "POST", url: "https://api.test/hoteles/prop-1/grupos/bloqueos/b1/liberar", body: {} });
   });
 
+  it("agregar huesped a la rooming list: dialogo con campos etiquetados y POST con el cuerpo esperado; Cerrar no escribe", async () => {
+    const { writes } = stub();
+    rendered = renderComponent(<GruposPage {...ctx("reservations")} />);
+    await settle();
+    await abrirTab("Bloqueos y pickup");
+    click(buttons("Ver rooming list")[0]!);
+    await settle();
+    click(buttons("Agregar huésped")[0]!);
+    await settle();
+    click(dialogo()!.querySelector('button[aria-label="Cerrar"]') as HTMLButtonElement);
+    await settle();
+    expect(writes).toHaveLength(0);
+
+    click(buttons("Agregar huésped")[0]!);
+    await settle();
+    const form = dialogo()!.querySelector("form")!;
+    const campo = (label: string) => {
+      const l = Array.from(form.querySelectorAll("label")).find((x) => x.textContent?.includes(label))!;
+      return form.querySelector(`#${CSS.escape(l.getAttribute("for")!)}`) as HTMLInputElement;
+    };
+    changeValue(campo("Habitación") as unknown as HTMLInputElement, "rt1");
+    changeValue(campo("Nombre del huésped"), " Ana Ruiz ");
+    changeValue(campo("Llegada"), "2031-06-12");
+    changeValue(campo("Salida"), "2031-06-14");
+    await submitForm(form);
+    await settle();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ method: "POST", url: "https://api.test/hoteles/prop-1/grupos/bloqueos/b1/huespedes", body: { tipoHabitacionId: "rt1", huesped: "Ana Ruiz", llegada: "2031-06-12", salida: "2031-06-14" } });
+    expect(toastMock.success).toHaveBeenCalledWith("Huésped agregado a la rooming list.", expect.anything());
+  });
+
   it("crear cotizacion: importes en pesos se envian como centavos enteros y la vigencia como ISO; total estimado visible", async () => {
     const { writes } = stub();
     rendered = renderComponent(<GruposPage {...ctx("owner")} />);
     await settle();
-    await abrirTab("Nueva cotización");
-    const form = rendered.container.querySelector("form")!;
-    const inputs = Array.from(form.querySelectorAll("input")) as HTMLInputElement[];
-    const byLabel = (label: string) => inputs.find((i) => i.closest("label")?.textContent?.includes(label))!;
+    click(buttons("Nueva cotización")[0]!);
+    await settle();
+    const form = dialogo()!.querySelector("form")!;
+    const byLabel = (label: string) => {
+      const l = Array.from(form.querySelectorAll("label")).find((x) => x.textContent?.includes(label))!;
+      return form.querySelector(`#${CSS.escape(l.getAttribute("for")!)}`) as HTMLInputElement;
+    };
     changeValue(byLabel("Nombre del grupo"), "Boda Garcia");
     changeValue(byLabel("Llegada"), "2031-06-12");
     changeValue(byLabel("Salida"), "2031-06-15");
@@ -214,7 +253,7 @@ describe("GruposPage", () => {
     changeValue(form.querySelector('input[aria-label="Cuartos 1"]') as HTMLInputElement, "5");
     changeValue(form.querySelector('input[aria-label="Tarifa por noche 1"]') as HTMLInputElement, "1500");
     await settle();
-    expect(text()).toMatch(/Total estimado: .*20,250\.00/);
+    expect(dialogo()!.textContent).toMatch(/Total estimado: .*20,250\.00/);
     await submitForm(form);
     await settle();
     expect(writes).toHaveLength(1);
@@ -225,16 +264,34 @@ describe("GruposPage", () => {
       renglones: [{ tipoHabitacionId: "rt1", cuartos: 5, tarifaCentavos: 150_000 }],
     });
     expect(String(body.vigenteHasta)).toMatch(/^2031-05-0[89]T.*Z$/);
+    expect(toastMock.success).toHaveBeenCalledWith("Cotización creada en borrador: envíala para que corra su vigencia.", expect.anything());
+    expect(dialogo()).toBeNull();
+  });
+
+  it("cerrar el dialogo de nueva cotizacion no crea nada", async () => {
+    const { writes } = stub();
+    rendered = renderComponent(<GruposPage {...ctx("owner")} />);
+    await settle();
+    click(buttons("Nueva cotización")[0]!);
+    await settle();
+    expect(dialogo()).not.toBeNull();
+    click(dialogo()!.querySelector('button[aria-label="Cerrar"]') as HTMLButtonElement);
+    await settle();
+    expect(dialogo()).toBeNull();
+    expect(writes).toHaveLength(0);
   });
 
   it("una tarifa con 3 decimales no se envia: avisa y no crea nada", async () => {
     const { writes } = stub();
     rendered = renderComponent(<GruposPage {...ctx("owner")} />);
     await settle();
-    await abrirTab("Nueva cotización");
-    const form = rendered.container.querySelector("form")!;
-    const inputs = Array.from(form.querySelectorAll("input")) as HTMLInputElement[];
-    const byLabel = (label: string) => inputs.find((i) => i.closest("label")?.textContent?.includes(label))!;
+    click(buttons("Nueva cotización")[0]!);
+    await settle();
+    const form = dialogo()!.querySelector("form")!;
+    const byLabel = (label: string) => {
+      const l = Array.from(form.querySelectorAll("label")).find((x) => x.textContent?.includes(label))!;
+      return form.querySelector(`#${CSS.escape(l.getAttribute("for")!)}`) as HTMLInputElement;
+    };
     changeValue(byLabel("Nombre del grupo"), "Boda Garcia");
     changeValue(byLabel("Llegada"), "2031-06-12");
     changeValue(byLabel("Salida"), "2031-06-15");
@@ -246,7 +303,7 @@ describe("GruposPage", () => {
     await submitForm(form);
     await settle();
     expect(writes).toHaveLength(0);
-    expect(text()).toContain("tarifa en pesos");
+    expect(dialogo()!.textContent).toContain("tarifa en pesos");
   });
 
   it("base sin la migracion 036: avisa y no muestra pestanas", async () => {

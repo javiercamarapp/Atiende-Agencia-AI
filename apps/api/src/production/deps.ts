@@ -1,3 +1,4 @@
+import { buildDemoAgents } from "../demo-agents/production.ts";
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué.
@@ -49,12 +50,15 @@
 // del webhook para su propio `repo` de dedupe/lease (ver
 // `routes/verticals/{restaurantes,hoteles,citas}/whatsapp.ts`), nunca comparte
 // una sesión entre requests.
+import { createHmac } from "node:crypto";
+import { OPCIONES_LOGS, scrubValor } from "@atiende/core-pii";
 import type { HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasAgenteRepository } from "@atiende/domain-hoteles";
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
-import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp } from "@atiende/domain-restaurantes";
+import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -95,6 +99,7 @@ import {
   PostgresCfoZoneRepository,
   PostgresAgentRunRepository,
   PostgresConsolaRepository,
+  PostgresOrgEquipoRepository,
   PostgresOrgFichaRepository,
   PostgresFichasAgenteRepository,
   PostgresContratosRepository,
@@ -105,7 +110,9 @@ import {
   PostgresStaffSecurityRepository,
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
-import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { MetaGraphWhatsAppClient, MetaGraphWhatsAppReader, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { crearLectorTokenMetaGraph } from "../salud/salud-meta.ts";
+import type { SaludMetaDeps } from "../salud/salud-meta.ts";
 import { cifradorAccesoDeEntorno } from "../routes/verticals/rentas/acceso-cipher.ts";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -128,6 +135,7 @@ import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
+import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.ts";
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
 import { resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
@@ -156,20 +164,54 @@ import {
 /** Handler de restaurantes sobre UNA sesion: tambien encola la comanda de SoftRestaurant de los pedidos
  * creados por WhatsApp (mismo helper y mismo cableado que voz/web en public.ts). Produccion no inyecta
  * puerto ni mapeo propios todavia, asi que usa los valores por omision del cableado. */
-export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gateway: NonNullable<AppDeps["llmGateway"]>, softRestaurantDeps: SoftRestaurantDeps = {}): WhatsAppTurnHandler {
+export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gateway: NonNullable<AppDeps["llmGateway"]>, softRestaurantDeps: SoftRestaurantDeps = {}, observabilidad?: ObservabilidadTurno): WhatsAppTurnHandler {
   const repo = new PostgresRestaurantesRepository(db);
   return createRestaurantesLlmWhatsAppTurnHandler(repo, gateway, {
     defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
+    urlFacturacion: urlFacturacionDeEntorno(),
+    // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
+    autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
+    ...(observabilidad ? { observabilidad } : {}),
+    // Ajustes del agente (modelo y temperatura elegidos por la organizacion). El repositorio degrada con SAVEPOINT contra la base sin migrar.
+    leerAjustes: async (organizationId) => {
+      const lectura = await new PostgresAjustesAgenteRepository(db).leer(organizationId);
+      return lectura.configurados ? { modelo: lectura.valor.whatsappModelo, temperatura: temperaturaEfectivaWhatsapp(lectura.valor) } : null;
+    },
   });
 }
 
-function buildRealRestaurantesTurnHandler(engine: TenancyEngine, gateway: NonNullable<AppDeps["llmGateway"]>): WhatsAppTurnHandler {
+/** Enlace de facturación en línea del negocio (variable `PM_URL_FACTURACION`, solo https). Sin ella el agente no inventa uno. */
+export function urlFacturacionDeEntorno(env: NodeJS.ProcessEnv = process.env): string | null {
+  const valor = env.PM_URL_FACTURACION?.trim();
+  if (!valor || valor.length > 300) return null;
+  try {
+    return new URL(valor).protocol === "https:" ? valor : null;
+  } catch {
+    return null;
+  }
+}
+
+/** R-PM-15: eventos por turno de WhatsApp a stdout (linea JSON, mismo transporte que `logEvent`) pasando por el
+ * scrub de PII. El telefono sale solo como HMAC con una llave derivada de `WHATSAPP_APP_SECRET` (etiqueta propia,
+ * distinta de la de la firma del webhook); sin secreto el telefono se omite. Nunca lleva el texto del cliente. */
+export function observabilidadTurnosRestaurantes(whatsappAppSecret: string | null | undefined): ObservabilidadTurno {
+  const llave = whatsappAppSecret ? createHmac("sha256", whatsappAppSecret).update("restaurantes-log-telefono-v1").digest("hex") : "";
+  return {
+    emitir: (evento) => {
+      const limpio = scrubValor(evento, OPCIONES_LOGS) as Record<string, unknown>;
+      console.log(JSON.stringify({ ts: new Date().toISOString(), level: "info", ...limpio }));
+    },
+    hashTelefono: (telefono) => hashTelefonoParaLogs(telefono, llave),
+  };
+}
+
+function buildRealRestaurantesTurnHandler(engine: TenancyEngine, gateway: NonNullable<AppDeps["llmGateway"]>, observabilidad?: ObservabilidadTurno): WhatsAppTurnHandler {
   return {
     handleInboundMessage: (args) =>
       engine.withAppSession({ userId: null }, (db) =>
-        buildRestaurantesTurnHandlerForSession(db, gateway).handleInboundMessage(args),
+        buildRestaurantesTurnHandlerForSession(db, gateway, {}, observabilidad).handleInboundMessage(args),
       ),
   };
 }
@@ -309,7 +351,14 @@ export function buildProductionDeps(): AppDeps {
   // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
-  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates }) }) : undefined;
+  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) }) : undefined;
+
+  // Vigilancia de salud de Meta (token por vencer, timeouts del agente): el lector del token existe solo con WHATSAPP_ACCESS_TOKEN; sin el no se llama a Meta.
+  const saludMeta: SaludMetaDeps = {
+    ...(env.whatsappAccessToken
+      ? { lectorToken: crearLectorTokenMetaGraph(new MetaGraphWhatsAppReader({ accessToken: env.whatsappAccessToken, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }), env.whatsappAccessToken) }
+      : {}),
+  };
 
   // R-32: notas de voz de WhatsApp de restaurantes. Necesita el token de Meta (descarga de media) Y el gateway LLM (transcripcion); sin alguno de
   // los dos queda `undefined` y el webhook conserva el comportamiento anterior (pedir al cliente que escriba).
@@ -321,6 +370,7 @@ export function buildProductionDeps(): AppDeps {
   const modelosLlm = loadLlmModelsConfig(env);
 
   cached = {
+    publicDemoAgents: buildDemoAgents(env, engine),
     env,
     engine,
     coreRepo: new ProductionCoreRepository(engine),
@@ -337,10 +387,18 @@ export function buildProductionDeps(): AppDeps {
     // Voz de restaurantes (migración 025): el adaptador de Gemini solo emite sesiones con
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
+    ajustesAgenteRepo: (db) => new PostgresAjustesAgenteRepository(db),
+    vozLlamadaRepo: (db) => new PostgresVozLlamadaRepository(db),
     // KPI de voz, costo y alertas (migración 035): cada consulta degrada con SAVEPOINT contra la base sin migrar.
     vozKpiRepo: (db) => new PostgresVozKpiRepository(db),
+    // Alertas de voz evaluadas solas en el tick (migración 076): SAVEPOINT contra la base sin migrar.
+    vozAlertasSistema: (db) => evaluarAlertasVozDelSistema(db),
     whatsappKpiRepo: (db) => new PostgresWhatsappKpiRepository(db),
     cierreRepo: (db) => new PostgresCierreRepository(db),
+    // CFO de restaurantes (081/082/083): SAVEPOINT por llamada; contra la base sin migrar responde `disponible: false`.
+    cfoRestaurantesRepo: (db) => new PostgresCfoRestaurantesRepository(db),
+    // Autopiloto (migración 050): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
+    autopilotoRepo: (db) => new PostgresAutopilotoRepository(db),
     repartidorPerfilRepo: (db) => new PostgresRepartidorPerfilRepository(db),
     // Privacidad (migración 030): ARCO, aviso simplificado y retención; cada operación degrada con SAVEPOINT.
     privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
@@ -348,10 +406,11 @@ export function buildProductionDeps(): AppDeps {
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
     // R-19: marca de organizacion demo (migración 037) para el widget publico de chat sin Meta; degrada con SAVEPOINT.
     demoRepo: (db) => new PostgresDemoRepository(db),
-    voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
+    // La vista previa aplica los ajustes de la organizacion (temperatura, ritmo/estilo, conocimiento automatico) sin tocar las rutas de voz.
+    voiceProvider: conAjustesDeVoz(new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }), resolverAjustesVozPostgres(engine)),
     dataChat: buildProductionDataChat(llmGateway, engine),
     turnHandler: llmGateway
-      ? conBitacoraDeTurno(buildRealRestaurantesTurnHandler(engine, llmGateway), { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" })
+      ? conBitacoraDeTurno(buildRealRestaurantesTurnHandler(engine, llmGateway, observabilidadTurnosRestaurantes(env.whatsappAppSecret)), { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" })
       : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: env.stripe.secretKey
@@ -557,6 +616,7 @@ export function buildProductionDeps(): AppDeps {
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
     consolaRepo: (db) => new PostgresConsolaRepository(db),
     orgFichaRepo: (db) => new PostgresOrgFichaRepository(db),
+    orgEquipoRepo: (db) => new PostgresOrgEquipoRepository(db),
     fichasAgenteRepo: (db) => new PostgresFichasAgenteRepository(db),
     agentRunRepo: depsBitacora.agentRunRepo,
     modeloPrincipalDeRol: (role) => resolveRoleRoute(role, modelosLlm).models[0]?.model ?? null,
@@ -581,6 +641,7 @@ export function buildProductionDeps(): AppDeps {
     resumenDiarioLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
+    saludMeta,
     notasDeVoz,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
