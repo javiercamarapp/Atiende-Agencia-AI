@@ -48,8 +48,8 @@ for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1
 done
 
-echo "==> idempotencia: la migracion 088 se re-ejecuta sin error y sin duplicar CHECKs"
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$REPO_ROOT"/supabase/migrations/20240101000399_088_defensa_en_profundidad_pedidos_y_avisos.sql >/dev/null
+echo "==> idempotencia: la migracion 089 se re-ejecuta sin error y sin duplicar CHECKs"
+"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$REPO_ROOT"/supabase/migrations/20240101000401_089_defensa_en_profundidad_pedidos_y_avisos.sql >/dev/null
 
 echo "==> USAGE de schema para authenticated/anon (post-migrations.sql)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/post-migrations.sql" >/dev/null

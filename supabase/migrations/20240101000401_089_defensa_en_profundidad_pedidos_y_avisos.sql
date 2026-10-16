@@ -1,4 +1,4 @@
--- 088 -- Defensa en profundidad de la capa SQL (PM, ronda 12; hallazgos R11-13, R11-15 y R11-16).
+-- 089 -- Defensa en profundidad de la capa SQL (PM, ronda 12; hallazgos R11-13, R11-15 y R11-16).
 --
 -- CONTEXTO. `restaurantes.create_order_idempotent` es SECURITY DEFINER y SOLO la llama la sesion de sistema (el backend), que ya valida todo esto en
 -- TypeScript. Por eso no es un P0: es defensa en profundidad. El dia que un llamador nuevo (otro cron, otra ruta, un script) se salte esa validacion,
@@ -9,13 +9,14 @@
 --      `auth.uid() is not null -> 42501` y los MISMOS GRANT (no se tocan). Se agregan validaciones ANTES de bloquear/insertar:
 --        * R11-15: la sucursal (`property_id`) debe existir en `core.property` y pertenecer a `organization_id`; el cliente (`customer_id`, si viene)
 --          debe existir en `restaurantes.customers` y pertenecer a la misma organizacion. Si no: 42501 (mismo codigo que `callback_registrar_agente`).
---        * R11-16: `total` presente y >= 0; `items` debe ser un arreglo NO vacio de objetos y, si un renglon trae `quantity`, un numero > 0. Si no: 22023.
+--        * R11-16: `total` presente, >= 0 y distinto de NaN; `items` debe ser un arreglo NO vacio de objetos y, si un renglon trae `quantity`, un numero > 0. Si no: 22023.
 --      Una repeticion idempotente de un pedido valido sigue devolviendo el mismo pedido (las validaciones no cambian el resultado de un pedido bueno).
---   2. CHECK en tablas, para quien escriba SIN pasar por la funcion (R11-13 y refuerzo de R11-16). Cada uno se agrega `NOT VALID` (bloqueo minimo, no
---      escanea la tabla) y se intenta `VALIDATE`. Si ALGUNA fila existente de produccion lo viola, el CHECK se QUITA y la migracion NO falla (aviso):
+--   2. CHECK en tablas, para quien escriba SIN pasar por la funcion (R11-13 y refuerzo de R11-16). Cada uno se agrega `NOT VALID` y despues se intenta `VALIDATE`
+--      en la MISMA transaccion de la migracion: el ACCESS EXCLUSIVE del ADD se mantiene durante el escaneo del VALIDATE, asi que NO es sin bloqueo.
+--      Es tolerable en orders y callback_requests, pero conviene aplicarla con poco trafico. Si ALGUNA fila existente de produccion lo viola, el CHECK se QUITA y la migracion NO falla (aviso):
 --      un CHECK `NOT VALID` se vuelve a evaluar en cada UPDATE de la fila, y no queremos que una fila vieja mal formada bloquee un cambio de estado.
 --        * callback_requests.message: largo <= 10000 caracteres (el agente agrega notas con tope de 4000 en total; el margen cubre el texto inicial).
---        * orders.total >= 0 y orders.items es un arreglo JSON. (El "no vacio" y la cantidad > 0 se validan solo en la funcion, no como CHECK de tabla,
+--        * orders.total >= 0 (y no NaN) y orders.items es un arreglo JSON. (El "no vacio" y la cantidad > 0 se validan solo en la funcion, no como CHECK de tabla,
 --          porque son reglas de creacion: un pedido historico ya existente no debe quedar bloqueado para actualizarse.)
 --
 -- ORDEN DE DESPLIEGUE: esta migracion es compatible hacia atras con el codigo actual (el TypeScript ya valida lo mismo). Se puede aplicar ANTES o
@@ -71,7 +72,7 @@ begin
 
   -- R11-16: total no negativo e items = arreglo no vacio de objetos con cantidad positiva.
   v_total := (p_order->>'total')::numeric;
-  if v_total is null or v_total < 0 then
+  if v_total is null or v_total < 0 or v_total = 'NaN'::numeric then
     raise exception 'create_order_idempotent: el total debe ser un numero >= 0' using errcode = '22023';
   end if;
   if jsonb_typeof(p_order->'items') is distinct from 'array' or jsonb_array_length(p_order->'items') = 0 then
@@ -150,7 +151,7 @@ begin
   for r in
     select * from (values
       ('callback_requests', 'callback_requests_message_largo', 'message is null or char_length(message) <= 10000'),
-      ('orders', 'orders_total_no_negativo', 'total >= 0'),
+      ('orders', 'orders_total_no_negativo', $c$total >= 0 and total <> 'NaN'::numeric$c$),
       ('orders', 'orders_items_es_arreglo', $c$jsonb_typeof(items) = 'array'$c$)
     ) as t(tabla, nombre, condicion)
   loop
@@ -165,7 +166,7 @@ begin
       execute format('alter table restaurantes.%I validate constraint %I', r.tabla, r.nombre);
     exception when check_violation then
       execute format('alter table restaurantes.%I drop constraint %I', r.tabla, r.nombre);
-      raise warning '088: % NO se agrego a restaurantes.%: hay filas existentes que lo violan; revisar y corregir esas filas y volver a correr la migracion', r.nombre, r.tabla;
+      raise warning '089: % NO se agrego a restaurantes.%: hay filas existentes que lo violan; revisar y corregir esas filas y volver a correr la migracion', r.nombre, r.tabla;
     end;
   end loop;
 end $$;

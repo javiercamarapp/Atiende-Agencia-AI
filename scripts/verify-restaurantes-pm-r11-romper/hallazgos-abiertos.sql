@@ -4,8 +4,8 @@
 -- Cada linea dice ABIERTO (la sentencia que deberia rechazarse SE EJECUTA) o CORREGIDO (la base ya la rechaza). Cuando un hallazgo salga CORREGIDO, se
 -- mueve su escenario a assertions.sql como `t_esperar_error` y se borra de aqui.
 --
--- R11-13 (aviso con mensaje de 1 MB), R11-15 y R11-16 quedaron CORREGIDOS por la migracion 088 y pasaron a assertions.sql (O12-O22). Aqui queda solo R11-13b
--- (orders.notes sin tope de largo; la migracion 088 no lo cubre a proposito: fuera del alcance de este carril).
+-- R11-13 (aviso con mensaje de 1 MB), R11-15 y R11-16 quedaron CORREGIDOS por la migracion 089 y pasaron a assertions.sql (O12-O22). Aqui queda solo R11-13b
+-- (orders.notes sin tope de largo; la migracion 089 no lo cubre a proposito: fuera del alcance de este carril).
 --
 -- Contexto (historico): `restaurantes.create_order_idempotent` es SECURITY DEFINER y SOLO la llama el backend (sesion de sistema), que ya valida todo esto en TypeScript
 -- (por eso son P2 de defensa en profundidad, no P0): el dia que un llamador nuevo (otro cron, otra ruta, un script) se salte esa validacion, la base no frena.
