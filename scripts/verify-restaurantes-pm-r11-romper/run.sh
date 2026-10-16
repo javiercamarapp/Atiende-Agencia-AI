@@ -56,5 +56,13 @@ echo ""
 "${PSQL_DB[@]}" -f "$HERE/assertions.sql"
 
 echo ""
+echo "==> R12: lo que produce el codigo de ENTRADA (TypeScript real) cabe en jsonb (K1..K7; requiere node 22 con --experimental-transform-types)"
+if command -v node >/dev/null 2>&1; then
+  node --experimental-transform-types --no-warnings "$HERE/entradas-contra-pg.mjs" | "${PSQL_DB[@]}" -v ON_ERROR_STOP=1
+else
+  echo "   (omitido: no hay node en PATH; el gate SQL puro ya corrio)"
+fi
+
+echo ""
 echo "==> hallazgos abiertos de la capa SQL (informativo; ABIERTO = el defecto se reproduce)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=0 -f "$HERE/hallazgos-abiertos.sql" 2>&1 | grep -E "ABIERTO|CORREGIDO" | sed -E 's/^psql:[^ ]+ NOTICE:  //' || true

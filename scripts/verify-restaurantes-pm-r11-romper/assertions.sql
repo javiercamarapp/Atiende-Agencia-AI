@@ -294,4 +294,40 @@ reset role;
 select count(*) as dos_filas_deberia_ser_2 from restaurantes.callback_requests where customer_phone = '+529990000078';
 rollback;
 
+\echo '=== P1. R12: las partes de UNA respuesta larga (misma transaccion) salen del claim en el orden en que se encolaron (migracion 088) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply',
+  case when n = 0 then 'ord-p1:wamid.r12' else 'ord-p1:wamid.r12:' || n end, jsonb_build_object('body', 'parte ' || n)) from generate_series(0, 11) n;
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p1:botones-wamid.r12', '{"body":"botones"}'::jsonb);
+do $$
+declare
+  v_esperado text[] := array['ord-p1:wamid.r12'] || array(select 'ord-p1:wamid.r12:' || n from generate_series(1, 11) n) || array['ord-p1:botones-wamid.r12'];
+  v_visto text;
+  i integer;
+begin
+  -- el cron reclama de a UNA fila por sesion: aqui se reclama de a una hasta agotar la cola de esta organizacion
+  for i in 1 .. 13 loop
+    select c.dedupe_key into v_visto from restaurantes.claim_messaging_outbox_batch(1, 120) c;
+    if v_visto is distinct from v_esperado[i] then
+      raise exception 'la fila % salio del claim como % y se esperaba %', i, v_visto, v_esperado[i];
+    end if;
+  end loop;
+end $$;
+reset role;
+select count(*) as reclamadas_en_orden_deberia_ser_13 from restaurantes.messaging_outbox where dedupe_key like 'ord-p1:%' and status = 'processing';
+rollback;
+
+\echo '=== P2. R12: re-encolar con la misma llave no crea fila nueva y conserva el orden original ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p2:a', '{"body":"a"}'::jsonb);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p2:a:1', '{"body":"b"}'::jsonb);
+select restaurantes.enqueue_messaging_outbox('00000000-0000-0000-0000-0000000f1101', 'whatsapp', 'whatsapp.inbound_reply', 'ord-p2:a', '{"body":"a"}'::jsonb);
+reset role;
+select count(*) as filas_deberia_ser_2 from restaurantes.messaging_outbox where dedupe_key like 'ord-p2:%';
+rollback;
+
 \echo '=== listo: los escenarios con alias deberia_ser_N deben devolver N; los demas deben terminar sin error ==='

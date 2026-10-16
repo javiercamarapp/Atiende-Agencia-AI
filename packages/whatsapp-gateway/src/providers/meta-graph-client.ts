@@ -32,6 +32,9 @@ export const MAX_BUTTON_TITLE_LENGTH = 20;
 /** Límite real de Graph API para el id de un botón de respuesta rápida. */
 export const MAX_BUTTON_ID_LENGTH = 256;
 
+/** Límite real de Graph API para el cuerpo de un mensaje de texto (R11-12b). Más largo = 400 no reintentable; se rechaza ANTES de la red con un error explicado. */
+export const MAX_TEXT_BODY_LENGTH = 4096;
+
 export interface MetaGraphWhatsAppClientOptions {
   /** `WHATSAPP_ACCESS_TOKEN` — token de acceso permanente/de sistema de la Meta App
    *  de plataforma (mismo secreto compartido que `WHATSAPP_APP_SECRET`/
@@ -134,6 +137,9 @@ function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTempl
         action: { buttons: normalized.map(({ id, title }) => ({ type: "reply", reply: { id, title } })) },
       },
     };
+  }
+  if (message.body.length > MAX_TEXT_BODY_LENGTH) {
+    throw new WhatsAppInvalidPayloadError(`el texto mide ${message.body.length} caracteres y Graph API acepta máximo ${MAX_TEXT_BODY_LENGTH}: debe dividirse antes de encolarse`);
   }
   return { messaging_product: "whatsapp", to: message.to, type: "text", text: { body: message.body, preview_url: false } };
 }

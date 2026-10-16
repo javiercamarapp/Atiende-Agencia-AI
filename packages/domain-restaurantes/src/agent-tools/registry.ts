@@ -521,11 +521,19 @@ function tortillaDeEntrada(raw: unknown): TortillaChoice | undefined {
   return isTortillaChoice(t) ? t : undefined;
 }
 
+/** R11-11: solo un numero o una cadena de digitos ("2", " 3 ") es una cantidad. `true`, `[2]`, "0x10", "1e3" o "" ya no se coercionan en silencio: dan NaN y el
+ * dominio (voz/web) o la validacion lenient (WhatsApp) los rechazan con un error accionable. */
+function cantidadEstricta(valor: unknown): number {
+  if (typeof valor === "number") return valor;
+  if (typeof valor === "string" && /^\s*\d+\s*$/.test(valor)) return Number(valor);
+  return Number.NaN;
+}
+
 export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrderItemInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
     const item = (entry ?? {}) as RawItemInput;
-    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity);
+    const qty = cantidadEstricta(item.requested_quantity);
     if (lenient && (!Number.isInteger(qty) || qty < 1)) throw new OrderValidationError(CANTIDAD_NO_NUMERICA_MENSAJE);
     return {
       productId: typeof item.product_id === "string" ? item.product_id : undefined,

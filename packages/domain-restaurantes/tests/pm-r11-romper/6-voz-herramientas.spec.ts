@@ -47,7 +47,7 @@ describe("R11-6A voz: lo que el modelo de voz manda no cambia precio, telefono n
 
   // Mismo hallazgo R11-11 que en WhatsApp: la coercion `Number(...)` tambien alcanza al canal de voz.
   for (const [nombre, valor] of [["booleano true (-> 1)", true], ["hexadecimal '0x10' (-> 16)", "0x10"]] as const) {
-    hallazgo(`R11-11 [P2] voz: cantidad ${nombre} se rechaza en vez de coercionarse`, async () => {
+    it(`R11-11 [P2] voz: cantidad ${nombre} se rechaza en vez de coercionarse`, async () => {
       const f = buildRestaurantFixture();
       const control = await executeAgentToolSafely(f.repo, ctxVoz(f, 1), "cotizar_pedido", base(f, 2));
       expect(JSON.stringify(control.result)).not.toMatch(/"error"/); // control: 2 SI pasa
