@@ -853,7 +853,7 @@ select jsonb_build_object(
     'pedidos', (select count(*) from ped where tel like '0009%'),
     'conversaciones', (select count(*) from restaurantes.whatsapp_conversations w join o on o.id = w.organization_id
                          where right(regexp_replace(w.phone, '\D', '', 'g'), 10) like '0009%'))
-) as hechos) q)->'volumen'->>'clientes')::int = 69
+) as hechos) q)->'volumen'->>'clientes')::int = 70
   and ((select hechos from (with o as (
   select org.id, (d.organization_id is not null) as demo, coalesce(d.activo, false) as activo
     from core.organization org left join restaurantes.demo_organization d on d.organization_id = org.id
