@@ -1,13 +1,13 @@
 # verify-restaurantes-pm-r11-romper
 
-Capa **Postgres real** de la ronda "romper" (R11) del agente de PM (WhatsApp y voz). Solo pruebas: no hay migracion ni se toca la base real.
+Capa **Postgres real** de la ronda "romper" (R11) del agente de PM (WhatsApp y voz). Solo pruebas (la migracion 088 de defensa en profundidad vive en `packages/domain-restaurantes/migrations/`; nunca se aplica a la base real desde aqui).
 Las pruebas con modelo simulado y repositorio en memoria viven en `packages/domain-restaurantes/tests/pm-r11-romper/`; esta carpeta cubre lo
 que el repositorio en memoria **no puede ver**: lo que `jsonb` acepta, RLS / GRANT / `auth.uid()` reales y las RPC de solo-sistema.
 
 | Archivo | Que hace |
 |---|---|
-| `assertions.sql` | El gate (25 escenarios). Lo descubre solo `scripts/verify-real-postgres-ci/run-gate.mjs` (contrato de 3 archivos). Debe pasar siempre. |
-| `hallazgos-abiertos.sql` | Informe `ABIERTO` / `CORREGIDO` de defectos de la capa SQL que siguen abiertos (R11-13, R11-15, R11-16). **No** es parte del gate. |
+| `assertions.sql` | El gate (O12-O22 cubren la migracion 088). Lo descubre solo `scripts/verify-real-postgres-ci/run-gate.mjs` (contrato de 3 archivos). Debe pasar siempre. |
+| `hallazgos-abiertos.sql` | Informe `ABIERTO` / `CORREGIDO` de defectos de la capa SQL que siguen abiertos (hoy solo R11-13b; R11-13, R11-15 y R11-16 los corrige la migracion 088). **No** es parte del gate. |
 | `run.sh` | `initdb` efimero + migraciones reales + gate + informe de hallazgos abiertos. |
 
 ## Que cubre `assertions.sql`
