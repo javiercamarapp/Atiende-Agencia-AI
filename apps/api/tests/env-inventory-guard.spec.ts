@@ -49,6 +49,9 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // Cadena de conexion de un Postgres efimero local para la prueba opt-in de la ruta «Probar agente»
   // (scripts/verify-restaurantes-agente-preview-rate-limit/run.sh); no es una credencial.
   "VERIFY_PGURL",
+  // Bandera de pruebas de la suite «romper» R11 (packages/domain-restaurantes/tests/pm-r11-romper/arnes.ts y el spec del gateway): con R11_VER_FALLAS=1 los
+  // hallazgos abiertos (it.fails) corren como pruebas normales para ver el mensaje real del defecto; no es una credencial.
+  "R11_VER_FALLAS",
 ]);
 
 const SOURCE_ROOTS = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/web/src", "packages"];
