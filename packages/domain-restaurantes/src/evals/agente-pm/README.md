@@ -47,3 +47,9 @@ para un juez (LLM o persona): no se evaluan con graders deterministas ni corren 
   como `it.todo` citando de que dependen; no fallan el CI ni se fingen como aprobados.
 - Falta (hueco conocido): un corredor que pase los 71 escenarios T7 y los K por el agente con un LLM guionado en CI, y un grader de juez; los T7 siguen
   validando solo su estructura.
+
+## Escenarios de la ronda 3 (R3)
+`escenarios-r3.json` (+ `escenarios-r3.ts`): 32 escenarios sinteticos de lo que rompio la medida de la ronda 3 contra la cuenta real (WhatsApp, voz con Gemini Live y motor de reglas;
+defectos `QA-PM-R3-whatsapp|voz|reglas-NN`). Misma forma que los de la ronda 2; `tests/pm-r3-escenarios.spec.ts` vigila estructura, ausencia de datos personales y que cada
+`cubierto_por` apunte a un spec que existe. Los que dependen de un dato de la base real o de una decision (`estado: pendiente_decision`, con `dudas`) se listan sin fallar el CI.
+Los guiones de voz nuevos de esta ronda (V27 a V30) viven en `src/voz/simulador/guiones-es-mx.ts` y corren en `tests/voz-simulador-prueba-ciega.spec.ts`.

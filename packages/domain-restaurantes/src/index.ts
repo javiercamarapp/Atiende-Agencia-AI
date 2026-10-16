@@ -1,8 +1,5 @@
-export { buildStorefrontDirectorio, enlaceComoLlegar, type StorefrontDirectorioItem } from "./storefront.ts";
+export type { StorefrontCatalogRow } from "./types.ts";
 export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
-export type { StorefrontCatalogRow, StorefrontMarca, StorefrontMarcaInput, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
-export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
-export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
 export type {
   Branch,
   BranchPolicy,
@@ -70,7 +67,7 @@ export type {
 } from "./types.ts";
 export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
-export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
+export { OrderConflictError, OrderValidationError, PromotionError, esGuardaSqlDeNegocioDePedido, WhatsappNumberInUseError } from "./errors.ts";
 
 export {
   validarHorario,
@@ -83,8 +80,12 @@ export {
   validarExcepcionHorario,
   fechaLocal,
   fechaAnterior,
+  corteDiaNegocioMinutos,
+  diaDeNegocio,
 } from "./horarios.ts";
 export type { TurnoHorario, HorarioSucursal, EstadoApertura, ApreturaConExcepciones } from "./horarios.ts";
+export { reporteColoniasAmbiguas, UMBRAL_AMBIGUA_KM } from "./colonias-ambiguas.ts";
+export type { FilaColoniaAmbigua, MotivoRevisionColonia, ReporteColoniasAmbiguas } from "./colonias-ambiguas.ts";
 export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
 export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedido.ts";
 
@@ -173,17 +174,6 @@ export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJ
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
-export {
-  EVENTO_LIMITES,
-  MARCA_LIMITES,
-  MARCA_VACIA,
-  StorefrontValidationError,
-  buildStorefrontPromociones,
-  enlaceWhatsapp,
-  validarMarca,
-  validarSolicitudEvento,
-} from "./storefront-marca.ts";
-export type { SolicitudEventoValidada, StorefrontPromocionView } from "./storefront-marca.ts";
 
 export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
 export type { NearestBranchResult } from "./nearest-branch.ts";
@@ -195,6 +185,8 @@ export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export { BOTON_CAMBIAR_TITULO, BOTON_CONFIRMAR_TITULO, construirBotonesDeConfirmacion, idDeBoton, parsearIdDeBoton, vigenciaDelToque } from "./whatsapp/botones-confirmacion.ts";
+export type { AccionBoton, BotonResumen, BotonSalida, VigenciaDelToque } from "./whatsapp/botones-confirmacion.ts";
 export {
   LIMITE_NOTAS_POR_CONVERSACION_HORA,
   LIMITE_NOTAS_POR_ORGANIZACION_DIA,
@@ -245,6 +237,8 @@ export type { OpcionesTramos, StatsPeriod, TrendBucket, ComparisonPeriods, Sales
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export { alertarHallazgosCfo, seleccionarAlertas, zonaDeOrganizacion, dentroDeHorarioExterno, horaLocal, UMBRAL_ALERTA_CENTAVOS_POR_DEFECTO, TOPE_ALERTAS_POR_ORG_DIA } from "./cfo/alertas.ts";
+export type { AlertaCfo, OpcionesAlertasCfo, ResultadoAlertasCfo, SucursalAlerta, EstadoAlertasCfo } from "./cfo/alertas.ts";
 export * from "./autopiloto/index.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
@@ -374,11 +368,64 @@ export {
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
 export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
 export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+export { diaMerida } from "./alertas-duenio/dia.ts";
+export { emitirAlertasProveedor, evaluarSaludProveedor, GRAPH_CODIGO_TOKEN_INVALIDO, UMBRAL_FALLAS_PROVEEDOR } from "./alertas-duenio/proveedor.ts";
+export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedor } from "./alertas-duenio/proveedor.ts";
+export { UMBRALES_TOKEN_META_DIAS, evaluarExpiracionToken, vigilarTokenMeta } from "./alertas-duenio/token-meta.ts";
+export type { DiagnosticoTokenMeta, EstadoTokenMeta, LectorEstadoTokenMeta, ResultadoVigilanciaToken, UmbralTokenMetaDias } from "./alertas-duenio/token-meta.ts";
+export {
+  CLASE_CONVERSACION_OCUPADA,
+  CUBETA_ALERTA_MIN,
+  MIN_TURNOS_VENTANA,
+  RACHA_FALLOS,
+  UMBRAL_TASA_TIMEOUT_PCT,
+  VENTANA_RACHA_MIN,
+  VENTANA_TIMEOUTS_MIN,
+  claseErrorTurno,
+  crearLectorTurnosAgentePostgres,
+  esClaseTimeout,
+  evaluarTimeoutsAgente,
+  vigilarAgenteWhatsapp,
+} from "./alertas-duenio/timeouts-agente.ts";
+export type { DiagnosticoAgente, LectorTurnosAgente, OpcionesTimeoutsAgente, RachaOrganizacion, ResultadoTurnoAgente, ResultadoVigilanciaAgente, TurnoAgente } from "./alertas-duenio/timeouts-agente.ts";
+
 export * from "./encuesta-reglas.ts";
 export * from "./resenas-provider.ts";
 export * from "./mezcla-de-pago.ts";
-export * from "./sucursal-sugerida.ts";
 // Ajustes del agente por organizacion (modelo, temperatura, voz, fondo) y base de conocimiento automatica (equivalentes de lo que el original hacia con ElevenLabs).
 export * from "./ajustes-agente/index.ts";
 
 export * from "./conocimiento/index.ts";
+export { cargaDeRepartidor, sugerirRepartidor } from "./repartidor-sugerido.ts";
+export type { CandidatoRepartidor, CargaRepartidor, SugerenciaRepartidor } from "./repartidor-sugerido.ts";
+export {
+  MarketingNoDisponibleError,
+  MarketingParametrosError,
+  MarketingRechazadoError,
+  MarketingSinAccesoError,
+  SEGMENTOS_MARKETING,
+  decidirCampana,
+  generarBorradoresMarketing,
+  guardarConfigMarketing,
+  leerConfigMarketing,
+  listarCampanas,
+  registrarConsentimientoMarketing,
+  revocarMarketingPorTelefono,
+} from "./marketing/campanas.ts";
+export type {
+  BorradorGenerado,
+  CampanaMarketing,
+  CodigoRechazoMarketing,
+  ConfigMarketing,
+  EntradaConfigMarketing,
+  EstadoCampana,
+  LecturaMarketing,
+  ResultadoBorradores,
+  ResultadoConsentimiento,
+  ResultadoDecision,
+  SegmentoMarketing,
+} from "./marketing/campanas.ts";
+export { AlertasDuenioNoDisponibleError, AlertasDuenioParametrosError, AlertasDuenioSinAccesoError, UMBRALES_ALERTAS_POR_OMISION, barrerSilencioWhatsapp, guardarUmbralesAlertasDuenio, leerUmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
+export type { CandidatoSilencio, ResultadoSilencio, UmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
+export { avisarPresupuestoIaAlDuenio } from "./alertas-duenio/presupuesto.ts";
+export type { ResultadoAvisoPresupuesto, UmbralPresupuestoIa } from "./alertas-duenio/presupuesto.ts";

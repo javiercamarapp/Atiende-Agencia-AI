@@ -17,6 +17,7 @@ import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
+import { mountAdjuntosRoutes } from "../../../data-chat/adjuntos-routes.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
@@ -48,7 +49,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
     const allowedPropertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     const zona = await deps.restaurantesRepo(db).findBranchZonaHoraria(c.req.param("propertyId") ?? "");
     return {
-      catalogFor: (d) => buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(d)),
+      catalogFor: (d) => buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(d), { verticalRole: c.get("verticalRole") }),
       scope: {
         organizationId,
         userId: c.get("userId"),
@@ -103,6 +104,8 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
 
   mountConversacionesRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES });
   mountPinsRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES, turnContext });
+  // Adjuntar archivo (CSV / Excel / PDF): analisis determinista en el servidor, sin guardar el archivo.
+  mountAdjuntosRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES, role: RESTAURANTES_DATA_CHAT_ROLE });
   // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance que el chat.
   mountReporteRoutes(app, deps, {
     base,
@@ -115,7 +118,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
       const allowedPropertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, null);
       const zona = await deps.restaurantesRepo(db).findBranchZonaHoraria(c.req.param("propertyId") ?? "");
       return {
-        catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(db)),
+        catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(db), { verticalRole: c.get("verticalRole") }),
         scope: { organizationId, userId: c.get("userId"), vertical: "restaurantes", verticalRole: c.get("verticalRole") ?? "", allowedPropertyIds, timezone: zona.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE },
       };
     },

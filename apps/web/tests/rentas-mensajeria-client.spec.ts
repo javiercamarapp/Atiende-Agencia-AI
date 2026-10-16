@@ -1,10 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   aprobarBorrador,
+  avisoPoliticaCanal,
   fetchBandejaAprobacion,
   fetchBorradores,
   fetchConversaciones,
+  fetchHilo,
+  filtrarBandeja,
+  filtrosAQuery,
+  filtrosDesdeQuery,
+  FILTROS_VACIOS,
+  ordenarBandeja,
   rechazarBorrador,
+  requiereAtencion,
+  senalesPendientes,
 } from "../src/verticals/rentas/lib/mensajeria-client.ts";
 
 const CONVERSACION = {
@@ -32,6 +41,8 @@ const BORRADOR_PENDIENTE = {
   estado: "pendiente_aprobacion",
   generadoPor: "motor_borrador",
   redactado: false,
+  necesitaEscalamiento: false,
+  senales: [],
   aprobadoPor: null,
   aprobadoEn: null,
   rechazadoPor: null,
@@ -141,5 +152,67 @@ describe("fetchBandejaAprobacion", () => {
 
     const result = await fetchBandejaAprobacion(fetchImpl, "http://api.local", "tok", "prop-1");
     expect(result).toEqual([]);
+  });
+});
+
+describe("Rn-P3-20/21/22 -- hilo, escalamiento y filtros (funciones puras)", () => {
+  const json = (body: unknown, status = 200) => vi.fn(async (_url: string) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response);
+
+  it("fetchHilo pide GET .../conversaciones/:id/hilo y normaliza borradores de un API anterior a la migración (sin los campos nuevos)", async () => {
+    const { necesitaEscalamiento: _n, senales: _s, ...viejo } = BORRADOR_PENDIENTE;
+    const fetchImpl = json({ conversacion: CONVERSACION, mensajes: [], borradores: [viejo] });
+    const hilo = await fetchHilo(fetchImpl as unknown as typeof fetch, "https://api.test", "tok", "prop-1", "conv-1");
+    expect(fetchImpl.mock.calls[0]![0]).toBe("https://api.test/rentas/prop-1/conversaciones/conv-1/hilo");
+    expect(hilo.borradores[0]).toMatchObject({ necesitaEscalamiento: false, senales: [] });
+  });
+
+  const item = (id: string, canal: string, huesped: string, pendientes: unknown[], creadoEn = "2026-10-01T00:00:00Z") =>
+    ({ unidad: { id: "u", name: "Depa 101", nombre: "Depa 101" }, conversacion: { ...CONVERSACION, id, canal, huespedNombre: huesped, creadoEn }, pendientes, historial: [] }) as never;
+  const rutina = { ...BORRADOR_PENDIENTE, id: "r" };
+  const urgente = { ...BORRADOR_PENDIENTE, id: "u", necesitaEscalamiento: true, senales: ["vip", "emergencia"] };
+
+  it("requiereAtencion y senalesPendientes miran solo los borradores PENDIENTES, en orden de gravedad", () => {
+    expect(requiereAtencion(item("a", "airbnb", "Ana", [rutina]))).toBe(false);
+    expect(requiereAtencion(item("a", "airbnb", "Ana", [urgente]))).toBe(true);
+    expect(senalesPendientes(item("a", "airbnb", "Ana", [urgente, rutina]))).toEqual(["emergencia", "vip"]);
+    const decidido = { ...(item("a", "airbnb", "Ana", []) as object), historial: [{ ...urgente, estado: "enviado" }] } as never;
+    expect(requiereAtencion(decidido)).toBe(false);
+  });
+
+  it("ordenarBandeja pone primero lo escalado, luego lo que tiene pendientes, luego lo más reciente", () => {
+    const orden = ordenarBandeja([
+      item("reciente", "airbnb", "A", [], "2026-10-09T00:00:00Z"),
+      item("pendiente", "airbnb", "B", [rutina]),
+      item("escalado", "airbnb", "C", [urgente], "2026-09-01T00:00:00Z"),
+    ]).map((i) => i.conversacion.id);
+    expect(orden).toEqual(["escalado", "pendiente", "reciente"]);
+  });
+
+  it("filtrarBandeja combina canal, con pendientes, requiere atención y búsqueda sin acentos", () => {
+    const items = [item("a", "airbnb", "Ana López", [rutina]), item("b", "vrbo", "Beto", [urgente]), item("c", "airbnb", "Carla Núñez", [])];
+    const ids = (f: Partial<typeof FILTROS_VACIOS>) => filtrarBandeja(items, { ...FILTROS_VACIOS, ...f }).map((i) => i.conversacion.id);
+    expect(ids({})).toEqual(["a", "b", "c"]);
+    expect(ids({ canal: "airbnb" })).toEqual(["a", "c"]);
+    expect(ids({ conPendientes: true })).toEqual(["a", "b"]);
+    expect(ids({ requiereAtencion: true })).toEqual(["b"]);
+    expect(ids({ busqueda: "nunez" })).toEqual(["c"]);
+    expect(ids({ busqueda: "depa 101", canal: "vrbo" })).toEqual(["b"]);
+  });
+
+  it("los filtros viajan a la URL y vuelven; un canal desconocido se ignora y no se escriben filtros vacíos", () => {
+    const f = { canal: "vrbo", conPendientes: true, requiereAtencion: true, busqueda: " Ana " } as const;
+    expect(filtrosAQuery(f).toString()).toBe("canal=vrbo&pendientes=1&atencion=1&q=Ana");
+    expect(filtrosDesdeQuery(new URLSearchParams("canal=vrbo&pendientes=1&atencion=1&q=Ana"))).toEqual({ ...f, busqueda: "Ana" });
+    expect(filtrosDesdeQuery(new URLSearchParams("canal=inventado&pendientes=0"))).toEqual(FILTROS_VACIOS);
+    expect(filtrosAQuery(FILTROS_VACIOS).toString()).toBe("");
+  });
+
+  it("avisoPoliticaCanal dice solo lo que la política declara", () => {
+    const airbnb = { canal: "airbnb", maxCaracteres: 4000, permiteContactoDirectoPreReserva: false, permiteAutomatizacionPreReserva: true, accionAntePreReservaProhibida: "bloquear" } as const;
+    expect(avisoPoliticaCanal(airbnb)).toContain("se bloquea");
+    expect(avisoPoliticaCanal(airbnb)).not.toContain("No se automatizan");
+    const booking = { ...airbnb, canal: "booking", permiteAutomatizacionPreReserva: false, accionAntePreReservaProhibida: "redactar" } as const;
+    expect(avisoPoliticaCanal(booking)).toContain("se enmascaran");
+    expect(avisoPoliticaCanal(booking)).toContain("No se automatizan");
   });
 });

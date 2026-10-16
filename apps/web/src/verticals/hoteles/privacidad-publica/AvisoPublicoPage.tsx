@@ -7,7 +7,7 @@ import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Copy, Printer, ShieldCheck } from "lucide-react";
 import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, StatusBadge, Textarea } from "@atiende/ui";
-import { useMetaPublica } from "../../restaurantes/storefront/meta-publica.ts";
+import { useMetaPublica } from "../../../lib/meta-publica.ts";
 import {
   DERECHO_AYUDA,
   DERECHO_LABELS,

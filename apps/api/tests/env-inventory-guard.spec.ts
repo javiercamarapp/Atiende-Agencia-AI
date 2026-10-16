@@ -36,6 +36,9 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // Vite lo expone automáticamente (base path del build) — no es una variable de
   // entorno que el proyecto configure, ni una credencial.
   "BASE_URL",
+  // Bandera de Vite (true solo en `vite dev`): descarta del build el catalogo de overlays de apps/web (/dev/catalogo). No es una
+  // variable de entorno que el proyecto configure ni una credencial.
+  "DEV",
   // No aparece nunca en este repo hoy, pero es el ejemplo canónico de "variable de
   // plataforma que no es una credencial de integración" — se excluye a propósito
   // por si algún día se lee.
@@ -43,6 +46,12 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // URL de un Postgres EFIMERO LOCAL que solo leen las pruebas opt-in de QA contra base real (packages/domain-citas/tests/qa-citas-r1-api-caos-postgres-real.spec.ts);
   // sin ella la prueba se omite. No es una credencial de la plataforma ni se lee en codigo de produccion.
   "QA_CITAS_PG_URL",
+  // Bandera opt-in para correr la prueba de integración del CFO contra un Postgres efímero local
+  // (scripts/verify-restaurantes-cfo-repos/run.sh); no es una credencial.
+  "CFO_REAL_PG",
+  // Cadena de conexion de un Postgres efimero local para la prueba opt-in de la ruta «Probar agente»
+  // (scripts/verify-restaurantes-agente-preview-rate-limit/run.sh); no es una credencial.
+  "VERIFY_PGURL",
 ]);
 
 const SOURCE_ROOTS = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/web/src", "packages"];

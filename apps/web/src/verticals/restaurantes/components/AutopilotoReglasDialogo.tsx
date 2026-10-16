@@ -163,7 +163,7 @@ export function AutopilotoReglasDialogo({
           checked={form.cancelacionAuto}
           onChange={(e) => set("cancelacionAuto", e.target.checked)}
         />
-        <Callout tone="info">Pedidos grandes y cancelaciones por voz: todavía sin efecto, porque el agente aún no los usa (requiere el cableado del umbral de pedido grande y de la voz, en otro PR). Las cancelaciones y las quejas de WhatsApp sí llegan a «Por aprobar».</Callout>
+        <Callout tone="info">Los pedidos grandes de WhatsApp y de voz llegan a «Por aprobar» (el umbral suma lo que el mismo número pidió en las últimas 6 horas). Las cancelaciones y las quejas de WhatsApp también llegan ahí; las cancelaciones por voz todavía no: la voz no las gestiona.</Callout>
         <Checkbox
           label="Aceptar solo el pedido (de Recibido a Preparando) en cuanto la comanda se imprime o se captura, sin POS (apagado por omisión)"
           checked={form.aceptacionAuto}

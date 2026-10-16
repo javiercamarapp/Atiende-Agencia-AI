@@ -6,8 +6,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Archive, Download, MessagesSquare, UserRound } from "lucide-react";
-import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
+import { Archive, Download, MessagesSquare } from "lucide-react";
+import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, FormField, NativeSelect, PageContainer, PageHeader, StatusBadge, Textarea } from "@atiende/ui";
 import { formatMoney } from "@atiende/ui";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import { HUESPED_CRM_ROLES, HUESPED_EXPORT_ROLES, NOTA_MAX_LENGTH, NOTA_TIPO_LABELS, agregarNota, archivarNota, exportarDatosHuesped, fetchFicha, notaTieneDatoSensible } from "../lib/huespedes-client.ts";
@@ -121,16 +121,7 @@ export function HuespedFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
-          <UserRound className="size-5 text-muted-foreground" strokeWidth={1.75} />
-          {ficha?.huesped.nombreCompleto ?? "Huésped"}
-        </h1>
-        <Link to={`/hoteles/${orgSlug}/huespedes`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
-          <ArrowLeft className="size-4" strokeWidth={1.75} />
-          Huéspedes
-        </Link>
-      </header>
+      <PageHeader titulo={ficha?.huesped.nombreCompleto ?? "Huésped"} atras={{ etiqueta: "Huéspedes", to: `/hoteles/${orgSlug}/huespedes` }} />
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
       {!ficha && !error && <EstadoCargando etiqueta="Cargando ficha…" />}
@@ -197,18 +188,20 @@ export function HuespedFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role 
             ))}
             {ficha.notas.disponible && !restringido && (
               <form onSubmit={(e) => void guardarNota(e)} className="flex flex-col gap-2 pt-1">
-                <div className="flex gap-2">
-                  <NativeSelect size="sm" aria-label="Tipo" value={tipo} onChange={(e) => setTipo(e.target.value as NotaTipo)}>
+                <FormField label="Tipo">
+                  <NativeSelect size="sm" value={tipo} onChange={(e) => setTipo(e.target.value as NotaTipo)}>
                     <option value="nota">Nota</option>
                     <option value="preferencia">Preferencia</option>
                   </NativeSelect>
-                </div>
-                <Textarea aria-label="Texto de la nota" value={texto} maxLength={NOTA_MAX_LENGTH} rows={3} onChange={(e) => setTexto(e.target.value)} placeholder="Prefiere piso alto, almohada extra…" />
+                </FormField>
+                <FormField label="Texto de la nota">
+                  <Textarea value={texto} maxLength={NOTA_MAX_LENGTH} rows={3} onChange={(e) => setTexto(e.target.value)} placeholder="Prefiere piso alto, almohada extra…" />
+                </FormField>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">
                     {texto.length}/{NOTA_MAX_LENGTH} · sin números de tarjeta ni de documento
                   </span>
-                  <Button type="submit" size="sm" disabled={busy || texto.trim() === ""}>
+                  <Button type="submit" size="sm" loading={busy} disabled={busy || texto.trim() === ""}>
                     Guardar
                   </Button>
                 </div>

@@ -172,7 +172,7 @@ export { lookupCitasCustomer, updateCustomerEmailFromPanel } from "./customers.t
 export type { CitasCustomerContext, UpcomingAppointmentContext } from "./customers.ts";
 
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
-export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
+export type { CitasTurnOutcome, WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
 export { computeCitasResumen, RESUMEN_HORIZONTE_PENDIENTES_DIAS, RESUMEN_VENTANA_DIAS } from "./resumen.ts";
 export type { CitasResumen, ResumenPorEstado } from "./resumen.ts";

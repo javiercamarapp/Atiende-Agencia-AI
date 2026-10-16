@@ -5,6 +5,7 @@ import type { Page } from "@playwright/test";
 import { dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
+import { elegirValor, elegirEtiqueta } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -25,38 +26,43 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     vigilante.verificar();
   });
 
-  test("Pedidos: Marcar Preparando hace un PATCH de estado y la tarjeta cambia", async ({ page, mock, vigilante }) => {
+  test("Pedidos: Marcar Preparando hace un PATCH de estado y la fila cambia", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
-    const tarjeta = main(page).locator("div.card, [class*=card]").filter({ hasText: "Marisol Pech" }).first();
+    const tarjeta = main(page).locator('[data-testid^="pedido-"]').filter({ hasText: "Marisol Pech" }).first();
     await expect(tarjeta).toBeVisible();
     await mock.limpiarRegistro();
     await tarjeta.getByRole("button", { name: "Marcar Preparando" }).click();
     const [patch] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/status" });
     expect(cuerpoDe(patch)).toEqual({ status: "preparando" });
-    await expect(main(page).getByRole("button", { name: "Marcar En camino" })).toBeVisible();
+    await expect(tarjeta.getByRole("button", { name: "Asignar repartidor" })).toBeVisible();
+    await expect(tarjeta.getByTestId("estado-ord-1001")).toHaveText("Preparando");
     vigilante.verificar();
   });
 
-  test("Pedidos: elegir repartidor hace un PATCH assign-repartidor", async ({ page, mock, vigilante }) => {
+  test("Pedidos: Asignar repartidor + Asignar hace un PATCH assign-repartidor (un pedido recien recibido aun no sale: solo se asigna)", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
+    const fila = main(page).locator('[data-testid^="pedido-"]').filter({ hasText: "Marisol Pech" }).first();
     await mock.limpiarRegistro();
-    await page.getByLabel("Repartidor:").first().selectOption({ label: "Ramon Uc" });
+    await fila.getByRole("button", { name: "Asignar repartidor" }).click();
+    await elegirEtiqueta(fila.getByLabel("Elegir repartidor"), "Ramon Uc");
+    await fila.getByRole("button", { name: "Asignar", exact: true }).click();
     const [patch] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/assign-repartidor" });
     expect(cuerpoDe(patch)).toMatchObject({ repartidorId: "usr-2" });
-    await expect(page.getByLabel("Repartidor:").first()).toHaveValue("usr-2");
+    expect(await mock.buscar({ metodo: "PATCH", ruta: "/orders/ord-1001/status" })).toHaveLength(0);
     vigilante.verificar();
   });
 
-  test("Pedidos: pestanas por estado y Actualizar ahora filtran con GET real", async ({ page, mock, vigilante }) => {
+  test("Pedidos: los filtros de estado y Actualizar ahora piden con GET real", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
     await mock.limpiarRegistro();
-    await main(page).getByRole("tab", { name: "Preparando" }).click();
-    await expect(main(page).getByText("Jorge Canul")).toBeVisible();
+    await main(page).getByRole("button", { name: "Preparando", exact: true }).click();
+    await expect(main(page).getByText("Jorge Canul").first()).toBeVisible();
     await expect(main(page).getByText("Marisol Pech")).toHaveCount(0);
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "/orders?status=preparando" })).length).toBeGreaterThan(0);
     // "Actualizar ahora" fuerza el sondeo liviano de pendientes (la lista completa solo se recarga si cambio el conjunto).
     const previas = (await mock.buscar({ metodo: "GET", ruta: "/orders?status=pending" })).length;
-    await main(page).getByRole("button", { name: "Actualizar ahora" }).click();
+    await main(page).getByRole("button", { name: "Herramientas de pedidos" }).click();
+    await page.getByRole("button", { name: "Actualizar ahora" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "/orders?status=pending" })).length).toBeGreaterThan(previas);
     vigilante.verificar();
   });
@@ -75,7 +81,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await ir(page, "/historial");
     await expect(main(page).getByText("Marisol Pech").first()).toBeVisible();
     await mock.limpiarRegistro();
-    await page.getByLabel("Estado").selectOption("completado");
+    await elegirValor(page.getByLabel("Estado"), "completado");
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "status=completado" })).length).toBeGreaterThan(0);
     await expect(main(page).getByText("Jorge Canul")).toHaveCount(0);
     vigilante.verificar();
@@ -194,7 +200,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await expect(main(page).getByText("nuevo.staff@example.test").first()).toBeVisible();
 
     await mock.limpiarRegistro();
-    await page.getByLabel("Rol de Lucia Xool").selectOption("admin");
+    await elegirValor(page.getByLabel("Rol de Lucia Xool"), "admin");
     const [rol] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/staff/miembros/usr-1" });
     expect(cuerpoDe(rol)).toEqual({ verticalRole: "admin" });
 
@@ -223,7 +229,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await expect(main(page).getByText("Itzimna")).toBeVisible();
 
     await mock.limpiarRegistro();
-    await page.getByLabel("Zona horaria de esta sucursal").selectOption("America/Cancun");
+    await elegirValor(page.getByLabel("Zona horaria de esta sucursal"), "America/Cancun");
     await page.locator("form").filter({ has: page.locator("#config-zona-horaria") }).getByRole("button", { name: "Guardar" }).click();
     const [tz] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/config/zona-horaria" });
     expect(cuerpoDe(tz)).toEqual({ zona_horaria: "America/Cancun" });
@@ -275,7 +281,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     await ir(page, "/auditoria");
     await expect(main(page).getByTitle("producto.precio_actualizado")).toBeVisible();
     await mock.limpiarRegistro();
-    await page.getByLabel("Tipo de acción").selectOption("staff");
+    await elegirValor(page.getByLabel("Tipo de acción"), "staff");
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "tipo=staff" })).length).toBeGreaterThan(0);
     await expect(main(page).getByTitle("producto.precio_actualizado")).toHaveCount(0);
     vigilante.verificar();
@@ -284,7 +290,7 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
   test("Indicadores de WhatsApp: cambiar el periodo pide whatsapp/kpi?dias=", async ({ page, mock, vigilante }) => {
     await ir(page, "/agente-whatsapp");
     await mock.limpiarRegistro();
-    await page.getByLabel("Periodo").selectOption({ label: "Últimos 30 días" });
+    await elegirEtiqueta(page.getByLabel("Periodo"), "Últimos 30 días");
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "whatsapp/kpi?dias=30" })).length).toBeGreaterThan(0);
     vigilante.verificar();
   });

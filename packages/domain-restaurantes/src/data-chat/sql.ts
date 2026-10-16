@@ -10,14 +10,21 @@
 //    `has_property_access`) limita a las sucursales de su membership -- defensa en profundidad
 //    ademas del filtro `$2` que fija el servidor.
 //  - Nunca devuelven nombre/telefono/direccion de comensales: solo agregados.
-//  - Excluyen de ventas los pedidos cancelados, `no_recogido` (comida no cobrada) y `programado` (aun no es venta;
-//    al promoverse pasa a pending y cuenta). Ver QA-restaurantes-R1-viaje-09.
+//  - Excluyen de ventas los pedidos cancelados, `no_recogido` (comida no cobrada), `programado` (aun no es venta;
+//    al promoverse pasa a pending y cuenta) y `por_aprobar` (retenido sin aprobar: no es venta hasta que se aprueba).
+//    Ver QA-restaurantes-R1-viaje-09 y QA-restaurantes-R2-viaje-03/04. El dia de un pedido es `coalesce(promovido_at, created_at)`.
 //  - tests/data-chat-sql-drift.spec.ts exige que estos textos aparezcan identicos en
 //    scripts/verify-data-chat/assertions.sql (el verify los corre contra Postgres real).
 
+/** Momento en que el pedido cuenta como venta del dia: un programado cuenta el dia en que se promueve, no el que se agendo
+ *  (igual que el Cierre del dia; QA R2 viaje-03). `promovido_at` es de la migracion 034: contra la base sin migrar el lector
+ *  reintenta con `FECHA_PEDIDO_LEGADA`. */
+export const FECHA_PEDIDO = "coalesce(o.promovido_at, o.created_at)";
+export const FECHA_PEDIDO_LEGADA = "o.created_at";
+
 const SCOPE = `o.organization_id = $1
     and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-    and o.created_at >= $3 and o.created_at < $4`;
+    and ${FECHA_PEDIDO} >= $3 and ${FECHA_PEDIDO} < $4`;
 
 export const SQL_VISIBLE_BRANCHES = `select p.id as property_id, p.name, bd.slug
    from core.property p
@@ -28,17 +35,17 @@ export const SQL_VISIBLE_BRANCHES = `select p.id as property_id, p.name, bd.slug
 
 // $7 = unidad de agrupacion ('day' | 'week' | 'month'): la elige el CODIGO (por la longitud del periodo),
 // nunca el modelo, y date_trunc la recibe como parametro, no concatenada.
-export const SQL_SALES_BY_PERIOD = `select to_char(date_trunc($7::text, o.created_at at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
+export const SQL_SALES_BY_PERIOD = `select to_char(date_trunc($7::text, ${FECHA_PEDIDO} at time zone $5::text)::date, 'YYYY-MM-DD') as bucket,
     coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
-  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado')
+  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by 1 limit $6`;
 
 export const SQL_SALES_BY_BRANCH = `select p.name as branch, coalesce(sum(o.total), 0) as revenue, count(*) as orders
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
-  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado')
+  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by p.id, p.name order by revenue desc, p.name limit $5`;
 
 const PRODUCTS = (order: string) => `select it->>'name' as product,
@@ -47,14 +54,14 @@ const PRODUCTS = (order: string) => `select it->>'name' as product,
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
   cross join lateral jsonb_array_elements(case when jsonb_typeof(o.items) = 'array' then o.items else '[]'::jsonb end) as it
-  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado')
+  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     and (it->>'quantity') ~ '^[0-9]+(\\.[0-9]+)?$' and (it->>'price') ~ '^[0-9]+(\\.[0-9]+)?$' and (it->>'name') is not null
   group by 1 order by ${order} desc, 1 limit $5`;
 export const SQL_TOP_PRODUCTS_BY_QUANTITY = PRODUCTS("quantity");
 export const SQL_TOP_PRODUCTS_BY_REVENUE = PRODUCTS("revenue");
 
-export const SQL_ORDER_STATS = `select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')) as orders,
-    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado')), 0) as revenue,
+export const SQL_ORDER_STATS = `select count(*) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')) as orders,
+    coalesce(sum(o.total) filter (where o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')), 0) as revenue,
     count(*) filter (where o.status = 'cancelado') as cancelled
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
@@ -64,14 +71,14 @@ export const SQL_ORDER_STATS = `select count(*) filter (where o.status not in ('
 export const SQL_ORDERS_BY_CHANNEL = `select o.source as channel, count(*) as orders, coalesce(sum(o.total), 0) as revenue
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
-  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado')
+  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by o.source order by orders desc, o.source limit $5`;
 
-export const SQL_PEAK_HOURS = `select extract(hour from (o.created_at at time zone $5::text))::int as hour, count(*) as orders,
+export const SQL_PEAK_HOURS = `select extract(hour from (${FECHA_PEDIDO} at time zone $5::text))::int as hour, count(*) as orders,
     coalesce(sum(o.total), 0) as revenue
   from restaurantes.orders o
   join core.property p on p.id = o.property_id
-  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado')
+  where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   group by 1 order by orders desc, hour limit $6`;
 
 // Cliente = customer_id si existe, si no el telefono: la clave NUNCA sale de la consulta, solo conteos.
@@ -79,14 +86,14 @@ export const SQL_RECURRING_CUSTOMERS = `with in_period as (
     select coalesce(o.customer_id::text, o.customer_phone) as ckey, count(*) as n
     from restaurantes.orders o
     join core.property p on p.id = o.property_id
-    where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado')
+    where ${SCOPE} and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
     group by 1
   ), before_period as (
     select distinct coalesce(o.customer_id::text, o.customer_phone) as ckey
     from restaurantes.orders o
     join core.property p on p.id = o.property_id
     where o.organization_id = $1 and ($2::uuid[] is null or o.property_id = any($2::uuid[]))
-      and o.created_at < $3 and o.status not in ('cancelado', 'no_recogido', 'programado')
+      and ${FECHA_PEDIDO} < $3 and o.status not in ('cancelado', 'no_recogido', 'programado', 'por_aprobar')
   )
   select count(*) as customers,
     count(*) filter (where i.n >= 2 or b.ckey is not null) as recurring,

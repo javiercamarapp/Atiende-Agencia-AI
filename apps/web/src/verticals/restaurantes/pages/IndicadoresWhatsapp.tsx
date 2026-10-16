@@ -4,12 +4,13 @@
 // "Costo LLM promedio por pedido" es un promedio del periodo, no el costo real de cada pedido. Sin dato = "—" con su razón.
 import { useCallback, useEffect, useState } from "react";
 import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp } from "lucide-react";
-import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatCard } from "@atiende/ui";
+import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard } from "@atiende/ui";
 import { fetchWhatsappKpi } from "../lib/whatsapp-kpi-client.ts";
 import type { WhatsappEntrega, WhatsappEntregaDiaSerie, WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
 import { desdeError } from "../voz/carga.ts";
 import type { Carga } from "../voz/carga.ts";
 import { formatoDia, formatoMxn, formatoPct } from "../voz/formato-kpi.ts";
+import { WidgetWhatsApp } from "../preview/WidgetWhatsApp.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ROLES_INDICADORES: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -105,7 +106,7 @@ function EntregaAvisos({ entrega }: { readonly entrega: WhatsappEntrega | undefi
   );
 }
 
-export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: RestaurantesShellContext & { readonly fetchImpl?: typeof fetch }) {
+export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, nombreSucursal, fetchImpl }: RestaurantesShellContext & { readonly fetchImpl?: typeof fetch }) {
   const puedeVer = ROLES_INDICADORES.has(role);
   const [dias, setDias] = useState(14);
   const [datos, setDatos] = useState<Carga<WhatsappKpi>>({ estado: "cargando" });
@@ -130,6 +131,7 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, f
   }, [apiBaseUrl, token, propertyId, dias, version, fetchImpl, puedeVer]);
 
   return (
+    <>
     <PageContainer padding="none">
       <header className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
@@ -141,13 +143,13 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, f
             <label htmlFor="periodo-whatsapp" className="sr-only">
               Periodo
             </label>
-            <NativeSelect id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))}>
+            <Selector id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))}>
               {PERIODOS.map((p) => (
                 <option key={p.dias} value={p.dias}>
                   {p.etiqueta}
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </div>
         ) : null}
       </header>
@@ -171,6 +173,9 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, f
         <Contenido kpi={datos.datos} />
       )}
     </PageContainer>
+    {/* Chat de WhatsApp de demostración (botón flotante «Iniciar chat»), como en el panel original: prueba el agente real sin efectos. */}
+    {puedeVer ? <WidgetWhatsApp apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} {...(nombreSucursal ? { nombreNegocio: nombreSucursal } : {})} /> : null}
+    </>
   );
 }
 

@@ -193,6 +193,88 @@ describe("POST .../conversaciones/:id/costo", () => {
     expect(llamada.eventos).toHaveLength(0);
   });
 
+  describe("desglose por componente (cascada v2)", () => {
+    const HAIKU = "openrouter:anthropic/claude-haiku-5.5";
+    const componentes = [
+      { proveedor: "deepgram", unidad: "segundo", cantidad: 60, costoMicroUsd: 4_800, costoReal: false },
+      { proveedor: "heygen", unidad: "unidad", cantidad: 900, costoMicroUsd: 13_500, costoReal: false },
+      { proveedor: HAIKU, unidad: "unidad", cantidad: 3, costoMicroUsd: 321, costoReal: true },
+    ];
+    const tramoV2 = { escalon: "cascada-openrouter", duracionS: 60, costoReportadoMicroUsd: 18_621, componentes };
+
+    it("registra un evento por componente (proveedor, unidad, costo_estimado = false solo donde el proveedor reporta el costo) y es idempotente", async () => {
+      const { ctx, llamada, app } = await construir();
+      const res = await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [tramoV2] }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ registrados: 3, repetidos: 0 });
+      expect(llamada.eventos.map((e) => [e.proveedor, e.unidad, e.costoMicroUsd, e.costoEstimado, e.refId])).toEqual([
+        ["deepgram", "segundo", 4_800, true, "llamada-1:cascada-openrouter:deepgram"],
+        ["heygen", "unidad", 13_500, true, "llamada-1:cascada-openrouter:heygen"],
+        [HAIKU, "unidad", 321, false, `llamada-1:cascada-openrouter:${HAIKU}`],
+      ]);
+      expect(await (await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [tramoV2] }))).json()).toMatchObject({ registrados: 0, repetidos: 3 });
+    });
+
+    it("acepta Deepgram Aura-2 como componente de TTS alternativo", async () => {
+      const { ctx, llamada, app } = await construir();
+      const aura = { proveedor: "deepgram-aura-2", unidad: "unidad", cantidad: 900, costoMicroUsd: 27_000, costoReal: false };
+      expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, costoReportadoMicroUsd: 27_000, componentes: [aura] }] }))).status).toBe(200);
+      expect(llamada.eventos.map((e) => [e.proveedor, e.costoMicroUsd, e.costoEstimado])).toEqual([["deepgram-aura-2", 27_000, true]]);
+    });
+
+    it("Gemini Live no admite componentes: 400 y nada se registra", async () => {
+      const { ctx, llamada, app } = await construir();
+      expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, escalon: "gemini-3.8-live" }] }))).status).toBe(400);
+      expect(llamada.eventos).toHaveLength(0);
+    });
+
+    it("el peor caso (8 tramos x 8 componentes) cabe en el cuerpo: pasa de 8 KB y se registra", async () => {
+      const { ctx, llamada, app } = await construir();
+      const nombres = Array.from({ length: 8 }, (_, i) => `openrouter:proveedor/modelo-con-nombre-largo-numero-${i}-abcdefghijklmnopqrstuvwxyz`.slice(0, 72));
+      const tramo = { escalon: "cascada-openrouter", duracionS: 10, costoReportadoMicroUsd: 800, componentes: nombres.map((proveedor) => ({ proveedor, unidad: "unidad", cantidad: 1, costoMicroUsd: 10, costoReal: true })) };
+      const cuerpoGrande = cuerpo(ctx, { tramos: Array.from({ length: 8 }, () => tramo) });
+      expect(JSON.stringify(cuerpoGrande).length).toBeGreaterThan(8 * 1024);
+      const res = await post(app, ruta(UUID_AJENO), cuerpoGrande);
+      expect(res.status).toBe(200);
+      expect(llamada.eventos.filter((e) => e.proveedor.startsWith("openrouter:"))).toHaveLength(8);
+    });
+
+    it("un worker anterior (sin componentes) sigue produciendo el evento del escalon de siempre", async () => {
+      const { ctx, llamada, app } = await construir();
+      await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, componentes: undefined }] }));
+      expect(llamada.eventos.map((e) => e.refId)).toEqual(["llamada-1:cascada-openrouter"]);
+    });
+
+    it.each([
+      ["componentes vacios", []],
+      ["componentes no es lista", "x"],
+      ["componentes null", null],
+      ["componentes false", false],
+      ["componentes objeto", {}],
+      ["demasiados componentes", Array.from({ length: 9 }, (_, i) => ({ ...componentes[0], proveedor: `openrouter:m${i}` }))],
+      ["componente null", [null]],
+      ["proveedor desconocido", [{ ...componentes[0], proveedor: "gemini" }]],
+      ["proveedor vacio", [{ ...componentes[0], proveedor: "" }]],
+      ["proveedor repetido", [componentes[0], componentes[0]]],
+      ["proveedor de 88 caracteres de forma valida", [{ ...componentes[2], proveedor: "openrouter:" + "a".repeat(60) + ":" + "b".repeat(16) }]],
+      ["unidad que no corresponde al proveedor", [{ ...componentes[0], unidad: "unidad" }]],
+      ["costoReal en un proveedor que no reporta su costo", [{ ...componentes[0], costoReal: true }]],
+      ["costo fraccionario", [{ ...componentes[2], costoMicroUsd: 10.5 }]],
+      ["los componentes suman mas que el costo del tramo", [{ ...componentes[0], costoMicroUsd: 18_000 }, { ...componentes[1], costoMicroUsd: 1_000 }]],
+      ["unidad invalida", [{ ...componentes[0], unidad: "minuto" }]],
+      ["cantidad negativa", [{ ...componentes[0], cantidad: -1 }]],
+      ["cantidad no numerica", [{ ...componentes[0], cantidad: "60" }]],
+      ["costo negativo", [{ ...componentes[0], costoMicroUsd: -1 }]],
+      ["costo por encima del tope de cordura", [{ ...componentes[0], costoMicroUsd: 1_000_000_000 }]],
+      ["costoReal no booleano", [{ ...componentes[0], costoReal: 0 }]],
+      ["costoReal ausente", [{ ...componentes[0], costoReal: undefined }]],
+    ])("validacion: %s -> 400 y NADA se registra", async (_n, valor) => {
+      const { ctx, llamada, app } = await construir();
+      expect((await post(app, ruta(UUID_AJENO), cuerpo(ctx, { tramos: [{ ...tramoV2, componentes: valor }] }))).status).toBe(400);
+      expect(llamada.eventos).toHaveLength(0);
+    });
+  });
+
   it("la hora del evento se acota: un reloj roto del worker no manda el costo a otro mes", async () => {
     const { ctx, llamada, app } = await construir();
     await post(app, ruta(UUID_AJENO), cuerpo(ctx, { ocurridoEn: "2001-01-01T00:00:00Z" }));
