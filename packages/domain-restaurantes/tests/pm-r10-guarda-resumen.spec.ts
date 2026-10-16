@@ -269,6 +269,46 @@ describe("ruta real de produccion (executeAgentToolSafely con SAVEPOINT que revi
   });
 });
 
+describe("revision PR #566: respuestas reales de WhatsApp a la pregunta de propina/pago (emojis, cortesia) no son el si", () => {
+  it("T7-001 literal: «El total es de $275. Con tarjeta, ¿desea dejar propina?» + «No, gracias 🙂» => NO crea (rechaza una vez)", async () => {
+    const s = setup(true, true);
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    s.asistente(`El total es de $${await s.total()}. Con tarjeta, ¿desea dejar propina?`);
+    s.cliente("No, gracias 🙂");
+    await s.confirm();
+    const r = await s.createSafe();
+    expect(r.rechazoDelFlujo).toBe("resumen_no_mostrado");
+    expect(r.orderId).toBeNull();
+  });
+  it.each(["No gracias :)", "Con tarjeta, gracias", "sin propina gracias", "No, sin propina", "No quiero propina", "no deseo propina", "efectivo porfa", "con 600 pesos porfa"])(
+    "propina agregada al total + «%s» => NO crea",
+    async (resp) => {
+      const s = setup(true, true);
+      s.cliente("dos cocas para recoger, soy Nora");
+      await s.quote();
+      s.asistente(`El total es de $${await s.total()}. ¿Desea agregar propina?`);
+      s.cliente(resp);
+      await s.confirm();
+      const r = await s.createSafe();
+      expect(r.rechazoDelFlujo, resp).toBe("resumen_no_mostrado");
+      expect(r.orderId).toBeNull();
+    },
+  );
+  it.each(["Total $275. ¿Con cuánto paga? Para confirmar necesito el monto.", "Total $275. ¿Algo más?", "El total es de $275. ¿Desea agregar propina?", "El total es de $275. Con tarjeta, ¿desea dejar propina?"])(
+    "asistentePidioConfirmarResumen(275, %j) => false",
+    (txt) => expect(asistentePidioConfirmarResumen(275, txt)).toBe(false),
+  );
+  it.each(["Total $275. ¿Es correcto?", "Total $275. Paga en efectivo. ¿Confirma su pedido?", "Su pedido: 2 tacos. Total $275.\n¿Es correcto o desea agregar algo más?"])(
+    "asistentePidioConfirmarResumen(275, %j) => true",
+    (txt) => expect(asistentePidioConfirmarResumen(275, txt)).toBe(true),
+  );
+  it("esRespuestaDePagoOPropina tolera emojis, caritas y cortesias; un si con cortesia sigue sin serlo", () => {
+    for (const t of ["No, gracias 🙂", "No gracias :)", "Con tarjeta, gracias", "sin propina gracias", "No, sin propina", "No quiero propina", "no deseo propina", "efectivo porfa", "con 600 pesos porfa", "Efectivo por favor 🙏", "tarjeta 👍"]) expect(esRespuestaDePagoOPropina(t), t).toBe(true);
+    for (const t of ["sí gracias 🙂", "si porfa", "Sí, confirmo 👍", "gracias", "🙂", "ok gracias"]) expect(esRespuestaDePagoOPropina(t), t).toBe(false);
+  });
+});
+
 describe("heuristicas", () => {
   it("asistentePidioConfirmarResumen: total + pregunta de confirmacion si; total con otra pregunta o sin total no", () => {
     expect(asistentePidioConfirmarResumen(245, "Total $245. ¿Es correcto o desea agregar algo más?")).toBe(true);

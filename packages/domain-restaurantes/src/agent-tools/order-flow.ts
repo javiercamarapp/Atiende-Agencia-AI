@@ -449,27 +449,46 @@ export function resumenMostradoEnHistorial(
 }
 
 /**
- * El mensaje del asistente ERA el resumen para confirmar: trae el total de la cotizacion vigente Y cierra con una pregunta de confirmacion («¿Es correcto o desea agregar algo más?», «¿Confirma?»).
- * Un «No gracias», «Efectivo» o «con 600» contestado a ESE mensaje es el sí, no una respuesta suelta de pago/propina. Un mensaje que trae el total pero pregunta otra cosa («Total $245. ¿Con cuánto paga?») NO cuenta.
+ * El mensaje del asistente ERA el resumen para confirmar: trae el total de la cotizacion vigente Y su ULTIMA pregunta es de confirmacion del resumen («¿Es correcto o desea agregar algo más?», «¿Confirma?»).
+ * Un «No gracias», «Efectivo» o «con 600» contestado a ESE mensaje es el sí, no una respuesta suelta de pago/propina. NO cuenta si la ultima pregunta es de propina o de pago («El total es de $275. ¿Desea agregar propina?»,
+ * «Total $275. ¿Con cuánto paga? Para confirmar necesito el monto.») ni si solo pregunta «¿algo más?»: ahi «No gracias» es «sin propina» / «nada más», no el sí al resumen.
  */
 export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, contenido: string | undefined): boolean {
   if (contenido === undefined) return false;
   if (resumenMostradoEnHistorial(quotedTotal, [{ role: "assistant", content: contenido }]) !== true) return false;
-  const cola = contenido.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().slice(-160);
-  return /(confirm|correcto|algo mas|agregar|esta bien|de acuerdo|procedo|asi lo dejo)/.test(cola);
+  const t = contenido.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trimEnd();
+  const idx = t.lastIndexOf("¿");
+  const ultima = idx >= 0 ? t.slice(idx) : (t.split(/[.!\n]+/).map((x) => x.trim()).filter(Boolean).pop() ?? "").slice(-160);
+  if (/(propina|cuanto paga|con cuanto|monto|billete)/.test(ultima)) return false;
+  return /(confirm|correcto|esta bien|de acuerdo|procedo|asi lo dejo)/.test(ultima);
+}
+
+/** Quita emojis, caritas ASCII y cortesias finales («gracias», «porfa», «por favor») de una respuesta corta de WhatsApp; deja minusculas sin acentos y sin puntuacion. */
+function limpiarRespuestaCorta(mensaje: string): string {
+  let t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  t = t.replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200d\ufe0f]/gu, " ").replace(/(^|\s)[:;=]-?[)(dp]+(?=\s|$)/g, " ");
+  t = t.replace(/[!¡?¿]+/g, " ").replace(/[.,;:]+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  // «no gracias» es una respuesta completa por si sola; en lo demas la cortesia final no cambia el sentido.
+  if (t === "no gracias") return t;
+  for (;;) {
+    const sin = t.replace(/\s+(?:muchas\s+)?(?:gracias|porfa|porfis|porfavor|por\s+favor|pls|plis|please)$/, "").trim();
+    if (sin === t || sin === "" || sin === "no") return t;
+    t = sin;
+  }
 }
 
 /**
- * QA-PM-R10 §6: el ultimo mensaje del cliente es solo una respuesta de PAGO o PROPINA («con 600», «$600», «efectivo», «tarjeta», «sin propina», «no gracias», «propina de 20»).
+ * QA-PM-R10 §6: el ultimo mensaje del cliente es solo una respuesta de PAGO o PROPINA («con 600», «$600», «efectivo», «tarjeta», «sin propina», «no gracias», «propina de 20»), con o sin emojis,
+ * puntuacion o cortesia final («No, gracias 🙂», «Con tarjeta, gracias», «efectivo porfa», «No quiero propina»).
  * Esa respuesta NO es el «si» al resumen: el pedido no puede crearse en ese turno. Conservador: el mensaje completo debe ser eso (un «si, con 600» no cuenta).
  */
 export function esRespuestaDePagoOPropina(mensaje: unknown): boolean {
   if (typeof mensaje !== "string") return false;
-  const t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[!¡?]+/g, " ").replace(/[.,;:]+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  const t = limpiarRespuestaCorta(mensaje);
   if (!t) return false;
   const monto = "\\$?\\s*\\d[\\d,.]*\\s*(?:pesos|mxn|varos)?";
   return new RegExp(
-    `^(?:(?:pago\\s+)?(?:con|de)\\s+(?:un\\s+)?(?:billete\\s+de\\s+)?${monto}|${monto}|(?:pago\\s+)?(?:en\\s+|con\\s+)?(?:efectivo|tarjeta|cash)|(?:sin|no)\\s+propina|no\\s+gracias|(?:(?:le\\s+)?(?:dejo|doy|pon(?:le)?)\\s+)?(?:de\\s+)?propina(?:\\s+de)?\\s*(?:${monto})?|(?:dejo|doy|pon(?:le)?)\\s+${monto}\\s+de\\s+propina|(?:de\\s+)?propina\\s+${monto})$`,
+    `^(?:(?:pago\\s+)?(?:con|de)\\s+(?:un\\s+)?(?:billete\\s+de\\s+)?${monto}|${monto}|(?:pago\\s+)?(?:en\\s+|con\\s+)?(?:efectivo|tarjeta|cash)|no\\s+gracias|(?:no\\s+)?(?:(?:le\\s+)?(?:quiero|deseo|dejo|doy|pon(?:le)?|voy\\s+a\\s+dejar)\\s+)?(?:sin\\s+)?(?:de\\s+)?propina(?:\\s+de)?\\s*(?:${monto})?|(?:dejo|doy|pon(?:le)?)\\s+${monto}\\s+de\\s+propina|(?:de\\s+)?propina\\s+${monto})$`,
   ).test(t);
 }
 
