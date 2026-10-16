@@ -579,8 +579,10 @@ export function niegaQuererReembolso(texto: string): boolean {
 // DISENO (R12 revision 3, «precision primero»): una lista negra de frases es un juego del gato y el raton, y cada ronda abria falsos positivos en lo mas comun del negocio (dar CAMBIO en
 // efectivo, confirmar un pago, reponer un platillo). Un falso positivo (borrar una frase legitima) es PEOR que un falso negativo exotico. Por eso la guardia dispara SOLO con senales de
 // alta precision y respeta una exclusion general por contexto:
-//   1. SENAL A (sin exclusion de contexto, solo la negacion): raices reembols*/refund*/reimburs*/«money back», «devolucion de su dinero» o «de lo pagado», «su dinero de regreso».
-//   2. SENAL B: verbo de devolver/regresar/mandar + «su dinero», «lo pagado», «el importe de su pedido», «el pago completo» o «a su tarjeta/cuenta» (y su pasiva).
+//   1. SENAL A (sin exclusion de contexto, solo la negacion): VERBOS DE PROMESA con reembolso/refund («reembolsamos», «haremos el reembolso», «se le reembolsara», «we will refund you»),
+//      «money back», «devolucion de su dinero» o «de lo pagado», «su dinero de regreso». Nombrar la palabra sin prometer (politica, «su solicitud de reembolso», «lo decide el gerente») NO dispara.
+//   2. SENAL B: devolver/regresar/reintegrar (formas del restaurante: «devolvemos», «regresaremos», «devolverle») + «su dinero», «lo pagado», «el importe de su pedido», «el pago completo» o
+//      «a su tarjeta/cuenta bancaria» (y su pasiva). Mandar/enviar/transferir/depositar y los gerundios/imperativos NO cuentan (son envio de pedido o instruccion de pago al cliente).
 //   3. SENAL DE DESCUENTO: «descuent*» con verbo de oferta (hacemos, damos, aplicamos, aplicara, haremos, hago, doy, aplico, podemos...) o con porcentaje dirigido a SU pedido/cuenta,
 //      salvo que la cotizacion vigente traiga una promocion (`respaldaDescuento`) o sea un descuento condicional de la carta.
 //   4. EXCLUSION (aplica a B y a descuentos): si la oracion trata de CAMBIO/vuelto en efectivo, de CONFIRMAR o dar seguimiento a un PAGO (acredit*, abon*, propina, terminal...) o de
@@ -592,8 +594,10 @@ export function niegaQuererReembolso(texto: string): boolean {
 //   - Descuento disfrazado o con otra raiz: «Le descontamos $50 de su pedido.», «Su pedido corre por nuestra cuenta.», «Su pedido sale gratis.», «Se lo regalamos.», «precio especial para usted».
 //   - Choque con la exclusion de contexto (efectivo/pago/acreditar): «Le acreditamos el monto a su tarjeta.», «Le devolvemos su dinero en efectivo.», «Su pago se regresara en 3 dias.»
 //   - Perifrasis sin la senal exacta: «Le pagamos de vuelta lo que cobramos», «We'll make it up to you with $50», «We will pay you back».
+//   - Verbos de envio o transferencia: «Le mandamos su dinero de regreso» (solo cae por «de regreso»), «Le transferimos el importe de su pedido», «Le depositamos lo pagado».
+//   - Reembolso con sujeto distinto o sin verbo de promesa: «Procesaremos su solicitud de reembolso», «El gerente autorizara el reembolso».
 //   - Descuento ya hecho o en pasado: «Ya le aplique el descuento» (sin herramienta, no tiene efecto real; escala el prompt).
-const NO_ES_COSA_DE_DINERO = /\b(?:link|liga|enlace|llamada|mensaje|cotizacion|comprobante|ticket|recibo|corregid\w*|charolas?|envases?|garrafon\w*|para\s+que\s+(?:\w+\s+)?(?:confirme|revise|verifique|valide|apruebe))\b/;
+const NO_ES_COSA_DE_DINERO = /\b(?:link|liga|enlace|llamada|mensaje|cotizacion|comprobante|ticket|recibo|resumen|desglose|detalle|puntos?|reciba|recibamos|refleje|reflejen|corregid\w*|charolas?|envases?|garrafon\w*|para\s+que\s+(?:\w+\s+)?(?:confirme|revise|verifique|valide|apruebe))\b/;
 const CAMBIO_O_PAGO =
   /\b(?:cambio|vuelto|feria|efectivo|billetes?|monedas?|propinas?|terminal|acredit\w*|abon\w*|paga\s+con|pagas\s+con|pagando\s+con|pago\s+(?:en\s+efectivo|recibido|confirmado|registrado|aprobado|exitoso)|recibimos\s+su\s+pago|change|cash|tips?|credited|payment\s+(?:received|confirmed|approved))\b/;
 // «cambio de producto/platillo/pedido» es la politica, no el vuelto: se quita antes de buscar el contexto de efectivo.
@@ -602,25 +606,39 @@ const SOLO_CAMBIO_DE_PRODUCTO = /\b(?:solo|unicamente|nada\s+mas)\s+(?:hacemos\s
 function contextoDeCambioOPago(t: string): boolean {
   return CAMBIO_O_PAGO.test(t.replace(CAMBIO_DE_PRODUCTO, " ")) || NO_ES_COSA_DE_DINERO.test(t);
 }
-const VERBO_DEVOLVER = "(?:devolv\\w+|devuelv\\w+|regres\\w+|reintegr\\w+|retorn\\w+|transfer\\w+|deposit\\w+|mand\\w+|envi\\w+)";
-const VERBO_DEVOLVER_A_TARJETA = "(?:devolv\\w+|devuelv\\w+|regres\\w+|reintegr\\w+|retorn\\w+|transfer\\w+|deposit\\w+)";
+// Solo formas conjugadas/infinitivo en las que EL RESTAURANTE devuelve («devolvemos», «regresaremos», «devolverle»). Quedan fuera mandar/enviar/transferir/depositar (instruccion de pago o
+// envio de pedido al cliente: «mande el dinero exacto», «transfiera el pago completo», «le enviamos el importe») y los gerundios/imperativos («Regresando a su pedido...», «devuelvame»).
+const VERBO_DEVOLVER =
+  "(?:devolv(?:emos|eremos|er|ere|erle|erles|eria|eriamos)|devuelv(?:o|e|en)|regres(?:amos|aremos|ar|arle|arles|are|aria|o)|reintegr(?:amos|aremos|ar|arle|arles|o|are)|retorn(?:amos|aremos|ar|arle|arles|o|are))";
+const VERBO_DEVOLVER_A_TARJETA = VERBO_DEVOLVER;
+// Hueco entre el verbo y el objeto: si en medio aparece el pedido/platillo, el verbo es de envio de comida («le regresamos su pedido ... el pago completo»), no de dinero.
+const HUECO = "(?:(?!\\b(?:pedido|platillo|orden|comida|paquete)\\b)[^.!?\\n]){0,40}";
 const SU_DINERO = "(?:(?:su|tu|mi|el)\\s+dinero|todo\\s+su\\s+dinero)";
 const LO_PAGADO =
   "(?:lo\\s+pagado|lo\\s+que\\s+pag\\w+|(?:el\\s+)?importe\\s+(?:total\\s+)?de\\s+su\\s+(?:pedido|compra|orden)|(?:el|su)\\s+pago\\s+(?:completo|total|integro)|\\$\\s?\\d[\\d.,]*\\s+que\\s+pag\\w+)";
+// Senal A: solo VERBOS DE PROMESA con reembolso («reembolsamos», «haremos el reembolso», «se le reembolsara», «we will refund you»). Mencionar la palabra (la politica, «su solicitud de reembolso»,
+// «el reembolso lo decide el gerente», «los reembolsos no estan disponibles») NO dispara: cambiaria el sentido y borraria el aviso al gerente.
 const PROMESA_A_SIN_CONTEXTO = new RegExp(
   [
-    `\\breembols\\w*|\\brefund\\w*|\\breimburs\\w*|\\bmoney[\\s-]back\\b|\\bback\\s+your\\s+money\\b`,
+    `\\breembols(?:amos|aremos|are|ara|aran|aria|ariamos|ar(?:le|les|lo|la)?)\\b|\\b(?:sera|seran|fue|fueron)\\s+reembolsad\\w+`,
+    `\\b(?:hac(?:emos|er)|hag(?:o|amos)|har(?:emos|e|a)|dar(?:emos|e|a)|dam(?:os)?|doy|procesa(?:mos|remos|re|r)|tramita(?:mos|remos|re|r)|genera(?:mos|remos|re|r))\\s+(?:le\\s+|les\\s+)?(?:\\w+\\s+){0,2}reembolso\\b`,
+    `\\bproced(?:emos|eremos|ere)\\s+(?:con|al|a)\\s+(?:el\\s+|su\\s+)?reembolso\\b`,
+    `\\bse\\s+(?:le\\s+|les\\s+)?(?:reembolsara|hara|dara|procesara|tramitara|aplicara)\\w*\\s+(?:\\w+\\s+){0,2}(?:reembolso|devolucion\\s+de\\s+(?:${SU_DINERO}|${LO_PAGADO}))`,
+    `\\b(?:su|tu)\\s+reembolso\\s+(?:sera|se\\s+(?:procesara|aplicara|acreditara)|llegara)\\b`,
+    `\\b(?:will|'ll|can|going\\s+to|shall)\\s+(?:\\w+\\s+){0,2}(?:refund|reimburse)\\w*|\\byour\\s+(?:full\\s+)?refund\\s+(?:is|will|has)|\\bget\\s+(?:a\\s+|your\\s+)?(?:full\\s+)?refund\\b|\\bmoney[\\s-]back\\b|\\bback\\s+your\\s+money\\b`,
     `\\bdevolucion(?:es)?\\s+(?:de|del)\\s+(?:${SU_DINERO}|${LO_PAGADO})`,
     `\\b${SU_DINERO}\\s+de\\s+(?:regreso|vuelta)\\b`,
   ].join("|"),
   "u",
 );
+// Tras «la devolucion de su dinero» / «su dinero de regreso» una negacion posterior («... no es posible», «... no esta disponible») la vuelve politica.
+const NEGACION_DESPUES = /^[^.!?\n]{0,25}\bno\s+(?:es|son|esta|estan|hay|aplica\w*|procede\w*|se\s+(?:puede|permite|hace|hacen)|depende|disponible\w*|posible\w*)\b/;
 const PROMESA_B = new RegExp(
   [
     // «le devolvemos su dinero», «le regresamos lo pagado», «le mandamos su dinero», «devolveremos el importe de su pedido»
-    `\\b${VERBO_DEVOLVER}\\b[^.!?\\n]{0,40}(?<!\\w)(?:${SU_DINERO}|${LO_PAGADO})`,
+    `\\b${VERBO_DEVOLVER}\\b${HUECO}(?<!\\w)(?:${SU_DINERO}|${LO_PAGADO})`,
     // «le devolvemos $500 a su tarjeta», «se devolvera a su cuenta»
-    `\\b${VERBO_DEVOLVER_A_TARJETA}\\b[^.!?\\n]{0,40}\\ba\\s+su\\s+(?:tarjeta|cuenta(?!\\s+de\\s+(?:correo|whatsapp|email|usuario)))`,
+    `\\b${VERBO_DEVOLVER_A_TARJETA}\\b${HUECO}\\ba\\s+su\\s+(?:tarjeta|cuenta\\s+(?:bancaria|de\\s+banco|clabe)|cuenta(?=\\s*(?:[.!?,;]|$)))`,
     // pasiva: «su dinero sera devuelto a su tarjeta», «su dinero se devolvera», «se le devolvera su dinero»
     `\\b(?:${SU_DINERO}|${LO_PAGADO})\\b[^.!?\\n]{0,30}\\b(?:sera(?:n)?\\s+(?:devuelt|regresad|reintegrad|retornad)\\w*|se\\s+(?:le\\s+)?(?:devolvera|regresara|reintegrara|retornara)\\b)`,
     `\\bse\\s+(?:le\\s+|les\\s+)?(?:devolvera|regresara|reintegrara|retornara)\\b[^.!?\\n]{0,30}\\b(?:${SU_DINERO}|${LO_PAGADO})`,
@@ -649,6 +667,7 @@ const DESCUENTO_CONDICIONAL_DE_LA_CARTA =
 function promesaSinNegar(patron: RegExp, textoNormalizado: string): boolean {
   const m = patron.exec(textoNormalizado);
   if (!m) return false;
+  if (NEGACION_DESPUES.test(textoNormalizado.slice(m.index + m[0].length))) return false;
   return !NEGACION_ANTES.test(textoNormalizado.slice(Math.max(0, m.index - 40), m.index));
 }
 /** La frase PROMETE devolver dinero («le devolvemos su dinero», «we will refund you»). Una negacion («no podemos devolver su dinero»), la politica o el CAMBIO/pago en efectivo no cuentan. */
