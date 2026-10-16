@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { executeAgentToolSafely, invokeAgentTool } from "../../src/agent-tools/registry.ts";
 import type { AgentToolContext } from "../../src/agent-tools/registry.ts";
-import { buildRestaurantFixture, hallazgo, itemsCoca, ordenes } from "./arnes.ts";
+import { buildRestaurantFixture, itemsCoca, ordenes } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 const TEL_LLAMADA = "9991112222";
