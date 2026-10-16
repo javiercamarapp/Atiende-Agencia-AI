@@ -6,12 +6,19 @@
 //   arma (messaging_product, to, type text|interactive|template) y aplica la REGLA DE LA
 //   VENTANA DE 24 H: un mensaje que no es plantilla hacia un numero que no escribio en las
 //   ultimas 24 h se rechaza con el error 131047 (4xx de negocio, no reintentable), igual
-//   que la plataforma real.
+//   que la plataforma real. La ventana se lleva POR PAR numero-cliente (como Meta): un cliente que
+//   escribio al numero A no abre ventana en el numero B del mismo negocio.
 //
 //   Entrante (Meta -> nuestro webhook): `deliverText`/`deliverRaw` firman el cuerpo con
 //   HMAC-SHA256 (X-Hub-Signature-256) sobre los bytes exactos que se envian, mismo
 //   esquema de Meta, y lo POSTean al webhook configurado. `deliverStatus` emite los
 //   estados sent/delivered/read/failed de un mensaje saliente aceptado.
+//
+//   Multinumero: `phoneNumberIds` registra varios numeros del negocio; `inbound` elige el numero
+//   destino y `inboundLote` arma UN solo POST firmado con varios `changes` (uno por numero).
+//   Coexistencia (app del negocio + API): `ecoDeApp`, `history` y `stateSync` arman los campos
+//   `smb_message_echoes`, `history` y `smb_app_state_sync`. Sus formas son aproximaciones NO
+//   verificadas contra un payload real de Meta (ver comentarios de cada metodo).
 //
 // Lo que NO es: no valida plantillas contra un catalogo real de Meta, no mide limites de
 // mensajeria por calidad, no cifra medios. Un 200 de este simulador demuestra que el
@@ -29,7 +36,10 @@ export const META_ERROR_BAD_TOKEN = 190;
 export interface MetaCloudSimulatorOptions {
   readonly appSecret: string;
   readonly accessToken: string;
-  readonly phoneNumberId: string;
+  /** Numero unico (compatibilidad). Equivale a `phoneNumberIds: [phoneNumberId]`. */
+  readonly phoneNumberId?: string;
+  /** Todos los numeros del negocio que este simulador atiende (el primero es el predeterminado). Se combinan con `phoneNumberId`. */
+  readonly phoneNumberIds?: readonly string[];
   readonly verifyToken?: string;
   /** Reloj inyectable: las pruebas avanzan la ventana de 24 h sin esperar. */
   readonly now?: () => number;
@@ -64,6 +74,8 @@ export interface ForcedFailure {
 export interface InboundMessageInput {
   readonly from: string;
   readonly body: string;
+  /** Numero de WhatsApp Business DESTINO (metadata.phone_number_id). Si se omite, el primero del simulador. */
+  readonly phoneNumberId?: string;
   /** Si se omite, se genera uno unico y estable por llamada. */
   readonly id?: string;
   readonly timestampSeconds?: number;
@@ -71,6 +83,29 @@ export interface InboundMessageInput {
   readonly raw?: Record<string, unknown>;
   /** false = NO abre la ventana de 24 h (p. ej. para simular un reintento de Meta antiguo). */
   readonly opensWindow?: boolean;
+}
+
+export interface EcoDeAppInput {
+  readonly phoneNumberId?: string;
+  /** Cliente al que el dueno le escribio desde la app de WhatsApp Business. */
+  readonly to: string;
+  readonly text: string;
+  readonly id?: string;
+  readonly timestampSeconds?: number;
+}
+
+export interface HistoryInput {
+  readonly phoneNumberId?: string;
+  /** Hilos de la conversacion historica: un cliente y sus mensajes (de el o del negocio). */
+  readonly threads: readonly { readonly customer: string; readonly messages: readonly { readonly fromBusiness?: boolean; readonly text: string; readonly id?: string; readonly timestampSeconds?: number }[] }[];
+  readonly phase?: number;
+  readonly chunkOrder?: number;
+  readonly progress?: number;
+}
+
+export interface StateSyncInput {
+  readonly phoneNumberId?: string;
+  readonly contacts: readonly { readonly fullName: string; readonly phone: string; readonly action?: "add" | "remove" }[];
 }
 
 export interface RegisteredMedia {
@@ -98,7 +133,9 @@ export class MetaCloudSimulator {
   readonly accepted: SimulatedOutboundMessage[] = [];
   readonly rejected: SimulatedRejection[] = [];
   readonly deliveries: WebhookDelivery[] = [];
+  /** Ventana de 24 h por PAR `phone_number_id|wa_id`: escribirle al numero A no abre ventana en el B. */
   private readonly lastInboundAt = new Map<string, number>();
+  private readonly numberIds: string[];
   private readonly failures: ForcedFailure[] = [];
   private readonly media = new Map<string, RegisteredMedia>();
   /** Descargas de media atendidas (paso 1: metadatos; paso 2: bytes): las pruebas de idempotencia cuentan los bytes. */
@@ -110,6 +147,8 @@ export class MetaCloudSimulator {
 
   constructor(private readonly opts: MetaCloudSimulatorOptions) {
     this.webhookUrl = opts.webhookUrl ?? null;
+    this.numberIds = [...new Set([...(opts.phoneNumberId ? [opts.phoneNumberId] : []), ...(opts.phoneNumberIds ?? [])])];
+    if (this.numberIds.length === 0) throw new Error("MetaCloudSimulator: define phoneNumberId o phoneNumberIds");
   }
 
   get baseUrl(): string {
@@ -117,8 +156,18 @@ export class MetaCloudSimulator {
     return this.server.baseUrl;
   }
 
+  /** El numero predeterminado (el primero). */
   get phoneNumberId(): string {
-    return this.opts.phoneNumberId;
+    return this.numberIds[0]!;
+  }
+
+  get phoneNumberIds(): readonly string[] {
+    return this.numberIds;
+  }
+
+  /** Registra otro numero del negocio en caliente (para bancos que arman el simulador antes de conocer todas las sucursales). */
+  addPhoneNumberId(phoneNumberId: string): void {
+    if (!this.numberIds.includes(phoneNumberId)) this.numberIds.push(phoneNumberId);
   }
 
   async start(): Promise<void> {
@@ -150,8 +199,9 @@ export class MetaCloudSimulator {
     this.failures.push(failure);
   }
 
-  isWindowOpen(to: string): boolean {
-    const last = this.lastInboundAt.get(normalizeWaId(to));
+  /** Ventana del par numero-cliente. Sin `phoneNumberId`, el numero predeterminado. */
+  isWindowOpen(to: string, phoneNumberId: string = this.phoneNumberId): boolean {
+    const last = this.lastInboundAt.get(windowKey(phoneNumberId, to));
     return last !== undefined && this.now() - last < WINDOW_24H_MS;
   }
 
@@ -159,15 +209,14 @@ export class MetaCloudSimulator {
     return `sha256=${createHmac("sha256", this.opts.appSecret).update(rawBody).digest("hex")}`;
   }
 
-  /** Ultimo mensaje saliente aceptado hacia `to` (con o sin '+'). */
-  lastSentTo(to: string): SimulatedOutboundMessage | undefined {
-    const wa = normalizeWaId(to);
-    return [...this.accepted].reverse().find((m) => normalizeWaId(m.to) === wa);
+  /** Ultimo mensaje saliente aceptado hacia `to` (con o sin '+'), opcionalmente solo por un numero. */
+  lastSentTo(to: string, phoneNumberId?: string): SimulatedOutboundMessage | undefined {
+    return this.sentTo(to, phoneNumberId).at(-1);
   }
 
-  sentTo(to: string): SimulatedOutboundMessage[] {
+  sentTo(to: string, phoneNumberId?: string): SimulatedOutboundMessage[] {
     const wa = normalizeWaId(to);
-    return this.accepted.filter((m) => normalizeWaId(m.to) === wa);
+    return this.accepted.filter((m) => normalizeWaId(m.to) === wa && (phoneNumberId === undefined || m.phoneNumberId === phoneNumberId));
   }
 
   /** Registra un archivo que el cliente "subio" a WhatsApp y devuelve su media-id (el que viaja en el webhook de audio). */
@@ -183,36 +232,136 @@ export class MetaCloudSimulator {
     return this.deliverInbound({ from, body: "", ...(opts.id ? { id: opts.id } : {}), raw: { type: "audio", audio: { id: mediaId, mime_type: mimeType, voice: opts.voice ?? true, sha256: "SIM" } } });
   }
 
-  buildInboundPayload(input: InboundMessageInput): Record<string, unknown> {
+  private wrap(changes: readonly unknown[]): Record<string, unknown> {
+    return { object: "whatsapp_business_account", entry: [{ id: "SIM-WABA", changes }] };
+  }
+
+  private metadata(phoneNumberId: string): Record<string, unknown> {
+    return { display_phone_number: "5219990000000", phone_number_id: phoneNumberId };
+  }
+
+  private buildMessage(input: InboundMessageInput): Record<string, unknown> {
     const id = input.id ?? `wamid.SIMIN${++this.counter}`;
-    const message = input.raw
-      ? { id, from: input.from.replace(/\D/g, ""), timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)), ...input.raw }
-      : { id, from: input.from.replace(/\D/g, ""), timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)), type: "text", text: { body: input.body } };
+    const base = { id, from: input.from.replace(/\D/g, ""), timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)) };
+    return input.raw ? { ...base, ...input.raw } : { ...base, type: "text", text: { body: input.body } };
+  }
+
+  private messagesChange(phoneNumberId: string, inputs: readonly InboundMessageInput[]): Record<string, unknown> {
+    const messages = inputs.map((i) => this.buildMessage(i));
     return {
-      object: "whatsapp_business_account",
-      entry: [
-        {
-          id: "SIM-WABA",
-          changes: [
-            {
-              field: "messages",
-              value: {
-                messaging_product: "whatsapp",
-                metadata: { display_phone_number: "5219990000000", phone_number_id: this.opts.phoneNumberId },
-                contacts: [{ profile: { name: "Cliente Simulado" }, wa_id: input.from.replace(/\D/g, "") }],
-                messages: [message],
-              },
-            },
-          ],
-        },
-      ],
+      field: "messages",
+      value: {
+        messaging_product: "whatsapp",
+        metadata: this.metadata(phoneNumberId),
+        contacts: inputs.map((i) => ({ profile: { name: "Cliente Simulado" }, wa_id: i.from.replace(/\D/g, "") })),
+        messages,
+      },
     };
+  }
+
+  buildInboundPayload(input: InboundMessageInput): Record<string, unknown> {
+    return this.wrap([this.messagesChange(input.phoneNumberId ?? this.phoneNumberId, [input])]);
+  }
+
+  private openWindow(input: InboundMessageInput): void {
+    if (input.opensWindow !== false) this.lastInboundAt.set(windowKey(input.phoneNumberId ?? this.phoneNumberId, input.from), this.now());
   }
 
   /** Meta -> nuestro webhook: firma y entrega un mensaje entrante. */
   async deliverInbound(input: InboundMessageInput): Promise<WebhookDelivery> {
-    if (input.opensWindow !== false) this.lastInboundAt.set(normalizeWaId(input.from), this.now());
+    this.openWindow(input);
     return this.postSigned(JSON.stringify(this.buildInboundPayload(input)));
+  }
+
+  /** Alias corto de `deliverInbound` (acepta `phoneNumberId` destino). */
+  async inbound(input: InboundMessageInput): Promise<WebhookDelivery> {
+    return this.deliverInbound(input);
+  }
+
+  /** UN solo POST firmado con varios `changes`, uno por numero destino (Meta agrupa asi a veces). Cada mensaje abre la ventana de SU par numero-cliente. */
+  async inboundLote(inputs: readonly InboundMessageInput[]): Promise<WebhookDelivery> {
+    const porNumero = new Map<string, InboundMessageInput[]>();
+    for (const input of inputs) {
+      const pnid = input.phoneNumberId ?? this.phoneNumberId;
+      porNumero.set(pnid, [...(porNumero.get(pnid) ?? []), input]);
+      this.openWindow(input);
+    }
+    const changes = [...porNumero.entries()].map(([pnid, group]) => this.messagesChange(pnid, group));
+    return this.postSigned(JSON.stringify(this.wrap(changes)));
+  }
+
+  /**
+   * Eco de un mensaje que el dueno envio DESDE LA APP de WhatsApp Business (coexistencia): `field: "smb_message_echoes"`.
+   *
+   * NO VERIFICADO: la forma exacta de `value.message_echoes[]` (claves `from`, `to`, `id`, `timestamp`, `type`, `text`) debe
+   * confrontarse contra la documentacion de Meta (OFI-1:
+   * https://developers.facebook.com/docs/whatsapp/embedded-signup/custom-flows/onboarding-business-app-users) o un payload real
+   * ANTES del piloto. Este metodo solo ejercita el camino de ecos del sistema, no demuestra que Meta lo emita asi.
+   * Un eco NO abre la ventana de 24 h del cliente (no es un mensaje del cliente).
+   */
+  async ecoDeApp(input: EcoDeAppInput): Promise<WebhookDelivery> {
+    const pnid = input.phoneNumberId ?? this.phoneNumberId;
+    const change = {
+      field: "smb_message_echoes",
+      value: {
+        messaging_product: "whatsapp",
+        metadata: this.metadata(pnid),
+        message_echoes: [
+          { from: "5219990000000", to: input.to.replace(/\D/g, ""), id: input.id ?? `wamid.SIMECHO${++this.counter}`, timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)), type: "text", text: { body: input.text } },
+        ],
+      },
+    };
+    return this.postSigned(JSON.stringify(this.wrap([change])));
+  }
+
+  /**
+   * Historial de conversaciones que Meta comparte tras el onboarding de la app (`field: "history"`).
+   * NO VERIFICADO: la forma (`value.history[].metadata{phase,chunk_order,progress}` y `threads[].messages[]`) es una aproximacion
+   * minima; confrontarla con la documentacion de Meta (OFI-1) antes del piloto.
+   */
+  async history(input: HistoryInput): Promise<WebhookDelivery> {
+    const pnid = input.phoneNumberId ?? this.phoneNumberId;
+    const change = {
+      field: "history",
+      value: {
+        messaging_product: "whatsapp",
+        metadata: this.metadata(pnid),
+        history: [
+          {
+            metadata: { phase: input.phase ?? 0, chunk_order: input.chunkOrder ?? 1, progress: input.progress ?? 100 },
+            threads: input.threads.map((t) => ({
+              id: t.customer.replace(/\D/g, ""),
+              messages: t.messages.map((m) => ({
+                from: m.fromBusiness ? "5219990000000" : t.customer.replace(/\D/g, ""),
+                id: m.id ?? `wamid.SIMHIST${++this.counter}`,
+                timestamp: String(m.timestampSeconds ?? Math.floor(this.now() / 1000)),
+                type: "text",
+                text: { body: m.text },
+                history_context: { status: "READ" },
+              })),
+            })),
+          },
+        ],
+      },
+    };
+    return this.postSigned(JSON.stringify(this.wrap([change])));
+  }
+
+  /**
+   * Sincronizacion de contactos de la app (`field: "smb_app_state_sync"`).
+   * NO VERIFICADO: forma minima aproximada (`value.state_sync[]` con `type: "contact"`); confrontar con OFI-1 antes del piloto.
+   */
+  async stateSync(input: StateSyncInput): Promise<WebhookDelivery> {
+    const pnid = input.phoneNumberId ?? this.phoneNumberId;
+    const change = {
+      field: "smb_app_state_sync",
+      value: {
+        messaging_product: "whatsapp",
+        metadata: this.metadata(pnid),
+        state_sync: input.contacts.map((c) => ({ type: "contact", contact: { full_name: c.fullName, phone_number: c.phone.replace(/\D/g, "") }, action: c.action ?? "add", metadata: { timestamp: String(Math.floor(this.now() / 1000)) } })),
+      },
+    };
+    return this.postSigned(JSON.stringify(this.wrap([change])));
   }
 
   async deliverText(from: string, body: string, id?: string): Promise<WebhookDelivery> {
@@ -239,7 +388,7 @@ export class MetaCloudSimulator {
               field: "messages",
               value: {
                 messaging_product: "whatsapp",
-                metadata: { display_phone_number: "5219990000000", phone_number_id: this.opts.phoneNumberId },
+                metadata: { display_phone_number: "5219990000000", phone_number_id: sent.phoneNumberId },
                 statuses: [{ id: messageId, status, timestamp: String(Math.floor(this.now() / 1000)), recipient_id: normalizeWaId(sent.to), ...(error ? { errors: [{ code: error.code, title: error.title, message: error.title, error_data: { details: error.title } }] } : {}) }],
               },
             },
@@ -305,7 +454,7 @@ export class MetaCloudSimulator {
     const match = /^\/(v\d+\.\d+)\/([^/]+)\/messages$/.exec(url.pathname);
     if (request.method !== "POST" || !match) return json(404, { error: { message: "ruta no soportada por el simulador", code: 100 } });
     if (request.headers.get("authorization") !== `Bearer ${this.opts.accessToken}`) return graphError(401, META_ERROR_BAD_TOKEN, "Invalid OAuth access token.");
-    if (match[2] !== this.opts.phoneNumberId) return graphError(400, 100, "Unsupported post request: phone_number_id desconocido para este simulador.");
+    if (!this.numberIds.includes(match[2]!)) return graphError(400, 100, "Unsupported post request: phone_number_id desconocido para este simulador.");
 
     const forced = this.failures.shift();
     if (forced) {
@@ -347,7 +496,7 @@ export class MetaCloudSimulator {
     }
 
     // Regla de oro de la plataforma: solo una PLANTILLA puede iniciar o reabrir conversacion.
-    if (type !== "template" && !this.isWindowOpen(to)) {
+    if (type !== "template" && !this.isWindowOpen(to, match[2]!)) {
       const message = "Re-engagement message: la ventana de 24 h esta cerrada; solo se permite una plantilla aprobada.";
       this.rejected.push({ to, status: 400, code: META_ERROR_REENGAGEMENT, message });
       return graphError(400, META_ERROR_REENGAGEMENT, message);
@@ -361,6 +510,10 @@ export class MetaCloudSimulator {
 
 /** Meta usa wa_id sin '+' ni separadores. Para Mexico, "521XXXXXXXXXX" y "52XXXXXXXXXX" son el mismo contacto
  *  (Meta normaliza ambos): se unifican al segundo para que la ventana de 24 h no dependa de la variante. */
+function windowKey(phoneNumberId: string, customer: string): string {
+  return `${phoneNumberId}|${normalizeWaId(customer)}`;
+}
+
 export function normalizeWaId(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.length === 13 && digits.startsWith("521")) return `52${digits.slice(3)}`;

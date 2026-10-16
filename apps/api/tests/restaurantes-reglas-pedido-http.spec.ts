@@ -1,12 +1,11 @@
 // Modelo PM (migracion 023): las reglas por sucursal llegan por HTTP -- voz (cotizar) y
-// checkout/voz (crear pedido) devuelven 400 con el mensaje claro de la regla, y aceptan
+// voz (crear pedido) devuelven 400 con el mensaje claro de la regla, y aceptan
 // canal / colonia_entrega / propina. HTTP real sobre buildTestDeps (in-memory).
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
 
 const TOOL = { "x-atiende-tool-secret": "test-voice-tool-secret" };
-const WEB = { origin: "http://localhost:5173" };
 
 describe("reglas de pedido por HTTP", () => {
   it("cotizar (voz): bajo el minimo a domicilio -> 400 con el monto y el faltante; recoger -> 200 con la politica", async () => {
@@ -25,17 +24,17 @@ describe("reglas de pedido por HTTP", () => {
     expect(body.quote).toMatchObject({ total: 90, canal: "recoger", propinaPolitica: "solo_tarjeta", preguntarPropina: true });
   });
 
-  it("checkout web: pedido bajo el minimo -> 400 y no se crea; con minimo cumplido -> 200", async () => {
+  it("crear pedido (voz): pedido bajo el minimo -> 400 y no se crea; con minimo cumplido -> 200", async () => {
     const { deps, restaurantesRepo, propertyId, products } = await buildTestDeps();
     restaurantesRepo.seedBranchPolicy(propertyId, { pedidoMinimoDomicilio: 100 });
     const app = buildApp(deps);
-    const base = { branch_slug: "fco-montejo", customer_name: "Cliente Web", customer_phone: "9991234567", customer_address: "Calle 1 #200, Centro", payment_method: "efectivo", source: "web" };
+    const base = { branch_slug: "fco-montejo", customer_name: "Cliente Web", customer_phone: "9991234567", customer_address: "Calle 1 #200, Centro", payment_method: "efectivo", source: "voice" };
 
-    const bajo = await app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit({ ...base, items: [{ product_id: products.cocaCola, requested_quantity: 1 }] }, WEB));
+    const bajo = await app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit({ ...base, items: [{ product_id: products.cocaCola, requested_quantity: 1 }] }, TOOL));
     expect(bajo.status).toBe(400);
     expect(JSON.stringify(await bajo.json())).toContain("faltan $55");
 
-    const ok = await app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit({ ...base, items: [{ product_id: products.cocaCola, requested_quantity: 3 }] }, WEB));
+    const ok = await app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit({ ...base, items: [{ product_id: products.cocaCola, requested_quantity: 3 }] }, TOOL));
     expect(ok.status).toBe(200);
   });
 

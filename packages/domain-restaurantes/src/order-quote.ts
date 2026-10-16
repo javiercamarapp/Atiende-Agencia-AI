@@ -48,6 +48,13 @@ export function isTortillaChoice(value: unknown): value is TortillaChoice {
   return typeof value === "string" && (TORTILLA_CHOICES as readonly string[]).includes(value);
 }
 
+/** QA-PM-R5-reglas-09: la voz transcribe "maíz" / "Maiz" / "maiz ": se normaliza (sin acento, sin espacios, minusculas) antes de validar. Lo que no es una tortilla valida pasa igual (y se rechaza despues). */
+export function normalizarTortilla(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const n = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return isTortillaChoice(n) ? n : value;
+}
+
 /** Lista cerrada de lo que el cliente puede pedir (sin costo). */
 export const COMPLEMENTOS_PEDIBLES: readonly RequestedComplement[] = ["salsa_guacamolera", "salsa_mexicana", "salsa_pina", "pina", "salsa_habanero", "salsa_habanero_soasado", "crema_ajo"];
 
@@ -57,10 +64,11 @@ const ALIAS_DE_COMPLEMENTO: ReadonlyArray<readonly [RegExp, RequestedComplement]
   [/\b(?:sauceada|suasada|soasada|soasado|sauceado|suasado)\b/, "salsa_habanero_soasado"],
   [/\bxnipec\b|\bxni\s?pec\b|\bpico\s+de\s+gallo\b|\bcebolla\s+con\s+tomate\b|\bsalsa\s+mexicana\b|\bmexicana\b/, "salsa_mexicana"],
   [/\bguacamolera\b|\bguacamole\b/, "salsa_guacamolera"],
-  [/\bcrema\s+de\s+ajo\b|\bcrema_ajo\b/, "crema_ajo"],
+  // «salsa de ajo» / «ajo» (T7-002, T7-035) es la crema de ajo: sin alias el modelo la mandaba, el servidor la rechazaba y el reintento terminaba con otra salsa o sin ella.
+  [/\bcrema\s+de\s+ajo\b|\bcrema_ajo\b|\bsalsa\s+de\s+ajo\b|^ajo$/, "crema_ajo"],
   [/\bsalsa\s+de\s+pi[ñn]a\b|\bsalsa_pina\b/, "salsa_pina"],
   [/\bpi[ñn]a\b|\bpina\b/, "pina"],
-  [/\bhabanero\b|\bsalsa_habanero\b/, "salsa_habanero"],
+  [/\bhabanero\b|\bhabanera\b|\bsalsa_habanero\b/, "salsa_habanero"],
 ];
 
 /** Convierte lo que mando el modelo en un complemento canonico de la lista cerrada, o null si no se reconoce (se descarta, nunca se imprime). */
@@ -68,8 +76,45 @@ export function canonicalRequestedComplement(valor: unknown): RequestedComplemen
   if (typeof valor !== "string") return null;
   const t = valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   if ((COMPLEMENTOS_PEDIBLES as readonly string[]).includes(t)) return t as RequestedComplement;
-  for (const [patron, canonico] of ALIAS_DE_COMPLEMENTO) if (patron.test(t)) return canonico;
+  const conEspacios = t.replace(/_/g, " ").replace(/\s+/g, " ");
+  for (const [patron, canonico] of ALIAS_DE_COMPLEMENTO) if (patron.test(t) || patron.test(conEspacios)) return canonico;
   return null;
+}
+
+/** Complementos basicos que el cliente EXCLUYE en el texto libre de las notas («sin cebolla», «sin salsa roja», «sin limones»). Lista cerrada de frases; el resto del texto no se toca. */
+const EXCLUSIONES_EN_NOTAS: ReadonlyArray<readonly [RegExp, DefaultComplement]> = [
+  [/\bsin\s+(?:la\s+)?(?:cebolla|cilantro)\b/, "cebolla_cilantro"],
+  [/\bsin\s+(?:la\s+)?salsa\s+roja\b/, "salsa_roja"],
+  [/\bsin\s+(?:la\s+)?salsa\s+verde\b/, "salsa_verde"],
+  [/\bsin\s+(?:la\s+)?(?:salsa\s+)?(?:mexicana|pico\s+de\s+gallo|xnipec)\b/, "salsa_mexicana"],
+  [/\bsin\s+(?:la\s+)?(?:salsa\s+)?guacamolera\b/, "salsa_guacamolera"],
+  [/\bsin\s+(?:los\s+)?limon(?:es)?\b/, "limones"],
+  [/\bsin\s+(?:la\s+)?crema\s+de\s+ajo\b/, "crema_ajo"],
+];
+
+export function complementosExcluidosEnNotas(notes: unknown): DefaultComplement[] {
+  if (typeof notes !== "string" || !notes.trim()) return [];
+  const t = notes.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return EXCLUSIONES_EN_NOTAS.filter(([patron, item]) => excluyeDeVerdad(patron, item, t)).map(([, item]) => item);
+}
+
+/** La exclusion alcanza a TODO el complemento: no es parcial («sin salsa roja en los de pastor, en bistec sí», «sin cilantro en los frijoles») ni deja la otra mitad del par
+ * («sin cebolla pero con cilantro» sigue llevando el cilantro; «con cebolla y sin cilantro» la cebolla). */
+function excluyeDeVerdad(patron: RegExp, item: DefaultComplement, t: string): boolean {
+  if (item === "cebolla_cilantro") {
+    const sinCebolla = /\bsin\s+(?:la\s+)?cebolla\b/.test(t);
+    const sinCilantro = /\bsin\s+(?:el\s+)?cilantro\b/.test(t);
+    if (sinCebolla && !sinCilantro && /\bcon\s+(?:el\s+)?cilantro\b/.test(t)) return false;
+    if (sinCilantro && !sinCebolla && /\bcon\s+(?:la\s+)?cebolla\b/.test(t)) return false;
+  }
+  for (const m of t.matchAll(new RegExp(patron.source, "g"))) {
+    const clausula = t.slice((m.index ?? 0) + m[0].length).split(/[,.;\n]/)[0] ?? "";
+    const parcial =
+      /^\s+(?:solo\s+)?(?:en|para)\s+(?:los|las|el|la|mis|sus|un|una|unos|unas)\b/.test(clausula) &&
+      !/^\s+(?:solo\s+)?(?:en|para)\s+(?:los\s+|las\s+|el\s+|mi\s+)?(?:todos\s+)?(?:tacos?|pedido|ordenes|orden|todo)\s*$/.test(clausula);
+    if (!parcial) return true;
+  }
+  return false;
 }
 
 /** `cebolla` es el nombre historico de `cebolla_cilantro`: ambos omiten la misma salsa. */
@@ -123,7 +168,8 @@ export function buildComplementNotes(
   // Las 9 salsas (incluidas habanero y crema de ajo) ya van incluidas sin costo por omision, asi que pedir
   // habanero/crema de ajo NO agrega una linea "solicitados" aparte (apareceria a la vez como incluido y
   // solicitado). Si el cliente la pide expresamente, esa peticion gana sobre una omision contradictoria.
-  const omittedSet = new Set(omitted.map(canonicalComplement));
+  // QA-PM-R6-voz-02: «sin cebolla, sin cilantro» en las notas libres y a la vez «Básicas: cebolla con cilantro» contradecian la comanda. Lo que las notas excluyen sale de las básicas.
+  const omittedSet = new Set([...omitted.map(canonicalComplement), ...complementosExcluidosEnNotas(notes)]);
   if (basics) return buildComplementNotesConBasicas(notes, requested, omittedSet, basics);
   const requestedSet = new Set<DefaultComplement>(requested.filter((r) => (DEFAULT_COMPLEMENTS as readonly string[]).includes(r)) as unknown as DefaultComplement[]);
   const included = DEFAULT_COMPLEMENTS.filter((item) => requestedSet.has(item) || !omittedSet.has(item));
@@ -163,11 +209,13 @@ function buildComplementNotesConBasicas(
  * agente, el servidor lo retiene para que la sucursal lo confirme (ver pedido-grande.ts). El checkout WEB conserva su tope de 100 (`MAX_PIEZAS_POR_RENGLON_WEB`). */
 export const MAX_PIEZAS_POR_RENGLON = 500;
 export const MAX_PIEZAS_POR_RENGLON_WEB = 100;
+/** Un producto vendido por peso ("— 1 kg") no admite mas de estas piezas por renglon: 100 o mas piezas de un producto por peso son gramos como cantidad (250, 750, 1000); 30 kg es un pedido grande legitimo que se retiene aparte. */
+export const MAX_PIEZAS_PRODUCTO_POR_PESO = 99;
 
 /** Mensaje accionable para una cantidad fuera de rango: dice el maximo en vez de un error generico. */
 export function mensajeCantidadInvalida(value: unknown, max: number = MAX_PIEZAS_POR_RENGLON): string {
   return typeof value === "number" && Number.isInteger(value) && value > max
-    ? `Productos o cantidades inválidos: el máximo es de ${max} piezas por renglón; un pedido más grande lo confirma directamente la sucursal.`
+    ? `Productos o cantidades inválidos: el máximo es de ${max} piezas por renglón; un pedido más grande lo confirma directamente la sucursal. Si ${value} son GRAMOS, requested_quantity no es el peso: busque el producto de esa presentación con buscar_producto usando la fracción ("cuarto de bistec", "tres cuartos de chuleta") y mande requested_quantity 1.`
     : "Productos o cantidades inválidos";
 }
 
@@ -208,6 +256,13 @@ export function buildOrderQuoteFromProducts(
     if (!product) {
       throw new OrderValidationError(`Producto no disponible: ${item.productId}`);
     }
+    // QA-PM-R4-reglas-03: "un cuarto de bistec" llegaba como requested_quantity 250 sobre el producto de 1 kg (250 kg, o el error de 500 piezas con 750). Un producto que se vende por
+    // peso ("Bistec de Res — 1 kg") no se pide por gramos: se rechaza con la instruccion de usar la presentacion exacta y cantidad 1.
+    if (item.requestedQuantity > MAX_PIEZAS_PRODUCTO_POR_PESO && /[—-]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)\b/i.test(product.name)) {
+      throw new OrderValidationError(
+        `${product.name} se vende por peso: requested_quantity es el número de piezas de ese producto (1 para un kilo), no gramos. Para ${item.requestedQuantity} g busque el producto de esa presentación con buscar_producto usando la fracción en la consulta (por ejemplo "cuarto de bistec") y mande requested_quantity 1.`,
+      );
+    }
 
     // Regla dura: producto/categoria marcados "no se vende a domicilio" (PM: alcohol). Se
     // evalua ANTES de la confirmacion de mayoria de edad: no tiene caso preguntarla por algo
@@ -245,7 +300,8 @@ export function buildOrderQuoteFromProducts(
       const upper = Math.ceil(item.requestedQuantity / packSize) * packSize;
       const opciones = lower >= packSize ? `${lower} o ${upper}` : String(upper);
       throw new OrderValidationError(
-        `${product.name} solo se vende en órdenes de ${packSize} piezas. Pediste ${item.requestedQuantity}; puedes pedir ${opciones}.`,
+        `${product.name} solo se vende en órdenes de ${packSize} piezas. Pediste ${item.requestedQuantity}; puedes pedir ${opciones}. ` +
+          `requested_quantity va en PIEZAS, no en órdenes: ${item.requestedQuantity < packSize ? `si el cliente pidió ${item.requestedQuantity === 1 ? "UNA orden" : `${item.requestedQuantity} órdenes`}, mande requested_quantity ${item.requestedQuantity * packSize}` : `una orden son ${packSize} piezas y dos son ${packSize * 2}`}; no reintente con el mismo número.`,
       );
     }
 

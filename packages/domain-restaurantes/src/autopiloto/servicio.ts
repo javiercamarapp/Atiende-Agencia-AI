@@ -17,7 +17,7 @@ import type { MotivoCancelacion } from "./taxonomia.ts";
 import { estimarTiempo } from "./tiempo-prometido.ts";
 import type { TiempoEstimado } from "./tiempo-prometido.ts";
 import { AUTOPILOTO_CONFIG_POR_OMISION } from "./tipos.ts";
-import type { AutopilotoRepository, OpcionesResolver, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
+import type { AutopilotoRepository, ComandaParaAvance, OpcionesResolver, PedidoGrandeHook, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
 
 export interface AutopilotoServicioDeps {
   readonly auto: AutopilotoRepository;
@@ -25,6 +25,9 @@ export interface AutopilotoServicioDeps {
   readonly db: TenantDbSession;
   /** Encola la comanda al POS de pedidos que acaban de pasar a `pending` (best-effort; sin POS cableado no hace nada). */
   readonly encolarComandas?: (orders: readonly Order[]) => Promise<unknown>;
+  /** Corta la comanda al POS (pendiente/fallida/captura manual) de un pedido que esta decision acaba de CANCELAR, para que un POS que vuelve despues no la cocine
+   * (mismo corte que el cambio de estado a `cancelado`, R-34). Best-effort; sin POS cableado no hace nada. */
+  readonly cortarComandaCancelado?: (order: Order) => Promise<unknown>;
 }
 
 /** Plantillas HSM (Meta) que hay que crear y aprobar para los avisos fuera de la ventana de 24 h (R-25). Todas llevan 3 variables:
@@ -106,6 +109,19 @@ export async function retenerPedidoGrande(deps: AutopilotoServicioDeps, input: {
   return { estado: "por_aprobar", solicitudId: r.solicitudId, creada: r.estado === "creada" };
 }
 
+/** Hook de `crear_pedido` sobre UNA sesion: `disponible` es una lectura barata de la config (degrada con SAVEPOINT a `false` contra la base sin migrar). */
+export function crearHookPedidoGrande(deps: Pick<AutopilotoServicioDeps, "auto" | "repo" | "db">): PedidoGrandeHook {
+  return {
+    async disponible(organizationId, propertyId) {
+      return (await deps.auto.leerConfig(organizationId, propertyId)).disponible;
+    },
+    async retener(input) {
+      const r = await retenerPedidoGrande(deps, input);
+      return r.estado === "por_aprobar" ? { estado: "por_aprobar", solicitudId: r.solicitudId } : { estado: "no_disponible" };
+    },
+  };
+}
+
 export interface ResultadoResolucion {
   readonly resultado: ResultadoResolver;
   /** Efectos disparados en ESTA llamada (vacio en un doble clic). */
@@ -135,6 +151,12 @@ export async function resolverSolicitudAprobacion(
     }
   };
   const order = resultado.orderId ? await deps.repo.findOrderById(input.organizationId, resultado.orderId) : null;
+
+  // Un pedido que esta decision acaba de cancelar (rechazar un pedido grande, cancelar a peticion del cliente) no debe llegar a cocina despues: si su comanda
+  // quedo pendiente/fallida en el POS, se corta igual que al cancelar por cambio de estado.
+  if (order && resultado.estadoPedido === "cancelado" && (input.decision === "cancelar" || input.decision === "rechazar")) {
+    await marca("comanda_cortada", async () => deps.cortarComandaCancelado?.(order));
+  }
 
   if (resultado.tipo === "pedido_grande" && order) {
     if (input.decision === "aprobar" && (resultado.estadoPedido === "pending" || resultado.estadoPedido === "programado")) {
@@ -305,12 +327,18 @@ export interface ResumenEscalado {
   readonly escaladas: number;
 }
 
+/** SQLSTATE transitorios (bloqueo no disponible, serializacion, deadlock, cancelacion por tiempo, falta de recursos, conexion): vale la pena reintentar la alerta. */
+function esFalloTransitorioDeEmision(codigo: string | undefined): boolean {
+  return codigo !== undefined && /^(55P03|40001|40P01|57014|53\d{3}|08\w{3}|57P0\d)$/.test(codigo);
+}
+
 /** Avisa al owner (campana, severidad critica) de las aprobaciones que llevan N minutos sin respuesta. NUNCA las aprueba. Una sola vez por solicitud. */
 export async function escalarSolicitudesVencidas(deps: AutopilotoServicioDeps, ahora: Date): Promise<ResumenEscalado> {
   const r = await deps.auto.solicitudesPorEscalar(ahora, 100);
   if (!r.disponible) return { disponible: false, escaladas: 0 };
+  let falloTransitorio: string | null = null;
   for (const s of r.valor) {
-    await emitirNotificacion(deps.db, {
+    const emision = await emitirNotificacion(deps.db, {
       evento: "restaurantes.aprobacion.vencida",
       organizationId: s.organizationId,
       propertyId: s.propertyId,
@@ -319,7 +347,12 @@ export async function escalarSolicitudesVencidas(deps: AutopilotoServicioDeps, a
       entidadTipo: "solicitud_aprobacion",
       entidadId: s.id,
     });
+    // `solicitudes_por_escalar` marca `escalada_at` en la misma consulta que las devuelve: si la alerta falla por un error transitorio (bloqueo, red) y aqui se
+    // siguiera, la marca se confirmaria y la aprobacion vencida NUNCA se volveria a avisar. Se lanza al terminar el lote para que la transaccion de la unidad
+    // revierta las marcas y el siguiente tick reintente (las alertas ya emitidas son idempotentes por su clave de dedupe). `invalida` es deterministico: no se reintenta.
+    if (emision.estado === "error" && esFalloTransitorioDeEmision(emision.codigo)) falloTransitorio = emision.codigo ?? "sin codigo";
   }
+  if (falloTransitorio !== null) throw new Error(`autopiloto: la alerta de aprobacion vencida fallo (SQLSTATE ${falloTransitorio}); se revierte el marcado para reintentar en el siguiente tick`);
   return { disponible: true, escaladas: r.valor.length };
 }
 
@@ -371,29 +404,78 @@ export interface ResumenAvancePos {
   readonly sinAdaptadorReal: boolean;
 }
 
+/** Tope por consulta al POS y presupuesto total del paso (la funcion de Vercel muere a los 30 s: el paso debe rendirse antes y seguir). */
+export const TIMEOUT_CONSULTA_POS_MS = 3_000;
+export const PRESUPUESTO_PASO_POS_MS = 12_000;
+const CONCURRENCIA_CONSULTA_POS = 5;
+
+export interface OpcionesAvancePos {
+  readonly timeoutConsultaMs?: number;
+  readonly presupuestoMs?: number;
+  readonly ahoraMs?: () => number;
+}
+
+export interface EstadoPosConsultado {
+  readonly comanda: ComandaParaAvance;
+  readonly estadoPos: string;
+}
+
+function conTimeoutPos<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`el POS no respondio en ${ms} ms`)), ms);
+  });
+  return Promise.race([p, limite]).finally(() => clearTimeout(timer));
+}
+
 /**
- * Avance desde el POS: consulta `obtenerEstadoComanda` de las comandas confirmadas y mueve el pedido (con aviso al cliente por el productor de
- * estados). Sin adaptador REAL (`port.esReal = false`) no consulta nada: estado honesto "requiere API de SoftRestaurant".
+ * Fase 1 del avance (SIN base de datos): pregunta al POS el estado de cada comanda con un tope por consulta y un presupuesto total del paso
+ * (QA R2 automatizacion-07). Hasta 5 consultas en paralelo; al agotarse el presupuesto ya no se lanzan mas y las comandas restantes quedan
+ * para el siguiente tick. Una consulta lenta o fallida se salta (se reintenta en el siguiente tick), nunca cuelga al resto del tick. El tick
+ * la corre FUERA de cualquier transaccion: una llamada de red no debe tener abierta una transaccion de base de datos.
  */
-export async function avanzarDesdePos(deps: AutopilotoServicioDeps, port: SoftRestaurantPort, sucursalPos: (propertyId: string) => SucursalPos | null, limite = 50): Promise<ResumenAvancePos> {
-  if (!port.esReal) return { disponible: true, consultadas: 0, avanzadas: 0, sinAdaptadorReal: true };
-  const c = await deps.auto.comandasParaAvance(limite);
-  if (!c.disponible) return { disponible: false, consultadas: 0, avanzadas: 0, sinAdaptadorReal: false };
+export async function consultarEstadosPos(
+  comandas: readonly ComandaParaAvance[],
+  port: SoftRestaurantPort,
+  sucursalPos: (propertyId: string) => SucursalPos | null,
+  opciones: OpcionesAvancePos = {},
+): Promise<{ readonly consultadas: number; readonly estados: readonly EstadoPosConsultado[] }> {
+  const timeoutMs = opciones.timeoutConsultaMs ?? TIMEOUT_CONSULTA_POS_MS;
+  const presupuestoMs = opciones.presupuestoMs ?? PRESUPUESTO_PASO_POS_MS;
+  const ahora = opciones.ahoraMs ?? Date.now;
+  const inicio = ahora();
+  const estados: EstadoPosConsultado[] = [];
   let consultadas = 0;
+  let siguiente = 0;
+  async function trabajador(): Promise<void> {
+    while (siguiente < comandas.length && ahora() - inicio < presupuestoMs) {
+      const cm = comandas[siguiente++]!;
+      const sucursal = sucursalPos(cm.propertyId);
+      if (!sucursal) continue;
+      consultadas++;
+      try {
+        const e = await conTimeoutPos(port.obtenerEstadoComanda({ sucursal, folio: cm.folio }), timeoutMs);
+        if (e.encontrada) estados.push({ comanda: cm, estadoPos: e.estado });
+      } catch (err) {
+        console.error("autopiloto: consulta al POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCIA_CONSULTA_POS, comandas.length) }, () => trabajador()));
+  return { consultadas, estados };
+}
+
+/** Fase 2 del avance (con base de datos): mueve cada pedido segun el estado del POS (compare-and-set, aviso al cliente por el productor de estados). */
+export async function aplicarAvancesPos(deps: AutopilotoServicioDeps, estados: readonly EstadoPosConsultado[]): Promise<number> {
   let avanzadas = 0;
-  for (const cm of c.valor) {
-    const sucursal = sucursalPos(cm.propertyId);
-    if (!sucursal) continue;
-    consultadas++;
+  for (const { comanda: cm, estadoPos } of estados) {
     try {
-      const e = await port.obtenerEstadoComanda({ sucursal, folio: cm.folio });
-      if (!e.encontrada) continue;
-      const destino = destinoDesdeEstadoPos(e.estado, cm.canal);
+      const destino = destinoDesdeEstadoPos(estadoPos, cm.canal);
       if (!destino) continue;
       const pasos: OrderStatus[] = cm.status === "pending" ? ["preparando", ...(destino === "preparando" ? [] : [destino])] : destino === "preparando" ? [] : [destino];
       let actual: OrderStatus = cm.status;
       for (const paso of pasos) {
-        const ok = await deps.repo.runWithRowSavepoint(() => deps.auto.aplicarTransicion(cm.organizationId, cm.orderId, actual, paso, "pos", `pos:${e.estado}`));
+        const ok = await deps.repo.runWithRowSavepoint(() => deps.auto.aplicarTransicion(cm.organizationId, cm.orderId, actual, paso, "pos", `pos:${estadoPos}`));
         if (!ok) break;
         actual = paso;
         avanzadas++;
@@ -401,9 +483,29 @@ export async function avanzarDesdePos(deps: AutopilotoServicioDeps, port: SoftRe
         if (order) await deps.repo.runWithRowSavepoint(async () => notifyCustomerOnOrderStatusChangeCore(deps.repo, { ...order, status: paso }));
       }
     } catch (err) {
-      console.error("autopiloto: consulta/avance desde el POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
+      console.error("autopiloto: avance desde el POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
     }
   }
+  return avanzadas;
+}
+
+/**
+ * Avance desde el POS: consulta `obtenerEstadoComanda` de las comandas confirmadas y mueve el pedido (con aviso al cliente por el productor de
+ * estados). Sin adaptador REAL (`port.esReal = false`) no consulta nada: estado honesto "requiere API de SoftRestaurant". Version de una sola
+ * sesion (pruebas); el tick usa `consultarEstadosPos` fuera de la transaccion y `aplicarAvancesPos` en otra.
+ */
+export async function avanzarDesdePos(
+  deps: AutopilotoServicioDeps,
+  port: SoftRestaurantPort,
+  sucursalPos: (propertyId: string) => SucursalPos | null,
+  limite = 50,
+  opciones: OpcionesAvancePos = {},
+): Promise<ResumenAvancePos> {
+  if (!port.esReal) return { disponible: true, consultadas: 0, avanzadas: 0, sinAdaptadorReal: true };
+  const c = await deps.auto.comandasParaAvance(limite);
+  if (!c.disponible) return { disponible: false, consultadas: 0, avanzadas: 0, sinAdaptadorReal: false };
+  const { consultadas, estados } = await consultarEstadosPos(c.valor, port, sucursalPos, opciones);
+  const avanzadas = await aplicarAvancesPos(deps, estados);
   return { disponible: true, consultadas, avanzadas, sinAdaptadorReal: false };
 }
 
@@ -428,6 +530,33 @@ export async function devolverHandoffsVencidos(deps: AutopilotoServicioDeps, aho
     });
   }
   return { disponible: true, devueltos: r.valor.length };
+}
+
+export interface ResumenHandoffsSinTomar {
+  readonly disponible: boolean;
+  readonly escalados: number;
+}
+
+/**
+ * QA R2 viaje-06: una toma PENDIENTE (el agente pidio una persona y nadie la tomo) que pasa el umbral de la sucursal avisa al owner una sola
+ * vez en la campana (critica), igual que las aprobaciones sin respuesta. NUNCA devuelve la conversacion al agente por su cuenta: el cliente
+ * ya fue derivado a una persona y devolverla reabriria el mismo motivo de escalacion. Sin la migracion 077 devuelve "no disponible".
+ */
+export async function escalarHandoffsSinTomar(deps: AutopilotoServicioDeps, ahora: Date): Promise<ResumenHandoffsSinTomar> {
+  const r = await deps.auto.handoffsPendientesPorEscalar(ahora, 50);
+  if (!r.disponible) return { disponible: false, escalados: 0 };
+  for (const h of r.valor) {
+    await emitirNotificacion(deps.db, {
+      evento: "restaurantes.handoff.sin_tomar",
+      organizationId: h.organizationId,
+      propertyId: h.propertyId,
+      clave: h.handoffId,
+      parametros: { minutos: h.minutos },
+      entidadTipo: "conversation_handoff",
+      entidadId: h.handoffId,
+    });
+  }
+  return { disponible: true, escalados: r.valor.length };
 }
 
 export interface ResumenAgotados {

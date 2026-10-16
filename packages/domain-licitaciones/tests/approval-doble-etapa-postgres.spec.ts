@@ -69,10 +69,13 @@ describe("PostgresLicitacionesRepository.approve con etapa", () => {
     stage,
   });
   const authors = { match: /from licitaciones\.section_author/, respond: () => [] as unknown[] };
+  // paridad3: approve() tambien lee las solicitudes de revision (proposal_comment); sin filas nadie queda impedido.
+  const submitters = { match: /from licitaciones\.proposal_comment/, respond: () => [] as unknown[] };
 
   it("base sin migrar: lanza ExpedienteStageNotAvailableError y NO escribe nada", async () => {
     const session = new AbortAwareFakeSession([
       authors,
+      submitters,
       { match: /, stage from licitaciones\.approval/, respond: () => pgError("42703", 'column "stage" does not exist') },
       { match: /scope_ref = any/, respond: () => [] },
     ]);
@@ -81,7 +84,7 @@ describe("PostgresLicitacionesRepository.approve con etapa", () => {
   });
 
   it("la economica sin tecnico-legal vigente se rechaza ANTES de tocar la base", async () => {
-    const session = new AbortAwareFakeSession([authors, { match: /, stage from licitaciones\.approval/, respond: () => [] }]);
+    const session = new AbortAwareFakeSession([authors, submitters, { match: /, stage from licitaciones\.approval/, respond: () => [] }]);
     await expect(new PostgresLicitacionesRepository(session).approve(ORG, PROPOSAL, stageInput("economica", "u2"))).rejects.toMatchObject({ reasonCode: "tecnica_legal_requerida_para_economica" });
     expect(session.calls.some((c) => c.startsWith("update licitaciones.approval") || c.startsWith("insert into licitaciones.approval"))).toBe(false);
   });
@@ -89,6 +92,7 @@ describe("PostgresLicitacionesRepository.approve con etapa", () => {
   it("choque del trigger (23514 doble_aprobacion_mismo_actor) en un request cruzado se traduce y la sesion queda recuperada", async () => {
     const session = new AbortAwareFakeSession([
       authors,
+      submitters,
       { match: /, stage from licitaciones\.approval/, respond: () => [approvalRow("tl", "tecnica_legal", "u1")] },
       { match: /^update licitaciones\.approval/i, respond: () => [] },
       { match: /insert into licitaciones\.approval/, respond: () => pgError("23514", "doble_aprobacion_mismo_actor: la aprobacion tecnico-legal y la economica deben darlas dos personas distintas") },
@@ -101,6 +105,7 @@ describe("PostgresLicitacionesRepository.approve con etapa", () => {
   it("choque del indice unico (23505) se traduce a conflicto concurrente", async () => {
     const session = new AbortAwareFakeSession([
       authors,
+      submitters,
       { match: /, stage from licitaciones\.approval/, respond: () => [approvalRow("tl", "tecnica_legal", "u1")] },
       { match: /^update licitaciones\.approval/i, respond: () => [] },
       { match: /insert into licitaciones\.approval/, respond: () => pgError("23505", "duplicate key value violates unique constraint") },
@@ -113,6 +118,7 @@ describe("PostgresLicitacionesRepository.approve con etapa", () => {
   it("camino feliz: invalida SOLO la misma etapa e inserta con la etapa", async () => {
     const session = new AbortAwareFakeSession([
       authors,
+      submitters,
       { match: /, stage from licitaciones\.approval/, respond: () => [approvalRow("tl", "tecnica_legal", "u1")] },
       { match: /^update licitaciones\.approval/i, respond: () => [] },
       { match: /insert into licitaciones\.approval/, respond: () => [approvalRow("ec", "economica", "u2")] },

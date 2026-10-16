@@ -32,6 +32,8 @@
 //     gasto sin control real. `settle` (ajuste post-hoc al costo real) SÍ es
 //     best-effort — el gateway ya lo envuelve en `.catch(() => {})`.
 import { LlmMonthlyBudgetExceededError, PostgresLlmUsageRepository, emitirNotificacion, isMigrationPendingError, type LlmMonthlyReservationTotals } from "@atiende/db";
+import { avisarPresupuestoIaAlDuenio } from "@atiende/domain-restaurantes";
+import type { UmbralPresupuestoIa } from "@atiende/domain-restaurantes";
 import { MonthlyBudgetExceededError, RoleDailyTurnLimitExceededError, type LlmUsageEvent, type OrgMonthlyBudgetStore, type RoleDailyTurnStore, type UsageRecorder } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { defaultRoleDailyTurnLimit } from "./llm-role-limits.ts";
@@ -84,6 +86,24 @@ export async function notificarUmbralIaBestEffort(engine: TenancyEngine, emitido
       emitirNotificacion(session, { evento: "superadmin.costo.ia_umbral", organizationId: null, clave, parametros: { porcentaje } }),
     );
     if (res.estado === "emitida" || res.estado === "sin_nuevas") emitidoEn.add(clave);
+  } catch {
+    // best-effort
+  }
+}
+
+/** Aviso in-app al DUEÑO (owner/admin de una organizacion de restaurantes) de que su presupuesto mensual de IA llego al 80 % o se agoto (100 %). Va junto al
+ *  aviso de superadmin, no en su lugar. Sin PII: solo el porcentaje. `emitidoEn` evita abrir una sesion por cada reserva de la misma instancia; el dedupe
+ *  real (una por umbral y mes) vive en la base. Best-effort: nunca lanza ni cambia el resultado de la reserva. */
+export async function notificarPresupuestoIaDuenioBestEffort(engine: TenancyEngine, emitidoEn: Set<string>, organizationId: string, porcentaje: UmbralPresupuestoIa, ahora: Date = new Date(), sinMigrar?: BanderaConTtl): Promise<void> {
+  const clave = `${organizationId}:${porcentaje}:${ahora.toISOString().slice(0, 7)}`;
+  if (emitidoEn.has(clave)) return;
+  // Base sin la 052: el resultado seria `no_disponible` en cada reserva; la bandera con TTL evita abrir una sesion de sistema extra hasta que se migre.
+  if (sinMigrar?.activa) return;
+  try {
+    const estado = await engine.withAppSession({ userId: null }, (session) => avisarPresupuestoIaAlDuenio(session, { organizationId, porcentaje, now: ahora }));
+    // Solo se recuerda si la base lo proceso (o no aplica); un `no_disponible` marca la bandera con TTL (se reintenta al vencer) y un `error` se reintenta en la siguiente llamada.
+    if (estado === "no_disponible") sinMigrar?.marcar();
+    if (estado === "emitida" || estado === "sin_nuevas" || estado === "no_aplica") emitidoEn.add(clave);
   } catch {
     // best-effort
   }
@@ -177,6 +197,9 @@ export async function notificarTopeIaAgotadoBestEffort(engine: TenancyEngine, em
 export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
   private readonly topeNotificado = new Set<string>();
   private readonly umbralNotificado = new Set<string>();
+  private readonly duenioNotificado = new Set<string>();
+  /** La base aun no tiene la 052 (aviso al dueno): se deja de abrir una sesion extra por reserva hasta que vence el TTL. */
+  private readonly duenioSinMigrar = new BanderaConTtl();
   /** La base aun no tiene la reserva con rol (migracion 0047): se usa la de 3 argumentos sin reintentar la nueva en cada llamada. */
   private readonly sinReservaConRol = new BanderaConTtl();
 
@@ -204,11 +227,17 @@ export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
       if (totals) {
         const ahora = new Date();
         for (const clave of clavesAvisoUmbral(organizationId, totals, ahora)) await notificarUmbralIaBestEffort(this.engine, this.umbralNotificado, clave, UMBRAL_AVISO_GASTO_IA_PCT);
+        // Aviso al dueno de la organizacion (restaurantes) al 80 % de SU tope mensual.
+        if (totals.orgCapMicroUsd > 0 && (totals.orgTotalMicroUsd * 100) / totals.orgCapMicroUsd >= UMBRAL_AVISO_GASTO_IA_PCT) {
+          await notificarPresupuestoIaDuenioBestEffort(this.engine, this.duenioNotificado, organizationId, 80, ahora, this.duenioSinMigrar);
+        }
       }
     } catch (err) {
       if (err instanceof LlmMonthlyBudgetExceededError) {
         // El subtope del Copiloto no agota el presupuesto de la organizacion: no es el aviso de "tope agotado".
         if (err.scope !== "copilot") await notificarTopeIaAgotadoBestEffort(this.engine, this.topeNotificado);
+        // Tope de la ORGANIZACION agotado: tambien se avisa a su dueno (el de plataforma no es culpa de una organizacion).
+        if (err.scope === "organization") await notificarPresupuestoIaDuenioBestEffort(this.engine, this.duenioNotificado, err.organizationId, 100, undefined, this.duenioSinMigrar);
         throw new MonthlyBudgetExceededError(err.scope, err.organizationId, err.requestedMicroUsd, err.limitMicroUsd);
       }
       // Cualquier otro error (Postgres caído, timeout) se propaga tal cual —

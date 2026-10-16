@@ -38,11 +38,10 @@ describe("crear_pedido: complementos pedidos", () => {
     expect(items).toEqual(expect.arrayContaining(["salsa_guacamolera", "salsa_mexicana", "salsa_pina", "pina", "salsa_habanero_soasado", "crema_ajo", "salsa_habanero"]));
   });
 
-  it("WhatsApp y voz mandan el perfil de básicas; el checkout web conserva las 9", () => {
+  it("WhatsApp y voz mandan el perfil de básicas", () => {
     const base = { organizationId: "o", phone: "5219990000000" } as const;
     expect(mapCreateOrderToolInput({ ...base, channel: "whatsapp" }, {}, true).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
     expect(mapCreateOrderToolInput({ ...base, channel: "voz" }, {}, false).basicComplements).toEqual(PM_BASIC_COMPLEMENTS);
-    expect(mapCreateOrderToolInput({ ...base, channel: "web", phone: null }, {}, false).basicComplements).toBeUndefined();
   });
 });
 
@@ -52,6 +51,7 @@ describe("las básicas de la comanda son del perfil taqueria_pm", () => {
       branch_slug: "fco-montejo",
       customer_name: "Cliente Sintético",
       customer_address: "Calle 50 #200",
+      colonia_entrega: "Centro",
       payment_method: "efectivo",
       canal: "domicilio",
       items: [{ product_id: f.products.tacosPastor, requested_quantity: 3, tortilla: "maiz" }],
@@ -73,6 +73,9 @@ describe("las básicas de la comanda son del perfil taqueria_pm", () => {
   it("con perfil taqueria_pm la comanda lleva «Básicas»", async () => {
     const f = buildRestaurantFixture();
     await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null });
+    // CR12: con perfil PM el domicilio exige zonas de reparto cargadas (o pin); la sucursal del fixture recibe una zona.
+    const zona = await f.repo.createKnownZone(f.organizationId, { name: "Centro", lat: 20.97, lng: -89.62 });
+    await f.repo.replaceBranchDeliveryZones(f.organizationId, f.propertyId, [zona.id]);
     const pm = await crear(f);
     expect(await notas(f, pm)).toMatch(/Básicas:/);
   });
@@ -98,10 +101,11 @@ describe("jerga de salsas y de platillos de T7", () => {
     expect(canonicalRequestedComplement(42)).toBeNull();
   });
 
-  it("el mapeo de crear_pedido normaliza la jerga y descarta lo desconocido", () => {
-    const input = { requested_complements: ["xnipec", "sauceada", "nada que ver"] };
-    const out = mapCreateOrderToolInput({ organizationId: "o", phone: "5219990000000", channel: "whatsapp" }, input, true);
+  it("el mapeo de crear_pedido normaliza la jerga y RECHAZA lo desconocido (R3 reglas-09: antes se descartaba en silencio)", () => {
+    const ctx = { organizationId: "o", phone: "5219990000000", channel: "whatsapp" as const };
+    const out = mapCreateOrderToolInput(ctx, { requested_complements: ["xnipec", "sauceada"] }, true);
     expect(out.requestedComplements).toEqual(["salsa_mexicana", "salsa_habanero_soasado"]);
+    expect(() => mapCreateOrderToolInput(ctx, { requested_complements: ["xnipec", "nada que ver"] }, true)).toThrow(/nada que ver/);
   });
 
   const charros = { name: "Frijoles Charros Normal (1/2 orden)", description: null, categoryName: "Frijoles Charros", searchKeywords: [] };

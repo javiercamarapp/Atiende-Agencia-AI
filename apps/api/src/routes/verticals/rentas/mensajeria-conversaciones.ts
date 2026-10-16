@@ -2,9 +2,10 @@
 // de mensajería con un huésped para una unidad+canal, y expone sus mensajes. Mismo
 // patrón de sesión de staff que reservas.ts/bloqueos.ts (authMiddleware + dbSession +
 // requirePropertyMembership), con `assertVerticalRole(MENSAJERIA_ESCRITURA_ROLES)`
-// para crear una conversación (leer una ya creada, en cambio, se abre a cualquier
-// miembro del staff con acceso a la property -- mismo criterio que
-// cotizaciones.ts/GET, la lectura no mueve ninguna cola de aprobación).
+// para crear una conversación (leer una ya creada, en cambio, se abre a
+// MENSAJERIA_LECTURA_ROLES -- todo el staff con acceso a la property menos `limpieza`,
+// que no tiene por qué leer lo que escribe el huésped; la lectura no mueve ninguna cola
+// de aprobación).
 //
 // Frontera de confianza del contexto congelado en `rentas.conversacion` -- SOLO
 // `reservaConfirmada` es sensible (gatea la política de contacto/pago pre-reserva de
@@ -21,7 +22,7 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership, assertVerticalRole } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { CANALES_MENSAJERIA, MENSAJERIA_ESCRITURA_ROLES } from "@atiende/domain-rentas";
+import { CANALES_MENSAJERIA, MENSAJERIA_ESCRITURA_ROLES, MENSAJERIA_LECTURA_ROLES } from "@atiende/domain-rentas";
 import type { CanalMensajeriaCodigo } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -130,6 +131,7 @@ export function rentasMensajeriaConversacionesRoutes(deps: AppDeps): Hono<CoreAu
   });
 
   app.get(base, async (c) => {
+    assertVerticalRole(c, MENSAJERIA_LECTURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
     const db = c.get("db");
@@ -143,6 +145,7 @@ export function rentasMensajeriaConversacionesRoutes(deps: AppDeps): Hono<CoreAu
   });
 
   app.get(`${base}/:conversacionId/mensajes`, async (c) => {
+    assertVerticalRole(c, MENSAJERIA_LECTURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const conversacionId = c.req.param("conversacionId");
     const db = c.get("db");

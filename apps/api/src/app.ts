@@ -50,8 +50,6 @@ import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesDemoWidgetRoutes } from "./routes/verticals/restaurantes/demo-widget.ts";
-import { restaurantesStorefrontRoutes } from "./routes/verticals/restaurantes/storefront.ts";
-import { restaurantesStorefrontMetaRoutes } from "./routes/verticals/restaurantes/storefront-meta.ts";
 import { restaurantesVoiceToolsRoutes } from "./routes/verticals/restaurantes/voice-tools.ts";
 import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/whatsapp.ts";
 import { restaurantesRoutes } from "./routes/verticals/restaurantes/restaurantes.ts";
@@ -152,9 +150,6 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
-  app.route("/", restaurantesStorefrontRoutes(deps));
-  // Vista previa al compartir: index.html con meta y JSON-LD de la organizacion/sucursal (vercel.json reescribe /pedir/:org[/:slug] aqui).
-  app.route("/", restaurantesStorefrontMetaRoutes(deps));
   // R-19: widget de chat WhatsApp para demos (sin Meta), solo organizaciones marcadas como demo.
   app.route("/", restaurantesDemoWidgetRoutes(deps));
   app.route("/", demoAgentsRoutes(deps.publicDemoAgents));

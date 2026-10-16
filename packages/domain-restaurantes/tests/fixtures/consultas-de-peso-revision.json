@@ -1,0 +1,3654 @@
+[
+{
+"q": "cuarto de pastor",
+"g": 250
+},
+{
+"q": "cuarto de bistec",
+"g": 250
+},
+{
+"q": "cuarto de arrachera",
+"g": 250
+},
+{
+"q": "cuarto de chuleta",
+"g": 250
+},
+{
+"q": "cuarto de pechuga",
+"g": 250
+},
+{
+"q": "cuarto de costilla",
+"g": 250
+},
+{
+"q": "cuarto de poc chuc",
+"g": 250
+},
+{
+"q": "cuarto de bistec encebollado",
+"g": 250
+},
+{
+"q": "1/4 de pastor",
+"g": 250
+},
+{
+"q": "1/4 de bistec",
+"g": 250
+},
+{
+"q": "1/4 de arrachera",
+"g": 250
+},
+{
+"q": "1/4 de chuleta",
+"g": 250
+},
+{
+"q": "1/4 de pechuga",
+"g": 250
+},
+{
+"q": "1/4 de costilla",
+"g": 250
+},
+{
+"q": "1/4 de poc chuc",
+"g": 250
+},
+{
+"q": "1/4 de bistec encebollado",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de pastor",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de bistec",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de arrachera",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de chuleta",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de pechuga",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de costilla",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de poc chuc",
+"g": 250
+},
+{
+"q": "un cuarto de kilo de bistec encebollado",
+"g": 250
+},
+{
+"q": "cuarto kilo de pastor",
+"g": 250
+},
+{
+"q": "cuarto kilo de bistec",
+"g": 250
+},
+{
+"q": "cuarto kilo de arrachera",
+"g": 250
+},
+{
+"q": "cuarto kilo de chuleta",
+"g": 250
+},
+{
+"q": "cuarto kilo de pechuga",
+"g": 250
+},
+{
+"q": "cuarto kilo de costilla",
+"g": 250
+},
+{
+"q": "cuarto kilo de poc chuc",
+"g": 250
+},
+{
+"q": "cuarto kilo de bistec encebollado",
+"g": 250
+},
+{
+"q": "un cuarto kilo de pastor",
+"g": 250
+},
+{
+"q": "un cuarto kilo de bistec",
+"g": 250
+},
+{
+"q": "un cuarto kilo de arrachera",
+"g": 250
+},
+{
+"q": "un cuarto kilo de chuleta",
+"g": 250
+},
+{
+"q": "un cuarto kilo de pechuga",
+"g": 250
+},
+{
+"q": "un cuarto kilo de costilla",
+"g": 250
+},
+{
+"q": "un cuarto kilo de poc chuc",
+"g": 250
+},
+{
+"q": "un cuarto kilo de bistec encebollado",
+"g": 250
+},
+{
+"q": "250 grs de pastor",
+"g": 250
+},
+{
+"q": "250 grs de bistec",
+"g": 250
+},
+{
+"q": "250 grs de arrachera",
+"g": 250
+},
+{
+"q": "250 grs de chuleta",
+"g": 250
+},
+{
+"q": "250 grs de pechuga",
+"g": 250
+},
+{
+"q": "250 grs de costilla",
+"g": 250
+},
+{
+"q": "250 grs de poc chuc",
+"g": 250
+},
+{
+"q": "250 grs de bistec encebollado",
+"g": 250
+},
+{
+"q": "1/4 kg de pastor",
+"g": 250
+},
+{
+"q": "1/4 kg de bistec",
+"g": 250
+},
+{
+"q": "1/4 kg de arrachera",
+"g": 250
+},
+{
+"q": "1/4 kg de chuleta",
+"g": 250
+},
+{
+"q": "1/4 kg de pechuga",
+"g": 250
+},
+{
+"q": "1/4 kg de costilla",
+"g": 250
+},
+{
+"q": "1/4 kg de poc chuc",
+"g": 250
+},
+{
+"q": "1/4 kg de bistec encebollado",
+"g": 250
+},
+{
+"q": "un cuartito de pastor",
+"g": 250
+},
+{
+"q": "un cuartito de bistec",
+"g": 250
+},
+{
+"q": "un cuartito de arrachera",
+"g": 250
+},
+{
+"q": "un cuartito de chuleta",
+"g": 250
+},
+{
+"q": "un cuartito de pechuga",
+"g": 250
+},
+{
+"q": "un cuartito de costilla",
+"g": 250
+},
+{
+"q": "un cuartito de poc chuc",
+"g": 250
+},
+{
+"q": "un cuartito de bistec encebollado",
+"g": 250
+},
+{
+"q": "cuarto de kilito de pastor",
+"g": 250
+},
+{
+"q": "cuarto de kilito de bistec",
+"g": 250
+},
+{
+"q": "cuarto de kilito de arrachera",
+"g": 250
+},
+{
+"q": "cuarto de kilito de chuleta",
+"g": 250
+},
+{
+"q": "cuarto de kilito de pechuga",
+"g": 250
+},
+{
+"q": "cuarto de kilito de costilla",
+"g": 250
+},
+{
+"q": "cuarto de kilito de poc chuc",
+"g": 250
+},
+{
+"q": "cuarto de kilito de bistec encebollado",
+"g": 250
+},
+{
+"q": "250 gr de pastor",
+"g": 250
+},
+{
+"q": "250 gr de bistec",
+"g": 250
+},
+{
+"q": "250 gr de arrachera",
+"g": 250
+},
+{
+"q": "250 gr de chuleta",
+"g": 250
+},
+{
+"q": "250 gr de pechuga",
+"g": 250
+},
+{
+"q": "250 gr de costilla",
+"g": 250
+},
+{
+"q": "250 gr de poc chuc",
+"g": 250
+},
+{
+"q": "250 gr de bistec encebollado",
+"g": 250
+},
+{
+"q": "medio kilo de pastor",
+"g": 500
+},
+{
+"q": "medio kilo de bistec",
+"g": 500
+},
+{
+"q": "medio kilo de arrachera",
+"g": 500
+},
+{
+"q": "medio kilo de chuleta",
+"g": 500
+},
+{
+"q": "medio kilo de pechuga",
+"g": 500
+},
+{
+"q": "medio kilo de costilla",
+"g": 500
+},
+{
+"q": "medio kilo de poc chuc",
+"g": 500
+},
+{
+"q": "medio kilo de bistec encebollado",
+"g": 500
+},
+{
+"q": "medio kg de pastor",
+"g": 500
+},
+{
+"q": "medio kg de bistec",
+"g": 500
+},
+{
+"q": "medio kg de arrachera",
+"g": 500
+},
+{
+"q": "medio kg de chuleta",
+"g": 500
+},
+{
+"q": "medio kg de pechuga",
+"g": 500
+},
+{
+"q": "medio kg de costilla",
+"g": 500
+},
+{
+"q": "medio kg de poc chuc",
+"g": 500
+},
+{
+"q": "medio kg de bistec encebollado",
+"g": 500
+},
+{
+"q": "500 gramos de pastor",
+"g": 500
+},
+{
+"q": "500 gramos de bistec",
+"g": 500
+},
+{
+"q": "500 gramos de arrachera",
+"g": 500
+},
+{
+"q": "500 gramos de chuleta",
+"g": 500
+},
+{
+"q": "500 gramos de pechuga",
+"g": 500
+},
+{
+"q": "500 gramos de costilla",
+"g": 500
+},
+{
+"q": "500 gramos de poc chuc",
+"g": 500
+},
+{
+"q": "500 gramos de bistec encebollado",
+"g": 500
+},
+{
+"q": "1/2 kilo de pastor",
+"g": 500
+},
+{
+"q": "1/2 kilo de bistec",
+"g": 500
+},
+{
+"q": "1/2 kilo de arrachera",
+"g": 500
+},
+{
+"q": "1/2 kilo de chuleta",
+"g": 500
+},
+{
+"q": "1/2 kilo de pechuga",
+"g": 500
+},
+{
+"q": "1/2 kilo de costilla",
+"g": 500
+},
+{
+"q": "1/2 kilo de poc chuc",
+"g": 500
+},
+{
+"q": "1/2 kilo de bistec encebollado",
+"g": 500
+},
+{
+"q": "medio de pastor",
+"g": 500
+},
+{
+"q": "medio de bistec",
+"g": 500
+},
+{
+"q": "medio de arrachera",
+"g": 500
+},
+{
+"q": "medio de chuleta",
+"g": 500
+},
+{
+"q": "medio de pechuga",
+"g": 500
+},
+{
+"q": "medio de costilla",
+"g": 500
+},
+{
+"q": "medio de poc chuc",
+"g": 500
+},
+{
+"q": "medio de bistec encebollado",
+"g": 500
+},
+{
+"q": "medio kilito de pastor",
+"g": 500
+},
+{
+"q": "medio kilito de bistec",
+"g": 500
+},
+{
+"q": "medio kilito de arrachera",
+"g": 500
+},
+{
+"q": "medio kilito de chuleta",
+"g": 500
+},
+{
+"q": "medio kilito de pechuga",
+"g": 500
+},
+{
+"q": "medio kilito de costilla",
+"g": 500
+},
+{
+"q": "medio kilito de poc chuc",
+"g": 500
+},
+{
+"q": "medio kilito de bistec encebollado",
+"g": 500
+},
+{
+"q": "0.5 kg de pastor",
+"g": 500
+},
+{
+"q": "0.5 kg de bistec",
+"g": 500
+},
+{
+"q": "0.5 kg de arrachera",
+"g": 500
+},
+{
+"q": "0.5 kg de chuleta",
+"g": 500
+},
+{
+"q": "0.5 kg de pechuga",
+"g": 500
+},
+{
+"q": "0.5 kg de costilla",
+"g": 500
+},
+{
+"q": "0.5 kg de poc chuc",
+"g": 500
+},
+{
+"q": "0.5 kg de bistec encebollado",
+"g": 500
+},
+{
+"q": "1/2 kg de pastor",
+"g": 500
+},
+{
+"q": "1/2 kg de bistec",
+"g": 500
+},
+{
+"q": "1/2 kg de arrachera",
+"g": 500
+},
+{
+"q": "1/2 kg de chuleta",
+"g": 500
+},
+{
+"q": "1/2 kg de pechuga",
+"g": 500
+},
+{
+"q": "1/2 kg de costilla",
+"g": 500
+},
+{
+"q": "1/2 kg de poc chuc",
+"g": 500
+},
+{
+"q": "1/2 kg de bistec encebollado",
+"g": 500
+},
+{
+"q": "500 g de pastor",
+"g": 500
+},
+{
+"q": "500 g de bistec",
+"g": 500
+},
+{
+"q": "500 g de arrachera",
+"g": 500
+},
+{
+"q": "500 g de chuleta",
+"g": 500
+},
+{
+"q": "500 g de pechuga",
+"g": 500
+},
+{
+"q": "500 g de costilla",
+"g": 500
+},
+{
+"q": "500 g de poc chuc",
+"g": 500
+},
+{
+"q": "500 g de bistec encebollado",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE PASTOR",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE BISTEC",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE ARRACHERA",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE CHULETA",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE PECHUGA",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE COSTILLA",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE POC CHUC",
+"g": 500
+},
+{
+"q": "MEDIO KILO DE BISTEC ENCEBOLLADO",
+"g": 500
+},
+{
+"q": "tres cuartos de pastor",
+"g": 750
+},
+{
+"q": "tres cuartos de bistec",
+"g": 750
+},
+{
+"q": "tres cuartos de arrachera",
+"g": 750
+},
+{
+"q": "tres cuartos de chuleta",
+"g": 750
+},
+{
+"q": "tres cuartos de pechuga",
+"g": 750
+},
+{
+"q": "tres cuartos de costilla",
+"g": 750
+},
+{
+"q": "tres cuartos de poc chuc",
+"g": 750
+},
+{
+"q": "tres cuartos de bistec encebollado",
+"g": 750
+},
+{
+"q": "3/4 de pastor",
+"g": 750
+},
+{
+"q": "3/4 de bistec",
+"g": 750
+},
+{
+"q": "3/4 de arrachera",
+"g": 750
+},
+{
+"q": "3/4 de chuleta",
+"g": 750
+},
+{
+"q": "3/4 de pechuga",
+"g": 750
+},
+{
+"q": "3/4 de costilla",
+"g": 750
+},
+{
+"q": "3/4 de poc chuc",
+"g": 750
+},
+{
+"q": "3/4 de bistec encebollado",
+"g": 750
+},
+{
+"q": "750 de pastor",
+"g": 750
+},
+{
+"q": "750 de bistec",
+"g": 750
+},
+{
+"q": "750 de arrachera",
+"g": 750
+},
+{
+"q": "750 de chuleta",
+"g": 750
+},
+{
+"q": "750 de pechuga",
+"g": 750
+},
+{
+"q": "750 de costilla",
+"g": 750
+},
+{
+"q": "750 de poc chuc",
+"g": 750
+},
+{
+"q": "750 de bistec encebollado",
+"g": 750
+},
+{
+"q": "750 gramos de pastor",
+"g": 750
+},
+{
+"q": "750 gramos de bistec",
+"g": 750
+},
+{
+"q": "750 gramos de arrachera",
+"g": 750
+},
+{
+"q": "750 gramos de chuleta",
+"g": 750
+},
+{
+"q": "750 gramos de pechuga",
+"g": 750
+},
+{
+"q": "750 gramos de costilla",
+"g": 750
+},
+{
+"q": "750 gramos de poc chuc",
+"g": 750
+},
+{
+"q": "750 gramos de bistec encebollado",
+"g": 750
+},
+{
+"q": "3/4 kg de pastor",
+"g": 750
+},
+{
+"q": "3/4 kg de bistec",
+"g": 750
+},
+{
+"q": "3/4 kg de arrachera",
+"g": 750
+},
+{
+"q": "3/4 kg de chuleta",
+"g": 750
+},
+{
+"q": "3/4 kg de pechuga",
+"g": 750
+},
+{
+"q": "3/4 kg de costilla",
+"g": 750
+},
+{
+"q": "3/4 kg de poc chuc",
+"g": 750
+},
+{
+"q": "3/4 kg de bistec encebollado",
+"g": 750
+},
+{
+"q": "0.750 de pastor",
+"g": 750
+},
+{
+"q": "0.750 de bistec",
+"g": 750
+},
+{
+"q": "0.750 de arrachera",
+"g": 750
+},
+{
+"q": "0.750 de chuleta",
+"g": 750
+},
+{
+"q": "0.750 de pechuga",
+"g": 750
+},
+{
+"q": "0.750 de costilla",
+"g": 750
+},
+{
+"q": "0.750 de poc chuc",
+"g": 750
+},
+{
+"q": "0.750 de bistec encebollado",
+"g": 750
+},
+{
+"q": "un kilo de pastor",
+"g": 1000
+},
+{
+"q": "un kilo de bistec",
+"g": 1000
+},
+{
+"q": "un kilo de arrachera",
+"g": 1000
+},
+{
+"q": "un kilo de chuleta",
+"g": 1000
+},
+{
+"q": "un kilo de pechuga",
+"g": 1000
+},
+{
+"q": "un kilo de costilla",
+"g": 1000
+},
+{
+"q": "un kilo de poc chuc",
+"g": 1000
+},
+{
+"q": "un kilo de bistec encebollado",
+"g": 1000
+},
+{
+"q": "1 kg de pastor",
+"g": 1000
+},
+{
+"q": "1 kg de bistec",
+"g": 1000
+},
+{
+"q": "1 kg de arrachera",
+"g": 1000
+},
+{
+"q": "1 kg de chuleta",
+"g": 1000
+},
+{
+"q": "1 kg de pechuga",
+"g": 1000
+},
+{
+"q": "1 kg de costilla",
+"g": 1000
+},
+{
+"q": "1 kg de poc chuc",
+"g": 1000
+},
+{
+"q": "1 kg de bistec encebollado",
+"g": 1000
+},
+{
+"q": "kilo de pastor",
+"g": 1000
+},
+{
+"q": "kilo de bistec",
+"g": 1000
+},
+{
+"q": "kilo de arrachera",
+"g": 1000
+},
+{
+"q": "kilo de chuleta",
+"g": 1000
+},
+{
+"q": "kilo de pechuga",
+"g": 1000
+},
+{
+"q": "kilo de costilla",
+"g": 1000
+},
+{
+"q": "kilo de poc chuc",
+"g": 1000
+},
+{
+"q": "kilo de bistec encebollado",
+"g": 1000
+},
+{
+"q": "1 kilo de pastor",
+"g": 1000
+},
+{
+"q": "1 kilo de bistec",
+"g": 1000
+},
+{
+"q": "1 kilo de arrachera",
+"g": 1000
+},
+{
+"q": "1 kilo de chuleta",
+"g": 1000
+},
+{
+"q": "1 kilo de pechuga",
+"g": 1000
+},
+{
+"q": "1 kilo de costilla",
+"g": 1000
+},
+{
+"q": "1 kilo de poc chuc",
+"g": 1000
+},
+{
+"q": "1 kilo de bistec encebollado",
+"g": 1000
+},
+{
+"q": "un kilito de pastor",
+"g": 1000
+},
+{
+"q": "un kilito de bistec",
+"g": 1000
+},
+{
+"q": "un kilito de arrachera",
+"g": 1000
+},
+{
+"q": "un kilito de chuleta",
+"g": 1000
+},
+{
+"q": "un kilito de pechuga",
+"g": 1000
+},
+{
+"q": "un kilito de costilla",
+"g": 1000
+},
+{
+"q": "un kilito de poc chuc",
+"g": 1000
+},
+{
+"q": "un kilito de bistec encebollado",
+"g": 1000
+},
+{
+"q": "1kg de pastor",
+"g": 1000
+},
+{
+"q": "1kg de bistec",
+"g": 1000
+},
+{
+"q": "1kg de arrachera",
+"g": 1000
+},
+{
+"q": "1kg de chuleta",
+"g": 1000
+},
+{
+"q": "1kg de pechuga",
+"g": 1000
+},
+{
+"q": "1kg de costilla",
+"g": 1000
+},
+{
+"q": "1kg de poc chuc",
+"g": 1000
+},
+{
+"q": "1kg de bistec encebollado",
+"g": 1000
+},
+{
+"q": "un kg de pastor",
+"g": 1000
+},
+{
+"q": "un kg de bistec",
+"g": 1000
+},
+{
+"q": "un kg de arrachera",
+"g": 1000
+},
+{
+"q": "un kg de chuleta",
+"g": 1000
+},
+{
+"q": "un kg de pechuga",
+"g": 1000
+},
+{
+"q": "un kg de costilla",
+"g": 1000
+},
+{
+"q": "un kg de poc chuc",
+"g": 1000
+},
+{
+"q": "un kg de bistec encebollado",
+"g": 1000
+},
+{
+"q": "kilo y medio de pastor",
+"g": 1500
+},
+{
+"q": "kilo y medio de bistec",
+"g": 1500
+},
+{
+"q": "kilo y medio de arrachera",
+"g": 1500
+},
+{
+"q": "kilo y medio de chuleta",
+"g": 1500
+},
+{
+"q": "kilo y medio de pechuga",
+"g": 1500
+},
+{
+"q": "kilo y medio de costilla",
+"g": 1500
+},
+{
+"q": "kilo y medio de poc chuc",
+"g": 1500
+},
+{
+"q": "kilo y medio de bistec encebollado",
+"g": 1500
+},
+{
+"q": "1.5 kg de pastor",
+"g": 1500
+},
+{
+"q": "1.5 kg de bistec",
+"g": 1500
+},
+{
+"q": "1.5 kg de arrachera",
+"g": 1500
+},
+{
+"q": "1.5 kg de chuleta",
+"g": 1500
+},
+{
+"q": "1.5 kg de pechuga",
+"g": 1500
+},
+{
+"q": "1.5 kg de costilla",
+"g": 1500
+},
+{
+"q": "1.5 kg de poc chuc",
+"g": 1500
+},
+{
+"q": "1.5 kg de bistec encebollado",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de pastor",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de bistec",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de arrachera",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de chuleta",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de pechuga",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de costilla",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de poc chuc",
+"g": 1500
+},
+{
+"q": "1 1/2 kg de bistec encebollado",
+"g": 1500
+},
+{
+"q": "un kilo y medio de pastor",
+"g": 1500
+},
+{
+"q": "un kilo y medio de bistec",
+"g": 1500
+},
+{
+"q": "un kilo y medio de arrachera",
+"g": 1500
+},
+{
+"q": "un kilo y medio de chuleta",
+"g": 1500
+},
+{
+"q": "un kilo y medio de pechuga",
+"g": 1500
+},
+{
+"q": "un kilo y medio de costilla",
+"g": 1500
+},
+{
+"q": "un kilo y medio de poc chuc",
+"g": 1500
+},
+{
+"q": "un kilo y medio de bistec encebollado",
+"g": 1500
+},
+{
+"q": "1,5 kilos de pastor",
+"g": 1500
+},
+{
+"q": "1,5 kilos de bistec",
+"g": 1500
+},
+{
+"q": "1,5 kilos de arrachera",
+"g": 1500
+},
+{
+"q": "1,5 kilos de chuleta",
+"g": 1500
+},
+{
+"q": "1,5 kilos de pechuga",
+"g": 1500
+},
+{
+"q": "1,5 kilos de costilla",
+"g": 1500
+},
+{
+"q": "1,5 kilos de poc chuc",
+"g": 1500
+},
+{
+"q": "1,5 kilos de bistec encebollado",
+"g": 1500
+},
+{
+"q": "dos kilos de pastor",
+"g": 2000
+},
+{
+"q": "dos kilos de bistec",
+"g": 2000
+},
+{
+"q": "dos kilos de arrachera",
+"g": 2000
+},
+{
+"q": "dos kilos de chuleta",
+"g": 2000
+},
+{
+"q": "dos kilos de pechuga",
+"g": 2000
+},
+{
+"q": "dos kilos de costilla",
+"g": 2000
+},
+{
+"q": "dos kilos de poc chuc",
+"g": 2000
+},
+{
+"q": "dos kilos de bistec encebollado",
+"g": 2000
+},
+{
+"q": "2 kilos de pastor",
+"g": 2000
+},
+{
+"q": "2 kilos de bistec",
+"g": 2000
+},
+{
+"q": "2 kilos de arrachera",
+"g": 2000
+},
+{
+"q": "2 kilos de chuleta",
+"g": 2000
+},
+{
+"q": "2 kilos de pechuga",
+"g": 2000
+},
+{
+"q": "2 kilos de costilla",
+"g": 2000
+},
+{
+"q": "2 kilos de poc chuc",
+"g": 2000
+},
+{
+"q": "2 kilos de bistec encebollado",
+"g": 2000
+},
+{
+"q": "2kg de pastor",
+"g": 2000
+},
+{
+"q": "2kg de bistec",
+"g": 2000
+},
+{
+"q": "2kg de arrachera",
+"g": 2000
+},
+{
+"q": "2kg de chuleta",
+"g": 2000
+},
+{
+"q": "2kg de pechuga",
+"g": 2000
+},
+{
+"q": "2kg de costilla",
+"g": 2000
+},
+{
+"q": "2kg de poc chuc",
+"g": 2000
+},
+{
+"q": "2kg de bistec encebollado",
+"g": 2000
+},
+{
+"q": "300 gramos de pastor",
+"g": 300
+},
+{
+"q": "300 gramos de bistec",
+"g": 300
+},
+{
+"q": "300 gramos de arrachera",
+"g": 300
+},
+{
+"q": "300 gramos de chuleta",
+"g": 300
+},
+{
+"q": "300 gramos de pechuga",
+"g": 300
+},
+{
+"q": "300 gramos de costilla",
+"g": 300
+},
+{
+"q": "300 gramos de poc chuc",
+"g": 300
+},
+{
+"q": "300 gramos de bistec encebollado",
+"g": 300
+},
+{
+"q": "kilo y cuarto de pastor",
+"g": 1250
+},
+{
+"q": "kilo y cuarto de bistec",
+"g": 1250
+},
+{
+"q": "kilo y cuarto de arrachera",
+"g": 1250
+},
+{
+"q": "kilo y cuarto de chuleta",
+"g": 1250
+},
+{
+"q": "kilo y cuarto de pechuga",
+"g": 1250
+},
+{
+"q": "kilo y cuarto de costilla",
+"g": 1250
+},
+{
+"q": "kilo y cuarto de poc chuc",
+"g": 1250
+},
+{
+"q": "kilo y cuarto de bistec encebollado",
+"g": 1250
+},
+{
+"q": "dos kilos y medio de pastor",
+"g": 2500
+},
+{
+"q": "dos kilos y medio de bistec",
+"g": 2500
+},
+{
+"q": "dos kilos y medio de arrachera",
+"g": 2500
+},
+{
+"q": "dos kilos y medio de chuleta",
+"g": 2500
+},
+{
+"q": "dos kilos y medio de pechuga",
+"g": 2500
+},
+{
+"q": "dos kilos y medio de costilla",
+"g": 2500
+},
+{
+"q": "dos kilos y medio de poc chuc",
+"g": 2500
+},
+{
+"q": "dos kilos y medio de bistec encebollado",
+"g": 2500
+},
+{
+"q": "100 gramos de pastor",
+"g": 100
+},
+{
+"q": "100 gramos de bistec",
+"g": 100
+},
+{
+"q": "100 gramos de arrachera",
+"g": 100
+},
+{
+"q": "100 gramos de chuleta",
+"g": 100
+},
+{
+"q": "100 gramos de pechuga",
+"g": 100
+},
+{
+"q": "100 gramos de costilla",
+"g": 100
+},
+{
+"q": "100 gramos de poc chuc",
+"g": 100
+},
+{
+"q": "100 gramos de bistec encebollado",
+"g": 100
+},
+{
+"q": "3 kilos de pastor",
+"g": 3000
+},
+{
+"q": "3 kilos de bistec",
+"g": 3000
+},
+{
+"q": "3 kilos de arrachera",
+"g": 3000
+},
+{
+"q": "3 kilos de chuleta",
+"g": 3000
+},
+{
+"q": "3 kilos de pechuga",
+"g": 3000
+},
+{
+"q": "3 kilos de costilla",
+"g": 3000
+},
+{
+"q": "3 kilos de poc chuc",
+"g": 3000
+},
+{
+"q": "3 kilos de bistec encebollado",
+"g": 3000
+},
+{
+"q": "ke sea medio kilo de pastor",
+"g": 500
+},
+{
+"q": "quiero 1/4 de bistec porfa",
+"g": 250
+},
+{
+"q": "Medio Kilo de Pástor",
+"g": 500
+},
+{
+"q": "medio kilo de bisteck",
+"g": 500
+},
+{
+"q": "medio kilo de bistek",
+"g": 500
+},
+{
+"q": "un cuarto de arachera",
+"g": 250
+},
+{
+"q": "1/4 de pollo",
+"g": 250
+},
+{
+"q": "cuarto de pollo",
+"g": 250
+},
+{
+"q": "un cuarto de pollo",
+"g": 250
+},
+{
+"q": "medio kilo de pollo",
+"g": 500
+},
+{
+"q": "dos cuartos de pastor",
+"g": 500
+},
+{
+"q": "medio kilo de pastor y un cuarto de bistec",
+"g": null
+},
+{
+"q": "2 kilos de pastor y 1 de bistec",
+"g": null
+},
+{
+"q": "1/4 de kilo de pastor",
+"g": 250
+},
+{
+"q": "cuarto de libra de pastor",
+"g": null
+},
+{
+"q": "un kilo y cuarto de pastor",
+"g": 1250
+},
+{
+"q": "1 kg y medio de pastor",
+"g": 1500
+},
+{
+"q": "medio kilo de costillas",
+"g": 500
+},
+{
+"q": "un kilo de chuletas",
+"g": 1000
+},
+{
+"q": "medio kilo de pechugas",
+"g": 500
+},
+{
+"q": "medio kilo de pastores",
+"g": 500
+},
+{
+"q": "un cuarto de bisteces",
+"g": 250
+},
+{
+"q": "tres cuartos de kilo de arrachera",
+"g": 750
+},
+{
+"q": "1/2 de pastor",
+"g": 500
+},
+{
+"q": "½ kilo de pastor",
+"g": 500
+},
+{
+"q": "¼ de bistec",
+"g": 250
+},
+{
+"q": "un 1/4 de pastor",
+"g": 250
+},
+{
+"q": "medio kilo de carne",
+"g": 500
+},
+{
+"q": "un kilo de carne asada",
+"g": 1000
+},
+{
+"q": "medio kilo de cochinita",
+"g": 500
+},
+{
+"q": "media orden de bistec",
+"g": null
+},
+{
+"q": "media orden de pastor",
+"g": null
+},
+{
+"q": "media orden de arrachera",
+"g": null
+},
+{
+"q": "media orden de chuleta",
+"g": null
+},
+{
+"q": "media orden de pechuga",
+"g": null
+},
+{
+"q": "media orden de costilla",
+"g": null
+},
+{
+"q": "media orden de poc chuc",
+"g": null
+},
+{
+"q": "media orden de nachos",
+"g": null
+},
+{
+"q": "media orden de nachos de bistec",
+"g": null
+},
+{
+"q": "media de frijoles charros",
+"g": null
+},
+{
+"q": "medios charros",
+"g": null
+},
+{
+"q": "media orden de frijoles charros normales",
+"g": null
+},
+{
+"q": "media orden de champiñones",
+"g": null
+},
+{
+"q": "media orden de tacos de bistec",
+"g": null
+},
+{
+"q": "media orden de alambre de bistec",
+"g": null
+},
+{
+"q": "media de bistec",
+"g": null
+},
+{
+"q": "media orden de cochinita",
+"g": null
+},
+{
+"q": "una media orden de pastor",
+"g": null
+},
+{
+"q": "1/2 orden de bistec",
+"g": null
+},
+{
+"q": "1/2 orden de nachos de pastor",
+"g": null
+},
+{
+"q": "orden y media de nachos",
+"g": null
+},
+{
+"q": "orden y media de tacos de pastor",
+"g": null
+},
+{
+"q": "una orden de tacos de bistec",
+"g": null
+},
+{
+"q": "una orden de pastor",
+"g": null
+},
+{
+"q": "dos órdenes de tacos de pastor",
+"g": null
+},
+{
+"q": "2 ordenes de tacos de bistec",
+"g": null
+},
+{
+"q": "una orden de nachos de bistec",
+"g": null
+},
+{
+"q": "nachos grandes de bistec",
+"g": null
+},
+{
+"q": "orden completa de nachos de pastor",
+"g": null
+},
+{
+"q": "media docena de tacos de pastor",
+"g": null
+},
+{
+"q": "un cuarto de libra",
+"g": null
+},
+{
+"q": "hamburguesa de cuarto de libra",
+"g": null
+},
+{
+"q": "una docena de tacos al pastor",
+"g": null
+},
+{
+"q": "una cerveza",
+"g": null
+},
+{
+"q": "dos cervezas",
+"g": null
+},
+{
+"q": "cerveza",
+"g": null
+},
+{
+"q": "cervezas",
+"g": null
+},
+{
+"q": "una chela",
+"g": null
+},
+{
+"q": "una cerveza bien fria",
+"g": null
+},
+{
+"q": "una cerveza sol",
+"g": null
+},
+{
+"q": "cerveza sol",
+"g": null
+},
+{
+"q": "cerveza con alcohol",
+"g": null
+},
+{
+"q": "cerveza normal",
+"g": null
+},
+{
+"q": "heineken",
+"g": null
+},
+{
+"q": "una heineken",
+"g": null
+},
+{
+"q": "heineken sin alcohol",
+"g": null
+},
+{
+"q": "heineken 0%",
+"g": null
+},
+{
+"q": "cerveza 0.0",
+"g": null
+},
+{
+"q": "sin alcohol",
+"g": null
+},
+{
+"q": "bebidas sin alcohol",
+"g": null
+},
+{
+"q": "algo sin alcohol",
+"g": null
+},
+{
+"q": "refresco sin alcohol",
+"g": null
+},
+{
+"q": "coctel sin alcohol",
+"g": null
+},
+{
+"q": "margarita sin alcohol",
+"g": null
+},
+{
+"q": "margarita",
+"g": null
+},
+{
+"q": "margaritas",
+"g": null
+},
+{
+"q": "piña colada sin alcohol",
+"g": null
+},
+{
+"q": "sangria sin alcohol",
+"g": null
+},
+{
+"q": "michelada sin alcohol",
+"g": null
+},
+{
+"q": "una sin alcohol",
+"g": null
+},
+{
+"q": "cerveza sin alcohol",
+"g": null
+},
+{
+"q": "una cheve sin alcohol",
+"g": null
+},
+{
+"q": "CERVEZA SIN ALCOHOL",
+"g": null
+},
+{
+"q": "cerveza sin alcol",
+"g": null
+},
+{
+"q": "tequila",
+"g": null
+},
+{
+"q": "tequilas",
+"g": null
+},
+{
+"q": "mezcales",
+"g": null
+},
+{
+"q": "una coca",
+"g": null
+},
+{
+"q": "coca cola",
+"g": null
+},
+{
+"q": "Coca-Cola",
+"g": null
+},
+{
+"q": "cocacolas",
+"g": null
+},
+{
+"q": "refrescos",
+"g": null
+},
+{
+"q": "un refresco",
+"g": null
+},
+{
+"q": "refresco de limón",
+"g": null
+},
+{
+"q": "limonadas",
+"g": null
+},
+{
+"q": "naranjadas",
+"g": null
+},
+{
+"q": "aguas",
+"g": null
+},
+{
+"q": "agua de jamaica",
+"g": null
+},
+{
+"q": "aguas frescas",
+"g": null
+},
+{
+"q": "horchatas",
+"g": null
+},
+{
+"q": "un té",
+"g": null
+},
+{
+"q": "cafés",
+"g": null
+},
+{
+"q": "sol",
+"g": null
+},
+{
+"q": "corona",
+"g": null
+},
+{
+"q": "modelo",
+"g": null
+},
+{
+"q": "una indio",
+"g": null
+},
+{
+"q": "xx lager",
+"g": null
+},
+{
+"q": "dos XX",
+"g": null
+},
+{
+"q": "superiores",
+"g": null
+},
+{
+"q": "bohemias",
+"g": null
+},
+{
+"q": "ceibas",
+"g": null
+},
+{
+"q": "patitos",
+"g": null
+},
+{
+"q": "ojo rojo",
+"g": null
+},
+{
+"q": "micheladas",
+"g": null
+},
+{
+"q": "cheladas",
+"g": null
+},
+{
+"q": "vinos",
+"g": null
+},
+{
+"q": "una copa de vino",
+"g": null
+},
+{
+"q": "whiskys",
+"g": null
+},
+{
+"q": "vodkas",
+"g": null
+},
+{
+"q": "rones",
+"g": null
+},
+{
+"q": "cocteles",
+"g": null
+},
+{
+"q": "cócteles",
+"g": null
+},
+{
+"q": "licores",
+"g": null
+},
+{
+"q": "coolers",
+"g": null
+},
+{
+"q": "piñadas",
+"g": null
+},
+{
+"q": "cerveza clara",
+"g": null
+},
+{
+"q": "cerveza oscura",
+"g": null
+},
+{
+"q": "cervezas oscuras",
+"g": null
+},
+{
+"q": "una cerveza light",
+"g": null
+},
+{
+"q": "cerveza artesanal",
+"g": null
+},
+{
+"q": "cerveza de barril",
+"g": null
+},
+{
+"q": "bebida sin alcohol para niño",
+"g": null
+},
+{
+"q": "algo de tomar sin alcohol",
+"g": null
+},
+{
+"q": "sin alcohol por favor",
+"g": null
+},
+{
+"q": "0% alcohol",
+"g": null
+},
+{
+"q": "cero alcohol",
+"g": null
+},
+{
+"q": "no alcoholica",
+"g": null
+},
+{
+"q": "una cerveza sin alcohol y una con alcohol",
+"g": null
+},
+{
+"q": "tacos",
+"g": null
+},
+{
+"q": "tacos de pastor",
+"g": null
+},
+{
+"q": "gringas",
+"g": null
+},
+{
+"q": "gringas de pastor",
+"g": null
+},
+{
+"q": "papas",
+"g": null
+},
+{
+"q": "papas rellenas",
+"g": null
+},
+{
+"q": "papas a la francesa",
+"g": null
+},
+{
+"q": "quesadillas",
+"g": null
+},
+{
+"q": "quesadillas de champiñones",
+"g": null
+},
+{
+"q": "limones",
+"g": null
+},
+{
+"q": "nachos",
+"g": null
+},
+{
+"q": "chilaquiles",
+"g": null
+},
+{
+"q": "tamales",
+"g": null
+},
+{
+"q": "frijoles",
+"g": null
+},
+{
+"q": "frijoles charros",
+"g": null
+},
+{
+"q": "tomates",
+"g": null
+},
+{
+"q": "chiles",
+"g": null
+},
+{
+"q": "chiles poblanos",
+"g": null
+},
+{
+"q": "jamón",
+"g": null
+},
+{
+"q": "cebollas",
+"g": null
+},
+{
+"q": "cebollas cambray",
+"g": null
+},
+{
+"q": "cebollitas",
+"g": null
+},
+{
+"q": "salsas",
+"g": null
+},
+{
+"q": "extra salsas",
+"g": null
+},
+{
+"q": "alitas",
+"g": null
+},
+{
+"q": "flautas",
+"g": null
+},
+{
+"q": "flautas de pastor",
+"g": null
+},
+{
+"q": "chetacos",
+"g": null
+},
+{
+"q": "mestizas",
+"g": null
+},
+{
+"q": "alambres",
+"g": null
+},
+{
+"q": "suizos",
+"g": null
+},
+{
+"q": "boyo hamburguesas",
+"g": null
+},
+{
+"q": "hamburguesas",
+"g": null
+},
+{
+"q": "quesobiches",
+"g": null
+},
+{
+"q": "pizzas",
+"g": null
+},
+{
+"q": "fajitas",
+"g": null
+},
+{
+"q": "parrilladas",
+"g": null
+},
+{
+"q": "papadzules",
+"g": null
+},
+{
+"q": "codzitos",
+"g": null
+},
+{
+"q": "sopas de lima",
+"g": null
+},
+{
+"q": "jericallas",
+"g": null
+},
+{
+"q": "flanes",
+"g": null
+},
+{
+"q": "cremas",
+"g": null
+},
+{
+"q": "postres",
+"g": null
+},
+{
+"q": "tortillas de harina",
+"g": null
+},
+{
+"q": "tortillas",
+"g": null
+},
+{
+"q": "champiñones",
+"g": null
+},
+{
+"q": "champiñon",
+"g": null
+},
+{
+"q": "pastores",
+"g": null
+},
+{
+"q": "bistecs",
+"g": null
+},
+{
+"q": "bisteces",
+"g": null
+},
+{
+"q": "costillas",
+"g": null
+},
+{
+"q": "chuletas",
+"g": null
+},
+{
+"q": "pechugas",
+"g": null
+},
+{
+"q": "arracheras",
+"g": null
+},
+{
+"q": "normales",
+"g": null
+},
+{
+"q": "frijoles charros normales",
+"g": null
+},
+{
+"q": "especiales",
+"g": null
+},
+{
+"q": "frijoles charros especiales",
+"g": null
+},
+{
+"q": "naturales",
+"g": null
+},
+{
+"q": "quesadillas naturales",
+"g": null
+},
+{
+"q": "rajas",
+"g": null
+},
+{
+"q": "papas tradicionales",
+"g": null
+},
+{
+"q": "tradicionales",
+"g": null
+},
+{
+"q": "encebollados",
+"g": null
+},
+{
+"q": "tacos encebollados",
+"g": null
+},
+{
+"q": "guacamoles",
+"g": null
+},
+{
+"q": "chicharrones de queso",
+"g": null
+},
+{
+"q": "chicharrones",
+"g": null
+},
+{
+"q": "sueros",
+"g": null
+},
+{
+"q": "toronjas",
+"g": null
+},
+{
+"q": "franceses suizos",
+"g": null
+},
+{
+"q": "alambres suizos",
+"g": null
+},
+{
+"q": "tacos suizos",
+"g": null
+},
+{
+"q": "carbollas",
+"g": null
+},
+{
+"q": "extras",
+"g": null
+},
+{
+"q": "extra quesos",
+"g": null
+},
+{
+"q": "quesos fundidos",
+"g": null
+},
+{
+"q": "crujientes",
+"g": null
+},
+{
+"q": "tacos de cochinita",
+"g": null
+},
+{
+"q": "cochinitas",
+"g": null
+},
+{
+"q": "panuchos",
+"g": null
+},
+{
+"q": "salbutes",
+"g": null
+},
+{
+"q": "flan",
+"g": null
+},
+{
+"q": "un flan",
+"g": null
+},
+{
+"q": "dos flanes",
+"g": null
+},
+{
+"q": "una flan napolitano",
+"g": null
+},
+{
+"q": "quesos napolitanos",
+"g": null
+},
+{
+"q": "cafe",
+"g": null
+},
+{
+"q": "pastor",
+"g": null
+},
+{
+"q": "bistec",
+"g": null
+},
+{
+"q": "una gringa de bistec",
+"g": null
+},
+{
+"q": "tacos de bistek",
+"g": null
+},
+{
+"q": "tacos de bisteck",
+"g": null
+},
+{
+"q": "taco al pastor",
+"g": null
+},
+{
+"q": "tacos al pastor ke sean de maiz",
+"g": null
+},
+{
+"q": "TACOS DE PASTOR",
+"g": null
+},
+{
+"q": "Tácos de Pástor",
+"g": null
+},
+{
+"q": "gringa d pastor",
+"g": null
+},
+{
+"q": "nachos de champiñones",
+"g": null
+},
+{
+"q": "alambre de arrachera",
+"g": null
+},
+{
+"q": "alambres de arracheras",
+"g": null
+},
+{
+"q": "platillo de pastor",
+"g": null
+},
+{
+"q": "platillos de pollo",
+"g": null
+},
+{
+"q": "costillas de res",
+"g": null
+},
+{
+"q": "chuletas de cerdo",
+"g": null
+},
+{
+"q": "pechugas de pollo",
+"g": null
+},
+{
+"q": "dos cuartos de kilo de pastor",
+"g": null
+},
+{
+"q": "¼ kilo de pastor",
+"g": null
+},
+{
+"q": "¼ de pastor",
+"g": null
+},
+{
+"q": "¼ de kilo de pastor",
+"g": null
+},
+{
+"q": "¾ de kilo de pastor",
+"g": null
+},
+{
+"q": "¾ de pastor",
+"g": null
+},
+{
+"q": "3/4 de kilo de pastor",
+"g": null
+},
+{
+"q": "1 y ½ kilos de pastor",
+"g": null
+},
+{
+"q": "1 y 1/2 kilos de pastor",
+"g": null
+},
+{
+"q": "1½ kg de pastor",
+"g": null
+},
+{
+"q": "1½ kilos de pastor",
+"g": null
+},
+{
+"q": "1 ½ kg de pastor",
+"g": null
+},
+{
+"q": "2½ kilos de pastor",
+"g": null
+},
+{
+"q": "2 ½ kg de pastor",
+"g": null
+},
+{
+"q": "½ de pastor",
+"g": null
+},
+{
+"q": "medio y medio de pastor",
+"g": null
+},
+{
+"q": "2 kg y medio de pastor",
+"g": null
+},
+{
+"q": "3 kg y medio de pastor",
+"g": null
+},
+{
+"q": "dos kg y medio de pastor",
+"g": null
+},
+{
+"q": "un kg y medio de pastor",
+"g": null
+},
+{
+"q": "1 kilo y medio de pastor",
+"g": null
+},
+{
+"q": "kg y medio de pastor",
+"g": null
+},
+{
+"q": "2 kilos y medio de pastor",
+"g": null
+},
+{
+"q": "1kg y medio de pastor",
+"g": null
+},
+{
+"q": "cuatro cuartos de pastor",
+"g": null
+},
+{
+"q": "tres cuartos de kg de pastor",
+"g": null
+},
+{
+"q": "medio kilo y medio de pastor",
+"g": null
+},
+{
+"q": "dos cuartos de bistec",
+"g": null
+},
+{
+"q": "dos cuartos de kilo de bistec",
+"g": null
+},
+{
+"q": "¼ kilo de bistec",
+"g": null
+},
+{
+"q": "¼ de kilo de bistec",
+"g": null
+},
+{
+"q": "¾ de kilo de bistec",
+"g": null
+},
+{
+"q": "¾ de bistec",
+"g": null
+},
+{
+"q": "3/4 de kilo de bistec",
+"g": null
+},
+{
+"q": "1 y ½ kilos de bistec",
+"g": null
+},
+{
+"q": "1 y 1/2 kilos de bistec",
+"g": null
+},
+{
+"q": "1½ kg de bistec",
+"g": null
+},
+{
+"q": "1½ kilos de bistec",
+"g": null
+},
+{
+"q": "1 ½ kg de bistec",
+"g": null
+},
+{
+"q": "2½ kilos de bistec",
+"g": null
+},
+{
+"q": "2 ½ kg de bistec",
+"g": null
+},
+{
+"q": "½ kilo de bistec",
+"g": null
+},
+{
+"q": "½ de bistec",
+"g": null
+},
+{
+"q": "medio y medio de bistec",
+"g": null
+},
+{
+"q": "2 kg y medio de bistec",
+"g": null
+},
+{
+"q": "3 kg y medio de bistec",
+"g": null
+},
+{
+"q": "dos kg y medio de bistec",
+"g": null
+},
+{
+"q": "un kg y medio de bistec",
+"g": null
+},
+{
+"q": "1 kilo y medio de bistec",
+"g": null
+},
+{
+"q": "kg y medio de bistec",
+"g": null
+},
+{
+"q": "2 kilos y medio de bistec",
+"g": null
+},
+{
+"q": "1kg y medio de bistec",
+"g": null
+},
+{
+"q": "cuatro cuartos de bistec",
+"g": null
+},
+{
+"q": "tres cuartos de kg de bistec",
+"g": null
+},
+{
+"q": "medio kilo y medio de bistec",
+"g": null
+},
+{
+"q": "dos cuartos de arrachera",
+"g": null
+},
+{
+"q": "dos cuartos de kilo de arrachera",
+"g": null
+},
+{
+"q": "¼ kilo de arrachera",
+"g": null
+},
+{
+"q": "¼ de arrachera",
+"g": null
+},
+{
+"q": "¼ de kilo de arrachera",
+"g": null
+},
+{
+"q": "¾ de kilo de arrachera",
+"g": null
+},
+{
+"q": "¾ de arrachera",
+"g": null
+},
+{
+"q": "3/4 de kilo de arrachera",
+"g": null
+},
+{
+"q": "1 y ½ kilos de arrachera",
+"g": null
+},
+{
+"q": "1 y 1/2 kilos de arrachera",
+"g": null
+},
+{
+"q": "1½ kg de arrachera",
+"g": null
+},
+{
+"q": "1½ kilos de arrachera",
+"g": null
+},
+{
+"q": "1 ½ kg de arrachera",
+"g": null
+},
+{
+"q": "2½ kilos de arrachera",
+"g": null
+},
+{
+"q": "2 ½ kg de arrachera",
+"g": null
+},
+{
+"q": "½ kilo de arrachera",
+"g": null
+},
+{
+"q": "½ de arrachera",
+"g": null
+},
+{
+"q": "medio y medio de arrachera",
+"g": null
+},
+{
+"q": "2 kg y medio de arrachera",
+"g": null
+},
+{
+"q": "3 kg y medio de arrachera",
+"g": null
+},
+{
+"q": "dos kg y medio de arrachera",
+"g": null
+},
+{
+"q": "un kg y medio de arrachera",
+"g": null
+},
+{
+"q": "1 kilo y medio de arrachera",
+"g": null
+},
+{
+"q": "kg y medio de arrachera",
+"g": null
+},
+{
+"q": "2 kilos y medio de arrachera",
+"g": null
+},
+{
+"q": "1kg y medio de arrachera",
+"g": null
+},
+{
+"q": "cuatro cuartos de arrachera",
+"g": null
+},
+{
+"q": "tres cuartos de kg de arrachera",
+"g": null
+},
+{
+"q": "medio kilo y medio de arrachera",
+"g": null
+},
+{
+"q": "dos cuartos de pechuga",
+"g": null
+},
+{
+"q": "dos cuartos de kilo de pechuga",
+"g": null
+},
+{
+"q": "¼ kilo de pechuga",
+"g": null
+},
+{
+"q": "¼ de pechuga",
+"g": null
+},
+{
+"q": "¼ de kilo de pechuga",
+"g": null
+},
+{
+"q": "¾ de kilo de pechuga",
+"g": null
+},
+{
+"q": "¾ de pechuga",
+"g": null
+},
+{
+"q": "3/4 de kilo de pechuga",
+"g": null
+},
+{
+"q": "1 y ½ kilos de pechuga",
+"g": null
+},
+{
+"q": "1 y 1/2 kilos de pechuga",
+"g": null
+},
+{
+"q": "1½ kg de pechuga",
+"g": null
+},
+{
+"q": "1½ kilos de pechuga",
+"g": null
+},
+{
+"q": "1 ½ kg de pechuga",
+"g": null
+},
+{
+"q": "2½ kilos de pechuga",
+"g": null
+},
+{
+"q": "2 ½ kg de pechuga",
+"g": null
+},
+{
+"q": "½ kilo de pechuga",
+"g": null
+},
+{
+"q": "½ de pechuga",
+"g": null
+},
+{
+"q": "medio y medio de pechuga",
+"g": null
+},
+{
+"q": "2 kg y medio de pechuga",
+"g": null
+},
+{
+"q": "3 kg y medio de pechuga",
+"g": null
+},
+{
+"q": "dos kg y medio de pechuga",
+"g": null
+},
+{
+"q": "un kg y medio de pechuga",
+"g": null
+},
+{
+"q": "1 kilo y medio de pechuga",
+"g": null
+},
+{
+"q": "kg y medio de pechuga",
+"g": null
+},
+{
+"q": "2 kilos y medio de pechuga",
+"g": null
+},
+{
+"q": "1kg y medio de pechuga",
+"g": null
+},
+{
+"q": "cuatro cuartos de pechuga",
+"g": null
+},
+{
+"q": "tres cuartos de kg de pechuga",
+"g": null
+},
+{
+"q": "medio kilo y medio de pechuga",
+"g": null
+},
+{
+"q": "dos cuartos de costilla",
+"g": null
+},
+{
+"q": "dos cuartos de kilo de costilla",
+"g": null
+},
+{
+"q": "¼ kilo de costilla",
+"g": null
+},
+{
+"q": "¼ de costilla",
+"g": null
+},
+{
+"q": "¼ de kilo de costilla",
+"g": null
+},
+{
+"q": "¾ de kilo de costilla",
+"g": null
+},
+{
+"q": "¾ de costilla",
+"g": null
+},
+{
+"q": "3/4 de kilo de costilla",
+"g": null
+},
+{
+"q": "1 y ½ kilos de costilla",
+"g": null
+},
+{
+"q": "1 y 1/2 kilos de costilla",
+"g": null
+},
+{
+"q": "1½ kg de costilla",
+"g": null
+},
+{
+"q": "1½ kilos de costilla",
+"g": null
+},
+{
+"q": "1 ½ kg de costilla",
+"g": null
+},
+{
+"q": "2½ kilos de costilla",
+"g": null
+},
+{
+"q": "2 ½ kg de costilla",
+"g": null
+},
+{
+"q": "½ kilo de costilla",
+"g": null
+},
+{
+"q": "½ de costilla",
+"g": null
+},
+{
+"q": "medio y medio de costilla",
+"g": null
+},
+{
+"q": "2 kg y medio de costilla",
+"g": null
+},
+{
+"q": "3 kg y medio de costilla",
+"g": null
+},
+{
+"q": "dos kg y medio de costilla",
+"g": null
+},
+{
+"q": "un kg y medio de costilla",
+"g": null
+},
+{
+"q": "1 kilo y medio de costilla",
+"g": null
+},
+{
+"q": "kg y medio de costilla",
+"g": null
+},
+{
+"q": "2 kilos y medio de costilla",
+"g": null
+},
+{
+"q": "1kg y medio de costilla",
+"g": null
+},
+{
+"q": "cuatro cuartos de costilla",
+"g": null
+},
+{
+"q": "tres cuartos de kg de costilla",
+"g": null
+},
+{
+"q": "medio kilo y medio de costilla",
+"g": null
+},
+{
+"q": "dos cuartos",
+"g": null
+},
+{
+"q": "½",
+"g": null
+},
+{
+"q": "¼ kilo",
+"g": null
+},
+{
+"q": "1½",
+"g": null
+},
+{
+"q": "1½ litros de agua",
+"g": null
+},
+{
+"q": "medio y medio",
+"g": null
+},
+{
+"q": "media y media",
+"g": null
+},
+{
+"q": "½ orden de nachos",
+"g": null
+},
+{
+"q": "½ orden de bistec",
+"g": null
+},
+{
+"q": "nachos ½ orden",
+"g": null
+},
+{
+"q": "frijoles charros ½",
+"g": null
+},
+{
+"q": "¼ de libra",
+"g": null
+},
+{
+"q": "cocteles sin alcohol",
+"g": null
+},
+{
+"q": "cerveza 0% alcohol",
+"g": null
+},
+{
+"q": "0 % alcohol",
+"g": null
+},
+{
+"q": "100% natural",
+"g": null
+},
+{
+"q": "agua 100%",
+"g": null
+},
+{
+"q": "3/4 kilo de pastor",
+"g": 750
+},
+{
+"q": "5 kilos de pastor",
+"g": 5000
+},
+{
+"q": "10 kilos de pastor",
+"g": 10000
+},
+{
+"q": "dos y medio de pastor",
+"g": null
+},
+{
+"q": "2.5 kg de pastor",
+"g": 2500
+},
+{
+"q": "3,5 kilos de pastor",
+"g": 3500
+},
+{
+"q": "2,5 kg de pastor",
+"g": 2500
+},
+{
+"q": "un medio kilo de pastor",
+"g": 500
+},
+{
+"q": "un medio de pastor",
+"g": 500
+},
+{
+"q": "un 1/2 kg de pastor",
+"g": 500
+},
+{
+"q": "una 1/2 kg de pastor",
+"g": 500
+},
+{
+"q": "un 1/2 kilo de pastor",
+"g": 500
+},
+{
+"q": "medio kilo y un cuarto de pastor",
+"g": null
+},
+{
+"q": "0.3 kg de pastor",
+"g": 300
+},
+{
+"q": "0,5 kg de pastor",
+"g": 500
+},
+{
+"q": "0.25 kg de pastor",
+"g": 250
+},
+{
+"q": "0,25 kg de pastor",
+"g": 250
+},
+{
+"q": "0,75 kg de pastor",
+"g": 750
+},
+{
+"q": "1.0 kg de pastor",
+"g": 1000
+},
+{
+"q": "2.0 kilos de pastor",
+"g": 2000
+},
+{
+"q": "1.25 kg de pastor",
+"g": 1250
+},
+{
+"q": "1,25 kg de pastor",
+"g": 1250
+},
+{
+"q": "uno y medio kilos de pastor",
+"g": 1500
+},
+{
+"q": "un kilo y 1/2 de pastor",
+"g": 1500
+},
+{
+"q": "1 kg y 1/2 de pastor",
+"g": 1500
+},
+{
+"q": "2 y 1/2 kilos de pastor",
+"g": 2500
+},
+{
+"q": "dos y medio kilos de pastor",
+"g": 2500
+},
+{
+"q": "2 kg y 1/2 de pastor",
+"g": 2500
+},
+{
+"q": "diez kilos de pastor",
+"g": 10000
+},
+{
+"q": "seis kilos de pastor",
+"g": 6000
+},
+{
+"q": "dos medios kilos de pastor",
+"g": 1000
+},
+{
+"q": "cinco cuartos de pastor",
+"g": 1250
+},
+{
+"q": "tres medios kilos de pastor",
+"g": 1500
+},
+{
+"q": "1 y medio de pastor",
+"g": null
+},
+{
+"q": "un ½ kilo de pastor",
+"g": 500
+},
+{
+"q": "medio kg y medio de pastor",
+"g": null
+},
+{
+"q": "3/4 kilo de bistec",
+"g": 750
+},
+{
+"q": "5 kilos de bistec",
+"g": 5000
+},
+{
+"q": "10 kilos de bistec",
+"g": 10000
+},
+{
+"q": "dos y medio de bistec",
+"g": null
+},
+{
+"q": "2.5 kg de bistec",
+"g": 2500
+},
+{
+"q": "3,5 kilos de bistec",
+"g": 3500
+},
+{
+"q": "2,5 kg de bistec",
+"g": 2500
+},
+{
+"q": "un medio kilo de bistec",
+"g": 500
+},
+{
+"q": "un medio de bistec",
+"g": 500
+},
+{
+"q": "un 1/2 kg de bistec",
+"g": 500
+},
+{
+"q": "una 1/2 kg de bistec",
+"g": 500
+},
+{
+"q": "un 1/2 kilo de bistec",
+"g": 500
+},
+{
+"q": "medio kilo y un cuarto de bistec",
+"g": null
+},
+{
+"q": "0.3 kg de bistec",
+"g": 300
+},
+{
+"q": "0,5 kg de bistec",
+"g": 500
+},
+{
+"q": "0.25 kg de bistec",
+"g": 250
+},
+{
+"q": "0,25 kg de bistec",
+"g": 250
+},
+{
+"q": "0,75 kg de bistec",
+"g": 750
+},
+{
+"q": "1.0 kg de bistec",
+"g": 1000
+},
+{
+"q": "2.0 kilos de bistec",
+"g": 2000
+},
+{
+"q": "1.25 kg de bistec",
+"g": 1250
+},
+{
+"q": "1,25 kg de bistec",
+"g": 1250
+},
+{
+"q": "uno y medio kilos de bistec",
+"g": 1500
+},
+{
+"q": "un kilo y 1/2 de bistec",
+"g": 1500
+},
+{
+"q": "1 kg y 1/2 de bistec",
+"g": 1500
+},
+{
+"q": "2 y 1/2 kilos de bistec",
+"g": 2500
+},
+{
+"q": "dos y medio kilos de bistec",
+"g": 2500
+},
+{
+"q": "2 kg y 1/2 de bistec",
+"g": 2500
+},
+{
+"q": "diez kilos de bistec",
+"g": 10000
+},
+{
+"q": "seis kilos de bistec",
+"g": 6000
+},
+{
+"q": "dos medios kilos de bistec",
+"g": 1000
+},
+{
+"q": "cinco cuartos de bistec",
+"g": 1250
+},
+{
+"q": "tres medios kilos de bistec",
+"g": 1500
+},
+{
+"q": "1 y medio de bistec",
+"g": null
+},
+{
+"q": "un ½ kilo de bistec",
+"g": 500
+},
+{
+"q": "medio kg y medio de bistec",
+"g": null
+},
+{
+"q": "3/4 kilo de arrachera",
+"g": 750
+},
+{
+"q": "5 kilos de arrachera",
+"g": 5000
+},
+{
+"q": "10 kilos de arrachera",
+"g": 10000
+},
+{
+"q": "dos y medio de arrachera",
+"g": null
+},
+{
+"q": "2.5 kg de arrachera",
+"g": 2500
+},
+{
+"q": "3,5 kilos de arrachera",
+"g": 3500
+},
+{
+"q": "2,5 kg de arrachera",
+"g": 2500
+},
+{
+"q": "un medio kilo de arrachera",
+"g": 500
+},
+{
+"q": "un medio de arrachera",
+"g": 500
+},
+{
+"q": "un 1/2 kg de arrachera",
+"g": 500
+},
+{
+"q": "una 1/2 kg de arrachera",
+"g": 500
+},
+{
+"q": "un 1/2 kilo de arrachera",
+"g": 500
+},
+{
+"q": "medio kilo y un cuarto de arrachera",
+"g": null
+},
+{
+"q": "0.3 kg de arrachera",
+"g": 300
+},
+{
+"q": "0,5 kg de arrachera",
+"g": 500
+},
+{
+"q": "0.25 kg de arrachera",
+"g": 250
+},
+{
+"q": "0,25 kg de arrachera",
+"g": 250
+},
+{
+"q": "0,75 kg de arrachera",
+"g": 750
+},
+{
+"q": "1.0 kg de arrachera",
+"g": 1000
+},
+{
+"q": "2.0 kilos de arrachera",
+"g": 2000
+},
+{
+"q": "1.25 kg de arrachera",
+"g": 1250
+},
+{
+"q": "1,25 kg de arrachera",
+"g": 1250
+},
+{
+"q": "uno y medio kilos de arrachera",
+"g": 1500
+},
+{
+"q": "un kilo y 1/2 de arrachera",
+"g": 1500
+},
+{
+"q": "1 kg y 1/2 de arrachera",
+"g": 1500
+},
+{
+"q": "2 y 1/2 kilos de arrachera",
+"g": 2500
+},
+{
+"q": "dos y medio kilos de arrachera",
+"g": 2500
+},
+{
+"q": "2 kg y 1/2 de arrachera",
+"g": 2500
+},
+{
+"q": "diez kilos de arrachera",
+"g": 10000
+},
+{
+"q": "seis kilos de arrachera",
+"g": 6000
+},
+{
+"q": "dos medios kilos de arrachera",
+"g": 1000
+},
+{
+"q": "cinco cuartos de arrachera",
+"g": 1250
+},
+{
+"q": "tres medios kilos de arrachera",
+"g": 1500
+},
+{
+"q": "1 y medio de arrachera",
+"g": null
+},
+{
+"q": "un ½ kilo de arrachera",
+"g": 500
+},
+{
+"q": "medio kg y medio de arrachera",
+"g": null
+},
+{
+"q": "2 órdenes y media de nachos",
+"g": null
+},
+{
+"q": "1 orden y media de nachos",
+"g": null
+},
+{
+"q": "dos ordenes y media de tacos de pastor",
+"g": null
+},
+{
+"q": "tacos de 3 quesos",
+"g": null
+},
+{
+"q": "2x1 de tacos al pastor",
+"g": null
+},
+{
+"q": "combo 2 personas",
+"g": null
+},
+{
+"q": "parrillada para 2",
+"g": null
+},
+{
+"q": "parrillada para 4 personas",
+"g": null
+},
+{
+"q": "papadzules orden de 5",
+"g": null
+},
+{
+"q": "3 tacos de pastor",
+"g": null
+},
+{
+"q": "10 tacos al pastor",
+"g": null
+},
+{
+"q": "2 cocas",
+"g": null
+},
+{
+"q": "$150 de pastor",
+"g": null
+},
+{
+"q": "150 pesos de pastor",
+"g": null
+},
+{
+"q": "2 y medio",
+"g": null
+},
+{
+"q": "dos y medio",
+"g": null
+},
+{
+"q": "1 y medio",
+"g": null
+},
+{
+"q": "un medio",
+"g": null
+},
+{
+"q": "5 quesadillas",
+"g": null
+},
+{
+"q": "quesadilla de 2 quesos",
+"g": null
+},
+{
+"q": "un medio litro de horchata",
+"g": null
+},
+{
+"q": "agua de medio litro",
+"g": null
+},
+{
+"q": "1.5 litros de coca",
+"g": null
+}
+]

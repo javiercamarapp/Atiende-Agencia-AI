@@ -13,13 +13,14 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { DAY_SECONDS, STAFF_INVITE_ROLES, consumeRateLimit, getCustomerDetailById, telefonoFicticioPreview, validarConfigAgenteWhatsapp } from "@atiende/domain-restaurantes";
+import { DAY_SECONDS, STAFF_INVITE_ROLES, getCustomerDetailById, telefonoFicticioPreview, validarConfigAgenteWhatsapp } from "@atiende/domain-restaurantes";
 import type { ConversationMessage, WhatsAppAgentConfigInput } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { consumirTopesEnSesionDeSistema } from "./rate-limit-sistema.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,10 +88,14 @@ export function restaurantesAgentePreviewRoutes(deps: AppDeps): Hono<CoreAuthHon
 
     const repo = deps.restaurantesRepo(c.get("db"));
     const staffId = c.get("userId");
-    const porStaff = await consumeRateLimit(repo, "agente-preview-staff", requestActor(c.req.raw, staffId), AGENTE_PREVIEW_LIMITES.porStaffPor10Min, 600);
-    if (!porStaff.allowed) throw Errors.tooManyRequests();
-    const porOrg = await consumeRateLimit(repo, "agente-preview-org", organizationId, AGENTE_PREVIEW_LIMITES.porOrganizacionPorDia, DAY_SECONDS);
-    if (!porOrg.allowed) return c.json({ code: "agente_preview_tope", message: "La prueba del agente alcanzó su tope de mensajes de hoy. Inténtelo mañana." }, 429);
+    // `consume_api_rate_limit` es de SOLO sistema (auth.uid() nulo): los dos topes se consumen en una sesion de sistema propia, no en la
+    // del staff (en ella la funcion lanzaba 42501 => «Error interno» al primer mensaje). El actor sigue siendo el staff del JWT.
+    const agotado = await consumirTopesEnSesionDeSistema(deps, [
+      { scope: "agente-preview-staff", actor: requestActor(c.req.raw, staffId), maxRequests: AGENTE_PREVIEW_LIMITES.porStaffPor10Min, windowSeconds: 600 },
+      { scope: "agente-preview-org", actor: organizationId, maxRequests: AGENTE_PREVIEW_LIMITES.porOrganizacionPorDia, windowSeconds: DAY_SECONDS },
+    ]);
+    if (agotado === 0) throw Errors.tooManyRequests();
+    if (agotado === 1) return c.json({ code: "agente_preview_tope", message: "La prueba del agente alcanzó su tope de mensajes de hoy. Inténtelo mañana." }, 429);
 
     // Cliente conocido simulado: debe ser de ESTA organizacion (otra organizacion o inexistente => 404, sin distinguir).
     let customer: Awaited<ReturnType<typeof getCustomerDetailById>> = { isNew: true };

@@ -18,7 +18,7 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, NativeSelect, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
 import { CalendarRange, Plus } from "lucide-react";
 import {
   createPromotion,
@@ -366,7 +366,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
             />
           </FormField>
           <FormField label="Tipo de descuento">
-            <NativeSelect
+            <Selector
               id="promocion-tipo"
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as PromotionType }))}
@@ -375,7 +375,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
               <option value="fixed">$ fijo</option>
               <option value="bogo">2x1</option>
               <option value="cortesia">Combo de cortesía</option>
-            </NativeSelect>
+            </Selector>
           </FormField>
           {form.type !== "bogo" && form.type !== "cortesia" && (
             <FormField label="Valor">
@@ -392,11 +392,11 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
             </FormField>
           )}
           <FormField label="Canal">
-            <NativeSelect id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))}>
+            <Selector id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))}>
               <option value="">Todos los canales</option>
               <option value="recoger">Solo recoger</option>
               <option value="domicilio">Solo domicilio</option>
-            </NativeSelect>
+            </Selector>
           </FormField>
           <Checkbox
             id="promocion-auto"

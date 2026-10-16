@@ -5,7 +5,7 @@ import { fetchJson, sendJson } from "./admin-client.ts";
 
 const url = (apiBaseUrl: string, propertyId: string) => `${apiBaseUrl}/v1/citas/properties/${propertyId}/admin/voz`;
 
-export type EscalonVoz = "gemini-3.8-live" | "cascada-openrouter";
+export type EscalonVoz = "gemini-3.8-live" | "cascada-v2" | "cascada-openrouter";
 
 export interface EstadoVozCitas {
   readonly escalera: {
@@ -33,5 +33,6 @@ export function formatoUsdPorMinuto(microUsd: number): string {
 
 export const NOMBRE_ESCALON: Readonly<Record<EscalonVoz, string>> = {
   "gemini-3.8-live": "Gemini Live (principal)",
+  "cascada-v2": "Cascada v2 en streaming (Deepgram)",
   "cascada-openrouter": "Cascada OpenRouter (respaldo)",
 };

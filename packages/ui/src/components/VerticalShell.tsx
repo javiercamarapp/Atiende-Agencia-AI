@@ -85,6 +85,31 @@ export function useTituloBarra(titulo: string | null | undefined, icono?: Sideba
   }, [fijar, titulo, icono]);
 }
 
+// ---- Acciones de pagina en la barra superior y marco de contenido ------------
+
+const AccionesBarraContext = React.createContext<((n: React.ReactNode) => void) | null>(null);
+
+/**
+ * Una pagina pinta acciones propias en la barra superior de escritorio (junto al chat y la campana), p. ej. «Vista previa» del agente de voz.
+ * Al desmontarse la pagina se quitan. Fuera de un `VerticalShell` no hace nada (la pagina debe tener su propio acceso, p. ej. para movil,
+ * donde esta barra no existe).
+ */
+export function useAccionesBarra(acciones: React.ReactNode): void {
+  const fijar = React.useContext(AccionesBarraContext);
+  React.useEffect(() => {
+    if (!fijar) return undefined;
+    fijar(acciones);
+    return () => fijar(null);
+  }, [fijar, acciones]);
+}
+
+const MarcoShellContext = React.createContext<HTMLElement | null>(null);
+
+/** Elemento del marco de contenido de escritorio (barra superior + pagina): destino de portales que deben cubrirlo entero, como la vista previa de llamada. */
+export function useMarcoShell(): HTMLElement | null {
+  return React.useContext(MarcoShellContext);
+}
+
 // ---- Estados de arranque y de ruta -----------------------------------------
 
 export interface VerticalShellEstadoProps {
@@ -204,6 +229,8 @@ export interface VerticalShellProps {
   readonly organizationSelector?: React.ReactNode;
   /** Selector que ademas se muestra en el MobileHeader (solo si hay varias opciones). */
   readonly mobileSelector?: React.ReactNode;
+  /** Panel lateral derecho (p. ej. el Copiloto Cmd+J del superadmin): hermano de la columna de contenido; el propio panel anima su ancho. Sin el, nada cambia. */
+  readonly panelLateral?: React.ReactNode;
   /** `key` del <main>: al cambiar (sucursal activa) las paginas hijas se remontan. */
   readonly contentKey?: string;
   readonly children: React.ReactNode;
@@ -226,6 +253,7 @@ export function VerticalShell({
   mobileSelector,
   sidebarPie,
   contentKey,
+  panelLateral,
   children,
 }: VerticalShellProps) {
   const { pathname } = useLocation();
@@ -244,6 +272,8 @@ export function VerticalShell({
     return () => observador.disconnect();
   }, [pathname, contentKey]);
   const [sobrescrito, fijarTitulo] = React.useState<TituloBarra | null>(null);
+  const [accionesBarra, fijarAcciones] = React.useState<React.ReactNode>(null);
+  const [marco, fijarMarco] = React.useState<HTMLElement | null>(null);
   // Los destinos del pie del Sidebar ("Ver los otros paneles") tambien son paginas del panel aunque no esten en `sections`:
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
@@ -282,7 +312,7 @@ export function VerticalShell({
         pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1 }}
         action={
           <div className="flex items-center gap-1 min-w-0">
-            {mobileSelector ? <div className="min-w-0 max-w-[40vw]">{mobileSelector}</div> : null}
+            {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
             {mobileNotificationBell ?? notificationBell}
             <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut}>
               {mobileChatButton ?? chatButton}
@@ -293,9 +323,9 @@ export function VerticalShell({
 
       {/* Marco de Likida: columna de contenido gris tenue (--sunken = --g1) con hairline y esquinas
           redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
-      <div className="flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
+      <div ref={fijarMarco} className="relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
         <div className="hidden md:block shrink-0">
-          <BarraPagina icon={iconoBarra} title={tituloBarra} fecha={header.fecha} notificationBell={notificationBell} chatButton={chatButton} comoH1={sinH1} />
+          <BarraPagina icon={iconoBarra} title={tituloBarra} fecha={header.fecha} notificationBell={notificationBell} chatButton={chatButton} acciones={accionesBarra} comoH1={sinH1} />
         </div>
         {/* `key` fuerza el remontaje de las paginas hijas cuando cambia la sucursal activa. */}
         <main
@@ -308,11 +338,17 @@ export function VerticalShell({
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
           <div key={pathname} className="motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>
-              <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+              <AccionesBarraContext.Provider value={fijarAcciones}>
+                <MarcoShellContext.Provider value={marco}>
+                  <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                </MarcoShellContext.Provider>
+              </AccionesBarraContext.Provider>
             </TituloBarraContext.Provider>
           </div>
         </main>
       </div>
+
+      {panelLateral}
 
       <BottomNav items={mobileItems} moreSections={sections} pie={sidebarPie} />
     </div>

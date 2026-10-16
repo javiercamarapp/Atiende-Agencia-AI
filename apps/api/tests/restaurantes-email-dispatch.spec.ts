@@ -19,7 +19,7 @@ describe("POST /internal/restaurantes/email-dispatch", () => {
     const { deps, restaurantesRepo, products } = await buildTestDeps();
     const app = buildApp(deps);
 
-    // Crea el pedido vía el endpoint HTTP público real (source=web) — es esa ruta
+    // Crea el pedido vía el endpoint HTTP público real (source=voice) — es esa ruta
     // (orders.ts::createOrder, best-effort) quien encola el correo real, no una
     // llamada directa al dominio.
     const createRes = await app.request(
@@ -33,9 +33,9 @@ describe("POST /internal/restaurantes/email-dispatch", () => {
           canal: "recoger",
           payment_method: "efectivo",
           items: [{ product_id: products.cocaCola, requested_quantity: 1 }],
-          source: "web",
+          source: "voice",
         },
-        { origin: "http://localhost:5173" },
+        { "x-atiende-tool-secret": "test-voice-tool-secret" },
       ),
     );
     expect(createRes.status).toBe(200);
@@ -65,8 +65,8 @@ describe("POST /internal/restaurantes/email-dispatch", () => {
     const createRes = await app.request(
       "/v1/restaurantes/los-taquitos-de-pm/orders",
       jsonRequestInit(
-        { branch_slug: "fco-montejo", customer_name: "Cliente Sin Correo", customer_phone: "9991112222", canal: "recoger", payment_method: "efectivo", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "web" },
-        { origin: "http://localhost:5173" },
+        { branch_slug: "fco-montejo", customer_name: "Cliente Sin Correo", customer_phone: "9991112222", canal: "recoger", payment_method: "efectivo", items: [{ product_id: products.cocaCola, requested_quantity: 1 }], source: "voice" },
+        { "x-atiende-tool-secret": "test-voice-tool-secret" },
       ),
     );
     expect(createRes.status).toBe(200);

@@ -39,6 +39,27 @@
 //      automáticamente cualquier verify-* nuevo que se agregue después)
 //   node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-outbox-grants
 //   node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-rentas-cron-rls
+//   node scripts/verify-real-postgres-ci/run-gate.mjs --shard 2/6 --report r.json
+//     (CI: corre solo la parte i de N del conjunto descubierto; ver "Shards")
+//   node scripts/verify-real-postgres-ci/run-gate.mjs --list-shards 6
+//     (imprime el reparto y comprueba que es una partición exacta; no toca Postgres)
+//   node scripts/verify-real-postgres-ci/run-gate.mjs --verify-reports dir
+//     (agregador de CI: comprueba que los --report de los N shards cubren
+//      EXACTAMENTE lo descubierto, cada carpeta una sola vez, y que ninguno falló)
+//
+// Plantillas de base (rapidez, misma semántica): bootstrap.sql + las ~300
+// migraciones son idénticas para todas las carpetas que comparten el mismo
+// bootstrap.sql, y eran el 90% del tiempo (≈16 s de ≈18 s por carpeta). Ahora se
+// construyen UNA vez por bootstrap distinto como base plantilla y cada carpeta
+// hace `create database … template …` (copia exacta del estado), luego aplica su
+// propio post-migrations.sql y sus escenarios, igual que antes. `--no-template`
+// restituye el camino antiguo (una base nueva + todas las migraciones por carpeta).
+//
+// Shards: `--shard i/N` reparte las carpetas con un reparto determinista por
+// costo (nº de escenarios + constante por carpeta, voraz de mayor a menor, empate
+// por nombre). El propio runner comprueba antes de correr que la partición es
+// exacta (cada carpeta en un solo shard, ninguna sin shard). Sin `--shard` corre
+// TODO, como siempre (ejecución local y `npm run` existentes).
 //
 // Variables de entorno relevantes (todas con default razonable para correr en
 // GitHub Actions con el servicio `postgres:16` estándar, o contra un Postgres
@@ -50,7 +71,8 @@
 //   PGSSLMODE   no se fuerza — se hereda del entorno si está presente
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,6 +117,17 @@ function createDatabase(dbName) {
     ["-h", PG_ENV.PGHOST, "-p", PG_ENV.PGPORT, "-U", PG_ENV.PGUSER, "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `create database ${dbName};`],
     { env: { ...process.env, ...PG_ENV }, encoding: "utf8" },
   );
+}
+
+function createDatabaseFromTemplate(dbName, templateName) {
+  const run = (sql) =>
+    execFileSync(
+      "psql",
+      ["-h", PG_ENV.PGHOST, "-p", PG_ENV.PGPORT, "-U", PG_ENV.PGUSER, "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", sql],
+      { env: { ...process.env, ...PG_ENV }, encoding: "utf8" },
+    );
+  run(`drop database if exists ${dbName};`);
+  run(`create database ${dbName} template ${templateName};`);
 }
 
 function dropDatabase(dbName) {
@@ -297,9 +330,47 @@ function discoverVerifyDirs() {
     .sort();
 }
 
-async function runOneGate(verifyDir, keepDb) {
+// Una plantilla por bootstrap.sql distinto (clave: sha256 del contenido). Se
+// construye la primera vez que una carpeta la necesita; si falla, el error queda
+// cacheado y TODAS las carpetas de ese bootstrap fallan con ese mismo error (nunca
+// se salta una carpeta en silencio).
+const templateCache = new Map();
+
+function templateNameFor(bootstrapPath) {
+  const hash = createHash("sha256").update(readFileSync(bootstrapPath)).digest("hex").slice(0, 12);
+  return `atiende_ci_tpl_${hash}`;
+}
+
+function ensureTemplate(bootstrapPath) {
+  const tpl = templateNameFor(bootstrapPath);
+  if (!templateCache.has(tpl)) {
+    const entry = { name: tpl };
+    try {
+      console.log(`\n=== plantilla "${tpl}": bootstrap.sql (${path.relative(REPO_ROOT, bootstrapPath)}) + migraciones reales ===`);
+      createDatabase(tpl);
+      console.log(`==> aplicando bootstrap.sql (mock mínimo de plataforma, antes de las migraciones — mismo orden que run.sh)`);
+      runPsqlFile(tpl, bootstrapPath);
+      console.log(`==> aplicando migraciones reales de supabase/migrations/`);
+      entry.count = applyMigrations(tpl);
+      console.log(`    ${entry.count} migraciones aplicadas sin error`);
+    } catch (err) {
+      entry.error = err;
+    }
+    templateCache.set(tpl, entry);
+  }
+  const entry = templateCache.get(tpl);
+  if (entry.error) throw entry.error;
+  return entry;
+}
+
+function dropTemplates() {
+  for (const { name } of templateCache.values()) dropDatabase(name);
+}
+
+async function runOneGate(verifyDir, keepDb, useTemplates) {
   const name = path.basename(verifyDir);
   const dbName = `atiende_ci_${name.replace(/[^a-z0-9]/gi, "_").toLowerCase()}`;
+  const outcome = { name, failed: false, pass: 0, scenarios: 0 };
 
   const bootstrapPath = path.join(verifyDir, "bootstrap.sql");
   const postMigrationsPath = path.join(verifyDir, "post-migrations.sql");
@@ -307,21 +378,28 @@ async function runOneGate(verifyDir, keepDb) {
   for (const p of [bootstrapPath, postMigrationsPath, assertionsPath]) {
     if (!existsSyncSafe(p)) {
       console.error(`falta ${p} — ¿es este un directorio scripts/verify-*/ válido?`);
-      return true;
+      outcome.failed = true;
+      return outcome;
     }
   }
 
   console.log(`\n=== ${name}: preparando base de datos efímera "${dbName}" en ${PG_ENV.PGHOST}:${PG_ENV.PGPORT} ===`);
-  createDatabase(dbName);
 
   let failed = false;
   try {
-    console.log(`==> aplicando bootstrap.sql (mock mínimo de plataforma, antes de las migraciones — mismo orden que run.sh)`);
-    runPsqlFile(dbName, bootstrapPath);
+    if (useTemplates) {
+      const tpl = ensureTemplate(bootstrapPath);
+      console.log(`==> clonando la plantilla "${tpl.name}" (bootstrap.sql + ${tpl.count} migraciones ya aplicadas, idéntico a aplicarlas aquí)`);
+      createDatabaseFromTemplate(dbName, tpl.name);
+    } else {
+      createDatabase(dbName);
+      console.log(`==> aplicando bootstrap.sql (mock mínimo de plataforma, antes de las migraciones — mismo orden que run.sh)`);
+      runPsqlFile(dbName, bootstrapPath);
 
-    console.log(`==> aplicando migraciones reales de supabase/migrations/`);
-    const count = applyMigrations(dbName);
-    console.log(`    ${count} migraciones aplicadas sin error`);
+      console.log(`==> aplicando migraciones reales de supabase/migrations/`);
+      const count = applyMigrations(dbName);
+      console.log(`    ${count} migraciones aplicadas sin error`);
+    }
 
     console.log(`==> aplicando post-migrations.sql (GRANT USAGE de schema)`);
     runPsqlFile(dbName, postMigrationsPath);
@@ -333,6 +411,7 @@ async function runOneGate(verifyDir, keepDb) {
     if (scenarios.length === 0) {
       throw new Error("no se encontró ningún escenario begin;/rollback; en assertions.sql — ¿cambió el formato del archivo?");
     }
+    outcome.scenarios = scenarios.length;
 
     let passCount = 0;
     for (const step of steps) {
@@ -351,6 +430,7 @@ async function runOneGate(verifyDir, keepDb) {
         console.log(`          ${result.detail.split("\n").join("\n          ")}`);
       }
     }
+    outcome.pass = passCount;
 
     console.log(`\n=== ${name}: ${passCount}/${scenarios.length} escenarios OK ===`);
     if (failed) {
@@ -366,30 +446,201 @@ async function runOneGate(verifyDir, keepDb) {
     }
   }
 
-  return failed;
+  outcome.failed = failed;
+  return outcome;
+}
+
+// --- shards ------------------------------------------------------------------
+
+// Costo estimado de una carpeta: cada escenario es una conexión psql, y cada
+// carpeta paga un clon de plantilla + post-migrations (constante). Determinista:
+// depende solo del contenido del repo.
+const PER_DIR_COST = 6;
+function estimateCost(verifyDir) {
+  const sql = readFileSync(path.join(verifyDir, "assertions.sql"), "utf8");
+  const scenarios = (sql.match(/^begin;$/gm) || []).length;
+  return PER_DIR_COST + scenarios;
+}
+
+// Reparto voraz (LPT): carpetas por costo descendente (empate: nombre), cada una
+// al shard con menos costo acumulado (empate: el de menor índice). Devuelve N
+// arreglos (índice 0 = shard 1) de rutas, ordenadas por nombre dentro de cada shard.
+function partitionShards(dirs, total) {
+  const bins = Array.from({ length: total }, () => ({ cost: 0, dirs: [] }));
+  const items = dirs
+    .map((d) => ({ d, cost: estimateCost(d), name: path.basename(d) }))
+    .sort((a, b) => b.cost - a.cost || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const it of items) {
+    let best = 0;
+    for (let i = 1; i < total; i += 1) if (bins[i].cost < bins[best].cost) best = i;
+    bins[best].cost += it.cost;
+    bins[best].dirs.push(it.d);
+  }
+  return bins.map((b) => ({ cost: b.cost, dirs: b.dirs.sort() }));
+}
+
+// Garantía de cobertura: la unión de los N shards es EXACTAMENTE el conjunto
+// descubierto; ninguna carpeta queda sin shard ni en dos. Lanza si no.
+function assertExactPartition(allDirs, bins) {
+  const seen = new Map();
+  bins.forEach((b, i) => {
+    for (const d of b.dirs) {
+      const n = path.basename(d);
+      if (seen.has(n)) throw new Error(`partición inválida: ${n} está en el shard ${seen.get(n)} y en el ${i + 1}`);
+      seen.set(n, i + 1);
+    }
+  });
+  const expected = new Set(allDirs.map((d) => path.basename(d)));
+  const missing = [...expected].filter((n) => !seen.has(n));
+  const extra = [...seen.keys()].filter((n) => !expected.has(n));
+  if (missing.length || extra.length || seen.size !== expected.size) {
+    throw new Error(`partición inválida: sin shard=[${missing.join(", ")}] sobrantes=[${extra.join(", ")}]`);
+  }
+}
+
+function parseShardSpec(spec) {
+  const m = /^(\d+)\/(\d+)$/.exec(spec || "");
+  if (!m) throw new Error(`--shard espera "i/N" (p. ej. 2/6), recibí ${JSON.stringify(spec)}`);
+  const i = Number.parseInt(m[1], 10);
+  const n = Number.parseInt(m[2], 10);
+  if (n < 1 || i < 1 || i > n) throw new Error(`--shard fuera de rango: ${spec}`);
+  return { i, n };
+}
+
+// Agregador: lee los --report de cada shard (aunque estén en subcarpetas por
+// artefacto) y exige que lo EJECUTADO cubra exactamente lo descubierto.
+function walkJson(dir, out = []) {
+  for (const e of readdirSync(dir)) {
+    const p = path.join(dir, e);
+    if (statSync(p).isDirectory()) walkJson(p, out);
+    else if (e.endsWith(".json")) out.push(p);
+  }
+  return out;
+}
+
+function verifyReports(dir) {
+  const reports = walkJson(dir).map((f) => JSON.parse(readFileSync(f, "utf8")));
+  if (reports.length === 0) throw new Error(`no hay ningún reporte de shard en ${dir}`);
+  const total = reports[0].total;
+  const problems = [];
+  const shardsSeen = new Set();
+  const executed = new Map();
+  let scenarios = 0;
+  let passed = 0;
+  for (const r of reports) {
+    if (r.total !== total) problems.push(`reportes con N distinto (${r.total} vs ${total})`);
+    if (shardsSeen.has(r.shard)) problems.push(`shard ${r.shard} reportado dos veces`);
+    shardsSeen.add(r.shard);
+    for (const res of r.results) {
+      if (executed.has(res.name)) problems.push(`${res.name} ejecutada en dos shards (${executed.get(res.name)} y ${r.shard})`);
+      executed.set(res.name, r.shard);
+      scenarios += res.scenarios;
+      passed += res.pass;
+      if (res.failed) problems.push(`${res.name} (shard ${r.shard}) FALLÓ`);
+    }
+  }
+  for (let i = 1; i <= total; i += 1) if (!shardsSeen.has(i)) problems.push(`falta el reporte del shard ${i}/${total}`);
+  const discovered = discoverVerifyDirs().map((d) => path.basename(d));
+  const missing = discovered.filter((n) => !executed.has(n));
+  const extra = [...executed.keys()].filter((n) => !discovered.includes(n));
+  if (missing.length) problems.push(`carpetas descubiertas que NINGÚN shard ejecutó: ${missing.join(", ")}`);
+  if (extra.length) problems.push(`carpetas ejecutadas que ya no se descubren: ${extra.join(", ")}`);
+  console.log(`cobertura: ${executed.size} carpetas ejecutadas en ${shardsSeen.size}/${total} shards; ${discovered.length} descubiertas; ${passed}/${scenarios} escenarios OK`);
+  if (problems.length) {
+    for (const p of problems) console.error(`::error::${p}`);
+    return false;
+  }
+  console.log("cobertura exacta: cada carpeta descubierta se ejecutó en un único shard y todas pasaron");
+  return true;
+}
+
+function takeOption(argv, name) {
+  const eq = argv.find((a) => a.startsWith(`${name}=`));
+  if (eq) return eq.slice(name.length + 1);
+  const idx = argv.indexOf(name);
+  if (idx !== -1) return argv[idx + 1];
+  return undefined;
 }
 
 async function main() {
-  const keepDb = process.argv.includes("--keep-db");
-  const explicitArg = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : null;
+  const argv = process.argv.slice(2);
+  const keepDb = argv.includes("--keep-db");
+  const useTemplates = !argv.includes("--no-template");
+  const optionValues = new Set(
+    ["--shard", "--report", "--list-shards", "--verify-reports"].map((n) => takeOption(argv, n)).filter((v) => v !== undefined),
+  );
+  const explicitArg = argv.find((a) => !a.startsWith("--") && !optionValues.has(a)) ?? null;
 
-  const verifyDirs = explicitArg
+  const verifyReportsDir = takeOption(argv, "--verify-reports");
+  if (verifyReportsDir !== undefined) {
+    process.exit(verifyReports(verifyReportsDir) ? 0 : 1);
+  }
+
+  const listShards = takeOption(argv, "--list-shards");
+  if (listShards !== undefined) {
+    const n = Number.parseInt(listShards, 10);
+    const all = discoverVerifyDirs();
+    const bins = partitionShards(all, n);
+    assertExactPartition(all, bins);
+    bins.forEach((b, i) => console.log(`shard ${i + 1}/${n}: ${b.dirs.length} carpetas, costo ${b.cost}`));
+    console.log(`partición exacta: ${all.length} carpetas descubiertas = ${bins.reduce((a, b) => a + b.dirs.length, 0)} asignadas`);
+    process.exit(0);
+  }
+
+  let verifyDirs = explicitArg
     ? [path.isAbsolute(explicitArg) ? explicitArg : path.join(REPO_ROOT, explicitArg)]
     : discoverVerifyDirs();
 
+  const shardSpec = takeOption(argv, "--shard");
+  let shard = null;
+  if (shardSpec !== undefined) {
+    if (explicitArg) {
+      console.error("--shard no se combina con una carpeta explícita");
+      process.exit(2);
+    }
+    shard = parseShardSpec(shardSpec);
+    const all = verifyDirs;
+    const bins = partitionShards(all, shard.n);
+    assertExactPartition(all, bins);
+    verifyDirs = bins[shard.i - 1].dirs;
+    console.log(
+      `shard ${shard.i}/${shard.n}: ${verifyDirs.length} de ${all.length} carpetas (partición exacta verificada): ${verifyDirs.map((d) => path.basename(d)).join(" ")}`,
+    );
+    if (verifyDirs.length === 0) {
+      console.error(`el shard ${shard.i}/${shard.n} quedó vacío — N=${shard.n} es mayor que el número de carpetas`);
+      process.exit(2);
+    }
+  }
+
   if (verifyDirs.length === 0) {
     console.error(
-      "uso: node run-gate.mjs [<scripts/verify-*-dir>] [--keep-db]\n" +
+      "uso: node run-gate.mjs [<scripts/verify-*-dir>] [--shard i/N] [--report archivo.json] [--keep-db] [--no-template]\n" +
         "sin argumento posicional, descubre automáticamente todo scripts/verify-*/ con bootstrap.sql+post-migrations.sql+assertions.sql — no se encontró ninguno.",
     );
     process.exit(2);
   }
 
-  let anyFailed = false;
-  for (const verifyDir of verifyDirs) {
-    const failed = await runOneGate(verifyDir, keepDb);
-    if (failed) anyFailed = true;
+  const results = [];
+  try {
+    for (const verifyDir of verifyDirs) {
+      results.push(await runOneGate(verifyDir, keepDb, useTemplates));
+    }
+  } finally {
+    if (!keepDb) dropTemplates();
   }
+  const anyFailed = results.some((r) => r.failed);
+
+  const reportPath = takeOption(argv, "--report");
+  if (reportPath !== undefined) {
+    writeFileSync(
+      reportPath,
+      JSON.stringify({ shard: shard ? shard.i : 1, total: shard ? shard.n : 1, results }, null, 2),
+      "utf8",
+    );
+  }
+  const scen = results.reduce((a, r) => a + r.scenarios, 0);
+  const pass = results.reduce((a, r) => a + r.pass, 0);
+  console.log(`\nRESUMEN: ${results.length} carpetas, ${pass}/${scen} escenarios OK, ${results.filter((r) => r.failed).length} carpetas con fallo`);
   process.exit(anyFailed ? 1 : 0);
 }
 

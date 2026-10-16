@@ -21,3 +21,16 @@ export { DEFAULT_ALLOWED_AUDIO_MIMES, DEFAULT_MEDIA_MAX_BYTES, DEFAULT_MEDIA_TIM
 export type { DownloadedMedia, MediaDownloadLimits, MediaDownloader, MetaMediaDownloaderOptions, WhatsAppMediaErrorCode } from "./media.ts";
 export { ESTADOS_ENTREGA, avanzarEstadoEntrega, extractMetaStatuses, motivoFalloEntrega } from "./statuses.ts";
 export type { EstadoEntrega, MetaDeliveryStatus, MotivoFalloEntrega } from "./statuses.ts";
+export {
+  CAMPOS_NUMERO,
+  CAMPOS_PLANTILLA,
+  CAMPOS_WABA,
+  DEFAULT_GRAPH_READER_API_VERSION,
+  GRAPH_API_VERSION_PATTERN,
+  MetaGraphReadError,
+  MetaGraphReaderConfigError,
+  MetaGraphWhatsAppReader,
+  esVersionGraphValida,
+  redactarSecretos,
+} from "./providers/meta-graph-reader.ts";
+export type { MetaAppSuscrita, MetaGraphReadErrorInfo, MetaGraphWhatsAppReaderOptions, MetaNumero, MetaPlantilla, MetaWaba } from "./providers/meta-graph-reader.ts";
