@@ -449,6 +449,17 @@ export function resumenMostradoEnHistorial(
 }
 
 /**
+ * El mensaje del asistente ERA el resumen para confirmar: trae el total de la cotizacion vigente Y cierra con una pregunta de confirmacion («¿Es correcto o desea agregar algo más?», «¿Confirma?»).
+ * Un «No gracias», «Efectivo» o «con 600» contestado a ESE mensaje es el sí, no una respuesta suelta de pago/propina. Un mensaje que trae el total pero pregunta otra cosa («Total $245. ¿Con cuánto paga?») NO cuenta.
+ */
+export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, contenido: string | undefined): boolean {
+  if (contenido === undefined) return false;
+  if (resumenMostradoEnHistorial(quotedTotal, [{ role: "assistant", content: contenido }]) !== true) return false;
+  const cola = contenido.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().slice(-160);
+  return /(confirm|correcto|algo mas|agregar|esta bien|de acuerdo|procedo|asi lo dejo)/.test(cola);
+}
+
+/**
  * QA-PM-R10 §6: el ultimo mensaje del cliente es solo una respuesta de PAGO o PROPINA («con 600», «$600», «efectivo», «tarjeta», «sin propina», «no gracias», «propina de 20»).
  * Esa respuesta NO es el «si» al resumen: el pedido no puede crearse en ese turno. Conservador: el mensaje completo debe ser eso (un «si, con 600» no cuenta).
  */
@@ -464,7 +475,7 @@ export function esRespuestaDePagoOPropina(mensaje: unknown): boolean {
 
 /**
  * Lo que decide la guarda de `crear_pedido`: `true` = el cliente VIO el resumen y su ultimo mensaje puede ser el «si»; `false` = no (el total no aparece en ningun mensaje del asistente, o el ultimo
- * mensaje del cliente es solo pago/propina); `undefined` = sin historial (voz, pruebas): el llamador conserva el comportamiento anterior.
+ * mensaje del cliente es solo pago/propina y el asistente no acababa de pedir confirmar el resumen); `undefined` = sin historial (voz, pruebas): el llamador conserva el comportamiento anterior.
  */
 export function resumenVistoPorElCliente(
   quotedTotal: number | undefined,
@@ -473,7 +484,8 @@ export function resumenVistoPorElCliente(
   const mostrado = resumenMostradoEnHistorial(quotedTotal, historial);
   if (mostrado === undefined) return undefined;
   const ultimoDelCliente = [...(historial ?? [])].reverse().find((m) => m.role === "user")?.content;
-  if (esRespuestaDePagoOPropina(ultimoDelCliente)) return false;
+  const ultimoDelAsistente = [...(historial ?? [])].reverse().find((m) => m.role === "assistant")?.content;
+  if (esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(quotedTotal, ultimoDelAsistente)) return false;
   return mostrado;
 }
 

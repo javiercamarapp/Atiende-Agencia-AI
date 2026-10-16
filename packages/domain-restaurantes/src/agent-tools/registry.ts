@@ -58,6 +58,7 @@ import {
   rechazaElResumen,
   resumenMostradoEnHistorial,
   esRespuestaDePagoOPropina,
+  asistentePidioConfirmarResumen,
   warnOrderFlowUnavailable,
   type OrderFlowContext,
   type OrderFlowRef,
@@ -1163,17 +1164,19 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     }
     const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
     // QA-PM-R10 §6: con historial de WhatsApp, el cliente tiene que haber VISTO el resumen y su ultimo mensaje no puede ser solo el pago o la propina. Sin historial (voz) no aplica.
-    // Dos comprobaciones distintas:
-    //  - pago/propina como ultimo mensaje: DETERMINISTA (no sufre falsos negativos de texto), se aplica SIEMPRE, sin marcador; el "si" del turno siguiente ya no es pago y pasa.
-    //  - total no encontrado en el historial: heuristica de texto con falsos negativos (total en letras, otro formato, resumen fuera de la ventana). Salida contra el deadlock: el primer
-    //    rechazo guarda el turno en el flujo; en un turno POSTERIOR ya no se rechaza por esta causa. El cierre se retrasa a lo mucho un turno, nunca se traba.
+    // Dos causas de rechazo, con UNA misma salida acotada contra el deadlock:
+    //  - totalNoVisto: ningun mensaje del asistente trae el total (heuristica de texto con falsos negativos: total en letras, otro formato, resumen fuera de la ventana).
+    //  - soloPago: el ultimo mensaje del cliente es solo pago/propina Y el ultimo mensaje del asistente NO traia el total (no era el resumen). Si el asistente acababa de mostrar el resumen y pedir confirmacion,
+    //    «No gracias» / «Efectivo» / «con 600» son la respuesta a su «¿Es correcto?», es decir el sí, y NO se rechazan (antes: deadlock sin limite).
+    //  El primer rechazo guarda el turno en el flujo (sobrevive al SAVEPOINT); en un turno POSTERIOR ya no se rechaza. El cierre se retrasa a lo mucho un turno, nunca se traba.
     if (snap.state === "confirmado" && flow.turn !== null && ctx.conversacionReciente !== undefined) {
       const ultimoDelCliente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "user")?.content;
-      const soloPago = esRespuestaDePagoOPropina(ultimoDelCliente);
+      const ultimoDelAsistente = [...ctx.conversacionReciente].reverse().find((m) => m.role === "assistant")?.content;
+      const soloPago = esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(current.quotedTotal, ultimoDelAsistente);
       const totalNoVisto = resumenMostradoEnHistorial(current.quotedTotal, ctx.conversacionReciente) === false;
-      const porTotal = !soloPago && totalNoVisto && (current.resumenRechazadoTurn === undefined || current.resumenRechazadoTurn === flow.turn);
-      if (soloPago || porTotal) {
-        if (porTotal && current.resumenRechazadoTurn === undefined) await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, resumenRechazadoTurn: flow.turn });
+      const salidaAbierta = current.resumenRechazadoTurn !== undefined && current.resumenRechazadoTurn !== flow.turn;
+      if ((soloPago || totalNoVisto) && !salidaAbierta) {
+        if (current.resumenRechazadoTurn === undefined) await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, resumenRechazadoTurn: flow.turn });
         const mensaje =
           "El cliente todavía no ha visto el resumen final con el total, o su último mensaje es solo el pago o la propina (eso NO es el sí). NO se creó el pedido. Muéstrele ahora el resumen completo en lista (renglones, total a pagar, forma de pago) y pregúntele si confirma; espere su sí en el mensaje siguiente y entonces llame crear_pedido.";
         if (opts.rechazoComoResultado) return { result: { error: mensaje }, orderId: null, propertyId: null, rechazoDelFlujo: "resumen_no_mostrado" };

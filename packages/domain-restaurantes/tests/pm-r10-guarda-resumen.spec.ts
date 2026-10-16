@@ -2,7 +2,7 @@
 // Y los pasos 6 / 11 del prompt de WhatsApp. Deterministas, sin LLM: el efecto sobre el LLM real solo se mide en otra ronda.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeAgentToolSafely, invokeAgentTool } from "../src/agent-tools/registry.ts";
-import { esRespuestaDePagoOPropina, resetOrderFlowWarningForTests, resumenVistoPorElCliente } from "../src/agent-tools/order-flow.ts";
+import { asistentePidioConfirmarResumen, esRespuestaDePagoOPropina, resetOrderFlowWarningForTests, resumenVistoPorElCliente } from "../src/agent-tools/order-flow.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { PM_AGENT_NAME_POR_OMISION, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
@@ -193,7 +193,7 @@ describe("ruta real de produccion (executeAgentToolSafely con SAVEPOINT que revi
     s.cliente("sí, confirmo");
     expect((await s.createSafe()).orderId).not.toBeNull();
   });
-  it("el pago/propina como ultimo mensaje se rechaza SIEMPRE, tambien despues de un rechazo previo (no es de un solo disparo)", async () => {
+  it("pago/propina suelto (el asistente NO traia el resumen): se rechaza UNA vez; el turno siguiente sale (nunca se traba)", async () => {
     const s = setup(true, true);
     s.cliente("dos cocas para recoger, soy Nora");
     await s.quote();
@@ -201,14 +201,42 @@ describe("ruta real de produccion (executeAgentToolSafely con SAVEPOINT que revi
     s.cliente("con 500");
     await s.confirm();
     expect((await s.createSafe()).rechazoDelFlujo).toBe("resumen_no_mostrado");
+    expect((await s.createSafe()).rechazoDelFlujo).toBe("resumen_no_mostrado"); // mismo turno: no esquiva
     s.asistente("¿Alguna propina?");
     s.cliente("no gracias");
-    expect((await s.createSafe()).rechazoDelFlujo).toBe("resumen_no_mostrado");
-    s.asistente(`Resumen: 2 Coca-Cola, total $${await s.total()}, paga con 500, sin propina. ¿Confirma?`);
-    s.cliente("sí");
+    expect((await s.createSafe()).orderId).not.toBeNull(); // turno posterior: sale
+  });
+  it("DEADLOCK corregido: resumen con total que termina en «¿Es correcto o desea agregar algo más?» + «No gracias» => crea el pedido (es el sí)", async () => {
+    const s = setup(true, true);
+    s.cliente("dos cocas para recoger, soy Nora, pago con 500");
+    await s.quote();
+    s.asistente(`Su pedido: 2 Coca-Cola. Total a pagar $${await s.total()}. Paga con 500. ¿Es correcto o desea agregar algo más?`);
+    s.cliente("No gracias");
+    await s.confirm();
+    const r = await s.createSafe();
+    expect(r.rechazoDelFlujo).toBeUndefined();
+    expect(r.orderId).not.toBeNull();
+  });
+  it.each(["Efectivo", "Tarjeta", "con 600 pesos", "de propina 20 pesos", "no, gracias"])("resumen con total y pregunta de confirmacion + «%s» => crea (sin falso positivo)", async (resp) => {
+    const s = setup(true, true);
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    s.asistente(`Resumen: 2 Coca-Cola, total $${await s.total()}, forma de pago efectivo. ¿Confirma?`);
+    s.cliente(resp);
+    await s.confirm();
     expect((await s.createSafe()).orderId).not.toBeNull();
   });
-  it("tras rechazo por total no visto (marcador puesto), un turno posterior con solo pago sigue rechazado", async () => {
+  it("«No gracias» repetido tras un resumen visible no se rechaza ni una vez (sin ciclo)", async () => {
+    const s = setup(true, true);
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    s.asistente(`Total $${await s.total()}. ¿Es correcto o desea agregar algo más?`);
+    s.cliente("No gracias");
+    await s.confirm();
+    expect((await s.createSafe()).orderId).not.toBeNull();
+    expect((await s.snap())?.context?.resumenRechazadoTurn).toBeUndefined();
+  });
+  it("tras rechazo por total no visto (marcador puesto), un turno posterior con solo pago tambien sale", async () => {
     const s = setup(true, true);
     s.cliente("dos cocas para recoger, soy Nora");
     await s.quote();
@@ -218,7 +246,7 @@ describe("ruta real de produccion (executeAgentToolSafely con SAVEPOINT que revi
     expect((await s.createSafe()).rechazoDelFlujo).toBe("resumen_no_mostrado");
     s.asistente("¿Con cuánto paga?");
     s.cliente("con 500");
-    expect((await s.createSafe()).rechazoDelFlujo).toBe("resumen_no_mostrado");
+    expect((await s.createSafe()).orderId).not.toBeNull();
   });
   it("boton «Confirmar pedido» (entra como un si explicito) con el resumen visible => crea", async () => {
     const s = setup(true, true);
@@ -242,6 +270,12 @@ describe("ruta real de produccion (executeAgentToolSafely con SAVEPOINT que revi
 });
 
 describe("heuristicas", () => {
+  it("asistentePidioConfirmarResumen: total + pregunta de confirmacion si; total con otra pregunta o sin total no", () => {
+    expect(asistentePidioConfirmarResumen(245, "Total $245. ¿Es correcto o desea agregar algo más?")).toBe(true);
+    expect(asistentePidioConfirmarResumen(245, "Total $245. ¿Con cuánto paga?")).toBe(false);
+    expect(asistentePidioConfirmarResumen(245, "¿Es correcto?")).toBe(false);
+    expect(asistentePidioConfirmarResumen(245, undefined)).toBe(false);
+  });
   it("esRespuestaDePagoOPropina: pago y propina si; un si o una frase de pedido no", () => {
     for (const t of ["con $600", "Con 500", "600", "$250.50", "tarjeta", "en efectivo", "Sin propina", "no gracias", "propina de 20", "pago con tarjeta", "dejo 20 de propina"]) expect(esRespuestaDePagoOPropina(t), t).toBe(true);
     for (const t of ["sí", "sí, con 600", "dos tacos de pastor", "nada más", "confirmo", "", undefined]) expect(esRespuestaDePagoOPropina(t), String(t)).toBe(false);
@@ -251,6 +285,7 @@ describe("heuristicas", () => {
     const h: Msg[] = [{ role: "assistant", content: "Total $245" }];
     expect(resumenVistoPorElCliente(245, [...h, { role: "user", content: "sí" }])).toBe(true);
     expect(resumenVistoPorElCliente(245, [...h, { role: "user", content: "con 300" }])).toBe(false);
+    expect(resumenVistoPorElCliente(245, [{ role: "assistant", content: "Total $245. ¿Es correcto o desea agregar algo más?" }, { role: "user", content: "No gracias" }])).toBe(true);
   });
 });
 
