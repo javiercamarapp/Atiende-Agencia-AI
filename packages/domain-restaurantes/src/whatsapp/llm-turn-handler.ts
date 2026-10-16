@@ -696,7 +696,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const riesgo: ReturnType<typeof classifyHighRiskIntentInMessages> = recibeDetalle
         ? { intent: "queja", motivo: "queja", text: textoPendiente, reply: respuestaDeQuejaConDetalle(QUEJA_DETALLE_RECIBIDO, textoPendiente) }
         : riesgoClasificado && riesgoClasificado.motivo === "queja"
-          ? { ...riesgoClasificado, reply: quejaSinDetalle ? QUEJA_PREGUNTA_DETALLE : respuestaDeQuejaConDetalle(riesgoClasificado.reply, riesgoClasificado.text) }
+          ? { ...riesgoClasificado, reply: respuestaDeQuejaConDetalle(quejaSinDetalle ? QUEJA_PREGUNTA_DETALLE : riesgoClasificado.reply, riesgoClasificado.text) }
           : riesgoClasificado;
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
