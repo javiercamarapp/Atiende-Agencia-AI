@@ -50,7 +50,7 @@ describe("R12-C1 tipos de mensaje que no son texto", () => {
     expect(m!.body).toMatch(/colonia|referencia/i);
   });
 
-  hallazgo("R12-11 [P2, corregido] (0, 0) 'Null Island' (el GPS no tenia senal) NO se toma como un pin: el cliente quedaria 'fuera de zona' por una ubicacion que no es suya", () => {
+  it("R12-11 [P2, corregido] (0, 0) 'Null Island' (el GPS no tenia senal) NO se toma como un pin: el cliente quedaria 'fuera de zona' por una ubicacion que no es suya", () => {
     const [m] = una({ type: "location", location: { latitude: 0, longitude: 0 } });
     expect(parseSharedLocation(m!.body)).toBeNull();
   });

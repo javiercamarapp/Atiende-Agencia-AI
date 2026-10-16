@@ -25,6 +25,8 @@ const MARKER = "[Ubicación compartida por WhatsApp]";
 const MARKER_RE = /^\[Ubicación compartida por WhatsApp\] lat=(-?\d{1,2}(?:\.\d{1,8})?) lng=(-?\d{1,3}(?:\.\d{1,8})?)/;
 
 export function isValidCoordinate(lat: unknown, lng: unknown): boolean {
+  // R12-11: (0, 0) es el valor que algunos telefonos mandan cuando el GPS no tiene senal («Null Island», en el oceano): no es un pin del cliente y lo dejaria «fuera de zona» a 9 967 km.
+  if (lat === 0 && lng === 0) return false;
   return typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
