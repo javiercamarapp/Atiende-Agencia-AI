@@ -3,6 +3,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
+import { elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -75,7 +76,7 @@ test.describe("restaurantes: avisos y cierres @recorrido", () => {
     await expect(main(page).locator(`button[data-fecha="${fecha}"]`)).toHaveCount(0);
 
     await mock.limpiarRegistro();
-    await main(page).getByLabel("Tipo de cierre").selectOption("semana");
+    await elegirValor(main(page).getByLabel("Tipo de cierre"), "semana");
     await expect(main(page).getByTestId("cierres-pendientes").getByRole("button", { name: /Generar semana del/ })).toBeVisible();
     expect(await mock.escrituras(), "cambiar de tipo solo lee").toEqual([]);
     vigilante.verificar();

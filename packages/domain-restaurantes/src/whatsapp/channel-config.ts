@@ -9,6 +9,7 @@
 import type { RestaurantesRepository } from "../repository.ts";
 import type { WhatsAppChannelResolution } from "../types.ts";
 import { formatLocationMessage, isValidCoordinate } from "./location.ts";
+import { parsearIdDeBoton } from "./botones-confirmacion.ts";
 import type { NotaDeVozEntrante } from "./nota-de-voz.ts";
 
 export type MetaTextMessage = {
@@ -62,6 +63,10 @@ export type MetaInboundMessage = {
   /** R-32: nota de voz / audio entrante. `body` conserva la nota que pide escribir (comportamiento anterior); si hay credencial, modelo y
    * cupo, el webhook la sustituye por la transcripcion (ver nota-de-voz.ts). Solo viene el id de media: los bytes no pasan por aqui. */
   readonly audio?: NotaDeVozEntrante;
+  /** B03: id del boton de un resumen («Confirmar pedido» / «Cambiar algo») que el cliente toco; solo ids de esta funcion con forma valida (ver botones-confirmacion.ts). */
+  readonly botonId?: string;
+  /** Instante (ms) en que Meta dice que el cliente envio el mensaje; solo para toques de boton (decide si aun cabe la ventana de 24 h). */
+  readonly recibidoEnMs?: number;
 };
 
 /** Limite de caracteres de un mensaje de texto de WhatsApp (Meta). Un texto de 4,001 a 4,096 caracteres es valido: descartarlo en silencio dejaba al cliente sin respuesta. */
@@ -147,7 +152,7 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
           continue;
         }
-        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; audio?: { id?: unknown; mime_type?: unknown }; button?: { text?: unknown }; interactive?: { type?: unknown; button_reply?: { title?: unknown }; list_reply?: { title?: unknown } }; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } }; order?: { text?: unknown; product_items?: unknown } };
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; audio?: { id?: unknown; mime_type?: unknown }; button?: { text?: unknown }; interactive?: { type?: unknown; button_reply?: { id?: unknown; title?: unknown }; list_reply?: { title?: unknown } }; timestamp?: unknown; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } }; order?: { text?: unknown; product_items?: unknown } };
         // Edicion de un mensaje de texto (webhook `messages` con `type: "edit"`, documentado por Meta; NO probado contra Meta real). Entra como mensaje
         // nuevo con la nota de correccion: el historial no guarda el id de Meta de cada mensaje, asi que no se reemplaza el original.
         if (message.type === "edit" && typeof message.id === "string" && message.id.length >= 1 && message.id.length <= 255 && typeof message.from === "string" && /^\d{7,20}$/.test(message.from)) {
@@ -160,7 +165,11 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
         // Respuesta de boton / lista: el texto del boton es lo que el cliente "dijo" (antes se descartaba en silencio).
         const respuesta = textoDeRespuestaInteractiva(message);
         if (respuesta !== null) {
-          result.push({ id: message.id, from: message.from, body: respuesta });
+          // B03: un toque a «Confirmar pedido» / «Cambiar algo» conserva el id (atado a un resumen) para decidir despues si ese resumen sigue vigente.
+          const botonId = message.type === "interactive" && message.interactive?.type === "button_reply" ? message.interactive.button_reply?.id : undefined;
+          const toque = parsearIdDeBoton(botonId) ? (botonId as string) : undefined;
+          const segundos = typeof message.timestamp === "string" ? Number(message.timestamp) : typeof message.timestamp === "number" ? message.timestamp : NaN;
+          result.push({ id: message.id, from: message.from, body: respuesta, ...(toque ? { botonId: toque, ...(Number.isFinite(segundos) && segundos > 0 ? { recibidoEnMs: segundos * 1000 } : {}) } : {}) });
           continue;
         }
         // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para

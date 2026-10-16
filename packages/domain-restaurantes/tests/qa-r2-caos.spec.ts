@@ -2,7 +2,7 @@
 // Cruces entre funciones nuevas que se rompen en el ciclo de punta a punta de PM (WhatsApp -> pedido -> cocina -> entrega -> cierre). Todo con dobles:
 // repositorios en memoria, POS falso y reloj simulado; nada toca la base real ni manda mensajes.
 // Cada prueba QA-R2-caos-NN fija la correccion de su defecto (QA-restaurantes-R2-caos-NN).
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createOrder } from "../src/orders.ts";
 import { prepararImportacionClientes } from "../src/clientes-importacion.ts";
 import { AGENTE_APAGADO_TEXTO, handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
@@ -119,6 +119,13 @@ describe("R2-caos-03: cocina retrasada y cliente que llega tarde contra el barri
 // R2-caos-04: hora de recogida en el pasado (o del dia equivocado) aceptada sin validar
 // ---------------------------------------------------------------------------------------------------------------------------------------
 describe("R2-caos-04: hora_recogida fuera de rango", () => {
+  // Reloj simulado (solo Date): martes 13:00 de Merida; con el reloj real +30 min / -5 min cruzan de dia en ciertas horas UTC.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-06T13:00:00-06:00"));
+  });
+  afterEach(() => vi.useRealTimers());
+
   async function crearRecoger(horaRecogida: string) {
     const fx = buildRestaurantFixture();
     return createOrder(fx.repo, {
@@ -231,6 +238,13 @@ describe("R2-caos-07: reimportar para corregir un mapeo de columnas equivocado",
 });
 
 describe("R2-caos-04/05 (bordes de las correcciones)", () => {
+  // Reloj simulado (solo Date): martes 13:00 de Merida; con el reloj real +30 min / -5 min cruzan de dia en ciertas horas UTC.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-06T13:00:00-06:00"));
+  });
+  afterEach(() => vi.useRealTimers());
+
   it("hora_recogida: 5 minutos atras se tolera (el modelo redondea 'paso ya'); 11 atras, 8 dias y 6 dias adelante no (otro dia = programado_para)", async () => {
     const fx = buildRestaurantFixture();
     const crear = (offsetMin: number) =>

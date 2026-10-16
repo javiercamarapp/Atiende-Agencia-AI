@@ -98,7 +98,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     // PM-C5 (espera de rafagas): los mensajes de un telefono con `replyDebounceSeconds` > 0 se reciben en una transaccion que SE CONFIRMA, el
     // webhook espera SIN transaccion abierta y recien entonces responde todo junto en otra transaccion. Con la espera apagada (lo normal)
     // este arreglo queda vacio y el camino es exactamente el de antes.
-    const diferidos: Array<{ organizationId: string; messageId: string; phone: string; phoneNumberId: string; propertyId: string | null; esperaSegundos: number }> = [];
+    const diferidos: Array<{ organizationId: string; messageId: string; phone: string; phoneNumberId: string; propertyId: string | null; esperaSegundos: number; recibidoEnMs?: number }> = [];
 
     // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
@@ -185,9 +185,9 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             .runWithRowSavepoint(async () => (await resolveAgentConfig(repo, organizationId, channel?.propertyId ?? null)).replyDebounceSeconds ?? 0)
             .catch(() => 0);
           if (esperaSegundos > 0) {
-            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body, ...(transcripcion ? { transcripcion } : {}) });
+            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body, ...(transcripcion ? { transcripcion } : {}), ...(message.botonId ? { botonId: message.botonId } : {}) });
             if (recepcion.estado === "responder") {
-              diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos });
+              diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos, ...(message.recibidoEnMs !== undefined ? { recibidoEnMs: message.recibidoEnMs } : {}) });
             } else if (recepcion.estado === "fallo") {
               hadRetryableFailure = true;
             }
@@ -199,6 +199,9 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             phone: `+${message.from}`,
             body: message.body,
             ...(transcripcion ? { transcripcion } : {}),
+            // B03: toque a «Confirmar pedido» / «Cambiar algo» (id atado a un resumen) y cuando lo envio el cliente (ventana de 24 h de los botones).
+            ...(message.botonId ? { botonId: message.botonId } : {}),
+            ...(message.recibidoEnMs !== undefined ? { recibidoEnMs: message.recibidoEnMs } : {}),
             phoneNumberId: phoneNumberIdOfBatch,
             propertyId: channel?.propertyId ?? null,
             // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
@@ -267,6 +270,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               handoffGate: deps.handoffGate?.(db),
               finFuncionMs: inicioMs + FUNCION_MAX_MS,
               reloj: deps.relojMs ?? Date.now,
+              ...(d.recibidoEnMs !== undefined ? { recibidoEnMs: d.recibidoEnMs } : {}),
             });
             if (outcome.retryable) hayReintento = true;
           }

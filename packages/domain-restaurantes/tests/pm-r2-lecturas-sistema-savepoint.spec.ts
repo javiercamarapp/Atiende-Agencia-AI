@@ -10,6 +10,8 @@ const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente_query_del_
 const pgError = (code: string, message: string) => Object.assign(new Error(message), { code });
 const FILA_CLIENTE = { id: CLIENTE, organization_id: ORG, phone: "9991230001", name: "Nora", order_count: 1 };
 
+const ID_PEDIDO = "00000000-0000-0000-0000-0000000000d1";
+
 describe("findCustomerByPhone con la funcion de sistema", () => {
   it("usa sistema_buscar_cliente_por_telefono y devuelve el cliente (antes: RLS devolvia 0 filas y el agente decia 'cliente nuevo')", async () => {
     const session = new AbortAwareFakeSession([{ match: /sistema_buscar_cliente_por_telefono/, respond: () => [{ cliente: FILA_CLIENTE }] }]);
@@ -66,10 +68,10 @@ describe("direcciones, historial, pedido por id y pedido reciente", () => {
   });
 
   it("findOrderById por funcion y, sin migrar, directo", async () => {
-    const fila = { id: "o1", organization_id: ORG, property_id: "p1", customer_id: null, customer_name: "N", customer_phone: "1", customer_address: null, customer_email: null, branch: "T7", total: "10.00", status: "pending", items: [], source: "voice", notes: null, payment_method: "efectivo", call_transcript: null, call_recording_url: null, dedupe_fingerprint: null, idempotency_key: null, created_at: "2026-10-02T20:00:00.000Z", assigned_repartidor_id: null, estimated_delivery_at: null, incident_note: null };
+    const fila = { id: ID_PEDIDO, organization_id: ORG, property_id: "p1", customer_id: null, customer_name: "N", customer_phone: "1", customer_address: null, customer_email: null, branch: "T7", total: "10.00", status: "pending", items: [], source: "voice", notes: null, payment_method: "efectivo", call_transcript: null, call_recording_url: null, dedupe_fingerprint: null, idempotency_key: null, created_at: "2026-10-02T20:00:00.000Z", assigned_repartidor_id: null, estimated_delivery_at: null, incident_note: null };
     const viaFn = new AbortAwareFakeSession([{ match: /sistema_pedido_por_id/, respond: () => [{ pedido: fila }] }]);
-    expect((await new PostgresRestaurantesRepository(viaFn).findOrderById(ORG, "o1"))?.id).toBe("o1");
+    expect((await new PostgresRestaurantesRepository(viaFn).findOrderById(ORG, ID_PEDIDO))?.id).toBe(ID_PEDIDO);
     const sinMigrar = new AbortAwareFakeSession([{ match: /from restaurantes\.orders/, respond: () => [fila] }]);
-    expect((await new PostgresRestaurantesRepository(sinMigrar).findOrderById(ORG, "o1"))?.id).toBe("o1");
+    expect((await new PostgresRestaurantesRepository(sinMigrar).findOrderById(ORG, ID_PEDIDO))?.id).toBe(ID_PEDIDO);
   });
 });

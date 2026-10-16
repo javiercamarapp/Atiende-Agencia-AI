@@ -10,6 +10,7 @@ import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnt
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
+import { opcionesDeReferencia, referenciaDeColonia, SUCURSALES_QUE_NO_REPARTEN_PM, sucursalesDeDespacho } from "./sugerencia-despacho.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import { evaluarDomicilioSucursal, mensajeDomicilioNoDisponible } from "./domicilio-sucursal.ts";
 import type { Branch, BranchPolicy, CanalPedido, KnownZone, PropinaPolitica } from "./types.ts";
@@ -87,6 +88,10 @@ export interface ReglasSucursalArgs {
   /** Total de renglones ANTES de cualquier descuento de promocion. */
   readonly subtotal: number;
   readonly colonia?: string;
+  /** El cliente compartio un pin y la sucursal MAS CERCANA a ese pin es esta (lo comprueba quien llama, con `assignBranch`): un domicilio cuya colonia no
+   * se reconoce (calle sin nombre de colonia, "casa blanca") no se rechaza por eso (QA-PM-R3-whatsapp-05). Una colonia que SI se reconoce y NINGUNA
+   * cobertura la incluye sigue rechazada. */
+  readonly pinEnEstaSucursal?: () => Promise<boolean>;
   readonly paymentMethod?: "efectivo" | "tarjeta" | null;
   readonly propina?: number;
   /** "admin" (captura manual del staff) no se bloquea por horario. */
@@ -171,20 +176,26 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     const zoneIds = await repo.listBranchDeliveryZoneIds(branch.propertyId);
     if (zoneIds.length > 0) {
       const colonia = typeof args.colonia === "string" ? args.colonia.trim() : "";
-      if (!colonia) {
+      const zones = await repo.listKnownZones(branch.organizationId);
+      const match = colonia ? matchKnownZone(zones, colonia) : null;
+      const pinValido = !match && args.pinEnEstaSucursal ? await args.pinEnEstaSucursal() : false;
+      if (!pinValido && !colonia) {
         throw new OrderValidationError(
           `La sucursal ${branch.name} solo entrega en zonas de cobertura: pida la colonia o zona del cliente para verificarla antes de continuar.`,
         );
       }
-      const zones = await repo.listKnownZones(branch.organizationId);
-      const match = matchKnownZone(zones, colonia);
-      if (!match) throw new OrderValidationError(COLONIA_FUERA_DE_VERIFICACION_MENSAJE);
-      if (!zoneIds.includes(match.id)) {
+      if (!match && !pinValido) throw new OrderValidationError(COLONIA_FUERA_DE_VERIFICACION_MENSAJE);
+      if (match && !zoneIds.includes(match.id)) {
         // Colonia conocida que NINGUNA sucursal cubre todavia (ambigua entre dos sucursales o sin asignar): no es "fuera de zona", es una zona
         // por confirmar. No se rechaza como si el cliente estuviera lejos: se ofrece recoger o se pasa a una persona.
         if (!(await algunaSucursalCubre(repo, branch.organizationId, match.id))) {
+          // Nombra la sucursal de despacho mas cercana segun la referencia del piloto (aproximada) para que el cliente pueda recoger ahi; nunca promete el envio.
+          // Sin km: la referencia del piloto de una colonia sin cobertura puede estar equivocada.
+          const esPm = (await repo.findWhatsAppAgentConfig(branch.organizationId, null))?.perfil === "taqueria_pm";
+          const cercana = opcionesDeReferencia(await referenciaDeColonia(repo, branch.organizationId, match.id), await sucursalesDeDespacho(repo, branch.organizationId, esPm ? SUCURSALES_QUE_NO_REPARTEN_PM : []))[0];
+          const recogerEn = cercana ? ` Para recoger, una sucursal cercana es ${cercana.nombre}.` : "";
           throw new OrderValidationError(
-            `${match.name} está fuera de la zona de reparto de ${branch.name}: todavía no tiene una sucursal de reparto asignada, así que no puedo confirmar el domicilio a esa colonia. ` +
+            `${match.name} está fuera de la zona de reparto de ${branch.name}: todavía no tiene una sucursal de reparto asignada, así que no puedo confirmar el domicilio a esa colonia.${recogerEn} ` +
               `Ofrezca recoger en sucursal o pase el pedido con una persona del negocio para que confirme la zona.`,
           );
         }

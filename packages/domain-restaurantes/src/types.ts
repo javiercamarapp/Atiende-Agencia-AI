@@ -72,6 +72,9 @@ export interface ProductoEncontrado {
   /** El renglon exige elegir tortilla (maiz, harina o mixta): tacos y los platillos que el menu describe "de maiz o harina".
    * Ausente = se decide por el nombre ("taco"), como antes de PM-C4. */
   readonly requiresTortilla?: boolean;
+  /** La busqueda NO pudo fijar un unico producto (cantidad sin presentacion exacta, "media orden de bistec"): son candidatas, no una mejor coincidencia. El agente debe
+   * preguntar al cliente cual quiere en vez de elegir una; nunca incluye una presentacion de mas peso que el pedido. Ausente = sin ambiguedad extra. */
+  readonly ambiguo?: boolean;
   /** Categoria del menu (para reglas por tipo de producto, p. ej. la doble salsa no aplica a un pedido de solo bebidas). Ausente en filas antiguas. */
   readonly categoryName?: string | null;
 }
@@ -243,6 +246,9 @@ export interface CreateOrderInput {
   /** Propina en pesos capturada en terminal. Solo se acepta si la politica de la sucursal
    * lo permite (PM: solo con tarjeta); no modifica `total`, se registra en las notas. */
   readonly propina?: number;
+  /** QA-PM-R4-whatsapp-03: propina dada como porcentaje del total del pedido ("10%"). El servidor la convierte a pesos (redondeada a centavos) con el total final;
+   * el modelo no hace la cuenta. Excluyente con `propina`. */
+  readonly propinaPorcentaje?: number;
   /** Hora prometida de recogida (ISO 8601 con zona). Solo con canal "recoger". */
   readonly horaRecogida?: string;
   /** R-11 (migracion 034): PEDIDO PROGRAMADO. Fecha y hora (ISO 8601 con zona) para la que el cliente
@@ -312,6 +318,9 @@ export interface WhatsAppAgentConfigRow {
   readonly largeOrderText?: string | null;
   /** Segundos que el agente espera tras el ultimo mensaje del cliente antes de responder (0 a 30; null = apagado). Solo perfil `taqueria_pm`. */
   readonly replyDebounceSeconds?: number | null;
+  /** Radio de reparto de la organizacion en km (mayor que 0 y hasta 500; 0 o fuera de rango se trata como ausente; `buscar_sucursal_cercana` y su tope duro). Ausente o `null` = el del perfil (8 km en `taqueria_pm`, 20 en los demas;
+   * ver `radioRepartoDelPerfil`). Sin columna en la base todavia: persistirlo es una migracion que reserva el orquestador; mientras tanto lo respetan los repositorios que lo traigan. */
+  readonly radioRepartoKm?: number | null;
 }
 
 /** Motivos de escalacion que un owner/admin puede apagar. Los demas (queja, alergia, cliente_lo_pide, falla_sistema,
@@ -415,7 +424,7 @@ export interface Order {
    * seleccionan (la base puede no estar migrada) -- `repo.listOrderScheduleInfo` las lee aparte. */
   readonly programadoPara?: string | null;
   readonly promovidoAt?: string | null;
-  /** Solo la trae `listDeliveredOrdersForRepartidor` (columna `delivered_at` de la 001, que se fija al pasar a `entregado`). */
+  /** `orders.delivered_at` (migracion 001, se fija al pasar a `entregado`): la traen los listados con ORDER_COLUMNS; ausente en pedidos de prueba. */
   readonly deliveredAt?: string | null;
 }
 
@@ -440,6 +449,12 @@ export interface PersistedOrderItem {
   readonly price: number;
   readonly quantity: number;
   readonly tortilla?: TortillaChoice;
+  /** D12: precio de LISTA de un renglon regalado por la promocion (cortesia o 2x1). Ese renglon se guarda con `price` 0 para que la suma de renglones sea el total, y el CFO
+   * (restaurantes.cfo_renglones, migracion 086) calcula la venta bruta y el descuento de promocion con `listPrice`. Ausente en los renglones pagados y en los pedidos anteriores. */
+  readonly listPrice?: number;
+  /** D12: el renglon es una unidad regalada por la promocion `promoCode`. */
+  readonly courtesy?: true;
+  readonly promoCode?: string;
 }
 
 export interface Customer {
@@ -525,6 +540,9 @@ export interface BranchProductState {
   readonly productId: string;
   readonly price: number;
   readonly isAvailable: boolean;
+  /** Autopiloto (migración 050): día de negocio (YYYY-MM-DD) en que el cron `agotados_reponer` lo devuelve a la venta. Solo lo
+   * trae `getBranchProductState`; `null` si no hay reposición programada o la base no tiene la 050. */
+  readonly agotadoHasta?: string | null;
 }
 
 /** `listo_para_recoger` y `no_recogido` (migracion 031) son los estados del canal recoger: el pedido
@@ -640,37 +658,6 @@ export interface CallbackRequestInput {
 /** Que paso con un aviso del agente: `nuevo` = se creo; `evento_repetido` = el mismo evento ya estaba registrado (no se hizo nada);
  * `nota_agregada` = habia un aviso abierto del mismo canal, telefono y motivo y se le agrego una nota. */
 export type CallbackRegistro = "nuevo" | "evento_repetido" | "nota_agregada";
-
-// ---- R-38 (migracion 062): marca publica del storefront por organizacion. Todos los campos son opcionales (null = sin valor). ----
-export interface StorefrontMarcaInput {
-  readonly titular: string | null;
-  readonly eslogan: string | null;
-  /** Descripcion corta ("about") de la portada. */
-  readonly about: string | null;
-  /** URL https de la imagen de portada. */
-  readonly portadaUrl: string | null;
-  readonly logoUrl: string | null;
-  readonly instagramUrl: string | null;
-  readonly facebookUrl: string | null;
-  readonly tiktokUrl: string | null;
-}
-
-export interface StorefrontMarca extends StorefrontMarcaInput {
-  /** null = nunca se guardo (o la base aun no tiene la migracion 062). */
-  readonly updatedAt: string | null;
-}
-
-/** R-43: solicitud publica de evento/catering ya validada (ver storefront-marca.ts::validarSolicitudEvento). */
-export interface SolicitudEventoInput {
-  readonly nombre: string;
-  /** 10 digitos nacionales. */
-  readonly telefono: string;
-  /** YYYY-MM-DD. */
-  readonly fechaEvento: string;
-  readonly personas: number;
-  readonly sucursalSlug: string;
-  readonly comentario: string | null;
-}
 
 export interface CallbackRequest extends CallbackRequestInput {
   readonly id: string;
@@ -968,7 +955,7 @@ export interface NewBranchHoursExceptionInput {
 }
 
 // ---------------------------------------------------------------------------
-// R-09 -- storefront publico (menu, carrito, checkout, rastreo por token).
+// Fila de catalogo con disponibilidad (la usa el conocimiento automatico del agente; antes alimentaba la tienda en linea, ya eliminada).
 // ---------------------------------------------------------------------------
 /** Renglon del menu publico de UNA sucursal: incluye los productos "de hoy no hay"
  * (`isAvailable: false`) para mostrarlos deshabilitados, a diferencia de
@@ -989,23 +976,4 @@ export interface StorefrontCatalogRow {
   readonly displayOrder: number;
   /** Producto o categoria marcados "no se vende a domicilio" (alcohol en PM). */
   readonly noDomicilio: boolean;
-}
-
-/** Vista PUBLICA de un pedido para la pagina de rastreo: sin nombre, telefono, direccion,
- * correo ni notas del cliente (ver migracion 032). */
-export interface StorefrontOrderTracking {
-  readonly status: OrderStatus;
-  readonly branch: string | null;
-  readonly total: number;
-  readonly paymentMethod: "efectivo" | "tarjeta" | null;
-  readonly canal: CanalPedido;
-  readonly createdAt: string;
-  readonly items: ReadonlyArray<{ readonly name: string; readonly quantity: number; readonly tortilla: TortillaChoice | null }>;
-}
-
-/** `disponible: false` = la base todavia no tiene la funcion de rastreo (42883, migracion 032 sin
- * aplicar): la pagina debe decir "rastreo no disponible aun", nunca confundirlo con "no existe". */
-export interface StorefrontTrackingResult {
-  readonly disponible: boolean;
-  readonly pedido: StorefrontOrderTracking | null;
 }

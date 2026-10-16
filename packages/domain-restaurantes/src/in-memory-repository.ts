@@ -10,7 +10,7 @@ import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
-import { ClienteMemoriaNoDisponibleError, OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { ClienteMemoriaNoDisponibleError, OrderConflictError, OrderValidationError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
@@ -72,11 +72,8 @@ import type {
   RestaurantesAuditLogRow,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
-  StorefrontMarca,
-  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
-  StorefrontTrackingResult,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -235,6 +232,7 @@ interface StoredBranchProduct {
   readonly productId: string;
   price: number;
   isAvailable: boolean;
+  agotadoHasta?: string | null;
 }
 
 type StoredPromotion = Promotion;
@@ -323,7 +321,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly cliente360 = new Cliente360Store();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
-  private readonly storefrontMarcas = new Map<string, StorefrontMarca>();
   private readonly callbackRequests: CallbackRequest[] = [];
   private readonly contadoresAgente = new Map<string, { n: number; at: number }>();
   /** Ids de evento agregados como nota a un aviso (migracion 047, `eventos_agrupados`). */
@@ -592,31 +589,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       });
     }
     return rows.sort((a, b) => a.categoryDisplayOrder - b.categoryDisplayOrder || (a.categoryName ?? "~").localeCompare(b.categoryName ?? "~") || a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
-  }
-
-  /** Solo pruebas: simula una base sin la migracion 032 (`findStorefrontOrderTracking` -> no disponible). */
-  simulateStorefrontTrackingUnavailable(): void {
-    this.storefrontTrackingUnavailable = true;
-  }
-  private storefrontTrackingUnavailable = false;
-
-  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
-    if (this.storefrontTrackingUnavailable) return { disponible: false, pedido: null };
-    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
-    if (!order) return { disponible: true, pedido: null };
-    const notes = order.notes ?? "";
-    return {
-      disponible: true,
-      pedido: {
-        status: order.status,
-        branch: order.branch,
-        total: order.total,
-        paymentMethod: order.paymentMethod,
-        canal: notes.includes("Canal: recoger en sucursal.") ? "recoger" : "domicilio",
-        createdAt: order.createdAt,
-        items: order.items.map((i) => ({ name: i.name, quantity: i.quantity, tortilla: i.tortilla ?? null })),
-      },
-    };
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
@@ -1040,8 +1012,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
         // R-30 + QA R1 viaje-09: ventas netas; un pedido cancelado, no recogido (no se cobro) o programado (aun no es venta) no cuenta.
-        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado") return false;
-        const createdMs = Date.parse(o.createdAt);
+        // QA R2 viaje-04: un pedido retenido (por_aprobar) tampoco es venta. QA R2 viaje-03: el dia es el de la promocion si la hay.
+        if (o.status === "cancelado" || o.status === "no_recogido" || o.status === "programado" || o.status === "por_aprobar") return false;
+        const createdMs = Date.parse(o.promovidoAt ?? o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
       const revenue = enRango.reduce((sum, o) => sum + o.total, 0);
@@ -1215,7 +1188,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       }
 
       const programadoPara = this.scheduledOrdersSupported ? (order.programadoPara ?? null) : null;
-      if (programadoPara && Date.parse(programadoPara) <= Date.now()) throw new Error("programado_para debe ser una hora futura");
+      if (programadoPara && Date.parse(programadoPara) <= Date.now()) throw new OrderValidationError("programado_para debe ser una hora futura");
       const created: Order = {
         id: randomUUID(),
         organizationId: order.organizationId,
@@ -1829,6 +1802,23 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return found ? { ...found } : null;
   }
 
+  private readonly compensationCodes = new Map<string, string>();
+
+  /** Solo pruebas: emite a `phone` un codigo de compensacion (espejo de solicitud_resolver con `descuento_proximo`). */
+  seedCompensationCode(organizationId: string, phone: string, code: string): void {
+    this.compensationCodes.set(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`, code);
+  }
+
+  async findCompensationCode(organizationId: string, phone: string): Promise<string | null> {
+    const code = this.compensationCodes.get(`${organizationId}:${phone.replace(/\D/g, "").slice(-10)}`);
+    if (!code) return null;
+    const p = await this.findPromotionByCode(organizationId, code);
+    const now = Date.now();
+    if (!p || !p.isActive || (p.maxUses !== null && p.timesUsed >= p.maxUses)) return null;
+    if ((p.startsAt && Date.parse(p.startsAt) > now) || (p.endsAt && Date.parse(p.endsAt) < now)) return null;
+    return code;
+  }
+
   async listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]> {
     return [...this.promotions.values()]
       .filter((p) => p.organizationId === organizationId && p.autoApply && p.isActive)
@@ -1911,7 +1901,31 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
     const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
-    return entry ? { propertyId: entry.propertyId, productId: entry.productId, price: entry.price, isAvailable: entry.isAvailable } : null;
+    return entry ? { propertyId: entry.propertyId, productId: entry.productId, price: entry.price, isAvailable: entry.isAvailable, ...(entry.agotadoHasta !== undefined ? { agotadoHasta: entry.agotadoHasta } : {}) } : null;
+  }
+
+  async limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void> {
+    const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (entry) entry.agotadoHasta = null;
+  }
+
+  /** Pruebas: deja la reposición programada (`agotado_hasta`) que escribe `agotado_marcar` (migración 050). */
+  marcarAgotadoHastaParaPruebas(propertyId: string, productId: string, hasta: string): void {
+    const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (entry) entry.agotadoHasta = hasta;
+  }
+
+  /** Doble de `restaurantes.agotados_reponer` (migración 050) para pruebas: devuelve a la venta lo que está apagado CON reposición
+   * programada que ya venció (`agotadoHasta <= hoy`). Lo apagado sin `agotadoHasta` nunca se reactiva solo. */
+  reponerAgotadosVencidos(hoy: string): readonly { readonly propertyId: string; readonly productId: string }[] {
+    const repuestos: { propertyId: string; productId: string }[] = [];
+    for (const bp of this.branchProducts) {
+      if (!bp.agotadoHasta || bp.isAvailable || bp.agotadoHasta > hoy) continue;
+      bp.isAvailable = true;
+      bp.agotadoHasta = null;
+      repuestos.push({ propertyId: bp.propertyId, productId: bp.productId });
+    }
+    return repuestos;
   }
 
   async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {
@@ -2273,16 +2287,6 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
     return { phoneNumberId };
-  }
-
-  async findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null> {
-    return this.storefrontMarcas.get(organizationId) ?? null;
-  }
-
-  async upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca> {
-    const guardada: StorefrontMarca = { ...input, updatedAt: new Date().toISOString() };
-    this.storefrontMarcas.set(organizationId, guardada);
-    return guardada;
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {

@@ -3,7 +3,7 @@
 // WhatsApp propio. Solo owner/admin (el servidor, admin-modelo-pm.ts + RLS, es el enforcement
 // real). Se monta bajo demanda desde Sucursales.tsx: no carga nada hasta que se abre.
 import { useEffect, useState } from "react";
-import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, useConfirm } from "@atiende/ui";
+import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, useConfirm } from "@atiende/ui";
 import { fetchKnownZones } from "../lib/config-client.ts";
 import { ColoniasAmbiguas } from "./ColoniasAmbiguas.tsx";
 import type { KnownZone } from "../lib/config-client.ts";
@@ -347,12 +347,12 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           <Label htmlFor={`propina-${branchId}`} className="text-xs text-muted-foreground">
             Propina
           </Label>
-          <NativeSelect id={`propina-${branchId}`} size="sm" value={propina} onChange={(e) => setPropina(e.target.value as PropinaPolitica | "")} wrapperClassName="w-auto min-w-48">
+          <Selector id={`propina-${branchId}`} size="sm" value={propina} onChange={(e) => setPropina(e.target.value as PropinaPolitica | "")} wrapperClassName="w-auto min-w-48">
             <option value="">No preguntar</option>
             <option value="solo_tarjeta">Solo si paga con tarjeta</option>
             <option value="siempre">Siempre</option>
             <option value="nunca">Nunca</option>
-          </NativeSelect>
+          </Selector>
         </div>
       </section>
 

@@ -7,13 +7,16 @@ import { useCallback, useEffect, useState } from "react";
 import { BedDouble, Camera, ClipboardCheck, Shuffle, Sparkles } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormField,
   Input,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   Tabs,
@@ -154,17 +157,19 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground">Housekeeping</h1>
+      <PageHeader
+        titulo="Housekeeping"
+        descripcion="Tablero de limpieza, inspección y fuera de servicio de las habitaciones."
+        acciones={
         <div className="flex items-end gap-2 flex-wrap">
-          <label className="text-xs text-muted-foreground flex flex-col gap-1">
-            Fecha
-            <Input type="date" value={tablero?.fecha ?? fecha ?? ""} onChange={(e) => setFecha(e.target.value || undefined)} className="h-11" />
-          </label>
+          <FormField label="Fecha">
+            <Input type="date" value={tablero?.fecha ?? fecha ?? ""} onChange={(e) => setFecha(e.target.value || undefined)} />
+          </FormField>
           {puedeAsignarAuto && tablero?.tareasDisponibles && (
             <Button
               type="button"
               variant="outline"
+              loading={busy === "asignar-auto"}
               disabled={busy === "asignar-auto"}
               onClick={() =>
                 void run("asignar-auto", async () => {
@@ -178,32 +183,36 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
               }
             >
               <Shuffle className="w-4 h-4" strokeWidth={1.75} />
-              {busy === "asignar-auto" ? "Asignando…" : "Asignar automáticamente"}
+              Asignar automáticamente
             </Button>
           )}
           {puedeOperar && tablero?.tareasDisponibles && (
             <Button
               type="button"
+              loading={busy === "generar"}
               disabled={busy === "generar"}
               onClick={() => void run("generar", async () => { const r = await generarDia(fetch, apiBaseUrl, token, propertyId, tablero.fecha); setAviso(`${r.creadas} tarea(s) creada(s).`); })}
             >
               <Sparkles className="w-4 h-4" strokeWidth={1.75} />
-              {busy === "generar" ? "Generando…" : "Generar tareas del día"}
+              Generar tareas del día
             </Button>
           )}
         </div>
-      </header>
+        }
+      />
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
-      {aviso && <p role="status" className="text-sm text-foreground">{aviso}</p>}
+      {aviso && (
+        <Callout tone="success" onDismiss={() => setAviso(null)}>
+          {aviso}
+        </Callout>
+      )}
       {!tablero && !error && <EstadoCargando etiqueta="Cargando tablero…" />}
 
       {tablero && !tablero.tareasDisponibles && (
-        <Card>
-          <CardContent className="p-4 text-sm text-foreground">
-            Las tareas de limpieza, la inspección y fuera de servicio aún no están activas en esta base de datos. Aquí ves solo el estado actual de cada habitación; el resto se activa cuando se aplique la actualización pendiente.
-          </CardContent>
-        </Card>
+        <Callout tone="info">
+          Las tareas de limpieza, la inspección y fuera de servicio aún no están activas en esta base de datos. Aquí ves solo el estado actual de cada habitación; el resto se activa cuando se aplique la actualización pendiente.
+        </Callout>
       )}
 
       {tablero && (

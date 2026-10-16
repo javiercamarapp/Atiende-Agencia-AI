@@ -68,14 +68,14 @@ test.describe("restaurantes: controles, segunda tanda @recorrido", () => {
 
   test("Pedidos: un pedido para recoger pasa de Preparando a Listo para recoger y a Entregado con un PATCH cada vez", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
-    await main(page).getByRole("tab", { name: "Preparando" }).click();
-    const tarjeta = main(page).locator("div.card, [class*=card]").filter({ hasText: "Jorge Canul" }).first();
+    await main(page).getByRole("button", { name: "Preparando", exact: true }).click();
+    const tarjeta = main(page).locator('[data-testid^="pedido-"]').filter({ hasText: "Jorge Canul" }).first();
     await expect(tarjeta).toBeVisible();
     await mock.limpiarRegistro();
     await tarjeta.getByRole("button", { name: "Marcar Listo para recoger" }).click();
     const [uno] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1002/status" });
     expect(cuerpoDe(uno)).toEqual({ status: "listo_para_recoger" });
-    await main(page).getByRole("tab", { name: "Listo para recoger" }).click();
+    await main(page).getByRole("button", { name: "Listo para recoger", exact: true }).click();
     await main(page).getByRole("button", { name: "Marcar Entregado" }).first().click();
     await expect.poll(async () => (await mock.buscar({ metodo: "PATCH", ruta: "/orders/ord-1002/status" })).length).toBe(2);
     expect(cuerpoDe((await mock.buscar({ metodo: "PATCH", ruta: "/orders/ord-1002/status" }))[1])).toEqual({ status: "entregado" });

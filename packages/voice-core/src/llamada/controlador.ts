@@ -304,6 +304,21 @@ export class ControladorLlamada<R extends string = string> {
         if (this.maquina.estadoActual === "cerrada") return;
         this.log("agente_callado", { ms });
         await this.deps.reproducir("tool_timeout");
+        // QA-PM-R5-voz-03: tras el "un momento" el modelo seguia mudo (58 s en una llamada de la medida: solo hablaba cuando el cliente decia algo). Pasado otro intervalo se le empuja UNA vez
+        // con un texto de turno para que conteste con el resultado de la herramienta que ya tiene.
+        this.armarEmpujeAlAgente(ms);
+      });
+    }, ms);
+    (this.vigiaSilencio as { unref?: () => void }).unref?.();
+  }
+
+  private armarEmpujeAlAgente(ms: number): void {
+    this.vigiaSilencio = setTimeout(() => {
+      this.vigiaSilencio = null;
+      void this.encolar(async () => {
+        if (this.maquina.estadoActual === "cerrada") return;
+        this.log("agente_empujado", { ms });
+        this.sesion?.enviarTexto("(Aviso del sistema: ya tiene el resultado de la herramienta. Continúe ahora con el cliente y respóndale en una o dos frases.)");
       });
     }, ms);
     (this.vigiaSilencio as { unref?: () => void }).unref?.();

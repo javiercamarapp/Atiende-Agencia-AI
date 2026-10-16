@@ -34,6 +34,7 @@ describe("la busqueda entiende como pide la gente", () => {
   it("'bisctec' y 'pok' se normalizan a la forma del catalogo (falta de escritura de los chats y del piloto)", () => {
     expect(tokenizeForProductSearch("tacos de bisctec")).toEqual(["taco", "bistec"]);
     expect(tokenizeForProductSearch("pok chuc")).toEqual(["poc", "chuc"]);
+    expect(tokenizeForProductSearch("nachos grandes")).toEqual(["nacho", "orden:completa"]);
   });
 
   it("los sinonimos del piloto cargados como alias encuentran lo que antes no", async () => {
@@ -41,11 +42,16 @@ describe("la busqueda entiende como pide la gente", () => {
     expect(await buscar("cebollitas cambray")).toEqual(["Cebollas Cambray"]);
     expect(await buscar("coca zero")).toEqual(["Coca-Cola sin Azúcar"]);
     expect(await buscar("coca regular")).toEqual(["Coca-Cola"]);
-    // "grandes" lo absorbe el tokenizador de la busqueda (jerga de T7: "nachos grandes" = nachos, la orden completa): devuelve los nachos y nunca otro platillo.
-    const grandes = await buscar("nachos grandes");
-    expect(grandes).toContain("Nachos de Pastor");
-    expect(grandes.every((n) => /^Nachos /.test(n))).toBe(true);
-    expect(await buscar("nachos grandes de pastor")).toContain("Nachos de Pastor");
+    // QA-R2-AGREGADO-01: "grande/completa/entera" pide la orden COMPLETA: nunca se ofrece una media orden ("(1/2 orden)"); "media/medios" pide solo medias.
+    for (const q of ["nachos grandes", "nachos completos", "nachos enteros", "grandes nachos", "una orden grande de nachos"]) {
+      const completas = await buscar(q);
+      expect(completas, q).toContain("Nachos de Pastor");
+      expect(completas.every((n) => /^Nachos /.test(n) && !/1\/2/.test(n)), `${q} -> ${completas.join(" | ")}`).toBe(true);
+    }
+    const medias = await buscar("medios nachos");
+    expect(medias.length).toBeGreaterThan(0);
+    expect(medias.every((n) => /^Nachos .*\(1\/2 orden\)/.test(n)), medias.join(" | ")).toBe(true);
+    expect(await buscar("nachos grandes de pastor")).toEqual(["Nachos de Pastor"]);
     expect((await buscar("medios charros")).every((n) => /Charros .*\(1\/2 orden\)/.test(n))).toBe(true);
   });
 
@@ -70,8 +76,8 @@ describe("alias del piloto en el plan del seed", () => {
     expect(conAlias.find((p) => p.name === "Frijol con Tostada")!.searchKeywords).toContain("totopos");
   });
 
-  it("solo entran los origenes aprobados (chats_c3, derivado_nombre, cuestionario_pm)", () => {
-    for (const p of data.productos) for (const origen of Object.values(p.alias_piloto ?? {})) expect(origen).toMatch(/^(chats_c3|derivado_nombre|cuestionario_pm)/);
+  it("solo entran los origenes aprobados (chats_c3, derivado_nombre, cuestionario_pm y, desde el OK de Javier del 7-oct, cuestionario_web y sentido_comun_aprobado)", () => {
+    for (const p of data.productos) for (const origen of Object.values(p.alias_piloto ?? {})) expect(origen).toMatch(/^(chats_c3|derivado_nombre|cuestionario_pm|cuestionario_web|sentido_comun_aprobado)/);
     const mala = JSON.parse(JSON.stringify(data)) as { productos: Array<{ nombre: string; alias?: string[]; alias_piloto?: Record<string, string> }> };
     const p = mala.productos.find((x) => x.nombre === "Coca-Cola")!;
     p.alias = [...(p.alias ?? []), "burbujas"];

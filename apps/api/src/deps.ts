@@ -28,6 +28,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -75,6 +76,7 @@ import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
 import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 import type { LlmRouteConfig } from "./production/llm-models.ts";
+import type { SaludMetaDeps } from "./salud/salud-meta.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -119,9 +121,6 @@ export interface AppDeps {
   /** Public marketing sandbox: no tenant records or mutation tools. */
   readonly publicDemoAgents?: DemoAgentsDeps;
   readonly env: ApiEnv;
-  /** `index.html` del panel para las meta de vista previa de `/pedir/*` (storefront-meta.ts). OPCIONAL: ausente =
-   * el embebido en el build o el del CDN; los tests lo inyectan. */
-  readonly storefrontIndexHtml?: () => Promise<string | null>;
   readonly coreRepo: CoreRepository;
   /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
    * `@atiende/db::CoreStaffRepository`. A DIFERENCIA de `coreRepo` (objeto fijo,
@@ -192,6 +191,10 @@ export interface AppDeps {
   /** R-42 (migración 041): cierre del día y resumen semanal. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresCierreRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly cierreRepo?: (db: TenantDbSession) => CierreRepository;
+  /** CFO de restaurantes (migraciones 081/082/083): ventas, clientes, costos, SoftRestaurant. OPCIONAL: sin él las rutas `/admin/cfo/*` responden 503 honesto. En producción es
+   * `(db) => new PostgresCfoRepository(db)` de domain-restaurantes/cfo/postgres (cada llamada degrada con SAVEPOINT a `disponible: false` contra la base sin migrar).
+   * No confundir con `cfoRepo` (panel CFO de superadmin). */
+  readonly cfoRestaurantesRepo?: (db: TenantDbSession) => CfoRestaurantesRepository;
   /** Autopiloto del ciclo del pedido (migración 050): aprobaciones, estados sin clic, regreso del handoff, agotado por hoy. OPCIONAL: sin él las rutas
    * responden 503 honesto y el tick lo omite. En producción es `(db) => new PostgresAutopilotoRepository(db)` (degrada con SAVEPOINT a "no disponible"
    * contra la base sin migrar). */
@@ -613,6 +616,9 @@ export interface AppDeps {
    *  (apps/api/tests/whatsapp-dispatch.spec.ts) y en producción real
    *  (production/deps.ts, cuando `WHATSAPP_ACCESS_TOKEN` está presente). */
   readonly whatsAppDispatcher?: WhatsAppOutboundDispatcher;
+  /** Vigilancia de la salud de WhatsApp/Meta (expiracion del token a 14/7/1 dias; timeouts y fallos seguidos del agente) que engancha el cron
+   *  /internal/whatsapp/dispatch. OPCIONAL (`?:`): ningun fixture existente lo necesita; las pruebas inyectan dobles y produccion el lector de Graph. */
+  readonly saludMeta?: SaludMetaDeps;
   /** R-32: transcripcion de notas de voz de WhatsApp de restaurantes (descarga de media de Meta + rol `restaurantes:transcripcion` del gateway LLM).
    *  `undefined` sin `WHATSAPP_ACCESS_TOKEN` o sin gateway LLM: el webhook conserva el comportamiento anterior (pedir al cliente que escriba, con el
    *  motivo en un log sin PII). Opcional (`?:`) para no tocar los fixtures existentes. */

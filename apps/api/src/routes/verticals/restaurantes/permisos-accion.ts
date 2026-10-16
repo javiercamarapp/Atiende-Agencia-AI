@@ -12,6 +12,10 @@ const MENSAJE_POR_ACCION: Partial<Record<AccionRestaurantes, string>> = {
   "promociones.ver": "Solo el dueño o un administrador puede ver las promociones.",
   "promociones.editar": "Solo el dueño o un administrador puede crear o cambiar promociones.",
   "sucursal.editar": "Solo el dueño o un administrador puede editar los datos de la sucursal.",
+  "cfo.ver": "Tu rol no tiene acceso al CFO.",
+  "cfo.capturar": "Solo el dueño o un administrador puede capturar costos y configurar el CFO.",
+  "cfo.importar_sr": "Solo el dueño o un administrador puede importar reportes de SoftRestaurant.",
+  "cfo.exportar": "Solo el dueño o un administrador puede exportar el CFO.",
 };
 
 export function assertAccion(c: Context<CoreAuthHonoEnv>, accion: AccionRestaurantes): void {

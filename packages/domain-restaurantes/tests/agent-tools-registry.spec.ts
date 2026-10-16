@@ -17,7 +17,9 @@ describe("registro unico de tools", () => {
   it("WhatsApp y voz exponen las MISMAS definiciones (nombre, descripcion y esquema), sin duplicados", () => {
     const voz = toolDefinitionsForChannel("voz");
     const wa = toolDefinitionsForChannel("whatsapp");
-    expect(voz.map((t) => t.name)).toEqual(wa.map((t) => t.name));
+    // Unica diferencia: enviar_menu (documento por WhatsApp) no existe por voz.
+    expect(voz.map((t) => t.name)).toEqual(wa.map((t) => t.name).filter((n) => n !== "enviar_menu"));
+    expect(wa.map((t) => t.name)).toContain("enviar_menu");
     expect(new Set(AGENT_TOOL_DEFINITIONS.map((t) => t.name)).size).toBe(AGENT_TOOL_DEFINITIONS.length);
     // El arreglo que recibe el gateway de WhatsApp sale del registro, no de una copia.
     expect(TOOLS.map((t) => [t.name, t.description])).toEqual(wa.map((t) => [t.name, t.description]));

@@ -7,7 +7,7 @@ import type { FormEvent } from "react";
 import { MessageCircle, RotateCcw, Send } from "lucide-react";
 import { Button, Callout, EstadoCargando, EstadoError, Input, NativeSelect } from "@atiende/ui";
 import { crearClienteDemo, DemoError, nuevaSesionDemo, type EstadoDemo } from "./demo-client.ts";
-import { useMetaPublica } from "../storefront/meta-publica.ts";
+import { useMetaPublica } from "../../../lib/meta-publica.ts";
 
 interface Burbuja {
   readonly id: number;

@@ -4,7 +4,7 @@
 // Un cierre generado no se recalcula: se rotula con su hora de generación. Sin dato = "—" con su razón (nunca 0 inventado).
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, CircleSlash, Clock, DollarSign, ShoppingBag, Receipt } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatCard, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, notify } from "@atiende/ui";
 import { fetchCierres, generarCierre } from "../lib/cierres-client.ts";
 import type { CierreFila, CierreTipo, CierresLista } from "../lib/cierres-client.ts";
 import { desdeError } from "../voz/carga.ts";
@@ -13,7 +13,7 @@ import { formatoDia, formatoMxn, formatoPct } from "../voz/formato-kpi.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ROLES_CIERRES: ReadonlySet<string> = new Set(["owner", "admin"]);
-const ETIQUETA_CANAL: Readonly<Record<CierreFila["porCanal"][number]["canal"], string>> = { web: "Pedido en línea", whatsapp: "WhatsApp", voice: "Llamada", admin: "Capturado por el equipo" };
+const ETIQUETA_CANAL: Readonly<Record<CierreFila["porCanal"][number]["canal"], string>> = { web: "Pedido en línea (histórico)", whatsapp: "WhatsApp", voice: "Llamada", admin: "Capturado por el equipo" };
 
 function formatoMin(min: number | null): string {
   return min === null ? "—" : `${min} min`;
@@ -80,7 +80,7 @@ export function CierresPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: 
             <label htmlFor="tipo-cierre" className="sr-only">
               Tipo de cierre
             </label>
-            <NativeSelect
+            <Selector
               id="tipo-cierre"
               value={tipo}
               onChange={(e) => {
@@ -90,7 +90,7 @@ export function CierresPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: 
             >
               <option value="dia">Cierre del día</option>
               <option value="semana">Resumen semanal</option>
-            </NativeSelect>
+            </Selector>
           </div>
         ) : null}
       </header>
@@ -236,7 +236,7 @@ function Detalle({ cierre, esDia }: { readonly cierre: CierreFila; readonly esDi
         <CardContent className="p-0">
           <DataTable<CierreFila["porCanal"][number]>
             etiqueta="Ventas por canal"
-            filas={[...cierre.porCanal]}
+            filas={cierre.porCanal.filter((c) => c.canal !== "web" || c.pedidos > 0 || c.cancelados > 0 || c.ventasCentavos > 0)}
             obtenerId={(c) => c.canal}
             vacio={{ titulo: "Sin canales", mensaje: "Sin pedidos en el periodo." }}
             paginacion={false}

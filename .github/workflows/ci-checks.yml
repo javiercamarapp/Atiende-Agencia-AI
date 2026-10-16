@@ -142,7 +142,7 @@ jobs:
       - name: Build de apps/web (Vite)
         run: npm run build --workspace apps/web
 
-      # R-37: el JS por ruta (storefront incluido) no puede crecer sin que alguien lo decida en un PR.
+      # R-37: el JS por ruta no puede crecer sin que alguien lo decida en un PR.
       - name: Presupuesto de bundle (gzip por ruta)
         run: npm run verify:bundle-budget
 

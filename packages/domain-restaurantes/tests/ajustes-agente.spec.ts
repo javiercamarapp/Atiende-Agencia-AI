@@ -108,8 +108,8 @@ describe("temperatura efectiva y ajustes de llamada", () => {
   });
 
   it("el fondo solo cuenta activo con la bandera y volumen > 0; apagado manda volumen 0", () => {
-    expect(ajustesDeLlamada(COMPLETOS).fondo).toEqual({ activo: false, volumen: 0 });
-    expect(ajustesDeLlamada({ ...COMPLETOS, vozFondoActivo: true, vozFondoVolumen: 0 }).fondo).toEqual({ activo: false, volumen: 0 });
+    expect(ajustesDeLlamada(COMPLETOS).fondo).toEqual({ activo: false, volumen: 0, preset: "cocina-taqueria" });
+    expect(ajustesDeLlamada({ ...COMPLETOS, vozFondoActivo: true, vozFondoVolumen: 0 }).fondo).toEqual({ activo: false, volumen: 0, preset: "cocina-taqueria" });
     expect(ajustesDeLlamada({ ...COMPLETOS, vozFondoActivo: true, vozFondoVolumen: 9, vozModeloCascada: "google/gemini-3.8-flash", vozTemperatura: 0.3 })).toMatchObject({
       fondo: { activo: true, volumen: 9 },
       modeloCascada: "google/gemini-3.8-flash",

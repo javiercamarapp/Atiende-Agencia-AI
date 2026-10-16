@@ -49,7 +49,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
     const allowedPropertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     const zona = await deps.restaurantesRepo(db).findBranchZonaHoraria(c.req.param("propertyId") ?? "");
     return {
-      catalogFor: (d) => buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(d)),
+      catalogFor: (d) => buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(d), { verticalRole: c.get("verticalRole") }),
       scope: {
         organizationId,
         userId: c.get("userId"),
@@ -118,7 +118,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
       const allowedPropertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, null);
       const zona = await deps.restaurantesRepo(db).findBranchZonaHoraria(c.req.param("propertyId") ?? "");
       return {
-        catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(db)),
+        catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(db), { verticalRole: c.get("verticalRole") }),
         scope: { organizationId, userId: c.get("userId"), vertical: "restaurantes", verticalRole: c.get("verticalRole") ?? "", allowedPropertyIds, timezone: zona.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE },
       };
     },

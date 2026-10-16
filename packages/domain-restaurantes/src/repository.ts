@@ -70,11 +70,8 @@ import type {
   RestaurantesAuditLogPaginacion,
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
-  StorefrontMarca,
-  StorefrontMarcaInput,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
-  StorefrontTrackingResult,
 } from "./types.ts";
 
 export interface SearchableProduct {
@@ -219,10 +216,6 @@ export interface RestaurantesRepository {
   /** R-09: menu publico de la sucursal INCLUYENDO los productos de hoy no disponibles
    * (para mostrarlos como "hoy no hay"). Precio y disponibilidad salen de `branch_products`. */
   listStorefrontCatalog(propertyId: string): Promise<readonly StorefrontCatalogRow[]>;
-  /** R-09: lectura publica y acotada de un pedido (migracion 032). Base sin migrar ->
-   * `{ disponible: false, pedido: null }` (SAVEPOINT + 42883). Nunca expone datos personales. */
-  findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult>;
-
   findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null>;
   /** Insert-or-update race-safe: nunca sobreescribe un nombre ya conocido con uno
    * posiblemente mal escuchado (mismo comportamiento que upsertCustomer del origen,
@@ -460,6 +453,9 @@ export interface RestaurantesRepository {
   /** Solo `is_available` de una fila YA existente de `branch_products` (agotado/disponible, PL-23): nunca toca el precio ni da de alta.
    *  `null` cuando el producto no esta dado de alta en esa sucursal. Es lo unico que puede escribir un `staff`. */
   setBranchProductAvailability(propertyId: string, productId: string, isAvailable: boolean): Promise<BranchProductState | null>;
+  /** Cancela la reposición programada (`agotado_hasta`, migración 050) de un producto en una sucursal: el dueño lo apagó a propósito y
+   * el cron `agotados_reponer` no debe volver a ponerlo a la venta. No-op en una base sin la 050. */
+  limpiarAgotadoHasta(propertyId: string, productId: string): Promise<void>;
 
   findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
   /** Pedido MAS RECIENTE (no cancelado) de un telefono (10 digitos, `normalizePhone`) creado desde `sinceIso`, o null. Para "¿ya salio?". */
@@ -550,6 +546,10 @@ export interface RestaurantesRepository {
    * principio que `updateOrderStatus`: el repositorio solo resuelve datos, nunca
    * decide reglas de negocio). */
   findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null>;
+  /** QA R2 features-07: codigo de compensacion («Descuento en el proximo pedido», GRACIAS-XXXXXXXX) que el dueno emitio a ESTE telefono y que
+   * sigue vigente y sin usar; `null` si no hay. Solo la sesion de sistema (agentes): el modelo nunca lo dicta. Contra la base sin migrar
+   * (funcion de la migracion 077 ausente) devuelve `null` dentro de un SAVEPOINT, nunca aborta la transaccion de la request. */
+  findCompensationCode(organizationId: string, phone: string): Promise<string | null>;
   /** Promociones ACTIVAS con `auto_apply` (migracion 031) para aplicarlas sin codigo. `[]` contra la base
    * sin migrar (SAVEPOINT): nunca lanza ni deja la transaccion abortada. */
   listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]>;
@@ -594,15 +594,6 @@ export interface RestaurantesRepository {
   /** Alta o reemplazo del número conectado (`ON CONFLICT` por `organization_id`,
    *  primary key de la tabla) -- nunca dos filas por organización. */
   upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
-
-  // ---- R-38 (migración 062): marca pública del storefront ----
-
-  /** Marca de la organización; `null` si nunca se guardó O si la base aún no tiene la migración 062 (la portada pública cae a una
-   *  genérica con el nombre del restaurante). Nunca lanza por tabla/columna ausente. */
-  findStorefrontMarca(organizationId: string): Promise<StorefrontMarca | null>;
-  /** Alta o reemplazo completo de la marca (owner/admin por RLS). Lanza `RestaurantesConfigUnavailableError` si la base aún no tiene
-   *  la migración 062 (la ruta responde 503, nunca 500). */
-  upsertStorefrontMarca(organizationId: string, input: StorefrontMarcaInput): Promise<StorefrontMarca>;
 
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */

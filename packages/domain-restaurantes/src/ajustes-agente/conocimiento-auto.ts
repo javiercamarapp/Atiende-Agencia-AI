@@ -14,7 +14,7 @@ import { haversineKmExact } from "../nearest-branch.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import type { HorarioSucursal, TurnoHorario } from "../horarios.ts";
 import type { RestaurantesRepository } from "../repository.ts";
-import type { Branch, BranchPolicy, KnownZone, PropinaPolitica, StorefrontCatalogRow } from "../types.ts";
+import type { Branch, BranchPolicy, ColoniaReferencia, KnownZone, PropinaPolitica, StorefrontCatalogRow } from "../types.ts";
 
 export const TIPOS_DOCUMENTO_AUTO = ["sucursales_horarios", "colonias_sucursal", "faq", "menu_precios"] as const;
 export type TipoDocumentoAuto = (typeof TIPOS_DOCUMENTO_AUTO)[number];
@@ -30,11 +30,15 @@ export interface SucursalConocimiento {
   readonly politica: BranchPolicy;
   /** Cantidad de zonas de reparto asignadas (0 = reparte a todas las conocidas o sin configurar). */
   readonly zonasDeReparto: number;
+  /** Ids de las colonias conocidas que ESTA sucursal cubre hoy (`branch_delivery_zone`). `undefined` = no se leyo la cobertura (el documento no habla de reparto). */
+  readonly zonaIdsReparto?: readonly string[];
 }
 
 export interface DatosConocimiento {
   readonly sucursales: readonly SucursalConocimiento[];
   readonly zonas: readonly KnownZone[];
+  /** Referencia del piloto por colonia (migracion 056: `ref_*`). `undefined` = la base no tiene la 056: se comporta como antes, sin referencia. */
+  readonly referencias?: readonly ColoniaReferencia[];
   /** Menu por sucursal activa (precio y disponibilidad de ESA sucursal). */
   readonly menus: readonly { readonly propertyId: string; readonly filas: readonly StorefrontCatalogRow[] }[];
 }
@@ -49,6 +53,10 @@ export interface DocumentoAuto {
   /** Sin datos de los que generar nada (la pantalla dice por que). */
   readonly vacio: boolean;
   readonly motivoVacio: string | null;
+  /** Version COMPACTA para el prompt de voz (tope de caracteres); si no existe, el prompt usa `contenido`. El panel muestra `contenido`. */
+  readonly contenidoPrompt?: string;
+  /** `true` = el documento pasaba del maximo y se recorto por renglones (el final lo declara); nunca se corta a medias sin avisar. */
+  readonly truncado?: boolean;
 }
 
 export interface AlertaColonia {
@@ -101,11 +109,28 @@ const TEXTO_PROPINA: Readonly<Record<PropinaPolitica, string>> = {
   solo_tarjeta: "la propina solo se agrega en pagos con tarjeta",
 };
 
-function envolver(tipo: TipoDocumentoAuto, titulo: string, lineas: readonly string[], motivoVacio: string): DocumentoAuto {
+function envolver(tipo: TipoDocumentoAuto, titulo: string, lineas: readonly string[], motivoVacio: string, contenidoPrompt?: string): DocumentoAuto {
   if (lineas.length === 0) return { tipo, titulo, contenido: "", caracteres: 0, huella: sha(""), vacio: true, motivoVacio };
   let contenido = lineas.join("\n");
-  if (contenido.length > MAX_DOC_CARACTERES) contenido = `${contenido.slice(0, MAX_DOC_CARACTERES - 1).trimEnd()}…`;
-  return { tipo, titulo, contenido, caracteres: contenido.length, huella: sha(contenido), vacio: false, motivoVacio: null };
+  let truncado = false;
+  if (contenido.length > MAX_DOC_CARACTERES) {
+    // Se recorta por renglones completos y se DECLARA cuantos faltan (antes cortaba a media linea sin avisar).
+    truncado = true;
+    const conservadas: string[] = [];
+    let usados = 0;
+    for (const l of lineas) {
+      if (usados + l.length + 1 > MAX_DOC_CARACTERES - 90) break;
+      conservadas.push(l);
+      usados += l.length + 1;
+    }
+    contenido = `${conservadas.join("\n")}\n… (recortado por tamaño: faltan ${lineas.length - conservadas.length} renglones; la lista completa se consulta en vivo)`;
+  }
+  const huella = sha(contenidoPrompt === undefined ? contenido : `${contenido}\n--prompt--\n${contenidoPrompt}`);
+  return {
+    tipo, titulo, contenido, caracteres: contenido.length, huella, vacio: false, motivoVacio: null,
+    ...(contenidoPrompt === undefined ? {} : { contenidoPrompt }),
+    ...(truncado ? { truncado: true } : {}),
+  };
 }
 
 function docSucursales(d: DatosConocimiento): DocumentoAuto {
@@ -126,46 +151,141 @@ function docSucursales(d: DatosConocimiento): DocumentoAuto {
   return envolver("sucursales_horarios", "Sucursales y horarios", lineas, "No hay sucursales activas.");
 }
 
+interface OpcionSucursal {
+  readonly nombre: string;
+  /** `null` = la referencia del piloto no trae km para esta opcion (no se inventa). */
+  readonly km: number | null;
+}
+
 interface Asignacion {
   readonly colonia: string;
-  readonly mas: { readonly nombre: string; readonly km: number };
-  readonly segunda: { readonly nombre: string; readonly km: number } | null;
+  readonly mas: OpcionSucursal | null;
+  readonly segunda: OpcionSucursal | null;
+  /** De donde sale la sucursal sugerida: calculo con coordenadas propias o referencia del piloto (migracion 056). */
+  readonly origenKm: "calculada" | "piloto" | null;
+  /** Sucursales que REPARTEN y cubren la colonia hoy (cobertura explicita); `null` = no se leyo, o la colonia tiene coordenadas y se atiende por km (no se dice nada de reparto). */
+  readonly cubre: readonly string[] | null;
+}
+
+/** Sucursal que hoy puede repartir a domicilio: activa y que no es "solo recoger" (decision 7-oct: la mas cercana entre las que REPARTEN). */
+const reparte = (s: SucursalConocimiento): boolean => s.branch.status === "active" && s.politica.aceptaDomicilio !== false;
+
+/**
+ * Cobertura de una colonia, con la MISMA regla que `assignBranch`: la cobertura explicita (`branch_delivery_zone`) de las sucursales que reparten; una colonia
+ * CON coordenadas y sin cobertura explicita se atiende por km puros (la mas cercana que reparte), asi que no esta "por confirmar".
+ * `explicita` = nombres de las que la cubren; `null` = no se leyo la cobertura.
+ */
+function coberturaDeZona(d: DatosConocimiento, z: KnownZone): { readonly explicita: readonly string[] | null; readonly porKm: boolean } {
+  const repartidoras = d.sucursales.filter(reparte);
+  const leida = repartidoras.length > 0 && repartidoras.every((s) => s.zonaIdsReparto !== undefined);
+  const explicita = leida
+    ? repartidoras
+        .filter((s) => (s.zonaIdsReparto as readonly string[]).includes(z.id))
+        .map((s) => limpio(s.branch.name, 120))
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    : null;
+  const porKm = z.lat !== null && z.lng !== null && repartidoras.some((s) => s.branch.lat !== null && s.branch.lng !== null) && (explicita === null || explicita.length === 0);
+  return { explicita, porKm };
 }
 
 function asignarColonias(d: DatosConocimiento): { readonly asignaciones: readonly Asignacion[]; readonly sinSucursal: number } {
-  const candidatas = d.sucursales.filter((s) => s.branch.status === "active" && s.branch.lat !== null && s.branch.lng !== null);
+  const activas = d.sucursales.filter(reparte);
+  const candidatas = activas.filter((s) => s.branch.lat !== null && s.branch.lng !== null);
+  const referencias = new Map((d.referencias ?? []).map((r) => [r.zoneId, r] as const));
+  const porSlug = new Map(activas.map((s) => [s.branch.slug, s] as const));
   const asignaciones: Asignacion[] = [];
   let sinSucursal = 0;
   for (const z of d.zonas) {
-    // Una colonia sin coordenadas propias (migracion 056) no se puede ordenar por distancia: queda sin sucursal sugerida, nunca se inventa una.
-    if (candidatas.length === 0 || z.lat === null || z.lng === null) {
-      sinSucursal += 1;
-      continue;
+    const { explicita, porKm } = coberturaDeZona(d, z);
+    const cubre = porKm ? null : explicita;
+    let mas: OpcionSucursal | null = null;
+    let segunda: OpcionSucursal | null = null;
+    let origenKm: Asignacion["origenKm"] = null;
+    if (candidatas.length > 0 && z.lat !== null && z.lng !== null) {
+      const zLat = z.lat;
+      const zLng = z.lng;
+      const ordenadas = candidatas
+        .map((s) => ({ nombre: limpio(s.branch.name, 120), km: haversineKmExact(zLat, zLng, s.branch.lat as number, s.branch.lng as number) }))
+        .sort((a, b) => a.km - b.km || a.nombre.localeCompare(b.nombre));
+      mas = ordenadas[0]!;
+      segunda = ordenadas[1] ?? null;
+      origenKm = "calculada";
+    } else {
+      // Sin coordenadas propias (migracion 056) no se puede medir: se usa lo que el piloto dijo (sucursal mas cercana y segunda con sus km), solo si esa
+      // sucursal existe y esta ACTIVA. Nunca se inventa un punto ni una distancia.
+      const ref = referencias.get(z.id);
+      const opciones: OpcionSucursal[] = [];
+      if (ref) {
+        for (const [slug, kmRef] of [[ref.refSucursalSlug, ref.refKm], [ref.ref2SucursalSlug, ref.ref2Km]] as const) {
+          const sucursalRef = slug ? porSlug.get(slug) : undefined;
+          if (sucursalRef) opciones.push({ nombre: limpio(sucursalRef.branch.name, 120), km: kmRef });
+        }
+      }
+      mas = opciones[0] ?? null;
+      segunda = opciones[1] ?? null;
+      if (mas) origenKm = "piloto";
     }
-    const zLat = z.lat;
-    const zLng = z.lng;
-    const ordenadas = candidatas
-      .map((s) => ({ nombre: limpio(s.branch.name, 120), km: haversineKmExact(zLat, zLng, s.branch.lat as number, s.branch.lng as number) }))
-      .sort((a, b) => a.km - b.km || a.nombre.localeCompare(b.nombre));
-    asignaciones.push({ colonia: limpio(z.name, 120), mas: ordenadas[0]!, segunda: ordenadas[1] ?? null });
+    if (!mas) sinSucursal += 1;
+    // Sin sucursal sugerida y sin ninguna que la cubra no hay nada que decir de la colonia.
+    if (!mas && (cubre === null || cubre.length === 0)) continue;
+    asignaciones.push({ colonia: limpio(z.name, 120), mas, segunda, origenKm, cubre });
   }
   asignaciones.sort((a, b) => a.colonia.localeCompare(b.colonia, "es"));
   return { asignaciones, sinSucursal };
 }
 
 const km = (n: number): string => `${(Math.round(n * 10) / 10).toFixed(1)} km`;
+const kmOpcion = (o: OpcionSucursal, origen: Asignacion["origenKm"]): string =>
+  o.km === null ? (origen === "piloto" ? "piloto" : "") : `${km(o.km)}${origen === "piloto" ? ", piloto" : ""}`;
+const conKm = (o: OpcionSucursal, origen: Asignacion["origenKm"]): string => {
+  const k = kmOpcion(o, origen);
+  return k === "" ? o.nombre : `${o.nombre} (${k})`;
+};
+const textoReparto = (cubre: readonly string[] | null): string => (cubre === null ? "" : cubre.length > 0 ? ` Reparto: cubre ${cubre.join(" y ")}.` : " Reparto por confirmar.");
 
-function docColonias(asignaciones: readonly Asignacion[], sinSucursal: number): { readonly doc: DocumentoAuto; readonly alertas: readonly AlertaColonia[] } {
+/**
+ * Version COMPACTA para el prompt de voz (tope de 6,000 caracteres): una linea por sucursal sugerida con sus colonias, `*` en las ambiguas (menos de 1 km entre la
+ * 1.a y la 2.a) y una linea final de reglas. El detalle (km, 2.a opcion, reparto) queda en el documento largo del panel y en la herramienta buscar_sucursal_cercana.
+ */
+function compactoParaPrompt(asignaciones: readonly Asignacion[]): string | undefined {
+  const porSucursal = new Map<string, string[]>();
+  for (const a of asignaciones) {
+    if (!a.mas) continue;
+    const ambigua = a.segunda !== null && a.mas.km !== null && a.segunda.km !== null && a.segunda.km - a.mas.km < UMBRAL_COLONIA_AMBIGUA_KM;
+    porSucursal.set(a.mas.nombre, [...(porSucursal.get(a.mas.nombre) ?? []), `${a.colonia}${ambigua ? "*" : ""}`]);
+  }
+  if (porSucursal.size === 0) return undefined;
+  const lineas = [...porSucursal.entries()]
+    .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0))
+    .map(([sucursal, colonias]) => `${sucursal}: ${colonias.join(", ")}`);
+  lineas.push("Si la colonia no está en la lista, usa buscar_sucursal_cercana. * = ambigua (menos de 1 km entre las 2 más cercanas): confirma con el cliente. Es cercanía, no promete reparto.");
+  return lineas.join("\n");
+}
+
+function docColonias(
+  asignaciones: readonly Asignacion[],
+  sinSucursal: number,
+  hayReferencias: boolean,
+): { readonly doc: DocumentoAuto; readonly alertas: readonly AlertaColonia[] } {
   const alertas: AlertaColonia[] = [];
   const lineas = asignaciones.map((a) => {
-    if (a.segunda && a.segunda.km - a.mas.km < UMBRAL_COLONIA_AMBIGUA_KM) {
-      alertas.push({ colonia: a.colonia, sucursales: [a.mas.nombre, a.segunda.nombre], diferenciaKm: Math.round((a.segunda.km - a.mas.km) * 10) / 10 });
-      return `${a.colonia}: ${a.mas.nombre} (${km(a.mas.km)}) o ${a.segunda.nombre} (${km(a.segunda.km)}); quedan a menos de ${UMBRAL_COLONIA_AMBIGUA_KM} km de diferencia, pregunta al cliente cuál le queda mejor.`;
+    const reparto = textoReparto(a.cubre);
+    if (!a.mas) return `${a.colonia}: sin sucursal sugerida (no hay distancia).${reparto}`;
+    const diferencia = a.segunda && a.mas.km !== null && a.segunda.km !== null ? a.segunda.km - a.mas.km : null;
+    if (a.segunda && diferencia !== null && diferencia < UMBRAL_COLONIA_AMBIGUA_KM) {
+      alertas.push({ colonia: a.colonia, sucursales: [a.mas.nombre, a.segunda.nombre], diferenciaKm: Math.round(diferencia * 10) / 10 });
+      return `${a.colonia}: ${conKm(a.mas, a.origenKm)} o ${conKm(a.segunda, a.origenKm)}; quedan a menos de ${UMBRAL_COLONIA_AMBIGUA_KM} km de diferencia, pregunta al cliente cuál le queda mejor (ADVERTENCIA: colonia ambigua).${reparto}`;
     }
-    return `${a.colonia}: ${a.mas.nombre} (${km(a.mas.km)}).`;
+    if (a.origenKm === "piloto") return `${a.colonia}: sugerida ${conKm(a.mas, a.origenKm)}${a.segunda ? `, 2.ª ${conKm(a.segunda, a.origenKm)}` : ""}.${reparto}`;
+    return `${a.colonia}: ${conKm(a.mas, a.origenKm)}.${reparto}`;
   });
-  const motivo = sinSucursal > 0 ? "Hay colonias, pero ninguna sucursal activa tiene coordenadas." : "No hay colonias conocidas configuradas.";
-  return { doc: envolver("colonias_sucursal", "Colonia → sucursal más cercana", lineas, motivo), alertas };
+  const motivo =
+    sinSucursal === 0
+      ? "No hay colonias conocidas configuradas."
+      : hayReferencias
+        ? "Hay colonias, pero ninguna tiene coordenadas con sucursales activas con coordenadas ni referencia del piloto hacia una sucursal activa."
+        : "Hay colonias, pero ninguna sucursal activa tiene coordenadas.";
+  return { doc: envolver("colonias_sucursal", "Colonia → sucursal más cercana", lineas, motivo, compactoParaPrompt(asignaciones)), alertas };
 }
 
 function docFaq(d: DatosConocimiento): DocumentoAuto {
@@ -206,13 +326,35 @@ function docFaq(d: DatosConocimiento): DocumentoAuto {
     lineas.push("P: ¿Se puede dejar propina?");
     lineas.push(`R: ${conPropina.map((s) => `${limpio(s.branch.name, 120)}: ${TEXTO_PROPINA[s.politica.propinaPolitica as PropinaPolitica]}`).join(" | ")}.`);
   }
+  // Para el prompt de voz la FAQ se reduce a lo UNICO que no esta ya en el documento de sucursales: la respuesta de colonias, en conteos y sin nombres.
+  let faqPrompt: string | undefined;
   if (d.zonas.length > 0) {
-    const nombres = d.zonas.map((z) => limpio(z.name, 80)).filter((n) => n !== "").sort((a, b) => a.localeCompare(b, "es"));
-    const visibles = nombres.slice(0, 40);
+    const coberturaLeida = d.sucursales.filter(reparte).length > 0 && d.sucursales.filter(reparte).every((x) => x.zonaIdsReparto !== undefined);
+    const conRepartoIds = new Set(d.zonas.filter((z) => {
+      const c = coberturaDeZona(d, z);
+      return (c.explicita !== null && c.explicita.length > 0) || c.porKm;
+    }).map((z) => z.id));
+    const limpias = d.zonas.map((z) => ({ id: z.id, nombre: limpio(z.name, 80) })).filter((z) => z.nombre !== "");
+    const porNombre = (a: { nombre: string }, b: { nombre: string }): number => a.nombre.localeCompare(b.nombre, "es");
     lineas.push("P: ¿Entregan en mi colonia?");
-    lineas.push(`R: Reconocemos ${nombres.length} colonias${nombres.length > visibles.length ? ` (algunas: ${visibles.join(", ")})` : `: ${visibles.join(", ")}`}. Si la colonia no está en la lista, pide una referencia cercana y confirma la sucursal.`);
+    if (coberturaLeida) {
+      // Se separan las colonias con reparto confirmado (alguna sucursal ACTIVA las cubre hoy) de las que quedan por confirmar; solo las primeras se nombran.
+      const conReparto = limpias.filter((z) => conRepartoIds.has(z.id)).sort(porNombre);
+      const porConfirmar = limpias.length - conReparto.length;
+      const visibles = conReparto.slice(0, 40).map((z) => z.nombre);
+      faqPrompt = `P: ¿Entregan en mi colonia?\nR: Reconocemos ${limpias.length} colonias: ${conReparto.length} con reparto confirmado${porConfirmar > 0 ? `; ${porConfirmar} reconocidas con reparto por confirmar (no prometas la entrega: confirma con la sucursal)` : ""}. Si la colonia no está en la lista, usa buscar_sucursal_cercana.`;
+      const lista = conReparto.length === 0 ? "" : conReparto.length > visibles.length ? ` (algunas: ${visibles.join(", ")})` : `: ${visibles.join(", ")}`;
+      lineas.push(
+        `R: Reconocemos ${limpias.length} colonias: ${conReparto.length} con reparto confirmado${lista}${porConfirmar > 0 ? `; ${porConfirmar} reconocidas con reparto por confirmar (no prometas la entrega: confirma con la sucursal)` : ""}. Si la colonia no está en la lista, pide una referencia cercana y confirma la sucursal.`,
+      );
+    } else {
+      faqPrompt = `P: ¿Entregan en mi colonia?\nR: Reconocemos ${limpias.length} colonias. Si la colonia no está en la lista, usa buscar_sucursal_cercana y confirma la sucursal.`;
+      const nombres = limpias.sort(porNombre).map((z) => z.nombre);
+      const visibles = nombres.slice(0, 40);
+      lineas.push(`R: Reconocemos ${nombres.length} colonias${nombres.length > visibles.length ? ` (algunas: ${visibles.join(", ")})` : `: ${visibles.join(", ")}`}. Si la colonia no está en la lista, pide una referencia cercana y confirma la sucursal.`);
+    }
   }
-  return envolver("faq", "Preguntas frecuentes", lineas, "Todavía no hay horarios, direcciones, políticas ni colonias de las que generar respuestas.");
+  return envolver("faq", "Preguntas frecuentes", lineas, "Todavía no hay horarios, direcciones, políticas ni colonias de las que generar respuestas.", faqPrompt);
 }
 
 function docMenu(d: DatosConocimiento): DocumentoAuto {
@@ -260,7 +402,7 @@ function docMenu(d: DatosConocimiento): DocumentoAuto {
 /** Genera los documentos desde los datos. Puro y determinista: mismos datos, mismos documentos y misma huella. */
 export function generarConocimientoAuto(datos: DatosConocimiento): ConocimientoAuto {
   const { asignaciones, sinSucursal } = asignarColonias(datos);
-  const colonias = docColonias(asignaciones, sinSucursal);
+  const colonias = docColonias(asignaciones, sinSucursal, (datos.referencias ?? []).length > 0);
   const documentos = [docSucursales(datos), colonias.doc, docFaq(datos), docMenu(datos)];
   return { documentos, alertasColonias: colonias.alertas, coloniasSinSucursal: sinSucursal, huella: sha(documentos.map((x) => `${x.tipo}:${x.huella}`).join("|")) };
 }
@@ -269,15 +411,18 @@ export function generarConocimientoAuto(datos: DatosConocimiento): ConocimientoA
 export async function cargarDatosConocimiento(repo: RestaurantesRepository, organizationId: string): Promise<DatosConocimiento> {
   const branches = await repo.listBranchesForOrganizationAdmin(organizationId);
   const zonas = await repo.listKnownZones(organizationId);
+  // Referencia del piloto (migracion 056): contra la base sin migrar `disponible:false` y todo sigue como antes.
+  const lecturaRef = await repo.listColoniasReferencia(organizationId);
+  const referencias = lecturaRef.disponible ? lecturaRef.zonas : undefined;
   const sucursales: SucursalConocimiento[] = [];
   const menus: { propertyId: string; filas: readonly StorefrontCatalogRow[] }[] = [];
   for (const b of branches) {
     const politica = await repo.findBranchPolicy(b.propertyId);
-    const zonasDeReparto = (await repo.listBranchDeliveryZoneIds(b.propertyId)).length;
-    sucursales.push({ branch: b, politica, zonasDeReparto });
+    const zonaIdsReparto = await repo.listBranchDeliveryZoneIds(b.propertyId);
+    sucursales.push({ branch: b, politica, zonasDeReparto: zonaIdsReparto.length, zonaIdsReparto });
     if (b.status === "active") menus.push({ propertyId: b.propertyId, filas: await repo.listStorefrontCatalog(b.propertyId) });
   }
-  return { sucursales, zonas, menus };
+  return { sucursales, zonas, ...(referencias ? { referencias } : {}), menus };
 }
 
 const PRIORIDAD_PROMPT: readonly TipoDocumentoAuto[] = ["sucursales_horarios", "colonias_sucursal", "faq", "menu_precios"];
@@ -301,7 +446,7 @@ export function bloqueConocimientoParaPrompt(conocimiento: ConocimientoAuto, top
   for (const tipo of PRIORIDAD_PROMPT) {
     const d = porTipo.get(tipo);
     if (!d || d.vacio) continue;
-    const bloque = `\n\n### ${d.titulo}\n${d.contenido}`;
+    const bloque = `\n\n### ${d.titulo}\n${d.contenidoPrompt ?? d.contenido}`;
     if (usados + bloque.length > tope) {
       omitidos.push({ tipo, motivo: `No cabe en el tope de ${tope} caracteres del prompt; el agente lo consulta en vivo con sus herramientas.` });
       continue;

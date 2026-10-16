@@ -6,6 +6,7 @@
 //   POST /v1/restaurantes/:propertyId/admin/autopiloto/agotado                                "Agotado hasta manana" (se repone al cambiar el dia de la sucursal)
 //   GET  /v1/restaurantes/:propertyId/admin/autopiloto/tiempo?canal=                          tiempo prometido hoy (aprendido o texto fijo del dueno)
 //   GET  /v1/restaurantes/:propertyId/admin/autopiloto/pedidos/:orderId/historial             historial de transiciones del pedido (order_status_events)
+//   POST /v1/restaurantes/:propertyId/admin/autopiloto/pedidos/:orderId/ticket-impreso        el staff imprimio el ticket de cocina: habilita la aceptacion automatica sin POS (migracion 077)
 // Base SIN migrar: las lecturas responden `disponible: false` con listas vacias y las escrituras 503 (estado honesto, nunca un 500).
 // Las comandas al POS de lo recien aprobado se encolan DESPUES del commit, en sesion de sistema (la funcion SQL es solo-sistema).
 import { Hono } from "hono";
@@ -25,14 +26,14 @@ import {
   sumarDiasFecha,
 } from "@atiende/domain-restaurantes";
 import type { AutopilotoRepository, SolicitudDecision, SolicitudTipo } from "@atiende/domain-restaurantes";
-import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
+import { cortarComandaDePedidoCancelado, encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { dispatchWhatsAppVertical } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
-import { softRestaurantComandaDeps, softRestaurantPortFor } from "./softrestaurant-wiring.ts";
+import { softRestaurantComandaDeps, softRestaurantPortFor, softRestaurantStoreFor } from "./softrestaurant-wiring.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -149,6 +150,12 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
               await deps.engine.withAppSession({ userId: null }, (db) => encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), orders));
             });
           },
+          // Cancelar/rechazar desde "Por aprobar" corta la comanda pendiente en el POS (igual que PATCH status -> cancelado): la funcion SQL exige un actor
+          // autenticado, asi que corre en la sesion de STAFF de esta peticion, dentro de su transaccion.
+          cortarComandaCancelado: async (cancelado) => {
+            const corte = await cortarComandaDePedidoCancelado(softRestaurantStoreFor(deps, c.get("db")), organizationId, cancelado, c.get("userId"));
+            if (corte.cortadas > 0) logEvent(c, "info", "restaurantes_comanda_cortada_por_cancelacion", { actorUserId: c.get("userId"), organizationId, orderId: cancelado.id, cortadas: corte.cortadas });
+          },
         },
         { organizationId, solicitudId, decision: raw.decision as SolicitudDecision, motivo: (raw.motivo as string | null | undefined) ?? null, valor, indices },
       );
@@ -172,7 +179,7 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       logEvent(c, "info", "restaurantes_autopiloto_solicitud_resuelta", {
         actorUserId: c.get("userId"), organizationId, solicitudId, tipo: r.resultado.tipo, decision: r.resultado.decision, aplicado: r.resultado.aplicado, efectos: r.efectos,
       });
-      return c.json({ aplicado: r.resultado.aplicado, tipo: r.resultado.tipo, decision: r.resultado.decision, estadoPedido: r.resultado.estadoPedido, codigoDescuento: r.resultado.codigoDescuento, reposicionOrderId: r.resultado.reposicionOrderId, efectos: r.efectos });
+      return c.json({ aplicado: r.resultado.aplicado, tipo: r.resultado.tipo, decision: r.resultado.decision, estadoPedido: r.resultado.estadoPedido, codigoDescuento: r.resultado.codigoDescuento, reposicionOrderId: r.resultado.reposicionOrderId, motivo: r.resultado.motivo ?? null, efectos: r.efectos });
     } catch (err) {
       return traducir(err);
     }
@@ -300,6 +307,25 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
     const r = await repoAuto(c).historialEstados(organizationId, orderId);
     return c.json({ disponible: r.disponible, eventos: r.valor });
+  });
+
+  // QA R2 features-05: sin POS, "imprimir el ticket" era un evento que nadie registraba y la aceptacion automatica nunca se cumplia. El panel avisa aqui
+  // cuando imprime el ticket de cocina de un pedido pendiente; el tick lo pasa a Preparando solo si la sucursal activo la regla.
+  app.post(`${base}/pedidos/:orderId/ticket-impreso`, async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId") ?? "";
+    const orderId = c.req.param("orderId") ?? "";
+    if (!UUID_RE.test(orderId)) throw Errors.validation("orderId inválido.");
+    await resolveEffectivePropertyIds(deps, c, organizationId, propertyId);
+    const order = await deps.restaurantesRepo(c.get("db")).findOrderById(organizationId, orderId);
+    if (!order || order.propertyId !== propertyId) throw Errors.notFound("Pedido no encontrado.");
+    try {
+      const r = await repoAuto(c).registrarTicketImpreso(organizationId, orderId);
+      return c.json({ disponible: r.disponible, registrado: r.registrado });
+    } catch (err) {
+      return traducir(err);
+    }
   });
 
   return app;

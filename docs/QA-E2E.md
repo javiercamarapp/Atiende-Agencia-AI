@@ -125,10 +125,9 @@ Base del protocolo de cierre por vertical. Archivos en `apps/web/e2e/tests/resta
 | `recorrido-restaurantes-controles.spec.ts` (puerta R-33) | el Resumen consulta `GET /onboarding/gate`: banner sin bloqueo; con bloqueo redirige a Primeros pasos y "Ir al panel de todos modos" la omite en la sesion |
 | `viaje-restaurantes-pedido.spec.ts` | viaje encadenado con DOS sesiones: Primeros pasos, crear producto, pedido nuevo a preparando, asignar repartidor, el repartidor (otra sesion) lo marca en camino y entregado, el owner lo ve en Historial, Copiloto, cerrar sesion |
 | `matriz-restaurantes-visual.spec.ts` | las 21 paginas en claro, oscuro, escritorio y movil (los 4 proyectos): sin desborde horizontal, sin errores de consola ni 5xx, un solo `<main>`, a lo mucho un `<h1>` (una pagina sin `<h1>` no se marca como defecto) |
-| `storefront-restaurantes.spec.ts` | `/pedir/*` publico: sucursales, menu, carrito con tortilla obligatoria, validacion local, cotizacion, Seguir editando y Escape sin pedido, un solo pedido al confirmar, rastreo, minimo a domicilio, promocion invalida, error con Reintentar |
 
 La API simulada de restaurantes vive en `mock-api/fixtures/restaurantes.ts` (humo, Copiloto, repartidor), `restaurantes-panel.ts` (panel con
-estado y escrituras: un POST/PATCH se refleja en el GET siguiente) y `restaurantes-storefront.ts` (publico, escenario `anon`). El control
+estado y escrituras: un POST/PATCH se refleja en el GET siguiente). El control
 `POST /__mock/escenarios/:id/estado` (`mock.agregarAEstado`) siembra un dato nuevo (p. ej. un pedido que "llega" mientras se mira el panel).
 
 ### Cobertura de controles (honesta)
@@ -156,7 +155,6 @@ mide por pantalla. **No se alcanza el 95 % pedido**: queda en deuda lo marcado "
 | Agente de voz | pinta sano (matriz) | todos los controles |
 | Repartidor | Marcar en camino/entregado (viaje), incidencia (spec previa), tema (BUG-E2E-REST-004) | Mapa y Llamar |
 | Copiloto | pregunta, abort, historial, Borrar chat (confirm) | Fijar, renombrar |
-| Storefront | recorrido completo | — |
 
 ### Defectos encontrados (sin corregir; cada uno es un `test.fail` que avisa cuando se corrija)
 

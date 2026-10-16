@@ -5,7 +5,7 @@ import { FakeLlmProvider, LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStor
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { fingerprintOrder, resetOrderFlowWarningForTests } from "../src/agent-tools/order-flow.ts";
-import { assignBranch, RADIO_MAXIMO_REPARTO_KM } from "../src/branch-assignment.ts";
+import { assignBranch, RADIO_REPARTO_PM_KM } from "../src/branch-assignment.ts";
 import { InMemoryConversacionesRepository, InMemoryHandoffAgentGate } from "../src/index.ts";
 import { handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
 import { quitarCortesiaNoRespaldada } from "../src/whatsapp/guards.ts";
@@ -75,11 +75,11 @@ describe("hora_recogida dentro de la huella del pedido", () => {
 describe("tope duro de reparto por perfil (buscar_sucursal_cercana)", () => {
   const PROGRESO = { lat: 21.2817, lng: -89.665 }; // ~28 km de las sucursales de la fixture
   const ctx = (organizationId: string) => ({ organizationId, channel: "whatsapp" as const, phone: "9991234567" });
-  it("perfil taqueria_pm: 20 km duros aunque el modelo mande max_km 500", async () => {
+  it("perfil taqueria_pm: 8 km duros aunque el modelo mande max_km 500", async () => {
     const f = buildRestaurantFixture();
     await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
     const r = await invokeAgentTool(f.repo, ctx(f.organizationId), "buscar_sucursal_cercana", { ...PROGRESO, max_km: 500 });
-    expect(r.result).toMatchObject({ encontrada: false, estado: "fuera_de_zona", max_km: RADIO_MAXIMO_REPARTO_KM });
+    expect(r.result).toMatchObject({ encontrada: false, estado: "fuera_de_zona", max_km: RADIO_REPARTO_PM_KM });
   });
   it("perfil generico (o sin configuracion): no hereda el tope de PM", async () => {
     const f = buildRestaurantFixture();

@@ -1,0 +1,2185 @@
+{
+ "_nota": "Pares producto-sinonimo del piloto original (work/base-vieja-pm/sinonimos.json, 3-oct-2026): vocabulario de productos, sin texto de chats ni datos personales. TODOS aprobados: chats_c3, derivado_nombre y cuestionario_pm desde el inicio; sentido_comun_aprobado (64) y cuestionario_web (9) = los 73 que Javier aprobo el 7-oct-2026 13:30. La prueba tests/sinonimos-cobertura-piloto.spec.ts verifica que buscar_producto encuentra cada producto con cada sinonimo.",
+ "pares": [
+  {
+   "producto": "Taco Al Pastor (individual)",
+   "sinonimo": "trompo",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Taco Al Pastor (individual)",
+   "sinonimo": "taco de pastor",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Taco Al Pastor (individual)",
+   "sinonimo": "al pastor",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Taco de Champiñones (individual)",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Tacos de Bistec de Res (orden de 3)",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec de Res (orden de 3)",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec de Res (orden de 3)",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec de Res (orden de 3)",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec de Res (orden de 3)",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Pechuga de Pollo (orden de 3)",
+   "sinonimo": "tacos de pollo",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Poc-Chuc (orden de 3)",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Tacos de Poc-Chuc (orden de 3)",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Tacos de Poc-Chuc (orden de 3)",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Tacos de Bistec Encebollado (orden de 3)",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec Encebollado (orden de 3)",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec Encebollado (orden de 3)",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec Encebollado (orden de 3)",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos de Bistec Encebollado (orden de 3)",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Gringa de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Gringa de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Gringa de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Gringa de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Gringa de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Gringa de Poc-Chuc",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Gringa de Poc-Chuc",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Gringa de Poc-Chuc",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Mestiza de Poc-Chuc",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Mestiza de Poc-Chuc",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Mestiza de Poc-Chuc",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Mestiza de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Mestiza de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Mestiza de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Mestiza de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Mestiza de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Suizo de Pastor",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Pastor",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Suizo de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Suizo de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Suizo de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Suizo de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Suizo de Bistec",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Bistec",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Chuleta",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Chuleta",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Pechuga",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Pechuga",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Costilla",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Costilla",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Arrachera",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Arrachera",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Poc-Chuc",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Poc-Chuc",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Poc-Chuc",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Poc-Chuc",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Poc-Chuc",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Chorizo",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Chorizo",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Chile Poblano",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Suizo de Chile Poblano",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Alambre Suizo de Pastor",
+   "sinonimo": "alambre con queso",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Bistec",
+   "sinonimo": "alambre con queso",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Pechuga",
+   "sinonimo": "alambre con queso",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Chuleta",
+   "sinonimo": "alambre con queso",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Costilla",
+   "sinonimo": "alambre con queso",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alambre Suizo de Arrachera",
+   "sinonimo": "alambre con queso",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Bistec",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Bistec",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Arrachera",
+   "sinonimo": "suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Tacos Suizos de Chile Poblano y Arrachera",
+   "sinonimo": "tacos suizos",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Boyo-Hamburguesa Sencilla",
+   "sinonimo": "hamburguesa",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Boyo-Hamburguesa Sencilla",
+   "sinonimo": "boyo",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Boyo-Hamburguesa con Queso",
+   "sinonimo": "hamburguesa",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Boyo-Hamburguesa con Queso",
+   "sinonimo": "boyo",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Boyo-Hamburguesa con Queso y Tocino",
+   "sinonimo": "hamburguesa",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Boyo-Hamburguesa con Queso y Tocino",
+   "sinonimo": "boyo",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Flauta de Bistec de Res",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Flauta de Bistec de Res",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Flauta de Bistec de Res",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Flauta de Bistec de Res",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Flauta de Bistec de Res",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Flauta de Poc-Chuc",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Flauta de Poc-Chuc",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Flauta de Poc-Chuc",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Chetaco de Pastor",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Pastor",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Pastor",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Champiñón",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Chetaco de Champiñón",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Champiñón",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Champiñón",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Bistec de Res",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Chuleta de Cerdo",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Chuleta de Cerdo",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Chuleta de Cerdo",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Pechuga",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Pechuga",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Pechuga",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Costilla de Res",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Costilla de Res",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Costilla de Res",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Poc-Chuc",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Chetaco de Poc-Chuc",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Chetaco de Poc-Chuc",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Chetaco de Poc-Chuc",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Poc-Chuc",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Poc-Chuc",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Arrachera",
+   "sinonimo": "burro",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Arrachera",
+   "sinonimo": "burrito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chetaco de Arrachera",
+   "sinonimo": "che taco",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Tradicional",
+   "sinonimo": "papa rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Tradicional",
+   "sinonimo": "rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Tradicional",
+   "sinonimo": "rellenas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Pastor",
+   "sinonimo": "papa rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Pastor",
+   "sinonimo": "rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Pastor",
+   "sinonimo": "rellenas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "papa rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Bistec",
+   "sinonimo": "rellenas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Chuleta",
+   "sinonimo": "papa rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Chuleta",
+   "sinonimo": "rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Chuleta",
+   "sinonimo": "rellenas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Pechuga",
+   "sinonimo": "papa rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Pechuga",
+   "sinonimo": "rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Pechuga",
+   "sinonimo": "rellenas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Costilla",
+   "sinonimo": "papa rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Costilla",
+   "sinonimo": "rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Costilla",
+   "sinonimo": "rellenas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Arrachera",
+   "sinonimo": "papa rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Arrachera",
+   "sinonimo": "rellena",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Papa Arrachera",
+   "sinonimo": "rellenas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Pastor",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Champiñón",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Francés Suizo de Champiñón",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Bistec de Res",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Bistec de Res",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Bistec de Res",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Bistec de Res",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Bistec de Res",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Bistec de Res",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Chuleta de Cerdo",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Pechuga",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Costilla de Res",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Poc-Chuc",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Francés Suizo de Poc-Chuc",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Francés Suizo de Poc-Chuc",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Francés Suizo de Poc-Chuc",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Francés Suizo de Arrachera",
+   "sinonimo": "torta",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijol con Tostada",
+   "sinonimo": "frijol",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijol con Tostada",
+   "sinonimo": "frijolito",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijol con Tostada",
+   "sinonimo": "frijol botanero",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijol con Tostada",
+   "sinonimo": "frijoles con totopos",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijol con Tostada",
+   "sinonimo": "frijol con totopos",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijol con Tostada",
+   "sinonimo": "botanero",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Carbolla",
+   "sinonimo": "cebolla asada",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Cebollas Cambray",
+   "sinonimo": "cambray",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Cebollas Cambray",
+   "sinonimo": "cebollitas",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Cebollas Cambray",
+   "sinonimo": "cebollitas cambray",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chicharrón de Queso",
+   "sinonimo": "costra",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Chicharrón de Queso",
+   "sinonimo": "costra de queso",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Alitas de Pollo",
+   "sinonimo": "alitas",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Alitas de Pollo",
+   "sinonimo": "wings",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Papas a la Francesa",
+   "sinonimo": "papas fritas",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Papas a la Francesa",
+   "sinonimo": "francesas",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Frijoles Charros Normal (1/2 orden)",
+   "sinonimo": "medios charros",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijoles Charros Normal (1/2 orden)",
+   "sinonimo": "media orden de charros",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijoles Charros con Queso (1/2 orden)",
+   "sinonimo": "medios charros",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijoles Charros con Queso (1/2 orden)",
+   "sinonimo": "media orden de charros",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijoles Charros Especiales (1/2 orden)",
+   "sinonimo": "medios charros",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Frijoles Charros Especiales (1/2 orden)",
+   "sinonimo": "media orden de charros",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesadilla de Natural",
+   "sinonimo": "quesadillas",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Quesadilla de Rajas",
+   "sinonimo": "quesadillas",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Quesadilla de Champiñones",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Quesadilla de Champiñones",
+   "sinonimo": "quesadillas",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Quesadilla de Chorizo",
+   "sinonimo": "quesadillas",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Queso Fundido Champiñones",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Nachos de Pastor",
+   "sinonimo": "nachos grandes",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Champiñón",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Nachos de Champiñón",
+   "sinonimo": "nachos grandes",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Champiñón (1/2 orden)",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Nachos de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec",
+   "sinonimo": "nachos grandes",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec (1/2 orden)",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec (1/2 orden)",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec (1/2 orden)",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec (1/2 orden)",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Bistec (1/2 orden)",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Pechuga",
+   "sinonimo": "nachos grandes",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Chuleta",
+   "sinonimo": "nachos grandes",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Costilla",
+   "sinonimo": "nachos grandes",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Nachos de Arrachera",
+   "sinonimo": "nachos grandes",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Queso",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Pastor",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Bistec",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Pollo",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Chuleta de Cerdo",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Costilla de Res",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich de Arrachera",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Quesobich Vegetariana",
+   "sinonimo": "pizza",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Crujientes de Pechuga de Pollo",
+   "sinonimo": "tiras",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Crujientes de Pechuga de Pollo",
+   "sinonimo": "tiras de pollo",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Crujientes de Pechuga de Pollo",
+   "sinonimo": "pollo empanizado",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Crujientes de Pechuga de Pollo",
+   "sinonimo": "empanizado",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Platillo de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Platillo de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Platillo de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Platillo de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Platillo de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Platillo de Poc-Chuc",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Platillo de Poc-Chuc",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Platillo de Poc-Chuc",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Fajitas de Bistec",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Fajitas de Bistec",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Fajitas de Bistec",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Fajitas de Bistec",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Fajitas de Bistec",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Fajitas de Bistec",
+   "sinonimo": "fajita",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Fajitas de Pechuga",
+   "sinonimo": "fajita",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Fajitas de Arrachera",
+   "sinonimo": "fajita",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Parrillada para 2",
+   "sinonimo": "parrilla",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Parrillada para 4",
+   "sinonimo": "parrilla",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Bistec de Res — 1 kg",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1 kg",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1 kg",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1 kg",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1 kg",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 250 g",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 250 g",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 250 g",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 250 g",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 250 g",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 500 g",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 500 g",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 500 g",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 500 g",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 500 g",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 750 g",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 750 g",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 750 g",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 750 g",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 750 g",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1.5 kg",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1.5 kg",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1.5 kg",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1.5 kg",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 1.5 kg",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 2 kg",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 2 kg",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 2 kg",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 2 kg",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res — 2 kg",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1 kg",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1 kg",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1 kg",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1 kg",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1 kg",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 250 g",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 250 g",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 250 g",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 250 g",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 250 g",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 500 g",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 500 g",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 500 g",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 500 g",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 500 g",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 750 g",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 750 g",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 750 g",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 750 g",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 750 g",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1.5 kg",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1.5 kg",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1.5 kg",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1.5 kg",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 1.5 kg",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 2 kg",
+   "sinonimo": "bitek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 2 kg",
+   "sinonimo": "bistek",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 2 kg",
+   "sinonimo": "bisteck",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 2 kg",
+   "sinonimo": "bisctec",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Bistec de Res Encebollado — 2 kg",
+   "sinonimo": "bisté",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Poc-Chuc — 1 kg",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 1 kg",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 1 kg",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 250 g",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 250 g",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 250 g",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 500 g",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 500 g",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 500 g",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 750 g",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 750 g",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 750 g",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 1.5 kg",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 1.5 kg",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 1.5 kg",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 2 kg",
+   "sinonimo": "pocchuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 2 kg",
+   "sinonimo": "poc chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Poc-Chuc — 2 kg",
+   "sinonimo": "pok chuc",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Queso Napolitano",
+   "sinonimo": "flan napolitano",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Queso Napolitano",
+   "sinonimo": "napolitano",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Coca-Cola",
+   "sinonimo": "coca",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Coca-Cola",
+   "sinonimo": "cocacola",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Coca-Cola",
+   "sinonimo": "coca regular",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Coca-Cola",
+   "sinonimo": "coca cola",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Coca-Cola Light",
+   "sinonimo": "coca light",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Coca-Cola Light",
+   "sinonimo": "cocacola light",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Coca-Cola sin Azúcar",
+   "sinonimo": "coca sin azucar",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Coca-Cola sin Azúcar",
+   "sinonimo": "coca zero",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Coca-Cola sin Azúcar",
+   "sinonimo": "cocacola sin azucar",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Agua Mineral Cristal",
+   "sinonimo": "agua mineral",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Agua Mineral Cristal",
+   "sinonimo": "mineral",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Agua Purificada",
+   "sinonimo": "agua natural",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Agua Purificada",
+   "sinonimo": "botella de agua",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Topo Chico",
+   "sinonimo": "topochico",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Topo Chico",
+   "sinonimo": "topo",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Agua de Jamaica",
+   "sinonimo": "jamaica",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Agua de Jamaica",
+   "sinonimo": "agua jamaica",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Horchata",
+   "sinonimo": "agua de horchata",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Sol",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Sol",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Sol",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Superior",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Superior",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Superior",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Tecate Light",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Tecate Light",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Tecate Light",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken 0.0",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken 0.0",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken 0.0",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken Silver",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken Silver",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Heineken Silver",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Indio",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Indio",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Indio",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "XX Lager",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "XX Lager",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "XX Lager",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "XX Ámbar",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "XX Ámbar",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "XX Ámbar",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Amstel Ultra",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Amstel Ultra",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Amstel Ultra",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Bohemia Clara",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Bohemia Clara",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Bohemia Clara",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Bohemia Oscura",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Bohemia Oscura",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Bohemia Oscura",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Dorada Premium",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Dorada Premium",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Dorada Premium",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Light Lager",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Light Lager",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Light Lager",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Mestiza",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Mestiza",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Mestiza",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Stout",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Stout",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ceiba Stout",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Patito Oscura",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Patito Oscura",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Patito Oscura",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Patito Lager",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Patito Lager",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Patito Lager",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ojo Rojo",
+   "sinonimo": "chela",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ojo Rojo",
+   "sinonimo": "cheve",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Ojo Rojo",
+   "sinonimo": "cerveza",
+   "origen": "sentido_comun_aprobado"
+  },
+  {
+   "producto": "Vaso de Chelada",
+   "sinonimo": "chelada",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Vaso de Michelada",
+   "sinonimo": "michelada",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Vaso de Michelada",
+   "sinonimo": "miche",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Extra Champiñón",
+   "sinonimo": "champi",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Extra Chorizo",
+   "sinonimo": "chorizo extra",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Orden Tortilla de Harina",
+   "sinonimo": "tortillas de harina",
+   "origen": "cuestionario_pm"
+  },
+  {
+   "producto": "Orden Tortilla de Maíz",
+   "sinonimo": "tortillas de maíz",
+   "origen": "cuestionario_pm"
+  },
+  {
+   "producto": "Extra Queso",
+   "sinonimo": "queso extra",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Papadzules (orden de 5)",
+   "sinonimo": "papadzul",
+   "origen": "derivado_nombre"
+  },
+  {
+   "producto": "Platillo de Cochinita",
+   "sinonimo": "cochi",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Platillo de Cochinita",
+   "sinonimo": "pibil",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Platillo de Cochinita",
+   "sinonimo": "cochinita pibil",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Tacos de Cochinita (orden de 4)",
+   "sinonimo": "cochi",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Tacos de Cochinita (orden de 4)",
+   "sinonimo": "pibil",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Tacos de Cochinita (orden de 4)",
+   "sinonimo": "cochinita pibil",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Francés de Cochinita",
+   "sinonimo": "cochi",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Francés de Cochinita",
+   "sinonimo": "pibil",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Francés de Cochinita",
+   "sinonimo": "cochinita pibil",
+   "origen": "cuestionario_web"
+  },
+  {
+   "producto": "Extra Salsa",
+   "sinonimo": "salsa extra",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Extra Salsa",
+   "sinonimo": "extra de ajo",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Extra Salsa",
+   "sinonimo": "extra de guacamolera",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Extra Salsa",
+   "sinonimo": "porcion extra",
+   "origen": "chats_c3"
+  },
+  {
+   "producto": "Extra Piña",
+   "sinonimo": "piña extra",
+   "origen": "cuestionario_pm"
+  },
+  {
+   "producto": "Extra Piña",
+   "sinonimo": "extra de piña",
+   "origen": "cuestionario_pm"
+  }
+ ]
+}

@@ -17,7 +17,7 @@ import type { MotivoCancelacion } from "./taxonomia.ts";
 import { estimarTiempo } from "./tiempo-prometido.ts";
 import type { TiempoEstimado } from "./tiempo-prometido.ts";
 import { AUTOPILOTO_CONFIG_POR_OMISION } from "./tipos.ts";
-import type { AutopilotoRepository, ComandaParaAvance, OpcionesResolver, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
+import type { AutopilotoRepository, ComandaParaAvance, OpcionesResolver, PedidoGrandeHook, ResultadoResolver, SolicitudDecision } from "./tipos.ts";
 
 export interface AutopilotoServicioDeps {
   readonly auto: AutopilotoRepository;
@@ -25,6 +25,9 @@ export interface AutopilotoServicioDeps {
   readonly db: TenantDbSession;
   /** Encola la comanda al POS de pedidos que acaban de pasar a `pending` (best-effort; sin POS cableado no hace nada). */
   readonly encolarComandas?: (orders: readonly Order[]) => Promise<unknown>;
+  /** Corta la comanda al POS (pendiente/fallida/captura manual) de un pedido que esta decision acaba de CANCELAR, para que un POS que vuelve despues no la cocine
+   * (mismo corte que el cambio de estado a `cancelado`, R-34). Best-effort; sin POS cableado no hace nada. */
+  readonly cortarComandaCancelado?: (order: Order) => Promise<unknown>;
 }
 
 /** Plantillas HSM (Meta) que hay que crear y aprobar para los avisos fuera de la ventana de 24 h (R-25). Todas llevan 3 variables:
@@ -106,6 +109,19 @@ export async function retenerPedidoGrande(deps: AutopilotoServicioDeps, input: {
   return { estado: "por_aprobar", solicitudId: r.solicitudId, creada: r.estado === "creada" };
 }
 
+/** Hook de `crear_pedido` sobre UNA sesion: `disponible` es una lectura barata de la config (degrada con SAVEPOINT a `false` contra la base sin migrar). */
+export function crearHookPedidoGrande(deps: Pick<AutopilotoServicioDeps, "auto" | "repo" | "db">): PedidoGrandeHook {
+  return {
+    async disponible(organizationId, propertyId) {
+      return (await deps.auto.leerConfig(organizationId, propertyId)).disponible;
+    },
+    async retener(input) {
+      const r = await retenerPedidoGrande(deps, input);
+      return r.estado === "por_aprobar" ? { estado: "por_aprobar", solicitudId: r.solicitudId } : { estado: "no_disponible" };
+    },
+  };
+}
+
 export interface ResultadoResolucion {
   readonly resultado: ResultadoResolver;
   /** Efectos disparados en ESTA llamada (vacio en un doble clic). */
@@ -135,6 +151,12 @@ export async function resolverSolicitudAprobacion(
     }
   };
   const order = resultado.orderId ? await deps.repo.findOrderById(input.organizationId, resultado.orderId) : null;
+
+  // Un pedido que esta decision acaba de cancelar (rechazar un pedido grande, cancelar a peticion del cliente) no debe llegar a cocina despues: si su comanda
+  // quedo pendiente/fallida en el POS, se corta igual que al cancelar por cambio de estado.
+  if (order && resultado.estadoPedido === "cancelado" && (input.decision === "cancelar" || input.decision === "rechazar")) {
+    await marca("comanda_cortada", async () => deps.cortarComandaCancelado?.(order));
+  }
 
   if (resultado.tipo === "pedido_grande" && order) {
     if (input.decision === "aprobar" && (resultado.estadoPedido === "pending" || resultado.estadoPedido === "programado")) {
@@ -305,12 +327,18 @@ export interface ResumenEscalado {
   readonly escaladas: number;
 }
 
+/** SQLSTATE transitorios (bloqueo no disponible, serializacion, deadlock, cancelacion por tiempo, falta de recursos, conexion): vale la pena reintentar la alerta. */
+function esFalloTransitorioDeEmision(codigo: string | undefined): boolean {
+  return codigo !== undefined && /^(55P03|40001|40P01|57014|53\d{3}|08\w{3}|57P0\d)$/.test(codigo);
+}
+
 /** Avisa al owner (campana, severidad critica) de las aprobaciones que llevan N minutos sin respuesta. NUNCA las aprueba. Una sola vez por solicitud. */
 export async function escalarSolicitudesVencidas(deps: AutopilotoServicioDeps, ahora: Date): Promise<ResumenEscalado> {
   const r = await deps.auto.solicitudesPorEscalar(ahora, 100);
   if (!r.disponible) return { disponible: false, escaladas: 0 };
+  let falloTransitorio: string | null = null;
   for (const s of r.valor) {
-    await emitirNotificacion(deps.db, {
+    const emision = await emitirNotificacion(deps.db, {
       evento: "restaurantes.aprobacion.vencida",
       organizationId: s.organizationId,
       propertyId: s.propertyId,
@@ -319,7 +347,12 @@ export async function escalarSolicitudesVencidas(deps: AutopilotoServicioDeps, a
       entidadTipo: "solicitud_aprobacion",
       entidadId: s.id,
     });
+    // `solicitudes_por_escalar` marca `escalada_at` en la misma consulta que las devuelve: si la alerta falla por un error transitorio (bloqueo, red) y aqui se
+    // siguiera, la marca se confirmaria y la aprobacion vencida NUNCA se volveria a avisar. Se lanza al terminar el lote para que la transaccion de la unidad
+    // revierta las marcas y el siguiente tick reintente (las alertas ya emitidas son idempotentes por su clave de dedupe). `invalida` es deterministico: no se reintenta.
+    if (emision.estado === "error" && esFalloTransitorioDeEmision(emision.codigo)) falloTransitorio = emision.codigo ?? "sin codigo";
   }
+  if (falloTransitorio !== null) throw new Error(`autopiloto: la alerta de aprobacion vencida fallo (SQLSTATE ${falloTransitorio}); se revierte el marcado para reintentar en el siguiente tick`);
   return { disponible: true, escaladas: r.valor.length };
 }
 
@@ -497,6 +530,33 @@ export async function devolverHandoffsVencidos(deps: AutopilotoServicioDeps, aho
     });
   }
   return { disponible: true, devueltos: r.valor.length };
+}
+
+export interface ResumenHandoffsSinTomar {
+  readonly disponible: boolean;
+  readonly escalados: number;
+}
+
+/**
+ * QA R2 viaje-06: una toma PENDIENTE (el agente pidio una persona y nadie la tomo) que pasa el umbral de la sucursal avisa al owner una sola
+ * vez en la campana (critica), igual que las aprobaciones sin respuesta. NUNCA devuelve la conversacion al agente por su cuenta: el cliente
+ * ya fue derivado a una persona y devolverla reabriria el mismo motivo de escalacion. Sin la migracion 077 devuelve "no disponible".
+ */
+export async function escalarHandoffsSinTomar(deps: AutopilotoServicioDeps, ahora: Date): Promise<ResumenHandoffsSinTomar> {
+  const r = await deps.auto.handoffsPendientesPorEscalar(ahora, 50);
+  if (!r.disponible) return { disponible: false, escalados: 0 };
+  for (const h of r.valor) {
+    await emitirNotificacion(deps.db, {
+      evento: "restaurantes.handoff.sin_tomar",
+      organizationId: h.organizationId,
+      propertyId: h.propertyId,
+      clave: h.handoffId,
+      parametros: { minutos: h.minutos },
+      entidadTipo: "conversation_handoff",
+      entidadId: h.handoffId,
+    });
+  }
+  return { disponible: true, escalados: r.valor.length };
 }
 
 export interface ResumenAgotados {

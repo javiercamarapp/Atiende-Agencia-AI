@@ -27,7 +27,6 @@ import { restaurantesExportacionesRoutes } from "./exportaciones.ts";
 import { restaurantesRepartidorLicenciasInternoRoutes } from "./repartidor-licencias-interno.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
-import { restaurantesAdminSitioPublicoRoutes } from "./admin-sitio-publico.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
@@ -45,6 +44,8 @@ import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
 import { restaurantesPrivacidadRoutes } from "./privacidad.ts";
 import { restaurantesPrivacidadInternoRoutes } from "./privacidad-interno.ts";
 import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
+import { restaurantesCfoRoutes } from "./cfo.ts";
+import { restaurantesCfoExportarRoutes } from "./cfo-exportar.ts";
 import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -90,8 +91,6 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // FASE 3 (producto) — configuración editable del panel (WhatsApp/zonas
   // conocidas), owner/admin -- ver el comentario de cabecera de admin-config.ts.
   app.route("/", restaurantesAdminConfigRoutes(deps));
-  // R-38 (migración 062): marca del storefront público ("Sitio público"), owner/admin.
-  app.route("/", restaurantesAdminSitioPublicoRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
   app.route("/", restaurantesAdminConocimientoRoutes(deps));
@@ -127,5 +126,9 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // captura manual (staff) + dispatcher del outbox (cron). Ver softrestaurant/README.md.
   app.route("/", restaurantesAdminSoftRestauranteRoutes(deps));
   app.route("/", restaurantesSoftRestauranteDispatchRoutes(deps));
+  // CFO (migraciones 081/082/083): lectura, captura de costos e importacion de SoftRestaurant, solo owner/admin.
+  app.route("/", restaurantesCfoRoutes(deps));
+  // CFO-06: exportación a Excel/PDF (GET .../admin/cfo/exportar), después de CFO-05.
+  app.route("/", restaurantesCfoExportarRoutes(deps));
   return app;
 }

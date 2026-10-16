@@ -5,9 +5,9 @@
 // Cada boton llama al endpoint real (idempotente: un doble clic no repite ningun efecto) y maneja carga, error y vacio. Nunca se autoaprueba: sin
 // respuesta el sistema solo escala el aviso. El dinero (devolucion) solo se registra, nunca se ejecuta.
 import { useState } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, NativeSelect, StatusBadge, formatMoney, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, Selector, StatusBadge, formatMoney, notify } from "@atiende/ui";
 import { Clock } from "lucide-react";
-import { SOLICITUD_TIPO_ETIQUETAS, minutosEsperando, resolverSolicitud } from "../lib/autopiloto-client.ts";
+import { SOLICITUD_TIPO_ETIQUETAS, mensajeResultadoSolicitud, minutosEsperando, resolverSolicitud } from "../lib/autopiloto-client.ts";
 import type { MotivoCancelacion, ResolverEntrada, Solicitud, SolicitudesRespuesta } from "../lib/autopiloto-client.ts";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
 
@@ -56,11 +56,8 @@ export function AprobacionesPanel({
     setErrorDialogo(null);
     try {
       const r = await resolverSolicitud(fetch, apiBaseUrl, token, propertyId, s.id, entrada);
-      if (r.aplicado) {
-        notify.success(r.codigoDescuento ? `Listo. Código de descuento enviado al cliente: ${r.codigoDescuento}.` : "Listo: decisión aplicada y cliente avisado.");
-      } else {
-        notify.info("Esta solicitud ya estaba resuelta; no se repitió ningún aviso.");
-      }
+      const m = mensajeResultadoSolicitud(entrada, r);
+      notify[m.tono](m.texto);
       await onResuelta();
       return true;
     } catch (err) {
@@ -236,13 +233,13 @@ export function AprobacionesPanel({
         <div className="grid gap-3">
           {errorDialogo && <Callout tone="danger">{errorDialogo}</Callout>}
           <FormField label="Descuento">
-            <NativeSelect value={String(pct)} onChange={(e) => setPct(Number(e.target.value))}>
+            <Selector value={String(pct)} onValueChange={(v) => setPct(Number(v))}>
               {opcionesPct.map((n) => (
                 <option key={n} value={n}>
                   {n} %
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
         </div>
       </FormDialog>

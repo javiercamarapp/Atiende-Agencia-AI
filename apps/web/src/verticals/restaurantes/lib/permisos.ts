@@ -11,7 +11,11 @@ export type AccionRestaurantes =
   | "promociones.editar"
   | "sucursal.ver"
   | "sucursal.editar"
-  | "pedidos.gestionar";
+  | "pedidos.gestionar"
+  | "cfo.ver"
+  | "cfo.capturar"
+  | "cfo.importar_sr"
+  | "cfo.exportar";
 
 const DUENO_Y_ADMIN: readonly string[] = ["owner", "admin"];
 const GESTORES: readonly string[] = ["owner", "admin", "staff"];
@@ -25,6 +29,10 @@ export const ROLES_POR_ACCION: Readonly<Record<AccionRestaurantes, readonly stri
   "sucursal.ver": GESTORES,
   "sucursal.editar": DUENO_Y_ADMIN,
   "pedidos.gestionar": GESTORES,
+  "cfo.ver": DUENO_Y_ADMIN,
+  "cfo.capturar": DUENO_Y_ADMIN,
+  "cfo.importar_sr": DUENO_Y_ADMIN,
+  "cfo.exportar": DUENO_Y_ADMIN,
 };
 
 /** `true` solo si el rol esta en la matriz para la accion (rol desconocido o ausente -> false). */

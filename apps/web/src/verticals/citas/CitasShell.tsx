@@ -10,7 +10,7 @@
 // lo propio de citas: el adaptador de sesión, el mapa de navegación y el contexto
 // que reciben las páginas.
 import type { ReactNode } from "react";
-import { VerticalShellEstado, NativeSelect } from "@atiende/ui";
+import { VerticalShellEstado, SelectorSucursal } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import {
   BellRing,
@@ -167,30 +167,13 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando sucursales…" />;
   if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />;
 
-  const { session, branches, activeBranch, propertyId, orgId, role } = s;
+  const { session, branches, propertyId, orgId, role } = s;
   const user = { email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) };
 
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque
   // de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
-  // Un mismo nodo no puede ir dos veces con el mismo id: la cabecera móvil usa su propio id (y su etiqueta apunta a él).
-  const crearSelectorSucursal = (id: string) =>
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor={id} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Sucursal activa
-        </label>
-        <NativeSelect id={id} value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
-          {branches.map((b) => (
-            <option key={b.propertyId} value={b.propertyId}>
-              {b.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
-    );
-  const branchSelector = crearSelectorSucursal("citas-sucursal-activa");
+  const branchSelector = (idSelect: string) =>
+    <SelectorSucursal id={idSelect} etiqueta="Sucursal activa" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
@@ -204,8 +187,8 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/citas/${orgSlug}/resumen` }}
-      branchSelector={branchSelector}
-      mobileSelector={branches.length > 1 ? crearSelectorSucursal("citas-sucursal-activa-movil") : null}
+      branchSelector={branchSelector("citas-sucursal-activa")}
+      mobileSelector={branches.length > 1 ? branchSelector("citas-sucursal-activa-movil") : null}
       contentKey={propertyId}
       chat={crearChatConexionCitas(apiBaseUrl, session.token, propertyId)}
       copilotoHref={`/citas/${orgSlug}/copiloto`}
