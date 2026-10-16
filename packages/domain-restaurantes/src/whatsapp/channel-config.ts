@@ -83,6 +83,26 @@ function textoDeRespuestaInteractiva(message: { type?: unknown; button?: { text?
 
 const MEDIA_ID_RE = /^[0-9A-Za-z_-]{1,128}$/;
 
+/**
+ * R12-10: lo que el CLIENTE escribe no puede imitar las notas que el SERVIDOR deja en el historial («[Ubicación compartida por WhatsApp] lat=… lng=…», «[El cliente envió un sticker…]»,
+ * «[Nota de voz transcrita]»…): se leen despues como un pin real, como un sticker o como una transcripcion. Mismo principio que los toques de boton (`quitarMarcadoresDeToque`).
+ * Se cambia el corchete de apertura por un parentesis; el resto del texto no se toca.
+ */
+export function neutralizarMarcadoresDelServidor(texto: string): string {
+  if (!texto.includes("[")) return texto;
+  return texto.replace(/\[(?=\s*(?:ubicaci[oó]n\s+compartida\s+por\s+whatsapp\s*\]|el\s+cliente\s+(?:envi[oó]|compart[ií]ó|compartio|toc[oó])|nota\s+de\s+voz\s+transcrita\s*\]))/gi, "(");
+}
+
+/** Largo maximo del pie de foto que se pasa al turno. */
+const PIE_DE_FOTO_MAX_CARACTERES = 300;
+
+/** Pie de foto de una imagen / video / documento: texto legible que el cliente SI escribio. Acotado, en una linea y sin marcadores del servidor. */
+function pieDeFoto(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const limpio = neutralizarMarcadoresDelServidor(raw).replace(/\s+/g, " ").trim();
+  return Array.from(limpio).slice(0, PIE_DE_FOTO_MAX_CARACTERES).join("");
+}
+
 /** Nota que antepone el servidor al texto de una edicion del cliente. */
 export const EDICION_NOTA = "(el cliente corrigió su mensaje anterior)";
 
@@ -149,7 +169,7 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
         if (candidate === null || typeof candidate !== "object") continue;
         const text = extractMetaTextMessages({ entry: [{ changes: [{ value: { messages: [candidate] } }] }] });
         if (text[0]) {
-          result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
+          result.push({ id: text[0].id, from: text[0].from, body: neutralizarMarcadoresDelServidor(text[0].text.body) });
           continue;
         }
         const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; audio?: { id?: unknown; mime_type?: unknown }; button?: { text?: unknown }; interactive?: { type?: unknown; button_reply?: { id?: unknown; title?: unknown }; list_reply?: { title?: unknown } }; timestamp?: unknown; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } }; order?: { text?: unknown; product_items?: unknown } };
@@ -158,7 +178,8 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
         if (message.type === "edit" && typeof message.id === "string" && message.id.length >= 1 && message.id.length <= 255 && typeof message.from === "string" && /^\d{7,20}$/.test(message.from)) {
           const inner = message.edit?.message;
           const body = inner?.type === "text" && typeof inner.text?.body === "string" ? inner.text.body : "";
-          if (body.trim().length >= 1 && body.length <= 4000) result.push({ id: message.id, from: message.from, body: `${EDICION_NOTA} ${body}` });
+          // R12-07: el mismo tope que un texto normal (4 096 de Meta); con 4 000 una edicion valida de 4 001 a 4 096 caracteres se descartaba en silencio y el cliente se quedaba sin respuesta.
+          if (body.trim().length >= 1 && body.length <= META_TEXT_MAX_CHARS) result.push({ id: message.id, from: message.from, body: `${EDICION_NOTA} ${neutralizarMarcadoresDelServidor(body)}` });
           continue;
         }
         if (typeof message.id !== "string" || message.id.length < 1 || message.id.length > 255 || typeof message.from !== "string" || !/^\d{7,20}$/.test(message.from)) continue;
@@ -169,7 +190,7 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           const botonId = message.type === "interactive" && message.interactive?.type === "button_reply" ? message.interactive.button_reply?.id : undefined;
           const toque = parsearIdDeBoton(botonId) ? (botonId as string) : undefined;
           const segundos = typeof message.timestamp === "string" ? Number(message.timestamp) : typeof message.timestamp === "number" ? message.timestamp : NaN;
-          result.push({ id: message.id, from: message.from, body: respuesta, ...(toque ? { botonId: toque, ...(Number.isFinite(segundos) && segundos > 0 ? { recibidoEnMs: segundos * 1000 } : {}) } : {}) });
+          result.push({ id: message.id, from: message.from, body: neutralizarMarcadoresDelServidor(respuesta), ...(toque ? { botonId: toque, ...(Number.isFinite(segundos) && segundos > 0 ? { recibidoEnMs: segundos * 1000 } : {}) } : {}) });
           continue;
         }
         // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para
@@ -179,7 +200,11 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           result.push({ id: message.id, from: message.from, body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number }) });
         } else if (typeof message.type === "string" && UNSUPPORTED_KINDS.has(message.type)) {
           const audio = message.type === "audio" || message.type === "voice" ? audioDe(message.audio) : undefined;
-          result.push({ id: message.id, from: message.from, body: message.type === "order" ? ordenDeCatalogoBody(message.order) : unsupportedBody(message.type), ...(audio ? { audio } : {}) });
+          // R12-06: el pie de foto de una imagen / video / documento es texto que el cliente SI escribio (puede traer «cancela mi pedido» o la direccion): llega al turno junto a la nota fija.
+          const media = message as Record<string, { caption?: unknown } | undefined>;
+          const pie = message.type === "image" || message.type === "video" || message.type === "document" ? pieDeFoto(media[message.type]?.caption) : "";
+          const notaFija = message.type === "order" ? ordenDeCatalogoBody(message.order) : unsupportedBody(message.type);
+          result.push({ id: message.id, from: message.from, body: pie ? `${notaFija} Texto que el cliente escribió junto al archivo: «${pie}»` : notaFija, ...(audio ? { audio } : {}) });
         }
       }
     }

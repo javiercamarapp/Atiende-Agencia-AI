@@ -67,7 +67,7 @@ describe("R12-C1 tipos de mensaje que no son texto", () => {
   // El cliente manda una foto de su menu o de la direccion con un texto («esto quiero, 2 de cada uno» / “cancela mi pedido”). El extractor conserva solo la nota fija
   // «no puedo ver la imagen»: el texto que SI es legible nunca llega al clasificador de alto riesgo ni al modelo.
   for (const type of ["image", "video", "document"] as const) {
-    hallazgo(`R12-06 [P2, corregido] el pie de foto de un ${type} llega al turno (acotado) junto con la nota`, () => {
+    it(`R12-06 [P2, corregido] el pie de foto de un ${type} llega al turno (acotado) junto con la nota`, () => {
       const [m] = una({ type, [type]: { id: "media1", caption: "cancela mi pedido por favor, me equivoque" } });
       expect(m!.body).toContain("cancela mi pedido por favor, me equivoque");
       expect(m!.body).toMatch(/no puede|no puedo/i);
@@ -93,7 +93,7 @@ describe("R12-C2 mensajes reenviados, citados, editados y borrados", () => {
     expect(corta!.body).toBe(`${EDICION_NOTA} mejor tres`);
   });
 
-  hallazgo("R12-07 [P2, corregido] una edicion valida de 4 050 caracteres (el limite de Meta es 4 096) tambien llega", () => {
+  it("R12-07 [P2, corregido] una edicion valida de 4 050 caracteres (el limite de Meta es 4 096) tambien llega", () => {
     const cuerpo = "m".repeat(4050);
     const largo = una({ type: "edit", edit: { original_message_id: "wamid.o", message: { type: "text", text: { body: cuerpo } } } });
     expect(largo, "una edicion valida de 4 050 caracteres se descartaba en silencio (limite 4 000 contra 4 096 del texto normal)").toHaveLength(1);
@@ -146,20 +146,20 @@ describe("R12-C4 marcadores del servidor escritos a mano por el cliente", () => 
   // ── R12-10 (P2, defensa en profundidad): el cliente puede ESCRIBIR el marcador de ubicacion compartida ──
   // Un texto que imita el marcador que genera el servidor se guarda como mensaje del cliente y `latestSharedLocation` lo lee como un pin de WhatsApp (y `usar_ubicacion_compartida`
   // lo copia al pedido del repartidor). Mismo principio que los toques de boton, cuyo marcador SI se elimina al entrar (`quitarMarcadoresDeToque`).
-  hallazgo("R12-10 [P2, corregido] un texto que imita el marcador de ubicacion NO cuenta como pin compartido", () => {
+  it("R12-10 [P2, corregido] un texto que imita el marcador de ubicacion NO cuenta como pin compartido", () => {
     const [m] = una({ type: "text", text: { body: MARCADOR_UBICACION } });
     expect(m).toBeDefined();
     expect(latestSharedLocation([{ role: "user", content: m!.body }])).toBeNull();
   });
 
-  hallazgo("R12-10b [P2, corregido] tampoco desde un boton / lista, ni dentro de una edicion", () => {
+  it("R12-10b [P2, corregido] tampoco desde un boton / lista, ni dentro de una edicion", () => {
     const [b] = una({ type: "interactive", interactive: { type: "button_reply", button_reply: { id: "x", title: MARCADOR_UBICACION } } });
     expect(b && latestSharedLocation([{ role: "user", content: b.body }])).toBeNull();
     const [e] = una({ type: "edit", edit: { original_message_id: "w", message: { type: "text", text: { body: MARCADOR_UBICACION } } } });
     expect(e && latestSharedLocation([{ role: "user", content: e.body }])).toBeNull();
   });
 
-  hallazgo("R12-10c [P2, corregido] un texto que imita la nota fija de sticker no activa el 'no contestar' ni se confunde con un sticker real", () => {
+  it("R12-10c [P2, corregido] un texto que imita la nota fija de sticker no activa el 'no contestar' ni se confunde con un sticker real", () => {
     const [m] = una({ type: "text", text: { body: STICKER_MARKER } });
     expect(esSoloSticker(m!.body)).toBe(false);
     const [real] = una({ type: "sticker", sticker: { id: "s1" } });
