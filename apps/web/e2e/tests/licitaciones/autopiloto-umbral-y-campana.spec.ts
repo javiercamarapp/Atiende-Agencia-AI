@@ -59,14 +59,12 @@ test.describe("licitaciones: umbral del aviso de nuevo match @humo", () => {
 });
 
 test.describe("licitaciones: la campana lista cada convocatoria con match @humo", () => {
-  test("cada match es un aviso con su puntuacion, el punto rojo se apaga al leerlos y 'Resolver' lleva a la convocatoria", async ({ page, iniciarSesion, mock, vigilante }) => {
+  test("cada match es un aviso con su puntuacion, el punto rojo se apaga al leerlos y abrir el aviso lleva a la convocatoria", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("licitaciones", "owner");
-    const campana = page.locator('a[aria-label^="Notificaciones"]:visible');
+    // La campana es el boton del centro de notificaciones (popover): lista los avisos recientes y "Ver todas" lleva a la pagina.
+    const campana = page.locator('button[aria-label^="Notificaciones"]:visible');
     const punto = campana.locator('[data-testid="campana-punto"]');
-    await campana.click();
-    await expect(page).toHaveURL(/\/notificaciones$/);
-    const tarjetas = page.getByTestId("notificacion");
-    await expect(tarjetas).toHaveCount(2); // semilla comun de la API simulada
+    const tarjetas = page.getByTestId("centro-item");
 
     // El cron de descubrimiento emite un aviso POR convocatoria con match (las mejores 5): llegan como lista, no como un conteo.
     for (const [tenderId, puntuacion] of [["tnd-1", 92], ["tnd-2", 81]] as const) {
@@ -80,13 +78,14 @@ test.describe("licitaciones: la campana lista cada convocatoria con match @humo"
       });
     }
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(punto).toBeVisible();
+    await campana.click(); // al abrir el centro recarga la lista
     const matches = tarjetas.filter({ hasText: "coincide con el perfil de tu empresa" });
     await expect(matches).toHaveCount(2);
     await expect(matches.first()).toContainText("Puntuación de afinidad");
-    await expect(punto).toBeVisible();
 
-    // Resolver lleva a la convocatoria y marca el aviso como leido.
-    await matches.first().getByRole("link", { name: "Resolver" }).click();
+    // Abrir el aviso lleva a la convocatoria y lo marca como leido.
+    await matches.first().getByRole("link").click();
     await expect(page).toHaveURL(/\/licitaciones\/[^/]+\/convocatorias\/tnd-[12]$/);
     expect((await mock.buscar({ metodo: "POST", ruta: /\/notifications\/ntf-[^/]+\/read$/ })).length).toBe(1);
 
