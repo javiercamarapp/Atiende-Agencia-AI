@@ -25,7 +25,7 @@ describe("porcentajePropinaDichoPorElCliente", () => {
 });
 
 describe("propina_porcentaje hostil en crear_pedido", () => {
-  it.each([-5, 1000, "abc", 1e9, 31, 0])("%s se rechaza con mensaje claro", async (v) => {
+  it.each([-5, 1000, "abc", 1e9, 31, "diez", Number.NaN, "-3%", "150%"])("%s se rechaza con mensaje claro", async (v) => {
     const f = buildRestaurantFixture();
     const ctx = { organizationId: f.organizationId, channel: "whatsapp" as const, phone: "9991234567" };
     await expect(

@@ -67,7 +67,7 @@ export type {
 } from "./types.ts";
 export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
 
-export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
+export { OrderConflictError, OrderValidationError, PromotionError, esGuardaSqlDeNegocioDePedido, WhatsappNumberInUseError } from "./errors.ts";
 
 export {
   validarHorario,

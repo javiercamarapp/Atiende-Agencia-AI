@@ -10,7 +10,7 @@ import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
-import { matchesHighRiskOtherThan, pideUnaPersona } from "./guards.ts";
+import { matchesHighRiskOtherThan, pideUnaPersona, retractaPeticionDePersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
@@ -18,7 +18,7 @@ import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { PM_COPY } from "./perfil-pm.ts";
 import { TEXTO_BOTONES_APARTE, cabeEnMensajeInteractivo, construirBotonesDeConfirmacion, contenidoDeMensajeConToque, dentroDeVentanaDeServicio } from "./botones-confirmacion.ts";
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
-import { claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
+import { CLASE_FALLA_DEL_SISTEMA, claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
 // dijo a un cliente de prueba "no procesamos ni guardamos los datos que
@@ -268,7 +268,8 @@ export async function handleInboundWhatsAppMessage(
         if (turn.pedirUbicacion) await encolarSolicitudUbicacion(repo, organizationId, `inbound-ubicacion:${messageId}`, phone, phoneNumberId);
       }
 
-      await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+      // QA-PM-R6-whatsapp-02: un turno que termino en «problema tecnico» (LLM sin credito, proveedor caido) responde y queda procesado, pero cuenta como FALLO para la alerta de racha.
+      await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", turn.escalacion?.motivo === "falla_sistema" ? CLASE_FALLA_DEL_SISTEMA : null);
       return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate && abreTomaDeHandoff(turn.escalacion.motivo, messagesAfterUser)) };
     });
   } catch (err) {
@@ -364,7 +365,12 @@ export function abreTomaDeHandoff(motivo: string, mensajes: readonly Conversatio
   if (MOTIVOS_QUE_NO_ABREN_TOMA.has(motivo)) return false;
   if (motivo !== "cliente_lo_pide") return true;
   // El ultimo mensaje del cliente que traia la peticion, aunque el agente haya intercalado turnos (pregunto el nombre y escalo en el siguiente).
-  return mensajes.filter((m) => m.role === "user").slice(-6).some((m) => pideUnaPersona(m.content));
+  // Menor de #522: la ventana era de 6 mensajes y una peticion vieja (ya atendida, o retirada despues con "mejor sigo contigo") abria la toma por una escalacion posterior; ahora son los
+  // ultimos 4 mensajes del cliente y una retractacion POSTERIOR a la peticion la cancela.
+  const delCliente = mensajes.filter((m) => m.role === "user").slice(-4);
+  const idx = delCliente.map((m) => pideUnaPersona(m.content)).lastIndexOf(true);
+  if (idx === -1) return false;
+  return !delCliente.slice(idx + 1).some((m) => retractaPeticionDePersona(m.content));
 }
 
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
@@ -501,6 +507,7 @@ export async function responderTrasEspera(
   const leerHistorial = () => repo.whatsappAppendTurn(organizationId, phone, [], null, null, null);
   let owner = messageId;
   let ultimo: InboundMessageOutcome = { ok: true, retryable: false };
+  let falloDelSistema = false;
   let respondidos = -1; // se fija con el primer historial leido
   try {
     for (let pasada = 1; pasada <= MAX_PASADAS_RAFAGA; pasada++) {
@@ -509,7 +516,7 @@ export async function responderTrasEspera(
       const { pendientes, vista: historial, totalUsuarios } = analizarHistorial(historialCrudo, respondidos);
       if (pendientes.length === 0) {
         // Nada que contestar (lo hizo una pasada anterior): se suelta el turno y se revisa una vez mas por si llego un mensaje justo ahora.
-        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
+        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", falloDelSistema ? CLASE_FALLA_DEL_SISTEMA : null);
         if (analizarHistorial(await leerHistorial(), respondidos).pendientes.length === 0) return ultimo;
         owner = `${messageId}:p${pasada + 1}`;
         if (!(await repo.claimWhatsAppConversation(organizationId, phoneHash, owner, LEASE_RAFAGA_SEGUNDOS))) return ultimo; // otro mensaje tomo el turno: lo contestara
@@ -558,6 +565,7 @@ export async function responderTrasEspera(
                 messageId,
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
+        if (turn.escalacion?.motivo === "falla_sistema") falloDelSistema = true;
         let reply = turn.reply;
         if (privacy) {
           const config = await privacy.getPrivacyConfig(organizationId);
@@ -582,7 +590,7 @@ export async function responderTrasEspera(
       // Con una toma de handoff abierta el agente calla: lo pendiente es de la persona que atiende, no se repite el intento.
       if (turnoDePasada.silencio) break;
     }
-    await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
+    await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", falloDelSistema ? CLASE_FALLA_DEL_SISTEMA : null);
     return ultimo;
   } catch (err) {
     const errorClass = claseErrorTurno(err);

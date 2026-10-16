@@ -5,7 +5,7 @@
 // Cada boton llama al endpoint real (idempotente: un doble clic no repite ningun efecto) y maneja carga, error y vacio. Nunca se autoaprueba: sin
 // respuesta el sistema solo escala el aviso. El dinero (devolucion) solo se registra, nunca se ejecuta.
 import { useState } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, NativeSelect, StatusBadge, formatMoney, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, Selector, StatusBadge, formatMoney, notify } from "@atiende/ui";
 import { Clock } from "lucide-react";
 import { SOLICITUD_TIPO_ETIQUETAS, mensajeResultadoSolicitud, minutosEsperando, resolverSolicitud } from "../lib/autopiloto-client.ts";
 import type { MotivoCancelacion, ResolverEntrada, Solicitud, SolicitudesRespuesta } from "../lib/autopiloto-client.ts";
@@ -233,13 +233,13 @@ export function AprobacionesPanel({
         <div className="grid gap-3">
           {errorDialogo && <Callout tone="danger">{errorDialogo}</Callout>}
           <FormField label="Descuento">
-            <NativeSelect value={String(pct)} onChange={(e) => setPct(Number(e.target.value))}>
+            <Selector value={String(pct)} onValueChange={(v) => setPct(Number(v))}>
               {opcionesPct.map((n) => (
                 <option key={n} value={n}>
                   {n} %
                 </option>
               ))}
-            </NativeSelect>
+            </Selector>
           </FormField>
         </div>
       </FormDialog>

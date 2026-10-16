@@ -66,7 +66,7 @@ Vercel/Supabase, todos declaran `permissions: contents: read` (con las dos excep
   Javier, nunca desde CI).
 - `e2e.yml` — pruebas de navegador (Playwright, solo chromium con cache) de `apps/web` contra el build estatico
   y una API simulada en loopback (`apps/web/e2e/mock-api`): `pull_request` (con `paths`) y `workflow_dispatch`,
-  sin secretos, `permissions: contents: read`, `timeout-minutes: 25`, reporte y trazas como artefacto 7 dias.
+  sin secretos, `permissions: contents: read`, `timeout-minutes: 40`, reporte y trazas como artefacto 7 dias.
   **No es un check requerido y NO entra al agregador `ci-checks`**; informativo hasta medir el flake. Guia:
   `docs/QA-E2E.md`.
 

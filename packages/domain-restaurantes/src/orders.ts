@@ -17,8 +17,8 @@ import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
-import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
-import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
+import { applyPromotionToOrder, normalizePromotionCode, renglonesConPromocionAplicada, selectAutomaticPromotion } from "./promotions.ts";
+import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN, aplicarRestas, variantesMasPermisivas } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
@@ -67,11 +67,30 @@ export function assertDobleSalsaAplica(products: readonly ProductoEncontrado[], 
  * buscarProductosCore, incluyendo el fix real del 4-sep-2026 (match contra name,
  * description, categoría Y search_keywords, no solo name). */
 export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string }): Promise<ProductoEncontrado[]> {
-  const tokens = tokenizeForProductSearch(args.query);
+  let tokens = tokenizeForProductSearch(args.query);
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
   const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
   let encontrados = buscar(tokens);
-  let ambiguo = false;
+  // R8 (T7-032/045/064/031/005/061): "torta de bistek sin queso", "frijol sin tostada", "pastor planchado", "flautas de pollo doradas", "1/4 de pollo bien picada" daban lista vacia
+  // porque "sin", "queso", "planchado"... eran palabras obligatorias del nombre, y el agente escalaba o cobraba OTRO producto. Solo si la busqueda literal no encuentra nada se prueba
+  // sin las restas "sin X", sin las notas de preparacion y con el sinonimo del menu; el precio siempre sale del producto del menu que casa.
+  let relajado = false;
+  let ambiguoPorRestas = false;
+  if (encontrados.length === 0) {
+    for (const variante of variantesMasPermisivas(tokens)) {
+      const alcanzados = catalog.filter((p) => matchesProductSearch(variante.tokens, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }, true));
+      const { productos, ambiguo: dudoso } = aplicarRestas(alcanzados, variante.restados, variante.tokens);
+      if (productos.length > 0) {
+        tokens = variante.tokens;
+        encontrados = productos;
+        relajado = true;
+        // Quitar una resta o inferir un sinonimo es una suposicion: el agente debe confirmarla con el cliente antes de cotizar (`ambiguo`).
+        ambiguoPorRestas = dudoso || variante.restados.length > 0 || variante.conSinonimo;
+        break;
+      }
+    }
+  }
+  let ambiguo = relajado && (ambiguoPorRestas || encontrados.length > 1);
   let mediaOrdenODeMedioKilo = false;
   const gramosPedidos = tokens.filter((t) => t.startsWith("peso:")).map((t) => Number(t.slice(5))).filter((n) => Number.isFinite(n) && n > 0);
   // Con varios pesos en la consulta se usa el MENOR: nunca se ofrece una presentacion mayor a alguno de ellos.
@@ -166,6 +185,32 @@ export function validarTextoHoraRecogida(valor: unknown): void {
   if (!/(Z|[+-]\d{2}:?\d{2})$/.test(valor)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
 }
 
+/** Nombres que el modelo pone cuando el cliente NO dio uno. Se comparan sin acentos, en minusculas y sin signos ni digitos finales. */
+const NOMBRES_GENERICOS = new Set([
+  "cliente", "cliente whatsapp", "cliente de whatsapp", "cliente nuevo", "cliente sin nombre", "cliente frecuente", "el cliente", "nombre del cliente", "nombre", "sin nombre",
+  "contacto de whatsapp", "contacto whatsapp", "contacto", "anonimo", "desconocido", "na", "no proporcionado", "no dio nombre", "no especifico", "no especificado", "sin especificar",
+  "pendiente", "por confirmar", "usuario", "whatsapp", "senor", "senora", "amigo", "amiga",
+]);
+/** Inyeccion real (no cualquier signo): marcado HTML, comillas con palabras SQL, comentarios SQL tras comilla, plantillas y sustitucion de shell. */
+const NOMBRE_CON_CODIGO = /[<>{}`]|\$\(|['"]\s*\)?\s*;|;\s*--|\/\*|\b(?:drop|select|insert|delete|update|union|truncate|alter)\b\s+\w*\s*\b(?:table|from|into|where|all)\b|['"]\s*(?:or|and)\s+['"\d]/i;
+
+/**
+ * Un pedido de un agente (WhatsApp o voz) solo se registra con el nombre que DIO el cliente: no vacio, con al menos una letra, que no sea un relleno generico
+ * ("Cliente", "Cliente 2", "Sin nombre") ni lleve marcado o inyeccion ("<script>", "'; DROP TABLE"). Corchetes, guiones o "=" de un nombre real ("María [oficina]") se aceptan. QA-PM-R8 A38.
+ */
+export function nombreDeClienteUtilizable(valor: unknown): boolean {
+  if (typeof valor !== "string") return false;
+  const limpio = sanitizeInlineText(valor, 160);
+  if (!/\p{L}/u.test(limpio)) return false;
+  if (NOMBRE_CON_CODIGO.test(limpio)) return false;
+  const comparable = limpio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+\d+$/, "").replace(/\s+/g, " ").trim();
+  return !NOMBRES_GENERICOS.has(comparable);
+}
+
+export const NOMBRE_NO_UTILIZABLE_MENSAJE =
+  "Falta el nombre del cliente: el que llegó está vacío, es genérico (por ejemplo «Cliente») o trae caracteres que no son de un nombre. Pregúntele UNA vez a nombre de quién va el pedido y use exactamente lo que responda; " +
+  "NO invente un nombre ni use «Cliente». No es motivo para escalar: pida el nombre, repita el resumen y cree el pedido en cuanto lo tenga.";
+
 /** Port literal de validateCreateOrderPayload — contrato único para pedidos reales
  * y simulados, sin efectos secundarios. */
 export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCreateOrderInput {
@@ -194,6 +239,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (raw.customerEmail !== undefined && raw.customerEmail !== null && raw.customerEmail.trim() !== "" && (typeof raw.customerEmail !== "string" || raw.customerEmail.trim().length > 320 || !EMAIL_RE.test(raw.customerEmail.trim()))) {
     throw new OrderValidationError("customerEmail inválido");
   }
+  if ((raw.source === "voice" || raw.source === "whatsapp") && !nombreDeClienteUtilizable(raw.customerName)) throw new OrderValidationError(NOMBRE_NO_UTILIZABLE_MENSAJE);
   const canal = normalizarCanal(raw.canal);
   if (raw.propinaPorcentaje !== undefined && (typeof raw.propinaPorcentaje !== "number" || !Number.isFinite(raw.propinaPorcentaje) || raw.propinaPorcentaje <= 0 || raw.propinaPorcentaje > 100)) {
     throw new OrderValidationError("El porcentaje de propina debe estar entre 1 y 100.");
@@ -305,6 +351,8 @@ export interface PreparedOrder {
   readonly discount: number;
   /** Lineas de la comanda con la tortilla que eligio el cliente para un kilo de carne (ese renglon no exige tortilla y la descarta). */
   readonly tortillasDeKilo: readonly string[];
+  /** D12: los renglones tal como se guardan, con las unidades regaladas por la promocion a $0 (la suma de renglones es el `total`). Sin promocion de unidades, son `orderItems`. */
+  readonly renglonesPersistidos: readonly PersistedOrderItem[];
 }
 
 /** Tolerancia (minutos) para una hora de recogida "de ahora mismo": el cliente dice "paso en 5 minutos" y el modelo la redondea hacia atras. */
@@ -508,7 +556,7 @@ export async function prepareCreateOrder(
   const payloadFinal: ValidatedCreateOrderInput =
     payload.propina === undefined && payload.propinaPorcentaje !== undefined ? { ...payload, propina: redondearACentavos((total * payload.propinaPorcentaje) / 100) } : payload;
 
-  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo };
+  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos: renglonesConPromocionAplicada(orderItems, appliedPromotion, total) };
 }
 
 /**
@@ -560,7 +608,7 @@ export async function createOrder(
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
   await options.beforePersist?.(prepared);
-  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo } = prepared;
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
@@ -590,7 +638,12 @@ export async function createOrder(
   // Destino de entrega (pin de WhatsApp o link de Maps) para el repartidor; solo a domicilio (recoger no lo usa).
   if (payload.ubicacionEntrega && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(formatUbicacionEntregaNota(payload.ubicacionEntrega));
   canalLines.push(...tortillasDeKilo);
-  if (payload.horaRecogida) canalLines.push(`Hora de recogida: ${payload.horaRecogida}.`);
+  if (payload.horaRecogida) {
+    // QA-PM-R6-voz-03: la comanda llevaba el ISO en UTC crudo («2026-10-06T19:40:10.057Z»); cocina lee la hora LOCAL de la sucursal.
+    const instante = new Date(payload.horaRecogida);
+    const zonaRecogida = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+    canalLines.push(`Hora de recogida: ${Number.isNaN(instante.getTime()) ? payload.horaRecogida : etiquetaHoraLocal(instante, zonaRecogida)}.`);
+  }
   if (payload.programadoPara) {
     const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
     canalLines.push(`Pedido programado para: ${etiquetaHoraLocal(new Date(payload.programadoPara), zona)}.`);
@@ -637,7 +690,7 @@ export async function createOrder(
       customerEmail: payload.customerEmail ?? null,
       branch: branch.name,
       total,
-      items: orderItems,
+      items: renglonesPersistidos,
       source: payload.source,
       notes: finalNotes,
       paymentMethod: payload.paymentMethod ?? null,

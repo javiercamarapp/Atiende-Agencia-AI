@@ -33,6 +33,10 @@ export const CUBETA_ALERTA_MIN = 30;
  *  Ni cuenta como turno de la ventana, ni como fallo, ni rompe ni extiende una racha. */
 export type ResultadoTurnoAgente = "ok" | "timeout" | "fallo" | "neutral";
 
+/** Clase que `inbound.ts` guarda en un turno `processed` que terminó en «problema técnico» (QA-PM-R6-whatsapp-02: LLM sin crédito o proveedor caído; el cliente sí recibió una respuesta
+ *  y el aviso `falla_sistema` al equipo, pero para la alerta de racha el turno es un FALLO). */
+export const CLASE_FALLA_DEL_SISTEMA = "FallaDelSistema";
+
 /** Clase que `inbound.ts` guarda cuando un mensaje llega con la conversacion ocupada. */
 export const CLASE_CONVERSACION_OCUPADA = "ConversationBusy";
 
@@ -193,7 +197,7 @@ export function crearLectorTurnosAgentePostgres(session: TenantDbSession): Lecto
           return rows.map((r) => ({
             organizationId: r.organization_id,
             at: r.claimed_at instanceof Date ? r.claimed_at : new Date(r.claimed_at),
-            resultado: r.status === "processed" ? "ok" : r.last_error_class === CLASE_CONVERSACION_OCUPADA ? "neutral" : esClaseTimeout(r.last_error_class) ? "timeout" : "fallo",
+            resultado: r.status === "processed" ? (r.last_error_class === CLASE_FALLA_DEL_SISTEMA ? "fallo" : "ok") : r.last_error_class === CLASE_CONVERSACION_OCUPADA ? "neutral" : esClaseTimeout(r.last_error_class) ? "timeout" : "fallo",
           }));
         },
         isRecoverable: (err) => isMigrationPendingError(err),

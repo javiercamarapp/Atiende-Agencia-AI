@@ -167,6 +167,10 @@ export interface ApiEnv {
    * 16 caracteres) tampoco se firma el token efímero de preview. Nunca se inventa un valor.
    */
   readonly geminiApiKey?: string | null;
+  /** `DEEPGRAM_API_KEY` (STT y TTS de la cascada v2). La usa el worker de voz; aqui solo alimenta el estado honesto de la escalera del panel. Opcional: nunca se inventa. */
+  readonly deepgramApiKey?: string | null;
+  /** `VOZ_CASCADA_V2_HABILITADA`: interruptor de la cascada v2 (apagado por omision); aqui solo alimenta el estado honesto del panel. */
+  readonly cascadaV2Habilitada?: boolean;
   readonly voicePreviewTokenSecret?: string | null;
   readonly llmProviders: {
     /** PROVEEDOR PRIMARIO Y UNICO POR DEFECTO: OpenRouter (`providers/openrouter.ts`). Basta la llave:
@@ -258,6 +262,8 @@ export function loadApiEnv(): ApiEnv {
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
     geminiApiKey: process.env.GEMINI_API_KEY || null,
+    deepgramApiKey: process.env.DEEPGRAM_API_KEY || null,
+    cascadaV2Habilitada: ["1", "true", "si", "sí"].includes((process.env.VOZ_CASCADA_V2_HABILITADA ?? "").trim().toLowerCase()),
     voicePreviewTokenSecret: process.env.VOICE_PREVIEW_TOKEN_SECRET || null,
     llmProviders: {
       openrouter: process.env.OPENROUTER_API_KEY

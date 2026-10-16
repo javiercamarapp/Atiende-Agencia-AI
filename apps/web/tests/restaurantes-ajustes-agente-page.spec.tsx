@@ -4,11 +4,14 @@
 // voz y saludo de la sucursal, conocimiento automatico y clonacion con estado honesto. `fetch` global mockeado por ruta REAL del contrato
 // (lib/ajustes-agente-client.ts y lib/voz-client.ts): cada control llama a un endpoint, y los 503 / base sin migrar / validacion se ven de verdad.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { AjustesAgentePage } from "../src/verticals/restaurantes/pages/AjustesAgente.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { costoPorMil, pasoDeTemperatura, temperaturaDePaso } from "../src/verticals/restaurantes/voz/formato-ajustes.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -114,7 +117,7 @@ describe("AjustesAgentePage — carga y estados honestos", () => {
   it("carga los ajustes reales: modelo predeterminado, costo estimado con supuestos, secciones y que aplica ahora y que depende del servicio de llamadas", async () => {
     montar();
     await esperar();
-    expect((q("#ajustes-modelo-whatsapp") as HTMLSelectElement).value).toBe("");
+    expect(valorDe(q("#ajustes-modelo-whatsapp"))).toBe("");
     expect(txt()).toContain("Predeterminado de la plataforma (GPT-6 Luna)");
     expect(q('[data-testid="costo-whatsapp"]')?.textContent).toMatch(/≈ US\$0\.80 por 1,000 mensajes/);
     expect(q('[data-testid="supuestos-costo"]')?.textContent).toMatch(/6,000 tokens de entrada y 400 de salida/);
@@ -146,7 +149,7 @@ describe("AjustesAgentePage — carga y estados honestos", () => {
     montar({ ajustes: { status: 200, body: vista({ disponible: false, configurados: false }) } });
     await esperar();
     expect(q('[data-testid="ajustes-sin-migrar"]')?.textContent).toMatch(/migración 055/);
-    expect((q("#ajustes-modelo-whatsapp") as HTMLSelectElement).disabled).toBe(true);
+    expect((q("#ajustes-modelo-whatsapp") as HTMLButtonElement).disabled).toBe(true);
     expect(boton("Guardar ajustes")!.disabled).toBe(true);
   });
 
@@ -167,7 +170,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
   it("elegir un modelo que admite temperatura muestra el control; guardar manda el PUT completo y confirma", async () => {
     montar();
     await esperar();
-    changeValue(q("#ajustes-modelo-whatsapp") as HTMLSelectElement, "google/gemini-2.5-flash-lite");
+    elegirValor(q("#ajustes-modelo-whatsapp"), "google/gemini-2.5-flash-lite");
     expect(q('[data-testid="costo-whatsapp"]')?.textContent).toMatch(/≈ US\$0\.76 por 1,000 mensajes/);
     expect(q('[data-testid="sin-temperatura-whatsapp"]')).toBeNull();
     click(radio("ajustes-temperatura-whatsapp", "0.4"));
@@ -187,7 +190,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
   it("cambiar a un modelo sin temperatura la reinicia a automatica (nunca manda una combinacion que el servidor rechaza)", async () => {
     montar({ ajustes: { status: 200, body: vista({}, { whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.4 }) } });
     await esperar();
-    changeValue(q("#ajustes-modelo-whatsapp") as HTMLSelectElement, "anthropic/claude-sonnet-5.5");
+    elegirValor(q("#ajustes-modelo-whatsapp"), "anthropic/claude-sonnet-5.5");
     await act(async () => {
       click(boton("Guardar ajustes")!);
       await flushMicrotasks();
@@ -202,7 +205,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
     click(radio("ajustes-ritmo", "pausado"));
     click(radio("ajustes-estilo", "calido"));
     click(radio("ajustes-temperatura-voz", "0.2"));
-    changeValue(q("#ajustes-modelo-cascada") as HTMLSelectElement, "anthropic/claude-sonnet-5.5");
+    elegirValor(q("#ajustes-modelo-cascada"), "anthropic/claude-sonnet-5.5");
     expect(q('[data-testid="costo-cascada"]')?.textContent).toMatch(/US\$29\.00 por 1,000 minutos/);
     click(q('button[role="switch"]')!);
     click(radio("ajustes-fondo-volumen", "12"));
@@ -235,7 +238,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
   it("el servidor rechaza (400): se ve el mensaje y los cambios siguen sin guardar", async () => {
     montar({ putAjustes: () => ({ status: 400, body: { error: { message: "whatsappModelo: no esta en la lista de modelos permitidos." } } }) });
     await esperar();
-    changeValue(q("#ajustes-modelo-whatsapp") as HTMLSelectElement, "google/gemini-2.5-flash-lite");
+    elegirValor(q("#ajustes-modelo-whatsapp"), "google/gemini-2.5-flash-lite");
     await act(async () => {
       click(boton("Guardar ajustes")!);
       await flushMicrotasks();

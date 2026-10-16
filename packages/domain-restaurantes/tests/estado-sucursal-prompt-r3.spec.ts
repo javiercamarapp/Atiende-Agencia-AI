@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { estadoSucursalParaPrompt } from "../src/whatsapp/llm-turn-handler.ts";
 import { PM_AGENT_NAME_POR_OMISION, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
+import { instruccionVozConReglas } from "../src/voz/perfil-voz-pm.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 async function mundo(horario: { dias: number[]; abre: string; cierra: string }[] | null) {
@@ -20,7 +21,8 @@ describe("estado de la sucursal en el prompt", () => {
     const m = await mundo(TODOS);
     const t = await estadoSucursalParaPrompt(m.f.repo, m.branch, a("2026-10-07T01:10:00-06:00"));
     expect(t).toMatch(/CERRADA ahora; abre hoy a las 12:00/);
-    expect(t).toMatch(/NO tome el pedido ni acepte una hora/);
+    expect(t).toMatch(/tome el pedido y PROGRÁMELO con programado_para/);
+    expect(t).not.toMatch(/NO tome el pedido|escale \(otro\)/);
   });
   it("11:57 (abre a las 12:00): CERRADA con la hora de apertura", async () => {
     const m = await mundo(TODOS);
@@ -46,5 +48,25 @@ describe("estado de la sucursal en el prompt", () => {
       branches: [], entryBranch: null, customer: { isNew: true }, estadoSucursalAhora: "García Lavín está CERRADA ahora; abre hoy a las 12:00.",
     });
     expect(p).toMatch(/Estado de la sucursal de este chat AHORA[^\n]*CERRADA ahora; abre hoy a las 12:00/);
+  });
+
+  // Ronda 8 (decision de Javier): cerrada = tomar y PROGRAMAR. El estado que inyecta el servidor "gana" (no lo contradiga), asi que NO puede contradecir H16.
+  it("R8: con la sucursal CERRADA, el prompt completo (WhatsApp y voz) manda programar y no contiene la prohibicion vieja", async () => {
+    const m = await mundo(TODOS);
+    const estado = await estadoSucursalParaPrompt(m.f.repo, m.branch, a("2026-10-07T01:10:00-06:00"));
+    const base = { businessName: "Los Taquitos de PM", agentName: PM_AGENT_NAME_POR_OMISION, deliveryTimeText: "de 40 a 50 minutos", saludo: "Buenas noches", branches: [], entryBranch: null, customer: { isNew: true } as const, estadoSucursalAhora: estado };
+    for (const canal of ["whatsapp", "voz"] as const) {
+      const p = buildPmSystemPrompt({ ...base, canal });
+      expect(p).toMatch(/CERRADA ahora; abre hoy a las 12:00/);
+      expect(p).toMatch(/PROGRÁMELO con programado_para/);
+      expect(p).not.toMatch(/NO tome el pedido ni acepte|no tome el pedido ni|no programe|si insiste, escale \(otro\)/);
+    }
+  });
+  it("R8 voz: con un comportamiento guardado VIEJO ('no programe'), el bloque de reglas vigentes que se anexa al final trae la regla nueva", () => {
+    const viejo = "H16. Horario: solo los datos. Cerrada: no programe; si insiste, escale (otro).";
+    const instruccion = instruccionVozConReglas({ comportamiento: viejo });
+    const bloque = instruccion.slice(instruccion.indexOf("# REGLAS VIGENTES DE LA PLATAFORMA"));
+    expect(bloque).toMatch(/Cerrada: programe el pedido \(programado_para\)/);
+    expect(bloque).not.toMatch(/no programe|Otro día: escale/);
   });
 });

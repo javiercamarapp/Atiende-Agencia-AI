@@ -11,9 +11,14 @@ import {
   esEstiloHabla,
   esRitmoHabla,
   esTemperaturaVoz,
+  PRESET_AMBIENTE_POR_DEFECTO,
+  TECLEO_VOLUMEN_MAX,
+  TECLEO_VOLUMEN_POR_DEFECTO,
+  esPresetAmbiente,
   esVolumenFondo,
+  esVolumenTecleo,
 } from "@atiende/voice-core";
-import type { EstiloHabla, RitmoHabla } from "@atiende/voice-core";
+import type { EstiloHabla, PresetAmbiente, RitmoHabla } from "@atiende/voice-core";
 import { MODELO_PREDETERMINADO_ID, esModeloAgentePermitido, modeloAgentePorId } from "./modelos.ts";
 
 export interface AjustesAgente {
@@ -31,6 +36,14 @@ export interface AjustesAgente {
   readonly vozFondoActivo: boolean;
   /** Volumen del fondo, entero 0..FONDO_VOLUMEN_MAX (% de plena escala). */
   readonly vozFondoVolumen: number;
+  /** Preset del ambiente ('cocina-taqueria', 'sala-tranquila', 'calle-ocupada'). Solo suena si el fondo esta activo. */
+  readonly vozFondoPreset: PresetAmbiente;
+  /** Sonido de tecleo mientras el agente espera una herramienta. Apagado por omision. */
+  readonly vozTecleoActivo: boolean;
+  /** Volumen del tecleo, entero 0..TECLEO_VOLUMEN_MAX (% de plena escala). */
+  readonly vozTecleoVolumen: number;
+  /** Anexa a la instruccion el bloque de naturalidad y español de Mexico del preset 'restaurante-humano'. Apagado por omision. */
+  readonly vozHumanizar: boolean;
 }
 
 export const AJUSTES_AGENTE_POR_DEFECTO: AjustesAgente = Object.freeze({
@@ -42,6 +55,10 @@ export const AJUSTES_AGENTE_POR_DEFECTO: AjustesAgente = Object.freeze({
   vozEstilo: AJUSTES_HABLA_POR_DEFECTO.estilo,
   vozFondoActivo: false,
   vozFondoVolumen: FONDO_VOLUMEN_POR_DEFECTO,
+  vozFondoPreset: PRESET_AMBIENTE_POR_DEFECTO,
+  vozTecleoActivo: false,
+  vozTecleoVolumen: TECLEO_VOLUMEN_POR_DEFECTO,
+  vozHumanizar: false,
 });
 
 /** Estado honesto de la clonacion de voz: no se construye. La pantalla lo muestra tal cual. */
@@ -79,6 +96,11 @@ export interface AjustesEntrada {
   readonly vozEstilo?: unknown;
   readonly vozFondoActivo?: unknown;
   readonly vozFondoVolumen?: unknown;
+  /** Opcionales: un cliente desactualizado que no los conoce NO borra por omision lo guardado (se conservan los vigentes). */
+  readonly vozFondoPreset?: unknown;
+  readonly vozTecleoActivo?: unknown;
+  readonly vozTecleoVolumen?: unknown;
+  readonly vozHumanizar?: unknown;
 }
 
 function nulable<T>(v: unknown, valido: (x: unknown) => x is T, mensaje: string): T | null {
@@ -94,7 +116,7 @@ function campoRequerido(raw: AjustesEntrada, campo: keyof AjustesEntrada): unkno
 
 /** El PUT reemplaza TODOS los ajustes: cada campo es obligatorio (null = "usar el de la plataforma"). Valida la lista permitida y que la temperatura solo se
  * pida a un modelo que la admite. */
-export function validarAjustesAgente(raw: AjustesEntrada): AjustesAgente {
+export function validarAjustesAgente(raw: AjustesEntrada, vigentes: AjustesAgente = AJUSTES_AGENTE_POR_DEFECTO): AjustesAgente {
   const whatsappModelo = nulable(campoRequerido(raw, "whatsappModelo"), esModeloAgentePermitido, "whatsappModelo: no esta en la lista de modelos permitidos.");
   const whatsappTemperatura = nulable(campoRequerido(raw, "whatsappTemperatura"), esTemperaturaVoz, `whatsappTemperatura: un numero entre ${TEMPERATURA_VOZ_MIN} y ${TEMPERATURA_VOZ_MAX}.`);
   const vozModeloCascada = nulable(campoRequerido(raw, "vozModeloCascada"), esModeloAgentePermitido, "vozModeloCascada: no esta en la lista de modelos permitidos.");
@@ -108,11 +130,20 @@ export function validarAjustesAgente(raw: AjustesEntrada): AjustesAgente {
   const vozFondoVolumen = campoRequerido(raw, "vozFondoVolumen");
   if (!esVolumenFondo(vozFondoVolumen)) throw new AjustesInvalidosError(`vozFondoVolumen: un entero entre 0 y ${FONDO_VOLUMEN_MAX}.`);
 
+  const vozFondoPreset = raw.vozFondoPreset === undefined ? vigentes.vozFondoPreset : raw.vozFondoPreset;
+  if (!esPresetAmbiente(vozFondoPreset)) throw new AjustesInvalidosError("vozFondoPreset: cocina-taqueria, sala-tranquila o calle-ocupada.");
+  const vozTecleoActivo = raw.vozTecleoActivo === undefined ? vigentes.vozTecleoActivo : raw.vozTecleoActivo;
+  if (typeof vozTecleoActivo !== "boolean") throw new AjustesInvalidosError("vozTecleoActivo: true o false.");
+  const vozTecleoVolumen = raw.vozTecleoVolumen === undefined ? vigentes.vozTecleoVolumen : raw.vozTecleoVolumen;
+  if (!esVolumenTecleo(vozTecleoVolumen)) throw new AjustesInvalidosError(`vozTecleoVolumen: un entero entre 0 y ${TECLEO_VOLUMEN_MAX}.`);
+  const vozHumanizar = raw.vozHumanizar === undefined ? vigentes.vozHumanizar : raw.vozHumanizar;
+  if (typeof vozHumanizar !== "boolean") throw new AjustesInvalidosError("vozHumanizar: true o false.");
+
   const efectivoWa = modeloAgentePorId(whatsappModelo ?? MODELO_PREDETERMINADO_ID);
   if (whatsappTemperatura !== null && efectivoWa && !efectivoWa.aceptaTemperatura) {
     throw new AjustesInvalidosError(`whatsappTemperatura: ${efectivoWa.etiqueta} no admite temperatura; elige otro modelo o deja la temperatura en automatica.`);
   }
-  return { whatsappModelo, whatsappTemperatura, vozModeloCascada, vozTemperatura, vozRitmo, vozEstilo, vozFondoActivo, vozFondoVolumen };
+  return { whatsappModelo, whatsappTemperatura, vozModeloCascada, vozTemperatura, vozRitmo, vozEstilo, vozFondoActivo, vozFondoVolumen, vozFondoPreset, vozTecleoActivo, vozTecleoVolumen, vozHumanizar };
 }
 
 /** Temperatura que el turno de WhatsApp manda al gateway: la elegida si el modelo la admite; si no, 0 (como siempre). */
@@ -128,7 +159,10 @@ export interface AjustesDeLlamada {
   readonly temperatura: number | null;
   readonly ritmo: RitmoHabla;
   readonly estilo: EstiloHabla;
-  readonly fondo: { readonly activo: boolean; readonly volumen: number };
+  readonly fondo: { readonly activo: boolean; readonly volumen: number; readonly preset: PresetAmbiente };
+  /** Tecleo mientras el agente espera una herramienta. */
+  readonly tecleo: { readonly activo: boolean; readonly volumen: number };
+  readonly humanizar: boolean;
 }
 
 export function ajustesDeLlamada(ajustes: AjustesAgente): AjustesDeLlamada {
@@ -137,6 +171,8 @@ export function ajustesDeLlamada(ajustes: AjustesAgente): AjustesDeLlamada {
     temperatura: ajustes.vozTemperatura,
     ritmo: ajustes.vozRitmo,
     estilo: ajustes.vozEstilo,
-    fondo: { activo: ajustes.vozFondoActivo && ajustes.vozFondoVolumen > 0, volumen: ajustes.vozFondoActivo ? ajustes.vozFondoVolumen : 0 },
+    fondo: { activo: ajustes.vozFondoActivo && ajustes.vozFondoVolumen > 0, volumen: ajustes.vozFondoActivo ? ajustes.vozFondoVolumen : 0, preset: ajustes.vozFondoPreset },
+    tecleo: { activo: ajustes.vozTecleoActivo && ajustes.vozTecleoVolumen > 0, volumen: ajustes.vozTecleoActivo ? ajustes.vozTecleoVolumen : 0 },
+    humanizar: ajustes.vozHumanizar,
   };
 }

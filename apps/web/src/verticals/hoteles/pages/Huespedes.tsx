@@ -3,8 +3,7 @@
 // reservas ya ve al crear una reserva; el detalle (historial, notas, consentimientos) esta en la ficha.
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { UserRound } from "lucide-react";
-import { Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer } from "@atiende/ui";
+import { Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, PageHeader } from "@atiende/ui";
 import { HUESPED_CRM_ROLES, buscarHuespedes } from "../lib/huespedes-client.ts";
 import type { GuestOption } from "../lib/huespedes-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
@@ -44,16 +43,10 @@ export function HuespedesPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
 
   return (
     <PageContainer padding="none" className="gap-4">
-      <header className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
-          <UserRound className="size-5 text-muted-foreground" strokeWidth={1.75} />
-          Huéspedes
-        </h1>
-        <label className="text-xs text-muted-foreground flex flex-col gap-1 w-full sm:w-72">
-          Buscar por nombre, correo o teléfono
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ana Torres" className="h-11" />
-        </label>
-      </header>
+      <PageHeader titulo="Huéspedes" descripcion="Catálogo de huéspedes de la propiedad y acceso a su ficha." />
+      <FormField label="Buscar por nombre, correo o teléfono" className="w-full sm:w-72">
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ana Torres" />
+      </FormField>
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load(q)} />}
       {!huespedes && !error && <EstadoCargando etiqueta="Cargando huéspedes…" />}

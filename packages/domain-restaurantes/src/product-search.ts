@@ -126,9 +126,34 @@ export function singularizar(palabra: string): string {
   return palabra.slice(0, -1);
 }
 
+/** Cortesias de cierre ("por favor", "gracias"): nunca son parte del nombre de un platillo, pero como token obligatorio vaciaban la busqueda ("nachos sin pastor, por favor"). */
+const CORTESIAS = /\b(?:por\s*favor|porfavor|porfa|porfis|xfa|xfis|pls|plis|please|mil\s+gracias|muchas\s+gracias|graciass+|gracias|grax|jaja+|jeje+)\b/g;
+/** Unidades que NO convierten al numero que las precede en una cantidad ("600 ml", "2 litros"). */
+const UNIDADES_TRAS_NUMERO = new Set(["ml", "l", "lt", "lts", "litro", "litros", "g", "gr", "kg", "kilo", "kilos", "gramos", "oz", "pesos", "porciento"]);
+
+/**
+ * Puntuacion pegada a las palabras ("pastor.", "pastor!", "pastor?", "pastor...", "pastor)", "pastor/queso", "pastor," ...) se vuelve espacio ANTES de tokenizar, para que
+ * el token restado de un "sin X" sea la palabra limpia («pastor») y no «pastor.». Se conservan los decimales ("1.5", "0.0", ".250") y las fracciones ("1/2", "1/4").
+ */
+export function limpiarPuntuacionDeConsulta(textoSinAcentos: string): string {
+  return textoSinAcentos
+    // «s/» (o «s /») pegado a una palabra es la abreviatura de WhatsApp de «sin»: se expande ANTES de partir el slash, o «s/pastor» quedaba «s pastor» y la resta se perdia.
+    .replace(/(?<![a-z0-9])s\s?\/\s*(?=[a-z])/g, "sin ")
+    // Emojis y simbolos pictograficos no son parte del nombre de un platillo.
+    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]|\u{FE0F}|\u{200D}/gu, " ")
+    .replace(/[¡!¿?;:"'`´“”‘’«»()[\]{}*_~#]/g, " ")
+    .replace(/[.,](?!\d)/g, " ")
+    // "sin pastor/queso" = sin pastor NI queso; en cualquier otro lugar "pastor/queso" son dos palabras sueltas.
+    .replace(/\bsin\s+[a-z]+(?:\/[a-z]+)+/g, (m) => m.replace(/\//g, " ni "))
+    .replace(/(?<=[a-z])\/|\/(?=[a-z])/g, " ")
+    .replace(CORTESIAS, " ");
+}
+
 export function tokenizeForProductSearch(query: string): string[] {
   const normalizada = normalizarPesosEnConsulta(
-    normalizarUnidadesDeKilo(sinAcentos(query)).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero\s+alcohol\b/g, "0.0"),
+    // La coma (no decimal) se vuelve el separador "|" ANTES de limpiar la puntuacion: si se borrara, "un kilo, 250 de pastor" llegaria al parser de peso
+    // como "un kilo 250 de pastor" (1250 g) y la coma ya no separaria las dos cantidades. El "|" lo ignora el filtro de tokens de 1 caracter.
+    normalizarUnidadesDeKilo(limpiarPuntuacionDeConsulta(sinAcentos(query).replace(/,(?!\d)/g, " | "))).replace(/\bcero\s+punto\s+cero\b|\bcero\s+cero\b|\b0[.,]0\b|\bcero\s+alcohol\b/g, "0.0"),
   )
     .replace(FRASE_SIN_ALCOHOL, " sinalcohol ")
     // "cerveza con alcohol": "alcohol" no es parte del nombre de ningun producto pedido y casaria con los "sin Alcohol" (el contrario de lo pedido).
@@ -147,6 +172,9 @@ export function tokenizeForProductSearch(query: string): string[] {
     .split(/\s+/)
     .map((t) => (conSinAlcohol && /^cervezas?$/.test(t) ? "cerveza" : conSinAlcohol && /^coctel(?:es)?$/.test(t) ? "cocktail" : t))
     .filter((t) => t.length > 1 && (t === "cerveza" ? conSinAlcohol : t === "cocktail" || !STOPWORDS_BUSQUEDA.has(t)));
+  // Cantidad numerica de 2 digitos (10-99) al inicio ("12 nachos sin pastor", "10 tacos de pastor"): igual que "dos" o un digito, es la cantidad y no parte del nombre. Los de 3 digitos (100, 250, 500, 750...) se dejan: son gramos del menu.
+  // Solo si va primero, la sigue una palabra del platillo (no una unidad como "600 ml") y no es el unico contenido.
+  if (raw.length > 1 && /^[1-9]\d$/.test(raw[0]!) && !/^peso:|^\d/.test(raw[1]!) && !UNIDADES_TRAS_NUMERO.has(raw[1]!)) raw.shift();
   // "una cerveza", "dos cervezas": todas las palabras eran articulo/cantidad/categoria y la busqueda quedaba con la frase entera (vacia). La categoria
   // "cerveza" SI identifica lo pedido (casa con la categoria Cervezas), asi que se conserva cuando es lo unico que dice el cliente.
   if (raw.length === 0 && /\bcervezas?\b/.test(normalizada)) raw.push("cerveza");
@@ -168,7 +196,120 @@ export function tokenizeForProductSearch(query: string): string[] {
     const singular = singularizar(t);
     tokens.push(ALIAS_DE_ESCRITURA[singular] ?? singular);
   }
+  // T7-060 (ronda 5): «¿cuánto cuesta el kilo de carne al pastor?» no encontraba «Pastor — 1 kg» porque «carne» es un genérico que ningún platillo lleva en su nombre y todos los tokens
+  // son obligatorios (el agente terminó diciendo que no hallaba el precio). «carne» solo se descarta si la consulta nombra algo más que el peso; sola («carne», «kilo de carne») se conserva.
+  const sinGenerico = tokens.filter((t) => t !== "carne");
+  if (sinGenerico.length < tokens.length && sinGenerico.some((t) => !t.startsWith("peso:"))) return sinGenerico;
   return tokens.length > 0 ? tokens : [sinAcentos(query)];
+}
+
+/** Palabras de PREPARACION o nota que el cliente pega al platillo ("flautas doradas", "pastor planchado", "pollo bien picada"): no son parte del nombre de ningun
+ * producto. Solo se descartan en el segundo intento de la busqueda (ver `variantesMasPermisivas`), nunca de entrada: "Ceiba Dorada Premium" si las lleva. */
+const NOTAS_DE_PREPARACION = new Set(["dorado", "dorada", "doradito", "doradita", "planchado", "planchada", "picado", "picada", "bien"]);
+
+/** Sinonimos de UNA palabra que se prueban solo cuando la busqueda literal no encuentra nada: "pollo" es la "pechuga" del menu ("flauta de pollo" = "Flauta de
+ * Pechuga") y "empanizada" es el alias "empanizado" de los Crujientes. Nunca se mapea a un platillo distinto (pastor/bistec) ni a algo que el menu no tiene (BBQ). */
+const SINONIMOS_SI_NO_HAY_RESULTADO: Readonly<Record<string, string>> = { pollo: "pechuga", empanizada: "empanizado" };
+
+/** «sin X» donde X DEFINE otro producto del menu (Coca-Cola sin Azucar, Limonada con Soda, el agua con gas): no es un ajuste que se pueda ignorar. Si la busqueda literal no
+ * lo encuentra (agotado), la respuesta es vacia ("no lo tenemos"): relajarlo cobraria el CONTRARIO de lo pedido. */
+const RESTAS_QUE_CAMBIAN_EL_PRODUCTO = new Set(["azucar", "gluten", "lactosa", "cafeina", "soda", "gas", "alcohol"]);
+
+const esContenido = (t: string) => !t.startsWith("peso:") && t !== SIN_ALCOHOL && t !== ORDEN_COMPLETA && t !== "1/2" && t !== "sin" && t !== "ni";
+
+/** Quita las restas "sin X" ("sin queso", "sin queso ni cebolla"; el tokenizador ya elimino los articulos) y devuelve tambien las palabras restadas. */
+function quitarRestas(tokens: readonly string[]): { readonly tokens: string[]; readonly restados: string[] } {
+  const salida: string[] = [];
+  const restados: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== "sin") {
+      salida.push(tokens[i]!);
+      continue;
+    }
+    i++;
+    // Defensa en profundidad: aunque el tokenizador ya quita la puntuacion, el token restado se compara por `includes` contra el nombre, asi que va limpio.
+    const limpio = (t: string) => t.replace(/[^a-z0-9]/g, "");
+    if (tokens[i] !== undefined && limpio(tokens[i]!)) restados.push(limpio(tokens[i]!));
+    while (tokens[i + 1] === "ni" && tokens[i + 2] !== undefined) {
+      if (limpio(tokens[i + 2]!)) restados.push(limpio(tokens[i + 2]!));
+      i += 2;
+    }
+  }
+  return { tokens: salida, restados };
+}
+
+/** Una consulta alternativa: los `tokens` a buscar y las palabras `restados` ("sin X") que el cliente quito del platillo (vacio si no hubo restas). */
+export interface VarianteDeBusqueda {
+  readonly tokens: string[];
+  readonly restados: string[];
+  /** true si algun token se cambio por su sinonimo del menu (pollo -> pechuga): es una INFERENCIA, el agente debe confirmarla. */
+  readonly conSinonimo: boolean;
+}
+
+/**
+ * Consultas alternativas, de la mas conservadora a la mas permisiva, para cuando la busqueda literal (AND de todos los tokens) no encuentra nada: sin las restas
+ * "sin X", sin las notas de preparacion y/o con el sinonimo del menu. Una variante siempre conserva al menos una palabra de producto (nunca se busca solo el peso ni
+ * el marcador), asi que "sin queso" o "sushi sin queso" no inventan un producto. Una resta que define otro producto (sin azucar, sin soda, sin gas...) nunca se relaja.
+ * Quien la use prueba las variantes EN ORDEN con `matchesProductSearch(..., true)` y `aplicarRestas`, y se queda con la primera que encuentra algo.
+ */
+export function variantesMasPermisivas(tokens: unknown): VarianteDeBusqueda[] {
+  if (!Array.isArray(tokens) || !tokens.every((t) => typeof t === "string")) return [];
+  const entrada = tokens as string[];
+  const { tokens: sinRestas, restados } = quitarRestas(entrada);
+  const relajaRestas = !restados.some((r) => RESTAS_QUE_CAMBIAN_EL_PRODUCTO.has(r));
+  const sinNotas = (ts: readonly string[]) => ts.filter((t) => !NOTAS_DE_PREPARACION.has(t));
+  const conSinonimos = (ts: readonly string[]) => ts.map((t) => SINONIMOS_SI_NO_HAY_RESULTADO[t] ?? t);
+  // [restas, notas, sinonimos], de menos a mas cambios a la consulta.
+  const combinaciones: ReadonlyArray<readonly [boolean, boolean, boolean]> = [
+    [true, false, false], [false, true, false], [true, true, false], [false, false, true], [true, false, true], [false, true, true], [true, true, true],
+  ];
+  const vistas = new Set<string>([entrada.join(" ")]);
+  const salida: VarianteDeBusqueda[] = [];
+  for (const [r, n, y] of combinaciones) {
+    if (r && !relajaRestas) continue;
+    let ts: string[] = r ? sinRestas : entrada;
+    if (n) ts = sinNotas(ts);
+    if (y) ts = conSinonimos(ts);
+    const clave = ts.join(" ");
+    if (vistas.has(clave) || !ts.some(esContenido)) continue;
+    vistas.add(clave);
+    salida.push({ tokens: ts, restados: r ? restados : [], conSinonimo: y });
+  }
+  return salida;
+}
+
+/** Raiz tosca para comparar «frijol/frijoles/frijole», «taco/tacos»: solo sirve para igualar conjuntos de palabras, no para buscar. */
+const raiz = (w: string) => w.replace(/(?:es|s|e)$/, "");
+
+/**
+ * Aplica las restas «sin X» a los productos que hallo una variante relajada. La resta es un AJUSTE al platillo, asi que NUNCA se devuelve un producto que lleva X en su
+ * nombre ("Frijoles Charros con Queso", "Encebollado") ni una version «sin ...» del menu (Coca-Cola sin Azucar para «coca sin hielo»): serian el contrario. Unica
+ * excepcion: el producto cuyo nombre SIN la palabra X es exactamente lo pedido y no hay otra forma de pedirlo ("frijol sin tostada" = «Frijol con Tostada» menos la
+ * tostada, mientras los Frijoles Charros son otro platillo; solo cuando el platillo es UNA palabra «con X», para que «frijoles charros sin queso» no cobre «con Queso»); se devuelve solo y marcado `ambiguo` para que el agente confirme. Si no queda nada, vacio.
+ */
+export function aplicarRestas<T extends { readonly name: string }>(
+  candidatos: readonly T[],
+  restados: readonly string[],
+  tokens: readonly string[],
+): { readonly productos: T[]; readonly ambiguo: boolean } {
+  if (restados.length === 0) return { productos: [...candidatos], ambiguo: false };
+  const consulta = new Set(tokens.filter(esContenido).map(raiz));
+  const info = candidatos.map((p) => {
+    const nombre = sinAcentos(p.name);
+    // Versiones «sin ...» / cero / light / 0.0 del menu: otro producto (Sprite Cero, Heineken 0.0), nunca lo que el cliente pidio con una resta ajena a ellas.
+    const conSin = /\bsin\b/.test(nombre) || (!tokens.some((t) => /^(?:cero|zero|light)$/.test(t)) && (/\b(?:cero|zero|light)\b/.test(nombre) || /(?<![\d.])0[.,]0(?!\d)/.test(nombre)));
+    const conX = restados.some((x) => nombre.includes(x));
+    // El platillo es «<palabra> con X» (Frijol con Tostada): X es un acompanante que se quita. «Nachos de Pastor» NO lo es: ahi X es el platillo mismo.
+    const conConX = restados.some((x) => new RegExp(`\\bcon\\s+${x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(nombre));
+    const nucleo = new Set([...palabrasNucleo(p.name)].filter((w) => !restados.includes(w)).map(raiz));
+    const equivalente = nucleo.size === consulta.size && [...nucleo].every((w) => consulta.has(w));
+    return { p, conSin, conX, conConX, equivalente };
+  });
+  const limpios = info.filter((i) => !i.conX && !i.conSin);
+  if (limpios.some((i) => i.equivalente)) return { productos: limpios.map((i) => i.p), ambiguo: false };
+  const exentos = info.filter((i) => i.conConX && !i.conSin && i.equivalente && consulta.size === 1);
+  if (exentos.length > 0) return { productos: exentos.map((i) => i.p), ambiguo: true };
+  return { productos: limpios.map((i) => i.p), ambiguo: false };
 }
 
 /** Palabras que identifican un platillo (sin "de/la", sin "(orden de 3)", sin el peso "— 500 g"): sirve para saber si un producto es una
@@ -236,8 +377,26 @@ export function ordenarPorRelevancia<T extends { readonly name: string; readonly
 export function matchesProductSearch(
   tokens: readonly string[],
   fields: { readonly name: string; readonly description: string | null; readonly categoryName: string | null; readonly searchKeywords: readonly string[] },
+  estricto = false,
 ): boolean {
+  // `estricto` (variantes relajadas de la busqueda): cada palabra debe ser PALABRA o inicio de palabra del NOMBRE o de un alias, nunca subcadena ni de la descripcion o la
+  // categoria ("mole" estaba dentro de «guacamole» y «ensalada» en la descripcion de una flauta: «pollo en mole» aparecia como una flauta). El peso y los marcadores no cambian.
+  if (estricto) {
+    const palabrasDe = (txt: string) => sinAcentos(txt).split(/[^a-z0-9.]+/).filter(Boolean);
+    const vocab = [...palabrasDe(fields.name), ...fields.searchKeywords.flatMap(palabrasDe)];
+    const pesoNombre = pesoDeProductoEnGramos(fields.name);
+    const planoNombre = sinAcentos(fields.name);
+    return tokens.every((t) => {
+      if (t === "peso:cualquiera") return pesoNombre !== null;
+      if (t.startsWith("peso:")) return pesoNombre !== null && pesoNombre === Number(t.slice(5));
+      if (t === SIN_ALCOHOL) return MENU_SIN_ALCOHOL.test(planoNombre);
+      if (t === ORDEN_COMPLETA) return !/\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(planoNombre);
+      if (t === "1/2") return /\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(planoNombre);
+      return vocab.some((w) => (t.length <= 2 ? w === t : w.startsWith(t)));
+    });
+  }
   const textoPlano = sinAcentos([fields.name, fields.description, fields.categoryName].filter(Boolean).join(" "));
+
   const alias = fields.searchKeywords.map(sinAcentos);
   // "cocacola" (junto) debe encontrar "Coca-Cola": una palabra larga tambien se compara contra el texto sin guiones ni espacios.
   const textoCompacto = textoPlano.replace(/[\s-]/g, "");
@@ -276,6 +435,25 @@ export function extraerPackSize(name: string, description: string | null): numbe
   return null;
 }
 
+/**
+ * Productos que PM vende por ORDEN con un número de piezas que el menú NO registra (flautas, alitas, crujientes). Mientras `packSize` sea null, el precio
+ * es el de la orden completa y `requested_quantity` cuenta ÓRDENES. El modelo no sabía esa unidad: tomó «4 flautas, una orden» como 4 órdenes (R10 T7-031,
+ * $2,682 en vez de $1,833). Cuando PM confirme cuántas piezas trae cada orden se carga como «(orden de N)» en el producto y este aviso deja de salir solo.
+ */
+const PRODUCTO_POR_ORDEN_SIN_PIEZAS = /\b(?:flautas?|alitas?|crujientes?)\b/i;
+
+export function unidadDeVentaSinPiezas(
+  product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
+): string | null {
+  if (product.packSize !== null) return null;
+  if (!PRODUCTO_POR_ORDEN_SIN_PIEZAS.test(`${product.name} ${product.categoryName ?? ""}`)) return null;
+  return (
+    "El precio es por ORDEN completa y el menú no registra cuántas piezas trae. requested_quantity cuenta ÓRDENES, no piezas: «una orden» = 1, «dos órdenes» = 2, " +
+    "y «4 flautas, una orden» sigue siendo 1 (NO la multipliques por las piezas que mencionó el cliente). No inventes cuántas piezas trae la orden: si el cliente la pregunta, " +
+    "dile que la cantidad exacta la confirma la sucursal. Si pide piezas sueltas sin decir cuántas órdenes, pregunta cuántas órdenes quiere antes de cotizar."
+  );
+}
+
 /** El agente debe obtener un sí claro de mayoría de edad antes de cotizar alcohol. */
 export function requiresAdultConfirmation(productName: string, categoryName: string | null | undefined): boolean {
   if (!/^(cervezas|licores y cocktails)$/i.test(categoryName ?? "")) return false;
@@ -284,6 +462,18 @@ export function requiresAdultConfirmation(productName: string, categoryName: str
 
 function comparableProductName(value: string): string {
   return value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("es-MX");
+}
+
+/**
+ * ¿El nombre pedido es el del producto, o el del producto seguido de su presentación/gramaje
+ * («Bistec de Res — 250 g»)? Exige el separador « — » o « - » justo tras el nombre completo:
+ * un nombre que apenas COMIENZA igual («Bistec de Res Premium») es OTRO producto y no coincide.
+ */
+function requestedNameMatchesProduct(productName: string, requestedName: string): boolean {
+  const product = comparableProductName(productName);
+  const requested = comparableProductName(requestedName);
+  if (requested === product) return true;
+  return requested.startsWith(`${product} — `) || requested.startsWith(`${product} - `);
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -307,14 +497,32 @@ export function resolveOrderItemsAgainstProducts<T extends { productId?: string;
     const requestedId = typeof item.productId === "string" ? item.productId.trim() : "";
     const requestedName = typeof item.productName === "string" ? item.productName.trim() : "";
     const byId = requestedId ? products.find((product) => product.id === requestedId) : undefined;
-    const byName = requestedName
-      ? products.find((product) => comparableProductName(product.name) === comparableProductName(requestedName))
-      : undefined;
+    const nombresIguales = requestedName
+      ? products.filter((product) => comparableProductName(product.name) === comparableProductName(requestedName))
+      : [];
+    // Con nombres duplicados (sin unicidad en BD) se prefiere el que coincide con el id enviado.
+    const byName = nombresIguales.find((product) => product.id === requestedId) ?? nombresIguales[0];
 
-    if (byId && requestedName && comparableProductName(byId.name) !== comparableProductName(requestedName)) {
-      throw new OrderValidationError(
-        `El identificador y el nombre del producto no coinciden: ${requestedName}. Vuelve a usar exactamente el resultado de buscar_producto.`,
-      );
+    if (byId && requestedName) {
+      const nombreExacto = comparableProductName(byId.name) === comparableProductName(requestedName);
+      // Si el nombre pedido es EXACTAMENTE el de otro producto del catálogo, jamás se tolera el prefijo:
+      // «Taco - Pastor» con el id de «Taco» cobraría el precio equivocado.
+      const esOtroProducto = !nombreExacto && byName !== undefined && byName.id !== byId.id;
+      if (!nombreExacto && (esOtroProducto || !requestedNameMatchesProduct(byId.name, requestedName))) {
+        const detalle = byName && byName.id !== byId.id
+          ? `«${requestedName}» es el producto con id ${byName.id}, pero el id enviado (${byId.id}) es de «${byId.name}».`
+          : `El id enviado (${byId.id}) es de «${byId.name}», no de «${requestedName}».`;
+        throw new OrderValidationError(
+          `El identificador y el nombre del producto no coinciden: ${detalle} Vuelve a llamar buscar_producto y copia el id y el nombre del MISMO resultado, sin combinarlos de resultados distintos.`,
+        );
+      }
+      if (!nombreExacto) {
+        // Tolerancia por prefijo: la presentación pedida no existe como producto disponible y se cobra el
+        // producto base. Se deja rastro para detectar variantes agotadas/no disponibles resueltas al base.
+        console.warn(
+          JSON.stringify({ level: "warn", event: "cotizar_presentacion_resuelta_al_base", productId: byId.id, productName: byId.name, requestedName }),
+        );
+      }
     }
     const product = byId ?? byName;
     if (!product) {

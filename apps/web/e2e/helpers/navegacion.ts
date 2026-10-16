@@ -68,7 +68,11 @@ async function abrirGrupoDe(page: Page, href: string): Promise<Locator> {
   const n = await botones.count();
   for (let i = 0; i < n; i++) {
     const boton = botones.nth(i);
-    if ((await boton.getAttribute("aria-expanded")) === "false") await boton.click();
+    if ((await boton.getAttribute("aria-expanded")) === "false") {
+      await boton.click();
+      // El grupo pinta sus enlaces despues del clic: se espera al enlace en vez de contarlo al instante (carrera con la carga).
+      if (await enlace.waitFor({ state: "attached", timeout: 1500 }).then(() => true, () => false)) return enlace;
+    }
     if ((await enlace.count()) > 0) return enlace;
   }
   throw new Error(`El Sidebar no tiene ningun enlace a ${href}`);

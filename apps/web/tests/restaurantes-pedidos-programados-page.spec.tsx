@@ -98,9 +98,11 @@ async function avanzar(ms: number): Promise<void> {
 }
 
 function abrirPestana(nombre: string): void {
-  const tab = [...rendered!.container.querySelectorAll('[role="tab"]')].find((t) => t.textContent === nombre)!;
+  // «Programados» es la pildora «Órdenes programadas» del tablero.
+  const etiqueta = nombre === "Programados" ? "Órdenes programadas" : nombre;
+  const tab = [...rendered!.container.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.trim() === etiqueta)!;
   act(() => {
-    tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    tab.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   });
 }
 
@@ -165,7 +167,8 @@ describe("pestana Programados", () => {
       boton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(fetchMock.mock.calls.some(([, i]) => i?.method === "PATCH")).toBe(false);
-    expect(document.body.textContent).toContain("¿Cancelar el pedido de Cliente p1?");
+    expect(document.body.textContent).toContain("¿Cancelar este pedido?");
+    expect(document.body.textContent).toContain("Cliente p1");
   });
 });
 
