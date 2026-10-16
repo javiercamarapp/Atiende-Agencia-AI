@@ -40,9 +40,27 @@ export type MensajeHistorial = { readonly role: string; readonly content: string
 // Normalizacion
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** Largo maximo que se analiza de un mensaje del cliente: una respuesta al resumen es corta; lo demas se recorta (acota el costo de las expresiones regulares sobre texto no confiable). */
+const MAX_MENSAJE = 600;
+
 function sinMarcadores(texto: string): string {
-  // Toques de boton: «[boton:rp1:...]» viaja pegado al titulo; el titulo es lo que cuenta.
-  return texto.replace(/\[boton:[^\]]*\]/g, " ");
+  // Toques de boton: «[boton:rp1:...]» viaja pegado al titulo; el titulo es lo que cuenta. Recorrido lineal (sin expresion regular con retroceso).
+  const t = texto.length > 4 * MAX_MENSAJE ? texto.slice(0, 4 * MAX_MENSAJE) : texto;
+  let out = "";
+  let i = 0;
+  while (i < t.length) {
+    if (t.startsWith("[boton:", i)) {
+      const fin = t.indexOf("]", i);
+      if (fin >= 0) {
+        out += " ";
+        i = fin + 1;
+        continue;
+      }
+    }
+    out += t[i];
+    i += 1;
+  }
+  return out;
 }
 
 function normalizar(texto: string): string {
@@ -52,7 +70,8 @@ function normalizar(texto: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}%$.,?!¿¡\s]/gu, " ") // emojis y simbolos fuera (los pulgares se tratan antes)
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .slice(0, MAX_MENSAJE);
 }
 
 const EMOJIS_AFIRMATIVOS: ReadonlySet<string> = new Set(["👍", "👌", "✅", "🙌", "🤝", "💯", "👏"]);
@@ -87,7 +106,14 @@ const PREGUNTA = /\?|^\W*(?:cuanto|cuando|cual|cuales|que|como|donde|quien|por\s
 const AFIRMACION = /^\W*(?:si+|sii+|sip|sep|simon|sale|dale|va|vale|ok(?:ey|ay)?|okis|listo|claro|correcto|correcta|confirmo|confirmado|confirmada|confirmalo|confirmelo|confirmar(?:\s+pedido)?|de\s+acuerdo|adelante|perfecto|asi\s+es|asi\s+esta\s+bien|esta\s+bien|esta\s+correcto|todo\s+bien|todo\s+correcto|andale|hazlo|procede|proceda|exacto|eso\s+es|de\s+una|va\s+que\s+va|jalo|cierto|asi\s+quedo|bien)\b/;
 
 /** Rechazo corto y suelto («no», «nop», «nel», «ya no», «mejor no», «claro que no», «no no», con cortesia final). Nunca confirma. */
-const RECHAZO_SUELTO = /^\W*(?:(?:no+|nop|nope|nel|nah|nanai|nanay|negativo)(?:\s*,?\s*(?:no+|nop|nope|nel))*|(?:ya\s+no(?:\s+(?:quiero|lo\s+quiero))?|olvidalo|olvida|mejor\s+no|para\s+nada|claro\s+que\s+no|ni\s+madres|de\s+ninguna\s+manera)(?:\s*,?\s*(?:gracias|por\s+favor|porfa|porfis))?)\W*$/;
+const NEGACIONES_SUELTAS: ReadonlySet<string> = new Set(["nop", "nope", "nel", "nah", "nanai", "nanay", "negativo"]);
+const RECHAZO_CON_CORTESIA = /^\W*(?:ya no(?: quiero| lo quiero)?|olvidalo|olvida|mejor no|para nada|claro que no|ni madres|de ninguna manera)(?:[\s,]+(?:gracias|por favor|porfa|porfis))?\W*$/;
+
+function esRechazoSuelto(t: string): boolean {
+  const palabras = t.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (palabras.length > 0 && palabras.length <= 6 && palabras.every((w) => /^no+$/.test(w) || NEGACIONES_SUELTAS.has(w))) return true;
+  return RECHAZO_CON_CORTESIA.test(t);
+}
 
 /** Dudas y titubeos: «sí, creo», «tal vez», «no sé». Nunca confirman ni se aceptan por la salida segura. */
 const TITUBEO = /\b(?:creo|supongo|tal\s+vez|quiza|quizas|a\s+lo\s+mejor|igual\s+y|no\s+se|no\s+estoy|dejame\s+pensar|dejame\s+ver|no\s+tengo\s+claro|puede\s+ser|depende)\b/;
@@ -221,7 +247,7 @@ export function clasificarRespuestaCierre(mensaje: unknown, opciones: OpcionesCl
   if (/^cambiar algo$/.test(t)) return "cambio";
   // Rechazo o correccion explicita del resumen.
   if (rechazaElResumen(crudo)) return "no";
-  if (RECHAZO_SUELTO.test(t) || /^(?:no|nel|nop|nope)\s*,?\s*(?:todavia|aun)?\s*no\W*$/.test(t) || /^\W*(?:no\s+lo\s+(?:confirmo|quiero)|espera|esperate|alto|cancela|cancelar|cancelalo)\b/.test(t)) return "no";
+  if (esRechazoSuelto(t) || /^(?:no|nel|nop|nope)\s*,?\s*(?:todavia|aun)?\s*no\W*$/.test(t) || /^\W*(?:no\s+lo\s+(?:confirmo|quiero)|espera|esperate|alto|cancela|cancelar|cancelalo)\b/.test(t)) return "no";
   // Visto bueno en negativo: solo si contesta al resumen.
   if (VISTO_BUENO_EN_NEGATIVO.test(t)) return opciones.despuesDelResumen ? "si" : "dato";
   const palabras = t.split(" ").length;

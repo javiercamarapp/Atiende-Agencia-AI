@@ -53,6 +53,20 @@ describe("con la maquina ENCENDIDA", () => {
     });
   });
 
+  describe("entradas hostiles de longitud (disponibilidad)", () => {
+    it("mensajes enormes y repetitivos se clasifican en tiempo acotado y nunca confirman", () => {
+      const casos = ["[boton:".repeat(50_000), "nop" + " no".repeat(50_000), "no, ".repeat(30_000) + "x", "con 1".repeat(30_000), "sí ".repeat(40_000) + "pero"];
+      const t0 = Date.now();
+      for (const c of casos) {
+        const r = clasificarRespuestaCierre(c, { despuesDelResumen: true, total: 90 });
+        expect(r === "si" && c.startsWith("[boton")).toBe(false);
+        datosDelMensaje(c, 90);
+        ambiguoAceptablePorSalida(c);
+      }
+      expect(Date.now() - t0).toBeLessThan(2_000);
+    });
+  });
+
   describe("montos de pago", () => {
     it("separador de miles, decimales y palabras", () => {
       expect(montoDePago("pago con $1,000")).toBe(1000);
