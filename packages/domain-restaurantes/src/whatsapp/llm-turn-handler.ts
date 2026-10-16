@@ -45,7 +45,7 @@ import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
-import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -670,7 +670,20 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
       // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
       const pendientes = mensajesSinResponder(messages).slice(-5);
-      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      const riesgoClasificado = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
+      const textoPendiente = pendientes.map((m) => m.content).join(" / ");
+      const recibeDetalle =
+        esperaDetalleDeQueja(messages) &&
+        pendientes.length > 0 &&
+        (riesgoClasificado === null || riesgoClasificado.motivo === "queja") &&
+        !pendientes.every((m) => noEsDetalleDeQueja(m.content));
+      const quejaSinDetalle = !recibeDetalle && riesgoClasificado?.motivo === "queja" && !quejaTraeDetalle(riesgoClasificado.text);
+      const riesgo: ReturnType<typeof classifyHighRiskIntentInMessages> = recibeDetalle
+        ? { intent: "queja", motivo: "queja", text: textoPendiente, reply: respuestaDeQuejaConDetalle(QUEJA_DETALLE_RECIBIDO, textoPendiente) }
+        : riesgoClasificado && riesgoClasificado.motivo === "queja"
+          ? { ...riesgoClasificado, reply: quejaSinDetalle ? QUEJA_PREGUNTA_DETALLE : respuestaDeQuejaConDetalle(riesgoClasificado.reply, riesgoClasificado.text) }
+          : riesgoClasificado;
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
@@ -681,12 +694,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
         }
         // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).
-        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto ? subtipoQueja(riesgo.text) : null;
+        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle ? subtipoQueja(riesgo.text) : null;
         const aviso = await executeAgentToolSafely(
           repo,
           { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
           "escalar_a_humano",
-          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${riesgo.text}`.slice(0, 500) },
+          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${recibeDetalle ? "[detalle de la queja] " : quejaSinDetalle ? "[queja sin detalle, se le pregunto que paso] " : ""}${riesgo.text}`.slice(0, 500) },
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
@@ -695,9 +708,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
         // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
-        escalarMotivo = riesgo.motivo;
+        // Queja sin detalle: el aviso ya quedo registrado, pero NO se abre la toma (el agente sigue y recibe el detalle en el siguiente mensaje).
+        if (!quejaSinDetalle) escalarMotivo = riesgo.motivo;
         // Autopiloto: la queja queda ligada al ultimo pedido del telefono (solicitud de compensacion, decide una persona); no cambia la respuesta.
-        if (riesgo.motivo === "queja" && options.autopiloto) {
+        if (riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle) {
           await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: riesgo.text, ahora: now() });
         }
         tele.resultado = "escalado_alto_riesgo";
