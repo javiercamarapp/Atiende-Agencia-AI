@@ -4,7 +4,7 @@
 // (migrations/001_restaurantes_schema.sql) — nunca inventados.
 import { fetchJson, sendJson } from "./admin-client.ts";
 
-export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado";
+export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado" | "por_aprobar";
 
 export type OrderCanal = "domicilio" | "recoger";
 
@@ -19,6 +19,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   listo_para_recoger: "Listo para recoger",
   no_recogido: "No recogido",
   programado: "Programado",
+  por_aprobar: "Por aprobar",
 };
 
 /** Próximos estados que SÍ aplican al canal del pedido: un pedido para recoger no sale "en_camino" y los estados
@@ -40,6 +41,8 @@ export function nextStatusesForCanal(status: OrderStatus, canal: OrderCanal | nu
 export const NEXT_STATUSES: Record<OrderStatus, readonly OrderStatus[]> = {
   // R-11: un programado espera fuera de cocina; "pending" lo adelanta a cocina, "cancelado" lo descarta.
   programado: ["pending", "cancelado"],
+  // Autopiloto: un pedido grande retenido se aprueba o rechaza desde "Por aprobar" (su solicitud), nunca con un cambio de estado manual.
+  por_aprobar: [],
   pending: ["preparando", "cancelado", "problema"],
   preparando: ["en_camino", "listo_para_recoger", "cancelado", "problema"],
   en_camino: ["entregado", "problema"],
@@ -62,6 +65,10 @@ export interface OrderItem {
 
 export interface OrderSummary {
   readonly id: string;
+  /** Folio corto («Venta 1001») = `orders.order_number`. `null`/ausente en respuestas de versiones viejas del API y en pedidos de prueba. */
+  readonly orderNumber?: number | null;
+  /** Entrega real (`orders.delivered_at`); `null` mientras no se entrega. Ausente en respuestas de versiones viejas del API. */
+  readonly deliveredAt?: string | null;
   readonly propertyId: string;
   readonly branch: string | null;
   readonly customerId: string | null;
@@ -119,6 +126,27 @@ export async function fetchOrders(fetchImpl: typeof fetch, apiBaseUrl: string, t
   return fetchJson<OrderListPage>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders${qs ? `?${qs}` : ""}`, token);
 }
 
+/** Un pedido por id (`GET .../admin/orders/:orderId`): alimenta el detalle a pagina completa. 404 si no existe o es de otra sucursal fuera del alcance. */
+export async function fetchOrder(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string): Promise<OrderSummary> {
+  const body = await fetchJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${encodeURIComponent(orderId)}`, token);
+  return body.order;
+}
+
+/** Id corto del pedido para mostrar («a1b2c3d4»): los primeros 8 caracteres del uuid. */
+export function idCortoPedido(id: string): string {
+  return id.slice(0, 8);
+}
+
+/** «#1001» (folio sin relleno, como en los avisos del original); sin folio, «#a1b2c3d4». */
+export function etiquetaFolio(order: { readonly id: string; readonly orderNumber?: number | null }): string {
+  return `#${order.orderNumber != null ? order.orderNumber : idCortoPedido(order.id)}`;
+}
+
+/** «Venta 1001» (folio de 4 digitos como minimo); sin folio, el id corto en mayusculas («#A1B2C3D4»). */
+export function etiquetaVenta(order: { readonly id: string; readonly orderNumber?: number | null }): string {
+  return order.orderNumber != null ? `Venta ${String(order.orderNumber).padStart(4, "0")}` : `#${idCortoPedido(order.id).toUpperCase()}`;
+}
+
 export async function updateOrderStatus(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
@@ -127,12 +155,19 @@ export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
   /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). Omitido = comportamiento de siempre. */
-  options: { readonly notifyCustomer?: boolean; /** Nota de la incidencia (solo con `status: "problema"`). */ readonly incidentNote?: string } = {},
+  options: {
+    readonly notifyCustomer?: boolean;
+    /** Nota de la incidencia (solo con `status: "problema"`). */
+    readonly incidentNote?: string;
+    /** Obligatorio al cancelar: motivo de la lista cerrada (`MOTIVOS_CANCELACION`). */
+    readonly motivo?: string;
+  } = {},
 ): Promise<OrderSummary> {
   const payload = {
     status,
     ...(options.notifyCustomer === false ? { notifyCustomer: false } : {}),
     ...(options.incidentNote !== undefined ? { incidentNote: options.incidentNote } : {}),
+    ...(options.motivo ? { motivo: options.motivo } : {}),
   };
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", payload);
   return body.order;
@@ -155,6 +190,21 @@ export async function assignRepartidor(
   if (estimatedDeliveryAt !== undefined) payload.estimatedDeliveryAt = estimatedDeliveryAt;
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/assign-repartidor`, token, "PATCH", payload);
   return body.order;
+}
+
+/** Repartidor sugerido por el servidor (carga y tiempo sin recibir pedido). Solo lectura: asignar sigue siendo `assignRepartidor`. */
+export interface RepartidorSugerido {
+  readonly repartidorId: string;
+  readonly nombre: string;
+  /** Pedidos `en_camino` que ya lleva. */
+  readonly enCamino: number;
+}
+
+/** `GET .../admin/repartidor-sugerido?orderIds=`: sugerencias por id de pedido (a domicilio, en `preparando`, sin repartidor). Los pedidos sin sugerencia no aparecen. */
+export async function fetchRepartidorSugerido(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderIds: readonly string[]): Promise<Readonly<Record<string, RepartidorSugerido>>> {
+  if (orderIds.length === 0) return {};
+  const body = await fetchJson<{ sugerencias: Record<string, RepartidorSugerido> }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/repartidor-sugerido?orderIds=${orderIds.map(encodeURIComponent).join(",")}`, token);
+  return body.sugerencias ?? {};
 }
 
 /** Respuesta de la pestaña Programados. `disponible:false` = la base aún no tiene la migración 034. */

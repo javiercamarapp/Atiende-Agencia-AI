@@ -1,6 +1,7 @@
 // Puerto de lectura del catalogo de restaurantes: el catalogo (catalog.ts) solo habla con
 // esto, nunca con SQL. Las implementaciones: Postgres (postgres-reader.ts, sesion RLS del
 // usuario) y dobles de prueba.
+import type { EntradaServicioCfo, ServicioCfo } from "../cfo/servicio.ts";
 
 export interface DataChatWindow {
   readonly organizationId: string;
@@ -55,4 +56,10 @@ export interface RestaurantesDataChatReader {
   peakHours(w: DataChatWindow): Promise<readonly PeakHourRow[]>;
   recurringCustomers(w: DataChatWindow): Promise<RecurringRow>;
   promotions(organizationId: string, limit: number): Promise<readonly PromotionRow[]>;
+  /**
+   * CFO-09: servicio del CFO (CFO-05) sobre la MISMA sesion del lector. Las herramientas `cfo_*` delegan en el: no hay SQL propia de
+   * CFO aqui. OPCIONAL: un doble sin CFO hace que esas herramientas respondan "no disponible". Contra una base sin las migraciones
+   * 081-084 el servicio degrada con `disponible: false` (nunca 500).
+   */
+  cfo?(entrada: Omit<EntradaServicioCfo, "repo">): Promise<ServicioCfo>;
 }

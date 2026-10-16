@@ -25,6 +25,16 @@ describe("barrerCierresSucursal", () => {
     expect(emitidas(db)).toHaveLength(1);
   });
 
+  it("QA R2 automatizacion-08: un periodo que el dia de negocio aun no cierra se salta sin error ni aviso y el resto sigue", async () => {
+    const base = new InMemoryCierreRepository({ calcular: () => CON_VENTAS });
+    const repo = Object.assign(Object.create(base), {
+      generar: async (...args: Parameters<InMemoryCierreRepository["generar"]>) => (args[3] === "2026-03-11" ? { estado: "periodo_abierto" as const } : base.generar(...args)),
+    }) as InMemoryCierreRepository;
+    const db = new AbortAwareFakeSession([emit(() => [{ emit_notification: 1 }])]);
+    const r = await barrerCierresSucursal({ db, repo, sucursal: SUC, ahora: AHORA, dias: 2 });
+    expect(r).toMatchObject({ creados: 1, avisos: 1, noDisponible: false });
+  });
+
   it("idempotente: la segunda corrida no crea ni avisa de nuevo", async () => {
     const repo = new InMemoryCierreRepository({ calcular: () => CON_VENTAS });
     const db = new AbortAwareFakeSession([emit(() => [{ emit_notification: 1 }])]);

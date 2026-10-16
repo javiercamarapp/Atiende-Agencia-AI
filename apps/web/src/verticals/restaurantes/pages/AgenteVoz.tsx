@@ -11,8 +11,8 @@
 // sin credencial en el servidor dice "no disponible: falta GEMINI_API_KEY" en vez de simular.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { BookOpen, CheckCircle2, Circle, Mic, Wrench } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
+import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
@@ -27,7 +27,9 @@ import { contarEjecuciones, HERRAMIENTAS_AGENTE } from "../voz/herramientas-agen
 import { formatoCostoUsd, formatoDuracion } from "../voz/formato-voz.ts";
 import { PestanaConversaciones } from "../voz/PestanaConversaciones.tsx";
 import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
+import { GloboLlamada } from "../voz/GloboLlamada.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
+import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
 import { useSesionVoz } from "../../../lib/voz/useSesionVoz.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -45,9 +47,12 @@ const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[]
   { id: "indicadores", etiqueta: "Indicadores" },
 ];
 
+/** Chip de la vista previa como en el original: «Vista previa» en reposo y «● Llamada en curso» mientras dura la llamada (escuchando, pensando o hablando). */
+const ETIQUETAS_CHIP_LLAMADA = { escuchando: "● Llamada en curso", pensando: "● Llamada en curso", hablando: "● Llamada en curso" } as const;
+
 const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "comportamiento", "mensaje"]);
 
-const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", habilitado: false };
+const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", mensajeInicialInterrumpible: true, habilitado: false };
 
 /** Regla de transparencia: el saludo debe presentarse como asistente virtual. */
 export function mencionaAsistenteVirtual(texto: string): boolean {
@@ -55,11 +60,11 @@ export function mencionaAsistenteVirtual(texto: string): boolean {
 }
 
 function aBorrador(c: VozConfig | null): VozConfigInput {
-  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, habilitado: c.habilitado } : BORRADOR_VACIO;
+  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, mensajeInicialInterrumpible: c.mensajeInicialInterrumpible, habilitado: c.habilitado } : BORRADOR_VACIO;
 }
 
 function iguales(a: VozConfigInput, b: VozConfigInput): boolean {
-  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.habilitado === b.habilitado;
+  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.mensajeInicialInterrumpible === b.mensajeInicialInterrumpible && a.habilitado === b.habilitado;
 }
 
 export interface AgenteVozPageProps extends RestaurantesShellContext {
@@ -69,7 +74,7 @@ export interface AgenteVozPageProps extends RestaurantesShellContext {
   readonly entornoVoz?: EntornoVoz;
 }
 
-export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entornoVoz }: AgenteVozPageProps) {
+export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucursal, crearAudio, entornoVoz }: AgenteVozPageProps) {
   const [pestana, setPestana] = useState<PestanaId>("resumen");
   const [config, setConfig] = useState<Carga<VozConfig | null>>({ estado: "cargando" });
   const [conversaciones, setConversaciones] = useState<Carga<readonly ConversacionVoz[]>>({ estado: "cargando" });
@@ -80,6 +85,18 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
   const [avisoGuardado, setAvisoGuardado] = useState(false);
   const [vistaPrevia, setVistaPrevia] = useState(false);
   const [version, setVersion] = useState(0);
+  const marco = useMarcoShell();
+  // «Vista previa» vive en la barra superior de la página (escritorio), como en el original; en móvil (sin esa barra) queda el botón del encabezado de la página.
+  const botonVistaPrevia = useMemo(
+    () => (
+    <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-eyebrow" onClick={() => setVistaPrevia(true)}>
+      <PlayCircle className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
+      Vista previa
+    </Button>
+  ),
+    [],
+  );
+  useAccionesBarra(botonVistaPrevia);
 
   useEffect(() => {
     let cancelado = false;
@@ -164,10 +181,8 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
             <h1 className="sr-only">Agente de voz</h1>
             <p className="text-ui text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
           </div>
-          <Button type="button" onClick={() => setVistaPrevia(true)}>
-            <Mic className="h-4 w-4 mr-1.5" strokeWidth={1.75} />
-            Vista previa
-          </Button>
+          {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle). */}
+          <div className="md:hidden">{botonVistaPrevia}</div>
         </div>
 
         <div role="tablist" aria-label="Secciones del agente de voz" onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
@@ -212,11 +227,15 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
             </div>
           ) : null}
 
-          {pestana === "conocimiento" && config.estado !== "cargando" ? (
+          {pestana === "conocimiento" ? (
             <div className="space-y-4">
-              <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                Las notas de conocimiento libres todavía no se guardan en el servicio de voz. Mientras tanto, escribe horarios, políticas y preguntas frecuentes en la pestaña Comportamiento: el agente las recibe como parte de sus instrucciones.
-              </p>
+              {role === "owner" || role === "admin" ? (
+                <ConocimientoNegocio apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canal="voz" />
+              ) : (
+                <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  El conocimiento del negocio (políticas, preguntas frecuentes y avisos) lo administran el dueño o un administrador.
+                </p>
+              )}
               <div>
                 <p className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="h-4 w-4" strokeWidth={1.75} />
@@ -261,6 +280,17 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
                   placeholder="Hola, le atiende el asistente virtual de …"
                 />
               </div>
+              <Checkbox
+                id="voz-saludo-interrumpible"
+                checked={borrador.mensajeInicialInterrumpible}
+                onChange={(e) => setBorrador({ ...borrador, mensajeInicialInterrumpible: e.target.checked })}
+                label="Quien llama puede interrumpir el primer mensaje"
+              />
+              <p className="text-xs text-muted-foreground">
+                {borrador.mensajeInicialInterrumpible
+                  ? "Si quien llama habla encima, el agente se calla. Desmárquelo para que el aviso de asistente virtual y de grabación se escuche completo."
+                  : "El primer mensaje se escucha completo aunque quien llama hable encima; desde la segunda frase del agente sí puede interrumpirlo."}
+              </p>
               {borrador.mensajeInicial.trim() !== "" && !mencionaAsistenteVirtual(borrador.mensajeInicial) ? (
                 <Callout tone="warning" role="alert" data-testid="alerta-sin-asistente-virtual">
                   Este mensaje no dice que es un asistente virtual. Agrégalo antes de poner el agente en producción.
@@ -334,8 +364,10 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
         ) : null}
       </PageContainer>
 
+      {vistaPrevia || !(role === "owner" || role === "admin") ? null : <GloboLlamada onAbrir={() => setVistaPrevia(true)} />}
+
       {vistaPrevia ? (
-        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} onCerrar={() => setVistaPrevia(false)} />
+        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} nombreSucursal={nombreSucursal ?? "Llamada de prueba"} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} portalEn={marco} onCerrar={() => setVistaPrevia(false)} />
       ) : null}
     </div>
   );
@@ -441,15 +473,18 @@ interface VistaPreviaVozProps {
   readonly apiBaseUrl: string;
   readonly token: string;
   readonly propertyId: string;
+  /** Subtítulo del encabezado (sucursal activa, como en el original). */
+  readonly nombreSucursal: string;
   /** Voz GUARDADA de la sucursal (la sesión de prueba usa la guardada, no un borrador sin guardar). */
   readonly vozId: string | null;
   readonly servicioListo: boolean;
   readonly entorno: EntornoVoz;
+  readonly portalEn: HTMLElement | null;
   readonly onCerrar: () => void;
 }
 
 /** Llamada de prueba real con el agente configurado. Antes de ofrecer el botón consulta la salud del proveedor: sin credencial muestra el motivo y no simula nada. */
-function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, entorno, onCerrar }: VistaPreviaVozProps) {
+function VistaPreviaVoz({ apiBaseUrl, token, propertyId, nombreSucursal, vozId, servicioListo, entorno, portalEn, onCerrar }: VistaPreviaVozProps) {
   const [motivo, setMotivo] = useState<string | null>(servicioListo ? "Comprobando el servicio de voz…" : "No disponible: el servicio de voz todavía no está activo para este negocio.");
   useEffect(() => {
     if (!servicioListo) return;
@@ -493,9 +528,12 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, e
     <VistaPreviaLlamada
       controller={controller}
       nombreAgente="Agente de voz"
-      nombreSucursal="Llamada de prueba"
+      nombreSucursal={nombreSucursal}
       onCerrar={onCerrar}
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
+      videoSiempre
+      portalEn={portalEn}
+      etiquetasChip={ETIQUETAS_CHIP_LLAMADA}
       {...(motivo ? { motivoNoDisponible: motivo } : {})}
       pie={
         <>

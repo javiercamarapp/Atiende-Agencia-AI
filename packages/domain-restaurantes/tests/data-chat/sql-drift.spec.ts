@@ -73,7 +73,7 @@ describe("SQL de chat con datos: propiedades de seguridad", () => {
     for (const [name, sql] of all) {
       expect(sql, name).toMatch(/limit (\$\d|\d+)/);
       if (name.startsWith("SQL_SALES") || name.startsWith("SQL_TOP") || name === "SQL_ORDERS_BY_CHANNEL" || name === "SQL_PEAK_HOURS") {
-        expect(sql, name).toMatch(/o\.status not in \('cancelado', 'no_recogido', 'programado'\)/);
+        expect(sql, name).toMatch(/o\.status not in \('cancelado', 'no_recogido', 'programado', 'por_aprobar'\)/);
       }
     }
   });

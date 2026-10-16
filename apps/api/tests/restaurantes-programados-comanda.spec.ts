@@ -88,7 +88,7 @@ describe("adelanto manual programado -> pendiente", () => {
     const { ctx, store, programado, app } = await contexto("sombra");
     const a = programado(ctx.propertyIdA, 600);
     const b = programado(ctx.propertyIdA, 700);
-    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${b.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado" }, "PATCH"));
+    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${b.id}/status`, authedJson(ctx.staff.owner.token, { status: "cancelado", motivo: "otro" }, "PATCH"));
     expect(store.todas()).toHaveLength(0);
     const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${a.id}/status`, authedJson(ctx.staff.owner.token, { status: "pending" }, "PATCH"));
     expect(res.status).toBe(200);

@@ -16,16 +16,20 @@ import {
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
+  ClipboardPaste,
   History,
   Clock,
   LayoutDashboard,
+  LineChart,
   ListChecks,
   Lock,
+  Megaphone,
   MessageSquare,
   MessageCircle,
   Mic,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Store,
   Tag,
@@ -33,13 +37,14 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import { SelectorSucursal, useAmbitoVertical, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
+import { puedeEn } from "./lib/permisos.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -79,6 +84,8 @@ export interface RestaurantesShellContext {
    * cae a `staffEmail` en ese caso. */
   readonly staffFullName: string | undefined;
   readonly staffEmail: string;
+  /** Nombre de la sucursal activa (encabezado del chat de prueba y de la vista previa de voz). Opcional: los contextos de prueba pueden omitirlo. */
+  readonly nombreSucursal?: string;
 }
 
 export interface RestaurantesShellProps {
@@ -102,7 +109,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean): SidebarSection[] {
+function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
@@ -112,12 +119,16 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       items: [
         { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
         ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
+        // CFO-07: tablero financiero (solo owner/admin, `cfo.ver`; staff y repartidor no lo ven y el API les responde 403).
+        ...(canSeeCfo ? [{ to: `${base}/cfo`, label: "CFO", icon: LineChart }] : []),
       ],
     },
     {
       title: "Operación",
       items: [
         { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+        // Captura asistida de SoftRestaurant: la cola de comandas que alguien teclea en el POS (MANAGER_ROLES, igual que el servidor).
+        { to: `${base}/comandas-pos`, label: "Comandas al POS", icon: ClipboardPaste },
         // R-21: bandeja de conversaciones (WhatsApp y llamadas) con toma por una persona, y turnos de personal.
         { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         { to: `${base}/turnos`, label: "Turnos", icon: Clock },
@@ -132,13 +143,16 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       title: "Catálogo",
       items: [
         { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
-        { to: `${base}/promociones`, label: "Promociones", icon: Tag },
+        // PL-23: las promociones son de owner/admin (el servidor las rechaza con 403 para staff): no se muestra el enlace.
+        ...(canSeePromociones ? [{ to: `${base}/promociones`, label: "Promociones", icon: Tag }] : []),
       ],
     },
     {
       title: "Clientes",
       items: [
         { to: `${base}/clientes`, label: "Clientes", icon: Users },
+        // Autopiloto 2: campañas de reactivación de clientes inactivos (solo owner/admin: el servidor exige el mismo umbral).
+        ...(canSeeStaff ? [{ to: `${base}/campanas`, label: "Campañas", icon: Megaphone }] : []),
         { to: `${base}/sucursales`, label: "Sucursales", icon: Store },
       ],
     },
@@ -152,6 +166,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
         // R-31: indicadores del agente de WhatsApp (conversaciones, conversión, handoff y costo LLM por día).
         { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: MessageCircle },
+        // Modelo, temperatura, voz, sonido de fondo y conocimiento automatico del agente (owner/admin).
+        { to: `${base}/agente-ajustes`, label: "Ajustes del agente", icon: SlidersHorizontal },
       ],
     });
     // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin (mismo mandato que el servidor exige,
@@ -194,6 +210,8 @@ function buildMobileItems(orgSlug: string): BottomNavItem[] {
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
   useDocumentTitle("Restaurantes", orgSlug);
+  // Ambito visual del repo suelto (UNI-R0b): tokens, botones en pildora y overlays; el sidebar conserva su paleta.
+  useAmbitoVertical("restaurantes");
   const s = useVerticalSession({ adapter: RESTAURANTES_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
@@ -229,23 +247,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // El MISMO selector se pinta en el Sidebar y en el MobileHeader (ambos viven en el DOM; CSS oculta uno): cada copia lleva su
   // propio id y su propio <label for>, para que no haya ids duplicados y el select visible tenga nombre accesible
   // (QA-restaurantes-R1-botones-03).
-  const sucursalSelector = (idSelect: string) =>
-    branches.length > 1 ? (
-      <div>
-        <label htmlFor={idSelect} className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
-          Sucursal activa
-        </label>
-        <NativeSelect id={idSelect} size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
-          {branches.map((b) => (
-            <option key={b.propertyId} value={b.propertyId}>
-              {b.name}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-    ) : (
-      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
-    );
+  const sucursalSelector = (idSelect: string) => (
+    <SelectorSucursal id={idSelect} etiqueta="Sucursal activa" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />
+  );
 
   return (
     <VerticalShellConectado
@@ -256,7 +260,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="restaurantes"
       copilotoHref={`/restaurantes/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_ROLES.has(role)}
-      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role))}
+      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"))}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
@@ -268,7 +272,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     >
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
       <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
-        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+        <VarianteEstadoVacioProvider value="centrado">
+          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, nombreSucursal: activeBranch.name })}
+        </VarianteEstadoVacioProvider>
       </PuertaOnboarding>
     </VerticalShellConectado>
   );

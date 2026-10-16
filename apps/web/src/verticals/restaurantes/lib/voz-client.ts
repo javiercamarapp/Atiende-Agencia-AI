@@ -16,6 +16,8 @@ export interface VozConfig {
   /** `comportamiento` en la API. */
   readonly promptSistema: string;
   readonly mensajeInicial: string;
+  /** `false` = el saludo no se corta si quien llama habla encima (el aviso de asistente virtual y grabación se escucha completo). */
+  readonly mensajeInicialInterrumpible: boolean;
   /** Si el agente está encendido para esta sucursal. */
   readonly habilitado: boolean;
 }
@@ -91,10 +93,12 @@ interface ConfigWire {
   readonly voiceId: string;
   readonly comportamiento: string;
   readonly mensajeInicial: string;
+  /** Migración 053; una API anterior no lo manda (= interrumpible, como siempre). */
+  readonly mensajeInicialInterrumpible?: boolean;
 }
 
 function configDesdeWire(w: ConfigWire): VozConfig {
-  return { vozId: w.configurada && w.voiceId ? w.voiceId : null, promptSistema: w.comportamiento, mensajeInicial: w.mensajeInicial, habilitado: w.habilitado };
+  return { vozId: w.configurada && w.voiceId ? w.voiceId : null, promptSistema: w.comportamiento, mensajeInicial: w.mensajeInicial, mensajeInicialInterrumpible: w.mensajeInicialInterrumpible !== false, habilitado: w.habilitado };
 }
 
 /** `null` = el servicio existe pero esta sucursal todavía no tiene configuración guardada. Base sin migrar (`disponible: false`) = VozNoDisponibleError. */
@@ -107,7 +111,7 @@ export async function fetchVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string
 /** El PUT de la API reemplaza la config completa y exige una voz: sin voz elegida no se puede guardar. */
 export async function updateVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: VozConfigInput): Promise<VozConfig> {
   if (input.vozId === null) throw new RestaurantesAdminError("Elige una voz antes de guardar.");
-  const body = { habilitado: input.habilitado, proveedor: PROVEEDOR_VOZ_PANEL, voiceId: input.vozId, comportamiento: input.promptSistema, mensajeInicial: input.mensajeInicial };
+  const body = { habilitado: input.habilitado, proveedor: PROVEEDOR_VOZ_PANEL, voiceId: input.vozId, comportamiento: input.promptSistema, mensajeInicial: input.mensajeInicial, mensajeInicialInterrumpible: input.mensajeInicialInterrumpible };
   return configDesdeWire(await pedir<ConfigWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "PUT", body }));
 }
 

@@ -309,6 +309,10 @@ export interface CompanyDocumentRecord {
   readonly label: string;
   readonly expiresAt: string | null;
   readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
+  /** Autoria/decision (migracion 036). `undefined` = base sin migrar. `proposedBy` = quien propuso o edito por ultima vez. */
+  readonly proposedBy?: string | null;
+  readonly approvedBy?: string | null;
+  readonly approvedAt?: string | null;
 }
 
 export interface ApprovedRateRecord {
@@ -319,6 +323,10 @@ export interface ApprovedRateRecord {
   readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
   readonly validFrom: string;
   readonly validUntil: string | null;
+  /** Autoria/decision (migracion 036). `undefined` = base sin migrar. `proposedBy` = quien propuso o edito por ultima vez. */
+  readonly proposedBy?: string | null;
+  readonly approvedBy?: string | null;
+  readonly approvedAt?: string | null;
 }
 
 // ---- Fase 4: CompanyDataResolver real (capacidades/experiencia/firmantes) ----
@@ -334,6 +342,10 @@ export interface CompanyCapabilityRecord {
   readonly description: string;
   readonly evidenceDocId: string | null;
   readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
+  /** Autoria/decision (migracion 036). `undefined` = base sin migrar. `proposedBy` = quien propuso o edito por ultima vez. */
+  readonly proposedBy?: string | null;
+  readonly approvedBy?: string | null;
+  readonly approvedAt?: string | null;
 }
 
 export interface CompanyExperienceItemRecord {
@@ -341,6 +353,10 @@ export interface CompanyExperienceItemRecord {
   readonly description: string;
   readonly evidenceDocId: string;
   readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
+  /** Autoria/decision (migracion 036). `undefined` = base sin migrar. `proposedBy` = quien propuso o edito por ultima vez. */
+  readonly proposedBy?: string | null;
+  readonly approvedBy?: string | null;
+  readonly approvedAt?: string | null;
 }
 
 export interface CompanySignerRecord {
@@ -348,6 +364,12 @@ export interface CompanySignerRecord {
   readonly name: string;
   readonly role: string;
   readonly authorized: boolean;
+  /** Base sin migrar (036): sin columna, un firmante existente cuenta como 'aprobado' (comportamiento anterior). */
+  readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
+  /** Autoria/decision (migracion 036). `undefined` = base sin migrar. `proposedBy` = quien propuso o edito por ultima vez. */
+  readonly proposedBy?: string | null;
+  readonly approvedBy?: string | null;
+  readonly approvedAt?: string | null;
 }
 
 export interface PackageManifestRecord {

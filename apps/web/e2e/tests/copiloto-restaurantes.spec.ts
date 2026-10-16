@@ -66,6 +66,6 @@ test.describe("copiloto de restaurantes @copiloto", () => {
     const enlace = page.getByRole("link", { name: /Chatea con tus datos/ }).first();
     await expect(enlace).toHaveAttribute("href", RUTA);
     await enlace.click();
-    await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Copiloto");
+    await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Pregunta a tus datos");
   });
 });

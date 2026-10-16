@@ -125,6 +125,8 @@ describe("handleInboundWhatsAppMessage (restaurantes) — tope por remitente con
       { match: /select restaurantes\.append_whatsapp_user_message_once/, respond: () => [] },
       { match: /consume_api_rate_limit/, respond: consume },
       { match: /select id, organization_id, phone, name, order_count from restaurantes\.customers/, respond: () => [] },
+      // Cliente 360: la memoria del cliente llega por la funcion de sistema; cliente nuevo = sin memoria.
+      { match: /select restaurantes\.cliente_memoria/, respond: () => [{ r: null }] },
       { match: /select restaurantes\.whatsapp_append_turn/, respond: () => [] },
       { match: /select restaurantes\.enqueue_messaging_outbox/, respond: () => [] },
       { match: /select restaurantes\.finish_whatsapp_message/, respond: () => [] },

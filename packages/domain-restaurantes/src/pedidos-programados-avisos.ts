@@ -17,6 +17,32 @@ import { etiquetaHoraLocal } from "./horarios.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Order } from "./types.ts";
 
+/** Minutos de retraso (sobre la hora pedida) a partir de los cuales el pedido se avisa como atrasado (QA-restaurantes-R1-automatizacion-07). */
+export const ATRASO_PROGRAMADO_MIN = 60;
+
+/** `true` si el pedido entro a cocina mas de `ATRASO_PROGRAMADO_MIN` despues de su hora pedida (cron pausado, caida). La marca se deriva de
+ * `promovido_at - programado_para` (sin columna nueva). */
+export function esPromocionAtrasada(order: Pick<Order, "programadoPara" | "promovidoAt">, ahora: Date = new Date()): boolean {
+  if (!order.programadoPara) return false;
+  const promovidoMs = order.promovidoAt ? Date.parse(order.promovidoAt) : ahora.getTime();
+  return promovidoMs - Date.parse(order.programadoPara) > ATRASO_PROGRAMADO_MIN * 60_000;
+}
+
+/** Campana in-app de un pedido programado que ENTRO a cocina: `programado_en_cocina`, o `programado_atrasado` (en su lugar) si entro con mas de
+ * una hora de retraso. Idempotente por pedido (clave = id) y sin PII. Se usa tambien al adelantar un programado a mano. */
+export async function emitirAvisoProgramadoEnCocina(db: TenantDbSession, order: Order, ahora: Date = new Date()): Promise<{ readonly estado: string; readonly atrasado: boolean }> {
+  const atrasado = esPromocionAtrasada(order, ahora);
+  const r = await emitirNotificacion(db, {
+    evento: atrasado ? "restaurantes.pedido.programado_atrasado" : "restaurantes.pedido.programado_en_cocina",
+    organizationId: order.organizationId,
+    propertyId: order.propertyId,
+    clave: order.id,
+    entidadTipo: "order",
+    entidadId: order.id,
+  });
+  return { estado: r.estado, atrasado };
+}
+
 export interface ResumenAvisosProgramados {
   /** Pedidos `pending` recien promovidos para los que se intento avisar. */
   readonly intentados: number;
@@ -47,14 +73,7 @@ export async function avisarProgramadosPromovidos(repo: RestaurantesRepository, 
       errores += 1;
       console.error("pedidos-programados-avisos: la bandeja del staff no se pudo registrar (base sin migrar o fallo real):", err instanceof Error ? err.message : err);
     }
-    const r = await emitirNotificacion(db, {
-      evento: "restaurantes.pedido.programado_en_cocina",
-      organizationId: order.organizationId,
-      propertyId: order.propertyId,
-      clave: order.id,
-      entidadTipo: "order",
-      entidadId: order.id,
-    });
+    const r = await emitirAvisoProgramadoEnCocina(db, order);
     if (r.estado === "error" || r.estado === "invalida") errores += 1;
   }
   return { intentados, bandeja, errores };

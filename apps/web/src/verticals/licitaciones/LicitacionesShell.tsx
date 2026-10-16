@@ -14,7 +14,7 @@
 // diferencia de hoteles): el adaptador resuelve siempre la primera property y no persiste
 // ninguna elección (mismo criterio que antes: `branches[0]`), así que no hay selector.
 import type { ReactNode } from "react";
-import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, Lock, MessageCircle, Radar, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
+import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, Lock, MessageCircle, Radar, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
 import { VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
@@ -27,6 +27,7 @@ import { conexionChatDatosLicitaciones } from "./lib/chat-datos-client.ts";
 import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } from "./lib/auth-client.ts";
 import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
+import { STAFF_NAV_ROLES, puedeVerPrivacidad } from "./roles-nav.ts";
 
 /** Adaptador de sesión de licitaciones. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const LICITACIONES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -70,13 +71,9 @@ export interface LicitacionesShellProps {
 // comentario de `role` de `LicitacionesShellContext`) — solo oculta el link
 // "Staff" del nav para quien el servidor rechazaría de todas formas (403 en
 // admin-staff.ts), nunca la única barrera.
-const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
-/** L-20: la privacidad de la organización (ARCO, retención, aviso) es solo de owner/admin: mismo umbral que exige el servidor
- * (`/v1/privacidad/*` responde 403 al resto). Cosmético: oculta la entrada del menú y evita la llamada; nunca la única barrera. */
-export function puedeVerPrivacidad(role: string): boolean {
-  return STAFF_NAV_ROLES.has(role);
-}
+// puedeVerPrivacidad y STAFF_NAV_ROLES viven en ./roles-nav.ts (sin React) para que App.tsx no importe este shell de forma estática (R-37).
+export { puedeVerPrivacidad };
 
 
 // Mismos destinos y rutas que antes (ningún link se agrega ni se quita; "Panel" ahora se llama "Resumen", como en las demás
@@ -118,6 +115,8 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean, puedePriv
         { to: `${base}/dias-inhabiles`, label: "Días inhábiles", icon: CalendarOff },
         { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: CheckCheck },
         ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
+        // L-P3-17: quién cambió qué, con antes y después (solo owner/admin, mismo umbral que Staff).
+        ...(puedeVerStaff ? [{ to: `${base}/bitacora`, label: "Bitácora", icon: ScrollText }] : []),
         { to: `${base}/whatsapp`, label: "WhatsApp", icon: MessageCircle },
         { to: `${base}/seguridad`, label: "Seguridad", icon: ShieldCheck },
         // L-20: solicitudes ARCO, retención y aviso de privacidad de la organización (solo owner/admin).

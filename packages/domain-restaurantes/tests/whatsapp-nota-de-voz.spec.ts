@@ -243,6 +243,8 @@ describe("limitador con error de Postgres dentro de la transaccion del webhook (
       { match: /select restaurantes\.claim_whatsapp_conversation/, respond: () => [{ claim_whatsapp_conversation: true }] },
       { match: /select restaurantes\.consume_api_rate_limit/, respond: () => err },
       { match: /select restaurantes\.append_whatsapp_user_message_once/, respond: () => [] },
+      // Cliente 360: la memoria llega por `cliente_memoria` (null = cliente nuevo); la consulta directa es el camino sin migrar.
+      { match: /select restaurantes\.cliente_memoria/, respond: () => [{ r: null }] },
       { match: /select id, organization_id, phone, name, order_count from restaurantes\.customers/, respond: () => [] },
       { match: /select restaurantes\.whatsapp_append_turn/, respond: () => [] },
       { match: /select restaurantes\.enqueue_messaging_outbox/, respond: () => [{ enqueue_messaging_outbox: randomUUID() }] },

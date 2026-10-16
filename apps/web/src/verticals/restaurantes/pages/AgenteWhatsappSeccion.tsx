@@ -20,7 +20,8 @@ import {
   restablecerAgente,
   vistaPreviaAgente,
 } from "../lib/agente-whatsapp-client.ts";
-import { ProbarAgente } from "../preview/ProbarAgente.tsx";
+import { WidgetWhatsApp } from "../preview/WidgetWhatsApp.tsx";
+import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { AgenteWhatsappWire, AlcanceAgente, ConfigAgenteForm, HistorialEntradaWire, OpcionesAgenteWire, PerfilAgente, TonoAgente, VistaPreviaWire } from "../lib/agente-whatsapp-client.ts";
 
@@ -28,6 +29,8 @@ interface Props {
   readonly apiBaseUrl: string;
   readonly token: string;
   readonly propertyId: string;
+  /** Nombre de la sucursal activa: encabezado del chat de prueba. */
+  readonly nombreSucursal?: string;
 }
 
 function fecha(iso: string): string {
@@ -42,7 +45,7 @@ function mensaje(err: unknown, porDefecto: string): string {
   return err instanceof Error ? err.message : porDefecto;
 }
 
-export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) {
+export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId, nombreSucursal }: Props) {
   const { confirmar, dialogo } = useConfirm();
   const [datos, setDatos] = useState<AgenteWhatsappWire | null>(null);
   const [opciones, setOpciones] = useState<OpcionesAgenteWire | null>(null);
@@ -386,7 +389,8 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
         {dialogo}
       </CardContent>
     </Card>
-    {datos && <ProbarAgente apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} borrador={form} />}
+    <ConocimientoNegocio apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canal="whatsapp" />
+    {datos && <WidgetWhatsApp apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} borrador={form} {...(nombreSucursal ? { nombreNegocio: nombreSucursal } : {})} />}
     </div>
   );
 }

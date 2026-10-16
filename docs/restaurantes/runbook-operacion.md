@@ -16,8 +16,8 @@ Qué vigilar y qué hacer cuando algo falla en el ciclo de restaurantes (WhatsAp
 | `/internal/restaurantes/email-dispatch` | cada 15 min | Drena el outbox de correo (confirmación de pedido) | No salen correos de confirmación |
 | `/internal/restaurantes/privacidad-retencion` | diario 08:30 | Purga conversaciones y transcripciones vencidas por la política de retención | Se acumulan datos más allá de la retención configurada |
 
-El cierre del día (`/internal/restaurantes/cierres-dia`) **no** está agendado en `vercel.json`: hasta que se agende, los cierres se generan con el botón de
-*Cierre del día*. Estado y latido de cada cron: `/superadmin/salud/crons`. Cada cron se puede pausar con el interruptor de superadmin (responde 200
+El cierre del día (`/internal/restaurantes/cierres-dia`) corre a diario desde `vercel.json` (08:20 UTC = 02:20 en Mérida) y recupera hasta 3 días sin corrida; el botón de
+*Cierre del día* sigue generándolo a demanda. Estado y latido de cada cron: `/superadmin/salud/crons`. Cada cron se puede pausar con el interruptor de superadmin (responde 200
 `skipped: kill_switch`).
 
 ## 2. Señales que hay que mirar
@@ -67,13 +67,13 @@ El cierre del día (`/internal/restaurantes/cierres-dia`) **no** está agendado 
 
 - El pedido existe siempre; la comanda queda `pendiente_de_confirmar`/`fallida`. El gerente la consulta por API (no hay pantalla todavía) y la captura a mano en el POS;
   la marca como capturada con `POST .../admin/softrestaurant/comandas/:id/capturada` (queda en el log del servidor). Al volver el POS, el despachador no reenvía lo capturado a mano.
+- Si el pedido se **cancela** mientras su comanda sigue `pendiente`/`fallida`, el servidor la corta (`capturada_manual`, nota "Pedido cancelado antes de llegar al POS") y el
+  despachador ya no la manda al volver el POS. Si la comanda ya estaba en el POS (`confirmada`), cancélala también en el POS: Atiende no puede retirarla.
 - Un producto o sucursal sin código del POS **no se inventa**: la comanda va a captura manual y el motivo no incluye datos personales.
 - Modo de la integración por organización: `apagado`, `sombra` o `activo`.
 
-### Checkout web o aviso de privacidad
+### Aviso de privacidad
 
-- El checkout exige aceptar el aviso de privacidad **en el servidor** (400 `aviso_privacidad_requerido`); la evidencia (versión del aviso, fecha, canal `web`) se
-  guarda por pedido y la ven owner y admin. Si la base no tiene la migración 063 el pedido se crea igual y no se guarda la evidencia (declarado como hueco hasta aplicarla).
 - Derechos ARCO: el cliente escribe "mis datos personales"; el panel *Privacidad* lleva la solicitud con sus plazos.
 
 ### Voz

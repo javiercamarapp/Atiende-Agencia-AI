@@ -8,7 +8,7 @@ import { CircuitBreaker, InMemoryCircuitBreakerStore } from "@atiende/agent-core
 import { computeBackoffSeconds, DEFAULT_MAX_ATTEMPTS, WhatsAppOutboundDispatcher } from "../src/dispatcher.ts";
 import { WhatsAppSendError } from "../src/errors.ts";
 import { FakeWhatsAppGraphClient } from "../src/providers/fake-graph-client.ts";
-import type { MessagingOutboxItem, MessagingOutboxPort } from "../src/outbox-port.ts";
+import type { MensajeEnviadoDetalle, MessagingOutboxItem, MessagingOutboxPort } from "../src/outbox-port.ts";
 
 interface Row {
   id: string;
@@ -18,6 +18,8 @@ interface Row {
   claimedAt: number | null;
   nextAttemptAt: number;
   lastErrorClass: string | null;
+  providerMessageId?: string | null;
+  enviadoComo?: string | null;
 }
 
 /** Puerto en memoria — mismo idioma de claim-con-lease-reclamable que
@@ -45,10 +47,12 @@ class InMemoryOutboxPort implements MessagingOutboxPort {
     return eligible.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
   }
 
-  async markSent(id: string): Promise<void> {
+  async markSent(id: string, detalle?: MensajeEnviadoDetalle): Promise<void> {
     const row = this.rows.get(id);
     if (!row) return;
     row.status = "sent";
+    row.providerMessageId = detalle?.providerMessageId ?? null;
+    row.enviadoComo = detalle?.enviadoComo ?? null;
   }
 
   async markRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
@@ -92,6 +96,17 @@ describe("WhatsAppOutboundDispatcher", () => {
     expect(port.rows.get(id)?.status).toBe("sent");
     expect(client.sent).toHaveLength(1);
     expect(client.sent[0]).toMatchObject({ to: "+529991112233", phoneNumberId: "phone-1", body: "hola" });
+  });
+
+  it("entrega al puerto el wamid que devolvio Graph API y como salio el mensaje (llave de los statuses del webhook)", async () => {
+    const id = port.enqueue(validPayload());
+    const sinBotones = port.enqueue(validPayload({ buttons: ["Si"] }));
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: new FakeWhatsAppGraphClient() });
+
+    await dispatcher.dispatchPending(port);
+
+    expect(port.rows.get(id)).toMatchObject({ status: "sent", providerMessageId: "fake-msg-0", enviadoComo: "texto" });
+    expect(port.rows.get(sinBotones)).toMatchObject({ status: "sent", providerMessageId: "fake-msg-1", enviadoComo: "botones" });
   });
 
   it("GARANTÍA DE IDEMPOTENCIA: un mensaje ya marcado como enviado NUNCA se reenvía ante una segunda corrida del job", async () => {
@@ -182,6 +197,21 @@ describe("WhatsAppOutboundDispatcher", () => {
     const result = await dispatcher.dispatchPending(port);
     expect(result.dead).toBe(1);
     expect(port.rows.get(id)?.attempts).toBe(1); // no agotó los 5 intentos, murió al primero
+  });
+
+  it("el resultado por mensaje distingue la falla del proveedor (con error 190 de Graph API) de la falla local, sin datos del mensaje", async () => {
+    port.enqueue(validPayload());
+    port.enqueue({ to: "+52999", body: "sin phone_number_id" });
+    const client = new FakeWhatsAppGraphClient({ onSend: () => new WhatsAppSendError("Graph API respondió 401: token vencido", false, { proveedor: true, httpStatus: 401, graphCode: 190 }) });
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+
+    const result = await dispatcher.dispatchPending(port);
+    const proveedor = result.items.filter((i) => i.proveedor === true);
+    expect(proveedor).toHaveLength(1);
+    expect(proveedor[0]).toMatchObject({ outcome: "dead", graphCode: 190 });
+    const local = result.items.filter((i) => i.proveedor === undefined);
+    expect(local).toHaveLength(1);
+    expect(local[0]!.graphCode).toBeUndefined();
   });
 
   it("un payload con forma inválida se marca dead sin tocar la red", async () => {

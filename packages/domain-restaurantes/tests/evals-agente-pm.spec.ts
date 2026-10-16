@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { ejecutarCasoReferencia, ejecutarSuiteReferencia, resumenUmbrales } from "../src/evals/agente-pm/ejecutor.ts";
 import { GRADERS, evaluarGraders } from "../src/evals/agente-pm/graders.ts";
-import { CONTRATO_ACTUAL, CONTRATO_OBJETIVO, HERRAMIENTAS_REGISTRO, Mundo, cargarMenu, cargarSuite } from "../src/evals/agente-pm/mundo.ts";
+import { CONTRATO_ACTUAL, CONTRATO_OBJETIVO, HERRAMIENTAS_REGISTRO, Mundo, cargarMenu, cargarSuite, minutosDesdeHoraRecogida } from "../src/evals/agente-pm/mundo.ts";
 import type { ComandaRegistrada, EventoTraza } from "../src/evals/agente-pm/tipos.ts";
 
 const suite = cargarSuite();
@@ -240,5 +240,108 @@ describe("modo LLM real (opt-in, nunca en CI)", () => {
       server.closeAllConnections?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+describe("modo real: el cliente simulado no puede cortar con FIN dejando sin respuesta la pregunta del agente", () => {
+  it("si dice FIN con el pedido sin registrar y el agente pregunto algo, se le pide una vez que conteste", async () => {
+    const { createServer } = await import("node:http");
+    const { ejecutarSuiteReal } = await import("../src/evals/agente-pm/real.ts");
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { messages: { role: string; content: string }[] };
+        bodies.push(body);
+        const esCliente = body.messages.some((m) => m.role === "system" && /simula a un cliente/.test(m.content));
+        const ultimo = body.messages[body.messages.length - 1]?.content ?? "";
+        const texto = esCliente ? (/sigue esperando su respuesta/.test(ultimo) ? "Sí, es correcto." : "FIN") : "Permítame repetirle su pedido. ¿Es correcto?";
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ model: "m", choices: [{ message: { content: texto } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.01 } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const port = (server.address() as { port: number }).port;
+      await ejecutarSuiteReal({ apiKey: "k", model: "openai/gpt-6-luna", maxUsd: 0.12, k: 1, casos: ["L01"], params: { temperature: "omit", minMaxTokens: 1500 }, baseUrl: `http://127.0.0.1:${port}/api/v1/chat/completions` });
+      const empujones = bodies.filter((b) => /sigue esperando su respuesta/.test(b.messages[b.messages.length - 1]?.content ?? ""));
+      expect(empujones.length).toBeGreaterThan(0);
+      // El empujon repite la ultima pregunta del agente.
+      expect(empujones[0]!.messages[empujones[0]!.messages.length - 1]!.content).toContain("¿Es correcto?");
+    } finally {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
+
+describe("modo real: un timeout o corte del proveedor no tira la corrida", () => {
+  const servir = async (responder: (n: number) => { status: number; body: unknown }) => {
+    const { createServer } = await import("node:http");
+    let n = 0;
+    const server = createServer((req, res) => {
+      req.on("data", () => undefined);
+      req.on("end", () => {
+        const r = responder(n++);
+        res.writeHead(r.status, { "content-type": "application/json" });
+        res.end(JSON.stringify(r.body));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    return { server, url: `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1/chat/completions`, llamadas: () => n };
+  };
+  const ok = { status: 200, body: { model: "m", choices: [{ message: { content: "hola" } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.01 } } };
+
+  it("reintenta la llamada que fallo y sigue", async () => {
+    const { ejecutarSuiteReal } = await import("../src/evals/agente-pm/real.ts");
+    const s = await servir((n) => (n === 0 ? { status: 500, body: { error: { message: "boom" } } } : ok));
+    try {
+      const r = await ejecutarSuiteReal({ apiKey: "k", model: "openai/gpt-6-luna", maxUsd: 0.05, k: 1, casos: ["L01"], pausasReintento: [0, 0], params: { temperature: "omit", minMaxTokens: 1500 }, baseUrl: s.url });
+      expect(s.llamadas()).toBeGreaterThan(1);
+      expect(r.resultados.flatMap((x) => x.graders).some((g) => g.grader === "INFRA")).toBe(false);
+    } finally {
+      s.server.closeAllConnections?.();
+      await new Promise<void>((resolve) => s.server.close(() => resolve()));
+    }
+  });
+
+  it("si el proveedor sigue fallando, el caso cuenta como fallo INFRA y el siguiente corre; el avance se informa por caso", async () => {
+    const { ejecutarSuiteReal } = await import("../src/evals/agente-pm/real.ts");
+    const s = await servir(() => ({ status: 500, body: { error: { message: "boom" } } }));
+    const terminados: string[] = [];
+    try {
+      const r = await ejecutarSuiteReal({ apiKey: "k", model: "openai/gpt-6-luna", maxUsd: 0.05, k: 1, casos: ["L01", "L02"], pausasReintento: [0], params: { temperature: "omit", minMaxTokens: 1500 }, baseUrl: s.url, alTerminarCaso: (x) => terminados.push(x.casoId) });
+      expect(r.resultados.map((x) => x.casoId)).toEqual(["L01", "L02"]);
+      expect(r.resultados.every((x) => !x.ok && x.graders.some((g) => g.grader === "INFRA"))).toBe(true);
+      expect(terminados).toEqual(["L01", "L02"]);
+    } finally {
+      s.server.closeAllConnections?.();
+      await new Promise<void>((resolve) => s.server.close(() => resolve()));
+    }
+  });
+});
+
+describe("hora de recogida: el mundo lee solo el campo hora_recogida de crear_pedido (como el servidor real)", () => {
+  it("minutos entre la hora local del caso y el ISO con zona; sin campo valido es null", () => {
+    expect(minutosDesdeHoraRecogida("2026-10-03T16:05:00-06:00", "15:45")).toBe(20);
+    expect(minutosDesdeHoraRecogida("2026-10-04T00:10:00-06:00", "23:50")).toBe(20);
+    expect(minutosDesdeHoraRecogida("en 20 minutos", "15:45")).toBeNull();
+    expect(minutosDesdeHoraRecogida(undefined, "15:45")).toBeNull();
+  });
+  it("una hora escrita en notes NO cuenta (el servidor la ignora): la comanda queda sin hora y G_COMANDA falla; en hora_recogida pasa", async () => {
+    // C11: recoger, tarjeta, hora_recoger_min 20.
+    const c = caso("C11");
+    const conHora = await ejecutarCasoReferencia(c);
+    expect(conHora.resultado.ok, JSON.stringify(conHora.resultado.graders.filter((g) => !g.ok))).toBe(true);
+    expect(conHora.mundo.comandas[0]!.horaRecogerMin).toBe(20);
+    const mundo = new Mundo(c);
+    const q = mundo.ejecutar("buscar_producto", { query: "alambre de pastor", branch_slug: "t1" }) as { id: string }[];
+    mundo.cliente("quiero un alambre");
+    mundo.ejecutar("cotizar_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", items: [{ product_id: q[0]!.id, requested_quantity: 1 }] });
+    mundo.cliente("sí");
+    mundo.ejecutar("confirmar_resumen", {});
+    mundo.ejecutar("crear_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", customer_name: "Luz Moo", items: [{ product_id: q[0]!.id, requested_quantity: 1 }], notes: "Recoge en 20 minutos" });
+    expect(mundo.comandas[0]!.horaRecogerMin).toBeNull();
   });
 });

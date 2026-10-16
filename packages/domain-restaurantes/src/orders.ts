@@ -9,12 +9,16 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
+import { formatUbicacionEntregaNota } from "./whatsapp/location.ts";
+import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
+import { assignBranch } from "./branch-assignment.ts";
+import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
-import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
+import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion, PROGRAMACION_MAXIMA_DIAS } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
-import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
-import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
+import { applyPromotionToOrder, normalizePromotionCode, renglonesConPromocionAplicada, selectAutomaticPromotion } from "./promotions.ts";
+import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN, aplicarRestas, variantesMasPermisivas } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
@@ -41,25 +45,99 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
     packSize: extraerPackSize(product.name, product.description),
     requiresAdultConfirmation: requiresAdultConfirmation(product.name, product.categoryName),
     requiresTortilla: requiresTortillaChoice(product.name, product.description),
+    categoryName: product.categoryName,
     ...(product.noDomicilio === true ? { noDomicilio: true } : {}),
   };
+}
+
+/** Categorias que NO traen las 9 salsas incluidas: un pedido solo de ellas no tiene salsa que duplicar (QA-PM-R2-reglas-14: 2 Coca-Cola con doble salsa
+ * cobraban un Extra Salsa de $19). */
+const CATEGORIAS_SIN_SALSA = /^(?:bebidas?|aguas frescas|refrescos|cervezas|licores y cocktails|postres|guarniciones extra)$/i;
+
+/** La doble porcion de salsa exige al menos un platillo que traiga salsas incluidas. */
+export function assertDobleSalsaAplica(products: readonly ProductoEncontrado[], orderedProductIds: readonly string[], doubleSalsas: readonly unknown[] | undefined): void {
+  if (!doubleSalsas || doubleSalsas.length === 0) return;
+  const ordenados = orderedProductIds.map((id) => products.find((p) => p.id === id)).filter((p): p is ProductoEncontrado => p !== undefined);
+  if (ordenados.length > 0 && ordenados.every((p) => p.categoryName !== null && p.categoryName !== undefined && CATEGORIAS_SIN_SALSA.test(p.categoryName))) {
+    throw new OrderValidationError("La doble porción de salsa solo aplica a platillos que ya traen salsas incluidas; este pedido es solo de bebidas o postres. Quite la doble salsa y vuelva a cotizar.");
+  }
 }
 
 /** Búsqueda real de productos disponibles en una sucursal — port literal de
  * buscarProductosCore, incluyendo el fix real del 4-sep-2026 (match contra name,
  * description, categoría Y search_keywords, no solo name). */
 export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string }): Promise<ProductoEncontrado[]> {
-  const tokens = tokenizeForProductSearch(args.query);
+  let tokens = tokenizeForProductSearch(args.query);
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
   const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
   let encontrados = buscar(tokens);
-  // "un cuarto de cochinita": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
+  // R8 (T7-032/045/064/031/005/061): "torta de bistek sin queso", "frijol sin tostada", "pastor planchado", "flautas de pollo doradas", "1/4 de pollo bien picada" daban lista vacia
+  // porque "sin", "queso", "planchado"... eran palabras obligatorias del nombre, y el agente escalaba o cobraba OTRO producto. Solo si la busqueda literal no encuentra nada se prueba
+  // sin las restas "sin X", sin las notas de preparacion y con el sinonimo del menu; el precio siempre sale del producto del menu que casa.
+  let relajado = false;
+  let ambiguoPorRestas = false;
+  if (encontrados.length === 0) {
+    for (const variante of variantesMasPermisivas(tokens)) {
+      const alcanzados = catalog.filter((p) => matchesProductSearch(variante.tokens, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }, true));
+      const { productos, ambiguo: dudoso } = aplicarRestas(alcanzados, variante.restados, variante.tokens);
+      if (productos.length > 0) {
+        tokens = variante.tokens;
+        encontrados = productos;
+        relajado = true;
+        // Quitar una resta o inferir un sinonimo es una suposicion: el agente debe confirmarla con el cliente antes de cotizar (`ambiguo`).
+        ambiguoPorRestas = dudoso || variante.restados.length > 0 || variante.conSinonimo;
+        break;
+      }
+    }
+  }
+  let ambiguo = relajado && (ambiguoPorRestas || encontrados.length > 1);
+  let mediaOrdenODeMedioKilo = false;
+  const gramosPedidos = tokens.filter((t) => t.startsWith("peso:")).map((t) => Number(t.slice(5))).filter((n) => Number.isFinite(n) && n > 0);
+  // Con varios pesos en la consulta se usa el MENOR: nunca se ofrece una presentacion mayor a alguno de ellos.
+  const pesoPedido = gramosPedidos.length > 0 ? Math.min(...gramosPedidos) : null;
+  // "3 kilos", "kilo y cuarto": no hay presentacion de ese peso; se listan todas las del platillo y el agente arma el total, asi que NO hay una mejor coincidencia.
+  if (tokens.includes("peso:cualquiera")) ambiguo = true;
+  // "un cuarto de cochinita" / "300 g de bistec": el peso solo existe en los productos que se venden por kilo. Si con el peso no queda nada, se busca el producto sin el
   // peso (la lista vacia la lee el agente como "no tenemos eso", y la cochinita si existe, en ordenes). Con peso que SI coincide se conserva la exactitud.
+  // Nunca se ofrece una presentacion MAYOR a la pedida (cobraria de mas): las de menos peso quedan como candidatas y el resultado va marcado ambiguo.
   if (encontrados.length === 0 && tokens.some((t) => t.startsWith("peso:"))) {
     const sinPeso = tokens.filter((t) => !t.startsWith("peso:"));
-    if (sinPeso.length > 0) encontrados = buscar(sinPeso);
+    if (sinPeso.length > 0) {
+      const candidatos = buscar(sinPeso).filter((p) => {
+        const g = pesoDeProductoEnGramos(p.name);
+        return g === null || pesoPedido === null || g <= pesoPedido;
+      });
+      // Si el platillo si se vende por peso (solo que no en ese), las presentaciones menores van solas; si no se vende por peso (cochinita), el platillo normal.
+      const porPeso = candidatos.filter((p) => pesoDeProductoEnGramos(p.name) !== null);
+      encontrados = porPeso.length > 0 ? porPeso : candidatos;
+      ambiguo = encontrados.length > 0;
+    }
   }
-  return encontrados.slice(0, 8).map(toProductoEncontrado);
+  // "media orden de bistec": el unico producto "(1/2 orden)" que lo contiene es un platillo que el cliente no nombro (Nachos de Bistec). No se elige en silencio:
+  // se listan los productos de bistec que NO son media orden (ni presentaciones por peso, salvo la de 500 g = "medio kilo") marcados ambiguos para que el agente pregunte.
+  if (tokens.includes("1/2") && !tokens.some((t) => t.startsWith("peso:"))) {
+    const resto = tokens.filter((t) => t !== "1/2");
+    const media = encontrados.filter((p) => nombraElPlatilloDeMediaOrden(resto, p));
+    // Solo cuando el ingrediente tambien se vende por kilo ("media orden" vs "medio kilo" es la duda real); "media orden de champinones" sigue siendo la de nachos.
+    const sePuedeVenderPorPeso = resto.length > 0 && buscar(resto).some((p) => pesoDeProductoEnGramos(p.name) !== null);
+    if (media.length === 0 && sePuedeVenderPorPeso) {
+      const alternativas = buscar([...resto, ORDEN_COMPLETA]).filter((p) => {
+        const g = pesoDeProductoEnGramos(p.name);
+        return g === null || g === 500;
+      });
+      if (alternativas.length > 0) {
+        encontrados = alternativas;
+        ambiguo = true;
+        mediaOrdenODeMedioKilo = true;
+      }
+    }
+  }
+  // "heineken cero": el menu escribe "0.0".
+  if (encontrados.length === 0 && tokens.includes("cero")) encontrados = buscar(tokens.map((t) => (t === "cero" ? "0.0" : t)));
+  let ordenados = ordenarPorRelevancia(tokens, encontrados, args.query);
+  // En la duda "media orden o medio kilo" la presentacion de 500 g va primero (es la unica por peso que se ofrece) para que el tope de 8 no la deje fuera.
+  if (mediaOrdenODeMedioKilo) ordenados = [...ordenados.filter((p) => pesoDeProductoEnGramos(p.name) !== null), ...ordenados.filter((p) => pesoDeProductoEnGramos(p.name) === null)];
+  return ordenados.slice(0, 8).map((p) => (ambiguo ? { ...toProductoEncontrado(p), ambiguo: true } : toProductoEncontrado(p)));
 }
 
 /**
@@ -99,6 +177,40 @@ function invalidOptionalString(value: unknown, maxLength: number): boolean {
   return value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength);
 }
 
+/** Forma de la hora de recogida (ISO con zona). El reloj, el horario y el dia los valida `aplicarReglasDeSucursal`. */
+export function validarTextoHoraRecogida(valor: unknown): void {
+  if (typeof valor !== "string" || valor.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(valor) || Number.isNaN(Date.parse(valor))) {
+    throw new OrderValidationError("La hora de recogida debe ser una fecha y hora ISO 8601 con zona horaria.");
+  }
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(valor)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
+}
+
+/** Nombres que el modelo pone cuando el cliente NO dio uno. Se comparan sin acentos, en minusculas y sin signos ni digitos finales. */
+const NOMBRES_GENERICOS = new Set([
+  "cliente", "cliente whatsapp", "cliente de whatsapp", "cliente nuevo", "cliente sin nombre", "cliente frecuente", "el cliente", "nombre del cliente", "nombre", "sin nombre",
+  "contacto de whatsapp", "contacto whatsapp", "contacto", "anonimo", "desconocido", "na", "no proporcionado", "no dio nombre", "no especifico", "no especificado", "sin especificar",
+  "pendiente", "por confirmar", "usuario", "whatsapp", "senor", "senora", "amigo", "amiga",
+]);
+/** Inyeccion real (no cualquier signo): marcado HTML, comillas con palabras SQL, comentarios SQL tras comilla, plantillas y sustitucion de shell. */
+const NOMBRE_CON_CODIGO = /[<>{}`]|\$\(|['"]\s*\)?\s*;|;\s*--|\/\*|\b(?:drop|select|insert|delete|update|union|truncate|alter)\b\s+\w*\s*\b(?:table|from|into|where|all)\b|['"]\s*(?:or|and)\s+['"\d]/i;
+
+/**
+ * Un pedido de un agente (WhatsApp o voz) solo se registra con el nombre que DIO el cliente: no vacio, con al menos una letra, que no sea un relleno generico
+ * ("Cliente", "Cliente 2", "Sin nombre") ni lleve marcado o inyeccion ("<script>", "'; DROP TABLE"). Corchetes, guiones o "=" de un nombre real ("María [oficina]") se aceptan. QA-PM-R8 A38.
+ */
+export function nombreDeClienteUtilizable(valor: unknown): boolean {
+  if (typeof valor !== "string") return false;
+  const limpio = sanitizeInlineText(valor, 160);
+  if (!/\p{L}/u.test(limpio)) return false;
+  if (NOMBRE_CON_CODIGO.test(limpio)) return false;
+  const comparable = limpio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+\d+$/, "").replace(/\s+/g, " ").trim();
+  return !NOMBRES_GENERICOS.has(comparable);
+}
+
+export const NOMBRE_NO_UTILIZABLE_MENSAJE =
+  "Falta el nombre del cliente: el que llegó está vacío, es genérico (por ejemplo «Cliente») o trae caracteres que no son de un nombre. Pregúntele UNA vez a nombre de quién va el pedido y use exactamente lo que responda; " +
+  "NO invente un nombre ni use «Cliente». No es motivo para escalar: pida el nombre, repita el resumen y cree el pedido en cuanto lo tenga.";
+
 /** Port literal de validateCreateOrderPayload — contrato único para pedidos reales
  * y simulados, sin efectos secundarios. */
 export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCreateOrderInput {
@@ -127,7 +239,11 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (raw.customerEmail !== undefined && raw.customerEmail !== null && raw.customerEmail.trim() !== "" && (typeof raw.customerEmail !== "string" || raw.customerEmail.trim().length > 320 || !EMAIL_RE.test(raw.customerEmail.trim()))) {
     throw new OrderValidationError("customerEmail inválido");
   }
+  if ((raw.source === "voice" || raw.source === "whatsapp") && !nombreDeClienteUtilizable(raw.customerName)) throw new OrderValidationError(NOMBRE_NO_UTILIZABLE_MENSAJE);
   const canal = normalizarCanal(raw.canal);
+  if (raw.propinaPorcentaje !== undefined && (typeof raw.propinaPorcentaje !== "number" || !Number.isFinite(raw.propinaPorcentaje) || raw.propinaPorcentaje <= 0 || raw.propinaPorcentaje > 100)) {
+    throw new OrderValidationError("El porcentaje de propina debe estar entre 1 y 100.");
+  }
   if (raw.propina !== undefined && (typeof raw.propina !== "number" || !Number.isFinite(raw.propina) || raw.propina < 0 || raw.propina > 100000)) {
     throw new OrderValidationError("La propina debe ser un monto en pesos mayor o igual a 0.");
   }
@@ -137,12 +253,20 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   ) {
     throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
   }
+  if (raw.efectivoCon !== undefined) {
+    if (raw.paymentMethod !== "efectivo") throw new OrderValidationError("El monto con el que paga solo aplica a pedidos en efectivo.");
+    if (typeof raw.efectivoCon !== "number" || !Number.isFinite(raw.efectivoCon) || raw.efectivoCon <= 0 || raw.efectivoCon > 100000) {
+      throw new OrderValidationError("El monto con el que paga debe ser una cantidad en pesos mayor a 0.");
+    }
+  }
+  if (raw.indicacionesAcceso !== undefined && (typeof raw.indicacionesAcceso !== "string" || raw.indicacionesAcceso.length > 1000)) {
+    throw new OrderValidationError("Las indicaciones de acceso exceden el tamaño permitido");
+  }
+  const telefonoAlterno = raw.telefonoAlterno === undefined ? undefined : typeof raw.telefonoAlterno === "string" ? canonicalizeMexicanPhone(raw.telefonoAlterno) : null;
+  if (telefonoAlterno === null) throw new OrderValidationError("El teléfono alterno debe tener exactamente 10 dígitos.");
   if (raw.horaRecogida !== undefined) {
     if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
-    if (typeof raw.horaRecogida !== "string" || raw.horaRecogida.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw.horaRecogida) || Number.isNaN(Date.parse(raw.horaRecogida))) {
-      throw new OrderValidationError("La hora de recogida debe ser una fecha y hora ISO 8601 con zona horaria.");
-    }
-    if (!/(Z|[+-]\d{2}:?\d{2})$/.test(raw.horaRecogida)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
+    validarTextoHoraRecogida(raw.horaRecogida);
   }
   // R-11: hora programada (ISO con zona, normalizada a UTC). La ventana y el horario se validan al cotizar.
   const programadoPara = raw.programadoPara === undefined ? undefined : parsearProgramadoPara(raw.programadoPara);
@@ -205,6 +329,9 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     ...(raw.propina !== undefined ? { propina: redondearACentavos(raw.propina) } : {}),
     notes: typeof raw.notes === "string" ? sanitizeNotes(raw.notes) || undefined : raw.notes,
     colonia: raw.colonia ? sanitizeInlineText(raw.colonia, 200) || undefined : undefined,
+    ...(raw.efectivoCon !== undefined ? { efectivoCon: redondearACentavos(raw.efectivoCon) } : {}),
+    indicacionesAcceso: raw.indicacionesAcceso ? sanitizeInlineText(raw.indicacionesAcceso, 200) || undefined : undefined,
+    telefonoAlterno: telefonoAlterno ?? undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
     promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
     programadoPara,
@@ -222,6 +349,26 @@ export interface PreparedOrder {
   readonly appliedPromotion: Promotion | null;
   /** Descuento real ya restado de `total` — 0 cuando no hay promoción aplicada. */
   readonly discount: number;
+  /** Lineas de la comanda con la tortilla que eligio el cliente para un kilo de carne (ese renglon no exige tortilla y la descarta). */
+  readonly tortillasDeKilo: readonly string[];
+  /** D12: los renglones tal como se guardan, con las unidades regaladas por la promocion a $0 (la suma de renglones es el `total`). Sin promocion de unidades, son `orderItems`. */
+  readonly renglonesPersistidos: readonly PersistedOrderItem[];
+}
+
+/** Tolerancia (minutos) para una hora de recogida "de ahora mismo": el cliente dice "paso en 5 minutos" y el modelo la redondea hacia atras. */
+const TOLERANCIA_HORA_RECOGIDA_PASADA_MIN = 10;
+
+/** Rechaza (con un mensaje que el agente puede leer y corregir) una hora de recogida ya pasada o mas alla de la ventana de programacion. */
+export function validarHoraRecogida(horaRecogida: string, ahora: Date): void {
+  const minutos = (Date.parse(horaRecogida) - ahora.getTime()) / 60_000;
+  if (minutos < -TOLERANCIA_HORA_RECOGIDA_PASADA_MIN) {
+    throw new OrderValidationError(
+      "La hora de recogida ya pasó. Confirme con el cliente a qué hora de hoy pasará y mándela con la zona horaria de la sucursal (por ejemplo -06:00); si pasa de inmediato, omita hora_recogida.",
+    );
+  }
+  if (minutos > PROGRAMACION_MAXIMA_DIAS * 24 * 60) {
+    throw new OrderValidationError(`La hora de recogida debe caer dentro de los próximos ${PROGRAMACION_MAXIMA_DIAS} días. Confirme la fecha con el cliente.`);
+  }
 }
 
 /** Cotiza un pedido completo contra el catálogo real, SIN persistir — usado también
@@ -244,7 +391,14 @@ export async function prepareCreateOrder(
   // R-11: pedido programado -- el horario y las promociones se evaluan en la hora ELEGIDA (no en este instante).
   const programado = payload.programadoPara ? new Date(payload.programadoPara) : null;
   if (programado) validarVentanaProgramacion(payload.programadoPara!, new Date());
+  // QA R2 caos-04: la hora de recogida que elige el cliente no puede estar en el pasado ni fuera de la ventana de programacion
+  // (un modelo que manda la fecha de ayer, o "Z" en lugar de -06:00, la corre horas atras y el pedido nacia ya vencido).
+  if (payload.horaRecogida) validarHoraRecogida(payload.horaRecogida, options.asOf ?? new Date());
   const instanteDelPedido = programado ?? options.asOf ?? new Date();
+  // Una hora de recogida y una hora programada distintas en el mismo pedido se contradicen (la comanda decia 14:00 y 20:00 a la vez).
+  if (programado && payload.horaRecogida && Math.abs(Date.parse(payload.horaRecogida) - programado.getTime()) > 60_000) {
+    throw new OrderValidationError("La hora de recogida y la hora programada son distintas. Use una sola: para recoger más tarde use programado_para con esa hora y no mande hora_recogida.");
+  }
 
   const resolved = await resolveBranchOrderItems(
     repo,
@@ -258,6 +412,9 @@ export async function prepareCreateOrder(
   );
 
   const orderItems: PersistedOrderItem[] = [];
+  // QA-PM-R3-reglas-11: el kilo de carne ("Pastor — 1 kg") no exige tortilla, asi que `buildOrderQuoteFromProducts` la descarta; pero va CON tortillas y el cliente
+  // elige cual ("de harina"). Esa eleccion viaja en una linea de las notas de la comanda (cocina la ve) en vez de perderse.
+  const tortillasDeKilo: string[] = [];
   let total = 0;
   let containsAlcohol = false;
 
@@ -287,6 +444,9 @@ export async function prepareCreateOrder(
     if (!Number.isInteger(quote.quantity) || quote.quantity <= 0) {
       throw new OrderValidationError(`Cantidad inválida para ${product.name}`);
     }
+    if (!quote.tortilla && inputItem.tortilla && isTortillaChoice(inputItem.tortilla) && pesoDeProductoEnGramos(product.name) !== null) {
+      tortillasDeKilo.push(`Tortilla (${product.name}): ${inputItem.tortilla}.`);
+    }
     const lineTotal = Math.round(product.price * quote.quantity * 100) / 100;
     total = Math.round((total + lineTotal) * 100) / 100;
     orderItems.push({
@@ -300,6 +460,7 @@ export async function prepareCreateOrder(
 
   // Doble porcion de salsas: extra COBRADO (producto "Extra salsa" del catalogo, precio de catalogo).
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, payload.doubleSalsas ?? []);
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), payload.doubleSalsas);
   if (doubleSalsaLine) {
     total = Math.round((total + doubleSalsaLine.lineTotal) * 100) / 100;
     orderItems.push({ id: doubleSalsaLine.productId, name: doubleSalsaLine.name, price: doubleSalsaLine.price, quantity: doubleSalsaLine.quantity });
@@ -313,15 +474,20 @@ export async function prepareCreateOrder(
     canal: normalizarCanal(payload.canal),
     subtotal: total,
     colonia: payload.colonia,
+    pinEnEstaSucursal: pinEnSucursal(repo, branch, payload.organizationId, payload.ubicacion),
     paymentMethod: payload.paymentMethod,
-    propina: payload.propina,
+    // Una propina en porcentaje se convierte a pesos al final con el total definitivo; aqui solo se valida con la politica (solo tarjeta en PM).
+    propina: payload.propina ?? (payload.propinaPorcentaje !== undefined ? 0.01 : undefined),
     source: payload.source,
     ...(programado
       ? { now: programado, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, payload.programadoPara!) }
       : options.asOf
         ? { now: options.asOf }
         : {}),
+    ...(payload.horaRecogida && !programado ? { horaRecogida: payload.horaRecogida } : {}),
   });
+  // CR12: PM sin zonas cargadas no acepta "cualquier colonia" a domicilio: exige el pin (asigna por distancia) o una persona.
+  await exigirPinSiPmSinZonas(repo, { branch, canal: normalizarCanal(payload.canal), source: payload.source, ubicacion: payload.ubicacion });
 
   // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
   // gap y por qué es deliberadamente nuevo respecto al original). Se aplica DESPUÉS
@@ -386,8 +552,11 @@ export async function prepareCreateOrder(
   if (payload.propina !== undefined && redondearACentavos(payload.propina) > total) {
     throw new OrderValidationError("La propina no puede ser mayor que el total del pedido. Confirme el monto con el cliente antes de registrarla.");
   }
+  // Propina en porcentaje (QA-PM-R4-whatsapp-03): el servidor hace la cuenta sobre el total definitivo (10% de $552 = $55.20).
+  const payloadFinal: ValidatedCreateOrderInput =
+    payload.propina === undefined && payload.propinaPorcentaje !== undefined ? { ...payload, propina: redondearACentavos((total * payload.propinaPorcentaje) / 100) } : payload;
 
-  return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
+  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos: renglonesConPromocionAplicada(orderItems, appliedPromotion, total) };
 }
 
 /**
@@ -429,19 +598,25 @@ export async function createOrder(
   /** `beforePersist`: gancho que ve el pedido YA cotizado contra el catalogo vigente y puede rechazarlo (lanzando)
    * antes de escribir nada. Lo usa la maquina de estados del pedido para exigir que los precios sigan siendo los
    * que el cliente confirmo. */
-  options: { readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void> } = {},
+  options: {
+    readonly beforePersist?: (prepared: PreparedOrder) => void | Promise<void>;
+    /** `retener`: gancho que corre justo despues de persistir el pedido (misma transaccion). Si devuelve `true` el pedido quedo RETENIDO (p. ej. pedido grande
+     * `por_aprobar`): no sale el aviso "nuevo pedido" ni el correo de confirmacion (todavia no esta confirmado) y el pedido devuelto lleva ese estado. Si lanza,
+     * la transaccion (o el SAVEPOINT de la herramienta) revierte tambien el pedido: nunca queda un pedido grande en `pending` rumbo a cocina. */
+    readonly retener?: (order: Order, prepared: PreparedOrder) => Promise<boolean>;
+  } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
   await options.beforePersist?.(prepared);
-  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = prepared;
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
   const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName);
-  if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress);
+  if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress, payload.organizationId);
 
   const itemsOrdenados = [...orderItems].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort());
+  const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort(), payload.basicComplements);
   const notesWithAlcohol = containsAlcohol ? [complementNotes, "Recepción de alcohol: mayoría de edad confirmada por el cliente."].join("\n") : complementNotes;
   // Fase 11 — el descuento real ya está restado de `total` (ver prepareCreateOrder);
   // esta nota es solo auditoría legible por el staff en el panel de pedidos, nunca
@@ -452,7 +627,23 @@ export async function createOrder(
   const canalLines: string[] = [];
   if (payload.canal) canalLines.push(payload.canal === "recoger" ? "Canal: recoger en sucursal." : "Canal: domicilio.");
   if (payload.propina !== undefined && payload.propina > 0) canalLines.push(`Propina: $${payload.propina.toFixed(2)} (no incluida en el total).`);
-  if (payload.horaRecogida) canalLines.push(`Hora de recogida: ${payload.horaRecogida}.`);
+  // Pago y acceso: lineas del servidor (sin columna dedicada). `efectivoCon` se valida contra el total YA calculado: pagar con menos que el total no es un pedido valido.
+  if (payload.efectivoCon !== undefined) {
+    if (payload.efectivoCon < total) throw new OrderValidationError(`El monto con el que paga ($${payload.efectivoCon.toFixed(2)}) es menor al total del pedido ($${total.toFixed(2)}): pregúntele con cuánto va a pagar.`);
+    canalLines.push(`Paga con: $${payload.efectivoCon.toFixed(2)} (cambio: $${(Math.round((payload.efectivoCon - total) * 100) / 100).toFixed(2)}).`);
+  }
+  if (payload.llevarTerminal === true && payload.paymentMethod === "tarjeta" && (payload.canal ?? "domicilio") === "domicilio") canalLines.push("Llevar terminal.");
+  if (payload.indicacionesAcceso && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(`Indicaciones de acceso: ${payload.indicacionesAcceso}.`);
+  if (payload.telefonoAlterno) canalLines.push(`Teléfono alterno: ${payload.telefonoAlterno}.`);
+  // Destino de entrega (pin de WhatsApp o link de Maps) para el repartidor; solo a domicilio (recoger no lo usa).
+  if (payload.ubicacionEntrega && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(formatUbicacionEntregaNota(payload.ubicacionEntrega));
+  canalLines.push(...tortillasDeKilo);
+  if (payload.horaRecogida) {
+    // QA-PM-R6-voz-03: la comanda llevaba el ISO en UTC crudo («2026-10-06T19:40:10.057Z»); cocina lee la hora LOCAL de la sucursal.
+    const instante = new Date(payload.horaRecogida);
+    const zonaRecogida = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+    canalLines.push(`Hora de recogida: ${Number.isNaN(instante.getTime()) ? payload.horaRecogida : etiquetaHoraLocal(instante, zonaRecogida)}.`);
+  }
   if (payload.programadoPara) {
     const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
     canalLines.push(`Pedido programado para: ${etiquetaHoraLocal(new Date(payload.programadoPara), zona)}.`);
@@ -473,6 +664,7 @@ export async function createOrder(
       items: itemsOrdenados.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, tortilla: item.tortilla ?? null })),
       requested_complements: [...(payload.requestedComplements ?? [])].sort(),
       omit_default_complements: [...(payload.omitDefaultComplements ?? [])].sort(),
+      ...(payload.basicComplements ? { basic_complements: [...payload.basicComplements].sort() } : {}),
       // Solo entra al hash cuando hay doble porcion: el hash de pedidos sin ella no cambia.
       ...(payload.doubleSalsas && payload.doubleSalsas.length > 0 ? { double_salsas: [...new Set(payload.doubleSalsas)].sort() } : {}),
       // Solo entra al hash cuando el pedido es programado: el hash de pedidos normales no cambia.
@@ -498,7 +690,7 @@ export async function createOrder(
       customerEmail: payload.customerEmail ?? null,
       branch: branch.name,
       total,
-      items: orderItems,
+      items: renglonesPersistidos,
       source: payload.source,
       notes: finalNotes,
       paymentMethod: payload.paymentMethod ?? null,
@@ -520,14 +712,20 @@ export async function createOrder(
   // idempotente por (organizationId, orderId, eventType) -- un reintento real de
   // create_order_idempotent que devuelve el MISMO pedido (misma idempotencyKey o
   // dedupeFingerprint) nunca duplica la notificación.
-  await tryNotifyStaffNewOrder(repo, order);
+  const retenido = options.retener ? await options.retener(order, prepared) : false;
+  if (!retenido) await tryNotifyStaffNewOrder(repo, order);
 
   // Fase de correo — confirmación de pedido por correo real, best-effort e
   // idempotente por (organizationId, channel, dedupeKey) igual que la línea de
   // arriba: cuando el cliente no dejó correo (voz/WhatsApp, o web sin llenarlo),
   // `notifyCustomerOrderConfirmationEmailCore` simplemente no encola nada — ver
   // order-notifications.ts.
-  await tryNotifyCustomerOrderConfirmationEmail(repo, order);
+  if (!retenido) await tryNotifyCustomerOrderConfirmationEmail(repo, order);
+
+  // Cliente 360 (migracion 049): cierre automatico del ciclo con el cliente. Domicilio (alta o "usado otra vez") y gustos
+  // se actualizan a partir de lo que el cliente CONFIRMO en este pedido; idempotente por pedido (un reintento que devuelve
+  // el mismo pedido no cuenta dos veces) y best-effort con SAVEPOINT: nunca revierte un pedido ya creado.
+  await cerrarCicloDelCliente(repo, order, payload);
 
   // Fase 11 — registra el uso real de la promoción DESPUÉS de persistir el pedido
   // (nunca antes: un pedido que falla al crearse no debe consumir un uso). Igual
@@ -540,10 +738,11 @@ export async function createOrder(
   // pedidos reales con el mismo código, y no hay forma barata de diferenciarlos
   // sin una tabla de uso por pedido, fuera de alcance de esta fase). Best-effort:
   // nunca revierte un pedido real ya creado por esto.
+  // Nota: un pedido RETENIDO (`por_aprobar`) tambien consume el uso de la promocion: si la sucursal lo rechaza despues, el uso queda consumido (no se devuelve).
   if (appliedPromotion) {
     await tryIncrementPromotionUses(repo, payload.organizationId, appliedPromotion.id);
   }
-  return order;
+  return retenido ? { ...order, status: "por_aprobar" } : order;
 }
 
 /**
@@ -557,6 +756,15 @@ export async function createOrder(
  * wrapper solo resuelve la sucursal y los renglones, la lógica de cotización
  * en sí no cambia.
  */
+/** QA-PM-R3-whatsapp-05: ¿la sucursal mas cercana al pin que compartio el cliente es esta? (solo se consulta si hace falta: colonia no reconocida). */
+function pinEnSucursal(repo: RestaurantesRepository, branch: Branch, organizationId: string, ubicacion: { readonly lat: number; readonly lng: number } | undefined): (() => Promise<boolean>) | undefined {
+  if (!ubicacion) return undefined;
+  return async () => {
+    const asignacion = await assignBranch(repo, { organizationId, lat: ubicacion.lat, lng: ubicacion.lng });
+    return asignacion.estado === "asignada" && asignacion.branchSlug === branch.slug;
+  };
+}
+
 export async function quoteOrder(
   repo: RestaurantesRepository,
   args: {
@@ -568,12 +776,20 @@ export async function quoteOrder(
      * (solo para decidir si corresponde preguntar propina). */
     readonly canal?: CanalPedido;
     readonly colonia?: string;
+    /** Pin compartido por el cliente y canal de origen (CR12, `pin-reparto.ts`); solo los pone el servidor. */
+    readonly ubicacion?: { readonly lat: number; readonly lng: number };
+    readonly source?: "web" | "voice" | "whatsapp" | "admin";
     readonly paymentMethod?: "efectivo" | "tarjeta";
     /** Doble porcion de salsas (extra cobrado, ver `buildDoubleSalsaLine`). */
     readonly doubleSalsas?: readonly DoubleSalsa[];
     /** R-11: hora programada (ISO con zona). Se valida con las MISMAS reglas que `createOrder`: ventana
      * (anticipacion minima/maxima), horario de la sucursal en esa hora y zona horaria de la sucursal. */
     readonly programadoPara?: string;
+    /** QA R2 features-07: codigo de promocion (p. ej. el GRACIAS-XXXX de una compensacion) que el cliente dicta por WhatsApp o voz.
+     * Cuando viene, REEMPLAZA a la promocion automatica (igual que en `createOrder`) y un codigo invalido lanza `PromotionError`. */
+    readonly promoCode?: string;
+    /** Solo canal "recoger": hora a la que pasara el cliente (ISO con zona). Se valida con el reloj del servidor, igual que al crear. */
+    readonly horaRecogida?: string;
   },
 ): Promise<OrderQuote & QuotePolicyInfo & QuotePromotionInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
@@ -581,6 +797,10 @@ export async function quoteOrder(
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   }
   const canal = normalizarCanal(args.canal);
+  if (args.horaRecogida !== undefined) {
+    if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
+    validarTextoHoraRecogida(args.horaRecogida);
+  }
   // R-11: cotizar un pedido programado aplica la misma ventana y el mismo horario que crearlo, para que el
   // cliente no confirme un resumen que despues se rechazaria. Contra una base sin la migracion 034 se rechaza.
   const programadoPara = args.programadoPara === undefined ? undefined : parsearProgramadoPara(args.programadoPara);
@@ -591,7 +811,12 @@ export async function quoteOrder(
   const instante = programadoPara ? new Date(programadoPara) : null;
   const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
   const baseQuote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
+  // Misma validacion que al crear: una doble salsa fuera del catalogo (R07) se cotizaba y despues crear_pedido la rechazaba.
+  if (args.doubleSalsas !== undefined && (!Array.isArray(args.doubleSalsas) || args.doubleSalsas.length > DEFAULT_COMPLEMENTS.length || args.doubleSalsas.some((salsa) => !(DEFAULT_COMPLEMENTS as readonly string[]).includes(salsa)))) {
+    throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
+  }
   const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, args.doubleSalsas ?? []);
+  assertDobleSalsaAplica(resolved.products, resolved.items.map((i) => i.productId), args.doubleSalsas);
   const quote: OrderQuote = doubleSalsaLine
     ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }
     : baseQuote;
@@ -600,25 +825,32 @@ export async function quoteOrder(
     canal,
     subtotal: quote.total,
     colonia: args.colonia,
+    pinEnEstaSucursal: pinEnSucursal(repo, branch, args.organizationId, args.ubicacion),
     paymentMethod: args.paymentMethod,
     ...(instante ? { now: instante, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, programadoPara!) } : {}),
+    ...(args.horaRecogida && !instante && canal === "recoger" ? { horaRecogida: args.horaRecogida } : {}),
   });
+  await exigirPinSiPmSinZonas(repo, { branch, canal, source: args.source, ubicacion: args.ubicacion });
 
   // PM PR-4: promociones automaticas por dia y canal. `total` pasa a ser el TOTAL A PAGAR (ya con el
   // descuento) y `subtotal` conserva el de renglones; sin promocion aplicada nada cambia. Las promociones
   // que ya valen hoy pero a las que el pedido aun no llega se devuelven como sugerencias para que el agente
   // las ofrezca (p. ej. el martes: "con los nachos de pastor van 2 aguas de cortesia, ¿cuales?").
   const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
-  const auto = selectAutomaticPromotion({
-    promotions: await repo.listAutoApplyPromotions(args.organizationId),
-    orderTotal: quote.total,
-    items: quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity })),
-    canal,
-    now: instante ?? new Date(),
-    zonaHoraria,
-    ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
-    propertyId: branch.propertyId,
-  });
+  const itemsPromo = quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity }));
+  const codigo = args.promoCode?.trim() ? normalizePromotionCode(args.promoCode) : null;
+  const auto = codigo
+    ? await cotizarConCodigo(repo, { organizationId: args.organizationId, codigo, orderTotal: quote.total, items: itemsPromo, canal, now: instante ?? new Date(), zonaHoraria, diaNegocio: reglas.diaNegocio, propertyId: branch.propertyId })
+    : selectAutomaticPromotion({
+        promotions: await repo.listAutoApplyPromotions(args.organizationId),
+        orderTotal: quote.total,
+        items: itemsPromo,
+        canal,
+        now: instante ?? new Date(),
+        zonaHoraria,
+        ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+        propertyId: branch.propertyId,
+      });
   const descuento = auto.applied?.discount ?? 0;
   const nombreDeProducto = (id: string) => resolved.products.find((p) => p.id === id)?.name ?? null;
   return {
@@ -654,6 +886,37 @@ export async function quoteOrder(
     cierraA: reglas.apertura?.cierraA ?? null,
     ...(programadoPara ? { programadoPara } : {}),
   };
+}
+
+/** Cotiza con un CODIGO que dicto el cliente (misma validacion y calculo que `createOrder`): devuelve la forma de `selectAutomaticPromotion`
+ * con la promocion aplicada y sin sugerencias. Un codigo inexistente o que no vale hoy/en este canal lanza `OrderValidationError`. */
+async function cotizarConCodigo(
+  repo: RestaurantesRepository,
+  a: {
+    readonly organizationId: string;
+    readonly codigo: string;
+    readonly orderTotal: number;
+    readonly items: readonly PersistedOrderItem[];
+    readonly canal: CanalPedido;
+    readonly now: Date;
+    readonly zonaHoraria: string;
+    readonly diaNegocio: number | null;
+    readonly propertyId: string;
+  },
+): Promise<ReturnType<typeof selectAutomaticPromotion>> {
+  const promotion = await repo.findPromotionByCode(a.organizationId, a.codigo);
+  if (!promotion) throw new OrderValidationError(`El código "${a.codigo}" no existe.`);
+  const applied = applyPromotionToOrder({
+    promotion,
+    orderTotal: a.orderTotal,
+    items: a.items,
+    canal: a.canal,
+    now: a.now,
+    zonaHoraria: a.zonaHoraria,
+    ...(a.diaNegocio !== null ? { diaNegocio: a.diaNegocio } : {}),
+    propertyId: a.propertyId,
+  });
+  return { applied: { promotion, total: applied.total, discount: applied.discount }, suggestions: [] };
 }
 
 /** Promociones automaticas que acompanan a una cotizacion (PM PR-4). */

@@ -6,7 +6,7 @@ import type { AdaptadorSimulador, ProveedorSimulable } from "@atiende/voice-core
 import { canonicalizeMexicanPhone } from "../../phone.ts";
 import { evaluarPersonaVoz } from "../guardia-persona.ts";
 import { REGISTRO_TOOLS_PM, transporteEnProceso } from "../llamada/ejecutor-tools.ts";
-import { REGLAS_CIERRE_PM } from "../llamada/maquina.ts";
+import { LIMITES_VOZ_PM, REGLAS_CIERRE_PM } from "../llamada/maquina.ts";
 import { crearMundoVoz, SIP_FROM_LLAMANTE } from "./mundo-voz.ts";
 import type { MundoVoz } from "./mundo-voz.ts";
 import { crearMemoriaPm } from "./memoria-pm.ts";
@@ -51,5 +51,6 @@ export function proveedorFalsoGuionado(guion: GuionLlamada): ProveedorSimulable 
 }
 
 export function correrGuion(guion: GuionLlamada, opciones: OpcionesCorrida = {}): Promise<LlamadaSimulada> {
-  return correrGuionConAdaptador(ADAPTADOR_SIMULADOR_PM, guion, opciones);
+  // Los limites de la llamada de PM (UN solo "¿sigue ahi?") salvo lo que el guion fije por su cuenta.
+  return correrGuionConAdaptador(ADAPTADOR_SIMULADOR_PM, { ...guion, limites: { silenciosMax: LIMITES_VOZ_PM.silenciosMax, ...guion.limites } }, opciones);
 }

@@ -4,7 +4,7 @@
     "types": ["node"],
     "baseUrl": "."
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts", "apps/api/src/**/*.ts", "apps/api/tests/**/*.ts", "apps/worker/src/**/*.ts", "apps/worker/tests/**/*.ts", "scripts/**/*.ts", "api/**/*.ts", "test-setup/**/*.ts"],
+  "include": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts", "apps/api/src/**/*.ts", "apps/api/tests/**/*.ts", "apps/worker/src/**/*.ts", "apps/worker/tests/**/*.ts", "apps/voice-worker/src/**/*.ts", "apps/voice-worker/tests/**/*.ts", "scripts/**/*.ts", "api/**/*.ts", "test-setup/**/*.ts"],
   // Este tsconfig raíz es para el monorepo backend puro (sin `jsx` configurado a
   // propósito) — sólo `apps/api` y `apps/worker` están listados arriba, NO
   // `apps/web`. `apps/web` ya tiene su PROPIO tsconfig.json (jsx: "react-jsx",

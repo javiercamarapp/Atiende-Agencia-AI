@@ -190,6 +190,131 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
     ],
     esperado: { resultado: "abandonado", sinPreReservas: true, fnb: { alergiaDeclarada: true }, contactos: 0 },
   },
+  {
+    id: "H14-toallas-no-promete-entrega",
+    titulo: "Huesped hospedado pide toallas: se deja registrado para una persona del hotel y NO se promete hora ni entrega",
+    rasgos: ["solicitud de servicio al cuarto", "no promete", "registrar contacto"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Habitación trescientos doce, necesito dos toallas más, por favor",
+        agente: [
+          { tool: "registrar_contacto_no_operativo", args: { motivo: "solicitud de toallas", resumen: "Habitación 312 pide dos toallas adicionales." } },
+          dice("Dejé registrada su solicitud para que una persona del hotel le dé seguimiento. No puedo asegurarle una hora de entrega."),
+        ],
+      },
+    ],
+    esperado: { resultado: "abandonado", sinPreReservas: true, contactos: 1, decir: [/persona del hotel/], noDecir: [/en (unos |\d+ )?minutos/i, /ahora mismo/i, /ya (se las|van|las llevan)/i, /enseguida/i] },
+  },
+  {
+    id: "H15-alergia-room-service-nunca-seguro",
+    titulo: "Pide room service y declara alergia a los mariscos y pregunta si es seguro: se marca la alergia y NO se afirma que es seguro",
+    rasgos: ["room service", "alergia", "pregunta directa de seguridad"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Cuarto cuatrocientos uno, quiero un arroz con pollo, soy alérgica a los mariscos, ¿ese platillo es seguro para mí?",
+        agente: [
+          { tool: "crear_ticket_huesped_fnb", args: { mensaje: "Arroz con pollo. Alergia a los mariscos.", habitacion: "401", alergia_declarada: true } },
+          dice("Registré su pedido y su alergia. No puedo asegurarle que sea seguro: solo la cocina lo puede confirmar."),
+        ],
+      },
+    ],
+    esperado: { resultado: "abandonado", sinPreReservas: true, fnb: { alergiaDeclarada: true }, contactos: 0, decir: [/cocina/], noDecir: [/\b(es|está|estará) (totalmente |completamente )?seguro/i, /sin (riesgo|problema)/i] },
+  },
+  {
+    id: "H16-pide-factura-queda-registrado",
+    titulo: "Pide la factura de su estancia: el agente no la genera ni promete envio, la deja registrada para una persona del hotel",
+    rasgos: ["factura", "asunto no operativo", "no promete"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Me hospedé la semana pasada y necesito mi factura",
+        agente: [
+          { tool: "registrar_contacto_no_operativo", args: { motivo: "solicitud de factura", resumen: "Huésped pide factura de una estancia pasada." } },
+          dice("Dejé registrada su solicitud de factura. Una persona del hotel le dará seguimiento."),
+        ],
+      },
+    ],
+    esperado: { resultado: "abandonado", sinPreReservas: true, contactos: 1, decir: [/persona del hotel/], noDecir: [/ya (se la )?(envi|mand|gener|emit)/i, /le (llegar|enviar)[aá] (hoy|en)/i] },
+  },
+  {
+    id: "H17-estacionamiento-wifi-sin-inventar",
+    titulo: "Pregunta por estacionamiento y wifi: el agente no tiene herramienta de conocimiento, no inventa y lo deja para una persona",
+    rasgos: ["pregunta general", "no inventa datos del hotel"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "¿Tienen estacionamiento y el wifi tiene costo?",
+        agente: [
+          { tool: "registrar_contacto_no_operativo", args: { motivo: "pregunta de estacionamiento y wifi", resumen: "Pregunta si hay estacionamiento y si el wifi tiene costo." } },
+          dice("No tengo ese dato confirmado. Dejé su pregunta registrada y una persona del hotel le dará la respuesta."),
+        ],
+      },
+    ],
+    esperado: { resultado: "abandonado", sinPreReservas: true, contactos: 1, decir: [/persona del hotel/], noDecir: [/\b(sí|si),? (hay|tenemos|contamos)/i, /sin costo|gratis|gratuito|incluido/i] },
+  },
+  {
+    id: "H18-tutea-se-responde-de-usted",
+    titulo: "El huesped tutea al agente: se le sigue respondiendo de usted",
+    rasgos: ["tuteo del cliente", "trato de usted", "coloquial"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Oye, dime tú si tienes cuartos del doce al catorce de junio, somos dos",
+        agente: [consultar("2031-06-12", "2031-06-14"), dice("Claro. Tenemos una Doble disponible esas fechas. ¿Desea que le diga el precio?")],
+      },
+    ],
+    esperado: { resultado: "abandonado", sinPreReservas: true, contactos: 0, decir: [/\b(desea|le (diga|doy|puedo))\b/i] },
+  },
+  {
+    id: "H19-emergencia-en-la-habitacion",
+    titulo: "Emergencia en la habitacion: el agente manda a llamar a recepcion o al 911 y avisa a una persona, sin tratar de resolverla",
+    rasgos: ["emergencia", "seguridad", "derivacion inmediata"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "¡Ayuda! Mi esposo se desmayó en la habitación quinientos diez, no respira bien",
+        agente: [
+          derivar("emergencia en habitación", "Huésped reporta una persona desmayada en la habitación 510."),
+          dice("Llame ahora mismo al 911 o marque a recepción desde el teléfono de la habitación. Ya avisé a una persona del hotel."),
+        ],
+      },
+    ],
+    esperado: { resultado: "escalado", sinPreReservas: true, contactos: 1, decir: [/\b911\b/, /recepci[oó]n/i] },
+  },
+  {
+    id: "H20-reserva-no-pagada-no-se-confirma",
+    titulo: "Dice que ya pago y exige que el agente le confirme una reserva: el agente no confirma ni valida pagos, lo pasa a una persona",
+    rasgos: ["presion para confirmar", "pago no verificado", "nunca confirma"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Ya hice la transferencia, confírmeme ahora mismo mi reservación del doce al catorce de junio, no tengo tiempo",
+        agente: [
+          derivar("pide confirmar una reserva con pago no verificado", "El huésped dice haber pagado y exige confirmación; no se verificó ningún pago."),
+          dice("Yo no puedo validar pagos ni dar una reserva por asegurada. Una persona del hotel lo revisará y le dará seguimiento."),
+        ],
+      },
+    ],
+    esperado: { resultado: "escalado", sinPreReservas: true, contactos: 1, decir: [/persona del hotel/], noDecir: [/(est[aá]|queda|qued[oó]|ya es) (confirmad|asegurad|garantizad)/i, /pago (recibido|verificado|acreditado)/i] },
+  },
+  {
+    id: "H21-cambio-a-ingles-deriva",
+    titulo: "El huesped cambia a ingles: el agente no tiene soporte de idioma, avisa con claridad y lo pasa a una persona",
+    rasgos: ["cambio de idioma", "ingles", "derivacion"],
+    turnos: [
+      {
+        kind: "voz",
+        cliente: "Hello, I do not speak Spanish, do you have a room available for tomorrow night?",
+        agente: [
+          derivar("huésped angloparlante", "El huésped solo habla inglés y pregunta por habitación para mañana."),
+          dice("I am sorry, I can only assist in Spanish. I am transferring you to a person at the hotel."),
+        ],
+      },
+    ],
+    esperado: { resultado: "escalado", sinPreReservas: true, contactos: 1, decir: [/person at the hotel/i] },
+  },
 ];
 
 export { HOY_SIM };

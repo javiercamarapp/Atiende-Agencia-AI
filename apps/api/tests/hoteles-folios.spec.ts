@@ -4,7 +4,8 @@
 // comportamiento real: idempotencia real de punta a punta, la guarda REQ-AB-012, el
 // guardia anti-alucinación de impuesto, y el filtrado de roles finos — no un
 // happy-path decorativo.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { FolioCerradoError, FolioCierreSaldoError } from "@atiende/domain-hoteles";
 import { buildApp } from "../src/app.ts";
 import { buildHotelesTestContext, authedJson } from "./hoteles-fixtures.ts";
 
@@ -228,6 +229,106 @@ describe("Cierre de folio (saldo_cero / cuenta_por_cobrar)", () => {
       authedJson(ctx.staff.frontdesk.token, { motivo: "cuenta_por_cobrar", autorizadoPorUserId: ctx.staff.owner.id }),
     );
     expect(res.status).toBe(200);
+  });
+});
+
+// H-P3-01 (P0, dinero): la guarda de estado de la ruta lee el folio ANTES de escribir; si otra peticion lo cierra en
+// medio, quien pierde la carrera recibe el rechazo de la base (trigger de la migracion 045 / espejo en memoria) y la ruta
+// lo traduce a un 409 legible -- nunca un 500 ni un cargo/pago en un folio cerrado.
+describe("carrera folio cerrado (H-P3-01): el rechazo de la base se traduce a 409 legible en todas las rutas de dinero", () => {
+  it("cargo: si el folio se cierra entre la lectura y el insert -> 409, no 500", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    vi.spyOn(ctx.hotelesRepo, "insertCharge").mockRejectedValueOnce(new FolioCerradoError());
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cargos`,
+      authedJson(ctx.staff.owner.token, { descripcion: "Minibar", monto: 100, concepto: "extras" }, { "idempotency-key": "k-race-cargo" }),
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { code: string; message: string }).toMatchObject({ code: "conflict", message: expect.stringContaining("cerrado") });
+  });
+
+  it("pago: si el folio se cierra entre la lectura y el insert -> 409, no 500", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    vi.spyOn(ctx.hotelesRepo, "insertPayment").mockRejectedValueOnce(new FolioCerradoError());
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+      authedJson(ctx.staff.owner.token, { monto: 50, metodo: "efectivo" }, { "idempotency-key": "k-race-pago" }),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("pago con tarjeta: si el cierre gana la carrera, el 409 sale ANTES de cobrar (el puerto nunca se llama)", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const charge = vi.spyOn(ctx.deps.hotelesPaymentsPort, "charge");
+    // La guarda sin candado vio el folio abierto; el candado de fila ya lo ve cerrado.
+    vi.spyOn(ctx.hotelesRepo, "lockFolioStatus").mockResolvedValueOnce("cerrado");
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+      authedJson(ctx.staff.owner.token, { monto: 50, metodo: "tarjeta", tokenPago: "tok_race" }, { "idempotency-key": "k-race-tarjeta" }),
+    );
+    expect(res.status).toBe(409);
+    expect(charge).not.toHaveBeenCalled();
+    expect((await ctx.hotelesRepo.findFolio(ctx.propertyId, ctx.folioId))!.payments).toHaveLength(0);
+  });
+
+  it("pago con tarjeta en folio abierto: toma el candado, cobra una vez y deja el pago registrado", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const lock = vi.spyOn(ctx.hotelesRepo, "lockFolioStatus");
+    const charge = vi.spyOn(ctx.deps.hotelesPaymentsPort, "charge");
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+      authedJson(ctx.staff.owner.token, { monto: 50, metodo: "tarjeta", tokenPago: "tok_ok" }, { "idempotency-key": "k-tarjeta-ok" }),
+    );
+    expect(res.status).toBe(201);
+    expect(lock).toHaveBeenCalledTimes(1);
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect(lock.mock.invocationCallOrder[0]!).toBeLessThan(charge.mock.invocationCallOrder[0]!);
+    expect((await ctx.hotelesRepo.findFolio(ctx.propertyId, ctx.folioId))!.payments).toHaveLength(1);
+  });
+
+  it("cierre doble: el segundo cierre que pierde la carrera recibe 409 y no pisa el cierre del primero", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    vi.spyOn(ctx.hotelesRepo, "closeFolio").mockRejectedValueOnce(new FolioCerradoError());
+    const res = await app.request(`/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cerrar`, authedJson(ctx.staff.owner.token, { motivo: "saldo_cero" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { code: string }).toMatchObject({ code: "conflict" });
+  });
+
+  it("cierre saldo_cero con un cargo que entro en medio -> 409 con mensaje de saldo cambiado", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    vi.spyOn(ctx.hotelesRepo, "closeFolio").mockRejectedValueOnce(new FolioCierreSaldoError());
+    const res = await app.request(`/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cerrar`, authedJson(ctx.staff.owner.token, { motivo: "saldo_cero" }));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { message: string }).message).toContain("saldo");
+  });
+
+  it("un error que NO es de folio sigue su camino al manejador global (500)", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    vi.spyOn(ctx.hotelesRepo, "insertCharge").mockRejectedValueOnce(new Error("boom"));
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cargos`,
+      authedJson(ctx.staff.owner.token, { descripcion: "Minibar", monto: 100, concepto: "extras" }, { "idempotency-key": "k-race-boom" }),
+    );
+    expect(res.status).toBe(500);
+  });
+
+  it("espejo en memoria: un folio cerrado rechaza cargo y pago; un segundo cierre y un saldo_cero con saldo lanzan", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const repo = ctx.hotelesRepo;
+    const base = { organizationId: ctx.organizationId, propertyId: ctx.propertyId, folioId: ctx.folioId };
+    await repo.insertCharge({ ...base, description: "Hospedaje", amount: 100, taxAmount: 0, concept: "hospedaje" });
+    await expect(repo.closeFolio(ctx.folioId, "saldo_cero", null)).rejects.toBeInstanceOf(FolioCierreSaldoError);
+    await repo.closeFolio(ctx.folioId, "cuenta_por_cobrar", ctx.staff.owner.id);
+    await expect(repo.closeFolio(ctx.folioId, "cuenta_por_cobrar", ctx.staff.owner.id)).rejects.toBeInstanceOf(FolioCerradoError);
+    await expect(repo.insertCharge({ ...base, description: "Tarde", amount: 1, taxAmount: 0, concept: "extras" })).rejects.toBeInstanceOf(FolioCerradoError);
+    await expect(repo.insertPayment({ ...base, amount: 1, method: "efectivo", status: "capturado" })).rejects.toBeInstanceOf(FolioCerradoError);
   });
 });
 

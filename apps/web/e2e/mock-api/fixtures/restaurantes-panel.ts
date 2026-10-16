@@ -6,7 +6,7 @@
 import { conStatus, fallo } from "../respuestas.ts";
 import { propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
-import { ORDENES_SEMILLA, ENTREGAS_SEMILLA } from "./restaurantes.ts";
+import { ORDENES_SEMILLA, ENTREGAS_SEMILLA, PROGRAMADOS_SEMILLA } from "./restaurantes.ts";
 
 const PROP = propiedadDe("restaurantes");
 const B = "/v1/restaurantes/:id/admin";
@@ -91,7 +91,7 @@ function sucursal(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
 
 // ---------- Avisos y cierres: forma de apps/web/src/verticals/restaurantes/lib/{avisos,cierres}-client.ts ----------
 const EVENTOS_AVISO_MOCK = [
-  { tipo: "restaurantes.pedido.nuevo", etiqueta: "Pedido nuevo", descripcion: "Entra un pedido por WhatsApp, voz o la tienda en línea.", sonidoAplica: true },
+  { tipo: "restaurantes.pedido.nuevo", etiqueta: "Pedido nuevo", descripcion: "Entra un pedido por WhatsApp o voz.", sonidoAplica: true },
   { tipo: "restaurantes.handoff.solicitado", etiqueta: "Cliente pide a una persona", descripcion: "El agente deriva una conversación a atención humana.", sonidoAplica: false },
   { tipo: "restaurantes.pedido.entrega_tardia", etiqueta: "Entrega tardía", descripcion: "Un pedido pasó de su hora prometida y sigue sin entregarse.", sonidoAplica: false },
 ];
@@ -127,6 +127,17 @@ function cierresGenerados(p: { estado: { obtener<T>(k: string, s: () => T): T } 
   return p.estado.obtener("rest.cierres", () => [cierreMock("dia", diaRelativo(-3), 0)]);
 }
 
+
+// Estado de las campanas de reactivacion (una configuracion lista y un borrador por aprobar con costo estimado).
+function marketingConfig(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
+  return p.estado.obtener("rest.marketing.config", () => ({ activo: true, tarifaCentavos: 80 as number | null, topeMensualCentavos: null as number | null, minimoSegmento: 10, plantillaNombre: "reactivacion_promo" as string | null, plantillaIdioma: "es_MX", hayPromocionVigente: true, plantillaAprobada: true, whatsappConectado: true, gastadoMesCentavos: 0, consentimientosVigentes: 40 }));
+}
+function marketingCampanas(p: { estado: { obtener<T>(k: string, s: () => T): T } }) {
+  return p.estado.obtener("rest.marketing.campanas", () => [
+    { id: "camp-e2e-1", segmento: "inactivo_30", estado: "borrador" as "borrador" | "aprobada" | "rechazada" | "expirada", conteo: 23, conteoControl: 2, costoEstimadoCentavos: 1840, promoNombre: "Vuelve con 10 por ciento", promoCodigo: "VUELVE10", creadaAt: "2026-09-30T14:00:00.000Z", decididaAt: null as string | null, encolados: null as number | null, enviados: 0, recompraTratados: 0, recompraControl: 0, ingresoTratados: 0, ventanaCerrada: false },
+  ]);
+}
+
 export const rutasRestaurantesPanel: readonly Ruta[] = [
   // ---------- Pedidos (estado compartido con el repartidor y el Historial) ----------
   {
@@ -134,13 +145,33 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     patron: `${B}/orders`,
     manejador: (p) => {
       const estado = p.query.get("status");
-      return { orders: ordenes(p).filter((o) => (estado ? o.status === estado : true)), nextCursor: null };
+      // Con varias sucursales sembradas (qa-r2-botones) cada sucursal ve solo sus pedidos, como el servidor real con branchId/propertyId.
+      const multisucursal = p.estado.obtener<unknown[]>("rest.branches", () => [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }]).length > 1;
+      return { orders: ordenes(p).filter((o) => (estado ? o.status === estado : true) && (!multisucursal || o.propertyId === p.params["id"])), nextCursor: null };
+    },
+  },
+  {
+    // Detalle de un pedido (pagina completa de Pedidos): tambien resuelve los programados.
+    metodo: "GET",
+    patron: `${B}/orders/:orderId`,
+    manejador: (p) => {
+      const o = ordenes(p).find((x) => x.id === p.params["orderId"]) ?? p.estado.obtener<Array<{ id: string }>>("rest.programados", () => structuredClone(PROGRAMADOS_SEMILLA)).find((x) => x.id === p.params["orderId"]);
+      return o ? { order: o } : fallo(404, "Ese pedido no existe");
     },
   },
   {
     metodo: "PATCH",
     patron: `${B}/orders/:orderId/status`,
     manejador: (p) => {
+      // Un programado que se adelanta a cocina (pending) pasa a la lista normal; uno cancelado sale de los programados.
+      const programados = p.estado.obtener<Orden[]>("rest.programados", () => structuredClone(PROGRAMADOS_SEMILLA) as unknown as Orden[]);
+      const iProg = programados.findIndex((x) => x.id === p.params["orderId"]);
+      if (iProg >= 0) {
+        const destino = String(((p.cuerpo ?? {}) as { status?: string }).status ?? "");
+        const [prog] = programados.splice(iProg, 1);
+        if (prog && destino === "pending") ordenes(p).push({ ...prog, status: "pending" } as unknown as Orden);
+        return { order: { ...prog, status: destino } };
+      }
       const o = ordenes(p).find((x) => x.id === p.params["orderId"]);
       if (!o) return fallo(404, "Ese pedido no existe");
       const siguiente = String(((p.cuerpo ?? {}) as { status?: string }).status ?? "");
@@ -272,12 +303,70 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     },
   },
 
+  // ---------- Campanas de reactivacion (autopiloto 2): forma de lib/marketing-client.ts (contrato de admin-marketing.ts) ----------
+  { metodo: "GET", patron: `${B}/marketing`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, config: marketingConfig(p), campanas: marketingCampanas(p) }) },
+  { metodo: "PUT", patron: `${B}/marketing/config`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { activo?: boolean; tarifaCentavos?: number | null; topeMensualCentavos?: number | null; minimoSegmento?: number; plantillaNombre?: string | null };
+      if (typeof c.activo !== "boolean") return fallo(400, "activo: se esperaba un booleano.");
+      Object.assign(marketingConfig(p), { activo: c.activo, tarifaCentavos: c.tarifaCentavos ?? null, topeMensualCentavos: c.topeMensualCentavos ?? null, minimoSegmento: c.minimoSegmento ?? 10, plantillaNombre: c.plantillaNombre ?? null });
+      return { disponible: true, config: marketingConfig(p) };
+    } },
+  { metodo: "POST", patron: `${B}/marketing/campanas/:campanaId/decidir`, roles: ["owner", "admin"], manejador: (p) => {
+      const k = marketingCampanas(p).find((x) => x.id === p.params["campanaId"]);
+      if (!k) return fallo(403, "Sin acceso a las campañas de esta organización.");
+      const accion = (p.cuerpo as { accion?: string } | undefined)?.accion;
+      if (accion !== "aprobar" && accion !== "rechazar") return fallo(400, 'accion: se esperaba "aprobar" o "rechazar".');
+      if (k.estado !== "borrador") return fallo(409, "Esta campaña ya fue decidida o expiró; espera el siguiente borrador.");
+      if (accion === "rechazar") {
+        k.estado = "rechazada";
+        return { estado: "rechazada", encolados: 0, control: 0 };
+      }
+      k.estado = "aprobada";
+      k.encolados = k.conteo;
+      k.decididaAt = new Date().toISOString();
+      return { estado: "aprobada", encolados: k.conteo, control: k.conteoControl };
+    } },
+
+  // ---------- Repartidor sugerido (autopiloto 2): solo lectura, NO asigna ----------
+  { metodo: "GET", patron: `${B}/repartidor-sugerido`, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      const ids = (p.query.get("orderIds") ?? "").split(",").filter((x) => x.length > 0);
+      const sugerencias: Record<string, { repartidorId: string; nombre: string; enCamino: number }> = {};
+      for (const o of ordenes(p)) {
+        if (ids.includes(o.id) && o.status === "preparando" && o.canal !== "recoger" && !o.assignedRepartidorId) sugerencias[o.id] = { repartidorId: "usr-2", nombre: "Ramon Uc", enCamino: 0 };
+      }
+      return { sugerencias };
+    } },
+
   // ---------- Clientes (ficha) ----------
+  // Politica de reincidencia: va ANTES de `/customers/:customerId` (misma regla que el servidor real, que la registra primero).
+  { metodo: "GET", patron: `${B}/customers/policy`, roles: ["owner", "admin"], manejador: (p) => ({ policy: p.estado.obtener("rest.politica-clientes", () => ({ umbralNoRecogidos: 2, ventanaDias: 90 })) }) },
+  { metodo: "PUT", patron: `${B}/customers/policy`, roles: ["owner", "admin"], manejador: (p) => { p.estado.guardar("rest.politica-clientes", p.cuerpo); return { policy: p.cuerpo }; } },
+  // Ficha completa del cliente (Cliente 360): la pantalla la pide primero; la ficha basica de abajo solo sirve de respaldo (503).
+  {
+    metodo: "GET",
+    patron: `${B}/customers/:customerId/ficha`,
+    manejador: (p) => {
+      if (p.params["customerId"] !== "cli-1") return fallo(404, "Ese cliente no existe");
+      return {
+        ficha: {
+          customer: { id: "cli-1", name: "Marisol Pech", phone: "+529995550101", orderCount: 9, lastOrderAt: "2026-10-02T19:30:00.000Z", createdAt: "2026-06-01T15:00:00.000Z", fechaNacimientoDia: null, fechaNacimientoMes: null, staffNotes: null },
+          addresses: [{ id: "dom-1", address: "Calle 60 #412, Centro", label: "Casa", isDefault: true, accessNotes: null, mapsUrl: null, colonia: "Centro", branchSlug: null, lastUsedAt: "2026-10-02T19:30:00.000Z", timesUsed: 4 }],
+          preferences: [],
+          reliability: { noRecogidos90d: 0, pedidosFalsos: 0, umbral: 2, ventanaDias: 90 },
+          tier: null,
+          orders: [],
+          whatsapp: { conversaciones: 0, ultimaActividad: null, mensajes: 0 },
+          llamadas: [],
+        },
+      };
+    },
+  },
   {
     metodo: "GET",
     patron: `${B}/customers/:customerId`,
     manejador: (p) => ({ customer: p.params["customerId"] === "cli-1" ? { isNew: false, name: "Marisol Pech", orderCount: 9, addresses: [{ address: "Calle 60 #412, Centro", label: "Casa", isDefault: true }], lastOrderItems: [{ name: "Tacos al pastor (orden)", quantity: 2 }], frequentItems: [{ name: "Horchata", quantity: 7 }], tier: "GOLD", agentNotes: ["Prefiere sin cebolla"] } : { isNew: true } }),
   },
+
 
   // ---------- Sucursales ----------
   { metodo: "GET", patron: `${B}/sucursales`, manejador: (p) => ({ branches: [sucursal(p)] }) },
@@ -444,12 +533,46 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/cerrar`, manejador: (p) => { p.estado.guardar("rest.handoff-estado", "cerrada"); return { estado: "cerrada", cambio: true }; } },
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/notas`, manejador: (p) => { const notas = p.estado.obtener("rest.handoff-notas", () => [] as unknown[]); const texto = String(((p.cuerpo ?? {}) as { texto?: string }).texto ?? ""); notas.push({ id: `nota-${notas.length + 1}`, autor: "Owner restaurantes", texto, creadoEn: new Date().toISOString() }); return { id: `nota-${notas.length}` }; } },
   { metodo: "POST", patron: `${B}/handoffs/:handoffId/responder`, manejador: () => ({ encolado: true }) },
-  { metodo: "GET", patron: `${B}/callbacks`, manejador: () => ({ disponible: true, items: [] }) },
+  { metodo: "GET", patron: `${B}/callbacks`, manejador: (p) => ({ disponible: true, items: p.estado.obtener("rest.callbacks", () => [] as unknown[]) }) },
   { metodo: "GET", patron: `${B}/turnos`, manejador: (p) => ({ disponible: true, turnos: p.estado.obtener("rest.turnos", () => [{ id: "turno-1", nombre: "Comida", dias: [1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "01:00", miembros: [{ userId: "usr-1", nombre: "Lucia Xool", orden: 1 }] }]), cobertura: COBERTURA }) },
   { metodo: "PUT", patron: `${B}/turnos`, manejador: (p) => { const t = ((p.cuerpo ?? {}) as { turnos?: unknown[] }).turnos ?? []; p.estado.guardar("rest.turnos", t); return { disponible: true }; } },
 
+
+  // ---------- Conocimiento del negocio e interruptor del agente de WhatsApp (053; solo owner/admin como la API real) ----------
+  // Replica del servidor lo que la SPA debe ver: el validador rechaza precios (`$` + numero) con el mismo mensaje y una entrada nueva nace publicada.
+  { metodo: "GET", patron: `${B}/conocimiento`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, topeCaracteres: 6000, entradas: p.estado.obtener("rest.conocimiento", () => [] as unknown[]) }) },
+  { metodo: "POST", patron: `${B}/conocimiento`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { titulo?: string; texto?: string; tipo?: string; sucursalId?: string | null; reemplazaId?: string | null; prioridad?: number; vigenteDesde?: string | null; vigenteHasta?: string | null };
+      if (/\$\s*\d/.test(`${c.titulo ?? ""} ${c.texto ?? ""}`)) return fallo(400, "No incluya precios: el agente los toma siempre del menú real con la cotización, y un precio escrito aquí se quedaría desactualizado.");
+      const lista = p.estado.obtener("rest.conocimiento", () => [] as unknown[]);
+      const entrada = { id: `cono-${lista.length + 1}`, sucursalId: c.sucursalId ?? null, reemplazaId: c.reemplazaId ?? null, titulo: c.titulo ?? "", texto: c.texto ?? "", tipo: c.tipo ?? "faq", prioridad: c.prioridad ?? 50, vigenteDesde: c.vigenteDesde ?? null, vigenteHasta: c.vigenteHasta ?? null, activo: true, estado: "publicado", origen: "manual", version: 1, actualizadoEn: new Date().toISOString() };
+      lista.push(entrada);
+      return conStatus(201, entrada);
+    } },
+  { metodo: "PATCH", patron: `${B}/conocimiento/:entradaId`, roles: ["owner", "admin"], manejador: (p) => {
+      const lista = p.estado.obtener("rest.conocimiento", () => [] as Record<string, unknown>[]);
+      const e = lista.find((x) => x["id"] === p.params["entradaId"]);
+      if (!e) return fallo(404, "Entrada de conocimiento no encontrada.");
+      Object.assign(e, p.cuerpo ?? {}, { version: Number(e["version"]) + 1 });
+      return e;
+    } },
+  { metodo: "DELETE", patron: `${B}/conocimiento/:entradaId`, roles: ["owner", "admin"], manejador: (p) => {
+      const lista = p.estado.obtener("rest.conocimiento", () => [] as Record<string, unknown>[]);
+      const i = lista.findIndex((x) => x["id"] === p.params["entradaId"]);
+      if (i < 0) return fallo(404, "Entrada de conocimiento no encontrada.");
+      lista.splice(i, 1);
+      return { ok: true };
+    } },
+  { metodo: "GET", patron: `${B}/config/sucursales/:branchId/agente-whatsapp`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, agenteActivo: p.estado.obtener("rest.agente-wa-activo", () => true) }) },
+  { metodo: "PUT", patron: `${B}/config/sucursales/:branchId/agente-whatsapp`, roles: ["owner", "admin"], manejador: (p) => {
+      const activo = ((p.cuerpo ?? {}) as { activo?: unknown }).activo;
+      if (typeof activo !== "boolean") return fallo(400, "activo: se esperaba true o false.");
+      p.estado.guardar("rest.agente-wa-activo", activo);
+      return { disponible: true, agenteActivo: activo };
+    } },
+
   // ---------- Agente de voz ----------
-  { metodo: "GET", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.voz", () => ({ disponible: true, configurada: true, habilitado: true, voiceId: "voz-1", comportamiento: "Atiende pedidos por telefono.", mensajeInicial: "Taqueria El Faro, en que le ayudo?" })) },
+  { metodo: "GET", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.voz", () => ({ disponible: true, configurada: true, habilitado: true, voiceId: "voz-1", comportamiento: "Atiende pedidos por telefono.", mensajeInicial: "Taqueria El Faro, en que le ayudo?", mensajeInicialInterrumpible: true })) },
   { metodo: "PUT", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => { const c = { disponible: true, configurada: true, ...((p.cuerpo ?? {}) as object) }; p.estado.guardar("rest.voz", c); return c; } },
   { metodo: "GET", patron: `${B}/voz/catalogo`, roles: ["owner", "admin"], manejador: () => ({ salud: { ok: true, detalle: "Servicio de voz operativo." } }) },
   { metodo: "GET", patron: `${B}/voz/conversaciones`, roles: ["owner", "admin"], manejador: () => ({ disponible: true, items: [{ id: "voz-conv-1", iniciadaEn: "2026-09-30T18:30:00.000Z", duracionS: 84, costoEstimadoMicroUsd: 120000, resultado: "pedido_creado" }] }) },

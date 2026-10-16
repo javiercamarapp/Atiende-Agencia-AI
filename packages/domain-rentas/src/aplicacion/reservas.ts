@@ -44,11 +44,19 @@
 //     parsear el mensaje, mismo patrón que `domain-hoteles::QuoteError`.
 //  3. Los INSERT a `outbox_evento` del origen se omiten (ver README.md: sin
 //     consumidor en esta fase, tabla fuera del esquema mapeado).
+//  4. (paridad3) El ciclo de la tarea de limpieza vive AQUI, igual que en el origen: confirmar una reserva deja
+//     creada la tarea del checkout (`crearTareaLimpiezaAlConfirmar`), modificar sus fechas la reprograma conservando
+//     al responsable y cancelarla la cancela. Son efectos accesorios aislados por SAVEPOINT: nunca revierten ni
+//     rechazan la operacion de calendario (el barrido `barrerLimpiezaPendiente` repara lo que un gancho no logre).
 import { calcularNoches, esRangoValido } from "../fechas.ts";
 import { puedeTransicionar } from "../estados.ts";
 import { RentasDomainError } from "../errors.ts";
 import type { EstadoOcupacion, RangoFechas, Razon, TipoConflicto } from "../tipos.ts";
 import { bloquearUnidadEnTransaccion, esViolacionExclusion, type EjecutorTransaccional } from "../ejecutor.ts";
+// Ciclo de la tarea de limpieza ligada a la reserva (paridad3). `limpieza/aplicacion/tareas.ts` importa de este archivo
+// (`crearBloqueo`/`cancelarOcupacion`) y este importa sus ganchos: el ciclo ES seguro porque ambos modulos solo declaran
+// funciones (nada se ejecuta al importar) y los ganchos se invocan al final de cada operacion, ya en tiempo de llamada.
+import { cancelarTareaAlCancelarReserva, crearTareaLimpiezaAlConfirmar, reprogramarTareaAlModificarReserva } from "../limpieza/aplicacion/tareas.ts";
 
 function requireRangoValido(rango: RangoFechas): void {
   if (!esRangoValido(rango)) {
@@ -135,6 +143,11 @@ export interface ResultadoCrearReserva {
    * ya existentes sobre el mismo rango. Nunca bloquea la inserción de la reserva de
    * canal — solo la reporta. */
   conflictosCapaCruzada: InfoConflicto[];
+  /** Tarea de limpieza del checkout dejada en la misma transaccion (`null` si la reserva no es confirmada/bloqueante, si
+   *  quedo en conflicto o si la tarea no pudo crearse -- el barrido la crea despues). */
+  tareaLimpiezaId: string | null;
+  /** Responsable por omision con el que nacio esa tarea (`null` = "Sin asignar"). */
+  tareaLimpiezaAsignadaA: string | null;
 }
 
 export async function crearReservaConfirmada(ejecutor: EjecutorTransaccional, entrada: EntradaCrearReserva): Promise<ResultadoCrearReserva> {
@@ -248,7 +261,7 @@ export async function crearReservaConfirmada(ejecutor: EjecutorTransaccional, en
       );
 
       await ejecutor.exec("RELEASE SAVEPOINT sp_crear_reserva");
-      return { ocupacionId, conflicto, conflictosCapaCruzada };
+      return { ocupacionId, conflicto, conflictosCapaCruzada, tareaLimpiezaId: null, tareaLimpiezaAsignadaA: null };
     }
 
     // La reserva de canal se acepta SIEMPRE (el canal externo ya la confirmó frente
@@ -264,8 +277,14 @@ export async function crearReservaConfirmada(ejecutor: EjecutorTransaccional, en
       entrada.rango,
     );
 
+    // Una reserva CONFIRMADA y bloqueante deja su tarea de limpieza (checkout = fin del rango) en esta misma transaccion.
+    const limpieza =
+      entrada.estado === "confirmado" && entrada.bloqueante
+        ? await crearTareaLimpiezaAlConfirmar(ejecutor, { unidadId: entrada.unidadId, ocupacionUnidadId: ocupacionId, fechaCheckout: entrada.rango.fin })
+        : null;
+
     await ejecutor.exec("RELEASE SAVEPOINT sp_crear_reserva");
-    return { ocupacionId, conflicto: null, conflictosCapaCruzada };
+    return { ocupacionId, conflicto: null, conflictosCapaCruzada, tareaLimpiezaId: limpieza?.tareaId ?? null, tareaLimpiezaAsignadaA: limpieza?.asignadoA ?? null };
   } catch (error) {
     await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_crear_reserva");
     await ejecutor.exec("RELEASE SAVEPOINT sp_crear_reserva");
@@ -365,6 +384,8 @@ export async function cancelarOcupacion(ejecutor: EjecutorTransaccional, ocupaci
     // la misma noche, seguirá contando como ocupada sin ningún cambio adicional aquí.
 
     await ejecutor.exec("RELEASE SAVEPOINT sp_cancelar_ocupacion");
+    // Gancho: si esta ocupacion era la reserva de una tarea de limpieza, la tarea (y su buffer) se cancelan con ella.
+    await cancelarTareaAlCancelarReserva(ejecutor, ocupacionId);
     return { estadoAnterior };
   } catch (error) {
     await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_cancelar_ocupacion");
@@ -472,6 +493,11 @@ export async function modificarFechasReserva(ejecutor: EjecutorTransaccional, oc
     // propietario/mantenimiento/buffer se acepta igual (mismo criterio que
     // crearReservaConfirmada) y se registra como conflicto de capa cruzada.
     const conflictosCapaCruzada = await detectarYRegistrarConflictosCapaCruzada(ejecutor, organizationId, propertyId, unidadId, ocupacionId, nuevoRango);
+
+    // Gancho: la tarea de limpieza sigue a la fecha de salida, conservando a su responsable.
+    if (nuevoRango.fin !== rangoAnterior.fin) {
+      await reprogramarTareaAlModificarReserva(ejecutor, { ocupacionUnidadId: ocupacionId, nuevaFechaCheckout: nuevoRango.fin });
+    }
 
     await ejecutor.exec("RELEASE SAVEPOINT sp_modificar_fechas_reserva");
     return { ocupacionId, rangoAnterior, rangoEfectivo: nuevoRango, conflicto: null, conflictosCapaCruzada };

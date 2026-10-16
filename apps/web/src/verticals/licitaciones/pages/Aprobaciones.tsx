@@ -2,31 +2,28 @@
 // aprobacion (documentos, tarifas, capacidades, experiencia). Sin esta
 // aprobacion las propuestas tecnica y economica no pueden usar el dato (un
 // requisito sin dato aprobado queda PENDIENTE; nunca se rellena). Aprobar o
-// rechazar es correccion de captura: WRITE_ROLES en el servidor (companyData.ts);
-// la decision de riesgo real -- a que requisito se mapea cada dato -- vive en
-// la propuesta tecnica. La aprobacion del expediente y de cada seccion de la
-// propuesta es por convocatoria (pagina Cierre), no se duplica aqui.
+// rechazar es una DECISION (migracion 036): nunca de quien propuso o edito el
+// dato, tarifas solo owner/admin con step-up y el resto DECISION_ROLES
+// (`DecisionActions.tsx`; el servidor decide). La aprobacion del expediente y
+// de cada seccion de la propuesta es por convocatoria (pagina Cierre), no se
+// duplica aqui.
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge } from "@atiende/ui";
-import {
-  fetchApprovedRates,
-  fetchCompanyCapabilities,
-  fetchCompanyDocuments,
-  fetchCompanyExperience,
-  updateApprovedRate,
-  updateCompanyCapability,
-  updateCompanyDocument,
-  updateCompanyExperience,
-} from "../lib/company-data-client.ts";
-import type { CompanyDataApprovalStatus } from "../lib/company-data-client.ts";
+import { Send } from "lucide-react";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Label, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
+import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fetchCompanyExperience } from "../lib/company-data-client.ts";
+import type { CompanyDataApprovalStatus, CompanyDataAuthorship, CompanyItemKind } from "../lib/company-data-client.ts";
+import { DecisionButtons, useCompanyDecision } from "../components/DecisionActions.tsx";
+import { authorshipLine, userIdFromToken } from "../lib/company-decision.ts";
+import { fetchTenders } from "../lib/tenders-client.ts";
+import type { TenderSummary } from "../lib/tenders-client.ts";
+import { requestReview } from "../lib/revision-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
-
-const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
 type Kind = "documento" | "tarifa" | "capacidad" | "experiencia";
 
-interface PendingItem {
+interface PendingItem extends CompanyDataAuthorship {
   readonly key: string;
   readonly kind: Kind;
   readonly id: string;
@@ -36,14 +33,52 @@ interface PendingItem {
 }
 
 const KIND_LABEL: Record<Kind, string> = { documento: "Documento", tarifa: "Tarifa", capacidad: "Capacidad", experiencia: "Experiencia" };
+const DECISION_KIND: Record<Kind, CompanyItemKind> = { documento: "document", tarifa: "rate", capacidad: "capability", experiencia: "experience" };
+
+// Quién puede enviar a revisión (SUBMITTER_ROLES del servidor); cosmético, el servidor decide.
+const SUBMITTER_ROLES = new Set(["owner", "admin", "analyst", "writer"]);
 
 export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
+  const userId = userIdFromToken(token);
   const [items, setItems] = useState<readonly PendingItem[] | null>(null);
   const [loadErrors, setLoadErrors] = useState<readonly string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const canWrite = WRITE_ROLES.has(role);
+
+  const canRequestReview = SUBMITTER_ROLES.has(role);
+
+  // paridad3 (L-P3-07): pedir la revisión del expediente de una convocatoria (avisa a los revisores por la campana).
+  const [tenders, setTenders] = useState<readonly TenderSummary[] | null>(null);
+  const [reviewTenderId, setReviewTenderId] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!canRequestReview) return;
+    fetchTenders(fetch, apiBaseUrl, token, propertyId)
+      .then((list) => setTenders(list))
+      .catch(() => setTenders([]));
+  }, [apiBaseUrl, token, propertyId, canRequestReview]);
+
+  async function handleRequestReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (reviewTenderId === "") {
+      setReviewMsg({ tone: "error", text: "Elige la convocatoria cuyo expediente quieres enviar a revisión." });
+      return;
+    }
+    setReviewBusy(true);
+    setReviewMsg(null);
+    try {
+      await requestReview(fetch, apiBaseUrl, token, propertyId, reviewTenderId, { sectionKey: null, note: reviewNote.trim() });
+      setReviewMsg({ tone: "ok", text: "Revisión solicitada: los revisores recibieron el aviso en la campana. Quien la pide no puede aprobar el expediente." });
+      setReviewNote("");
+    } catch (err) {
+      setReviewMsg({ tone: "error", text: err instanceof Error ? err.message : "No se pudo pedir la revisión." });
+    } finally {
+      setReviewBusy(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -56,13 +91,13 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
     const all: PendingItem[] = [];
     const errs: string[] = [];
     const fail = (label: string, reason: unknown) => errs.push(`${label}: ${reason instanceof Error ? reason.message : "no se pudo cargar."}`);
-    if (docs.status === "fulfilled") docs.value.forEach((d) => all.push({ key: `doc-${d.id}`, kind: "documento", id: d.id, title: d.label, detail: `${d.type}${d.expiresAt ? ` · vence ${d.expiresAt.slice(0, 10)}` : ""}`, status: d.approvalStatus }));
+    if (docs.status === "fulfilled") docs.value.forEach((d) => all.push({ key: `doc-${d.id}`, kind: "documento", id: d.id, title: d.label, detail: `${d.type}${d.expiresAt ? ` · vence ${d.expiresAt.slice(0, 10)}` : ""}`, status: d.approvalStatus, proposedBy: d.proposedBy, approvedBy: d.approvedBy, proposedByName: d.proposedByName, approvedByName: d.approvedByName }));
     else fail("Documentos", docs.reason);
-    if (rates.status === "fulfilled") rates.value.forEach((r) => all.push({ key: `rate-${r.id}`, kind: "tarifa", id: r.id, title: r.concept, detail: `${r.unitPrice} ${r.currency} · desde ${r.validFrom.slice(0, 10)}`, status: r.approvalStatus }));
+    if (rates.status === "fulfilled") rates.value.forEach((r) => all.push({ key: `rate-${r.id}`, kind: "tarifa", id: r.id, title: r.concept, detail: `${r.unitPrice} ${r.currency} · desde ${r.validFrom.slice(0, 10)}`, status: r.approvalStatus, proposedBy: r.proposedBy, approvedBy: r.approvedBy, proposedByName: r.proposedByName, approvedByName: r.approvedByName }));
     else fail("Tarifas", rates.reason);
-    if (caps.status === "fulfilled") caps.value.forEach((c) => all.push({ key: `cap-${c.id}`, kind: "capacidad", id: c.id, title: c.name, detail: c.description, status: c.approvalStatus }));
+    if (caps.status === "fulfilled") caps.value.forEach((c) => all.push({ key: `cap-${c.id}`, kind: "capacidad", id: c.id, title: c.name, detail: c.description, status: c.approvalStatus, proposedBy: c.proposedBy, approvedBy: c.approvedBy, proposedByName: c.proposedByName, approvedByName: c.approvedByName }));
     else fail("Capacidades", caps.reason);
-    if (exps.status === "fulfilled") exps.value.forEach((e) => all.push({ key: `exp-${e.id}`, kind: "experiencia", id: e.id, title: e.description, detail: `Evidencia: ${e.evidenceDocId}`, status: e.approvalStatus }));
+    if (exps.status === "fulfilled") exps.value.forEach((e) => all.push({ key: `exp-${e.id}`, kind: "experiencia", id: e.id, title: e.description, detail: `Evidencia: ${e.evidenceDocId}`, status: e.approvalStatus, proposedBy: e.proposedBy, approvedBy: e.approvedBy, proposedByName: e.proposedByName, approvedByName: e.approvedByName }));
     else fail("Experiencia", exps.reason);
     setItems(all);
     setLoadErrors(errs);
@@ -73,22 +108,7 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
     void load();
   }, [apiBaseUrl, token, propertyId]);
 
-  async function decide(item: PendingItem, approvalStatus: CompanyDataApprovalStatus) {
-    setActionError(null);
-    setBusyKey(item.key);
-    try {
-      const input = { approvalStatus };
-      if (item.kind === "documento") await updateCompanyDocument(fetch, apiBaseUrl, token, propertyId, item.id, input);
-      else if (item.kind === "tarifa") await updateApprovedRate(fetch, apiBaseUrl, token, propertyId, item.id, input);
-      else if (item.kind === "capacidad") await updateCompanyCapability(fetch, apiBaseUrl, token, propertyId, item.id, input);
-      else await updateCompanyExperience(fetch, apiBaseUrl, token, propertyId, item.id, input);
-      setItems((prev) => (prev ? prev.map((x) => (x.key === item.key ? { ...x, status: approvalStatus } : x)) : prev));
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "No se pudo registrar la decisión.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
+  const decision = useCompanyDecision({ apiBaseUrl, token, propertyId, onChanged: load, onError: setActionError });
 
   const pending = (items ?? []).filter((i) => i.status === "pendiente_aprobacion");
   const rejected = (items ?? []).filter((i) => i.status === "rechazado");
@@ -107,7 +127,7 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
         </p>
       </header>
 
-      {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) solo puede consultar; aprobar o rechazar requiere un rol de escritura.</p>}
+      {!["owner", "admin", "analyst"].includes(role) && <p className="text-xs text-muted-foreground">Tu rol ({role}) solo puede consultar; aprobar o rechazar requiere un rol de decisión (propietario, administrador o analista).</p>}
       {actionError && (
         <p role="alert" className="text-sm text-destructive">
           {actionError}
@@ -118,11 +138,48 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       ))}
       {loading && !items && <EstadoCargando etiqueta="Cargando aprobaciones…" />}
 
+      {canRequestReview && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pedir revisión de un expediente</CardTitle>
+            <CardDescription>Envía el expediente de una convocatoria a revisión: los revisores reciben un aviso y la solicitud queda en el hilo de la propuesta. Quien la pide no puede aprobar ese alcance.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={(e) => void handleRequestReview(e)} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="revision-convocatoria">Convocatoria</Label>
+                <NativeSelect id="revision-convocatoria" value={reviewTenderId} onChange={(e) => setReviewTenderId(e.target.value)} disabled={tenders === null}>
+                  <option value="">{tenders === null ? "Cargando…" : tenders.length === 0 ? "No hay convocatorias" : "Elige una convocatoria"}</option>
+                  {(tenders ?? []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="revision-nota">Nota para el revisor (opcional)</Label>
+                <Textarea id="revision-nota" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2} maxLength={4000} />
+              </div>
+              {reviewMsg && (
+                <p role={reviewMsg.tone === "error" ? "alert" : "status"} className={reviewMsg.tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
+                  {reviewMsg.text}
+                </p>
+              )}
+              <Button type="submit" size="sm" className="self-start" disabled={reviewBusy || reviewTenderId === ""}>
+                <Send />
+                {reviewBusy ? "Enviando…" : "Pedir revisión"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
       {items && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Pendientes de aprobación ({pending.length})</CardTitle>
-            <CardDescription>Aprobar es corrección de captura; rechazar lo deja fuera de las propuestas.</CardDescription>
+            <CardDescription>Quien propuso o editó un dato no lo decide: lo decide otra persona. Las tarifas piden además tu código de dos pasos. Rechazar lo deja fuera de las propuestas.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {pending.length === 0 && <EstadoVacio mensaje="No hay datos pendientes de aprobación." />}
@@ -134,17 +191,9 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
                     <span className="font-semibold text-foreground">{item.title}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">{item.detail}</div>
+                  {authorshipLine({ ...item, approvalStatus: item.status }, userId) && <div className="text-xs text-muted-foreground">{authorshipLine({ ...item, approvalStatus: item.status }, userId)}</div>}
                 </div>
-                {canWrite && (
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" variant="outline" disabled={busyKey !== null} onClick={() => void decide(item, "aprobado")}>
-                      {busyKey === item.key ? "Guardando…" : "Aprobar"}
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" className="text-destructive" disabled={busyKey !== null} onClick={() => void decide(item, "rechazado")}>
-                      Rechazar
-                    </Button>
-                  </div>
-                )}
+                <DecisionButtons kind={DECISION_KIND[item.kind]} id={item.id} etiqueta={item.title} item={{ ...item, approvalStatus: item.status }} role={role} userId={userId} decision={decision} busy={false} />
               </div>
             ))}
           </CardContent>
@@ -155,7 +204,7 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Rechazados ({rejected.length})</CardTitle>
-            <CardDescription>Se pueden reconsiderar aprobándolos.</CardDescription>
+            <CardDescription>Para reconsiderarlos, edítalos en Datos de la empresa: vuelven a pendiente y otra persona los decide.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {rejected.map((item) => (
@@ -166,17 +215,14 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
                     <span className="font-semibold text-foreground">{item.title}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">{item.detail}</div>
+                  {authorshipLine({ ...item, approvalStatus: item.status }, userId) && <div className="text-xs text-muted-foreground">{authorshipLine({ ...item, approvalStatus: item.status }, userId)}</div>}
                 </div>
-                {canWrite && (
-                  <Button type="button" size="sm" variant="outline" disabled={busyKey !== null} onClick={() => void decide(item, "aprobado")}>
-                    Aprobar
-                  </Button>
-                )}
               </div>
             ))}
           </CardContent>
         </Card>
       )}
+      {decision.dialogo}
     </PageContainer>
   );
 }

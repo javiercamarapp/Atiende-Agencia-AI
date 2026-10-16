@@ -16,7 +16,11 @@ export interface VozSesionPreviewEntrada {
   /** Comportamiento/prompt guardado de la sucursal (puede ser ''). */
   readonly comportamiento: string;
   readonly mensajeInicial: string;
+  /** `temperature` de voz de la organizacion (0..1); null/ausente = la del proveedor. */
+  readonly temperatura?: number | null;
   readonly ttlSegundos: number;
+  /** Vertical que emite la sesion. Los decoradores que aplican ajustes propios de una vertical (restaurantes) solo actuan si coincide; ausente = no aplican. */
+  readonly vertical?: string;
   /** Declaraciones de herramientas (nombre, descripcion y esquema JSON) que el token efimero fija para la sesion. Ausente =
    * la sesion no puede llamar herramientas (comportamiento historico). Las ejecuta el servidor en modo preview, no el proveedor. */
   readonly herramientas?: readonly VozHerramientaDeclaracion[];

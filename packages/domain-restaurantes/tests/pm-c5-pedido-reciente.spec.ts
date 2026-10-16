@@ -40,7 +40,7 @@ async function mundoConPedido(canal: "domicilio" | "recoger", telefono = TELEFON
 
 describe("estadoParaCliente", () => {
   it.each<[OrderStatus, string | null]>([
-    ["pending", "preparando"],
+    ["pending", "registrado"],
     ["preparando", "preparando"],
     ["en_camino", "salio"],
     ["listo_para_recoger", "listo_para_recoger"],
@@ -61,10 +61,10 @@ describe("buscarPedidoReciente", () => {
     expect(await buscarPedidoReciente(world.repo, world.organizationId, TELEFONO)).toBeNull();
   });
 
-  it("recien confirmado: preparando, con la hora local de la sucursal (14:00 en Merida) y 0 minutos", async () => {
+  it("recien confirmado: registrado (NO preparando: la sucursal aun no lo marca), con la hora local de la sucursal (14:00 en Merida) y 0 minutos", async () => {
     const { world } = await mundoConPedido("domicilio");
     expect(await buscarPedidoReciente(world.repo, world.organizationId, TELEFONO)).toEqual({
-      estado: "preparando",
+      estado: "registrado",
       canal: "domicilio",
       sucursal: "García Lavín (Victory Platz)",
       confirmadoHoraLocal: "14:00",
@@ -74,6 +74,7 @@ describe("buscarPedidoReciente", () => {
 
   it("SOLO cuando la sucursal lo marca en camino responde que salio, y cuenta los minutos desde la confirmacion", async () => {
     const { world, order } = await mundoConPedido("domicilio");
+    expect((await buscarPedidoReciente(world.repo, world.organizationId, TELEFONO))?.estado).toBe("registrado");
     await world.repo.updateOrderStatus(world.organizationId, order.id, "pending", "preparando");
     expect((await buscarPedidoReciente(world.repo, world.organizationId, TELEFONO))?.estado).toBe("preparando");
     await world.repo.updateOrderStatus(world.organizationId, order.id, "preparando", "en_camino");
@@ -102,7 +103,7 @@ describe("buscarPedidoReciente", () => {
   it("no mezcla clientes: otro telefono no ve el pedido (y el mismo telefono en otro formato si)", async () => {
     const { world } = await mundoConPedido("recoger", "999 123 4567");
     expect(await buscarPedidoReciente(world.repo, world.organizationId, "0001000002")).toBeNull();
-    expect(await buscarPedidoReciente(world.repo, world.organizationId, "+52 1 999 123 4567")).toMatchObject({ estado: "preparando" });
+    expect(await buscarPedidoReciente(world.repo, world.organizationId, "+52 1 999 123 4567")).toMatchObject({ estado: "registrado" });
   });
 
   it("no cruza organizaciones", async () => {
@@ -130,7 +131,7 @@ describe("el agente ve el estado en su contexto", () => {
   it("lookupCustomerConPedidoReciente agrega el estado y el contexto del prompt dice YA SALIO solo si la sucursal lo marco", async () => {
     const { world, order } = await mundoConPedido("domicilio");
     const preparando = await lookupCustomerConPedidoReciente(world.repo, world.organizationId, TELEFONO);
-    expect(pmCustomerContextBlock(preparando)).toMatch(/Pedido reciente de este número \(a domicilio\) en García Lavín \(Victory Platz\): confirmado a las 14:00, hace 0 min\. Estado que marcó la sucursal: en preparación \(la sucursal todavía no lo marca como salido\)/);
+    expect(pmCustomerContextBlock(preparando)).toMatch(/Pedido reciente de este número \(a domicilio\) en García Lavín \(Victory Platz\): confirmado a las 14:00, hace 0 min\. Estado que marcó la sucursal: registrado \(la sucursal todavía no lo marca en preparación ni salido: NO diga que ya lo están preparando/);
     expect(pmCustomerContextBlock(preparando)).not.toMatch(/YA SALIÓ/);
     await world.repo.updateOrderStatus(world.organizationId, order.id, "pending", "en_camino");
     const salio = await lookupCustomerConPedidoReciente(world.repo, world.organizationId, TELEFONO);

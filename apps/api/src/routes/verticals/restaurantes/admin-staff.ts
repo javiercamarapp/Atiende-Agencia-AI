@@ -61,7 +61,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *  dominio completo -- suficiente para reconocer a quién se invitó en el
  *  resumen, nunca el correo completo -- mismo criterio que
  *  `apps/api/src/superadmin-acciones/resumen.ts::enmascararDestinatario`. */
-function enmascararCorreoInvitado(email: string): string {
+export function enmascararCorreoInvitado(email: string): string {
   const arroba = email.indexOf("@");
   if (arroba <= 0) return "***";
   return `${email[0]}***@${email.slice(arroba + 1)}`;
@@ -108,7 +108,7 @@ export async function tryEnqueueStaffInviteEmail(
   inviteId: string,
   email: string,
   correo: { readonly asunto: string; readonly html: string; readonly texto: string },
-): Promise<void> {
+): Promise<boolean> {
   try {
     await repo.runWithRowSavepoint(() =>
       repo.enqueueMessagingOutbox(organizationId, "email", "staff.invite", `staff-invite:${inviteId}`, {
@@ -118,8 +118,10 @@ export async function tryEnqueueStaffInviteEmail(
         text: correo.texto,
       }),
     );
+    return true;
   } catch (err) {
     console.error("admin-staff: best-effort staff invite email enqueue failed:", err);
+    return false;
   }
 }
 

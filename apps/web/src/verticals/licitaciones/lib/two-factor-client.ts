@@ -23,7 +23,7 @@ export interface TwoFactorStatus {
 export const TWO_FACTOR_UNAVAILABLE: TwoFactorStatus = { available: false, enabled: false, pending: false, lockedUntil: null, backupCodesRemaining: 0 };
 
 /** Alcance del step-up -- espejo de `StepUpScope` (core-auth). */
-export type StepUpScope = "contract_sensitive" | "expediente_approval";
+export type StepUpScope = "contract_sensitive" | "expediente_approval" | "company_rate_approval";
 
 /** Espejo de `CONTRACT_STEP_UP_TRANSITIONS` (domain-licitaciones/contract-lifecycle.ts): cosmetico, decide si pedir el codigo; el servidor SIEMPRE decide. */
 export const CONTRACT_STEP_UP_TRANSITIONS: readonly string[] = ["rescindido", "penalizado", "en_inconformidad", "modificado", "pagado"];

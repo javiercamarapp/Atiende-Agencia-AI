@@ -8,10 +8,10 @@
 // de datos. Org-wide (sin `tenderId`), mismo alcance que PerfilMatching.tsx:
 // una organización de licitaciones tiene UNA sola empresa (§2.1 del diseño).
 //
-// Aprobar/rechazar un dato es corrección de captura (mismo criterio que el
-// servidor, `companyData.ts`: WRITE_ROLES, nunca DECISION_ROLES) -- la
-// decisión de riesgo real es a qué requisito se mapea ese dato
-// (`PropuestaTecnica.tsx::requirement-mappings`, DECISION_ROLES).
+// Capturar y editar es de los roles de escritura; APROBAR/RECHAZAR es una decisión (migración 036, REQ-044/064): nunca de quien
+// propuso o editó por última vez, tarifas solo owner/admin con step-up, el resto DECISION_ROLES. `roles.ts` del dominio es la
+// fuente de verdad; esta pantalla solo oculta/deshabilita lo que el servidor rechazaría igual. Editar un dato aprobado lo
+// regresa a pendiente (y cambia el hash del perfil, que invalida la aprobación del expediente).
 //
 // Fase "sistema de diseño real" (contenido) — las 5 secciones apiladas pasan a
 // `Tabs` reales (una pestaña por tabla: documentos/tarifas/capacidades/
@@ -33,12 +33,10 @@ import {
   fetchCompanyDocuments,
   fetchCompanyExperience,
   fetchCompanySigners,
-  updateApprovedRate,
-  updateCompanyCapability,
-  updateCompanyDocument,
-  updateCompanyExperience,
   updateCompanySigner,
 } from "../lib/company-data-client.ts";
+import { DecisionButtons, useCompanyDecision } from "../components/DecisionActions.tsx";
+import { authorshipLine, userIdFromToken } from "../lib/company-decision.ts";
 import { APROBACION_DATO_TONES } from "../lib/status-tones.ts";
 import type { ApprovedRate, CompanyCapability, CompanyDataApprovalStatus, CompanyDocument, CompanyExperienceItem, CompanySigner } from "../lib/company-data-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -46,6 +44,12 @@ import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
 const APPROVAL_LABELS: Record<CompanyDataApprovalStatus, string> = { aprobado: "Aprobado", pendiente_aprobacion: "Pendiente de aprobación", rechazado: "Rechazado" };
+
+/** "Propuso: Ana · Aprobó: Beto" (solo si la base ya trae autoría). */
+function Autoria({ item, userId }: { item: Parameters<typeof authorshipLine>[0]; userId: string | null }) {
+  const linea = authorshipLine(item, userId);
+  return linea ? <div className="text-xs text-muted-foreground">{linea}</div> : null;
+}
 
 function ApprovalBadge({ status }: { status: CompanyDataApprovalStatus }) {
   return (
@@ -84,6 +88,7 @@ const TABS_VALIDAS: ReadonlySet<string> = new Set(["documentos", "tarifas", "cap
 export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const canWrite = WRITE_ROLES.has(role);
   const { confirmar, dialogo } = useConfirm();
+  const userId = userIdFromToken(token);
   // `?tab=firmantes` (etc.) abre directo esa pestaña -- lo usan /firmantes y el Panel; un valor desconocido cae a "documentos".
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
@@ -162,6 +167,9 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
     await withAction(`signer-${s.id}`, () => updateCompanySigner(fetch, apiBaseUrl, token, propertyId, s.id, { authorized: !s.authorized }).then(() => undefined));
   }
 
+  const decision = useCompanyDecision({ apiBaseUrl, token, propertyId, onChanged: load, onError: setActionError });
+  const busy = submittingSection !== null;
+
   if (loading && documents.length === 0 && rates.length === 0) return <EstadoCargando etiqueta="Cargando datos de la empresa…" />;
 
   return (
@@ -170,6 +178,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
         <h1 className="font-display text-xl font-semibold text-foreground">Datos de la empresa</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Documentos, tarifas aprobadas, capacidades, experiencia y firmantes autorizados. Las propuestas técnica y económica solo usan lo que aquí está en estado "Aprobado" y vigente -- un dato ausente o sin aprobar queda "PENDIENTE" en la propuesta, nunca inventado.
+          Quien captura o edita un dato no lo aprueba: lo decide otra persona con rol de decisión (las tarifas, además, con verificación en dos pasos). Editar un dato aprobado lo regresa a pendiente.
         </p>
       </header>
 
@@ -179,7 +188,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
           {actionError}
         </p>
       )}
-      {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede capturar ni aprobar datos de empresa. Se muestran de solo lectura.</p>}
+      {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede capturar datos de empresa. Se muestran de solo lectura.</p>}
 
       <Tabs defaultValue={tabInicial} className="w-full">
         <TabsList className="flex-wrap">
@@ -203,19 +212,11 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                   <div className="min-w-0 text-foreground">
                     <strong>{d.type}</strong> — {d.label}
                     {d.expiresAt && <span className="text-muted-foreground"> · vence {isoToDateOnly(d.expiresAt)}</span>}
+                    <Autoria item={d} userId={userId} />
                   </div>
                   <div className="flex items-center gap-2">
                     <ApprovalBadge status={d.approvalStatus} />
-                    {canWrite && d.approvalStatus !== "aprobado" && (
-                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`doc-${d.id}`, () => updateCompanyDocument(fetch, apiBaseUrl, token, propertyId, d.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                        Aprobar
-                      </Button>
-                    )}
-                    {canWrite && d.approvalStatus !== "rechazado" && (
-                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`doc-${d.id}`, () => updateCompanyDocument(fetch, apiBaseUrl, token, propertyId, d.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                        Rechazar
-                      </Button>
-                    )}
+                    <DecisionButtons kind="document" id={d.id} etiqueta={d.label} item={d} role={role} userId={userId} decision={decision} busy={busy} />
                   </div>
                 </div>
               ))}
@@ -269,19 +270,11 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                       · vigente desde {isoToDateOnly(r.validFrom)}
                       {r.validUntil ? ` hasta ${isoToDateOnly(r.validUntil)}` : ""}
                     </span>
+                    <Autoria item={r} userId={userId} />
                   </div>
                   <div className="flex items-center gap-2">
                     <ApprovalBadge status={r.approvalStatus} />
-                    {canWrite && r.approvalStatus !== "aprobado" && (
-                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`rate-${r.id}`, () => updateApprovedRate(fetch, apiBaseUrl, token, propertyId, r.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                        Aprobar
-                      </Button>
-                    )}
-                    {canWrite && r.approvalStatus !== "rechazado" && (
-                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`rate-${r.id}`, () => updateApprovedRate(fetch, apiBaseUrl, token, propertyId, r.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                        Rechazar
-                      </Button>
-                    )}
+                    <DecisionButtons kind="rate" id={r.id} etiqueta={r.concept} item={r} role={role} userId={userId} decision={decision} busy={busy} />
                   </div>
                 </div>
               ))}
@@ -326,19 +319,11 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                 <div key={cap.id} className={FILA}>
                   <div className="min-w-0 text-foreground">
                     <strong>{cap.name}</strong> — {cap.description}
+                    <Autoria item={cap} userId={userId} />
                   </div>
                   <div className="flex items-center gap-2">
                     <ApprovalBadge status={cap.approvalStatus} />
-                    {canWrite && cap.approvalStatus !== "aprobado" && (
-                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`cap-${cap.id}`, () => updateCompanyCapability(fetch, apiBaseUrl, token, propertyId, cap.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                        Aprobar
-                      </Button>
-                    )}
-                    {canWrite && cap.approvalStatus !== "rechazado" && (
-                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`cap-${cap.id}`, () => updateCompanyCapability(fetch, apiBaseUrl, token, propertyId, cap.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                        Rechazar
-                      </Button>
-                    )}
+                    <DecisionButtons kind="capability" id={cap.id} etiqueta={cap.name} item={cap} role={role} userId={userId} decision={decision} busy={busy} />
                   </div>
                 </div>
               ))}
@@ -386,19 +371,11 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                 <div key={exp.id} className={FILA}>
                   <div className="min-w-0 text-foreground">
                     {exp.description} <span className="text-muted-foreground">· evidencia: {exp.evidenceDocId}</span>
+                    <Autoria item={exp} userId={userId} />
                   </div>
                   <div className="flex items-center gap-2">
                     <ApprovalBadge status={exp.approvalStatus} />
-                    {canWrite && exp.approvalStatus !== "aprobado" && (
-                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`exp-${exp.id}`, () => updateCompanyExperience(fetch, apiBaseUrl, token, propertyId, exp.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                        Aprobar
-                      </Button>
-                    )}
-                    {canWrite && exp.approvalStatus !== "rechazado" && (
-                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`exp-${exp.id}`, () => updateCompanyExperience(fetch, apiBaseUrl, token, propertyId, exp.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                        Rechazar
-                      </Button>
-                    )}
+                    <DecisionButtons kind="experience" id={exp.id} etiqueta={exp.description} item={exp} role={role} userId={userId} decision={decision} busy={busy} />
                   </div>
                 </div>
               ))}
@@ -443,9 +420,12 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                 <div key={s.id} className={FILA}>
                   <div className="min-w-0 text-foreground">
                     <strong>{s.name}</strong> — {s.role}
+                    <Autoria item={{ ...s, approvalStatus: s.approvalStatus ?? "aprobado" }} userId={userId} />
                   </div>
                   <div className="flex items-center gap-2">
+                    <ApprovalBadge status={s.approvalStatus ?? "aprobado"} />
                     <StatusBadge tone={s.authorized ? "success" : "danger"}>{s.authorized ? "Autorizado" : "No autorizado"}</StatusBadge>
+                    <DecisionButtons kind="signer" id={s.id} etiqueta={s.name} item={{ ...s, approvalStatus: s.approvalStatus ?? "aprobado" }} role={role} userId={userId} decision={decision} busy={busy} />
                     {canWrite && (
                       <Button
                         type="button"
@@ -491,6 +471,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
         </TabsContent>
       </Tabs>
       {dialogo}
+      {decision.dialogo}
     </PageContainer>
   );
 }

@@ -9,7 +9,9 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "evals:hoteles:voz:real": "vite-node src/voz/simulador/real-cli.ts",
+    "evals:hoteles:voz:falso": "vite-node src/voz/simulador/real-cli.ts --falso"
   },
   "dependencies": {
     "@atiende/agent-core": "*",

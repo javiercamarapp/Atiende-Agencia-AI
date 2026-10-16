@@ -11,6 +11,8 @@
 // Ningún cálculo de negocio vive en la ruta HTTP (ver
 // apps/api/src/routes/verticals/restaurantes/admin-kpis.ts): esta es la ÚNICA capa que
 // decide tramos/porcentajes/etiquetas — la ruta solo resuelve auth/alcance y serializa.
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import type { HorarioSucursal } from "./horarios.ts";
 import type {
   ChannelStatsRow,
   CustomerOverviewRow,
@@ -51,122 +53,212 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-function startOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
+// QA-restaurantes-R1-automatizacion-03: todo el calendario ("Hoy", dias, meses, etiquetas) se calcula en la ZONA HORARIA DEL
+// NEGOCIO, nunca en la del proceso: en Vercel el proceso corre en UTC y "Hoy" empezaba a las 18:00 de AYER en Merida. Sin
+// zona explicita se usa la de plataforma (`resolverZonaHorariaNegocio(null)`). Aritmetica de calendario local, no de 24 h:
+// un cambio de hora (DST) no desplaza los limites.
+const CACHE_FORMATTER_KPI = new Map<string, Intl.DateTimeFormat>();
+
+function formatterKpi(zona: string): Intl.DateTimeFormat {
+  let f = CACHE_FORMATTER_KPI.get(zona);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", { timeZone: zona, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", weekday: "short" });
+    CACHE_FORMATTER_KPI.set(zona, f);
+  }
+  return f;
 }
 
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
+interface PartesLocales {
+  readonly y: number;
+  /** 0-11 */
+  readonly m: number;
+  readonly d: number;
+  readonly h: number;
+  /** 0 = domingo */
+  readonly dow: number;
 }
 
-function subDays(d: Date, n: number): Date {
-  return addDays(d, -n);
+const DOW_POR_NOMBRE: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function partesLocales(instante: Date, zona: string): PartesLocales {
+  const partes = formatterKpi(zona).formatToParts(instante);
+  const n = (tipo: string) => Number(partes.find((p) => p.type === tipo)?.value ?? "0");
+  const weekday = partes.find((p) => p.type === "weekday")?.value ?? "Sun";
+  return { y: n("year"), m: n("month") - 1, d: n("day"), h: n("hour") % 24, dow: DOW_POR_NOMBRE[weekday] ?? 0 };
 }
 
-function startOfMonth(d: Date): Date {
-  const r = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
-  return r;
+/** Desfase de la zona en ese instante (hora local interpretada como UTC, menos el instante), en ms. */
+function desfaseMs(instante: Date, zona: string): number {
+  const partes = formatterKpi(zona).formatToParts(instante);
+  const n = (tipo: string) => Number(partes.find((p) => p.type === tipo)?.value ?? "0");
+  const comoUtc = Date.UTC(n("year"), n("month") - 1, n("day"), n("hour") % 24, n("minute"), n("second"));
+  return comoUtc - Math.floor(instante.getTime() / 1000) * 1000;
 }
 
-function addMonths(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setMonth(r.getMonth() + n);
-  return r;
+/** Instante de la hora local `h:00` del dia local (y, m, d) (m/d fuera de rango se normalizan, como `Date.UTC`). */
+function instanteLocal(y: number, m: number, d: number, h: number, zona: string): Date {
+  const guess = Date.UTC(y, m, d, h);
+  const off1 = desfaseMs(new Date(guess), zona);
+  let t = guess - off1;
+  const off2 = desfaseMs(new Date(t), zona);
+  if (off2 !== off1) t = guess - off2;
+  return new Date(t);
 }
 
-function subMonths(d: Date, n: number): Date {
-  return addMonths(d, -n);
+function startOfDay(d: Date, zona: string): Date {
+  const p = partesLocales(d, zona);
+  return instanteLocal(p.y, p.m, p.d, 0, zona);
+}
+
+/** Medianoche local `n` dias despues (negativo = antes) de la medianoche local de `d`. */
+function startOfDayShift(d: Date, n: number, zona: string): Date {
+  const p = partesLocales(d, zona);
+  return instanteLocal(p.y, p.m, p.d + n, 0, zona);
+}
+
+/** `d` movido `n` dias de calendario local conservando la hora local (no 24 h fijas). */
+function shiftDays(d: Date, n: number, zona: string): Date {
+  const t = new Date(d.getTime() + n * 86_400_000);
+  const delta = desfaseMs(t, zona) - desfaseMs(d, zona);
+  return new Date(t.getTime() - delta);
+}
+
+function startOfMonthShift(d: Date, n: number, zona: string): Date {
+  const p = partesLocales(d, zona);
+  return instanteLocal(p.y, p.m + n, 1, 0, zona);
+}
+
+/** Primer dia del mes local `n` meses despues del mes local de `inicioDeMes`. */
+function addMonthsLocal(inicioDeMes: Date, n: number, zona: string): Date {
+  return startOfMonthShift(inicioDeMes, n, zona);
+}
+
+function etiquetaDiaMes(inicio: Date, zona: string): string {
+  const p = partesLocales(inicio, zona);
+  return `${pad2(p.d)} ${MESES_ES[p.m]}`;
+}
+
+function etiquetaMesAnio(inicio: Date, zona: string): string {
+  const p = partesLocales(inicio, zona);
+  return `${MESES_ES[p.m]} ${String(p.y).slice(2)}`;
+}
+
+/** Horas locales (0-23) del dia de `now` en que alguna sucursal atiende, segun su horario (un turno que cruza la
+ *  medianoche aporta sus horas del final de la noche a este dia y las primeras del dia siguiente al siguiente). Sin ningun
+ *  horario configurado devuelve `null` (el tablero muestra el dia completo, nunca un rango inventado). */
+export function horasAbiertasHoy(horarios: readonly (HorarioSucursal | null)[], now: Date, zonaHoraria?: string | null): readonly number[] | null {
+  const zona = resolverZonaHorariaNegocio(zonaHoraria);
+  const validos = horarios.filter((h): h is HorarioSucursal => h !== null && h.length > 0);
+  if (validos.length === 0) return null;
+  const dow = partesLocales(now, zona).dow;
+  const ayer = (dow + 6) % 7;
+  const horas = new Set<number>();
+  const aHoras = (hhmm: string): number => Number(hhmm.slice(0, 2)) + (Number(hhmm.slice(3, 5)) > 0 ? 1 : 0);
+  for (const horario of validos) {
+    for (const t of horario) {
+      const abre = Number(t.abre.slice(0, 2));
+      const cierraTope = aHoras(t.cierra); // primera hora ya cerrada (exclusiva)
+      const cruza = t.cierra <= t.abre;
+      if (t.dias.includes(dow)) {
+        for (let h = abre; h < (cruza ? 24 : cierraTope); h += 1) horas.add(h);
+      }
+      if (cruza && t.dias.includes(ayer)) {
+        for (let h = 0; h < cierraTope; h += 1) horas.add(h);
+      }
+    }
+  }
+  return horas.size === 0 ? null : [...horas].sort((x, y) => x - y);
+}
+
+export interface OpcionesTramos {
+  /** Zona horaria IANA del negocio; sin ella, la de plataforma. */
+  readonly zonaHoraria?: string | null;
+  /** Solo "Hoy": horas locales (0-23) a graficar (ver `horasAbiertasHoy`). Sin valor: el dia completo. */
+  readonly horasHoy?: readonly number[] | null;
 }
 
 /**
  * Puerto de `construirTramosTendencia` (AdminDashboard.tsx:1866-1971). Granularidad
  * adaptativa por periodo (por hora en "Hoy", cada 3 días en "30", adaptativa en
  * histórico según la antigüedad real del primer pedido) — mismos tramos que el origen,
- * `fin` siempre exclusivo.
+ * `fin` siempre exclusivo. Todo en la zona horaria del negocio (QA-restaurantes-R1-automatizacion-03).
  */
-export function buildTrendBuckets(period: StatsPeriod, now: Date, firstOrderAt: Date | null): readonly TrendBucket[] {
+export function buildTrendBuckets(period: StatsPeriod, now: Date, firstOrderAt: Date | null, opciones: OpcionesTramos = {}): readonly TrendBucket[] {
+  const zona = resolverZonaHorariaNegocio(opciones.zonaHoraria);
   const tramos: TrendBucket[] = [];
+  const lugar = partesLocales(now, zona);
   switch (period) {
     case "today": {
-      // Solo horas abiertas (11:00-23:00) — de lo contrario medianoche-6am sale
-      // siempre en cero y aplasta la gráfica real de mediodía/noche.
-      const HORA_APERTURA = 11;
-      const HORA_CIERRE = 23;
-      for (let h = HORA_APERTURA; h <= HORA_CIERRE; h += 1) {
-        const inicio = startOfDay(now);
-        inicio.setHours(h, 0, 0, 0);
-        const fin = new Date(inicio.getTime() + 60 * 60 * 1000);
+      // Horas del dia local en que atiende la sucursal (de su horario); sin horario, el dia completo. Antes eran las
+      // horas 11-23 FIJAS y del proceso (UTC en Vercel): la cena de PM (hasta la 01:00) nunca aparecia.
+      const horas = opciones.horasHoy && opciones.horasHoy.length > 0 ? opciones.horasHoy : Array.from({ length: 24 }, (_, h) => h);
+      for (const h of horas) {
+        const inicio = instanteLocal(lugar.y, lugar.m, lugar.d, h, zona);
+        const fin = instanteLocal(lugar.y, lugar.m, lugar.d, h + 1, zona);
         tramos.push({ start: inicio, end: fin, label: `${pad2(h)}:00` });
       }
       break;
     }
     case "7": {
       for (let i = 6; i >= 0; i -= 1) {
-        const inicio = startOfDay(subDays(now, i));
-        const fin = addDays(inicio, 1);
-        tramos.push({ start: inicio, end: fin, label: DIAS_ES[inicio.getDay()]! });
+        const inicio = startOfDayShift(now, -i, zona);
+        const fin = startOfDayShift(inicio, 1, zona);
+        tramos.push({ start: inicio, end: fin, label: DIAS_ES[partesLocales(inicio, zona).dow]! });
       }
       break;
     }
     case "30": {
       // Un punto cada 3 días (10 tramos) en vez de uno por día.
       for (let i = 27; i >= 0; i -= 3) {
-        const inicio = startOfDay(subDays(now, i));
-        const fin = addDays(inicio, 3);
-        tramos.push({ start: inicio, end: fin, label: `${pad2(inicio.getDate())} ${MESES_ES[inicio.getMonth()]}` });
+        const inicio = startOfDayShift(now, -i, zona);
+        const fin = startOfDayShift(inicio, 3, zona);
+        tramos.push({ start: inicio, end: fin, label: etiquetaDiaMes(inicio, zona) });
       }
       break;
     }
     case "90": {
       for (let i = 89; i >= 0; i -= 7) {
-        const inicio = startOfDay(subDays(now, i));
-        const fin = addDays(inicio, 7);
-        tramos.push({ start: inicio, end: fin, label: `${pad2(inicio.getDate())} ${MESES_ES[inicio.getMonth()]}` });
+        const inicio = startOfDayShift(now, -i, zona);
+        const fin = startOfDayShift(inicio, 7, zona);
+        tramos.push({ start: inicio, end: fin, label: etiquetaDiaMes(inicio, zona) });
       }
       break;
     }
     case "180": {
       for (let i = 25; i >= 0; i -= 1) {
-        const inicio = startOfDay(subDays(now, i * 7));
-        const fin = addDays(inicio, 7);
-        tramos.push({ start: inicio, end: fin, label: `${pad2(inicio.getDate())} ${MESES_ES[inicio.getMonth()]}` });
+        const inicio = startOfDayShift(now, -i * 7, zona);
+        const fin = startOfDayShift(inicio, 7, zona);
+        tramos.push({ start: inicio, end: fin, label: etiquetaDiaMes(inicio, zona) });
       }
       break;
     }
     case "365": {
       for (let i = 11; i >= 0; i -= 1) {
-        const inicio = startOfMonth(subMonths(now, i));
-        const fin = addMonths(inicio, 1);
-        tramos.push({ start: inicio, end: fin, label: `${MESES_ES[inicio.getMonth()]} ${String(inicio.getFullYear()).slice(2)}` });
+        const inicio = startOfMonthShift(now, -i, zona);
+        const fin = addMonthsLocal(inicio, 1, zona);
+        tramos.push({ start: inicio, end: fin, label: etiquetaMesAnio(inicio, zona) });
       }
       break;
     }
     case "historico":
     default: {
-      const inicioReal = firstOrderAt ?? now;
-      const mesesDesdeInicio = Math.max(0, (now.getFullYear() - inicioReal.getFullYear()) * 12 + (now.getMonth() - inicioReal.getMonth()));
+      const inicioReal = partesLocales(firstOrderAt ?? now, zona);
+      const mesesDesdeInicio = Math.max(0, (lugar.y - inicioReal.y) * 12 + (lugar.m - inicioReal.m));
       if (mesesDesdeInicio <= 12) {
         for (let i = mesesDesdeInicio; i >= 0; i -= 1) {
-          const inicio = startOfMonth(subMonths(now, i));
-          const fin = addMonths(inicio, 1);
-          tramos.push({ start: inicio, end: fin, label: `${MESES_ES[inicio.getMonth()]} ${String(inicio.getFullYear()).slice(2)}` });
+          const inicio = startOfMonthShift(now, -i, zona);
+          tramos.push({ start: inicio, end: addMonthsLocal(inicio, 1, zona), label: etiquetaMesAnio(inicio, zona) });
         }
       } else if (mesesDesdeInicio <= 36) {
         for (let i = mesesDesdeInicio; i >= 0; i -= 3) {
-          const inicio = startOfMonth(subMonths(now, i));
-          const fin = addMonths(inicio, 3);
-          tramos.push({ start: inicio, end: fin, label: `${MESES_ES[inicio.getMonth()]} ${String(inicio.getFullYear()).slice(2)}` });
+          const inicio = startOfMonthShift(now, -i, zona);
+          tramos.push({ start: inicio, end: addMonthsLocal(inicio, 3, zona), label: etiquetaMesAnio(inicio, zona) });
         }
       } else {
         const añosDesdeInicio = Math.ceil(mesesDesdeInicio / 12);
         for (let i = añosDesdeInicio; i >= 0; i -= 1) {
-          const inicio = startOfMonth(subMonths(now, i * 12));
-          const fin = addMonths(inicio, 12);
-          tramos.push({ start: inicio, end: fin, label: String(inicio.getFullYear()) });
+          const inicio = startOfMonthShift(now, -i * 12, zona);
+          tramos.push({ start: inicio, end: addMonthsLocal(inicio, 12, zona), label: String(partesLocales(inicio, zona).y) });
         }
       }
       break;
@@ -175,23 +267,25 @@ export function buildTrendBuckets(period: StatsPeriod, now: Date, firstOrderAt: 
   return tramos;
 }
 
-/** Puerto de `construirPeriodosComparacion` (AdminDashboard.tsx:1977-1998). */
-export function buildComparisonPeriods(period: StatsPeriod, now: Date): ComparisonPeriods {
+/** Puerto de `construirPeriodosComparacion` (AdminDashboard.tsx:1977-1998), en la zona horaria del negocio. */
+export function buildComparisonPeriods(period: StatsPeriod, now: Date, zonaHoraria?: string | null): ComparisonPeriods {
+  const zona = resolverZonaHorariaNegocio(zonaHoraria);
+  const atras = (n: number) => shiftDays(now, -n, zona);
   switch (period) {
     case "today": {
-      const hoy = startOfDay(now);
-      return { current: { start: hoy, end: MUY_FUTURO }, previous: { start: subDays(hoy, 1), end: hoy } };
+      const hoy = startOfDay(now, zona);
+      return { current: { start: hoy, end: MUY_FUTURO }, previous: { start: startOfDayShift(hoy, -1, zona), end: hoy } };
     }
     case "7":
-      return { current: { start: subDays(now, 7), end: MUY_FUTURO }, previous: { start: subDays(now, 14), end: subDays(now, 7) } };
+      return { current: { start: atras(7), end: MUY_FUTURO }, previous: { start: atras(14), end: atras(7) } };
     case "30":
-      return { current: { start: subDays(now, 30), end: MUY_FUTURO }, previous: { start: subDays(now, 60), end: subDays(now, 30) } };
+      return { current: { start: atras(30), end: MUY_FUTURO }, previous: { start: atras(60), end: atras(30) } };
     case "90":
-      return { current: { start: subDays(now, 90), end: MUY_FUTURO }, previous: { start: subDays(now, 180), end: subDays(now, 90) } };
+      return { current: { start: atras(90), end: MUY_FUTURO }, previous: { start: atras(180), end: atras(90) } };
     case "180":
-      return { current: { start: subDays(now, 180), end: MUY_FUTURO }, previous: { start: subDays(now, 360), end: subDays(now, 180) } };
+      return { current: { start: atras(180), end: MUY_FUTURO }, previous: { start: atras(360), end: atras(180) } };
     case "365":
-      return { current: { start: subDays(now, 365), end: MUY_FUTURO }, previous: { start: subDays(now, 730), end: subDays(now, 365) } };
+      return { current: { start: atras(365), end: MUY_FUTURO }, previous: { start: atras(730), end: atras(365) } };
     case "historico":
     default:
       return { current: { start: EPOCA, end: MUY_FUTURO }, previous: null };
@@ -255,8 +349,9 @@ export async function getSalesKpis(
   propertyIds: readonly string[] | null,
   period: StatsPeriod,
   now: Date,
+  zonaHoraria?: string | null,
 ): Promise<SalesSummary> {
-  const comparison = buildComparisonPeriods(period, now);
+  const comparison = buildComparisonPeriods(period, now, zonaHoraria);
   const buckets: KpiDateRange[] = [comparison.current, ...(comparison.previous ? [comparison.previous] : [])];
   const [currentRow, previousRow] = await repo.getSalesBucketedStats(organizationId, propertyIds, buckets);
   const current = currentRow ?? { revenue: 0, orderCount: 0, customerCount: 0 };
@@ -286,8 +381,9 @@ export async function getSalesTrendKpis(
   period: StatsPeriod,
   now: Date,
   firstOrderAt: Date | null,
+  opciones: OpcionesTramos = {},
 ): Promise<readonly SalesTrendPoint[]> {
-  const tramos = buildTrendBuckets(period, now, firstOrderAt);
+  const tramos = buildTrendBuckets(period, now, firstOrderAt, opciones);
   const rows = await repo.getSalesBucketedStats(organizationId, propertyIds, tramos);
   return tramos.map((t, i) => {
     const row: SalesBucketRow = rows[i] ?? { revenue: 0, orderCount: 0, customerCount: 0 };
@@ -348,8 +444,9 @@ export async function getChannelKpis(
   propertyIds: readonly string[] | null,
   period: StatsPeriod = "historico",
   now: Date = new Date(),
+  zonaHoraria?: string | null,
 ): Promise<ChannelKpis> {
-  const range = period === "historico" ? undefined : buildComparisonPeriods(period, now).current;
+  const range = period === "historico" ? undefined : buildComparisonPeriods(period, now, zonaHoraria).current;
   const [channels, conversations] = await Promise.all([
     repo.getChannelStats(organizationId, propertyIds, range),
     repo.getWhatsappConversationStats(organizationId, propertyIds),

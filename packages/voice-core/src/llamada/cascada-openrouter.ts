@@ -30,13 +30,31 @@ export interface PeticionLlmVoz {
   readonly system: string;
   readonly mensajes: readonly MensajeLlmVoz[];
   readonly herramientas: readonly ToolDefinicion[];
+  /** Modelo de texto elegido por la organizacion (de la lista permitida); el puerto lo manda al gateway como modelo preferido. */
+  readonly modeloPreferido?: string;
   readonly senal?: AbortSignal;
+  /** Temperatura que debe usar el puerto (`VOZ_PLATAFORMA.cascada.temperatura`). La cascada v2 NO la manda nunca. */
+  readonly temperatura?: number;
+  /** Streaming (cascada v2): el puerto llama a esto con cada trozo de texto conforme el modelo lo escribe; la respuesta final trae el mismo texto completo. */
+  readonly onTextDelta?: (delta: string) => void;
+  /** Esfuerzo de razonamiento para este turno (`reasoning.effort` de OpenRouter); sin valor, el del puerto. */
+  readonly esfuerzo?: "low" | "medium" | "high";
 }
 export interface RespuestaLlmVoz {
   readonly texto: string;
   readonly toolCalls: readonly ToolCallLlmVoz[];
   /** Costo real del turno segun el gateway (micro-USD, entero). */
   readonly costoMicroUsd: number;
+  /** El costo lo reporto el proveedor (`usage.cost` de OpenRouter) y no sale de una tabla: el evento de costo se registra con `costo_estimado = false`. */
+  readonly costoReal?: boolean;
+  /** Modelo que contesto (cascada v2: para el registro por turno y el desglose de costo). */
+  readonly modelo?: string;
+  /** Uso de tokens del turno (cascada v2: verificar la lectura de cache del system prompt). `tokensCache` = tokens de entrada servidos desde la cache. */
+  readonly tokensEntrada?: number;
+  readonly tokensSalida?: number;
+  readonly tokensCache?: number;
+  /** Motivo de fin que reporto el proveedor (`stop`, `length`...). `length` con texto vacio = el razonamiento agoto el tope de tokens. */
+  readonly finishReason?: string;
 }
 export interface PuertoLlmVoz {
   completar(peticion: PeticionLlmVoz): Promise<RespuestaLlmVoz>;
@@ -89,6 +107,17 @@ export function pcm16AWav(pcm16: Uint8Array, hz: number): Uint8Array {
   v.setUint32(40, pcm16.byteLength, true);
   wav.set(pcm16, 44);
   return wav;
+}
+
+/** Pista de vocabulario para el STT (nombres y apodos del menu): terminos unicos, sin vacios, hasta `max`. Sin terminos no agrega nada. */
+export function pistaVocabulario(vocabulario: readonly string[] | undefined, max: number): { prompt?: string } {
+  const terminos = new Map<string, string>();
+  for (const t of vocabulario ?? []) {
+    if (terminos.size >= max) break;
+    const limpio = t.replace(/\s+/g, " ").trim();
+    if (limpio !== "" && !terminos.has(limpio.toLowerCase())) terminos.set(limpio.toLowerCase(), limpio);
+  }
+  return terminos.size === 0 ? {} : { prompt: `Vocabulario del menu: ${[...terminos.values()].join(", ")}.` };
 }
 
 function base64(bytes: Uint8Array): string {
@@ -257,7 +286,16 @@ class SesionCascada implements VozSesionLlamada {
 
   private async completar(senal: AbortSignal): Promise<RespuestaLlmVoz> {
     try {
-      return await this.o.llm.completar({ system: this.apertura.instruccion, mensajes: this.mensajes, herramientas: this.apertura.herramientas, senal });
+      return await this.o.llm.completar({
+        system: this.apertura.instruccion,
+        mensajes: this.mensajes,
+        herramientas: this.apertura.herramientas,
+        ...(this.apertura.modeloLlm ? { modeloPreferido: this.apertura.modeloLlm } : {}),
+        // SIEMPRE la de la plataforma: la temperatura de la organizacion (ajustes del agente) llega solo a Gemini Live. En la cascada los modelos de Anthropic y OpenAI de OpenRouter
+        // no aceptan `temperature` con require_parameters (docs/LLM-GATEWAY.md) y las reglas de temperatura las fijan P4 y MODELOS_AGENTE.
+        temperatura: this.o.config.cascada.temperatura,
+        senal,
+      });
     } catch {
       throw new ErrorEtapa("llm");
     }
@@ -270,7 +308,7 @@ class SesionCascada implements VozSesionLlamada {
       res = await this.o.fetchFn(`${config.cascada.baseUrl}/audio/transcriptions`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${this.o.apiKey}` },
-        body: JSON.stringify({ model: config.cascada.modeloStt, language: "es", input_audio: { data: base64(pcm16AWav(pcm16, HZ_ENTRADA)), format: "wav" } }),
+        body: JSON.stringify({ model: config.cascada.modeloStt, language: "es", ...pistaVocabulario(this.apertura.vocabulario, config.cascada.vocabularioMax), input_audio: { data: base64(pcm16AWav(pcm16, HZ_ENTRADA)), format: "wav" } }),
         signal: senal,
       });
     } catch {

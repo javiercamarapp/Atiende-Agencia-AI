@@ -13,10 +13,10 @@
 // `restaurantes.branch_detail` (teléfono/dirección/coordenadas/slug/orden).
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES } from "@atiende/domain-restaurantes";
 import type { Branch } from "@atiende/domain-restaurantes";
+import { assertAccion } from "./permisos-accion.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -25,6 +25,10 @@ import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 function serializeBranch(b: Branch) {
   return { propertyId: b.propertyId, name: b.name, slug: b.slug, status: b.status, phone: b.phone, address: b.address, lat: b.lat, lng: b.lng };
+}
+
+function resumenSucursal(b: Branch, campos: readonly ("phone" | "address" | "lat" | "lng" | "slug")[]): string {
+  return campos.map((k) => `${k}=${b[k] ?? "-"}`).join(" ").slice(0, 500);
 }
 
 interface BranchDetailBody {
@@ -45,11 +49,13 @@ function optionalNullableString(value: unknown, field: string, maxLength: number
   return value;
 }
 
-function optionalNullableCoordinate(value: unknown, field: string): number | null | undefined {
+function optionalNullableCoordinate(value: unknown, field: "lat" | "lng"): number | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < -180 || value > 180) {
-    throw Errors.validation(`${field}: se esperaba una coordenada numérica válida o null.`);
+  // Latitud en [-90, 90] y longitud en [-180, 180]: antes la latitud aceptaba hasta 180, un punto que no existe.
+  const limite = field === "lat" ? 90 : 180;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < -limite || value > limite) {
+    throw Errors.validation(`${field}: se esperaba una coordenada numérica entre -${limite} y ${limite}, o null.`);
   }
   return value;
 }
@@ -84,7 +90,7 @@ export function restaurantesAdminBranchesRoutes(deps: AppDeps): Hono<CoreAuthHon
   app.use("/v1/restaurantes/:propertyId/admin/sucursales/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/v1/restaurantes/:propertyId/admin/sucursales", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "sucursal.ver");
     const organizationId = c.get("organizationId");
     const repo = deps.restaurantesRepo(c.get("db"));
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
@@ -94,7 +100,7 @@ export function restaurantesAdminBranchesRoutes(deps: AppDeps): Hono<CoreAuthHon
   });
 
   app.get("/v1/restaurantes/:propertyId/admin/sucursales/:branchId", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "sucursal.ver");
     const organizationId = c.get("organizationId");
     const branchId = c.req.param("branchId");
     await assertBranchInScope(deps, c, organizationId, branchId);
@@ -105,7 +111,7 @@ export function restaurantesAdminBranchesRoutes(deps: AppDeps): Hono<CoreAuthHon
   });
 
   app.patch("/v1/restaurantes/:propertyId/admin/sucursales/:branchId", async (c) => {
-    assertVerticalRole(c, MANAGER_ROLES);
+    assertAccion(c, "sucursal.editar");
     const organizationId = c.get("organizationId");
     const branchId = c.req.param("branchId");
     await assertBranchInScope(deps, c, organizationId, branchId);
@@ -120,8 +126,29 @@ export function restaurantesAdminBranchesRoutes(deps: AppDeps): Hono<CoreAuthHon
       slug: optionalSlug(raw.slug),
       displayOrder: optionalDisplayOrder(raw.displayOrder),
     };
+    // Un solo eje no ubica nada y la asignación por distancia lo descartaría: lat y lng se mandan juntas (ambas con valor o ambas null).
+    if ((patch.lat === undefined) !== (patch.lng === undefined)) {
+      throw Errors.validation("lat/lng: mándalas juntas.");
+    }
+    if (patch.lat !== undefined && patch.lng !== undefined && (patch.lat === null) !== (patch.lng === null)) {
+      throw Errors.validation("lat/lng: mándalas las dos con valor o las dos en null.");
+    }
+    const antes = await repo.findBranchById(organizationId, branchId);
     const updated = await repo.updateBranchDetail(organizationId, branchId, patch);
     if (!updated) throw Errors.notFound("Sucursal no encontrada.");
+    // PL-23 -- el cambio de datos de la sucursal queda en la bitacora con antes/despues de los campos que el body pidio cambiar
+    // (best-effort con SAVEPOINT, ver `registrarAuditoria`).
+    const campos = (["phone", "address", "lat", "lng", "slug"] as const).filter((k) => patch[k] !== undefined);
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "sucursal.actualizada",
+      entityType: "configuracion",
+      entityId: branchId,
+      campo: (patch.displayOrder !== undefined ? [...campos, "displayOrder"] : campos).join(",").slice(0, 200) || null,
+      antes: antes ? resumenSucursal(antes, campos) : null,
+      despues: resumenSucursal(updated, campos),
+    });
     logEvent(c, "info", "restaurantes_admin_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, branchId });
     return c.json({ branch: serializeBranch(updated) });
   });

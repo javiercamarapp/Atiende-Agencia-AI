@@ -97,6 +97,7 @@ import type {
   TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
+  UpsertCustomerOptions,
 } from "./repository.ts";
 
 interface ProviderRow {
@@ -681,14 +682,14 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows.map((r) => ({ start: new Date(r.starts_at), end: new Date(r.ends_at) }));
   }
 
-  async upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null): Promise<CustomerRecord> {
+  async upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null, options: UpsertCustomerOptions = {}): Promise<CustomerRecord> {
     const { rows: existingRows } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
       `select id, organization_id, full_name, phone, email from citas.customers where organization_id = $1 and phone = $2;`,
       [organizationId, phone],
     );
     if (existingRows[0]) {
       const existing = existingRows[0];
-      if (!email) return { id: existing.id, organizationId: existing.organization_id, fullName: existing.full_name, phone: existing.phone, email: existing.email };
+      if (!email || options.emailOnlyIfNew) return { id: existing.id, organizationId: existing.organization_id, fullName: existing.full_name, phone: existing.phone, email: existing.email };
       const { rows: updated } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
         `update citas.customers set email = coalesce(email, $3), updated_at = now() where id = $1 and organization_id = $2 returning id, organization_id, full_name, phone, email;`,
         [existing.id, organizationId, email],

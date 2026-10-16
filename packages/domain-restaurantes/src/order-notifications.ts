@@ -56,6 +56,20 @@ function formatMxn(amount: number): string {
  * comentario de cabecera). */
 const CUSTOMER_NOTIFIED_STATUSES: ReadonlySet<OrderStatus> = new Set(["preparando", "en_camino", "entregado", "cancelado", "listo_para_recoger"]);
 
+/** Estados que reciben aviso al cliente (los de `CUSTOMER_NOTIFIED_STATUSES`); para reconocer, en un status de Meta, de que estado era el aviso. */
+export function esEstadoNotificadoAlCliente(status: string): status is OrderStatus {
+  return CUSTOMER_NOTIFIED_STATUSES.has(status as OrderStatus);
+}
+
+/** Frase del aviso de estado de pedido tal como salio por WhatsApp, SIN el saludo ("su pedido ... va en camino."), para el respaldo por correo. Solo
+ *  usa nombre, sucursal, total y estado del pedido. */
+export function frasePedidoParaEstado(order: Pick<Order, "customerName" | "branch" | "total" | "status">): string | null {
+  const completo = customerMessageForStatus(order as Order);
+  if (completo === null) return null;
+  const saludo = greeting(order as Order);
+  return completo.startsWith(saludo) ? completo.slice(saludo.length) : completo;
+}
+
 function customerMessageForStatus(order: Order): string | null {
   switch (order.status) {
     case "preparando":

@@ -1,6 +1,7 @@
 // Puerto de acceso a datos de domain-licitaciones — mismo patrón dual de
 // adaptador que domain-hoteles/domain-restaurantes (ver diseño Fase 1 §3.2).
 // Ningún flujo de apps/api toca SQL directamente — todo pasa por aquí.
+import type { AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit-trail.ts";
 import type { CalendarioPlazos } from "./dias-inhabiles.ts";
 import type {
   TenderRecord,
@@ -34,6 +35,7 @@ import type { InconformidadFundamento, InconformidadViability } from "./inconfor
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import type { TenderResolution } from "./tender-resolution.ts";
+import type { DocumentExtractionStatus, TenderDocumentRecord, TenderDocumentType, TenderDocumentWithPages } from "./document-vault.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -57,6 +59,120 @@ export interface RequirementItemRecord {
   readonly status: "pendiente" | "en_progreso" | "cumplido" | "bloqueado" | "no_evaluable";
   readonly confidence: number | null;
 }
+
+// ---- paridad3 (L-P3-05/06/07): boveda de bases, matriz estable, conflictos persistidos, revision con comentarios ----
+
+/** Requisito con los campos de la matriz estable (migracion 037). Sin la migracion, los campos nuevos llegan en su valor neutro. */
+export interface RequirementItemDetail extends RequirementItemRecord {
+  readonly stableKey: string | null;
+  readonly assignedTo: string | null;
+  /** Causa de desechamiento (REQ-101): incumplirlo descalifica la propuesta. */
+  readonly disqualifying: boolean;
+  readonly manuallyEditedAt: string | null;
+  /** Retirado (ya no aparece en las bases vigentes): nunca se borra en silencio. */
+  readonly retiredAt: string | null;
+  readonly retiredInVersion: number | null;
+}
+
+/** Entrada del upsert estable: el registro mas el documento de origen (linaje de la boveda o etiqueta del documento). */
+export interface RequirementUpsertItem extends RequirementItemRecord {
+  readonly documentRef: string;
+}
+
+export interface RequirementUpsertResult {
+  /** `estable` = migracion 037 (upsert por clave estable); `reemplazo` = base sin migrar (camino anterior, borra y reinserta). */
+  readonly mode: "estable" | "reemplazo";
+  /** Requisitos ACTIVOS tras el upsert, con los ids persistidos. */
+  readonly items: readonly RequirementItemDetail[];
+  /** id de la entrada (generado por el extractor) -> id persistido. */
+  readonly idByInputId: Readonly<Record<string, string>>;
+  readonly created: number;
+  readonly updated: number;
+  readonly unchanged: number;
+  readonly retired: number;
+}
+
+export interface RequirementItemPatch {
+  readonly responsibleRole?: string;
+  readonly status?: "pendiente" | "en_progreso" | "cumplido" | "no_evaluable";
+  readonly assignedTo?: string | null;
+  readonly disqualifying?: boolean;
+}
+
+export type RequirementConflictStatus = "abierto" | "resuelto";
+
+export interface RequirementConflictRecord {
+  readonly id: string;
+  readonly tenderId: string;
+  readonly kind: "deadline_mismatch" | "obligatoriedad_mismatch" | "duplicate_ambiguous";
+  readonly topicKey: string | null;
+  readonly description: string;
+  readonly itemIds: readonly string[];
+  readonly status: RequirementConflictStatus;
+  readonly resolutionNotes: string | null;
+  readonly resolvedBy: string | null;
+  readonly resolvedAt: string | null;
+  readonly createdAt: string;
+}
+
+export interface DetectedRequirementConflict {
+  readonly kind: RequirementConflictRecord["kind"];
+  readonly topicKey: string | null;
+  readonly description: string;
+  readonly itemIds: readonly string[];
+  readonly stableKeys: readonly string[];
+}
+
+export interface TenderDocumentUploadInput {
+  readonly documentType: TenderDocumentType;
+  readonly title: string | null;
+  readonly filename: string | null;
+  readonly mimeType: string | null;
+  readonly buffer: Uint8Array;
+  readonly extractionStatus: DocumentExtractionStatus;
+  readonly extractionDetail: string | null;
+  readonly pageCount: number | null;
+  readonly pages: readonly { readonly page: number; readonly text: string }[] | null;
+  readonly actorId: string;
+  /** Si se indica, el documento es una VERSION NUEVA del linaje de ese documento. */
+  readonly replacesDocumentId: string | null;
+}
+
+export type ProposalCommentScope = "seccion" | "expediente";
+export type ProposalCommentKind = "comentario" | "solicitud_revision";
+
+export interface ProposalCommentRecord {
+  readonly id: string;
+  readonly proposalId: string;
+  readonly scope: ProposalCommentScope;
+  readonly scopeRef: string;
+  readonly kind: ProposalCommentKind;
+  readonly body: string;
+  readonly authorId: string;
+  readonly authorRole: string;
+  readonly createdAt: string;
+}
+
+export interface ProposalSectionRecord {
+  readonly sectionKey: string;
+  readonly label: string;
+  readonly content: string;
+  readonly version: number;
+  /** Cuantas personas distintas han redactado/editado la seccion (AE-11); nunca se expone quienes. */
+  readonly authorCount: number;
+  /** `true` si quien consulta es autor de la seccion: no puede aprobarla ni aprobar el expediente (AE-11). */
+  readonly authoredByViewer: boolean;
+}
+
+export interface SectionEditResult {
+  readonly section: ProposalSectionRecord;
+  /** `false` si el contenido nuevo es identico al vigente: no se toca nada y no se invalida ninguna aprobacion. */
+  readonly changed: boolean;
+  /** Cambio detectado (con las aprobaciones invalidadas) cuando `changed`; `null` si no cambio o no habia aprobaciones. */
+  readonly invalidated: ChangeDetected | null;
+}
+
+export type TenderAuditAction = "document.uploaded" | "requirements.extracted" | "requirement.edited" | "requirement.conflict_resolved" | "section.edited";
 
 export interface RequirementFulfillmentMappingRecord {
   readonly id: string;
@@ -182,6 +298,8 @@ export interface TenderSourceIngestResult {
   readonly created: number;
   readonly updated: number;
   readonly tenders: readonly TenderRecord[];
+  /** Ids de las convocatorias NUEVAS de esta corrida (L-P3-17: la bitacora anota solo el alta, no cada reescritura idempotente). */
+  readonly createdIds?: readonly string[];
 }
 
 /** Recordatorio persistido de un vencimiento próximo (`submissionDeadline`) -- mismo criterio "honesto" que `TenderChangeNotificationRecord`: sin canal de envío real (email/SMS/WhatsApp), un registro consultable/reconocible (ver README del vertical para el gap declarado de integrar un canal real). */
@@ -287,26 +405,48 @@ export interface TenderResolutionCreateInput {
 // `listCompanySigners`) -- sin forma de capturar el dato real, toda propuesta
 // (técnica o económica) que dependiera de él quedaba PENDIENTE para siempre
 // (ver `company-data.ts::CompanyDataService`: dato ausente -> "missing"
-// explícito, nunca inventado). `approvalStatus` es escribible por las mismas
-// WRITE_ROLES que el resto de la captura (mismo criterio EXACTO que la
-// migración 009 -- "aprobado" aquí es una marca de captura correcta, no una
-// decisión de riesgo, a diferencia de aprobar el expediente completo).
+// explícito, nunca inventado). Capturar/editar es WRITE_ROLES, pero el
+// `approvalStatus` YA NO se escribe por create/update (migración 036): siempre
+// nace 'pendiente_aprobacion', editar un dato aprobado lo regresa a pendiente
+// y aprobar/rechazar es `decideCompanyItem` (DECISION_ROLES; tarifas owner/admin
+// con step-up, autor distinto del aprobador).
 // ---------------------------------------------------------------------
 export type CompanyDataApprovalStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
 
+/** Los cinco recursos de "datos de empresa" que se aprueban (migración 036, `licitaciones.decide_company_item`). */
+export type CompanyItemKind = "rate" | "document" | "capability" | "experience" | "signer";
+export type CompanyItemDecision = "aprobado" | "rechazado";
+/**
+ * `ok`; `not_found` (no existe en la organización); `conflict` (ya no estaba pendiente: decidido por otra persona/petición);
+ * `autor` (quien propuso o editó por última vez no puede decidir); `rol` (rol sin permiso de decisión);
+ * `no_disponible` (la base aún no tiene la migración 036 y el recurso no tenía aprobación antes: firmantes).
+ */
+export type CompanyItemDecisionOutcome = "ok" | "not_found" | "conflict" | "autor" | "rol" | "no_disponible";
+export interface CompanyItemDecisionInput {
+  readonly kind: CompanyItemKind;
+  readonly itemId: string;
+  readonly decision: CompanyItemDecision;
+  readonly actorId: string;
+  /** Rol vertical del actor. Postgres lo re-valida por membresía; en base sin migrar y en memoria es la única barrera. */
+  readonly actorRole: string;
+}
+
 export interface CompanyDocumentCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly type: string;
   readonly label: string;
   readonly expiresAt: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface CompanyDocumentUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly label?: string;
   readonly expiresAt?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface ApprovedRateCreateInput {
+  readonly actorId?: string;
   readonly concept: string;
   readonly unitPrice: DecimalString;
   /** Default cuando el caller la omite: el día de NEGOCIO
@@ -315,44 +455,51 @@ export interface ApprovedRateCreateInput {
    *  ver comentario de cabecera de `PostgresLicitacionesRepository.createApprovedRate`). */
   readonly validFrom?: string;
   readonly validUntil?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface ApprovedRateUpdateInput {
+  readonly actorId?: string;
   readonly unitPrice?: DecimalString;
   readonly validFrom?: string;
   readonly validUntil?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface CompanyCapabilityCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly name: string;
   readonly description: string;
   readonly evidenceDocId?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface CompanyCapabilityUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly description?: string;
   readonly evidenceDocId?: string | null;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface CompanyExperienceCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly description: string;
   readonly evidenceDocId: string;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 export interface CompanyExperienceUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly description?: string;
   readonly evidenceDocId?: string;
-  readonly approvalStatus?: CompanyDataApprovalStatus;
 }
 
 export interface CompanySignerCreateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly name: string;
   readonly role: string;
   readonly authorized?: boolean;
 }
 export interface CompanySignerUpdateInput {
+  /** Quien captura/edita (autoria). Solo lo usa el repositorio en memoria: en Postgres lo fija el trigger con `auth.uid()`. */
+  readonly actorId?: string;
   readonly name?: string;
   readonly authorized?: boolean;
 }
@@ -673,6 +820,15 @@ export interface LicitacionesRepository {
    * futuro panel de auditoría de convocatorias. */
   listTenderAuditLogPage(organizationId: string, tenderId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderAuditLogPage>;
 
+  // ---- L-P3-17: bitacora de escrituras con antes/despues y correlacion (038, `licitaciones.audit_trail`) ----
+  /** Anota una escritura en la MISMA transaccion que la escritura de negocio. `false` = la migracion 038 aun no esta aplicada (la escritura sigue sin renglon). */
+  appendAuditoria(organizationId: string, entry: AuditTrailInput): Promise<boolean>;
+  /** Lectura paginada por llave (owner/admin por RLS). `available: false` = 038 pendiente. */
+  listAuditoria(organizationId: string, filters: AuditTrailFilters, opts?: { readonly limit?: number; readonly cursor?: string | null; readonly orden?: "asc" | "desc" }): Promise<AuditTrailPage>;
+
+  /** `correlation_id` con que nacio la convocatoria (primer renglon de bitacora con correlacion), para que aprobaciones y manifiesto lo hereden; `null` si no hay. */
+  findTenderCorrelationId(organizationId: string, tenderId: string): Promise<string | null>;
+
   // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
   findMatchingProfile(organizationId: string): Promise<MatchingProfileRecord | null>;
   upsertMatchingProfile(organizationId: string, input: MatchingProfileUpsertInput): Promise<MatchingProfileRecord>;
@@ -787,6 +943,48 @@ export interface LicitacionesRepository {
   /** Sustituye TODOS los `requirement_item` de `tenderId` por `items` (mismo criterio de reemplazo completo que `replaceComplianceItems` -- nunca acumula historial de corridas de extracción). */
   replaceRequirementItems(organizationId: string, tenderId: string, items: readonly RequirementItemRecord[]): Promise<void>;
   listRequirementItems(organizationId: string, tenderId: string): Promise<readonly RequirementItemRecord[]>;
+  /** Rastro en la bitacora de la convocatoria (`tender_audit_log`). Mejor esfuerzo: sin la migracion 037 el CHECK de acciones lo rechaza y se ignora. */
+  recordTenderAuditEvent(organizationId: string, tenderId: string, action: TenderAuditAction, actorId: string): Promise<void>;
+
+  // ---- paridad3 (L-P3-05): boveda de documentos de la convocatoria ----
+  /** Guarda el archivo (file_blob) y la fila de `tender_document`. Lanza `BovedaRevisionNoDisponibleError("documentos")` sin la migracion 037. */
+  createTenderDocument(organizationId: string, tenderId: string, input: TenderDocumentUploadInput): Promise<TenderDocumentRecord>;
+  /** Documentos de la convocatoria (todas las versiones, la mas reciente de cada linaje marcada `latest`). `disponible: false` = base sin la 037. */
+  listTenderDocuments(organizationId: string, tenderId: string): Promise<{ readonly disponible: boolean; readonly documents: readonly TenderDocumentRecord[] }>;
+  /** Un documento con su texto por pagina (para re-extraer y para el visor de la cita). `null` si no existe en esa convocatoria. */
+  getTenderDocument(organizationId: string, tenderId: string, documentId: string): Promise<TenderDocumentWithPages | null>;
+
+  // ---- paridad3 (L-P3-06): matriz estable ----
+  /** Upsert por clave estable: conserva responsable/estado/asignacion hechos a mano y marca `retirado` lo que desaparecio del alcance (nunca borra). */
+  upsertRequirementItems(
+    organizationId: string,
+    tenderId: string,
+    items: readonly RequirementUpsertItem[],
+    opts: { readonly actorId: string; readonly scope: { readonly lineageIds: readonly string[]; readonly includeUnlinked: boolean }; readonly retiredInVersion: number | null },
+  ): Promise<RequirementUpsertResult>;
+  /** Matriz con los campos nuevos; `includeRetired` agrega los retirados. `migrated: false` = base sin la 037 (campos nuevos en valor neutro, sin retirados). */
+  listRequirementMatrix(organizationId: string, tenderId: string, opts: { readonly includeRetired: boolean }): Promise<{ readonly migrated: boolean; readonly items: readonly RequirementItemDetail[] }>;
+  /** Personas de la organizacion a las que se puede asignar un requisito (vacio si la base no tiene el catalogo). */
+  listRequirementAssignees(organizationId: string): Promise<readonly { readonly userId: string; readonly nombre: string; readonly rol: string }[]>;
+  /** Edicion humana de un requisito (responsable, estado, asignado, causa de desechamiento). `null` si no existe. */
+  updateRequirementItem(organizationId: string, tenderId: string, itemId: string, patch: RequirementItemPatch, actorId: string): Promise<RequirementItemDetail | null>;
+
+  // ---- paridad3 (L-P3-06): conflictos persistidos ----
+  /** Persiste los conflictos detectados (idempotente por huella), cierra los abiertos que ya no se detectan y bloquea/desbloquea sus requisitos. Sin la 037: `disponible: false`. */
+  syncRequirementConflicts(organizationId: string, tenderId: string, detected: readonly DetectedRequirementConflict[]): Promise<{ readonly disponible: boolean; readonly conflicts: readonly RequirementConflictRecord[] }>;
+  listRequirementConflicts(organizationId: string, tenderId: string): Promise<{ readonly disponible: boolean; readonly conflicts: readonly RequirementConflictRecord[] }>;
+  /** Resuelve un conflicto abierto (notas obligatorias). `null` si no existe o ya estaba resuelto. */
+  resolveRequirementConflict(organizationId: string, tenderId: string, conflictId: string, input: { readonly actorId: string; readonly notes: string }): Promise<RequirementConflictRecord | null>;
+  /** Conflictos abiertos de la convocatoria; 0 si la base no tiene la 037. Bloquea el checklist de integridad. */
+  countOpenRequirementConflicts(organizationId: string, tenderId: string): Promise<number>;
+
+  // ---- paridad3 (L-P3-07): revision con comentarios y editor humano de secciones ----
+  addProposalComment(organizationId: string, proposalId: string, input: { readonly scope: ProposalCommentScope; readonly scopeRef: string; readonly kind: ProposalCommentKind; readonly body: string; readonly authorId: string; readonly authorRole: string }): Promise<ProposalCommentRecord>;
+  listProposalComments(organizationId: string, proposalId: string): Promise<{ readonly disponible: boolean; readonly comments: readonly ProposalCommentRecord[] }>;
+  listProposalSections(organizationId: string, proposalId: string, viewerId: string): Promise<readonly ProposalSectionRecord[]>;
+  /** Edicion humana: registra la autoria (AE-11); si el contenido cambio invalida las aprobaciones de esa seccion y del expediente (AE-02); si es el mismo texto no toca nada. `null` si la seccion no existe. */
+  editProposalSection(organizationId: string, proposalId: string, sectionKey: string, input: { readonly content: string; readonly actorId: string }): Promise<SectionEditResult | null>;
+
   listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]>;
   /** Configura (o reemplaza) el mapeo requisito->dato-de-empresa para un `topicKey` -- editable por DECISION_ROLES (decidir de qué dato se redacta un requisito es una decisión editorial/de riesgo, no redacción). */
   upsertFulfillmentMapping(organizationId: string, input: { topicKey: string; kind: RequirementFulfillmentMappingRecord["kind"]; refKey: string; statementTemplate: string }): Promise<RequirementFulfillmentMappingRecord>;
@@ -1001,6 +1199,8 @@ export interface LicitacionesRepository {
   updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord>;
   createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord>;
   updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord>;
+  /** Aprueba/rechaza un dato de empresa de forma atómica y condicional (solo desde 'pendiente_aprobacion'), con autor distinto del aprobador y bitácora. Ver `CompanyItemDecisionOutcome`. */
+  decideCompanyItem(organizationId: string, input: CompanyItemDecisionInput): Promise<CompanyItemDecisionOutcome>;
 }
 
 export type {

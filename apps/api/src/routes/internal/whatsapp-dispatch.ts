@@ -100,16 +100,20 @@ import type { HotelesRepository } from "@atiende/domain-hoteles";
 import { createRestaurantesMessagingOutboxPort } from "@atiende/domain-restaurantes";
 import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { createLicitacionesMessagingOutboxPort } from "@atiende/domain-licitaciones";
-import type { DispatchSummary, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
+import type { DispatchItemResult, DispatchSummary, MessagingOutboxItem, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { emitirNotificacion } from "@atiende/db";
+import { emitirAlertasProveedor, evaluarSaludProveedor } from "@atiende/domain-restaurantes";
+import type { ItemDespachoOrg } from "@atiende/domain-restaurantes";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
-import { withHeartbeat } from "../../salud/with-heartbeat.ts";
+import { CRON_NO_CONFIGURADO_HEADERS, withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
 import { crearGuardTelefono } from "../../supresion/index.ts";
 import { crearMedidorMensajes } from "../../plan-topes/medidor.ts";
 import { crearCatalogoPlantillas } from "../../mensajeria/catalogo-plantillas.ts";
+import { vigilarSaludMetaBestEffort } from "../../salud/salud-meta.ts";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 200;
@@ -122,10 +126,15 @@ const MAX_LIMIT = 200;
 const INLINE_LIMIT = 5;
 
 export type WhatsAppMessagingVertical = "citas" | "hoteles" | "restaurantes" | "licitaciones";
-export type WhatsAppVerticalDispatchResult = DispatchSummary | { readonly ok: false; readonly error: string };
+export type WhatsAppVerticalDispatchResult = (DispatchSummary & { readonly errores?: number; readonly ultimoError?: string | null }) | { readonly ok: false; readonly error: string };
 
 function isFailureResult(result: WhatsAppVerticalDispatchResult): result is { readonly ok: false; readonly error: string } {
   return "ok" in result && result.ok === false;
+}
+
+/** Corrida con mensajes cuya sesion fallo a mitad (quedan `processing` hasta que venza su lease). */
+function hasSessionErrors(result: WhatsAppVerticalDispatchResult): boolean {
+  return !isFailureResult(result) && (result.errores ?? 0) > 0;
 }
 
 /**
@@ -150,20 +159,116 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
     return { label: "licitaciones", claimed: 0, sent: 0, retried: 0, dead: 0, skipped: 0, items: [] };
   }
 
+  // QA-restaurantes-R1-automatizacion-01: UN mensaje por transaccion corta, nunca una transaccion por lote. Graph API no
+  // tiene llave de idempotencia: si el claim, el envio y el `markSent` de todo el lote vivieran en una sola transaccion,
+  // un error SQL (o la muerte de la funcion serverless) a mitad de lote haria ROLLBACK de `sent` ya entregados y la
+  // siguiente corrida los mandaria otra vez. Aqui cada paso confirma antes del siguiente:
+  //   1. sesion A: reclama 1 mensaje (queda `processing` con lease; COMMIT);
+  //   2. sesion B: lo envia y lo cierra (`sent`/reintento/`dead`; COMMIT).
+  // Un fallo de B solo afecta a ESE mensaje (su lease vencido lo reabre); lo ya cerrado queda cerrado. Hueco residual
+  // honesto: una caida entre el 2xx de Meta y el COMMIT de B todavia puede duplicar UNA respuesta.
+  // Hueco conocido (documentado, sin cambio de comportamiento): el claim no incrementa `attempts`, asi que un mensaje cuyo envio
+  // da 2xx pero cuyo `markSent` falla SIEMPRE de forma determinista se reenvia en cada vencimiento de lease, sin tope. Tambien hay
+  // hasta 2 x `limit` transacciones secuenciales por vertical y corrida (claim + cierre por mensaje); el limite por corrida
+  // acota el tiempo contra maxDuration.
+  const construirPuerto = (db: TenantDbSession): MessagingOutboxPort =>
+    vertical === "citas"
+      ? createCitasMessagingOutboxPort(deps.citasRepo(db))
+      : vertical === "hoteles"
+        ? createHotelesMessagingOutboxPort(deps.hotelesRepo(db))
+        : vertical === "licitaciones"
+          ? createLicitacionesMessagingOutboxPort(licitacionesRepoFactory!(db), licitacionesPhoneNumberId!)
+          : createRestaurantesMessagingOutboxPort(deps.restaurantesRepo(db));
+
+  const total = { label: vertical as string, claimed: 0, sent: 0, retried: 0, dead: 0, skipped: 0, suppressed: 0, omitidosCuota: 0 };
+  const items: DispatchItemResult[] = [];
+  /** Items de restaurantes con su organizacion, para evaluar al final la salud del proveedor (alertas al dueño). */
+  const itemsOrg: ItemDespachoOrg[] = [];
+  let errores = 0;
+  let ultimoError: string | null = null;
+  for (let i = 0; i < limit; i++) {
+    let reclamados: readonly MessagingOutboxItem[];
+    try {
+      reclamados = await deps.engine.withAppSession({ userId: null }, async (db) => construirPuerto(db).claimBatch(1, dispatcher.claimLeaseSeconds));
+    } catch (err) {
+      // Sin poder reclamar no hay nada mas que hacer en esta corrida (BD caida, funcion sin migrar).
+      if (total.claimed === 0 && errores === 0) return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      errores++;
+      ultimoError = err instanceof Error ? err.message : String(err);
+      break;
+    }
+    if (reclamados.length === 0) break;
+    try {
+      const r = await deps.engine.withAppSession({ userId: null }, async (db) =>
+        dispatcher.dispatchClaimed(construirPuerto(db), reclamados, { suppression: crearGuardTelefono(db), medidor: crearMedidorMensajes(db, vertical), plantillas: crearCatalogoPlantillas(db) }),
+      );
+      if (vertical === "restaurantes") {
+        await avisarMensajesMuertosBestEffort(deps, reclamados, r.items);
+        for (const it of r.items) {
+          const organizationId = reclamados.find((x) => x.id === it.id)?.organizationId;
+          if (organizationId) itemsOrg.push({ organizationId, outcome: it.outcome, ...(it.proveedor ? { proveedor: true } : {}), ...(it.graphCode !== undefined ? { graphCode: it.graphCode } : {}) });
+        }
+      }
+      total.claimed += r.claimed;
+      total.sent += r.sent;
+      total.retried += r.retried;
+      total.dead += r.dead;
+      total.skipped += r.skipped;
+      total.suppressed += r.suppressed ?? 0;
+      total.omitidosCuota += r.omitidosCuota ?? 0;
+      items.push(...r.items);
+    } catch (err) {
+      // Este mensaje queda `processing`: su lease vencido lo reabre. Los anteriores ya hicieron COMMIT.
+      total.claimed += reclamados.length;
+      errores++;
+      ultimoError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  if (vertical === "restaurantes") await avisarSaludProveedorBestEffort(deps, itemsOrg);
+  return {
+    label: total.label,
+    claimed: total.claimed,
+    sent: total.sent,
+    retried: total.retried,
+    dead: total.dead,
+    skipped: total.skipped,
+    ...(total.suppressed > 0 ? { suppressed: total.suppressed } : {}),
+    ...(total.omitidosCuota > 0 ? { omitidosCuota: total.omitidosCuota } : {}),
+    items,
+    ...(errores > 0 ? { errores, ultimoError } : {}),
+  };
+}
+
+/** QA-restaurantes-R1-automatizacion-11: un WhatsApp al cliente de restaurantes que queda `dead` (reintentos agotados o rechazado)
+ *  avisa en la campana al staff de la organizacion (un aviso por mensaje, clave = id del outbox, sin PII: solo el catalogo).
+ *  Los suprimidos y los omitidos por tope de plan NO son entrega fallida y no avisan. Best-effort, en su propia sesion de
+ *  sistema: nunca altera la corrida; contra la base sin la 0039 degrada en silencio. */
+async function avisarMensajesMuertosBestEffort(deps: AppDeps, reclamados: readonly MessagingOutboxItem[], items: readonly DispatchItemResult[]): Promise<void> {
+  const muertos = items.filter((i) => i.outcome === "dead");
+  if (muertos.length === 0) return;
   try {
-    return await deps.engine.withAppSession({ userId: null }, async (db) => {
-      const port =
-        vertical === "citas"
-          ? createCitasMessagingOutboxPort(deps.citasRepo(db))
-          : vertical === "hoteles"
-            ? createHotelesMessagingOutboxPort(deps.hotelesRepo(db))
-            : vertical === "licitaciones"
-              ? createLicitacionesMessagingOutboxPort(licitacionesRepoFactory!(db), licitacionesPhoneNumberId!)
-              : createRestaurantesMessagingOutboxPort(deps.restaurantesRepo(db));
-      return dispatcher.dispatchPending(port, { limit, suppression: crearGuardTelefono(db), medidor: crearMedidorMensajes(db, vertical), plantillas: crearCatalogoPlantillas(db) });
+    await deps.engine.withAppSession({ userId: null }, async (db) => {
+      for (const m of muertos) {
+        const organizationId = reclamados.find((x) => x.id === m.id)?.organizationId;
+        if (!organizationId) continue;
+        await emitirNotificacion(db, { evento: "restaurantes.whatsapp.mensaje_muerto", organizationId, clave: m.id, entidadTipo: "messaging_outbox", entidadId: m.id });
+      }
     });
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } catch {
+    // best-effort
+  }
+}
+
+/** Alertas al dueño por falla del proveedor (N fallas seguidas) o token de Meta invalido (error 190), evaluadas sobre la corrida
+ *  completa. Una sesion de sistema propia (nunca la del envio): un fallo aqui no toca ningun mensaje. Contra la base sin la 0039
+ *  `emitirNotificacion` degrada a `no_disponible` dentro de su SAVEPOINT. Best-effort: nunca lanza. */
+async function avisarSaludProveedorBestEffort(deps: AppDeps, itemsOrg: readonly ItemDespachoOrg[]): Promise<void> {
+  const diagnosticos = evaluarSaludProveedor(itemsOrg);
+  if (diagnosticos.length === 0) return;
+  try {
+    await deps.engine.withAppSession({ userId: null }, (db) => emitirAlertasProveedor(db, diagnosticos, new Date()));
+  } catch {
+    // best-effort
   }
 }
 
@@ -249,7 +354,7 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
       // el outbox marcándolo como procesado.
       const dispatcher = deps.whatsAppDispatcher;
       if (!dispatcher) {
-        return c.json({ ok: false, error: "whatsapp dispatcher no configurado (falta WHATSAPP_ACCESS_TOKEN)" }, 503);
+        return c.json({ ok: false, error: "whatsapp dispatcher no configurado (falta WHATSAPP_ACCESS_TOKEN)" }, 503, CRON_NO_CONFIGURADO_HEADERS);
       }
 
       const requestedLimit = Number(c.req.query("limit") ?? DEFAULT_LIMIT);
@@ -265,7 +370,7 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
       for (const vertical of ["citas", "hoteles", "restaurantes", "licitaciones"] as const) {
         const result = await dispatchWhatsAppVertical(deps, vertical, limit);
         results[vertical] = result;
-        if (isFailureResult(result)) {
+        if (isFailureResult(result) || hasSessionErrors(result)) {
           anyFailure = true;
           failedVerticals.push(vertical);
         } else if (result.dead > 0) {
@@ -303,6 +408,12 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
           totalDead,
         });
       }
+
+      // Salud de Meta/agente (token por vencer, timeouts, fallos seguidos): best-effort en sesiones de sistema propias; jamas altera esta respuesta.
+      const salud = await vigilarSaludMetaBestEffort(deps);
+      // OJO con los nombres de clave: el logger tapa toda clave que case con CLAVE_SENSIBLE (p. ej. "token" o "estadoToken"), asi que el estado se llama estadoMeta.
+      const nivelSalud = salud.token === "error" || salud.agente === "error" ? "error" : salud.token === "no_leido" ? "warn" : "info";
+      logEvent(c, nivelSalud, "whatsapp_dispatch_salud_meta", { estadoMeta: salud.token, estadoAgente: salud.agente });
 
       return c.json({ ok: !anyFailure, results });
     })();

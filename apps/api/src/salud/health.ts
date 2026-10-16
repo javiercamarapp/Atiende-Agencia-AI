@@ -76,6 +76,73 @@ export type EstadoCronsSalud =
 
 export type LectorLatidos = () => Promise<readonly CronHeartbeatRow[] | null>;
 
+/** Senal AGREGADA y publica de crons (campo `crons` del `/health` sin secreto). Sin nombres, sin errores, sin conteos:
+ *  - `sin_latido`: al menos un cron de alta frecuencia (cadencia <= 15 min) sin NINGUN latido (nunca corrio).
+ *  - `atrasados`: algun cron con latido mas viejo que 3 veces su cadencia.
+ *  - `ok`: ninguno de los dos.
+ *  - `sin_medir`: no se pudo leer la tabla de latidos (base sin migrar, error o timeout): nunca un "ok" inventado. */
+export type SenalCronsPublica = "ok" | "atrasados" | "sin_latido" | "sin_medir";
+
+/** Cadencia maxima (minutos) de un cron "de alta frecuencia": si estos nunca dejaron latido, el scheduler no esta corriendo. */
+export const CADENCIA_ALTA_FRECUENCIA_MIN = 15;
+/** Un latido mas viejo que este multiplo de la cadencia del cron cuenta como atrasado. */
+export const FACTOR_ATRASO_CRON = 3;
+
+/** Pura. Cuantos crons declarados de alta frecuencia (cadencia <= 15 min) no tienen NINGUN latido. */
+export function contarCronsAltaFrecuenciaSinLatido(filas: readonly CronHeartbeatRow[]): number {
+  const cadencias = cadenciaMinutosPorRuta();
+  const conLatido = new Set(filas.filter((f) => f.lastFinishedAt !== null && !Number.isNaN(new Date(f.lastFinishedAt).getTime())).map((f) => f.cronName));
+  return rutasDeCronDeclaradas().filter((r) => (cadencias[r] ?? 0) > 0 && (cadencias[r] ?? 0) <= CADENCIA_ALTA_FRECUENCIA_MIN && !conLatido.has(r)).length;
+}
+
+/** Pura. `filas === null` (no se pudo leer) => `sin_medir`. Solo mira los crons declarados en `vercel.json`: un latido de un path que
+ *  ya no existe no cuenta, y un cron sin cadencia determinable (0) nunca se declara atrasado ni sin latido. `sin_latido` gana a `atrasados`. */
+export function resumirCronsPublico(filas: readonly CronHeartbeatRow[] | null, ahora: Date): SenalCronsPublica {
+  if (filas === null) return "sin_medir";
+  const cadencias = cadenciaMinutosPorRuta();
+  const porNombre = new Map(filas.map((f) => [f.cronName, f]));
+  let atrasados = false;
+  for (const cronName of rutasDeCronDeclaradas()) {
+    const cadenciaMin = cadencias[cronName] ?? 0;
+    if (cadenciaMin <= 0) continue;
+    const fin = porNombre.get(cronName)?.lastFinishedAt ?? null;
+    const finMs = fin === null ? Number.NaN : new Date(fin).getTime();
+    if (Number.isNaN(finMs)) {
+      if (cadenciaMin <= CADENCIA_ALTA_FRECUENCIA_MIN) return "sin_latido";
+      continue;
+    }
+    if ((ahora.getTime() - finMs) / 60_000 > FACTOR_ATRASO_CRON * cadenciaMin) atrasados = true;
+  }
+  return atrasados ? "atrasados" : "ok";
+}
+
+/** Lee los latidos y resume la senal publica. Nunca lanza: una lectura que falla o devuelve `null` es `sin_medir`. */
+export async function senalPublicaDeCrons(leer: LectorLatidos | undefined, ahora: Date): Promise<SenalCronsPublica> {
+  if (!leer) return "sin_medir";
+  try {
+    return resumirCronsPublico(await leer(), ahora);
+  } catch {
+    return "sin_medir";
+  }
+}
+
+/** Envuelve un lector con un tope de tiempo (el lector abre SU PROPIA transaccion: un timeout no deja nada a medias en otra consulta). */
+export function lectorConTimeout(leer: LectorLatidos, timeoutMs: number): LectorLatidos {
+  return async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("timeout_lectura_latidos")), timeoutMs);
+    });
+    const lectura = leer();
+    lectura.catch(() => undefined); // si gana el timeout, el rechazo tardio no debe ser unhandledRejection
+    try {
+      return await Promise.race([lectura, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+}
+
 /**
  * Reutiliza `juzgarLatido` (motor.ts) y las cadencias derivadas de `vercel.json`.
  * Sin lector, o si el lector falla / devuelve `null` / la tabla no existe (base

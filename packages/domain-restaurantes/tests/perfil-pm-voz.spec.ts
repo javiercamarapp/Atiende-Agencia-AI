@@ -87,13 +87,14 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
     }
   });
 
-  it("conserva lo que PM-C3 pide en voz: H2/H8 sin aflojar, combo del martes, horario prudente, hora_recogida y el umbral de pedido grande", () => {
+  it("conserva lo que PM-C3 pide en voz: H2/H8 sin aflojar, combo del martes, horario solo de los datos, hora_recogida y el umbral de pedido grande", () => {
     expect(voz).toContain("puede adquirirlo directamente en la sucursal al recoger");
     expect(voz).toMatch(/H8\. Escale.*alergias/);
     // CR09: el combo del martes esta cargado: la voz dice que lo aplica cotizar_pedido y ya no que lo confirma la sucursal.
     expect(voz).toContain("H13. Combo del martes (nachos de pastor + 2 aguas, recoger): lo aplica cotizar_pedido; diga lo que devuelve.");
     expect(voz).not.toContain("la confirma la sucursal al recoger");
-    expect(voz).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am");
+    expect(voz).not.toMatch(/6 pm a (12|1) am|HORARIO PARA TOMAR PEDIDOS/);
+    expect(voz).toMatch(/H16\. Horario: solo lo dicen los datos de la sucursal/);
     expect(voz).toContain("hora_recogida");
     expect(voz).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo\)/);
     expect(voz).toContain(PM_PROMOS_POR_OMISION);
@@ -166,7 +167,9 @@ describe("pregrabado de saludo de respaldo segun la hora (X40)", () => {
   it("el id sigue la franja de Merida y cada texto dice su franja; el de reserva no dice ninguna", () => {
     expect(mensajeSaludoRespaldo("11:59")).toBe("saludo_respaldo_dias");
     expect(mensajeSaludoRespaldo("12:00")).toBe("saludo_respaldo_tardes");
-    expect(mensajeSaludoRespaldo(19)).toBe("saludo_respaldo_noches");
+    expect(mensajeSaludoRespaldo(19)).toBe("saludo_respaldo_tardes");
+    expect(mensajeSaludoRespaldo("19:59")).toBe("saludo_respaldo_tardes");
+    expect(mensajeSaludoRespaldo("20:00")).toBe("saludo_respaldo_noches");
     expect(mensajeSaludoRespaldo("00:30")).toBe("saludo_respaldo_noches");
     expect(MENSAJES_PREGRABADOS.saludo_respaldo_dias).toMatch(/^Buenos días/);
     expect(MENSAJES_PREGRABADOS.saludo_respaldo_tardes).toMatch(/^Buenas tardes/);
