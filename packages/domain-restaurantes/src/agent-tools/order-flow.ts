@@ -73,6 +73,21 @@ export interface OrderFlowContext {
   /** Id del ultimo pedido creado en la sesion: un pedido identico dentro de la ventana de deduplicacion devuelve ESE id y se marca `ya_registrado`. */
   readonly sessionUltimoPedidoId?: string;
   readonly confirmedAtMs?: number;
+  /** R11 (cierre como maquina de estados, `cierre-maquina.ts`): propina que se cotizo (pesos o porcentaje). Como pago/efectivo, NO entra a `quoteHash` pero SI es parte de lo que el cliente acepta:
+   * cambiarla tras mostrar el resumen es otra cotizacion que hay que volver a mostrar. */
+  readonly quotedPropinaMxn?: number;
+  readonly quotedPropinaPct?: number;
+  /** Turno del cliente en que se rechazo una confirmacion por mensaje ambiguo: en un turno POSTERIOR (resumen mostrado otra vez) el ambiguo ya no se rechaza. Salida contra el deadlock. */
+  readonly cierreAmbiguoTurn?: string;
+  /** Turno del cliente en que se rechazo una confirmacion por «resumen no mostrado»: en un turno POSTERIOR un «si» claro ya se acepta (la heuristica de texto puede dar falsos negativos). */
+  readonly cierreNoVistoTurn?: string;
+  /** Texto del resumen armado por el servidor para ESTA cotizacion (solo con la maquina de cierre activa). */
+  readonly resumenCanonico?: string;
+  /** Datos con que se armo `resumenCanonico` (renglones, total, descuento, canal): permiten rearmarlo cuando cambian el pago o la propina sin volver a cotizar. */
+  readonly resumenBase?: { readonly lineas: readonly { readonly name: string; readonly quantity: number; readonly lineTotal?: number; readonly tortilla?: string | null }[]; readonly total: number; readonly descuento?: number; readonly canal?: string };
+  /** Firma (pago|efectivo|propina) y turno de la confirmacion: `crear_pedido` exige los mismos datos. */
+  readonly confirmedFirma?: string;
+  readonly confirmedTurn?: string;
   /** Turno del cliente en que `crear_pedido` fue rechazado por `resumen_no_mostrado`. Salida contra el deadlock: si la heuristica de texto da un falso negativo, el SIGUIENTE turno
    * (distinto de este) ya no se rechaza por esa causa, de modo que el cierre se retrasa a lo mucho un turno y nunca se queda trabado. */
   readonly resumenRechazadoTurn?: string;
@@ -114,6 +129,9 @@ export type OrderFlowViolationCode =
   | "pedido_distinto_al_cotizado"
   | "confirmacion_mismo_turno"
   | "cliente_rechazo_resumen"
+  | "cierre_resumen_no_mostrado"
+  | "cierre_sin_si_explicito"
+  | "cierre_datos_cambiaron"
   | "resumen_no_mostrado"
   | "hash_no_coincide"
   | "pedido_ya_creado"
