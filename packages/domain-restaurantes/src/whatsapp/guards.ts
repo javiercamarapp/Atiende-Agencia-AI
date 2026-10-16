@@ -706,7 +706,7 @@ export function highRiskMatchOtherThan(texts: readonly string[], excepto: HighRi
   for (const text of texts) {
     const texto = normalizarParaClasificar(text);
     const p = HIGH_RISK_PATTERNS.find((q) => q.intent !== excepto && coincide(q, texto, ctx));
-    if (p) return { intent: p.intent, motivo: p.intent, reply: p.reply };
+    if (p) return { intent: p.intent, motivo: p.intent === "modificacion_pedido" ? "cancelacion_modificacion" : p.intent, reply: p.reply };
   }
   return null;
 }
