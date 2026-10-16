@@ -10,7 +10,7 @@ después se enchufaron hoteles, rentas vacacionales, despachos, licitaciones y c
 | Pieza | Dónde |
 |---|---|
 | Motor (validación, alcance, límites, redacción de PII, bitácora, verificación de cifras) | `packages/agent-core/src/data-chat/` (export `@atiende/agent-core/data-chat`) |
-| Catálogo de restaurantes (8 herramientas, SQL de solo lectura) | `packages/domain-restaurantes/src/data-chat/` |
+| Catálogo de restaurantes (8 herramientas, SQL de solo lectura; más las 9 `cfo_*` de «Pregunta a tu CFO», que delegan en el `ServicioCfo` vía `reader.cfo` y no tienen SQL propia) | `packages/domain-restaurantes/src/data-chat/` (`cfo-tools.ts` para las del CFO) |
 | Catálogo de hoteles (6 herramientas) | `packages/domain-hoteles/src/data-chat/` |
 | Catálogo de rentas vacacionales (7 herramientas) | `packages/domain-rentas/src/data-chat/` |
 | Catálogo de despachos (8 herramientas) | `packages/domain-despachos/src/data-chat/` |

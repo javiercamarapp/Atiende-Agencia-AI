@@ -38,6 +38,7 @@
 import {
   LICITACIONES_CONNECTOR_REGISTRY,
   classifySourceFailure,
+  newCorrelationId,
 } from "@atiende/domain-licitaciones";
 import type {
   ConnectorLogger,
@@ -69,10 +70,12 @@ export interface DiscoverTendersSourceResult {
   readonly discovered: number;
   readonly created: number;
   readonly updated: number;
-  /** Registros enlazados a una convocatoria que ya existia por otra fuente (huella cruzada, 037). */
+  /** Registros enlazados a una convocatoria que ya existia por otra fuente (huella cruzada, 041). */
   readonly linked?: number;
   readonly droppedRows: number;
   readonly message: string;
+  /** `true` cuando la fuente externa no está disponible por causas ajenas (WAF/retirada/TLS/red): queda `down` con su aviso, pero no es un fallo real de la corrida (ver `SourceUnavailableError`). */
+  readonly unavailable?: boolean;
 }
 
 export interface RunDiscoverTendersOptions {
@@ -111,6 +114,9 @@ export async function runDiscoverTendersForOrganization(
   for (const descriptor of connectors) {
     const startedAt = now().toISOString();
     let droppedCount = 0;
+    // L-P3-17: `correlation_id` de la corrida (organizacion + fuente) para el `source_run`. Cada convocatoria NUEVA recibe ademas SU PROPIA correlacion
+    // (version, aprobaciones y manifiesto la heredan): compartir una sola entre todas las altas de la corrida mezclaba sus trazas.
+    const correlationId = newCorrelationId();
 
     try {
       const candidates: TenderSourceIngestCandidate[] = [];
@@ -123,10 +129,23 @@ export async function runDiscoverTendersForOrganization(
 
       const { ingest: ingestResult, runNotPersistedReason } = await withRepo(async (repo) => {
         const ingest = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
-        // REQ-169: con la huella cruzada (037) un registro ya conocido por otra fuente queda ENLAZADO, no creado ni actualizado;
+        // REQ-169: con la huella cruzada (041) un registro ya conocido por otra fuente queda ENLAZADO, no creado ni actualizado;
         // sigue siendo un resultado obtenido de esta fuente, asi que cuenta en la cobertura y en el mensaje.
         const linked = ingest.linked ?? 0;
         const linkedText = linked > 0 ? `, ${linked} enlazada(s) a otra fuente` : "";
+        // Bitacora (038, sesion de sistema: sin actor). Solo el alta; con la 038 pendiente `appendAuditoria` devuelve false sin abortar la transaccion.
+        for (const tender of ingest.tenders) {
+          if (!(ingest.createdIds ?? []).includes(tender.id)) continue;
+          await repo.appendAuditoria(organizationId, {
+            entity: "convocatoria",
+            entityId: tender.id,
+            action: "convocatoria.ingerida",
+            before: null,
+            after: { externalId: tender.externalId ?? null, source: descriptor.id, title: tender.title, submissionDeadline: tender.submissionDeadline, runCorrelationId: correlationId },
+            actorId: null,
+            correlationId: newCorrelationId(),
+          });
+        }
         const run = await repo.recordSourceRun(organizationId, {
           source: descriptor.id,
           state: "ok",
@@ -136,7 +155,7 @@ export async function runDiscoverTendersForOrganization(
             message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${linkedText}${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
             coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated + linked },
           },
-          correlationId: null,
+          correlationId,
         });
         return { ingest, runNotPersistedReason: run.notPersistedReason };
       });
@@ -158,7 +177,7 @@ export async function runDiscoverTendersForOrganization(
         message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s)${(ingestResult.linked ?? 0) > 0 ? `, ${ingestResult.linked} enlazada(s) a otra fuente` : ""}.${runNotPersistedReason !== undefined ? ` [AVISO: ${runNotPersistedReason}]` : ""}`,
       });
     } catch (err) {
-      const { state, message } = classifySourceFailure(err);
+      const { state, message, unavailable } = classifySourceFailure(err);
       const finishedAt = now().toISOString();
       // a5-fix-licitaciones-source-run-check-yucatan-guadalajara (defensa en profundidad):
       // `resultMessage` arranca como el mensaje del fallo ORIGINAL (el que ya viaja a
@@ -186,7 +205,7 @@ export async function runDiscoverTendersForOrganization(
         });
         resultMessage = `${message} [ADEMÁS no se pudo registrar la corrida fallida en source_run: ${recordErrMessage}]`;
       }
-      results.push({ source: descriptor.id, state, discovered: 0, created: 0, updated: 0, droppedRows: droppedCount, message: resultMessage });
+      results.push({ source: descriptor.id, state, discovered: 0, created: 0, updated: 0, droppedRows: droppedCount, message: resultMessage, ...(unavailable ? { unavailable: true } : {}) });
     }
   }
 

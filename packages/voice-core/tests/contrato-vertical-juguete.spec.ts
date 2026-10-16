@@ -139,10 +139,11 @@ describe("contrato del esqueleto con una vertical de juguete", () => {
       limites: { toolTimeoutMs: 20, timeoutsMax: 5 },
       toolLenta: { nombre: "agendar_cita", ms: 200 },
       turnos: [{ kind: "voz", cliente: "Agende", agente: [{ tool: "agendar_cita", args: { hora: "17:00" } }, { dice: "Una persona lo verificará." }] }],
-      esperado: { resultado: "abandonado", pregrabados: ["tool_timeout"] },
+      // QA-PM-R2-voz-04: el timeout incierto de la herramienta objetivo deja un aviso a una persona (que verifique) y la llamada termina `escalado`.
+      esperado: { resultado: "escalado", pregrabados: ["tool_timeout"], callbacks: 1 },
     };
     const l = await correr(guion);
-    expect(l.resultado).toBe("abandonado");
+    expect(l.resultado).toBe("escalado");
     expect(JSON.stringify(l.tools[0]?.resultado)).toContain("No se pudo confirmar la cita");
     expect(await fallos(l)).toEqual([]);
   });

@@ -1,7 +1,7 @@
 // Mundo de pruebas del worker: la API REAL de Atiende en proceso (Hono + repositorios en memoria, sin red) con el restaurante sembrado del simulador
 // de voz (Los Taquitos de PM: menu, sucursales, colonias, politica de $200). El `fetch` del worker se apunta a `app.request`.
 import type { VozCerrarConversacionInput } from "@atiende/domain-restaurantes";
-import { InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository, InMemoryPrivacidadRepository } from "@atiende/domain-restaurantes";
+import { InMemoryAjustesAgenteRepository, InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository, InMemoryPrivacidadRepository } from "@atiende/domain-restaurantes";
 import { FakeSoftRestaurantAdapter, InMemoryComandaOutboxStore, MapaProductoCodigo, crearResolverSucursalPos } from "@atiende/domain-restaurantes/softrestaurant";
 import type { SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import { MENSAJE_IDS } from "@atiende/voice-core";
@@ -61,10 +61,14 @@ export interface OpcionesMundoApi {
   /** Sobreescritura del tope mensual de la organizacion en la tabla DNIS (USD). */
   readonly topeMensualUsd?: number;
   readonly modoEntrada?: "desborde" | "total" | "prueba";
+  /** Lineas propias de la sucursal que desvian al numero puente (`numerosSucursal` de la tabla DNIS). */
+  readonly numerosSucursal?: readonly string[];
   /** `true` = la API no tiene el repositorio de voz (contexto 503). */
   readonly sinVozRepo?: boolean;
   /** `true` = la API no tiene el repositorio de privacidad (503 en apertura): el worker debe atender sin aviso y sin grabar. */
   readonly sinPrivacidad?: boolean;
+  /** Repositorio de ajustes del agente (ambiente, tecleo, naturalidad). Sin el, el contexto no trae sonido. */
+  readonly ajustesAgente?: InMemoryAjustesAgenteRepository;
 }
 
 export interface MundoApi {
@@ -105,6 +109,7 @@ export async function crearMundoApi(opts: OpcionesMundoApi = {}): Promise<MundoA
     env: { ...base.deps.env, voiceRequireCallToken: true },
     restaurantesRepo: () => mundo.repo,
     ...(opts.sinVozRepo ? {} : { vozRepo: () => voz }),
+    ...(opts.ajustesAgente ? { ajustesAgenteRepo: () => opts.ajustesAgente! } : {}),
     vozKpiRepo: () => kpi,
     vozLlamadaRepo: () => llamadaRepo,
     ...(opts.sinPrivacidad ? {} : { privacidadRepo: () => privacidad }),
@@ -141,7 +146,7 @@ export async function crearMundoApi(opts: OpcionesMundoApi = {}): Promise<MundoA
     INTERNAL_SECRET: INTERNAL_SECRET_PRUEBA,
     GEMINI_API_KEY: "llave-gemini",
     VOICE_SECRET_FCO: SECRETO_VOZ_PRUEBA,
-    VOICE_DNIS_MAP: JSON.stringify({ [NUMERO_SUCURSAL]: { orgSlug: "los-taquitos-de-pm", organizationId: mundo.organizationId, propertyId: mundo.propertyId, branchSlug: BRANCH_SLUG_PRINCIPAL, secretoEnv: "VOICE_SECRET_FCO", ...(opts.topeMensualUsd ? { topeMensualUsd: opts.topeMensualUsd } : {}), ...(opts.modoEntrada ? { modoEntrada: opts.modoEntrada } : {}) } }),
+    VOICE_DNIS_MAP: JSON.stringify({ [NUMERO_SUCURSAL]: { orgSlug: "los-taquitos-de-pm", organizationId: mundo.organizationId, propertyId: mundo.propertyId, branchSlug: BRANCH_SLUG_PRINCIPAL, secretoEnv: "VOICE_SECRET_FCO", ...(opts.topeMensualUsd ? { topeMensualUsd: opts.topeMensualUsd } : {}), ...(opts.modoEntrada ? { modoEntrada: opts.modoEntrada } : {}), ...(opts.numerosSucursal ? { numerosSucursal: opts.numerosSucursal } : {}) } }),
     ...opts.envExtra,
   };
   const config = cargarConfig(env);

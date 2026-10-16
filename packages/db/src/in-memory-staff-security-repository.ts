@@ -6,6 +6,7 @@
 //
 // `available: false` simula la base sin migrar: todos los metodos lanzan
 // `StaffSecurityUnavailableError` (el mismo error que traduce la implementacion Postgres).
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { InMemoryCoreRepository } from "./in-memory-core-repository.ts";
 import {
   StaffSecurityUnavailableError,
@@ -28,6 +29,9 @@ const LOCK_MS = 15 * 60_000;
 
 export class InMemoryStaffSecurityRepository implements StaffSecurityRepository {
   available = true;
+  /** `false` simula la base con 0026 pero SIN 038 (sin tabla de consumo del step-up). */
+  stepUpConsumptionAvailable = true;
+  private readonly consumedStepUps = new Map<string, number>(); // jti -> expira (ms)
   /** Reloj inyectable para tests de lockout/vencimiento. */
   now: () => number = () => Date.now();
   private readonly totp = new Map<string, TotpRow>();
@@ -45,6 +49,30 @@ export class InMemoryStaffSecurityRepository implements StaffSecurityRepository 
 
   private lockedUntil(row: TotpRow | undefined): string | null {
     return row && row.lockedUntil !== null && row.lockedUntil > this.now() ? new Date(row.lockedUntil).toISOString() : null;
+  }
+
+  async consumeStepUpToken(
+    _session: TenantDbSession | null,
+    input: { readonly jti: string; readonly userId: string; readonly organizationId: string; readonly scope: string; readonly expiresAt: string },
+  ): Promise<boolean> {
+    this.guard();
+    if (!this.stepUpConsumptionAvailable) throw new StaffSecurityUnavailableError();
+    if (this.consumedStepUps.has(input.jti)) return false;
+    this.consumedStepUps.set(input.jti, Date.parse(input.expiresAt));
+    return true;
+  }
+
+  async purgeStepUpConsumptionForSystem(): Promise<number> {
+    this.guard();
+    if (!this.stepUpConsumptionAvailable) throw new StaffSecurityUnavailableError();
+    let n = 0;
+    for (const [jti, exp] of this.consumedStepUps) {
+      if (exp < this.now() - 3_600_000) {
+        this.consumedStepUps.delete(jti);
+        n += 1;
+      }
+    }
+    return n;
   }
 
   async getTotpStatus(staffId: string): Promise<TotpStatus> {

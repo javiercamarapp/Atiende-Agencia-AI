@@ -4,7 +4,7 @@
 // migracion 028 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Selector, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone } from "@atiende/ui";
 import {
   CANAL_LABEL,
   ESTADO_LABEL,
@@ -107,19 +107,19 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
           )}
 
           <div className="flex flex-wrap gap-3">
-            <NativeSelect aria-label="Estado" value={estado} onChange={(e) => setEstado(e.target.value as HandoffEstado | "")} wrapperClassName="w-auto min-w-48">
+            <Selector aria-label="Estado" value={estado} onChange={(e) => setEstado(e.target.value as HandoffEstado | "")} wrapperClassName="w-auto min-w-48">
               <option value="">Todos los estados</option>
               {(Object.keys(ESTADO_LABEL) as HandoffEstado[]).map((e) => (
                 <option key={e} value={e}>
                   {ESTADO_LABEL[e]}
                 </option>
               ))}
-            </NativeSelect>
-            <NativeSelect aria-label="Canal" value={canal} onChange={(e) => setCanal(e.target.value as ConversacionCanal | "")} wrapperClassName="w-auto min-w-48">
+            </Selector>
+            <Selector aria-label="Canal" value={canal} onChange={(e) => setCanal(e.target.value as ConversacionCanal | "")} wrapperClassName="w-auto min-w-48">
               <option value="">WhatsApp y llamadas</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="voz">Llamadas</option>
-            </NativeSelect>
+            </Selector>
           </div>
 
           {error && <EstadoError mensaje={error} onReintentar={recargar} />}

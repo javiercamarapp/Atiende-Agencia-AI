@@ -96,15 +96,15 @@ describe("LicitacionesShell — nav móvil", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 16 destinos de un owner (15 + Copiloto), incluidos KYC 69-B, Días inhábiles, Staff, WhatsApp, Seguridad y Privacidad', async () => {
+  it('el botón "Más" abre los 17 destinos de un owner (16 + Copiloto), incluidos Expedientes, KYC 69-B, Días inhábiles, Staff, Bitácora, WhatsApp, Seguridad y Privacidad', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(16);
+    expect(hrefs).toHaveLength(17);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/licitaciones/demo/copiloto", "/licitaciones/demo/expedientes", "/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad", "/licitaciones/demo/privacidad"]),
+      expect.arrayContaining(["/licitaciones/demo/copiloto", "/licitaciones/demo/expedientes", "/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/bitacora", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad", "/licitaciones/demo/privacidad"]),
     );
   });
 
@@ -119,7 +119,7 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(categoriasAbiertas(root)).toEqual(["Inteligencia"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Fuentes y frescura", "KYC proveedores (69-B)", "Perfil de matching"]);
     abrirCategoria(root, "Organización");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Datos de la empresa", "Días inhábiles", "Aprobaciones", "Staff", "WhatsApp", "Seguridad", "Privacidad"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Datos de la empresa", "Días inhábiles", "Aprobaciones", "Staff", "Bitácora", "WhatsApp", "Seguridad", "Privacidad"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Owner Demo", rol: "Propietario" });
   });
 
@@ -182,7 +182,7 @@ describe("LicitacionesShell — nav móvil", () => {
       await flushMicrotasks();
     });
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('a[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
     const fetchMock = await cerrarSesionDesdeMenuMovil(rendered.container);
     // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con el refreshToken de la sesión.
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/logout", expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }));

@@ -1,7 +1,7 @@
 # verify-licitaciones-dedupe-y-paginacion
 
 Verificacion contra Postgres REAL (RLS, GRANT, trigger, funcion `security definer` de solo-sistema y `auth.uid()` reales) de
-`packages/domain-licitaciones/migrations/037_licitaciones_huella_cruzada_entre_fuentes.sql` (paridad3 L-P3-14: huella cruzada
+`packages/domain-licitaciones/migrations/041_licitaciones_huella_cruzada_entre_fuentes.sql` (paridad3 L-P3-14: huella cruzada
 entre fuentes) y de las consultas de listado/conteo de `postgres-repository.ts` (paridad3 L-P3-13).
 
 Cubre: vectores dorados de la huella (los mismos que `packages/domain-licitaciones/tests/cross-source-fingerprint.spec.ts`: la

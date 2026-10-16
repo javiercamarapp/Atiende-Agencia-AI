@@ -19,7 +19,7 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { puedeEjecutar } from "@atiende/domain-restaurantes";
+import { puedeEjecutar, sinAcentos } from "@atiende/domain-restaurantes";
 import type { Category, Product } from "@atiende/domain-restaurantes";
 import { assertAccion } from "./permisos-accion.ts";
 import { Errors } from "../../../errors.ts";
@@ -69,12 +69,26 @@ function optionalDisplayOrder(value: unknown): number | undefined {
   return value;
 }
 
+/** Alias o palabras clave de búsqueda (`products.search_keywords`): se guardan en minúsculas, sin acentos, con espacios
+ * colapsados y SIN duplicados (la búsqueda del agente compara sobre `sinAcentos`, así que guardar "Flautas" y "flautas"
+ * sería el mismo alias dos veces). Un texto vacío tras limpiar se descarta; uno con símbolos raros se rechaza. `[]` limpia los alias. */
+const ALIAS_PATTERN = /^[a-z0-9][a-z0-9 .-]*$/;
+
 function optionalSearchKeywords(value: unknown): readonly string[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || value.length > 30 || value.some((v) => typeof v !== "string" || v.length > 60)) {
     throw Errors.validation("searchKeywords: se esperaba un arreglo de hasta 30 textos cortos.");
   }
-  return value as readonly string[];
+  const limpios: string[] = [];
+  for (const raw of value as readonly string[]) {
+    const alias = sinAcentos(raw).trim().replace(/\s+/g, " ");
+    if (alias.length === 0) continue;
+    if (!ALIAS_PATTERN.test(alias)) {
+      throw Errors.validation(`searchKeywords: "${raw}" solo puede llevar letras, números, espacios, punto o guion.`);
+    }
+    if (!limpios.includes(alias)) limpios.push(alias);
+  }
+  return limpios;
 }
 
 function serializeCategory(c: Category) {
@@ -361,7 +375,14 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const price = raw.price !== undefined ? requirePrice(raw.price) : (existing?.price ?? product.price);
     const isAvailable = raw.isAvailable !== undefined ? requireBoolean(raw.isAvailable, "isAvailable") : (existing?.isAvailable ?? true);
 
-    const state = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.upsertBranchProductState(propertyId, productId, price, isAvailable));
+    let state = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.upsertBranchProductState(propertyId, productId, price, isAvailable));
+    // «Dejar de venderlo» a propósito: si estaba agotado «solo por hoy» (autopiloto, migración 050), el cron `agotados_reponer` lo
+    // volvería a poner a la venta al siguiente día de negocio. Apagarlo ya apagado no dispara el trigger de la base, así que se cancela
+    // la reposición programada de forma explícita. Contra una base sin la 050 es un no-op.
+    if (raw.isAvailable !== undefined && !isAvailable && existing?.agotadoHasta) {
+      await repo.limpiarAgotadoHasta(propertyId, productId);
+      state = (await repo.getBranchProductState(propertyId, productId)) ?? state;
+    }
     logEvent(c, "info", "restaurantes_admin_producto_disponibilidad_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId, productId, price, isAvailable });
 
     // FASE 3 (producto) — precio/disponibilidad EN ESTA sucursal es justo la

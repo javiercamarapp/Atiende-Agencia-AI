@@ -282,7 +282,7 @@ export type { TenderListFilter, TenderPageOptions, TenderSummaryCounts } from ".
 export { PostgresLicitacionesRepository, dateColumnToExplicitOffsetIso } from "./postgres-repository.ts";
 
 // ---- Fase 5 pieza 1: andamiaje de ingesta (REQ-004/005/146..150) ----
-export { SOURCE_CONNECTOR_IDS, isSourceConnectorId, SOURCE_HEALTH_STATES, SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, RateLimitedError, ConnectorRegistry, LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
+export { SOURCE_CONNECTOR_IDS, isSourceConnectorId, SOURCE_HEALTH_STATES, SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, RateLimitedError, SourceUnavailableError, ConnectorRegistry, LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 export type { SourceConnectorId, SourceHealthState, SourceCadence, SourceLiveVerification, SourceConnectorKind, SourceConnectorDescriptor } from "./connector-registry.ts";
 export { isSourceHealthState, classifySourceFailure, computeStaleForMs, evaluateSourceFreshness, DEFAULT_STALE_THRESHOLD_MS } from "./source-run.ts";
 export type { SourceRunInput, SourceRunRecord, SourceRunEvidence, SourceFreshnessRecord } from "./source-run.ts";
@@ -621,3 +621,26 @@ export type {
 } from "./post-adjudicacion.ts";
 export { InMemoryPostAdjudicacionRepository, PostgresPostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
 export type { GarantiaCreate, InMemoryPostAdjudicacionOptions, PostAdjudicacionActor, PostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
+export { AUDIT_ENTITIES, AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT, isAuditEntity, sanitizeCorrelationId, newCorrelationId, pickAuditFields, appendAuditoria, listAuditoria } from "./audit-trail.ts";
+export type { AuditEntity, AuditTrailInput, AuditTrailEntry, AuditTrailFilters, AuditTrailPage } from "./audit-trail.ts";
+
+// ---- paridad3 (L-P3-05/06/07): boveda de bases, matriz estable, conflictos persistidos y revision ----
+export { TENDER_DOCUMENT_TYPES, TENDER_DOCUMENT_TYPE_LABELS, isTenderDocumentType, validateDocumentUpload, sha256OfBytes, requirementStableKey, conflictStableKey } from "./document-vault.ts";
+export type { TenderDocumentType, DocumentExtractionStatus, TenderDocumentRecord, TenderDocumentWithPages, UploadRejectionReason, UploadValidation } from "./document-vault.ts";
+export { BovedaRevisionNoDisponibleError, RequirementAssigneeNotFoundError } from "./errors.ts";
+export type {
+  DetectedRequirementConflict,
+  ProposalCommentKind,
+  ProposalCommentRecord,
+  ProposalCommentScope,
+  ProposalSectionRecord,
+  RequirementConflictRecord,
+  RequirementConflictStatus,
+  RequirementItemDetail,
+  RequirementItemPatch,
+  RequirementUpsertItem,
+  RequirementUpsertResult,
+  SectionEditResult,
+  TenderAuditAction,
+  TenderDocumentUploadInput,
+} from "./repository.ts";

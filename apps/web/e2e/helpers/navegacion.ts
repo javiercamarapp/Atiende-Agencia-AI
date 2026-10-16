@@ -68,7 +68,11 @@ async function abrirGrupoDe(page: Page, href: string): Promise<Locator> {
   const n = await botones.count();
   for (let i = 0; i < n; i++) {
     const boton = botones.nth(i);
-    if ((await boton.getAttribute("aria-expanded")) === "false") await boton.click();
+    if ((await boton.getAttribute("aria-expanded")) === "false") {
+      await boton.click();
+      // El grupo pinta sus enlaces despues del clic: se espera al enlace en vez de contarlo al instante (carrera con la carga).
+      if (await enlace.waitFor({ state: "attached", timeout: 1500 }).then(() => true, () => false)) return enlace;
+    }
     if ((await enlace.count()) > 0) return enlace;
   }
   throw new Error(`El Sidebar no tiene ningun enlace a ${href}`);
@@ -107,7 +111,8 @@ export async function irASeccion(page: Page, enlace: EnlaceNav): Promise<void> {
   } else {
     await (await abrirGrupoDe(page, enlace.href)).click();
   }
-  await expect(page).toHaveURL(new RegExp(`${enlace.href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+  // La ruta es exacta; la query es opcional: algunas pantallas (el CFO) completan sus filtros por defecto en la URL al cargar.
+  await expect(page).toHaveURL(new RegExp(`${enlace.href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\?.*)?$`));
   // R-37: las pantallas son chunks perezosos; la URL cambia primero y la ruta se confirma (contenido, barra y h1) al bajar el chunk.
   await expect(page.locator(`[data-ruta-confirmada="${enlace.href}"]`)).toBeAttached();
 }

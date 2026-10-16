@@ -74,6 +74,8 @@ export type GenerarCierreResultado =
   | { readonly estado: "existente"; readonly reporte: CierreReporte }
   /** Solo en barrido de sistema: el periodo no tuvo ningun pedido, no se guarda un cierre vacio. */
   | { readonly estado: "sin_actividad" }
+  /** El periodo todavia no termina en el DIA DE NEGOCIO de la sucursal (migracion 076: el turno que cruza la medianoche sigue abierto). */
+  | { readonly estado: "periodo_abierto" }
   | { readonly estado: "no_disponible" };
 
 export interface CierreSucursal {

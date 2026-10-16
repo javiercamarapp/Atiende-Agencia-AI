@@ -1,4 +1,4 @@
-// Huella cruzada entre fuentes (paridad3 L-P3-14 / REQ-152). ESPEJO EXACTO de `licitaciones.tender_fingerprint` (migracion 037): la base es
+// Huella cruzada entre fuentes (paridad3 L-P3-14 / REQ-152). ESPEJO EXACTO de `licitaciones.tender_fingerprint` (migracion 041): la base es
 // la fuente de verdad para Postgres (un trigger la calcula en cada escritura) y esta funcion la usa el repositorio en memoria y las pruebas.
 // Los vectores dorados de `tests/cross-source-fingerprint.spec.ts` son los MISMOS que verifica `scripts/verify-licitaciones-dedupe-y-paginacion`.
 import { createHash } from "node:crypto";

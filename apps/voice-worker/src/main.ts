@@ -1,11 +1,14 @@
 // Punto de entrada del worker (proceso de larga vida): `node --experimental-strip-types src/main.ts`.
 // Lee el entorno, arma la telefonia LiveKit y la escalera de voz de la plataforma y escucha llamadas. Ver README.md.
 import { crearEscaleraPlataforma } from "@atiende/voice-core";
+import { OPCIONES_ESCALERA_PM } from "./llamada.ts";
+import { HERRAMIENTAS_VOZ_SOLO_LECTURA, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { SumideroLog } from "@atiende/domain-restaurantes";
 import { ClienteApi } from "./api-cliente.ts";
 import { cargarConfig } from "./config.ts";
-import { crearPuertoLlmOpenRouter } from "./llm-openrouter.ts";
+import { crearPuertoLlmOpenRouter, crearPuertoLlmVozV2 } from "./llm-openrouter.ts";
 import { cargarPregrabados } from "./pregrabados.ts";
+import { crearProveedorTokenVertex } from "./vertex-token.ts";
 import { Worker, crearServidorSalud } from "./worker.ts";
 
 /** Log en JSON por linea. Solo recibe campos ya filtrados por `eventoSinPII` (lista cerrada, sin texto del cliente) o campos propios sin PII. */
@@ -25,6 +28,10 @@ async function main(): Promise<void> {
     const telefonia = new LiveKitTelefonia({ ...config.livekit, log: logPlano });
     const api = new ClienteApi({ baseUrl: config.apiBaseUrl, internalSecret: config.internalSecret });
     const llm = config.openrouterApiKey ? crearPuertoLlmOpenRouter(config.openrouterApiKey) : null;
+    // Cascada v2 (Deepgram + OpenRouter en streaming): su propio puerto, que honra el modelo y el esfuerzo por turno y no manda `temperature`.
+    const llmV2 = config.openrouterApiKey ? crearPuertoLlmVozV2(config.openrouterApiKey, undefined, { proveedoresZdr: config.proveedoresZdr }) : null;
+    // Vertex AI (opcional, no activado por omision): el token de la cuenta de servicio se renueva solo; se pide al abrir cada sesion.
+    const vertex = config.vertex ? { project: config.vertex.project, location: config.vertex.location, accessToken: crearProveedorTokenVertex({ credencialesJson: config.vertex.serviceAccountJson }) } : undefined;
     worker = new Worker({
       config,
       telefonia,
@@ -34,7 +41,8 @@ async function main(): Promise<void> {
         pregrabados: pregrabados.audios,
         api,
         log: sumidero,
-        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, llm }),
+        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, deepgramApiKey: config.deepgramApiKey, cascadaV2Habilitada: config.cascadaV2Habilitada, confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido" }, llm, llmV2, log: sumidero, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
+        ...(config.costoMaxLlamadaMicroUsd !== null ? { limites: { ...LIMITES_VOZ_PM, costoMaxMicroUsd: config.costoMaxLlamadaMicroUsd } } : {}),
       },
     });
   } else {
@@ -44,6 +52,14 @@ async function main(): Promise<void> {
   const servidor = crearServidorSalud(worker);
   servidor.listen(config.puertoSalud, () => logPlano("salud_escuchando", { puerto: config.puertoSalud }));
   await worker.iniciar();
+
+  // Perro guardian: si el sondeo de LiveKit lleva 2 min sin responder (y no hay llamadas), se sale con error para que Fly reinicie la maquina.
+  const guardian = setInterval(() => {
+    if (!worker.latidoVencido()) return;
+    logPlano("worker_sin_latido_reiniciando");
+    process.exit(1);
+  }, 30_000);
+  guardian.unref();
 
   const apagar = (): void => {
     logPlano("worker_apagando");

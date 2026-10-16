@@ -1,4 +1,4 @@
--- Fixtures + assertions contra Postgres REAL para packages/domain-licitaciones/migrations/037_licitaciones_huella_cruzada_entre_fuentes.sql
+-- Fixtures + assertions contra Postgres REAL para packages/domain-licitaciones/migrations/041_licitaciones_huella_cruzada_entre_fuentes.sql
 -- (paridad3 L-P3-14 huella cruzada + L-P3-13 consultas de listado/conteo).
 --
 -- Actores: c1 = owner Org A, c4 = viewer Org A, c2 = owner Org B (otro tenant). La sesion de SISTEMA es `authenticated` SIN
@@ -54,7 +54,7 @@ update licitaciones.tender set submission_deadline = now() + interval '3 days'
  where id in (select id from licitaciones.tender where organization_id = '00000000-0000-0000-0000-0000000000a1' and status = 'in_progress' order by id limit 5);
 
 \echo ''
-\echo '=== licitaciones: huella cruzada entre fuentes (037) y listados paginados ==='
+\echo '=== licitaciones: huella cruzada entre fuentes (041) y listados paginados ==='
 \echo ''
 
 \echo '--- 1. VECTORES DORADOS: la huella SQL coincide con la de TypeScript (mismos valores que cross-source-fingerprint.spec.ts) ---'

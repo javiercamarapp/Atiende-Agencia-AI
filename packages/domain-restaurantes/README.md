@@ -166,7 +166,7 @@ automatiza sin humano** (y nada se autoaprueba: sin respuesta solo se escala el 
   precio). `buscar_cliente` devuelve además `domicilios`, `gustos` y `pedidosAnteriores`.
 - **Reincidencia:** con `umbral` (por omisión 2, 0 = apagada) "no recogido" + pedidos falsos dentro de la ventana (90 días) el pedido de WhatsApp o voz
   no se crea solo: queda un aviso (`callback_requests`, motivo `aprobacion_pedido_cliente`, con todo el pedido) y el agente solo dice que la
-  sucursal lo confirma. El checkout web no se retiene.
+  sucursal lo confirma.
 - **Base sin migrar:** `getCustomerMemory`/`registerOrderClosure` devuelven `undefined` (42883/42P01/42703 dentro de SAVEPOINT) y el agente usa
   el camino anterior; las operaciones del staff lanzan `ClienteMemoriaNoDisponibleError` (503 "no disponible aún"). Pruebas:
   `tests/cliente-360-*.spec.ts`; SQL y permisos contra Postgres real en `scripts/verify-restaurantes-cliente-360/`.

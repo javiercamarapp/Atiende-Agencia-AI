@@ -2,9 +2,11 @@
 #
 #   docker build -f apps/voice-worker/Dockerfile -t atiende-voice-worker .
 #
-# NO se ha construido ni corrido en esta maquina (sin daemon de Docker en el entorno de desarrollo): el bundle (`npm run bundle`) y el arranque en
-# modo "no configurado" (/salud 503) SI se probaron con Node directamente; la imagen es la receta, sin verificar. El host lo decide Javier
-# (apps/voice-worker/README.md, "Donde vive el proceso").
+# Sin daemon de Docker en la maquina de desarrollo (Docker Desktop instalado pero apagado) la imagen NO se construyo con `docker build`; sus pasos se REPLICARON con node
+# sobre el arbol sin lo excluido por Dockerfile.dockerignore (4-oct-2026): etapa 1 (`npm ci --workspace @atiende/voice-worker --include-workspace-root --ignore-scripts` y
+# `npm run bundle` -> dist/main.mjs de ~396 kB) y etapa 2 (`npm install --omit=dev --ignore-scripts` con dist/package.json y arranque de `node main.mjs`: /salud 503 con los
+# motivos). Lo que SIGUE sin verificar: el binario nativo de LiveKit para linux (se resuelve en la imagen, no aqui) y el HEALTHCHECK dentro de un contenedor real.
+# El host es Fly.io (apps/voice-worker/fly.toml; script scripts/voz/desplegar-worker.sh).
 #
 # Etapa 1: instala las dependencias del workspace y empaqueta el worker en un solo archivo (dist/main.mjs) con las versiones EXACTAS de los dos SDK de
 # LiveKit (que traen un binario nativo y quedan fuera del bundle) en dist/package.json.

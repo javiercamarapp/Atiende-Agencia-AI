@@ -44,6 +44,11 @@ describe("politica por sucursal (branch_policy)", () => {
       pedidoMinimoDomicilio: 200,
       pedidoMinimoRecoger: null,
       propinaPolitica: "solo_tarjeta",
+      // Migracion 057: sin esas columnas en la fila, valores por omision (comportamiento anterior).
+      visibleEnDirectorio: null,
+      aceptaDomicilio: true,
+      diasDomicilio: null,
+      deTemporada: false,
     });
 
     const corrupto = new AbortAwareFakeSession([

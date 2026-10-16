@@ -48,7 +48,7 @@ describe("GET/PUT .../admin/agente/ajustes", () => {
 
     const entrada = ctx.restaurantesRepo.auditLog.find((r) => r.action === "configuracion.agente_ajustes_actualizados");
     expect(entrada).toMatchObject({ actorUserId: ctx.staff.owner.id, entityId: ctx.organizationId, antes: null });
-    expect(JSON.parse(entrada!.despues!)).toMatchObject({ wa: ["google/gemini-2.5-flash-lite", 0.3], habla: ["pausado", "calido"], fondo: [true, 10] });
+    expect(JSON.parse(entrada!.despues!)).toMatchObject({ wa: ["google/gemini-2.5-flash-lite", 0.3], habla: ["pausado", "calido"], fondo: [true, 10, "cocina-taqueria"] });
 
     await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...OK, whatsappModelo: "deepseek/deepseek-v4.1-flash" }, "PUT"));
     const segunda = ctx.restaurantesRepo.auditLog.filter((r) => r.action === "configuracion.agente_ajustes_actualizados").at(-1)!;

@@ -10,10 +10,12 @@ import { randomUUID } from "node:crypto";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { AudioFrame, AudioSource, AudioStream, LocalAudioTrack, ParticipantKind, Room, RoomEvent, TrackKind, TrackPublishOptions, TrackSource } from "@livekit/rtc-node";
 import type { RemoteParticipant, Track } from "@livekit/rtc-node";
+import type { MezcladorSalida } from "@atiende/voice-core";
+import { bombearConRespaldo } from "../audio/bombeo-salida.ts";
 import { remuestrearPcm16 } from "../audio/remuestreo.ts";
 import { infoDeParticipanteSip } from "./sip-atributos.ts";
 import type { InfoParticipanteSip } from "./sip-atributos.ts";
-import type { LlamadaTelefonica, TelefoniaPort } from "./puerto.ts";
+import type { AvisosSalidaMezclada, LlamadaTelefonica, TelefoniaPort } from "./puerto.ts";
 
 export const HZ_ENTRADA_LIVEKIT = 16_000;
 export const HZ_SALIDA_LIVEKIT = 24_000;
@@ -75,6 +77,8 @@ class LlamadaLiveKit implements LlamadaTelefonica {
     if (this.colgo) return;
     this.colgo = true;
     this.generacion += 1;
+    // Si el cliente cuelga con voz del agente en la cola del mezclador, nadie la va a consumir: se libera para que la llamada pueda cerrar.
+    this.mezclador?.cerrar();
     this.cbColgar?.();
   }
 
@@ -89,6 +93,44 @@ class LlamadaLiveKit implements LlamadaTelefonica {
       await this.fuente.captureFrame(new AudioFrame(trozo, HZ_SALIDA_LIVEKIT, 1, trozo.length));
     }
     if (this.generacion === mia && !this.colgo) await this.fuente.waitForPlayout();
+  }
+
+  private bombeando = false;
+  private mezclador: MezcladorSalida | null = null;
+  private bombeoCaido = false;
+  /** Modo MEZCLADO: UN bombeo continuo de tramas de 20 ms (voz + ambiente + tecleo) a la unica pista del agente, guiado por la cola real de LiveKit. Sin probar contra LiveKit real.
+   * Si el bombeo falla NO se queda mudo ni colgado: se libera la voz en cola y se avisa para volver a `reproducir` sin mezcla. */
+  abrirSalidaMezclada(mezclador: MezcladorSalida, avisos: AvisosSalidaMezclada = {}): void {
+    if (this.colgo) {
+      // El cliente ya colgo (p. ej. durante el contexto): el bombeo no arranca y nadie consumiria la voz que el puente encole.
+      mezclador.cerrar();
+      return;
+    }
+    if (this.bombeando) return;
+    this.bombeando = true;
+    this.mezclador = mezclador;
+    void bombearConRespaldo({
+      mezclador,
+      enviar: (trama) => this.fuente.captureFrame(new AudioFrame(trama, mezclador.hz, 1, trama.length)),
+      colaMs: () => this.fuente.queuedDuration,
+      dormir: (ms) => new Promise((r) => setTimeout(r, ms)),
+      terminado: () => this.colgo || this.bombeoCaido,
+      frameMs: FRAME_MS,
+      ...(avisos.alTomarVoz ? { alTomarVoz: avisos.alTomarVoz } : {}),
+      alFallo: (codigo) => {
+        this.bombeoCaido = true;
+        this.mezclador = null;
+        mezclador.cortarAgente();
+        avisos.alFallo?.(codigo);
+      },
+    });
+  }
+
+  /** Espera a que lo ya entregado al AudioSource termine de sonar (la cola de LiveKit), con tope: la despedida no se corta al colgar. */
+  async vaciarSalidaMezclada(): Promise<void> {
+    if (this.colgo || !this.mezclador) return;
+    const ms = Math.min(2000, Math.ceil(this.fuente.queuedDuration) + 30);
+    if (ms > 0) await new Promise<void>((r) => setTimeout(r, ms));
   }
 
   detenerReproduccion(): void {
@@ -109,6 +151,7 @@ export class LiveKitTelefonia implements TelefoniaPort {
   private temporizador: ReturnType<typeof setInterval> | null = null;
   private alLlegar: ((l: LlamadaTelefonica) => void) | null = null;
   private consultando = false;
+  private ultimoLatido: number | null = null;
   private activas = new Set<Room>();
 
   constructor(private readonly o: OpcionesLiveKit) {
@@ -120,6 +163,11 @@ export class LiveKitTelefonia implements TelefoniaPort {
     this.alLlegar = alLlegar;
     await this.consultar();
     this.temporizador = setInterval(() => void this.consultar(), this.o.intervaloMs ?? 1000);
+  }
+
+  /** Ultimo sondeo exitoso de salas: si deja de avanzar, LiveKit no responde o el sondeo murio y el worker no esta atendiendo (aunque el proceso viva). */
+  latidoMs(): number | null {
+    return this.ultimoLatido;
   }
 
   async detener(): Promise<void> {
@@ -134,6 +182,7 @@ export class LiveKitTelefonia implements TelefoniaPort {
     this.consultando = true;
     try {
       const salas = await this.servicio.listRooms();
+      this.ultimoLatido = Date.now();
       for (const sala of salas) {
         if (!sala.name.startsWith(this.prefijo) || this.atendidas.has(sala.name)) continue;
         this.atendidas.add(sala.name);
@@ -165,6 +214,9 @@ export class LiveKitTelefonia implements TelefoniaPort {
       await sala.disconnect();
       return;
     }
+    // Solo los NOMBRES de los atributos SIP (nunca los valores: traen telefonos): permiten confirmar en la primera llamada real que LiveKit entrega `sip.phoneNumber`,
+    // `sip.trunkPhoneNumber` y `sip.h.diversion` / `sip.h.history-info` (docs/VOZ-ACTIVACION.md, paso del INVITE).
+    this.o.log?.("sip_atributos", { claves: Object.keys(sip.attributes).filter((k) => k.startsWith("sip.")).sort().join(",").slice(0, 400) });
     const fuente = new AudioSource(HZ_SALIDA_LIVEKIT, 1);
     const pista = LocalAudioTrack.createAudioTrack("agente", fuente);
     await sala.localParticipant?.publishTrack(pista, new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE }));

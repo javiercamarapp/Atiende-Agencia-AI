@@ -6,7 +6,7 @@ import { evaluarPedidoGrande, pesoTotalKg } from "../../src/pedido-grande.ts";
 import { correrGuion } from "../../src/voz/simulador/correr-guion.ts";
 import { BRANCH_SLUG_PRINCIPAL } from "../../src/voz/simulador/mundo-voz.ts";
 import type { MemoriaTools, PasoAgente } from "../../src/voz/simulador/tipos.ts";
-import { banco, call, item, say } from "./r1-arnes-whatsapp-pm.ts";
+import { banco, call, item, say, sayResumen } from "./r1-arnes-whatsapp-pm.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -33,7 +33,7 @@ describe("evaluarPedidoGrande / pesoTotalKg (puras)", () => {
 
 describe("WhatsApp (T7, PM): el modelo 'olvida' escalar", () => {
   async function cotizarYConfirmar(b: Awaited<ReturnType<typeof banco>>, tel: string, items: ReturnType<typeof item>[], pago: "efectivo" | "tarjeta", extra: Record<string, unknown> = {}) {
-    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), say("Total cotizado. ¿Confirma?")]);
+    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), sayResumen("Total cotizado. ¿Confirma?")]);
     await b.enviar(tel, "quiero para recoger");
     b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Fiesta", payment_method: pago, items, ...extra }), say("Listo, su pedido quedó registrado.")]);
     return b.enviar(tel, `si ${pago}`);

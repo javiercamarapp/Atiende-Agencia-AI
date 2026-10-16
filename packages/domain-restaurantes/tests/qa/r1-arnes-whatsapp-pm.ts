@@ -33,6 +33,12 @@ export function lastTool(req: LlmCompletionRequest): Record<string, unknown> {
   const m = [...req.messages].reverse().find((x) => x.role === "tool");
   return m && m.role === "tool" ? (JSON.parse(m.content) as Record<string, unknown>) : {};
 }
+/** QA-PM-R10: responde texto Y repite el total de la cotizacion que acaba de devolver la tool (el resumen que el cliente ve); crear_pedido exige que el total aparezca en un mensaje del asistente. */
+export const sayResumen = (text: string): Paso => (req) => {
+  const r = lastTool(req) as { quote?: { total?: number }; total?: number };
+  const total = r.quote?.total ?? r.total;
+  return { text: typeof total === "number" ? `${text} Total a pagar $${total}.` : text, ...base };
+};
 /** Registra en `seen` el resultado de la tool anterior y responde texto. */
 export const sayObs = (seen: unknown[], text: string): Paso => (req) => {
   seen.push(lastTool(req));
@@ -60,7 +66,7 @@ export interface Banco {
   readonly callbacks: () => ReadonlyArray<{ reason?: string; message?: string; propertyId: string | null; customerPhone: string }>;
 }
 
-export async function banco(opts: { readonly now?: string; readonly killSwitch?: boolean; readonly proveedorCae?: boolean } = {}): Promise<Banco> {
+export async function banco(opts: { readonly now?: string; readonly killSwitch?: boolean; readonly proveedorCae?: boolean; readonly handlerOptions?: Partial<Parameters<typeof createLlmWhatsAppTurnHandler>[2]> } = {}): Promise<Banco> {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(opts.now ?? MARTES_14));
   const w = await buildInMemoryPmWorld(plan);
@@ -92,7 +98,7 @@ export async function banco(opts: { readonly now?: string; readonly killSwitch?:
   // El rol escalado (turno siguiente a un error de crear_pedido) sigue el MISMO guion: el banco mide al servidor, no al modelo.
   gateway.registerLadder("default", [guionado("qa")]);
   gateway.registerLadder("escalated", [guionado("qa-escalado")]);
-  const handler = createLlmWhatsAppTurnHandler(w.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+  const handler = createLlmWhatsAppTurnHandler(w.repo, gateway, { defaultRole: "default", escalatedRole: "escalated", ...(opts.handlerOptions ?? {}) });
   const conversaciones = new InMemoryConversacionesRepository({ actorUserId: STAFF, actorEsAdministrador: true });
   const gateBase = new InMemoryHandoffAgentGate(conversaciones);
   const gate = {

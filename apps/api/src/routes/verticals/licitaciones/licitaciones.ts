@@ -8,6 +8,8 @@ import { licitacionesChecklistRoutes } from "./checklist.ts";
 import { licitacionesProposalRoutes } from "./proposalEconomic.ts";
 import { licitacionesCierreRoutes } from "./cierre.ts";
 import { licitacionesTechnicalProposalRoutes } from "./technicalProposal.ts";
+import { licitacionesBovedaRoutes } from "./boveda.ts";
+import { licitacionesRevisionRoutes } from "./revision.ts";
 import { licitacionesTendersRoutes } from "./tenders.ts";
 import { licitacionesMatchingProfileRoutes } from "./matchingProfile.ts";
 import { licitacionesMatchingRoutes } from "./matching.ts";
@@ -33,6 +35,7 @@ import { licitacionesChatDatosRoutes } from "./chat-datos.ts";
 import { licitacionesDiasInhabilesRoutes } from "./diasInhabiles.ts";
 import { licitacionesKyc69bRoutes } from "./kyc69b.ts";
 import { licitacionesPostAdjudicacionRoutes } from "./postAdjudicacion.ts";
+import { licitacionesBitacoraOrganizacionRoutes } from "./bitacoraOrganizacion.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -40,6 +43,9 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesProposalRoutes(deps));
   app.route("/", licitacionesCierreRoutes(deps));
   app.route("/", licitacionesTechnicalProposalRoutes(deps));
+  // paridad3 (L-P3-05/06/07): boveda de bases, edicion de la matriz, conflictos persistidos y revision con comentarios.
+  app.route("/", licitacionesBovedaRoutes(deps));
+  app.route("/", licitacionesRevisionRoutes(deps));
   // Fase 3 — matching/scoring y go/no-go (ver diseño Fase 3 §8).
   app.route("/", licitacionesTendersRoutes(deps));
   app.route("/", licitacionesMatchingProfileRoutes(deps));
@@ -87,6 +93,8 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesKyc69bRoutes(deps));
   // L-27 — garantias, hitos, convenios modificatorios y plazos de firma/entrega de garantia por contrato.
   app.route("/", licitacionesPostAdjudicacionRoutes(deps));
+  // L-P3-17 -- vista de la bitacora de escrituras de la organizacion (owner/admin).
+  app.route("/", licitacionesBitacoraOrganizacionRoutes(deps));
   // L-22 — calendario de dias inhabiles (oficiales 2026-2027 + los de la organizacion/convocatoria).
   app.route("/", licitacionesDiasInhabilesRoutes(deps));
   // "Chatea con tus datos" (motor compartido + catalogo cerrado de licitaciones).

@@ -11,14 +11,15 @@
 // las ultimas 24 h cuya comanda nunca llego al outbox del POS (un fallo transitorio al encolar la dejaba perdida para
 // siempre, porque ninguna corrida volvia a tomar pedidos ya promovidos). Y una corrida con comandas que fallaron deja
 // el latido y la bitacora en error/parcial (`CronPartialFailureError`), no en 'ok'. Avisos in-app (campana) de entrada
-// a cocina y de pedido atrasado: ver packages/domain-restaurantes/src/pedidos-programados-avisos.ts.
+// a cocina y de pedido atrasado: ver packages/domain-restaurantes/src/pedidos-programados-avisos.ts. Borradores de campana de reactivacion: ver
+// packages/domain-restaurantes/src/marketing/campanas.ts (migracion 052).
 //
 // Idempotente: una segunda llamada (o dos simultaneas) no promueve dos veces el mismo pedido ni toca uno
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
-import { avisarProgramadosPromovidos, barrerAvisosOperativos, esPromocionAtrasada, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
-import type { ResultadoBarridoAvisos } from "@atiende/domain-restaurantes";
+import { avisarProgramadosPromovidos, barrerAvisosOperativos, barrerSilencioWhatsapp, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import type { ResultadoBarridoAvisos, ResultadoBorradores, ResultadoSilencio } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
@@ -93,12 +94,33 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         avisos = { ...avisos, errores: 1 };
       }
       logEvent(c, "info", "restaurantes_avisos_operativos", { ...avisos });
+      // Reactivacion de inactivos (autopiloto 2): arma los BORRADORES de campana (nunca envia: aprobar es un clic del dueño) y avisa en la
+      // campana. Misma regla que el resto de unidades del tick: su PROPIA sesion de sistema, un fallo no toca la promocion ni las comandas.
+      // Apagado por omision (solo organizaciones con marketing_config.activo); idempotente por organizacion + segmento + dia.
+      let marketing: ResultadoBorradores = { disponible: false, borradores: 0, avisos: { emitidas: 0, sinNuevas: 0, errores: 0 } };
+      try {
+        marketing = await deps.engine.withAppSession({ userId: null }, (db) => generarBorradoresMarketing(db, new Date()));
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_marketing_borradores_fallidos", { error: err instanceof Error ? err.message : String(err) });
+      }
+      logEvent(c, "info", "restaurantes_marketing_borradores", { ...marketing });
+      // Alerta al dueño «WhatsApp silencioso» (autopiloto 2): otra unidad independiente del mismo tick, con el reloj absoluto (el dedupe usa el dia de
+      // Merida). Una falla solo se registra: no toca la promocion, las comandas ni los demas avisos.
+      let silencio: ResultadoSilencio = { disponible: false, candidatos: 0, emitidas: 0, sinNuevas: 0, errores: 0 };
+      try {
+        silencio = await deps.engine.withAppSession({ userId: null }, (db) => barrerSilencioWhatsapp(db, { now: new Date() }));
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_whatsapp_silencio_fallido", { error: err instanceof Error ? err.message : String(err) });
+      }
+      logEvent(c, "info", "restaurantes_whatsapp_silencio", { ...silencio });
       // Autopiloto (migracion 050): escalado de aprobaciones sin respuesta, estados sin clic, avance desde el POS, regreso de handoffs y agotados
       // por hoy. Cada paso en su propia sesion de sistema; sin la migracion cada uno responde `disponible: false` (sin error).
       let autopiloto: ResumenTickAutopiloto | null = null;
+      let autopilotoFallo = false;
       try {
         autopiloto = await barrerAutopilotoTick(deps, c, new Date());
       } catch (err) {
+        autopilotoFallo = true;
         logEvent(c, "error", "restaurantes_autopiloto_tick_fallido", { error: err instanceof Error ? err.message : String(err) });
       }
       const respuesta = c.json({
@@ -111,12 +133,22 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         avisosCocina,
         atrasadosCocina: resultado.promovidos.filter((o) => esPromocionAtrasada(o)).length,
         avisos,
+        marketing,
+        silencio,
         autopiloto,
       });
       // Una corrida con comandas que no se pudieron encolar NO es 'ok': el latido y la bitacora la marcan (el cron no
-      // reintenta por HTTP; la proxima corrida reconcilia).
-      const errores = comandas.errores + reconciliacion.errores;
-      if (errores > 0) throw new CronPartialFailureError(`${errores} comanda(s) de pedidos promovidos no se pudieron encolar al POS`, respuesta);
+      // reintenta por HTTP; la proxima corrida reconcilia). QA R2 automatizacion-06: lo mismo para los pasos del autopiloto, el barrido de
+      // avisos operativos y el aviso de cocina; si un paso falla en cada tick (timeout de sentencia, bloqueo, regresion SQL) el panel de
+      // salud debe verlo, no mostrar el cron sano. Si el autopiloto entero lanzo (autopiloto === null con repo cableado) cuenta como 1.
+      const partes: string[] = [];
+      const erroresComandas = comandas.errores + reconciliacion.errores;
+      if (erroresComandas > 0) partes.push(`${erroresComandas} comanda(s) de pedidos promovidos no se pudieron encolar al POS`);
+      if (avisos.errores > 0) partes.push(`${avisos.errores} alerta(s) operativa(s) fallaron`);
+      if (avisosCocina.errores > 0) partes.push(`${avisosCocina.errores} aviso(s) de cocina fallaron`);
+      if (autopilotoFallo) partes.push("el autopiloto fallo");
+      else if (autopiloto && autopiloto.errores > 0) partes.push(`${autopiloto.errores} paso(s) del autopiloto fallaron`);
+      if (partes.length > 0) throw new CronPartialFailureError(partes.join("; "), respuesta);
       return respuesta;
     })();
   });

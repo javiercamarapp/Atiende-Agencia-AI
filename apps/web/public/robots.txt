@@ -1,0 +1,7 @@
+# Atiende. Se bloquean la API y los paneles privados.
+User-agent: *
+Disallow: /v1/
+Disallow: /auth/
+Disallow: /internal/
+Disallow: /restaurantes/
+Disallow: /superadmin/

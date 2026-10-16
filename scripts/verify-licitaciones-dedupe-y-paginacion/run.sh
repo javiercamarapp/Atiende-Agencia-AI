@@ -3,7 +3,7 @@
 # que scripts/verify-restaurantes-config-staff-baja/run.sh (ver ese archivo para el
 # porqué de cada paso). Cubre, contra RLS/GRANT/auth.uid() reales (nunca el
 # repositorio en memoria, que no aplica ninguno de los tres):
-#   - packages/domain-licitaciones/migrations/037_licitaciones_huella_cruzada_entre_fuentes.sql
+#   - packages/domain-licitaciones/migrations/041_licitaciones_huella_cruzada_entre_fuentes.sql
 #     (huella cruzada entre fuentes y listados paginados, paridad3 L-P3-14)
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
@@ -50,7 +50,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 037_licitaciones_huella_cruzada_entre_fuentes.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 041_licitaciones_huella_cruzada_entre_fuentes.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

@@ -1,5 +1,5 @@
 // paridad3 L-P3-14 (REQ-152): la misma convocatoria que llega por dos fuentes NO se duplica. Repositorio en memoria (mismo contrato que
-// la funcion SQL system_ingest_tender_dedupe) y fallback de la base sin la migracion 037 con AbortAwareFakeSession (una sesion plana NO
+// la funcion SQL system_ingest_tender_dedupe) y fallback de la base sin la migracion 041 con AbortAwareFakeSession (una sesion plana NO
 // reproduce el estado abortado de Postgres).
 import { describe, expect, it } from "vitest";
 import { InMemoryLicitacionesRepository } from "../src/in-memory-repository.ts";
@@ -97,7 +97,7 @@ const FILA = {
   out_cpv_codes: [], out_budget_amount: null, out_currency: "MXN", out_state: null, out_procedure_type_raw: null, out_status: "discovered", out_inserted: true,
 };
 
-describe("PostgresLicitacionesRepository.ingestTendersFromSource -- base sin la migracion 037", () => {
+describe("PostgresLicitacionesRepository.ingestTendersFromSource -- base sin la migracion 041", () => {
   it("42883 en la funcion de huella: cae al camino anterior con SAVEPOINT, no aborta el lote y no reintenta la funcion ausente", async () => {
     const session = new AbortAwareFakeSession([
       { match: /system_ingest_tender_dedupe/, respond: () => pgError("function licitaciones.system_ingest_tender_dedupe does not exist", "42883") },

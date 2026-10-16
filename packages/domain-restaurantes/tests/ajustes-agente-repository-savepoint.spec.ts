@@ -34,7 +34,7 @@ const FILA = {
 describe("lectura", () => {
   it("base sin migrar (42P01): vacio honesto con los valores de siempre y la sesion sigue viva", async () => {
     const s = new AbortAwareFakeSession([{ match: /from restaurantes\.agent_runtime_settings/i, respond: () => pgError("42P01", 'relation "restaurantes.agent_runtime_settings" does not exist') }, SIGUIENTE]);
-    expect(await new PostgresAjustesAgenteRepository(s).leer(ORG)).toEqual({ disponible: false, configurados: false, valor: AJUSTES_AGENTE_POR_DEFECTO, actualizadoEn: null });
+    expect(await new PostgresAjustesAgenteRepository(s).leer(ORG)).toEqual({ disponible: false, configurados: false, valor: AJUSTES_AGENTE_POR_DEFECTO, actualizadoEn: null, ambienteDisponible: false });
     await sesionSigueViva(s);
   });
 
@@ -52,7 +52,7 @@ describe("lectura", () => {
     const con = new AbortAwareFakeSession([{ match: /agent_runtime_settings/i, respond: () => [FILA] }]);
     const l = await new PostgresAjustesAgenteRepository(con).leer(ORG);
     expect(l).toMatchObject({ disponible: true, configurados: true, actualizadoEn: "2026-10-04T10:00:00.000Z" });
-    expect(l.valor).toEqual({ whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.3, vozModeloCascada: null, vozTemperatura: null, vozRitmo: "pausado", vozEstilo: "calido", vozFondoActivo: true, vozFondoVolumen: 9 });
+    expect(l.valor).toEqual({ whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.3, vozModeloCascada: null, vozTemperatura: null, vozRitmo: "pausado", vozEstilo: "calido", vozFondoActivo: true, vozFondoVolumen: 9, vozFondoPreset: "cocina-taqueria", vozTecleoActivo: false, vozTecleoVolumen: 12, vozHumanizar: false });
   });
 
   it("una fila con ritmo/estilo fuera de la lista (escrita directo en la base) cae al valor por omision, no rompe", async () => {
@@ -60,6 +60,37 @@ describe("lectura", () => {
     const l = await new PostgresAjustesAgenteRepository(s).leer(ORG);
     expect(l.valor.vozRitmo).toBe("normal");
     expect(l.valor.vozEstilo).toBe("neutro");
+  });
+});
+
+describe("lectura con la 055 pero SIN la 087 (columnas de ambiente/tecleo inexistentes)", () => {
+  const SIN_087 = { match: /voice_typing/i, respond: () => pgError("42703", 'column "voice_typing" does not exist') };
+
+  it("lee los ajustes de siempre con la consulta anterior, marca ambienteDisponible=false y la sesion sigue viva", async () => {
+    const s = new AbortAwareFakeSession([SIN_087, { match: /from restaurantes\.agent_runtime_settings/i, respond: () => [FILA] }, SIGUIENTE]);
+    const l = await new PostgresAjustesAgenteRepository(s).leer(ORG);
+    expect(l).toMatchObject({ disponible: true, configurados: true, ambienteDisponible: false });
+    expect(l.valor).toMatchObject({ vozRitmo: "pausado", vozFondoVolumen: 9, vozTecleoActivo: false, vozHumanizar: false });
+    await sesionSigueViva(s);
+  });
+
+  it("con la 087 aplicada lee todo y ambienteDisponible=true", async () => {
+    const s = new AbortAwareFakeSession([{ match: /agent_runtime_settings/i, respond: () => [{ ...FILA, voice_background_preset: "calle-ocupada", voice_typing: true, voice_typing_volume: 15, voice_humanize: true }] }]);
+    const l = await new PostgresAjustesAgenteRepository(s).leer(ORG);
+    expect(l.ambienteDisponible).toBe(true);
+    expect(l.valor).toMatchObject({ vozFondoPreset: "calle-ocupada", vozTecleoActivo: true, vozTecleoVolumen: 15, vozHumanizar: true });
+  });
+
+  it("escritura sin la 087: lo de siempre se guarda con la consulta anterior; si se pide lo nuevo, 503 honesto y NADA se pierde en silencio", async () => {
+    const solo = { ...AJUSTES_AGENTE_POR_DEFECTO, whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.3 };
+    const s = new AbortAwareFakeSession([SIN_087, { match: /insert into restaurantes\.agent_runtime_settings/i, respond: () => [FILA] }, SIGUIENTE]);
+    const l = await new PostgresAjustesAgenteRepository(s).guardar(ORG, ACTOR, solo);
+    expect(l).toMatchObject({ configurados: true, ambienteDisponible: false });
+    expect(l.valor.whatsappModelo).toBe("google/gemini-2.5-flash-lite");
+    await sesionSigueViva(s);
+    const s2 = new AbortAwareFakeSession([SIN_087, SIGUIENTE]);
+    await expect(new PostgresAjustesAgenteRepository(s2).guardar(ORG, ACTOR, { ...solo, vozTecleoActivo: true })).rejects.toThrow(/migración 087/);
+    await sesionSigueViva(s2);
   });
 });
 

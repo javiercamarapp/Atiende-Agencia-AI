@@ -17,7 +17,14 @@ export interface EstadoSalud {
   readonly escuchando: boolean;
   readonly llamadasActivas: number;
   readonly llamadasAtendidas: number;
+  /** Milisegundos desde el ultimo sondeo exitoso de la telefonia; null si la telefonia no sondea o aun no hubo uno. */
+  readonly latidoHaceMs: number | null;
+  /** `true` = puede atender: configurado, escuchando y con latido vigente. Es lo que decide el 200/503 de /salud. */
+  readonly sano: boolean;
 }
+
+/** Tras cuanto tiempo sin sondeo exitoso de LiveKit /salud deja de ser sano (el sondeo es cada ~1 s). */
+export const LATIDO_MAX_MS = 60_000;
 
 export interface OpcionesWorker {
   readonly config: ConfigWorker;
@@ -37,8 +44,28 @@ export class Worker {
 
   constructor(private readonly o: OpcionesWorker) {}
 
-  salud(): EstadoSalud {
-    return { estado: this.o.config.estado, motivos: this.o.config.motivos, escuchando: this.escuchando, llamadasActivas: this.activas.size, llamadasAtendidas: this.atendidas };
+  salud(ahora: number = Date.now()): EstadoSalud {
+    const latido = this.o.telefonia?.latidoMs?.() ?? null;
+    const latidoHaceMs = latido === null ? null : Math.max(0, ahora - latido);
+    // Sin latido (telefonia que no sondea, o aun no hubo el primero) no se penaliza: `iniciar` ya espera el primer sondeo. Con latido, debe ser reciente.
+    const latidoVigente = latidoHaceMs === null || latidoHaceMs <= LATIDO_MAX_MS;
+    return {
+      estado: this.o.config.estado,
+      motivos: this.o.config.motivos,
+      escuchando: this.escuchando,
+      llamadasActivas: this.activas.size,
+      llamadasAtendidas: this.atendidas,
+      latidoHaceMs,
+      sano: this.o.config.estado === "configurado" && latidoVigente,
+    };
+  }
+
+  /** El sondeo de la telefonia lleva mas de `maxMs` sin responder y no hay llamadas en curso: el proceso esta vivo pero NO atiende. El arranque lo usa para salir
+   * con error y que el host (Fly: `restart policy always`) lo reinicie; las health checks de Fly solo informan, no reinician. */
+  latidoVencido(maxMs: number = LATIDO_MAX_MS * 2, ahora: number = Date.now()): boolean {
+    if (!this.escuchando || this.activas.size > 0) return false;
+    const latido = this.o.telefonia?.latidoMs?.() ?? null;
+    return latido !== null && ahora - latido > maxMs;
   }
 
   /** `true` si empezo a escuchar llamadas. */
@@ -95,12 +122,12 @@ export class Worker {
   }
 }
 
-/** Servidor de /salud: 200 si el worker esta configurado, 503 con los motivos si no. Sin autenticacion: no devuelve valores ni PII. */
+/** Servidor de /salud: 200 si el worker esta configurado y con latido vigente, 503 con los motivos (o el latido vencido) si no. Sin autenticacion: no devuelve valores ni PII. */
 export function crearServidorSalud(worker: Worker): Server {
   return createServer((req, res) => {
     if (req.method === "GET" && (req.url === "/salud" || req.url === "/salud/")) {
       const s = worker.salud();
-      res.writeHead(s.estado === "configurado" ? 200 : 503, { "content-type": "application/json" });
+      res.writeHead(s.sano ? 200 : 503, { "content-type": "application/json" });
       res.end(JSON.stringify(s));
       return;
     }

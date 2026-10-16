@@ -178,6 +178,10 @@ export interface DispatchItemResult {
   readonly id: string;
   readonly outcome: DispatchItemOutcome;
   readonly error?: string;
+  /** `true` si el fallo (reintento o muerto) vino del proveedor (Meta o la red hacia Meta): base de la alerta de proveedor caido. */
+  readonly proveedor?: boolean;
+  /** `error.code` de Graph API cuando lo hubo (190 = token invalido o vencido). */
+  readonly graphCode?: number;
 }
 
 export interface DispatchSummary {
@@ -355,18 +359,19 @@ export class WhatsAppOutboundDispatcher {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const retryable = err instanceof WhatsAppSendError ? err.retryable : true;
+      const diagnostico = err instanceof WhatsAppSendError && err.info?.proveedor ? { proveedor: true as const, ...(err.info.graphCode !== undefined ? { graphCode: err.info.graphCode } : {}) } : {};
       await this.breaker?.reportFailure(payload.phone_number_id, message);
 
       const nextAttempts = item.attempts + 1;
       if (!retryable || nextAttempts >= this.maxAttempts) {
         await port.markDead(item.id, nextAttempts, message.slice(0, 120));
-        return { id: item.id, outcome: "dead", error: message };
+        return { id: item.id, outcome: "dead", error: message, ...diagnostico };
       }
 
       const backoffSeconds = computeBackoffSeconds(nextAttempts);
       const nextAttemptAtIso = new Date(this.now().getTime() + backoffSeconds * 1000).toISOString();
       await port.markRetry(item.id, nextAttempts, message.slice(0, 120), nextAttemptAtIso);
-      return { id: item.id, outcome: "retry", error: message };
+      return { id: item.id, outcome: "retry", error: message, ...diagnostico };
     }
   }
 }

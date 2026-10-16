@@ -182,7 +182,7 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
     }
     if (m[2] === "estado") {
       // Solo del mock: agrega un elemento a una lista del estado del escenario (p. ej. un pedido nuevo que llega mientras la
-      // prueba mira el panel: en produccion lo crea el storefront o WhatsApp, aqui no hay quien lo origine).
+      // prueba mira el panel: en produccion lo crea el storefront, WhatsApp o la llamada, aqui no hay quien lo origine).
       const dato = ((await leerCuerpo(req)) ?? {}) as { clave?: unknown; agregar?: unknown; agregarVarios?: unknown };
       const varios = Array.isArray(dato.agregarVarios) ? dato.agregarVarios : null;
       if (typeof dato.clave !== "string" || dato.clave === "" || (dato.agregar === undefined && varios === null)) return enviar(res, 400, { message: "clave y agregar (o agregarVarios) requeridos" }, origen);

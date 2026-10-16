@@ -1,0 +1,675 @@
+{
+ "sitio": "https://www.lostaquitosdepm.com",
+ "capturado": "2026-10-15",
+ "plataforma": "Wix; robots.txt permite todo salvo ?lightbox= y rutas internas de galería",
+ "paginas_de_menu_en_sitemap": [
+  "/menu",
+  "/menupm",
+  "/menu-altabrisa-montejo-victory",
+  "/menufranciscodemontejo",
+  "/menupensiones",
+  "/menupmgalerias",
+  "/menuchicxulub",
+  "/englishmenuchicxulub",
+  "/taquitospm-english-menu"
+ ],
+ "paginas_no_leidas": [
+  "/englishmenuchicxulub",
+  "/taquitospm-english-menu",
+  "/merchdepm",
+  "/whatsapppm (no aportan menú)"
+ ],
+ "sucursales_en_la_portada": [
+  {
+   "nombre": "Chicxulub",
+   "whatsapp": "969 688 4195"
+  },
+  {
+   "nombre": "Victory Platz",
+   "whatsapp": "999 518 2637"
+  },
+  {
+   "nombre": "Altabrisa",
+   "whatsapp": "999 518 2857"
+  },
+  {
+   "nombre": "Montejo",
+   "whatsapp": "999 944 0342"
+  },
+  {
+   "nombre": "Fco. de Montejo",
+   "whatsapp": "999 953 7122"
+  },
+  {
+   "nombre": "Pensiones",
+   "whatsapp": "999 987 5410"
+  }
+ ],
+ "preguntas_frecuentes": [
+  {
+   "p": "¿Qué formas de pago aceptan?",
+   "r": "Tarjeta de crédito, débito y pago contra entrega."
+  },
+  {
+   "p": "¿Se puede pagar con tarjeta a domicilio?",
+   "r": "Sí, pedir la terminal al hacer el pedido."
+  },
+  {
+   "p": "Mi pedido llegó incorrecto, ¿qué hago?",
+   "r": "Comunicarse a la brevedad a la misma sucursal donde se hizo el pedido."
+  },
+  {
+   "p": "¿Puedo pedir más salsas?",
+   "r": "Sí, tienen un costo extra."
+  },
+  {
+   "p": "¿Cuál es el tiempo de entrega?",
+   "r": "40 a 50 minutos; con lluvia de 1 h a 1 h 20 min."
+  },
+  {
+   "p": "¿Qué necesito para solicitar factura?",
+   "r": "Ser persona física o moral y dar razón social y RFC."
+  }
+ ],
+ "contacto": {
+  "correo_rh": "recursos.humanos@lostaquitosdepm.com",
+  "oficinas": "9.23.51.10 / 9.23.55.63 / 9.28.59.90",
+  "matriz": "Calle 69 # 596 x 78 y 80, Col. Centro, Mérida, C.P. 97000"
+ },
+ "pagina_menu_texto": {
+  "url": "https://www.lostaquitosdepm.com/menu",
+  "advertencia": "LISTA ANTIGUA: sus precios NO coinciden con los menús por sucursal (p. ej. taco al pastor $23 vs $42; kilo de pastor $470 vs $900). Es la única página con texto (tortilla, media orden, salsas y su precio), pero NO se usa para precios. La navegación menciona Platillos de PM, Francés suizo, Chetaco, Tacos suizos, Flautas, Boyo-hamburguesa, Comida regional, Refrescos, Pizza Quesobich y Papa rellena, pero NO trae sus productos (sin piezas por orden).",
+  "productos": [
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Frijolito con Tostadas",
+    "precio_mxn": 55,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Guacamole",
+    "precio_mxn": 85,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Carbolla",
+    "precio_mxn": 59,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Cebollas Cambray",
+    "precio_mxn": 75,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Chicharrón de Queso",
+    "precio_mxn": 95,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Alitas de Pollo",
+    "precio_mxn": 117,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Frijoles Charros",
+    "precio_mxn": 77,
+    "notas": [
+     "Media orden $49 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Frijoles Charros con Queso",
+    "precio_mxn": 86,
+    "notas": [
+     "Media orden $63 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Frijoles Charros Especiales",
+    "precio_mxn": 103,
+    "notas": [
+     "Pídelos con la carne de tu elección.",
+     "Media orden $78 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Quesadilla Natural",
+    "precio_mxn": 62,
+    "notas": [
+     "Tortilla de harina o de maíz."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Quesadilla con Rajas",
+    "precio_mxn": 70,
+    "notas": [
+     "Tortilla de harina o de maíz."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Quesadilla con Champiñones",
+    "precio_mxn": 70,
+    "notas": [
+     "Tortilla de harina o de maíz."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Quesadilla con Chorizo",
+    "precio_mxn": 74,
+    "notas": [
+     "Tortilla de harina o de maíz."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Ensalada de Pm",
+    "precio_mxn": 120,
+    "notas": [
+     "Acompañada de pollo a la parrilla."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Papas A La Francesa",
+    "precio_mxn": 64,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Queso Fundido Natural",
+    "precio_mxn": 90,
+    "notas": [
+     "Tortilla de harina o de maíz."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Queso Fundido con Rajas",
+    "precio_mxn": 99,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Queso Fundido con Champiñones",
+    "precio_mxn": 99,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Queso Fundido con Tocino",
+    "precio_mxn": 99,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Queso Fundido con Chorizo",
+    "precio_mxn": 99,
+    "notas": []
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Nachos de Pastor",
+    "precio_mxn": 183,
+    "notas": [
+     "Media orden $127 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Nachos de Champiñon",
+    "precio_mxn": 175,
+    "notas": [
+     "Media orden $121 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Nachos de Bistec",
+    "precio_mxn": 199,
+    "notas": [
+     "Media orden $143 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Nachos de Pechuga",
+    "precio_mxn": 199,
+    "notas": [
+     "Media orden $143 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Nachos de Chuleta",
+    "precio_mxn": 199,
+    "notas": [
+     "Media orden $143 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Nachos de Costilla",
+    "precio_mxn": 205,
+    "notas": [
+     "Media orden $145 pesos."
+    ]
+   },
+   {
+    "categoria": "Entradas y nachos",
+    "nombre": "Nachos de Arrachera",
+    "precio_mxn": 235,
+    "notas": [
+     "Media orden $164 pesos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Taco al Pastor",
+    "precio_mxn": 23,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Acompañado de piña y cebolla con cilantro.",
+     "Orden individual"
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Rajas",
+    "precio_mxn": 23,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden individual"
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Chorizo",
+    "precio_mxn": 85,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Bistec de Res",
+    "precio_mxn": 106,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Pechuga de Pollo",
+    "precio_mxn": 105,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Chuleta de Cerdo",
+    "precio_mxn": 106,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Costilla de Res",
+    "precio_mxn": 106,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Arrachera",
+    "precio_mxn": 136,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Poc-Chuc",
+    "precio_mxn": 106,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Alambre de Pastor",
+    "precio_mxn": 157,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Alambre de Bistec",
+    "precio_mxn": 157,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Alambre de Pechuga",
+    "precio_mxn": 157,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Alambre de Chuleta",
+    "precio_mxn": 157,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Alambre de Arrachera",
+    "precio_mxn": 196,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Tacos de Bistec Encebollado",
+    "precio_mxn": 107,
+    "notas": [
+     "Tortilla de maíz o harina.",
+     "Orden de 3 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Gringa de Pastor",
+    "precio_mxn": 96,
+    "notas": [
+     "Tortilla de harina.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Gringa de Bistec",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de harina.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Gringa de Pechuga de Pollo",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de harina.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Gringa de Chuleta",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de harina.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Gringa de Costilla",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de harina.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Gringa de Arrachera",
+    "precio_mxn": 150,
+    "notas": [
+     "Tortilla de harina.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Gringa de Poc-Chuc",
+    "precio_mxn": 96,
+    "notas": [
+     "Tortilla de harina.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Mestiza de Pastor",
+    "precio_mxn": 96,
+    "notas": [
+     "Tortilla de maíz.",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Mestiza de Poc-Chuc",
+    "precio_mxn": 96,
+    "notas": [
+     "Tortilla de maíz..",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Mestiza de Bistec",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de maíz..",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Mestiza de Pechuga de Pollo",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de maíz..",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Mestiza de Chuleta",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de maíz..",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Mestiza de Costilla de Cerdo",
+    "precio_mxn": 109,
+    "notas": [
+     "Tortilla de maíz..",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Tacos de PM",
+    "nombre": "Mestiza de Arrachera",
+    "precio_mxn": 150,
+    "notas": [
+     "Tortilla de maíz..",
+     "Orden de 2 tacos."
+    ]
+   },
+   {
+    "categoria": "Kilos de carne",
+    "nombre": "Incluyen salsas, limones y tortillas de maÍz o harina.",
+    "precio_mxn": 470,
+    "notas": [
+     "KILO DE PASTOR"
+    ]
+   },
+   {
+    "categoria": "Kilos de carne",
+    "nombre": "Kilo de Bistec de Res",
+    "precio_mxn": 550,
+    "notas": []
+   },
+   {
+    "categoria": "Kilos de carne",
+    "nombre": "Kilo de Pechuga de Pollo",
+    "precio_mxn": 550,
+    "notas": []
+   },
+   {
+    "categoria": "Kilos de carne",
+    "nombre": "Kilo de Chuleta de Cerdo",
+    "precio_mxn": 550,
+    "notas": []
+   },
+   {
+    "categoria": "Kilos de carne",
+    "nombre": "Kilo de Poc-Chuc",
+    "precio_mxn": 550,
+    "notas": []
+   },
+   {
+    "categoria": "Kilos de carne",
+    "nombre": "Kilo de Arrachera",
+    "precio_mxn": 750,
+    "notas": []
+   },
+   {
+    "categoria": "Postres",
+    "nombre": "Crema Española",
+    "precio_mxn": 50,
+    "notas": []
+   },
+   {
+    "categoria": "Postres",
+    "nombre": "Crema de Coco",
+    "precio_mxn": 50,
+    "notas": []
+   },
+   {
+    "categoria": "Postres",
+    "nombre": "Queso Napolitano",
+    "precio_mxn": 66,
+    "notas": [
+     "Receta secreta de la casa."
+    ]
+   },
+   {
+    "categoria": "Postres",
+    "nombre": "Flan",
+    "precio_mxn": 50,
+    "notas": []
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Salsa Roja",
+    "precio_mxn": 15,
+    "notas": [
+     "Combinación de chiles rojos con tomate.",
+     "Porción 4 oz."
+    ]
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Salsa Verde",
+    "precio_mxn": 15,
+    "notas": [
+     "Combinación de chiles verdes con tomate.",
+     "Porción 4 oz."
+    ]
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Salsa Guacamolera",
+    "precio_mxn": 15,
+    "notas": [
+     "Hecha a base de aguacate.",
+     "Porción 4 oz."
+    ]
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Salsa  Mexicana",
+    "precio_mxn": 15,
+    "notas": [
+     "Tomate, cilantro y cebolla picadita.",
+     "Porción 4 oz."
+    ]
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Crema de Ajo",
+    "precio_mxn": 15,
+    "notas": [
+     "Nuestra receta secreta de crema de ajo es única.",
+     "Porción 4 oz."
+    ]
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Limones",
+    "precio_mxn": 15,
+    "notas": [
+     "Porción 100 gr."
+    ]
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Cebolla con Cilantro",
+    "precio_mxn": 15,
+    "notas": [
+     "Porción 100 gr."
+    ]
+   },
+   {
+    "categoria": "Salsas de PM",
+    "nombre": "Piña",
+    "precio_mxn": 15,
+    "notas": [
+     "Porción 100 gr."
+    ]
+   }
+  ]
+ }
+}

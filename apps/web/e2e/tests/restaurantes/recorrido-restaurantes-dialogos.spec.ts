@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { afirmarCancelarNoEscribe, dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir } from "../../helpers/recorrido.ts";
+import { elegirValor } from "../../helpers/listas.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -16,16 +17,16 @@ test.describe("restaurantes: dialogos, Cancelar y Escape nunca ejecutan @recorri
     await iniciarSesion("restaurantes", "owner");
   });
 
-  test("Pedidos > Marcar Cancelado: Volver y Escape no escriben; confirmar (con motivo) hace un PATCH cancelado", async ({ page, mock, vigilante }) => {
+  test("Pedidos > Cancelar pedido: Volver y Escape no escriben; confirmar (con motivo) hace un PATCH cancelado", async ({ page, mock, vigilante }) => {
     await ir(page, "/pedidos");
-    const cancelar = main(page).getByRole("button", { name: "Marcar Cancelado" }).first();
-    await afirmarCancelarNoEscribe(page, mock, cancelar, { nombre: "Cancelar pedido", botonCancelar: "Volver", ...SIN_FOCO });
+    const cancelar = main(page).getByRole("button", { name: "Cancelar pedido" }).first();
+    await afirmarCancelarNoEscribe(page, mock, cancelar, { nombre: "¿Cancelar este pedido?", botonCancelar: "Volver", ...SIN_FOCO });
     await cancelar.click();
-    const dlg = dialogo(page, "Cancelar pedido");
+    const dlg = dialogo(page, "¿Cancelar este pedido?");
     // Con el autopiloto el boton queda desactivado hasta elegir un motivo de la lista cerrada y el PATCH lo lleva.
-    await expect(dlg.getByRole("button", { name: "Cancelar el pedido" })).toBeDisabled();
-    await dlg.getByRole("combobox").selectOption("cliente_desistio");
-    await dlg.getByRole("button", { name: "Cancelar el pedido" }).click();
+    await expect(dlg.getByRole("button", { name: "Sí, cancelar pedido" })).toBeDisabled();
+    await elegirValor(dlg.getByRole("combobox"), "cliente_desistio");
+    await dlg.getByRole("button", { name: "Sí, cancelar pedido" }).click();
     const [patch] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/orders/ord-1001/status" });
     expect(cuerpoDe(patch)).toEqual({ status: "cancelado", motivo: "cliente_desistio" });
     vigilante.verificar();

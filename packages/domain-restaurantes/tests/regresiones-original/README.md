@@ -36,10 +36,10 @@ Este PR no arregla nada de producción salvo los eventos de observabilidad por t
 | `0c0bebf` (grader de voz) | No existe un grader de voz que falle si se da el tiempo antes de crear | `R/casos-b1.spec.ts::0c0bebf / [lote C]` | it.fails (C) |
 | `03555e2` | Teléfono sin normalizar duplicaba clientes; `branch_slug` faltante caía a Fco. Montejo | `R/historial-busqueda-y-datos.spec.ts::X16 / 03555e2`; `R/historial-busqueda-y-datos.spec.ts::X44 / 03555e2` (ausente, vacío y desconocido en `buscar_producto`, `cotizar_pedido` y `crear_pedido`) | verde |
 | `3571c1c` | Búsqueda no tokenizada; prompt de respaldo desfasado | `R/historial-busqueda-y-datos.spec.ts::X10 / X14 / 3571c1c`; `R/historial-busqueda-y-datos.spec.ts::X39 / 3571c1c` | verde; el segundo: N/A (ya no hay prompt duplicado en BD, solo se prueba que el único conserva las reglas) |
-| `5710a5f` | Coordenadas viejas de una colonia → sucursal equivocada | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09` (reporte de colonias a menos de 1 km) | it.todo (R2: lo cubre `rescate-orig-restaurantes-2`) |
+| `5710a5f` | Coordenadas viejas de una colonia → sucursal equivocada | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09` (reporte de colonias a menos de 1 km) | verde |
 | `609c3d6` | Un cambio del prompt se revirtió en silencio con `ok:true` | `R/historial-turno-y-pedidos.spec.ts::X53 / 609c3d6: tras guardar`; `R/historial-turno-y-pedidos.spec.ts::X53 / 609c3d6: guardar con una version vieja` | verde |
 | `05a9798` / `6091e17` | Cascada barato → caro | `T/pm/fallas-llm.spec.ts::T-FP06`; `R/historial-turno-y-pedidos.spec.ts::X34 / 05a9798` (fallo de sistema → rol escalado) | verde |
-| `6091e17` (regla de negocio) | Un rechazo correcto de regla (mínimo, zona) también sube de rol | `R/historial-turno-y-pedidos.spec.ts::X34 / 6091e17 [lote B1, agentes-26]` | it.fails (B1) |
+| `6091e17` (regla de negocio) | Un rechazo correcto de regla (mínimo, zona, horario) NO sube de rol; solo un fallo de sistema | `R/historial-turno-y-pedidos.spec.ts::X34 / 6091e17 [lote B1, agentes-26]` | verde |
 | `10d3485` | Total alucinado; turno sin pregunta; frontera de capas | `T/pm-bateria-agente-whatsapp.spec.ts::T-PG01 / X05`; `T/pm-bateria-agente-whatsapp.spec.ts::T-PG02 / X05`; `T/pm-bateria-agente-whatsapp.spec.ts::T-PG04 / X06`; `R/frontera-de-capas.spec.ts::ningun archivo de packages/domain-restaurantes/src` | verde |
 | `9460a3e` | Aviso al cliente por WhatsApp en cambios de estado | `R/historial-avisos-y-despacho.spec.ts::cada estado se avisa UNA sola vez`; `R/historial-avisos-y-despacho.spec.ts::cada aviso lleva su plantilla HSM` | verde |
 | `9460a3e` (usted) | Los textos de aviso hablan de usted (corregido en main) | `R/historial-avisos-y-despacho.spec.ts::P26 / 9460a3e [lote F, viaje-10]` | verde |
@@ -94,7 +94,7 @@ Este PR no arregla nada de producción salvo los eventos de observabilidad por t
 | X39 | Prompt de respaldo desfasado | `R/historial-busqueda-y-datos.spec.ts::X39 / 3571c1c` | N/A (ya no hay prompt duplicado en BD) |
 | X40 | Saludo por hora | `R/historial-busqueda-y-datos.spec.ts::X40 / 6d07364: WhatsApp a las`; `T/pm-bateria-agente-whatsapp.spec.ts::T-PC03` | verde |
 | X41 | "Alta Brisa" | `T/pm-bateria-reglas-duras.spec.ts::T-ZS01 / X41`; `R/historial-busqueda-y-datos.spec.ts::X41 / 6d07364` | verde |
-| X42 | Colonias con 2 sucursales a < 1 km | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09 / X42` | it.todo (R2) |
+| X42 | Colonias con 2 sucursales a < 1 km | `T/pm-bateria-reglas-duras.spec.ts::T-ZS09 / X42` | verde |
 | X43 | Sucursal por Haversine | `T/nearest-branch.spec.ts::calcula una distancia real razonable` | verde |
 | X44 | `branch_slug` faltante no cae en silencio | `T/pm-bateria-reglas-duras.spec.ts::T-ZS08 / X44`; `R/historial-busqueda-y-datos.spec.ts::X44 / 03555e2` | verde |
 | X45 | Tools de voz con 401 por JWT | `A/pm-voz-seguridad.spec.ts::T-AB07` | N/A (token por llamada) |
@@ -200,3 +200,19 @@ instrucción de voz. `C`: grader de precios y de tiempo antes de crear en voz. `
 
 `packages/domain-restaurantes/src/whatsapp/observabilidad-turno.ts` y `llm-turn-handler.ts` emiten un evento `whatsapp_turno` por turno y uno `whatsapp_tool` por
 herramienta. Pruebas: `T/whatsapp/observabilidad-turno.spec.ts` y `A/restaurantes-observabilidad-turno.spec.ts`. Runbook: `docs/runbooks/RESTAURANTES-AGENTE.md`.
+
+## 6. Complemento NC-HIST (import-orig-11): bugs del historial que estaban PARCIAL
+
+La correccion existia en `main` pero ninguna prueba nombraba el bug. Cada fila es una prueba que falla si se revierte su correccion (comprobado a mano, ver el PR). El reloj de las pruebas que dependen de fecha esta fijo
+(miercoles 12:00 America/Merida).
+
+| Bug | Descripcion | Prueba en main | Estado |
+|---|---|---|---|
+| H34 / `c25e70c` | Regla de prompt «nunca llames `crear_pedido` dos veces» (defensa en profundidad) | `R/historial-completitud.spec.ts::H34 / c25e70c: el prompt generico trae la REGLA DURA`; `R/historial-completitud.spec.ts::H34 / c25e70c: el prompt del perfil PM (H12)` | verde |
+| H35 / `cec17f1` | Sinonimos reales («dos chelas», «una cheve», «trompo», «una pizza») | `R/historial-completitud.spec.ts::H35 / cec17f1: «dos chelas» resuelve a Cervezas`; `R/historial-completitud.spec.ts::H35 / cec17f1: «una cheve» y «trompo»` | verde |
+| H37 / `abc543a` | La frase de pack usa el N real, no solo el bistec de 3 | `R/historial-completitud.spec.ts::H37 / abc543a: un sabor 'orden de 6'`; `R/historial-completitud.spec.ts::H37 / abc543a: con pack de 2` | verde |
+| H39 / `5d164ee` | Edad evasiva con alcohol: pedir un si/no claro, nunca fingir agotado | `R/historial-completitud.spec.ts::H39 / 5d164ee: el servidor no acepta una edad evasiva`; `R/historial-completitud.spec.ts::H39 / 5d164ee: el prompt generico manda re-preguntar` | verde (el perfil PM no vende alcohol por este medio: `R/historial-completitud.spec.ts::H39 / 5d164ee: el perfil PM (P01)`) |
+| H45 / `ac9b380` | Un owner/admin no puede invitar con `verticalRole: "superadmin"` (escalacion) | `A/restaurantes-staff-superadmin-original.spec.ts::H45 / ac9b380: un owner que invita con verticalRole 'superadmin'`; `A/restaurantes-staff-superadmin-original.spec.ts::H45 / ac9b380: un admin (el caso original)` | verde |
+| H55 / `907cac2` | DSAR/retencion ejecutables: la purga existe; la ejecucion automatica de export/borrado del cliente es brecha real | `A/restaurantes-privacidad.spec.ts::purga por retencion`; `T/pm-bateria-agente-whatsapp.spec.ts::T-PR04` | purga: verde; export/borrado automatico: it.todo |
+| H56 / `3de32ee`, L03 / `0edd978` | `.env` versionado con la anon key | `T/../../config/tests/repo-higiene-env.spec.ts::H56 / 3de32ee: git ls-files no contiene .env` | verde |
+| H61 / `5f7cbb9` | Estadisticas en $0 por el tope de 1000 filas | `R/historial-completitud.spec.ts::H61 / 5f7cbb9: 1,200 pedidos de $10 suman exactamente $12,000` (en memoria); SQL real: `S/verify-restaurantes-kpis-veraces/assertions.sql::=== A4b. POSITIVO (H61 / 5f7cbb9)` | verde |

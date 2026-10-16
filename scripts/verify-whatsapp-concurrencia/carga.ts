@@ -141,27 +141,26 @@ for (const n of NIVELES) {
 {
   const ORG_SLUG = "carga-whatsapp";
   const PRODUCTO = "00000000-0000-4000-8000-0000000e0d01";
-  const WEB = { origin: "http://localhost:5173", "content-type": "application/json" };
   const VOZ = { "x-atiende-tool-secret": process.env.VOICE_TOOL_SECRET ?? "", "content-type": "application/json" };
   const pedir = async (headers: Record<string, string>, body: Record<string, unknown>): Promise<{ status: number; json: RespuestaPedido }> => {
     const r = await app.fetch(new Request(`http://local/v1/restaurantes/${ORG_SLUG}/orders`, { method: "POST", headers, body: JSON.stringify({ branch_slug: "sucursal-carga", items: [{ product_id: PRODUCTO, requested_quantity: 2 }], ...body }) }));
     return { status: r.status, json: (await r.json().catch(() => ({}))) as RespuestaPedido };
   };
   interface RespuestaPedido { readonly order?: { readonly id?: string } }
-  const telWeb = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+  const telCliente = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
   const telVoz = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
 
-  // Canal web: cliente NUEVO a domicilio.
-  const w1 = await pedir(WEB, { customer_name: "Cliente Web", customer_phone: telWeb, customer_address: "Calle 10 #100", payment_method: "efectivo", source: "web", canal: "domicilio" });
-  exigir(w1.status === 200 && Boolean(w1.json.order?.id), `canal web, cliente nuevo a domicilio: HTTP ${w1.status} con pedido creado${w1.status !== 200 ? ` (${JSON.stringify(w1.json).slice(0, 160)})` : ""}`);
-  const cw = await cliente.query("select id, order_count from restaurantes.customers where organization_id = $1 and phone like $2", [ORG_ID, `%${telWeb}`]);
-  exigir(cw.rowCount === 1 && cw.rows[0].order_count === 1, "canal web: el cliente nuevo quedo registrado con order_count = 1");
-  // Canal web: cliente EXISTENTE con otra direccion.
-  const w2 = await pedir(WEB, { customer_name: "Cliente Web", customer_phone: telWeb, customer_address: "Calle 20 #200", payment_method: "tarjeta", source: "web", canal: "domicilio", notes: "segundo pedido" });
-  exigir(w2.status === 200 && Boolean(w2.json.order?.id), `canal web, cliente existente con otra direccion: HTTP ${w2.status}`);
-  const direcciones = await contar(`select count(*)::int as n from restaurantes.customer_addresses a join restaurantes.customers c on c.id = a.customer_id where c.organization_id = '${ORG_ID}' and c.phone like '%${telWeb}'`);
-  const clientes = await contar(`select count(*)::int as n from restaurantes.customers where organization_id = '${ORG_ID}' and phone like '%${telWeb}'`);
-  exigir(clientes === 1 && direcciones === 2, `canal web: un solo cliente con 2 direcciones (${clientes} cliente(s), ${direcciones} direccion(es))`);
+  // Canal voz (el checkout web ya no existe): cliente NUEVO a domicilio registra order_count = 1.
+  const w1 = await pedir(VOZ, { customer_name: "Cliente Recurrente", customer_phone: telCliente, customer_address: "Calle 10 #100", payment_method: "efectivo", source: "voice", canal: "domicilio" });
+  exigir(w1.status === 200 && Boolean(w1.json.order?.id), `canal voz, cliente nuevo a domicilio (alta): HTTP ${w1.status} con pedido creado${w1.status !== 200 ? ` (${JSON.stringify(w1.json).slice(0, 160)})` : ""}`);
+  const cw = await cliente.query("select id, order_count from restaurantes.customers where organization_id = $1 and phone like $2", [ORG_ID, `%${telCliente}`]);
+  exigir(cw.rowCount === 1 && cw.rows[0].order_count === 1, "canal voz: el cliente nuevo quedo registrado con order_count = 1");
+  // Canal voz: cliente EXISTENTE con otra direccion.
+  const w2 = await pedir(VOZ, { customer_name: "Cliente Recurrente", customer_phone: telCliente, customer_address: "Calle 20 #200", payment_method: "tarjeta", source: "voice", canal: "domicilio", notes: "segundo pedido" });
+  exigir(w2.status === 200 && Boolean(w2.json.order?.id), `canal voz, cliente existente con otra direccion: HTTP ${w2.status}`);
+  const direcciones = await contar(`select count(*)::int as n from restaurantes.customer_addresses a join restaurantes.customers c on c.id = a.customer_id where c.organization_id = '${ORG_ID}' and c.phone like '%${telCliente}'`);
+  const clientes = await contar(`select count(*)::int as n from restaurantes.customers where organization_id = '${ORG_ID}' and phone like '%${telCliente}'`);
+  exigir(clientes === 1 && direcciones === 2, `canal voz: un solo cliente con 2 direcciones (${clientes} cliente(s), ${direcciones} direccion(es))`);
 
   // Canal voz (secreto de herramienta): cliente nuevo, domicilio.
   const v1 = await pedir(VOZ, { customer_name: "Cliente Voz", customer_phone: telVoz, customer_address: "Calle 30 #300", payment_method: "efectivo", source: "voice", canal: "domicilio" });

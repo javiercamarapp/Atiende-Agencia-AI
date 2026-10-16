@@ -44,6 +44,10 @@ export const REGISTRO_TOOLS_PM: RegistroToolsVoz = {
   mensajeIncierto: "No se pudo confirmar si el pedido quedó registrado. No le asegure al cliente que quedó; dígale que una persona verificará su pedido.",
 };
 
+/** Herramientas del registro de voz que SOLO leen (sin estado de pedido ni efectos): el escalon de Gemini puede correrlas en paralelo cuando el modelo las pide juntas al
+ * inicio de un turno. `repetir_pedido` NO esta: arma un pedido a partir del historial (toca el estado del flujo). */
+export const HERRAMIENTAS_VOZ_SOLO_LECTURA: ReadonlySet<string> = new Set(["buscar_cliente", "historial_pedidos", "consultar_sucursal", "buscar_sucursal_cercana", "buscar_producto"]);
+
 export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
   const core = crearEjecutorCore({
     registro: REGISTRO_TOOLS_PM,

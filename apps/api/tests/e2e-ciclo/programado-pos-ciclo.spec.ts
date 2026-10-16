@@ -20,12 +20,13 @@ describe("e2e programado + POS", () => {
       branch_slug: "fco-montejo",
       customer_name: "Paco Programado",
       customer_phone: "9991230060",
+      source: "voice",
       canal: "recoger",
       payment_method: "efectivo",
       programado_para: "2026-10-06T22:00:00.000Z", // 16:00 Merida; "ahora" es 13:00 Merida
       items: [{ product_id: stack.products.coca, requested_quantity: 5 }],
     });
-    const res = await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/orders`), { method: "POST", headers: { "content-type": "application/json", "content-length": String(raw.length), origin: "http://localhost:5173" }, body: raw });
+    const res = await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/orders`), { method: "POST", headers: { "content-type": "application/json", "content-length": String(raw.length), "x-atiende-tool-secret": E2E_SECRETS.voiceToolSecret }, body: raw });
     expect(res.status).toBe(200);
     return (await res.json()) as Json;
   }
@@ -137,16 +138,12 @@ describe("e2e programado + POS", () => {
   it("POS caido: el pedido existe, la comanda queda fallida y el gerente la captura a mano; al volver el POS el dispatcher no duplica", async () => {
     stack = await startCicloStack();
     stack.pos.inyectarFalla("crearComanda", { tipo: "timeout" });
-    // storefront: cotizar -> confirmar -> crear
-    const post = (p: string, body: unknown) => {
-      const r = JSON.stringify(body);
-      return fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront${p}`), { method: "POST", headers: { "content-type": "application/json", "content-length": String(new TextEncoder().encode(r).byteLength), origin: "http://localhost:5173" }, body: r });
-    };
-    const base = { session_id: "sesion-e2e-0123456789abcdef", items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger" };
-    const q = (await (await post("/fco-montejo/quote", base)).json()) as Json;
-    await post("/fco-montejo/confirm", { session_id: base.session_id, quote_hash: q.quote_hash });
-    const created = (await (await post("/fco-montejo/orders", { ...base, acepta_aviso_privacidad: true, customer_name: "Pos Caido", customer_phone: "9991230061", payment_method: "efectivo", quote_hash: q.quote_hash })).json()) as Json;
-    expect(created.estado).toBe("pending");
+    // Pedido por la ruta de voz (secreto de herramienta): el POS cae por timeout y la comanda queda pendiente de confirmar.
+    const raw = JSON.stringify({ branch_slug: "fco-montejo", source: "voice", canal: "recoger", customer_name: "Pos Caido", customer_phone: "9991230061", payment_method: "efectivo", items: [{ product_id: stack.products.coca, requested_quantity: 5 }] });
+    const res = await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/orders`), { method: "POST", headers: { "content-type": "application/json", "content-length": String(new TextEncoder().encode(raw).byteLength), "x-atiende-tool-secret": E2E_SECRETS.voiceToolSecret }, body: raw });
+    expect(res.status).toBe(200);
+    const created = (await res.json()) as Json;
+    expect(created.order.status).toBe("pending");
     expect(created.comanda).toMatchObject({ estado: "pendiente_de_confirmar", folio: null });
     expect(stack.pos.comandas).toHaveLength(0);
 

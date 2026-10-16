@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MENSAJES_PREGRABADOS } from "@atiende/domain-restaurantes";
 import { MENSAJE_IDS } from "@atiende/voice-core";
-import { leerWav, muestrasABytes } from "../src/audio/pcm.ts";
+import { escribirWav, leerWav, muestrasABytes } from "../src/audio/pcm.ts";
 import { PregrabadosError, generarPregrabados } from "../src/pregrabados-generar.ts";
-import { cargarPregrabados } from "../src/pregrabados.ts";
+import { cargarPregrabados, verificarPregrabados } from "../src/pregrabados.ts";
 import { tono } from "./support/audio.ts";
 
 let dir: string | null = null;
@@ -110,5 +110,42 @@ describe("generarPregrabados", () => {
     expect(r.generados).toEqual([]);
     expect(new Set(r.fallidos.map((f) => f.motivo))).toEqual(new Set(["red"]));
     expect(JSON.stringify(r)).not.toContain("llave-de-prueba");
+  });
+});
+
+describe("verificarPregrabados (npm run voz:pregrabados -- --verificar)", () => {
+  it("una carpeta vacia: los 15 faltan y no es valida", async () => {
+    const d = await carpeta();
+    const v = await verificarPregrabados(d);
+    expect(v.ok).toBe(false);
+    expect(v.reportes).toHaveLength(MENSAJE_IDS.length);
+    expect(v.reportes.every((r) => r.problema === "falta el archivo")).toBe(true);
+  });
+
+  it("con los 15 WAV de 1 s a 24 kHz mono es valida y reporta frecuencia y duracion", async () => {
+    const d = await carpeta();
+    for (const id of MENSAJE_IDS) await writeFile(join(d, `${id}.wav`), escribirWav(tono(24_000, 1000, 400), 24_000));
+    const v = await verificarPregrabados(d);
+    expect(v.ok).toBe(true);
+    expect(v.reportes[0]).toMatchObject({ ok: true, hz: 24_000, duracionS: 1, problema: null });
+  });
+
+  it("detecta un WAV ilegible, uno demasiado corto, uno de frecuencia no soportada y uno estereo", async () => {
+    const d = await carpeta();
+    for (const id of MENSAJE_IDS) await writeFile(join(d, `${id}.wav`), escribirWav(tono(24_000, 1000, 400), 24_000));
+    await writeFile(join(d, "handoff.wav"), "esto no es un wav");
+    await writeFile(join(d, "despedida.wav"), escribirWav(tono(24_000, 100, 400), 24_000));
+    await writeFile(join(d, "tool_timeout.wav"), escribirWav(tono(44_100, 1000, 400), 44_100));
+    const estereo = Buffer.from(escribirWav(tono(24_000, 1000, 400), 24_000));
+    estereo.writeUInt16LE(2, 22);
+    await writeFile(join(d, "pedir_repetir.wav"), estereo);
+    const v = await verificarPregrabados(d);
+    const por = Object.fromEntries(v.reportes.map((r) => [r.id, r.problema]));
+    expect(v.ok).toBe(false);
+    expect(por.handoff).toBe("no es un WAV PCM16 mono valido");
+    expect(por.despedida).toContain("demasiado corto");
+    expect(por.tool_timeout).toContain("44100 Hz no soportada");
+    expect(por.pedir_repetir).toBe("no es un WAV PCM16 mono valido");
+    expect(v.reportes.filter((r) => r.ok)).toHaveLength(MENSAJE_IDS.length - 4);
   });
 });
