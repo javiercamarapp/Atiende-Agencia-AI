@@ -33,6 +33,12 @@ export function lastTool(req: LlmCompletionRequest): Record<string, unknown> {
   const m = [...req.messages].reverse().find((x) => x.role === "tool");
   return m && m.role === "tool" ? (JSON.parse(m.content) as Record<string, unknown>) : {};
 }
+/** QA-PM-R10: responde texto Y repite el total de la cotizacion que acaba de devolver la tool (el resumen que el cliente ve); crear_pedido exige que el total aparezca en un mensaje del asistente. */
+export const sayResumen = (text: string): Paso => (req) => {
+  const r = lastTool(req) as { quote?: { total?: number }; total?: number };
+  const total = r.quote?.total ?? r.total;
+  return { text: typeof total === "number" ? `${text} Total a pagar $${total}.` : text, ...base };
+};
 /** Registra en `seen` el resultado de la tool anterior y responde texto. */
 export const sayObs = (seen: unknown[], text: string): Paso => (req) => {
   seen.push(lastTool(req));

@@ -3,7 +3,7 @@
 // (omitidos, null, vacios) el pedido NO entra a cocina, queda el aviso `escalada:pedido_grande` en T7 con la conversacion cedida, y NO queda ningun aviso de falla del sistema.
 // (Los rellenos con 0 / "0" los cubre el contrato de crear_pedido de la ronda 5, pm-r5-contrato-relleno-del-modelo.spec.ts.)
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { banco, call, item, say } from "./qa/r1-arnes-whatsapp-pm.ts";
+import { banco, call, item, say, sayResumen } from "./qa/r1-arnes-whatsapp-pm.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -20,7 +20,7 @@ describe("A24: numero nuevo + efectivo + $2,800 -> pedido_grande, no falla_siste
     const b = await banco();
     // 2 kg de pastor ($1,800) + 1 kg ($900) = $2,700 > $2,500; paga en efectivo y el numero no tiene historial.
     const items = [item(b.pid("Pastor — 2 kg"), "Pastor — 2 kg", 1), item(b.pid("Pastor — 1 kg"), "Pastor — 1 kg", 1)];
-    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), say("Total cotizado. ¿Confirma?")]);
+    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), sayResumen("Total cotizado. ¿Confirma?")]);
     await b.enviar("+5219990000124", "quiero para recoger");
     b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Evento", payment_method: "efectivo", items, ...relleno }), say("Su pedido es grande: la sucursal lo confirma primero.")]);
     const r = await b.enviar("+5219990000124", "si efectivo");
@@ -37,7 +37,7 @@ describe("A24: numero nuevo + efectivo + $2,800 -> pedido_grande, no falla_siste
   it("negativo: el mismo pedido con TARJETA ($2,700 < $4,000) se crea normal, sin aviso de pedido grande", async () => {
     const b = await banco();
     const items = [item(b.pid("Pastor — 2 kg"), "Pastor — 2 kg", 1), item(b.pid("Pastor — 1 kg"), "Pastor — 1 kg", 1)];
-    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), say("Total cotizado. ¿Confirma?")]);
+    b.setGuion([call("cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", items }), sayResumen("Total cotizado. ¿Confirma?")]);
     await b.enviar("+5219990000125", "quiero para recoger");
     b.setGuion([call("confirmar_resumen", {}), call("crear_pedido", { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Evento", payment_method: "tarjeta", items }), say("Listo, su pedido quedó registrado.")]);
     const r = await b.enviar("+5219990000125", "si tarjeta");
