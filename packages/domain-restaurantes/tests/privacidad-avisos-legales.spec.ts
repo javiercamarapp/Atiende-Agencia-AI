@@ -32,6 +32,13 @@ describe("detector de marcadores por completar", () => {
     expect(tieneMarcadoresSinCompletar("Correo: [[POR COMPLETAR correo")).toBe(true);
     expect(tieneMarcadoresSinCompletar("Correo: {{correo_arco}}")).toBe(true);
   });
+  it("es lineal con entrada hostil (muchos «{{» y «[[» sin cierre)", () => {
+    const inicio = Date.now();
+    expect(tieneMarcadoresSinCompletar("{{".repeat(200_000))).toBe(false);
+    expect(tieneMarcadoresSinCompletar("[[POR COMPLETAR".repeat(50_000))).toBe(true);
+    expect(tieneMarcadoresSinCompletar("[[ ".repeat(100_000))).toBe(false);
+    expect(Date.now() - inicio).toBeLessThan(1500);
+  });
   it("assertSinMarcadores lanza y nombra lo pendiente", () => {
     expect(() => assertSinMarcadores("a [[POR COMPLETAR: domicilio]] b", "El aviso integral")).toThrow(/El aviso integral no se puede publicar.*domicilio/);
   });
