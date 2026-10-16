@@ -1,7 +1,7 @@
 // R12 romper (ronda 2) -- categoria F (cierre de huecos): FORMATOS y TIPOS que el modelo o el cliente pueden mandar mal. Horas en formatos raros, plazos extremos, campos con el tipo
 // equivocado, listas con otra forma, busquedas con caracteres especiales, sucursal que no reparte hoy o de otra organizacion. Herramientas y repositorio reales (en memoria).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildRestaurantFixture, flujo, hallazgo, itemsCoca, ordenes, seedSecondTenant } from "./arnes.ts";
+import { buildRestaurantFixture, flujo, itemsCoca, ordenes, seedSecondTenant } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 beforeEach(() => {
@@ -118,7 +118,7 @@ describe("R12-F3 campos con el tipo equivocado en crear_pedido", () => {
 describe("R12-F3b el nombre de un aviso al equipo tampoco puede ser un objeto", () => {
   // R12-17 (P2): `registrar_contacto` con `pedido_telefonico` / `cliente_llego` pasaba `customer_name` por `String(...)`: el aviso del panel decia «[object Object]».
   for (const [etiqueta, nombre] of [["objeto", { a: 1 }], ["arreglo", ["Ana", "Beto"]], ["booleano", true]] as const) {
-    hallazgo(`R12-17 [P2, corregido] registrar_contacto pedido_telefonico con customer_name ${etiqueta}: el aviso no dice «[object Object]»`, async () => {
+    it(`R12-17 [P2, corregido] registrar_contacto pedido_telefonico con customer_name ${etiqueta}: el aviso no dice «[object Object]»`, async () => {
       const f = buildRestaurantFixture();
       const s = flujo(f, "9994445555");
       const out = await s.seguro("registrar_contacto", { customer_name: nombre, reason: "pedido_telefonico", message: "dejar el portón abierto" });

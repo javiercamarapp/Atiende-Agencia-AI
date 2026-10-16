@@ -1715,7 +1715,7 @@ async function pasarNotaDePedidoTelefonico(repo: RestaurantesRepository, ctx: Ag
   await registerCallbackRequest(repo, {
     organizationId: ctx.organizationId,
     propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
-    customerName: String(input.customer_name ?? "Cliente"),
+    customerName: textoOpcional(input.customer_name)?.trim() || "Cliente", // R12-17: solo un texto es un nombre ("[object Object]" nunca llega al panel)
     customerPhone: ctx.phone as string,
     reason: "pedido_telefonico",
     sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:pedido_telefonico`.slice(0, 255) : null,
@@ -1738,7 +1738,7 @@ async function avisarLlegadaDelCliente(repo: RestaurantesRepository, ctx: AgentT
   await registerCallbackRequest(repo, {
     organizationId: ctx.organizationId,
     propertyId: encontrado?.propertyId ?? ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
-    customerName: String(input.customer_name ?? "Cliente"),
+    customerName: textoOpcional(input.customer_name)?.trim() || "Cliente", // R12-17: solo un texto es un nombre ("[object Object]" nunca llega al panel)
     customerPhone: ctx.phone as string,
     reason: "cliente_llego",
     sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:cliente_llego`.slice(0, 255) : null,
