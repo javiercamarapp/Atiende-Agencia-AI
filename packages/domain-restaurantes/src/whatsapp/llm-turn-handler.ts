@@ -32,6 +32,7 @@ import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import { bloqueCotizacionVigente, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
+import { cierreMaquinaActiva, componerRespuestaConResumen } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
@@ -45,7 +46,7 @@ import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
-import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
+import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -458,6 +459,8 @@ export interface WhatsAppLlmAgentOptions {
   readonly encolarComanda?: (pedido: PedidoParaComanda) => Promise<ResultadoEncolarPedido>;
   /** Enlace de facturación en línea (https) para el perfil PM. Ausente = el agente dice que una persona se lo confirma. */
   readonly urlFacturacion?: string | null;
+  /** Base https publica de los PDF del menu por sucursal (`PM_MENU_PDF_BASE_URL`). Ausente = `enviar_menu` comparte el enlace de la pagina oficial del menu. */
+  readonly menuPdfBaseUrl?: string | null;
   /** Ajustes del agente de la organizacion (modelo elegido y temperatura efectiva). Ausente o `null` = el modelo y la temperatura de siempre. Nunca debe
    * lanzar: un fallo aqui no puede tumbar el turno (el llamador degrada a los valores de siempre). */
   readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
@@ -636,6 +639,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let pedirConfirmacionEnTurno: { readonly quoteHash: string; readonly quotedAtMs: number } | null = null;
       // Huella de la ultima cotizacion EXITOSA de este turno (cotizar_pedido / repetir_pedido).
       let cotizacionDelTurno: string | null = null;
+      // R11 (cierre como maquina de estados): resumen armado por el servidor para la cotizacion de este turno (solo con la maquina activa).
+      let resumenCanonicoDelTurno: { texto: string; total: number } | null = null;
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
@@ -670,7 +675,20 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
       // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
       const pendientes = mensajesSinResponder(messages).slice(-5);
-      const riesgo = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      const riesgoClasificado = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
+      const textoPendiente = pendientes.map((m) => m.content).join(" / ");
+      const recibeDetalle =
+        esperaDetalleDeQueja(messages) &&
+        pendientes.length > 0 &&
+        (riesgoClasificado === null || riesgoClasificado.motivo === "queja") &&
+        !pendientes.every((m) => noEsDetalleDeQueja(m.content));
+      const quejaSinDetalle = !recibeDetalle && riesgoClasificado?.motivo === "queja" && !quejaTraeDetalle(riesgoClasificado.text);
+      const riesgo: ReturnType<typeof classifyHighRiskIntentInMessages> = recibeDetalle
+        ? { intent: "queja", motivo: "queja", text: textoPendiente, reply: respuestaDeQuejaConDetalle(QUEJA_DETALLE_RECIBIDO, textoPendiente) }
+        : riesgoClasificado && riesgoClasificado.motivo === "queja"
+          ? { ...riesgoClasificado, reply: quejaSinDetalle ? QUEJA_PREGUNTA_DETALLE : respuestaDeQuejaConDetalle(riesgoClasificado.reply, riesgoClasificado.text) }
+          : riesgoClasificado;
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
@@ -681,12 +699,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
         }
         // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).
-        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto ? subtipoQueja(riesgo.text) : null;
+        const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle ? subtipoQueja(riesgo.text) : null;
         const aviso = await executeAgentToolSafely(
           repo,
           { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
           "escalar_a_humano",
-          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${riesgo.text}`.slice(0, 500) },
+          { customer_name: nombre, motivo: riesgo.motivo, resumen: `${subtipoDeQueja ? `[queja:${subtipoDeQueja}] ` : ""}${recibeDetalle ? "[detalle de la queja] " : quejaSinDetalle ? "[queja sin detalle, se le pregunto que paso] " : ""}${riesgo.text}`.slice(0, 500) },
         );
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
@@ -695,9 +713,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
         // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
-        escalarMotivo = riesgo.motivo;
+        // Queja sin detalle: el aviso ya quedo registrado, pero NO se abre la toma (el agente sigue y recibe el detalle en el siguiente mensaje).
+        if (!quejaSinDetalle) escalarMotivo = riesgo.motivo;
         // Autopiloto: la queja queda ligada al ultimo pedido del telefono (solicitud de compensacion, decide una persona); no cambia la respuesta.
-        if (riesgo.motivo === "queja" && options.autopiloto) {
+        if (riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle) {
           await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: riesgo.text, ahora: now() });
         }
         tele.resultado = "escalado_alto_riesgo";
@@ -853,6 +872,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const guardiaSoloRegistro = !pedidoExiste && previoActivo && !retenidoEnTurno && armandoOtro;
           const pedidoExisteFinal = pedidoExiste || (previoActivo && !retenidoEnTurno && !armandoOtro);
           if (perfil === "taqueria_pm" && !pedidoExisteFinal) respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : undefined, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
+          // R11: si el modelo cerro pidiendo la confirmacion SIN el total de la cotizacion, el servidor pone su resumen canonico (no toca mensajes que preguntan otra cosa).
+          if (perfil === "taqueria_pm" && !orderId && !escalarMotivo && resumenCanonicoDelTurno && cierreMaquinaActiva()) {
+            respuesta = componerRespuestaConResumen(respuesta, resumenCanonicoDelTurno.texto, resumenCanonicoDelTurno.total);
+          }
           const replyFinal = safeReply(respuesta);
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
           // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».
@@ -884,11 +907,17 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...modoCtx }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             anyToolCalled = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
+            {
+              // Lo entrega cotizar_pedido y, cuando el servidor rechaza el cierre (resumen no mostrado, pago/propina distintos), el propio rechazo.
+              const rc = result as { resumen_canonico?: unknown; resumen_total?: unknown; quote?: { total?: unknown } } | null;
+              const total = typeof rc?.quote?.total === "number" ? rc.quote.total : typeof rc?.resumen_total === "number" ? rc.resumen_total : null;
+              if (typeof rc?.resumen_canonico === "string" && total !== null) resumenCanonicoDelTurno = { texto: rc.resumen_canonico, total };
+            }
             if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) {
               const q = (result as { quote?: { promocion_aplicada?: unknown; promociones_sugeridas?: readonly unknown[] } } | null)?.quote;
               lastQuoteRespaldaCortesia = q?.promocion_aplicada != null || (q?.promociones_sugeridas?.length ?? 0) > 0;

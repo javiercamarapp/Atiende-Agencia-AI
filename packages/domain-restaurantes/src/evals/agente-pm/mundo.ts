@@ -7,6 +7,7 @@
 // `capacidades` marca lo que el servidor REAL todavia no tiene (PR-3 tortilla mixta, PR-4 promociones
 // automaticas): con `contratoObjetivo` el mundo se comporta como lo pide el set dorado; con `contratoActual`
 // se comporta como el registro de hoy (rechaza "mixta", no aplica promociones).
+import { resolverMenuPdf } from "../../menu-pdf.ts";
 import { readFileSync } from "node:fs";
 import type { CasoEval, ClienteConocido, ComandaRegistrada, EventoTraza, FixturesExtra, ProductoMenu, SuiteEval } from "./tipos.ts";
 
@@ -33,6 +34,7 @@ export const HERRAMIENTAS_REGISTRO = [
   "confirmar_resumen",
   "crear_pedido",
   "registrar_contacto",
+  "enviar_menu",
   "escalar_a_humano",
 ] as const;
 
@@ -177,6 +179,11 @@ export class Mundo {
         return this.crear(args);
       case "registrar_contacto":
         return { ok: true };
+      case "enviar_menu": {
+        // Mundo de evaluacion: nunca manda nada; solo dice lo que diria la herramienta real con una base de PDF configurada.
+        const slug = String(args.branch_slug ?? "");
+        return resolverMenuPdf(slug, "https://menus.ejemplo.test/pm").tipo === "sin_menu" ? { ok: true, enviado: "sin_menu", branch_slug: slug } : { ok: true, enviado: "pdf", branch_slug: slug };
+      }
       case "escalar_a_humano":
         return this.escalar(args);
       default:
