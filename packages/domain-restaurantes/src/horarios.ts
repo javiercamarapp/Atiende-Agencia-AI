@@ -301,5 +301,10 @@ export function corteDiaNegocioMinutos(horario: HorarioSucursal | null | undefin
 /** Dia de negocio (YYYY-MM-DD) de un instante en la zona de la sucursal: el turno que cierra a la 01:00 sigue siendo el dia anterior. */
 export function diaDeNegocio(instante: Date, zonaHoraria: string | null | undefined, horario: HorarioSucursal | null | undefined): string {
   const zona = resolverZonaHorariaNegocio(zonaHoraria);
-  return fechaLocal(new Date(instante.getTime() - corteDiaNegocioMinutos(horario) * 60_000), zona);
+  const corte = corteDiaNegocioMinutos(horario);
+  const fecha = fechaLocal(instante, zona);
+  if (corte === 0) return fecha;
+  // R12-05: aritmetica sobre el RELOJ DE PARED local (como la funcion SQL `restaurantes.dia_negocio`), no restando minutos al instante UTC: en la hora repetida del cambio de horario
+  // de otono (01:30 ocurre dos veces) restar 120 min UTC daba el dia siguiente para la segunda 01:30 aunque el negocio sigue abierto hasta las 02:00 locales.
+  return componentesLocales(instante, zona).minutos < corte ? fechaAnterior(fecha) : fecha;
 }

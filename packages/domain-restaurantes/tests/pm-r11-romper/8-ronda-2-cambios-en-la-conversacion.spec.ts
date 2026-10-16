@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { diaDeNegocio, estaAbiertoAhora } from "../../src/horarios.ts";
 import { QUOTE_TTL_MS } from "../../src/agent-tools/order-flow.ts";
-import { buildRestaurantFixture, flujo, hallazgo, ordenes } from "./arnes.ts";
+import { buildRestaurantFixture, flujo, ordenes } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 beforeEach(() => {
@@ -201,7 +201,7 @@ describe("R12-B3 horario de verano (zona con DST) y dia de negocio", () => {
     expect(estaAbiertoAhora(horario, new Date("2026-03-08T19:00:00Z"), ZONA).abierto).toBe(true); // 12:00 PDT
   });
 
-  hallazgo("R12-05 [P2, corregido] el dia de negocio no se corre ni se duplica en los dos dias de cambio de hora (corte 02:00)", () => {
+  it("R12-05 [P2, corregido] el dia de negocio no se corre ni se duplica en los dos dias de cambio de hora (corte 02:00)", () => {
     const d = (iso: string) => diaDeNegocio(new Date(iso), ZONA, horario);
     expect(d("2026-11-01T08:30:00Z")).toBe("2026-10-31"); // 01:30 PDT: sigue siendo el dia de negocio del 31
     expect(d("2026-11-01T09:30:00Z")).toBe("2026-10-31"); // 01:30 PST (segunda vez)
