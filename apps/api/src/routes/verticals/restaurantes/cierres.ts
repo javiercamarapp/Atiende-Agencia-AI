@@ -145,6 +145,7 @@ export function restaurantesCierresRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
 
     const resultado = await repo(c).generar(organizationId, propertyId, tipo, fecha);
     if (resultado.estado === "no_disponible") throw Errors.serviceUnavailable("Los cierres del día aún no están activos en este negocio (falta la actualización de base de datos).");
+    if (resultado.estado === "periodo_abierto") throw Errors.validation("El turno de ese día todavía no termina: el cierre se puede generar cuando cierre la sucursal.");
     if (resultado.estado === "sin_actividad") throw Errors.serviceUnavailable("No se pudo generar el cierre.");
 
     if (resultado.estado === "creado") {

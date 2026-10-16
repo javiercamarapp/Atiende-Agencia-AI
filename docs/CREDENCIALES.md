@@ -38,6 +38,10 @@ explícito, nunca a datos falsos.
 | `APP_BASE_URL` | tu dominio real de `apps/web`, p.ej. `https://app.atiende.ai` | No | Arma el link `/aceptar-invitacion?token=...` dentro del correo de invitación de staff | Default `https://app.atiende.ai` (nunca bloquea la invitación, solo afecta el link) | No |
 | `TRUSTED_PROXY_IP_HEADER` | nombre de un header, p.ej. `cf-connecting-ip` (minúsculas) | No | Declara qué header de IP confiar como PRIMARIO en `http-security.ts::requestActor` (usado por todo rate-limit por IP de este repo) — solo tiene efecto si un proxy real y confiable (ej. Cloudflare) está delante de Vercel y garantiza que ESE header no lo puede escribir el cliente final. Hoy este despliegue es Vercel directo (sin evidencia de ningún proxy así en `vercel.json`), así que se deja SIN configurar a propósito. | Sin ella, se usa el último salto de `X-Forwarded-For` (el que Vercel mismo agrega, no falsificable) con `X-Real-IP` como respaldo — nunca `cf-connecting-ip` por defecto (ver hallazgo de revisión del PR #167: ese header, sin un proxy real delante, lo escribe el cliente). | No |
 
+## Demostraciones públicas de agentes
+
+`PUBLIC_DEMO_AGENTS_ENABLED=true` habilita `/v1/demo-agentes/:solution` para los nueve perfiles ficticios de marketing. Es una bandera no secreta, opcional y desactivada por defecto. Reutiliza `OPENROUTER_API_KEY` (chat), `GEMINI_API_KEY` (voz) y `DATABASE_URL` (límites atómicos); no requiere una organización real ni herramientas de negocio. Si falta un proveedor o falla el contador, el canal falla cerrado. Límites y contrato en [demo-agents/README.md](../apps/api/src/demo-agents/README.md).
+
 ## Base de datos (Supabase Postgres)
 
 | Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
@@ -60,6 +64,24 @@ quitó en esta pasada — ver más abajo).
 | `LICITACIONES_WHATSAPP_PHONE_NUMBER_ID` | Meta for Developers → tu App → WhatsApp → API Setup (`phone_number_id` del número remitente) | No | Remitente de los avisos y botones go/no-go de licitaciones (L-05); el webhook entrante es `/v1/licitaciones/whatsapp/webhook` | El webhook acusa recibo sin procesar y el envío de licitaciones se omite (sin error) | No |
 | `RENTAS_ACCESS_KEY` | La generas tú: `openssl rand -base64 32` (32 bytes en base64) y la guardas en un gestor de secretos con respaldo (no la reutilices de otra llave) | Sí | Cifrado AES-256-GCM en reposo de la dirección exacta, el código de acceso y las indicaciones de cada unidad de rentas (`@atiende/domain-rentas::acceso/cipher`, migración rentas 028) | Leer o guardar instrucciones (`/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones`) responde 503 «no disponible: falta RENTAS_ACCESS_KEY»; la liberación al huésped no envía nada y queda como error del cron (`/internal/rentas/acceso-huesped`); nunca se guarda ni se muestra texto plano. Perder la llave vuelve ilegibles las instrucciones ya cifradas | No |
 | `HOTELES_IDENTITY_KEY` | La generas tú: `openssl rand -base64 32` (32 bytes en base64) y la guardas en un gestor de secretos con respaldo | Sí | Cifrado AES-256-GCM de la bóveda de identidad de hoteles (`@atiende/domain-hoteles::identity`, migración 031): captura y revelación de documentos | `POST /hoteles/:propertyId/identidad` y `.../revelar` responden 503 explícito (nunca se guarda un documento en claro); la lista avisa `llaveConfigurada:false`. Perder la llave vuelve ilegibles las identidades ya capturadas | No |
+
+Estados de entrega (restaurantes): la app de Meta debe estar suscrita al campo **`messages`** del webhook (Meta for Developers → tu App → WhatsApp →
+Configuration → Webhook fields → `messages` → Subscribe). Los `statuses` de entrega y lectura (`delivered`, `read`, `failed`) llegan por ese mismo campo al
+mismo webhook firmado (`/v1/restaurantes/whatsapp/webhook`); sin la suscripcion los avisos fallidos no se detectan. No hay una variable nueva: usa
+`WHATSAPP_APP_SECRET` y requiere aplicar la migracion `066_whatsapp_estados_entrega.sql` (ver `docs/PLANTILLAS-WHATSAPP.md`, "Estados de entrega").
+
+#### WhatsApp multinúmero: variables opcionales (paquete 01)
+
+Todas opcionales y `null`/vacías si no existen; ninguna bloquea el arranque. Las consumen la verificación de solo lectura y los paquetes de alta de números.
+
+| Variable | De dónde sale | Para qué sirve | Si falta |
+|---|---|---|---|
+| `WHATSAPP_GRAPH_API_VERSION` | Versión de Graph API, formato `v23.0` (`^v\d{2}\.0$`) | Versión con la que envía `MetaGraphWhatsAppClient`. La `v21.0` se retira el 21-ene-2027 | Se usa el default del cliente (`v21.0`); un valor con otra forma se ignora con una advertencia |
+| `META_APP_ID` | Meta for Developers → tu App → Settings → Basic | Comprobar que la app está suscrita a la WABA; Embedded Signup | La verificación marca "app no verificada" |
+| `WHATSAPP_WABA_IDS` | WhatsApp Manager → ID de la cuenta de WhatsApp Business (varias, separadas por comas) | WABAs a revisar por defecto | Hay que pasar `--waba` al script |
+| `WHATSAPP_ES_CONFIG_ID` | Meta for Developers → Facebook Login for Business → configuración de Embedded Signup v4 | Alta de números por Embedded Signup | Esa vía no está disponible |
+
+Verificación de solo lectura (sin enviar nada): `scripts/verificar-meta-whatsapp/` (ver su README). Lee el token únicamente de `WHATSAPP_ACCESS_TOKEN` en el entorno de tu terminal.
 
 Nota: `WHATSAPP_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` son obligatorias para
 **arrancar la API entera**, aunque solo gatean el webhook ENTRANTE de 3 verticales
@@ -141,6 +163,9 @@ falso).
 |---|---|:-:|---|---|:-:|
 | `GEMINI_API_KEY` | Google AI Studio → API keys | Sí | El adaptador de Gemini pide un token efímero de un solo uso para el preview de voz del panel (`POST /v1/restaurantes/:propertyId/admin/voz/preview/sesion`); la llave nunca sale del servidor | La ruta responde 503 "voz no configurada" (nunca un falso éxito); configuración de voz y conversaciones siguen disponibles | No |
 | `VOICE_PREVIEW_TOKEN_SECRET` | lo generas tú (mínimo 16 caracteres, p. ej. `openssl rand -hex 32`) | Sí | Firma (HMAC-SHA256) el token efímero de preview, ligado a organización + sucursal + sesión, y verifica `POST /internal/restaurantes/voz/previews/consumir` | Mismo 503 en la emisión y en la consumición | No |
+| `DEEPGRAM_API_KEY` | Deepgram Console → API Keys (cuenta de pago por uso) | Sí | Escalón `cascada-v2` de la escalera de voz: STT (Nova-3, `es-419`) y TTS (Aura-2, voz `aura-2-estrella-es`) en streaming con UNA sola llave. La usa el worker de voz (Fly); en la API solo alimenta el estado honesto del panel (`GET /hoteles/:propertyId/voz/estado`) | El estado dice "No disponible aún: requiere DEEPGRAM_API_KEY" y la escalera salta el escalón (sigue Gemini Live o la cascada de respaldo) | No |
+| `VOZ_CASCADA_V2_HABILITADA` | lo decides tú (`1` para encender) | No | Interruptor de la cascada v2: APAGADO por omisión aunque exista `DEEPGRAM_API_KEY`; se enciende solo tras pasar `scripts/voz-cascada-v2-smoke`. En la API solo alimenta el estado honesto del panel | El estado dice «No disponible aún: requiere habilitar cascada-v2» y la escalera salta el escalón | No |
+| `VOZ_LLM_PROVEEDORES_ZDR` | lo decides tú (slugs de OpenRouter separados por coma, p. ej. `google-vertex/us,amazon-bedrock`) | No | Proveedores permitidos (`provider.only`) para el cerebro de voz de la cascada v2, que además exige retención cero (`provider.zdr`). Por omisión `google-vertex,amazon-bedrock`, que incluyen endpoints de Europa: acotar la región es una decisión pendiente | Se usan los de la plataforma | No |
 
 Las rutas internas del registrador de conversaciones (`/internal/restaurantes/voz/...`) usan el
 secreto ya existente `INTERNAL_SECRET` (header `x-atiende-internal-secret`).
@@ -164,6 +189,7 @@ extracción de licitaciones cae a solo reglas deterministas.
 | `OPENROUTER_ZDR` | opcional: `1` exige endpoints Zero Data Retention (habilitarlo antes en la cuenta de OpenRouter) | No |
 | `OPENROUTER_COUNTRY_OF_RESIDENCE` | opcional: ISO 3166-1 alpha-2 SOLO si confirmaste que la ruta cumple | No |
 | `OPENAI_API_KEY` + `OPENAI_MODEL` | LEGADO: solo si no hay llave de OpenRouter | Sí / No |
+| `PM_URL_FACTURACION` | enlace https de facturación en línea del negocio (Los Taquitos de PM); sin ella el agente no inventa uno y escala la factura a una persona | No |
 
 **Modelos baratos del Copiloto (CHAT-05).** No hay variables nuevas: el modelo barato del chat (`*:data_chat`) y el escalado de la
 cascada de cifras (`*:data_chat_retry`) se eligen con `LLM_MODELS_JSON` (validado: solo proveedores de EE.UU. con ZDR,
@@ -211,7 +237,8 @@ callback. `gpt-live-1` salió de la escalera (pedía otra llave). El costo de ca
 escalon (`proveedor`). Hoteles autentica las tools del worker con el secreto POR PROPERTY (`hoteles.voice_agent_config`, rotación en el panel) y no usa
 `VOICE_TOOL_SECRET`; citas usa `VOICE_TOOL_SECRET` (secreto de plataforma) y el negocio sale del `orgSlug` de la ruta `/v1/citas/:orgSlug/voz/:herramienta`. Variables, orden de activación, métricas y rollback de restaurantes están en `docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
 llamada, `VOICE_REQUIRE_CALL_TOKEN=true` al activar, y `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` más el trunk SIP de Twilio en el
-host del worker de telefonía (que aún no existe en el repo, ni para restaurantes, hoteles ni citas).
+host del worker de telefonía. Para **restaurantes** el worker existe en `apps/voice-worker` (variables `ATIENDE_API_URL`, `INTERNAL_SECRET`, `VOICE_DNIS_MAP` con un secreto por sucursal,
+`VOICE_TOPE_MENSUAL_USD`, `VOICE_COSTO_MAX_LLAMADA_USD`, `GEMINI_API_KEY`/`OPENROUTER_API_KEY`, y las opcionales `GEMINI_BACKEND`/`VERTEX_*` y `VOICE_VAD_*`: ver `apps/voice-worker/README.md` y el checklist de llaves de `docs/VOZ-ACTIVACION.md`; sin ellas responde 503 en `/salud` y no contesta); para hoteles y citas todavía no existe.
 
 ## Voz: sin ElevenLabs en ninguna vertical
 

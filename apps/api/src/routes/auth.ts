@@ -11,6 +11,7 @@
 // ya prueba en producción.
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { avisarAceptacionInvitacionSuperadmin } from "./superadmin-organizaciones-equipo.ts";
 import { authMiddleware, hashInviteToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hashPassword, verifyPassword, StaffInviteInvalidError, StaffSecurityUnavailableError } from "@atiende/db";
@@ -456,6 +457,9 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       if (err instanceof StaffInviteInvalidError) throw Errors.staffInviteTokenInvalido();
       throw err;
     }
+
+    // Aviso in-app al superadmin si la invitación la creó un superadmin (best-effort, sesión propia; nunca rompe el alta).
+    await avisarAceptacionInvitacionSuperadmin(deps, hashInviteToken(token));
 
     // Sesión inmediata (mismo `issueSession` que login/refresh) — el invitado queda
     // "vinculado" Y autenticado en una sola llamada, sin un paso extra de login.

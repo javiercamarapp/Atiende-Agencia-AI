@@ -2,7 +2,7 @@
 // barge-in, silencio, errores honestos y limpieza. Nada de WebAudio ni red: la capa del navegador esta detras de `EntornoVoz`.
 import { describe, expect, it } from "vitest";
 import { crearFabricaGeminiLive } from "../src/lib/voz/adaptador-gemini-live.ts";
-import type { CapturaMicrofono, EntornoVoz, ReproductorAudio, SocketPreview } from "../src/lib/voz/adaptador-gemini-live.ts";
+import type { CapturaMicrofono, EntornoVoz, OpcionesGeminiLive, ReproductorAudio, SocketPreview } from "../src/lib/voz/adaptador-gemini-live.ts";
 import { aPcm16Base64, dePcm16Base64, nivelRms, remuestrear } from "../src/lib/voz/audio-pcm.ts";
 import type { CallbacksAdaptador, CambioEstado } from "../src/lib/voz/adaptador.ts";
 import type { SesionPreviewVoz } from "../src/verticals/restaurantes/lib/voz-client.ts";
@@ -30,10 +30,11 @@ class SocketFalso implements SocketPreview {
   }
 }
 
-function montar(opts: { fallaMicrofono?: string; sesion?: () => Promise<SesionPreviewVoz>; autoSetup?: boolean } = {}) {
+function montar(opts: { fallaMicrofono?: string; sesion?: () => Promise<SesionPreviewVoz>; autoSetup?: boolean; ejecutar?: OpcionesGeminiLive["ejecutarHerramienta"] } = {}) {
   const sockets: SocketFalso[] = [];
   const reproducido: { muestras: number; tasa: number }[] = [];
   const log = { cortes: 0, repCerrado: false, micDetenido: false, temporizadores: 0, repeticionesActivas: 0 };
+  const esperas: (() => void)[] = [];
   let onBloque: ((m: Float32Array, t: number) => void) | null = null;
   const reproductor: ReproductorAudio = {
     encolar: (m, t) => void reproducido.push({ muestras: m.length, tasa: t }),
@@ -58,7 +59,10 @@ function montar(opts: { fallaMicrofono?: string; sesion?: () => Promise<SesionPr
       return c;
     },
     crearReproductor: () => reproductor,
-    esperar: () => () => undefined,
+    esperar: (fn) => {
+      esperas.push(fn);
+      return () => void esperas.splice(esperas.indexOf(fn), 1);
+    },
     repetir: () => {
       log.repeticionesActivas += 1;
       return () => void (log.repeticionesActivas -= 1);
@@ -69,8 +73,8 @@ function montar(opts: { fallaMicrofono?: string; sesion?: () => Promise<SesionPr
   const lineas: LineaTranscripcion[] = [];
   let terminado = false;
   const cb: CallbacksAdaptador = { cambiar: (c) => void cambios.push(c), linea: (l) => void lineas.push(l), terminado: () => void (terminado = true) };
-  const adaptador = crearFabricaGeminiLive({ entorno, crearSesion: opts.sesion ?? (async () => SESION) })(cb);
-  return { adaptador, sockets, cambios, lineas, reproducido, log, bloque: (m: Float32Array, t: number) => onBloque?.(m, t), fin: () => terminado };
+  const adaptador = crearFabricaGeminiLive({ entorno, crearSesion: opts.sesion ?? (async () => SESION), ...(opts.ejecutar ? { ejecutarHerramienta: opts.ejecutar } : {}) })(cb);
+  return { adaptador, esperas, sockets, cambios, lineas, reproducido, log, bloque: (m: Float32Array, t: number) => onBloque?.(m, t), fin: () => terminado };
 }
 
 const ultimoModo = (c: CambioEstado[]) => [...c].reverse().find((x) => x.modo !== undefined)?.modo;
@@ -192,5 +196,48 @@ describe("AdaptadorGeminiLive", () => {
     m.sockets[0]!.onclose?.({ code: 1000 });
     expect(m.cambios.length).toBeGreaterThanOrEqual(antes); // no lanza ni vuelve a pintar un error
     expect([...m.cambios].reverse().find((c) => c.error)).toBeUndefined();
+  });
+});
+
+describe("AdaptadorGeminiLive: herramientas (relevo al servidor en modo preview)", () => {
+  const respuestas = (m: ReturnType<typeof montar>) =>
+    m.sockets[0]!.enviados.filter((e) => "toolResponse" in e).map((e) => (e as { toolResponse: { functionResponses: { id: string; name: string; response: unknown }[] } }).toolResponse.functionResponses);
+  const esperarRespuesta = async (m: ReturnType<typeof montar>, n: number) => {
+    for (let i = 0; i < 20 && respuestas(m).length < n; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it("un toolCall se releva al servidor con la sesion y el resultado vuelve como toolResponse con el mismo id", async () => {
+    const llamadas: unknown[] = [];
+    const m = montar({ ejecutar: async (sesion, l) => (llamadas.push([sesion.sesionId, l]), { quote: { total: 90 } }) });
+    await m.adaptador.iniciar();
+    m.sockets[0]!.servidor({ toolCall: { functionCalls: [{ id: "c1", name: "cotizar_pedido", args: { branch_slug: "fco-montejo" } }] } });
+    await esperarRespuesta(m, 1);
+    expect(llamadas).toEqual([["s-1", { id: "c1", nombre: "cotizar_pedido", argumentos: { branch_slug: "fco-montejo" } }]]);
+    expect(respuestas(m)[0]).toEqual([{ id: "c1", name: "cotizar_pedido", response: { quote: { total: 90 } } }]);
+  });
+
+  it("si el servidor falla, el modelo recibe un error (la llamada sigue); sin manejador tambien se contesta con error honesto", async () => {
+    const falla = montar({ ejecutar: async () => { throw new Error("Sucursal cerrada"); } });
+    await falla.adaptador.iniciar();
+    falla.sockets[0]!.servidor({ toolCall: { functionCalls: [{ id: "c2", name: "crear_pedido", args: {} }] } });
+    await esperarRespuesta(falla, 1);
+    expect(respuestas(falla)[0]![0]!.response).toEqual({ error: "Sucursal cerrada" });
+    expect(ultimoModo(falla.cambios)).toBe("escuchando");
+
+    const sin = montar();
+    await sin.adaptador.iniciar();
+    sin.sockets[0]!.servidor({ toolCall: { functionCalls: [{ id: "c3", name: "buscar_cliente" }] } });
+    await esperarRespuesta(sin, 1);
+    expect((respuestas(sin)[0]![0]!.response as { error: string }).error).toMatch(/no puede ejecutar herramientas/);
+  });
+
+  it("una herramienta que no responde en 4 s se contesta con un error de tiempo", async () => {
+    const m = montar({ ejecutar: () => new Promise(() => undefined) });
+    await m.adaptador.iniciar();
+    m.sockets[0]!.servidor({ toolCall: { functionCalls: [{ id: "c4", name: "buscar_producto", args: {} }] } });
+    await new Promise((r) => setTimeout(r, 0));
+    m.esperas.at(-1)!();
+    await esperarRespuesta(m, 1);
+    expect((respuestas(m)[0]![0]!.response as { error: string }).error).toMatch(/tardó demasiado/);
   });
 });

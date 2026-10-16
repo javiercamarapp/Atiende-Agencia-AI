@@ -1,16 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOrder } from "../src/orders.ts";
+import { promoverProgramadosTodasLasOrganizaciones } from "../src/pedidos-programados.ts";
 import { MapaProductoCodigo } from "../src/softrestaurant/catalog-map.ts";
 import { FakeSoftRestaurantAdapter } from "../src/softrestaurant/fake-adapter.ts";
 import { InMemoryComandaOutboxStore } from "../src/softrestaurant/outbox-memory-store.ts";
 import {
   crearResolverSucursalPos,
+  encolarComandaParaPedido,
   drenarComandas,
   encolarComandasDePromovidos,
   type DepsComandaPos,
 } from "../src/softrestaurant/outbox-service.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
+
+afterEach(() => vi.useRealTimers());
 
 const T0 = new Date("2026-09-30T18:00:00.000Z");
 
@@ -74,6 +78,43 @@ describe("encolarComandasDePromovidos", () => {
     expect(t.port.llamadasCrear).toHaveLength(0);
   });
 
+  it("la propina y el canal del pedido programado viajan en la comanda (follow-up de #294)", async () => {
+    const t = await preparar({ modo: "sombra" });
+    const promovido = { ...t.order, status: "pending" as const, programadoPara: HORA, canal: "recoger" as const, propina: 35 };
+    await encolarComandasDePromovidos(t.deps, [promovido]);
+    expect(t.store.todas()[0]).toMatchObject({ payload: { propina: 35, tipo: "recoger", horaCompromiso: HORA } });
+  });
+
+  it("un pedido programado sin propina (null o 0) no manda propina al POS", async () => {
+    const t = await preparar({ modo: "sombra" });
+    await encolarComandasDePromovidos(t.deps, [{ ...t.order, status: "pending", programadoPara: HORA, propina: null }]);
+    expect(t.store.todas()[0]!.payload).not.toHaveProperty("propina");
+  });
+
+  it("de punta a punta en memoria: createOrder programado con propina -> promover -> la comanda lleva la propina", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T12:00:00-06:00"));
+    const t = await preparar({ modo: "sombra" });
+    t.fx.repo.seedBranchPolicy(t.fx.propertyId, { propinaPolitica: "solo_tarjeta" });
+    const programado = await createOrder(t.fx.repo, {
+      organizationId: t.fx.organizationId,
+      branchSlug: "fco-montejo",
+      customerName: "Deb",
+      customerPhone: "9990001111",
+      paymentMethod: "tarjeta",
+      canal: "recoger",
+      propina: 20,
+      programadoPara: "2026-10-03T14:00:00-06:00",
+      items: [{ productId: t.fx.products.cocaCola, requestedQuantity: 2 }],
+      source: "web",
+    });
+    const { promovidos } = await promoverProgramadosTodasLasOrganizaciones(t.fx.repo, { now: new Date("2026-10-03T19:45:00.000Z") });
+    expect(promovidos.map((o) => o.id)).toEqual([programado.id]);
+    await encolarComandasDePromovidos(t.deps, promovidos);
+    expect(t.store.todas()[0]).toMatchObject({ orderId: programado.id, payload: { propina: 20, tipo: "recoger" } });
+    vi.useRealTimers();
+  });
+
   it("idempotente: promover/reencolar el mismo pedido dos veces deja una sola fila", async () => {
     const t = await preparar({ modo: "sombra" });
     const promovido = { ...t.order, status: "pending" as const, programadoPara: HORA };
@@ -123,5 +164,24 @@ describe("encolarComandasDePromovidos", () => {
     const otro = { ...t.order, id: randomUUID(), status: "pending" as const, programadoPara: HORA };
     const r = await encolarComandasDePromovidos(t.deps, [{ ...t.order, status: "pending", programadoPara: HORA }, otro]);
     expect(r).toEqual({ intentados: 2, encoladas: 1, omitidas: 0, errores: 1 });
+  });
+});
+
+// Hallazgo del e2e de agentes: voz y WhatsApp encolaban la comanda justo despues de crear_pedido sin mirar el estado; con
+// `programado_para` en las tools eso habria mandado el pedido al POS horas antes. La puerta unica lo impide.
+describe("encolarComandaParaPedido y los pedidos programados", () => {
+  it("un pedido en estado programado NO encola comanda (ni en modo activo); la encola la promocion", async () => {
+    const t = await preparar({ modo: "activo" });
+    const r = await encolarComandaParaPedido(t.deps, { order: { ...t.order, status: "programado" } });
+    expect(r).toMatchObject({ modo: "apagado", motivo: "programado", fila: null });
+    expect(t.store.todas()).toHaveLength(0);
+    expect(t.port.llamadasCrear).toHaveLength(0);
+  });
+
+  it("el mismo pedido ya promovido (pending) si encola", async () => {
+    const t = await preparar({ modo: "sombra" });
+    const r = await encolarComandaParaPedido(t.deps, { order: { ...t.order, status: "pending" } });
+    expect(r.modo).toBe("sombra");
+    expect(t.store.todas()).toHaveLength(1);
   });
 });

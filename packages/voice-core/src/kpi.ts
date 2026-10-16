@@ -221,8 +221,9 @@ export function validarUmbrales(entrada: { umbralCostoDiaCentavosMxn: unknown; u
 // Eventos que reporta el servicio de voz
 // ---------------------------------------------------------------------------------------------------
 
-export type VozEventoTipo = "tool_call" | "error_proveedor";
-export const VOZ_EVENTO_TIPOS: readonly VozEventoTipo[] = ["tool_call", "error_proveedor"];
+/** `latencia_voz` (migracion 046): latencia de voz a voz de UNA respuesta del agente (fin de la voz del cliente -> primer audio del agente). */
+export type VozEventoTipo = "tool_call" | "error_proveedor" | "latencia_voz";
+export const VOZ_EVENTO_TIPOS: readonly VozEventoTipo[] = ["tool_call", "error_proveedor", "latencia_voz"];
 export type VozProveedorFallo = "twilio" | "gemini" | "otro";
 export const VOZ_PROVEEDORES_FALLO: readonly VozProveedorFallo[] = ["twilio", "gemini", "otro"];
 
@@ -235,7 +236,7 @@ export interface VozEventoEntrada {
   readonly proveedor: VozProveedorFallo | null;
   /** Obligatorio en `tool_call`. */
   readonly herramienta: string | null;
-  /** Obligatorio en `tool_call`. */
+  /** Obligatorio en `tool_call` y en `latencia_voz`. */
   readonly latenciaMs: number | null;
   /** Codigo corto del proveedor (HTTP, Twilio...), nunca el mensaje completo. */
   readonly codigo: string | null;

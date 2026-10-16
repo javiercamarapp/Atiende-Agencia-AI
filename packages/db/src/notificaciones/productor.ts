@@ -43,6 +43,8 @@ export interface ResultadoEmision {
   /** Destinatarios nuevos. 0 = "sin_nuevas": ya existia (dedupe), no habia a quien notificar o se alcanzo el tope de volumen. */
   readonly destinatarios: number;
   readonly detalle?: string;
+  /** Solo con `estado: "error"`: SQLSTATE del fallo (sin mensaje), para que quien llama decida si es transitorio y se reintenta. */
+  readonly codigo?: string;
 }
 
 const PARAMETRO_CODIGO_RE = /^[A-Za-z0-9_.:-]{1,40}$/;
@@ -134,6 +136,6 @@ export async function emitirNotificacion(session: TenantDbSession, input: Emitir
     return filas > 0 ? { estado: "emitida", destinatarios: filas } : { estado: "sin_nuevas", destinatarios: 0 };
   } catch (err) {
     const code = sqlstate(err);
-    return { estado: "error", destinatarios: 0, detalle: `${code ?? "sin_codigo"}: ${err instanceof Error ? err.message : String(err)}` };
+    return { estado: "error", destinatarios: 0, detalle: `${code ?? "sin_codigo"}: ${err instanceof Error ? err.message : String(err)}`, ...(code ? { codigo: code } : {}) };
   }
 }

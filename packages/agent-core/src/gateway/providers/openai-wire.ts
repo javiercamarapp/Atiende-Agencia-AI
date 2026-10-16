@@ -9,7 +9,9 @@
 import type { LlmMessage, LlmToolCall, LlmToolDefinition } from '../types.js';
 
 /** Partes de contenido multimodal de Chat Completions (texto + audio de entrada). */
-export type OpenAiWireContentPart = { type: 'text'; text: string } | { type: 'input_audio'; input_audio: { data: string; format: string } };
+export type OpenAiWireContentPart =
+  | { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
+  | { type: 'input_audio'; input_audio: { data: string; format: string } };
 
 export interface OpenAiWireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -28,8 +30,14 @@ export interface OpenAiWireToolCall {
   function: { name: string; arguments: string };
 }
 
-export function toOpenAiWireMessages(system: string, messages: readonly LlmMessage[]): OpenAiWireMessage[] {
-  const wire: OpenAiWireMessage[] = [{ role: 'system', content: system }];
+export interface OpenAiWireMessageOptions {
+  /** Marca el system prompt con un punto de cache explicito (`cache_control: { type: 'ephemeral' }`, 5 minutos): solo tiene efecto en modelos de Anthropic
+   *  (OpenRouter lo ignora en los demas). Anthropic cachea el prefijo `tools` + `system` hasta ese punto. */
+  cacheSystem?: boolean;
+}
+
+export function toOpenAiWireMessages(system: string, messages: readonly LlmMessage[], opts: OpenAiWireMessageOptions = {}): OpenAiWireMessage[] {
+  const wire: OpenAiWireMessage[] = [{ role: 'system', content: opts.cacheSystem ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] : system }];
   for (const m of messages) {
     if (m.role === 'system') continue; // el system real ya se puso arriba, una sola vez.
     if (m.role === 'tool') {

@@ -2,6 +2,7 @@
 // y los logs. Corren igual contra el proveedor falso y contra uno real. Los que dependen del mundo de la vertical (el pedido
 // guardado, la reserva apartada, los callbacks) los pone la vertical con los mismos tipos (`Grader`).
 import { redactarPII } from "../llamada/log-sin-pii.ts";
+import { importesDeTotalHablado, importesHablados, numerosDe, totalesDe } from "./importes-hablados.ts";
 import type { LlamadaSimulada, ResultadoGrader } from "./tipos.ts";
 
 export const ok = (grader: string): ResultadoGrader => ({ grader, ok: true, detalle: "" });
@@ -112,6 +113,46 @@ export const G_TONO_USTED: Grader = (l) => {
     if (m) return mal("G_TONO_USTED", `tuteo "${m[0]}" en: ${t.texto.slice(0, 100)}`);
   }
   return ok("G_TONO_USTED");
+};
+
+/**
+ * Ningun importe que el agente DICE ("trescientos veintiocho pesos", "$328") puede ser distinto de los que devolvieron las herramientas en
+ * ESTA llamada (cotizacion, pedido, minimos, precios del catalogo). En audio nativo el texto ya sono cuando se transcribe, asi que esta es una
+ * red de deteccion (simulador y evals reales), no una guardia previa al TTS; el servidor sigue cobrando el precio cotizado.
+ */
+export const G_PRECIO_HABLADO: Grader = (l) => {
+  const permitidos = l.tools.flatMap((t) => numerosDe(t.resultado));
+  const coincide = (dicho: number): boolean => permitidos.some((p) => Math.abs(p - dicho) < 0.005 || Math.floor(p + 1e-9) === dicho);
+  // Gemini Live entrega la transcripcion del agente en FRAGMENTOS ("...ciento" + " sesenta y ocho pesos"): se unen los fragmentos consecutivos de un mismo turno
+  // del agente antes de buscar importes; fragmento por fragmento reprobaba llamadas correctas ($68, $2, $9...) con falsas fallas (QA-PM-R2-voz-15).
+  const turnos: string[] = [];
+  let abierto = false;
+  for (const t of l.transcripcion) {
+    if (t.rol === "agente") {
+      if (abierto) turnos[turnos.length - 1] += t.texto;
+      else turnos.push(t.texto);
+      abierto = true;
+    } else if (t.rol === "cliente") abierto = false;
+    // una herramienta entre fragmentos no corta el turno del agente
+  }
+  for (const texto of turnos) {
+    for (const dicho of importesHablados(texto)) {
+      if (!coincide(dicho)) return mal("G_PRECIO_HABLADO", `el agente dijo $${dicho} y ninguna herramienta devolvio ese importe en la llamada`);
+    }
+  }
+  // El TOTAL que el agente presenta (con o sin "pesos") tiene que ser uno de los totales cotizados en la llamada: que "su total es de cuarenta y dos pesos"
+  // sea el precio de UN taco, o "en total son doscientos" el minimo de la sucursal, no basta aunque algun numero coincida con alguna herramienta.
+  const totales = l.tools.flatMap((t) => totalesDe(t.resultado));
+  if (totales.length > 0) {
+    const esTotalCotizado = (dicho: number): boolean => totales.some((p) => Math.abs(p - dicho) < 0.005 || Math.floor(p + 1e-9) === dicho);
+    for (const t of l.transcripcion) {
+      if (t.rol !== "agente") continue;
+      for (const dicho of importesDeTotalHablado(t.texto)) {
+        if (!esTotalCotizado(dicho)) return mal("G_PRECIO_HABLADO", `el agente presento $${dicho} como total y el total cotizado en la llamada es ${totales.map((x) => `$${x}`).join(" / ")}`);
+      }
+    }
+  }
+  return ok("G_PRECIO_HABLADO");
 };
 
 /** Corre una lista de graders (los genericos del core mas los de la vertical) sobre una llamada simulada. */

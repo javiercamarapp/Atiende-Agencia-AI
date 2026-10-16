@@ -208,6 +208,15 @@ describe("fuera de zona (cobertura de entrega por sucursal)", () => {
     expect(matchKnownZone(zonas, "vivo en colonia norte alto")?.id).toBe("2");
     expect(matchKnownZone(zonas, "   ")).toBeNull();
   });
+
+  it("QA-restaurantes-R1-features-03: una colonia de 1 a 3 letras no empareja con ninguna zona", () => {
+    const zonas: KnownZone[] = [{ id: "1", organizationId: "o", name: "Garcia Gineres", lat: 0, lng: 0, createdAt: "" }];
+    for (const basura of ["a", "ar", "gin", "x y"]) expect(matchKnownZone(zonas, basura)).toBeNull();
+    // Un fragmento real (>= 4 letras) y la colonia completa siguen emparejando, tambien con texto alrededor.
+    expect(matchKnownZone(zonas, "gineres")?.id).toBe("1");
+    expect(matchKnownZone(zonas, "Garcia Gineres")?.id).toBe("1");
+    expect(matchKnownZone(zonas, "por la colonia garcia gineres norte")?.id).toBe("1");
+  });
 });
 
 describe("propina solo con tarjeta", () => {
@@ -237,6 +246,21 @@ describe("propina solo con tarjeta", () => {
     const order = await createOrder(f.repo, baseOrder(f, { paymentMethod: "tarjeta", propina: 20 }));
     expect(order.total).toBe(DOS_COCAS);
     expect(order.notes).toContain("Propina: $20.00 (no incluida en el total).");
+  });
+
+  it("propina en porcentaje (QA-PM-R4-whatsapp-03): el servidor calcula los pesos sobre el total y no lo altera", async () => {
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { propinaPolitica: "solo_tarjeta" });
+    const order = await createOrder(f.repo, baseOrder(f, { paymentMethod: "tarjeta", propinaPorcentaje: 10 }));
+    expect(order.total).toBe(DOS_COCAS);
+    expect(order.notes).toContain(`Propina: $${(Math.round(DOS_COCAS * 10) / 100).toFixed(2)} (no incluida en el total).`);
+  });
+
+  it("propina en porcentaje con efectivo se rechaza igual que en pesos; un porcentaje fuera de rango tambien", async () => {
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { propinaPolitica: "solo_tarjeta" });
+    await expect(createOrder(f.repo, baseOrder(f, { paymentMethod: "efectivo", propinaPorcentaje: 10 }))).rejects.toThrow(/solo se registra cuando el pago es con tarjeta/);
+    await expect(createOrder(f.repo, baseOrder(f, { paymentMethod: "tarjeta", propinaPorcentaje: 150 }))).rejects.toThrow(/entre 1 y 100/);
   });
 
   it("propina con efectivo: se rechaza (solo con tarjeta)", async () => {

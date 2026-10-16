@@ -130,6 +130,7 @@ describe("las cifras del guion salen del motor real sobre el catalogo de T7", ()
         organizationId: world.organizationId,
         branchSlug: "garcia-lavin",
         canal: e.canal,
+        ...(e.canal === "domicilio" ? { colonia: "Temozón Norte" } : {}),
         items: e.renglones.map(([producto, requestedQuantity, tortilla]) => ({ productId: world.productIds.get(producto)!, requestedQuantity, ...(tortilla ? { tortilla } : {}) })),
         ...(e.dobleSalsas ? { doubleSalsas: e.dobleSalsas } : {}),
       });
@@ -176,7 +177,7 @@ describe("las cifras del guion salen del motor real sobre el catalogo de T7", ()
       const marcador = formatLocationMessage({ latitude: pin.lat, longitude: pin.lng });
       expect(parseSharedLocation(marcador)).toEqual({ lat: pin.lat, lng: pin.lng });
       expect(seccion(pin.escenario), `escenario ${pin.escenario} escribe el marcador exacto`).toContain(marcador);
-      const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Santa Gertrudis Copó", lat: pin.lat, lng: pin.lng }));
+      const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Cumbres de Montejo", lat: pin.lat, lng: pin.lng }));
       expect((r as { result: unknown }).result).toMatchObject({ encontrada: true, branch_slug: pin.sucursal, via: "coordenadas" });
       if (pin.telefono) {
         expect(seccion(pin.escenario)).toContain(pin.telefono);
@@ -186,9 +187,16 @@ describe("las cifras del guion salen del motor real sobre el catalogo de T7", ()
   });
 
   it("sin pin, una colonia que el negocio aun no cargo NO se reconoce (por eso el agente pide el pin): la nota honesta del guion es cierta", async () => {
-    const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Santa Gertrudis Copó" }));
+    const r = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Cumbres de Montejo" }));
     expect((r as { result: unknown }).result).toMatchObject({ encontrada: false, estado: "no_reconocida" });
     expect(guion).toContain("mapa de colonias");
+  });
+
+  it("QA-PM-R2: el relleno del modelo (lat 0, lng 0, max_km 0) se ignora: ni cae a 9,967 km (fuera de zona) ni rechaza el radio; manda la colonia", async () => {
+    const relleno = { colonia: "Cumbres de Montejo", lat: 0, lng: 0, max_km: 0 };
+    const sinRelleno = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", { colonia: "Cumbres de Montejo" }));
+    const conRelleno = await conMundo((world) => invokeAgentTool(world.repo, { organizationId: world.organizationId, channel: "whatsapp" } as never, "buscar_sucursal_cercana", relleno));
+    expect((conRelleno as { result: unknown }).result).toEqual((sinRelleno as { result: unknown }).result);
   });
 });
 
@@ -212,9 +220,9 @@ describe("lo que el guion atribuye al agente esta en su prompt y en sus datos", 
     expect(prompt).toContain("tiempos_entrega");
   });
 
-  it("las salsas basicas, el pin unico, la repeticion en lista, la propina solo con tarjeta y 'ofrezca recoger' (escenarios 1, 2 y 5) estan en el prompt", () => {
+  it("las salsas basicas, el pin opcional (una sola vez), la repeticion en lista, la propina solo con tarjeta y 'ofrezca recoger' (escenarios 1, 2 y 5) estan en el prompt", () => {
     expect(prompt).toContain("roja, verde, cebolla con cilantro y limones");
-    expect(prompt).toMatch(/PIN A REPARTO: pida el pin[^.]*UNA SOLA VEZ/);
+    expect(prompt).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ/);
     expect(prompt).toContain("Permítame repetirle su pedido");
     expect(prompt).toContain("No pregunte propina con efectivo");
     expect(prompt).toMatch(/ofrezca recoger en la sucursal de este chat/);

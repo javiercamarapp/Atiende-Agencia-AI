@@ -315,10 +315,13 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
   return messages.map((m) => (m.role === "user" ? { role: "user" as const, content: m.content } : { role: "assistant" as const, content: m.content }));
 }
 
+/** Texto cuando el asistente no pudo responder y el equipo del hotel NO quedo avisado (o no se sabe): nada prometido que no se hizo. */
+export const FALLA_SIN_AVISO_REPLY = "Tuve un problema técnico y no pude atender tu mensaje. Por favor intenta de nuevo en unos minutos o comunícate directamente con el hotel.";
+/** Texto cuando el asistente no pudo responder y el aviso al equipo SI quedo registrado: solo se dice "avisé" porque es cierto. */
+export const FALLA_CON_AVISO_REPLY = "Tuve un problema técnico y no pude atender tu mensaje. Ya avisé al equipo del hotel para que una persona te contacte lo antes posible.";
+
 export function providerFailureReply(fnbOrderId: string | null): string {
-  return fnbOrderId
-    ? "¡Listo! Ya registramos tu pedido, la cocina lo va a preparar."
-    : "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.";
+  return fnbOrderId ? "¡Listo! Ya registramos tu pedido, la cocina lo va a preparar." : FALLA_SIN_AVISO_REPLY;
 }
 
 /**
@@ -367,10 +370,49 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
       let derivarAHumano = false;
       const conHandoff = <T extends { readonly reply: string; readonly fnbOrderId: string | null }>(r: T) => (derivarAHumano ? { ...r, handoff: { motivo: "agente_derivo" } } : r);
 
-      for (let turn = 0; turn < maxToolUseTurns; turn++) {
-        if (Date.now() >= deadline) {
-          return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
+      // Lo que SI quedo registrado en este turno antes de la falla (solo herramientas que no devolvieron error).
+      let contactoRegistradoEnTurno = false;
+      let ticketsMantenimientoEnTurno = 0;
+      let apartadoEnTurno = false;
+
+      // El asistente no pudo responder (tiempo agotado, proveedor caido o vueltas agotadas). Con un pedido de F&B ya registrado se le confirma ese pedido, que es
+      // cierto. Si el turno ya dejo un contacto, un ticket de mantenimiento o un apartado, NO se registra otro aviso (el equipo ya lo tiene): se nombra lo que si
+      // quedo hecho y se pide el handoff una sola vez. Sin nada registrado, se deja el contacto y SOLO si quedo registrado se dice "ya avise"; si no, un texto sin promesas.
+      const fallaDelSistema = async (motivo: string): Promise<{ readonly reply: string; readonly fnbOrderId: string | null; readonly handoff?: { readonly motivo: string } }> => {
+        // Lo que si quedo hecho en el turno, dicho con exactitud (un apartado NO es una reserva confirmada; dos tickets van en plural).
+        const hecho: string[] = [];
+        if (ticketsMantenimientoEnTurno === 1) hecho.push("tu reporte de mantenimiento sí quedó registrado");
+        if (ticketsMantenimientoEnTurno > 1) hecho.push("tus reportes de mantenimiento sí quedaron registrados");
+        if (apartadoEnTurno) hecho.push("tu solicitud de pre-reserva sí quedó registrada; todavía no es una reserva confirmada: el hotel te avisará");
+        if (fnbOrderId) return conHandoff({ reply: hecho.length > 0 ? `${providerFailureReply(fnbOrderId)} Además, ${hecho.join(". Además, ")}.` : providerFailureReply(fnbOrderId), fnbOrderId });
+        if (hecho.length > 0 || contactoRegistradoEnTurno) {
+          const reply = hecho.length > 0 ? `Tuve un problema técnico y no pude terminar de atender tu mensaje. ${hecho.map((h) => `${h[0]!.toUpperCase()}${h.slice(1)}`).join(". ")}. Por favor no lo repitas; una persona del hotel puede continuar contigo.` : FALLA_CON_AVISO_REPLY;
+          return { reply, fnbOrderId, handoff: { motivo: derivarAHumano ? "agente_derivo" : "falla_sistema" } };
         }
+        const ultimo = [...messages].reverse().find((m) => m.role === "user");
+        let avisado = false;
+        try {
+          await repo.runWithRowSavepoint(() =>
+            registerContactoNoOperativo(repo, {
+              organizationId,
+              propertyId,
+              guestPhone: phone,
+              guestName: null,
+              reason: `falla_sistema: ${motivo}`,
+              message: `El asistente no pudo responder (falla del sistema). Ultimo mensaje del huesped: ${(ultimo?.content ?? "").slice(0, 400)}`,
+              source: "whatsapp",
+            }),
+          );
+          avisado = true;
+        } catch {
+          // best-effort: sin registro no se promete ningun aviso.
+        }
+        if (!avisado) return conHandoff({ reply: FALLA_SIN_AVISO_REPLY, fnbOrderId });
+        return { reply: FALLA_CON_AVISO_REPLY, fnbOrderId, handoff: { motivo: derivarAHumano ? "agente_derivo" : "falla_sistema" } };
+      };
+
+      for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        if (Date.now() >= deadline) return fallaDelSistema("presupuesto_agotado");
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
         let completion: { text: string; toolCalls?: LlmToolCall[] };
@@ -385,7 +427,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
         } catch {
           // Escalera de proveedores agotada / presupuesto excedido / gate de
           // residencia bloqueado — nunca se propaga un 500 crudo al huésped.
-          return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
+          return fallaDelSistema("error_proveedor");
         }
 
         const toolCalls = completion.toolCalls ?? [];
@@ -433,6 +475,9 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
               const outcome = await executeReservasToolCall(repo, options.reservas!, { organizationId, propertyId, phone, turnId, now: options.now ? clock() : undefined }, call.name, input);
               result = outcome.result;
               if (outcome.handoff) derivarAHumano = true;
+              // Solo cuenta como aviso hecho si la herramienta SI inserto su contacto (`reservas: ...`); `handoff` solo pide la derivacion (puede venir de un error inesperado).
+              if (outcome.contactoRegistrado === true) contactoRegistradoEnTurno = true;
+              if (outcome.holdCreated) apartadoEnTurno = true;
               for (const cents of outcome.moneyCents) allowedCents.add(cents);
             } else {
               const executed = await executeToolCall(repo, { organizationId, propertyId, phone, name: call.name, input });
@@ -440,6 +485,8 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
               if (executed.fnbOrderId) fnbOrderId = executed.fnbOrderId;
             }
           }
+          if (call.name === "crear_ticket_mantenimiento" && !isToolErrorResult(result)) ticketsMantenimientoEnTurno += 1;
+          if (call.name === "registrar_contacto_no_operativo" && !isToolErrorResult(result)) contactoRegistradoEnTurno = true;
           if ((call.name === "crear_ticket_huesped_fnb" || call.name === "crear_ticket_mantenimiento") && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;
           }
@@ -447,8 +494,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
         }
       }
 
-      if (fnbOrderId) return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
-      return conHandoff({ reply: "Se me complicó procesar tu mensaje, un momento por favor.", fnbOrderId });
+      return fallaDelSistema("loop_agotado");
     },
   };
 }
@@ -476,6 +522,7 @@ async function executeReservasToolCall(
       moneyCents: [],
       holdCreated: null,
       handoff: true,
+      contactoRegistrado: false,
     };
   }
 }

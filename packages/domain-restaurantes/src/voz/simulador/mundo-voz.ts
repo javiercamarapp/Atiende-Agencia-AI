@@ -35,9 +35,17 @@ export function crearMundoVoz(): MundoVoz {
   repo.seedOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM" });
   repo.seedBranch({ propertyId, organizationId, name: "Francisco de Montejo", slug: BRANCH_SLUG_PRINCIPAL, status: "active", phone: "+529991110001", address: "Calle 1 #100, Mérida", lat: 21.0186, lng: -89.6708 });
   repo.seedBranch({ propertyId: propertyAltabrisa, organizationId, name: "Altabrisa", slug: BRANCH_SLUG_ALTABRISA, status: "active", phone: "+529991110002", address: "Calle 2 #200, Mérida", lat: 21.0, lng: -89.57 });
-  repo.seedKnownZone({ organizationId, name: "Centro", lat: 21.02, lng: -89.65 });
-  repo.seedKnownZone({ organizationId, name: "Altabrisa", lat: 21.001, lng: -89.572 });
+  const zonaCentro = randomUUID();
+  const zonaAltabrisa = randomUUID();
+  repo.seedKnownZone({ id: zonaCentro, organizationId, name: "Centro", lat: 21.02, lng: -89.65 });
+  repo.seedKnownZone({ id: zonaAltabrisa, organizationId, name: "Altabrisa", lat: 21.001, lng: -89.572 });
+  // Cobertura de entrega cargada (como la cuenta real de PM): sin ella un domicilio de PM no se puede validar y el agente exige el pin.
+  repo.seedBranchDeliveryZones(propertyId, [zonaCentro]);
+  repo.seedBranchDeliveryZones(propertyAltabrisa, [zonaAltabrisa]);
   for (const p of [propertyId, propertyAltabrisa]) repo.seedBranchPolicy(p, { pedidoMinimoDomicilio: 200 });
+  // Perfil del agente de PM (el mismo que siembra el seed real): activa las reglas duras del servidor propias de PM, como el pedido grande.
+  // El repositorio en memoria guarda de forma sincrona, por eso no se espera la promesa.
+  void repo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: "Los Taquitos de PM", toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
 
   const catTacos = randomUUID();
   const catBebidas = randomUUID();
@@ -62,6 +70,11 @@ export function crearMundoVoz(): MundoVoz {
     cola: sembrar("Coca-Cola", catBebidas, 45, ["coca", "refresco", "cola"]),
     cerveza: sembrar("Cerveza Sol", catCervezas, 66, ["cerveza", "chela", "sol", "cheve"]),
     nachos: sembrar("Nachos de Pastor", catAntojos, 89, ["nachos"]),
+    // Carnes por peso (QA-PM-R4-reglas-03): el kilo y el cuarto son productos distintos; la cantidad es de piezas, nunca gramos.
+    arracheraKilo: sembrar("Arrachera — 1 kg", catTacos, 900, ["arrachera", "arrachera kilo"]),
+    arrachera250: sembrar("Arrachera — 250 g", catTacos, 225, ["arrachera", "arrachera cuarto"]),
+    // QA-PM-R5-voz-01: "tres cuartos de kilo" es la presentacion de 750 g, no el kilo.
+    arrachera750: sembrar("Arrachera — 750 g", catTacos, 675, ["arrachera", "arrachera tres cuartos"]),
   } as const;
   repo.seedNoDomicilio({ productIds: [productos.cerveza.id] });
 

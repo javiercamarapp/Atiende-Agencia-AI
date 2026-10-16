@@ -17,6 +17,8 @@ export const HERRAMIENTAS_AGENTE: readonly HerramientaAgente[] = [
   { nombre: "buscar_producto", titulo: "Buscar producto", descripcion: "Consulta el menú real: productos, precios y disponibilidad." },
   { nombre: "cotizar_pedido", titulo: "Cotizar pedido", descripcion: "Calcula el total de un pedido antes de confirmarlo." },
   { nombre: "buscar_cliente", titulo: "Buscar cliente", descripcion: "Reconoce a un cliente recurrente por su teléfono." },
+  { nombre: "historial_pedidos", titulo: "Historial de pedidos", descripcion: "Lista los últimos pedidos del mismo cliente." },
+  { nombre: "repetir_pedido", titulo: "Repetir pedido", descripcion: "Vuelve a cotizar un pedido anterior con los precios de hoy." },
   { nombre: "crear_pedido", titulo: "Crear pedido", descripcion: "Registra el pedido confirmado por el cliente." },
 ];
 

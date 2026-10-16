@@ -4,9 +4,12 @@
 // Cubre: cifras exactas, "—" con su razón (nunca 0 inventado), periodos pendientes con botón REAL que llama al API y recarga, vista de
 // semana con por-día, selección de un cierre anterior, base sin migrar, error con reintento, rol sin acceso y ausencia de PII.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { CierresPage } from "../src/verticals/restaurantes/pages/Cierres.tsx";
-import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirValor, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+
+beforeAll(prepararJsdomParaRadix);
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -61,6 +64,16 @@ async function pintar(fetchMock: ReturnType<typeof stub>, role = "owner") {
 const texto = () => rendered!.container.textContent ?? "";
 
 describe("<CierresPage />", () => {
+  it("el canal web se muestra como «Pedido en línea (histórico)» solo si tiene datos; sin datos la línea no aparece", async () => {
+    await pintar(stub({ [`GET ${BASE}?tipo=dia`]: { status: 200, body: lista() } }));
+    expect(texto()).toContain("Pedido en línea (histórico)");
+    rendered?.unmount();
+    const sinWeb = CANALES.map((c) => (c.canal === "web" ? { ...c, pedidos: 0, ventasCentavos: 0, cancelados: 0 } : c));
+    await pintar(stub({ [`GET ${BASE}?tipo=dia`]: { status: 200, body: lista({ cierres: [cierre({ porCanal: sinWeb })] }) } }));
+    expect(texto()).not.toContain("Pedido en línea");
+    expect(texto()).toContain("WhatsApp");
+  });
+
   it("muestra las cifras reales del cierre, la variación contra el comparativo y los tiempos con su base", async () => {
     await pintar(stub({ [`GET ${BASE}?tipo=dia`]: { status: 200, body: lista() } }));
     const t = texto();
@@ -136,7 +149,7 @@ describe("<CierresPage />", () => {
       [`GET ${BASE}?tipo=semana`]: { status: 200, body: lista({ tipo: "semana", cierres: [semana] }) },
     });
     await pintar(fetchMock);
-    changeValue(rendered!.container.querySelector("select#tipo-cierre") as HTMLSelectElement, "semana");
+    elegirValor(rendered!.container.querySelector("#tipo-cierre") as HTMLElement, "semana");
     await settle();
     expect(fetchMock).toHaveBeenLastCalledWith(`${BASE}?tipo=semana`, expect.anything());
     expect(texto()).toContain("Resumen de la semana del");

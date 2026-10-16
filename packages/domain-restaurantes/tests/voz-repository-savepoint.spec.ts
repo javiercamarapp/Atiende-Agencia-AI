@@ -87,7 +87,7 @@ describe("escrituras contra la base sin migrar: VozNoDisponibleError (503) y ses
 describe("camino migrado: mapeo y parametros", () => {
   it("getConfig lee la fila; sin fila devuelve el valor inicial con configurada=false", async () => {
     const con = new AbortAwareFakeSession([{ match: /from restaurantes\.branch_voice_config/i, respond: () => [{ habilitado: true, proveedor: "gemini-3.8-live", voice_id: "Puck", comportamiento: "usted", mensaje_inicial: "hola" }] }]);
-    expect(await new PostgresVozRepository(con).getConfig(PROP)).toEqual({ disponible: true, valor: { habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: "usted", mensajeInicial: "hola", configurada: true } });
+    expect(await new PostgresVozRepository(con).getConfig(PROP)).toEqual({ disponible: true, valor: { habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: "usted", mensajeInicial: "hola", mensajeInicialInterrumpible: true, configurada: true } });
     const sin = new AbortAwareFakeSession([{ match: /from restaurantes\.branch_voice_config/i, respond: () => [] }]);
     expect(await new PostgresVozRepository(sin).getConfig(PROP)).toEqual({ disponible: true, valor: VOZ_CONFIG_POR_DEFECTO });
   });
@@ -125,5 +125,70 @@ describe("camino migrado: mapeo y parametros", () => {
     expect(await r.registrarTurno({ organizationId: ORG, conversationId: CONV, seq: 0, rol: "agente", texto: "x", duracionMs: null, latenciaMs: null, costoMicroUsd: 0 })).toBe(false);
     expect(await r.cerrarConversacion({ organizationId: ORG, conversationId: CONV, resultado: "pedido_creado", endedAt: null, orderId: null })).toBe(true);
     expect(await r.consumirPreview({ sessionId: CONV, organizationId: ORG, propertyId: PROP })).toBe(true);
+  });
+});
+
+// Migracion 053 (`mensaje_inicial_interrumpible`): una base con la 025 pero SIN la 053 no puede romper el guardado ni la lectura de voz.
+describe("saludo no interrumpible (053): base con la 025 y sin la columna nueva", () => {
+  const sinColumna = () => pgError("42703", 'column "mensaje_inicial_interrumpible" does not exist');
+  const filaVieja = { habilitado: true, proveedor: "gemini-3.8-live", voice_id: "Puck", comportamiento: "usted", mensaje_inicial: "hola" };
+  const entrada = { habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: "usted", mensajeInicial: "hola" } as const;
+
+  it("lee la columna cuando existe: false se respeta, y una fila anterior sin la columna es interrumpible", async () => {
+    const nueva = new AbortAwareFakeSession([{ match: /from restaurantes\.branch_voice_config/i, respond: () => [{ ...filaVieja, mensaje_inicial_interrumpible: false }] }]);
+    expect((await new PostgresVozRepository(nueva).getConfig(PROP)).valor.mensajeInicialInterrumpible).toBe(false);
+    const anterior = new AbortAwareFakeSession([{ match: /from restaurantes\.branch_voice_config/i, respond: () => [filaVieja] }]);
+    expect((await new PostgresVozRepository(anterior).getConfig(PROP)).valor.mensajeInicialInterrumpible).toBe(true);
+  });
+
+  it("getConfig sin la columna (42703): cae a la lectura de la 025, sigue disponible y el saludo es interrumpible; la sesion sigue viva", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /mensaje_inicial_interrumpible/i, respond: () => sinColumna() },
+      { match: /from restaurantes\.branch_voice_config/i, respond: () => [filaVieja] },
+      SIGUIENTE,
+    ]);
+    const r = await new PostgresVozRepository(s).getConfig(PROP);
+    expect(r).toEqual({ disponible: true, valor: { ...entrada, mensajeInicialInterrumpible: true, configurada: true } });
+    await sesionSigueViva(s);
+  });
+
+  it("getConfig sin la columna Y sin la tabla: ahora si 'no disponible' (vacio honesto)", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /mensaje_inicial_interrumpible/i, respond: () => sinColumna() },
+      { match: /from restaurantes\.branch_voice_config/i, respond: () => sinTabla("branch_voice_config") },
+      SIGUIENTE,
+    ]);
+    expect(await new PostgresVozRepository(s).getConfig(PROP)).toEqual({ disponible: false, valor: VOZ_CONFIG_POR_DEFECTO });
+    await sesionSigueViva(s);
+  });
+
+  it("upsertConfig con saludo interrumpible (el valor de siempre) y SIN la columna: se guarda como antes, NO rompe el guardado de voz", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /insert into restaurantes\.branch_voice_config[^;]*mensaje_inicial_interrumpible/i, respond: () => sinColumna() },
+      { match: /insert into restaurantes\.branch_voice_config/i, respond: () => [filaVieja] },
+      SIGUIENTE,
+    ]);
+    const r = await new PostgresVozRepository(s).upsertConfig(ORG, PROP, { ...entrada, mensajeInicialInterrumpible: true });
+    expect(r).toMatchObject({ habilitado: true, voiceId: "Puck", mensajeInicialInterrumpible: true, configurada: true });
+    await sesionSigueViva(s);
+  });
+
+  it("upsertConfig pidiendo saludo NO interrumpible y SIN la columna: 503 honesto (VozNoDisponibleError), nunca un falso exito", async () => {
+    const s = new AbortAwareFakeSession([{ match: /insert into restaurantes\.branch_voice_config/i, respond: () => sinColumna() }, SIGUIENTE]);
+    await expect(new PostgresVozRepository(s).upsertConfig(ORG, PROP, { ...entrada, mensajeInicialInterrumpible: false })).rejects.toBeInstanceOf(VozNoDisponibleError);
+    await sesionSigueViva(s);
+  });
+
+  it("upsertConfig manda la bandera como parametro (false se escribe)", async () => {
+    let params: unknown[] | undefined;
+    const s = new AbortAwareFakeSession([{ match: /insert into restaurantes\.branch_voice_config/i, respond: () => [{ ...filaVieja, mensaje_inicial_interrumpible: false }] }]);
+    const original = s.query.bind(s);
+    s.query = (async (sql: string, p?: unknown[]) => {
+      if (/insert into restaurantes\.branch_voice_config/i.test(sql)) params = p;
+      return original(sql, p);
+    }) as typeof s.query;
+    const r = await new PostgresVozRepository(s).upsertConfig(ORG, PROP, { ...entrada, mensajeInicialInterrumpible: false });
+    expect(params).toEqual([PROP, ORG, true, "gemini-3.8-live", "Puck", "usted", "hola", false]);
+    expect(r.mensajeInicialInterrumpible).toBe(false);
   });
 });

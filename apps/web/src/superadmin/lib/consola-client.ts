@@ -125,7 +125,7 @@ export function horaMexico(fecha: Date): number {
 export function saludoMexico(fecha: Date = new Date()): "Buenos días" | "Buenas tardes" | "Buenas noches" {
   const hora = horaMexico(fecha);
   if (hora >= 5 && hora < 12) return "Buenos días";
-  if (hora >= 12 && hora < 19) return "Buenas tardes";
+  if (hora >= 12 && hora < 20) return "Buenas tardes"; // mismo corte que restaurantes: «buenas noches» desde las 20:00
   return "Buenas noches";
 }
 

@@ -1,3 +1,4 @@
+import type { DemoAgentsDeps } from "./demo-agents/types.ts";
 import type {
   AgentRunRepository,
   AuthzAuditRepository,
@@ -11,6 +12,7 @@ import type {
   PylRepository,
   CfoZoneRepository,
   ConsolaRepository,
+  OrgEquipoRepository,
   OrgFichaRepository,
   FichasAgenteRepository,
   ContratosRepository,
@@ -25,9 +27,10 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { CierreRepository, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
+import type { AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -74,6 +77,7 @@ import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
 import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 import type { LlmRouteConfig } from "./production/llm-models.ts";
+import type { SaludMetaDeps } from "./salud/salud-meta.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -115,6 +119,8 @@ import type { LlmRouteConfig } from "./production/llm-models.ts";
  * xRepoInstance` — ignora el argumento porque el repo en memoria no tiene ningún
  * concepto de sesión/RLS (ver apps/api/tests/fixtures.ts y fixtures por vertical). */
 export interface AppDeps {
+  /** Public marketing sandbox: no tenant records or mutation tools. */
+  readonly publicDemoAgents?: DemoAgentsDeps;
   readonly env: ApiEnv;
   readonly coreRepo: CoreRepository;
   /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
@@ -167,15 +173,33 @@ export interface AppDeps {
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  /** Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo). OPCIONAL: sin él las rutas responden 503 honesto. En producción es
+   * `(db) => new PostgresAjustesAgenteRepository(db)` (degrada con SAVEPOINT a los valores de siempre contra la base sin migrar). */
+  readonly ajustesAgenteRepo?: (db: TenantDbSession) => AjustesAgenteRepository;
   /** R-13 (migración 035): KPI de voz, costo y alertas. OPCIONAL: sin él las rutas de KPI responden 503 honesto. En producción es
    * `(db) => new PostgresVozKpiRepository(db)` (cada consulta degrada con SAVEPOINT contra la base sin migrar). */
   readonly vozKpiRepo?: (db: TenantDbSession) => VozKpiRepository;
+  /** Evaluacion de las alertas de voz (costo del dia, tasa de error) por el SISTEMA dentro del tick de promover-programados (QA R2 automatizacion-09; migración 076).
+   * OPCIONAL: sin él el tick no evalua alertas de voz. En producción es `(db) => evaluarAlertasVozDelSistema(db)` (degrada con SAVEPOINT contra la base sin migrar). */
+  readonly vozAlertasSistema?: (db: TenantDbSession) => Promise<ResultadoAlertasVozSistema>;
+  /** Worker de telefonia de voz (migración 067): gasto del mes para el tope mensual, modo de entrada, costo por escalón y KPI de desborde/latencia.
+   * OPCIONAL: sin él, el contexto de llamada no trae gasto (no bloquea) y las demás rutas responden 503 honesto. En producción es
+   * `(db) => new PostgresVozLlamadaRepository(db)` (cada operación degrada con SAVEPOINT contra la base sin migrar). */
+  readonly vozLlamadaRepo?: (db: TenantDbSession) => VozLlamadaRepository;
   /** R-31 (migración 040): KPI del agente de WhatsApp por día local. OPCIONAL: sin él la ruta responde 503 honesto. En producción es
    * `(db) => new PostgresWhatsappKpiRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly whatsappKpiRepo?: (db: TenantDbSession) => WhatsappKpiRepository;
   /** R-42 (migración 041): cierre del día y resumen semanal. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresCierreRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly cierreRepo?: (db: TenantDbSession) => CierreRepository;
+  /** CFO de restaurantes (migraciones 081/082/083): ventas, clientes, costos, SoftRestaurant. OPCIONAL: sin él las rutas `/admin/cfo/*` responden 503 honesto. En producción es
+   * `(db) => new PostgresCfoRepository(db)` de domain-restaurantes/cfo/postgres (cada llamada degrada con SAVEPOINT a `disponible: false` contra la base sin migrar).
+   * No confundir con `cfoRepo` (panel CFO de superadmin). */
+  readonly cfoRestaurantesRepo?: (db: TenantDbSession) => CfoRestaurantesRepository;
+  /** Autopiloto del ciclo del pedido (migración 050): aprobaciones, estados sin clic, regreso del handoff, agotado por hoy. OPCIONAL: sin él las rutas
+   * responden 503 honesto y el tick lo omite. En producción es `(db) => new PostgresAutopilotoRepository(db)` (degrada con SAVEPOINT a "no disponible"
+   * contra la base sin migrar). */
+  readonly autopilotoRepo?: (db: TenantDbSession) => AutopilotoRepository;
   /** R-15 (migración 044): perfil operativo del repartidor. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresRepartidorPerfilRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly repartidorPerfilRepo?: (db: TenantDbSession) => RepartidorPerfilRepository;
@@ -204,6 +228,9 @@ export interface AppDeps {
   /** H-26 -- housekeeping residual (config, fotos de inspeccion, blancos, opt-out; migracion 039). OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresHousekeepingResidualRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
   readonly hotelesHousekeepingResidualRepo?: (db: TenantDbSession) => HousekeepingResidualRepository;
+  /** H-P3-04 -- arranque automatico del dia de housekeeping (cron, sesion de SISTEMA; migracion 045). OPCIONAL: en produccion no se define y el
+   *  cron usa `PostgresHousekeepingDiaSistemaRepository` (funciones `hoteles.system_hk_*`, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
+  readonly hotelesHousekeepingDiaRepo?: (db: TenantDbSession) => HousekeepingDiaSistemaRepository;
   /** H-29 -- configuracion del canal WhatsApp y del agente de voz desde el panel (migracion 039). OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresMensajeriaConfigRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
   readonly hotelesMensajeriaConfigRepo?: (db: TenantDbSession) => MensajeriaConfigRepository;
@@ -592,6 +619,9 @@ export interface AppDeps {
    *  (apps/api/tests/whatsapp-dispatch.spec.ts) y en producción real
    *  (production/deps.ts, cuando `WHATSAPP_ACCESS_TOKEN` está presente). */
   readonly whatsAppDispatcher?: WhatsAppOutboundDispatcher;
+  /** Vigilancia de la salud de WhatsApp/Meta (expiracion del token a 14/7/1 dias; timeouts y fallos seguidos del agente) que engancha el cron
+   *  /internal/whatsapp/dispatch. OPCIONAL (`?:`): ningun fixture existente lo necesita; las pruebas inyectan dobles y produccion el lector de Graph. */
+  readonly saludMeta?: SaludMetaDeps;
   /** R-32: transcripcion de notas de voz de WhatsApp de restaurantes (descarga de media de Meta + rol `restaurantes:transcripcion` del gateway LLM).
    *  `undefined` sin `WHATSAPP_ACCESS_TOKEN` o sin gateway LLM: el webhook conserva el comportamiento anterior (pedir al cliente que escriba, con el
    *  motivo en un log sin PII). Opcional (`?:`) para no tocar los fixtures existentes. */
@@ -668,6 +698,11 @@ export interface AppDeps {
    *  sesion; cada fuente corre bajo su propio SAVEPOINT. El aviso 'organizacion lista' es SOLO-SISTEMA (cron de mantenimiento, sesion propia).
    *  OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) o campos null con su razon, nunca un 500. */
   readonly orgFichaRepo?: (db: TenantDbSession) => OrgFichaRepository;
+  /** Alta del equipo inicial de una organizacion por un superadmin: invitar, reenviar, revocar y leer miembros/invitaciones (SA-L-26 minimo;
+   *  ver packages/db/migrations/0053_superadmin_alta_equipo.sql y routes/superadmin-organizaciones-equipo.ts). Fabrica por sesion del caller;
+   *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la
+   *  lectura responde `disponible: false` y las mutaciones 503 honesto, nunca un 500. */
+  readonly orgEquipoRepo?: (db: TenantDbSession) => OrgEquipoRepository;
   /** Fichas de agente y Model Ops de la consola (SA-L-09/SA-L-10; ver packages/db/migrations/0049_superadmin_fichas_agente.sql y
    *  routes/superadmin-agentes-fichas.ts). Fabrica por sesion del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL:
    *  ausente o migracion sin aplicar -> los campos salen `null` con su razon y `disponible: false` (200), nunca un 500. */

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() }, Toaster: () => null }));
 
 import { BlancosPanel, ConfiguracionHkPanel, OptOutPanel } from "../src/verticals/hoteles/pages/HousekeepingResidual.tsx";
-import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -25,7 +25,7 @@ const H = "https://api.test/hoteles/prop-1/housekeeping";
 const json = (b: unknown) => ({ ok: true, status: 200, json: async () => b }) as unknown as Response;
 const CONFIG = (disponible: boolean) => ({
   disponible, personalizada: false, asignacionAutomatica: false, maxTareasPorCamarista: 14, minutosJornada: 480,
-  minutosPorTipo: { salida: 40, estancia: 20, profunda: 90, repaso: 10 }, fotosObligatoriasEnInspeccion: false, maxFotosPorTarea: 6, actualizadoEn: null,
+  minutosPorTipo: { salida: 40, estancia: 20, profunda: 90, repaso: 10 }, fotosObligatoriasEnInspeccion: false, maxFotosPorTarea: 6, horaArranque: 7, horaArranqueDisponible: disponible, actualizadoEn: null,
   vision: { disponible: false, requiere: "llave de un modelo con vision (H-23)" },
 });
 const ARTICULOS = [{ articulo: "sabanas", limpias: 90, sucias: 5, enLavanderia: 0, danadas: 0, total: 95, actualizadoEn: "x", conteoAnterior: { fecha: "2026-03-09", total: 110 }, diferencia: -15 }];
@@ -55,6 +55,36 @@ describe("ConfiguracionHkPanel", () => {
     const put = fetchMock.mock.calls.find((c) => c[1]?.method === "PUT")!;
     expect(JSON.parse(String(put[1].body))).toEqual({ asignacionAutomatica: true });
     expect(rendered.container.textContent).toContain("Asignación automática encendida.");
+  });
+
+  it("owner cambia la hora de arranque del dia: PUT real con horaArranque; sin la 045 el campo se deshabilita con aviso honesto", async () => {
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === `${H}/configuracion` && (init?.method ?? "GET") === "GET") return json(CONFIG(true));
+      if (url === `${H}/configuracion` && init?.method === "PUT") return json({ ...CONFIG(true), horaArranque: 6, personalizada: true });
+      throw new Error(`fetch inesperado: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderComponent(<ConfiguracionHkPanel {...P} role="owner" />);
+    await esperar();
+    const hora = [...rendered.container.querySelectorAll("input")].find((i) => i.value === "7" && i.max === "23") as HTMLInputElement;
+    expect(hora).toBeDefined();
+    expect(hora.disabled).toBe(false);
+    changeValue(hora, "6");
+    await act(async () => {
+      click(botones(rendered!).find((b) => b.textContent === "Guardar cambios")!);
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    const put = fetchMock.mock.calls.find((c) => c[1]?.method === "PUT")!;
+    expect(JSON.parse(String(put[1].body))).toMatchObject({ horaArranque: 6 });
+    rendered.unmount();
+
+    fetchMock = vi.fn(async () => json({ ...CONFIG(true), horaArranqueDisponible: false }));
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderComponent(<ConfiguracionHkPanel {...P} role="owner" />);
+    await esperar();
+    const bloqueada = [...rendered.container.querySelectorAll("input")].find((i) => i.max === "23") as HTMLInputElement;
+    expect(bloqueada.disabled).toBe(true);
+    expect(rendered.container.textContent).toContain("requiere la actualización 045");
   });
 
   it("frontdesk solo ve los valores (sin boton de guardar) y base sin migrar avisa", async () => {

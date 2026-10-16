@@ -97,10 +97,7 @@ describe("cancelar/reagendar vía el agente (x-atiende-tool-secret)", () => {
     const app = buildApp(ctx.deps);
     const appointmentId = await createRealAppointment(ctx, app);
 
-    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/cancel`, {
-      method: "POST",
-      headers: { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret },
-    });
+    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/cancel`, jsonRequestInit({ customer_phone: "9991112233" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { appointment: { status: string } };
     expect(body.appointment.status).toBe("cancelled");
@@ -121,7 +118,7 @@ describe("cancelar/reagendar vía el agente (x-atiende-tool-secret)", () => {
 
     const res = await app.request(
       `/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reschedule`,
-      jsonRequestInit({ new_starts_at: MONDAY_1030AM_MERIDA, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+      jsonRequestInit({ customer_phone: "9991112233", new_starts_at: MONDAY_1030AM_MERIDA, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { appointment: { id: string; starts_at: string } };
@@ -136,7 +133,7 @@ describe("cancelar/reagendar vía el agente (x-atiende-tool-secret)", () => {
 
     const res = await app.request(
       `/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reschedule`,
-      jsonRequestInit({ new_starts_at: "2027-09-13T09:00:00.000Z" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }), // 3am Mérida
+      jsonRequestInit({ customer_phone: "9991112233", new_starts_at: "2027-09-13T09:00:00.000Z" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }), // 3am Mérida
     );
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string; alternative_slots: { starts_at: string; ends_at: string }[] };
@@ -173,7 +170,7 @@ describe("modificar-cita vía el agente (x-atiende-tool-secret) — Fase 4", () 
 
     const res = await app.request(
       `/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`,
-      jsonRequestInit({ new_provider_id: otroProviderId, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+      jsonRequestInit({ customer_phone: "9994445566", new_provider_id: otroProviderId, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { appointment: { id: string; provider_id: string; starts_at: string } };
@@ -188,7 +185,7 @@ describe("modificar-cita vía el agente (x-atiende-tool-secret) — Fase 4", () 
     const otroProviderId = seedSecondProvider(ctx);
     const appointmentId = await createRealAppointment(ctx, app);
 
-    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`, jsonRequestInit({ new_provider_id: otroProviderId }));
+    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`, jsonRequestInit({ customer_phone: "9994445566", new_provider_id: otroProviderId }));
     expect(res.status).toBe(401);
   });
 
@@ -203,7 +200,7 @@ describe("modificar-cita vía el agente (x-atiende-tool-secret) — Fase 4", () 
 
     const res = await app.request(
       `/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`,
-      jsonRequestInit({ new_provider_id: otroProviderId }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+      jsonRequestInit({ customer_phone: "9994445566", new_provider_id: otroProviderId }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
     );
     expect(res.status).toBe(400);
   });
@@ -213,7 +210,7 @@ describe("modificar-cita vía el agente (x-atiende-tool-secret) — Fase 4", () 
     const app = buildApp(ctx.deps);
     const appointmentId = await createRealAppointment(ctx, app);
 
-    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`, jsonRequestInit({}, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }));
+    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`, jsonRequestInit({ customer_phone: "9994445566" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }));
     expect(res.status).toBe(400);
   });
 });

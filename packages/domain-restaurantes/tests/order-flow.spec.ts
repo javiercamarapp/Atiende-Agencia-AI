@@ -101,6 +101,17 @@ describe("maquina de estados del pedido: intentos fuera de orden", () => {
     await expect(s.confirm({ quote_hash: "0".repeat(32) })).rejects.toEqual(rechazo("hash_no_coincide"));
   });
 
+  it("un quote_hash de relleno (N/A, vacio, texto) no es un hash: se ignora y la confirmacion procede (el modelo no recuerda el hash entre turnos)", async () => {
+    for (const relleno of ["N/A", "", "pendiente", "abc123"]) {
+      const s = setup();
+      await s.quote();
+      s.nextTurn();
+      await expect(s.confirm({ quote_hash: relleno })).resolves.toBeDefined();
+      const creado = await s.create();
+      expect(creado.orderId).not.toBeNull();
+    }
+  });
+
   it("una cotizacion vencida (TTL) no permite confirmar ni crear", async () => {
     const s = setup();
     await s.quote();

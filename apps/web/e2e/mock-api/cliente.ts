@@ -68,6 +68,18 @@ export class ClienteMock {
     if (!res.ok) throw new Error(`mock-api: emitir notificacion fallo (${res.status})`);
   }
 
+  /** Agrega un elemento a una lista del estado del escenario (p. ej. `rest.ordenes`): simula un evento externo, como un pedido nuevo. */
+  async agregarAEstado(clave: string, agregar: unknown): Promise<void> {
+    // 409 = la lista aun no existe porque la pantalla (chunk perezoso + su fetch) todavia no la carga: se reintenta hasta 10 s.
+    const limite = Date.now() + 10_000;
+    for (;;) {
+      const res = await fetch(this.ruta("estado"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clave, agregar }) });
+      if (res.ok) return;
+      if (res.status !== 409 || Date.now() > limite) throw new Error(`mock-api: agregar al estado fallo (${res.status})`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
   async reiniciar(): Promise<void> {
     await fetch(this.ruta("reiniciar"), { method: "POST" });
   }

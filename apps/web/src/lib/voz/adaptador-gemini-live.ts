@@ -2,8 +2,9 @@
 // propia (`POST .../admin/voz/preview/sesion`). La API key de la plataforma nunca llega al navegador. Sin credencial en el
 // servidor, la API responde 503 y este adaptador lanza el motivo honesto: no hay nada simulado.
 //
-// La vista previa NO llama herramientas ni registra pedidos (el token fija voz y comportamiento, sin tools): sirve para oir la
-// voz, el saludo y el tono del agente configurado. El protocolo de mensajes sigue la documentacion publica de la Live API y se
+// Herramientas: cuando el token efimero las fija (restaurantes) y la pagina pasa `ejecutarHerramienta`, el `toolCall` de Gemini se
+// RELEVA al servidor (que corre el registro de tools en modo preview, sin efectos) y su resultado vuelve como `toolResponse`. Sin
+// `ejecutarHerramienta` (hoteles/citas) un toolCall se contesta con un error honesto, nunca se ignora en silencio. El protocolo de mensajes sigue la documentacion publica de la Live API y se
 // prueba aqui contra un WebSocket falso; la primera prueba con credencial real lo confirma (docs/VOZ-PM.md).
 import type { LineaTranscripcion, OpcionesIniciarSesionVoz } from "@atiende/ui";
 import type { SesionPreviewVoz } from "./tipos.ts";
@@ -46,13 +47,23 @@ export interface EntornoVoz {
   ahora(): number;
 }
 
+export interface LlamadaHerramienta {
+  readonly id: string;
+  readonly nombre: string;
+  readonly argumentos: Record<string, unknown>;
+}
+
 export interface OpcionesGeminiLive {
   readonly crearSesion: (opts: OpcionesIniciarSesionVoz | undefined) => Promise<SesionPreviewVoz>;
   readonly entorno: EntornoVoz;
+  /** Ejecuta UNA herramienta en el servidor (modo preview) y devuelve el resultado que ve el modelo. Lanza si falla. */
+  readonly ejecutarHerramienta?: (sesion: SesionPreviewVoz, llamada: LlamadaHerramienta) => Promise<unknown>;
 }
 
 const INTERVALO_NIVEL_MS = 60;
 const SETUP_TIMEOUT_MS = 10_000;
+/** Tope de una herramienta (el mismo de la llamada real): pasado, el modelo recibe un error y sigue la conversacion. */
+export const HERRAMIENTA_TIMEOUT_MS = 4_000;
 
 export function crearFabricaGeminiLive(opciones: OpcionesGeminiLive): FabricaAdaptador {
   return (cb) => new AdaptadorGeminiLive(cb, opciones);
@@ -69,6 +80,7 @@ class AdaptadorGeminiLive implements AdaptadorVoz {
   private lineaAgente: { id: string; texto: string } | null = null;
   private lineaUsuario: { id: string; texto: string } | null = null;
   private nivelEntrada = 0;
+  private sesion: SesionPreviewVoz | null = null;
 
   constructor(
     private readonly cb: CallbacksAdaptador,
@@ -91,6 +103,7 @@ class AdaptadorGeminiLive implements AdaptadorVoz {
     // 1) Sesion efimera de la API propia. Un 503 ("falta GEMINI_API_KEY") sube tal cual como error de inicio.
     const sesion = await this.o.crearSesion(opts);
     if (!this.viva) return;
+    this.sesion = sesion;
     this.cb.cambiar({ sessionId: sesion.sesionId });
 
     // 2) Socket con el token efimero.
@@ -154,7 +167,51 @@ class AdaptadorGeminiLive implements AdaptadorVoz {
     this.cb.cambiar({ volumenEntrada: this.nivelEntrada, volumenSalida: this.reproductor?.nivel() ?? 0 });
   }
 
+  /** `toolCall` de Gemini Live: cada funcion se ejecuta en el servidor y se contesta con un `toolResponse` (un error o un
+   * timeout tambien se contestan: el modelo no se queda esperando). */
+  private herramientas(llamadas: readonly { id?: unknown; name?: unknown; args?: unknown }[]): void {
+    const sesion = this.sesion;
+    void Promise.all(
+      llamadas.map(async (l) => {
+        const id = typeof l.id === "string" ? l.id : "";
+        const nombre = typeof l.name === "string" ? l.name : "";
+        const argumentos = typeof l.args === "object" && l.args !== null && !Array.isArray(l.args) ? (l.args as Record<string, unknown>) : {};
+        let response: unknown;
+        if (!this.o.ejecutarHerramienta || !sesion) {
+          response = { error: "Esta llamada de prueba no puede ejecutar herramientas." };
+        } else {
+          try {
+            response = await this.conTope(this.o.ejecutarHerramienta(sesion, { id, nombre, argumentos }));
+          } catch (err) {
+            response = { error: err instanceof Error ? err.message : "No se pudo ejecutar la herramienta." };
+          }
+        }
+        return { id, name: nombre, response: typeof response === "object" && response !== null && !Array.isArray(response) ? response : { resultado: response } };
+      }),
+    ).then((functionResponses) => {
+      if (this.viva && this.socket) this.socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
+    });
+  }
+
+  private conTope<T>(p: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const cancelar = this.o.entorno.esperar(() => reject(new Error("La herramienta tardó demasiado en responder.")), HERRAMIENTA_TIMEOUT_MS);
+      p.then(
+        (v) => {
+          cancelar();
+          resolve(v);
+        },
+        (e: unknown) => {
+          cancelar();
+          reject(e instanceof Error ? e : new Error("No se pudo ejecutar la herramienta."));
+        },
+      );
+    });
+  }
+
   private recibir(msg: Record<string, unknown>): void {
+    const tool = msg.toolCall as { functionCalls?: { id?: unknown; name?: unknown; args?: unknown }[] } | undefined;
+    if (tool && Array.isArray(tool.functionCalls) && tool.functionCalls.length > 0) this.herramientas(tool.functionCalls);
     const c = msg.serverContent as
       | { modelTurn?: { parts?: { inlineData?: { data?: string } }[] }; interrupted?: boolean; turnComplete?: boolean; inputTranscription?: { text?: string }; outputTranscription?: { text?: string } }
       | undefined;

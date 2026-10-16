@@ -54,6 +54,8 @@ interface ValidWhatsAppOutboxPayload {
   readonly transaccional: boolean;
   /** PL-16: aviso proactivo que el plan nunca debe omitir por tope de mensajes (p. ej. un aviso de seguridad). */
   readonly critico: boolean;
+  /** Mensaje interactivo de solicitud de ubicacion (`location_request_message`); `body` es el texto que lo acompana. */
+  readonly solicitar_ubicacion: boolean;
 }
 
 /** R-27: valida la plantilla HSM opcional del payload. Una plantilla mal formada es un error de ENCOLADO (el
@@ -104,7 +106,10 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "buttons" inválido (debe ser string[] o {id,title}[])');
   }
   const template = p.template === undefined || p.template === null ? undefined : parseTemplate(p.template);
-  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true };
+  if (p.solicitar_ubicacion !== undefined && typeof p.solicitar_ubicacion !== "boolean") {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "solicitar_ubicacion" invalido (debe ser booleano)');
+  }
+  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true, solicitar_ubicacion: p.solicitar_ubicacion === true };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {
@@ -173,6 +178,10 @@ export interface DispatchItemResult {
   readonly id: string;
   readonly outcome: DispatchItemOutcome;
   readonly error?: string;
+  /** `true` si el fallo (reintento o muerto) vino del proveedor (Meta o la red hacia Meta): base de la alerta de proveedor caido. */
+  readonly proveedor?: boolean;
+  /** `error.code` de Graph API cuando lo hubo (190 = token invalido o vencido). */
+  readonly graphCode?: number;
 }
 
 export interface DispatchSummary {
@@ -211,7 +220,18 @@ export class WhatsAppOutboundDispatcher {
   async dispatchPending(port: MessagingOutboxPort, opts: DispatchPendingOptions = {}): Promise<DispatchSummary> {
     const limit = opts.limit ?? DEFAULT_BATCH_LIMIT;
     const claimed = await port.claimBatch(limit, this.leaseSeconds);
+    return this.dispatchClaimed(port, claimed, opts);
+  }
 
+  /** Lease (segundos) con que se reclama cada mensaje; el cron lo usa al reclamar de a uno. */
+  get claimLeaseSeconds(): number {
+    return this.leaseSeconds;
+  }
+
+  /** Envia mensajes YA reclamados (por `claimBatch`). Separado de `dispatchPending` para que el cron pueda reclamar de a
+   *  UNO en una sesion corta y enviar + cerrar ese mensaje en otra: el envio por Graph API no tiene llave de idempotencia,
+   *  asi que un ROLLBACK que deshaga un `markSent` ya entregado lo reenviaria (QA-restaurantes-R1-automatizacion-01). */
+  async dispatchClaimed(port: MessagingOutboxPort, claimed: readonly MessagingOutboxItem[], opts: DispatchPendingOptions = {}): Promise<DispatchSummary> {
     const items: DispatchItemResult[] = [];
     let sent = 0;
     let retried = 0;
@@ -325,9 +345,9 @@ export class WhatsAppOutboundDispatcher {
     }
 
     try {
-      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}) });
+      const enviado = await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
-      await port.markSent(item.id);
+      await port.markSent(item.id, { providerMessageId: enviado.providerMessageId, ...(enviado.enviadoComo ? { enviadoComo: enviado.enviadoComo } : {}) });
       if (medidor && medicion) {
         try {
           await medidor.despuesDeEnviar(medicion);
@@ -339,18 +359,19 @@ export class WhatsAppOutboundDispatcher {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const retryable = err instanceof WhatsAppSendError ? err.retryable : true;
+      const diagnostico = err instanceof WhatsAppSendError && err.info?.proveedor ? { proveedor: true as const, ...(err.info.graphCode !== undefined ? { graphCode: err.info.graphCode } : {}) } : {};
       await this.breaker?.reportFailure(payload.phone_number_id, message);
 
       const nextAttempts = item.attempts + 1;
       if (!retryable || nextAttempts >= this.maxAttempts) {
         await port.markDead(item.id, nextAttempts, message.slice(0, 120));
-        return { id: item.id, outcome: "dead", error: message };
+        return { id: item.id, outcome: "dead", error: message, ...diagnostico };
       }
 
       const backoffSeconds = computeBackoffSeconds(nextAttempts);
       const nextAttemptAtIso = new Date(this.now().getTime() + backoffSeconds * 1000).toISOString();
       await port.markRetry(item.id, nextAttempts, message.slice(0, 120), nextAttemptAtIso);
-      return { id: item.id, outcome: "retry", error: message };
+      return { id: item.id, outcome: "retry", error: message, ...diagnostico };
     }
   }
 }

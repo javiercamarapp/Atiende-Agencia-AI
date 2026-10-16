@@ -34,11 +34,19 @@ class AbortAwareFakeSession implements TenantDbSession {
       err.code = "25P02";
       throw err;
     }
+    // Migracion 048: el camino primario (funcion solo-sistema) no existe en esta base -> 42883, que aborta la transaccion como en
+    // Postgres real; el repositorio debe recuperarla con ROLLBACK TO SAVEPOINT y caer al camino directo que este doble modela.
+    if (normalized.startsWith("select restaurantes.upsert_customer")) {
+      this.aborted = true;
+      const err = new Error("function restaurantes.upsert_customer(uuid, text, text) does not exist") as Error & { code: string };
+      err.code = "42883";
+      throw err;
+    }
     if (normalized.startsWith("select") && normalized.includes("from restaurantes.customers")) {
       // Primer SELECT (antes del INSERT) -- sin fila existente todavía (fuerza el
       // camino de INSERT). El SELECT de RECUPERACIÓN (después del conflicto) SÍ debe
       // ver la fila ganadora.
-      return { rows: (this.calls.filter((c) => c.startsWith("select")).length > 1 ? [this.winnerRow] : []) as unknown as T[] };
+      return { rows: (this.calls.filter((c) => c.startsWith("select") && !c.startsWith("select restaurantes.")).length > 1 ? [this.winnerRow] : []) as unknown as T[] };
     }
     if (normalized.startsWith("insert into restaurantes.customers")) {
       // Mismo efecto que Postgres real: el error de la propia query deja la
@@ -75,6 +83,7 @@ describe("PostgresRestaurantesRepository.upsertCustomer — recuperación de 235
     expect(result.id).toBe("winner-id");
     // La secuencia real DEBE incluir el SAVEPOINT antes del INSERT y su recuperación
     // (ROLLBACK TO SAVEPOINT + RELEASE SAVEPOINT) antes del SELECT/UPDATE de después.
+    expect(session.calls).toContain("rollback to savepoint sp_restaurantes_upsert_customer_fn");
     expect(session.calls).toContain("savepoint sp_upsert_customer_race");
     expect(session.calls).toContain("rollback to savepoint sp_upsert_customer_race");
     expect(session.calls).toContain("release savepoint sp_upsert_customer_race");

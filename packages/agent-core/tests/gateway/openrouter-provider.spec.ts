@@ -187,10 +187,10 @@ describe('OpenRouterProvider: streaming', () => {
 });
 
 describe('OpenRouterProvider: errores, reintentos y timeouts', () => {
-  it('clasifica por status: transitorio (408/429/5xx), especifico del modelo (400/404/422) y de cuenta (401/402/403)', () => {
+  it('clasifica por status: transitorio (408/429/5xx), especifico del modelo o del saldo (400/402/404/422) y de llave (401/403)', () => {
     for (const s of [408, 429, 500, 503]) expect(classifyOpenRouterStatus(s)).toEqual({ transient: true, ladderRetryable: true });
-    for (const s of [400, 404, 422]) expect(classifyOpenRouterStatus(s)).toEqual({ transient: false, ladderRetryable: true });
-    for (const s of [401, 402, 403]) expect(classifyOpenRouterStatus(s)).toEqual({ transient: false, ladderRetryable: false });
+    for (const s of [400, 402, 404, 422]) expect(classifyOpenRouterStatus(s)).toEqual({ transient: false, ladderRetryable: true });
+    for (const s of [401, 403]) expect(classifyOpenRouterStatus(s)).toEqual({ transient: false, ladderRetryable: false });
   });
 
   it('reintenta con backoff un 503 y un 429 (respetando Retry-After con tope) y termina bien', async () => {

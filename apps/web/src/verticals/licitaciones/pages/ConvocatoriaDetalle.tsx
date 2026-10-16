@@ -414,7 +414,7 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
         )}
 
         <TabsContent value="bitacora">
-          <BitacoraConvocatoria apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} />
+          <BitacoraConvocatoria apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} trazaHref={role === "owner" || role === "admin" ? `/licitaciones/${orgSlug}/bitacora?convocatoria=${tenderId}` : undefined} />
         </TabsContent>
       </Tabs>
       {dialogo}

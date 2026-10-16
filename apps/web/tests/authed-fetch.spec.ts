@@ -233,6 +233,25 @@ describe("apiBaseUrlFromRequestUrl", () => {
   });
 });
 
+describe("apiBaseUrlFromRequestUrl con VITE_API_BASE_URL vacio (produccion, mismo origen)", () => {
+  it("una URL relativa devuelve base vacia en vez de lanzar Invalid URL", () => {
+    expect(apiBaseUrlFromRequestUrl("/v1/restaurantes/demo-restaurantes/dashboard")).toBe("");
+  });
+
+  it("withAuthRefresh con base relativa refresca en /auth/refresh relativo", async () => {
+    const calls: string[] = [];
+    const store = { read: () => ({ token: "t0", refreshToken: "r0" }), persist: vi.fn(), clear: vi.fn() };
+    const fetchImpl = (async (u: string) => {
+      calls.push(u);
+      return new Response(JSON.stringify({ token: "t1", refreshToken: "r1" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    let n = 0;
+    const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl("/v1/x"), { store, vertical: "restaurantes" } as never, "t0", async () => new Response("{}", { status: ++n === 1 ? 401 : 200 }));
+    expect(res.status).toBe(200);
+    expect(calls).toEqual(["/auth/refresh"]);
+  });
+});
+
 describe("defaultBrowserStorage", () => {
   const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
 

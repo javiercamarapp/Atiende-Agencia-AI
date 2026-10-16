@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { runWithSavepointFallback, isMigrationPendingError } from "@atiende/db";
-import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, PropertyConfigUnavailableError, RateEngineUnavailableError } from "./errors.ts";
+import { FolioCerradoError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, PropertyConfigUnavailableError, RateEngineUnavailableError, translateFolioTriggerError } from "./errors.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -726,6 +726,14 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return row ? this.toFolioRecord(row) : null;
   }
 
+  async lockFolioStatus(propertyId: string, folioId: string): Promise<FolioRecord["status"] | null> {
+    const { rows } = await this.db.query<{ status: FolioRecord["status"] }>(
+      `select status from hoteles.folio where id = $1 and property_id = $2 for update;`,
+      [folioId, propertyId],
+    );
+    return rows[0]?.status ?? null;
+  }
+
   async listFoliosByReservation(propertyId: string, reservationId: string): Promise<readonly FolioRecord[]> {
     const { rows } = await this.db.query<FolioRawRow>(
       `select id, organization_id, property_id, reservation_id, status, label, is_primary,
@@ -774,7 +782,7 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async insertCharge(input: NewChargeInput): Promise<{ id: string; createdAt: string }> {
-    const { rows } = await this.db.query<{ id: string; created_at: string }>(
+    const { rows } = await this.queryFolioWrite<{ id: string; created_at: string }>(
       `insert into hoteles.charge
          (organization_id, property_id, folio_id, description, amount, tax_amount, concept,
           reverses_charge_id, transferred_from_charge_id, discount_authorized_by, stay_date)
@@ -821,7 +829,7 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async insertPayment(input: NewPaymentInput): Promise<{ id: string; createdAt: string }> {
-    const { rows } = await this.db.query<{ id: string; created_at: string }>(
+    const { rows } = await this.queryFolioWrite<{ id: string; created_at: string }>(
       `insert into hoteles.payment (organization_id, property_id, folio_id, amount, method, status, external_ref, token_ref)
        values ($1, $2, $3, $4, $5, $6, $7, $8)
        returning id, created_at::text as created_at;`,
@@ -859,12 +867,26 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return existing.rows[0];
   }
 
+  /** Escritura de dinero sobre un folio: traduce el rechazo de los triggers de la migracion 045 (folio cerrado /
+   *  cierre con saldo distinto de cero) a su error de dominio. Cualquier otro error se relanza intacto. */
+  private async queryFolioWrite<R extends Record<string, unknown>>(sql: string, params: unknown[]): Promise<{ rows: R[] }> {
+    try {
+      return await this.db.query<R>(sql, params);
+    } catch (err) {
+      throw translateFolioTriggerError(err) ?? err;
+    }
+  }
+
   async closeFolio(folioId: string, reason: "saldo_cero" | "cuenta_por_cobrar", arApprovedBy: string | null): Promise<void> {
-    await this.db.query(
+    // `and status = 'abierto' returning id`: el cierre es una transicion unica. Un segundo cierre (doble clic, dos
+    // pestanas) o uno que perdio la carrera no pisa closed_at/close_reason del primero: 0 filas -> FolioCerradoError.
+    const { rows } = await this.queryFolioWrite<{ id: string }>(
       `update hoteles.folio set status = 'cerrado', closed_at = now(), close_reason = $1, ar_approved_by = $2, updated_at = now()
-       where id = $3;`,
+       where id = $3 and status = 'abierto'
+       returning id;`,
       [reason, arApprovedBy, folioId],
     );
+    if (rows.length === 0) throw new FolioCerradoError();
   }
 
   async listFnbOrders(propertyId: string): Promise<readonly FnbOrderRecord[]> {
@@ -1817,7 +1839,7 @@ export class PostgresHotelesRepository implements HotelesRepository {
     const { rows } = await this.db.query<{ reservation_id: string; folio_id: string | null; nightly_price: string | null }>(
       `select r.id as reservation_id, f.id as folio_id, rp.price::text as nightly_price
        from hoteles.reservation r
-       left join hoteles.folio f on f.reservation_id = r.id and f.is_primary
+       left join hoteles.folio f on f.reservation_id = r.id and f.is_primary and f.status = 'abierto'
        left join hoteles.rate_plan rp on rp.room_type_id = r.room_type_id and rp.property_id = r.property_id and rp.date = $2::date
        where r.property_id = $1
          and r.status in ('check_in', 'en_estancia')
@@ -2846,6 +2868,29 @@ export class PostgresHotelesRepository implements HotelesRepository {
       fallback: (err) => {
         console.warn(
           "listExpirableRateRecommendationsAsSystem: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a lista vacía:",
+          err instanceof Error ? err.message : err,
+        );
+        return Promise.resolve([] as readonly RateRecommendationRecord[]);
+      },
+    });
+  }
+
+  async listApprovedRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `select ${this.RATE_RECOMMENDATION_COLUMNS} from hoteles.rate_recommendation
+           where property_id = $1 and estado = 'aprobada' and fecha >= $2::date
+           order by fecha asc, room_type_id asc, id asc;`,
+          [propertyId, todayIso],
+        );
+        return rows.map((r) => this.toRateRecommendationRecord(r));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn(
+          "listApprovedRateRecommendationsAsSystem: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a lista vacía:",
           err instanceof Error ? err.message : err,
         );
         return Promise.resolve([] as readonly RateRecommendationRecord[]);

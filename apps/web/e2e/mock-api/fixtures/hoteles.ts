@@ -112,7 +112,44 @@ export const rutasHoteles: readonly Ruta[] = [
     ownersReport: { porEncimaDePuntoDeEquilibrio: true, alertas: [] },
     alcance: { pendiente: [] },
   }) },
-  { metodo: "GET", patron: `${H}/recepcion`, roles: ["owner"], manejador: () => ({ fecha: "2026-10-02", tareasDisponibles: true, identidadDisponible: true, resumen: { llegadas: 4, llegadasPendientes: 3, salidas: 2, salidasPendientes: 1, enCasa: 17, habitacionesLibres: 6, habitacionesSucias: 2, habitacionesFueraDeServicio: 1 }, llegadas: [], salidas: [], enCasa: [], rack: [] }) },
+  { metodo: "GET", patron: `${H}/recepcion`, roles: ["owner"], manejador: (p) => {
+      // Operacion (UNI-C-hoteles): una llegada con habitacion asignada; el check-in la saca de "llegadas" y la pone "en casa".
+      const hecho = p.estado.obtener<{ checkIn: boolean }>("hoteles.checkin", () => ({ checkIn: false })).checkIn;
+      const mov = (estado: "confirmada" | "check_in") => ({ reservaId: "res-1", estado, huesped: { id: "g-1", nombre: "Ana Torres" }, tipoHabitacion: { id: "rt-1", nombre: "Doble" }, habitacion: { id: "room-1", codigo: "101" }, entrada: "2026-10-02", salida: "2026-10-04", noches: 2, salidaVencida: false, identidadRegistrada: true });
+      return { fecha: "2026-10-02", tareasDisponibles: true, identidadDisponible: true, resumen: { llegadas: 4, llegadasPendientes: 3, salidas: 2, salidasPendientes: 1, enCasa: 17, habitacionesLibres: 6, habitacionesSucias: 2, habitacionesFueraDeServicio: 1 }, llegadas: hecho ? [mov("check_in")] : [mov("confirmada")], salidas: [], enCasa: hecho ? [mov("check_in")] : [], rack: [] };
+    } },
+  { metodo: "POST", patron: `${H}/recepcion/reservas/:rid/check-in`, roles: ["owner"], manejador: (p) => {
+      p.estado.obtener<{ checkIn: boolean }>("hoteles.checkin", () => ({ checkIn: false })).checkIn = true;
+      return { id: p.params.rid, estado: "check_in", habitacion: { id: "room-1", codigo: "101" }, identidadRegistrada: true };
+    } },
+  { metodo: "GET", patron: `${H}/reservas`, roles: ["owner"], manejador: () => [
+      { id: "res-1", propertyId: PROP.id, roomTypeId: "rt-1", guestId: null, checkInDate: "2026-10-02", checkOutDate: "2026-10-04", estado: "confirmada", montoTotal: 2320, penalizacionCancelacion: null, canceladaEn: null, creadaEn: "2026-09-20T10:00:00.000Z", roomId: null },
+    ] },
+  // Housekeeping: una habitacion sucia; "Generar tareas del dia" crea su tarea y el siguiente GET la refleja.
+  { metodo: "GET", patron: `${H}/housekeeping/tablero`, roles: ["owner"], manejador: (p) => {
+      const generada = p.estado.obtener<{ hecho: boolean }>("hoteles.hk", () => ({ hecho: false })).hecho;
+      return { fecha: "2026-10-02", tareasDisponibles: true, habitaciones: [
+        { roomId: "room-1", codigo: "101", tipoHabitacion: "Doble", estado: "sucia", tarea: generada ? { id: "task-1", tipo: "salida", estado: "pendiente", prioridad: "media", asignadoA: null, rechazos: 0 } : null, fueraDeServicio: null },
+      ] };
+    } },
+  { metodo: "GET", patron: `${H}/housekeeping/reporte`, roles: ["owner"], manejador: () => ({ fecha: "2026-10-02", tareasDisponibles: true, totales: { total: 0, pendientes: 0, enProgreso: 0, porInspeccionar: 0, inspeccionadas: 0, rechazos: 0 }, porResponsable: [], habitacionesPorEstado: { disponible: 5, ocupada: 17, sucia: 1, mantenimiento: 0, fuera_de_servicio: 0 }, fueraDeServicioActivas: 0 }) },
+  { metodo: "GET", patron: `${H}/housekeeping/camaristas`, roles: ["owner"], manejador: () => ({ camaristas: [] }) },
+  { metodo: "POST", patron: `${H}/housekeeping/tareas/generar`, roles: ["owner"], manejador: (p) => {
+      p.estado.obtener<{ hecho: boolean }>("hoteles.hk", () => ({ hecho: false })).hecho = true;
+      return { fecha: "2026-10-02", creadas: 1 };
+    } },
+  { metodo: "POST", patron: `${H}/folios/:fid/cargos/:cid/reverso`, manejador: (p) => {
+      const f = folioMock(p);
+      const original = f.cargos.find((c) => c.id === p.params.cid);
+      if (f.estado !== "abierto") return fallo(409, MENSAJE_FOLIO_CERRADO);
+      if (!original || original.revertidoPor) return fallo(404, "Cargo no encontrado o ya reversado.");
+      const motivo = ((p.cuerpo ?? {}) as { motivo?: string }).motivo;
+      if (!motivo) return fallo(400, "motivo: requerido.");
+      const reverso = { id: `chg-${f.cargos.length + 1}`, concepto: "reverso" as unknown as ConceptoMock, descripcion: `Reverso: ${motivo}`, monto: -original.monto, impuesto: -original.impuesto, revertidoPor: null, reversaDe: original.id, transferidoDe: null, creadoEn: new Date().toISOString() };
+      original.revertidoPor = reverso.id;
+      f.cargos.push(reverso);
+      return conStatus(201, { id: reverso.id });
+    } },
   { metodo: "GET", patron: `${H}/aprobaciones`, roles: ["owner"], manejador: () => ({ disponible: true, ahora: new Date().toISOString(), aprobaciones: [{ id: "apr-1", estado: "pendiente" }, { id: "apr-2", estado: "ejecutada" }] }) },
   { metodo: "GET", patron: `${H}/reservas-agente/holds`, roles: ["owner"], manejador: () => ({ disponible: true, holds: [{ id: "hold-1", estado: "pendiente_pago", canal: "whatsapp" }, { id: "hold-2", estado: "pendiente_aprobacion", canal: "voz" }] }) },
   { metodo: "GET", patron: `${H}/agentes`, roles: ["owner"], manejador: () => ({ disponible: true, mes: "2026-10", agentes: [
@@ -138,6 +175,56 @@ export const rutasHoteles: readonly Ruta[] = [
       t.estado = estado;
       return t;
     } },
+  // H-P3-01 -- folio con estado en el escenario: un cierre se refleja en el siguiente GET y un cargo/pago/cierre posterior recibe el mismo
+  // 409 legible que la API real (el trigger de la migracion 045 + el onError de apps/api/.../hoteles/folios.ts). Solo existe en la API simulada.
+  { metodo: "GET", patron: `${H}/folios/:fid`, manejador: (p) => {
+      const f = folioMock(p);
+      return p.params.fid === f.id ? serializarFolio(f) : fallo(404, "Folio no encontrado.");
+    } },
+  { metodo: "GET", patron: `${H}/reservas/:rid/folios`, manejador: (p) => [serializarFolio(folioMock(p))] },
+  { metodo: "POST", patron: `${H}/folios/:fid/cargos`, manejador: (p) => {
+      const f = folioMock(p);
+      if (f.estado !== "abierto") return fallo(409, MENSAJE_FOLIO_CERRADO);
+      const cuerpo = (p.cuerpo ?? {}) as { descripcion?: string; monto?: number; concepto?: ConceptoMock };
+      const monto = Number(cuerpo.monto);
+      if (!cuerpo.descripcion || !Number.isFinite(monto) || monto <= 0) return fallo(400, "Descripcion y monto (> 0) son requeridos.");
+      const cargo = { id: `chg-${f.cargos.length + 1}`, concepto: cuerpo.concepto ?? "extras", descripcion: cuerpo.descripcion, monto, impuesto: Math.round(monto * 16) / 100, revertidoPor: null, reversaDe: null, transferidoDe: null, creadoEn: new Date().toISOString() };
+      f.cargos.push(cargo);
+      return conStatus(201, { id: cargo.id, concepto: cargo.concepto, monto: cargo.monto, impuesto: cargo.impuesto });
+    } },
+  { metodo: "POST", patron: `${H}/folios/:fid/cerrar`, manejador: (p) => {
+      const f = folioMock(p);
+      if (f.estado !== "abierto") return fallo(409, "El folio ya está cerrado.");
+      const motivo = ((p.cuerpo ?? {}) as { motivo?: string }).motivo;
+      if (motivo !== "saldo_cero" && motivo !== "cuenta_por_cobrar") return fallo(400, "motivo: se esperaba saldo_cero|cuenta_por_cobrar.");
+      const saldo = saldoFolio(f);
+      if (motivo === "saldo_cero" && saldo !== 0) return fallo(409, "El saldo del folio cambió y ya no es cero: revisa el folio antes de cerrarlo.");
+      f.estado = "cerrado";
+      f.motivoCierre = motivo;
+      f.cerradoEn = new Date().toISOString();
+      return { id: f.id, estado: f.estado, motivoCierre: motivo, saldo };
+    } },
 ];
+
+const MENSAJE_FOLIO_CERRADO = "El folio ya está cerrado: no admite más movimientos.";
+type ConceptoMock = "hospedaje" | "ab" | "extras" | "ajuste" | "propina" | "otro";
+interface FolioMock {
+  id: string;
+  estado: "abierto" | "cerrado";
+  reservationId: string;
+  etiqueta: string;
+  motivoCierre: "saldo_cero" | "cuenta_por_cobrar" | null;
+  cerradoEn: string | null;
+  cargos: { id: string; concepto: ConceptoMock; descripcion: string; monto: number; impuesto: number; revertidoPor: string | null; reversaDe: string | null; transferidoDe: string | null; creadoEn: string }[];
+}
+function folioMock(p: { estado: { obtener<T>(k: string, s: () => T): T } }): FolioMock {
+  return p.estado.obtener<FolioMock>("hoteles.folio", () => ({ id: "fol-1", estado: "abierto", reservationId: "res-1", etiqueta: "Principal", motivoCierre: null, cerradoEn: null, cargos: [] }));
+}
+function saldoFolio(f: FolioMock): number {
+  return Math.round(f.cargos.reduce((n, c) => n + c.monto + c.impuesto, 0) * 100) / 100;
+}
+function serializarFolio(f: FolioMock) {
+  return { id: f.id, estado: f.estado, reservationId: f.reservationId, etiqueta: f.etiqueta, esPrincipal: true, cerradoEn: f.cerradoEn, motivoCierre: f.motivoCierre, cargos: f.cargos, pagos: [], saldo: saldoFolio(f) };
+}
 
 export const hoteles = { orgSlug: ORG.slug, propertyId: PROP.id };

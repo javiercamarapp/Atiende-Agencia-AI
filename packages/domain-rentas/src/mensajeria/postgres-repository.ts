@@ -4,8 +4,9 @@
 // `PostgresRentasOwnerPortalRepository`). Contra el esquema de
 // `supabase/migrations/*_009_rentas_mensajeria_schema.sql`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { RentasMensajeriaRepository } from "./repository.ts";
-import type { CanalMensajeriaCodigo, DireccionMensaje, EstadoBorrador, EventoPlantilla, IdiomaMensaje, OrigenMensaje } from "./tipos.ts";
+import type { CanalMensajeriaCodigo, DireccionMensaje, EstadoBorrador, EventoPlantilla, IdiomaMensaje, OrigenMensaje, SenalEscalamiento } from "./tipos.ts";
 import type {
   BorradorRecord,
   ConversacionRecord,
@@ -84,6 +85,9 @@ interface BorradorRow {
   estado: EstadoBorrador;
   generado_por: GeneradoPorBorrador;
   redactado: boolean;
+  // Migración rentas 034: ausentes en la base sin migrar (el SELECT de respaldo no las pide).
+  necesita_escalamiento?: boolean;
+  senales?: SenalEscalamiento[];
   aprobado_por: string | null;
   aprobado_en: string | null;
   rechazado_por: string | null;
@@ -104,6 +108,8 @@ function mapBorrador(r: BorradorRow): BorradorRecord {
     estado: r.estado,
     generadoPor: r.generado_por,
     redactado: r.redactado,
+    necesitaEscalamiento: r.necesita_escalamiento === true,
+    senales: r.senales ?? [],
     aprobadoPor: r.aprobado_por,
     aprobadoEn: r.aprobado_en,
     rechazadoPor: r.rechazado_por,
@@ -115,17 +121,21 @@ function mapBorrador(r: BorradorRow): BorradorRecord {
   };
 }
 
-const BORRADOR_SELECT = `id, conversacion_id, mensaje_entrante_id, canal_codigo, texto, estado, generado_por, redactado,
+// Proyección base (la que existe desde la migración 009) y proyección con las columnas de escalamiento (migración 034).
+// Cada lectura intenta la completa y, contra la base sin migrar (42703), cae a la base: ver `conEscalamiento`.
+const BORRADOR_COLUMNAS_BASE = `id, conversacion_id, mensaje_entrante_id, canal_codigo, texto, estado, generado_por, redactado,
    aprobado_por, aprobado_en::text as aprobado_en, rechazado_por, rechazado_en::text as rechazado_en, motivo_rechazo,
    mensaje_enviado_id, creado_en::text as creado_en, actualizado_en::text as actualizado_en`;
+const BORRADOR_SELECT_BASE = BORRADOR_COLUMNAS_BASE;
+const BORRADOR_SELECT = `${BORRADOR_COLUMNAS_BASE}, necesita_escalamiento, senales`;
 
-// Misma proyección que BORRADOR_SELECT, con el prefijo de tabla `b.` explícito para
-// las dos queries que hacen JOIN a `rentas.conversacion` (findBorrador/listBorradores)
-// -- evitar transformar BORRADOR_SELECT con un split/join de string, frágil ante
-// cualquier cambio de formato de esa constante.
-const BORRADOR_SELECT_JOIN = `b.id, b.conversacion_id, b.mensaje_entrante_id, b.canal_codigo, b.texto, b.estado, b.generado_por, b.redactado,
+// Misma proyección, con el prefijo de tabla `b.` explícito para las dos queries que hacen JOIN a `rentas.conversacion`
+// (findBorrador/listBorradores) -- evita transformar el SELECT con un split/join de string, frágil ante cualquier cambio.
+const BORRADOR_COLUMNAS_BASE_JOIN = `b.id, b.conversacion_id, b.mensaje_entrante_id, b.canal_codigo, b.texto, b.estado, b.generado_por, b.redactado,
    b.aprobado_por, b.aprobado_en::text as aprobado_en, b.rechazado_por, b.rechazado_en::text as rechazado_en, b.motivo_rechazo,
    b.mensaje_enviado_id, b.creado_en::text as creado_en, b.actualizado_en::text as actualizado_en`;
+const BORRADOR_SELECT_JOIN_BASE = BORRADOR_COLUMNAS_BASE_JOIN;
+const BORRADOR_SELECT_JOIN = `${BORRADOR_COLUMNAS_BASE_JOIN}, b.necesita_escalamiento, b.senales`;
 
 interface PlantillaRow {
   id: string;
@@ -160,6 +170,14 @@ const PLANTILLA_SELECT = `id, organization_id, evento, idioma, canal_codigo, cue
 
 export class PostgresRentasMensajeriaRepository implements RentasMensajeriaRepository {
   constructor(private readonly db: TenantDbSession) {}
+
+  // Compatibilidad con la base sin migrar (columnas de la migración 034 aún inexistentes): la sesión es UNA transacción por
+  // request, así que el 42703 de la consulta completa la dejaría abortada (25P02) y el COMMIT haría ROLLBACK de todo lo escrito
+  // por el request. SAVEPOINT + ROLLBACK TO SAVEPOINT (runWithSavepointFallback) deja la sesión utilizable para la consulta base.
+  // Cualquier otro error se repropaga: nunca se enmascara un fallo real.
+  private conEscalamiento<T>(primary: () => Promise<T>, base: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback<T>({ session: this.db, primary, isRecoverable: isMigrationPendingError, fallback: base });
+  }
 
   // ---- Conversaciones ----
 
@@ -225,13 +243,28 @@ export class PostgresRentasMensajeriaRepository implements RentasMensajeriaRepos
   // ---- Borradores ----
 
   async insertBorrador(input: NewBorradorInput): Promise<BorradorRecord> {
-    const { rows } = await this.db.query<BorradorRow>(
-      `insert into rentas.borrador_mensaje (conversacion_id, mensaje_entrante_id, canal_codigo, texto, generado_por)
-       values ($1, $2, $3, $4, $5)
-       returning ${BORRADOR_SELECT};`,
-      [input.conversacionId, input.mensajeEntranteId ?? null, input.canal, input.texto, input.generadoPor],
+    const senales = [...(input.senales ?? [])];
+    const necesita = input.necesitaEscalamiento === true || senales.length > 0;
+    return this.conEscalamiento(
+      async () => {
+        const { rows } = await this.db.query<BorradorRow>(
+          `insert into rentas.borrador_mensaje (conversacion_id, mensaje_entrante_id, canal_codigo, texto, generado_por, necesita_escalamiento, senales)
+           values ($1, $2, $3, $4, $5, $6, $7::text[])
+           returning ${BORRADOR_SELECT};`,
+          [input.conversacionId, input.mensajeEntranteId ?? null, input.canal, input.texto, input.generadoPor, necesita, senales],
+        );
+        return mapBorrador(rows[0]!);
+      },
+      async () => {
+        const { rows } = await this.db.query<BorradorRow>(
+          `insert into rentas.borrador_mensaje (conversacion_id, mensaje_entrante_id, canal_codigo, texto, generado_por)
+           values ($1, $2, $3, $4, $5)
+           returning ${BORRADOR_SELECT_BASE};`,
+          [input.conversacionId, input.mensajeEntranteId ?? null, input.canal, input.texto, input.generadoPor],
+        );
+        return mapBorrador(rows[0]!);
+      },
     );
-    return mapBorrador(rows[0]!);
   }
 
   // `propertyId` se resuelve vía join a `rentas.conversacion` -- `borrador_mensaje` no
@@ -239,36 +272,51 @@ export class PostgresRentasMensajeriaRepository implements RentasMensajeriaRepos
   // migración) -- defensa en profundidad idéntica al resto del repositorio, nunca
   // confía en que el cliente "sabe" que el borrador pertenece a esta property.
   async findBorrador(propertyId: string, borradorId: string): Promise<BorradorRecord | null> {
-    const { rows } = await this.db.query<BorradorRow>(
-      `select ${BORRADOR_SELECT_JOIN}
-       from rentas.borrador_mensaje b
-       join rentas.conversacion c on c.id = b.conversacion_id
-       where b.id = $1 and c.property_id = $2;`,
-      [borradorId, propertyId],
+    const consulta = (columnas: string) =>
+      this.db.query<BorradorRow>(
+        `select ${columnas}
+         from rentas.borrador_mensaje b
+         join rentas.conversacion c on c.id = b.conversacion_id
+         where b.id = $1 and c.property_id = $2;`,
+        [borradorId, propertyId],
+      );
+    const { rows } = await this.conEscalamiento(
+      () => consulta(BORRADOR_SELECT_JOIN),
+      () => consulta(BORRADOR_SELECT_JOIN_BASE),
     );
     return rows[0] ? mapBorrador(rows[0]) : null;
   }
 
   async listBorradores(propertyId: string, conversacionId: string): Promise<readonly BorradorRecord[]> {
-    const { rows } = await this.db.query<BorradorRow>(
-      `select ${BORRADOR_SELECT_JOIN}
-       from rentas.borrador_mensaje b
-       join rentas.conversacion c on c.id = b.conversacion_id
-       where b.conversacion_id = $1 and c.property_id = $2
-       order by b.creado_en desc;`,
-      [conversacionId, propertyId],
+    const consulta = (columnas: string) =>
+      this.db.query<BorradorRow>(
+        `select ${columnas}
+         from rentas.borrador_mensaje b
+         join rentas.conversacion c on c.id = b.conversacion_id
+         where b.conversacion_id = $1 and c.property_id = $2
+         order by b.creado_en desc;`,
+        [conversacionId, propertyId],
+      );
+    const { rows } = await this.conEscalamiento(
+      () => consulta(BORRADOR_SELECT_JOIN),
+      () => consulta(BORRADOR_SELECT_JOIN_BASE),
     );
     return rows.map(mapBorrador);
   }
 
   async marcarBorradorAprobadoYEnviado(input: MarcarBorradorAprobadoYEnviadoInput): Promise<BorradorRecord> {
-    const { rows } = await this.db.query<BorradorRow>(
-      `update rentas.borrador_mensaje
-       set estado = 'enviado', texto = $2, redactado = $3, aprobado_por = $4, aprobado_en = now(),
-           mensaje_enviado_id = $5, actualizado_en = now()
-       where id = $1
-       returning ${BORRADOR_SELECT};`,
-      [input.id, input.textoFinal, input.redactado, input.aprobadoPor, input.mensajeEnviadoId],
+    const actualizar = (columnas: string) =>
+      this.db.query<BorradorRow>(
+        `update rentas.borrador_mensaje
+         set estado = 'enviado', texto = $2, redactado = $3, aprobado_por = $4, aprobado_en = now(),
+             mensaje_enviado_id = $5, actualizado_en = now()
+         where id = $1
+         returning ${columnas};`,
+        [input.id, input.textoFinal, input.redactado, input.aprobadoPor, input.mensajeEnviadoId],
+      );
+    const { rows } = await this.conEscalamiento(
+      () => actualizar(BORRADOR_SELECT),
+      () => actualizar(BORRADOR_SELECT_BASE),
     );
     const row = rows[0];
     if (!row) throw new Error(`Borrador ${input.id} no encontrado`);
@@ -276,12 +324,17 @@ export class PostgresRentasMensajeriaRepository implements RentasMensajeriaRepos
   }
 
   async marcarBorradorRechazado(input: MarcarBorradorRechazadoInput): Promise<BorradorRecord> {
-    const { rows } = await this.db.query<BorradorRow>(
-      `update rentas.borrador_mensaje
-       set estado = 'rechazado', rechazado_por = $2, rechazado_en = now(), motivo_rechazo = $3, actualizado_en = now()
-       where id = $1
-       returning ${BORRADOR_SELECT};`,
-      [input.id, input.rechazadoPor, input.motivo],
+    const actualizar = (columnas: string) =>
+      this.db.query<BorradorRow>(
+        `update rentas.borrador_mensaje
+         set estado = 'rechazado', rechazado_por = $2, rechazado_en = now(), motivo_rechazo = $3, actualizado_en = now()
+         where id = $1
+         returning ${columnas};`,
+        [input.id, input.rechazadoPor, input.motivo],
+      );
+    const { rows } = await this.conEscalamiento(
+      () => actualizar(BORRADOR_SELECT),
+      () => actualizar(BORRADOR_SELECT_BASE),
     );
     const row = rows[0];
     if (!row) throw new Error(`Borrador ${input.id} no encontrado`);

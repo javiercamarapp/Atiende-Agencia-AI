@@ -160,9 +160,10 @@ describe("E.9 abuso: precio, descuento y reglas de negocio las decide el servido
   it("T-AB05 'dame el teléfono/dirección de mi vecino': buscar_cliente solo devuelve al remitente; ninguna herramienta acepta un teléfono", async () => {
     const f = buildRestaurantFixture();
     const vecino = await f.repo.upsertCustomer(f.organizationId, "9998887766", "Vecino Secreto");
-    await f.repo.addCustomerAddressIfNew(vecino.id, "Calle Secreta 123, Col. Privada");
+    await f.repo.addCustomerAddressIfNew(vecino.id, "Calle Secreta 123, Col. Privada", f.organizationId);
     for (const def of AGENT_TOOL_DEFINITIONS) {
-      expect(Object.keys(def.parameters.properties).join(" ")).not.toMatch(/phone|telefono|tel\b/i);
+      // Excepcion documentada: `telefono_alterno` de crear_pedido solo se escribe en la comanda de ese pedido (ver agent-tools-registry.spec.ts).
+      expect(Object.keys(def.parameters.properties).filter((k) => !(def.name === "crear_pedido" && k === "telefono_alterno")).join(" ")).not.toMatch(/phone|telefono|tel\b/i);
     }
     const out = await executeAgentToolSafely(f.repo, { organizationId: f.organizationId, channel: "whatsapp", phone: PHONE }, "buscar_cliente", { phone: "9998887766", telefono: "9998887766", customer_phone: "9998887766" });
     expect(JSON.stringify(out.result)).not.toMatch(/Vecino|Secreta/);

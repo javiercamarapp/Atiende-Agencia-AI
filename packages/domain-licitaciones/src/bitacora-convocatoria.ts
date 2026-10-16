@@ -60,6 +60,11 @@ export interface BitacoraPagina {
 const AUDIT_TEXT: Readonly<Record<string, string>> = {
   "tender.manual_upsert.created": "Se dio de alta la convocatoria de forma manual.",
   "tender.manual_upsert.updated": "Se actualizaron las bases de la convocatoria de forma manual.",
+  "document.uploaded": "Se subió un documento de la convocatoria a la bóveda.",
+  "requirements.extracted": "Se extrajeron los requisitos de las bases.",
+  "requirement.edited": "Se editó un requisito de la matriz (responsable, estado o causa de desechamiento).",
+  "requirement.conflict_resolved": "Se resolvió un conflicto entre requisitos.",
+  "section.edited": "Se editó una sección de la propuesta (las aprobaciones vigentes de esa sección se invalidaron).",
 };
 
 const SALA_KIND_TEXT = { decision: "Decisión", comentario: "Comentario", evento: "Evento" } as const;

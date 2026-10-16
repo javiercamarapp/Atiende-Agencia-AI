@@ -32,6 +32,8 @@ export interface AprobacionExpedienteProps {
   readonly orgSlug: string;
   /** Rol de vertical de la persona (cosmetico: el servidor decide). */
   readonly canApprove: boolean;
+  /** AE-11: la persona editó contenido de alguna sección: no puede aprobar el expediente (cosmético; el servidor decide). */
+  readonly authoredByViewer?: boolean;
   readonly role: string;
   /** `null` mientras no hay respuesta (o si fallo: ver `stateError`). */
   readonly state: ExpedienteApprovalsState | null;
@@ -44,7 +46,7 @@ function roleLabel(role: string): string {
   return ROLE_LABELS[role] ?? role;
 }
 
-export function AprobacionExpediente({ apiBaseUrl, token, propertyId, tenderId, orgSlug, canApprove, role, state, stateError, onChanged }: AprobacionExpedienteProps) {
+export function AprobacionExpediente({ apiBaseUrl, token, propertyId, tenderId, orgSlug, canApprove, authoredByViewer = false, role, state, stateError, onChanged }: AprobacionExpedienteProps) {
   const { confirmar, pedirTexto, dialogo } = useConfirm();
   const [twoFactor, setTwoFactor] = useState<TwoFactorStatus>(TWO_FACTOR_UNAVAILABLE);
   const [busyStage, setBusyStage] = useState<ExpedienteStage | "single" | null>(null);
@@ -143,6 +145,7 @@ export function AprobacionExpediente({ apiBaseUrl, token, propertyId, tenderId, 
     const otherByYou = other?.approval?.byYou === true;
     let blockedReason: string | null = null;
     if (!canApprove) blockedReason = `Tu rol (${role}) no puede aprobar: solo propietario, administrador o analista.`;
+    else if (authoredByViewer) blockedReason = "Editaste contenido de este expediente: debe aprobarlo otra persona (el autor no aprueba su propio contenido).";
     else if (needsTecnicaFirst) blockedReason = "Falta la aprobación técnico-legal (1/2).";
     else if (otherByYou) blockedReason = "Ya diste la otra aprobación de este expediente: debe darla otra persona.";
     else if (needsEnrollment) blockedReason = "Para aprobar necesitas activar la verificación en dos pasos.";
@@ -234,13 +237,15 @@ export function AprobacionExpediente({ apiBaseUrl, token, propertyId, tenderId, 
                 Aprobado por {roleLabel(state.singleApproval.approvedByRole)}
                 {state.singleApproval.byYou ? " (tú)" : ""} · {formatDateTime(state.singleApproval.approvedAt)}.
               </p>
-            ) : canApprove ? (
+            ) : canApprove && !authoredByViewer ? (
               <Button type="button" size="sm" className="self-start" disabled={busyStage !== null} onClick={() => void approveSingle()}>
                 <CheckCircle2 />
                 {busyStage === "single" ? "Aprobando…" : "Aprobar expediente completo"}
               </Button>
             ) : (
-              <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede aprobar el expediente -- solo propietario, administrador o analista.</p>
+              <p className="text-xs text-muted-foreground">
+                {authoredByViewer && canApprove ? "Editaste contenido de este expediente: debe aprobarlo otra persona." : `Tu rol (${role}) no puede aprobar el expediente -- solo propietario, administrador o analista.`}
+              </p>
             )}
           </>
         )}

@@ -32,6 +32,9 @@ export interface RepositorioLlamadasVoz<R extends string, C extends { readonly i
   registrarTurno(input: VozRegistrarTurnoInput): Promise<boolean>;
   /** `false` si la conversacion ya estaba cerrada. */
   cerrarConversacion(input: Cerrar): Promise<boolean>;
+  /** Barrido de plataforma: cierra como abandonadas (con duracion y costo calculados) las llamadas abiertas hace mas de `inactivasMinutos` minutos
+   * (el worker murio antes de cerrarlas) y devuelve cuantas cerro. Lanza `VozNoDisponibleError` si la base no tiene la funcion (sin migrar). */
+  cerrarHuerfanas(opciones: { inactivasMinutos: number; limite: number }): Promise<number>;
   /** `true` solo la PRIMERA vez que se consume una sesion vigente de esa organizacion/sucursal. */
   consumirPreview(input: { sessionId: string; organizationId: string; propertyId: string }): Promise<boolean>;
 }

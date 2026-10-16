@@ -67,6 +67,8 @@ function mapConfig(r: ConfigRow): HousekeepingConfig {
     minutesByType: { salida: Number(r.minutes_salida), estancia: Number(r.minutes_estancia), profunda: Number(r.minutes_profunda), repaso: Number(r.minutes_repaso) },
     photosRequiredOnInspection: r.photos_required_on_inspection,
     maxPhotosPerTask: Number(r.max_photos_per_task),
+    startHour: DEFAULT_HOUSEKEEPING_CONFIG.startHour,
+    startHourDisponible: false,
     personalizada: true,
     updatedAt: r.updated_at,
   };
@@ -76,7 +78,7 @@ const CONFIG_COLUMNS = `property_id, auto_assign_enabled, max_tasks_per_camarist
        minutes_profunda, minutes_repaso, photos_required_on_inspection, max_photos_per_task, updated_at::text as updated_at`;
 
 function defaultConfig(propertyId: string): HousekeepingConfig {
-  return { propertyId, ...DEFAULT_HOUSEKEEPING_CONFIG, personalizada: false, updatedAt: null };
+  return { propertyId, ...DEFAULT_HOUSEKEEPING_CONFIG, startHourDisponible: false, personalizada: false, updatedAt: null };
 }
 
 interface PhotoRow { id: string; task_id: string; content_type: PhotoContentType; byte_size: number; caption: string | null; taken_by: string | null; created_at: string }
@@ -132,11 +134,25 @@ export class PostgresHousekeepingResidualRepository implements HousekeepingResid
     });
   }
 
+  /** H-P3-04: la hora de arranque vive en una columna de la migracion 045. Se lee APARTE (con su propio SAVEPOINT) para que una base
+   *  con la 039 pero sin la 045 siga sirviendo la configuracion de siempre: `disponible: false` y el default 7. */
+  private readStartHour(propertyId: string): Promise<{ readonly disponible: boolean; readonly startHour: number }> {
+    return this.read<{ readonly disponible: boolean; readonly startHour: number }>(
+      async () => {
+        const { rows } = await this.db.query<{ start_hour: number }>(`select start_hour from hoteles.housekeeping_config where property_id = $1;`, [propertyId]);
+        return { disponible: true, startHour: rows[0] ? Number(rows[0].start_hour) : DEFAULT_HOUSEKEEPING_CONFIG.startHour };
+      },
+      () => ({ disponible: false, startHour: DEFAULT_HOUSEKEEPING_CONFIG.startHour }),
+    );
+  }
+
   getConfig(propertyId: string) {
     return this.read<{ disponible: boolean; config: HousekeepingConfig }>(
       async () => {
         const { rows } = await this.db.query<ConfigRow>(`select ${CONFIG_COLUMNS} from hoteles.housekeeping_config where property_id = $1;`, [propertyId]);
-        return { disponible: true, config: rows[0] ? mapConfig(rows[0]) : defaultConfig(propertyId) };
+        const config = rows[0] ? mapConfig(rows[0]) : defaultConfig(propertyId);
+        const hora = await this.readStartHour(propertyId);
+        return { disponible: true, config: { ...config, startHour: hora.startHour, startHourDisponible: hora.disponible } };
       },
       () => ({ disponible: false, config: defaultConfig(propertyId) }),
     );
@@ -162,7 +178,18 @@ export class PostgresHousekeepingResidualRepository implements HousekeepingResid
           next.minutesByType.profunda, next.minutesByType.repaso, next.photosRequiredOnInspection, next.maxPhotosPerTask, actorId,
         ],
       );
-      return mapConfig(rows[0]!);
+      const saved = mapConfig(rows[0]!);
+      if (patch.startHour === undefined) {
+        const hora = await this.readStartHour(propertyId);
+        return { ...saved, startHour: hora.startHour, startHourDisponible: hora.disponible };
+      }
+      // Escritura aislada de la columna de la 045: sin la migracion (42703) el SAVEPOINT de `write` deshace TODO el PUT y la ruta
+      // responde 503 "no disponible aun", nunca un 500 ni una configuracion a medias.
+      const { rows: hora } = await this.db.query<{ start_hour: number }>(
+        `update hoteles.housekeeping_config set start_hour = $2 where property_id = $1 returning start_hour;`,
+        [propertyId, patch.startHour],
+      );
+      return { ...saved, startHour: Number(hora[0]!.start_hour), startHourDisponible: true };
     });
   }
 

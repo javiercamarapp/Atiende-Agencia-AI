@@ -33,6 +33,41 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
+type SweepResult = Awaited<ReturnType<typeof runDiscoverTendersSweep>>;
+
+async function escalarFuentesNoDisponibles(deps: AppDeps, withRepo: <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => Promise<T>, sweep: SweepResult): Promise<string[]> {
+  const escaladas = new Set<string>();
+  try {
+    for (const orgResult of sweep) {
+      const noDisponibles = orgResult.results.filter((r) => r.unavailable);
+      if (noDisponibles.length === 0) continue;
+      const frescura = await withRepo((repo) => repo.sourceFreshness(orgResult.organizationId));
+      for (const r of noDisponibles) {
+        if (escaladas.has(r.source) || !frescura.find((f) => f.source === r.source)?.stale) continue;
+        escaladas.add(r.source);
+        await deps.alertas
+          ?.notificar({
+            tipo: `licitaciones_fuente_no_disponible:${r.source}`,
+            severidad: "alta",
+            titulo: `Fuente de licitaciones "${r.source}" no disponible mas alla de su umbral de obsolescencia`,
+            detalle: r.message.slice(0, 500),
+            href: "/superadmin/salud/licitaciones-fuentes",
+            contexto: { fuente: r.source },
+          })
+          .catch(() => undefined);
+        await deps.engine
+          .withAppSession({ userId: null }, (db) =>
+            emitirNotificacion(db, { evento: "superadmin.cron.fallo", organizationId: null, clave: `licitaciones.discover-tenders.${r.source}:${new Date().toISOString().slice(0, 10)}`.slice(0, 120), parametros: { ruta: `discover-tenders.${r.source}`.slice(0, 40) } }),
+          )
+          .catch(() => undefined);
+      }
+    }
+  } catch {
+    // best-effort
+  }
+  return [...escaladas];
+}
+
 export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
@@ -55,7 +90,7 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
           )
           .catch(() => undefined);
       }
-      const failures: { organization_id: string; source: string | null; error: string }[] = [];
+      const failures: { organization_id: string; source: string | null; error: string; no_disponible?: true }[] = [];
       // r4-fix-crons-transaccion-por-unidad (re-revisión, bloqueante único): `failures[]`
       // de arriba sigue reportando CUALQUIER fuente con `state !== "ok"` (incluida
       // `not_configured`, para que el body/`ok` no cambien de comportamiento). Pero
@@ -77,19 +112,26 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
         }
         for (const r of orgResult.results) {
           if (r.state === "ok") continue;
-          const item = { organization_id: orgResult.organizationId, source: r.source, error: r.message };
+          // `unavailable`: fuente externa bloqueada/retirada/con TLS inválido o inalcanzable. Se reporta con su aviso (body, `source_run`
+          // y obsolescencia), pero no es un fallo real de la corrida: no hay nada corregible en este repo y el latido rojo diario taparía fallos reales.
+          const item = { organization_id: orgResult.organizationId, source: r.source, error: r.message, ...(r.unavailable ? { no_disponible: true as const } : {}) };
           failures.push(item);
-          if (r.state !== "not_configured") realFailures.push(item);
+          if (r.state !== "not_configured" && !r.unavailable) realFailures.push(item);
         }
       }
+      // Escalado de fuentes no disponibles: una fuente "no disponible" (WAF/TLS/red) no pone el latido en rojo, pero si lleva mas que su
+      // umbral de obsolescencia sin una corrida exitosa deja de ser pasiva: alerta alta + aviso de campana (superadmin.cron.fallo), una por
+      // fuente por dia. Best-effort: nunca altera la respuesta ni el latido.
+      const fuentesEscaladas = await escalarFuentesNoDisponibles(deps, withRepo, sweep);
       const response = c.json(
         {
           ok: failures.length === 0,
           organizations_checked: sweep.length,
+          fuentes_escaladas: fuentesEscaladas,
           corridas: sweep.map((orgResult) => ({
             organization_id: orgResult.organizationId,
             error: orgResult.error ?? null,
-            fuentes: orgResult.results.map((r) => ({ source: r.source, estado: r.state, descubiertos: r.discovered, creados: r.created, actualizados: r.updated, filas_descartadas: r.droppedRows, mensaje: r.message })),
+            fuentes: orgResult.results.map((r) => ({ source: r.source, estado: r.state, descubiertos: r.discovered, creados: r.created, actualizados: r.updated, filas_descartadas: r.droppedRows, mensaje: r.message, no_disponible: r.unavailable === true })),
           })),
           failures,
         },

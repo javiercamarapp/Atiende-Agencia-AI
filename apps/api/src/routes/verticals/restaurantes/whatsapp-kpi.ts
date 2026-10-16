@@ -2,13 +2,13 @@
 //   GET /v1/restaurantes/:propertyId/admin/whatsapp/kpi?dias=14            últimos N días (1..63) hasta HOY local de la sucursal
 //   GET /v1/restaurantes/:propertyId/admin/whatsapp/kpi?desde=YYYY-MM-DD&hasta=YYYY-MM-DD   rango explícito (máx. 63 días, hasta <= hoy local)
 // Lado PANEL, solo owner/admin (la función SQL exige lo mismo). Solo lectura: no escribe nada, no envía nada, no hay PII (todo agregado).
-// Base SIN migrar -> `disponible: false` con serie vacía (estado honesto, nunca un 500). El costo LLM es de la ORGANIZACIÓN y solo lo ve quien
+// Base SIN migrar -> `disponible: false` con serie vacía (estado honesto, nunca un 500). `entrega` (avisos de pedido entregados/leidos, migracion 066) trae su propio `disponible`. El costo LLM es de la ORGANIZACIÓN y solo lo ve quien
 // tiene alcance de toda la organización (en otro caso viene null); el costo por pedido es un PROMEDIO del periodo, no un costo real por pedido.
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { STAFF_INVITE_ROLES, costoPorPedidoCentavos, diaLocalSucursal, porcentaje, resumirWhatsappKpi } from "@atiende/domain-restaurantes";
+import { STAFF_INVITE_ROLES, costoPorPedidoCentavos, diaLocalSucursal, porcentaje, resumirWhatsappEntrega, resumirWhatsappKpi } from "@atiende/domain-restaurantes";
 import type { WhatsappKpiDia, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -96,8 +96,12 @@ export function restaurantesWhatsappKpiRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (hasta > hoy) throw Errors.validation("hasta no puede ser posterior al día de hoy de la sucursal.");
     if (diasEntre(desde, hasta) > WHATSAPP_KPI_DIAS_MAX) throw Errors.validation(`El rango máximo es de ${WHATSAPP_KPI_DIAS_MAX} días.`);
 
-    const lectura = await kpiRepo(c).getKpisDiarios(organizationId, propertyId, desde, hasta);
+    const repoKpi = kpiRepo(c);
+    const lectura = await repoKpi.getKpisDiarios(organizationId, propertyId, desde, hasta);
     const resumen = resumirWhatsappKpi(lectura.valor);
+    // Entrega y lectura de los avisos de estado de pedido (migracion 066). Su disponibilidad es INDEPENDIENTE de la del KPI de conversaciones:
+    // una base con la 040 y sin la 066 muestra el KPI de siempre y `entrega.disponible: false` (estado honesto, nunca ceros inventados).
+    const entregaLectura = await repoKpi.getEntregaDiaria(organizationId, propertyId, desde, hasta);
     return c.json({
       disponible: lectura.disponible,
       zonaHoraria: zona,
@@ -119,6 +123,11 @@ export function restaurantesWhatsappKpiRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         costoLlmPorPedidoCentavosMxn: resumen.costoLlmPorPedidoCentavosMxn,
       },
       serie: lectura.valor.map(serializarDia),
+      entrega: {
+        disponible: entregaLectura.disponible,
+        resumen: resumirWhatsappEntrega(entregaLectura.valor),
+        serie: entregaLectura.valor,
+      },
     });
   });
 

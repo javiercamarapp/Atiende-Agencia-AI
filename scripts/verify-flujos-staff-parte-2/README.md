@@ -50,8 +50,10 @@ vertical, mismo patrón exacto que Parte 1.
    property (rol sin permiso), cross-tenant, `anon`.
 3. **(27-36) Licitaciones**: rol de decisión (`owner`, dentro de `GO_NO_GO_ROLES`)
    registra una decisión "go" y la misma operación actualiza `tender.status` → un
-   `writer` (dentro de `WRITE_ROLES` pero fuera de `GO_NO_GO_ROLES`) captura y
-   aprueba un documento de empresa (`company_document.approval_status`). Controles:
+   `writer` (dentro de `WRITE_ROLES` pero fuera de `GO_NO_GO_ROLES`) captura un
+   documento de empresa (nace pendiente) y, desde la migración 036, YA NO lo aprueba por
+   UPDATE directo (el escenario 33 espera el error; aprobar es `decide_company_item`, ver
+   `scripts/verify-licitaciones-aprobacion-datos-empresa/`). Controles:
    `viewer` no puede decidir ni escribir; `writer` tampoco puede decidir (decidir es
    más estricto que redactar — GO_NO_GO_ROLES ⊊ WRITE_ROLES); cross-tenant; `anon`.
 4. **(37-42) Endurecimiento hoteles.availability** (ver sección siguiente).

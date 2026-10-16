@@ -36,9 +36,59 @@ export interface OrderFlowContext {
    * confirmo si el catalogo cambia entre confirmar y crear. Ausente en filas guardadas antes de este campo.
    */
   readonly quotedPrices?: string;
+  /** Hora de recogida (ISO UTC al minuto) con la que se cotizo, si la llevaba: `crear_pedido` con otra hora distinta ya no coincide con la huella. */
+  readonly horaRecogida?: string;
+  /** Hora PROGRAMADA (ISO UTC) con la que se cotizo un pedido para recoger: en recoger `programado_para` y `hora_recogida` son la misma hora (QA-PM-R5-reglas-02) y crear la reutiliza. */
+  readonly programadoPara?: string;
+  /** Plazo en minutos (`minutos_para_recoger`) con el que el SERVIDOR calculo `horaRecogida`: una re-cotizacion identica con el mismo plazo conserva esa hora (no es una cotizacion nueva
+   * por haber pasado un minuto) y un `crear_pedido` con OTRO plazo obliga a re-cotizar. Ausente si la hora la mando el modelo explicita. */
+  readonly minutosPlazo?: number;
+  /** Total a pagar de la cotizacion vigente y cifras legitimas que el cliente vio (precios, importes, subtotal, descuento).
+   * Lo lee el agente de WhatsApp en el turno SIGUIENTE para que su guardia de cifras siga corrigiendo un total alucinado
+   * aunque ese turno no llame ninguna herramienta. Ausente en filas guardadas antes de este campo (guardia entonces solo en el turno que cotiza). */
+  readonly quotedTotal?: number;
+  readonly quotedAmounts?: readonly number[];
+  /**
+   * Renglones de la cotizacion YA RESUELTOS contra el catalogo (id, nombre, cantidad pedida, tortilla solo si el producto la exige). La huella del
+   * pedido se calcula sobre ESTOS renglones y no sobre lo que escribio el modelo: un modelo que manda la tortilla de la horchata como "mixta" en un
+   * turno y "maiz" en el siguiente, o un `product_id` vacio al crear, ya no vuelve "nueva" una cotizacion que el cliente ya vio (QA-PM-R3-whatsapp-01/07).
+   * Ausente en filas guardadas antes de este campo: la huella se calcula como siempre, sobre lo que mande el modelo.
+   */
+  readonly quotedItems?: readonly QuotedItem[];
+  /** Sucursal y canal con los que se cotizo: con `quotedItems` el servidor puede decirle al agente, en el turno del "si", exactamente que cotizo (ver `bloqueCotizacionVigente`). */
+  readonly quotedBranchSlug?: string;
+  readonly quotedCanal?: string;
+  /** Forma de pago y monto de efectivo con los que se cotizo (no entran a `quoteHash`). Un cambio (cotizar sin pago y luego con pago) es OTRA cotizacion: el cliente debe ver el resumen con ese
+   * pago antes de confirmar (la cotizacion temprana del paso 6 del prompt no puede dejar pasar un pedido sin resumen mostrado). Omitirlos al re-cotizar conserva los previos. */
+  readonly quotedPago?: "efectivo" | "tarjeta";
+  readonly quotedEfectivoCon?: number;
+  /** Huella del CARRITO (sucursal + canal + renglones) sin hora, pago ni salsas: sirve para reconocer "el mismo pedido" aunque el modelo cambie la hora (QA-PM-R3-whatsapp-03). */
+  readonly cartHash?: string;
+  /** Pedidos YA creados en esta conversacion/llamada: total y kilos acumulados. La guardia de pedido grande los suma al siguiente pedido para que partir un pedido
+   * grande en dos no la esquive (QA-PM-R2-reglas-08). Ausente en filas anteriores = 0. */
+  readonly sessionTotal?: number;
+  readonly sessionPesoKg?: number;
+  /** Cuantos pedidos creo esta sesion (un cliente cuyo unico historial es de hace segundos en esta misma sesion sigue contando como SIN historial). */
+  readonly sessionPedidos?: number;
+  /** Id del ultimo pedido creado en la sesion: un pedido identico dentro de la ventana de deduplicacion devuelve ESE id y se marca `ya_registrado`. */
+  readonly sessionUltimoPedidoId?: string;
   readonly confirmedAtMs?: number;
+  /** Turno del cliente en que `crear_pedido` fue rechazado por `resumen_no_mostrado`. Salida contra el deadlock: si la heuristica de texto da un falso negativo, el SIGUIENTE turno
+   * (distinto de este) ya no se rechaza por esa causa, de modo que el cierre se retrasa a lo mucho un turno y nunca se queda trabado. */
+  readonly resumenRechazadoTurn?: string;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
+}
+
+/** Renglon de la cotizacion resuelto contra el catalogo. */
+export interface QuotedItem {
+  readonly id: string;
+  readonly name: string;
+  readonly qty: number;
+  /** Solo si el producto exige tortilla; `null` en bebidas y demas (el modelo manda ahi cualquier valor y no debe afectar la huella). */
+  readonly tortilla: string | null;
+  /** QA-PM-R5-reglas-03: la tortilla que el cliente eligio para un KILO de carne (ese renglon no exige tortilla y `tortilla` queda null). No entra a la huella: solo viaja a la comanda. */
+  readonly tortillaKilo?: string;
 }
 
 export interface OrderFlowSnapshot {
@@ -63,6 +113,8 @@ export type OrderFlowViolationCode =
   | "sin_confirmacion"
   | "pedido_distinto_al_cotizado"
   | "confirmacion_mismo_turno"
+  | "cliente_rechazo_resumen"
+  | "resumen_no_mostrado"
   | "hash_no_coincide"
   | "pedido_ya_creado"
   | "pedido_en_proceso"
@@ -88,6 +140,10 @@ export function fingerprintOrder(input: {
   readonly items: readonly RequestedOrderItemInput[];
   /** Doble porcion de salsas: cambia el total, asi que forma parte de la huella (solo si hay alguna). */
   readonly doubleSalsas?: readonly string[];
+  /** R-11: hora programada normalizada (ISO UTC). Cambiarla tras confirmar obliga a re-cotizar; solo entra a la huella si existe. */
+  readonly programadoPara?: string;
+  /** Hora de recogida normalizada al minuto (ISO UTC); solo entra a la huella si la cotizacion la llevaba: cambiarla tras confirmar obliga a re-cotizar. */
+  readonly horaRecogida?: string;
 }): string {
   const items = input.items
     .map((i) => ({
@@ -96,9 +152,126 @@ export function fingerprintOrder(input: {
       t: i.tortilla ?? null,
     }))
     .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.q - b.q));
-  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}) });
+  const canonical = JSON.stringify({ b: input.branchSlug.trim(), c: input.canal === "recoger" ? "recoger" : "domicilio", a: input.adultConfirmed === true, i: items, ...(input.doubleSalsas && input.doubleSalsas.length > 0 ? { d: [...new Set(input.doubleSalsas)].sort() } : {}), ...(input.programadoPara ? { p: input.programadoPara } : {}), ...(input.horaRecogida ? { h: input.horaRecogida } : {}) });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
+
+const PALABRAS_VACIAS = new Set(["de", "del", "al", "a", "los", "las", "el", "la", "un", "una", "unos", "unas", "y", "con", "sin", "en", "para", "taco", "tacos", "orden", "ordenes", "individual", "individuales", "pieza", "piezas"]);
+
+function tokensDeNombre(name: string | undefined): Set<string> {
+  const base = (name ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ");
+  const out = new Set<string>();
+  for (const raw of base.split(/\s+/)) {
+    if (!raw) continue;
+    const t = raw.length > 3 && raw.endsWith("s") ? raw.slice(0, -1) : raw;
+    if (!PALABRAS_VACIAS.has(raw) && !PALABRAS_VACIAS.has(t)) out.add(t);
+  }
+  return out;
+}
+
+/**
+ * Empareja cada renglon que escribio el modelo con un renglon resuelto (por id; si no, por nombre; si no, el unico que sobra). Devuelve, por posicion de `items`,
+ * el indice del renglon resuelto o `null` si no se pudo emparejar sin ambiguedad. Cada renglon resuelto se usa a lo mas una vez.
+ */
+function emparejar(items: readonly RequestedOrderItemInput[], candidatos: readonly { readonly id: string; readonly name: string }[], idsDeOtroProducto: ReadonlySet<string> = new Set()): (number | null)[] {
+  const usados = new Set<number>();
+  const res: (number | null)[] = items.map(() => null);
+  items.forEach((it, i) => {
+    if (!it.productId) return;
+    const j = candidatos.findIndex((c, k) => !usados.has(k) && c.id === it.productId);
+    if (j >= 0) {
+      usados.add(j);
+      res[i] = j;
+    }
+  });
+  // Un `product_id` que es de OTRO producto real del catalogo (el cliente cambio de producto y el modelo no re-cotizo) NUNCA se empareja por nombre aproximado ni por "el unico que sobra":
+  // se deja sin par para que la huella no coincida y se exija re-cotizar. Solo un id vacio o inexistente cae al nombre.
+  const esDeOtro = (it: RequestedOrderItemInput) => Boolean(it.productId) && idsDeOtroProducto.has(it.productId as string);
+  items.forEach((it, i) => {
+    if (res[i] !== null || esDeOtro(it)) return;
+    const mios = tokensDeNombre(it.productName);
+    if (mios.size === 0) return;
+    let mejor = -1;
+    let mejorPuntaje = 0;
+    let empate = false;
+    candidatos.forEach((c, k) => {
+      if (usados.has(k)) return;
+      const suyos = tokensDeNombre(c.name);
+      let comunes = 0;
+      for (const t of mios) if (suyos.has(t)) comunes += 1;
+      if (comunes === 0) return;
+      const puntaje = comunes / (mios.size + suyos.size - comunes);
+      if (puntaje > mejorPuntaje) {
+        mejor = k;
+        mejorPuntaje = puntaje;
+        empate = false;
+      } else if (puntaje === mejorPuntaje) empate = true;
+    });
+    if (mejor >= 0 && !empate) {
+      usados.add(mejor);
+      res[i] = mejor;
+    }
+  });
+  const sinPar = res.map((r, i) => (r === null ? i : -1)).filter((i) => i >= 0);
+  if (sinPar.some((i) => esDeOtro(items[i]!))) return res;
+  const libres = candidatos.map((_, k) => k).filter((k) => !usados.has(k));
+  if (sinPar.length === 1 && libres.length === 1) res[sinPar[0]!] = libres[0]!;
+  return res;
+}
+
+/**
+ * Renglones del modelo -> renglones resueltos de la cotizacion (`lines` de `quoteOrder`). `null` si algun renglon no se puede emparejar: entonces la huella cae
+ * al comportamiento anterior (sobre lo que mando el modelo).
+ */
+export function resolverRenglonesCotizados(
+  items: readonly RequestedOrderItemInput[],
+  lines: readonly { readonly productId: string; readonly name: string; readonly tortilla?: string | null }[],
+): QuotedItem[] | null {
+  if (items.length === 0) return null;
+  const par = emparejar(items, lines.map((l) => ({ id: l.productId, name: l.name })));
+  const out: QuotedItem[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const j = par[i];
+    if (j === null || j === undefined) return null;
+    const l = lines[j]!;
+    out.push({ id: l.productId, name: l.name, qty: items[i]!.requestedQuantity, tortilla: l.tortilla ?? null });
+  }
+  return out;
+}
+
+/**
+ * Al crear: reemplaza lo que escribio el modelo por los renglones ya cotizados (id y nombre del catalogo, y tortilla solo si el producto la lleva), de modo que la
+ * huella solo cambie si cambio el carrito de verdad (otro producto, otra cantidad o, en un producto con tortilla, otra tortilla) y que el pedido se cree con el
+ * producto cotizado aunque el modelo mande `product_id` vacio o un nombre aproximado. `null` si algun renglon no se puede emparejar sin ambiguedad: el caller
+ * conserva lo que mando el modelo (la huella no coincidira, como antes).
+ */
+export function reconciliarConCotizacion(items: readonly RequestedOrderItemInput[], quoted: readonly QuotedItem[], idsDeOtroProducto: ReadonlySet<string> = new Set()): RequestedOrderItemInput[] | null {
+  const par = emparejar(items, quoted, idsDeOtroProducto);
+  if (par.some((j) => j === null)) return null;
+  return items.map((it, i) => {
+    const q = quoted[par[i]!]!;
+    // Producto con tortilla: si el modelo mando una tortilla distinta a la cotizada, se respeta (cambia la huella y obliga a re-cotizar); si la omitio, es la cotizada.
+    const tortilla = q.tortilla === null ? undefined : ((it.tortilla ?? q.tortilla) as RequestedOrderItemInput["tortilla"]);
+    return { productId: q.id, productName: q.name, requestedQuantity: it.requestedQuantity, tortilla };
+  });
+}
+
+/** Renglones cotizados -> entrada de `fingerprintOrder`. */
+export function itemsDeHuella(quoted: readonly QuotedItem[]): RequestedOrderItemInput[] {
+  return quoted.map((q) => ({ productId: q.id, productName: q.name, requestedQuantity: q.qty, tortilla: (q.tortilla ?? undefined) as RequestedOrderItemInput["tortilla"] }));
+}
+
+/** Huella del carrito (sucursal + canal + renglones resueltos): reconoce "el mismo pedido" aunque cambie la hora de recogida, el pago o las salsas. */
+export function huellaDeCarrito(branchSlug: string, canal: string | undefined, quoted: readonly QuotedItem[]): string {
+  return fingerprintOrder({ branchSlug, canal, items: itemsDeHuella(quoted) }).slice(0, 32);
+}
+
+/** Despues de crear, un cotizar del MISMO carrito dentro de esta ventana se toma como un "si" repetido y no como un pedido nuevo. */
+export const MISMO_PEDIDO_VENTANA_MS = 30 * 60 * 1000;
 
 /**
  * Huella de precios de un pedido: producto + precio unitario + cantidad de cada renglon (incluida la doble porcion
@@ -126,6 +299,23 @@ function assertFresh(ctx: OrderFlowContext, now: number): void {
   if (now - ctx.quotedAtMs > QUOTE_TTL_MS) {
     throw new OrderFlowViolationError("cotizacion_vencida", "La cotización ya venció. Vuelve a llamar cotizar_pedido, repite el resumen y pide la confirmación del cliente otra vez.");
   }
+}
+
+/**
+ * QA-PM-R6 (A13): el ultimo mensaje del cliente RECHAZA o corrige el resumen («No, así no», «no es correcto», «está mal»). Confirmar el pedido con un rechazo creo un pedido
+ * que el cliente no aceptaba («ya quedó registrado» tras un «No, así no»). Conservador a proposito: un «no» suelto o «no, nada más» contestan «¿algo más?» y NO cuentan; si el
+ * mensaje trae tambien un sí («no, así no... mejor sí»), la decision queda en el modelo.
+ */
+export function rechazaElResumen(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string" || !mensaje.trim()) return false;
+  const t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // «asi no» solo rechaza cuando NO va seguido de la consecuencia buena de confirmar («así no se me olvida», «así no tengo que salir», «así no me complico»).
+  const rechazo =
+    /\basi\s+no\b(?!\s+(?:se\s+(?:me|nos)|tengo|tenemos|hay\s+que|necesito|me\s+compli|me\s+olvido|voy\s+a\s+tener))|\bno\s+(?:es|esta|estan|son)\s+(?:correct[oa]s?|bien|asi)\b|(?<!\bno\s)(?<!\bnada\s)(?<!\bmuy\s)\b(?:esta|estan)\s+mal\b|\bincorrect[oa]s?\b|\bno\s+(?:lo\s+|la\s+)?(?:quiero|acepto)\s+(?:asi|a\s+ese|con\s+ese)\b|(?:^|[.,;!?]\s*)no\s*,\s*(?:cambia|corrige|quita|mejor)\b/;
+  if (!rechazo.test(t)) return false;
+  // Una afirmacion al inicio («perfecto, ...», «va, ...», «confirmalo...») o dentro del mensaje deja la decision al modelo.
+  if (/^\W*(?:va|listo|perfecto|claro|adelante|correcto|confirm\w*)\b/.test(t)) return false;
+  return !/\b(?:si|sip|simon|confirmo|confirmado|confirmalo|confirmelo|dale|ok|okey|de\s+acuerdo|(?<!\bno\s)esta\s+bien\s+asi|asi\s+esta\s+bien)\b/.test(t);
 }
 
 /** Precondicion de `confirmar_resumen`. Lanza `OrderFlowViolationError` si no procede. */
@@ -166,7 +356,7 @@ export function assertCanCreate(snap: OrderFlowSnapshot, args: FlowCheckArgs): O
   }
   assertFresh(ctx, args.now);
   if (args.fingerprint && args.fingerprint !== ctx.quoteHash) {
-    throw new OrderFlowViolationError("pedido_distinto_al_cotizado", "El pedido no coincide con el que se cotizó y confirmó (sucursal, canal o productos). Vuelve a cotizar el pedido final y pide confirmación.");
+    throw new OrderFlowViolationError("pedido_distinto_al_cotizado", "El pedido no coincide con el que se cotizó y confirmó (sucursal, canal, productos u hora de recogida). Vuelve a cotizar el pedido final y pide confirmación.");
   }
   return ctx;
 }
@@ -204,4 +394,134 @@ export function warnOrderFlowUnavailable(): void {
 /** Solo para pruebas: reinicia el aviso de una sola vez. */
 export function resetOrderFlowWarningForTests(): void {
   flowUnavailableWarned = false;
+}
+
+/**
+ * Bloque de prompt con la cotizacion VIGENTE que dejo el servidor (QA-PM-R3-whatsapp-01 / 10). El historial de WhatsApp no trae los resultados de las herramientas, asi que en el turno del
+ * "si" el modelo volvia a buscar sucursal y productos (2-4 llamadas de 1.5-3 s) solo para recuperar los ids, y re-cotizaba (con lo que el cierre se perdia). Con esto sabe que cotizo el
+ * servidor y puede confirmar y crear de inmediato. Vacio si no hay una cotizacion fresca con renglones resueltos.
+ */
+export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs: number, opciones?: { readonly resumenMostrado?: boolean }): string {
+  const ctx = snap?.context;
+  if (!snap || !ctx || (snap.state !== "cotizado" && snap.state !== "confirmado")) return "";
+  if (!ctx.quotedItems || ctx.quotedItems.length === 0 || !ctx.quotedBranchSlug) return "";
+  if (ahoraMs - ctx.quotedAtMs > QUOTE_TTL_MS) return "";
+  const renglones = ctx.quotedItems.map((i) => `  - product_id ${i.id} | ${i.name} | requested_quantity ${i.qty}${i.tortilla ? ` | tortilla ${i.tortilla}` : ""}`).join("\n");
+  const total = typeof ctx.quotedTotal === "number" ? `, total a pagar $${ctx.quotedTotal}` : "";
+  // Una cotizacion TEMPRANA (el paso 6 cotiza en cuanto hay canal, producto y tortilla) no es lo que el cliente vio: solo cuenta como mostrada si el historial trae un mensaje del asistente con ese total.
+  const sinResumen = opciones?.resumenMostrado === false && snap.state === "cotizado";
+  return [
+    sinResumen
+      ? "COTIZACIÓN PRELIMINAR DE ESTA CONVERSACIÓN (la dejó el sistema; el cliente TODAVÍA NO ha visto el resumen con este total):"
+      : "COTIZACIÓN VIGENTE DE ESTA CONVERSACIÓN (la dejó el sistema; es la que el cliente vio en el resumen):",
+    `- branch_slug ${ctx.quotedBranchSlug}${ctx.quotedCanal ? `, canal ${ctx.quotedCanal}` : ""}${total}${ctx.horaRecogida ? ", hora de recogida ya fijada por el sistema (en crear_pedido no la recalcule: el sistema usa la cotizada)" : ""}.`,
+    renglones,
+    snap.state === "confirmado"
+      ? "- Ya está CONFIRMADA: si falta crear el pedido, llame crear_pedido con estos mismos datos."
+      : sinResumen
+        ? "- NO llame confirmar_resumen ni crear_pedido todavía: un \"sí\" del cliente ahora responde a otra pregunta (número, propina, ¿algo más?), no a un resumen. Complete los datos que falten, vuelva a llamar cotizar_pedido (con la forma de pago si ya la dio), muéstrele el resumen completo con el total y espere su respuesta en un mensaje posterior."
+        : "- Si el ÚLTIMO mensaje del cliente es un sí claro a ese resumen y no cambió nada, llame confirmar_resumen y enseguida crear_pedido con estos mismos datos, SIN buscar de nuevo ni cotizar otra vez. Si cambió algo (producto, cantidad, tortilla, canal, dirección, pago), vuelva a cotizar normalmente.",
+  ].join("\n");
+}
+
+/** Variantes con que un total puede aparecer escrito ("245", "245.00", "1,245.50"). */
+function variantesDeTotal(total: number): string[] {
+  const base = [total.toFixed(2), String(total), ...(Number.isInteger(total) ? [total.toFixed(0)] : [])];
+  const conMiles = base.map((v) => {
+    const [entera = "", dec] = v.split(".");
+    return `${entera.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${dec === undefined ? "" : `.${dec}`}`;
+  });
+  return [...new Set([...base, ...conMiles])];
+}
+
+/**
+ * Defensa en profundidad: el cliente VIO el resumen si algun mensaje del asistente en el historial reciente trae el total de la cotizacion vigente.
+ * `undefined` = no hay historial o total (voz, pruebas): el llamador conserva el comportamiento anterior.
+ */
+export function resumenMostradoEnHistorial(
+  quotedTotal: number | undefined,
+  historial: readonly { readonly role: string; readonly content: string }[] | undefined,
+): boolean | undefined {
+  if (historial === undefined || typeof quotedTotal !== "number" || !Number.isFinite(quotedTotal)) return undefined;
+  const vars = variantesDeTotal(quotedTotal).map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(?<![\\d.,])(?:${vars.join("|")})(?!\\d|[.,]\\d)`);
+  return historial.some((m) => m.role === "assistant" && re.test(m.content));
+}
+
+/**
+ * El mensaje del asistente ERA el resumen para confirmar: trae el total de la cotizacion vigente Y su ULTIMA pregunta es de confirmacion del resumen («¿Es correcto o desea agregar algo más?», «¿Confirma?»).
+ * Un «No gracias», «Efectivo» o «con 600» contestado a ESE mensaje es el sí, no una respuesta suelta de pago/propina. NO cuenta si la ultima pregunta es de propina o de pago («El total es de $275. ¿Desea agregar propina?»,
+ * «Total $275. ¿Con cuánto paga? Para confirmar necesito el monto.») ni si solo pregunta «¿algo más?»: ahi «No gracias» es «sin propina» / «nada más», no el sí al resumen.
+ */
+export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, contenido: string | undefined): boolean {
+  if (contenido === undefined) return false;
+  if (resumenMostradoEnHistorial(quotedTotal, [{ role: "assistant", content: contenido }]) !== true) return false;
+  const t = contenido.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trimEnd();
+  const idx = t.lastIndexOf("¿");
+  const ultima = idx >= 0 ? t.slice(idx) : (t.split(/[.!\n]+/).map((x) => x.trim()).filter(Boolean).pop() ?? "").slice(-160);
+  if (/(propina|cuanto paga|con cuanto|monto|billete)/.test(ultima)) return false;
+  return /(confirm|correcto|esta bien|de acuerdo|procedo|asi lo dejo)/.test(ultima);
+}
+
+/** Quita emojis, caritas ASCII y cortesias finales («gracias», «porfa», «por favor») de una respuesta corta de WhatsApp; deja minusculas sin acentos y sin puntuacion. */
+function limpiarRespuestaCorta(mensaje: string): string {
+  let t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  t = t.replace(/\p{Extended_Pictographic}|\p{Emoji_Modifier}|\u200d|\ufe0f/gu, " ").replace(/(^|\s)[:;=]-?[)(dp]+(?=\s|$)/g, " ");
+  t = t.replace(/[!¡?¿]+/g, " ").replace(/[.,;:]+(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  // «no gracias» es una respuesta completa por si sola; en lo demas la cortesia final no cambia el sentido.
+  if (t === "no gracias") return t;
+  for (;;) {
+    const sin = t.replace(/\s+(?:muchas\s+)?(?:gracias|porfa|porfis|porfavor|por\s+favor|pls|plis|please)$/, "").trim();
+    if (sin === t || sin === "" || sin === "no") return t;
+    t = sin;
+  }
+}
+
+/**
+ * QA-PM-R10 §6: el ultimo mensaje del cliente es solo una respuesta de PAGO o PROPINA («con 600», «$600», «efectivo», «tarjeta», «sin propina», «no gracias», «propina de 20»), con o sin emojis,
+ * puntuacion o cortesia final («No, gracias 🙂», «Con tarjeta, gracias», «efectivo porfa», «No quiero propina»).
+ * Esa respuesta NO es el «si» al resumen: el pedido no puede crearse en ese turno. Conservador: el mensaje completo debe ser eso (un «si, con 600» no cuenta).
+ */
+export function esRespuestaDePagoOPropina(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string") return false;
+  const t = limpiarRespuestaCorta(mensaje);
+  if (!t) return false;
+  const monto = "\\$?\\s*\\d[\\d,.]*\\s*(?:pesos|mxn|varos)?";
+  return new RegExp(
+    `^(?:(?:pago\\s+)?(?:con|de)\\s+(?:un\\s+)?(?:billete\\s+de\\s+)?${monto}|${monto}|(?:pago\\s+)?(?:en\\s+|con\\s+)?(?:efectivo|tarjeta|cash)|no\\s+gracias|(?:no\\s+)?(?:(?:le\\s+)?(?:quiero|deseo|dejo|doy|pon(?:le)?|voy\\s+a\\s+dejar)\\s+)?(?:sin\\s+)?(?:de\\s+)?propina(?:\\s+de)?\\s*(?:${monto})?|(?:dejo|doy|pon(?:le)?)\\s+${monto}\\s+de\\s+propina|(?:de\\s+)?propina\\s+${monto})$`,
+  ).test(t);
+}
+
+/**
+ * Lo que decide la guarda de `crear_pedido`: `true` = el cliente VIO el resumen y su ultimo mensaje puede ser el «si»; `false` = no (el total no aparece en ningun mensaje del asistente, o el ultimo
+ * mensaje del cliente es solo pago/propina y el asistente no acababa de pedir confirmar el resumen); `undefined` = sin historial (voz, pruebas): el llamador conserva el comportamiento anterior.
+ */
+export function resumenVistoPorElCliente(
+  quotedTotal: number | undefined,
+  historial: readonly { readonly role: string; readonly content: string }[] | undefined,
+): boolean | undefined {
+  const mostrado = resumenMostradoEnHistorial(quotedTotal, historial);
+  if (mostrado === undefined) return undefined;
+  const ultimoDelCliente = [...(historial ?? [])].reverse().find((m) => m.role === "user")?.content;
+  const ultimoDelAsistente = [...(historial ?? [])].reverse().find((m) => m.role === "assistant")?.content;
+  if (esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(quotedTotal, ultimoDelAsistente)) return false;
+  return mostrado;
+}
+
+const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Los `product_id` que mando el modelo, distintos de los cotizados, que SI existen en el catalogo de la organizacion (son OTRO producto, no un error de tecleo). */
+export async function idsDeOtrosProductosReales(
+  items: readonly RequestedOrderItemInput[],
+  quoted: readonly QuotedItem[],
+  existe: (productId: string) => Promise<boolean>,
+): Promise<Set<string>> {
+  const cotizados = new Set(quoted.map((q) => q.id));
+  const out = new Set<string>();
+  for (const it of items) {
+    const id = it.productId;
+    if (!id || cotizados.has(id) || out.has(id) || !UUID_RE.test(id)) continue;
+    if (await existe(id)) out.add(id);
+  }
+  return out;
 }

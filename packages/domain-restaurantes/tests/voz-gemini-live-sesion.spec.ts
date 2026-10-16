@@ -39,7 +39,6 @@ function montar() {
   const proveedor = crearProveedorGeminiLlamada({
     apiKey: "clave-de-prueba-no-real",
     model: "gemini-3.8-live",
-    costoPorMilTokensMicroUsd: 1000,
     crearSocket: (url) => {
       const s = new SocketFalso(url);
       sockets.push(s);
@@ -78,6 +77,7 @@ describe("setup", () => {
     expect(sockets[0]!.url.startsWith(`${GEMINI_LIVE_WS_URL}?key=`)).toBe(true);
     const setup = (sockets[0]!.enviados[0] as { setup: { model: string; generationConfig: { speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } } }; systemInstruction: { parts: { text: string }[] }; inputAudioTranscription: unknown; outputAudioTranscription: unknown; tools: { functionDeclarations: unknown[] }[] } }).setup;
     expect(setup.model).toBe("models/gemini-3.8-live");
+    expect((setup.generationConfig as unknown as { temperature: number }).temperature).toBe(0);
     expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Kore");
     expect(setup.systemInstruction.parts[0]!.text).toContain("asistente de PM");
     expect(setup.inputAudioTranscription).toEqual({});
@@ -123,12 +123,12 @@ describe("mensajes del servidor", () => {
     const s = sockets[0]!;
     s.servidor({ serverContent: { inputTranscription: { text: "hola buenas" } } });
     s.servidor({ serverContent: { outputTranscription: { text: "Buenas tardes." } } });
-    s.servidor({ usageMetadata: { totalTokenCount: 1500 } });
-    s.servidor({ usageMetadata: { totalTokenCount: 2000 } });
+    s.servidor({ usageMetadata: { promptTokensDetails: [{ modality: "AUDIO", tokenCount: 400 }], responseTokensDetails: [{ modality: "AUDIO", tokenCount: 25 }] } });
+    s.servidor({ usageMetadata: { promptTokensDetails: [{ modality: "AUDIO", tokenCount: 500 }, { modality: "TEXT", tokenCount: 400 }] } });
     s.servidor({ serverContent: { interrupted: true } });
     s.servidor({ serverContent: { turnComplete: true } });
     await idle;
-    expect(ev).toEqual(["usuario:hola buenas", "dice:Buenas tardes.", "costo:1500", "costo:500", "interrumpido", "termino"]);
+    expect(ev).toEqual(["usuario:hola buenas", "dice:Buenas tardes.", "costo:1500", "costo:1800", "interrumpido", "termino"]);
   });
 
   it("audio de entrada va en base64 PCM 16 kHz", async () => {
@@ -198,8 +198,11 @@ describe("caidas y reanudacion", () => {
     expect((sockets[1]!.enviados[0] as { setup: { sessionResumption: unknown } }).setup.sessionResumption).toEqual({ handle: "h-77" });
     expect(ctrl.maquina.estadoActual).toBe("activa");
 
-    // segunda caida: ya no hay reanudacion -> pregrabado, callback y colgar
-    sockets[1]!.caer(1011);
+    // caidas siguientes: la voz de PM reintenta hasta 3 veces (reconexionesMax 3); agotadas -> pregrabado, callback y colgar
+    for (let i = 1; i <= 3; i++) {
+      sockets[i]!.caer(1011);
+      await ctrl.vacio();
+    }
     const r = await ctrl.terminada;
     expect(r.resultado).toBe("escalado");
     expect(reproducidos).toContain("proveedor_caido");

@@ -7,7 +7,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarRutaCargada, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 const SESSION = {
@@ -42,6 +42,7 @@ afterEach(() => {
 async function renderEn(ruta: string): Promise<HTMLElement> {
   window.history.pushState({}, "", ruta);
   rendered = renderComponent(<App />);
+  await esperarRutaCargada(rendered.container);
   await act(async () => {
     await flushMicrotasks();
     await flushMicrotasks();
@@ -85,7 +86,7 @@ describe("restaurantes — selector de sucursal (QA-restaurantes-R1-botones-03)"
       }),
     );
     const c = await renderEn("/restaurantes/demo/pedidoss");
-    const selects = [...c.querySelectorAll("select")].filter((s) => s.id.startsWith("restaurantes-sucursal-activa"));
+    const selects = [...c.querySelectorAll("[role='combobox']")].filter((s) => s.id.startsWith("restaurantes-sucursal-activa"));
     expect(selects.map((s) => s.id).sort()).toEqual(["restaurantes-sucursal-activa", "restaurantes-sucursal-activa-movil"]);
     for (const s of selects) {
       expect(c.querySelectorAll(`#${s.id}`)).toHaveLength(1);

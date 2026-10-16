@@ -4,7 +4,7 @@
 // `disponible: false` (42883 funcion inexistente, 42P01 tabla, 42703 columna).
 import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import type { WhatsappKpiDia, WhatsappKpiLectura, WhatsappKpiRepository } from "./kpi.ts";
+import type { WhatsappEntregaDia, WhatsappKpiDia, WhatsappKpiLectura, WhatsappKpiRepository } from "./kpi.ts";
 
 function code(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
@@ -81,6 +81,44 @@ export class PostgresWhatsappKpiRepository implements WhatsappKpiRepository {
         advertirNoDisponible(err);
         return { disponible: false, valor: [] };
       },
+    });
+  }
+  async getEntregaDiaria(organizationId: string, propertyId: string, desde: string, hasta: string): Promise<WhatsappKpiLectura<readonly WhatsappEntregaDia[]>> {
+    interface FilaEntrega {
+      fecha: string;
+      enviados: number;
+      entregados: number;
+      leidos: number;
+      fallidos: number;
+      sin_estado: number;
+      fallos_por_motivo: Record<string, number> | null;
+    }
+    // Misma regla que getKpisDiarios: transaccion unica del request -> SAVEPOINT; la funcion es de la migracion 066.
+    return runWithSavepointFallback<WhatsappKpiLectura<readonly WhatsappEntregaDia[]>>({
+      session: this.db,
+      savepointName: "sp_whatsapp_entrega_diaria_read",
+      primary: async () => {
+        const { rows } = await this.db.query<FilaEntrega>(
+          `select to_char(fecha, 'YYYY-MM-DD') as fecha, enviados, entregados, leidos, fallidos, sin_estado, fallos_por_motivo
+             from restaurantes.whatsapp_entrega_diaria($1, $2, $3::date, $4::date)
+            order by fecha;`,
+          [organizationId, propertyId, desde, hasta],
+        );
+        return {
+          disponible: true,
+          valor: rows.map((r) => ({
+            fecha: r.fecha,
+            enviados: num(r.enviados),
+            entregados: num(r.entregados),
+            leidos: num(r.leidos),
+            fallidos: num(r.fallidos),
+            sinEstado: num(r.sin_estado),
+            fallosPorMotivo: Object.fromEntries(Object.entries(r.fallos_por_motivo ?? {}).map(([k, v]) => [k, Number(v)])),
+          })),
+        };
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: async () => ({ disponible: false, valor: [] }),
     });
   }
 }

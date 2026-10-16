@@ -128,7 +128,7 @@ describe("Fase 2 pieza 3 -- requirements/extract + proposal/technical/generate",
     const app = buildApp(ctx.deps);
     // Antes de Fase 4, CompanyDataResolver.getSigners() SIEMPRE devolvía [] sin
     // importar qué se sembrara -- este seed habría sido ignorado en silencio.
-    ctx.repo.seedCompanySigners(ctx.organizationId, [{ id: "signer-1", name: "Juana Pérez Ruiz", role: "representante_legal", authorized: true }]);
+    ctx.repo.seedCompanySigners(ctx.organizationId, [{ id: "signer-1", name: "Juana Pérez Ruiz", role: "representante_legal", authorized: true, approvalStatus: "aprobado" }]);
 
     await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal`, authedJson(ctx.staff.writer.token));
     const extractRes = await app.request(
@@ -158,7 +158,7 @@ describe("Fase 2 pieza 3 -- requirements/extract + proposal/technical/generate",
   it("Fase 4 -- un firmante NO autorizado bloquea explícitamente (nunca 'missing' silencioso ni redacción inventada)", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
-    ctx.repo.seedCompanySigners(ctx.organizationId, [{ id: "signer-2", name: "Carlos Ibarra Solís", role: "representante_legal", authorized: false }]);
+    ctx.repo.seedCompanySigners(ctx.organizationId, [{ id: "signer-2", name: "Carlos Ibarra Solís", role: "representante_legal", authorized: false, approvalStatus: "aprobado" }]);
 
     await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal`, authedJson(ctx.staff.writer.token));
     const extractRes = await app.request(
