@@ -1373,7 +1373,7 @@
     {
       "nombre": "Alambre Suizo de Pastor",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1403,7 +1403,7 @@
     {
       "nombre": "Alambre Suizo de Bistec",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1441,7 +1441,7 @@
     {
       "nombre": "Alambre Suizo de Pechuga",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1471,7 +1471,7 @@
     {
       "nombre": "Alambre Suizo de Chuleta",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1501,7 +1501,7 @@
     {
       "nombre": "Alambre Suizo de Costilla",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1531,7 +1531,7 @@
     {
       "nombre": "Alambre Suizo de Arrachera",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1561,7 +1561,7 @@
     {
       "nombre": "Tacos Suizos de Chile Poblano y Bistec",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1598,7 +1598,7 @@
     {
       "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
