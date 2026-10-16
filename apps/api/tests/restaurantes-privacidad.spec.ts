@@ -265,11 +265,56 @@ describe("lado sistema: voz y purga", () => {
     expect(nada).toEqual({ atendido: false });
   });
 
+  it("ARCO por voz: el menu deja `menu` pendiente y la eleccion del titular (sin historial de chat) llega con `menuPendiente`", async () => {
+    const { app, ctx, privacy } = await construir();
+    const menu = await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "quiero ejercer mis derechos arco" }))).json();
+    expect(menu).toMatchObject({ atendido: true, modo: "reemplaza", registrada: false, menu: "numerado" });
+    expect(privacy.requests).toHaveLength(0);
+    const eleccion = await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "la de cancelación", menuPendiente: "numerado" }))).json();
+    expect(eleccion).toMatchObject({ atendido: true, registrada: true, menu: null });
+    expect(eleccion.respuesta).toContain("CONFIRMO");
+    expect(privacy.requests[0]).toMatchObject({ channel: "voice", rightType: "cancelacion" });
+  });
+
+  it("ARCO por voz: sin menu pendiente el nombre suelto del derecho NO es una solicitud; con menuPendiente invalido se ignora", async () => {
+    const { app, ctx, privacy } = await construir();
+    expect(await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "cancelación" }))).json()).toEqual({ atendido: false });
+    expect(await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "cancelación", menuPendiente: "otro" }))).json()).toEqual({ atendido: false });
+    expect(privacy.requests).toHaveLength(0);
+  });
+
+  it("ARCO por voz: senal debil -> atendido:false con modo agrega y la oferta (el agente sigue con el pedido)", async () => {
+    const { app, ctx, privacy } = await construir();
+    const r = await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "no me llamen" }))).json();
+    expect(r).toMatchObject({ atendido: false, modo: "agrega", registrada: false, menu: "nombres" });
+    expect(r.respuesta).toContain("derechos ARCO");
+    expect(privacy.requests).toHaveLength(0);
+  });
+
+  it("ARCO por voz: una segunda ambiguedad registra la conjetura, devuelve escalar y deja el aviso al equipo (callback escalada:privacidad_arco)", async () => {
+    const { app, ctx, privacy } = await construir();
+    const r = await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: "9981234567", texto: "no sé", menuPendiente: "numerado" }))).json();
+    expect(r).toMatchObject({ atendido: true, registrada: true, escalar: true });
+    expect(privacy.requests[0]).toMatchObject({ rightType: "acceso", channel: "voice", customerPhone: "+529981234567" });
+    const callbacks = ctx.restaurantesRepo.listCallbackRequests(ctx.organizationId);
+    expect(callbacks.some((c) => c.reason === "escalada:privacidad_arco" && c.source === "voice")).toBe(true);
+  });
+
+  it("ARCO por voz: el clasificador LLM tambien lo ve (lo que la regex no reconoce)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const privacy = new InMemoryPrivacidadRepository();
+    const arcoClassifier = { clasificar: async () => ({ intencion: "cancelacion" as const, confianza: 0.95, derechoMasProbable: "cancelacion" as const }) };
+    const app = envolver(buildApp({ ...ctx.deps, privacidadRepo: () => privacy, arcoClassifier }));
+    const r = await (await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "oiga ya no quiero seguir apareciendo con ustedes" }))).json();
+    expect(r).toMatchObject({ atendido: true, registrada: true });
+    expect(privacy.requests[0]).toMatchObject({ rightType: "cancelacion" });
+  });
+
   it("ARCO por voz: el telefono sale del identificador de llamada, no del texto dictado", async () => {
     const { app, ctx, privacy } = await construir();
     await app.request("/internal/restaurantes/voz/arco", post({ organizationId: ctx.organizationId, callerPhone: PHONE, texto: "quiero acceso a mis datos personales, el telefono es 5551112233" }));
     expect(privacy.requests).toHaveLength(1);
-    expect(privacy.requests[0]!.customerPhone).toBe(PHONE);
+    expect(privacy.requests[0]!.customerPhone).toBe("+529981234567");
   });
 
   it("purga por retencion: devuelve los conteos; base sin migrar -> disponible:false", async () => {
@@ -326,7 +371,7 @@ describe("POST /v1/restaurantes/whatsapp/webhook con privacidad", () => {
     expect(arco.status).toBe(200);
     expect(turns).toBe(1);
     expect(privacy.requests).toHaveLength(1);
-    expect(privacy.requests[0]).toMatchObject({ customerPhone: "+5219991234567", rightType: "acceso" });
+    expect(privacy.requests[0]).toMatchObject({ customerPhone: "+529991234567", rightType: "acceso" });
   });
 
   it("sin privacidadRepo (despliegue anterior) el webhook funciona como antes", async () => {

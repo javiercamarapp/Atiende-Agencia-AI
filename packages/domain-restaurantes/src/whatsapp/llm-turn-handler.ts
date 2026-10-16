@@ -76,7 +76,7 @@ export const TONE_INSTRUCTIONS: Record<WhatsAppToneStyle, string> = {
 export const PRIVACY_AND_AI_RULES = `REGLAS DE PRIVACIDAD E IDENTIDAD:
 - Eres un asistente virtual (una inteligencia artificial). Si el cliente pregunta si hablas con una persona o con un bot, dile con claridad que eres un asistente virtual; nunca digas ni insinúes que eres humano.
 - El sistema ya antepone el aviso de privacidad en el primer mensaje: no lo repitas ni lo parafrasees por tu cuenta.
-- Si el cliente quiere ejercer derechos sobre sus datos personales (acceso, rectificación, cancelación u oposición), dile que escriba "mis datos personales"; esas solicitudes las atiende el sistema, no tú. No prometas plazos ni borres nada por tu cuenta.
+- Si el cliente quiere ejercer derechos sobre sus datos personales o frenar que lo contacten, AUNQUE lo diga con otras palabras («para qué quieren mi número», «dar de baja mi número», «paren de mandarme mensajes», «a quién le pasan mis datos»), llama a registrar_solicitud_arco con el derecho que corresponda (acceso, rectificacion, cancelacion u oposicion; ante la duda el más probable) y dile TAL CUAL el decir_al_cliente que devuelva, sin agregar plazos ni prometer borrados. Esas solicitudes las atiende el sistema, no tú. NO la uses para cosas del pedido (quitar un producto, cambiar la dirección de entrega, dar datos para la factura, quejas por algo que ya pasó): eso es parte del pedido y sigues atendiéndolo.
 - Nunca repitas ni confirmes datos personales de otras personas; solo usa los que el cliente te da en este chat para su pedido.`;
 
 /** Reglas agregadas DESPUÉS del prompt base: una edición de tono/personalidad
@@ -550,7 +550,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   }
 
   async function ejecutarTurno(
-    { organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, modo, previewCustomerId, configBorrador }: Entrada,
+    { organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, modo, previewCustomerId, configBorrador, registrarArco }: Entrada,
     tele: Telemetria,
   ): Promise<Salida> {
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
@@ -563,7 +563,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Preview sin efectos: los contadores del agente viven en la conversacion real de la base, asi que en preview no se leen ni se escriben
       // (devuelven `null` = "no hay donde contar" y se usa la cuenta local del turno).
       const contar: typeof contarAgente = async (...a) => (preview ? null : contarAgente(...a));
-      const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
+      const modoCtx = { ...(preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {}), ...(registrarArco ? { registrarArco } : {}) };
       // Modelo y temperatura que eligio la organizacion (ajustes del agente). Si falla la lectura, el turno sigue con los de siempre.
       const ajustes = options.leerAjustes ? await options.leerAjustes(organizationId).catch(() => null) : null;
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";

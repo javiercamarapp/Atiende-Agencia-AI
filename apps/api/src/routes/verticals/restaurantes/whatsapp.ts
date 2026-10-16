@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono, esOposicionDeContacto } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { extractMetaStatuses } from "@atiende/whatsapp-gateway";
 import type { EventoEntregaFallida } from "@atiende/domain-restaurantes";
@@ -166,7 +166,9 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           // Autopiloto 2: BAJA / ALTO tambien REVOCA el consentimiento de marketing de ese telefono en esta organizacion y mata los mensajes de campana
           // aun pendientes (la lista de supresion de plataforma, de abajo, ya los frena en el despachador). Best-effort con SAVEPOINT: base sin la 052 ->
           // no hace nada; nunca altera el turno ni la respuesta a Meta.
-          if (esPalabraBaja(message.body)) await revocarMarketingPorTelefono(db, organizationId, `+${message.from}`);
+          // Unificado con el detector ARCO: ademas de la baja exacta, "ya no me escriban", "dejen de mandarme promociones", "olvidense de mi"... frenan el marketing de ese
+          // telefono YA (LFPC art. 18 Bis: el "no me molesten" se respeta de inmediato); la solicitud ARCO de oposicion la registra el agente aparte, con su folio.
+          if (esPalabraBaja(message.body) || esOposicionDeContacto(message.body)) await revocarMarketingPorTelefono(db, organizationId, `+${message.from}`);
           // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva. No pasa al agente.
           const atendida = await procesarBajaOAlta(db, {
             telefono: `+${message.from}`,
@@ -205,7 +207,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             phoneNumberId: phoneNumberIdOfBatch,
             propertyId: channel?.propertyId ?? null,
             // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
-            ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
+            ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db), ...(deps.arcoClassifier ? { arcoClassifier: deps.arcoClassifier } : {}) } : {}),
             // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.
             handoffGate: deps.handoffGate?.(db),
           });
@@ -266,7 +268,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               phone: d.phone,
               phoneNumberId: d.phoneNumberId,
               propertyId: d.propertyId,
-              ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
+              ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db), ...(deps.arcoClassifier ? { arcoClassifier: deps.arcoClassifier } : {}) } : {}),
               handoffGate: deps.handoffGate?.(db),
               finFuncionMs: inicioMs + FUNCION_MAX_MS,
               reloj: deps.relojMs ?? Date.now,

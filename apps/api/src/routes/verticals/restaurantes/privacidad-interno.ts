@@ -12,7 +12,8 @@
 //        interpreta la respuesta del titular y la registra: si no consiente (o no responde con
 //        claridad) la llamada se atiende SIN grabar; negar borra lo ya guardado.
 //   POST /internal/restaurantes/voz/arco
-//        fast-path ARCO por voz (acceso, rectificacion, cancelacion, oposicion): el telefono sale del
+//        fast-path ARCO por voz (acceso, rectificacion, cancelacion, oposicion) -- lo llama el voice-worker con CADA frase del titular
+//        (apps/voice-worker/src/llamada.ts `procesarArco`); mismo detector que WhatsApp. El telefono sale del
 //        identificador de llamada y NUNCA de lo que dicta el titular; la identidad se marca como
 //        'llamada_identificador' (puede falsearse: el staff debe verificar por otra via antes de
 //        responder).
@@ -26,7 +27,9 @@ import {
   VOICE_CONSENT_DENIED_REPLY,
   VOICE_CONSENT_GRANTED_REPLY,
   VOICE_CONSENT_REPEAT_REPLY,
+  estadoDeMenuArco,
   interpretRecordingConsent,
+  registerCallbackRequest,
   runArcoFastPath,
   voiceOpeningScript,
 } from "@atiende/domain-restaurantes";
@@ -48,11 +51,11 @@ function uuid(value: unknown, campo: string): string {
   return value;
 }
 
-/** Telefono del identificador de llamada -> "+<digitos>" (7 a 15 digitos). */
+/** Telefono del identificador de llamada -> "+<digitos>" (7 a 15 digitos). Un numero nacional de 10 digitos (como lo entrega el voice-worker) se completa con +52: sin codigo de pais la solicitud quedaria como "+9991234567". */
 function telefonoDeLlamada(value: unknown): string {
   const digitos = typeof value === "string" ? value.replace(/\D/g, "") : "";
   if (digitos.length < 7 || digitos.length > 15) throw Errors.validation("callerPhone: se esperaba un teléfono de 7 a 15 dígitos.");
-  return `+${digitos}`;
+  return digitos.length === 10 ? `+52${digitos}` : `+${digitos}`;
 }
 
 export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
@@ -155,10 +158,22 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
     const callerPhone = telefonoDeLlamada(body.callerPhone);
     if (typeof body.texto !== "string" || body.texto.length > 2000) throw Errors.validation("texto: se esperaba lo que dijo el titular (máximo 2000 caracteres).");
 
+    // `menuPendiente`: el worker recuerda si la frase anterior dejo un menu ARCO sin contestar (la voz no tiene historial de chat).
+    const menuPendiente = body.menuPendiente === "numerado" || body.menuPendiente === "nombres" ? body.menuPendiente : null;
+
     return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const result = await runArcoFastPath(repoDe(db), organizationId, callerPhone, body.texto as string, "voice");
+      const result = await runArcoFastPath(repoDe(db), organizationId, callerPhone, body.texto as string, "voice", undefined, { menu: menuPendiente, ...(deps.arcoClassifier ? { clasificador: deps.arcoClassifier } : {}) });
       if (!result) return c.json({ atendido: false });
-      return c.json({ atendido: true, respuesta: result.reply });
+      // Escalacion (no se identifico el derecho / se pidieron varios): ademas de la solicitud registrada, aviso al equipo (mismo callback que `escalar_a_humano`). Best-effort en SAVEPOINT:
+      // un fallo del aviso nunca revierte la solicitud ya registrada ni rompe la llamada.
+      if (result.escalar && deps.restaurantesRepo) {
+        const rest = deps.restaurantesRepo(db);
+        await rest
+          .runWithRowSavepoint(() => registerCallbackRequest(rest, { organizationId, propertyId: null, customerName: "Cliente (llamada)", customerPhone: callerPhone, reason: "escalada:privacidad_arco", message: "Solicitud de derechos ARCO por voz: no se identifico el derecho o se pidieron varios.", source: "voice" }))
+          .catch(() => undefined);
+      }
+      // `reemplaza` = el agente dice la respuesta tal cual y no toma el pedido en ese turno; `agrega` = la ofrece al final de su respuesta normal (senal debil).
+      return c.json({ atendido: result.modo === "reemplaza", modo: result.modo, respuesta: result.reply, registrada: result.registrada, escalar: result.escalar, menu: estadoDeMenuArco(result.reply) });
     });
   });
 

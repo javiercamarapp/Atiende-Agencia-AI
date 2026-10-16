@@ -203,7 +203,8 @@ export {
 export type { AudioDescargado, MotivoSinTranscripcion, NotaDeVozEntrante, PuertoNotasDeVoz, ResultadoNotaDeVoz, TranscripcionDeEntrada } from "./whatsapp/nota-de-voz.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
-export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
+export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB, resolverAtajoArco, previsualizarAtajoArco, conOfertaArco, ultimoTextoDelAsistentePrevio } from "./whatsapp/inbound.ts";
+export type { AtajoArco } from "./whatsapp/inbound.ts";
 export type { RecepcionConEspera } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";

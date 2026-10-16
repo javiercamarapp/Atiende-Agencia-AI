@@ -3,7 +3,7 @@
 // tener un tope propio por rol (`PUT /superadmin/gasto-api/organizaciones/:id/topes-rol`); sin fila propia manda este default.
 // Los roles que no aparecen aqui (agentes de WhatsApp, extraccion de requisitos...) NO tienen tope diario: su gasto lo acotan el
 // presupuesto por corrida/dia del gateway y el tope mensual.
-import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, ENRUTADOR_TURNO_ROLE, TITULOS_RESUMENES_ROLE } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, ENRUTADOR_TURNO_ROLE, RESTAURANTES_CLASIFICADOR_ARCO_ROLE, TITULOS_RESUMENES_ROLE } from "./llm-models.ts";
 
 /** Llamadas por dia de un rol `<vertical>:data_chat` (unas 200 preguntas). */
 export const DEFAULT_DATA_CHAT_DAILY_TURNS = 400;
@@ -17,6 +17,8 @@ const FIXED_DEFAULTS: Readonly<Record<string, number>> = {
   [COMPUERTA_ESCALAMIENTO_ROLE]: 300,
   [TITULOS_RESUMENES_ROLE]: 300,
   [COMPACTACION_HISTORIAL_ROLE]: 150,
+  // Una llamada por mensaje entrante que pasa el prefiltro de vocabulario: ~US$0.0001 cada una, asi que 3000 al dia son centavos y cubren un restaurante muy activo.
+  [RESTAURANTES_CLASIFICADOR_ARCO_ROLE]: 3000,
 };
 
 /** Tope diario por defecto de `role`; `undefined` = el rol no tiene tope diario. */

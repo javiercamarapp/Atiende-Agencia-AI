@@ -164,35 +164,63 @@ function formatDueDate(iso: string | null, timezone: string): string | null {
 // solo folio, tipo de derecho y fechas.
 // ---------------------------------------------------------------------------
 
+/** Marcas que deja cada menu en el historial: la siguiente respuesta del cliente se interpreta como eleccion (ver arco-deteccion.ts `estadoDeMenuArco`). */
+export const ARCO_MENU_MARCA_NUMERADO = "Elija una opción, escribiendo el número o el nombre";
+export const ARCO_MENU_MARCA_NOMBRES = "Por si se refería a sus datos personales";
+
+/** Menu que SUSTITUYE el turno (el cliente pregunto de forma explicita por sus derechos o por la privacidad). Acepta numero, nombre y sinonimos. */
 export const ARCO_MENU_REPLY =
-  "Puede ejercer sus derechos sobre los datos personales asociados a este número (derechos ARCO):\n" +
-  "• Acceso: conocer qué datos suyos tenemos.\n" +
-  "• Rectificación: corregir datos incorrectos.\n" +
-  "• Cancelación: pedir que se supriman sus datos.\n" +
-  "• Oposición: oponerse a cierto uso de sus datos.\n" +
-  "Dígame cuál desea, por ejemplo: \"quiero acceso a mis datos personales\". Solo atiendo solicitudes sobre los datos de quien escribe desde este número.";
+  "Con gusto le ayudo con sus datos personales (derechos ARCO). " +
+  `${ARCO_MENU_MARCA_NUMERADO} del derecho:\n` +
+  "1. Acceso: conocer qué datos suyos tenemos.\n" +
+  "2. Rectificación: corregir datos incorrectos.\n" +
+  "3. Cancelación: que se supriman sus datos.\n" +
+  "4. Oposición: oponerse a cierto uso, por ejemplo dejar de recibir mensajes o promociones.\n" +
+  "Solo atiendo solicitudes sobre los datos de quien escribe desde este número. " +
+  "Si lo que quería era hacer o continuar un pedido, o pedir su factura, dígamelo y seguimos: no se pierde nada.";
+
+/** Oferta que se AGREGA al final de la respuesta normal del agente cuando la senal de ARCO es debil (el pedido sigue su curso). Solo nombres: un "2" o un "cancelar" pueden ser del pedido. */
+export const ARCO_MENU_APENDICE =
+  `${ARCO_MENU_MARCA_NOMBRES}: puede pedir acceso, rectificación, cancelación u oposición (derechos ARCO). ` +
+  "Dígame cuál, por ejemplo «cancelación», y registro su solicitud. Si no era eso, ignore este aviso y seguimos con su pedido.";
 
 export const ARCO_THIRD_PARTY_REPLY =
   "Por seguridad solo puedo recibir solicitudes sobre los datos personales asociados a este mismo número, hechas por su titular. " +
   "Si necesita ejercer derechos sobre los datos de otra persona, ella debe escribir desde su propio número o contactar directamente al restaurante. No puedo compartir información de otras personas.";
 
+const ARCO_NOTA_PEDIDO = " Si lo que quería era otra cosa (por ejemplo su pedido o su factura), dígamelo y seguimos: sin su CONFIRMO la solicitud no avanza.";
+
 export function arcoPendingConfirmationReply(rightType: DataRightType, id: string): string {
   return (
     `Recibí su solicitud de ${DATA_RIGHT_LABEL[rightType]} sobre los datos personales asociados a este número (folio ${dataRightsFolio(id)}). ` +
     "Para confirmar que la hace usted, responda CONFIRMO. Si no la hizo usted o desea retirarla, responda CANCELAR SOLICITUD. " +
-    "La confirmación vale por 24 horas."
+    "La confirmación vale por 24 horas." +
+    ARCO_NOTA_PEDIDO
+  );
+}
+
+/** Segunda ambiguedad dentro del menu: no se pide elegir otra vez (eso seria un bucle). Se registra la mejor conjetura, se avisa a una persona y el titular puede corregirla. */
+export function arcoConjeturaReply(rightType: DataRightType, id: string): string {
+  return (
+    `No logré identificar con precisión qué derecho desea, así que para no hacerle perder tiempo registré su solicitud como ${DATA_RIGHT_LABEL[rightType]} (folio ${dataRightsFolio(id)}) ` +
+    "y una persona del equipo la revisará y lo contactará por este mismo número. " +
+    "Para confirmar que la hace usted, responda CONFIRMO; si no la hizo usted o desea retirarla, responda CANCELAR SOLICITUD. La confirmación vale por 24 horas."
   );
 }
 
 export function arcoConfirmedReply(rightType: DataRightType, id: string, responseDueAt: string | null, executionDueAt: string | null, timezone: string): string {
   const responseDate = formatDueDate(responseDueAt, timezone);
   const executionDate = formatDueDate(executionDueAt, timezone);
+  // La ley cuenta DIAS HABILES desde que se recibe la solicitud (LFPDPPP art. 31). La fecha que calcula el sistema es una referencia interna conservadora
+  // (dias naturales): nunca queda despues del plazo legal. No se promete borrado inmediato: la cancelacion pasa por bloqueo y luego supresion.
   const plazos = responseDate
-    ? `El restaurante debe responderle a más tardar el ${responseDate} (${DATA_RIGHTS_RESPONSE_DAYS} días)${executionDate ? ` y, si procede, hacerla efectiva a más tardar el ${executionDate} (${DATA_RIGHTS_EXECUTION_DAYS} días más)` : ""}. `
-    : `El restaurante debe responderle en un máximo de ${DATA_RIGHTS_RESPONSE_DAYS} días y, si procede, hacerla efectiva en los ${DATA_RIGHTS_EXECUTION_DAYS} días siguientes. `;
+    ? `El restaurante debe responderle en un máximo de ${DATA_RIGHTS_RESPONSE_DAYS} días hábiles contados desde que recibió su solicitud (como referencia interna, el sistema marca el ${responseDate})${
+        executionDate ? ` y, si procede, hacerla efectiva dentro de los ${DATA_RIGHTS_EXECUTION_DAYS} días hábiles siguientes a esa respuesta (referencia interna: ${executionDate})` : ""
+      }. `
+    : `El restaurante debe responderle en un máximo de ${DATA_RIGHTS_RESPONSE_DAYS} días hábiles contados desde que recibió su solicitud y, si procede, hacerla efectiva dentro de los ${DATA_RIGHTS_EXECUTION_DAYS} días hábiles siguientes a esa respuesta. `;
   const extra =
     rightType === "cancelacion"
-      ? "En cancelación, sus datos se bloquean primero y se suprimen después, salvo que exista una obligación de conservarlos. "
+      ? "En cancelación, sus datos se bloquean primero y se suprimen después de un periodo de bloqueo que el restaurante le notificará en su respuesta, salvo que exista una obligación de conservarlos. No se borran de inmediato. "
       : "";
   return (
     `Listo, su solicitud de ${DATA_RIGHT_LABEL[rightType]} quedó registrada (folio ${dataRightsFolio(id)}). ` +

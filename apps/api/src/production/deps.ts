@@ -123,6 +123,7 @@ import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { crearPuertoNotasDeVoz } from "../routes/verticals/restaurantes/transcripcion-voz.ts";
+import { crearClasificadorArcoConGateway } from "../privacidad/clasificador-arco-gateway.ts";
 import { softRestaurantComandaDeps, type SoftRestaurantDeps } from "../routes/verticals/restaurantes/softrestaurant-wiring.ts";
 import { PersistentAuthzAuditSink } from "./authz-audit-sink.ts";
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
@@ -362,6 +363,8 @@ export function buildProductionDeps(): AppDeps {
 
   // R-32: notas de voz de WhatsApp de restaurantes. Necesita el token de Meta (descarga de media) Y el gateway LLM (transcripcion); sin alguno de
   // los dos queda `undefined` y el webhook conserva el comportamiento anterior (pedir al cliente que escriba).
+  // Clasificador ARCO: solo con gateway LLM; fail-open (cualquier falla deja la capa regex y el pedido sigue).
+  const arcoClassifier = llmGateway ? crearClasificadorArcoConGateway({ gateway: llmGateway }) : undefined;
   const notasDeVoz = env.whatsappAccessToken && llmGateway ? crearPuertoNotasDeVoz({ gateway: llmGateway, accessToken: env.whatsappAccessToken }) : undefined;
 
   // Bitacora de corridas (SA-L-07): cada turno de WhatsApp deja una fila en core.agent_run (best-effort, sesion de
@@ -643,6 +646,7 @@ export function buildProductionDeps(): AppDeps {
     whatsAppDispatcher,
     saludMeta,
     notasDeVoz,
+    arcoClassifier,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
     // cuanto `STRIPE_SECRET_KEY` esté configurada, `undefined` (503 honesto en

@@ -11,7 +11,7 @@
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, canonicalizeMexicanPhone, detectArcoIntent, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
@@ -25,6 +25,16 @@ import type { AudioWav } from "./audio/pcm.ts";
 import type { LlamadaTelefonica } from "./telefonia/puerto.ts";
 
 /** Texto que dispara el saludo: el agente habla primero (la instruccion le dice como saludar). No es una frase del cliente y no se registra como turno. */
+/** Instruccion al agente cuando el titular pide derechos sobre sus datos pero la llamada NO trae un identificador confiable (ver `procesarArco`). */
+export const INSTRUCCION_ARCO_SIN_TELEFONO =
+  "(El cliente quiere ejercer derechos sobre sus datos personales (acceso, corrección, borrado u oposición), pero esta llamada no trae un número verificado. Dígale con amabilidad que por seguridad esas solicitudes se atienden desde el número que llama o por el WhatsApp del restaurante, y que usted le deja el aviso al equipo para que lo contacte. Pídale su teléfono de 10 dígitos, repítaselo y confírmelo, regístrelo con confirmar_telefono_llamante y luego llame escalar_a_humano con motivo privacidad_arco. No prometa plazos ni borre nada.)";
+
+/** Una peticion clara de derechos (solicitud registrable o pregunta explicita por privacidad); la senal debil no cuenta aqui. */
+export function peticionClaraDeArco(texto: string): boolean {
+  const i = detectArcoIntent(texto);
+  return i !== null && (i.kind === "request" || (i.kind === "menu" && i.fuerza === "fuerte"));
+}
+
 export const DISPARADOR_SALUDO = "(La llamada acaba de conectarse. Salude al cliente siguiendo sus instrucciones.)";
 
 /** Frase que dispara el saludo y, si la API trajo el guion de apertura, le pide al agente decirlo TAL CUAL (aviso de privacidad + grabacion). */
@@ -302,6 +312,41 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       consultandoConsentimiento = false;
     }
   };
+  // Derechos ARCO por voz: cada frase del titular se evalua en el servidor (mismo detector que WhatsApp). El telefono es SOLO el del identificador de llamada
+  // (nunca el dictado): sin el no hay a quien registrar y el agente sigue como siempre. Una solicitud queda REGISTRADA aunque el modelo no la entienda.
+  let menuArco: "numerado" | "nombres" | null = null;
+  let arcoSinTelefonoAvisado = false;
+  let colaArco: Promise<void> = Promise.resolve();
+  const procesarArco = (texto: string): void => {
+    if (texto.trim() === "") return;
+    if (telefono === null) {
+      // Sin identificador de llamada confiable no hay a quien registrar (la identidad nunca sale de lo que dicta el cliente). Si pide derechos de forma clara, el agente NO lo ignora:
+      // le explica y recoge un telefono de contacto para que el equipo lo atienda, y escala (una sola vez por llamada).
+      if (!arcoSinTelefonoAvisado && peticionClaraDeArco(texto)) {
+        arcoSinTelefonoAvisado = true;
+        log("arco_voz_sin_telefono");
+        (sesionActual as VozSesionLlamada | null)?.enviarTexto(INSTRUCCION_ARCO_SIN_TELEFONO);
+      }
+      return;
+    }
+    colaArco = colaArco.then(async () => {
+      try {
+        const r = await deps.api.arcoVoz({ organizationId, callerPhone: telefono, texto, menu: menuArco });
+        menuArco = r.menu;
+        if (!r.respuesta) return;
+        log("arco_voz", { modo: r.modo });
+        const sesion = sesionActual as VozSesionLlamada | null;
+        if (r.modo === "reemplaza") {
+          const persona = r.escalar ? " Además dígale que una persona del equipo lo contactará para aclararlo." : "";
+          sesion?.enviarTexto(`(El cliente quiere ejercer derechos sobre sus datos personales. Dígale tal cual, sin cambiar nada y sin tomar su pedido en este turno: «${r.respuesta}».${persona})`);
+        }
+        else sesion?.enviarTexto(`(Termine de atender lo que pidió el cliente y al final ofrézcale tal cual: «${r.respuesta}»)`);
+      } catch (err) {
+        log("arco_voz_fallo", { codigo: err instanceof ErrorApi ? String(err.estado ?? "red") : "error" });
+      }
+    });
+    segundoPlano.push(colaArco);
+  };
   const abrirSesion: AbrirSesionLlamada = async (apertura, h) => {
     const sesion = await escalera.abrirSesion(contexto.temperatura !== null ? { ...apertura, temperatura: contexto.temperatura } : apertura, {
       ...h,
@@ -313,6 +358,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       usuarioDijo: (texto) => {
         h.usuarioDijo?.(texto);
         void procesarConsentimiento(texto);
+        procesarArco(texto);
       },
       interrumpido: () => {
         puente.cortarAudio();

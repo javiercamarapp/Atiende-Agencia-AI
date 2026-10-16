@@ -66,10 +66,27 @@ procedimiento con su asesor jurídico. Todo vive en `src/privacidad/` y en un `P
   (`restaurantes.privacy_notice_deliveries`, evidencia de entrega). Sin la 030 se usa "primer mensaje de la
   conversación".
 - **ARCO**: fast-path determinista antes del LLM (`runArcoFastPath`, mismo patrón que citas): el teléfono es el
-  que escribe, confirmación explícita ("CONFIRMO") y plazos de 20 + 15 días desde la confirmación;
+  que escribe, confirmación explícita ("CONFIRMO") y plazos de referencia de 20 + 15 días desde la confirmación
+  (el texto al titular dice 20 días **hábiles** desde la recepción y 15 hábiles tras la respuesta; la fecha del
+  sistema es una referencia interna conservadora, informe legal de privacidad 2026, §1.3);
   `restaurantes.data_rights_requests/events` (bitácora append-only). Por voz el identificador de llamada puede
   falsearse: la solicitud queda con `identity_basis = 'llamada_identificador'` y el panel avisa que se verifique
   al titular por otra vía.
+  - Detección (`privacidad/arco-deteccion.ts`, pura y compartida por WhatsApp, voz y el preview «Probar agente»):
+    **raíces etiquetadas** (`RAICES_ARCO`), cada una con su derecho y su fuerza. *Fuerte* = pide un derecho sobre
+    sus datos o frena el contacto (el objeto son los datos del titular o un «me» pegado al verbo; `lo/los/la/las`
+    del imperativo nunca cuentan): se registra y el mensaje lo atiende el atajo. *Débil* = suena a ARCO pero también
+    es habla de restaurante («borra mi cuenta», «no me llamen»): no se registra ni se descarta el mensaje, el
+    agente sigue con el pedido y se agrega la oferta de derechos al final de su respuesta. Corre **por mensaje**,
+    nunca sobre una ráfaga unida. Cada raíz tiene su corpus en `tests/arco-corpus-por-raiz.ts` (positivos y
+    casi-iguales negativos); agregar una raíz sin su corpus rompe `privacidad-arco-aceptacion.spec.ts`, que además
+    fija recall ≥ 98 % y falsos positivos ≤ main contra el corpus del revisor.
+  - Menú: deja una marca en el historial (`ARCO_MENU_MARCA_*`); la respuesta siguiente se lee con
+    `detectarEleccionDeMenu` (nombre del derecho, sinónimos y 1–4). Una segunda ambigüedad registra la mejor
+    conjetura (acceso) y escala a una persona: nunca se repite el menú.
+  - Una solicitud registrada se atiende aunque el mensaje traiga otro riesgo alto (alergia, queja...): se registra
+    **y** se escala. La oposición al contacto (`esOposicionDeContacto`) además revoca el marketing del teléfono en
+    el webhook, unida a la baja exacta de `detectarOptOut`.
 - **Grabación de la llamada**: `voiceOpeningScript` (asistente virtual + aviso + pregunta de grabación) y
   `interpretRecordingConsent` (conservadora: ante la duda no se graba). `voz_registrar_turno` no persiste
   transcripción sin consentimiento (si la organización lo exige) ni con retención de voz 0; negar borra lo ya

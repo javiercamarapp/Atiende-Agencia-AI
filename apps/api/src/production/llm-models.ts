@@ -52,6 +52,9 @@ export const COMPACTACION_HISTORIAL_ROLE = "plataforma:compactacion_historial";
  *  Studio / Vertex (`GOOGLE_HOSTS`, en la lista permitida). Si ningun escalon acepta la peticion, el llamador conserva el comportamiento de
  *  "pedir al cliente que escriba". */
 export const RESTAURANTES_TRANSCRIPCION_ROLE = "restaurantes:transcripcion";
+/** Clasificador barato de derechos ARCO (red de seguridad de la regex del atajo de privacidad). Ruta de tareas cortas (GPT-6 Luna -> DeepSeek V4.1 Flash); modelos Anthropic/Claude Haiku no
+ *  estan en `VERIFIED_MODEL_HOSTS` y la politica de proveedores EE.UU./ZDR no se relaja. Costo de referencia: ~US$0.0001 por mensaje clasificado (ver docs/ARCO-CLASIFICADOR.md). */
+export const RESTAURANTES_CLASIFICADOR_ARCO_ROLE = "restaurantes:clasificador_arco";
 export const NEW_PLATFORM_LLM_ROLES: readonly string[] = [
   REPORTE_ANALISIS_FINANCIERO_ROLE,
   REPORTE_ANALISIS_GENERAL_ROLE,
@@ -61,6 +64,7 @@ export const NEW_PLATFORM_LLM_ROLES: readonly string[] = [
   COMPUERTA_ESCALAMIENTO_ROLE,
   TITULOS_RESUMENES_ROLE,
   COMPACTACION_HISTORIAL_ROLE,
+  RESTAURANTES_CLASIFICADOR_ARCO_ROLE,
 ];
 
 /** Un escalon de la escalera: un modelo con sus parametros. */
@@ -299,6 +303,7 @@ export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = {
   [COMPUERTA_ESCALAMIENTO_ROLE]: TAREAS_CORTAS,
   [TITULOS_RESUMENES_ROLE]: TAREAS_CORTAS,
   [COMPACTACION_HISTORIAL_ROLE]: TAREAS_CORTAS,
+  [RESTAURANTES_CLASIFICADOR_ARCO_ROLE]: TAREAS_CORTAS,
 };
 
 export const DEFAULT_ROUTE: LlmRouteConfig = ECONOMICO;

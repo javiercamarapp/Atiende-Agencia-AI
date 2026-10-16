@@ -1,8 +1,12 @@
 export * from "./data-rights.ts";
 export * from "./aviso.ts";
 export * from "./encargados.ts";
-export { detectArcoConfirmation, detectArcoIntent, normalizeArcoText, runArcoFastPath } from "./arco-intent.ts";
-export type { ArcoFastPathResult, ArcoIntent, ArcoConfirmationIntent } from "./arco-intent.ts";
+export { crearClasificadorArco, debeClasificarArco, decidirConClasificador, parsearSalidaClasificador, textoParaClasificador, PROMPT_CLASIFICADOR_ARCO, ESQUEMA_CLASIFICADOR_ARCO, INTENCIONES_CLASIFICADAS } from "./clasificador-arco.ts";
+export type { ClasificadorArco, CompletarJson, EntradaCompletarJson, EventoClasificador, FallaClasificador, IntencionClasificada, OpcionesClasificadorArco, ResultadoClasificadorArco, SalidaCompletarJson } from "./clasificador-arco.ts";
+export { esOposicionDeContactoInequivoca } from "./arco-deteccion.ts";
+export { intencionesPorMensaje, registrarSolicitudArco, telefonoCanonicoArco } from "./arco-intent.ts";
+export { detectArcoConfirmation, detectArcoIntent, detectarEleccionDeMenu, esOposicionDeContacto, estadoDeMenuArco, hayAlgunaSenalArco, normalizeArcoText, raicesQueCoinciden, runArcoFastPath, RAICES_ARCO } from "./arco-intent.ts";
+export type { ArcoFastPathResult, ArcoIntent, ArcoConfirmationIntent, ArcoModo, EleccionDeMenu, EstadoMenuArco, FuerzaArco, OpcionesArco, RaizArco } from "./arco-intent.ts";
 export type { PrivacidadRepository, PurgeOutcome, RecordingConsent, SetRecordingConsentResult, UpdatePrivacyConfigResult } from "./repository.ts";
 export { PostgresPrivacidadRepository } from "./postgres-repository.ts";
 export { InMemoryPrivacidadRepository } from "./in-memory-repository.ts";

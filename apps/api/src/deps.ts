@@ -27,7 +27,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { ClasificadorArco, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
@@ -206,6 +206,8 @@ export interface AppDeps {
    * comportamiento anterior (el webhook de WhatsApp no antepone aviso ni atiende ARCO) y las rutas de
    * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
   readonly privacidadRepo?: (db: TenantDbSession) => PrivacidadRepository;
+  /** Red de seguridad LLM del detector ARCO (rol `restaurantes:clasificador_arco`). OPCIONAL: ausente = solo la capa regex. Se construye con el gateway LLM; sin proveedor no hay clasificador. */
+  readonly arcoClassifier?: ClasificadorArco;
   readonly voiceProvider?: VoiceAgentProvider;
   /** R-21 (migración 028): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */

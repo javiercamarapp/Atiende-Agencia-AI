@@ -65,3 +65,19 @@ describe("webhook de WhatsApp de restaurantes: BAJA revoca el consentimiento de 
     expect(res.status).toBe(200);
   });
 });
+
+describe("webhook de WhatsApp de restaurantes: la oposicion al contacto (detector ARCO) tambien frena el marketing", () => {
+  it.each(["ya no me escriban", "no me manden publicidad", "dejen de mandarme promociones", "ya basta de mensajes", "quiero desuscribirme"])("%j (oposicion INEQUIVOCA) revoca el consentimiento de marketing del telefono", async (texto) => {
+    const s = await setup();
+    const res = await s.app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload(texto, `wamid.opo-${texto}`)));
+    expect(res.status).toBe(200);
+    expect(s.revocaciones).toEqual([[s.organizationId, "+5219991234567"]]);
+  });
+
+  it.each(["no me manden salsa verde", "no me llamen cuando lleguen, toquen el timbre", "borren mis datos", "quiero acceso a mis datos", "olvídense de mí", "sáquenme de sus listas", "no me llamen", "el repartidor nunca me llamó"])("%j NO revoca el marketing (no es oposicion inequivoca)", async (texto) => {
+    const s = await setup();
+    const res = await s.app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload(texto, `wamid.nopo-${texto}`)));
+    expect(res.status).toBe(200);
+    expect(s.revocaciones).toEqual([]);
+  });
+});

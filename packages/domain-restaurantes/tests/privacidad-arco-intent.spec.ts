@@ -5,6 +5,8 @@ import { InMemoryPrivacidadRepository } from "../src/privacidad/in-memory-reposi
 
 const ORG = "00000000-0000-0000-0000-0000000000a1";
 const PHONE = "+5219981234567";
+/** Formato canonico con el que se registran y buscan las solicitudes ARCO (+52 y 10 digitos). */
+const PHONE_CANONICO = "+529981234567";
 
 describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de pedidos", () => {
   it.each([
@@ -19,7 +21,7 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
     ["No quiero que usen mis datos personales para publicidad", "oposicion"],
     ["Revoco mi consentimiento sobre mis datos personales", "oposicion"],
   ])("«%s» -> %s", (text, right) => {
-    expect(detectArcoIntent(text)).toEqual({ kind: "request", right });
+    expect(detectArcoIntent(text)).toMatchObject({ kind: "request", right });
   });
 
   it.each([
@@ -29,17 +31,17 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
     "Hola, quiero 3 tacos al pastor",
     "gracias",
     "",
-  ])("«%s» NO es una solicitud ARCO (sin mención de datos personales/privacidad)", (text) => {
+  ])("«%s» NO es una solicitud ARCO (no habla de los datos del titular)", (text) => {
     expect(detectArcoIntent(text)).toBeNull();
   });
 
-  it("menciona ARCO/privacidad sin un derecho concreto -> menú, sin registrar nada", () => {
-    expect(detectArcoIntent("Quiero ejercer mis derechos ARCO")).toEqual({ kind: "menu" });
-    expect(detectArcoIntent("tienen aviso de privacidad?")).toEqual({ kind: "menu" });
+  it("menciona ARCO/privacidad sin un derecho concreto -> menú fuerte, sin registrar nada", () => {
+    expect(detectArcoIntent("Quiero ejercer mis derechos ARCO")).toMatchObject({ kind: "menu", fuerza: "fuerte" });
+    expect(detectArcoIntent("tienen aviso de privacidad?")).toMatchObject({ kind: "menu", fuerza: "fuerte" });
   });
 
-  it("varios derechos específicos en un solo mensaje -> menú (se pide elegir uno)", () => {
-    expect(detectArcoIntent("quiero que borren mis datos personales y que no los compartan")).toEqual({ kind: "menu" });
+  it("varios derechos específicos en un solo mensaje -> se registra el más amplio (cancelación), no se vuelve a pedir elegir", () => {
+    expect(detectArcoIntent("quiero que borren mis datos personales y que no los compartan")).toMatchObject({ kind: "request", right: "cancelacion" });
   });
 
   it("pide datos de OTRA persona -> negativa guiada (third_party), nunca una solicitud", () => {
@@ -49,7 +51,7 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
 
   it("es insensible a acentos y mayúsculas", () => {
     expect(normalizeArcoText("RECTIFICACIÓN, por favor!")).toBe("rectificacion por favor");
-    expect(detectArcoIntent("RECTIFICACIÓN de MIS DATOS PERSONALES")).toEqual({ kind: "request", right: "rectificacion" });
+    expect(detectArcoIntent("RECTIFICACIÓN de MIS DATOS PERSONALES")).toMatchObject({ kind: "request", right: "rectificacion" });
   });
 });
 
@@ -88,7 +90,7 @@ describe("runArcoFastPath -- flujo guiado de punta a punta (repositorio en memor
     expect(result?.reply).toContain("CONFIRMO");
     expect(result?.reply).toContain("acceso");
     expect(repo.requests).toHaveLength(1);
-    expect(repo.requests[0]).toMatchObject({ organizationId: ORG, customerPhone: PHONE, rightType: "acceso", status: "pendiente_confirmacion", channel: "whatsapp" });
+    expect(repo.requests[0]).toMatchObject({ organizationId: ORG, customerPhone: PHONE_CANONICO, rightType: "acceso", status: "pendiente_confirmacion", channel: "whatsapp" });
     expect(result?.reply).not.toContain(PHONE);
   });
 
