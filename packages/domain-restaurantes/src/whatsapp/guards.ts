@@ -615,7 +615,7 @@ const PROMESA_DE_DESCUENTO = new RegExp(
     // «tendra 15% de descuento», «queda con 10% de descuento»
     `\\b(?:tendra|tendran|queda|quedan|llevara|llevan)\\s+(?:con\\s+|un\\s+)?${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?descuento`,
     // «le descontamos $50 de su pedido», «su pedido corre por nuestra cuenta», «va por cuenta de la casa»
-    `\\b(?:le|les)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+)?descont\\w+\\b[^.!?\\n]{0,30}(?:\\$|\\d)`,
+    `\\b(?:le|les)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+)?(?:descont|descuent)\\w+\\b[^.!?\\n]{0,30}(?:\\$|\\d)`,
     `\\bcorre\\s+por\\s+(?:nuestra|mi)\\s+cuenta\\b|\\bpor\\s+cuenta\\s+de\\s+la\\s+casa\\b`,
     `\\b(?:we|i)(?:'ll|\\s+will|\\s+can)\\s+(?:give|offer|apply)\\s+(?:you\\s+)?(?:a\\s+|an\\s+)?(?:${NUMERO_DE_DESCUENTO}\\s*)?(?:discount|off)`,
     // «su pedido sale gratis», «se lo regalamos», «todo va por nuestra cuenta»
