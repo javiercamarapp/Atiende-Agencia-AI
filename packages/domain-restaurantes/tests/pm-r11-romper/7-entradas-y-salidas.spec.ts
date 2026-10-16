@@ -144,6 +144,38 @@ describe("R12-C respuestas largas (R11-12)", () => {
     expect(unicas.size).toBe(llaves.length);
   });
 
+  it("(orden de salida) las partes se encolan en orden y el claim de a una las ofrece p0, p1, p2... (el orden real contra Postgres lo cubre el gate P1/P2 + migracion 088)", async () => {
+    const f = buildRestaurantFixture();
+    const largo = `Claro. ${"Tenemos tacos de bistec, pastor y arrachera. ".repeat(320)}`;
+    expect(largo.length).toBeGreaterThan(12_000);
+    const { handler } = handlerConGuion(f.repo, () => texto(largo));
+    await handleInboundWhatsAppMessage(f.repo, handler, { organizationId: f.organizationId, messageId: "wamid.r12-orden", phone: PHONE, body: "hola", phoneNumberId: "pn-1" });
+    const base = "inbound-reply:wamid.r12-orden";
+    const encoladas = f.repo.getOutbox().map((o) => o.dedupeKey);
+    expect(encoladas.length).toBeGreaterThanOrEqual(4);
+    expect(encoladas).toEqual([base, ...encoladas.slice(1).map((_, i) => `${base}:${i + 1}`)]);
+    const reclamadas: string[] = [];
+    for (let i = 0; i < encoladas.length; i += 1) {
+      const [fila] = await f.repo.claimMessagingOutboxBatch(1, 120);
+      reclamadas.push(f.repo.getOutbox().find((o) => o.id === fila!.id)!.dedupeKey);
+    }
+    expect(reclamadas).toEqual(encoladas);
+  });
+
+  it("(limite documentado) re-encolar la misma llave reescribe el payload solo mientras la fila esta pending; una ya reclamada no se toca ni se duplica", async () => {
+    const f = buildRestaurantFixture();
+    await f.repo.enqueueMessagingOutbox(f.organizationId, "whatsapp", "whatsapp.inbound_reply", "inbound-reply:wamid.r12-re", { body: "v1" });
+    await f.repo.enqueueMessagingOutbox(f.organizationId, "whatsapp", "whatsapp.inbound_reply", "inbound-reply:wamid.r12-re", { body: "v2" });
+    expect(f.repo.getOutbox()).toHaveLength(1);
+    expect(f.repo.getOutbox()[0]!.payload).toEqual({ body: "v2" });
+    await f.repo.claimMessagingOutboxBatch(1, 120);
+    await f.repo.enqueueMessagingOutbox(f.organizationId, "whatsapp", "whatsapp.inbound_reply", "inbound-reply:wamid.r12-re", { body: "v3" });
+    expect(f.repo.getOutbox()).toHaveLength(1);
+    expect(f.repo.getOutbox()[0]!.payload).toEqual({ body: "v2" });
+    // Nota (no es un defecto hoy): si la misma llave base se re-encolara con OTRO numero de partes, las partes sobrantes de la primera tanda quedarian huerfanas.
+    // No ocurre porque el encolado va en la transaccion unica del webhook y el dedupe por message.id no la repite.
+  });
+
   it("(webhook) una respuesta de 4096 o menos sigue saliendo como UN solo mensaje con la llave de siempre", async () => {
     const f = buildRestaurantFixture();
     const { handler } = handlerConGuion(f.repo, () => texto("Claro, con gusto. ".repeat(100)));

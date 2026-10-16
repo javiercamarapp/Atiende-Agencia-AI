@@ -340,7 +340,12 @@ async function encolarRespuesta(
   const keyReply = `inbound-reply:${a.messageId}${a.sufijo}`;
   const conBotones = a.confirmacion !== undefined && dentroDeVentanaDeServicio(a.recibidoEnMs, Date.now());
   // R11-12: Meta rechaza (no reintentable) un texto de mas de 4096 caracteres. Una respuesta larga sale en partes <= 4000: la primera conserva la llave de siempre
-  // (`inbound-reply:<id>`) y las siguientes llevan `:<n>`; el reintento del mismo mensaje recalcula las mismas partes y no duplica nada.
+  // (`inbound-reply:<id>`) y las siguientes llevan `:<n>`. Las llaves son deterministas: el reintento del webhook ya no llega aqui (dedupe por message.id) y, si una
+  // llave se re-encolara, el outbox no crea fila nueva (la reescribe solo mientras esta pending/failed). Si la misma llave base se re-encolara con OTRO numero de
+  // partes quedarian partes huerfanas de la primera tanda; hoy no ocurre porque todo el encolado va en la transaccion unica del webhook.
+  // ORDEN DE SALIDA: las partes se encolan EN ORDEN (p0, p1, ..., y por ultimo el aviso de botones) y el claim las ofrece por `created_at`. `enqueue_messaging_outbox` fija
+  // `created_at = clock_timestamp()` (migracion 088) para que filas de la MISMA transaccion queden estrictamente ordenadas; sin esa migracion `created_at` es el
+  // inicio de la transaccion, el desempate es el uuid al azar y las partes pueden llegar revueltas. Limite que no cierra: si la parte n falla y espera su reintento, la n+1 puede salir antes.
   const partes = dividirRespuestaLarga(a.reply);
   const primera = partes[0]!;
   const encolarResto = async (): Promise<void> => {
