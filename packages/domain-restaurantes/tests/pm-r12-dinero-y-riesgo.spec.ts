@@ -181,6 +181,58 @@ describe("R12-E guardia posterior: promesas de dinero", () => {
   });
 });
 
+describe("R12-E2 revision: huecos de la lista negra y falsos positivos", () => {
+  it.each([
+    "Reembolsaremos su pedido.",
+    "Hacemos la devolución de su dinero hoy.",
+    "Le devolvemos lo pagado.",
+    "Le descontamos $50 de su pedido.",
+    "Su pedido corre por nuestra cuenta.",
+  ])("(positivo) %s -> se reemplaza", (frase) => {
+    expect(quitarPromesaDeDinero(frase)).not.toBe(frase);
+  });
+  it.each([
+    "Claro, le regresamos su cambio de $180 de su pago de $500.",
+    "Claro, le regreso el total en cuanto me confirme.",
+    "Le regresamos su pedido corregido, el total es $200.",
+    "Le repongo el platillo sin costo.",
+    "Con su pedido para recoger le damos 10% de descuento. ¿Qué le gustaría pedir?",
+    "Su pedido tendrá 10% de descuento por recoger.",
+    "Tendrá 10% de descuento al recoger su pedido.",
+    "Le confirmo: su pedido de recoger queda con 10% de descuento.",
+    "Le damos el total con descuento: $270.",
+    "Sí, con su pedido para recoger le damos 10% de descuento.",
+  ])("(negativo) %s -> intacta, aun sin cotizacion (respaldaDescuento true)", (frase) => {
+    expect(quitarPromesaDeDinero(frase, { respaldaDescuento: true })).toBe(frase);
+  });
+  it.each([
+    "Claro, le regresamos su cambio de $180 de su pago de $500.",
+    "Claro, le regreso el total en cuanto me confirme.",
+    "Le regresamos su pedido corregido, el total es $200.",
+    "Le repongo el platillo sin costo.",
+    "Con su pedido para recoger le damos 10% de descuento. ¿Qué le gustaría pedir?",
+    "¿Sí, con su pedido para recoger le damos 10% de descuento?",
+    "Su pedido tendrá 10% de descuento por recoger.",
+    "Tendrá 10% de descuento al recoger su pedido.",
+    "Le damos el total con descuento: $270.",
+    "Le confirmo: su pedido de recoger queda con 10% de descuento.",
+  ])("(negativo) %s -> intacta tambien con la guardia en su modo estricto", (frase) => {
+    expect(quitarPromesaDeDinero(frase)).toBe(frase);
+  });
+  it.each([
+    "¿Puedo pedir reembolso o solo cambio?",
+    "tengo duda del reembolso",
+    "Can I get a refund policy explanation?",
+  ])("(negativo) %s -> pregunta de politica, no escala como queja", (frase) => {
+    const m = classifyHighRiskIntent(frase, { pedidoReciente: null });
+    expect(m?.reply).not.toBe(RESPUESTA_REEMBOLSO_ESCALADO);
+  });
+  it("(negativo) 'paid twice the price I expected' no es un cobro doble", () => {
+    expect(intent("I paid twice the price I expected, it was a lot of food")).not.toBe("cobro_duplicado");
+    expect(intent("I paid twice")).toBe("cobro_duplicado");
+  });
+});
+
 describe("R12-F fuga del prompt de sistema", () => {
   const TOOLS_FAKE = ["cotizar_pedido", "crear_pedido", "escalar_a_humano", "buscar_producto"];
   it.each([

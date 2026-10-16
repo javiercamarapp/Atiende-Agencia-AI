@@ -523,7 +523,7 @@ export function esConsultaDeCancelacion(text: string): boolean {
 const ALERGIA_EN =
   /\ballerg\w*|\bcoeliac\w*|\bceliac\w*|\bpeanuts?\b|\btree\s+nuts?\b|\bnut[\s-]free\b|\b(?:contain\w*|has|have|with|without|any|free\s+of|no)\s+nuts?\b|\bshellfish\b|\bintolerant\b|\bintolerance\b|\banaphyla\w*|\bepi[\s-]?pen\b/;
 const COBRO_DOBLE_EN =
-  /\bcharged\s+(?:me\s+|us\s+|my\s+card\s+)?(?:twice|two\s+times|double)\b|\bbilled\s+(?:me\s+|us\s+)?twice\b|\b(?:paid|pay)\s+twice\b|\b(?:double|duplicate)[\s-]+(?:charge\w*|payment|billing)\b|\b(?:charged|billed)\s+(?:me\s+)?(?:a\s+)?second\s+time\b/;
+  /\bcharged\s+(?:me\s+|us\s+|my\s+card\s+)?(?:twice|two\s+times|double)\b|\bbilled\s+(?:me\s+|us\s+)?twice\b|\b(?:paid|pay)\s+twice\b(?!\s+(?:the|as|what|more|that|my|your))|\b(?:double|duplicate)[\s-]+(?:charge\w*|payment|billing)\b|\b(?:charged|billed)\s+(?:me\s+)?(?:a\s+)?second\s+time\b/;
 const PREGUNTA_DE_CARGO_FUTURO_EN =
   /\b(?:will|would|do|does|can|could)\s+(?:i|you|we|it|they|someone)\b[^.!?\n]{0,30}\b(?:charge|bill|pay)\b|\bif\s+i\s+(?:pay|use|choose|order)\b/;
 /** Alergia dicha en broma («soy alergico a los lunes», «allergic to mornings»): no es un riesgo de salud. Solo exime cuando NO hay ademas un termino de comida/salud. */
@@ -553,10 +553,10 @@ const POLITICA_SIN_DEVOLUCIONES = "Por política no hacemos devoluciones de dine
 export const RESPUESTA_REEMBOLSO_ESCALADO = `Lamento lo ocurrido. ${POLITICA_SIN_DEVOLUCIONES}; ya avisé al gerente para que revise su caso y lo contacte directamente. ¿Me puede decir qué faltó o qué llegó mal?`;
 /** «¿Tienen política de reembolso?», «do you have a refund policy?»: pregunta por la regla, no pide el dinero. La contesta el agente (regla 6b del prompt) y la guardia posterior cuida su respuesta. */
 const PREGUNTA_POLITICA_REEMBOLSO =
-  /\b(?:hacen|hay|tienen|tiene|aceptan|manejan|ofrecen|existe|cual\s+es|cuales\s+son|como\s+funciona\w*|politicas?|do\s+you|does|is\s+there|are\s+there|what\s+is|what'?s|policy|policies)\b/;
+  /\b(?:hacen|hay|tienen|tiene|aceptan|manejan|ofrecen|existe|cual\s+es|cuales\s+son|como\s+funciona\w*|politicas?|puedo|puede|podria|podrian|duda|dudas|pregunta|solo\s+cambio|do\s+you|can\s+i|could\s+i|question|doubt|does|is\s+there|are\s+there|what\s+is|what'?s|policy|policies)\b/;
 const EXIGE_EL_DINERO = /\b(?:quiero|exijo|necesito|devuelvan\w*|devuelvame|i\s+want|i\s+need|give\s+me)\b/;
 export function preguntaPorLaPoliticaDeReembolso(texto: string): boolean {
-  return /[?¿]/.test(texto) && PREGUNTA_POLITICA_REEMBOLSO.test(texto) && !EXIGE_EL_DINERO.test(texto);
+  return (/[?¿]/.test(texto) || /\b(?:duda|dudas|question|doubt)\b/.test(texto)) && PREGUNTA_POLITICA_REEMBOLSO.test(texto) && !EXIGE_EL_DINERO.test(texto);
 }
 /** «No quiero reembolso, solo cambien el producto», «no refund needed»: lo descarta, no lo pide. */
 export function niegaQuererReembolso(texto: string): boolean {
@@ -567,15 +567,22 @@ export function niegaQuererReembolso(texto: string): boolean {
 // ── R11-03a / R11-03b: promesas de dinero fuera de politica ──────────────────────────────────────────────────────────────────────────────────────
 // Decision vigente: NO hay devoluciones de dinero (solo cambio de producto) y el unico descuento es el que `cotizar_pedido` calcula. El prompt lo prohibe, pero si el modelo lo promete el
 // cliente lo lee tal cual. Esta guardia corre sobre la respuesta ya redactada: reemplaza SOLO la frase que promete (el resto de la respuesta se conserva). Corre sobre texto sin acentos.
-const OBJETO_DE_DINERO = "(?:dinero|pago|importe|monto|cobro|total|lo\\s+que\\s+pag\\w+|costo|su\\s+compra)";
+const OBJETO_DE_DINERO = "(?:dinero|pago|importe|monto|cobro|total|lo\\s+que\\s+pag\\w+|lo\\s+pagado|costo|su\\s+compra)";
+// «regresar / reponer / reintegrar» tambien se usan en operacion normal (el CAMBIO del pago en efectivo, el pedido corregido, el platillo sin costo): con esos verbos solo cuenta el dinero
+// mismo, y la frase no puede hablar del «cambio» (vuelto) ni del «platillo/pedido» que se repone.
+const OBJETO_DE_DINERO_ESTRICTO = "(?:dinero|importe|monto|cobro|lo\\s+que\\s+pag\\w+|lo\\s+pagado|su\\s+pago|el\\s+pago)";
+const SIN_CAMBIO = "(?:(?!\\bcambio\\b)[^.!?\\n]){0,40}";
 const PROMESA_DE_DEVOLUCION = new RegExp(
   [
     // «le devolvemos su dinero», «le vamos a reembolsar», «le regresamos el pago», «le reintegramos el importe»
-    `\\b(?:le|les|te|nos)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+|puedo\\s+|podemos\\s+|podre\\s+|podremos\\s+)?(?:devolv\\w+|devuelv\\w+|regres\\w+|reintegr\\w+|repon\\w+)\\b[^.!?\\n]{0,40}\\b${OBJETO_DE_DINERO}`,
+    `\\b(?:le|les|te|nos)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+|puedo\\s+|podemos\\s+|podre\\s+|podremos\\s+)?(?:devolv\\w+|devuelv\\w+)\\b${SIN_CAMBIO}\\b${OBJETO_DE_DINERO}`,
+    `\\b(?:le|les|te|nos)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+|puedo\\s+|podemos\\s+|podre\\s+|podremos\\s+)?(?:regres\\w+|reintegr\\w+|repon\\w+)\\b${SIN_CAMBIO}\\b${OBJETO_DE_DINERO_ESTRICTO}`,
     `\\b(?:le|les|te|nos)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+|puedo\\s+|podemos\\s+|podre\\s+|podremos\\s+)?reembols\\w+`,
     // sin pronombre: «devolveremos su dinero», «se le reembolsara», «procederemos al reembolso»
     `\\b(?:devolver[ea]?mos|devolveremos|devolvere|devuelvo|devolvemos|reembolsar[ea]?mos|reembolsaremos|reembolsare|reintegraremos|reintegro)\\b[^.!?\\n]{0,40}\\b${OBJETO_DE_DINERO}`,
     `\\bse\\s+(?:le|les)\\s+(?:devolvera|reembolsara|reintegrara|regresara)\\b`,
+    `\\b(?:reembolsar[ea]?mos|reembolsaremos|reembolsamos|reembolsare)\\b`,
+    `\\b(?:hacemos|haremos|hare|realizamos|realizaremos|damos|daremos)\\s+(?:la\\s+|una\\s+|su\\s+|el\\s+)?(?:devolucion|reembolso)\\s+(?:de\\s+|del\\s+)?(?:su\\s+|el\\s+)?(?:dinero|pago|importe|monto|total)`,
     `\\b(?:procederemos|procedemos|vamos)\\s+(?:a|al)\\s+(?:el\\s+)?(?:reembolso|devolver|reembolsar)\\b`,
     `\\b(?:le|les)\\s+(?:hare|haremos)\\s+(?:un\\s+|el\\s+)?reembolso\\b`,
     `\\bwe(?:'ll|\\s+will|\\s+can)\\s+(?:issue\\s+(?:you\\s+)?a\\s+)?refund\\w*|\\bi(?:'ll|\\s+will|\\s+can)\\s+(?:issue\\s+(?:you\\s+)?a\\s+)?refund\\w*|\\bfull\\s+refund\\b`,
@@ -591,13 +598,16 @@ const PROMESA_DE_DESCUENTO = new RegExp(
     `\\b(?:aplic(?:o|amos|aremos|are)|otorg(?:o|amos|aremos|are))\\s+(?:un\\s+|el\\s+)?(?:${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?)?descuento`,
     // «tendra 15% de descuento», «queda con 10% de descuento»
     `\\b(?:tendra|tendran|queda|quedan|llevara|llevan)\\s+(?:con\\s+|un\\s+)?${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?descuento`,
+    // «le descontamos $50 de su pedido», «su pedido corre por nuestra cuenta», «va por cuenta de la casa»
+    `\\b(?:le|les)\\s+(?:vamos\\s+a\\s+|voy\\s+a\\s+)?descont\\w+\\b[^.!?\\n]{0,30}(?:\\$|\\d)`,
+    `\\bcorre\\s+por\\s+(?:nuestra|mi)\\s+cuenta\\b|\\bpor\\s+cuenta\\s+de\\s+la\\s+casa\\b`,
     `\\bwe(?:'ll|\\s+will|\\s+can)\\s+(?:give|offer|apply)\\s+(?:you\\s+)?(?:a\\s+|an\\s+)?(?:${NUMERO_DE_DESCUENTO}\\s*)?(?:discount|off)`,
   ].join("|"),
   "u",
 );
 const NEGACION_ANTES = /\b(?:no|nunca|jamas|tampoco|ni)\s+(?:\w+\s+){0,4}$/;
 const DESCUENTO_CONDICIONAL_DE_LA_CARTA =
-  /\b(?:si|cuando)\b[^.!?\n]*\b(?:recoger|recoja|recoge|domicilio|tarjeta|efectivo|pasa|pase|visita|visite|dia|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hora|despues\s+de)\b/;
+  /\b(?:si|cuando)\s+[^.!?\n]*\b(?:recoger|recoja|recoge|domicilio|tarjeta|efectivo|pasa|pase|visita|visite|dia|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hora|despues\s+de)\b|\b(?:para|al|por|de)\s+recoger\b|\bpedido\s+(?:para\s+)?recoger\b|\b(?:total|precio|pedido)\s+con\s+descuento\b/;
 function promesaSinNegar(patron: RegExp, textoNormalizado: string): boolean {
   const m = patron.exec(textoNormalizado);
   if (!m) return false;

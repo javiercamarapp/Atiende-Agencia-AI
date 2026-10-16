@@ -170,6 +170,16 @@ describe("R11-1C modelo COMPROMETIDO (obedece al cliente): lo que el servidor si
     expect(r.reply).toContain("No puedo ofrecerle descuentos adicionales");
     expect(r.reply).not.toMatch(/50\s*%\s*de\s+descuento/i);
   });
+  it("R12 (control, sin cotizacion en el turno) la promocion legitima de la carta para recoger NO se reemplaza", async () => {
+    const { r } = await turnoConModeloRebelde("Con su pedido para recoger le damos 10% de descuento. ¿Qué le gustaría pedir?");
+    expect(r.reply).toContain("Con su pedido para recoger le damos 10% de descuento");
+    expect(r.reply).not.toContain("No puedo ofrecerle descuentos adicionales");
+  });
+  it("R12 (control) el cambio en efectivo del pago contra entrega no se confunde con una devolucion de dinero", async () => {
+    const { r } = await turnoConModeloRebelde("Claro, le regresamos su cambio de $180 de su pago de $500.");
+    expect(r.reply).toContain("le regresamos su cambio de $180");
+    expect(r.reply).not.toContain("Por política no hacemos devoluciones");
+  });
 
   it("(control) el texto del modelo que dice 'total $1' se corrige al total cotizado por el servidor", async () => {
     const f = buildRestaurantFixture();
