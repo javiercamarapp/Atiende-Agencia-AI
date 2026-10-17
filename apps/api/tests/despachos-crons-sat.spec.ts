@@ -12,6 +12,7 @@ import { InMemorySaludRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { createPlatformSwitchGuard } from "../src/platform-switches.ts";
+import { retamizarCarteraYAvisar } from "../src/routes/verticals/licitaciones/avisos-campana.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 import { conEmisiones } from "./support/emisiones.ts";
@@ -238,6 +239,63 @@ describe(`POST ${CRON_EFOS}`, () => {
     expect(body).toMatchObject({ ok: false, status: "fallo", resultado: null });
     expect(String(body.detalle)).toMatch(/archivo invalido/);
     expect(emisiones.filter((e) => e.evento.startsWith("despachos."))).toHaveLength(0);
+  });
+
+  it("L-P3-10: una edicion NUEVA o corregida encadena el gancho (una vez, con el periodo); 'sin_cambios', fallo y archivo invalido no lo invocan", async () => {
+    const llamadas: { periodo: string; resultado: string }[] = [];
+    const alIngerirEdicionEfos69b = async (_d: AppDeps, ev: { periodo: string; resultado: "insertada" | "reemplazada" }) => {
+      llamadas.push(ev);
+    };
+    const { app } = armar({ efos69bSource: new FixtureEfos69bSource({ [periodo()]: CSV }), alIngerirEdicionEfos69b });
+    await app.request(CRON_EFOS, SECRETO(ctx));
+    await app.request(CRON_EFOS, SECRETO(ctx)); // misma edicion -> sin_cambios
+    expect(llamadas).toEqual([{ periodo: periodo(), resultado: "insertada" }]);
+    const { app: app2 } = armar({ efos69bSource: new FixtureEfos69bSource({ [periodo()]: CSV.replace("Definitivo", "Presunto") }), alIngerirEdicionEfos69b });
+    await app2.request(CRON_EFOS, SECRETO(ctx));
+    expect(llamadas.at(-1)).toEqual({ periodo: periodo(), resultado: "reemplazada" });
+    const antes = llamadas.length;
+    const { app: app3 } = armar({ efos69bSource: new FixtureEfos69bSource({ [periodo()]: "<html>error</html>" }), alIngerirEdicionEfos69b });
+    await app3.request(CRON_EFOS, SECRETO(ctx));
+    expect(llamadas).toHaveLength(antes);
+  });
+
+  it("L-P3-10: si el gancho encadenado falla, la descarga responde igual (200, ok) y el aviso de despachos ya salio", async () => {
+    const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { app, cron, emisiones } = armar({
+      efos69bSource: new FixtureEfos69bSource({ [periodo()]: CSV }),
+      alIngerirEdicionEfos69b: async () => {
+        throw new Error("boom");
+      },
+    });
+    cron.sembrarEfosAfectado({ invoiceId: "00000000-0000-0000-0000-0000000000a1", organizationId: ctx.organizationId, propertyId: ctx.propertyId, situacion: "definitivo" });
+    const res = await app.request(CRON_EFOS, SECRETO(ctx));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, status: "ok", resultado: "insertada", alertas_emitidas: 1 });
+    expect(emisiones.filter((e) => e.evento === "despachos.efos.alerta")).toHaveLength(1);
+    consola.mockRestore();
+  });
+
+  it("L-P3-10: con el re-tamizado real cableado, la edicion nueva emite la alerta KYC de licitaciones una sola vez por edicion (sin acoplar despachos)", async () => {
+    const ORG_LIC = "00000000-0000-0000-0000-00000000aa01";
+    let llamada = 0;
+    const respuestas = [
+      { disponible: true, organizaciones: [{ organizationId: ORG_LIC, periodo: periodo(), evaluadas: 3, empeoradas: 1, proveedoresEmpeorados: 1 }] },
+      { disponible: true, organizaciones: [] },
+    ];
+    const licitacionesAvisosRepo = () => ({ retamizarCarteraKyc: async () => respuestas[Math.min(llamada++, 1)]!, contarDocumentosPorVencer: async () => 0 });
+    const { app, emisiones } = armar({
+      efos69bSource: new FixtureEfos69bSource({ [periodo()]: CSV }),
+      licitacionesAvisosRepo,
+      alIngerirEdicionEfos69b: async (d) => {
+        await retamizarCarteraYAvisar(d);
+      },
+    });
+    await app.request(CRON_EFOS, SECRETO(ctx));
+    await app.request(CRON_EFOS, SECRETO(ctx)); // sin_cambios: no vuelve a encadenar
+    const kyc = emisiones.filter((e) => e.evento === "licitaciones.kyc.proveedor_empeoro");
+    expect(kyc).toHaveLength(1);
+    expect(kyc[0]).toMatchObject({ organizationId: ORG_LIC, dedupeKey: `licitaciones.kyc.proveedor_empeoro:${ORG_LIC}:${periodo()}` });
+    expect(llamada).toBe(1);
   });
 
   it("REGLA DURA: sin la migracion 022 la ingesta corre pero las alertas quedan 'no_disponible' (200, sin emitir)", async () => {

@@ -63,7 +63,7 @@ export class ClienteMock {
   }
 
   /** Simula que un evento del ciclo emitio una notificacion nueva (sin leer) para la sesion de esta prueba. */
-  async emitirNotificacion(n: { titulo: string; severidad?: "info" | "atencion" | "critica"; categoria?: string; enlace?: string }): Promise<void> {
+  async emitirNotificacion(n: { titulo: string; cuerpo?: string; severidad?: "info" | "atencion" | "critica"; categoria?: string; enlace?: string }): Promise<void> {
     const res = await fetch(this.ruta("notificaciones"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(n) });
     if (!res.ok) throw new Error(`mock-api: emitir notificacion fallo (${res.status})`);
   }

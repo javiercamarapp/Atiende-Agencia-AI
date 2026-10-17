@@ -50,6 +50,7 @@ import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-hear
 import type { AppDeps } from "../../../deps.ts";
 import { crearGuardCorreo } from "../../../supresion/index.ts";
 import { AvisoKycNoEmitidoError, avisarAlertasDelBarrido, avisarPostAdjudicacion, retamizarCarteraYAvisar } from "./avisos-campana.ts";
+import { avisarResumenSemanal } from "./autopiloto-resumen.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
 export const INLINE_BATCH_SIZE = 5;
@@ -187,6 +188,18 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
       const avisos = await avisarAlertasDelBarrido(deps, sweep, new Date().toISOString().slice(0, 10));
       // L-27: avisos de garantias por vencer/no entregadas e hitos vencidos (misma pasada, sin cron nuevo).
       const avisosPostAdjudicacion = await avisarPostAdjudicacion(deps, sweep, mexicoCityDateKey(new Date()));
+      // L-P3-11: resumen semanal por organizacion (campana + correo), solo cuando hay algo que contar; dedupe por semana, sin cron nuevo.
+      const resumenSemanal = await avisarResumenSemanal(deps, sweep, mexicoCityDateKey(new Date()));
+      // L-P3-10: respaldo diario del re-tamizado KYC (idempotente: misma edicion y mismo SHA no evalua ni avisa). Su propia transaccion
+      // de sistema; un fallo (p. ej. el aviso no se pudo emitir y la evaluacion se revirtio) se reporta y se reintenta manana, nunca
+      // cambia el barrido ni el latido.
+      const kyc = await retamizarCarteraYAvisar(deps).then(
+        (r) => ({ disponible: r.disponible, organizaciones: r.organizaciones, fichas_evaluadas: r.fichasEvaluadas, alertas_emitidas: r.alertasEmitidas, error: null as string | null }),
+        (err: unknown) => {
+          console.error("alert-notifications: el respaldo del re-tamizado KYC fallo (se reintenta en la siguiente corrida):", err instanceof Error ? err.message : err);
+          return { disponible: false, organizaciones: 0, fichas_evaluadas: 0, alertas_emitidas: 0, error: err instanceof Error ? err.message : String(err) };
+        },
+      );
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({
@@ -203,6 +216,8 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
         ...totals,
         avisos_campana: avisos,
         avisos_post_adjudicacion: avisosPostAdjudicacion,
+        resumen_semanal: resumenSemanal,
+        kyc_retamizado: kyc,
         corridas: sweep.map((r) => ({
           organization_id: r.organizationId,
           error: r.error ?? null,
@@ -245,10 +260,11 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
     })();
   });
 
-  // L-32: re-tamizado de la cartera KYC 69-B contra la edicion MAS RECIENTE de la lista. Ruta interna e IDEMPOTENTE
-  // (repetirla con la misma edicion no evalua ni avisa de nuevo): la invoca quien ingiere una edicion nueva (la ingesta
-  // `/internal/despachos/efos-69b/ingestar` es compartida con despachos y no se toca) o un operador. NO es un cron de
-  // vercel.json: agendarla es una decision de costo aparte. La descarga automatica de la lista queda fuera (tarea l21).
+  // L-32 / L-P3-10: re-tamizado de la cartera KYC 69-B contra la edicion MAS RECIENTE de la lista. Ruta interna e IDEMPOTENTE
+  // (repetirla con la misma edicion no evalua ni avisa de nuevo). Tres disparadores, ninguno es un cron propio (el plan Pro topa en 40
+  // y `vercel.json` ya esta al tope): (1) la descarga mensual de despachos la encadena al ingerir una edicion NUEVA
+  // (`AppDeps.alIngerirEdicionEfos69b`, sin acoplar despachos a licitaciones); (2) el barrido diario `/internal/licitaciones/
+  // alert-notifications` la corre al final como respaldo (si la cadena fallo, el siguiente dia lo reintenta); (3) un operador.
   app.on(["GET", "POST"], "/internal/licitaciones/kyc-69b/retamizar", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
     try {

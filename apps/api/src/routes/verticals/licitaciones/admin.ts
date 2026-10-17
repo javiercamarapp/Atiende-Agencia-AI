@@ -69,6 +69,21 @@ function optionalNullableTimeZone(raw: Record<string, unknown>, field = "timezon
   return { seen: true, value: trimmed };
 }
 
+/** L-P3-09: umbral 0-100 del aviso de "nuevo match" (entero) o `null` (= solo elegibles). `seen` distingue "no vino" de "vino null". */
+function optionalNullableMatchScore(raw: Record<string, unknown>, field = "new_match_min_score"): { seen: boolean; value: number | null } {
+  if (!(field in raw)) return { seen: false, value: null };
+  const value = raw[field];
+  if (value === null) return { seen: true, value: null };
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 100) {
+    throw Errors.validation(`${field}: se esperaba un entero de 0 a 100, o null (solo convocatorias elegibles).`);
+  }
+  return { seen: true, value };
+}
+
+function tenantConfigWire(config: { organizationId: string; timezone: string | null; newMatchMinScore: number | null }) {
+  return { organization_id: config.organizationId, timezone: config.timezone, new_match_min_score: config.newMatchMinScore };
+}
+
 export function licitacionesAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -102,7 +117,7 @@ export function licitacionesAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.get("/v1/licitaciones/:orgSlug/admin/tenant-config", async (c) => {
     const { repo, org } = await resolveOrgMembershipOrThrow(deps, c);
     const config = await repo.findTenantConfig(org.id);
-    return c.json({ tenant_config: { organization_id: config.organizationId, timezone: config.timezone } });
+    return c.json({ tenant_config: tenantConfigWire(config) });
   });
 
   app.patch("/v1/licitaciones/:orgSlug/admin/tenant-config", async (c) => {
@@ -113,18 +128,21 @@ export function licitacionesAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // exacto que `STAFF_INVITE_ROLES` (owner/admin), rechazo explícito ANTES de tocar
     // la base para un 403 con mensaje propio en vez del genérico de RLS.
     if (!(STAFF_INVITE_ROLES as readonly string[]).includes(membership.verticalRole)) {
-      throw Errors.forbidden("Solo el owner o un admin de la organización puede editar la zona horaria.");
+      throw Errors.forbidden("Solo el owner o un admin de la organización puede editar la configuración de la empresa.");
     }
 
     const raw = await readJsonCapped<Record<string, unknown>>(c.req.raw, 1024);
     const timezone = optionalNullableTimeZone(raw);
-    const patch: LicitacionesTenantConfigPatch = timezone.seen ? { timezone: timezone.value } : {};
+    const umbral = optionalNullableMatchScore(raw);
+    const patch: LicitacionesTenantConfigPatch = { ...(timezone.seen ? { timezone: timezone.value } : {}), ...(umbral.seen ? { newMatchMinScore: umbral.value } : {}) };
 
     try {
       const antes = await repo.findTenantConfig(org.id);
-      const updated = await repo.upsertTenantConfig(org.id, patch);
-      await auditar(deps, c, { entity: "configuracion", entityId: org.id, action: "configuracion.editada", before: antes, after: updated, organizationId: org.id });
-      return c.json({ tenant_config: { organization_id: updated.organizationId, timezone: updated.timezone } });
+      await repo.upsertTenantConfig(org.id, patch);
+      // La respuesta (y la bitacora) SIEMPRE traen lo guardado (zona horaria y umbral), no solo lo que vino en el patch.
+      const guardada = await repo.findTenantConfig(org.id);
+      await auditar(deps, c, { entity: "configuracion", entityId: org.id, action: "configuracion.editada", before: antes, after: guardada, organizationId: org.id });
+      return c.json({ tenant_config: tenantConfigWire(guardada) });
     } catch (err) {
       if (err instanceof TenantConfigNotMigratedError) throw Errors.serviceUnavailable(err.message);
       throw err;
