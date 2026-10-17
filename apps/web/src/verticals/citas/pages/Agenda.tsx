@@ -69,64 +69,12 @@ import type { WaitlistBroadcastSummary, WaitlistCandidate } from "../lib/waitlis
 import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
 import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
+import { computeRange, groupByDay, shiftAnchor } from "../lib/agenda-rango.ts";
+import type { ViewMode } from "../lib/agenda-rango.ts";
+import { fetchCitasResumen } from "../lib/resumen-client.ts";
+import { datetimeLocalAIso, zonaNegocioValida } from "../lib/zona-negocio.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
-
-type ViewMode = "month" | "week";
-
-function startOfWeek(date: Date): Date {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = d.getUTCDay(); // 0 = domingo
-  const diff = day === 0 ? -6 : 1 - day; // semana empieza en lunes
-  d.setUTCDate(d.getUTCDate() + diff);
-  return d;
-}
-
-// Bug real (revisión de PR #164, "no bloqueante" #3): las 2 etiquetas de rango de abajo
-// ("Semana del ..."/mes) se arman sobre `from`, un valor de solo-FECHA anclado a
-// medianoche UTC (mismo patrón que `parseFechaSolo` de `formato-fecha.ts` -- por eso
-// `startOfWeek`/el cálculo del día 1 del mes usan SOLO getters/setters `UTC*`, nunca
-// locales). Formatearlo con `formatDateLong`/sin `timeZone` fijo usa la zona LOCAL DEL
-// NAVEGADOR -- en CUALQUIER zona con offset negativo (América completa) eso corre la
-// etiqueta un día/mes ANTES del real ("domingo, 13 de septiembre" para la semana del
-// LUNES 14; "agosto de 2026" viendo septiembre). El fix es forzar `timeZone: "UTC"` --
-// igual que `formatFechaSolo` -- para recuperar el día/mes que `from` en realidad
-// representa; NO se toca `formatDateLong`/`format.ts` (esa función también formatea
-// timestamps reales de citas en otro lugar de este mismo archivo, con una zona horaria
-// de negocio distinta -- un solo `timeZone` ahí serviría a un caso rompiendo el otro).
-const RANGO_LABEL_FORMATTER_LARGA = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
-const RANGO_LABEL_FORMATTER_MES = new Intl.DateTimeFormat("es-MX", { month: "long", year: "numeric", timeZone: "UTC" });
-
-function computeRange(anchor: Date, view: ViewMode): { fromIso: string; toIso: string; label: string } {
-  if (view === "week") {
-    const from = startOfWeek(anchor);
-    const to = new Date(from);
-    to.setUTCDate(to.getUTCDate() + 7);
-    return { fromIso: from.toISOString(), toIso: to.toISOString(), label: `Semana del ${RANGO_LABEL_FORMATTER_LARGA.format(from)}` };
-  }
-  const from = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
-  const to = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1));
-  const label = RANGO_LABEL_FORMATTER_MES.format(from);
-  return { fromIso: from.toISOString(), toIso: to.toISOString(), label };
-}
-
-function shiftAnchor(anchor: Date, view: ViewMode, direction: 1 | -1): Date {
-  const d = new Date(anchor);
-  if (view === "week") d.setUTCDate(d.getUTCDate() + 7 * direction);
-  else d.setUTCMonth(d.getUTCMonth() + direction);
-  return d;
-}
-
-function groupByDay(appointments: readonly AppointmentSummary[]): ReadonlyArray<[string, AppointmentSummary[]]> {
-  const groups = new Map<string, AppointmentSummary[]>();
-  for (const apt of appointments) {
-    const dayKey = apt.startsAt.slice(0, 10);
-    const list = groups.get(dayKey) ?? [];
-    list.push(apt);
-    groups.set(dayKey, list);
-  }
-  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-}
 
 const CANCELABLE_STATUSES = new Set(["pending", "confirmed"]);
 // Fase 7 — mismos 2 estados "vivos" que ya usa CANCELABLE_STATUSES/
@@ -138,7 +86,26 @@ const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
 
 type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show" | "retry_sync";
 
-export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail }: CitasShellContext) {
+/** Carga la zona horaria del negocio (la misma que usa Resumen: `GET .../resumen`) ANTES de pintar la agenda: dia, rango y horas se calculan en esa zona,
+ * nunca en la del navegador. Si el servidor no la informa, cae a la zona por omision de la plataforma (la misma que usa el servidor). */
+export function AgendaPage(ctx: CitasShellContext) {
+  const { apiBaseUrl, token, propertyId } = ctx;
+  const [timeZone, setTimeZone] = useState<string | null>(null);
+  useEffect(() => {
+    let vigente = true;
+    setTimeZone(null);
+    fetchCitasResumen(fetch, apiBaseUrl, token, propertyId)
+      .then((r) => vigente && setTimeZone(zonaNegocioValida(r.timezone)))
+      .catch(() => vigente && setTimeZone(zonaNegocioValida(null)));
+    return () => {
+      vigente = false;
+    };
+  }, [apiBaseUrl, token, propertyId]);
+  if (!timeZone) return <EstadoCargando etiqueta="Cargando citas…" />;
+  return <AgendaContenido {...ctx} timeZone={timeZone} />;
+}
+
+function AgendaContenido({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail, timeZone }: CitasShellContext & { readonly timeZone: string }) {
   // Confirmaciones destructivas con el diálogo de @atiende/ui (antes `window.confirm`, que el navegador puede bloquear).
   const { confirmar, dialogo } = useConfirm();
   const [view, setView] = useState<ViewMode>("month");
@@ -154,7 +121,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   // el día/mes correcto para ESE `anchor` ya corrido. Fix: anclar `anchor` al día de
   // CALENDARIO del negocio (`hoyFechaSolo()`), luego convertirlo al mismo tipo de Date
   // anclado a medianoche UTC (`parseFechaSolo()`) que el resto de esta función ya espera.
-  const [anchor, setAnchor] = useState<Date>(() => parseFechaSolo(hoyFechaSolo()));
+  const [anchor, setAnchor] = useState<Date>(() => parseFechaSolo(hoyFechaSolo(timeZone)));
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
   const [providerFilter, setProviderFilter] = useState<string>("");
   const [appointments, setAppointments] = useState<readonly AppointmentSummary[] | null>(null);
@@ -196,7 +163,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const range = useMemo(() => computeRange(anchor, view), [anchor, view]);
+  const range = useMemo(() => computeRange(anchor, view, timeZone), [anchor, view, timeZone]);
 
   useEffect(() => {
     fetchProviders(fetch, apiBaseUrl, token, propertyId)
@@ -334,6 +301,11 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   async function handleCreateAppointment(e: FormEvent) {
     e.preventDefault();
     if (!newProviderId || !newServiceId || !newCustomerName.trim() || !newCustomerPhone.trim() || !newStartsAt) return;
+    const startsAtIso = datetimeLocalAIso(newStartsAt, timeZone);
+    if (!startsAtIso) {
+      setCreateError("La fecha y hora de la cita no es válida.");
+      return;
+    }
     setCreatingAppointment(true);
     setCreateError(null);
     try {
@@ -343,10 +315,9 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
         customerName: newCustomerName.trim(),
         customerPhone: newCustomerPhone.trim(),
         customerEmail: newCustomerEmail.trim() || undefined,
-        // El <input type="datetime-local"> devuelve hora LOCAL sin offset — se manda
-        // tal cual el `Date` la interpreta (hora local del navegador) y se serializa
-        // a ISO con offset real antes de mandarla al servidor.
-        startsAt: new Date(newStartsAt).toISOString(),
+        // El <input type="datetime-local"> devuelve hora de pared SIN zona: se interpreta en la zona del NEGOCIO (la que usa el motor de
+        // disponibilidad), nunca en la del navegador, y se manda como instante ISO.
+        startsAt: startsAtIso,
         notes: newNotes.trim() || undefined,
       });
       setNewProviderId("");
@@ -365,7 +336,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     }
   }
 
-  const groups = appointments ? groupByDay(appointments) : [];
+  const groups = appointments ? groupByDay(appointments, timeZone) : [];
 
 
   return (
@@ -403,8 +374,8 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
           {/* Bug real (revisión r6 de corrección de PR #171, bloqueante 1): este botón seguía
               con `setAnchor(new Date())` -- el mismo bug que el estado inicial de `anchor` de
               arriba ya corrige (ver su comentario), pero reintroducido aquí. Mismo fix: anclar
-              al día de CALENDARIO del negocio, nunca al instante UTC. */}
-          <Button variant="outline" size="sm" onClick={() => setAnchor(parseFechaSolo(hoyFechaSolo()))}>
+              al día de CALENDARIO del negocio (en SU zona, `timeZone`, no la de omisión), nunca al instante UTC. */}
+          <Button variant="outline" size="sm" onClick={() => setAnchor(parseFechaSolo(hoyFechaSolo(timeZone)))}>
             Hoy
           </Button>
           <Button variant="outline" size="sm" onClick={() => setAnchor((a) => shiftAnchor(a, view, 1))}>
@@ -497,13 +468,13 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
       {groups.map(([day, dayAppointments]) => (
         <section key={day} className="flex flex-col gap-2">
-          <h2 className="border-b border-border pb-1 text-sm font-semibold capitalize text-foreground">{formatDateLong(dayAppointments[0]!.startsAt)}</h2>
+          <h2 className="border-b border-border pb-1 text-sm font-semibold capitalize text-foreground">{formatDateLong(dayAppointments[0]!.startsAt, timeZone)}</h2>
           {dayAppointments.map((apt) => (
             <Card key={apt.id}>
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">
-                    {formatTimeRange(apt.startsAt, apt.endsAt)} — {apt.serviceName ?? "Servicio desconocido"}
+                    {formatTimeRange(apt.startsAt, apt.endsAt, timeZone)} — {apt.serviceName ?? "Servicio desconocido"}
                   </p>
                   <p className="mt-0.5 text-sm text-foreground/80">
                     {apt.customerName ?? "Cliente desconocido"} {apt.customerPhone ? `· ${apt.customerPhone}` : ""}

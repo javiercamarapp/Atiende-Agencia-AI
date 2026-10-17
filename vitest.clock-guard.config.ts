@@ -66,6 +66,9 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/licitaciones-organization-timezone-servidor-hoy.spec.ts",
   "apps/api/tests/licitaciones-rate-servidor-hoy.spec.ts",
   "apps/api/tests/citas-availability-overrides-servidor-hoy.spec.ts",
+  // Clave de dedupe de avisos de citas = dia LOCAL del negocio (23:30 de Merida: dia local 16, dia UTC 17).
+  "apps/api/tests/notificaciones-productores-citas.spec.ts",
+  "apps/api/tests/notificaciones-citas-sin-plantilla.spec.ts",
   "apps/worker/tests/despachos-cobranza-reminders-servidor-hoy.spec.ts",
   // R-23: banco e2e del ciclo de restaurantes (reloj simulado: martes 13:00 de Merida, lunes, cierre, programados).
   "apps/api/tests/e2e-ciclo/whatsapp-cliente-nuevo.spec.ts",

@@ -30,6 +30,8 @@ export class AppointmentAlternativesError extends AppointmentConflictError {
   constructor(
     message: string,
     readonly alternativeSlots: readonly { readonly startsAt: string; readonly endsAt: string }[],
+    /** Zona IANA del negocio en la que se calcularon las alternativas (para dar la hora local al agente). */
+    readonly timeZone?: string,
   ) {
     super(message);
   }
