@@ -16,6 +16,7 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { withHeartbeat, CronPartialFailureError } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { runCicloMensajesHuesped } from "./mensajes-huesped.ts";
 
 export interface HoldsVencidosPropertyResult {
   readonly organizationId: string;
@@ -53,12 +54,22 @@ export function hotelesHoldsVencidosCronRoutes(deps: AppDeps): Hono {
 
     return withHeartbeat(deps, "/internal/hoteles/holds-vencidos", async () => {
       const results = await runHoldsVencidosSweep(deps);
+      // H-P3-03: mismo ritmo (*/15) y mismo cron (vercel.json esta en el tope de 40): despues de liberar las pre-reservas vencidas se
+      // emiten los avisos al huesped (incluido `hold.vencido`). Es best-effort: un fallo aqui jamas tumba ni oculta el barrido de holds.
+      const mensajes = await runCicloMensajesHuesped(deps).then(
+        (r) => ({ disponible: r.disponible, encolados: r.encolados, no_enviados: r.noEnviados, errores: r.errores }),
+        (err: unknown) => {
+          logEvent(c, "error", "hoteles_mensajes_huesped_ciclo_fallo", { error: err instanceof Error ? err.message : String(err) });
+          return { disponible: false, encolados: 0, no_enviados: 0, errores: 1 };
+        },
+      );
       const failures = results.filter((r) => r.error != null);
       const response = c.json(
         {
           ok: failures.length === 0,
           properties_revisadas: results.length,
           vencidos_total: results.reduce((n, r) => n + r.vencidos, 0),
+          mensajes_huesped: mensajes,
           corridas: results.map((r) => ({ organizationId: r.organizationId, propertyId: r.propertyId, omitida: r.omitida, vencidos: r.vencidos, error: r.error })),
         },
         200,
