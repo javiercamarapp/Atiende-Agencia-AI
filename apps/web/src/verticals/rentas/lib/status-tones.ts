@@ -5,6 +5,7 @@
 import type { StatusTone } from "@atiende/ui";
 import type { CapaOcupacion, EstadoOcupacion } from "./calendario-client.ts";
 import type { ConflictoCalendario, EstadoSaludFeed, SeveridadAlerta } from "./ical-monitor-client.ts";
+import type { EstadoCeldaMatriz } from "./conectividad-client.ts";
 
 type Tabla = Readonly<Record<string, StatusTone>>;
 
@@ -16,6 +17,17 @@ export const SALUD_FEED_TONES: Readonly<Record<EstadoSaludFeed, StatusTone>> = {
   en_cuarentena: "danger",
   sin_sincronizar: "neutral",
   inactivo: "neutral",
+};
+
+/** Estado de una celda de la matriz de conectividad (unidad x canal). */
+export const CELDA_CONECTIVIDAD_TONES: Readonly<Record<EstadoCeldaMatriz, StatusTone>> = {
+  conectado: "success",
+  solo_import: "info",
+  solo_export: "info",
+  sin_conectar: "neutral",
+  pendiente: "warning",
+  fallando: "danger",
+  en_cuarentena: "danger",
 };
 
 /** Severidad de una alerta del sync. */

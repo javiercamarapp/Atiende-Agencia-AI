@@ -112,16 +112,29 @@ describe("GET /rentas/:propertyId/unidades/:unidadId/canales/:canalCodigo/feed.i
   // sesión que esta ruta no usa). El backend en memoria de @atiende/core-ratelimit se
   // resetea antes de cada test (ver test-setup/reset-rate-limiter.ts), mismo patrón
   // que auth.spec.ts.
-  it("más de 30 solicitudes en la misma ventana desde la misma IP responde 429", async () => {
+  // Paridad3 (Rn-13): el tope subió de 30 a 600 cada 5 min por IP porque las OTA comparten IP y un 429 deja la noche
+  // sin cerrar; el límite fino ahora es por token (ver rentas-ical-feed-token.spec.ts).
+  it("más de 600 solicitudes en la misma ventana desde la misma IP responde 429 (tope contra scrapers)", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
 
     let lastStatus = 0;
-    for (let i = 0; i < 31; i += 1) {
+    for (let i = 0; i < 601; i += 1) {
       const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/canales/booking/feed.ics`);
       lastStatus = res.status;
     }
     expect(lastStatus).toBe(429);
+  });
+
+  it("30 solicitudes seguidas de la misma IP ya NO dan 429 (una OTA con muchas unidades no se queda sin respuesta)", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const estados: number[] = [];
+    for (let i = 0; i < 40; i += 1) {
+      estados.push((await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/canales/booking/feed.ics`)).status);
+    }
+    expect(estados.every((s) => s === 200)).toBe(true);
   });
 });
 

@@ -17,6 +17,7 @@ import { rentasIcalSyncRoutes } from "./ical-sync.ts";
 import { rentasIcalFeedPublicoRoutes } from "./ical-feed-publico.ts";
 import { rentasIcalSyncCronRoutes } from "./ical-sync-cron.ts";
 import { rentasIcalMonitorRoutes } from "./ical-monitor.ts";
+import { rentasIcalConectividadRoutes } from "./ical-conectividad.ts";
 import { rentasReportesRoutes } from "./reportes.ts";
 import { rentasResumenRoutes } from "./resumen.ts";
 import { rentasAccesoHuespedRoutes } from "./acceso-huesped.ts";
@@ -87,6 +88,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasFinanzasPayoutsRoutes(deps));
   app.route("/", rentasIcalSyncRoutes(deps));
   app.route("/", rentasIcalMonitorRoutes(deps));
+  // Paridad3 (Rn-13, Rn-P3-15/16/17/23) -- catálogo de canales, matriz de conectividad, token de exportación, probar URL y sincronizar ahora.
+  app.route("/", rentasIcalConectividadRoutes(deps));
   // Rn-03 -- reporte de ocupación e ingresos (solo lectura, roles de finanzas).
   app.route("/", rentasReportesRoutes(deps));
   // Rn-26 -- Resumen operativo (agregados sin PII, degrada por bloque).
