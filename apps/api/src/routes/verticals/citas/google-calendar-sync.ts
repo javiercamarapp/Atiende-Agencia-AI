@@ -24,7 +24,7 @@ import { Hono } from "hono";
 import { syncPendingAppointmentsMultiProvider } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
-import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
@@ -38,8 +38,8 @@ export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
     return withHeartbeat(deps, "/internal/citas/google-calendar-sync", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const citasRepo = deps.citasRepo(db);
       const summary = await syncPendingAppointmentsMultiProvider(citasRepo, deps.citasCalendarSyncPortResolver);
-      return c.json({
-        ok: true,
+      const response = c.json({
+        ok: summary.errors.length === 0,
         processed: summary.processed,
         synced: summary.synced,
         retried: summary.retried,
@@ -47,6 +47,12 @@ export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
         skipped: summary.skipped,
         errors: summary.errors.map((e) => ({ appointment_id: e.appointmentId, error: e.error })),
       });
+      // Mismo contrato que /internal/citas/confirmacion-cita: un fallo real por cita (el motor lo absorbe y lo reintenta con backoff, pero
+      // alguien debe verlo) deja `ok:false` y el latido en `error` en vez de verde (QA R1 automatizacion 08).
+      if (summary.errors.length > 0) {
+        throw new CronPartialFailureError(`google-calendar-sync: ${summary.errors.length} cita(s) con error de ${summary.processed} procesadas`, response);
+      }
+      return response;
     }))();
   });
 
