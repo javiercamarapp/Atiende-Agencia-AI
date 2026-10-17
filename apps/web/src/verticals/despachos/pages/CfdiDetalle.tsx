@@ -10,7 +10,7 @@ import { fetchInvoice, registrarEstadoSat, verificarEstatusSat } from "../lib/cf
 import type { EstadoSatCfdi, ImpuestoDesglosado, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
-import { formatCentavos, formatDate, formatDireccionCfdi, formatEstadoSat, formatFormaPago, formatMetodoPago, formatMoney, formatTasaImpuesto, tonoEstadoSat } from "../lib/format.ts";
+import { formatCentavos, formatDate, formatDireccionCfdi, formatEstadoSat, formatEstatusCancelacion, formatFormaPago, formatMetodoPago, formatMoney, formatTasaImpuesto, formatValidacionEfos, tonoEstadoSat } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo criterio que en Cfdi.tsx: espejo cosmético de RESOLVER_REVISION_ROLES
@@ -138,7 +138,7 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
     setErrorSat(null);
     try {
       const r = await verificarEstatusSat(fetch, apiBaseUrl, token, propertyId, invoiceId);
-      setInvoice((prev) => (prev ? { ...prev, estadoSat: r.estadoSat, estadoSatVerificadoEn: r.estadoSatVerificadoEn } : prev));
+      setInvoice((prev) => (prev ? { ...prev, estadoSat: r.estadoSat, estadoSatVerificadoEn: r.estadoSatVerificadoEn, ...(r.consultado ? { esCancelable: r.esCancelable, estatusCancelacion: r.estatusCancelacion, codigoEstatus: r.codigoEstatus ?? null, validacionEfos: r.validacionEfos ?? null } : {}) } : prev));
       if (!r.consultado) {
         if (r.motivo === "ya_cancelado") notify.info("Este CFDI ya está cancelado ante el SAT; no cambia de estado.");
         else notify.warning("El SAT no respondió. El estado no cambió; inténtalo de nuevo en unos minutos.");
@@ -307,8 +307,33 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            {invoice.estadoSatVerificadoEn ? `Última verificación: ${formatDate(invoice.estadoSatVerificadoEn)}.` : "Todavía no se ha verificado ante el SAT. Usa «Verificar en el SAT» o registra el estado a mano; además el sistema lo consulta una vez por semana."}
+            {invoice.estadoSatVerificadoEn ? `Última verificación: ${formatDate(invoice.estadoSatVerificadoEn)}.` : "Todavía no se ha verificado ante el SAT. Usa «Verificar en el SAT» o registra el estado a mano; además el sistema lo consulta a diario hasta que se resuelve."}
           </p>
+          {(invoice.estatusCancelacion || invoice.esCancelable || invoice.validacionEfos) && (
+            <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2" aria-label="Detalle de cancelación ante el SAT">
+              {invoice.estatusCancelacion && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">Estatus de cancelación</dt>
+                  <dd>
+                    <StatusBadge tone={formatEstatusCancelacion(invoice.estatusCancelacion)?.tono ?? "neutral"}>{formatEstatusCancelacion(invoice.estatusCancelacion)?.texto ?? invoice.estatusCancelacion}</StatusBadge>
+                    {/^en proceso/i.test(invoice.estatusCancelacion) && <span className="ml-2 text-xs text-muted-foreground">El receptor tiene 72 horas para aceptar o rechazar.</span>}
+                  </dd>
+                </div>
+              )}
+              {invoice.esCancelable && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">¿Se puede cancelar?</dt>
+                  <dd className="text-foreground">{invoice.esCancelable}</dd>
+                </div>
+              )}
+              {formatValidacionEfos(invoice.validacionEfos) && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">Validación EFOS del SAT</dt>
+                  <dd className="text-foreground">{formatValidacionEfos(invoice.validacionEfos)}</dd>
+                </div>
+              )}
+            </dl>
+          )}
           {ESTADO_SAT_ROLES.has(role) && (
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" size="sm" variant="outline" loading={verificandoSat} loadingText="Consultando al SAT…" disabled={guardandoSat || invoice.estadoSat === "cancelado"} onClick={() => void handleVerificarSat()}>

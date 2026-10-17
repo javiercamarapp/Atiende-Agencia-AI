@@ -39,7 +39,7 @@ describe("GET /v1/despachos/:orgSlug/admin/cartera", () => {
     const body = (await res.json()) as { estado: string; puedeDarDeAlta: boolean; clientes: { propertyId: string; nombre: string; ficha: unknown }[] };
     expect(body.estado).toBe("disponible");
     expect(body.puedeDarDeAlta).toBe(true);
-    expect(body.clientes).toEqual([{ propertyId: ctx.propertyId, nombre: "Sede principal", ficha: null }]);
+    expect(body.clientes).toMatchObject([{ propertyId: ctx.propertyId, nombre: "Sede principal", ficha: null }]);
   });
 
   it("auditor y readonly leen la cartera pero no ven la accion de alta", async () => {
@@ -193,5 +193,49 @@ describe("GET/PUT /despachos/:propertyId/cartera/ficha", () => {
     const ajena = await app.request(fichaUrl(randomUUID()), req(ctx.staff.admin.token, "GET"));
     expect([403, 404]).toContain(ajena.status);
     expect((await app.request(fichaUrl(ctx.propertyId))).status).toBe(401);
+  });
+});
+
+describe("GET /v1/despachos/:orgSlug/admin/cartera -- semaforo de documentos del cliente (paridad3 D-31)", () => {
+  type Cliente = { propertyId: string; documentos: { semaforo: string; total: number; pendientes: number; recibidos: number; noAplica: number } | null };
+  type Lista = { documentosPeriodo: { periodo: string; disponible: boolean }; clientes: Cliente[] };
+  const listar = async (): Promise<Lista> => (await (await buildApp(ctx.deps).request(url, req(ctx.staff.admin.token, "GET"))).json()) as Lista;
+
+  it("sin solicitud para el periodo el cliente aparece «sin_solicitud»", async () => {
+    const r = await listar();
+    expect(r.documentosPeriodo.disponible).toBe(true);
+    expect(r.documentosPeriodo.periodo).toMatch(/^\d{4}-(0[1-9]|1[0-2])$/);
+    expect(r.clientes.find((c) => c.propertyId === ctx.propertyId)!.documentos).toMatchObject({ semaforo: "sin_solicitud", total: 0 });
+  });
+
+  it("amarillo al pedir; rojo a los 7 dias con renglones pendientes; verde al completarse", async () => {
+    const [anio, mes] = (await listar()).documentosPeriodo.periodo.split("-").map(Number) as [number, number];
+    let ahora = Date.now();
+    ctx.pilotoRepo.ahora = () => ahora;
+    await ctx.pilotoRepo.crearSolicitud(ctx.propertyId, anio, mes);
+    const fila = async () => (await listar()).clientes.find((c) => c.propertyId === ctx.propertyId)!.documentos!;
+    expect(await fila()).toMatchObject({ semaforo: "amarillo", total: 3, pendientes: 3 });
+    ahora += 8 * 86_400_000;
+    ctx.pilotoRepo.solicitudes[0]!.creadaEn -= 8 * 86_400_000;
+    expect((await fila()).semaforo).toBe("rojo");
+    for (const r of ctx.pilotoRepo.solicitudes[0]!.renglones) await ctx.pilotoRepo.marcarRenglonNoAplica(ctx.propertyId, r.id, "No aplica este mes");
+    expect(await fila()).toMatchObject({ semaforo: "verde", noAplica: 3, pendientes: 0 });
+  });
+
+  it("un renglon en revision (el cliente ya subio algo) mantiene amarillo aunque pasen los 7 dias", async () => {
+    const [anio, mes] = (await listar()).documentosPeriodo.periodo.split("-").map(Number) as [number, number];
+    await ctx.pilotoRepo.crearSolicitud(ctx.propertyId, anio, mes);
+    ctx.pilotoRepo.solicitudes[0]!.creadaEn -= 9 * 86_400_000;
+    const s = ctx.pilotoRepo.solicitudes[0]!;
+    s.renglones[0]!.estado = "en_revision";
+    for (const r of s.renglones.slice(1)) await ctx.pilotoRepo.marcarRenglonNoAplica(ctx.propertyId, r.id, "No aplica este mes");
+    expect((await listar()).clientes.find((c) => c.propertyId === ctx.propertyId)!.documentos!.semaforo).toBe("amarillo");
+  });
+
+  it("base sin la 027: la cartera sigue listando y el semaforo queda «no disponible» (documentos: null), nunca 500", async () => {
+    ctx.pilotoRepo.disponible = false;
+    const r = await listar();
+    expect(r.documentosPeriodo.disponible).toBe(false);
+    expect(r.clientes.every((c) => c.documentos === null)).toBe(true);
   });
 });

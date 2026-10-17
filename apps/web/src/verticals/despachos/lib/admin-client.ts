@@ -68,8 +68,9 @@ export async function fetchBlob(
   token: string,
   fallbackNombre: string,
   authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
+  extraHeaders: Record<string, string> = {},
 ): Promise<{ readonly blob: Blob; readonly nombre: string }> {
-  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}`, ...extraHeaders } }));
   if (!res.ok) {
     throw new DespachosAdminError(await readErrorMessage(res, `No se pudo descargar el archivo (${res.status}).`));
   }

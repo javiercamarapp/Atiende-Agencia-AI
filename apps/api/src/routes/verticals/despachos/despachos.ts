@@ -26,6 +26,7 @@ import { despachosReportesRoutes } from "./reportes.ts";
 import { despachosEfosRoutes } from "./efos.ts";
 import { despachosChatDatosRoutes } from "./chat-datos.ts";
 import { despachosPortalClienteRoutes } from "./portal-cliente.ts";
+import { despachosPilotoRoutes } from "./piloto.ts";
 import { despachosCarteraRoutes } from "./cartera.ts";
 import { despachosLibroRoutes } from "./libro.ts";
 import { despachosPagosProvisionalesRoutes } from "./pagos-provisionales.ts";
@@ -84,6 +85,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosChatDatosRoutes(deps));
   // D-08 -- portal del cliente final (enlace con token, subida estricta, estatus, mensajes) + su gestion por el despacho.
   app.route("/", despachosPortalClienteRoutes(deps));
+  app.route("/", despachosPilotoRoutes(deps));
   // D-21 -- cartera de clientes: alta y ficha fiscal de contribuyente por property (migracion 018), ver cartera.ts.
   app.route("/", despachosCarteraRoutes(deps));
   // D-24 -- libro contable persistido (catalogo, polizas con folio, reversas, balanza derivada, contabilidad electronica) (migracion 020), ver libro.ts.
