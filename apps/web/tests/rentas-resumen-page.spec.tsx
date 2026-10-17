@@ -130,8 +130,8 @@ describe("RentasDashboardPage (Resumen operativo)", () => {
     expect(reintentar).toBeDefined();
     click(reintentar!);
     await esperar();
-    // El tablero de fijados del Copiloto hace su propia lectura (/chat-datos/pins): el reintento es del RESUMEN.
-    expect(fetchMock.mock.calls.filter(([u]) => !String(u).includes("/chat-datos/pins"))).toHaveLength(2);
+    // El tablero de fijados del Copiloto (/chat-datos/pins) y el checklist de onboarding (/admin/onboarding) hacen su propia lectura: el reintento es del RESUMEN.
+    expect(fetchMock.mock.calls.filter(([u]) => !String(u).includes("/chat-datos/pins") && !String(u).includes("/admin/onboarding"))).toHaveLength(2);
     expect(rendered.container.textContent).toContain("Llegadas hoy");
   });
 
