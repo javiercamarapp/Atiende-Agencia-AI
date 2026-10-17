@@ -324,6 +324,33 @@ function assertFresh(ctx: OrderFlowContext, now: number): void {
 }
 
 /**
+ * QA-PM R12 (A13 Luna r1): rechazos y cambios de MONTO que el patron original no cubria («No, quiero a $10, así dice la promo», «cóbramelos a ese precio», «cámbialo», «quiero otro monto»,
+ * «no gracias, es mucho», «espera, no», «mejor no», «ese no»). Sobre texto normalizado (minusculas, sin acentos). Se evalua junto al patron original y pasa por los mismos filtros de
+ * afirmacion de `rechazaElResumen`: un sí o un «perfecto, ...» deja la decision al modelo. Deliberadamente NO cubre «no quiero propina», «no, gracias», «no hay problema» ni «no tengo cambio».
+ */
+const RECHAZO_DE_MONTO_O_CAMBIO = new RegExp(
+  [
+    // «No, quiero a $10», «no, prefiero 4 tacos», «No, yo quiero que sea con tarjeta», «no quiero otro»; NO «no quiero propina».
+    String.raw`(?:^|[.,;!?]\s*)no\s*[,;:]?\s*(?:yo\s+)?(?:quiero|prefiero|exijo)\s+(?:a\s+|por\s+|en\s+)?(?:\$\s*\d|\d|otro\b|otra\b|que\b|cambiar\b|corregir\b|modificar\b|el\s+(?:precio|monto|total)\b|mi\s)`,
+    // «no, son 4 tacos», «no, a $10».
+    String.raw`(?:^|[.,;!?]\s*)no\s*[,;:]?\s*(?:(?:son|es|eran|era|serian|seria)\s+(?:\$\s*)?\d|(?:a|por|en)\s+\$\s*\d)`,
+    // «ese no», «no ese no», «eso no», «ese precio no».
+    String.raw`\b(?:ese|esa|eso|esos|esas)\s+(?:precio\s+|monto\s+|total\s+)?no\b`,
+    // «cámbialo», «cámbiame la tortilla», «corrígelo».
+    String.raw`\bcambi(?:a|ame|alo|ala|alos|alas)\b|\bcorrig(?:e|eme|elo|ela|elos|elas)\b`,
+    String.raw`\bquiero\s+(?:cambiar|corregir|modificar)\b|\b(?:otro|otra)\s+(?:monto|precio|importe|cobro|total)\b`,
+    // «no gracias, es mucho», «está muy caro».
+    String.raw`\b(?:es|esta|sale|queda)\s+(?:muy\s+|demasiado\s+)?(?:mucho|caro)\b|\bdemasiado\s+(?:caro|dinero)\b`,
+    // «espera, no», «mejor no» (al inicio de la frase: «las salchichas mejor no» a media orden es quitar un producto, no rechazar el resumen).
+    String.raw`^\W*(?:espera|esperate|alto|un\s+momento|momento)\W+no\b|(?:^|[.,;!?]\s*)mejor\s+no\b`,
+    // «cóbramelos a $10», «cóbrame $10», «cóbramelos a ese precio», «quiero a $10».
+    String.raw`\bcobr\w*\s+(?:a\s+|en\s+|por\s+|solo\s+)?(?:\$\s*\d|\d+\s*(?:pesos|varos)\b|ese\s+precio|lo\s+que\s+dice)|\bquiero\s+a\s+\$\s*\d`,
+    // «no me convence el precio», «no es lo que pedí».
+    String.raw`\bno\s+me\s+(?:convence|late|cuadra)\b|\bno\s+me\s+gusta\s+(?:el|ese)\s+(?:precio|total|monto)\b|\bno\s+(?:es|era)\s+lo\s+que\s+ped\w*|\bno\s+pedi\b`,
+  ].join("|"),
+);
+
+/**
  * QA-PM-R6 (A13): el ultimo mensaje del cliente RECHAZA o corrige el resumen («No, así no», «no es correcto», «está mal»). Confirmar el pedido con un rechazo creo un pedido
  * que el cliente no aceptaba («ya quedó registrado» tras un «No, así no»). Conservador a proposito: un «no» suelto o «no, nada más» contestan «¿algo más?» y NO cuentan; si el
  * mensaje trae tambien un sí («no, así no... mejor sí»), la decision queda en el modelo.
@@ -334,7 +361,7 @@ export function rechazaElResumen(mensaje: unknown): boolean {
   // «asi no» solo rechaza cuando NO va seguido de la consecuencia buena de confirmar («así no se me olvida», «así no tengo que salir», «así no me complico»).
   const rechazo =
     /\basi\s+no\b(?!\s+(?:se\s+(?:me|nos)|tengo|tenemos|hay\s+que|necesito|me\s+compli|me\s+olvido|voy\s+a\s+tener))|\bno\s+(?:es|esta|estan|son)\s+(?:correct[oa]s?|bien|asi)\b|(?<!\bno\s)(?<!\bnada\s)(?<!\bmuy\s)\b(?:esta|estan)\s+mal\b|\bincorrect[oa]s?\b|\bno\s+(?:lo\s+|la\s+)?(?:quiero|acepto)\s+(?:asi|a\s+ese|con\s+ese)\b|(?:^|[.,;!?]\s*)no\s*,\s*(?:cambia|corrige|quita|mejor)\b/;
-  if (!rechazo.test(t)) return false;
+  if (!rechazo.test(t) && !RECHAZO_DE_MONTO_O_CAMBIO.test(t)) return false;
   // Una afirmacion al inicio («perfecto, ...», «va, ...», «confirmalo...») o dentro del mensaje deja la decision al modelo.
   if (/^\W*(?:va|listo|perfecto|claro|adelante|correcto|confirm\w*)\b/.test(t)) return false;
   return !/\b(?:si|sip|simon|confirmo|confirmado|confirmalo|confirmelo|dale|ok|okey|de\s+acuerdo|(?<!\bno\s)esta\s+bien\s+asi|asi\s+esta\s+bien)\b/.test(t);

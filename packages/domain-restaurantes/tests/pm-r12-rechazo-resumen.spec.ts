@@ -135,8 +135,11 @@ describe("R12 A13: rechazaElResumen cubre los rechazos y cambios de monto mexica
 });
 
 describe("R12 A13: clasificarRespuestaCierre no toma por «si» ni por dato el rechazo", () => {
-  it.each([A13_RECHAZO_1, A13_RECHAZO_0, "No, quiero a $10", "cámbialo", "mejor no"])("%s -> no", (t) => {
+  it.each([A13_RECHAZO_1, A13_RECHAZO_0, "No, quiero a $10", "mejor no"])("%s -> no", (t) => {
     expect(clasificarRespuestaCierre(t, { despuesDelResumen: true, total: 126 })).toBe("no");
+  });
+  it("«cámbialo» es un cambio (tampoco confirma)", () => {
+    expect(clasificarRespuestaCierre("cámbialo", { despuesDelResumen: true, total: 126 })).toBe("cambio");
   });
 });
 
