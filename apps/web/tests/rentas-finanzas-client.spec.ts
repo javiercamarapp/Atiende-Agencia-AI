@@ -285,3 +285,31 @@ describe("invitarPropietarioAlPortal", () => {
     await expect(invitarPropietarioAlPortal(fetchImpl, "http://api.local", "tok", "prop-1", "owner-x")).rejects.toThrow(/sin ninguna unidad/);
   });
 });
+
+describe("Rn-P3-06/07 -- cliente de importacion de pagos", () => {
+  it("importarReportePagos hace POST a .../payouts/importar-csv con aplicar y devuelve el resultado", async () => {
+    const { importarReportePagos } = await import("../src/verticals/rentas/lib/finanzas-client.ts");
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/rentas/prop-1/payouts/importar-csv");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(init!.body as string)).toEqual({ canalCodigo: "airbnb", contenidoCsv: "x", aplicar: false, comisionGestorBasisPoints: 1000, comisionGestorBase: "neto_de_canal" });
+      return new Response(JSON.stringify({ aplicado: false, importacionId: null, resumen: { totalLineas: 0 }, lineas: [], errores: [] }), { status: 200 });
+    });
+    const r = await importarReportePagos(fetchImpl as unknown as typeof fetch, "http://api.local", "tok", "prop-1", { canalCodigo: "airbnb", contenidoCsv: "x", aplicar: false, comisionGestorBasisPoints: 1000, comisionGestorBase: "neto_de_canal" });
+    expect(r.aplicado).toBe(false);
+  });
+
+  it("fetchSinMovimiento codifica el periodo y marcarMovimientoRevisado hace POST", async () => {
+    const { fetchSinMovimiento, marcarMovimientoRevisado, periodoActual } = await import("../src/verticals/rentas/lib/finanzas-client.ts");
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ periodo: "2026-10", total: 0, items: [], ocupacionId: "o", requiereRevision: false }), { status: 200 });
+    });
+    await fetchSinMovimiento(fetchImpl as unknown as typeof fetch, "http://api.local", "tok", "prop-1", "2026-10");
+    await marcarMovimientoRevisado(fetchImpl as unknown as typeof fetch, "http://api.local", "tok", "prop-1", "o-1");
+    expect(urls).toEqual(["http://api.local/rentas/prop-1/finanzas/sin-movimiento?periodo=2026-10", "http://api.local/rentas/prop-1/reservas/o-1/movimiento/revisado"]);
+    expect(periodoActual(new Date(2026, 9, 4))).toBe("2026-10");
+    expect(periodoActual(new Date(2027, 0, 1))).toBe("2027-01");
+  });
+});
