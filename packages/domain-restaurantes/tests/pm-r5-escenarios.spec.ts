@@ -88,7 +88,7 @@ const promptWhatsApp = buildPmSystemPrompt({
 describe("reglas de prompt de WhatsApp de la ronda 5", () => {
   it("precio antes que datos, lo que no esta en el menu, ordenes y media", () => {
     expect(promptWhatsApp).toMatch(/PRECIO ANTES QUE DATOS/);
-    expect(promptWhatsApp).toMatch(/pizza no la manejamos/);
+    expect(promptWhatsApp).toMatch(/sushi no lo manejamos/);
     expect(promptWhatsApp).toMatch(/Boyo-Hamburguesa/);
     expect(promptWhatsApp).toMatch(/N órdenes y media" de nachos = N órdenes completas MÁS una media orden/);
   });

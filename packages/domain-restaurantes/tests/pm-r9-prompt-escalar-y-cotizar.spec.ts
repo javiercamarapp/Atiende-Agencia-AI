@@ -52,7 +52,7 @@ describe("P2: producto o cambio inexistente = 'no lo manejamos', alternativa y s
   it("coherente con H4 y 5b: la resta no escala, lo no manejado se dice y se sigue", () => {
     expect(wa).toMatch(/H4\. [^\n]*SIN escalar/);
     expect(wa).toMatch(/H4\. [^\n]*"No lo manejamos/);
-    expect(paso(wa, "5b", "6")).toMatch(/pizza no la manejamos[^\n]*siga con lo demás/);
+    expect(paso(wa, "5b", "6")).toMatch(/sushi no lo manejamos[^\n]*siga con lo demás/);
   });
   it("no queda ninguna regla de escalación abierta para 'cualquier' cambio o producto raro", () => {
     for (const p of [wa, voz]) {
