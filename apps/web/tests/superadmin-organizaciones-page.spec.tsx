@@ -3,9 +3,14 @@
 // Cada afirmacion es un EFECTO observable (DOM y llamadas reales a fetch), con la API simulada por ruta.
 import { act } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SuperAdminOrganizacionesPage } from "../src/superadmin/pages/Organizaciones.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { instalarLocalStorageEnMemoria, respuestaEntrar } from "./test-utils/token-soporte.ts";
+
+beforeEach(() => {
+  instalarLocalStorageEnMemoria();
+});
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -49,7 +54,8 @@ interface Opciones {
 }
 function stub(o: Opciones = {}) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (init?.method === "POST") return (o.post ?? (() => json({ session: { id: "s1" } }, true, 201)))(url, init.body ? JSON.parse(String(init.body)) : null);
+    if (init?.method === "POST") return (o.post ?? (() => json(respuestaEntrar({ slug: "taquitos", nombre: "Los Taquitos de PM", expMs: Date.now() + 3_600_000 }), true, 201)))(url, init.body ? JSON.parse(String(init.body)) : null);
+    if (url.endsWith("/auth/me")) return json({ email: "javier@atiende.ai", fullName: "Javier", organizations: [{ id: "o1", slug: "taquitos", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "owner" }] });
     if (url.endsWith("/superadmin/organizaciones/resumen")) return json(o.resumen ?? RESUMEN);
     if (url.endsWith("/superadmin/organizaciones/margen")) return (o.margen ?? (() => json(MARGEN)))();
     if (url.endsWith("/superadmin/organizations")) return json({ organizations: [] });
@@ -167,26 +173,26 @@ describe("SuperAdminOrganizacionesPage", () => {
   });
 });
 
-describe("Entrar (impersonacion de solo lectura)", () => {
+describe("Entrar (sesion de soporte en el panel del cliente)", () => {
   const entrar = (id: string) => click([...filaDe(id).querySelectorAll("button")].find((b) => b.textContent?.includes("Entrar"))!);
 
-  it("sin motivo (o con menos de 20 caracteres) el boton queda bloqueado y NO abre la sesion: nada sale al servidor", async () => {
+  it("sin motivo (o con menos de 10 caracteres) el boton queda bloqueado y NO abre la sesion: nada sale al servidor", async () => {
     stub();
     rendered = render();
     await esperar();
     entrar("o1");
     await esperar();
     expect(dialogo()?.textContent).toContain("Entrar a Los Taquitos de PM");
-    expect(botonDialogo("Abrir sesión").disabled).toBe(true);
-    click(botonDialogo("Abrir sesión"));
+    expect(botonDialogo("Entrar al panel").disabled).toBe(true);
+    click(botonDialogo("Entrar al panel"));
     await esperar();
     changeValue(dialogo()!.querySelector("textarea")!, "muy corto");
-    expect(botonDialogo("Abrir sesión").disabled).toBe(true);
-    click(botonDialogo("Abrir sesión"));
+    expect(botonDialogo("Entrar al panel").disabled).toBe(true);
+    click(botonDialogo("Entrar al panel"));
     await esperar();
     expect(posts()).toHaveLength(0);
     changeValue(dialogo()!.querySelector("textarea")!, "Revisar por que el cliente no recibe mensajes.");
-    expect(botonDialogo("Abrir sesión").disabled).toBe(false);
+    expect(botonDialogo("Entrar al panel").disabled).toBe(false);
     expect(posts()).toHaveLength(0);
   });
 
@@ -203,19 +209,20 @@ describe("Entrar (impersonacion de solo lectura)", () => {
     expect(posts()).toHaveLength(0);
   });
 
-  it("con un motivo valido llama al POST real de impersonacion con la organizacion y el motivo, y lleva a /superadmin/impersonacion", async () => {
+  it("con un motivo valido abre la sesion de soporte con la organizacion y el motivo, persiste la sesion del cliente y lleva a su panel", async () => {
     stub();
     rendered = render();
     await esperar();
     entrar("o1");
     await esperar();
     changeValue(dialogo()!.querySelector("textarea")!, "Revisar por que el cliente no recibe mensajes.");
-    click(botonDialogo("Abrir sesión"));
+    click(botonDialogo("Entrar al panel"));
     await esperar();
     expect(posts()).toHaveLength(1);
-    expect(posts()[0]![0]).toBe("https://api.test/superadmin/impersonacion/sesiones");
+    expect(posts()[0]![0]).toBe("https://api.test/superadmin/soporte/entrar");
     expect(JSON.parse(String((posts()[0]![1] as RequestInit).body))).toEqual({ organizationId: "o1", reason: "Revisar por que el cliente no recibe mensajes." });
-    expect(rendered.container.querySelector('[data-testid="ubicacion"]')?.textContent).toBe("/superadmin/impersonacion");
+    expect(rendered.container.querySelector('[data-testid="ubicacion"]')?.textContent).toBe("/restaurantes/taquitos");
+    expect(JSON.parse(window.localStorage.getItem("atiende.restaurantes.session")!).organizations[0].slug).toBe("taquitos");
   });
 
   it("si el servidor rechaza la sesion el dialogo queda abierto (no navega)", async () => {
@@ -225,7 +232,7 @@ describe("Entrar (impersonacion de solo lectura)", () => {
     entrar("o3");
     await esperar();
     changeValue(dialogo()!.querySelector("textarea")!, "Revisar por que el cliente no recibe mensajes.");
-    click(botonDialogo("Abrir sesión"));
+    click(botonDialogo("Entrar al panel"));
     await esperar();
     expect(posts()).toHaveLength(1);
     expect(dialogo()).not.toBeNull();

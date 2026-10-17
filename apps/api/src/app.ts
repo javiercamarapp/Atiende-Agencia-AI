@@ -67,6 +67,8 @@ import { superadminMantenimientoRoutes } from "./routes/internal/superadmin-mant
 import { superadminAlertasCfoRoutes } from "./routes/internal/superadmin-alertas-cfo.ts";
 import { plataformaRetencionRoutes } from "./routes/internal/plataforma-retencion.ts";
 import { pruebaAvisosRoutes } from "./routes/internal/prueba-avisos.ts";
+import { soporteRoutes } from "./routes/soporte.ts";
+import { soporteGuard } from "./soporte/guard.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -93,6 +95,9 @@ export function buildApp(deps: AppDeps): Hono {
     app.use(prefijo, originGuard({ allowedOrigins: deps.env.allowedOrigins, appBaseUrl: deps.env.appBaseUrl }));
     app.use(prefijo, sinCacheEnSesion());
   }
+
+  // Sesiones de soporte (superadmin dentro de un cliente): solo lectura por defecto y acciones sensibles bloqueadas, para TODA ruta.
+  app.use("*", soporteGuard(deps));
 
   app.onError((err, c) => {
     if (err instanceof ApiError) {
@@ -122,6 +127,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminLlmUsageRoutes(deps));
   app.route("/", superadminBreakGlassRoutes(deps));
   app.route("/", superadminImpersonacionRoutes(deps));
+  app.route("/", soporteRoutes(deps));
   app.route("/", superadminFacturacionRoutes(deps));
   app.route("/", superadminSaludRoutes(deps));
   app.route("/", superadminResumenRoutes(deps));
