@@ -328,25 +328,62 @@ function assertFresh(ctx: OrderFlowContext, now: number): void {
  * «no gracias, es mucho», «espera, no», «mejor no», «ese no»). Sobre texto normalizado (minusculas, sin acentos). Se evalua junto al patron original y pasa por los mismos filtros de
  * afirmacion de `rechazaElResumen`: un sí o un «perfecto, ...» deja la decision al modelo. Deliberadamente NO cubre «no quiero propina», «no, gracias», «no hay problema» ni «no tengo cambio».
  */
+// Revision de #588: el patron se cuidó en dos direcciones. HUECO DE DINERO (se cubre): rechazos con vocativo («no wey, a $100»), «la promo/el anuncio dice $10», «cóbrame eso/así», «me cobras de más»,
+// «el total no es ese», «muy caro», «cancela», «no lo acepto/confirmo». RETRASO DE UN TURNO (se evita): el cliente que da un DATO propio («espera, no tengo cambio», «no, son 30 minutos»,
+// «cámbiame la hora a las 4», «mejor no le pongas picante», «no quiero que le pongas cebolla») o pregunta por un platillo («¿ese no lleva cebolla?») no esta rechazando el resumen.
+const DATO_SIN_PAGO = String.raw`nombre|hora|horario|direccion|domicilio|telefono|numero|celular|correo|salsas?|tortilla|picante|cebolla|sucursal|referencias?|indicacion(?:es)?`;
+const DATO_DE_LA_ORDEN = String.raw`(?:${DATO_SIN_PAGO}|forma\s+de\s+pago|metodo|pago|tarjeta|efectivo|transferencia)`;
+const SIN_DATO_DE_LA_ORDEN = String.raw`(?![^.?!]{0,25}\b${DATO_DE_LA_ORDEN}\b)`;
+// «cámbialo a efectivo» (pronombre + forma de pago) sigue siendo un «cámbialo»; «corrígelo: mi nombre es Carlos» corrige un dato.
+const SIN_DATO_QUE_NO_ES_PAGO = String.raw`(?![^.?!]{0,25}\b(?:${DATO_SIN_PAGO})\b)`;
+const VOCATIVO = String.raw`(?:wey|guey|we|bro|amigo|joven|jefe|oiga|oye|compa|mano|carnal|senor|senora|patron|maestro)`;
+const MONTO_EN_PESOS = String.raw`(?:\$\s*\d|\d+\s*(?:pesos|varos|mxn)\b)`;
+// Cantidad que NO es del pedido: tiempo, personas, billete, canal («no, son 30 minutos», «no, es 1 persona», «no, son 3 para llevar»).
+const UNIDAD_QUE_NO_ES_DEL_PEDIDO = String.raw`(?:min|mins|minutos?|hrs?|horas?|personas?|gente|comensales|adultos|ninos|solo|sola|solos|nada|para\s+(?:llevar|recoger|comer|aca)|el\s+billete|de\s+cambio|billetes?)`;
+// Verbos con los que el cliente DA UNA INSTRUCCION sobre un ingrediente o un aviso («no quiero que le pongas cebolla», «que me llamen al llegar»).
+const INSTRUCCION_SOBRE_LA_ORDEN = String.raw`(?:(?:le|me|nos)\s+)?(?:(?:lo|la|los|las)\s+)?(?:pongas?|pongan|pon|lleve|lleven|tenga|tengan|agregues|agreguen|quites|quiten|incluyas|traiga|traigan|metas|saques|echen|echas|avisen|llamen|hablen|marquen|manden|mande|pase|pasen|recoja|recojan|entregue|entreguen|dejen|deje|empaquen|envuelvan|escribas|escribe|vaya|vayan|espere|esperen|guarden|guarde|separen|aparten|sea\s+para\s+(?:llevar|recoger|comer|aca))`;
+// Fin de clausula, con la cortesia/muletilla que suele cerrar un rechazo corto («no lo quiero porfa», «mejor no pues»).
+const FIN_DE_CLAUSULA = String.raw`(?:\s+(?:porfa|porfis|porfavor|por\s+favor|gracias|pues|ya|wey|guey)\b)*\s*(?:[,.;!?]|$)`;
 const RECHAZO_DE_MONTO_O_CAMBIO = new RegExp(
   [
-    // «No, quiero a $10», «no, prefiero 4 tacos», «No, yo quiero que sea con tarjeta», «no quiero otro»; NO «no quiero propina».
-    String.raw`(?:^|[.,;!?]\s*)no\s*[,;:]?\s*(?:yo\s+)?(?:quiero|prefiero|exijo)\s+(?:a\s+|por\s+|en\s+)?(?:\$\s*\d|\d|otro\b|otra\b|que\b|cambiar\b|corregir\b|modificar\b|el\s+(?:precio|monto|total)\b|mi\s)`,
-    // «no, son 4 tacos», «no, a $10».
-    String.raw`(?:^|[.,;!?]\s*)no\s*[,;:]?\s*(?:(?:son|es|eran|era|serian|seria)\s+(?:\$\s*)?\d|(?:a|por|en)\s+\$\s*\d)`,
-    // «ese no», «no ese no», «eso no», «ese precio no».
-    String.raw`\b(?:ese|esa|eso|esos|esas)\s+(?:precio\s+|monto\s+|total\s+)?no\b`,
-    // «cámbialo», «cámbiame la tortilla», «corrígelo».
-    String.raw`\bcambi(?:a|ame|alo|ala|alos|alas)\b|\bcorrig(?:e|eme|elo|ela|elos|elas)\b`,
-    String.raw`\bquiero\s+(?:cambiar|corregir|modificar)\b|\b(?:otro|otra)\s+(?:monto|precio|importe|cobro|total)\b`,
-    // «no gracias, es mucho», «está muy caro».
-    String.raw`\b(?:es|esta|sale|queda)\s+(?:muy\s+|demasiado\s+)?(?:mucho|caro)\b|\bdemasiado\s+(?:caro|dinero)\b`,
-    // «espera, no», «mejor no» (al inicio de la frase: «las salchichas mejor no» a media orden es quitar un producto, no rechazar el resumen).
-    String.raw`^\W*(?:espera|esperate|alto|un\s+momento|momento)\W+no\b|(?:^|[.,;!?]\s*)mejor\s+no\b`,
-    // «cóbramelos a $10», «cóbrame $10», «cóbramelos a ese precio», «quiero a $10».
+    // «No, quiero a $10», «no, prefiero 4 tacos», «No, yo quiero que sea con tarjeta», «no quiero otro»; NO «no quiero propina», «no quiero que le pongas cebolla», «no, quiero mi cambio de 500».
+    String.raw`(?:^|[.,;!?]\s*)no\s*[,;:]?\s*(?:yo\s+)?(?:solo\s+|nomas\s+|nada\s+mas\s+)?(?:quiero|prefiero|exijo)\s+(?:a\s+|por\s+|en\s+)?(?:\$\s*\d|\d|pagar\s+(?:solo\s+|nomas\s+)?${MONTO_EN_PESOS}|otro\b|otra\b|que\b(?!\s+${INSTRUCCION_SOBRE_LA_ORDEN}\b)|cambiar\b${SIN_DATO_DE_LA_ORDEN}|corregir\b${SIN_DATO_DE_LA_ORDEN}|modificar\b${SIN_DATO_DE_LA_ORDEN}|el\s+(?:precio|monto|total)\b|mi\s+(?!cambio\b|nombre\b|pedido\s+(?:para|a\s+las?)\b|orden\s+(?:para|a\s+las?)\b))`,
+    // «no, son 4 tacos», «no, a $10», «no wey, a $100», «no wey a 100 pesos». «no, son 30 minutos», «no, es 1 persona» y «no, son 500» (el billete) NO.
+    String.raw`(?:^|[.,;!?]\s*)no\s*[,;:]?\s*(?:${VOCATIVO}\s*[,;:]?\s*)?(?:(?:son|es|eran|era|serian|seria)\s+(?:\$\s*\d|\d+\s*(?:pesos|varos|mxn)\b|(?!(?:500|1000)${FIN_DE_CLAUSULA})\d+(?!\d)(?!\s*${UNIDAD_QUE_NO_ES_DEL_PEDIDO}\b))|(?:a|por|en)\s+${MONTO_EN_PESOS})|(?:^|[.,;!?]\s*)no\s*[,;:]?\s*(?:[a-z]+\s*[,;:]?\s*){1,2}(?:a|por|en)\s+${MONTO_EN_PESOS}`,
+    // «ese no», «no ese no», «eso no», «ese precio no». «¿ese no lleva cebolla?» y «eso no pica, ¿verdad?» son preguntas sobre un platillo.
+    String.raw`(?<!¿)\b(?:ese|esa|eso|esos|esas)\s+(?:precio\s+|monto\s+|total\s+)?no\b(?!\s+(?:lleva\w*|trae\w*|tiene\w*|pica\w*|incluye\w*|viene\w*|contiene\w*|sabe\w*|es\s+(?:picante|vegetariano|de\s+\w+)\b))`,
+    // «cámbialo», «cámbiame la tortilla», «corrígelo»; «cámbiame la hora a las 4» / «corrige mi nombre» corrigen un dato, no el monto.
+    String.raw`\bcambi(?:alo|ala|alos|alas|amelo|amela|amelos|amelas)\b${SIN_DATO_QUE_NO_ES_PAGO}|\bcorrig(?:elo|ela|elos|elas|emelo|emela)\b${SIN_DATO_QUE_NO_ES_PAGO}|(?<!\bno\s)\bcambi(?:a|ame)\b${SIN_DATO_DE_LA_ORDEN}|\bcorrig(?:e|eme)\b${SIN_DATO_DE_LA_ORDEN}`,
+    String.raw`\bquiero\s+(?:cambiar|corregir|modificar)\b${SIN_DATO_DE_LA_ORDEN}|\b(?:otro|otra)\s+(?:monto|precio|importe|cobro|total)\b(?!\s+de\s+cambio)`,
+    // «no gracias, es mucho», «está muy caro», «carísimo», «es un robo». «no es mucho» NO.
+    String.raw`(?<!\bno\s)\b(?:es|esta|sale|queda)\s+(?:muy\s+|demasiado\s+)?(?:mucho|caro)\b|\b(?:muy|demasiado|super|tan)\s+caro\b|\bdemasiado\s+(?:caro|dinero)\b|\bcarisim[oa]s?\b|\bque\s+caro\b|\bme\s+parece\s+(?:muy\s+|demasiado\s+)?(?:caro|mucho)\b(?!\s+mejor)|\bun\s+robo\b|\bme\s+(?:estas\s+)?robando\b`,
+    // «espera, no» / «mejor no» como rechazo. «espera, no tengo cambio», «momento, no encuentro mi cartera» (dato propio) y «mejor no le pongas picante» (ingrediente) NO.
+    String.raw`^\W*(?:espera|esperate|alto|un\s+momento|momento|pera|calma|detente|para)\W+no\b(?=${FIN_DE_CLAUSULA}|\s+(?:(?:quiero|asi|es|era|esta|estan|son|eran|eso|ese|esa|mejor)\b|me\s+(?:convence|gusta|cuadra|late|lo|la)\b|(?:lo\s+|la\s+)?(?:confirm|registr|mand|envi|hag|acept|cobr|cre|pid|proce|sigas|anot|orden)\w*))`,
+    String.raw`(?:^|[.,;!?]\s*)(?:(?:pues|ya|entonces|oye|y)\s+)?mejor\s+no\b(?=${FIN_DE_CLAUSULA}|\s+(?:gracias|quiero|pido|pedir|ordeno|ordenar|compro|voy|por\s+ahora|hoy|entonces|pues|ya|mejor|asi\b|(?:me\s+(?:lo|la)\s+|lo\s+|la\s+)?(?:hagas|sigas|confirm\w*|manda\w*|envi\w*|cobr\w*|registr\w*|anot\w*|proces\w*|pid(?:as?|o)|ordenes?|ordeno|continu\w*|procedas|tomes|crees|compro)\b))`,
+    // «cóbramelos a $10», «cóbrame $10», «cóbramelos a ese precio», «quiero a $10», «cóbrame eso/así», «me cobras de más».
     String.raw`\bcobr\w*\s+(?:a\s+|en\s+|por\s+|solo\s+)?(?:\$\s*\d|\d+\s*(?:pesos|varos)\b|ese\s+precio|lo\s+que\s+dice)|\bquiero\s+a\s+\$\s*\d`,
-    // «no me convence el precio», «no es lo que pedí».
-    String.raw`\bno\s+me\s+(?:convence|late|cuadra)\b|\bno\s+me\s+gusta\s+(?:el|ese)\s+(?:precio|total|monto)\b|\bno\s+(?:es|era)\s+lo\s+que\s+ped\w*|\bno\s+pedi\b`,
+    String.raw`\bcobr\w*\s+(?:eso|asi|como\s+dice|segun)\b(?!\s+(?:con|en|por|a\s+la)\s+(?:la\s+|mi\s+)?(?:tarjeta|efectivo|transferencia|terminal))|\bcobr\w*\s+(?:de\s+mas|demas|mal|doble)\b|\bcobr\w*\s+(?:a\s+)?(?:lo\s+de\s+(?:la\s+|el\s+)?(?:promo\w*|anuncio|oferta|publicidad|menu|pagina)|como\s+(?:dice|decia|marca|viene|esta\s+en))\b`,
+    // «la promo dice $10», «en el anuncio dice $10», «ahí dice 3x$100», «la promoción es a $10»: el cliente cita el precio de la publicidad.
+    String.raw`\b(?:promo\w*|anuncio|publicidad|publicacion|oferta|menu|pagina|cartel|letrero|facebook|insta\w*|volante|flyer|folleto|cupon|ahi|alla|aqui|historia|story|post)\b[^.?!]{0,30}?\b(?:dice|decia|dicen|marca|marcaba|(?:es|era|son|eran|esta|estan|sale|salia|queda)(?:\s+a)?|vale|valia|costaba|cuesta)\s+(?:a\s+|de\s+)?(?:\$\s*\d|\d+\s*(?:pesos|varos|mxn)\b|\d+\s*(?:x|por)\s*\$?\s*\d|\d+\s+\w+\s+por\s+\$?\s*\d)`,
+    String.raw`\b(?:vi|vimos|ponia|puso|anunciaban|anunciaron|prometieron|prometian)\b[^.?!]{0,40}(?:\$\s*\d|\d+\s*(?:pesos|varos)\b)|\bmas\s+caro\s+(?:que|de\s+lo)\b|\bmas\s+de\s+lo\s+que\s+(?:dice|decia|dijo|dijiste|anuncia)\b|\bte\s+(?:estas\s+)?pas(?:as|aste|ando)\b`,
+    // Regateo y queja de precio: «bájale al total», «hazme un descuento», «está muy elevado», «no me alcanza», «pensé que eran $80», «me dijeron $10», «cóbrame lo mismo que dice en la foto».
+    String.raw`\b(?:baj|rebaj|reduc|modific|ajust)\w*\s+(?:el|al|la)\s+(?:total|precio|monto|cuenta|cobro)\b|\bbaj(?:ale|ame)\b|\bdescuento\b|\brebaja\b|\bmas\s+barato\b|\bmejor\s+precio\b|\b(?:muy|demasiado|bien)\s+elevad[oa]\b|\bbarbaridad\b|\bno\s+me\s+alcanza\b|\bpens\w*\s+que\s+(?:era|eran|son|seria|serian|costaba|costaban|valia|valian)\b|\bme\s+(?:dijeron|dijo|dijiste|prometieron|prometio|cotizaron|habian\s+dicho)\b[^.?!]{0,30}(?:\$\s*\d|\d+\s*pesos|\d+\s*(?:x|por)\s*\$?\s*\d)|\bcobr\w*\s+(?:lo\s+mismo|lo\s+que|igual\s+que|como\s+siempre)\b|\bme\s+(?:equivocaste|confundiste|enganaste)\b`,
+    // Mas quejas y negativas: «me parece excesivo», «el taco cuesta $10 no $42», «a $10 me lo ofrecieron», «no es lo que dice la promo», «no voy a confirmar», «no quiero esto», «detén el pedido».
+    String.raw`\b(?:excesiv[oa]|pasadisim[oa]|exagerad[oa]|confiscatori[oa]|abusiv[oa])\b|\bpasad[oa]\s+de\s+(?:precio|lanza)\b|\b(?:cuesta|cuestan|costaba|costaban|vale|valen|valia)\s+(?:\$\s*\d|\d+\s*pesos)|(?:\$\s*\d|\d+\s*pesos)[^.?!]{0,30}\b(?:me\s+(?:lo\s+|la\s+)?(?:ofrecieron|dijeron|dijo|prometieron|cobraron|vendieron|dieron)|ofrecian|salia)\b|\bno\s+(?:es|coincide|concuerda|cuadra)\b[^.?!]{0,25}\b(?:promo\w*|anuncio|oferta|menu|publicidad|cartel|flyer|publicacion)\b`,
+    String.raw`\bno\s+(?:lo\s+|la\s+|me\s+lo\s+)?(?:vayas\s+a|voy\s+a|vas\s+a)\s+(?:confirmar|aceptar|registrar|mandar|procesar|cobrar|hacer|pedir)\b|\bno\s+(?:deseo|quiero|puedo)\s+(?:continuar|seguir|proceder)\b|\bno\s+quiero\s+(?:esto|eso)${FIN_DE_CLAUSULA}|\b(?:deten|detener|detenga|pausa|suspende|suspender)\w*\s+(?:el|mi|la)\s+(?:pedido|orden)\b`,
+    // Sinonimos de cancelar y «deberia costar $10»: «anula/borra/elimina/descarta el pedido», «descártalo», «mejor lo dejo», «debería ser $90», «no pienso pagar $126».
+    String.raw`(?<!\bno\s)\b(?:anul|borr|elimin|descart)(?:a|e|ar|en)\s+(?:el|mi|la|este|esta)\s+(?:pedido|orden|compra)\b|(?:^|[.,;!?]\s*)(?:(?:mejor|pues|ya|entonces)\s+)*(?:descart|anul)(?:alo|ala|amelo)${FIN_DE_CLAUSULA}|\b(?:mejor|pues|ya)\s+lo\s+dejo${FIN_DE_CLAUSULA}|\bdeb(?:eria|e|en|erian)\s+(?:ser|costar|salir|valer|ser\s+de)\s+(?:a\s+)?${MONTO_EN_PESOS}|\bno\s+(?:te\s+|le\s+)?(?:voy\s+a\s+|pienso\s+)pagar\s+(?:\$\s*\d|\d+\s*pesos)|\babuso\b`,
+    // «el total no es ese», «el precio no es ese», «mi pedido era otro», «el total es otro», «ese no es el total», «estás mal», «te equivocas», «hay un error».
+    String.raw`\b(?:total|precio|monto|importe|cuenta|cobro|costo)\b[^.?!]{0,25}\bno\s+(?:es|era|son|eran|cuadra|coincide|concuerda)\b|\bno\s+(?:me\s+)?(?:cuadra|coincide|concuerda|checa)\s+(?:el|la|ese|esa|este|esta)\s+(?:total|precio|monto|cuenta|cobro)\b|\bno\s+me\s+parece\s+(?:justo|correcto|razonable)\b|\bno\s+(?:estoy|estamos)\s+de\s+acuerdo\b|\bno\s+(?:te\s+|le\s+)?(?:voy\s+a\s+|pienso\s+|puedo\s+|quiero\s+)?pag(?:ar|o)\s+(?:eso|tanto|ese|esa|asi|de\s+mas)\b|\bno\s+(?:es|era)\s+(?:ese|esa|el)\s+(?:total|precio|monto|importe|cobro)\b|\bmi\s+(?:pedido|orden)\s+no\s+(?:es|era)\b|\bprecios\b[^.?!]{0,25}\bno\s+(?:son|eran)\b|\bno\s+(?:son|eran)\s+(?:esos|esas)\s+(?:los\s+)?(?:precios|totales|montos)\b`,
+    String.raw`\b(?:mi\s+pedido|mi\s+orden|el\s+total|el\s+precio|el\s+monto|la\s+cuenta)\s+(?:era|es|seria)\s+(?:otro|otra|distint[oa]|diferente)\b`,
+    String.raw`(?<!\bno\s)(?<!\bnada\s)(?<!\bmuy\s)\bestas\s+(?:mal|equivocad\w*|confundid\w*)\b|(?<!\bno\s)\bte\s+equivoc\w*|\bhay\s+un\s+error\b|\b(?:esta|estan)\s+equivocad\w*`,
+    // «cancela», «cancela el pedido», «mejor cancélalo», «quiero cancelar», «ya no lo quiero», «no lo acepto», «no lo confirmo», «no confirmes». «cancela el refresco» (un renglon) NO.
+    String.raw`(?:^|[.,;!?]\s*)(?:(?:mejor|pues|ya|entonces|oye)\s+)*cancel(?:a|e|ame|alo|ala|ar|emos|en|elo|enlo)\b(?=${FIN_DE_CLAUSULA}|\s+(?:(?:el|mi|la|este|esta)\s+(?:pedido|orden|compra)|todo|esto|eso|porfa|por\s+favor|gracias|ya|mejor|no|pues|de\s+una\s+vez)\b)`,
+    String.raw`(?<!\bno\s)\b(?:quiero\s+cancelar|cancel(?:a|e|ar|en|alo|emos))\s+(?:(?:el|mi|la|este|esta)\s+(?:pedido|orden|compra))\b|\bquiero\s+cancelar\b(?=${FIN_DE_CLAUSULA}|\s+(?:todo|esto|eso|porfa|por\s+favor|gracias|ya)\b)`,
+    String.raw`\bya\s+no\s+(?:lo|la)\s+(?:quiero|necesito)\b|\bya\s+no\s+quiero\s+(?:el|la|mi)\s+(?:pedido|orden|compra)\b|^\W*(?:mejor\s+)?olvidalo${FIN_DE_CLAUSULA}|(?:^|[.,;!?]\s*)(?:(?:mejor|pues|ya)\s+)+dej(?:alo|ala|amelo)\b(?!\s+(?:asi|como\s+esta|ahi))|\bolvid(?:a|e|ar)\s+(?:el|mi|la|este)\s+(?:pedido|orden|compra)\b`,
+    String.raw`\bno\s+(?:lo\s+|la\s+|me\s+lo\s+)?(?:confirmo|acepto)\b|\bno\s+(?:lo|la)\s+(?:quiero|voy\s+a\s+confirmar|voy\s+a\s+aceptar)${FIN_DE_CLAUSULA}|\bno\s+(?:me\s+lo\s+|lo\s+|la\s+)?(?:confirmes|registres|cobres|procedas|crees|proceses|apruebes|autorices|valides|pidas|pidan)\b|\bno\s+(?:me\s+lo\s+|lo\s+|la\s+)?(?:mandes|envies|hagas|pases|anotes|sigas)${FIN_DE_CLAUSULA}`,
+    // «no me convence el precio», «no es lo que pedí». «no pedí cubiertos» (responde a un ofrecimiento) NO.
+    String.raw`\bno\s+me\s+(?:convence|late|cuadra)\b|\bno\s+me\s+gusta\s+(?:el|ese)\s+(?:precio|total|monto)\b|\bno\s+(?:es|era)\s+lo\s+que\s+ped\w*|\bno\s+pedi\b(?!\s+(?:cubiertos|propina|bolsa|servilletas?|popote|extras?|nada)\b)`,
   ].join("|"),
 );
 
@@ -360,11 +397,14 @@ export function rechazaElResumen(mensaje: unknown): boolean {
   const t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   // «asi no» solo rechaza cuando NO va seguido de la consecuencia buena de confirmar («así no se me olvida», «así no tengo que salir», «así no me complico»).
   const rechazo =
-    /\basi\s+no\b(?!\s+(?:se\s+(?:me|nos)|tengo|tenemos|hay\s+que|necesito|me\s+compli|me\s+olvido|voy\s+a\s+tener))|\bno\s+(?:es|esta|estan|son)\s+(?:correct[oa]s?|bien|asi)\b|(?<!\bno\s)(?<!\bnada\s)(?<!\bmuy\s)\b(?:esta|estan)\s+mal\b|\bincorrect[oa]s?\b|\bno\s+(?:lo\s+|la\s+)?(?:quiero|acepto)\s+(?:asi|a\s+ese|con\s+ese)\b|(?:^|[.,;!?]\s*)no\s*,\s*(?:cambia|corrige|quita|mejor)\b/;
+    /\basi\s+no\b(?!\s+(?:se\s+(?:me|nos)|tengo|tenemos|hay\s+que|necesito|me\s+compli|me\s+olvido|voy\s+a\s+tener))|\bno\s+(?:es|esta|estan|son)\s+(?:correct[oa]s?|bien|asi)\b|(?<!\bno\s)(?<!\bnada\s)(?<!\bmuy\s)\b(?:esta|estan)\s+mal\b|\bincorrect[oa]s?\b|\bno\s+(?:lo\s+|la\s+)?(?:quiero|acepto)\s+(?:asi|a\s+ese|con\s+ese)\b|(?:^|[.,;!?]\s*)no\s*,\s*(?:cambia|corrige|quita|mejor(?!\s+(?:con\s+|en\s+|de\s+|por\s+)?(?:la\s+)?(?:efectivo|tarjeta|transferencia|terminal|deposito)\b))\b/;
   if (!rechazo.test(t) && !RECHAZO_DE_MONTO_O_CAMBIO.test(t)) return false;
   // Una afirmacion al inicio («perfecto, ...», «va, ...», «confirmalo...») o dentro del mensaje deja la decision al modelo.
   if (/^\W*(?:va|listo|perfecto|claro|adelante|correcto|confirm\w*)\b/.test(t)) return false;
-  return !/\b(?:si|sip|simon|confirmo|confirmado|confirmalo|confirmelo|dale|ok|okey|de\s+acuerdo|(?<!\bno\s)esta\s+bien\s+asi|asi\s+esta\s+bien)\b/.test(t);
+  if (/\b(?:si|sip|simon|(?<!\bno\s+(?:lo\s+|la\s+)?)confirmo|confirmado|confirmalo|confirmelo|dale|ok|okey|(?<!\bno\s+(?:estoy|estamos|esta|estan)\s+)de\s+acuerdo|adelante|procede|proceda|(?<!\bno\s)esta\s+bien\s+asi|asi\s+esta\s+bien)\b/.test(t)) return false;
+  // Revision de #588: la aceptacion a regañadientes («está caro pero va / órale / ya qué / lo quiero / lo llevo / está bien») tampoco es un rechazo. «va» no cuenta si es pregunta («¿va?»,
+  // regateo), si va seguido de «a» («cómo va a costar») ni si lo niega «no» («así no va»).
+  return !/(?<!\bno\s)(?<!\bcomo\s)(?<!\bme\s)(?<!\bse\s)(?<!\bque\s)\bva\b(?!\s*\?)(?!\s+a\b)|\borale\b|\barre\b|\b(?:pero|pues|entonces|y)\s+sale\b(?!\s+(?:muy|mas|caro|mucho|demasiado))|^\W*sale\b(?!\s+(?:muy|mas|caro|mucho|demasiado))|,\s*sale\b(?!\s+(?:muy|mas|caro|mucho|demasiado))|\bni\s+modo\b|\bya\s+que\s*(?:[,.;!?]|$)|(?<!\bno\s)\blo\s+(?:quiero|llevo|acepto|pago|tomo)\b|(?<!\bno\s)\besta\s+bien\b(?!\s+(?:caro|cara|mal|feo|barato))/.test(t);
 }
 
 /** Precondicion de `confirmar_resumen`. Lanza `OrderFlowViolationError` si no procede. */
@@ -545,6 +585,10 @@ export function asistentePidioDatoPendiente(contenido: string | undefined): bool
   if (idx < 0 && q < 0) return false;
   const ultima = idx >= 0 ? t.slice(idx) : t.slice(Math.max(t.lastIndexOf(".", q), t.lastIndexOf("\n", q), t.lastIndexOf("!", q)) + 1, q + 1);
   if (/(confirm|correcto|esta bien|de acuerdo|procedo|asi lo|lo registro|lo dejo|lo mando|lo anoto|procedemos)/.test(ultima)) return false;
+  // Revision de #588: «¿Le parece bien el total con tortilla de maíz?», «¿Quedamos así, a nombre de Carlos?», «¿Todo bien con la propina?» CONFIRMAN lo ya elegido; no piden el dato. Si ofrecen una
+  // alternativa («¿... maíz o prefiere harina?») siguen siendo una pregunta de dato.
+  const alternativa = /\b(?:o|u)\s+(?:de\s+|en\s+|con\s+|la\s+)?(?:harina|maiz|mixta|efectivo|tarjeta|transferencia)\b|\bo\s+(?:prefiere|quiere|prefieres|quieres)\b/.test(ultima);
+  if (!alternativa && /(parece bien|quedamos asi|lo dejamos asi|todo bien|en orden|conforme|le late|te late|le cuadra|te cuadra)/.test(ultima)) return false;
   return /(tortilla|propina|con cuanto|cuanto (?:paga|pagara|pagas|traera|trae)\b|como (?:desea|va a|vas a|quiere|prefiere) pagar|efectivo o tarjeta|tarjeta o efectivo|forma de pago|metodo de pago|a nombre de|su nombre|tu nombre|como se llama|cuanto tiempo|en cuanto tiempo|a que hora|cuando (?:pasa|recoge|viene)|direccion|donde (?:se lo|le))/.test(ultima);
 }
 
