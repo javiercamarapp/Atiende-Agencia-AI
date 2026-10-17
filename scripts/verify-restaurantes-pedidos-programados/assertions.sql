@@ -68,7 +68,7 @@ select ((r->>'status') = 'programado' and (r->>'programado_para') is not null)::
 from (select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
   repeat('a', 64)) as r) t;
 rollback;
 
@@ -80,7 +80,7 @@ select ((r->>'status') = 'pending' and (r->>'programado_para') is null)::int as 
 from (select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web'),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web'),
   repeat('b', 64)) as r) t;
 rollback;
 
@@ -91,7 +91,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web', 'programado_para', to_char(now() - interval '1 hour', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web', 'programado_para', to_char(now() - interval '1 hour', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
   repeat('c', 64)) as should_fail;
 rollback;
 
@@ -102,12 +102,12 @@ select set_config('request.jwt.claim.sub', '', true);
 select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
   repeat('d', 64), repeat('1', 64)) is not null as primera;
 select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
   repeat('d', 64), repeat('1', 64)) is not null as segunda;
 reset role;
 select count(*)::int as pedidos_con_la_llave_deberia_ser_1 from restaurantes.orders where idempotency_key = repeat('1', 64);
@@ -120,12 +120,12 @@ select set_config('request.jwt.claim.sub', '', true);
 select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
   repeat('e', 64)) is not null as primera;
 select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
   repeat('e', 64)) is not null as segunda;
 reset role;
 select count(*)::int as pedidos_con_el_fingerprint_deberia_ser_1 from restaurantes.orders where dedupe_fingerprint = repeat('e', 64);
@@ -138,7 +138,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013
 select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'Cliente A', 'customer_phone', '+5219991230001', 'branch', 'Sucursal A1', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 150, 'items', '[]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
+    'total', 150, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web', 'programado_para', to_char(now() + interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SSOF')),
   repeat('f', 64)) as should_fail;
 rollback;
 
@@ -148,7 +148,7 @@ set local role anon;
 select restaurantes.create_order_idempotent(
   jsonb_build_object('organization_id', '00000000-0000-0000-0000-0000000e0001', 'customer_id', '00000000-0000-0000-0000-0000000e00c1',
     'customer_name', 'X', 'customer_phone', '+5219991230001', 'branch', 'S', 'property_id', '00000000-0000-0000-0000-0000000e00a1',
-    'total', 1, 'items', '[]'::jsonb, 'source', 'web'),
+    'total', 1, 'items', '[{"name":"Taco","price":150,"quantity":1}]'::jsonb, 'source', 'web'),
   repeat('9', 64)) as should_fail;
 rollback;
 

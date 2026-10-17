@@ -52,8 +52,54 @@ export interface InboundMessageOutcome {
 /** Tope de caracteres de UN mensaje de cliente que llega al historial y al modelo. Un pedido real mide decenas de caracteres; un mensaje de miles ("quiero tacos por favor por favor ...") solo
  * infla el prompt y la latencia hasta pasar el limite del turno, y el cliente se quedaba SIN respuesta (QA-PM-R3-whatsapp-12). Se conserva el inicio, que es donde esta la peticion. */
 export const MENSAJE_CLIENTE_MAX_CARACTERES = 1500;
+/** Controles C0 (salvo tab, salto de linea y retorno) y DEL: el NUL (U+0000) hace que jsonb rechace el historial (22P05) y el webhook responda 500 (R11-08). */
+// eslint-disable-next-line no-control-regex
+const CONTROLES_NO_IMPRIMIBLES = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const SUSTITUTO_SUELTO = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** Texto entrante que Postgres (jsonb) puede guardar: sin controles ni sustitutos UTF-16 sueltos (un lado de un emoji). */
+export function sanearTextoEntrante(texto: string): string {
+  return texto.replace(CONTROLES_NO_IMPRIMIBLES, "").replace(SUSTITUTO_SUELTO, "\uFFFD");
+}
+
 export function limitarLargoDelMensaje(texto: string): string {
-  return texto.length <= MENSAJE_CLIENTE_MAX_CARACTERES ? texto : `${texto.slice(0, MENSAJE_CLIENTE_MAX_CARACTERES).trimEnd()} […]`;
+  const limpio = sanearTextoEntrante(texto);
+  if (limpio.length <= MENSAJE_CLIENTE_MAX_CARACTERES) return limpio;
+  let corte = limpio.slice(0, MENSAJE_CLIENTE_MAX_CARACTERES);
+  // R11-09: el corte no debe caer entre las dos mitades de un emoji (puntos de codigo, sin recorrer los 5 MB con Array.from).
+  const ultimo = corte.charCodeAt(corte.length - 1);
+  if (ultimo >= 0xd800 && ultimo <= 0xdbff) corte = corte.slice(0, -1);
+  return `${corte.trimEnd()} […]`;
+}
+
+/** Maximo de Graph API para un texto es 4096; se parte en trozos de a lo mas 4000 para dejar margen (R11-12). */
+export const RESPUESTA_PARTE_MAX_CARACTERES = 4000;
+
+/** Divide una respuesta larga en partes <= `max`, prefiriendo cortar en salto de linea, punto o espacio, y nunca entre las mitades de un emoji. Texto corto = una sola parte. */
+export function dividirRespuestaLarga(texto: string, max = RESPUESTA_PARTE_MAX_CARACTERES): string[] {
+  if (texto.length <= max) return [texto];
+  const partes: string[] = [];
+  let resto = texto;
+  while (resto.length > max) {
+    let corte = max;
+    const ventana = resto.slice(0, max);
+    const piso = Math.floor(max / 2);
+    const salto = Math.max(ventana.lastIndexOf("\n\n"), ventana.lastIndexOf("\n"));
+    const punto = Math.max(ventana.lastIndexOf(". "), ventana.lastIndexOf("? "), ventana.lastIndexOf("! "));
+    const espacio = ventana.lastIndexOf(" ");
+    if (salto >= piso) corte = salto;
+    else if (punto >= piso) corte = punto + 1;
+    else if (espacio >= piso) corte = espacio;
+    else {
+      const ultimo = resto.charCodeAt(corte - 1);
+      if (ultimo >= 0xd800 && ultimo <= 0xdbff) corte -= 1;
+    }
+    const parte = resto.slice(0, corte).trimEnd();
+    if (parte) partes.push(parte);
+    resto = resto.slice(corte).trimStart();
+  }
+  if (resto) partes.push(resto);
+  return partes;
 }
 
 export const REMITENTE_MAX_TURNOS = 20;
@@ -293,16 +339,32 @@ async function encolarRespuesta(
   const base = { to: a.phone, phone_number_id: a.phoneNumberId, transaccional: true } as const; // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
   const keyReply = `inbound-reply:${a.messageId}${a.sufijo}`;
   const conBotones = a.confirmacion !== undefined && dentroDeVentanaDeServicio(a.recibidoEnMs, Date.now());
+  // R11-12: Meta rechaza (no reintentable) un texto de mas de 4096 caracteres. Una respuesta larga sale en partes <= 4000: la primera conserva la llave de siempre
+  // (`inbound-reply:<id>`) y las siguientes llevan `:<n>`. Las llaves son deterministas: el reintento del webhook ya no llega aqui (dedupe por message.id) y, si una
+  // llave se re-encolara, el outbox no crea fila nueva (la reescribe solo mientras esta pending/failed). Si la misma llave base se re-encolara con OTRO numero de
+  // partes quedarian partes huerfanas de la primera tanda; hoy no ocurre porque todo el encolado va en la transaccion unica del webhook.
+  // ORDEN DE SALIDA: las partes se encolan EN ORDEN (p0, p1, ..., y por ultimo el aviso de botones) y el claim las ofrece por `created_at`. `enqueue_messaging_outbox` fija
+  // `created_at = clock_timestamp()` (migracion 088) para que filas de la MISMA transaccion queden estrictamente ordenadas; sin esa migracion `created_at` es el
+  // inicio de la transaccion, el desempate es el uuid al azar y las partes pueden llegar revueltas. Limite que no cierra: si la parte n falla y espera su reintento, la n+1 puede salir antes.
+  const partes = dividirRespuestaLarga(a.reply);
+  const primera = partes[0]!;
+  const encolarResto = async (): Promise<void> => {
+    for (let i = 1; i < partes.length; i += 1) {
+      await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `${keyReply}:${i}`, { ...base, body: partes[i]! });
+    }
+  };
   if (!conBotones || a.confirmacion === undefined) {
-    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply });
+    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: primera });
+    await encolarResto();
     return;
   }
   const botones = construirBotonesDeConfirmacion(a.confirmacion);
-  if (cabeEnMensajeInteractivo(a.reply)) {
+  if (partes.length === 1 && cabeEnMensajeInteractivo(a.reply)) {
     await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply, buttons: botones });
     return;
   }
-  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: a.reply });
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", keyReply, { ...base, body: primera });
+  await encolarResto();
   await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-botones:${a.messageId}${a.sufijo}`, { ...base, body: TEXTO_BOTONES_APARTE, buttons: botones });
 }
 

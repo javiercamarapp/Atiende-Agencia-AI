@@ -5,7 +5,7 @@ import { FakeLlmProvider } from "@atiende/agent-core";
 import { describe, expect, it, vi } from "vitest";
 import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handler.ts";
 import { handleInboundWhatsAppMessage } from "../../src/whatsapp/inbound.ts";
-import { NEW_CUSTOMER, PHONE, buildRestaurantFixture, gatewayDe, handlerConGuion, itemsCoca, llamada, llamadas, ordenes, pasoDelTurno, scriptedHandler, texto, hallazgo } from "./arnes.ts";
+import { NEW_CUSTOMER, PHONE, buildRestaurantFixture, gatewayDe, handlerConGuion, itemsCoca, llamada, llamadas, ordenes, pasoDelTurno, scriptedHandler, texto } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 const TUTEO = /\b(?:t[úu]|tus|tienes|puedes|quieres|necesitas|dime|dinos|av[íi]same|intenta)\b/i;
@@ -98,7 +98,7 @@ describe("R11-4B el modelo responde con basura", () => {
   // El camino determinista (clasificador) recorta el resumen a 500; el camino del MODELO (`escalar_a_humano`, `registrar_contacto`) guarda
   // `resumen` / `message` / `customer_name` tal cual: `callback_requests.message` y `.customer_name` son `text` sin CHECK de largo. Un modelo
   // desbocado (o inducido a copiar un mensaje enorme) deja filas de MB que luego carga el panel del equipo.
-  hallazgo("R11-13 [P2] el resumen que manda el modelo en escalar_a_humano se guarda acotado (<= 1000 caracteres)", async () => {
+  it("R11-13 [P2] el resumen que manda el modelo en escalar_a_humano se guarda acotado (<= 1000 caracteres)", async () => {
     const f = buildRestaurantFixture();
     const { handler } = handlerConGuion(f.repo, (req) => (pasoDelTurno(req) === 0 ? llamada("escalar_a_humano", JSON.stringify({ customer_name: "Ana", motivo: "otro", resumen: "x".repeat(200_000) })) : texto("Listo.")));
     await turnoSimple(f, handler as never);
@@ -110,7 +110,7 @@ describe("R11-4B el modelo responde con basura", () => {
   // ── HALLAZGO R11-12 (P2, entrega): la respuesta del agente no se acota al maximo de Meta (4096) ──
   // El mensaje ENTRANTE si se valida contra 4096; la respuesta SALIENTE no. Meta rechaza un texto mayor (error de parametro, no
   // reintentable): el mensaje se marca `dead` y el cliente nunca lo lee, aunque el historial diga que se envio.
-  hallazgo("R11-12 [P2] una respuesta del modelo de mas de 4096 caracteres se acota / divide antes de encolarse", async () => {
+  it("R11-12 [P2] una respuesta del modelo de mas de 4096 caracteres se acota / divide antes de encolarse", async () => {
     const f = buildRestaurantFixture();
     const largo = `Claro. ${"Tenemos tacos de bistec, pastor y arrachera. ".repeat(150)}`;
     expect(largo.length).toBeGreaterThan(4096); // control del insumo

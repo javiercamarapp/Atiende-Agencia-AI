@@ -14,8 +14,6 @@
   "/taquitospm-english-menu"
  ],
  "paginas_no_leidas": [
-  "/englishmenuchicxulub",
-  "/taquitospm-english-menu",
   "/merchdepm",
   "/whatsapppm (no aportan menú)"
  ],
@@ -669,6 +667,40 @@
     "notas": [
      "Porción 100 gr."
     ]
+   }
+  ]
+ },
+ "nota_paginas_en_ingles": "Las dos páginas en inglés se leyeron en la captura de las 60 imágenes: mismos precios que Montejo/García Lavín/Altabrisa y que Playa (ver manifiesto-pdf.json).",
+ "horarios_por_sucursal_portada": {
+  "fuente": "https://www.lostaquitosdepm.com/ (texto de la portada, capturado el 15-oct-2026); NO vienen en las imágenes del menú",
+  "sucursales": [
+   {
+    "nombre": "Altabrisa",
+    "horario": "domingo a jueves 12 pm a 1 am; viernes y sábado 12 pm a 1 am"
+   },
+   {
+    "nombre": "García Lavín (Victory Platz)",
+    "horario": "domingo a jueves 12 pm a 1 am; viernes y sábado 12 pm a 1 am"
+   },
+   {
+    "nombre": "Prolongación Paseo de Montejo",
+    "horario": "lunes a jueves 6 pm a 1 am; viernes y sábado 12 pm a 1 am; domingos 12 pm a 1 am"
+   },
+   {
+    "nombre": "Francisco de Montejo",
+    "horario": "lunes a viernes 6 pm a 12 am; sábados y domingos 12 pm a 12 am"
+   },
+   {
+    "nombre": "Galerías Mérida (food court, planta alta)",
+    "horario": "lunes a domingo 12 pm a 9 pm"
+   },
+   {
+    "nombre": "Chicxulub",
+    "horario": "cerrado hasta Semana Santa; luego lunes a domingo 6 pm a 1 am; abierto en Semana Santa y temporada de verano (julio y agosto)"
+   },
+   {
+    "nombre": "Pensiones",
+    "horario": "lunes a domingo 6 pm a 12 am"
    }
   ]
  }

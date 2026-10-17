@@ -27,7 +27,7 @@ import { resolverMenuPdf } from "../menu-pdf.ts";
 import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
-import { pesoDeProductoEnGramos, unidadDeVentaSinPiezas } from "../product-search.ts";
+import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -521,11 +521,19 @@ function tortillaDeEntrada(raw: unknown): TortillaChoice | undefined {
   return isTortillaChoice(t) ? t : undefined;
 }
 
+/** R11-11: solo un numero o una cadena de digitos ("2", " 3 ") es una cantidad. `true`, `[2]`, "0x10", "1e3" o "" ya no se coercionan en silencio: dan NaN y el
+ * dominio (voz/web) o la validacion lenient (WhatsApp) los rechazan con un error accionable. */
+function cantidadEstricta(valor: unknown): number {
+  if (typeof valor === "number") return valor;
+  if (typeof valor === "string" && /^\s*\d+\s*$/.test(valor)) return Number(valor);
+  return Number.NaN;
+}
+
 export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrderItemInput[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
     const item = (entry ?? {}) as RawItemInput;
-    const qty = typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity);
+    const qty = cantidadEstricta(item.requested_quantity);
     if (lenient && (!Number.isInteger(qty) || qty < 1)) throw new OrderValidationError(CANTIDAD_NO_NUMERICA_MENSAJE);
     return {
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
@@ -536,9 +544,9 @@ export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrder
   });
 }
 
-/** `unidad_de_venta` solo sale para productos por orden sin número de piezas confirmado (ver product-search.ts::unidadDeVentaSinPiezas). */
-function unidadDeVentaWire(product: Parameters<typeof unidadDeVentaSinPiezas>[0]): { unidad_de_venta?: string } {
-  const unidad = unidadDeVentaSinPiezas(product);
+/** `unidad_de_venta` sale para flautas (1 flauta grande por orden) y para productos por orden sin piezas confirmadas (ver product-search.ts::unidadDeVenta). */
+function unidadDeVentaWire(product: Parameters<typeof unidadDeVenta>[0]): { unidad_de_venta?: string } {
+  const unidad = unidadDeVenta(product);
   return unidad ? { unidad_de_venta: unidad } : {};
 }
 

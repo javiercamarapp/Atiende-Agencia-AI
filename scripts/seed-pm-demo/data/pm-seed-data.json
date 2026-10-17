@@ -1373,7 +1373,7 @@
     {
       "nombre": "Alambre Suizo de Pastor",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1403,7 +1403,7 @@
     {
       "nombre": "Alambre Suizo de Bistec",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1441,7 +1441,7 @@
     {
       "nombre": "Alambre Suizo de Pechuga",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1471,7 +1471,7 @@
     {
       "nombre": "Alambre Suizo de Chuleta",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1501,7 +1501,7 @@
     {
       "nombre": "Alambre Suizo de Costilla",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1531,7 +1531,7 @@
     {
       "nombre": "Alambre Suizo de Arrachera",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1561,7 +1561,7 @@
     {
       "nombre": "Tacos Suizos de Chile Poblano y Bistec",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1598,7 +1598,7 @@
     {
       "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
       "categoria": "Tacos Suizos",
-      "descripcion": null,
+      "descripcion": "Orden de 5 tacos",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1706,7 +1706,7 @@
     {
       "nombre": "Flauta de Pastor",
       "categoria": "Flautas de PM",
-      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate. Orden de 1 flauta grande",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1727,7 +1727,7 @@
     {
       "nombre": "Flauta de Bistec de Res",
       "categoria": "Flautas de PM",
-      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate. Orden de 1 flauta grande",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1758,7 +1758,7 @@
     {
       "nombre": "Flauta de Chuleta de Cerdo",
       "categoria": "Flautas de PM",
-      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate. Orden de 1 flauta grande",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1779,7 +1779,7 @@
     {
       "nombre": "Flauta de Pechuga",
       "categoria": "Flautas de PM",
-      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate. Orden de 1 flauta grande",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1800,7 +1800,7 @@
     {
       "nombre": "Flauta de Costilla de Res",
       "categoria": "Flautas de PM",
-      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate. Orden de 1 flauta grande",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1821,7 +1821,7 @@
     {
       "nombre": "Flauta de Arrachera",
       "categoria": "Flautas de PM",
-      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate. Orden de 1 flauta grande",
       "es_alcohol": false,
       "popular": false,
       "impreso": {
@@ -1842,7 +1842,7 @@
     {
       "nombre": "Flauta de Poc-Chuc",
       "categoria": "Flautas de PM",
-      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate. Orden de 1 flauta grande",
       "es_alcohol": false,
       "popular": false,
       "impreso": {

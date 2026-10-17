@@ -1,10 +1,7 @@
 // R11 romper -- el proveedor de WhatsApp (Meta Graph API) falla o contesta raro. Cliente real (MetaGraphWhatsAppClient) con `fetch` simulado: nada sale a la red.
 // Afirma como se clasifica cada falla (reintentable / permanente / falla de proveedor) y que una respuesta rara NUNCA se toma por envio exitoso.
 import { describe, expect, it, vi } from "vitest";
-import { MetaGraphWhatsAppClient, WhatsAppSendError } from "../src/index.ts";
-
-/** Prueba de un hallazgo ABIERTO: pasa mientras el defecto exista (`it.fails`); R11_VER_FALLAS=1 la corre normal para ver el mensaje. */
-const hallazgo = process.env.R11_VER_FALLAS === "1" ? it : it.fails;
+import { MAX_TEXT_BODY_LENGTH, MetaGraphWhatsAppClient, WhatsAppInvalidPayloadError, WhatsAppSendError } from "../src/index.ts";
 
 const msg = (body = "Hola") => ({ to: "5219991234567", phoneNumberId: "123456", body });
 const respuesta = (status: number, cuerpo: unknown) => vi.fn(async () => new Response(typeof cuerpo === "string" ? cuerpo : JSON.stringify(cuerpo), { status }));
@@ -62,11 +59,9 @@ describe("R11-W1 clasificacion de fallas del proveedor", () => {
 });
 
 describe("R11-W2 tamano del texto saliente", () => {
-  // ── HALLAZGO R11-12b (P2, entrega): el cliente de Graph API manda el texto tal cual, sin acotar ni dividir a 4096 ──
-  // Meta rechaza un texto de mas de 4096 caracteres (parametro invalido, 400 no reintentable): el mensaje se marca `dead` y el cliente nunca
-  // lo lee. Ni el agente (R11-12) ni este cliente lo acotan. Fix minimo: acotar en `encolarRespuesta` (dividir en partes <= 4000) o rechazar aqui con
-  // WhatsAppInvalidPayloadError ANTES de la red para que quede explicado en el outbox.
-  hallazgo("R11-12b [P2] un texto de 6000 caracteres no viaja a Meta tal cual (se divide / acota, o se rechaza localmente)", async () => {
+  // R11-12b (corregido): Meta rechaza un texto de mas de 4096 caracteres (400, no reintentable). `encolarRespuesta` ya divide en partes <= 4000; este cliente
+  // es la ultima red: rechaza localmente con WhatsAppInvalidPayloadError ANTES de la red, para que el outbox explique por que quedo `dead`.
+  it("R11-12b [P2] un texto de 6000 caracteres no viaja a Meta tal cual (se divide / acota, o se rechaza localmente)", async () => {
     const f = respuesta(200, { messages: [{ id: "wamid.LARGO" }] });
     const cuerpo = "Tenemos tacos de bistec, pastor y arrachera. ".repeat(140);
     expect(cuerpo.length).toBeGreaterThan(4096); // control del insumo
@@ -75,5 +70,16 @@ describe("R11-W2 tamano del texto saliente", () => {
       const enviado = JSON.parse(llamada[1].body) as { text?: { body?: string } };
       expect((enviado.text?.body ?? "").length).toBeLessThanOrEqual(4096);
     }
+  });
+
+  it("el limite es exacto: 4096 caracteres viajan; 4097 se rechazan antes de la red con un error permanente y explicado", async () => {
+    const ok = respuesta(200, { messages: [{ id: "wamid.OK" }] });
+    await expect(cliente(ok as unknown as typeof fetch).sendMessage(msg("a".repeat(MAX_TEXT_BODY_LENGTH)))).resolves.toMatchObject({ providerMessageId: "wamid.OK" });
+    const f = respuesta(200, { messages: [{ id: "wamid.NO" }] });
+    const err = await cliente(f as unknown as typeof fetch).sendMessage(msg("a".repeat(MAX_TEXT_BODY_LENGTH + 1))).then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(WhatsAppInvalidPayloadError);
+    expect((err as WhatsAppSendError).retryable).toBe(false);
+    expect(String((err as Error).message)).toContain("4096");
+    expect(f).not.toHaveBeenCalled();
   });
 });
