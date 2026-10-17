@@ -436,11 +436,12 @@ export function extraerPackSize(name: string, description: string | null): numbe
 }
 
 /**
- * Productos que PM vende por ORDEN con un número de piezas que el menú NO registra (flautas, alitas, crujientes). Mientras `packSize` sea null, el precio
- * es el de la orden completa y `requested_quantity` cuenta ÓRDENES. El modelo no sabía esa unidad: tomó «4 flautas, una orden» como 4 órdenes (R10 T7-031,
- * $2,682 en vez de $1,833). Cuando PM confirme cuántas piezas trae cada orden se carga como «(orden de N)» en el producto y este aviso deja de salir solo.
+ * Productos que PM vende por ORDEN con un número de piezas que el menú NO registra (alitas, crujientes). Mientras `packSize` sea null, el precio
+ * es el de la orden completa y `requested_quantity` cuenta ÓRDENES: el modelo no debe multiplicar ni inventar las piezas. Cuando PM confirme cuántas
+ * piezas trae cada orden se carga como «(orden de N)» en el producto y este aviso deja de salir solo.
+ * Las FLAUTAS ya no entran aquí: Javier confirmó (16-oct-2026) que «una orden de flautas es UNA flauta grande» (ver `unidadDeVentaFlautas`).
  */
-const PRODUCTO_POR_ORDEN_SIN_PIEZAS = /\b(?:flautas?|alitas?|crujientes?)\b/i;
+const PRODUCTO_POR_ORDEN_SIN_PIEZAS = /\b(?:alitas?|crujientes?)\b/i;
 
 export function unidadDeVentaSinPiezas(
   product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
@@ -448,10 +449,37 @@ export function unidadDeVentaSinPiezas(
   if (product.packSize !== null) return null;
   if (!PRODUCTO_POR_ORDEN_SIN_PIEZAS.test(`${product.name} ${product.categoryName ?? ""}`)) return null;
   return (
-    "El precio es por ORDEN completa y el menú no registra cuántas piezas trae. requested_quantity cuenta ÓRDENES, no piezas: «una orden» = 1, «dos órdenes» = 2, " +
-    "y «4 flautas, una orden» sigue siendo 1 (NO la multipliques por las piezas que mencionó el cliente). No inventes cuántas piezas trae la orden: si el cliente la pregunta, " +
-    "dile que la cantidad exacta la confirma la sucursal. Si pide piezas sueltas sin decir cuántas órdenes, pregunta cuántas órdenes quiere antes de cotizar."
+    "El precio es por ORDEN completa y el menú no registra cuántas piezas trae. requested_quantity cuenta ÓRDENES, no piezas: «una orden» = 1, «dos órdenes» = 2. " +
+    "No inventes cuántas piezas trae la orden: si el cliente la pregunta, dile que la cantidad exacta la confirma la sucursal. " +
+    "Si pide piezas sueltas sin decir cuántas órdenes, pregunta cuántas órdenes quiere antes de cotizar."
   );
+}
+
+const ES_FLAUTA = /\bflautas?\b/i;
+
+/**
+ * FLAUTAS: cada ORDEN es UNA flauta grande (decisión de Javier, 16-oct-2026; los menús públicos no traen el dato). Con `packSize` 1 (cargado como
+ * «Orden de 1 flauta grande» en la descripción del seed) `requested_quantity` cuenta flautas = órdenes: 1 flauta = 1 orden, 4 flautas = 4 órdenes.
+ * «4 flautas, una orden» (o «una orden de 4 flautas») es AMBIGUO: no se adivina, se pregunta antes de cotizar, porque la diferencia es cobrar ×4.
+ * Si alguna vez PM cambia la presentación (packSize distinto de 1) el aviso desaparece y manda el pack_size.
+ */
+export function unidadDeVentaFlautas(
+  product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
+): string | null {
+  if (product.packSize !== 1) return null;
+  if (!ES_FLAUTA.test(`${product.name} ${product.categoryName ?? ""}`)) return null;
+  return (
+    "Cada ORDEN de flautas es UNA flauta grande. requested_quantity cuenta flautas = órdenes: 1 flauta o «una orden» = 1, 2 flautas = 2, 4 flautas = 4 (el precio se multiplica). " +
+    "Dile al cliente que cada orden es una flauta grande. Si dice algo contradictorio como «4 flautas, una orden» o «una orden de 4 flautas», NO adivines: " +
+    "pregunta si quiere 1 flauta grande o 4 antes de cotizar."
+  );
+}
+
+/** Aviso de unidad que `buscar_producto` y la cotización le dan al agente: flautas (1 flauta grande por orden) o productos por orden sin piezas confirmadas. */
+export function unidadDeVenta(
+  product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
+): string | null {
+  return unidadDeVentaFlautas(product) ?? unidadDeVentaSinPiezas(product);
 }
 
 /** El agente debe obtener un sí claro de mayoría de edad antes de cotizar alcohol. */

@@ -100,7 +100,7 @@ describe("escenarios de T7: las cifras citadas coinciden con el motor real sobre
     ["T7-061", "1/4 kg de pechuga (fraccion con .50)", [["Pechuga de Pollo — 250 g", 1]], 237.5],
     ["T7-022", "nachos de bistec + extra salsa (ajo)", [["Nachos de Bistec", 1]], 392, ["crema_ajo"]],
     ["T7-045", "2 frijoles + frances suizo de pastor + chicharron + extra pina", [["Frijol con Tostada", 2], ["Francés Suizo de Pastor", 1], ["Chicharrón de Queso", 1], ["Extra Piña", 1]], 639],
-    ["T7-052", "2 charros + 2 ordenes de bistec + alambre suizo de bistec", [["Frijoles Charros Normal", 2], ["Tacos de Bistec de Res (orden de 3)", 6, "maiz"], ["Alambre Suizo de Bistec", 1]], 948],
+    ["T7-052", "2 charros + 2 ordenes de bistec + alambre suizo de bistec", [["Frijoles Charros Normal", 2], ["Tacos de Bistec de Res (orden de 3)", 6, "maiz"], ["Alambre Suizo de Bistec", 5]], 948], // 1 orden = 5 piezas: el menú público dice «las órdenes son de 5 tacos» (seed con «Orden de 5 tacos»); mismo total que antes
     ["T7-059", "1/2 kg de pastor + 1/2 kg de bistec + 2 frijoles", [["Pastor — 500 g", 1], ["Bistec de Res — 500 g", 1], ["Frijol con Tostada", 2]], 1186],
     ["T7-038", "medio kilo de bistec + chicharron de queso", [["Bistec de Res — 500 g", 1], ["Chicharrón de Queso", 1]], 722],
     ["T7-071", "1/2 kg de pastor + 1/4 de bistec + frijol + chicharron", [["Pastor — 500 g", 1], ["Bistec de Res — 250 g", 1], ["Frijol con Tostada", 1], ["Chicharrón de Queso", 1]], 990],
