@@ -13,7 +13,7 @@ import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTi
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import { declararDiaInhabil, fetchDiasInhabiles, quitarDiaInhabil } from "../lib/dias-inhabiles-client.ts";
 import type { DiaInhabilDeclarado, DiasInhabilesResumen } from "../lib/dias-inhabiles-client.ts";
-import { fetchTenders } from "../lib/tenders-client.ts";
+import { fetchOpenTenders, fetchTendersByIds } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
@@ -29,6 +29,9 @@ function porAnio<T extends { readonly fecha: string }>(filas: readonly T[]): [st
 export function DiasInhabilesPage({ apiBaseUrl, token, propertyId }: LicitacionesShellContext) {
   const [resumen, setResumen] = useState<DiasInhabilesResumen | null>(null);
   const [convocatorias, setConvocatorias] = useState<readonly TenderSummary[]>([]);
+  /** Total real de convocatorias abiertas (el selector lista hasta el techo del servidor) y titulos de las ya declaradas (por id). */
+  const [totalAbiertas, setTotalAbiertas] = useState(0);
+  const [tituloDeclaradas, setTituloDeclaradas] = useState<ReadonlyMap<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -49,9 +52,11 @@ export function DiasInhabilesPage({ apiBaseUrl, token, propertyId }: Licitacione
       if (vivo) setError(err instanceof Error ? err.message : "No se pudo cargar el calendario de días inhábiles.");
     });
     // La lista de convocatorias solo sirve para declarar un dia de UNA convocatoria; si falla, ese selector se oculta.
-    fetchTenders(fetch, apiBaseUrl, token, propertyId)
-      .then((t) => {
-        if (vivo) setConvocatorias(t);
+    fetchOpenTenders(fetch, apiBaseUrl, token, propertyId)
+      .then((page) => {
+        if (!vivo) return;
+        setConvocatorias(page.items);
+        setTotalAbiertas(page.total);
       })
       .catch(() => {
         if (vivo) setConvocatorias([]);
@@ -74,7 +79,22 @@ export function DiasInhabilesPage({ apiBaseUrl, token, propertyId }: Licitacione
     }
   }
 
-  const tituloConvocatoria = useMemo(() => new Map(convocatorias.map((t) => [t.id, t.title])), [convocatorias]);
+  // Titulo de las convocatorias ya declaradas: se piden por id (no "todas"), asi no se pierden aunque haya mas de 200 abiertas o ya esten cerradas.
+  useEffect(() => {
+    const ids = (resumen?.declarados ?? []).flatMap((d) => (d.tenderId ? [d.tenderId] : []));
+    if (ids.length === 0) return;
+    let vivo = true;
+    fetchTendersByIds(fetch, apiBaseUrl, token, propertyId, ids)
+      .then((list) => {
+        if (vivo) setTituloDeclaradas(new Map(list.map((t) => [t.id, t.title])));
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [resumen, apiBaseUrl, token, propertyId]);
+
+  const tituloConvocatoria = useMemo(() => new Map([...convocatorias.map((t) => [t.id, t.title] as const), ...tituloDeclaradas]), [convocatorias, tituloDeclaradas]);
 
   function enviar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -259,6 +279,11 @@ export function DiasInhabilesPage({ apiBaseUrl, token, propertyId }: Licitacione
                         </option>
                       ))}
                     </NativeSelect>
+                    {totalAbiertas > convocatorias.length && (
+                      <p className="text-xs text-muted-foreground">
+                        Se listan las {convocatorias.length} más recientes de {totalAbiertas} convocatorias abiertas.
+                      </p>
+                    )}
                   </div>
                 ) : null}
                 <Button type="submit" disabled={ocupado || fecha.length === 0 || nombre.trim().length < 3}>

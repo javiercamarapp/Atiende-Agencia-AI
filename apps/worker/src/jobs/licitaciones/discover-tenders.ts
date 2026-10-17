@@ -70,6 +70,8 @@ export interface DiscoverTendersSourceResult {
   readonly discovered: number;
   readonly created: number;
   readonly updated: number;
+  /** Registros enlazados a una convocatoria que ya existia por otra fuente (huella cruzada, 041). */
+  readonly linked?: number;
   readonly droppedRows: number;
   readonly message: string;
   /** `true` cuando la fuente externa no está disponible por causas ajenas (WAF/retirada/TLS/red): queda `down` con su aviso, pero no es un fallo real de la corrida (ver `SourceUnavailableError`). */
@@ -127,6 +129,10 @@ export async function runDiscoverTendersForOrganization(
 
       const { ingest: ingestResult, runNotPersistedReason } = await withRepo(async (repo) => {
         const ingest = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
+        // REQ-169: con la huella cruzada (041) un registro ya conocido por otra fuente queda ENLAZADO, no creado ni actualizado;
+        // sigue siendo un resultado obtenido de esta fuente, asi que cuenta en la cobertura y en el mensaje.
+        const linked = ingest.linked ?? 0;
+        const linkedText = linked > 0 ? `, ${linked} enlazada(s) a otra fuente` : "";
         // Bitacora (038, sesion de sistema: sin actor). Solo el alta; con la 038 pendiente `appendAuditoria` devuelve false sin abortar la transaccion.
         for (const tender of ingest.tenders) {
           if (!(ingest.createdIds ?? []).includes(tender.id)) continue;
@@ -146,8 +152,8 @@ export async function runDiscoverTendersForOrganization(
           startedAt,
           finishedAt: now().toISOString(),
           evidence: {
-            message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
-            coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated },
+            message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${linkedText}${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
+            coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated + linked },
           },
           correlationId,
         });
@@ -167,7 +173,8 @@ export async function runDiscoverTendersForOrganization(
         created: ingestResult.created,
         updated: ingestResult.updated,
         droppedRows: droppedCount,
-        message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s).${runNotPersistedReason !== undefined ? ` [AVISO: ${runNotPersistedReason}]` : ""}`,
+        linked: ingestResult.linked ?? 0,
+        message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s)${(ingestResult.linked ?? 0) > 0 ? `, ${ingestResult.linked} enlazada(s) a otra fuente` : ""}.${runNotPersistedReason !== undefined ? ` [AVISO: ${runNotPersistedReason}]` : ""}`,
       });
     } catch (err) {
       const { state, message, unavailable } = classifySourceFailure(err);

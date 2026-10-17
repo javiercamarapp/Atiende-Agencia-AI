@@ -30,7 +30,7 @@ function stubFetch(routes: Record<string, Handler>) {
     const handler = routes[key];
     if (!handler) return { ok: false, status: 500, json: async () => ({ error: { message: `sin ruta ${key}` } }) } as unknown as Response;
     const r = handler(init);
-    return { ok: r.ok ?? true, status: r.status ?? (r.ok === false ? 500 : 200), json: async () => r.body } as unknown as Response;
+    return { ok: r.ok ?? true, status: r.status ?? (r.ok === false ? 500 : 200), headers: new Headers(), json: async () => r.body } as unknown as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
 }
@@ -60,7 +60,7 @@ const TENDERS = { tenders: [{ id: "t1", title: "Suministro de papeleria", submis
 
 describe("pantalla de WhatsApp de licitaciones", () => {
   it("base sin migrar: lo dice y no ofrece formulario", async () => {
-    stubFetch({ "GET /whatsapp/settings": () => ({ body: SETTINGS({ available: false }) }), "GET /tenders": () => ({ body: TENDERS }) });
+    stubFetch({ "GET /whatsapp/settings": () => ({ body: SETTINGS({ available: false }) }), "GET /tenders?limit=200&open=true": () => ({ body: TENDERS }) });
     mount(CTX);
     await settle();
     expect(text()).toContain("Aún no disponible");
@@ -68,7 +68,7 @@ describe("pantalla de WhatsApp de licitaciones", () => {
   });
 
   it("sin numero remitente configurado: avisa que no llegaran mensajes", async () => {
-    stubFetch({ "GET /whatsapp/settings": () => ({ body: SETTINGS({ configured: false }) }), "GET /tenders": () => ({ body: TENDERS }) });
+    stubFetch({ "GET /whatsapp/settings": () => ({ body: SETTINGS({ configured: false }) }), "GET /tenders?limit=200&open=true": () => ({ body: TENDERS }) });
     mount(CTX);
     await settle();
     expect(text()).toContain("Número de WhatsApp sin configurar");
@@ -77,7 +77,7 @@ describe("pantalla de WhatsApp de licitaciones", () => {
   it("guarda el telefono con los temas elegidos y pide contestar SI (nunca marca activo por su cuenta)", async () => {
     stubFetch({
       "GET /whatsapp/settings": () => ({ body: SETTINGS() }),
-      "GET /tenders": () => ({ body: TENDERS }),
+      "GET /tenders?limit=200&open=true": () => ({ body: TENDERS }),
       "PUT /whatsapp/settings": () => ({ body: { configured: true, contact: CONTACT("pendiente") } }),
     });
     mount(CTX);
@@ -100,7 +100,7 @@ describe("pantalla de WhatsApp de licitaciones", () => {
     let status = "activo";
     stubFetch({
       "GET /whatsapp/settings": () => ({ body: SETTINGS({ contact: CONTACT(status) }) }),
-      "GET /tenders": () => ({ body: TENDERS }),
+      "GET /tenders?limit=200&open=true": () => ({ body: TENDERS }),
       "POST /whatsapp/opt-out": () => {
         status = "baja";
         return { body: { ok: true, changed: true } };
@@ -128,7 +128,7 @@ describe("pantalla de WhatsApp de licitaciones", () => {
   it("Cancelar el diálogo de salida NUNCA llama a opt-out", async () => {
     stubFetch({
       "GET /whatsapp/settings": () => ({ body: SETTINGS({ contact: CONTACT("activo") }) }),
-      "GET /tenders": () => ({ body: TENDERS }),
+      "GET /tenders?limit=200&open=true": () => ({ body: TENDERS }),
       "POST /whatsapp/opt-out": () => ({ body: { ok: true, changed: true } }),
     });
     mount(CTX);
@@ -150,7 +150,7 @@ describe("pantalla de WhatsApp de licitaciones", () => {
   it("quien puede decidir pide la decision de una convocatoria y ve el resultado", async () => {
     stubFetch({
       "GET /whatsapp/settings": () => ({ body: SETTINGS({ contact: CONTACT("activo") }) }),
-      "GET /tenders": () => ({ body: TENDERS }),
+      "GET /tenders?limit=200&open=true": () => ({ body: TENDERS }),
       "POST /tenders/t1/whatsapp/request-decision": () => ({ body: { requested: 2, alreadyPending: 0, eligible: 2 } }),
     });
     mount(CTX);
@@ -172,13 +172,13 @@ describe("pantalla de WhatsApp de licitaciones", () => {
     await settle();
     expect(text()).not.toContain("Pedir una decisión por WhatsApp");
     expect(text()).not.toContain("Solicitudes de decisión go / no-go");
-    expect(calls("GET", "/tenders")).toHaveLength(0);
+    expect(calls("GET", "/tenders?limit=200&open=true")).toHaveLength(0);
   });
 
   it("un error del servidor al guardar se muestra, no se traga", async () => {
     stubFetch({
       "GET /whatsapp/settings": () => ({ body: SETTINGS() }),
-      "GET /tenders": () => ({ body: TENDERS }),
+      "GET /tenders?limit=200&open=true": () => ({ body: TENDERS }),
       "PUT /whatsapp/settings": () => ({ ok: false, status: 400, body: { message: "telefono: se esperaba formato internacional" } }),
     });
     mount(CTX);

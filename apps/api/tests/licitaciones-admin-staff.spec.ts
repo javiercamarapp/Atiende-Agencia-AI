@@ -11,6 +11,7 @@
 // sobre los 6 roles de licitaciones.
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { removalLeavesNoOwner } from "../src/routes/verticals/licitaciones/admin-staff.ts";
 import { authedJson, buildLicitacionesTestContext } from "./licitaciones-fixtures.ts";
 
 interface InviteResponse {
@@ -212,5 +213,49 @@ describe("GET /v1/licitaciones/:propertyId/admin/staff/miembros y PATCH .../miem
 
     const res = await app.request(`/v1/licitaciones/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.owner.id}`, authedPatch(ctx.staff.owner.token, { verticalRole: "admin" }));
     expect(res.status).toBe(400);
+  });
+});
+
+describe("DELETE /v1/licitaciones/:propertyId/admin/staff/miembros/:userId (L-P3-16)", () => {
+  const miembros = (ctx: Awaited<ReturnType<typeof buildLicitacionesTestContext>>) => `/v1/licitaciones/${ctx.propertyId}/admin/staff/miembros`;
+
+  it("owner da de baja a un analyst: 200, desaparece del listado de miembros", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`${miembros(ctx)}/${ctx.staff.analyst.id}`, authedDelete(ctx.staff.owner.token));
+    expect(res.status).toBe(200);
+    const listado = (await (await app.request(miembros(ctx), authedJson(ctx.staff.owner.token))).json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listado.miembros.some((m) => m.id === ctx.staff.analyst.id)).toBe(false);
+  });
+
+  it("nunca a uno mismo: 400", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const res = await buildApp(ctx.deps).request(`${miembros(ctx)}/${ctx.staff.owner.id}`, authedDelete(ctx.staff.owner.token));
+    expect(res.status).toBe(400);
+  });
+
+  it("un admin no puede quitar a un owner (rango insuficiente): 403, y el owner sigue en el listado", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`${miembros(ctx)}/${ctx.staff.owner.id}`, authedDelete(ctx.staff.admin.token));
+    expect(res.status).toBe(403);
+    const listado = (await (await app.request(miembros(ctx), authedJson(ctx.staff.owner.token))).json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listado.miembros.some((m) => m.id === ctx.staff.owner.id)).toBe(true);
+  });
+
+  it("roles fuera de owner/admin (analyst, writer, viewer): 403; miembro ajeno: 404", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    for (const token of [ctx.staff.analyst.token, ctx.staff.writer.token, ctx.staff.viewer.token]) {
+      expect((await app.request(`${miembros(ctx)}/${ctx.staff.reviewer.id}`, authedDelete(token))).status).toBe(403);
+    }
+    expect((await app.request(`${miembros(ctx)}/00000000-0000-0000-0000-00000000dead`, authedDelete(ctx.staff.owner.token))).status).toBe(404);
+  });
+
+  it("removalLeavesNoOwner: el unico owner NO se puede quitar (409); con dos owners si; un no-owner nunca bloquea", () => {
+    const m = (userId: string, verticalRole: string) => ({ userId, verticalRole });
+    expect(removalLeavesNoOwner([m("a", "owner"), m("b", "admin")], "a")).toBe(true);
+    expect(removalLeavesNoOwner([m("a", "owner"), m("b", "owner")], "a")).toBe(false);
+    expect(removalLeavesNoOwner([m("a", "owner"), m("b", "admin")], "b")).toBe(false);
   });
 });

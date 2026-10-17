@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, useConfirm } from "@atiende/ui";
-import { fetchTenders } from "../lib/tenders-client.ts";
+import { fetchOpenTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchWhatsAppSettings, optOutWhatsApp, requestWhatsAppDecision, saveWhatsAppSettings } from "../lib/whatsapp-client.ts";
 import type { DecisionRequestResult, WhatsAppContactStatus, WhatsAppSettings } from "../lib/whatsapp-client.ts";
@@ -46,6 +46,7 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
   const [fallos, setFallos] = useState(true);
   const [decisiones, setDecisiones] = useState(true);
   const [tenders, setTenders] = useState<readonly TenderSummary[]>([]);
+  const [totalAbiertas, setTotalAbiertas] = useState(0);
   const [tenderId, setTenderId] = useState("");
   const [resultado, setResultado] = useState<DecisionRequestResult | null>(null);
   const puedeDecidir = GO_NO_GO_ROLES.has(role);
@@ -79,9 +80,11 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
   useEffect(() => {
     if (!puedeDecidir) return;
     let vivo = true;
-    fetchTenders(fetch, apiBaseUrl, token, propertyId)
-      .then((list) => {
-        if (vivo) setTenders(list);
+    fetchOpenTenders(fetch, apiBaseUrl, token, propertyId)
+      .then((page) => {
+        if (!vivo) return;
+        setTenders(page.items);
+        setTotalAbiertas(page.total);
       })
       .catch(() => {
         /* la lista de convocatorias es opcional: sin ella solo se oculta el selector */
@@ -220,6 +223,11 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
                       </option>
                     ))}
                   </NativeSelect>
+                  {totalAbiertas > tenders.length && (
+                    <p className="text-xs text-muted-foreground">
+                      Se listan las {tenders.length} más recientes de {totalAbiertas} convocatorias abiertas.
+                    </p>
+                  )}
                 </div>
                 <Button type="submit" disabled={ocupado || !tenderId}>
                   Pedir decisión
