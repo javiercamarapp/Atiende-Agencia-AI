@@ -94,7 +94,9 @@ export async function volumenT7DePrueba(): Promise<VolumenT7DePrueba> {
   const porCliente = new Map<string, number>();
   for (const o of batch.orders) if (o.status !== "cancelado") porCliente.set(o.customerPhone, (porCliente.get(o.customerPhone) ?? 0) + 1);
   const rec = [...porCliente.values()].filter((n) => n >= 2);
-  return { batch, pedidos: batch.orders.length, clientes: new Set(batch.orders.filter((o) => o.status !== "cancelado").map((o) => o.customerPhone)).size, recurrentes: rec.length, pedidosDeRecurrentes: rec.reduce((a, b) => a + b, 0) };
+  // la consulta de verificacion cuenta TODO cliente con algun pedido (tambien el que solo tiene cancelados); solo los recurrentes excluyen cancelados
+  const clientes = new Set(batch.orders.map((o) => o.customerPhone)).size;
+  return { batch, pedidos: batch.orders.length, clientes, recurrentes: rec.length, pedidosDeRecurrentes: rec.reduce((a, b) => a + b, 0) };
 }
 
 const SUMA_RENGLONES = `(select coalesce(sum((i->>'price')::numeric * (i->>'quantity')::numeric), 0) from jsonb_array_elements(o.items) i)`;

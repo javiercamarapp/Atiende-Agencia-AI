@@ -78,7 +78,7 @@ describe("R11-5A cantidades: negativas, cero, decimales, no numericas y enormes"
     ["hexadecimal '0x10' (-> 16)", "0x10"],
   ];
   for (const [nombre, valor] of coercionadas) {
-    hallazgo(`R11-11 [P2] cantidad ${nombre} se rechaza en vez de coercionarse`, async () => {
+    it(`R11-11 [P2] cantidad ${nombre} se rechaza en vez de coercionarse`, async () => {
       const f = buildRestaurantFixture();
       const s = flujo(f);
       const control = await s.seguro("cotizar_pedido", s.base("2"));

@@ -460,10 +460,14 @@ export interface HighRiskContext {
   readonly carritoEnCurso?: boolean;
 }
 
+const CARACTERES_INVISIBLES = /\u034f|[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g;
+
 /** Texto comparable: minusculas y sin acentos. Asi "faltó" y "falto" son lo mismo (con `\b` y sin acentos el resultado ya no depende de si el cliente acentuó). */
 export function normalizarParaClasificar(text: string): string {
   if (typeof text !== "string") return "";
-  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // R11-07: NFKD pliega las formas de ancho completo ("ａｌｅｒｇｉｃｏ") y las ligaduras a su forma base, y se quitan los caracteres invisibles
+  // (ancho cero, guion suave, marcas de direccion, BOM) que partirian una palabra de riesgo sin cambiar lo que el cliente lee.
+  return text.normalize("NFKD").replace(CARACTERES_INVISIBLES, "").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 // Verbo en infinitivo (con o sin clitico): "me falto pedir", "me falto pedirle", "me falto agregar". Es el habla de quien SE OLVIDO de pedir algo
@@ -556,6 +560,304 @@ const HACE_UN_PEDIDO_NUEVO =
 // «¿me puedes agregar algo a mi pedido?» es una PETICION (el modelo diria «claro»); «¿puedo agregar...?» es una consulta de politica y sigue yendo al agente.
 const PETICION_EN_PREGUNTA = /\b(?:me\s+)?(?:puedes|podrias|podria|podrian|pueden|quieres|me\s+haces\s+el\s+favor\s+de)\b/;
 
+// ── R11-04: alergia / cobro doble en ingles ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// Los patrones corren sobre texto sin acentos. «nuts» a secas es una palabra comun («this is nuts»): solo cuenta con contexto de comida.
+const ALERGIA_EN =
+  /\ballerg\w*|\bcoeliac\w*|\bceliac\w*|\bpeanuts?\b|\btree\s+nuts?\b|\bnut[\s-]free\b|\b(?:contain\w*|has|have|with|without|any|free\s+of|no)\s+nuts?\b|\bshellfish\b|\bintolerant\b|\bintolerance\b|\banaphyla\w*|\bepi[\s-]?pen\b/;
+const COBRO_DOBLE_EN =
+  /\bcharged\s+(?:me\s+|us\s+|my\s+card\s+)?(?:twice|two\s+times|double)\b|\bbilled\s+(?:me\s+|us\s+)?twice\b|\b(?:paid|pay)\s+twice\b(?!\s+(?:the|as|what|more|that|my|your))|\b(?:double|duplicate)[\s-]+(?:charge\w*|payment|billing)\b|\b(?:charged|billed)\s+(?:me\s+)?(?:a\s+)?second\s+time\b/;
+const PREGUNTA_DE_CARGO_FUTURO_EN =
+  /\b(?:will|would|do|does|can|could)\s+(?:i|you|we|it|they|someone)\b[^.!?\n]{0,30}\b(?:charge|bill|pay)\b|\bif\s+i\s+(?:pay|use|choose|order)\b/;
+/** Alergia dicha en broma («soy alergico a los lunes», «allergic to mornings»): no es un riesgo de salud. Solo exime cuando NO hay ademas un termino de comida/salud. */
+const BROMA_DE_ALERGIA =
+  /\b(?:alergic[oa]s?|allergic)\s+(?:a|to)\s+(?:the\s+|los?\s+|las?\s+|el\s+|la\s+)?(?:lunes|mondays?|madrugar|mornings?|trabajar|work|working|ejercicio|exercise|cardio|tarea|homework|gym|gimnasio|mananas?|filas?|lines|people|gente|fiestas?)\b/;
+const ALERGIA_CON_COMIDA =
+  /\b(?:cacahuate|mariscos?|camarones?|nueces|nuez|gluten|lacteos?|lactosa|huevo|soya|ajonjoli|pescado|peanuts?|nuts?|shellfish|shrimp|dairy|lactose|eggs?|soybeans?|sesame|fish)\b/;
+export function esBromaDeAlergia(texto: string): boolean {
+  return BROMA_DE_ALERGIA.test(texto) && !ALERGIA_CON_COMIDA.test(texto);
+}
+/** «No tengo alergias», «no soy alergico», «no allergies», «not allergic»: lo dice para tranquilizar, no para avisar. Si ademas cuenta de OTRA persona o contrasta («pero mi hija si»), escala. */
+const NEGACION_DE_ALERGIA =
+  /\b(?:no\s+(?:soy|tengo|somos|tenemos|hay|existe)\s+(?:\w+\s+){0,2}(?:alergic[oa]s?|alergias?|intolerancias?)|sin\s+alergias?|no\s+allergies|not\s+allergic|no\s+(?:food\s+)?allergy|(?:i|we)\s+(?:don'?t|do\s+not)\s+have\s+(?:any\s+)?(?:food\s+)?allerg\w*|(?:i'?m|i\s+am)\s+not\s+allergic)\b/;
+const CONTRASTE_DE_ALERGIA =
+  /\b(?:pero|aunque|excepto|menos|salvo|but|except|however|mi\s+(?:hij\w*|espos\w*|novi\w*|amig\w*|mam\w*|papa|nino\w*|bebe)|my\s+(?:daughter|son|wife|husband|friend|kid|kids|child|baby|mom|dad)|alguien|someone|one\s+of)\b/;
+export function niegaTenerAlergia(texto: string): boolean {
+  if (!NEGACION_DE_ALERGIA.test(texto) || CONTRASTE_DE_ALERGIA.test(texto)) return false;
+  // Si tras quitar la negacion aun queda un termino de alergia afirmativo, escala.
+  const resto = texto.replace(new RegExp(NEGACION_DE_ALERGIA.source, "g"), " ");
+  return !/\b(?:alergic[oa]s?|alergias?|allerg\w*|celiac\w*|coeliac\w*|intolerante|intolerancia|intolerant|cacahuate|peanuts?|gluten|mariscos?|shellfish)\b/.test(resto);
+}
+
+// ── R11-06: reembolso ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const REEMBOLSO =
+  /\breembols\w*|\bdevoluci(?:on|ones)\s+(?:de|del)\s+(?:mi\s+|el\s+|su\s+|este\s+|todo\s+el\s+)?dinero|\bdevuel\w*\s+(?:mi|el|todo\s+mi|todo\s+el)\s+dinero|\bmi\s+dinero\s+de\s+vuelta|\bregres\w*\s+(?:mi|el)\s+dinero|\brefund\w*|\bmoney\s+back\b|\bgive\s+me\s+my\s+money\b/;
+const POLITICA_SIN_DEVOLUCIONES = "Por política no hacemos devoluciones de dinero, solo cambio de producto";
+export const RESPUESTA_REEMBOLSO_ESCALADO = `Lamento lo ocurrido. ${POLITICA_SIN_DEVOLUCIONES}; ya avisé al gerente para que revise su caso y lo contacte directamente. ¿Me puede decir qué faltó o qué llegó mal?`;
+/** «¿Tienen política de reembolso?», «do you have a refund policy?»: pregunta por la regla, no pide el dinero. La contesta el agente (regla 6b del prompt) y la guardia posterior cuida su respuesta. */
+const PREGUNTA_POLITICA_REEMBOLSO =
+  /\b(?:hacen|hay|tienen|tiene|aceptan|manejan|ofrecen|existe|cual\s+es|cuales\s+son|como\s+funciona\w*|politicas?|puedo|puede|podria|podrian|duda|dudas|pregunta|solo\s+cambio|do\s+you|can\s+i|could\s+i|question|doubt|does|is\s+there|are\s+there|what\s+is|what'?s|policy|policies)\b/;
+const EXIGE_EL_DINERO = /\b(?:quiero|exijo|necesito|devuelvan\w*|devuelvame|i\s+want|i\s+need|give\s+me)\b/;
+/** Hechos de una queja ya ocurrida («me cobraron mal», «llego frio», «faltaron cosas»): con ellos una pregunta de dinero SI escala. */
+const HECHO_DE_QUEJA = /\b(?:cobraron|cobro\s+(?:mal|doble|de\s+mas)|llego|llegaron|llegó|falto|faltaron|incompleto|frio|fria|crudo|tardaron|tardo\s+(?:mucho|horas)|nunca\s+lleg\w+|no\s+lleg\w+|equivocaron|equivocaste|mal\s+(?:hecho|preparad\w+)|pesimo|horrible|queja|reclamo|molest\w+|enojad\w+|did(?:n'?t|\s+not)\s+(?:arrive|come)|cold|missing|wrong|late|charged)\b/;
+export function preguntaPorLaPoliticaDeReembolso(texto: string): boolean {
+  const esPregunta = /[?¿]/.test(texto) || /\b(?:duda|dudas|pregunta|preguntas|question|doubt|wondering|curious)\b|\b(?:saber|dime|dinos|digame|avisame|informame)\s+si\b/.test(texto);
+  // «¿Que pasa si quiero un reembolso?» / «if I want a refund»: el verbo de exigencia va en hipotesis, es duda de politica.
+  const sinHipotesis = texto.replace(/\b(?:si|if)\s+(?:yo\s+|i\s+)?(?:quiero|necesito|want|need)\b/g, " ");
+  if (!esPregunta || EXIGE_EL_DINERO.test(sinHipotesis)) return false;
+  if (PREGUNTA_POLITICA_REEMBOLSO.test(texto)) return true;
+  // «¿Me devuelven mi dinero?», «¿cuanto tarda el reembolso?»: pregunta (con signo) sin verbo de exigencia ni hecho de queja = duda de politica, no aviso al gerente.
+  return /[?¿]/.test(texto) && !HECHO_DE_QUEJA.test(texto);
+}
+/** «No quiero reembolso, solo cambien el producto», «no refund needed»: lo descarta, no lo pide. */
+export function niegaQuererReembolso(texto: string): boolean {
+  return /\b(?:no|ni|not|never|nunca)\s+(?:\w+\s+){0,3}(?:reembols\w*|refund\w*)|\b(?:sin|without)\s+(?:\w+\s+)?(?:reembols\w*|refund\w*)|\bno\s+(?:\w+\s+){0,2}(?:quiero|necesito|pido|exijo|busco)\s+(?:que\s+me\s+)?(?:\w+\s+){0,2}(?:devoluci\w+\s+de\w*\s+dinero|mi\s+dinero)/.test(texto) &&
+    !/\b(?:pero|aunque|but)\b/.test(texto);
+}
+
+// ── R11-03a / R11-03b: promesas de dinero fuera de politica ──────────────────────────────────────────────────────────────────────────────────────
+// Decision vigente: NO hay devoluciones de dinero (solo cambio de producto) y el unico descuento es el que `cotizar_pedido` calcula. El modelo NO tiene herramienta para reembolsar ni
+// descontar: solo puede PROMETERLO por texto. La defensa principal es el prompt + escalar a un humano; esta guardia es una red de ultimo recurso.
+//
+// DISENO (R12 revision 3, «precision primero»): una lista negra de frases es un juego del gato y el raton, y cada ronda abria falsos positivos en lo mas comun del negocio (dar CAMBIO en
+// efectivo, confirmar un pago, reponer un platillo). Un falso positivo (borrar una frase legitima) es PEOR que un falso negativo exotico. Por eso la guardia dispara SOLO con senales de
+// alta precision y respeta una exclusion general por contexto:
+//   1. SENAL A (sin exclusion de contexto, solo la negacion): VERBOS DE PROMESA con reembolso/refund («reembolsamos», «haremos el reembolso», «se le reembolsara», «we will refund you»),
+//      «money back», «devolucion de su dinero» o «de lo pagado», «su dinero de regreso». Nombrar la palabra sin prometer (politica, «su solicitud de reembolso», «lo decide el gerente») NO dispara.
+//   2. SENAL B: devolver/regresar/reintegrar (formas del restaurante: «devolvemos», «regresaremos», «devolverle») + «su dinero», «lo pagado», «el importe de su pedido», «el pago completo» o
+//      «a su tarjeta/cuenta bancaria» (y su pasiva). Mandar/enviar/transferir/depositar y los gerundios/imperativos NO cuentan (son envio de pedido o instruccion de pago al cliente).
+//   3. SENAL DE DESCUENTO: «descuent*» con verbo de oferta (hacemos, damos, aplicamos, aplicara, haremos, hago, doy, aplico, podemos...) o con porcentaje dirigido a SU pedido/cuenta,
+//      salvo que la cotizacion vigente traiga una promocion (`respaldaDescuento`) o sea un descuento condicional de la carta.
+//   4. EXCLUSION (aplica a B y a descuentos): si la oracion trata de CAMBIO/vuelto en efectivo, de CONFIRMAR o dar seguimiento a un PAGO (acredit*, abon*, propina, terminal...) o de
+//      cosas que se devuelven a mano (link, llamada, cotizacion, pedido corregido) NO se toca, aunque aparezca devolver/regresar. Una negacion («no hacemos reembolsos») tampoco.
+//   5. NUNCA disparan por si solos: «cobro», «sin costo», «reposicion/reponer», «corregido», «cambio de producto», ni total/costo/importe/monto/pago sueltos.
+//
+// FALSOS NEGATIVOS ACEPTADOS POR DISENO (promesas que NO se reemplazan; el prompt y la escalacion a humano son la defensa):
+//   - Sin la palabra dinero/reembolso: «Se le hara la devolucion.», «Procederemos con la devolucion de su pedido.», «Le bonificamos el total.», «Le compensamos con $100 de credito.»
+//   - Descuento disfrazado o con otra raiz: «Le descontamos $50 de su pedido.», «Su pedido corre por nuestra cuenta.», «Su pedido sale gratis.», «Se lo regalamos.», «precio especial para usted».
+//   - Choque con la exclusion de contexto (efectivo/pago/acreditar): «Le acreditamos el monto a su tarjeta.», «Le devolvemos su dinero en efectivo.», «Su pago se regresara en 3 dias.»
+//   - Perifrasis sin la senal exacta: «Le pagamos de vuelta lo que cobramos», «We'll make it up to you with $50», «We will pay you back».
+//   - Verbos de envio o transferencia: «Le mandamos su dinero de regreso» (solo cae por «de regreso»), «Le transferimos el importe de su pedido», «Le depositamos lo pagado».
+//   - Reembolso con sujeto distinto o sin verbo de promesa: «Procesaremos su solicitud de reembolso», «El gerente autorizara el reembolso».
+//   - «Su dinero de vuelta/de regreso» (modismo del VUELTO) ya NO es senal A: «Su dinero de regreso a su tarjeta en 3 dias» se reemplaza, pero con billete/cambio/efectivo/«a su mano»/«son $X»/
+//     «no a su tarjeta» NO. Tampoco se reemplaza si una negacion del destino va DESPUES del objeto («Le devolvemos $15 a su mano, no a su tarjeta»).
+//   - R12 revision 6: la negacion del destino es SOLO «no (es) a su tarjeta/cuenta», «no por/en tarjeta», «sin/ni tarjeta» pegado y «no es reembolso»; «sin costo/sin cargo/no se preocupe ... a su
+//     tarjeta» es promesa. Un destino afirmativo (tarjeta/cuenta/banco) no se exime por el contexto de vuelto, y un plazo («en 3 dias», «lo autoriza el gerente») anula el contexto debil (repartidor/caja).
+//   - R12 revision 7: en «su dinero de vuelta/de regreso» el destino afirmativo solo cuenta si va DESPUES del objeto, sin punto/«;»/«:» de por medio y sin verbo o sustantivo de COBRO entre ambos
+//     («y cobra a su tarjeta», «el cargo a su tarjeta», «el voucher», «la diferencia se cobra», «el consumo se paso a su cuenta»); «a su cuenta de la mesa / quedaron $0» es la cuenta de la mesa y la
+//     negacion cubre jamas/nunca/«sin pasar»/«no lo mandamos»/«no se regresa|abona»/«no por transferencia». Si la tarjeta/cuenta aparece pero como cobro o negada, es vuelto y no se toca. Se permite
+//     una coma entre objeto y destino («Su dinero de vuelta, son $120, a su tarjeta en 3 dias»). FALSOS NEGATIVOS ACEPTADOS: destino antes del objeto sin verbo de devolver («A su tarjeta le damos su
+//     dinero de vuelta»), destino en otra oracion, o con cobro en medio («Su dinero de vuelta, el cobro se revierte a su tarjeta»). La senal B ya no dispara con «su dinero de vuelta/de regreso»
+//     (lo decide la rama del modismo), asi que «El mesero le devuelve su dinero de vuelta» es vuelto. Sigue FP conocido: «Le damos su dinero de vuelta y su cuenta queda en cero.»
+//   - Observaciones menores del revisor (se mantienen): «Le puedo ofrecer el combo con descuento de la carta.» se reemplaza (verbo de oferta + descuento sin respaldo en la cotizacion) y
+//     «Le damos un descuento en su proxima visita si nos sigue en Instagram.» se reemplaza (aceptable: es una promesa que el modelo no puede cumplir).
+//   - Descuento ya hecho o en pasado: «Ya le aplique el descuento» (sin herramienta, no tiene efecto real; escala el prompt).
+const NO_ES_COSA_DE_DINERO = /\b(?:link|liga|enlace|llamada|mensaje|cotizacion|comprobante|ticket|recibo|resumen|desglose|detalle|puntos?|reciba|recibamos|refleje|reflejen|corregid\w*|charolas?|envases?|garrafon\w*|para\s+que\s+(?:\w+\s+)?(?:confirme|revise|verifique|valide|apruebe))\b/;
+const CAMBIO_O_PAGO =
+  /\b(?:que\s+sobre|sobrante|sobrantes|sobra|sobren|de\s+mas|cambio|vuelto|feria|efectivo|billetes?|monedas?|propinas?|terminal|acredit\w*|abon\w*|paga\s+con|pagas\s+con|pagando\s+con|pago\s+(?:en\s+efectivo|recibido|confirmado|registrado|aprobado|exitoso)|recibimos\s+su\s+pago|change|cash|tips?|credited|payment\s+(?:received|confirmed|approved))\b/;
+// «cambio de producto/platillo/pedido» es la politica, no el vuelto: se quita antes de buscar el contexto de efectivo.
+const CAMBIO_DE_PRODUCTO = /\bcambios?\s+(?:de|del|por)\s+(?:producto|productos|platillo|platillos|pedido|orden|articulo)\b|\bcambiar(?:le)?\s+(?:el|su|la)\s+(?:producto|platillo|pedido|orden)\b/g;
+const SOLO_CAMBIO_DE_PRODUCTO = /\b(?:solo|unicamente|nada\s+mas)\s+(?:hacemos\s+|damos\s+|ofrecemos\s+|hay\s+)?cambio|\bonly\s+(?:an?\s+|product\s+)?exchange/;
+function contextoDeCambioOPago(t: string): boolean {
+  return CAMBIO_O_PAGO.test(t.replace(CAMBIO_DE_PRODUCTO, " ")) || NO_ES_COSA_DE_DINERO.test(t);
+}
+// Solo formas conjugadas/infinitivo en las que EL RESTAURANTE devuelve («devolvemos», «regresaremos», «devolverle»). Quedan fuera mandar/enviar/transferir/depositar (instruccion de pago o
+// envio de pedido al cliente: «mande el dinero exacto», «transfiera el pago completo», «le enviamos el importe») y los gerundios/imperativos («Regresando a su pedido...», «devuelvame»).
+const VERBO_DEVOLVER =
+  "(?:devolv(?:emos|eremos|er|erle|erles|eria|eriamos)|devuelv(?:e|en)|regres(?:amos|aremos|ar|arle|arles|aria)|reintegr(?:amos|aremos|ar|arle|arles)|retorn(?:amos|aremos|ar|arle|arles))";
+// R12 revision 4: se quitaron las formas de primera persona del SINGULAR («regreso», «devuelvo», «regresare», «reintegro», «retorno»): en un chat son casi siempre «vuelvo» («Regreso con el
+// importe de su pedido»), no una promesa de dinero.
+const VERBO_DEVOLVER_A_TARJETA = VERBO_DEVOLVER;
+// Hueco entre el verbo y el objeto: si en medio aparece el pedido/platillo, el verbo es de envio de comida («le regresamos su pedido ... el pago completo»), no de dinero.
+const HUECO = "(?:(?!\\b(?:pedido|platillo|orden|comida|paquete|con|para|cuando|cuanto|hasta|despues|luego)\\b)[^.!?\\n]){0,40}";
+// «el dinero» a secas NO cuenta (puede ser el sobrante del cambio): solo «su/tu/mi dinero» o «el dinero que pago / de su pedido».
+const SU_DINERO = "(?:(?:su|tu|mi)\\s+dinero|todo\\s+su\\s+dinero|el\\s+dinero\\s+(?:que\\s+pag\\w+|de\\s+su\\s+(?:pedido|compra|orden)))";
+const LO_PAGADO =
+  "(?:lo\\s+pagado|lo\\s+que\\s+pag\\w+|(?:el\\s+)?importe\\s+(?:total\\s+)?de\\s+su\\s+(?:pedido|compra|orden)|(?:el|su)\\s+pago\\s+(?:completo|total|integro)|\\$\\s?\\d[\\d.,]*\\s+que\\s+pag\\w+)";
+// Senal A: solo VERBOS DE PROMESA con reembolso («reembolsamos», «haremos el reembolso», «se le reembolsara», «we will refund you»). Mencionar la palabra (la politica, «su solicitud de reembolso»,
+// «el reembolso lo decide el gerente», «los reembolsos no estan disponibles») NO dispara: cambiaria el sentido y borraria el aviso al gerente.
+const PROMESA_A_SIN_CONTEXTO = new RegExp(
+  [
+    `\\breembols(?:amos|aremos|are|ara|aran|aria|ariamos|ar(?:le|les|lo|la)?)\\b|\\b(?:sera|seran|fue|fueron)\\s+reembolsad\\w+`,
+    `\\b(?:hac(?:emos|er)|hag(?:o|amos)|har(?:emos|e|a)|dar(?:emos|e|a)|dam(?:os)?|doy|procesa(?:mos|remos|re|r)|tramita(?:mos|remos|re|r)|genera(?:mos|remos|re|r))\\s+(?:le\\s+|les\\s+)?(?:\\w+\\s+){0,2}reembolso\\b`,
+    `\\bproced(?:emos|eremos|ere)\\s+(?:con|al|a)\\s+(?:el\\s+|su\\s+)?reembolso\\b`,
+    `\\bse\\s+(?:le\\s+|les\\s+)?(?:reembolsara|hara|dara|procesara|tramitara|aplicara)\\w*\\s+(?:\\w+\\s+){0,2}(?:reembolso|devolucion\\s+de\\s+(?:${SU_DINERO}|${LO_PAGADO}))`,
+    `\\b(?:su|tu)\\s+reembolso\\s+(?:sera|se\\s+(?:procesara|aplicara|acreditara)|llegara)\\b`,
+    `\\b(?:will|'ll|can|going\\s+to|shall)\\s+(?:\\w+\\s+){0,2}(?:refund|reimburse)\\w*|\\byour\\s+(?:full\\s+)?refund\\s+(?:is|will|has)|\\bget\\s+(?:a\\s+|your\\s+)?(?:full\\s+)?refund\\b|\\bmoney[\\s-]back\\b|\\bback\\s+your\\s+money\\b`,
+    `\\bdevolucion(?:es)?\\s+(?:de|del)\\s+(?:${SU_DINERO}|${LO_PAGADO})`,
+  ].join("|"),
+  "u",
+);
+// R12 revision 5: «su dinero de vuelta/de regreso» NO es senal fuerte: en Mexico es el modismo del VUELTO («Le damos su dinero de vuelta: $120 de su billete»). Pasa por la misma exclusion
+// de cambio/efectivo/pago que la senal B. Solo las raices reembols*/refund*/money back y «devolucion de su dinero» siguen sin exclusion.
+const PROMESA_DINERO_DE_VUELTA = new RegExp(`\\b${SU_DINERO}\\s+de\\s+(?:regreso|vuelta)\\b`, "u");
+// Senales extra de vuelto en efectivo que solo aplican a este modismo (no se agregan a CAMBIO_O_PAGO para no ampliar la exclusion de B/descuentos).
+// FUERTES: el efectivo/la mano/el monto exacto; no las anula nada. DEBILES: quien entrega o donde se entrega (repartidor, caja...); un plazo de reembolso («en 3 dias», «lo autoriza el gerente») las anula.
+const VUELTO_FUERTE = /\b(?:billete|billetes|a\s+su\s+mano|en\s+la\s+puerta|en\s+su\s+puerta|en\s+mano|son\s+\$\s?\d|\$\s?\d[\d.,]*\s+de\s+su\s+(?:billete|pago))/;
+const VUELTO_DEBIL = /\b(?:repartidor|mesero|cajero|caja|mostrador)\b/;
+const PLAZO_DE_REEMBOLSO = /\ben\s+(?:\d+|un|una|dos|tres|cuatro|cinco|siete|diez)\s+(?:dias?|semanas?)\b|\bdias\s+(?:habiles|laborales)\b|\b(?:autoriza\w*|aprueba\w*)\s+(?:el\s+)?gerente\b|\bgerente\s+(?:lo\s+|la\s+)?(?:autoriza|aprueba)\w*/;
+// Destino AFIRMATIVO del dinero: «a su tarjeta/cuenta/banco» que NO va negado antes («no a su tarjeta», «no es a su cuenta», «jamas/nunca a su tarjeta», «sin pasar a su tarjeta», «no lo mandamos a su
+// tarjeta», «no se regresa/abona a su cuenta», «no por transferencia a su cuenta») ni es la CUENTA DE LA MESA («a su cuenta de la mesa», «a su cuenta quedaron $0»). «sin costo/sin cargo/no se
+// preocupe ... a su tarjeta» NO niegan el destino: es la promesa («sin costo» describe la tarifa, no el destino).
+const DESTINO_DEL_DINERO = /\ba\s+su\s+(?:tarjeta|cuenta|banco)\b/g;
+const NEGADO_ANTES_DEL_DESTINO = new RegExp(
+  [
+    String.raw`\b(?:no|ni|jamas|nunca|tampoco)\s*,?\s+(?:(?:es|va|sera|son|se\s+hace|se\s+hara)\s+)?$`,
+    String.raw`\b(?:no|nunca|jamas)\s+(?:(?:lo|la|le|se)\s+)?(?:mand|envi|regres|devolv|devuelv|abon|deposit|transfier|transfer|pas|carg|acredit|reembols)\w*\s+(?:\w+\s+)?$`,
+    String.raw`\bsin\s+(?:pasar|mandar|enviar|transferir|depositar|abonar|regresar|cargar|devolver)\s+$`,
+    String.raw`\bno\s+(?:por|mediante|via)\s+(?:transferencia|deposito|abono)\s+$`,
+  ].join("|"),
+);
+const CUENTA_DE_LA_MESA = /^\s*(?:de\s+la\s+(?:mesa|casa)|de\s+mesa|del\s+restaurante|qued\w*)\b/;
+function destinoNegadoOCuentaDeMesa(t: string, m: RegExpMatchArray): boolean {
+  const i = m.index ?? 0;
+  if (NEGADO_ANTES_DEL_DESTINO.test(t.slice(Math.max(0, i - 40), i))) return true;
+  return /\s+cuenta$/.test(m[0]) && CUENTA_DE_LA_MESA.test(t.slice(i + m[0].length));
+}
+function hayDestinoAfirmativo(t: string): boolean {
+  for (const m of t.matchAll(DESTINO_DEL_DINERO)) if (!destinoNegadoOCuentaDeMesa(t, m)) return true;
+  return false;
+}
+// Destino de «su dinero de vuelta/de regreso»: solo cuenta si va DESPUES del objeto, sin punto/punto y coma/dos puntos de por medio y SIN verbo o sustantivo de COBRO entre el objeto y el destino
+// («y cobra a su tarjeta», «el cargo a su tarjeta», «el voucher a su tarjeta», «la diferencia se cobra a su tarjeta», «el consumo se paso a su cuenta»): ahi la tarjeta/cuenta es del COBRO, no de la
+// devolucion. Los rellenos «sin costo / sin cargo / no se preocupe» se ignoran: son la promesa, no un cobro.
+const RELLENO_DE_PROMESA = /\b(?:sin\s+(?:costo|cargo|demora|problema|pena|falta)(?:\s+alguno)?|no\s+se\s+preocupe|de\s+inmediato|ahora\s+mismo|hoy\s+mismo)\b/g;
+const COBRO_ENTRE_OBJETO_Y_DESTINO = /\b(?:cobr|carg|pag|voucher|aplic|qued|total|consumo|diferencia|resto)\w*|\bpas(?:o|a|e|an|ar)\b/;
+function destinoTrasElObjeto(t: string, finObjeto: number): boolean {
+  const cola = t.slice(finObjeto);
+  const m = new RegExp(DESTINO_DEL_DINERO.source).exec(cola);
+  if (!m) return false;
+  const entre = cola.slice(0, m.index).replace(RELLENO_DE_PROMESA, " ");
+  if (/[.;:!?\n]/.test(entre) || COBRO_ENTRE_OBJETO_Y_DESTINO.test(entre)) return false;
+  const abs = Object.assign([m[0]], { index: finObjeto + m.index }) as unknown as RegExpMatchArray;
+  return !destinoNegadoOCuentaDeMesa(t, abs);
+}
+// Negacion REAL del destino (solo cuenta si no hay destino afirmativo): «no a su tarjeta», «no es a su cuenta», «jamas/nunca a su tarjeta», «no por/en tarjeta», «sin tarjeta»/«ni tarjeta» pegado, «no es reembolso».
+const NEGACION_DEL_DESTINO_SUELTA = /\bno\s+(?:por|en|con)\s+(?:su\s+)?tarjeta\b|\b(?:sin|ni)\s+(?:su\s+)?tarjeta\b|\bno\s+(?:es|son|seria|se\s+trata\s+de)\s+(?:un\s+|una\s+)?(?:reembolso|devolucion|refund)/;
+function negaElDestino(t: string): boolean {
+  for (const m of t.matchAll(DESTINO_DEL_DINERO)) {
+    const i = m.index ?? 0;
+    if (NEGADO_ANTES_DEL_DESTINO.test(t.slice(Math.max(0, i - 40), i))) return true;
+  }
+  return NEGACION_DEL_DESTINO_SUELTA.test(t);
+}
+// Tras «la devolucion de su dinero» / «su dinero de regreso» una negacion posterior («... no es posible», «... no esta disponible») la vuelve politica.
+const NEGACION_DESPUES = /^[^.!?\n]{0,25}\bno\s+(?:es|son|esta|estan|hay|aplica\w*|procede\w*|se\s+(?:puede|permite|hace|hacen)|depende|disponible\w*|posible\w*)\b/;
+const PROMESA_B = new RegExp(
+  [
+    // «le devolvemos su dinero», «le regresamos lo pagado», «le mandamos su dinero», «devolveremos el importe de su pedido»
+    `\\b${VERBO_DEVOLVER}\\b${HUECO}(?<!\\w)(?:${SU_DINERO}(?!\\s+de\\s+(?:regreso|vuelta)\\b)|${LO_PAGADO})`,
+    // «le devolvemos $500 a su tarjeta», «se devolvera a su cuenta»
+    `\\b${VERBO_DEVOLVER_A_TARJETA}\\b${HUECO}\\ba\\s+su\\s+(?:tarjeta|cuenta\\s+(?:bancaria|de\\s+banco|clabe)|cuenta(?=\\s*(?:[.!?,;]|$)))`,
+    // pasiva: «su dinero sera devuelto a su tarjeta», «su dinero se devolvera», «se le devolvera su dinero»
+    `\\b(?:${SU_DINERO}|${LO_PAGADO})\\b[^.!?\\n]{0,30}\\b(?:sera(?:n)?\\s+(?:devuelt|regresad|reintegrad|retornad)\\w*|se\\s+(?:le\\s+)?(?:devolvera|regresara|reintegrara|retornara)\\b)`,
+    `\\bse\\s+(?:le\\s+|les\\s+)?(?:devolvera|regresara|reintegrara|retornara)\\b[^.!?\\n]{0,30}\\b(?:${SU_DINERO}|${LO_PAGADO})`,
+    // primera persona del singular SOLO con «le» y objeto inequivoco: «Le regreso su dinero hoy mismo» (sin «le» es «vuelvo»: «Regreso con el importe...»)
+    `\\ble\\s+(?:devuelvo|regreso|reintegro|retorno|devolvere|regresare|reintegrare)\\b${HUECO}(?<!\\w)(?:(?:su|tu)\\s+dinero|lo\\s+pagado|lo\\s+que\\s+pag\\w+)`,
+    // pasiva dirigida al cliente con «el dinero» a secas: «Se le devolvera el dinero en 3 dias» (el dinero sobrante del cambio queda excluido por el contexto de efectivo)
+    `\\bse\\s+(?:le\\s+|les\\s+)(?:devolvera|regresara|reintegrara|retornara)\\s+el\\s+dinero\\b`,
+    // ingles
+    `\\b(?:return|send|give|refund)\\w*\\b[^.!?\\n]{0,15}\\byour\\s+money\\b|\\byour\\s+money\\s+(?:will|would)\\s+be\\s+(?:returned|sent|given)\\b|\\bcredit\\s+your\\s+(?:card|account)\\b`,
+  ].join("|"),
+  "u",
+);
+// Ofertas de descuento: «descuent*» con verbo de oferta, o con porcentaje dirigido a SU pedido/cuenta.
+const VERBO_DE_OFERTA =
+  "(?:hac(?:emos|er|e)|hag(?:o|amos)|har(?:emos|e|a)|dam(?:os)?|dar(?:emos|e|le|les)?|doy|aplic(?:amos|aremos|ar|ara|o|are|arle)|otorg(?:amos|aremos|ar|ara|o|are)|ofrec(?:emos|eremos|er|e)|ofrezco|conced(?:emos|eremos|er|o)|podemos|puedo|podria(?:mos)?|regal(?:amos|o))";
+const NUMERO_DE_DESCUENTO = "\\d{1,3}\\s*%";
+const PROMESA_DE_DESCUENTO = new RegExp(
+  [
+    `\\b${VERBO_DE_OFERTA}\\b[^.!?\\n]{0,25}\\bdescuent\\w*`,
+    `\\bse\\s+(?:le\\s+|les\\s+)?(?:aplicara|otorgara|hara|dara|concedera|ofrecera)\\w*[^.!?\\n]{0,15}\\bdescuent\\w*`,
+    `\\b(?:tendra|tendran|queda|quedan|llevara|llevan)\\s+(?:con\\s+|un\\s+)?${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?descuento`,
+    `\\b(?:su|tu)\\s+(?:pedido|orden|cuenta|compra|total|proxima\\s+\\w+)[^.!?\\n]{0,30}${NUMERO_DE_DESCUENTO}\\s*(?:de\\s+)?descuento`,
+    `\\b(?:we|i)(?:'ll|\\s+will|\\s+can)\\s+(?:give|offer|apply)\\s+(?:you\\s+)?(?:a\\s+|an\\s+)?(?:${NUMERO_DE_DESCUENTO}\\s*)?(?:discount|off)\\b`,
+  ].join("|"),
+  "u",
+);
+const NEGACION_ANTES = /\b(?:no|nunca|jamas|tampoco|ni|not|never|cannot)\s+(?:\w+\s+){0,4}$|n't\s+(?:\w+\s+){0,4}$|\b(?:sin|without)\s+(?:\w+\s+)?$/;
+const DESCUENTO_CONDICIONAL_DE_LA_CARTA =
+  /\b(?:si|cuando)\s+[^.!?\n]*\b(?:recoger|recoja|recoge|domicilio|tarjeta|efectivo|pasa|pase|visita|visite|dia|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hora|despues\s+de)\b|\b(?:para|al|por|de)\s+recoger\b|\bpedido\s+(?:para\s+)?recoger\b|\b(?:total|precio|pedido)\s+con\s+descuento\b|\b(?:los|todos\s+los|cada)\s+(?:lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)\b|\bpromocion(?:es)?\b|\b(?:credencial|estudiantes?|inapam|adultos?\s+mayores|maestros?|cumpleaneros?|familiares?)\b|\bdescuentos?\s+(?:en|a|para)\s+(?!(?:su|tu|el|la|esta|este|mi|usted|ustedes|ti)\b)\w+/;
+function promesaSinNegar(patron: RegExp, textoNormalizado: string, ignorarNegacionDespues = false): boolean {
+  const m = patron.exec(textoNormalizado);
+  if (!m) return false;
+  if (!ignorarNegacionDespues && NEGACION_DESPUES.test(textoNormalizado.slice(m.index + m[0].length))) return false;
+  return !NEGACION_ANTES.test(textoNormalizado.slice(Math.max(0, m.index - 40), m.index));
+}
+/** La frase PROMETE devolver dinero («le devolvemos su dinero», «we will refund you»). Una negacion («no podemos devolver su dinero»), la politica o el CAMBIO/pago en efectivo no cuentan. */
+export function prometeDevolucionDeDinero(frase: string): boolean {
+  const t = normalizarParaClasificar(frase);
+  if (SOLO_CAMBIO_DE_PRODUCTO.test(t)) return false;
+  // Senal A (reembols*/refund*/money back/devolucion de su dinero): sin exclusion de contexto, solo la negacion.
+  if (promesaSinNegar(PROMESA_A_SIN_CONTEXTO, t)) return true;
+  // Senal B (verbo + dinero/lo pagado/a su tarjeta): el vuelto y la confirmacion de pagos son operacion normal.
+  if (contextoDeCambioOPago(t)) return false;
+  // Un destino afirmativo («a su tarjeta/cuenta/banco» sin «no» pegado) NO se exime por contexto de vuelto ni por «sin costo/sin cargo»: es la promesa. Sin destino afirmativo, una negacion real del
+  // destino («no a su tarjeta», «sin tarjeta», «no es reembolso») ante la duda NO se reemplaza: precision primero.
+  const destino = hayDestinoAfirmativo(t);
+  if (!destino && negaElDestino(t)) return false;
+  // Con destino afirmativo, un «no ...» posterior («..., no hay problema») ya no se refiere al reembolso.
+  if (promesaSinNegar(PROMESA_B, t, destino)) return true;
+  // «su dinero de vuelta/de regreso»: promesa si el destino va tras el objeto y sin cobro de por medio; si la tarjeta/cuenta aparece pero como cobro, cuenta de la mesa o negada, es vuelto: no se toca.
+  // Sin tarjeta/cuenta, solo cuando no hay contexto de vuelto en efectivo (un plazo de reembolso anula el contexto debil: repartidor/caja).
+  const mv = PROMESA_DINERO_DE_VUELTA.exec(t);
+  if (!mv) return false;
+  const destinoV = destinoTrasElObjeto(t, mv.index + mv[0].length);
+  if (!promesaSinNegar(PROMESA_DINERO_DE_VUELTA, t, destinoV)) return false;
+  if (destinoV) return true;
+  if (new RegExp(DESTINO_DEL_DINERO.source).test(t)) return false;
+  if (VUELTO_FUERTE.test(t)) return false;
+  return !VUELTO_DEBIL.test(t) || PLAZO_DE_REEMBOLSO.test(t);
+}
+/** La frase PROMETE un descuento al cliente («le aplico 50% de descuento»). Un descuento condicional de la carta, el CAMBIO/pago en efectivo o una negacion no cuentan. */
+export function prometeDescuento(frase: string): boolean {
+  const t = normalizarParaClasificar(frase);
+  if (!promesaSinNegar(PROMESA_DE_DESCUENTO, t)) return false;
+  return !DESCUENTO_CONDICIONAL_DE_LA_CARTA.test(t) && !contextoDeCambioOPago(t);
+}
+export const RESPUESTA_POLITICA_SIN_DEVOLUCIONES = `${POLITICA_SIN_DEVOLUCIONES}. Si gusta, cuénteme qué faltó o qué llegó mal y lo revisamos.`;
+export const RESPUESTA_SIN_DESCUENTOS_EXTRA = "No puedo ofrecerle descuentos adicionales a los que aparecen en su cotización.";
+/**
+ * Guardia posterior: reemplaza la frase que promete devolver dinero (siempre) o un descuento (salvo que la cotizacion de este turno traiga una promocion, `respaldaDescuento`) por la
+ * politica vigente. El resto de la respuesta se conserva; cada sustitucion aparece una sola vez. No afirma «ya avise al gerente»: esta guardia no registra ningun aviso.
+ */
+export function quitarPromesaDeDinero(reply: string, opciones: { readonly respaldaDescuento?: boolean } = {}): string {
+  const partes = reply.split(/((?<=[.!?])\s+|\n+)/);
+  let usadaDevolucion = false;
+  let usadaDescuento = false;
+  let cambio = false;
+  for (let i = 0; i < partes.length; i += 2) {
+    const frase = partes[i]!;
+    if (prometeDevolucionDeDinero(frase)) {
+      partes[i] = usadaDevolucion ? "" : RESPUESTA_POLITICA_SIN_DEVOLUCIONES;
+      usadaDevolucion = true;
+      cambio = true;
+    } else if (opciones.respaldaDescuento !== true && prometeDescuento(frase)) {
+      partes[i] = usadaDescuento ? "" : RESPUESTA_SIN_DESCUENTOS_EXTRA;
+      usadaDescuento = true;
+      cambio = true;
+    }
+  }
+  if (!cambio) return reply;
+  return partes.join("").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
+}
+
+// ── R11-02: fuga del prompt de sistema ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Un cliente jamas debe leer los encabezados de las reglas internas ni el nombre de una herramienta (identificadores snake_case que solo existen en el prompt y en el contrato con el
+// modelo). Los encabezados se reconocen EN MAYUSCULAS (como estan en el prompt) para no confundir «las reglas de negocio» dichas en prosa.
+const ENCABEZADOS_DEL_PROMPT = /REGLAS DURAS DE|REGLAS DE NEGOCIO:|REGLAS QUE APLICAN LAS HERRAMIENTAS|FLUJO DE LA CONVERSACI[ÓO]N \(|SUCURSALES REALES \(|REGLAS ADICIONALES DEL NEGOCIO/;
+const MARCADORES_DE_CHAT = /<\|im_(?:start|end)\|>|\[\/?INST\]|<\/?system>/i;
+export function contieneFugaDePrompt(reply: string, nombresDeHerramientas: readonly string[] = []): boolean {
+  if (typeof reply !== "string" || reply === "") return false;
+  if (ENCABEZADOS_DEL_PROMPT.test(reply) || /reglas\s+duras\s+de\b/i.test(reply) || MARCADORES_DE_CHAT.test(reply)) return true;
+  const bajas = reply.toLowerCase();
+  return nombresDeHerramientas.some((n) => n.includes("_") && new RegExp(`(?<![a-z0-9_])${n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9_])`).test(bajas));
+}
+export const RESPUESTA_SIN_FUGA = "Con gusto le ayudo con su pedido.";
+/** Si la respuesta vuelca el prompt de sistema o nombres de herramientas, se descarta COMPLETA (no se puede limpiar a medias) y se devuelve una respuesta neutra de pedido. */
+export function reemplazarFugaDePrompt(reply: string, nombresDeHerramientas: readonly string[] = []): string {
+  return contieneFugaDePrompt(reply, nombresDeHerramientas) ? RESPUESTA_SIN_FUGA : reply;
+}
+
 interface Patron {
   readonly intent: HighRiskIntent;
   readonly pattern: RegExp;
@@ -579,15 +881,24 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
   },
   {
     intent: "alergia_salud",
-    pattern: /\b(?:alergic[oa]s?|alergias?|intolerante|intolerancia|celiac[oa]|cacahuate|gluten)\b/,
+    // R11-04: tambien en ingles (turistas en Merida): allergic / allergy, celiac / coeliac, peanut(s), tree nut(s), shellfish, intolerant, anaphylaxis.
+    pattern: new RegExp(
+      `${/\b(?:alergic[oa]s?|alergias?|intolerante|intolerancia|celiac[oa]|cacahuate|gluten)\b/.source}|${ALERGIA_EN.source}`,
+    ),
+    cuando: (texto) => !esBromaDeAlergia(texto) && !niegaTenerAlergia(texto),
     reply:
       "Por su seguridad no puedo asegurarle los ingredientes de un platillo ni si es apto para una alergia. Ya avisé al equipo del restaurante para que le confirme directamente antes de hacer su pedido.",
   },
   {
     intent: "cobro_duplicado",
-    pattern: /cobr(?:o|aron|e)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces|\bcarg(?:o|aron|aro)\s+(?:dos\s+veces|2\s+veces|doble|duplicado)|\b(?:doble|segundo)\s+cargo\b|\bcargo\s+(?:doble|duplicado)\b/,
+    pattern: new RegExp(
+      `${/cobr(?:o|aron|e)\s+(?:dos\s+veces|doble|duplicado)|cobro\s+duplicado|me\s+cobraron\s+dos\s+veces|\bcarg(?:o|aron|aro)\s+(?:dos\s+veces|2\s+veces|doble|duplicado)|\b(?:doble|segundo)\s+cargo\b|\bcargo\s+(?:doble|duplicado)\b/.source}|${COBRO_DOBLE_EN.source}`,
+    ),
     // Una PREGUNTA sobre si habra un cargo («¿me cobran cargo doble si pago con tarjeta?», «¿hay cargo doble al pagar?») no es un cobro que ya ocurrio: va al agente.
-    cuando: (texto) => !PREGUNTA_DE_CARGO_FUTURO.test(texto) && !(/[?¿]/.test(texto) && /\b(?:cobran|cobrarian|cobraran|cobraria|cobrara|van\s+a\s+cobrar)\b/.test(texto)),
+    cuando: (texto) =>
+      !PREGUNTA_DE_CARGO_FUTURO.test(texto) &&
+      !PREGUNTA_DE_CARGO_FUTURO_EN.test(texto) &&
+      !(/[?¿]/.test(texto) && /\b(?:cobran|cobrarian|cobraran|cobraria|cobrara|van\s+a\s+cobrar)\b/.test(texto)),
     reply: "Lamento el problema con el cobro. Ya avisé al equipo para que revise su caso directamente y lo contacte lo antes posible.",
   },
   {
@@ -638,6 +949,14 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     pattern: /\btransferencia\b|\bdeposito\b|\bspei\b|\bpagar\s+por\s+transfer/,
     reply:
       "Por este medio no puedo registrar pagos por transferencia. Ya avisé al equipo para que lo contacte y vea con usted esa forma de pago; si prefiere, puede pagar en efectivo o con tarjeta.",
+  },
+  {
+    // R11-06: pedir DINERO de vuelta. Decision vigente: no hay devoluciones de dinero, solo cambio de producto. No se deja a la improvisacion del modelo: respuesta fija con la
+    // politica, aviso al gerente (motivo `queja`) y la pregunta que el agente necesita para seguir. Una PREGUNTA por la politica o una negacion («no quiero reembolso») va al agente.
+    intent: "queja",
+    pattern: REEMBOLSO,
+    cuando: (texto) => !preguntaPorLaPoliticaDeReembolso(texto) && !niegaQuererReembolso(texto),
+    reply: RESPUESTA_REEMBOLSO_ESCALADO,
   },
   {
     intent: "queja",

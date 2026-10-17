@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { executeAgentToolSafely, invokeAgentTool } from "../../src/agent-tools/registry.ts";
 import type { AgentToolContext } from "../../src/agent-tools/registry.ts";
-import { buildRestaurantFixture, hallazgo, itemsCoca, ordenes } from "./arnes.ts";
+import { buildRestaurantFixture, itemsCoca, ordenes } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
 
 const TEL_LLAMADA = "9991112222";
@@ -47,7 +47,7 @@ describe("R11-6A voz: lo que el modelo de voz manda no cambia precio, telefono n
 
   // Mismo hallazgo R11-11 que en WhatsApp: la coercion `Number(...)` tambien alcanza al canal de voz.
   for (const [nombre, valor] of [["booleano true (-> 1)", true], ["hexadecimal '0x10' (-> 16)", "0x10"]] as const) {
-    hallazgo(`R11-11 [P2] voz: cantidad ${nombre} se rechaza en vez de coercionarse`, async () => {
+    it(`R11-11 [P2] voz: cantidad ${nombre} se rechaza en vez de coercionarse`, async () => {
       const f = buildRestaurantFixture();
       const control = await executeAgentToolSafely(f.repo, ctxVoz(f, 1), "cotizar_pedido", base(f, 2));
       expect(JSON.stringify(control.result)).not.toMatch(/"error"/); // control: 2 SI pasa
@@ -77,7 +77,7 @@ describe("R11-6A2 voz: la guardia determinista de riesgo (en WhatsApp corre ANTE
     ["queja de entrega", "El pedido de ayer me llegó frío y faltó una bebida"],
   ];
   for (const [nombre, frase] of SIN_PEDIR_PERSONA) {
-    hallazgo(`R11-17 [P1] voz: ${nombre} (sin pedir una persona) se escala con la guardia determinista`, async () => {
+    it(`R11-17 [P1] voz: ${nombre} (sin pedir una persona) se escala con la guardia determinista`, async () => {
       const { evaluarPersonaVoz } = await import("../../src/voz/guardia-persona.ts");
       // Control: pidiendo una persona SI escala, con el motivo especifico.
       expect(evaluarPersonaVoz(`Quiero hablar con una persona. ${frase}`), "control: pidiendo una persona SI escala").not.toBeNull();

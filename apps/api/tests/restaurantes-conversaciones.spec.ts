@@ -2,7 +2,7 @@
 // (que se guardo, que NO se escribio, quien puede), no solo el status. Repositorio en memoria del dominio: las reglas
 // de RLS/GRANT las verifica scripts/verify-restaurantes-conversaciones-handoff/ contra Postgres real.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryConversacionesRepository } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
@@ -142,9 +142,16 @@ describe("tomar / devolver / cerrar / notas / responder", () => {
 
 describe("turnos y cobertura", () => {
   const miembroFalso = () => randomUUID();
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
+  // R12: el "Turno 1" va de 00:00 a 23:59, asi que a las 23:59 (hora del negocio) NO hay cobertura. Con el reloj real,
+  // el CI fallo una vez a las 23:59:48 America/Merida. El reloj se fija a mitad del dia en la zona del negocio.
   it("PUT reemplaza los turnos (solo owner/admin) y GET devuelve cobertura; la bitacora registra el cambio", async () => {
     const { ctx, app, base } = await construir();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T18:00:00.000Z")); // miercoles 12:00 en America/Merida (UTC-6, sin horario de verano)
     const ana = miembroFalso();
     const turnos = [
       { nombre: "Turno 1", dias: [0, 1, 2, 3, 4, 5, 6], inicia: "00:00", termina: "23:59", miembros: [{ userId: ana, orden: 1 }] },
