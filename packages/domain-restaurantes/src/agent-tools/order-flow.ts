@@ -313,8 +313,12 @@ export interface FlowCheckArgs {
   readonly quoteHashCited?: string;
 }
 
+/** Diferencia de reloj tolerada entre instancias del servidor. Una cotizacion "del futuro" por mas que esto (el reloj retrocedio) no se considera vigente: sin esto su edad seria negativa y nunca vencería. */
+export const RELOJ_TOLERANCIA_MS = 60 * 1000;
+
 function assertFresh(ctx: OrderFlowContext, now: number): void {
-  if (now - ctx.quotedAtMs > QUOTE_TTL_MS) {
+  const edad = now - ctx.quotedAtMs;
+  if (edad > QUOTE_TTL_MS || edad < -RELOJ_TOLERANCIA_MS) {
     throw new OrderFlowViolationError("cotizacion_vencida", "La cotización ya venció. Vuelve a llamar cotizar_pedido, repite el resumen y pide la confirmación del cliente otra vez.");
   }
 }
@@ -366,7 +370,9 @@ export function assertCanCreate(snap: OrderFlowSnapshot, args: FlowCheckArgs): O
   if (snap.state === "creado") {
     throw new OrderFlowViolationError("pedido_ya_creado", "Este pedido ya quedó registrado; no lo crees otra vez. Repite el resumen al cliente.", ctx.orderId);
   }
-  if (snap.state === "creando" && args.now - (ctx.claimedAtMs ?? 0) <= CLAIM_STALE_MS) {
+  // Limite conocido (R12-04): la misma tolerancia de 60 s se aplica al claim `creando`. Con un desfase entre instancias MAYOR a 60 s, un claim vigente de otra instancia (con
+  // `claimedAtMs` en el "futuro" de esta) se lee como viejo y deja pasar un segundo crear_pedido; lo frena la deduplicacion de pedidos (ventana de 5 min), no esta guarda.
+  if (snap.state === "creando" && args.now - (ctx.claimedAtMs ?? 0) <= CLAIM_STALE_MS && args.now - (ctx.claimedAtMs ?? 0) >= -RELOJ_TOLERANCIA_MS) {
     throw new OrderFlowViolationError("pedido_en_proceso", "El pedido se está registrando en este momento; espera un momento antes de reintentar.");
   }
   if (snap.state === "cotizado") {
@@ -423,7 +429,7 @@ export function bloqueCotizacionVigente(snap: OrderFlowSnapshot | null, ahoraMs:
   const ctx = snap?.context;
   if (!snap || !ctx || (snap.state !== "cotizado" && snap.state !== "confirmado")) return "";
   if (!ctx.quotedItems || ctx.quotedItems.length === 0 || !ctx.quotedBranchSlug) return "";
-  if (ahoraMs - ctx.quotedAtMs > QUOTE_TTL_MS) return "";
+  if (ahoraMs - ctx.quotedAtMs > QUOTE_TTL_MS || ahoraMs - ctx.quotedAtMs < -RELOJ_TOLERANCIA_MS) return "";
   const renglones = ctx.quotedItems.map((i) => `  - product_id ${i.id} | ${i.name} | requested_quantity ${i.qty}${i.tortilla ? ` | tortilla ${i.tortilla}` : ""}`).join("\n");
   const total = typeof ctx.quotedTotal === "number" ? `, total a pagar $${ctx.quotedTotal}` : "";
   // Una cotizacion TEMPRANA (el paso 6 cotiza en cuanto hay canal, producto y tortilla) no es lo que el cliente vio: solo cuenta como mostrada si el historial trae un mensaje del asistente con ese total.

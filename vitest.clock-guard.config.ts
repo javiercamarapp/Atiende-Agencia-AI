@@ -90,6 +90,12 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/restaurantes-cierres-alertas-cfo.spec.ts",
   // R11 romper: horarios limite (cierre 01:00, medianoche, cambio de dia de negocio) y programado_para con reloj fijo (martes 13:00 Merida).
   "packages/domain-restaurantes/tests/pm-r11-romper/5-negocio-y-privacidad.spec.ts",
+  // R12 romper (ronda 2): reloj fijo (martes 13:00 Merida) para hora pasada, feriado, programados, cambio de horario de verano (America/Tijuana), medianoche y reloj que retrocede.
+  "packages/domain-restaurantes/tests/pm-r11-romper/7-ronda-2-imposibles.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r11-romper/8-ronda-2-cambios-en-la-conversacion.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r11-romper/10-ronda-2-abuso-de-negocio.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r11-romper/11-ronda-2-fallas-de-infraestructura.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r11-romper/12-ronda-2-formatos-y-tipos.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.

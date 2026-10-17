@@ -31,7 +31,7 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
-import { bloqueCotizacionVigente, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
+import { bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, componerRespuestaConResumen } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
@@ -684,7 +684,17 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
       // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
       const pendientes = mensajesSinResponder(messages).slice(-5);
-      const riesgoClasificado = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), contextoDeCliente(customer));
+      // Cotizacion/confirmacion en curso = el cliente arma un pedido NUEVO: «agrega X a mi pedido» es el carrito, no un cambio del pedido anterior (R12-01).
+      // Una sola lectura del flujo para todo el turno: si falla, el clasificador sigue (sin carrito) y el error se relanza mas abajo, donde antes se leia por segunda vez.
+      let flowLecturaError: unknown = null;
+      const flowSnapshot = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch((e: unknown) => {
+        flowLecturaError = e ?? new Error("readOrderFlow fallo");
+        return null;
+      });
+      // Una cotizacion abandonada (mas de QUOTE_TTL_MS) ya no es un carrito: la fila vive 2 h, pero el cliente ya no esta armando ese pedido. `creando` es un reclamo en curso y cuenta siempre.
+      const cotizacionVigente = typeof flowSnapshot?.context?.quotedAtMs === "number" && now().getTime() - flowSnapshot.context.quotedAtMs <= QUOTE_TTL_MS;
+      const carritoEnCurso = flowSnapshot?.state === "creando" || ((flowSnapshot?.state === "cotizado" || flowSnapshot?.state === "confirmado") && cotizacionVigente);
+      const riesgoClasificado = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), { ...contextoDeCliente(customer), carritoEnCurso });
       // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
       const textoPendiente = pendientes.map((m) => m.content).join(" / ");
       const recibeDetalle =
@@ -735,7 +745,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       // La cotizacion vigente vive en la maquina de estados del servidor (no en una variable del turno): un turno posterior
       // sin herramientas ("¿cuanto era?") sigue corrigiendo un total alucinado. Base sin migrar -> null: solo el turno que cotiza.
-      const flowSnapshot = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+      if (flowLecturaError !== null) throw flowLecturaError;
       const flowVigente = flowSnapshot?.context ?? null;
       if (flowVigente && typeof flowVigente.quotedTotal === "number" && Number.isFinite(flowVigente.quotedTotal)) {
         lastQuoteTotal = flowVigente.quotedTotal;

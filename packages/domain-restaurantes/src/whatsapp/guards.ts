@@ -456,6 +456,8 @@ export function pideUnaPersona(text: string): boolean {
 export interface HighRiskContext {
   /** Pedido de las ultimas 12 h de este telefono: `null` = no hay; ausente = desconocido (cliente nuevo o lectura no disponible). */
   readonly pedidoReciente?: PedidoReciente | null;
+  /** El servidor tiene una cotizacion / confirmacion en curso para este telefono: el cliente esta armando un pedido NUEVO y «agrega X a mi pedido» es el carrito, no un cambio del anterior. */
+  readonly carritoEnCurso?: boolean;
 }
 
 const CARACTERES_INVISIBLES = /\u034f|[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g;
@@ -517,6 +519,46 @@ const CONSULTA_DE_CANCELACION =
 export function esConsultaDeCancelacion(text: string): boolean {
   return CONSULTA_DE_CANCELACION.test(normalizarParaClasificar(text));
 }
+
+// R12-01: cambios sobre un pedido ya hecho. Todos exigen ademas (en `cuando`) que el texto hable del pedido que ya existe y que el telefono tenga uno vigente.
+const VERBO_DE_CAMBIO = "(?:cambi(?:a|ame|ar|arme|en|ale)|modific(?:a|ame|ar|arme|quen?)|corrig(?:e|eme|ir)|actualiz(?:a|ame|ar)|agreg(?:a|ame|ale|alo|ar|uen|uele)|anad(?:e|eme|ele|ir)|sum(?:a|ale|ame)|quit(?:a|ale|ame|ar|en)|elimin(?:a|ale|ar))";
+// Alternativa FUERTE: el original «cambia/modifica (el|mi|ese|este) pedido». Es la unica que existia antes de R12-01 y sigue escalando tal cual (estado vigente, sin «?»), sin pasar por las
+// exenciones de «pedido nuevo»: «cambia mi pedido de 5 tacos a 7 tacos», «cambiame el pedido, quiero 2 tacos mas» o «cambia mi pedido para el proximo viernes» son cambios del que ya existe.
+const MODIFICACION_FUERTE_RE = /\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\s+(?:el|mi|ese|este)\s+pedido\b/;
+// Verbos de MOVER el pedido (sin la palabra «pedido»): «mandalo», «llevalo», «dejalo»...
+const VERBO_DE_MOVER = "(?:mand\\w*|envi\\w*|lleva\\w*|pas(?:a|e|en|ar)\\w*|entreg\\w*|dej(?:a|e|en|ar)\\w*)";
+// Alternativas DEBILES con «pedido» explicito (la exencion de pedido nuevo y MENCIONA_UN_PEDIDO_YA_HECHO si les aplican).
+const MODIFICACION_DEBIL_RE = new RegExp(
+  [
+    `\\b${VERBO_DE_CAMBIO}\\b[^.!?\\n]{0,60}\\b(?:a|al|en|de|del|para)\\s+(?:mi|el|este|ese|su)\\s+pedido\\b`,
+    // «otra direccion» sola no basta (tambien la dice quien arma un pedido nuevo): exige un verbo de mover/cambiar antes.
+    "\\b(?:mand\\w*|envi\\w*|lleva\\w*|cambi\\w*|pas(?:a|e|en|ar)\\w*|entreg\\w*|dej(?:a|e|en|ar)\\w*)\\b[^.!?\\n]{0,50}\\b(?:otra|nueva|diferente)\\s+(?:direccion|ubicacion|domicilio)\\b",
+    "\\bya\\s+no\\s+(?:a\\s+domicilio|para\\s+domicilio|lo\\s+quiero\\s+a\\s+domicilio)\\b|\\bmejor\\s+(?:que\\s+sea\\s+)?(?:para\\s+)?recoger\\b",
+  ].join("|"),
+);
+// Referencia IMPLICITA al pedido que ya existe, sin la palabra «pedido» («mandalo a otra direccion», «cambiale la direccion», «agregale una coca», «mejor para recoger»). Solo cuenta con un
+// pedido vigente del telefono, sin carrito en curso, sin cantidades ni frases de pedido nuevo.
+const MODIFICACION_IMPLICITA_RE = new RegExp(
+  [
+    `\\b${VERBO_DE_MOVER}\\b[^.!?\\n]{0,50}\\b(?:otra|nueva|diferente)\\s+(?:direccion|ubicacion|domicilio)\\b`,
+    "\\bcambi(?:a|ame|ale|ar|arle|arme)\\s+(?:la|el)\\s+(?:direccion|domicilio|ubicacion)\\b",
+    "\\bya\\s+no\\s+(?:a\\s+domicilio|para\\s+domicilio|lo\\s+quiero\\s+a\\s+domicilio)\\b|\\bmejor\\s+(?:que\\s+sea\\s+)?(?:para\\s+)?recoger\\b",
+    // Con el clitico «-le» el verbo ya refiere a algo existente («agregale una coca»); «agrega una coca» a secas es el carrito.
+    "\\b(?:agreg|anad|sum|quit)(?:ale|ele)\\b",
+  ].join("|"),
+);
+const MODIFICACION_DE_PEDIDO_RE = new RegExp(`${MODIFICACION_FUERTE_RE.source}|${MODIFICACION_DEBIL_RE.source}|${MODIFICACION_IMPLICITA_RE.source}`);
+// Cantidades escritas con palabra: una frase con ellas arma un pedido, no cambia uno («mejor recoger, dos tacos»).
+const CANTIDAD_EN_PALABRAS = /\b(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|docena|media|medio)\b/;
+const MENCIONA_UN_PEDIDO_YA_HECHO = /\bpedido\b|\bya\s+(?:hice|hicimos|pedi|pedimos|salio)\b/;
+// «quiero otro pedido a otra direccion»: es un pedido NUEVO (flujo normal con otro_pedido), no un cambio del que ya existe.
+const PIDE_OTRO_PEDIDO = /\b(?:otro|nuevo)\s+pedido\b|\bpedido\s+(?:nuevo|aparte|adicional)\b/;
+// R12-01 (revision): el cliente que REPITE o hace un pedido nuevo («quiero un pedido de 5 tacos», «quiero pedir otra vez», «mismo pedido pero otra direccion») o habla del anterior en
+// pasado / para el proximo («mi pedido de hoy estuvo bien») no pide cambiar el que ya existe.
+const HACE_UN_PEDIDO_NUEVO =
+  /\b(?:quiero|quisiera|queria|ponme|pongame|dame|deme|me\s+pone[sn]?|voy\s+a\s+pedir|quiero\s+pedir)\s+(?:un|una|unos|unas|\d+|otra\s+vez|el\s+mismo|lo\s+mismo)\b|\bpedir\s+(?:otra\s+vez|de\s+nuevo)\b|\b(?:mismo|igual)\s+pedido\b|\bpedido\s+de\s+\d+|\bpara\s+(?:el|la)\s+(?:proximo|siguiente)\b|\bestuvo\s+(?:muy\s+)?(?:bien|bueno|rico|buenisimo)\b/;
+// «¿me puedes agregar algo a mi pedido?» es una PETICION (el modelo diria «claro»); «¿puedo agregar...?» es una consulta de politica y sigue yendo al agente.
+const PETICION_EN_PREGUNTA = /\b(?:me\s+)?(?:puedes|podrias|podria|podrian|pueden|quieres|me\s+haces\s+el\s+favor\s+de)\b/;
 
 // ── R11-04: alergia / cobro doble en ingles ──────────────────────────────────────────────────────────────────────────────────────────────────────
 // Los patrones corren sobre texto sin acentos. «nuts» a secas es una palabra comun («this is nuts»): solo cuenta con contexto de comida.
@@ -882,10 +924,22 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     // reciente (o ya entregado) es el carrito y va al agente. Intent PROPIO: avisa al equipo igual (motivo `cancelacion_modificacion`) pero NUNCA pasa por el autopiloto de
     // cancelacion (que cancelaria el pedido o abriria una solicitud de cancelacion por un simple cambio).
     intent: "modificacion_pedido",
-    pattern: /\b(?:cambi(?:a|ame|ar|arme|en)|modific(?:a|ame|ar|arme|quen?))\s+(?:el|mi|ese|este)\s+pedido\b/,
+    // R12-01: ademas de «cambiame el pedido», los cambios que el cliente pide sobre un pedido YA HECHO con otras palabras («agrega 3 cocas a mi pedido», «cambia la direccion de mi
+    // pedido», «mandalo a otra direccion», «mejor para recoger») tambien son de una persona: el agente no tiene herramienta para editar pedidos y un modelo distraido diria «listo, ya lo cambie».
+    pattern: MODIFICACION_DE_PEDIDO_RE,
     cuando: (texto, ctx) => {
       const estado = ctx.pedidoReciente?.estado;
-      return (estado === "registrado" || estado === "preparando" || estado === "programado" || estado === "por_confirmar") && !CONSULTA_DE_CANCELACION.test(texto) && !/\?/.test(texto);
+      // `salio` (en camino) tambien: cambiar la direccion o el contenido de lo que ya salio lo decide la sucursal, no el modelo.
+      const vigente = estado === "registrado" || estado === "preparando" || estado === "salio" || estado === "listo_para_recoger" || estado === "con_problema" || estado === "programado" || estado === "por_confirmar";
+      if (!vigente || CONSULTA_DE_CANCELACION.test(texto)) return false;
+      const esPeticion = PETICION_EN_PREGUNTA.test(texto) && (new RegExp(`\\b${VERBO_DE_CAMBIO}\\b`).test(texto) || new RegExp(`\\b${VERBO_DE_MOVER}\\b`).test(texto));
+      if (/\?/.test(texto) && !esPeticion) return false;
+      // El original «cambia/modifica mi pedido» escala siempre (como antes de R12-01), con o sin carrito y sin exenciones.
+      if (MODIFICACION_FUERTE_RE.test(texto)) return true;
+      if (ctx.carritoEnCurso === true || HACE_UN_PEDIDO_NUEVO.test(texto) || ARMA_UN_PEDIDO_NUEVO.test(texto) || PIDE_OTRO_PEDIDO.test(texto)) return false;
+      if (MENCIONA_UN_PEDIDO_YA_HECHO.test(texto) && MODIFICACION_DEBIL_RE.test(texto)) return true;
+      // Sin la palabra «pedido»: solo si la frase es de mover/agregarle al que ya existe y no trae cantidades (eso es armar uno nuevo).
+      return MODIFICACION_IMPLICITA_RE.test(texto) && !/\d/.test(texto) && !CANTIDAD_EN_PALABRAS.test(texto);
     },
     reply:
       "Entendido, desea cambiar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",
