@@ -58,6 +58,7 @@ import type {
   CanalMensajeriaCodigo,
   RentasCalendarSyncRepository,
   RentasAccesoRepository,
+  RentasPrecheckinRepository,
   RentasMensajesAutomaticosRepository,
   RentasPrivacidadRepository,
   RentasCatalogoRepository,
@@ -434,6 +435,8 @@ export interface AppDeps {
    * misma razón que `rentasReportesRepo`: las rutas caen a `PostgresRentasAccesoRepository` y
    * los tests inyectan el doble en memoria. */
   readonly rentasAccesoRepo?: (db: TenantDbSession) => RentasAccesoRepository;
+  /** Rn-P3-08 -- pre-check-in publico por reserva y su configuracion (migracion 036). OPCIONAL por la misma razon que `rentasAccesoRepo`: las rutas caen a `PostgresRentasPrecheckinRepository` y los tests inyectan el doble en memoria. */
+  readonly rentasPrecheckinRepo?: (db: TenantDbSession) => RentasPrecheckinRepository;
   /** Rn-24 / Rn-25 -- programación de mensajes automáticos por evento y su cron (migración 029). OPCIONAL por la misma razón que `rentasAccesoRepo`: las rutas caen a `PostgresRentasMensajesAutomaticosRepository` y los tests inyectan el doble en memoria. */
   readonly rentasMensajesAutomaticosRepo?: (db: TenantDbSession) => RentasMensajesAutomaticosRepository;
   /** Rn-07 -- solicitudes ARCO propias de rentas (migración 028). OPCIONAL por la misma razón que `rentasAccesoRepo`: la ruta cae a `PostgresRentasPrivacidadRepository` sobre la sesión del request y los tests inyectan el doble en memoria. */

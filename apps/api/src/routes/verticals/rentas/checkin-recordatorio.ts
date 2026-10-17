@@ -14,6 +14,7 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
+import { emitirAvisoReservasSinMovimiento } from "./finanzas-aviso-sin-movimiento.ts";
 
 export function rentasCheckInRecordatorioRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -41,6 +42,8 @@ export function rentasCheckInRecordatorioRoutes(deps: AppDeps): Hono {
       // `repo`) porque `triggerRentasEmailDispatchInline` envuelve el drenado en
       // su propio SAVEPOINT (hotfix auditoría a2).
       await deps.engine.withAppSession({ userId: null }, (db) => triggerRentasEmailDispatchInline(deps, db, deps.rentasRepo(db)));
+      // Rn-P3-07 -- aviso diario de reservas sin movimiento financiero (best-effort, con kill switch; no cambia la respuesta).
+      await emitirAvisoReservasSinMovimiento(deps).catch(() => undefined);
       const response = c.json({ ok: summary.fallos === 0, procesadas: summary.procesadas, enviados: summary.enviados, sin_correo: summary.sinCorreo, fallos: summary.fallos });
       // (5) el latido no debe registrar "ok" limpio si alguna candidata falló --
       // ver CronPartialFailureError (with-heartbeat.ts). El caller HTTP sigue
