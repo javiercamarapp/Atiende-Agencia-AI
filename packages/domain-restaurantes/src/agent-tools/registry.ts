@@ -59,6 +59,7 @@ import {
   rechazaElResumen,
   resumenMostradoEnHistorial,
   asistentePidioDatoPendiente,
+  esAfirmacionSola,
   esRespuestaDePagoOPropina,
   asistentePidioConfirmarResumen,
   warnOrderFlowUnavailable,
@@ -1348,8 +1349,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const soloPago = esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(current.quotedTotal, ultimoDelAsistente);
       const totalNoVisto = resumenMostradoEnHistorial(current.quotedTotal, ctx.conversacionReciente) === false;
       const salidaAbierta = current.resumenRechazadoTurn !== undefined && current.resumenRechazadoTurn !== flow.turn;
-      // QA-PM R12 (A10): el total estaba en el historial pero el asistente cerro preguntando tortilla / pago / nombre: el «sí, es correcto» responde a ESA pregunta, no a un resumen.
-      const preguntaPendiente = asistentePidioDatoPendiente(ultimoDelAsistente);
+      // QA-PM R12 (A10): el total estaba en el historial pero el asistente cerro preguntando tortilla / pago / nombre: un «sí» a secas responde a ESA pregunta, no a un resumen (si el cliente trae el dato, p. ej. «efectivo, soy Fulano», no aplica).
+      const preguntaPendiente = esAfirmacionSola(ultimoDelCliente) && asistentePidioDatoPendiente(ultimoDelAsistente);
       const rechazado = frenaRechazoDelResumen();
       if (rechazado) return rechazado;
       if ((soloPago || totalNoVisto || preguntaPendiente) && !salidaAbierta) {

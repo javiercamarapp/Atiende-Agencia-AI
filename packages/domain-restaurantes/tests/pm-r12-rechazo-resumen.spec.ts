@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeAgentToolSafely, invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { clasificarRespuestaCierre } from "../src/agent-tools/cierre-maquina.ts";
-import { asistentePidioDatoPendiente, rechazaElResumen, resetOrderFlowWarningForTests } from "../src/agent-tools/order-flow.ts";
+import { asistentePidioDatoPendiente, esAfirmacionSola, rechazaElResumen, resetOrderFlowWarningForTests } from "../src/agent-tools/order-flow.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -255,6 +255,22 @@ describe("R12 A10: un «sí» a una pregunta de tortilla / pago NO es el sí al 
     await s.quote();
     s.asistente(`Su pedido: 3 Coca-Cola. Total $${await s.total()}. Paga con 500. ¿Es correcto?`);
     s.cliente("sí, es correcto");
+    await s.confirm();
+    expect((await s.createSafe()).orderId).not.toBeNull();
+  });
+});
+
+describe("R12 A10: la guarda solo aplica a un «sí» a secas (regresion vista en CI: whatsapp-llm-agent)", () => {
+  it.each(["sí", "Sí, es correcto", "sí, correcto", "ok", "dale", "Confirmo", "claro que sí", "va, perfecto", "👍", "sí por favor"])("afirmacion sola: %s", (t) => expect(esAfirmacionSola(t)).toBe(true));
+  it.each(["efectivo, soy Fulano, paso por él", "sí, con tarjeta", "sí, de maíz", "sí, a nombre de Carlos", "con 500", "no", "sí, pero cámbialo", "", "quiero 3 tacos y que sean de bistec con harina por favor sí"])("NO es afirmacion sola: %j", (t) =>
+    expect(esAfirmacionSola(t)).toBe(false),
+  );
+  it("el cliente CONTESTA la pregunta de pago con datos («efectivo, soy Carlos») => crea (no es un sí a secas)", async () => {
+    const s = setup();
+    s.cliente("Quiero 3 cocas para recoger");
+    await s.quote();
+    s.asistente(`Tu pedido es 3 Coca-Cola por $${await s.total()}. ¿Pagas con efectivo o tarjeta?`);
+    s.cliente("efectivo, soy Carlos, paso en 30 minutos");
     await s.confirm();
     expect((await s.createSafe()).orderId).not.toBeNull();
   });

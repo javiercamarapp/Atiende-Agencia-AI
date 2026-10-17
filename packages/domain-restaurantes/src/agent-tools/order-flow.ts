@@ -515,6 +515,24 @@ export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, 
 }
 
 /**
+ * QA-PM R12 (A10): el mensaje del cliente es SOLO una afirmacion («sí», «sí, es correcto», «ok», «dale», «confirmo», «claro que sí», 👍): no trae ningun dato (tortilla, pago, nombre).
+ * Conservador: todas las palabras deben ser de afirmacion y al menos una, nuclear; «sí, con tarjeta» o «efectivo, soy Fulano» NO cuentan.
+ */
+export function esAfirmacionSola(mensaje: unknown): boolean {
+  if (typeof mensaje !== "string") return false;
+  const simbolos = Array.from(mensaje.replace(/\s/g, ""));
+  const OK_EMOJI = new Set(["\u{1F44D}", "\u{1F44C}", "\u2705", "\u{1F197}"]);
+  if (simbolos.length > 0 && simbolos.some((c) => OK_EMOJI.has(c)) && simbolos.every((c) => OK_EMOJI.has(c) || c === "\ufe0f" || /^\p{Emoji_Modifier}$/u.test(c))) return true;
+  const t = limpiarRespuestaCorta(mensaje);
+  if (!t) return false;
+  const palabras = t.split(" ");
+  if (palabras.length > 7) return false;
+  const nucleares = new Set(["si", "sip", "simon", "claro", "correcto", "ok", "okey", "dale", "va", "listo", "confirmo", "confirmado", "perfecto", "exacto", "acuerdo", "afirmativo"]);
+  const relleno = new Set(["es", "asi", "esta", "bien", "de", "que", "quedo", "todo", "eso", "por", "favor", "gracias", "muy", "pues", "ya", "lo", "confirmo", "dejo", "dejalo", "ahi", "ese", "el", "pedido", "resumen"]);
+  return palabras.some((w) => nucleares.has(w)) && palabras.every((w) => nucleares.has(w) || relleno.has(w));
+}
+
+/**
  * QA-PM R12 (A10 Luna r1): el ultimo mensaje del asistente cierra con una pregunta de un DATO que falta (tortilla, forma de pago / «con cuánto paga», propina, nombre, hora o tiempo, direccion)
  * y NO una de confirmacion del resumen. Un «sí, es correcto» a esa pregunta no es el sí al resumen (el cliente no ha elegido tortilla ni visto el pedido armado), aunque el mensaje traiga el total.
  * Conservador: solo la ULTIMA pregunta cuenta y «¿Es correcto o desea agregar algo más?», «¿Confirma?» o «¿Lo registro así?» nunca son datos pendientes.
