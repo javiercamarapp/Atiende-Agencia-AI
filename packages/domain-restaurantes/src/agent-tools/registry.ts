@@ -58,6 +58,8 @@ import {
   OrderFlowViolationError,
   rechazaElResumen,
   resumenMostradoEnHistorial,
+  asistentePidioDatoPendiente,
+  esAfirmacionSola,
   esRespuestaDePagoOPropina,
   asistentePidioConfirmarResumen,
   warnOrderFlowUnavailable,
@@ -1245,10 +1247,20 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       programadoPara: input.canal === "recoger" && horaRecogida !== undefined ? undefined : toProgramadoPara(input.programado_para),
       horaRecogida,
     });
+  // QA-PM R12 (A13): el ultimo mensaje del cliente rechaza o corrige el resumen («No, quiero a $10...»): no se crea el pedido. Con la maquina de cierre APAGADA solo `confirmar_resumen` lo revisaba
+  // y el modelo podia llamar crear_pedido directo. Se revisa tambien con la base sin migrar (camino anterior) y en la guarda de abajo; con la maquina y su firma manda `clasificarRespuestaCierre`.
+  const frenaRechazoDelResumen = (): AgentToolOutcome | null => {
+    if (ctx.channel !== "whatsapp" || ctx.conversacionReciente === undefined) return null;
+    const ultimoDelClienteAlCrear = [...ctx.conversacionReciente].reverse().find((m) => m.role === "user")?.content;
+    if (!rechazaElResumen(ultimoDelClienteAlCrear)) return null;
+    const mensaje = "El último mensaje del cliente rechaza o corrige el resumen: NO se creó el pedido. Pregúntale qué desea cambiar (sin discutir el precio), vuelve a cotizar con lo que corrija y pide su confirmación otra vez. No digas que el pedido quedó registrado.";
+    if (opts.rechazoComoResultado) return { result: { error: mensaje }, orderId: null, propertyId: null, rechazoDelFlujo: "cliente_rechazo_resumen" };
+    throw new OrderFlowViolationError("cliente_rechazo_resumen", mensaje);
+  };
   let claimed: { version: number; context: OrderFlowContext } | null = null;
   for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
     const snap = await readFlow(repo, ctx, flow);
-    if (snap === null) return dispatchTool(repo, ctx, name, input); // base sin migrar: camino anterior
+    if (snap === null) return frenaRechazoDelResumen() ?? (await dispatchTool(repo, ctx, name, input)); // base sin migrar: camino anterior
     // La hora de recogida solo cuenta si la cotizacion la llevaba (una hora que el modelo agrega al crear la valida el servidor, pero no cambia lo que el cliente vio);
     // si crear la omite se entiende la cotizada. Una hora DISTINTA a la cotizada obliga a re-cotizar.
     const horaCotizada = snap.context?.horaRecogida;
@@ -1337,7 +1349,11 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const soloPago = esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(current.quotedTotal, ultimoDelAsistente);
       const totalNoVisto = resumenMostradoEnHistorial(current.quotedTotal, ctx.conversacionReciente) === false;
       const salidaAbierta = current.resumenRechazadoTurn !== undefined && current.resumenRechazadoTurn !== flow.turn;
-      if ((soloPago || totalNoVisto) && !salidaAbierta) {
+      // QA-PM R12 (A10): el total estaba en el historial pero el asistente cerro preguntando tortilla / pago / nombre: un «sí» a secas responde a ESA pregunta, no a un resumen (si el cliente trae el dato, p. ej. «efectivo, soy Fulano», no aplica).
+      const preguntaPendiente = esAfirmacionSola(ultimoDelCliente) && asistentePidioDatoPendiente(ultimoDelAsistente);
+      const rechazado = frenaRechazoDelResumen();
+      if (rechazado) return rechazado;
+      if ((soloPago || totalNoVisto || preguntaPendiente) && !salidaAbierta) {
         if (current.resumenRechazadoTurn === undefined) await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, resumenRechazadoTurn: flow.turn });
         const mensaje =
           "El cliente todavía no ha visto el resumen final con el total, o su último mensaje es solo el pago o la propina (eso NO es el sí). NO se creó el pedido. Muéstrele ahora el resumen completo en lista (renglones, total a pagar, forma de pago) y pregúntele si confirma; espere su sí en el mensaje siguiente y entonces llame crear_pedido.";
