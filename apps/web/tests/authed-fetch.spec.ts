@@ -166,6 +166,37 @@ describe("withAuthRefresh", () => {
     expect(store.calls.persisted).toEqual([refreshed]);
   });
 
+  it("el token persistido es otro pero TAMBIEN esta vencido (401) -> no entrega ese 401: refresca con el refreshToken persistido y reintenta con el token nuevo", async () => {
+    const refreshed = { token: "tok-nuevo", refreshToken: "r-nuevo", email: "a@b.com" };
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "http://api.local/auth/refresh") {
+        expect(JSON.parse(init!.body as string)).toEqual({ refreshToken: "r-persistido" });
+        return new Response(JSON.stringify(refreshed), { status: 200 });
+      }
+      const token = (init?.headers as Record<string, string>).authorization;
+      return token === "Bearer tok-nuevo" ? new Response(JSON.stringify({ ok: true }), { status: 200 }) : new Response(JSON.stringify({ message: "vencido" }), { status: 401 });
+    }) as unknown as typeof fetch;
+    const { ctx, store } = fakeCtx("citas", { token: "tok-persistido-vencido", refreshToken: "r-persistido", email: "a@b.com" });
+
+    const res = await withAuthRefresh(fetchImpl, "http://api.local", ctx, "tok-de-la-pantalla", (t) => fetchImpl("http://api.local/protegido", { headers: { authorization: `Bearer ${t}` } }));
+
+    expect(res.status).toBe(200);
+    expect(store.read()).toEqual(refreshed);
+    // protegida (pantalla) + protegida (persistido) + refresh + protegida (nuevo) = 4.
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it("el token persistido es otro y tambien vencido, y el refresh falla -> limpia la sesion y lanza SessionExpiredError (nunca un 401 generico)", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === "http://api.local/auth/refresh") return new Response(JSON.stringify({ message: "no" }), { status: 401 });
+      return new Response(JSON.stringify({ message: "vencido" }), { status: 401 });
+    }) as unknown as typeof fetch;
+    const { ctx, store } = fakeCtx("citas", { token: "tok-persistido-vencido", refreshToken: "r-persistido", email: "a@b.com" });
+
+    await expect(withAuthRefresh(fetchImpl, "http://api.local", ctx, "tok-de-la-pantalla", (t) => fetchImpl("http://api.local/protegido", { headers: { authorization: `Bearer ${t}` } }))).rejects.toBeInstanceOf(SessionExpiredError);
+    expect(store.read()).toBeNull();
+  });
+
   it("el segundo intento (con el token ya refrescado) también responde 401 -> se devuelve esa Response tal cual, sin un tercer intento ni bucle", async () => {
     const refreshed = { token: "tok-nuevo", refreshToken: "r-nuevo", email: "a@b.com" };
     const fetchImpl = vi.fn(async (url: string) => {

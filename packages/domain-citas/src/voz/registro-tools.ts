@@ -1,4 +1,4 @@
-// Registro de tools de voz de CITAS sobre @atiende/voice-core: las 8 herramientas de agenda del agente de WhatsApp (el MISMO catalogo, `TOOLS`) mas
+// Registro de tools de voz de CITAS sobre @atiende/voice-core: las 9 herramientas de agenda del agente de WhatsApp (el MISMO catalogo, `TOOLS`) mas
 // `derivar_a_humano`. SOLO corre lo que este registro declara. Las 4 que escriben (crear, cancelar, reagendar, modificar) llevan ademas el parametro
 // `confirmado_por_cliente` (la maquina de la cita rechaza la accion sin el, ver `maquina-cita.ts`). Cualquiera de esas 4 que sale bien cierra la
 // llamada como lograda (`cita_gestionada`); `derivar_a_humano` es la de pasar a una persona.
