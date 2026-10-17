@@ -58,6 +58,7 @@ import {
   OrderFlowViolationError,
   rechazaElResumen,
   resumenMostradoEnHistorial,
+  asistentePidioDatoPendiente,
   esRespuestaDePagoOPropina,
   asistentePidioConfirmarResumen,
   warnOrderFlowUnavailable,
@@ -1347,9 +1348,11 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const soloPago = esRespuestaDePagoOPropina(ultimoDelCliente) && !asistentePidioConfirmarResumen(current.quotedTotal, ultimoDelAsistente);
       const totalNoVisto = resumenMostradoEnHistorial(current.quotedTotal, ctx.conversacionReciente) === false;
       const salidaAbierta = current.resumenRechazadoTurn !== undefined && current.resumenRechazadoTurn !== flow.turn;
+      // QA-PM R12 (A10): el total estaba en el historial pero el asistente cerro preguntando tortilla / pago / nombre: el «sí, es correcto» responde a ESA pregunta, no a un resumen.
+      const preguntaPendiente = asistentePidioDatoPendiente(ultimoDelAsistente);
       const rechazado = frenaRechazoDelResumen();
       if (rechazado) return rechazado;
-      if ((soloPago || totalNoVisto) && !salidaAbierta) {
+      if ((soloPago || totalNoVisto || preguntaPendiente) && !salidaAbierta) {
         if (current.resumenRechazadoTurn === undefined) await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, resumenRechazadoTurn: flow.turn });
         const mensaje =
           "El cliente todavía no ha visto el resumen final con el total, o su último mensaje es solo el pago o la propina (eso NO es el sí). NO se creó el pedido. Muéstrele ahora el resumen completo en lista (renglones, total a pagar, forma de pago) y pregúntele si confirma; espere su sí en el mensaje siguiente y entonces llame crear_pedido.";

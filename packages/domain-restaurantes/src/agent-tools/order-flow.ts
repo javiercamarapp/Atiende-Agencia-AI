@@ -514,6 +514,22 @@ export function asistentePidioConfirmarResumen(quotedTotal: number | undefined, 
   return /(confirm|correcto|esta bien|de acuerdo|procedo|asi lo dejo)/.test(ultima);
 }
 
+/**
+ * QA-PM R12 (A10 Luna r1): el ultimo mensaje del asistente cierra con una pregunta de un DATO que falta (tortilla, forma de pago / «con cuánto paga», propina, nombre, hora o tiempo, direccion)
+ * y NO una de confirmacion del resumen. Un «sí, es correcto» a esa pregunta no es el sí al resumen (el cliente no ha elegido tortilla ni visto el pedido armado), aunque el mensaje traiga el total.
+ * Conservador: solo la ULTIMA pregunta cuenta y «¿Es correcto o desea agregar algo más?», «¿Confirma?» o «¿Lo registro así?» nunca son datos pendientes.
+ */
+export function asistentePidioDatoPendiente(contenido: string | undefined): boolean {
+  if (!contenido) return false;
+  const t = contenido.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trimEnd();
+  const idx = t.lastIndexOf("¿");
+  const q = t.lastIndexOf("?");
+  if (idx < 0 && q < 0) return false;
+  const ultima = idx >= 0 ? t.slice(idx) : t.slice(Math.max(t.lastIndexOf(".", q), t.lastIndexOf("\n", q), t.lastIndexOf("!", q)) + 1, q + 1);
+  if (/(confirm|correcto|esta bien|de acuerdo|procedo|asi lo|lo registro|lo dejo|lo mando|lo anoto|procedemos)/.test(ultima)) return false;
+  return /(tortilla|propina|con cuanto|cuanto (?:paga|pagara|pagas|traera|trae)\b|como (?:desea|va a|vas a|quiere|prefiere) pagar|efectivo o tarjeta|tarjeta o efectivo|forma de pago|metodo de pago|a nombre de|su nombre|tu nombre|como se llama|cuanto tiempo|en cuanto tiempo|a que hora|cuando (?:pasa|recoge|viene)|direccion|donde (?:se lo|le))/.test(ultima);
+}
+
 /** Quita emojis, caritas ASCII y cortesias finales («gracias», «porfa», «por favor») de una respuesta corta de WhatsApp; deja minusculas sin acentos y sin puntuacion. */
 function limpiarRespuestaCorta(mensaje: string): string {
   let t = mensaje.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
