@@ -13,6 +13,13 @@ import { conEmisiones } from "./support/emisiones.ts";
 
 let ctx: HotelesTestContext;
 
+// Reloj FIJO del archivo (miercoles 12:00 America/Merida). El barrido evalua un horizonte de 45 dias desde
+// "hoy" y la fixture base siembra tarifas BAR el 2026-12-01..03: con el reloj real, desde el 2026-10-17
+// (00:00 Merida) esas noches caen dentro del horizonte y «sin tarifa BAR sembrada» dejaba de ser cierto
+// (bomba de tiempo de calendario). Con el reloj fijado, el resultado no depende del dia en que corra el CI.
+// Solo se simula `Date`: los timers reales siguen vivos (la app/ctx usan promesas y I/O en memoria).
+const AHORA_FIJO = new Date("2026-06-10T18:00:00.000Z");
+
 function addDaysIso(fechaIso: string, days: number): string {
   const d = new Date(`${fechaIso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -21,6 +28,12 @@ function addDaysIso(fechaIso: string, days: number): string {
 
 beforeEach(async () => {
   ctx = await buildHotelesTestContext(buildApp);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(AHORA_FIJO);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("runRateRecommendationSweep — sin gate inicializado", () => {

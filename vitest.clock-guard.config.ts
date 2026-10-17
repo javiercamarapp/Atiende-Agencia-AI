@@ -57,6 +57,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-recepcion.spec.ts",
   "apps/api/tests/hoteles-fechas-lista-espera-reloj.spec.ts",
+  // Barrido de recomendaciones de tarifa: reloj fijo (miercoles 12:00 Merida); el horizonte de 45 dias chocaba con las tarifas 2026-12-01..03 de la fixture desde el 2026-10-17.
+  "apps/api/tests/hoteles-revenue-recommendations-cron.spec.ts",
   "apps/api/tests/hoteles-huespedes.spec.ts",
   "apps/api/tests/despachos-bookkeeping-servidor-hoy.spec.ts",
   "apps/api/tests/despachos-cierre-mensual-servidor-hoy.spec.ts",
