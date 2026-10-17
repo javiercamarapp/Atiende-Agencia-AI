@@ -31,6 +31,28 @@ describe("fetchJson", () => {
   });
 });
 
+describe("postJson: 409 de choque con horarios alternativos", () => {
+  it("conserva los alternative_slots reales del servidor en el error (solo en 409) y descarta los malformados", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: "Ese horario ya no está disponible.", alternative_slots: [{ starts_at: "2026-10-12T19:00:00.000Z", ends_at: "2026-10-12T19:30:00.000Z" }, { starts_at: "no-es-fecha", ends_at: "x" }, { starts_at: 5 }] }),
+          { status: 409 },
+        ),
+    ) as unknown as typeof fetch;
+    const error = await postJson(fetchImpl, "http://api.local/appointments", "tok", {}).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CitasAdminError);
+    expect((error as CitasAdminError).message).toBe("Ese horario ya no está disponible.");
+    expect((error as CitasAdminError).alternativeSlots).toEqual([{ startsAt: "2026-10-12T19:00:00.000Z", endsAt: "2026-10-12T19:30:00.000Z" }]);
+  });
+
+  it("un error que no es 409 no trae alternativas aunque el cuerpo las mencione", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Mal", alternative_slots: [{ starts_at: "2026-10-12T19:00:00.000Z", ends_at: "2026-10-12T19:30:00.000Z" }] }), { status: 400 })) as unknown as typeof fetch;
+    const error = (await postJson(fetchImpl, "http://api.local/appointments", "tok", {}).catch((e: unknown) => e)) as CitasAdminError;
+    expect(error.alternativeSlots).toEqual([]);
+  });
+});
+
 describe("postJson", () => {
   it("manda POST con content-type json y el body serializado", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch;

@@ -135,7 +135,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
         <CardContent>
           {tenantConfigError && (
             <div className="mb-3">
-              <EstadoError mensaje={tenantConfigError} />
+              <EstadoError mensaje={tenantConfigError} onReintentar={loadTenantConfig} />
             </div>
           )}
           {!tenantConfig && !tenantConfigError && <EstadoCargando etiqueta="Cargando datos del negocio…" />}
@@ -180,7 +180,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
         </CardContent>
       </Card>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <Card>
         <CardHeader className="pb-3">
@@ -216,14 +216,18 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
         </CardContent>
       </Card>
 
-      <Card className="border-dashed bg-muted/30">
+      <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base text-muted-foreground">Próximamente</CardTitle>
+          <CardTitle className="text-base">Mensajes y WhatsApp</CardTitle>
+          <CardDescription>El canal de WhatsApp y los textos que envía el agente se configuran en sus propias páginas.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Horarios globales del negocio, plantillas de recordatorios y configuración del canal de WhatsApp todavía no tienen lectura/escritura expuesta en el backend de citas — se agregarán cuando el dominio las calcule. El nombre/slug/estado del negocio (`core.organization`) tampoco se edita aquí: ese schema es compartido por las 6 verticales de la plataforma.
-          </p>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/citas/${orgSlug}/agente-whatsapp`}>Agente de WhatsApp</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/citas/${orgSlug}/mensajes-whatsapp`}>Mensajes de WhatsApp</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>

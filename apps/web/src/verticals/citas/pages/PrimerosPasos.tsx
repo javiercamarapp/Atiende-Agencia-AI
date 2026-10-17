@@ -45,6 +45,8 @@ export function PrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, orgI
     setPrefs(leerPreferencias(almacenamiento(), clave));
   }, [clave]);
 
+  const [reintento, setReintento] = useState(0);
+
   useEffect(() => {
     if (!puede) return;
     let cancelado = false;
@@ -56,7 +58,7 @@ export function PrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, orgI
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, puede]);
+  }, [apiBaseUrl, token, propertyId, puede, reintento]);
 
   function actualizar(siguiente: PreferenciasOnboarding) {
     setPrefs(siguiente);
@@ -83,7 +85,7 @@ export function PrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, orgI
         </p>
       )}
 
-      {puede && error && <EstadoError mensaje={error} />}
+      {puede && error && <EstadoError mensaje={error} onReintentar={() => setReintento((n) => n + 1)} />}
       {puede && !checklist && !error && <EstadoCargando etiqueta="Cargando primeros pasos…" />}
 
       {puede && checklist && (

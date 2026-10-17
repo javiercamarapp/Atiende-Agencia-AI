@@ -37,6 +37,7 @@ import {
   TableRow,
   Checkbox,
   Callout,
+  useConfirm,
 } from "@atiende/ui";
 import { syncTone } from "../lib/status-tones.ts";
 import {
@@ -67,6 +68,7 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newRoleLabel, setNewRoleLabel] = useState("");
   const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   function load() {
     setError(null);
@@ -81,7 +83,11 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
-    if (!newDisplayName.trim()) return;
+    if (!newDisplayName.trim()) {
+      setFormError("El nombre del proveedor es obligatorio.");
+      return;
+    }
+    setFormError(null);
     setCreating(true);
     setError(null);
     try {
@@ -99,7 +105,7 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
   return (
     <div className="flex flex-col gap-4">
       <h1 className="font-display text-xl font-semibold text-foreground">Proveedores</h1>
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={load} />}
 
       <Card>
         <CardHeader className="pb-3">
@@ -109,7 +115,7 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
           <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-3">
             <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
               <Label htmlFor="citas-nuevo-proveedor-nombre">Nombre</Label>
-              <Input id="citas-nuevo-proveedor-nombre" placeholder="Nombre (ej. Dra. Ana Ruiz)" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} />
+              <Input id="citas-nuevo-proveedor-nombre" placeholder="Nombre (ej. Dra. Ana Ruiz)" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} aria-invalid={formError ? true : undefined} />
             </div>
             <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
               <Label htmlFor="citas-nuevo-proveedor-rol">Rol</Label>
@@ -120,6 +126,11 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
               {creating ? "Creando…" : "Crear proveedor"}
             </Button>
           </form>
+          {formError && (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {formError}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -209,6 +220,7 @@ interface CalComCardProps {
 }
 
 function CalComCard({ apiBaseUrl, token, propertyId, providerId, status, onChanged }: CalComCardProps) {
+  const { confirmar, dialogo } = useConfirm();
   const [apiKey, setApiKey] = useState("");
   const [eventTypeId, setEventTypeId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -237,6 +249,14 @@ function CalComCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
   }
 
   async function handleDisconnect() {
+    const aceptado = await confirmar({
+      titulo: "¿Desconectar Cal.com?",
+      descripcion: "Las citas de este proveedor dejan de sincronizarse con ese calendario hasta que lo vuelvas a conectar. Las citas ya creadas no se borran.",
+      tono: "danger",
+      confirmar: "Desconectar calendario",
+      cancelar: "Volver",
+    });
+    if (!aceptado) return;
     setDisconnecting(true);
     setLocalError(null);
     try {
@@ -265,7 +285,9 @@ function CalComCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
   }
 
   return (
-    <CalendarProviderCardShell
+    <>
+      {dialogo}
+      <CalendarProviderCardShell
       title="Cal.com"
       connected={status.connected}
       syncStatus={status.syncStatus}
@@ -299,6 +321,7 @@ function CalComCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
         </form>
       }
     />
+    </>
   );
 }
 
@@ -312,6 +335,7 @@ interface CalDavCardProps {
 }
 
 function CalDavCard({ apiBaseUrl, token, propertyId, providerId, status, onChanged }: CalDavCardProps) {
+  const { confirmar, dialogo } = useConfirm();
   const [calendarCollectionUrl, setCalendarCollectionUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -340,6 +364,14 @@ function CalDavCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
   }
 
   async function handleDisconnect() {
+    const aceptado = await confirmar({
+      titulo: "¿Desconectar CalDAV?",
+      descripcion: "Las citas de este proveedor dejan de sincronizarse con ese calendario hasta que lo vuelvas a conectar. Las citas ya creadas no se borran.",
+      tono: "danger",
+      confirmar: "Desconectar calendario",
+      cancelar: "Volver",
+    });
+    if (!aceptado) return;
     setDisconnecting(true);
     setLocalError(null);
     try {
@@ -368,7 +400,9 @@ function CalDavCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
   }
 
   return (
-    <CalendarProviderCardShell
+    <>
+      {dialogo}
+      <CalendarProviderCardShell
       title="CalDAV (Apple/iCloud, Fastmail, Nextcloud…)"
       connected={status.connected}
       syncStatus={status.syncStatus}
@@ -402,6 +436,7 @@ function CalDavCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
         </form>
       }
     />
+    </>
   );
 }
 
@@ -465,6 +500,16 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
     }
   }
 
+  /** Cancelar descarta lo escrito: los campos vuelven al valor guardado. */
+  function handleCancelEdit() {
+    if (detail) {
+      setEditDisplayName(detail.provider.displayName);
+      setEditRoleLabel(detail.provider.roleLabel);
+      setEditIsActive(detail.provider.isActive);
+    }
+    setEditing(false);
+  }
+
   async function handleSaveEdit(e: FormEvent) {
     e.preventDefault();
     if (!editDisplayName.trim()) return;
@@ -503,7 +548,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
         </Link>
       </Button>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={load} />}
 
       {!detail && !error && <EstadoCargando etiqueta="Cargando proveedor…" />}
 
@@ -541,7 +586,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                     <Button type="submit" disabled={saving}>
                       {saving ? "Guardando…" : "Guardar cambios"}
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setEditing(false)} disabled={saving}>
+                    <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={saving}>
                       Cancelar
                     </Button>
                   </div>
