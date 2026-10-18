@@ -34,6 +34,7 @@ import { despachosCfdiEstatusSatRoutes } from "./cfdi-estatus-sat.ts";
 import { despachosCfdiLoteRoutes } from "./cfdi-lote.ts";
 import { despachosCronSatRoutes } from "./cron-sat.ts";
 import { despachosBitacoraRoutes } from "./bitacora.ts";
+import { despachosHonorariosRoutes } from "./honorarios.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -96,5 +97,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosCronSatRoutes(deps));
   // D-38 -- bitacora de lecturas, descargas y exportaciones (solo admin y auditor con alcance de toda la organizacion), ver bitacora.ts.
   app.route("/", despachosBitacoraRoutes(deps));
+  // D-32 -- facturacion de honorarios: igualas y prefacturas mensuales con timbrado por PAC inyectado (migracion 023), ver honorarios.ts.
+  app.route("/", despachosHonorariosRoutes(deps));
   return app;
 }
