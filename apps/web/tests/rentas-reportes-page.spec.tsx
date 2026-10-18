@@ -51,9 +51,11 @@ describe("ReportesPage", () => {
     await esperar();
     const texto = rendered.container.textContent ?? "";
     expect(texto).toContain("Casa del mar");
-    expect(texto).toContain("$1,000.03 MXN");
+    expect(texto).toContain("$1,000.03");
     expect(texto).toContain("9.8%");
-    expect(texto).toContain("2026-03-01 → 2026-05-01");
+    expect(texto).toContain("1 mar 2026 → 1 may 2026");
+    expect(texto).not.toContain("MXN");
+    expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
     expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe("http://api.local/rentas/prop-1/reportes/ocupacion-ingresos");
   });
 
@@ -94,5 +96,60 @@ describe("ReportesPage", () => {
     await esperar();
     expect(urls.some((u) => u.includes("formato=csv") && u.includes("agrupar=unidad"))).toBe(true);
     expect(crear).toHaveBeenCalled();
+  });
+
+  it("sin reservas en el periodo muestra el estado vacio de la tabla", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(REPORTE({ por_unidad: [] }))));
+    rendered = montar("admin_gestora");
+    await esperar();
+    expect(rendered.container.textContent).toContain("Sin datos en el periodo");
+    expect(rendered.container.querySelector("table")).toBeNull();
+  });
+
+  it("mientras carga muestra el estado cargando y si falla ofrece reintentar con el mensaje real", async () => {
+    let falla = true;
+    let soltar!: () => void;
+    const pausa = new Promise<void>((r) => (soltar = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await pausa;
+        return falla ? ({ ok: false, status: 500, json: async () => ({ message: "Servidor caído" }) } as unknown as Response) : json(REPORTE());
+      }),
+    );
+    rendered = montar("admin_gestora");
+    await esperar();
+    expect(rendered.container.querySelector('[aria-busy="true"], [role="status"]')).not.toBeNull();
+    expect(rendered.container.querySelector("table")).toBeNull();
+    await act(async () => {
+      soltar();
+      await esperar();
+    });
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("Servidor caído");
+    falla = false;
+    const reintentar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Reintentar"))!;
+    await act(async () => {
+      click(reintentar);
+      await esperar();
+    });
+    expect(rendered.container.textContent).toContain("Casa del mar");
+  });
+
+  it("si la descarga falla muestra el mensaje real y no guarda ningun archivo", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => (url.includes("formato=pdf") ? ({ ok: false, status: 403, json: async () => ({ message: "No tienes permiso para realizar esta acción." }) } as unknown as Response) : json(REPORTE()))),
+    );
+    const crear = vi.fn(() => "blob:x");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: crear, revokeObjectURL: vi.fn() }));
+    rendered = montar("admin_gestora");
+    await esperar();
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "PDF")!;
+    await act(async () => {
+      click(boton);
+      await esperar();
+    });
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("No tienes permiso");
+    expect(crear).not.toHaveBeenCalled();
   });
 });

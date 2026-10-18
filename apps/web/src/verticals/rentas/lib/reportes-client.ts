@@ -4,6 +4,7 @@
 //   - fetchReporte     -> GET /rentas/:propertyId/reportes/ocupacion-ingresos (json)
 //   - descargarReporte -> mismo endpoint con formato=csv|pdf (Blob)
 import { fetchBlob, fetchJson } from "./admin-client.ts";
+import { dineroDeCentavos } from "./pricing-client.ts";
 
 export type AgrupacionReporte = "unidad" | "propietario" | "canal" | "mes";
 export const ETIQUETA_AGRUPACION: Record<AgrupacionReporte, string> = { unidad: "Unidad", propietario: "Propietario", canal: "Canal", mes: "Mes" };
@@ -129,12 +130,11 @@ export async function descargarReporte(fetchImpl: typeof fetch, apiBaseUrl: stri
   return fetchBlob(fetchImpl, urlReporte(apiBaseUrl, propertyId, p, formato), token);
 }
 
-/** Centavos -> texto de moneda es-MX, sin punto flotante en el cálculo del entero/fracción. */
+/** Centavos -> texto de moneda para pantalla: formateador único de @atiende/ui (separador de miles es-MX), sin sufijo para
+ * MXN (moneda por defecto de la plataforma) y con el código para otra moneda. Sin punto flotante en el cálculo. */
 export function formatearMoneda(centavos: number, moneda: string): string {
   const signo = centavos < 0 ? "-" : "";
-  const abs = Math.abs(centavos);
-  const enteros = new Intl.NumberFormat("es-MX").format(Math.floor(abs / 100));
-  return `${signo}$${enteros}.${String(abs % 100).padStart(2, "0")} ${moneda}`;
+  return `${signo}${dineroDeCentavos(Math.abs(centavos), moneda)}`;
 }
 
 export function formatearOcupacion(bp: number | null): string {
