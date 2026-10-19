@@ -19,7 +19,8 @@ import { PM_COPY } from "./perfil-pm.ts";
 import { TEXTO_BOTONES_APARTE, cabeEnMensajeInteractivo, construirBotonesDeConfirmacion, contenidoDeMensajeConToque, dentroDeVentanaDeServicio } from "./botones-confirmacion.ts";
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
 import { CLASE_FALLA_DEL_SISTEMA, claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
-import { estaAbiertoAhora, type EstadoApertura } from "../horarios.ts";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { aperturaConExcepciones, fechaAnterior, fechaLocal, type EstadoApertura } from "../horarios.ts";
 import { buscarPedidoReciente, hayPedidoProgramadoVigente } from "../pedido-reciente.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
@@ -423,15 +424,33 @@ export function acuseHandoffPendiente(estado: EstadoApertura | null): string {
   return `${ACUSE_HANDOFF_PENDIENTE} La sucursal está cerrada por ahora; responden a partir de ${hoy ? `las ${hora}` : `el ${dia} a las ${hora}`}.`;
 }
 
-/** Texto del acuse para esta sucursal AHORA. Lectura no esencial: si falla (o no hay sucursal u horario) sale el acuse fijo. */
+/** Fecha YYYY-MM-DD `n` dias despues de `fecha` (aritmetica UTC pura). */
+function fechaMas(fecha: string, n: number): string {
+  return new Date(Date.parse(`${fecha}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Texto del acuse para esta sucursal AHORA. Considera las excepciones de horario por fecha (festivos / puentes), igual que las reglas de pedido. Solo da una hora de apertura cuando es
+ * CIERTA: la de hoy (la da el horario que rige hoy) o, si no hay ninguna excepcion que toque hoy ni los proximos 7 dias, la del horario semanal. Si una excepcion hace dudosa la hora
+ * (p. ej. «abre manana a las X» calculado con las horas de una excepcion de hoy) sale el acuse fijo SIN hora: nunca una hora inventada. Lectura no esencial: si falla (o no hay
+ * sucursal u horario) sale el acuse fijo. */
 async function textoDelAcuse(repo: RestaurantesRepository, organizationId: string, propertyId: string | null | undefined): Promise<string> {
   if (!propertyId) return ACUSE_HANDOFF_PENDIENTE;
   try {
     return await repo.runWithRowSavepoint(async () => {
       const policy = await repo.findBranchPolicy(propertyId);
-      if (!policy.horario || policy.horario.length === 0) return ACUSE_HANDOFF_PENDIENTE;
+      const horarioBase = policy.horario && policy.horario.length > 0 ? policy.horario : null;
       const zona = (await repo.findBranchZonaHoraria(propertyId)).zonaHoraria;
-      return acuseHandoffPendiente(estaAbiertoAhora(policy.horario, new Date(), zona));
+      const ahora = new Date();
+      const hoy = fechaLocal(ahora, resolverZonaHorariaNegocio(zona));
+      const excepciones = await repo.listBranchHoursExceptions(propertyId, fechaAnterior(hoy), fechaMas(hoy, 7));
+      const cubreHoy = excepciones.some((e) => e.fechaDesde <= hoy && hoy <= e.fechaHasta);
+      if (!horarioBase && !cubreHoy) return ACUSE_HANDOFF_PENDIENTE;
+      const { estado } = aperturaConExcepciones(horarioBase ?? [], excepciones, ahora, zona);
+      if (estado.abierto || !estado.proximaApertura) return ACUSE_HANDOFF_PENDIENTE;
+      // La apertura de otro dia se calcula con el patron semanal del horario de HOY: solo es confiable si ninguna excepcion toca de hoy a 7 dias.
+      const hayExcepcionCercana = excepciones.some((e) => e.fechaHasta >= hoy);
+      if (!estado.proximaApertura.hoy && hayExcepcionCercana) return ACUSE_HANDOFF_PENDIENTE;
+      return acuseHandoffPendiente(estado);
     });
   } catch {
     return ACUSE_HANDOFF_PENDIENTE;
