@@ -55,13 +55,15 @@ describe("agentes-02: en una rafaga el clasificador revisa TODOS los mensajes pe
 });
 
 describe("agentes-04: el loop agota sus vueltas sin crear pedido", () => {
-  it("el equipo se entera (callback no_puedo_resolver, abre handoff) y el cliente recibe un texto honesto, no un 'un momento' mudo", async () => {
+  // PM Ronda 12 (Q9): no_puedo_resolver sin pedido en curso avisa al equipo pero ya NO abre la toma que calla al bot.
+  it("el equipo se entera (callback no_puedo_resolver, sin toma que calle al bot) y el cliente recibe un texto honesto, no un 'un momento' mudo", async () => {
     const b = await banco();
     b.setGuion([call("buscar_producto", { query: "pastor", branch_slug: "garcia-lavin" })]); // el modelo se queda buscando
     const r = await b.enviar("+5219990000007", "quiero de todo un poco jaja");
     expect(r.reply).toMatch(/avis[ée] al equipo/);
     expect(r.reply).not.toMatch(/Un momento/i);
-    expect(r.escalated).toBe(true);
+    expect(r.escalated).toBe(false);
+    expect(b.conversaciones.handoffs).toHaveLength(0);
     const aviso = b.callbacks().find((c) => c.reason === "escalada:no_puedo_resolver");
     expect(aviso?.propertyId).toBe(b.t7);
     expect(b.llamadasLlm()).toBe(8);
