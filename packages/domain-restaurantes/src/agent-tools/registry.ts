@@ -74,6 +74,7 @@ import {
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
   decidirConfirmacion,
+  etiquetaHoraEntrega,
   firmaDeCierre,
   mensajeDatosCambiaron,
   resumenCanonico,
@@ -912,6 +913,36 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
 }
 
 
+/** Zona horaria de la sucursal por su slug (la de plataforma si no hay dato o la base no tiene la migracion de zona). `null` = la sucursal no existe: otra regla se encarga del error. */
+async function zonaDeSucursal(repo: RestaurantesRepository, ctx: AgentToolContext, slug: unknown): Promise<string | null> {
+  if (typeof slug !== "string" || slug.trim() === "") return null;
+  const branch = await repo.findBranch(ctx.organizationId, { slug });
+  if (!branch) return null;
+  return resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+}
+
+/**
+ * R13/T7-026: la hora que el CLIENTE debe ver en el resumen canonico, en la zona de la sucursal, y la direccion que el servidor conoce (colonia y pin) si es a domicilio.
+ * La hora sale de lo ya cotizado (`hora` = recoger, ISO UTC al minuto o el programado) para que el resumen y el pedido guardado digan lo mismo.
+ */
+async function horaYDireccionDeResumen(
+  repo: RestaurantesRepository,
+  ctx: AgentToolContext,
+  input: Record<string, unknown>,
+  horaCotizada: string | undefined,
+  ahoraMs: number,
+): Promise<{ readonly hora?: string; readonly direccion?: string }> {
+  const programado = input.canal === "recoger" ? undefined : toProgramadoPara(input.programado_para);
+  const crudo = programado ?? horaCotizada;
+  const instante = crudo === undefined ? NaN : Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(crudo) ? `${crudo}:00.000Z` : crudo);
+  const hora = Number.isNaN(instante) ? undefined : etiquetaHoraEntrega(instante, (await zonaDeSucursal(repo, ctx, input.branch_slug)) ?? resolverZonaHorariaNegocio(null), ahoraMs);
+  const partes: string[] = [];
+  const colonia = input.canal === "recoger" ? undefined : textoOpcional(input.colonia_entrega)?.trim();
+  if (colonia) partes.push(`colonia ${colonia}`);
+  if (input.canal !== "recoger" && ctx.ubicacionEntrega) partes.push("pin de ubicación recibido");
+  return { ...(hora ? { hora } : {}), ...(partes.length > 0 ? { direccion: partes.join(", ") } : {}) };
+}
+
 /** Maximo de `minutos_para_recoger` (misma cota que la recogida de hoy: `HORA_RECOGIDA_MAX_HORAS`). */
 const MINUTOS_PARA_RECOGER_MAX = 12 * 60;
 
@@ -1122,7 +1153,13 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
       const resumenBase =
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
-          ? { lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })), total: quotedQuote.total, descuento: quotedQuote.descuento, canal: canalOf(input.canal) }
+          ? {
+              lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })),
+              total: quotedQuote.total,
+              descuento: quotedQuote.descuento,
+              canal: canalOf(input.canal),
+              ...(await horaYDireccionDeResumen(repo, ctx, input, horaCotizacion, flowNow(flow))),
+            }
           : undefined;
       const canonico = resumenBase
         ? resumenCanonico({ ...resumenBase, datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct } })
