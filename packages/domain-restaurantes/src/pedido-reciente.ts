@@ -7,6 +7,8 @@ import type { CanalPedido, OrderStatus } from "./types.ts";
 
 /** Un pedido de hace mas de esto ya no es "el pedido de ahora": se trata como cliente que vuelve a pedir. */
 export const VENTANA_PEDIDO_RECIENTE_MIN = 12 * 60;
+/** Un pedido PROGRAMADO (para hoy o dias despues) sigue siendo "el pedido de ahora" aunque se haya creado hace mas de 12 h; tope para no tratar un dato rancio como vigente. */
+export const VENTANA_PEDIDO_PROGRAMADO_MIN = 30 * 24 * 60;
 /** Sucursal sin zona horaria propia (`branch_detail.zona_horaria` nula): la del negocio (Los Taquitos de PM es de Merida). */
 const ZONA_POR_OMISION = "America/Merida";
 
@@ -82,4 +84,13 @@ export async function buscarPedidoRecienteConSucursal(repo: RestaurantesReposito
 export async function buscarPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<PedidoReciente | null | undefined> {
   const r = await buscarPedidoRecienteConSucursal(repo, organizationId, phone, now);
   return r === undefined || r === null ? r : r.reciente;
+}
+
+/** ¿Hay un pedido PROGRAMADO vigente de este telefono, sin importar cuando se creo (hasta `VENTANA_PEDIDO_PROGRAMADO_MIN`)? Solo lo usa el criterio de "pedido en curso" del silencio tras
+ * escalar: el resto de los estados conserva la ventana de 12 h. undefined = no se pudo leer. Mira el pedido mas reciente del telefono (igual que `buscarPedidoReciente`). */
+export async function hayPedidoProgramadoVigente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<boolean | undefined> {
+  const desde = new Date(now.getTime() - VENTANA_PEDIDO_PROGRAMADO_MIN * 60_000).toISOString();
+  const order = await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), desde);
+  if (order === undefined) return undefined;
+  return order !== null && order.status === "programado";
 }

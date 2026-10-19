@@ -20,7 +20,7 @@ import { TEXTO_BOTONES_APARTE, cabeEnMensajeInteractivo, construirBotonesDeConfi
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
 import { CLASE_FALLA_DEL_SISTEMA, claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
 import { estaAbiertoAhora, type EstadoApertura } from "../horarios.ts";
-import { buscarPedidoReciente } from "../pedido-reciente.ts";
+import { buscarPedidoReciente, hayPedidoProgramadoVigente } from "../pedido-reciente.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
 // dijo a un cliente de prueba "no procesamos ni guardamos los datos que
@@ -454,7 +454,10 @@ async function hayPedidoEnCurso(repo: RestaurantesRepository, organizationId: st
   try {
     const r = await repo.runWithRowSavepoint(() => buscarPedidoReciente(repo, organizationId, phone));
     if (r === undefined) return true;
-    return r !== null && r.estado !== "entregado" && r.estado !== "no_recogido";
+    if (r !== null && r.estado !== "entregado" && r.estado !== "no_recogido") return true;
+    // PM Ronda 12 (seguimiento de #593): un pedido PROGRAMADO creado hace mas de 12 h (para hoy) sigue en curso; la ventana de 12 h solo aplica a los demas estados.
+    const programado = await repo.runWithRowSavepoint(() => hayPedidoProgramadoVigente(repo, organizationId, phone));
+    return programado === undefined ? true : programado;
   } catch {
     return true;
   }
