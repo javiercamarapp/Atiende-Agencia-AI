@@ -119,7 +119,7 @@ describe("programado_para vacio es 'sin programar' (QA-PM-R2-reglas-02)", () => 
 
   it("un programado a menos de 30 min dice que use hora_recogida (el modelo ya no se queda en bucle)", async () => {
     const s = setup();
-    const en20 = new Date(MARTES_13.getTime() + 20 * 60_000).toISOString();
+    const en20 = "2026-10-06T13:20:00-06:00"; // MARTES_13 + 20 min, con el offset de la sucursal (R13: en UTC se rechaza antes)
     await expect(s.quote({ programado_para: en20 })).rejects.toThrow(/hora_recogida/);
   });
 });

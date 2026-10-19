@@ -188,8 +188,8 @@ describe("casos limite de la confirmacion (real)", () => {
   });
 
   it("la hora de recogida se muestra en la zona de la SUCURSAL (Cancun, UTC-5), no en la del agente (Merida, UTC-6)", async () => {
-    // 2026-10-07T01:30Z = 20:30 en Cancun = 19:30 en Merida.
-    const { t2 } = await escenario("real", { trasCrear: "texto_vacio", zonaSucursal: "America/Cancun", extraBase: { hora_recogida: "2026-10-07T01:30:00Z" } });
+    // 2026-10-07T01:30Z = 20:30 en Cancun = 19:30 en Merida. R13: el modelo debe mandar el offset de la sucursal (Cancun -05:00); en UTC se rechaza (pm-r13-hora-sucursal.spec.ts).
+    const { t2 } = await escenario("real", { trasCrear: "texto_vacio", zonaSucursal: "America/Cancun", extraBase: { hora_recogida: "2026-10-06T20:30:00-05:00" } });
     expect(t2.reply).toMatch(/\*Recoger a las:\*.*20:30/);
     expect(t2.reply).not.toMatch(/19:30/);
   });
