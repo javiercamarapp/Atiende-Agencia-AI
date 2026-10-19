@@ -34,6 +34,20 @@ export function normalizarCanal(raw: unknown): CanalPedido {
   throw new OrderValidationError("El canal del pedido debe ser 'domicilio' o 'recoger'.");
 }
 
+/**
+ * PM R13: forma de pago que manda el modelo -> "efectivo" | "tarjeta" | undefined. Acepta lo que el cliente dice de verdad («tarjeta de débito», «con terminal»,
+ * «pago con tarjeta», «Efectivo»): sin acentos, mayusculas ni espacios de mas. Ambiguo («tarjeta o efectivo») o distinto (transferencia, deposito) -> undefined,
+ * igual que antes (el pedido se rechaza y se vuelve a preguntar). El servidor lo usa para saber si a domicilio hay que llevar terminal.
+ */
+export function normalizarMetodoPago(raw: unknown): "efectivo" | "tarjeta" | undefined {
+  if (typeof raw !== "string") return undefined;
+  const t = raw.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const tarjeta = /\b(tarjeta|terminal|debito|credito)\b/.test(t);
+  const efectivo = /\befectivo\b/.test(t);
+  if (tarjeta === efectivo) return undefined;
+  return tarjeta ? "tarjeta" : "efectivo";
+}
+
 /** PM: propina SOLO con tarjeta. Sin politica configurada nunca se pregunta. */
 export function debePreguntarPropina(politica: PropinaPolitica | null, paymentMethod: "efectivo" | "tarjeta" | null | undefined): boolean {
   if (politica === "siempre") return true;
