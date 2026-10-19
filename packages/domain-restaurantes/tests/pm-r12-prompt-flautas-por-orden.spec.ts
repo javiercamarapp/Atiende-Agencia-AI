@@ -35,6 +35,15 @@ describe("PM R12 T7-031: el prompt define que una orden de flautas es UNA flauta
   it("no manda preguntar cuántas flautas trae la orden", () => {
     expect(prompt).toMatch(/no pregunte cuántas (flautas|piezas) trae/i);
   });
+
+  it("deja un espacio tras el punto antes de «Cortesía de totopos»", () => {
+    expect(prompt).not.toContain("orden.Cortesía");
+    expect(prompt).toContain("y se pregunta. Cortesía de totopos");
+  });
+
+  it("exceptúa la contradicción del cliente: manda la herramienta (unidad_de_venta) y se pregunta", () => {
+    expect(prompt).toContain("salvo que el cliente se contradiga («4 flautas, una orden»): ahí manda la herramienta (unidad_de_venta) y se pregunta");
+  });
 });
 
 describe("PM R12 T7-031: cotización con el catálogo (el servidor ya cotiza bien; el defecto era del modelo)", () => {
