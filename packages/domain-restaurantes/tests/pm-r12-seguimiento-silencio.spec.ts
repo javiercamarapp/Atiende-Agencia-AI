@@ -7,6 +7,7 @@ import { FakeLlmProvider } from "@atiende/agent-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createOrder } from "../src/orders.ts";
 import { ACUSE_HANDOFF_PENDIENTE, handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
+import { reiniciarDedupeFallaSistema } from "../src/whatsapp/dedupe-falla-sistema.ts";
 import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
 import type { Order, OrderStatus } from "../src/types.ts";
 import { CLASE_FALLA_DEL_SISTEMA } from "../src/alertas-duenio/timeouts-agente.ts";
@@ -18,6 +19,7 @@ const dia = (n: number) => n * 24 * 60 * 60_000;
 const avanza = (ms: number) => vi.setSystemTime(new Date(Date.now() + ms));
 
 beforeEach(() => {
+  reiniciarDedupeFallaSistema();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(MARTES_14H));
 });
