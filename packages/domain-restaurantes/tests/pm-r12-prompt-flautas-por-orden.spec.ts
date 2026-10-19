@@ -29,7 +29,7 @@ describe("PM R12 T7-031: el prompt define que una orden de flautas es UNA flauta
   it("dice que N flautas son N órdenes, que no se multiplica ni se inventan piezas", () => {
     expect(prompt).toMatch(/N flautas son N órdenes/);
     expect(prompt).toMatch(/nunca multiplique/i);
-    expect(prompt).toMatch(/no invente piezas/i);
+    expect(prompt).toMatch(/ni invente piezas/i);
   });
 
   it("no manda preguntar cuántas flautas trae la orden", () => {
