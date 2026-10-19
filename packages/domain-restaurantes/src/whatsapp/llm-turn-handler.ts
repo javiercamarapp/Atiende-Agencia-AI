@@ -24,6 +24,7 @@
 // propio historial de tool_calls.
 import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
+import { avisoFallaSistemaReciente, marcarAvisoFallaSistema } from "./dedupe-falla-sistema.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
@@ -803,6 +804,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
         if (orderId) return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+        // Seguimiento de #593: en una caida larga sin toma cada mensaje del cliente repetia el aviso; uno por telefono cada 15 min. El turno sigue siendo `falla_sistema` (alerta de racha).
+        if (avisoFallaSistemaReciente(organizationId, phone)) {
+          escalarMotivo = "falla_sistema";
+          return done({ reply: perfil === "taqueria_pm" ? PM_COPY.sinAsistenteAvisoEquipo : PROVEEDOR_CAIDO_REPLY_GENERICO, orderId: null, propertyId });
+        }
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const ultimo = [...messages].reverse().find((m) => m.role === "user");
         const aviso = await executeAgentToolSafely(
@@ -812,6 +818,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           { customer_name: nombre, motivo: "falla_sistema", resumen: `El asistente no pudo responder (falla del sistema). Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}` },
         );
         if (isToolErrorResult(aviso.result)) return done({ reply: providerFailureReply(null, perfil), orderId: null, propertyId });
+        marcarAvisoFallaSistema(organizationId, phone);
         escalarMotivo = "falla_sistema";
         return done({ reply: perfil === "taqueria_pm" ? PM_COPY.sinAsistenteAvisoEquipo : PROVEEDOR_CAIDO_REPLY_GENERICO, orderId: null, propertyId });
       };
