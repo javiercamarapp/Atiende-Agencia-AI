@@ -39,7 +39,8 @@ describe("R8 causa 6: responder SIEMPRE tras escalar", () => {
   it("cierra el turno con texto y siguiente paso; postventa (queja, cambio, estado) cubierta", () => {
     expect(p).toMatch(/DESPUÉS de escalar responda SIEMPRE: cierre ese turno con texto para el cliente y su siguiente paso; nunca lo deje en silencio/);
     expect(p).toMatch(/Queja o faltante:.*Cancelación o cambio:.*Estado del pedido:/s);
-    expect(p).toMatch(/Si el cliente vuelve a escribir, conteste/);
+    // PM Ronda 12 (Q2): el codigo ya no entrega al agente los mensajes de una toma abierta (manda un acuse fijo), asi que el prompt dejo de pedir "conteste".
+    expect(p).toMatch(/Si el cliente vuelve a escribir, hay dos casos que decide el sistema, no usted/);
   });
 });
 
@@ -140,8 +141,9 @@ describe("R8 revisión: coherencia entre pasos", () => {
     expect(p).toMatch(/Si el cliente solo pregunta \(horario, envío, promociones, salsas\), responda/);
     expect(p).not.toMatch(/Si el cliente solo pregunta \([^)]*menú\)/);
   });
-  it("tras escalar: 'no se quede callado'", () => {
-    expect(p).toMatch(/no se quede callado/);
+  it("tras escalar: el mismo turno cierra con texto; los mensajes siguientes los decide el sistema (acuse), no 'no se quede callado' (R12 Q2)", () => {
+    expect(p).toMatch(/nunca lo deje en silencio/);
+    expect(p).not.toMatch(/no se quede callado/);
   });
 });
 

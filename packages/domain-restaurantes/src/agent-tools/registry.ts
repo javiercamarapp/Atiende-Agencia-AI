@@ -245,6 +245,10 @@ export const MOTIVOS_ESCALACION = [
 ] as const;
 export type MotivoEscalacion = (typeof MOTIVOS_ESCALACION)[number];
 
+/** Motivos que el sistema usa por su cuenta (vueltas agotadas, limites de la llamada) y que NO se ofrecen al modelo: PM Ronda 12 (T7-008 Luna r1) el modelo escalaba
+ * `no_puedo_resolver` ante un producto que no existe ("chistorra") y la toma callaba al agente. Siguen siendo motivos validos (`normalizarMotivoEscalacion`). */
+export const MOTIVOS_SOLO_DEL_SISTEMA: ReadonlySet<string> = new Set(["no_puedo_resolver"]);
+
 export function normalizarMotivoEscalacion(raw: unknown): MotivoEscalacion {
   return typeof raw === "string" && (MOTIVOS_ESCALACION as readonly string[]).includes(raw) ? (raw as MotivoEscalacion) : "otro";
 }
@@ -435,14 +439,14 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "escalar_a_humano",
     description:
-      "Pasa la conversación a una persona del restaurante cuando el cliente lo pide, hay una queja, o no puedes resolver lo que necesita. Deja un aviso con el motivo para que alguien le responda.",
+      "Pasa la conversación a una persona del restaurante cuando el cliente lo pide o hay una queja. Lo que sí puedes resolver (un producto que no existe, una duda de menú, un ajuste) lo resuelves tú con las demás herramientas. Deja un aviso con el motivo para que alguien le responda.",
     parameters: {
       type: "object",
       properties: {
         customer_name: { type: "string" },
         motivo: {
           type: "string",
-          enum: [...MOTIVOS_ESCALACION],
+          enum: MOTIVOS_ESCALACION.filter((m) => !MOTIVOS_SOLO_DEL_SISTEMA.has(m)),
           description:
             "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande / tiempos_entrega (pedido muy grande o exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
         },
