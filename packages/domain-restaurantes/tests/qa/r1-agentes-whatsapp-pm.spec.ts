@@ -270,25 +270,27 @@ describe("clasificador de alto riesgo (antes del LLM): falsos positivos a mitad 
 
 describe("modo sin IA: kill switch / presupuesto agotado / proveedor caido", () => {
   // QA-restaurantes-R1-agentes-03
-  it("03 con el interruptor de plataforma encendido, el pedido NO se pierde en silencio: aviso falla_sistema (con la sucursal) y toma de handoff", async () => {
+  // PM Ronda 12 (Q9, decision de Javier): la falla tecnica SIN pedido en curso avisa al equipo pero ya NO abre la toma que calla al bot (el cliente que escribe de nuevo se atiende).
+  it("03 con el interruptor de plataforma encendido, el pedido NO se pierde en silencio: aviso falla_sistema (con la sucursal) y SIN toma que calle al bot", async () => {
     const b = await banco({ killSwitch: true });
     const tel = "+5219990000005";
     const r1 = await b.enviar(tel, "hola quiero pedir 10 tacos de pastor a domicilio");
     expect(r1.reply).toMatch(/avis[ée] al equipo/);
-    expect(r1.escalated).toBe(true);
+    expect(r1.escalated).toBe(false);
     const cb = b.callbacks().find((c) => c.reason === "escalada:falla_sistema");
     expect(cb?.propertyId).toBe(b.t7);
-    expect(b.conversaciones.handoffs).toHaveLength(1);
-    // la persona ya tiene la toma: el agente (caido) no vuelve a contestar 'problema tecnico' ni genera otro aviso
+    expect(b.conversaciones.handoffs).toHaveLength(0);
+    // sin toma, el bot no calla: el cliente que escribe de nuevo recibe respuesta (aqui el kill switch sigue encendido, asi que vuelve el aviso tecnico)
     const r2 = await b.enviar(tel, "hola??");
-    expect(r2.reply).toBeUndefined();
-    expect(b.callbacks().filter((c) => c.reason === "escalada:falla_sistema")).toHaveLength(1);
+    expect(r2.reply).toBeDefined();
+    expect(b.conversaciones.handoffs).toHaveLength(0);
   });
 
-  it("03b proveedor caido (la escalera de modelos lanza): mismo aviso al equipo y handoff, no 'problema tecnico' a secas", async () => {
+  it("03b proveedor caido (la escalera de modelos lanza): mismo aviso al equipo (sin toma que calle al bot, Q9), no 'problema tecnico' a secas", async () => {
     const b = await banco({ proveedorCae: true });
     const r = await b.enviar("+5219990000105", "quiero 4 de pastor para recoger");
-    expect(r.escalated).toBe(true);
+    expect(r.escalated).toBe(false);
+    expect(b.conversaciones.handoffs).toHaveLength(0);
     expect(r.reply).toMatch(/avis[ée] al equipo/);
     expect(b.callbacks().some((c) => c.reason === "escalada:falla_sistema" && c.propertyId === b.t7)).toBe(true);
   });
