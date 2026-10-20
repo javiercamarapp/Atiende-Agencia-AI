@@ -321,13 +321,12 @@ describe("corte sin falsos positivos", () => {
     expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
   });
 
-  it("un crear_pedido con argumentos invalidos reinicia el bloqueo: las lecturas de ANTES y DESPUES no se acumulan", async () => {
+  it("un crear_pedido con argumentos invalidos reinicia el bloqueo (y no suma como la 6a llamada): NO corta", async () => {
     const m = await mundo((paso, f) => {
       if (paso === 1) return cotiza(f);
       if (paso === 2) return crea(f, "k1");
-      if (paso === 3) return buscaQ("b1", "pepsi");
-      if (paso === 4) return buscaQ("b2", "sprite");
-      if (paso === 5) return crudo("i1", "crear_pedido", "{no es json");
+      if (paso <= 7) return buscaQ(`b${paso}`, `producto ${paso}`); // 5 lecturas distintas tras el rechazo
+      if (paso === 8) return crudo("i1", "crear_pedido", "{no es json"); // sumaria la 6a si no se tratara como otra clase de fallo
       return texto("fin");
     });
     // El crear invalido sube al rol escalado (B04) y ese rol contesta; lo que importa es que NO hubo corte.
