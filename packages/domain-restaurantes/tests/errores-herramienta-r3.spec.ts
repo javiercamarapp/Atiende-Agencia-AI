@@ -31,7 +31,8 @@ describe("executeAgentToolSafely", () => {
     const linea = String(log.mock.calls[0]![0]);
     expect(linea).toContain("cotizar_pedido");
     expect(linea).toContain("42P01");
-    expect(linea).toContain("does not exist");
+    // La causa se identifica por clase + codigo; el mensaje de la excepcion ya no se imprime (en Postgres trae valores de la fila).
+    expect(linea).not.toContain("does not exist");
     expect(linea).not.toContain("9991234567");
     log.mockRestore();
   });
