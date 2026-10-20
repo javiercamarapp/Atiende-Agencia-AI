@@ -6,6 +6,7 @@
 //   * El pedido sale del telefono del contexto (remitente de WhatsApp), nunca de un id que escriba el modelo o el cliente.
 //   * Queja: ademas del aviso al equipo de siempre, se liga al ultimo pedido del telefono (solicitud de compensacion) y se guarda su subtipo. Nunca cambia lo
 //     que se le responde al cliente ni compensa nada por su cuenta.
+import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { normalizePhone } from "../phone.ts";
 import { esConsultaDeCancelacion, normalizarParaClasificar } from "./guards.ts";
 import type { RestaurantesRepository } from "../repository.ts";
@@ -100,7 +101,7 @@ export async function intentarCancelacionConAutopiloto(
       return null;
     });
   } catch (err) {
-    console.error("whatsapp: la cancelacion con autopiloto fallo (se sigue por el camino anterior):", err instanceof Error ? err.message : err);
+    console.error("whatsapp: la cancelacion con autopiloto fallo (se sigue por el camino anterior):", descripcionSeguraDeError(err));
     return null;
   }
 }
@@ -115,7 +116,7 @@ export async function registrarQuejaConAutopiloto(
   try {
     await repo.runWithRowSavepoint(() => hooks.registrarQueja({ organizationId: args.organizationId, customerPhone: args.phone, subtipo, ahora: args.ahora }));
   } catch (err) {
-    console.error("whatsapp: ligar la queja al pedido fallo (el aviso al equipo ya quedo registrado):", err instanceof Error ? err.message : err);
+    console.error("whatsapp: ligar la queja al pedido fallo (el aviso al equipo ya quedo registrado):", descripcionSeguraDeError(err));
   }
   return subtipo;
 }

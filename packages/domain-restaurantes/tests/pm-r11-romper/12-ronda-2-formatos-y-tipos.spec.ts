@@ -41,11 +41,11 @@ describe("R12-F1 horas en formatos raros (hora_recogida / programado_para)", () 
     expect(err(await s.seguro("cotizar_pedido", s.base(2, { programado_para: valor }))), valor).toBeTruthy();
   });
 
-  it("(control) la misma hora bien formada, con 'Z' o con offset sin dos puntos, se acepta y es el mismo instante", async () => {
+  it("(control) la misma hora bien formada, con offset sin dos puntos o con milisegundos, se acepta y es el mismo instante (R13: 'Z' ya no, ver pm-r13-hora-sucursal.spec.ts)", async () => {
     const f = buildRestaurantFixture();
     await horario(f);
     const s = flujo(f);
-    for (const iso of ["2026-10-07T20:00:00Z", "2026-10-07T14:00:00-0600", "2026-10-07T14:00:00-06:00", "2026-10-07T14:00:00.000-06:00"]) {
+    for (const iso of ["2026-10-07T14:00:00-0600", "2026-10-07T14:00:00-06:00", "2026-10-07T14:00:00.000-06:00"]) {
       expect(err(await s.seguro("cotizar_pedido", s.base(2, { programado_para: iso }))), iso).toBeUndefined();
     }
   });

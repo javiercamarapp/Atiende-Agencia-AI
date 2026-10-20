@@ -26,6 +26,7 @@ import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
 import { avisoFallaSistemaReciente, marcarAvisoFallaSistema } from "./dedupe-falla-sistema.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { descripcionSeguraDeError } from "../log-seguro.ts";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
@@ -53,7 +54,8 @@ import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimi
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { RESPUESTA_TOQUE_RETENIDO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
-import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
+import { clasificarCausaError, TopeLlamadaLlmError } from "./observabilidad-turno.ts";
+import type { CausaErrorTurno, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tono, reglas duras y generación del prompt.
@@ -475,7 +477,7 @@ export interface WhatsAppLlmAgentOptions {
 /** Encola la comanda del pedido recien creado. Nunca lanza: un fallo aqui no puede tumbar el turno ni
  * ocultarle al cliente un pedido que si quedo creado. Devuelve el bloque que ve el modelo (solo en modo
  * `activo`; con la bandera apagada o en sombra el resultado de `crear_pedido` queda identico). */
-async function encolarComandaDelTurno(
+export async function encolarComandaDelTurno(
   encolar: NonNullable<WhatsAppLlmAgentOptions["encolarComanda"]>,
   order: Order,
   input: Record<string, unknown>,
@@ -490,7 +492,7 @@ async function encolarComandaDelTurno(
     });
     return outcome.modo === "activo" ? { estado: outcome.agente.estado, folio: outcome.agente.folio, mensaje: outcome.agente.mensaje } : null;
   } catch (err) {
-    console.error("whatsapp: no se pudo encolar la comanda de SoftRestaurant (el pedido NO se ve afectado):", err instanceof Error ? err.message : err);
+    console.error("whatsapp: no se pudo encolar la comanda de SoftRestaurant (el pedido NO se ve afectado):", descripcionSeguraDeError(err));
     return null;
   }
 }
@@ -533,6 +535,24 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
+/** PM-R14: rechazos de regla de `crear_pedido` seguidos en un turno tras los cuales se corta el bucle del modelo. */
+export const MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR = 2;
+/** PM-R14: llamadas REPETIDAS (misma herramienta y mismos argumentos) tras un `crear_pedido` rechazado por regla con las que se corta el bucle. */
+export const MAX_LLAMADAS_REPETIDAS_TRAS_RECHAZO_AL_CREAR = 3;
+/** PM-R14: respaldo: llamadas siguientes (sin una cotizacion exitosa) tras un rechazo, aunque los argumentos cambien. El tope de vueltas del turno (8 en PM) sigue acotando el peor caso. */
+export const MAX_LLAMADAS_TRAS_RECHAZO_AL_CREAR = 6;
+
+/** Firma de una llamada: herramienta + argumentos normalizados (claves ordenadas, textos recortados y en minusculas). */
+function firmaDeLlamada(nombre: string, input: unknown): string {
+  const norm = (v: unknown): unknown => {
+    if (typeof v === "string") return v.trim().toLowerCase();
+    if (Array.isArray(v)) return v.map(norm);
+    if (v !== null && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, x]) => [k, norm(x)]));
+    return v;
+  };
+  return `${nombre}:${JSON.stringify(norm(input))}`;
+}
+const CIERRE_BLOQUEADO_REPLY_GENERICO = "Todavía no queda registrado su pedido: necesito que revisemos un dato. ¿Me confirma de nuevo su pedido (productos, forma de pago y entrega) o me dice qué desea corregir?";
 export const TURN_BUDGET_POR_OMISION_MS = FUNCION_MAX_MS - MARGEN_CIERRE_TURNO_MS - 6_000;
 
 /**
@@ -551,8 +571,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   interface Telemetria {
     vueltas: number;
     rolesUsados: string[];
-    tools: Array<{ tool: string; latenciaMs: number; resultado: ResultadoTool; vuelta: number }>;
+    tools: Array<{ tool: string; latenciaMs: number; resultado: ResultadoTool; vuelta: number; codigoRegla: string | null }>;
     resultado: ResultadoTurno;
+    /** PM-R14: causa del error en la lista cerrada (null = el turno no termino en error). */
+    causaError: CausaErrorTurno | null;
+    /** PM-R14: la bandera de la maquina de cierre al ARRANCAR el turno. */
+    cierreMaquina: boolean;
+    /** PM-R14: el turno se corto por el bucle de crear_pedido rechazado (resultado `ok` con causaError `regla`). */
+    cierreCortado: boolean;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
   }
@@ -603,6 +629,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       /** Si la ultima cotizacion DE ESTE TURNO traia `promocion_aplicada` o una promocion sugerida con cortesias (null = no se cotizo en este turno: no se puede verificar). */
       let lastQuoteRespaldaCortesia: boolean | null = null;
       let anyToolCalled = false;
+      // PM-R14: `crear_pedido` rechazado por regla y lo que pasa despues en el turno (se reinicia con una cotizacion exitosa, un crear_pedido que no fue rechazo de regla o un fallo de otra clase). Ver el corte mas abajo.
+      let bloqueoAlCrear: { codigo: string | null; rechazosMismoCodigo: number; llamadasDespues: number; firmas: Map<string, number> } | null = null;
       let escalacionOkEnTurno = false;
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
@@ -729,6 +757,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
           tele.resultado = "error_sistema";
+          tele.causaError = "herramienta";
           return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
         }
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
@@ -787,7 +816,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const vencido = new Promise<never>((_, reject) => {
           temporizador = setTimeout(() => {
             controller.abort();
-            reject(new Error("tope de tiempo de la llamada al LLM"));
+            reject(new TopeLlamadaLlmError());
           }, tope);
         });
         const trabajo = llamar(controller.signal);
@@ -826,6 +855,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
           tele.resultado = "presupuesto_agotado";
+          tele.causaError = "tope_turno";
           return fallaDelSistema();
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
@@ -844,8 +874,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
             request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0, signal },
           }));
-        } catch {
+        } catch (errLlm) {
           tele.resultado = "error_proveedor";
+          // Solo la causa de la lista cerrada; el error en si (mensaje, cuerpo del proveedor) no se guarda ni se registra.
+          tele.causaError = clasificarCausaError(errLlm);
           // Escalera de proveedores agotada / presupuesto excedido / gate de
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
@@ -941,6 +973,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           let input: Record<string, unknown> = {};
           let result: unknown;
           let fallaSistema = false;
+          let codigoDeRechazo: string | null = null;
           let argumentosInvalidos = false;
           const toolInicio = Date.now();
           // R11-05a: pasado el tope por respuesta NO se ejecuta nada, pero cada tool_call recibe su resultado (el protocolo exige uno por id).
@@ -971,6 +1004,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
+            codigoDeRechazo = executed.rechazoDelFlujo ?? null;
             anyToolCalled = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
             {
@@ -1031,7 +1065,72 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if ((result as { pedido_grande?: unknown } | null)?.pedido_grande === true) pedidoGrandeVisto = true;
           const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
           if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
-          tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
+          tele.tools.push({
+            tool: call.name,
+            latenciaMs: Date.now() - toolInicio,
+            resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok",
+            vuelta: tele.vueltas,
+            // Solo el codigo (lista cerrada del flujo del pedido) del rechazo; jamas el texto del error.
+            codigoRegla: isToolErrorResult(result) && !fallaSistema ? codigoDeRechazo : null,
+          });
+          // PM-R14: el servidor ya rechazo el `crear_pedido` por regla y el modelo se puso a buscar y reintentar hasta vencer el reloj (confirmar_resumen ok -> crear_pedido error_regla ->
+          // buscar_producto x7 -> 18 s -> "problema tecnico"). Tras ese rechazo se corta SOLO si (i) se repite el MISMO codigo de rechazo, (ii) hay 3 llamadas repetidas con la misma firma
+          // (herramienta + argumentos) o (iii) respaldo: 6 llamadas siguientes sin una cotizacion exitosa. Las lecturas con argumentos nuevos son el modelo corrigiendo el pedido (otro producto,
+          // otra bebida) y no cuentan para (ii). Un cotizar_pedido fallido es un intento de correccion: ni suma ni reinicia; uno exitoso reinicia. Una llamada con error del sistema o argumentos
+          // invalidos es otra clase de fallo: no suma (en crear_pedido ademas reinicia, porque sube al rol escalado, B04). El cliente recibe el resumen canonico del servidor (con los botones si
+          // la cotizacion sigue siendo la de este turno) o un texto fijo. No hay una ultima llamada al modelo: el mensaje de rechazo va dirigido al agente y una vuelta mas gasta reloj. Sin aviso al equipo ni toma.
+          if (call.name === "crear_pedido") {
+            if (isToolErrorResult(result) && !fallaSistema && !argumentosInvalidos) {
+              if (bloqueoAlCrear === null) bloqueoAlCrear = { codigo: codigoDeRechazo, rechazosMismoCodigo: 1, llamadasDespues: 0, firmas: new Map() };
+              else {
+                bloqueoAlCrear.llamadasDespues += 1;
+                const firma = firmaDeLlamada(call.name, input);
+                bloqueoAlCrear.firmas.set(firma, (bloqueoAlCrear.firmas.get(firma) ?? 0) + 1);
+                if (codigoDeRechazo !== null && codigoDeRechazo === bloqueoAlCrear.codigo) bloqueoAlCrear.rechazosMismoCodigo += 1;
+                else {
+                  bloqueoAlCrear.codigo = codigoDeRechazo;
+                  bloqueoAlCrear.rechazosMismoCodigo = 1;
+                }
+              }
+            } else bloqueoAlCrear = null;
+          } else if (bloqueoAlCrear !== null) {
+            if (call.name === "cotizar_pedido") {
+              if (!isToolErrorResult(result)) bloqueoAlCrear = null;
+            } else if (!fallaSistema && !argumentosInvalidos) {
+              bloqueoAlCrear.llamadasDespues += 1;
+              const firma = firmaDeLlamada(call.name, input);
+              bloqueoAlCrear.firmas.set(firma, (bloqueoAlCrear.firmas.get(firma) ?? 0) + 1);
+            }
+          }
+          if (
+            bloqueoAlCrear !== null &&
+            (bloqueoAlCrear.rechazosMismoCodigo >= MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR ||
+              Math.max(0, ...bloqueoAlCrear.firmas.values()) >= MAX_LLAMADAS_REPETIDAS_TRAS_RECHAZO_AL_CREAR ||
+              bloqueoAlCrear.llamadasDespues >= MAX_LLAMADAS_TRAS_RECHAZO_AL_CREAR) &&
+            // Un pedido ya creado en el turno manda sobre cualquier rechazo posterior; una escalacion ya abrio su propio camino (un pedido grande retenido tambien fija `escalarMotivo`, asi que
+            // `pedidosCreadosDelTurno.length === 0` seria redundante con estas dos guardas, salvo el pedido SIMULADO de la preview, que no se corta con botones de todos modos).
+            orderId === null &&
+            escalarMotivo === null
+          ) {
+            tele.causaError = "regla";
+            tele.cierreCortado = true;
+            let replyCorte: string = perfil === "taqueria_pm" ? PM_COPY.cierreBloqueado : CIERRE_BLOQUEADO_REPLY_GENERICO;
+            if (resumenCanonicoDelTurno) {
+              if (preview || cotizacionDelTurno === null) {
+                // Sin una cotizacion de ESTE turno no hay con que comparar el hash del flujo: el resumen que vino del rechazo del servidor se muestra, pero SIN botones (un boton llevaria el hash
+                // vigente, que podria ser el de otro pedido). El cliente contesta «si» por texto y el flujo normal lo valida. Lo mas simple y seguro; guardar el hash del rechazo seria mas codigo para un caso raro.
+                replyCorte = safeReply(resumenCanonicoDelTurno.texto);
+              } else {
+                // Como la salida normal (B03): el resumen y los botones «Confirmar pedido» / «Cambiar algo» solo si la cotizacion vigente del servidor es la del resumen que se muestra; si no, texto fijo.
+                const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+                if (vigente?.state === "cotizado" && vigente.context?.quoteHash === cotizacionDelTurno) {
+                  replyCorte = safeReply(resumenCanonicoDelTurno.texto);
+                  if (perfil === "taqueria_pm" && pareceResumenParaConfirmar(replyCorte)) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
+                }
+              }
+            }
+            return done({ reply: replyCorte, orderId, propertyId });
+          }
           const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
           if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
             if ((await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
@@ -1060,6 +1159,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       tele.resultado = "loop_agotado";
+      tele.causaError = tele.tools.some((t) => t.resultado === "error_sistema") ? "herramienta" : tele.tools.some((t) => t.resultado === "error_regla") ? "regla" : "otro";
       const confirmacionTrasAgotar = confirmacionDelTurno();
       if (confirmacionTrasAgotar) return done({ reply: confirmacionTrasAgotar, orderId, propertyId });
       if (orderId) {
@@ -1085,7 +1185,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1094,6 +1194,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         return salida;
       } catch (err) {
         tele.resultado = "error_sistema";
+        tele.causaError = clasificarCausaError(err);
         throw err;
       } finally {
         const obs = options.observabilidad;
@@ -1102,7 +1203,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const propertyId = salida?.propertyId ?? entrada.propertyId ?? null;
           const telefonoHash = telefonoHashSeguro(obs, entrada.phone);
           for (const t of tele.tools) {
-            emitirSeguro(obs, { evento: "whatsapp_tool", correlationId, organizationId: entrada.organizationId, propertyId, tool: t.tool, vuelta: t.vuelta, latenciaMs: t.latenciaMs, resultado: t.resultado, telefonoHash });
+            emitirSeguro(obs, { evento: "whatsapp_tool", correlationId, organizationId: entrada.organizationId, propertyId, tool: t.tool, vuelta: t.vuelta, latenciaMs: t.latenciaMs, resultado: t.resultado, codigoRegla: t.codigoRegla, telefonoHash });
           }
           emitirSeguro(obs, {
             evento: "whatsapp_turno",
@@ -1113,8 +1214,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             rolesUsados: tele.rolesUsados,
             vueltas: tele.vueltas,
             latenciaTotalMs: Date.now() - inicio,
-            tools: tele.tools.map(({ tool, latenciaMs, resultado }) => ({ tool, latenciaMs, resultado })),
+            tools: tele.tools.map(({ tool, latenciaMs, resultado, codigoRegla }) => ({ tool, latenciaMs, resultado, codigoRegla })),
             resultado: tele.resultado,
+            causaError: tele.resultado === "escalado_alto_riesgo" ? null : tele.resultado === "ok" ? (tele.causaError ?? null) : (tele.causaError ?? "otro"),
+            cierreCortado: tele.cierreCortado,
+            cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
             telefonoHash,

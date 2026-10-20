@@ -652,7 +652,9 @@ export async function createOrder(
     if (payload.efectivoCon < total) throw new OrderValidationError(`El monto con el que paga ($${payload.efectivoCon.toFixed(2)}) es menor al total del pedido ($${total.toFixed(2)}): pregúntele con cuánto va a pagar.`);
     canalLines.push(`Paga con: $${payload.efectivoCon.toFixed(2)} (cambio: $${(Math.round((payload.efectivoCon - total) * 100) / 100).toFixed(2)}).`);
   }
-  if (payload.llevarTerminal === true && payload.paymentMethod === "tarjeta" && (payload.canal ?? "domicilio") === "domicilio") canalLines.push("Llevar terminal.");
+  // PM R13: tarjeta a domicilio SIEMPRE lleva terminal (politica operativa; el repartidor la necesita para cobrar). Lo agrega el servidor aunque el modelo no mande
+  // `llevarTerminal` (Luna lo omitia en 8 de 15 pedidos); una sola linea por pedido. Recoger, efectivo y las demas formas de pago no la llevan.
+  if (payload.paymentMethod === "tarjeta" && (payload.canal ?? "domicilio") === "domicilio") canalLines.push("Llevar terminal.");
   if (payload.indicacionesAcceso && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(`Indicaciones de acceso: ${payload.indicacionesAcceso}.`);
   if (payload.telefonoAlterno) canalLines.push(`Teléfono alterno: ${payload.telefonoAlterno}.`);
   // Destino de entrega (pin de WhatsApp o link de Maps) para el repartidor; solo a domicilio (recoger no lo usa).
