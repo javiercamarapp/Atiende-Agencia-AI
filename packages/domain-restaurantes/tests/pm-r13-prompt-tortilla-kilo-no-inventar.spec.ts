@@ -1,7 +1,7 @@
-// PM R13 Q6 (T7-026): ante «¿la tortilla del kilo va aparte?» Luna contestó «incluida, no se cobra aparte» y Gem «va empacada por separado para que no se remojen»:
-// dato que no está en el prompt ni en el menú (H6). Decisión de Javier (R13, «hazlo según tu recomendación»): el bot NO describe cómo viaja la tortilla ni si va aparte
-// o incluida si el menú no lo dice; si preguntan, «la sucursal le confirma cómo se entrega la tortilla». Asunción a confirmar con PM: no hay una frase oficial
-// de PM sobre el empaque de la tortilla del kilo. Esta prueba ata que el PROMPT lo diga. Determinista, sin LLM.
+// PM R13 Q6 (T7-026): ante «¿la tortilla del kilo va aparte?» un modelo contestó «incluida, no se cobra aparte» y otro «va empacada por separado para que no se remojen».
+// El menú SÍ dice, en los 30 kilos, «Incluye salsa roja, salsa verde, limones y tortillas.»: eso se puede repetir («el kilo incluye tortillas»); lo que el menú NO dice es cómo
+// viajan (aparte, empacadas, para que no se remojen) y eso es un dato inventado (H6). Decisión de Javier (R13, «hazlo según tu recomendación»): el bot dice lo que el menú dice y NO
+// describe cómo viajan las tortillas; a esa pregunta responde «la sucursal le confirma cómo se entrega la tortilla». Esta prueba ata que el PROMPT lo diga. Determinista, sin LLM.
 import { describe, expect, it } from "vitest";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
@@ -20,16 +20,17 @@ const prompt = buildPmSystemPrompt({
   diaSemana: "lunes",
 });
 
-describe("PM R13 Q6: el bot no inventa cómo viaja la tortilla del kilo", () => {
-  it("prohíbe describir cómo viaja la tortilla o si va aparte o incluida si el menú no lo dice", () => {
-    expect(prompt).toMatch(/NO describa cómo viaja la tortilla ni si va aparte o incluida/);
+describe("PM R13 Q6: el bot repite lo que el menú dice de la tortilla del kilo y no inventa cómo viaja", () => {
+  it("permite decir lo que el menú dice: «el kilo incluye tortillas»", () => {
+    expect(prompt).toContain("«Incluye salsa roja, salsa verde, limones y tortillas»");
+    expect(prompt).toContain("«el kilo incluye tortillas»");
   });
 
-  it("manda decir «la sucursal le confirma cómo se entrega la tortilla» cuando pregunten", () => {
+  it("prohíbe describir cómo viajan las tortillas: ni aparte, ni empacadas, ni para que no se remojen", () => {
+    expect(prompt).toMatch(/NO describa cómo viajan las tortillas \(ni aparte, ni empacadas, ni «para que no se remojen»\)/);
+  });
+
+  it("manda responder «la sucursal le confirma cómo se entrega la tortilla» cuando pregunten", () => {
     expect(prompt).toContain("la sucursal le confirma cómo se entrega la tortilla");
-  });
-
-  it("prohíbe inventar «empacada aparte para que no se remoje»", () => {
-    expect(prompt).toMatch(/nunca invente[^.]*empacada aparte para que no se remoje/i);
   });
 });
