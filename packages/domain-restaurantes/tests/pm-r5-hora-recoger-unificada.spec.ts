@@ -86,9 +86,10 @@ describe.each(["whatsapp", "voz"] as const)("%s: programado_para y hora_recogida
     const s = setup(channel);
     await expect(s.quote({ programado_para: X, hora_recogida: "2026-10-06T15:00:00" })).rejects.toThrow(/debe incluir la zona horaria/);
   });
-  it("negativo: la misma hora en las dos (aunque con otro offset) o un solo campo siguen creando", async () => {
+  // R13: antes la hora en las dos podia venir «con otro offset» (21:00Z = X). Ahora un offset que no es el de la sucursal se rechaza en la entrada (pm-r13-hora-sucursal.spec.ts).
+  it("negativo: la misma hora en las dos o un solo campo siguen creando", async () => {
     const s = setup(channel);
-    await s.quote({ programado_para: X, hora_recogida: "2026-10-06T21:00:00Z" });
+    await s.quote({ programado_para: X, hora_recogida: X });
     await s.confirm();
     expect((await s.create({ programado_para: X, hora_recogida: X })).orderId).not.toBeNull();
   });

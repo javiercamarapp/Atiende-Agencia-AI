@@ -20,6 +20,7 @@
 //   * El texto del resumen lo arma el SERVIDOR (`resumenCanonico`): el LLM solo redacta el tono, no el total.
 //
 // Limite honesto: el servidor no puede oir al cliente; clasifica TEXTO. La clasificacion es conservadora (ante la duda NO confirma y pide un «si»).
+import { componentesLocales, fechaLocal } from "../horarios.ts";
 import { rechazaElResumen, resumenMostradoEnHistorial, type OrderFlowContext, type OrderFlowSnapshot } from "./order-flow.ts";
 
 /** Variable de entorno que activa la maquina de estados del cierre. Por omision DESACTIVADA (camino anterior intacto). */
@@ -375,7 +376,30 @@ export interface EntradaResumen {
   readonly descuento?: number;
   readonly canal?: string;
   readonly datos: DatosDeCierre;
+  /** Etiqueta de la hora de entrega/recogida YA en la zona de la sucursal («para las 7:00 pm»); ver `etiquetaHoraEntrega`. Sin hora = «en cuanto esté». */
   readonly hora?: string;
+  /** Solo a domicilio: lo que el servidor sabe del destino al cotizar (colonia y si llego el pin), p. ej. «colonia Centro». La calle completa se pide al crear. */
+  readonly direccion?: string;
+}
+
+const DIAS_CORTOS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"] as const;
+
+/**
+ * Hora de entrega/recogida para el resumen, en la zona de la SUCURSAL y en 12 horas («para las 7:00 pm», «para la 1:40 pm», «para mañana a las 12:00 pm», «para el vie 09/10 a las 2:30 pm»).
+ * R13/T7-026: el resumen que el cliente confirmaba no traia la hora y un pedido quedo a las 18:00 cuando pidio 7 pm. `ahoraMs` decide hoy / mañana.
+ */
+export function etiquetaHoraEntrega(instanteMs: number, zonaHoraria: string, ahoraMs: number): string {
+  const instante = new Date(instanteMs);
+  const { dia, minutos } = componentesLocales(instante, zonaHoraria);
+  const h24 = Math.floor(minutos / 60);
+  const reloj = `${h24 % 12 === 0 ? 12 : h24 % 12}:${String(minutos % 60).padStart(2, "0")} ${h24 >= 12 ? "pm" : "am"}`;
+  const articulo = h24 % 12 === 1 ? "la" : "las";
+  const fecha = fechaLocal(instante, zonaHoraria);
+  const hoy = fechaLocal(new Date(ahoraMs), zonaHoraria);
+  const diasDeDiferencia = Math.round((Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86_400_000);
+  if (diasDeDiferencia === 0) return `para ${articulo} ${reloj}`;
+  if (diasDeDiferencia === 1) return `para mañana a ${articulo} ${reloj}`;
+  return `para el ${DIAS_CORTOS[dia]} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} a ${articulo} ${reloj}`;
 }
 
 function pesos(n: number): string {
@@ -390,6 +414,7 @@ export function resumenCanonico(e: EntradaResumen): string {
   const filas: string[] = ["Resumen de su pedido:", ...renglones];
   if (typeof e.descuento === "number" && e.descuento > 0) filas.push(`Descuento: -${pesos(e.descuento)}`);
   filas.push(`Entrega: ${e.canal === "recoger" ? "recoger en sucursal" : "a domicilio"}${e.hora ? ` (${e.hora})` : ""}`);
+  if (e.canal !== "recoger" && e.direccion) filas.push(`Dirección: ${e.direccion}`);
   const d = e.datos;
   if (d.pago === "efectivo") filas.push(`Pago: efectivo${d.efectivoCon ? ` (paga con ${pesos(d.efectivoCon)})` : ""}`);
   else if (d.pago === "tarjeta") filas.push("Pago: tarjeta");
