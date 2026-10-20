@@ -1113,7 +1113,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           ) {
             tele.causaError = "regla";
             tele.cierreCortado = true;
-            let replyCorte = perfil === "taqueria_pm" ? PM_COPY.cierreBloqueado : CIERRE_BLOQUEADO_REPLY_GENERICO;
+            let replyCorte: string = perfil === "taqueria_pm" ? PM_COPY.cierreBloqueado : CIERRE_BLOQUEADO_REPLY_GENERICO;
             if (resumenCanonicoDelTurno) {
               // Como la salida normal (B03): el resumen y los botones «Confirmar pedido» / «Cambiar algo» solo si la cotizacion vigente del servidor es la del resumen que se muestra.
               const vigente = preview ? null : await repo.readOrderFlow(organizationId, `wa:${phone}`);
