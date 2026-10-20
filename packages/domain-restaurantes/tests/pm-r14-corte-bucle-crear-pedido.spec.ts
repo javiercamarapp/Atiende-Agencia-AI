@@ -42,8 +42,8 @@ async function mundo(guion: (paso: number, f: ReturnType<typeof buildRestaurantF
   gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "escalado-sin-uso" })]);
   const eventos: EventoObservabilidadWhatsApp[] = [];
   const handler = createLlmWhatsAppTurnHandler(f.repo, gateway, { defaultRole: "default", escalatedRole: "escalated", observabilidad: { emitir: (e) => void eventos.push(e) } });
-  const turno = () => handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: [{ role: "user", content: "dos cocas para recoger, soy Nora, pago con 500" }], customer: { isNew: true as const }, propertyId: null });
-  const evento = () => eventos.find((e): e is EventoTurnoWhatsApp => e.evento === "whatsapp_turno")!;
+  const turno = (messages: Array<{ role: "user" | "assistant"; content: string }> = [{ role: "user", content: "dos cocas para recoger, soy Nora, pago con 500" }]) => handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages, customer: { isNew: true as const }, propertyId: null });
+  const evento = () => eventos.findLast((e): e is EventoTurnoWhatsApp => e.evento === "whatsapp_turno")!;
   return { f, turno, evento, llamadas: () => llamadas };
 }
 
@@ -115,5 +115,123 @@ describe("corte del bucle crear_pedido bloqueado -> buscar_producto", () => {
     const t = await m.turno();
     expect(m.llamadas()).toBe(5);
     expect(t.reply).toContain("Revisemos el pedido otra vez");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Revision independiente: el patron REAL de R13 (un solo crear_pedido rechazado y luego solo lectura), botones, telemetria y guardas.
+// ---------------------------------------------------------------------------------------------------------------------
+const crudo = (id: string, name: string, argumentsJson: string): LlmCompletionResult => ({ text: "", toolCalls: [{ id, name, argumentsJson }], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 });
+
+describe("corte ampliado: tras un crear_pedido rechazado, 3 llamadas que no sean una cotizacion exitosa", () => {
+  it("patron R13: cotizar -> crear (rechazo) -> buscar x N: corta en la 3a lectura (5 llamadas), con resumen canonico, botones y telemetria", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      return busca(`b${paso}`);
+    });
+    const t = await m.turno();
+    expect(m.llamadas()).toBe(5);
+    expect(m.evento().tools.map((x) => x.tool)).toEqual(["cotizar_pedido", "crear_pedido", "buscar_producto", "buscar_producto", "buscar_producto"]);
+    expect(m.evento().resultado).toBe("ok");
+    const ev = m.evento() as unknown as { causaError?: unknown; cierreCortado?: unknown };
+    expect(ev.causaError).toBe("regla");
+    expect(ev.cierreCortado).toBe(true);
+    expect(t.reply).toContain("Total a pagar: $");
+    expect((t as { pedirConfirmacion?: unknown }).pedirConfirmacion).toBeDefined();
+    expect(t.orderId ?? null).toBeNull();
+  });
+
+  it("un turno normal no marca cierreCortado", async () => {
+    const m = await mundo(() => texto("Hola, ¿qué desea pedir?"));
+    await m.turno();
+    const ev = m.evento() as unknown as { causaError?: unknown; cierreCortado?: unknown };
+    expect(ev.cierreCortado).toBe(false);
+    expect(ev.causaError).toBeNull();
+  });
+
+  it("con la maquina OFF el patron R13 corta con el texto fijo, sin botones", async () => {
+    vi.stubEnv(CIERRE_MAQUINA_ENV, "");
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      return busca(`b${paso}`);
+    });
+    const t = await m.turno();
+    expect(m.llamadas()).toBe(5);
+    expect(t.reply).toBe(PM_COPY.cierreBloqueado);
+    expect((t as { pedirConfirmacion?: unknown }).pedirConfirmacion).toBeUndefined();
+  });
+
+  it("dos lecturas tras el rechazo NO cortan (el modelo explica con su texto)", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      if (paso <= 4) return busca(`b${paso}`);
+      return texto("Aun necesito su confirmacion para registrar el pedido.");
+    });
+    const t = await m.turno();
+    expect(m.llamadas()).toBe(5);
+    expect(t.reply).toContain("Aun necesito su confirmacion");
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+  });
+
+  it("una cotizacion exitosa reinicia la cuenta de lecturas", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f, "c1");
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 3 || paso === 4) return busca(`b${paso}`);
+      if (paso === 5) return cotiza(f, "c2");
+      if (paso === 6 || paso === 7) return busca(`b${paso}`);
+      return texto("Revisemos el pedido otra vez.");
+    });
+    const t = await m.turno();
+    expect(m.llamadas()).toBe(8);
+    expect(t.reply).toContain("Revisemos el pedido otra vez");
+  });
+
+  it("argumentos invalidos en crear_pedido reinician la cuenta (otra clase de fallo)", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 3) return crudo("k2", "crear_pedido", "{no es json");
+      if (paso === 4) return crea(f, "k3");
+      return texto("Revisemos el pedido otra vez.");
+    });
+    // Los argumentos invalidos suben al rol escalado (B04): ese rol, no el guion, contesta la vuelta siguiente. Lo que importa aqui es que NO se corto por el bucle.
+    await m.turno();
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+    expect(m.evento().tools.map((x) => x.tool)).toEqual(["cotizar_pedido", "crear_pedido", "crear_pedido"]);
+  });
+
+  it("guarda escalarMotivo: si el modelo ya escalo a un humano en el turno, no se corta", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return llamada("e1", "escalar_a_humano", { customer_name: "Nora", motivo: "otro", resumen: "pidio hablar con alguien" });
+      if (paso === 3) return crea(f, "k1");
+      if (paso <= 7) return busca(`b${paso}`);
+      return texto("Ya avise al equipo.");
+    });
+    const t = await m.turno();
+    expect(m.llamadas()).toBe(8);
+    expect(t.reply).toContain("Ya avise al equipo");
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+  });
+
+  it("guarda orderId: tras un pedido creado en el turno, rechazos posteriores no pisan la confirmacion", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return texto("Listo, ¿confirma su pedido?"); // turno 1 termina con el resumen canonico
+      if (paso === 3) return llamada("c2", "confirmar_resumen", {}); // turno 2: el cliente dijo «sí»
+      if (paso === 4) return crea(f, "k1");
+      if (paso === 5) return crea(f, "k2"); // repite el crear: ya_registrado o rechazo, nunca debe pisar el pedido
+      if (paso <= 9) return busca(`b${paso}`);
+      return texto("Su pedido quedó registrado.");
+    });
+    const hist = [{ role: "user" as const, content: "dos cocas para recoger, soy Nora, pago con 500" }];
+    const t1 = await m.turno(hist);
+    const t2 = await m.turno([...hist, { role: "assistant", content: t1.reply }, { role: "user", content: "sí" }]);
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+    expect(t2.orderId).not.toBeNull();
   });
 });
