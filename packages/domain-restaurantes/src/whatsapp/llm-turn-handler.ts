@@ -1106,22 +1106,25 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             (bloqueoAlCrear.rechazosMismoCodigo >= MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR ||
               Math.max(0, ...bloqueoAlCrear.firmas.values()) >= MAX_LLAMADAS_REPETIDAS_TRAS_RECHAZO_AL_CREAR ||
               bloqueoAlCrear.llamadasDespues >= MAX_LLAMADAS_TRAS_RECHAZO_AL_CREAR) &&
-            // Un pedido ya creado (o retenido / simulado) en el turno manda sobre cualquier rechazo posterior; una escalacion ya abrio su propio camino.
+            // Un pedido ya creado en el turno manda sobre cualquier rechazo posterior; una escalacion ya abrio su propio camino (un pedido grande retenido tambien fija `escalarMotivo`, asi que
+            // `pedidosCreadosDelTurno.length === 0` seria redundante con estas dos guardas, salvo el pedido SIMULADO de la preview, que no se corta con botones de todos modos).
             orderId === null &&
-            pedidosCreadosDelTurno.length === 0 &&
             escalarMotivo === null
           ) {
             tele.causaError = "regla";
             tele.cierreCortado = true;
             let replyCorte: string = perfil === "taqueria_pm" ? PM_COPY.cierreBloqueado : CIERRE_BLOQUEADO_REPLY_GENERICO;
             if (resumenCanonicoDelTurno) {
-              // Como la salida normal (B03): el resumen y los botones «Confirmar pedido» / «Cambiar algo» solo si la cotizacion vigente del servidor es la del resumen que se muestra.
-              const vigente = preview ? null : await repo.readOrderFlow(organizationId, `wa:${phone}`);
-              const hashCoincide = vigente?.state === "cotizado" && Boolean(vigente.context?.quoteHash) && (cotizacionDelTurno === null || vigente.context?.quoteHash === cotizacionDelTurno);
-              if (preview || hashCoincide) {
+              if (preview || cotizacionDelTurno === null) {
+                // Sin una cotizacion de ESTE turno no hay con que comparar el hash del flujo: el resumen que vino del rechazo del servidor se muestra, pero SIN botones (un boton llevaria el hash
+                // vigente, que podria ser el de otro pedido). El cliente contesta «si» por texto y el flujo normal lo valida. Lo mas simple y seguro; guardar el hash del rechazo seria mas codigo para un caso raro.
                 replyCorte = safeReply(resumenCanonicoDelTurno.texto);
-                if (!preview && perfil === "taqueria_pm" && pareceResumenParaConfirmar(replyCorte) && vigente?.context?.quoteHash) {
-                  pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
+              } else {
+                // Como la salida normal (B03): el resumen y los botones «Confirmar pedido» / «Cambiar algo» solo si la cotizacion vigente del servidor es la del resumen que se muestra; si no, texto fijo.
+                const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+                if (vigente?.state === "cotizado" && vigente.context?.quoteHash === cotizacionDelTurno) {
+                  replyCorte = safeReply(resumenCanonicoDelTurno.texto);
+                  if (perfil === "taqueria_pm" && pareceResumenParaConfirmar(replyCorte)) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
                 }
               }
             }
