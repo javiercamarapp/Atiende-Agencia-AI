@@ -12,8 +12,8 @@ clientes, tokens ni respuestas completas del proveedor en tickets o chats (el re
 
 | Señal | Dónde | Qué dice |
 |---|---|---|
-| `whatsapp_turno` (una línea JSON por turno) | stdout de la función en Vercel (R-PM-15) | `correlationId`, `organizationId`, `propertyId`, `rolModelo`, `vueltas`, `latenciaTotalMs`, `tools[{tool,latenciaMs,resultado}]`, `resultado`, `motivoEscalacion`, `motivoEscaladaDeRol`, `telefonoHash` |
-| `whatsapp_tool` (una línea JSON por herramienta) | idem | mismo `correlationId`, `tool`, `vuelta`, `latenciaMs`, `resultado` (`ok`, `error_regla`, `error_sistema`) |
+| `whatsapp_turno` (una línea JSON por turno) | stdout de la función en Vercel (R-PM-15) | `correlationId`, `organizationId`, `propertyId`, `rolModelo`, `vueltas`, `latenciaTotalMs`, `tools[{tool,latenciaMs,resultado,codigoRegla}]`, `resultado`, `causaError` (`tope_llamada`, `tope_turno`, `presupuesto_agotado`, `proveedor_5xx`, `proveedor_timeout`, `red`, `regla`, `herramienta`, `otro`; null si el turno termino bien; sin mensaje crudo), `cierreMaquina` (bandera `RESTAURANTES_CIERRE_MAQUINA_ESTADOS` al arrancar el turno), `motivoEscalacion`, `motivoEscaladaDeRol`, `telefonoHash` |
+| `whatsapp_tool` (una línea JSON por herramienta) | idem | mismo `correlationId`, `tool`, `vuelta`, `latenciaMs`, `resultado` (`ok`, `error_regla`, `error_sistema`), `codigoRegla` (codigo cerrado del flujo del pedido que rechazo la herramienta, p. ej. `sin_cotizacion`; null si no aplica) |
 | Latido y cadencia de los crons | `/superadmin/salud/crons` | si `/internal/whatsapp/dispatch` (cada 5 min) dejó de correr |
 | Gasto de API | superadmin → Gasto de API | tope mensual por organización (fail-closed) y topes por rol |
 
