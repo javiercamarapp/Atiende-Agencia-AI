@@ -40,6 +40,15 @@ describe("PM R13 Q5: la piña es siempre sin costo; solo la DOBLE porción de un
     expect(prompt).not.toMatch(/"extra piña" y los demás extras se buscan con buscar_producto/);
     expect(prompt).not.toMatch(/la doble es el extra piña/);
     expect(prompt).not.toMatch(/y extra piña cuestan/);
+    // frases que sostienen el camino único (revisión: sobrevivían a la mutación)
+    expect(prompt).toContain("la doble piña también");
+    expect(prompt).toContain("ni cobre la piña simple");
+    expect(prompt).toContain("(por ejemplo Extra Guacamole)");
+  });
+
+  it("no fija el precio en duro: el importe de la doble sale de cotizar_pedido (H6)", () => {
+    expect(prompt).toContain("siempre por doble_salsas (al precio que devuelva cotizar_pedido)");
+    expect(prompt).not.toMatch(/\$19 por cada salsa doble/);
   });
 });
 
