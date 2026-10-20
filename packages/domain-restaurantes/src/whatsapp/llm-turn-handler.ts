@@ -53,7 +53,8 @@ import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimi
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { RESPUESTA_TOQUE_RETENIDO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
-import type { ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
+import { clasificarCausaError, TopeLlamadaLlmError } from "./observabilidad-turno.ts";
+import type { CausaErrorTurno, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tono, reglas duras y generación del prompt.
@@ -551,8 +552,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   interface Telemetria {
     vueltas: number;
     rolesUsados: string[];
-    tools: Array<{ tool: string; latenciaMs: number; resultado: ResultadoTool; vuelta: number }>;
+    tools: Array<{ tool: string; latenciaMs: number; resultado: ResultadoTool; vuelta: number; codigoRegla: string | null }>;
     resultado: ResultadoTurno;
+    /** PM-R14: causa del error en la lista cerrada (null = el turno no termino en error). */
+    causaError: CausaErrorTurno | null;
+    /** PM-R14: la bandera de la maquina de cierre al ARRANCAR el turno. */
+    cierreMaquina: boolean;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
   }
@@ -729,6 +734,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
         if (isToolErrorResult(aviso.result)) {
           tele.resultado = "error_sistema";
+          tele.causaError = "herramienta";
           return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
         }
         // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
@@ -787,7 +793,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const vencido = new Promise<never>((_, reject) => {
           temporizador = setTimeout(() => {
             controller.abort();
-            reject(new Error("tope de tiempo de la llamada al LLM"));
+            reject(new TopeLlamadaLlmError());
           }, tope);
         });
         const trabajo = llamar(controller.signal);
@@ -826,6 +832,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
           tele.resultado = "presupuesto_agotado";
+          tele.causaError = "tope_turno";
           return fallaDelSistema();
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
@@ -844,8 +851,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
             request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0, signal },
           }));
-        } catch {
+        } catch (errLlm) {
           tele.resultado = "error_proveedor";
+          // Solo la causa de la lista cerrada; el error en si (mensaje, cuerpo del proveedor) no se guarda ni se registra.
+          tele.causaError = clasificarCausaError(errLlm);
           // Escalera de proveedores agotada / presupuesto excedido / gate de
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
@@ -941,6 +950,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           let input: Record<string, unknown> = {};
           let result: unknown;
           let fallaSistema = false;
+          let codigoDeRechazo: string | null = null;
           let argumentosInvalidos = false;
           const toolInicio = Date.now();
           // R11-05a: pasado el tope por respuesta NO se ejecuta nada, pero cada tool_call recibe su resultado (el protocolo exige uno por id).
@@ -971,6 +981,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
+            codigoDeRechazo = executed.rechazoDelFlujo ?? null;
             anyToolCalled = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
             {
@@ -1031,7 +1042,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if ((result as { pedido_grande?: unknown } | null)?.pedido_grande === true) pedidoGrandeVisto = true;
           const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
           if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
-          tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
+          tele.tools.push({
+            tool: call.name,
+            latenciaMs: Date.now() - toolInicio,
+            resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok",
+            vuelta: tele.vueltas,
+            // Solo el codigo (lista cerrada del flujo del pedido) del rechazo; jamas el texto del error.
+            codigoRegla: isToolErrorResult(result) && !fallaSistema ? codigoDeRechazo : null,
+          });
           const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
           if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
             if ((await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
@@ -1060,6 +1078,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       tele.resultado = "loop_agotado";
+      tele.causaError = tele.tools.some((t) => t.resultado === "error_sistema") ? "herramienta" : tele.tools.some((t) => t.resultado === "error_regla") ? "regla" : "otro";
       const confirmacionTrasAgotar = confirmacionDelTurno();
       if (confirmacionTrasAgotar) return done({ reply: confirmacionTrasAgotar, orderId, propertyId });
       if (orderId) {
@@ -1085,7 +1104,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1094,6 +1113,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         return salida;
       } catch (err) {
         tele.resultado = "error_sistema";
+        tele.causaError = clasificarCausaError(err);
         throw err;
       } finally {
         const obs = options.observabilidad;
@@ -1102,7 +1122,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const propertyId = salida?.propertyId ?? entrada.propertyId ?? null;
           const telefonoHash = telefonoHashSeguro(obs, entrada.phone);
           for (const t of tele.tools) {
-            emitirSeguro(obs, { evento: "whatsapp_tool", correlationId, organizationId: entrada.organizationId, propertyId, tool: t.tool, vuelta: t.vuelta, latenciaMs: t.latenciaMs, resultado: t.resultado, telefonoHash });
+            emitirSeguro(obs, { evento: "whatsapp_tool", correlationId, organizationId: entrada.organizationId, propertyId, tool: t.tool, vuelta: t.vuelta, latenciaMs: t.latenciaMs, resultado: t.resultado, codigoRegla: t.codigoRegla, telefonoHash });
           }
           emitirSeguro(obs, {
             evento: "whatsapp_turno",
@@ -1113,8 +1133,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             rolesUsados: tele.rolesUsados,
             vueltas: tele.vueltas,
             latenciaTotalMs: Date.now() - inicio,
-            tools: tele.tools.map(({ tool, latenciaMs, resultado }) => ({ tool, latenciaMs, resultado })),
+            tools: tele.tools.map(({ tool, latenciaMs, resultado, codigoRegla }) => ({ tool, latenciaMs, resultado, codigoRegla })),
             resultado: tele.resultado,
+            causaError: tele.resultado === "ok" || tele.resultado === "escalado_alto_riesgo" ? null : (tele.causaError ?? "otro"),
+            cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
             telefonoHash,
