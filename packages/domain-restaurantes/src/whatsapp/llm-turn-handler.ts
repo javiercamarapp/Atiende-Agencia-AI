@@ -535,8 +535,10 @@ export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
 /** PM-R14: rechazos de regla de `crear_pedido` seguidos en un turno tras los cuales se corta el bucle del modelo. */
-export const MAX_RECHAZOS_DE_REGLA_AL_CREAR = 2;
-const CIERRE_BLOQUEADO_REPLY_GENERICO = "Todavía no pude registrar su pedido con los datos que tengo. ¿Me confirma su pedido completo o me dice qué desea corregir, por favor?";
+export const MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR = 2;
+/** PM-R14: llamadas a herramientas (que no sean una cotizacion exitosa) tras un `crear_pedido` rechazado por regla con las que se corta el bucle (patron real de R13: crear rechazado -> buscar_producto x7). */
+export const MAX_LLAMADAS_TRAS_RECHAZO_AL_CREAR = 3;
+const CIERRE_BLOQUEADO_REPLY_GENERICO = "Todavía no queda registrado su pedido: necesito que revisemos un dato. ¿Me confirma de nuevo su pedido (productos, forma de pago y entrega) o me dice qué desea corregir?";
 export const TURN_BUDGET_POR_OMISION_MS = FUNCION_MAX_MS - MARGEN_CIERRE_TURNO_MS - 6_000;
 
 /**
@@ -561,6 +563,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     causaError: CausaErrorTurno | null;
     /** PM-R14: la bandera de la maquina de cierre al ARRANCAR el turno. */
     cierreMaquina: boolean;
+    /** PM-R14: el turno se corto por el bucle de crear_pedido rechazado (resultado `ok` con causaError `regla`). */
+    cierreCortado: boolean;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
   }
@@ -611,8 +615,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       /** Si la ultima cotizacion DE ESTE TURNO traia `promocion_aplicada` o una promocion sugerida con cortesias (null = no se cotizo en este turno: no se puede verificar). */
       let lastQuoteRespaldaCortesia: boolean | null = null;
       let anyToolCalled = false;
-      // PM-R14: rechazos de regla de `crear_pedido` desde el ultimo `crear_pedido` exitoso o la ultima cotizacion exitosa del turno. Al segundo se corta el bucle (ver mas abajo).
-      let rechazosDeReglaAlCrear = 0;
+      // PM-R14: `crear_pedido` rechazado por regla y lo que pasa despues en el turno (se reinicia con una cotizacion exitosa, un crear_pedido que no fue rechazo de regla o un fallo de otra clase). Ver el corte mas abajo.
+      let bloqueoAlCrear: { codigo: string | null; rechazosMismoCodigo: number; llamadasDespues: number } | null = null;
       let escalacionOkEnTurno = false;
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
@@ -1055,13 +1059,39 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             // Solo el codigo (lista cerrada del flujo del pedido) del rechazo; jamas el texto del error.
             codigoRegla: isToolErrorResult(result) && !fallaSistema ? codigoDeRechazo : null,
           });
-          // PM-R14: crear_pedido rechazado por regla DOS veces en el mismo turno (sin una cotizacion nueva o un pedido creado entre medio): el servidor ya dijo que no y el modelo
-          // se puso a buscar y reintentar hasta vencer el reloj (confirmar_resumen ok -> crear_pedido error_regla -> buscar_producto x7 -> 18 s -> "problema tecnico"). Se corta aqui y el
-          // cliente recibe el resumen canonico del servidor (confirmar o corregir) o, sin el, un texto fijo. Sin aviso al equipo ni toma: no es un motivo de escalacion nuevo.
-          if (call.name === "crear_pedido") rechazosDeReglaAlCrear = isToolErrorResult(result) && !fallaSistema && !argumentosInvalidos ? rechazosDeReglaAlCrear + 1 : 0;
-          else if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) rechazosDeReglaAlCrear = 0;
-          if (rechazosDeReglaAlCrear >= MAX_RECHAZOS_DE_REGLA_AL_CREAR && orderId === null && pedidosCreadosDelTurno.length === 0 && escalarMotivo === null) {
-            return done({ reply: resumenCanonicoDelTurno ? safeReply(resumenCanonicoDelTurno.texto) : perfil === "taqueria_pm" ? PM_COPY.cierreBloqueado : CIERRE_BLOQUEADO_REPLY_GENERICO, orderId, propertyId });
+          // PM-R14: el servidor ya rechazo el `crear_pedido` por regla y el modelo se puso a buscar y reintentar hasta vencer el reloj (confirmar_resumen ok -> crear_pedido error_regla ->
+          // buscar_producto x7 -> 18 s -> "problema tecnico"). Se corta cuando, tras el rechazo, hay 3 llamadas que no son una cotizacion exitosa, o el MISMO codigo de rechazo se repite. El cliente recibe
+          // el resumen canonico del servidor (con los botones de confirmar / cambiar) o, sin el, un texto fijo. No hay una ultima llamada al modelo para explicar el motivo: el mensaje de rechazo va dirigido
+          // al agente (no es texto para el cliente) y una vuelta mas costaria otros segundos del reloj; el cliente responde y el siguiente turno parte del estado del servidor. Sin aviso al equipo ni toma.
+          if (call.name === "crear_pedido") {
+            if (isToolErrorResult(result) && !fallaSistema && !argumentosInvalidos) {
+              if (bloqueoAlCrear === null) bloqueoAlCrear = { codigo: codigoDeRechazo, rechazosMismoCodigo: 1, llamadasDespues: 0 };
+              else {
+                bloqueoAlCrear.llamadasDespues += 1;
+                if (codigoDeRechazo !== null && codigoDeRechazo === bloqueoAlCrear.codigo) bloqueoAlCrear.rechazosMismoCodigo += 1;
+                else bloqueoAlCrear = { ...bloqueoAlCrear, codigo: codigoDeRechazo, rechazosMismoCodigo: 1 };
+              }
+            } else bloqueoAlCrear = null;
+          } else if (bloqueoAlCrear !== null) {
+            if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) bloqueoAlCrear = null;
+            else bloqueoAlCrear.llamadasDespues += 1;
+          }
+          if (
+            bloqueoAlCrear !== null &&
+            (bloqueoAlCrear.llamadasDespues >= MAX_LLAMADAS_TRAS_RECHAZO_AL_CREAR || bloqueoAlCrear.rechazosMismoCodigo >= MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR) &&
+            orderId === null &&
+            pedidosCreadosDelTurno.length === 0 &&
+            escalarMotivo === null
+          ) {
+            tele.causaError = "regla";
+            tele.cierreCortado = true;
+            const replyCorte = resumenCanonicoDelTurno ? safeReply(resumenCanonicoDelTurno.texto) : perfil === "taqueria_pm" ? PM_COPY.cierreBloqueado : CIERRE_BLOQUEADO_REPLY_GENERICO;
+            // Como la salida normal (B03): con el resumen del servidor y una cotizacion vigente, el webhook agrega «Confirmar pedido» / «Cambiar algo».
+            if (resumenCanonicoDelTurno && perfil === "taqueria_pm" && !preview && pareceResumenParaConfirmar(replyCorte)) {
+              const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
+              if (vigente?.state === "cotizado" && vigente.context?.quoteHash) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
+            }
+            return done({ reply: replyCorte, orderId, propertyId });
           }
           const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
           if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
@@ -1117,7 +1147,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1148,7 +1178,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             latenciaTotalMs: Date.now() - inicio,
             tools: tele.tools.map(({ tool, latenciaMs, resultado, codigoRegla }) => ({ tool, latenciaMs, resultado, codigoRegla })),
             resultado: tele.resultado,
-            causaError: tele.resultado === "ok" || tele.resultado === "escalado_alto_riesgo" ? null : (tele.causaError ?? "otro"),
+            causaError: tele.resultado === "escalado_alto_riesgo" ? null : tele.resultado === "ok" ? (tele.causaError ?? null) : (tele.causaError ?? "otro"),
+            cierreCortado: tele.cierreCortado,
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,

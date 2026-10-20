@@ -132,6 +132,8 @@ export interface EventoTurnoWhatsApp {
   readonly causaError?: CausaErrorTurno | null;
   /** PM-R14: la maquina de estados del cierre (RESTAURANTES_CIERRE_MAQUINA_ESTADOS) estaba activa en ESTE turno. */
   readonly cierreMaquina?: boolean;
+  /** PM-R14: el turno se corto porque el modelo insistia en crear_pedido rechazado por regla (resultado `ok`, causaError `regla`). */
+  readonly cierreCortado?: boolean;
   /** Motivo de escalacion A HUMANO (clasificador de alto riesgo o `escalar_a_humano`); null si no hubo. */
   readonly motivoEscalacion: string | null;
   /** Por que se subio de rol de modelo barato a caro dentro del turno; null si no se subio. */
