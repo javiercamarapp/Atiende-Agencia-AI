@@ -20,8 +20,8 @@ const prompt = buildPmSystemPrompt({
   diaSemana: "lunes",
 });
 
-/** La oración nueva de la regla (desde «Si el pedido YA SALIÓ y ofrece» hasta el siguiente punto fuera de comillas). */
-const reglaNueva = (/Si el pedido YA SALIÓ y ofrece[^\n]*?la sucursal le confirma el tiempo\./.exec(prompt) ?? [""])[0];
+/** La oración nueva de la regla (desde «Si el pedido YA SALIÓ y ofrece» hasta «la sucursal lo confirma.»). */
+const reglaNueva = (/Si el pedido YA SALIÓ y ofrece[^\n]*?o diga que la sucursal lo confirma\./.exec(prompt) ?? [""])[0];
 
 describe("PM R13 Q7: al ofrecer un pedido nuevo porque el anterior ya salió, sin tiempos inventados", () => {
   it("conserva el paso 16 tal cual: ya salió, no se le puede agregar, pedido nuevo sin volver a escalar", () => {
@@ -30,11 +30,11 @@ describe("PM R13 Q7: al ofrecer un pedido nuevo porque el anterior ya salió, si
     );
   });
 
-  it("prohíbe los tiempos aproximados inventados y manda decir que la sucursal confirma el tiempo", () => {
+  it("prohíbe los tiempos aproximados inventados y manda dar solo el tiempo de la sucursal o decir que la sucursal lo confirma", () => {
     expect(reglaNueva).not.toBe("");
     expect(reglaNueva).toMatch(/pedido nuevo/);
     expect(reglaNueva).toMatch(/no dé tiempos aproximados inventados \(nada de «aproximadamente 60 minutos»\)/);
-    expect(reglaNueva).toContain("la sucursal le confirma el tiempo");
+    expect(reglaNueva).toContain("dé solo el tiempo de la sucursal (paso 8) o diga que la sucursal lo confirma");
   });
 
   it("la regla nueva no agrega escalación ni motivo (no menciona escalar ni cancelacion_modificacion)", () => {
