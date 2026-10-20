@@ -12,6 +12,7 @@
 //   * Si el contexto fija una sucursal (`ctx.lockedPropertyId`: token de llamada o numero de
 //     WhatsApp de sucursal), una tool que apunte a otra sucursal de la organizacion se
 //     rechaza.
+import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
@@ -2154,8 +2155,8 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
     const reglaSql = esGuardaSqlDeNegocioDePedido(err);
     const esRegla = err instanceof OrderValidationError || reglaSql;
     if (!esRegla) {
-      // Solo la clase, el SQLSTATE y el mensaje de la excepcion (sin argumentos de la herramienta: pueden traer datos del cliente).
-      console.error(`[agent-tools] ${name} fallo con error interno: ${err instanceof Error ? err.name : typeof err} ${(err as { code?: unknown } | null)?.code ?? ""} ${err instanceof Error ? err.message.slice(0, 300) : ""}`);
+      // Solo la clase y el codigo (SQLSTATE): ni argumentos de la herramienta ni el mensaje, que en Postgres trae valores de la fila (datos del cliente).
+      console.error(`[agent-tools] ${name} fallo con error interno: ${descripcionSeguraDeError(err)}`);
     }
     return {
       result: { error: esRegla ? (err as Error).message : "Error interno al ejecutar la herramienta" },
