@@ -11,7 +11,7 @@ import { Hono, type Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core/data-chat";
-import { MANAGER_ROLES, buildRestaurantesDataChatCatalog } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, buildRestaurantesDataChatCatalog, descripcionSeguraDeError } from "@atiende/domain-restaurantes";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
@@ -96,7 +96,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
         signal,
         onUso: logUsoDataChat(c, "restaurantes"),
         auditRole: RESTAURANTES_DATA_CHAT_ROLE,
-        onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
+        onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: descripcionSeguraDeError(err) })),
       })),
       persist.despuesDelCommit,
     );

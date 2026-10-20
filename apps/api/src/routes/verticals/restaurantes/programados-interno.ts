@@ -18,7 +18,7 @@
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
-import { avisarProgramadosPromovidos, barrerAvisosOperativos, barrerSilencioWhatsapp, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import { avisarProgramadosPromovidos, descripcionSeguraDeError, barrerAvisosOperativos, barrerSilencioWhatsapp, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
 import type { ResultadoBarridoAvisos, ResultadoBorradores, ResultadoSilencio } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -53,7 +53,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), resultado.promovidos),
           );
         } catch (err) {
-          logEvent(c, "error", "restaurantes_programados_comanda_fallida", { error: err instanceof Error ? err.message : String(err) });
+          logEvent(c, "error", "restaurantes_programados_comanda_fallida", { error: descripcionSeguraDeError(err) });
           comandas = { ...comandas, errores: resultado.promovidos.length };
         }
       }
@@ -72,7 +72,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
           logEvent(c, "info", "restaurantes_programados_comandas_reconciliadas", { ...reconciliacion });
         }
       } catch (err) {
-        logEvent(c, "error", "restaurantes_programados_reconciliacion_fallida", { error: err instanceof Error ? err.message : String(err) });
+        logEvent(c, "error", "restaurantes_programados_reconciliacion_fallida", { error: descripcionSeguraDeError(err) });
         reconciliacion = { ...SIN_COMANDAS, errores: 1 };
       }
       // Aviso al staff (bandeja + campana) de que el programado entro a cocina: tambien en su propia sesion, tras el commit
@@ -82,7 +82,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         try {
           avisosCocina = await deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(deps.restaurantesRepo(db), db, resultado.promovidos));
         } catch (err) {
-          logEvent(c, "error", "restaurantes_programados_aviso_fallido", { error: err instanceof Error ? err.message : String(err) });
+          logEvent(c, "error", "restaurantes_programados_aviso_fallido", { error: descripcionSeguraDeError(err) });
           avisosCocina = { ...avisosCocina, errores: resultado.promovidos.length };
         }
       }
@@ -90,7 +90,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
       try {
         avisos = await deps.engine.withAppSession({ userId: null }, (db) => barrerAvisosOperativos(db, { now: new Date() }));
       } catch (err) {
-        logEvent(c, "error", "restaurantes_avisos_operativos_fallidos", { error: err instanceof Error ? err.message : String(err) });
+        logEvent(c, "error", "restaurantes_avisos_operativos_fallidos", { error: descripcionSeguraDeError(err) });
         avisos = { ...avisos, errores: 1 };
       }
       logEvent(c, "info", "restaurantes_avisos_operativos", { ...avisos });
@@ -101,7 +101,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
       try {
         marketing = await deps.engine.withAppSession({ userId: null }, (db) => generarBorradoresMarketing(db, new Date()));
       } catch (err) {
-        logEvent(c, "error", "restaurantes_marketing_borradores_fallidos", { error: err instanceof Error ? err.message : String(err) });
+        logEvent(c, "error", "restaurantes_marketing_borradores_fallidos", { error: descripcionSeguraDeError(err) });
       }
       logEvent(c, "info", "restaurantes_marketing_borradores", { ...marketing });
       // Alerta al dueño «WhatsApp silencioso» (autopiloto 2): otra unidad independiente del mismo tick, con el reloj absoluto (el dedupe usa el dia de
@@ -110,7 +110,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
       try {
         silencio = await deps.engine.withAppSession({ userId: null }, (db) => barrerSilencioWhatsapp(db, { now: new Date() }));
       } catch (err) {
-        logEvent(c, "error", "restaurantes_whatsapp_silencio_fallido", { error: err instanceof Error ? err.message : String(err) });
+        logEvent(c, "error", "restaurantes_whatsapp_silencio_fallido", { error: descripcionSeguraDeError(err) });
       }
       logEvent(c, "info", "restaurantes_whatsapp_silencio", { ...silencio });
       // Autopiloto (migracion 050): escalado de aprobaciones sin respuesta, estados sin clic, avance desde el POS, regreso de handoffs y agotados
@@ -121,7 +121,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         autopiloto = await barrerAutopilotoTick(deps, c, new Date());
       } catch (err) {
         autopilotoFallo = true;
-        logEvent(c, "error", "restaurantes_autopiloto_tick_fallido", { error: err instanceof Error ? err.message : String(err) });
+        logEvent(c, "error", "restaurantes_autopiloto_tick_fallido", { error: descripcionSeguraDeError(err) });
       }
       const respuesta = c.json({
         ok: true,
