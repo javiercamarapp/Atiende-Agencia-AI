@@ -1147,7 +1147,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       });
     const plazoServidor = typeof input.plazo_minutos_servidor === "number" ? input.plazo_minutos_servidor : undefined;
     let horaCotizacion = input.canal === "recoger" ? horaUnificadaRecoger(input) : toHoraRecogida(input.hora_recogida);
-    const programadoCotizado = input.canal === "recoger" ? toProgramadoPara(input.programado_para) : undefined;
+    // R13: tambien a domicilio se guarda la hora cotizada (el eco de crear_pedido en UTC no se rechaza); la lectura de crear solo la usa en recoger.
+    const programadoCotizado = toProgramadoPara(input.programado_para);
     let quoteHash = huellaCotizacion(horaCotizacion);
     const cartHash = quotedItems ? huellaDeCarrito(String(input.branch_slug ?? ""), canalOf(input.canal), quotedItems) : undefined;
     for (let attempt = 0; attempt < 3; attempt++) {

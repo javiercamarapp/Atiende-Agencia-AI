@@ -146,6 +146,22 @@ describe.each([
     });
   });
 
+  it("flujo completo a domicilio programado: cotizar -> confirmar -> crear con el eco en UTC del servidor no se rechaza", async () => {
+    const s = sesion({ pedido: "domicilio" });
+    const q = await s.quote({ programado_para: "2026-10-06T19:00:00-06:00" });
+    await s.confirm();
+    const ok = await s.create({ programado_para: quoteDe(q).programado_para });
+    expect(ok.orderId).not.toBeNull();
+    expect((ok.raw as { programadoPara?: string | null }).programadoPara).toBe("2026-10-07T01:00:00.000Z");
+  });
+
+  it("a domicilio, un eco de OTRA hora en UTC (no la cotizada) si se rechaza", async () => {
+    const s = sesion({ pedido: "domicilio" });
+    await s.quote({ programado_para: "2026-10-06T19:00:00-06:00" });
+    await s.confirm();
+    await expect(s.create({ programado_para: "2026-10-07T00:00:00Z" })).rejects.toThrow(/-06:00/);
+  });
+
   it("minutos_para_recoger (hora calculada por el servidor en UTC) no pasa por la regla del offset", async () => {
     const s = sesion();
     await expect(s.quote({ minutos_para_recoger: 40 })).resolves.toBeDefined();
