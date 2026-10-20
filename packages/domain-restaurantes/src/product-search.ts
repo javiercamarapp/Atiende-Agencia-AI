@@ -459,14 +459,16 @@ const ES_FLAUTA = /\bflautas?\b/i;
 
 /**
  * FLAUTAS: cada ORDEN es UNA flauta grande (decisión de Javier, 16-oct-2026; los menús públicos no traen el dato). Con `packSize` 1 (cargado como
- * «Orden de 1 flauta grande» en la descripción del seed) `requested_quantity` cuenta flautas = órdenes: 1 flauta = 1 orden, 4 flautas = 4 órdenes.
+ * «Orden de 1 flauta grande» en la descripción del seed) o sin dato (null/undefined: el menú real) `requested_quantity` cuenta flautas = órdenes: 1 flauta = 1 orden, 4 flautas = 4 órdenes.
  * «4 flautas, una orden» (o «una orden de 4 flautas») es AMBIGUO: no se adivina, se pregunta antes de cotizar, porque la diferencia es cobrar ×4.
  * Si alguna vez PM cambia la presentación (packSize distinto de 1) el aviso desaparece y manda el pack_size.
  */
 export function unidadDeVentaFlautas(
   product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
 ): string | null {
-  if (product.packSize !== 1) return null;
+  // PM R13: el menu real NO trae «Orden de 1 flauta grande» (solo el seed), asi que `packSize` null/undefined es el caso normal y la regla aplica igual.
+  // Un numero explicito distinto de 1 (PM cambio la presentacion) si manda el pack_size.
+  if (product.packSize !== null && product.packSize !== undefined && product.packSize !== 1) return null;
   if (!ES_FLAUTA.test(`${product.name} ${product.categoryName ?? ""}`)) return null;
   return (
     "Cada ORDEN de flautas es UNA flauta grande. requested_quantity cuenta flautas = órdenes: 1 flauta o «una orden» = 1, 2 flautas = 2, 4 flautas = 4 (el precio se multiplica). " +
