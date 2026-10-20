@@ -29,8 +29,8 @@
     "Con piña, por favor",
     "Y una piña extra para el taco"
    ],
-   "comportamiento_esperado": "La piña picada pedida va sin costo en la comanda (Pedidas); la doble es el producto «Extra Piña» del catálogo, cobrado a su precio de catálogo desde buscar_producto.",
-   "que_no_debe_hacer": "Cobrar la primera piña; inventar el precio de la doble.",
+   "comportamiento_esperado": "La piña picada pedida va sin costo en la comanda (Pedidas); la doble porción (de la piña o de cualquier salsa) se cobra siempre por doble_salsas, a $19 como «Extra Salsa» del catálogo; nunca se busca «Extra Piña» con buscar_producto.",
+   "que_no_debe_hacer": "Cobrar la primera piña; inventar el precio de la doble; cotizar «Extra Piña» como producto.",
    "dudas": [],
    "estado": "activo",
    "verificacion": "determinista",
