@@ -74,7 +74,7 @@ describe("escenarios de T7: las cifras citadas coinciden con el motor real sobre
   const plan = buildPmSeedPlan(data, agent);
 
   type Renglon = readonly [producto: string, piezas: number, tortilla?: "maiz" | "harina"];
-  async function total(items: readonly Renglon[], doubleSalsas: readonly ("crema_ajo" | "salsa_verde")[] = []): Promise<number> {
+  async function total(items: readonly Renglon[], doubleSalsas: readonly ("crema_ajo" | "salsa_verde" | "salsa_pina")[] = []): Promise<number> {
     // Martes 14:00 en Merida: abierto y sin 2x1; el horario se evalua con el reloj real, asi que se fija.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-13T20:00:00Z"));
