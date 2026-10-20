@@ -1,6 +1,7 @@
 // PM ronda 14 (hallazgo H2): confirmar_resumen ok -> crear_pedido error_regla -> buscar_producto x7 hasta agotar el reloj de 18 s. El servidor ya rechaza el pedido
-// (es su trabajo); lo que sobraba era dejar que el modelo reintentara hasta vencer el turno y el cliente se quedara sin respuesta util. Tras DOS rechazos de regla
-// de crear_pedido en el mismo turno el turno corta y le responde al cliente con el resumen canonico (o un mensaje fijo) para que confirme o corrija.
+// (es su trabajo); lo que sobraba era dejar que el modelo reintentara hasta vencer el turno. Tras un crear_pedido rechazado por regla el turno corta y responde con el
+// resumen canonico (o un mensaje fijo) SOLO si: (i) se repite el MISMO rechazoDelFlujo, (ii) hay 3 llamadas repetidas con la misma firma (herramienta + argumentos) o
+// (iii) respaldo: 6 llamadas siguientes sin una cotizacion exitosa. Las lecturas con argumentos nuevos son el modelo corrigiendo el pedido y NO cuentan para (ii).
 // LLM falso guionado, sin red ni llaves.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
@@ -233,5 +234,151 @@ describe("corte ampliado: tras un crear_pedido rechazado, 3 llamadas que no sean
     const t2 = await m.turno([...hist, { role: "assistant", content: t1.reply }, { role: "user", content: "sí" }]);
     expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
     expect(t2.orderId).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Revision 2: sin falsos cortes. Las lecturas con argumentos NUEVOS son el modelo corrigiendo el pedido, no un bucle.
+// ---------------------------------------------------------------------------------------------------------------------
+const buscaQ = (id: string, query: string) => llamada(id, "buscar_producto", { query });
+const creaTarjeta = (f: { products: { cocaCola: string } }, id: string) =>
+  llamada(id, "crear_pedido", { branch_slug: "fco-montejo", canal: "recoger", customer_name: "Nora", payment_method: "tarjeta", items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }] });
+
+describe("corte sin falsos positivos", () => {
+  it("pedido grande legitimo: cotizar -> crear rechazado -> 3 busquedas DISTINTAS -> cotizar corregido: NO corta y la cotizacion corregida se ejecuta", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f, "c1");
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 3) return buscaQ("b1", "pepsi");
+      if (paso === 4) return buscaQ("b2", "sprite");
+      if (paso === 5) return buscaQ("b3", "agua");
+      if (paso === 6) return cotiza(f, "c2");
+      return texto("Corregí su pedido; revíselo y avíseme.");
+    });
+    const t = await m.turno();
+    expect(m.llamadas()).toBe(7);
+    expect(m.evento().tools.map((x) => x.tool)).toEqual(["cotizar_pedido", "crear_pedido", "buscar_producto", "buscar_producto", "buscar_producto", "cotizar_pedido"]);
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+    expect(t.reply).toContain("Corregí su pedido");
+  });
+
+  it("R13 con argumentos IGUALES (misma firma x3): corta en la tercera repeticion", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      return buscaQ(`b${paso}`, "coca");
+    });
+    await m.turno();
+    expect(m.llamadas()).toBe(5);
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(true);
+  });
+
+  it("R13 con argumentos DISTINTOS cada vez: el respaldo corta tras 6 llamadas siguientes (el tope de 8 sigue acotando)", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      return buscaQ(`b${paso}`, `producto ${paso}`);
+    });
+    const t = await m.turno();
+    expect(m.llamadas()).toBe(8);
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(true);
+    expect(m.evento().resultado).toBe("ok");
+    expect(t.reply).toContain("Total a pagar: $");
+  });
+
+  it("guion R13 completo: confirmar_resumen ok -> crear_pedido rechazado -> buscar_producto x7 distintos: corta (no llega a loop_agotado)", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return texto("Listo, ¿confirma su pedido?");
+      if (paso === 3) return llamada("c2", "confirmar_resumen", {});
+      if (paso === 4) return creaTarjeta(f, "k1"); // cambia el pago respecto al resumen confirmado: el servidor lo rechaza
+      return buscaQ(`b${paso}`, `producto ${paso}`);
+    });
+    const hist = [{ role: "user" as const, content: "dos cocas para recoger, soy Nora, pago con 500" }];
+    const t1 = await m.turno(hist);
+    const t2 = await m.turno([...hist, { role: "assistant", content: t1.reply }, { role: "user", content: "sí" }]);
+    const tools = m.evento().tools.map((x) => `${x.tool}:${x.resultado}`);
+    expect(tools.slice(0, 2)).toEqual(["confirmar_resumen:ok", "crear_pedido:error_regla"]);
+    expect(m.evento().resultado).toBe("ok");
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(true);
+    expect(m.evento().vueltas).toBeLessThanOrEqual(8);
+    expect(t2.orderId ?? null).toBeNull();
+  });
+
+  it("argumentos invalidos en LECTURAS no suman ni reinician: 4 lecturas distintas validas + 2 invalidas NO cortan", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 3) return buscaQ("b1", "pepsi");
+      if (paso === 4) return crudo("i1", "buscar_producto", "{no es json");
+      if (paso === 5) return buscaQ("b2", "sprite");
+      if (paso === 6) return crudo("i2", "buscar_producto", "{tampoco");
+      if (paso === 7) return buscaQ("b3", "agua");
+      if (paso === 8) return buscaQ("b4", "jarritos");
+      return texto("fin");
+    });
+    await m.turno();
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+  });
+
+  it("un crear_pedido con argumentos invalidos reinicia el bloqueo: las lecturas de ANTES y DESPUES no se acumulan", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 3) return buscaQ("b1", "pepsi");
+      if (paso === 4) return buscaQ("b2", "sprite");
+      if (paso === 5) return crudo("i1", "crear_pedido", "{no es json");
+      return texto("fin");
+    });
+    // El crear invalido sube al rol escalado (B04) y ese rol contesta; lo que importa es que NO hubo corte.
+    await m.turno();
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+  });
+
+  it("un cotizar_pedido fallido ni suma ni reinicia (es un intento de correccion)", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 3) return llamada("c2", "cotizar_pedido", { branch_slug: "no-existe", canal: "recoger", items: [] }); // falla
+      if (paso === 4) return buscaQ("b1", "pepsi");
+      if (paso === 5) return buscaQ("b2", "sprite");
+      if (paso === 6) return buscaQ("b3", "agua");
+      if (paso === 7) return buscaQ("b4", "jarritos");
+      if (paso === 8) return buscaQ("b5", "fanta");
+      return texto("fin");
+    });
+    await m.turno();
+    // 5 lecturas distintas tras el rechazo (el cotizar fallido no suma): no llega a 6.
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(false);
+  });
+
+  it("quoteHash: si el flujo ya no tiene la cotizacion de este turno, el corte responde con texto fijo y SIN botones", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 5) {
+        // Justo antes del corte, otra escritura cambio la cotizacion vigente: el hash del flujo ya no es el del resumen de este turno.
+        const lee = f.repo.readOrderFlow.bind(f.repo);
+        (f.repo as unknown as { readOrderFlow: typeof lee }).readOrderFlow = async (...a) => {
+          const r = await lee(...a);
+          return r && r.context ? { ...r, context: { ...r.context, quoteHash: "otro-hash" } } : r;
+        };
+      }
+      return buscaQ(`b${paso}`, "coca");
+    });
+    const t = await m.turno();
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(true);
+    expect((t as { pedirConfirmacion?: unknown }).pedirConfirmacion).toBeUndefined();
+    expect(t.reply).toBe(PM_COPY.cierreBloqueado);
+  });
+
+  it("quoteHash igual: el corte lleva los botones", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      return buscaQ(`b${paso}`, "coca");
+    });
+    const t = await m.turno();
+    expect((t as { pedirConfirmacion?: unknown }).pedirConfirmacion).toBeDefined();
   });
 });
