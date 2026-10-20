@@ -41,7 +41,8 @@ export class TopeLlamadaLlmError extends Error {
 const NOMBRES_PRESUPUESTO = new Set(["GatewayBudgetExceededError", "MonthlyBudgetExceededError", "LlmMonthlyBudgetExceededError", "RoleDailyTurnLimitExceededError"]);
 const NOMBRES_REGLA = new Set(["ResidencyGateBlockedError", "KillSwitchEngagedError"]);
 const PATRON_RED = /connection terminated|econn(?:reset|refused|aborted)|enotfound|eai_again|epipe|network error|fetch failed|socket hang up|other side closed/i;
-const PATRON_TIMEOUT = /timeout|timed out|etimedout|aborted/i;
+// Acotado a lo que emite el cliente del proveedor: un `statement timeout` de Postgres u otro 'timeout' suelto NO es del proveedor.
+const PATRON_TIMEOUT = /openrouter timeout|timed out|etimedout|operation was aborted/i;
 
 function porEstado(status: number): CausaErrorTurno | null {
   if (status === 402) return "presupuesto_agotado";
@@ -81,12 +82,14 @@ export function clasificarCausaError(err: unknown): CausaErrorTurno {
     }
   }
   const textos: string[] = [];
+  // Escalera agotada: los intentos van PRIMERO y en orden inverso (el ultimo corto el turno); `message` concatena todos y por eso va despues.
   for (const n of objetos) {
-    if (typeof n.message === "string") textos.push(n.message);
-    // Escalera agotada: el ultimo intento manda (es el que corto el turno).
     if (Array.isArray(n.attempts)) {
       for (const a of [...n.attempts].reverse()) if (a && typeof (a as { error?: unknown }).error === "string") textos.push((a as { error: string }).error);
     }
+  }
+  for (const n of objetos) {
+    if (typeof n.message === "string") textos.push(n.message);
     if (typeof n.code === "string") textos.push(n.code);
   }
   for (const t of textos) {
