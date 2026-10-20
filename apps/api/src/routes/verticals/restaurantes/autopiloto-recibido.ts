@@ -6,7 +6,7 @@
 //   * Best-effort con SAVEPOINT: un fallo nunca revierte ni retrasa el pedido ya creado.
 //   * El tiempo estimado sale de `estimarTiempoSucursal` (mediana de la franja con piso del dueno, o el texto fijo del dueno).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { PLANTILLAS_AUTOPILOTO, confirmarPedidoRecibido, estimarTiempoSucursal } from "@atiende/domain-restaurantes";
+import { PLANTILLAS_AUTOPILOTO, confirmarPedidoRecibido, descripcionSeguraDeError, estimarTiempoSucursal } from "@atiende/domain-restaurantes";
 import type { Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -29,7 +29,7 @@ export async function avisarPedidoRecibido(deps: AppDeps, db: TenantDbSession, r
       return r.enviado ? { enviado: true } : { enviado: false, motivo: r.motivo ?? "error" };
     });
   } catch (err) {
-    console.error("autopiloto: el aviso 'pedido recibido' fallo (el pedido ya quedo registrado):", err instanceof Error ? err.message : err);
+    console.error("autopiloto: el aviso 'pedido recibido' fallo (el pedido ya quedo registrado):", descripcionSeguraDeError(err));
     return { enviado: false, motivo: "error" };
   }
 }

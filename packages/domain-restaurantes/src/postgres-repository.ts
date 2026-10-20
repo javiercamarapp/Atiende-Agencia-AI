@@ -9,6 +9,7 @@
 // hay `auth.uid()` real en esos canales (ver diseño Fase 1 §3: ninguno de los 3 usa
 // Supabase Auth de usuario, el "service role" original se traduce aquí a una sesión
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
+import { descripcionSeguraDeError } from "./log-seguro.ts";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import * as cliente360 from "./cliente-360/postgres.ts";
@@ -1302,11 +1303,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         isRecoverable: () => true,
         fallback: async (err) => {
           if (esErrorBaseSinMigrar026(err)) advertirVozSecretosNoDisponibles(err);
-          else console.error("PostgresRestaurantesRepository.recordVoiceToolAudit: error inesperado (best-effort, no se relanza):", err);
+          else console.error("PostgresRestaurantesRepository.recordVoiceToolAudit: error inesperado (best-effort, no se relanza):", descripcionSeguraDeError(err));
         },
       });
     } catch (err) {
-      console.error("PostgresRestaurantesRepository.recordVoiceToolAudit: no se pudo registrar (best-effort):", err);
+      console.error("PostgresRestaurantesRepository.recordVoiceToolAudit: no se pudo registrar (best-effort):", descripcionSeguraDeError(err));
     }
   }
 
@@ -2725,7 +2726,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       // Ni siquiera pudo abrirse el SAVEPOINT (sesión que no soporta SAVEPOINT,
       // p.ej. un doble de prueba angosto) -- se registra y se sale sin tocar nada
       // más, la acción de negocio sigue intacta.
-      console.error("PostgresRestaurantesRepository.registrarAuditoria: no se pudo abrir el SAVEPOINT -- se omite el registro de bitácora.", err);
+      console.error("PostgresRestaurantesRepository.registrarAuditoria: no se pudo abrir el SAVEPOINT -- se omite el registro de bitácora.", descripcionSeguraDeError(err));
       return;
     }
     try {
@@ -2744,7 +2745,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         await this.db.exec(`ROLLBACK TO SAVEPOINT ${RESTAURANTES_AUDIT_LOG_WRITE_SAVEPOINT}`);
         await this.db.exec(`RELEASE SAVEPOINT ${RESTAURANTES_AUDIT_LOG_WRITE_SAVEPOINT}`);
       } catch (recoveryErr) {
-        console.error("PostgresRestaurantesRepository.registrarAuditoria: fallo al recuperar el SAVEPOINT tras un error de bitácora.", recoveryErr);
+        console.error("PostgresRestaurantesRepository.registrarAuditoria: fallo al recuperar el SAVEPOINT tras un error de bitácora.", descripcionSeguraDeError(recoveryErr));
       }
       if (esErrorCompatibilidadAuditLogBaseSinMigrar(err)) {
         advertirAuditLogEscrituraNoDisponible(err);
@@ -2754,7 +2755,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       // TAMPOCO se propaga: la regla dura de arriba no distingue "por qué" falló la
       // bitácora, solo que nunca puede tumbar ni revertir la acción de negocio ya
       // hecha.
-      console.error("PostgresRestaurantesRepository.registrarAuditoria: fallo inesperado al escribir en restaurantes.audit_log (la acción de negocio ya se completó y NO se revierte).", err);
+      console.error("PostgresRestaurantesRepository.registrarAuditoria: fallo inesperado al escribir en restaurantes.audit_log (la acción de negocio ya se completó y NO se revierte).", descripcionSeguraDeError(err));
     }
   }
 

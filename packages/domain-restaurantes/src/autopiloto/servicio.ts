@@ -5,6 +5,7 @@
 //   * Todo efecto es idempotente (clave de dedupe por pedido/solicitud): un doble clic o un reintento del tick no duplica avisos ni comandas.
 //   * El dinero (devolucion en efectivo o tarjeta) solo se registra; nunca se ejecuta (no hay pago en linea).
 //   * Toda notificacion in-app sale por `emitirNotificacion` (catalogo `restaurantes.aprobacion.*`, `restaurantes.pedido.*`), sin PII.
+import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { emitirNotificacion } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { notifyCustomerOnOrderStatusChangeCore } from "../order-notifications.ts";
@@ -147,7 +148,7 @@ export async function resolverSolicitudAprobacion(
       efectos.push(nombre);
     } catch (err) {
       // Un efecto secundario fallido (aviso, comanda) nunca revierte la decision ya tomada: se registra y el tick/panel muestran el estado real.
-      console.error(`autopiloto: efecto "${nombre}" fallo tras resolver ${input.solicitudId} (la decision ya quedo guardada):`, err instanceof Error ? err.message : err);
+      console.error(`autopiloto: efecto "${nombre}" fallo tras resolver ${input.solicitudId} (la decision ya quedo guardada):`, descripcionSeguraDeError(err));
     }
   };
   const order = resultado.orderId ? await deps.repo.findOrderById(input.organizationId, resultado.orderId) : null;
@@ -384,7 +385,7 @@ export async function aplicarEstadosSinClic(deps: AutopilotoServicioDeps, ahora:
       }
     } catch (err) {
       omitidos++;
-      console.error(`autopiloto: transicion ${cand.desde}->${cand.hacia} del pedido fallo (se reintenta en el siguiente tick):`, err instanceof Error ? err.message : err);
+      console.error(`autopiloto: transicion ${cand.desde}->${cand.hacia} del pedido fallo (se reintenta en el siguiente tick):`, descripcionSeguraDeError(err));
     }
   }
   return { disponible: true, aplicados, omitidos };
@@ -457,7 +458,7 @@ export async function consultarEstadosPos(
         const e = await conTimeoutPos(port.obtenerEstadoComanda({ sucursal, folio: cm.folio }), timeoutMs);
         if (e.encontrada) estados.push({ comanda: cm, estadoPos: e.estado });
       } catch (err) {
-        console.error("autopiloto: consulta al POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
+        console.error("autopiloto: consulta al POS fallo (se reintenta en el siguiente tick):", descripcionSeguraDeError(err));
       }
     }
   }
@@ -483,7 +484,7 @@ export async function aplicarAvancesPos(deps: AutopilotoServicioDeps, estados: r
         if (order) await deps.repo.runWithRowSavepoint(async () => notifyCustomerOnOrderStatusChangeCore(deps.repo, { ...order, status: paso }));
       }
     } catch (err) {
-      console.error("autopiloto: avance desde el POS fallo (se reintenta en el siguiente tick):", err instanceof Error ? err.message : err);
+      console.error("autopiloto: avance desde el POS fallo (se reintenta en el siguiente tick):", descripcionSeguraDeError(err));
     }
   }
   return avanzadas;
