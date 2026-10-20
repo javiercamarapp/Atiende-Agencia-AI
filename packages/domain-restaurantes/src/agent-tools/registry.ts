@@ -75,6 +75,7 @@ import {
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
   decidirConfirmacion,
+  etiquetaHoraEntrega,
   firmaDeCierre,
   mensajeDatosCambiaron,
   resumenCanonico,
@@ -361,9 +362,9 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Mándelo AQUÍ en cuanto lo dé para que el resumen lo muestre." },
         propina: { type: "number", description: "Propina en pesos que dio el cliente (solo si preguntar_propina fue true). No suma al total. Mándela aquí en cuanto la dé para que el resumen la muestre." },
         propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta. Mándela aquí en cuanto la dé para que el resumen la muestre." },
-        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
+        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con el offset de la SUCURSAL (por ejemplo 2026-10-03T14:00:00-06:00 en Mérida; nunca Z ni UTC: un offset distinto se rechaza), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
         minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
-        hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con zona, calculada con la HORA LOCAL de la sucursal (no UTC). El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con el offset de la SUCURSAL (Mérida -06:00; un offset distinto, Z o UTC se rechaza), calculada con la HORA LOCAL de la sucursal. El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
       },
       required: ["branch_slug", "items"],
     },
@@ -404,12 +405,12 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
         telefono_alterno: { type: "string", description: "Segundo teléfono de contacto, 10 dígitos, si el cliente lo da." },
         minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
-        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00). Si el cliente dijo una hora o un plazo (\"en 40 minutos\", \"a las 2\") MÁNDELA igual que en cotizar_pedido; nunca vacía: omítala solo si pasa 'en cuanto esté'." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con el offset de la SUCURSAL (por ejemplo 2026-09-30T20:30:00-06:00 en Mérida; Z o un offset distinto se rechaza). Si el cliente dijo una hora o un plazo (\"en 40 minutos\", \"a las 2\") MÁNDELA igual que en cotizar_pedido; nunca vacía: omítala solo si pasa 'en cuanto esté'." },
         direccion_etiqueta: { type: "string", description: "Opcional: como llama el cliente a este domicilio (casa, oficina...). Solo si lo dijo." },
         referencias_acceso: { type: "string", description: "Opcional: referencias para llegar (porton, timbre, entre calles). Solo si las dio el cliente." },
         maps_url: { type: "string", description: "Opcional: link de Google Maps/Waze que el cliente mando por escrito (https). Nunca lo inventes." },
         usar_ubicacion_compartida: { type: "boolean", description: "true solo si el cliente compartio su ubicacion por WhatsApp Y es la de este domicilio de entrega; el sistema usa las coordenadas reales del mensaje." },
-        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después: fecha y hora ISO 8601 con zona (por ejemplo 2026-10-03T14:00:00-06:00), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar." },
+        programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después: fecha y hora ISO 8601 con el offset de la SUCURSAL (por ejemplo 2026-10-03T14:00:00-06:00 en Mérida; nunca Z ni UTC: un offset distinto se rechaza), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar." },
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
@@ -882,6 +883,67 @@ export interface InvokeAgentToolOpts {
   readonly rechazoComoResultado?: boolean;
 }
 
+/** Hora ISO 8601 con zona (`Z` u offset) como la manda el modelo: grupos = fecha, hora:min[:seg] y offset. Mismo formato que acepta `parsearProgramadoPara`, tambien con espacio en vez de «T». */
+const ISO_CON_ZONA_DEL_MODELO = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i;
+
+function minutosDeOffset(texto: string): number {
+  if (texto.toUpperCase() === "Z") return 0;
+  const signo = texto.startsWith("-") ? -1 : 1;
+  const digitos = texto.slice(1).replace(":", "");
+  return signo * (Number(digitos.slice(0, 2)) * 60 + Number(digitos.slice(2, 4)));
+}
+
+function textoDeOffset(minutos: number): string {
+  const abs = Math.abs(minutos);
+  return `${minutos < 0 ? "-" : "+"}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+}
+
+/** Componentes de pared de un instante en la zona, para armar el ISO local y sacar el offset VIGENTE en esa fecha (horario de verano incluido). */
+function paredEnZona(ms: number, zona: string): { readonly texto: string; readonly offsetMin: number } {
+  const partes = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: zona, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(new Date(ms))
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  const offsetMin = Math.round((Date.UTC(Number(partes.year), Number(partes.month) - 1, Number(partes.day), Number(partes.hour), Number(partes.minute), Number(partes.second)) - Math.floor(ms / 1000) * 1000) / 60_000);
+  return { texto: `${partes.year}-${partes.month}-${partes.day}T${partes.hour}:${partes.minute}:${partes.second}${textoDeOffset(offsetMin)}`, offsetMin };
+}
+
+/**
+ * R13/T7-026: `programado_para` / `hora_recogida` con un offset que NO es el de la zona de la sucursal en ese instante se RECHAZAN (antes se aceptaba cualquier offset: «19:00-05:00»,
+ * el horario de verano que Merida ya no usa, se guardaba como las 18:00 y el cliente que pidio 7 pm recibia su pedido una hora antes; «19:00Z» era 13:00 local). El servidor NO adivina
+ * cual hora quiso el modelo (reinterpretar en silencio podria cambiar un instante que si era correcto): devuelve el offset esperado y las dos lecturas posibles para que reintente.
+ * Excepciones: el eco de la hora YA cotizada en este flujo (el servidor la devuelve en UTC) y lo que no es una hora ISO con zona (otras reglas ya lo rechazan con su propio mensaje).
+ * Solo el modelo pasa por aqui (WhatsApp, llamada y API de voz); la hora que calcula el servidor con `minutos_para_recoger` se agrega despues y no se valida.
+ */
+async function exigirOffsetDeLaSucursal(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, entrada: Record<string, unknown>): Promise<void> {
+  if (name !== "cotizar_pedido" && name !== "crear_pedido") return;
+  const campos = (["programado_para", "hora_recogida"] as const).filter((c) => typeof entrada[c] === "string" && ISO_CON_ZONA_DEL_MODELO.test((entrada[c] as string).trim()));
+  if (campos.length === 0) return;
+  const zona = await zonaDeSucursal(repo, ctx, entrada.branch_slug);
+  if (zona === null) return;
+  for (const campo of campos) {
+    const texto = (entrada[campo] as string).trim();
+    const m = ISO_CON_ZONA_DEL_MODELO.exec(texto)!;
+    const ms = Date.parse(texto.replace(" ", "T"));
+    if (Number.isNaN(ms)) continue;
+    const local = paredEnZona(ms, zona);
+    if (minutosDeOffset(m[4]!) === local.offsetMin) continue;
+    if (ctx.flow) {
+      const cotizado = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context;
+      const minuto = new Date(ms).toISOString().slice(0, 16);
+      if ((cotizado?.programadoPara && cotizado.programadoPara.slice(0, 16) === minuto) || cotizado?.horaRecogida === minuto) continue;
+    }
+    const esperado = textoDeOffset(local.offsetMin);
+    const comoLaEscribio = `${m[1]}T${m[2]}:${m[3] ?? "00"}${esperado}`;
+    throw new OrderValidationError(
+      `${campo} "${texto}" no lleva el offset de la sucursal: ${String(entrada.branch_slug)} está en ${zona} (UTC${esperado}) y otro offset cambia la hora real del pedido. ` +
+        `Mande la hora LOCAL de la sucursal con ${esperado}: si la hora que dijo el cliente es ${m[2]}, mande ${comoLaEscribio}; si calculó la hora desde otra zona, ese mismo instante en hora de la sucursal es ${local.texto}. ` +
+        `Confirme con lo que dijo el cliente y reintente con ese offset (igual en cotizar_pedido y en crear_pedido). Si el cliente dio un plazo ("en 40 minutos"), mande minutos_para_recoger en vez de la hora.`,
+    );
+  }
+}
+
 export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>, opts: InvokeAgentToolOpts = {}): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -891,6 +953,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.hora_recogida !== undefined && entrada.hora_recogida !== null && typeof entrada.hora_recogida !== "string") {
     throw new OrderValidationError("hora_recogida debe ser texto en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00), no un número. Si el cliente dio un plazo (\"en 40 minutos\"), mande minutos_para_recoger.");
   }
+  await exigirOffsetDeLaSucursal(repo, ctx, name, entrada);
   // QA-PM-R5-reglas-02 (revision): en RECOGER son la misma hora; si el modelo manda las dos y NO coinciden, el pedido guardaria dos horas contradictorias. Se rechaza con
   // un mensaje accionable (las iguales y las que vienen de una sola fuente pasan como antes).
   if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.canal === "recoger") {
@@ -912,6 +975,36 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   return runWithOrderFlow(repo, ctx, ctx.flow, name, input, opts);
 }
 
+
+/** Zona horaria de la sucursal por su slug (la de plataforma si no hay dato o la base no tiene la migracion de zona). `null` = la sucursal no existe: otra regla se encarga del error. */
+async function zonaDeSucursal(repo: RestaurantesRepository, ctx: AgentToolContext, slug: unknown): Promise<string | null> {
+  if (typeof slug !== "string" || slug.trim() === "") return null;
+  const branch = await repo.findBranch(ctx.organizationId, { slug });
+  if (!branch) return null;
+  return resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+}
+
+/**
+ * R13/T7-026: la hora que el CLIENTE debe ver en el resumen canonico, en la zona de la sucursal, y la direccion que el servidor conoce (colonia y pin) si es a domicilio.
+ * La hora sale de lo ya cotizado (`hora` = recoger, ISO UTC al minuto o el programado) para que el resumen y el pedido guardado digan lo mismo.
+ */
+async function horaYDireccionDeResumen(
+  repo: RestaurantesRepository,
+  ctx: AgentToolContext,
+  input: Record<string, unknown>,
+  horaCotizada: string | undefined,
+  ahoraMs: number,
+): Promise<{ readonly hora?: string; readonly direccion?: string }> {
+  const programado = input.canal === "recoger" ? undefined : toProgramadoPara(input.programado_para);
+  const crudo = programado ?? horaCotizada;
+  const instante = crudo === undefined ? NaN : Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(crudo) ? `${crudo}:00.000Z` : crudo);
+  const hora = Number.isNaN(instante) ? undefined : etiquetaHoraEntrega(instante, (await zonaDeSucursal(repo, ctx, input.branch_slug)) ?? resolverZonaHorariaNegocio(null), ahoraMs);
+  const partes: string[] = [];
+  const colonia = input.canal === "recoger" ? undefined : textoOpcional(input.colonia_entrega)?.trim();
+  if (colonia) partes.push(`colonia ${colonia}`);
+  if (input.canal !== "recoger" && ctx.ubicacionEntrega) partes.push("pin de ubicación recibido");
+  return { ...(hora ? { hora } : {}), ...(partes.length > 0 ? { direccion: partes.join(", ") } : {}) };
+}
 
 /** Maximo de `minutos_para_recoger` (misma cota que la recogida de hoy: `HORA_RECOGIDA_MAX_HORAS`). */
 const MINUTOS_PARA_RECOGER_MAX = 12 * 60;
@@ -1055,7 +1148,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       });
     const plazoServidor = typeof input.plazo_minutos_servidor === "number" ? input.plazo_minutos_servidor : undefined;
     let horaCotizacion = input.canal === "recoger" ? horaUnificadaRecoger(input) : toHoraRecogida(input.hora_recogida);
-    const programadoCotizado = input.canal === "recoger" ? toProgramadoPara(input.programado_para) : undefined;
+    // R13: tambien a domicilio se guarda la hora cotizada (el eco de crear_pedido en UTC no se rechaza); la lectura de crear solo la usa en recoger.
+    const programadoCotizado = toProgramadoPara(input.programado_para);
     let quoteHash = huellaCotizacion(horaCotizacion);
     const cartHash = quotedItems ? huellaDeCarrito(String(input.branch_slug ?? ""), canalOf(input.canal), quotedItems) : undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -1123,7 +1217,13 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
       const resumenBase =
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
-          ? { lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })), total: quotedQuote.total, descuento: quotedQuote.descuento, canal: canalOf(input.canal) }
+          ? {
+              lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })),
+              total: quotedQuote.total,
+              descuento: quotedQuote.descuento,
+              canal: canalOf(input.canal),
+              ...(await horaYDireccionDeResumen(repo, ctx, input, horaCotizacion, flowNow(flow))),
+            }
           : undefined;
       const canonico = resumenBase
         ? resumenCanonico({ ...resumenBase, datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct } })
