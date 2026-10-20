@@ -8,6 +8,8 @@ import { authedGet, authedJson, buildRestaurantesKpiTestContext, makeOrder } fro
 import { buildTestDeps, jsonRequestInit, TEST_ENV } from "./fixtures.ts";
 
 const enMin = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
+/** Lo que manda el modelo (R13): el instante con el offset de la sucursal (America/Merida y Mexico_City: -06:00 todo el año), no en UTC. */
+const enMinLocal = (m: number) => `${new Date(Date.now() + m * 60_000 - 6 * 3_600_000).toISOString().slice(0, 19)}-06:00`;
 
 interface OrdersBody {
   readonly orders: ReadonlyArray<{ id: string; status: string; propertyId: string; programadoPara: string | null; promovidoAt: string | null }>;
@@ -142,7 +144,7 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
   }
 
   it("crea el pedido en estado programado, sin encolar nada para cocina", async () => {
-    const { res, restaurantesRepo } = await crear(enMin(180));
+    const { res, restaurantesRepo } = await crear(enMinLocal(180));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { order: { status: string; programadoPara: string } };
     expect(body.order.status).toBe("programado");
@@ -153,8 +155,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
   it("hora invalida, sin zona o fuera de ventana -> 400", async () => {
     expect((await crear("manana")).res.status).toBe(400);
     expect((await crear("2030-01-01T10:00:00")).res.status).toBe(400);
-    expect((await crear(enMin(5))).res.status).toBe(400);
-    expect((await crear(enMin(60 * 24 * 30))).res.status).toBe(400);
+    expect((await crear(enMinLocal(5))).res.status).toBe(400);
+    expect((await crear(enMinLocal(60 * 24 * 30))).res.status).toBe(400);
     expect((await crear(12345)).res.status).toBe(400);
   });
 
@@ -164,13 +166,13 @@ describe("POST /v1/restaurantes/:orgSlug/orders con programado_para", () => {
     // Turno diario de una hora, 12 horas despues de la hora elegida: la hora elegida nunca cae dentro.
     const abre = String((horaLocal + 12) % 24).padStart(2, "0");
     const cierra = String((horaLocal + 13) % 24).padStart(2, "0");
-    const { res } = await crear(objetivo.toISOString(), (repo, propertyId) => repo.seedBranchPolicy(propertyId, { horario: [{ dias: [0, 1, 2, 3, 4, 5, 6], abre: `${abre}:00`, cierra: `${cierra}:00` }] }));
+    const { res } = await crear(`${new Date(objetivo.getTime() - 6 * 3_600_000).toISOString().slice(0, 19)}-06:00`, (repo, propertyId) => repo.seedBranchPolicy(propertyId, { horario: [{ dias: [0, 1, 2, 3, 4, 5, 6], abre: `${abre}:00`, cierra: `${cierra}:00` }] }));
     expect(res.status).toBe(400);
     expect(JSON.stringify(await res.json())).toContain("no atiende a la hora elegida");
   });
 
   it("base SIN migrar -> 400 (canal de voz) y no se crea ningun pedido", async () => {
-    const { res, restaurantesRepo } = await crear(enMin(180), (repo) => repo.setScheduledOrdersSupported(false));
+    const { res, restaurantesRepo } = await crear(enMinLocal(180), (repo) => repo.setScheduledOrdersSupported(false));
     expect(res.status).toBe(400);
     expect(restaurantesRepo.getOutbox()).toHaveLength(0);
   });
