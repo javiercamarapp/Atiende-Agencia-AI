@@ -381,3 +381,42 @@ describe("corte sin falsos positivos", () => {
     expect((t as { pedirConfirmacion?: unknown }).pedirConfirmacion).toBeDefined();
   });
 });
+
+describe("revision 3: cotizar fallido no reinicia, y los botones solo con una cotizacion verificable", () => {
+  it("caso D: buscar «coca» x2, cotizar_pedido FALLIDO, buscar «coca»: un cotizar fallido NO reinicia, corta en la 6a llamada", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return crea(f, "k1");
+      if (paso === 3 || paso === 4) return buscaQ(`b${paso}`, "coca");
+      if (paso === 5) return llamada("c2", "cotizar_pedido", { branch_slug: "no-existe", canal: "recoger", items: [] }); // falla
+      return buscaQ(`b${paso}`, "coca");
+    });
+    await m.turno();
+    expect(m.llamadas()).toBe(6);
+    expect(m.evento().tools.map((x) => `${x.tool}:${x.resultado}`)[4]).toBe("cotizar_pedido:error_regla");
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(true);
+  });
+
+  it("sin cotizacion en este turno (resumen del rechazo del servidor) y otro quoteHash vigente: el texto sale SIN botones, nunca con el hash nuevo", async () => {
+    const m = await mundo((paso, f) => {
+      if (paso === 1) return cotiza(f);
+      if (paso === 2) return texto("Listo, ¿confirma su pedido?"); // turno 1
+      if (paso === 3) return llamada("c2", "confirmar_resumen", {}); // turno 2: el cliente dijo «sí»
+      if (paso === 4) return creaTarjeta(f, "k1"); // el servidor lo rechaza con su resumen canonico
+      if (paso === 5) {
+        // Otro pedido sustituyo la cotizacion vigente: el hash del flujo ya no es el del resumen que viene del rechazo.
+        const lee = f.repo.readOrderFlow.bind(f.repo);
+        (f.repo as unknown as { readOrderFlow: typeof lee }).readOrderFlow = async (...a) => {
+          const r = await lee(...a);
+          return r && r.context ? { ...r, context: { ...r.context, quoteHash: "hash-de-otro-pedido" } } : r;
+        };
+      }
+      return buscaQ(`b${paso}`, "coca");
+    });
+    const hist = [{ role: "user" as const, content: "dos cocas para recoger, soy Nora, pago con 500" }];
+    const t1 = await m.turno(hist);
+    const t2 = await m.turno([...hist, { role: "assistant", content: t1.reply }, { role: "user", content: "sí" }]);
+    expect((m.evento() as unknown as { cierreCortado?: unknown }).cierreCortado).toBe(true);
+    expect((t2 as { pedirConfirmacion?: unknown }).pedirConfirmacion).toBeUndefined();
+  });
+});
