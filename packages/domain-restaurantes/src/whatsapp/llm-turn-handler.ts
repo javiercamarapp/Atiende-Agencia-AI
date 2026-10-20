@@ -1069,7 +1069,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               else {
                 bloqueoAlCrear.llamadasDespues += 1;
                 if (codigoDeRechazo !== null && codigoDeRechazo === bloqueoAlCrear.codigo) bloqueoAlCrear.rechazosMismoCodigo += 1;
-                else bloqueoAlCrear = { ...bloqueoAlCrear, codigo: codigoDeRechazo, rechazosMismoCodigo: 1 };
+                else {
+                  bloqueoAlCrear.codigo = codigoDeRechazo;
+                  bloqueoAlCrear.rechazosMismoCodigo = 1;
+                }
               }
             } else bloqueoAlCrear = null;
           } else if (bloqueoAlCrear !== null) {
