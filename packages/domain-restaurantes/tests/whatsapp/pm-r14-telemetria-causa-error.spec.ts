@@ -223,3 +223,33 @@ describe("PM-R14 privacidad: el evento no lleva texto del cliente, telefonos, ar
     expect(["tope_llamada", "tope_turno", "presupuesto_agotado", "proveedor_5xx", "proveedor_timeout", "red", "regla", "herramienta", "otro"]).toContain(causa(m));
   });
 });
+
+describe("PM-R14 revision: la ultima causa de la escalera manda, y el catch externo no filtra PII", () => {
+  const intento = (error: string) => ({ providerId: "p", error });
+  it("escalera con dos intentos: [503, 402] => presupuesto_agotado (manda el ultimo)", async () => {
+    const m = armarCon(gatewayQueFalla(new AllProvidersFailedError([intento("OpenRouter 503 (m): x"), intento("OpenRouter 402 (m): y")])));
+    await m.correr();
+    expect(causa(m)).toBe("presupuesto_agotado");
+  });
+  it("escalera con dos intentos: [402, 503] => proveedor_5xx (manda el ultimo)", async () => {
+    const m = armarCon(gatewayQueFalla(new AllProvidersFailedError([intento("OpenRouter 402 (m): y"), intento("OpenRouter 503 (m): x")])));
+    await m.correr();
+    expect(causa(m)).toBe("proveedor_5xx");
+  });
+  it("un error de Postgres con la palabra timeout NO es proveedor_timeout", async () => {
+    const m = armarCon(gatewayQueFalla(new Error("canceling statement due to statement timeout")));
+    await m.correr();
+    expect(causa(m)).toBe("otro");
+  });
+  it("catch externo (readOrderFlow lanza con PII en el mensaje): el evento error_sistema no la contiene y el error se relanza", async () => {
+    const m = armar([{ text: "Hola" }]);
+    (m.f.repo as unknown as { readOrderFlow: () => Promise<never> }).readOrderFlow = async () => {
+      throw new Error(`fallo con ${LLAVE_FALSA} Nora Privada Calle Secreta 123 ${PHONE} 9991234567`);
+    };
+    await expect(m.correr()).rejects.toThrow();
+    expect(turno(m).resultado).toBe("error_sistema");
+    expect(["otro", "red"]).toContain(causa(m));
+    const serial = JSON.stringify(m.eventos);
+    for (const prohibido of [LLAVE_FALSA, "Nora Privada", "Calle Secreta", "9991234567", "5219991234567", "fallo con"]) expect(serial, prohibido).not.toContain(prohibido);
+  });
+});
