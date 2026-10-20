@@ -37,7 +37,6 @@ import { kmAproxTexto } from "../nearest-branch.ts";
 import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
-import { normalizarMetodoPago } from "../reglas-pedido.ts";
 import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
@@ -819,7 +818,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     items: toCreateOrderItems(input.items, lenient),
     source: ctx.channel === "voz" ? "voice" : "whatsapp",
     notes: str(input.notes),
-    paymentMethod: normalizarMetodoPago(input.payment_method),
+    paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
     adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
     requestedComplements: Array.isArray(input.requested_complements)
       ? input.requested_complements.map(canonicalRequestedComplement).filter((c): c is RequestedComplement => c !== null)
@@ -831,7 +830,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     ubicacionEntrega: ctx.ubicacionEntrega ?? undefined,
     // Los agentes rellenan los opcionales que no tienen con 0 o "" (efectivo_con 0, telefono_alterno ""): eso es "sin dato", no un dato invalido
     // (despues de fusionar efectivo_con y telefono_alterno, 15 crear_pedido de la medida fallaban por ese relleno y el cliente se quedaba sin pedido).
-    efectivoCon: typeof input.efectivo_con === "number" && (input.efectivo_con > 0 && normalizarMetodoPago(input.payment_method) !== "tarjeta") ? input.efectivo_con : undefined,
+    efectivoCon: typeof input.efectivo_con === "number" && (input.efectivo_con > 0 && input.payment_method !== "tarjeta") ? input.efectivo_con : undefined,
     llevarTerminal: input.llevar_terminal === true ? true : undefined,
     indicacionesAcceso: str(input.indicaciones_acceso),
     telefonoAlterno: textoOpcional(input.telefono_alterno)?.trim() || undefined,
@@ -974,7 +973,7 @@ async function writeFlow(
 
 /** Forma de pago y efectivo_con de una cotizacion: lo que manda el modelo; si lo omite se conserva el de la cotizacion vigente. Tarjeta descarta el efectivo_con (es relleno). */
 function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowContext | undefined): { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number } {
-  const dado = normalizarMetodoPago(input.payment_method);
+  const dado = input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined;
   const quotedPago = dado ?? previo?.quotedPago;
   const efDado = typeof input.efectivo_con === "number" && input.efectivo_con > 0 ? input.efectivo_con : undefined;
   const quotedEfectivoCon = quotedPago === "tarjeta" ? undefined : (efDado ?? previo?.quotedEfectivoCon);
@@ -1710,7 +1709,7 @@ async function dispatchTool(
         colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
         ...(ctx.sharedLocation && ctx.channel === "whatsapp" ? { ubicacion: { lat: ctx.sharedLocation.lat, lng: ctx.sharedLocation.lng } } : {}),
-        paymentMethod: normalizarMetodoPago(input.payment_method),
+        paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
         doubleSalsas: toDoubleSalsas(input.doble_salsas),
         programadoPara: toProgramadoPara(input.programado_para),
         promoCode: await compensacionPendiente(repo, ctx),
@@ -1995,7 +1994,7 @@ async function prepararRepeticion(repo: RestaurantesRepository, ctx: AgentToolCo
     items: repetido.renglones.map((r) => ({ product_id: r.productId, product_name: r.productName, requested_quantity: r.requestedQuantity, ...(r.tortilla ? { tortilla: r.tortilla } : {}) })),
     ...(input.adult_confirmed === true ? { adult_confirmed: true } : {}),
     ...(typeof input.colonia_entrega === "string" ? { colonia_entrega: input.colonia_entrega } : {}),
-    ...(normalizarMetodoPago(input.payment_method) ? { payment_method: normalizarMetodoPago(input.payment_method) } : {}),
+    ...(input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? { payment_method: input.payment_method } : {}),
   };
   const repeticion = {
     pedido_numero: repetido.pedido.numero,
