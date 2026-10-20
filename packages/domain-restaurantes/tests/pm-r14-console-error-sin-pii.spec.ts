@@ -59,3 +59,40 @@ describe("console.error de las rutas del agente: clase y codigo, nunca el mensaj
     sinPii();
   });
 });
+
+import { descripcionSeguraDeError } from "../src/log-seguro.ts";
+
+describe("descripcionSeguraDeError: endurecido", () => {
+  it("name con PII no se imprime", () => {
+    const e = Object.assign(new Error("x"), { name: "Nora Privada 9991234567 Calle Secreta" });
+    expect(descripcionSeguraDeError(e)).toBe("Error");
+  });
+  it("name no-string o ausente no lanza", () => {
+    const e = new Error("x");
+    Object.defineProperty(e, "name", { value: undefined });
+    expect(() => descripcionSeguraDeError(e)).not.toThrow();
+    expect(descripcionSeguraDeError(e)).toBe("Error");
+    const e2 = new Error("x");
+    Object.defineProperty(e2, "name", { value: 42 });
+    expect(descripcionSeguraDeError(e2)).toBe("Error");
+  });
+  it("un getter que lanza devuelve 'error' sin lanzar", () => {
+    const e = new Error("x");
+    Object.defineProperty(e, "code", { get() { throw new Error("boom"); } });
+    expect(descripcionSeguraDeError(e)).toBe("error");
+    expect(descripcionSeguraDeError(Object.create(null, { name: { get() { throw new Error("boom"); } } }))).toBe("error");
+  });
+  it("un code solo de digitos (telefono) no se imprime", () => {
+    expect(descripcionSeguraDeError(Object.assign(new Error("x"), { code: "9991234567" }))).toBe("Error");
+  });
+  it("SQLSTATE y codigos de Node validos se conservan", () => {
+    expect(descripcionSeguraDeError(Object.assign(new Error("x"), { code: "23505" }))).toBe("Error code=23505");
+    expect(descripcionSeguraDeError(Object.assign(new Error("x"), { code: "42P01" }))).toBe("Error code=42P01");
+    expect(descripcionSeguraDeError(Object.assign(new Error("x"), { code: "ECONNRESET" }))).toBe("Error code=ECONNRESET");
+    expect(descripcionSeguraDeError(Object.assign(new Error("x"), { code: "ERR_INVALID_ARG_TYPE" }))).toBe("Error code=ERR_INVALID_ARG_TYPE");
+  });
+  it("valores que no son Error", () => {
+    expect(descripcionSeguraDeError("Nora Privada")).toBe("string");
+    expect(descripcionSeguraDeError(null)).toBe("object");
+  });
+});
