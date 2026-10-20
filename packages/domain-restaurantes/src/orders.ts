@@ -3,6 +3,7 @@
 // re-cotiza server-side contra el catálogo real de la sucursal — nunca se confía en
 // un total mandado por el cliente/LLM (guardia anti-alucinación de precio, ver
 // product-search.ts::resolveOrderItemsAgainstProducts).
+import { descripcionSeguraDeError } from "./log-seguro.ts";
 import { createHash } from "node:crypto";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
@@ -602,7 +603,7 @@ export async function tryIncrementPromotionUses(repo: RestaurantesRepository, or
   try {
     await repo.runWithRowSavepoint(() => repo.incrementPromotionUses(organizationId, promotionId));
   } catch (err) {
-    console.error("promotions: best-effort incrementPromotionUses failed:", err);
+    console.error("promotions: best-effort incrementPromotionUses failed:", descripcionSeguraDeError(err));
   }
 }
 

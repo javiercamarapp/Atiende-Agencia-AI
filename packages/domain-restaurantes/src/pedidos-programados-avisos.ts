@@ -10,6 +10,7 @@
 // evento nuevo viola el CHECK de la bandeja (o la funcion lo rechaza) y solo ese intento se revierte; la sesion sigue viva.
 // Debe llamarse en una sesion de SISTEMA o de staff de la organizacion (`enqueue_staff_order_notification` exige ambas
 // cosas) y DESPUES de que la promocion quedo confirmada, para que el pedido ya exista fuera de la transaccion que lo promovio.
+import { descripcionSeguraDeError } from "./log-seguro.ts";
 import { emitirNotificacion } from "@atiende/db";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { TenantDbSession } from "@atiende/core-tenancy";
@@ -71,7 +72,7 @@ export async function avisarProgramadosPromovidos(repo: RestaurantesRepository, 
       bandeja += 1;
     } catch (err) {
       errores += 1;
-      console.error("pedidos-programados-avisos: la bandeja del staff no se pudo registrar (base sin migrar o fallo real):", err instanceof Error ? err.message : err);
+      console.error("pedidos-programados-avisos: la bandeja del staff no se pudo registrar (base sin migrar o fallo real):", descripcionSeguraDeError(err));
     }
     const r = await emitirAvisoProgramadoEnCocina(db, order);
     if (r.estado === "error" || r.estado === "invalida") errores += 1;
