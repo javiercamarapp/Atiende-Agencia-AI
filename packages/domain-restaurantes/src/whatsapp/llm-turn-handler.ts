@@ -533,6 +533,9 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
+/** PM-R14: rechazos de regla de `crear_pedido` seguidos en un turno tras los cuales se corta el bucle del modelo. */
+export const MAX_RECHAZOS_DE_REGLA_AL_CREAR = 2;
+const CIERRE_BLOQUEADO_REPLY_GENERICO = "Todavía no pude registrar su pedido con los datos que tengo. ¿Me confirma su pedido completo o me dice qué desea corregir, por favor?";
 export const TURN_BUDGET_POR_OMISION_MS = FUNCION_MAX_MS - MARGEN_CIERRE_TURNO_MS - 6_000;
 
 /**
@@ -603,6 +606,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       /** Si la ultima cotizacion DE ESTE TURNO traia `promocion_aplicada` o una promocion sugerida con cortesias (null = no se cotizo en este turno: no se puede verificar). */
       let lastQuoteRespaldaCortesia: boolean | null = null;
       let anyToolCalled = false;
+      // PM-R14: rechazos de regla de `crear_pedido` desde el ultimo `crear_pedido` exitoso o la ultima cotizacion exitosa del turno. Al segundo se corta el bucle (ver mas abajo).
+      let rechazosDeReglaAlCrear = 0;
       let escalacionOkEnTurno = false;
       // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
       let pedidoSimulado: unknown;
@@ -1032,6 +1037,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const rr = result as { pedido_grande?: unknown; pedido_retenido?: unknown; por_aprobar?: unknown } | null;
           if ((call.name === "crear_pedido" || call.name === "cotizar_pedido") && (rr?.pedido_grande === true || rr?.pedido_retenido === true) && rr?.por_aprobar !== true) retenidoEnTurno = true;
           tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
+          // PM-R14: crear_pedido rechazado por regla DOS veces en el mismo turno (sin una cotizacion nueva o un pedido creado entre medio): el servidor ya dijo que no y el modelo
+          // se puso a buscar y reintentar hasta vencer el reloj (confirmar_resumen ok -> crear_pedido error_regla -> buscar_producto x7 -> 18 s -> "problema tecnico"). Se corta aqui y el
+          // cliente recibe el resumen canonico del servidor (confirmar o corregir) o, sin el, un texto fijo. Sin aviso al equipo ni toma: no es un motivo de escalacion nuevo.
+          if (call.name === "crear_pedido") rechazosDeReglaAlCrear = isToolErrorResult(result) && !fallaSistema && !argumentosInvalidos ? rechazosDeReglaAlCrear + 1 : 0;
+          else if (call.name === "cotizar_pedido" && !isToolErrorResult(result)) rechazosDeReglaAlCrear = 0;
+          if (rechazosDeReglaAlCrear >= MAX_RECHAZOS_DE_REGLA_AL_CREAR && orderId === null && pedidosCreadosDelTurno.length === 0 && escalarMotivo === null) {
+            return done({ reply: resumenCanonicoDelTurno ? safeReply(resumenCanonicoDelTurno.texto) : perfil === "taqueria_pm" ? PM_COPY.cierreBloqueado : CIERRE_BLOQUEADO_REPLY_GENERICO, orderId, propertyId });
+          }
           const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
           if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
             if ((await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;

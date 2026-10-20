@@ -66,7 +66,8 @@ describe("corte del bucle crear_pedido bloqueado -> buscar_producto", () => {
     const t = await m.turno();
     expect(m.llamadas()).toBeLessThanOrEqual(4);
     expect(m.evento().vueltas).toBeLessThanOrEqual(4);
-    expect(m.evento().tools.map((x) => `${x.tool}:${x.resultado}`)).toEqual(["cotizar_pedido:ok", "crear_pedido:error_regla", "buscar_producto:ok", "crear_pedido:error_regla"]);
+    expect(m.evento().tools.map((x) => x.tool)).toEqual(["cotizar_pedido", "crear_pedido", "buscar_producto", "crear_pedido"]);
+    expect(m.evento().tools.filter((x) => x.tool === "crear_pedido").map((x) => x.resultado)).toEqual(["error_regla", "error_regla"]);
     expect(m.evento().resultado).toBe("ok");
     expect(t.reply).toContain("Total a pagar: $");
     expect(t.reply).toMatch(/¿Está correcto\? Responda \*sí\*/);

@@ -108,6 +108,8 @@ export const PM_COPY = {
   turnoAgotadoConAviso: "Se me complicó procesar su solicitud por este medio. Ya avisé al equipo para que lo contacte directamente.",
   /** El turno agoto sus vueltas y NO se pudo avisar al equipo: una pregunta concreta, para no dejar al cliente esperando algo que nunca llega. */
   turnoAgotadoSinAviso: "Se me complicó procesar su solicitud. ¿Me puede decir en una sola frase qué le gustaría pedir, por favor?",
+  /** El servidor rechazo DOS veces seguidas registrar el pedido en el mismo turno y no hay resumen canonico que mostrar: se pide confirmar el pedido completo o corregir lo que falte. No avisa al equipo ni abre toma. */
+  cierreBloqueado: "Todavía no pude registrar su pedido con los datos que tengo. ¿Me confirma su pedido completo (productos, forma de pago y entrega) o me dice qué desea corregir, por favor?",
 } as const;
 
 /** Lo que el agente puede afirmar de cada estado: SOLO lo que la sucursal marco en el pedido, nunca lo que cree del repartidor. */
