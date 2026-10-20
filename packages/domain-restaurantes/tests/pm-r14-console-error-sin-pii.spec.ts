@@ -80,7 +80,9 @@ describe("descripcionSeguraDeError: endurecido", () => {
     const e = new Error("x");
     Object.defineProperty(e, "code", { get() { throw new Error("boom"); } });
     expect(descripcionSeguraDeError(e)).toBe("error");
-    expect(descripcionSeguraDeError(Object.create(null, { name: { get() { throw new Error("boom"); } } }))).toBe("error");
+    const e2 = new Error("x");
+    Object.defineProperty(e2, "name", { get() { throw new Error("boom"); } });
+    expect(descripcionSeguraDeError(e2)).toBe("error");
   });
   it("un code solo de digitos (telefono) no se imprime", () => {
     expect(descripcionSeguraDeError(Object.assign(new Error("x"), { code: "9991234567" }))).toBe("Error");
