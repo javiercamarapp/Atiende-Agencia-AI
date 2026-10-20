@@ -23,7 +23,7 @@ describe("e2e programado + POS", () => {
       source: "voice",
       canal: "recoger",
       payment_method: "efectivo",
-      programado_para: "2026-10-06T22:00:00.000Z", // 16:00 Merida; "ahora" es 13:00 Merida
+      programado_para: "2026-10-06T16:00:00-06:00", // 16:00 Merida (R13: el offset debe ser el de la sucursal); "ahora" es 13:00 Merida
       items: [{ product_id: stack.products.coca, requested_quantity: 5 }],
     });
     const res = await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/orders`), { method: "POST", headers: { "content-type": "application/json", "content-length": String(raw.length), "x-atiende-tool-secret": E2E_SECRETS.voiceToolSecret }, body: raw });
