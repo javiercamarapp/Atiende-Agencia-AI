@@ -180,8 +180,10 @@ describe("PM-R14 herramientas del turno: nombre, resultado, duracion y codigo de
       expect("codigoRegla" in x).toBe(true);
       expect(x.codigoRegla === null || (typeof x.codigoRegla === "string" && /^[a-z_]+$/.test(x.codigoRegla))).toBe(true);
     }
-    const ok = (t.tools as ReadonlyArray<{ tool: string; codigoRegla?: unknown }>)[0]!;
-    expect(ok.codigoRegla).toBeNull();
+    const [ok, rechazo] = t.tools as ReadonlyArray<{ tool: string; resultado: string; codigoRegla?: unknown }>;
+    expect(ok!.codigoRegla).toBeNull();
+    // crear_pedido sin cotizar lo rechaza el flujo del servidor: viaja el CODIGO, no el texto del error.
+    expect(rechazo).toMatchObject({ resultado: "error_regla", codigoRegla: "sin_cotizacion" });
   });
 });
 
