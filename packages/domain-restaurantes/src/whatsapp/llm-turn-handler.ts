@@ -26,6 +26,7 @@ import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
 import { avisoFallaSistemaReciente, marcarAvisoFallaSistema } from "./dedupe-falla-sistema.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { descripcionSeguraDeError } from "../log-seguro.ts";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
@@ -475,7 +476,7 @@ export interface WhatsAppLlmAgentOptions {
 /** Encola la comanda del pedido recien creado. Nunca lanza: un fallo aqui no puede tumbar el turno ni
  * ocultarle al cliente un pedido que si quedo creado. Devuelve el bloque que ve el modelo (solo en modo
  * `activo`; con la bandera apagada o en sombra el resultado de `crear_pedido` queda identico). */
-async function encolarComandaDelTurno(
+export async function encolarComandaDelTurno(
   encolar: NonNullable<WhatsAppLlmAgentOptions["encolarComanda"]>,
   order: Order,
   input: Record<string, unknown>,
@@ -490,7 +491,7 @@ async function encolarComandaDelTurno(
     });
     return outcome.modo === "activo" ? { estado: outcome.agente.estado, folio: outcome.agente.folio, mensaje: outcome.agente.mensaje } : null;
   } catch (err) {
-    console.error("whatsapp: no se pudo encolar la comanda de SoftRestaurant (el pedido NO se ve afectado):", err instanceof Error ? err.message : err);
+    console.error("whatsapp: no se pudo encolar la comanda de SoftRestaurant (el pedido NO se ve afectado):", descripcionSeguraDeError(err));
     return null;
   }
 }
