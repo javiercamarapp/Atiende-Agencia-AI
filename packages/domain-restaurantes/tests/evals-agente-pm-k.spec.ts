@@ -49,6 +49,7 @@ function mundo() {
     nachosPastor: producto(nachos, "Nachos de Pastor", 150),
     nachosPastorMedia: producto(nachos, "Nachos de Pastor (1/2 orden)", 90),
     extraPina: producto(extras, "Extra Piña", 19),
+    extraSalsa: producto(extras, "Extra Salsa", 19),
     coca: producto(bebidas, "Coca-Cola", 45),
   };
   return { repo, organizationId, propertyId, p };
@@ -96,8 +97,10 @@ const CHECKS: Record<string, () => Promise<void> | void> = {
     const o = await crearConHerramienta(m, { requested_complements: ["Piña"] });
     expect(o.notes).toContain("Pedidas (sin costo): piña picada.");
     expect(o.total).toBe(90);
-    const doble = await searchProducts(m.repo, { propertyId: m.propertyId, query: "extra piña" });
-    expect(doble.map((r) => [r.name, Number(r.price)])).toContainEqual(["Extra Piña", 19]);
+    // PM R13 Q5: la doble piña se cobra por doble_salsas (Extra Salsa, $19), igual que la de cualquier salsa; no como el producto Extra Piña.
+    const m2 = mundo();
+    const doble = await createOrder(m2.repo, base(m2, { items: [{ productId: m2.p.bistec, requestedQuantity: 3, tortilla: "maiz" }], doubleSalsas: ["salsa_pina"] }));
+    expect(doble.total).toBe(145);
   },
   async K03() {
     const m = mundo();

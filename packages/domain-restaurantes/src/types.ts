@@ -106,8 +106,8 @@ export interface OrderQuote {
   readonly containsAlcohol: boolean;
 }
 
-/** Complementos que el cliente puede PEDIR (sin costo). `pina` es la piña picada que acompaña los tacos (gratis si se pide; la doble
- * es el producto "Extra Piña" del catálogo, no un complemento); `salsa_habanero_soasado` es el habanero soasado ("sauceada"). */
+/** Complementos que el cliente puede PEDIR (sin costo). `pina` es la piña picada que acompaña los tacos (gratis si se pide; la doble porción de
+ * cualquier salsa, incluida la piña, no es un complemento: va por `doble_salsas` y se cobra como "Extra Salsa"); `salsa_habanero_soasado` es el habanero soasado ("sauceada"). */
 export type RequestedComplement =
   | "salsa_habanero"
   | "crema_ajo"

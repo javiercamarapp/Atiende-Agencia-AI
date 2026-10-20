@@ -74,7 +74,7 @@ describe("escenarios de T7: las cifras citadas coinciden con el motor real sobre
   const plan = buildPmSeedPlan(data, agent);
 
   type Renglon = readonly [producto: string, piezas: number, tortilla?: "maiz" | "harina"];
-  async function total(items: readonly Renglon[], doubleSalsas: readonly ("crema_ajo" | "salsa_verde")[] = []): Promise<number> {
+  async function total(items: readonly Renglon[], doubleSalsas: readonly ("crema_ajo" | "salsa_verde" | "salsa_pina")[] = []): Promise<number> {
     // Martes 14:00 en Merida: abierto y sin 2x1; el horario se evalua con el reloj real, asi que se fija.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-13T20:00:00Z"));
@@ -93,13 +93,13 @@ describe("escenarios de T7: las cifras citadas coinciden con el motor real sobre
     }
   }
 
-  const casos: Array<[string, string, readonly Renglon[], number, ("crema_ajo" | "salsa_verde")[]?]> = [
+  const casos: Array<[string, string, readonly Renglon[], number, ("crema_ajo" | "salsa_verde" | "salsa_pina")[]?]> = [
     ["T7-001", "1/4 kg de bistec", [["Bistec de Res — 250 g", 1]], 275],
     ["T7-014", "kilo de bistec", [["Bistec de Res — 1 kg", 1]], 1100],
     ["T7-060", "kilo de pastor, bistec, arrachera y costilla", [["Pastor — 1 kg", 1], ["Bistec de Res — 1 kg", 1], ["Arrachera — 1 kg", 1], ["Costilla de Res — 1 kg", 1]], 900 + 1100 + 1400 + 950],
     ["T7-061", "1/4 kg de pechuga (fraccion con .50)", [["Pechuga de Pollo — 250 g", 1]], 237.5],
     ["T7-022", "nachos de bistec + extra salsa (ajo)", [["Nachos de Bistec", 1]], 392, ["crema_ajo"]],
-    ["T7-045", "2 frijoles + frances suizo de pastor + chicharron + extra pina", [["Frijol con Tostada", 2], ["Francés Suizo de Pastor", 1], ["Chicharrón de Queso", 1], ["Extra Piña", 1]], 639],
+    ["T7-045", "2 frijoles + frances suizo de pastor + chicharron + doble pina (doble_salsas; PM R13 Q5: ya no es el producto Extra Piña, mismo total)", [["Frijol con Tostada", 2], ["Francés Suizo de Pastor", 1], ["Chicharrón de Queso", 1]], 639, ["salsa_pina"]],
     ["T7-052", "2 charros + 2 ordenes de bistec + alambre suizo de bistec", [["Frijoles Charros Normal", 2], ["Tacos de Bistec de Res (orden de 3)", 6, "maiz"], ["Alambre Suizo de Bistec", 5]], 948], // 1 orden = 5 piezas: el menú público dice «las órdenes son de 5 tacos» (seed con «Orden de 5 tacos»); mismo total que antes
     ["T7-059", "1/2 kg de pastor + 1/2 kg de bistec + 2 frijoles", [["Pastor — 500 g", 1], ["Bistec de Res — 500 g", 1], ["Frijol con Tostada", 2]], 1186],
     ["T7-038", "medio kilo de bistec + chicharron de queso", [["Bistec de Res — 500 g", 1], ["Chicharrón de Queso", 1]], 722],

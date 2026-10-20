@@ -800,8 +800,8 @@
     "[NOMBRE] 2 órdenes de frijol con tostadas, 1 francés suizo de pastor planchado SIN guacamole, 1 chicharrón de queso. Con todas las salsas: xnipec, salsa roja, salsa de ajo, cebolla y cilantro y piña",
     "[RESIDENCIAL al norte]"
    ],
-   "comportamiento_esperado": "Mapea 'xnipec' a salsa mexicana. Anota 'pastor planchado' y 'sin guacamole' como ajustes. Explica que el francés no lleva piña y ofrece la piña extra a $19 cotizada con la herramienta. Total con extra: $639.",
-   "que_no_debe_hacer": "Agregar la piña gratis o cobrarla sin herramienta; escalar 'sin guacamole'.",
+   "comportamiento_esperado": "Mapea 'xnipec' a salsa mexicana. Anota 'pastor planchado' y 'sin guacamole' como ajustes. Explica que el francés no lleva piña y si el cliente quiere la piña extra (doble porción) la manda por doble_salsas (salsa_pina), que cotizar_pedido cobra a $19 como Extra Salsa, nunca como el producto Extra Piña; la piña simple pedida como complemento va sin costo. Total con la doble piña: $639.",
+   "que_no_debe_hacer": "Cobrar la piña simple; cobrar la doble sin herramienta o buscar «Extra Piña» como producto; escalar 'sin guacamole'.",
    "dudas": [],
    "estado": "activo",
    "fuente": "chat 00003075"
