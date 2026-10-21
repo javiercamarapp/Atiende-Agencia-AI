@@ -19,6 +19,8 @@ import {
   ClipboardPaste,
   History,
   Clock,
+  Gauge,
+  Inbox,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -27,12 +29,14 @@ import {
   MessageSquare,
   MessageCircle,
   Mic,
+  PlusCircle,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Store,
   Tag,
+  Truck,
   UserCog,
   Users,
   UtensilsCrossed,
@@ -44,6 +48,7 @@ import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
+import { OPERACION_PANEL_ACTIVO } from "./lib/operacion-flag.ts";
 import { puedeEn } from "./lib/permisos.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
@@ -109,7 +114,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false): SidebarSection[] {
+function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
@@ -126,6 +131,15 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
     {
       title: "Operación",
       items: [
+        // Panel movil del operador (cola, captura, viajes, turno): solo con el interruptor encendido y para quien el servidor deja pasar (`pedidos.capturar`).
+        ...(canSeeOperacion
+          ? [
+              { to: `${base}/operacion`, label: "Cola", icon: Inbox, end: true },
+              { to: `${base}/operacion/nuevo`, label: "Nuevo pedido", icon: PlusCircle },
+              { to: `${base}/operacion/viajes`, label: "Viajes", icon: Truck },
+              { to: `${base}/operacion/turno`, label: "Turno", icon: Gauge },
+            ]
+          : []),
         { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
         // Captura asistida de SoftRestaurant: la cola de comandas que alguien teclea en el POS (MANAGER_ROLES, igual que el servidor).
         { to: `${base}/comandas-pos`, label: "Comandas al POS", icon: ClipboardPaste },
@@ -260,7 +274,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="restaurantes"
       copilotoHref={`/restaurantes/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_ROLES.has(role)}
-      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"))}
+      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"), OPERACION_PANEL_ACTIVO && puedeEn(role, "pedidos.capturar"))}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
