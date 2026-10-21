@@ -123,11 +123,11 @@ describe("variantes del resumen canonico completo", () => {
     expect(c).not.toContain("Dirección:");
   });
 
-  it("recoger con tarjeta: NO lleva terminal (solo tarjeta a domicilio)", async () => {
+  it("recoger con tarjeta: SI avisa que llevan terminal (decision NU-3 de Javier)", async () => {
     const { s, bistec } = sesion();
     const c = await canon(s, { ...TARJETA, items: [{ ...bistec, tortilla: "maiz" }], canal: "recoger" });
     expect(c).toContain("Pago: tarjeta");
-    expect(c).not.toContain("terminal");
+    expect(c).toContain("Tendremos terminal para cobrar con tarjeta al recoger");
   });
 
   it("domicilio con efectivo: NO lleva terminal", async () => {
@@ -224,15 +224,27 @@ describe("variantes del resumen canonico completo", () => {
 describe("resumenCanonico (plantilla pura): terminal, salsas y pedidos grandes", () => {
   const lineas = [{ name: "Coca-Cola", quantity: 2, lineTotal: 90 }];
 
-  it("tarjeta a domicilio lleva terminal; tarjeta a recoger no", () => {
-    expect(resumenCanonico({ lineas, total: 90, canal: "domicilio", datos: { pago: "tarjeta" } })).toContain("Llevará terminal");
-    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "tarjeta" } })).not.toContain("terminal");
+  it("tarjeta lleva terminal a domicilio y al recoger; efectivo o sin pago no", () => {
+    expect(resumenCanonico({ lineas, total: 90, canal: "domicilio", datos: { pago: "tarjeta" } })).toContain("Llevará terminal para cobrar con tarjeta\n");
+    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "tarjeta" } })).toContain("Tendremos terminal para cobrar con tarjeta al recoger");
+    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "efectivo" } })).not.toMatch(/terminal/i);
+    expect(resumenCanonico({ lineas, total: 90, canal: "domicilio", datos: { pago: "efectivo" } })).not.toMatch(/terminal/i);
+    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: {} })).not.toMatch(/terminal/i);
   });
 
-  it("sin los datos extra queda como antes (tarjeta a recoger)", () => {
-    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "tarjeta" } })).toBe(
-      ["Resumen de su pedido:", "• 2 × Coca-Cola — $90", "Entrega: recoger en sucursal", "Pago: tarjeta", "Total a pagar: $90", "", PREGUNTA_CANONICA_DE_CONFIRMACION].join("\n"),
+  it("tarjeta a recoger: unica diferencia es la linea de terminal; total, renglones y propina intactos", () => {
+    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "tarjeta", propinaPct: 10 } })).toBe(
+      ["Resumen de su pedido:", "• 2 × Coca-Cola — $90", "Entrega: recoger en sucursal", "Pago: tarjeta", "Tendremos terminal para cobrar con tarjeta al recoger", "Propina: 10% (no suma al total)", "Total a pagar: $90", "", PREGUNTA_CANONICA_DE_CONFIRMACION].join("\n"),
     );
+  });
+
+  it("pedido grande a recoger con tarjeta: la terminal nunca se recorta y cabe en 2200", () => {
+    const muchas = Array.from({ length: 200 }, (_, i) => ({ name: `Producto numero ${i + 1} con nombre bastante largo para ocupar espacio`, quantity: 3, lineTotal: 120 + i }));
+    const t = resumenCanonico({ lineas: muchas, total: 99999, canal: "recoger", datos: { pago: "tarjeta" } });
+    expect(t.length).toBeLessThanOrEqual(2200);
+    expect(t).toContain("Tendremos terminal para cobrar con tarjeta al recoger");
+    expect(t).toContain("renglones más");
+    expect(t).toContain("Total a pagar: $99999");
   });
 
   it("pedido grande (200 renglones) cabe en WhatsApp y conserva total y pregunta de confirmacion", () => {
@@ -245,6 +257,7 @@ describe("resumenCanonico (plantilla pura): terminal, salsas y pedidos grandes",
     expect(terminaEnPreguntaDeConfirmacion(`Con gusto, un momento por favor.\n\n${t}`)).toBe(true);
     expect(t).toContain(`Total a pagar: $${total}`);
     expect(t).toContain("Llevará terminal");
+    expect(t.length).toBeLessThanOrEqual(2200);
     expect(t).toContain("renglones más");
     expect(t.endsWith(PREGUNTA_CANONICA_DE_CONFIRMACION)).toBe(true);
     expect(esResumenParaConfirmar(total, t)).toBe(true);
