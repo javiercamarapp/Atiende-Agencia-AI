@@ -436,22 +436,44 @@ export function extraerPackSize(name: string, description: string | null): numbe
 }
 
 /**
- * Productos que PM vende por ORDEN con un número de piezas que el menú NO registra (alitas, crujientes). Mientras `packSize` sea null, el precio
- * es el de la orden completa y `requested_quantity` cuenta ÓRDENES: el modelo no debe multiplicar ni inventar las piezas. Cuando PM confirme cuántas
- * piezas trae cada orden se carga como «(orden de N)» en el producto y este aviso deja de salir solo.
+ * Productos que PM vende por ORDEN con un número de piezas que el menú NO registra como pack_size (alitas, crujientes). El precio es el de la orden
+ * completa y `requested_quantity` cuenta ÓRDENES: el modelo no debe multiplicar. Datos confirmados por el dueño (21-oct-2026): la orden de ALITAS trae 7 piezas;
+ * la de CRUJIENTES DE PECHUGA trae APROXIMADAMENTE 12 (nunca se da como cifra exacta). Si el menú cargara «(orden de N)», manda el pack_size y este aviso no sale.
  * Las FLAUTAS ya no entran aquí: Javier confirmó (16-oct-2026) que «una orden de flautas es UNA flauta grande» (ver `unidadDeVentaFlautas`).
  */
-const PRODUCTO_POR_ORDEN_SIN_PIEZAS = /\b(?:alitas?|crujientes?)\b/i;
+const PRODUCTO_ALITAS = /\balitas?\b/i;
+const PRODUCTO_CRUJIENTES = /\bcrujientes?\b/i;
 
 export function unidadDeVentaSinPiezas(
   product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
 ): string | null {
   if (product.packSize !== null) return null;
-  if (!PRODUCTO_POR_ORDEN_SIN_PIEZAS.test(`${product.name} ${product.categoryName ?? ""}`)) return null;
+  const texto = `${product.name} ${product.categoryName ?? ""}`;
+  const base =
+    "El precio es por ORDEN completa. requested_quantity cuenta ÓRDENES, no piezas: «una orden» = 1, «dos órdenes» = 2. " +
+    "Si pide piezas sueltas sin decir cuántas órdenes, pregunta cuántas órdenes quiere antes de cotizar. ";
+  if (PRODUCTO_ALITAS.test(texto)) {
+    return base + "Cada orden de alitas trae 7 piezas (dato confirmado por el restaurante): dilo si el cliente pregunta cuántas vienen.";
+  }
+  if (PRODUCTO_CRUJIENTES.test(texto)) {
+    return base + "Cada orden de crujientes de pechuga trae aproximadamente 12 piezas: dilo siempre con «aproximadamente», nunca como cifra exacta ni para convertir piezas a órdenes.";
+  }
+  return null;
+}
+
+const ES_PIZZA_QUESOBICH = /\bquesobich\b|\bpizza\b/i;
+
+/**
+ * PIZZA QUESOBICH (dueño, 21-oct-2026): es UNA pieza individual; NO incluye tortilla ni totopos; solo salsa y cebolla.
+ * No es un producto de tacos: no se le pregunta tortilla.
+ */
+export function unidadDeVentaPizza(
+  product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
+): string | null {
+  if (!ES_PIZZA_QUESOBICH.test(`${product.name} ${product.categoryName ?? ""}`)) return null;
   return (
-    "El precio es por ORDEN completa y el menú no registra cuántas piezas trae. requested_quantity cuenta ÓRDENES, no piezas: «una orden» = 1, «dos órdenes» = 2. " +
-    "No inventes cuántas piezas trae la orden: si el cliente la pregunta, dile que la cantidad exacta la confirma la sucursal. " +
-    "Si pide piezas sueltas sin decir cuántas órdenes, pregunta cuántas órdenes quiere antes de cotizar."
+    "Cada Quesobich (pizza) es UNA pieza individual. va sin tortilla ni totopos; solo lleva salsa y cebolla. " +
+    "No preguntes tortilla para este producto; si el cliente pregunta por tortilla o totopos, di que no los incluye."
   );
 }
 
@@ -481,7 +503,7 @@ export function unidadDeVentaFlautas(
 export function unidadDeVenta(
   product: { readonly name: string; readonly categoryName?: string | null; readonly packSize: number | null },
 ): string | null {
-  return unidadDeVentaFlautas(product) ?? unidadDeVentaSinPiezas(product);
+  return unidadDeVentaFlautas(product) ?? unidadDeVentaPizza(product) ?? unidadDeVentaSinPiezas(product);
 }
 
 /** El agente debe obtener un sí claro de mayoría de edad antes de cotizar alcohol. */

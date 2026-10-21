@@ -273,6 +273,14 @@ const esquemaTarjetaPedido = objeto({
   repartidorId: nulable(uuid()),
   /** `true` si el cliente quedo sin aviso (el panel muestra «Sin aviso: llamar»). */
   sinAviso: booleano(),
+  /** Cobro (todos opcionales: una base sin migrar los omite o los manda en null). `paga_con` solo aplica a efectivo; `cobrado` = el chofer ya marco «cobrado». */
+  pago: opcional(objeto({
+    forma: nulable(enumerado(FORMAS_PAGO_OPERACION)),
+    pagaCon: opcional(nulable(numero({ min: 0 }))),
+    totalACobrar: numero({ min: 0 }),
+    cobrado: booleano(),
+    cobradoMonto: opcional(nulable(numero({ min: 0 }))),
+  })),
   accionesDisponibles: arreglo(enumerado(ACCIONES_DISPONIBLES), { max: 10 }),
 });
 export type TarjetaPedido = Inferir<typeof esquemaTarjetaPedido>;
