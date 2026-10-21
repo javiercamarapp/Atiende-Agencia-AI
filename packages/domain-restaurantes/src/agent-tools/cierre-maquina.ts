@@ -429,10 +429,33 @@ const MAX_LISTA_SALSAS_RESUMEN = 300;
  */
 export function sanearNotaDeResumen(nota: unknown): string | undefined {
   if (typeof nota !== "string") return undefined;
-  const limpia = nota
-    .replace(/[^\s@]+@[^\s@]+/g, " ")
-    .replace(/\+?\d[\d\s().-]{5,}\d/g, " ")
-    .replace(/\s+/g, " ")
+  // Recorrido lineal (sin expresiones regulares con repeticiones anidadas: la nota es texto no confiable). Una racha de digitos y separadores con 7 o mas digitos es un telefono o
+  // una tarjeta y se quita; una palabra con «@» es un correo y se quita.
+  const texto = nota.length > 1000 ? nota.slice(0, 1000) : nota;
+  let sinNumeros = "";
+  let racha = "";
+  let digitos = 0;
+  const cerrarRacha = (): void => {
+    if (digitos < 7) sinNumeros += racha;
+    else sinNumeros += " ";
+    racha = "";
+    digitos = 0;
+  };
+  for (const ch of texto) {
+    const esDigito = ch >= "0" && ch <= "9";
+    if (esDigito || (racha !== "" && (ch === " " || ch === "-" || ch === "(" || ch === ")" || ch === "." || ch === "+"))) {
+      racha += ch;
+      if (esDigito) digitos += 1;
+    } else {
+      cerrarRacha();
+      sinNumeros += ch;
+    }
+  }
+  cerrarRacha();
+  const limpia = sinNumeros
+    .split(/\s/)
+    .filter((palabra) => palabra !== "" && !palabra.includes("@"))
+    .join(" ")
     .trim();
   if (!limpia) return undefined;
   return limpia.length > MAX_NOTA_RESUMEN ? `${limpia.slice(0, MAX_NOTA_RESUMEN - 1).trimEnd()}…` : limpia;
