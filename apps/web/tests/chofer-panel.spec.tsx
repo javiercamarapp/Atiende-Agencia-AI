@@ -31,6 +31,19 @@ describe("PanelChofer", () => {
     expect(document.body.textContent).not.toContain("Hecho hoy");
   });
 
+  it("con 404 de lista (API anterior a las rutas) tambien muestra la vista anterior, y 403 es un error normal sin caer al legado", async () => {
+    const f404 = vi.fn(async () => json(404, { code: "not_found", message: "Ruta no encontrada" })) as unknown as typeof fetch;
+    rendered = renderComponent(<PanelChofer apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={f404} almacen={null} legado={<p>VISTA ANTERIOR</p>} />);
+    await esperar();
+    expect(document.body.textContent).toContain("VISTA ANTERIOR");
+    rendered.unmount();
+    const f403 = vi.fn(async () => json(403, { code: "forbidden", message: "Sin permiso" })) as unknown as typeof fetch;
+    rendered = renderComponent(<PanelChofer apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={f403} almacen={null} legado={<p>VISTA ANTERIOR</p>} />);
+    await esperar();
+    expect(document.body.textContent).not.toContain("VISTA ANTERIOR");
+    expect(document.body.textContent).toContain("Sin permiso");
+  });
+
   it("con rutas disponibles muestra el panel nuevo con sus tres pestanas y NO el legado", async () => {
     const fetchImpl = vi.fn(async () => json(200, { entregas: [], actualizadoEn: "2026-10-21T20:00:00.000Z" })) as unknown as typeof fetch;
     rendered = renderComponent(<PanelChofer apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={fetchImpl} almacen={null} legado={<p>VISTA ANTERIOR</p>} />);

@@ -175,7 +175,7 @@ export function esErrorDeRed(err: unknown): boolean {
   return err instanceof RepartidorClientError && err.status === undefined;
 }
 
-async function pedirContrato<T>(fetchImpl: typeof fetch, url: string, token: string, esquema: Esquema<T>, init?: RequestInit): Promise<T> {
+export async function pedirContrato<T>(fetchImpl: typeof fetch, url: string, token: string, esquema: Esquema<T>, init?: RequestInit): Promise<T> {
   let crudo: unknown;
   try {
     crudo = await fetchJson<unknown>(fetchImpl, url, token, init);

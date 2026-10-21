@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { OperacionColaPage } from "../src/verticals/restaurantes/pages/OperacionCola.tsx";
 import { OperacionNuevoPedidoPage } from "../src/verticals/restaurantes/pages/OperacionNuevoPedido.tsx";
 import { OperacionViajesPage } from "../src/verticals/restaurantes/pages/OperacionViajes.tsx";
-import { OperacionTurnoPage } from "../src/verticals/restaurantes/pages/OperacionTurno.tsx";
 import { OPERACION_PANEL_ACTIVO } from "../src/verticals/restaurantes/lib/operacion-flag.ts";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
@@ -20,12 +19,11 @@ afterEach(() => {
 
 const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "t", propertyId: "prop-1", orgSlug: "demo", role: "staff", staffFullName: "Persona de prueba", staffEmail: "persona@example.test", nombreSucursal: "Sucursal de prueba" };
 
-describe("pantallas stub del panel del operador", () => {
+describe("pantallas stub (Turno ya es real: ver operacion-turno.spec.tsx) del panel del operador", () => {
   const PANTALLAS = [
     ["Cola", OperacionColaPage],
     ["Nuevo pedido", OperacionNuevoPedidoPage],
     ["Viajes", OperacionViajesPage],
-    ["Turno", OperacionTurnoPage],
   ] as const;
 
   for (const [nombre, Pagina] of PANTALLAS) {
