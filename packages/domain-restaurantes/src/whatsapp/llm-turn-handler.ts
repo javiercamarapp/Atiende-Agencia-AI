@@ -34,7 +34,7 @@ import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import { bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
-import { cierreMaquinaActiva, componerRespuestaConResumen } from "../agent-tools/cierre-maquina.ts";
+import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
@@ -712,8 +712,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
       // En una rafaga (espera de mensajes) se revisan TODOS los mensajes del cliente sin responder, no solo el ultimo: el riesgo puede venir
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
-      // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
-      const pendientes = mensajesSinResponder(messages).slice(-5);
+      // Solo los ultimos 12 (una rafaga real llega a 12 mensajes; con 5 una queja del PRIMER mensaje se perdia): una cola mas larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
+      const pendientes = mensajesSinResponder(messages).slice(-12);
       // Paquete C: una llamada de WhatsApp (solo el aviso, sin texto de pedido) no entra al modelo ni abre toma: texto fijo, "por este medio no recibimos llamadas".
       // Si el turno anterior ya fue este mismo aviso, la repeticion es mas breve. Nunca silencio. No cambia pedidos ni escala.
       if (perfil === "taqueria_pm" && !preview && pendientes.length > 0 && pendientes.every((m) => esAvisoDeLlamada(m.content))) {
@@ -837,10 +837,36 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
       };
 
+      /** Total del resumen vigente si el ultimo mensaje del cliente es un «si» claro a ese resumen y aun no hay pedido; si no, null. */
+      const siPendienteSinPedido = (): number | null => {
+        const total = flowSnapshot?.context?.quotedTotal;
+        if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
+        const estado = estadoDeCierre(flowSnapshot, messages);
+        if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
+        const ultimoCliente = mensajesSinResponder(messages).at(-1)?.content;
+        if (!ultimoCliente) return null;
+        return clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, total }) === "si" ? total : null;
+      };
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
         if (orderId) return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+        // NU-4 / S1 (paquete C): el cliente ya dijo «si» a un resumen VIGENTE y el turno murio antes de crear el pedido. No se culpa a un «problema tecnico» ni se pierde el si:
+        // se dice la verdad (no alcance a registrarlo), se avisa al equipo con el total confirmado y el «si» siguiente reintenta; `crear_pedido` es idempotente, sin duplicados.
+        const totalConfirmado = perfil === "taqueria_pm" && !preview ? siPendienteSinPedido() : null;
+        if (totalConfirmado !== null) {
+          const nombreC = !customer.isNew && customer.name ? customer.name : "Cliente";
+          const avisoC = await executeAgentToolSafely(
+            repo,
+            { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+            "escalar_a_humano",
+            { customer_name: nombreC, motivo: "falla_sistema", resumen: `El cliente confirmo con «si» su resumen vigente (total $${totalConfirmado}) pero el turno vencio antes de registrar el pedido: registrarlo tal como lo confirmo. Ultimo mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 200)}` },
+          );
+          if (!isToolErrorResult(avisoC.result)) {
+            escalarMotivo = "falla_sistema";
+            return done({ reply: `Recibí su confirmación, pero no alcancé a registrar su pedido (total $${totalConfirmado}). Ya avisé al equipo de la sucursal para que lo registren tal como lo confirmó; si prefiere, escríbame «sí» de nuevo y lo intento otra vez.`, orderId: null, propertyId });
+          }
+        }
         // Seguimiento de #593: en una caida larga sin toma cada mensaje del cliente repetia el aviso; uno por telefono cada 15 min. El turno sigue siendo `falla_sistema` (alerta de racha).
         if (avisoFallaSistemaReciente(organizationId, phone)) {
           escalarMotivo = "falla_sistema";

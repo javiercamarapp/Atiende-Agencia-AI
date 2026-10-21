@@ -512,7 +512,7 @@ function esperaLargaDelPedido(texto: string, ctx: HighRiskContext): boolean {
   return estado === "registrado" || estado === "preparando" || estado === "salio";
 }
 // Quejas de "algo no llego / llego mal" que solo son queja si se habla de un pedido ya hecho (el mismo criterio que "me falto").
-const QUEJA_DE_ENTREGA = /\bno\s+me\s+(?:llego|llegaron|trajeron|mandaron|dieron)\b|\bvino\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada|aguado|revuelto)\b|\bme\s+(?:llego|llegaron|trajeron|mandaron)\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada)\b/;
+const QUEJA_DE_ENTREGA = /\bno\s+me\s+(?:llego|llegaron|trajeron|mandaron|dieron)\b|\bno\s+(?:me\s+)?(?:mandaron|enviaron|trajeron|incluyeron|pusieron)\s+(?:ni\s+)?(?:ningun[ao]s?|nada|el|la|los|las|un|una|unos|unas|mis|sus)\b|\bvino\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada|aguado|revuelto)\b|\bme\s+(?:llego|llegaron|trajeron|mandaron)\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada)\b/;
 // Pregunta de estado o de politica sobre cancelar ("¿mi pedido se cancelo?", "¿si cancelo me cobran algo?", "¿hasta que hora se puede cancelar?"): NO pide cancelar nada.
 const CONSULTA_DE_CANCELACION =
   /\b(?:se|ya\s+se|me)\s+cancel(?:o|aron)\b|\bcancelaron\b|\bsi\s+cancel(?:o|amos|aron|an|ara|aran)\b|\bhasta\s+(?:que\s+)?hora\b[^.!?\n]{0,40}\bcancel|\bse\s+puede\s+cancel|\bpuedo\s+cancel|\bpodria\s+cancel(?:ar)?\s+(?:mi|el)\s+pedido\s*\?|\bcomo\s+(?:se\s+)?cancel|\b(?:cobran|cobra|cobro|cargo|penaliz\w*|politica)\b[^.!?\n]{0,40}\bcancel|\bcancel\w*[^.!?\n]{0,40}\b(?:cobran|cobra|cobro|cargo|penaliz\w*|politica)\b/;
