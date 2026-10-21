@@ -127,7 +127,7 @@ describe("variantes del resumen canonico completo", () => {
     const { s, bistec } = sesion();
     const c = await canon(s, { ...TARJETA, items: [{ ...bistec, tortilla: "maiz" }], canal: "recoger" });
     expect(c).toContain("Pago: tarjeta");
-    expect(c).toContain("Llevará terminal para cobrar con tarjeta al recoger");
+    expect(c).toContain("Tendremos terminal para cobrar con tarjeta al recoger");
   });
 
   it("domicilio con efectivo: NO lleva terminal", async () => {
@@ -226,7 +226,7 @@ describe("resumenCanonico (plantilla pura): terminal, salsas y pedidos grandes",
 
   it("tarjeta lleva terminal a domicilio y al recoger; efectivo o sin pago no", () => {
     expect(resumenCanonico({ lineas, total: 90, canal: "domicilio", datos: { pago: "tarjeta" } })).toContain("Llevará terminal para cobrar con tarjeta\n");
-    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "tarjeta" } })).toContain("Llevará terminal para cobrar con tarjeta al recoger");
+    expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "tarjeta" } })).toContain("Tendremos terminal para cobrar con tarjeta al recoger");
     expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "efectivo" } })).not.toMatch(/terminal/i);
     expect(resumenCanonico({ lineas, total: 90, canal: "domicilio", datos: { pago: "efectivo" } })).not.toMatch(/terminal/i);
     expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: {} })).not.toMatch(/terminal/i);
@@ -234,7 +234,7 @@ describe("resumenCanonico (plantilla pura): terminal, salsas y pedidos grandes",
 
   it("tarjeta a recoger: unica diferencia es la linea de terminal; total, renglones y propina intactos", () => {
     expect(resumenCanonico({ lineas, total: 90, canal: "recoger", datos: { pago: "tarjeta", propinaPct: 10 } })).toBe(
-      ["Resumen de su pedido:", "• 2 × Coca-Cola — $90", "Entrega: recoger en sucursal", "Pago: tarjeta", "Llevará terminal para cobrar con tarjeta al recoger", "Propina: 10% (no suma al total)", "Total a pagar: $90", "", PREGUNTA_CANONICA_DE_CONFIRMACION].join("\n"),
+      ["Resumen de su pedido:", "• 2 × Coca-Cola — $90", "Entrega: recoger en sucursal", "Pago: tarjeta", "Tendremos terminal para cobrar con tarjeta al recoger", "Propina: 10% (no suma al total)", "Total a pagar: $90", "", PREGUNTA_CANONICA_DE_CONFIRMACION].join("\n"),
     );
   });
 
@@ -242,7 +242,7 @@ describe("resumenCanonico (plantilla pura): terminal, salsas y pedidos grandes",
     const muchas = Array.from({ length: 200 }, (_, i) => ({ name: `Producto numero ${i + 1} con nombre bastante largo para ocupar espacio`, quantity: 3, lineTotal: 120 + i }));
     const t = resumenCanonico({ lineas: muchas, total: 99999, canal: "recoger", datos: { pago: "tarjeta" } });
     expect(t.length).toBeLessThanOrEqual(2200);
-    expect(t).toContain("Llevará terminal para cobrar con tarjeta al recoger");
+    expect(t).toContain("Tendremos terminal para cobrar con tarjeta al recoger");
     expect(t).toContain("renglones más");
     expect(t).toContain("Total a pagar: $99999");
   });

@@ -27,4 +27,8 @@ describe("NU-3: el prompt exige avisar que llevan terminal al pagar con tarjeta"
     expect(p).toMatch(/Si paga con tarjeta, avise SIEMPRE que llevan terminal[^.]*a domicilio[^.]*al recoger/);
     expect(p).toMatch(/con efectivo no mencione terminal/i);
   });
+
+  it("el prompt de voz no trae la frase nueva del resumen de recoger", () => {
+    expect(prompt("voz")).not.toContain("Tendremos terminal");
+  });
 });
