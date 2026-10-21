@@ -2,6 +2,7 @@
 // las tarjetas con su valor o, si falta el dato, el MOTIVO por el que no se muestra. Regla de la casa: nunca un 0 inventado; un 0 solo sale cuando
 // el servidor lo midio (p. ej. 0 cancelados). Lo que el contrato aun no trae (hora pico) queda en «—» con su motivo.
 import { formatMoney } from "@atiende/ui";
+import { fechaHoraEsMx, horaEsMx } from "../../../lib/formato-fecha.ts";
 import type { OperacionHoy } from "@atiende/domain-restaurantes/operacion";
 import { SEMAFORO_EN_CAMINO_ROJO_MIN } from "@atiende/domain-restaurantes/operacion";
 
@@ -16,6 +17,14 @@ export interface TarjetaTurno {
   readonly sinDato?: string;
 }
 
+/** Zona del negocio (Merida): el corte se muestra SIEMPRE en ella, nunca en la zona del navegador de quien mira. */
+export const ZONA_NEGOCIO = "America/Merida";
+
+/** «21 oct 2026, 6:00 p.m. – 2:00 a.m. (hora de Mérida)»: el corte que devolvio el servidor, sin reinterpretarlo en la zona local. */
+export function etiquetaCorte(corte: OperacionHoy["corte"]): string {
+  return `${fechaHoraEsMx(corte.desde, ZONA_NEGOCIO)} – ${horaEsMx(corte.hasta, ZONA_NEGOCIO)} (hora de Mérida)`;
+}
+
 export const ETIQUETA_CANAL: Readonly<Record<string, string>> = { whatsapp: "WhatsApp", voz: "Voz", llamada: "Llamada", mostrador: "Mostrador", web: "Web" };
 export const etiquetaCanal = (c: string): string => ETIQUETA_CANAL[c] ?? c;
 
@@ -25,6 +34,7 @@ const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno
 
 export function tarjetasTurno(h: OperacionHoy): readonly TarjetaTurno[] {
   const sinPedidos = h.pedidos.total === 0;
+  const entregados = h.pedidos.porEstado.entregado ?? 0;
   const enCurso = (h.pedidos.porEstado.pending ?? 0) + (h.pedidos.porEstado.preparando ?? 0) + (h.pedidos.porEstado.en_camino ?? 0);
   const { pct, evaluados, umbralMin } = h.puntuales;
   const choferes = h.efectivoPorChofer.choferes;
@@ -43,7 +53,9 @@ export function tarjetasTurno(h: OperacionHoy): readonly TarjetaTurno[] {
     {
       clave: "entrega", label: "Entrega promedio", value: h.tiempos.entregaMinProm === null ? "—" : min(h.tiempos.entregaMinProm),
       ...(h.tiempos.entregaMinP90 !== null ? { nota: `9 de cada 10 llegan en ${min(h.tiempos.entregaMinP90)} o menos` } : {}),
-      ...(h.tiempos.entregaMinProm === null ? { sinDato: "Disponible tras actualizar la base: falta registrar la hora de salida." } : {}),
+      ...(h.tiempos.entregaMinProm === null
+        ? { sinDato: entregados === 0 ? "Aún no hay entregas en este corte." : "Disponible tras actualizar la base: falta registrar la hora de salida." }
+        : {}),
     },
     { clave: "cancelados", label: "Cancelados", value: String(h.cancelados.total), nota: motivosCancel.length ? motivosCancel.join(" · ") : "Sin cancelaciones" },
     { clave: "horaPico", label: "Hora pico", value: "—", sinDato: "El servidor todavía no calcula la hora pico." },

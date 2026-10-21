@@ -56,6 +56,14 @@ describe("Turno de hoy", () => {
     expect(document.querySelector('[data-alerta="roja"]')).not.toBeNull();
   });
 
+  it("muestra el corte en hora de Merida, no en la del navegador", async () => {
+    montar(() => json(200, { ...HOY, corte: { desde: "2026-10-22T00:00:00.000Z", hasta: "2026-10-22T08:00:00.000Z" } }));
+    await esperar();
+    const corte = document.querySelector('[data-testid="corte-turno"]')!.textContent!;
+    expect(corte).toContain("21 oct 2026");
+    expect(corte).toContain("hora de Mérida");
+  });
+
   it("falta de datos: «—» con motivo, sin 0 inventado, y avisa que base falta actualizar", async () => {
     montar(() => json(200, { ...HOY, tiempos: { preparacionMinProm: null, entregaMinProm: null, entregaMinP90: null }, efectivoPorChofer: { disponible: false, choferes: [] } }));
     await esperar();

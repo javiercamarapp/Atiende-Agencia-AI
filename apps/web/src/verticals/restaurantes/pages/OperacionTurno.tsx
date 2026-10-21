@@ -13,7 +13,7 @@ import { fetchOperacionHoy } from "../lib/hoy-client.ts";
 import { esFuncionNoDisponible } from "../lib/repartidor-client.ts";
 import { etiquetaActualizado } from "../lib/sondeo-pedidos.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
-import { alertasTurno, canalesTurno, tarjetasTurno } from "../lib/turno-hoy.ts";
+import { alertasTurno, canalesTurno, etiquetaCorte, tarjetasTurno } from "../lib/turno-hoy.ts";
 import { SessionExpiredError } from "../lib/repartidor-client.ts";
 
 export const SONDEO_TURNO_MS = 15_000;
@@ -93,6 +93,9 @@ export function OperacionTurnoPage({ apiBaseUrl, token, propertyId, nombreSucurs
                   Sin conexión — reintentando. Las cifras pueden no estar al día.
                 </p>
               )}
+              <p className="m-0 text-sm text-muted-foreground" data-testid="corte-turno">
+                Corte: {etiquetaCorte(datos.corte)}
+              </p>
               <AlertasTurno alertas={alertas} />
               <TarjetasTurno tarjetas={tarjetas} />
               <BarraCanales canales={canales} />
