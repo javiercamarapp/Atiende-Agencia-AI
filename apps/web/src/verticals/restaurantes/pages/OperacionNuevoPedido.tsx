@@ -1,10 +1,10 @@
 // Nuevo pedido del encargado (captura por llamada, mostrador o WhatsApp manual). PLAN-PANEL-OPERADOR §5.4-B.
 // Formulario rapido de movil: telefono (con busqueda de cliente), nombre, domicilio/recoger, productos, pago, total CALCULADO POR EL SERVIDOR
-// (`cotizar`), y consentimiento de WhatsApp obligatorio y explicito. Privacidad: de un cliente existente solo se muestran las COLONIAS guardadas
-// (en llamadas no hay remitente que valide el numero): la direccion completa se la pide el encargado al cliente, nunca se lee ni se precarga.
+// (`cotizar`), y consentimiento de WhatsApp obligatorio y explicito. Privacidad: de un cliente existente solo se indica que existe y se muestran las COLONIAS guardadas
+// (en llamadas no hay remitente que valide el numero): nombre y direccion completa los captura el encargado a mano, nunca se leen ni se precargan.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, ConfirmDialog, EstadoCargando, EstadoError, FormField, Input, PageContainer, StatusBadge, Switch, Textarea, formatMoney, notify } from "@atiende/ui";
-import type { RespuestaClientePorTelefono, RespuestaCotizar, RespuestaCrearPedido } from "@atiende/domain-restaurantes/operacion";
+import type { RespuestaCotizar, RespuestaCrearPedido } from "@atiende/domain-restaurantes/operacion";
 import { AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -35,7 +35,8 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
   const [form, setForm] = useState<FormularioCaptura>(() => formularioVacio(propertyId));
   const [productos, setProductos] = useState<readonly Product[] | null>(null);
   const [errorProductos, setErrorProductos] = useState<string | null>(null);
-  const [cliente, setCliente] = useState<RespuestaClientePorTelefono["cliente"] | null>(null);
+  // Privacidad: de un cliente existente SOLO se conservan las colonias; ni su nombre ni el texto de su direccion se guardan, muestran o precargan.
+  const [cliente, setCliente] = useState<{ readonly colonias: readonly string[] } | null>(null);
   const [busquedaFallo, setBusquedaFallo] = useState(false);
   const [cotizacion, setCotizacion] = useState<RespuestaCotizar | null>(null);
   const [errorCotizar, setErrorCotizar] = useState<string | null>(null);
@@ -48,7 +49,15 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
   const fetchImpl = useMemo<typeof fetch>(() => (input, init) => globalThis.fetch(input, init), []);
 
   useEffect(() => aplicarTemaAutomatico(), []);
-  const cambiar = useCallback((parche: Partial<FormularioCaptura>) => setForm((f) => ({ ...f, ...parche })), []);
+  // El «Sí» al aviso por WhatsApp es de ESE numero y de ESA via: si cambia el telefono o como entro el pedido, la pregunta se vuelve a hacer.
+  const cambiar = useCallback(
+    (parche: Partial<FormularioCaptura>) =>
+      setForm((f) => {
+        const cambiaDestino = (parche.telefono !== undefined && parche.telefono !== f.telefono) || (parche.canalCaptura !== undefined && parche.canalCaptura !== f.canalCaptura);
+        return { ...f, ...parche, ...(cambiaDestino && parche.consentimiento === undefined ? { consentimiento: null } : {}) };
+      }),
+    [],
+  );
 
   const cargarProductos = useCallback(() => {
     setErrorProductos(null);
@@ -69,8 +78,7 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
       fetchClientePorTelefono(fetchImpl, apiBaseUrl, token, propertyId, telefonoE164)
         .then((r) => {
           if (!vigente) return;
-          setCliente(r.cliente);
-          setForm((f) => (f.nombre.trim() === "" ? { ...f, nombre: r.cliente.nombre } : f));
+          setCliente({ colonias: [...new Set(r.cliente.domicilios.map((d) => d.colonia).filter((c): c is string => !!c))] });
         })
         .catch((e: unknown) => {
           if (!vigente) return;
@@ -195,19 +203,20 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
         </FormField>
         {cliente && (
           <div role="status" className="space-y-2 rounded-lg border border-border bg-card p-3 text-base" data-testid="cliente-existente">
-            <p className="font-medium text-foreground">Cliente registrado: {cliente.nombre}</p>
-            {cliente.domicilios.length > 0 ? (
+            <p className="font-medium text-foreground">Cliente existente</p>
+            <p className="text-muted-foreground">Pídele su nombre y su dirección completa y captúralos a mano; no se leen ni se precargan.</p>
+            {cliente.colonias.length > 0 && (
               <>
-                <p className="text-muted-foreground">Colonias guardadas (no leas la dirección; pídela completa al cliente y confírmala):</p>
+                <p className="text-muted-foreground">Colonias que tiene registradas (toca la que confirme):</p>
                 <div className="flex flex-wrap gap-2">
-                  {[...new Set(cliente.domicilios.map((d) => d.colonia).filter((c): c is string => !!c))].map((c) => (
-                    <Button key={c} type="button" variant="outline" className="h-11" onClick={() => cambiar({ colonia: c })}>
+                  {cliente.colonias.map((c) => (
+                    <Button key={c} type="button" variant="outline" className="h-14" onClick={() => cambiar({ colonia: c })}>
                       {c}
                     </Button>
                   ))}
                 </div>
               </>
-            ) : null}
+            )}
           </div>
         )}
         {busquedaFallo && <p className="text-sm text-muted-foreground">No se pudo buscar al cliente; captura sus datos a mano.</p>}
