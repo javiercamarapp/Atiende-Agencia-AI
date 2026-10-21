@@ -86,6 +86,14 @@ describe("aviso integral publicado (docs/legal/publicable + página estática)",
       expect(texto).not.toMatch(/historial de versiones/);
     }
   });
+  it("modelo de roles A: el restaurante es responsable de sus clientes finales; Atiende es encargada y responsable de sus propios usuarios", () => {
+    for (const texto of [md, html]) {
+      expect(texto).toMatch(/el responsable del tratamiento de sus datos es (\*\*|<strong>)el restaurante/);
+      expect(texto).toMatch(/persona encargada/);
+      expect(texto).toMatch(/el responsable es (\*\*|<strong>)ATIENDE SA de CV/);
+      expect(texto).toMatch(/Atiende como responsable/);
+    }
+  });
   it("no afirma revisión de un abogado ni conserva el nombre antiguo del responsable", () => {
     for (const texto of [md, html]) {
       expect(texto).not.toMatch(/revisad[oa] por (un |el )?abogad/i);
