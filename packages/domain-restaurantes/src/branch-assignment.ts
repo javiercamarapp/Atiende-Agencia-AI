@@ -33,6 +33,7 @@ import {
 } from "./nearest-branch.ts";
 import { matchKnownZone } from "./reglas-pedido.ts";
 import type { RestaurantesRepository } from "./repository.ts";
+import { GEOCERCA_SIN_ZONA_MENSAJE, geocercasQueContienen, type Geocerca } from "./geocercas.ts";
 import { opcionesDeReferencia, referenciaDeColonia, sucursalesDeDespacho } from "./sugerencia-despacho.ts";
 import type { Branch, KnownZone, PerfilAgenteWhatsApp } from "./types.ts";
 
@@ -81,6 +82,9 @@ export interface AssignBranchInput {
   /** QA-PM-R4-reglas-05: `property_id` de la sucursal por la que entro el cliente (su numero de WhatsApp o su llamada). Si ESA sucursal cubre la colonia (doble cobertura), se
    * asigna esa en vez de mandar al cliente a otra que tambien la cubre. Solo desempata entre sucursales que ya cubren la zona. */
   readonly sucursalDeEntregaPreferidaPropertyId?: string | null;
+  /** Paquete B (opt-in): geocercas de reparto por sucursal. Con pin y geocercas manda el punto en poligono: dentro de una (de una sucursal de despacho) ⇒ esa; dentro de ninguna ⇒
+   * `no_reconocida` con mensaje honesto (recoger / persona). Sin `geocercas` el comportamiento es el de siempre. */
+  readonly geocercas?: readonly Geocerca[];
 }
 
 export type BranchAssignmentVia = "coordenadas" | "zona";
@@ -169,7 +173,7 @@ export function rankBranchesByKm(lat: number, lng: number, branches: readonly Br
   return ranked.sort((a, b) => a.km - b.km || a.branch.slug.localeCompare(b.branch.slug));
 }
 
-const aCercana = (branch: Branch, km: number | null): SucursalCercana => ({ slug: branch.slug, nombre: branch.name, kmAprox: km === null ? null : redondear1(km) });
+const aCercana = (branch: Branch, km: number | null): SucursalCercana => ({ slug: branch.slug, nombre: branch.name, kmAprox: km === null ? null : redondear1(km), telefono: branch.phone });
 
 export async function assignBranch(repo: RestaurantesRepository, input: AssignBranchInput): Promise<BranchAssignment> {
   const hasLat = input.lat !== undefined;
@@ -197,6 +201,31 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   // Solo las sucursales de DESPACHO (activas y que aceptan domicilio) pueden quedarse un domicilio; las coordenadas propuestas son opt-in.
   const despacho = await sucursalesDeDespacho(repo, input.organizationId, input.sucursalesQueNoReparten);
   const medibles = conCoordenadasPropuestas(despacho, input.coordenadasPropuestas);
+
+  // Paquete B: con pin y geocercas la cobertura es geografica y determinista (la zona de otra sucursal deriva a ella con su telefono).
+  if (hasLat && input.geocercas && input.geocercas.length > 0) {
+    const dentro = new Set(geocercasQueContienen(input.lat as number, input.lng as number, input.geocercas));
+    const candidatas = despacho.filter((b) => dentro.has(b.slug)).sort((a, b) => a.slug.localeCompare(b.slug));
+    if (candidatas.length === 0) return { estado: "no_reconocida", message: GEOCERCA_SIN_ZONA_MENSAJE };
+    const deEntrada = input.sucursalDeEntregaPreferidaPropertyId ? candidatas.find((b) => b.propertyId === input.sucursalDeEntregaPreferidaPropertyId) : undefined;
+    const elegida = deEntrada ?? candidatas[0] as Branch;
+    const otra = candidatas.find((b) => b.propertyId !== elegida.propertyId);
+    return {
+      estado: "asignada",
+      branchSlug: elegida.slug,
+      branchName: elegida.name,
+      distanceKm: null,
+      via: "coordenadas",
+      recognizedZoneName: null,
+      ajustePorZona: false,
+      origen: "pin",
+      kmReferencia: null,
+      alternativa: null,
+      dobleCobertura: candidatas.length > 1,
+      aproximada: true,
+      message: mensajeSucursalAsignada({ principal: aCercana(elegida, null), alternativa: otra ? aCercana(otra, null) : null, origen: "pin", aproximada: true }),
+    };
+  }
 
   const radioOrg = input.radioMaximoKm === undefined ? RADIO_REPARTO_POR_OMISION_KM : input.radioMaximoKm;
   const tope = radioOrg === null ? (input.maxKm ?? Number.POSITIVE_INFINITY) : Math.min(input.maxKm ?? radioOrg, radioOrg);

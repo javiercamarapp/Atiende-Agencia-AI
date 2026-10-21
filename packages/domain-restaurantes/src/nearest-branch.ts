@@ -113,6 +113,15 @@ export interface SucursalCercana {
   readonly nombre: string;
   /** Km en linea recta (1 decimal) o de la referencia del piloto; `null` = no hay dato que decir. */
   readonly kmAprox: number | null;
+  /** Telefono de la sucursal tal como esta en configuracion (`branch.phone`); `null`/ausente = no hay dato. Nunca se dice uno de memoria. */
+  readonly telefono?: string | null;
+}
+
+/** Telefono para derivar a otra sucursal: el de configuracion o, si falta, la instruccion de NO inventarlo (la sucursal confirma). */
+export function fraseTelefonoSucursal(s: SucursalCercana): string {
+  return s.telefono
+    ? ` Teléfono de ${s.nombre} (de la configuración): ${s.telefono}.`
+    : ` No hay teléfono cargado de ${s.nombre}: no lo invente; diga que la sucursal le confirma.`;
 }
 
 const conKm = (s: SucursalCercana): string => (s.kmAprox === null ? s.nombre : `${s.nombre} (${kmAproxTexto(s.kmAprox)})`);
@@ -132,7 +141,7 @@ export function mensajeSucursalAsignada(args: {
       ? `La sucursal de despacho que le corresponde a esa zona es ${conKm(principal)}.`
       : `La sucursal de despacho más cercana es ${conKm(principal)}.`;
   const alt = alternativa ? ` También le queda cerca ${conKm(alternativa)}: puede mencionarla como alternativa.` : "";
-  return `${cabeza}${alt} Dígale al cliente cuál sucursal le atiende y, si hay dato, a cuántos km aproximadamente (sin decimales); no le prometa tiempos distintos a los de la herramienta.`;
+  return `${cabeza}${alt} Dígale al cliente cuál sucursal le atiende y, si hay dato, a cuántos km aproximadamente (sin decimales); no le prometa tiempos distintos a los de la herramienta.${fraseTelefonoSucursal(principal)}`;
 }
 
 /** Fuera del radio de reparto: se dice con claridad, se nombra la sucursal de despacho mas cercana y NO se promete envio. */
@@ -154,8 +163,9 @@ export function mensajeFueraDeZonaHabitual(args: {
   const kmDeLaCercana = masCercana && args.kmFuera !== undefined && args.kmFuera !== null ? args.kmFuera : (masCercana?.kmAprox ?? null);
   const cerca = masCercana ? ` La sucursal de despacho más cercana es ${masCercana.nombre}${kmDeLaCercana === null ? "" : ` (${kmTexto(kmDeLaCercana)})`}.` : "";
   const recoger = masCercana ? `recoger en ${masCercana.nombre}` : "recoger en sucursal";
+  const tel = masCercana ? fraseTelefonoSucursal(masCercana) : "";
   return (
-    `Ese domicilio queda fuera de nuestra zona habitual de reparto${radio}: no se envía.${cerca} ` +
+    `Ese domicilio queda fuera de nuestra zona habitual de reparto${radio}: no se envía.${cerca}${tel} ` +
     `Dígalo con claridad y sin prometer el envío (solo el dueño puede autorizar una excepción); ofrezca ${recoger} o, si el cliente insiste en domicilio, pase con una persona UNA sola vez (escalar_a_humano, motivo zona_no_reconocida). ` +
     `Frase sugerida: «Esa zona queda fuera de nuestra zona habitual de reparto${masCercana ? `; la sucursal más cercana es ${masCercana.nombre}${kmDeLaCercana === null ? "" : `, ${kmTexto(kmDeLaCercana)}`}` : ""}. ¿Prefiere pasar a recoger?»${confirmar}`
   );

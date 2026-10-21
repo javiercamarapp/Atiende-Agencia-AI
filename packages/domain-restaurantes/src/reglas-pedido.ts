@@ -168,7 +168,7 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     const faltante = Math.round((pedidoMinimo - subtotal) * 100) / 100;
     throw new OrderValidationError(
       `El pedido mínimo ${canal === "domicilio" ? "a domicilio" : "para recoger"} en ${branch.name} es de $${pesos(pedidoMinimo)}. ` +
-        `El pedido suma $${pesos(subtotal)}; faltan $${pesos(faltante)} para alcanzarlo. No se puede registrar por debajo del mínimo: ofrezca agregar productos${canal === "domicilio" ? " o pasar a recoger" : ""}.`,
+        `El pedido suma $${pesos(subtotal)}; faltan $${pesos(faltante)} para alcanzarlo. No se puede registrar por debajo del mínimo: ofrezca agregar productos${canal === "domicilio" ? " o pasar a recoger" : ""}.${canal === "domicilio" ? " El envío no tiene costo: el mínimo es solo de productos (la propina al repartidor es voluntaria)." : ""}`,
     );
   }
 
