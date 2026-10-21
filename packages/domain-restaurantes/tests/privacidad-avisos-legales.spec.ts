@@ -76,6 +76,16 @@ describe("aviso integral publicado (docs/legal/publicable + página estática)",
       expect(html).toContain(proveedor);
     }
   });
+  it("el HTML estático conserva las frases clave del md y ninguna promesa sin respaldo", () => {
+    for (const frase of ["Versión:</strong> 1.0", "Conforme a la ley aplicable", "medidas previstas y documentadas", "la versión vigente y su fecha aparecen al inicio"]) {
+      expect(html).toContain(frase);
+    }
+    for (const texto of [md, html]) {
+      expect(texto).not.toMatch(/72 meses/);
+      expect(texto).not.toMatch(/exige a sus proveedores/);
+      expect(texto).not.toMatch(/historial de versiones/);
+    }
+  });
   it("no afirma revisión de un abogado ni conserva el nombre antiguo del responsable", () => {
     for (const texto of [md, html]) {
       expect(texto).not.toMatch(/revisad[oa] por (un |el )?abogad/i);
@@ -98,7 +108,6 @@ describe("los borradores siguen siendo borrador mientras tengan datos por comple
     for (const campo of ["razón social del restaurante", "código postal", "correo ARCO", "teléfono"]) {
       expect(integral).toMatch(new RegExp(`\\[\\[POR COMPLETAR:[^\\]]*${campo}`, "i"));
     }
-    expect(integral).toContain("Atiende AI, S.A. de C.V.");
     expect(integral).toContain("Calle 43 No. 147A por 38 y 36D, Colonia Benito Juárez Norte");
     expect(integral).toMatch(/Mérida, Yucatán \(confirmar/);
     // el correo exacto no se conoce: solo puede aparecer dentro de un marcador a confirmar

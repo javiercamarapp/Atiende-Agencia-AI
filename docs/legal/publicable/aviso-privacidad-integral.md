@@ -82,7 +82,7 @@ Atiende usa proveedores tecnológicos para prestar el servicio. **Solo tratan lo
 | Sentry | Detección de errores técnicos | Datos técnicos de los errores |
 | Stripe | Cobro de pagos en línea y de la suscripción de los clientes de Atiende | Datos de pago, que **recibe y guarda el proveedor, no nosotros** |
 
-Varios de estos proveedores tienen su sede o tratan datos fuera de México, principalmente en Estados Unidos; sus datos se envían al extranjero para poder prestar el servicio. Para conocer el país o la región exacta de tratamiento de un proveedor específico, escriba a ventas@likida.ai. Atiende exige a sus proveedores confidencialidad y medidas de seguridad (Arts. 13, 18 y 20).
+Varios de estos proveedores tienen su sede o tratan datos fuera de México, principalmente en Estados Unidos; sus datos se envían al extranjero para poder prestar el servicio. Para conocer el país o la región exacta de tratamiento de un proveedor específico, escriba a ventas@likida.ai.
 
 ### 6.2 Transferencias a terceros
 
@@ -97,13 +97,13 @@ Varios de estos proveedores tienen su sede o tratan datos fuera de México, prin
 | Conversaciones de WhatsApp | 180 días por omisión; el servicio permite configurarlo entre 30 y 1,095 días. Para saber el plazo aplicable a su caso, escriba a ventas@likida.ai |
 | Grabaciones y transcripciones de llamadas | 30 días por omisión; configurable entre 0 y 365 días (con 0 no se guarda ninguna). Para saber el plazo aplicable a su caso, escriba a ventas@likida.ai |
 | Pedidos, comprobantes y datos fiscales | El que exijan las leyes fiscales y mercantiles aplicables |
-| Datos sobre incumplimiento de obligaciones contractuales | Se eliminan a los 72 meses (Art. 10) |
+| Datos sobre incumplimiento de obligaciones contractuales | Conforme a la ley aplicable |
 
 Al terminar el plazo, o cuando usted pida la cancelación, sus datos pasan por un **periodo de bloqueo** (Art. 2 fr. III y Art. 24): se conservan solo para atender posibles responsabilidades, sin otro uso, hasta el plazo de prescripción aplicable, y después se **suprimen**. La plataforma ejecuta purgas automáticas por vencimiento de plazo.
 
 ## 8. Cómo protegemos sus datos
 
-Aplicamos medidas de seguridad administrativas, técnicas y físicas (Art. 18), entre ellas: cifrado en tránsito; acceso restringido por rol y por organización con aislamiento entre restaurantes; autenticación del personal; registro de accesos y de operaciones relevantes; copias de respaldo; y confidencialidad del personal y de los proveedores (Art. 20). El asistente tiene prohibido pedir o conservar número de tarjeta, vencimiento o código, y si usted los escribe le indica que no los necesita. Si ocurre una **vulneración** que afecte de forma significativa sus derechos patrimoniales o morales, se lo informaremos de inmediato (Art. 19). Ninguna medida es infalible; este párrafo describe medidas en términos generales y no detalla configuraciones.
+Buscamos aplicar medidas de seguridad administrativas, técnicas y físicas (Art. 18). Las medidas previstas y documentadas incluyen: cifrado en tránsito; acceso restringido por rol y por organización con aislamiento entre restaurantes; autenticación del personal; registro de accesos y de operaciones relevantes; copias de respaldo; y confidencialidad (Art. 20). El asistente tiene prohibido pedir o conservar número de tarjeta, vencimiento o código, y si usted los escribe le indica que no los necesita. Si ocurre una **vulneración** que afecte de forma significativa sus derechos patrimoniales o morales, se lo informaremos de inmediato (Art. 19). Ninguna medida es infalible; este párrafo describe medidas en términos generales y no detalla configuraciones.
 
 ## 9. Derechos ARCO y cómo ejercerlos
 
@@ -144,7 +144,7 @@ Este servicio no está dirigido a menores de edad y no recabamos conscientemente
 
 ## 13. Cambios a este aviso
 
-Cualquier cambio se publicará en este mismo sitio con su número de versión y fecha, y se lo daremos a conocer de nuevo en su siguiente conversación por WhatsApp o llamada cuando cambie de versión. Si cambiamos las finalidades, le pediremos de nuevo su consentimiento (Art. 11). El historial de versiones está disponible escribiendo a ventas@likida.ai.
+Cualquier cambio se publicará en esta misma página; la versión vigente y su fecha aparecen al inicio. Si cambiamos las finalidades, le pediremos de nuevo su consentimiento (Art. 11). Para más información sobre versiones anteriores, escriba a ventas@likida.ai.
 
 ## 14. Cookies y tecnologías de rastreo en el sitio
 
