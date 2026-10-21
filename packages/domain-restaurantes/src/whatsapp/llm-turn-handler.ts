@@ -952,7 +952,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const armandoOtro = cotizacionDelTurno !== null ? true : flowFinal?.state === "cotizado" || flowFinal?.state === "confirmado";
           const guardiaSoloRegistro = !pedidoExiste && previoActivo && !retenidoEnTurno && armandoOtro;
           const pedidoExisteFinal = pedidoExiste || (previoActivo && !retenidoEnTurno && !armandoOtro);
-          if (perfil === "taqueria_pm" && !pedidoExisteFinal) respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : undefined, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
+          if (perfil === "taqueria_pm" && !pedidoExisteFinal) {
+            const antesDeQuitar = respuesta;
+            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : undefined, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
+            // QA-PM-R16 (NU-4 / T7-026): el aviso al equipo existe (escalar_a_humano ok) pero el pedido NO: tras quitar el «quedó» se dice la verdad, no se deja solo el «ya avisé».
+            if (respuesta !== antesDeQuitar && escalacionOkEnTurno && !retenidoVigente && !guardiaSoloRegistro && !respuesta.includes(PM_COPY.pedidoSinRegistrarEscalado)) respuesta = `${respuesta} ${PM_COPY.pedidoSinRegistrarEscalado}`.trim();
+          }
           // R11: si el modelo cerro pidiendo la confirmacion SIN el total de la cotizacion, el servidor pone su resumen canonico (no toca mensajes que preguntan otra cosa).
           if (perfil === "taqueria_pm" && !orderId && !escalarMotivo && resumenCanonicoDelTurno && cierreMaquinaActiva()) {
             respuesta = componerRespuestaConResumen(respuesta, resumenCanonicoDelTurno.texto, resumenCanonicoDelTurno.total);

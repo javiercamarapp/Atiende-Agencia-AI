@@ -101,6 +101,8 @@ export const PM_COPY = {
   problemaTecnico: "En este momento tenemos un problema técnico. Por favor, inténtelo de nuevo en unos minutos.",
   sinAsistenteAvisoEquipo: "En este momento tenemos un problema técnico. Ya avisé al equipo de la sucursal para que una persona tome su pedido lo antes posible.",
   repetirPedido: "¿Me puede repetir su pedido, por favor?",
+  /** QA-PM-R16: tras escalar SIN crear el pedido; verdad, sin prometer hora ni decir que quedó. */
+  pedidoSinRegistrarEscalado: "Su pedido todavía no está registrado: la sucursal lo confirma primero y le responderá en cuanto pueda.",
   turnoComplicado: "Se me complicó procesar su pedido. Un momento, por favor.",
   /** Texto que acompaña al boton nativo de WhatsApp para compartir la ubicacion (mensaje interactivo `location_request_message`). */
   pedirUbicacion: "Para ubicar su domicilio con exactitud, toque el botón y comparta su ubicación; así el repartidor llega directo.",
