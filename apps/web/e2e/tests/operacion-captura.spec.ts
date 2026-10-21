@@ -73,12 +73,14 @@ test.describe("operacion encargado: nuevo pedido", () => {
     vigilante.verificar();
   });
 
-  test("cliente existente: solo se muestran colonias; la direccion guardada no aparece ni se precarga", async ({ page, iniciarSesion, mock, vigilante }) => {
+  test("cliente existente: solo se indica que existe y se muestran colonias; ni nombre ni direccion aparecen ni se precargan", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("restaurantes", "staff");
     await abrirConMenu(page, mock);
     await page.getByLabel("Teléfono del cliente").fill("999 555 0100");
     const caja = page.getByTestId("cliente-existente");
-    await expect(caja).toContainText("Cliente Ejemplo");
+    await expect(caja).toContainText("Cliente existente");
+    await expect(page.locator("body")).not.toContainText("Cliente Ejemplo");
+    await expect(page.getByLabel(/^Nombre/)).toHaveValue("");
     await expect(caja).toContainText("Centro");
     await expect(page.locator("body")).not.toContainText("Calle Ficticia");
     await expect(page.getByLabel(/Dirección completa/)).toHaveValue("");

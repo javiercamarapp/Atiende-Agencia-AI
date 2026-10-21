@@ -104,16 +104,18 @@ describe("Nuevo pedido", () => {
     expect(textos()).toContain("Aviso por WhatsApp en camino");
   });
 
-  it("cliente existente: muestra solo colonias, jamas la direccion guardada, y no la precarga", async () => {
-    const f = servidor({ cliente: () => json(200, { cliente: { id: "00000000-0000-4000-8000-0000000000c1", nombre: "Ana R.", domicilios: [{ id: "00000000-0000-4000-8000-0000000000d1", texto: "Calle SECRETA 999", colonia: "Centro" }], ultimoPedido: null, gustos: [] } }) });
+  it("cliente existente: solo dice que existe y muestra colonias; ni nombre ni direccion se muestran ni se precargan", async () => {
+    const f = servidor({ cliente: () => json(200, { cliente: { id: "00000000-0000-4000-8000-0000000000c1", nombre: "Nombre Guardado", domicilios: [{ id: "00000000-0000-4000-8000-0000000000d1", texto: "Calle SECRETA 999", colonia: "Centro" }], ultimoPedido: null, gustos: [] } }) });
     await montar(f);
     changeValue(campo(/Teléfono/), "9991234567");
     await esperar(400);
     const caja = document.querySelector('[data-testid="cliente-existente"]')!;
+    expect(caja.textContent).toContain("Cliente existente");
     expect(caja.textContent).toContain("Centro");
     expect(textos()).not.toContain("SECRETA");
+    expect(textos()).not.toContain("Nombre Guardado");
     expect(campo(/Dirección completa/).value).toBe("");
-    expect(campo(/^Nombre/).value).toBe("Ana R.");
+    expect(campo(/^Nombre/).value).toBe("");
   });
 
   it("fuera de cobertura: alerta clara y no deja guardar", async () => {
@@ -140,5 +142,70 @@ describe("Nuevo pedido", () => {
     expect(posts).toHaveLength(2);
     expect(JSON.parse(String((posts[1]![1] as RequestInit).body)).forzarDuplicado).toBe(true);
     expect(document.querySelector('[data-testid="pedido-guardado"]')).not.toBeNull();
+  });
+
+  it("con «No» el cuerpo viaja con otorgado:false", async () => {
+    const f = servidor();
+    await montar(f);
+    await llenar();
+    click(boton("No"));
+    await esperar(0);
+    click(boton(/Guardar sin aviso/));
+    await esperar(10);
+    const post = f.mock.calls.find((c) => String(c[0]).endsWith("/admin/orders") && (c[1] as RequestInit | undefined)?.method === "POST")!;
+    expect(JSON.parse(String((post[1] as RequestInit).body)).consentimientoWhatsapp).toEqual({ otorgado: false, via: "verbal_llamada" });
+  });
+
+  it("el «Sí» se reinicia si cambia el telefono o como entro el pedido", async () => {
+    await montar(servidor());
+    await llenar();
+    click(boton("Sí, avisar"));
+    await esperar(0);
+    expect(boton("Sí, avisar").getAttribute("aria-pressed")).toBe("true");
+    changeValue(campo(/Teléfono/), "999 765 4321");
+    await esperar(0);
+    expect(boton("Sí, avisar").getAttribute("aria-pressed")).toBe("false");
+    expect(boton(/^Guardar/).disabled).toBe(true);
+    await esperar(700);
+    click(boton("Sí, avisar"));
+    await esperar(0);
+    click(boton("Mostrador"));
+    await esperar(0);
+    expect(boton("Sí, avisar").getAttribute("aria-pressed")).toBe("false");
+    expect(boton("No").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("doble toque en Guardar manda UN solo POST", async () => {
+    let resolver: () => void = () => undefined;
+    const base = servidor({ crear: [() => json(201, creado)] });
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/admin/orders") && init?.method === "POST") await new Promise<void>((r) => (resolver = r));
+      return base(url, init);
+    });
+    await montar(f);
+    await llenar();
+    click(boton("Sí, avisar"));
+    await esperar(0);
+    const guardar = boton(/Guardar y avisar/);
+    click(guardar);
+    click(guardar);
+    await esperar(5);
+    const posts = () => f.mock.calls.filter((c) => String(c[0]).endsWith("/admin/orders") && (c[1] as RequestInit | undefined)?.method === "POST");
+    expect(posts()).toHaveLength(1);
+    await act(async () => resolver());
+    await esperar(10);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("501 del servidor al guardar: no muestra pedido guardado y deja reintentar", async () => {
+    const f = servidor({ crear: [() => json(501, { code: "no_implementado", message: "No disponible aún." })] });
+    await montar(f);
+    await llenar();
+    click(boton("Sí, avisar"));
+    await esperar(0);
+    click(boton(/Guardar y avisar/));
+    await esperar(20);
+    expect(document.querySelector('[data-testid="pedido-guardado"]')).toBeNull();
+    expect(boton(/Guardar y avisar/).disabled).toBe(false);
   });
 });
