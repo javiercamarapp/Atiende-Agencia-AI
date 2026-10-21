@@ -38,8 +38,9 @@ export function conteosPorPestana(pedidos: readonly TarjetaPedido[]): Readonly<R
 }
 
 /** Accion grande de la tarjeta: la primera que el SERVIDOR declara disponible, en el orden del flujo (Aceptar -> Listo -> Entregar/Salio). */
-const ORDEN_ACCION: readonly AccionDisponible[] = ["aceptar", "listo", "entregar", "salio"];
-export function accionPrincipal(p: Pick<TarjetaPedido, "accionesDisponibles" | "estado" | "canal">): AccionDisponible | null {
+export type AccionPrincipal = Extract<AccionDisponible, "aceptar" | "listo" | "entregar" | "salio">;
+const ORDEN_ACCION: readonly AccionPrincipal[] = ["aceptar", "listo", "entregar", "salio"];
+export function accionPrincipal(p: Pick<TarjetaPedido, "accionesDisponibles" | "estado" | "canal">): AccionPrincipal | null {
   for (const a of ORDEN_ACCION) {
     if (!p.accionesDisponibles.includes(a)) continue;
     // «Entregar» del encargado solo existe en mostrador (recoger); un domicilio en camino lo entrega el chofer.
