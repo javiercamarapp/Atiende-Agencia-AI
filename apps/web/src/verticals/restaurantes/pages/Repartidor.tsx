@@ -58,6 +58,7 @@ import type { RepartidorOrder, RepartidorOrderStatus } from "../lib/repartidor-c
 import { destinoEsPin, urlDestinoMapa } from "../lib/destino-mapa.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { HistorialDiaTab, MiPerfilTab } from "../components/RepartidorPestanas.tsx";
+import { PanelChofer } from "../components/chofer/PanelChofer.tsx";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 
@@ -320,5 +321,13 @@ export function RepartidorPedidosPage() {
     );
   }
 
-  return <RepartidorPedidosView apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} />;
+  // Panel nuevo del chofer (PLAN-PANEL-OPERADOR, paquete C1); cae a la vista anterior si el servidor aun no tiene sus rutas (501).
+  return (
+    <PanelChofer
+      apiBaseUrl={apiBaseUrl}
+      token={session.token}
+      propertyId={propertyId}
+      legado={<RepartidorPedidosView apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} />}
+    />
+  );
 }
