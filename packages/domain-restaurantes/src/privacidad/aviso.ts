@@ -6,6 +6,8 @@
 // aqui solo se redacta el simplificado: quien es el responsable, para que se usan los datos, que
 // se conserva y por cuanto tiempo, como ejercer derechos ARCO y donde esta el integral.
 
+import { tieneMarcadoresSinCompletar } from "./marcadores.ts";
+
 export const PRIVACY_NOTICE_DEFAULT_VERSION = "v1";
 export const CONVERSATION_RETENTION_DAYS_DEFAULT = 180;
 export const CONVERSATION_RETENTION_DAYS_MIN = 30;
@@ -48,6 +50,12 @@ const NOTICE_VERSION_RE = /^[A-Za-z0-9._-]{1,32}$/;
 export function validatePrivacyConfig(entrada: PrivacyConfigEntrada): string | null {
   if (entrada.responsibleName !== null && (entrada.responsibleName.length < 1 || entrada.responsibleName.length > 200)) {
     return "responsibleName: de 1 a 200 caracteres.";
+  }
+  if (entrada.responsibleName !== null && tieneMarcadoresSinCompletar(entrada.responsibleName)) {
+    return "responsibleName: tiene un dato por completar ([[POR COMPLETAR]]); escriba el nombre real o déjelo vacío.";
+  }
+  if (entrada.noticeUrl !== null && tieneMarcadoresSinCompletar(entrada.noticeUrl)) {
+    return "noticeUrl: tiene un dato por completar ([[POR COMPLETAR]]); pegue la URL real del aviso.";
   }
   if (entrada.noticeUrl !== null && (!NOTICE_URL_RE.test(entrada.noticeUrl) || entrada.noticeUrl.length > 500)) {
     return "noticeUrl: se esperaba una URL https de hasta 500 caracteres.";
