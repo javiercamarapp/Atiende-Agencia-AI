@@ -206,9 +206,9 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   // Paquete B: con geocercas la cobertura es geografica y determinista. Punto = el pin o, sin pin, las coordenadas de la colonia reconocida.
   // Con geocercas activas una colonia SIN pin nunca afirma cobertura (ni por las coordenadas de la colonia ni por el radio): se pide el pin una vez y, si no hay, la sucursal confirma.
   if (!hasLat && input.geocercas && input.geocercas.length > 0) return { estado: "no_reconocida", message: GEOCERCA_COLONIA_SIN_PIN_MENSAJE };
-  if (point && hasLat && input.geocercas && input.geocercas.length > 0) {
+  if (point && input.geocercas && input.geocercas.length > 0) {
     const cubiertas = geocercasCercanas(point.lat, point.lng, input.geocercas);
-    if (cubiertas.length === 0 && hasLat) return { estado: "no_reconocida", message: GEOCERCA_SIN_ZONA_MENSAJE };
+    if (cubiertas.length === 0) return { estado: "no_reconocida", message: GEOCERCA_SIN_ZONA_MENSAJE };
     if (cubiertas.length > 0) {
       const slugsDespacho = new Set(despacho.map((b) => b.slug));
       const candidatas = cubiertas.filter((c) => slugsDespacho.has(c.slug));
@@ -220,7 +220,7 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
       const minima = (candidatas[0] as { distanciaM: number }).distanciaM;
       // Dentro de alguna zona: compiten solo las que contienen el punto. En una rendija (ninguna lo contiene): compiten todas las que estan dentro de la holgura.
       const empatadas = candidatas.filter((c) => minima > 0 || c.distanciaM === 0).map((c) => despacho.find((b) => b.slug === c.slug) as Branch);
-      // Desempate determinista: la sucursal por la que entro el cliente; luego la de pin mas cercano (pines de Google de Javier); luego el slug.
+      // Desempate determinista: la sucursal por la que entro el cliente; luego la de pin mas cercano (pines de Google del dueño); luego el slug.
       const kmAlPin = (b: Branch): number => {
         const pin = COORDENADAS_PROPUESTAS_PM[b.slug];
         return pin ? haversineKmExact(point.lat, point.lng, pin.lat, pin.lng) : Number.POSITIVE_INFINITY;

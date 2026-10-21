@@ -23,7 +23,7 @@ export function puntoEnPoligono(lat: number, lng: number, poligono: readonly (re
   return dentro;
 }
 
-/** Slugs (orden estable por slug) de las geocercas que contienen el punto. */
+/** Slugs (orden estable por slug) de las geocercas que contienen el punto. SOLO PARA PRUEBAS: el camino real usa `geocercasCercanas` (con holgura). */
 export function geocercasQueContienen(lat: number, lng: number, geocercas: readonly Geocerca[]): readonly string[] {
   return geocercas
     .filter((g) => puntoEnPoligono(lat, lng, g.poligono))
@@ -89,7 +89,7 @@ export function mensajeGeocercaSucursalNoDisponible(nombre: string, telefono: st
 export const GEOCERCA_AVISO_DERIVAR =
   " Al derivarlo, dígale que confirme con esa sucursal si ya está abierta y su horario de reparto (no se puede verificar desde aquí si está abierta ahora ni si esa sucursal tiene asistente): no lo mande sin ese aviso.";
 
-/** Bandera de las geocercas (APAGADA por omision, como los pines propuestos): `RESTAURANTES_GEOCERCAS=1` las enciende SOLO en el perfil `taqueria_pm`. Activarla es decision de Javier:
+/** Bandera de las geocercas (APAGADA por omision, como los pines propuestos): `RESTAURANTES_GEOCERCAS=1` las enciende SOLO en el perfil `taqueria_pm`. Activarla es decision del dueño:
  * el poligono pasa a mandar sobre el radio de 8 km y sobre la cobertura por colonia cuando el cliente comparte su pin. */
 export const BANDERA_GEOCERCAS = "RESTAURANTES_GEOCERCAS";
 

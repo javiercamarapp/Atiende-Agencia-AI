@@ -1,4 +1,4 @@
-// Geocercas de reparto (poligonos de cobertura) de las sucursales de Los Taquitos de PM que reparten, entregadas por Javier (21-oct-2026) como KMZ.
+// Geocercas de reparto (poligonos de cobertura) de las sucursales de Los Taquitos de PM que reparten, entregadas por el dueño como KMZ.
 // Son limites geograficos del NEGOCIO, no datos personales de nadie. Vertices en [lng, lat] (orden KML), anillo cerrado; clave = slug de la sucursal
 // (T1 prol-montejo, T2 fco-montejo, T3 pensiones, T7 garcia-lavin, T8 altabrisa). Galerias (T4) y Playa (T5) no reparten y no tienen geocerca.
 // Se usan SOLO si quien llama pasa `geocercas` a `assignBranch`; sin ellas el comportamiento es el de siempre (colonia/radio).
