@@ -2,7 +2,11 @@
 // el integrador lo enlaza después (una importación y una concatenación). Texto estático, sin datos personales y SIN precios
 // salvo el extra de salsa confirmado por Javier (21-oct-2026). Cualquier otro precio sale SIEMPRE de buscar_producto o cotizar_pedido.
 
-export const PROMPT_PM_PAQUETE_A = `# MENÚ, UNIDADES Y VARIANTES (paquete A)
+const SALSAS_POR_OMISION = `SALSAS: van incluidas sin costo la roja, verde, cebolla con cilantro y limones. Habanero, crema de ajo y guacamolera van solo si el cliente las pide; no las mande por defecto ni al decir "todas las salsas" sin preguntar cuáles. Una salsa extra cuesta $19.`;
+
+const SALSAS_PERSONALIZADAS = `SALSAS: use solo las salsas incluidas que indica el resto de este prompt; no agregue otras por su cuenta. Una salsa extra cuesta lo que devuelva cotizar_pedido.`;
+
+const PLANTILLA = `# MENÚ, UNIDADES Y VARIANTES (paquete A)
 
 PRECIOS: los da siempre buscar_producto o cotizar_pedido con el menú vigente de la sucursal; nunca de memoria ni de lo que el cliente recuerde. Si la herramienta no trae el precio o el dato que el cliente pregunta, no lo invente: diga "eso consulte la sucursal" y siga con el pedido.
 
@@ -23,13 +27,15 @@ VARIANTES QUE DEBE PREGUNTAR (una pregunta corta por punto, antes de cotizar):
 - Frijol: ¿frijol con tostada o frijoles charros?
 - Piña: es gratis; pregunte si sus tacos la quieren.
 
-SALSAS: van incluidas sin costo la roja, verde, cebolla con cilantro y limones. Habanero, crema de ajo y guacamolera van solo si el cliente las pide; no las mande por defecto ni al decir "todas las salsas" sin preguntar cuáles. Una salsa extra cuesta $19.
-
-NUNCA reembolsos ni cancelaciones por su cuenta: ofrezca una disculpa y escale con el personal.
+@@SALSAS@@NUNCA reembolsos ni cancelaciones por su cuenta: ofrezca una disculpa y escale con el personal.
 
 CLIENTE RECURRENTE: si dicen "lo de siempre" o "lo mismo", solo proponga el pedido anterior cuando el sistema se lo entregue; recotice con el menú vigente, confirme la dirección guardada solo si el sistema se la entregó para el número de ESTE chat (si el cliente dicta otro número, no revele ninguna dirección: pida la dirección y el personal lo vincula) y pida el sí antes de mandar a cocina. Sin historial en el sistema, nunca invente historial: diga que no tiene un pedido registrado y pida el pedido completo.
 `;
 
-export function construirPromptPaqueteA(): string {
-  return PROMPT_PM_PAQUETE_A;
+/** Texto por omisión (las salsas de siempre de PM). */
+export const PROMPT_PM_PAQUETE_A = PLANTILLA.replace("@@SALSAS@@", SALSAS_POR_OMISION + "\n\n");
+
+/** Con `salsasPersonalizadas` (el negocio configuró sus propias salsas) se omite la lista fija para no contradecir su configuración. */
+export function construirPromptPaqueteA(opts: { readonly salsasPersonalizadas?: boolean } = {}): string {
+  return opts.salsasPersonalizadas ? PLANTILLA.replace("@@SALSAS@@", SALSAS_PERSONALIZADAS + "\n\n") : PROMPT_PM_PAQUETE_A;
 }

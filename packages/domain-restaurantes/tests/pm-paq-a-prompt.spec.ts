@@ -54,3 +54,12 @@ describe("prompt PM paquete A", () => {
     expect(t).not.toMatch(/@/);
   });
 });
+
+describe("salsas personalizadas del negocio", () => {
+  it("no contradice la configuración: sin la lista fija de salsas ni el $19", () => {
+    const t = construirPromptPaqueteA({ salsasPersonalizadas: true });
+    expect(t).not.toMatch(/crema de ajo|guacamolera|habanero|\$19/i);
+    expect(t).toMatch(/salsas incluidas que indica el resto de este prompt/i);
+    expect(t).toMatch(/NUNCA reembolsos/);
+  });
+});
