@@ -2,6 +2,7 @@
 // (`escalar_a_humano.resumen`, registry.ts) y a veces omitia el folio, la direccion o lo que el cliente quiere agregar. Ahora el SERVIDOR antepone un bloque con los
 // datos reales del pedido mas reciente del cliente; el resumen del modelo queda debajo como "Detalle". Sin PII innecesaria: nada de telefono ni nombre del cliente
 // (el aviso ya lleva `customer_phone`/`customer_name` en sus propias columnas); la direccion de entrega SI va porque el gerente la necesita para reponer o enviar aparte.
+import { recortarTexto } from "./callback-requests.ts";
 import { normalizePhone } from "./phone.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import { VENTANA_PEDIDO_RECIENTE_MIN, estadoParaCliente } from "./pedido-reciente.ts";
@@ -11,7 +12,9 @@ import type { EstadoPedidoParaCliente } from "./pedido-reciente.ts";
 export const MOTIVOS_AVISO_CON_PEDIDO: ReadonlySet<string> = new Set(["queja", "cancelacion_modificacion", "tiempos_entrega", "reposicion_descuento", "cobro_duplicado", "urgencia", "alergia_salud"]);
 
 /** Tope del bloque del pedido: `registerCallbackRequest` recorta a 1,000 caracteres y el bloque va PRIMERO para que el recorte se lleve el detalle del modelo, no el folio. */
-export const AVISO_BLOQUE_PEDIDO_MAX = 600;
+export const AVISO_BLOQUE_PEDIDO_MAX = 900
+/** Renglones que se listan; el resto se resume como "+N mas" para que folio, total, pago y entrega (que van ANTES) nunca se pierdan. */
+export const AVISO_RENGLONES_MAX = 8;
 const ZONA_POR_OMISION = "America/Merida";
 
 const ETIQUETA_ESTADO: Record<EstadoPedidoParaCliente, string> = {
@@ -54,13 +57,17 @@ export async function armarBloquePedidoParaAviso(repo: RestaurantesRepository, o
     const canal = info[0]?.canal ?? null;
     const folio = typeof order.orderNumber === "number" && Number.isFinite(order.orderNumber) ? `#${order.orderNumber}` : "sin folio";
     const hora = horaLocal(order.createdAt, zona.zonaHoraria ?? ZONA_POR_OMISION);
-    const renglones = order.items.filter((i) => !i.courtesy).map((i) => `${i.quantity}x ${limpio(i.name, 60)}`).join(", ");
+    const visibles = order.items.filter((i) => !i.courtesy);
+    const lista = visibles.slice(0, AVISO_RENGLONES_MAX).map((i) => `${i.quantity}x ${limpio(i.name, 60)}`);
+    if (visibles.length > AVISO_RENGLONES_MAX) lista.push(`+${visibles.length - AVISO_RENGLONES_MAX} mas`);
+    // Orden: lo que no puede perderse (folio, total, pago, entrega) primero; los productos al final.
     const lineas = [
       `PEDIDO RECIENTE ${folio}${order.branch ? ` (${limpio(order.branch, 60)})` : ""}: ${ETIQUETA_ESTADO[estado]}${canal ? `, ${canal === "recoger" ? "para recoger" : "a domicilio"}` : ""}${hora ? `, confirmado ${hora}` : ""}.`,
-      `Productos: ${renglones || "sin renglones"}. Total: $${order.total.toFixed(2)}. Pago: ${order.paymentMethod ?? "sin definir"}.`,
+      `Total: $${order.total.toFixed(2)}. Pago: ${order.paymentMethod ?? "sin definir"}.`,
       canal === "recoger" ? "Entrega: en sucursal." : order.customerAddress ? `Entrega: ${limpio(order.customerAddress, 200)}.` : "Entrega: direccion no registrada.",
+      `Productos: ${lista.join(", ") || "sin renglones"}.`,
     ];
-    return lineas.join("\n").slice(0, AVISO_BLOQUE_PEDIDO_MAX).trimEnd();
+    return recortarTexto(lineas.join("\n"), AVISO_BLOQUE_PEDIDO_MAX);
   } catch {
     return null;
   }

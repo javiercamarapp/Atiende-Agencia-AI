@@ -11,7 +11,7 @@ export const AVISO_RESUMEN_MAX_CARACTERES = 1000;
 export const AVISO_NOMBRE_MAX_CARACTERES = 120;
 
 /** Corta a `max` unidades UTF-16 sin dejar un sustituto suelto (que jsonb/text de Postgres rechazaria) y sin NUL. */
-function recortarTexto(texto: string, max: number): string {
+export function recortarTexto(texto: string, max: number): string {
   // eslint-disable-next-line no-control-regex
   const limpio = texto.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
   if (limpio.length <= max) return limpio;

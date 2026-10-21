@@ -2075,9 +2075,10 @@ export const AVISO_SIN_ESTADO_DE_PEDIDO = "Este resultado NO trae el estado del 
 
 /** Lo que el agente de VOZ le dice al cliente tras escalar a una persona (SOLO la frase literal: `mensaje_al_cliente` se lee tal cual). */
 export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan.";
-/** Instruccion para el MODELO (no para el cliente): va en `instruccion`, nunca dentro de `mensaje_al_cliente`. */
 /** Tras escalar un cambio (agregar, cancelar...) a un pedido ya enviado a cocina: el aviso ya salio; la hora la confirma el restaurante. */
-export const INSTRUCCION_CAMBIO_HORA_SUCURSAL = "Ya se avisó a la sucursal con el detalle y el folio. Dígale al cliente: «Se lo paso a cocina; le confirmo en un momento». La hora y si alcanza a salir con su pedido los confirma la sucursal: NO dé minutos, horas ni «aproximadamente» y no prometa que ya quedó agregado.";
+export const INSTRUCCION_CAMBIO_HORA_SUCURSAL = "Ya se avisó a la sucursal con el detalle. Dígale al cliente: «Se lo paso a cocina; le confirmo en un momento». La hora y si alcanza a salir con su pedido los confirma la sucursal: NO dé minutos, horas ni «aproximadamente» y no prometa que ya quedó agregado.";
+
+/** Instruccion para el MODELO (no para el cliente): va en `instruccion`, nunca dentro de `mensaje_al_cliente`. */
 export const INSTRUCCION_ESCALACION_VOZ = "Dígale al cliente el mensaje_al_cliente, de usted, ANTES de despedirse o cortar; no prometa hora ni resultado.";
 
 /** Texto fijo que se le da al cliente tras el aviso de llegada (no se improvisa ni se prometen minutos). */
