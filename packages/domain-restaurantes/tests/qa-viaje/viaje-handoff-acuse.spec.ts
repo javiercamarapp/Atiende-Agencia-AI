@@ -3,7 +3,7 @@
 // PM Ronda 12 (Q2, decision de Javier): el acuse sale al primer mensaje nuevo (espera 1 min, el minimo que admite la migracion 045) y se repite como maximo cada 15 min
 // (antes: espera 15 min / repeticion 60 min y otro texto). Las aserciones de tiempo y de texto se actualizaron; las de "callar tras el acuse" y "tomada no acusa" siguen igual.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACUSE_HANDOFF_PENDIENTE } from "../../src/whatsapp/inbound.ts";
+import { ACUSE_HANDOFF_PENDIENTE, ACUSE_HANDOFF_REPETIDO } from "../../src/whatsapp/inbound.ts";
 import { MARTES_14H, nuevoViaje, type Viaje } from "./arnes-viaje.ts";
 
 const min = (n: number) => n * 60_000;
@@ -22,14 +22,14 @@ describe("viaje: acuse al cliente mientras la toma sigue pendiente", () => {
     return v;
   }
 
-  it("recien escalada (menos de 1 min): el agente calla; no hay acuse hasta el minimo que admite la base", async () => {
+  it("recien escalada (menos de 1 min): R16, el agente no calla: recordatorio breve (el acuse oficial espera el minimo que admite la base)", async () => {
     const v = await escalado();
-    expect((await v.escribe("hola?")).reply).toBeUndefined();
+    expect((await v.escribe("hola?")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
     avanza(min(0.5));
-    expect((await v.escribe("???")).reply).toBeUndefined();
+    expect((await v.escribe("???")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
   });
 
-  it("pasado el minuto sin que nadie la tome: UN acuse (queda en el historial y en el outbox); los siguientes mensajes callan", async () => {
+  it("pasado el minuto sin que nadie la tome: UN acuse oficial (queda en el historial y en el outbox); los siguientes reciben el recordatorio breve (R16)", async () => {
     const v = await escalado();
     avanza(min(2));
     const r = await v.escribe("¿alguien me atiende?");
@@ -38,9 +38,9 @@ describe("viaje: acuse al cliente mientras la toma sigue pendiente", () => {
     expect(v.conversaciones.handoffs[0]!.estado).toBe("pendiente");
     const historial = await v.world.repo.whatsappAppendTurn(v.world.organizationId, "+5219995550111", [], null, null, null);
     expect(historial.at(-1)).toEqual({ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE });
-    expect((await v.escribe("hola?")).reply).toBeUndefined();
+    expect((await v.escribe("hola?")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
     avanza(min(10));
-    expect((await v.escribe("hola??")).reply).toBeUndefined();
+    expect((await v.escribe("hola??")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
   });
 
   it("pasados los 15 min de repeticion vuelve a avisar", async () => {

@@ -79,7 +79,7 @@ describe("viaje WhatsApp PM: frases comunes que NO son motivo de escalar", () =>
     expect(r.escalated).toBe(true);
     const h = v.conversaciones.handoffs[0]!;
     expect(h.estado).toBe("pendiente");
-    expect((await v.escribe("hola?")).reply).toBeUndefined();
+    expect((await v.escribe("hola?")).reply).toMatch(/avisado el equipo/); // R16: pendiente = recordatorio breve, sin modelo
     const tomado = await v.conversaciones.tomar(v.world.organizationId, v.t7, "whatsapp", h.conversationId);
     await v.conversaciones.devolver(v.world.organizationId, v.t7, tomado);
     v.guion([{ texto: "Con gusto le sigo atendiendo. ¿Qué desea pedir?" }]);

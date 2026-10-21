@@ -163,7 +163,7 @@ describe("integracion con R-21: el agente solo calla cuando llega el detalle", (
     expect(store.handoffs).toHaveLength(1);
     const llamadas = provider.callCount;
     const r3 = await enviar("m3", "hola??");
-    expect(r3.reply).toBeUndefined();
+    expect(r3.reply).toMatch(/registrado/); // R16: el agente no vende, pero tampoco calla: recordatorio breve
     expect(provider.callCount).toBe(llamadas);
   });
 

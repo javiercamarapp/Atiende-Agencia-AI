@@ -10,7 +10,7 @@ import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
-import { matchesHighRiskOtherThan, pideUnaPersona, retractaPeticionDePersona } from "./guards.ts";
+import { classifyHighRiskIntent, matchesHighRiskOtherThan, normalizarParaClasificar, pideUnaPersona, quejaTraeDetalle, respuestaDeQuejaConDetalle, retractaPeticionDePersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
@@ -157,6 +157,16 @@ async function decisionAgenteApagado(repo: RestaurantesRepository, organizationI
   }
 }
 
+/** R16: ¿el interruptor de la sucursal tiene al agente APAGADO? Ahi la toma es del equipo por decision del negocio: el texto fijo sale una vez y despues se calla (no se responde cada mensaje). */
+async function agenteApagadoEnSucursal(repo: RestaurantesRepository, propertyId: string | null | undefined): Promise<boolean> {
+  if (!propertyId) return false;
+  try {
+    return !(await repo.findAgenteWhatsappActivo(propertyId));
+  } catch {
+    return false;
+  }
+}
+
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
@@ -236,8 +246,10 @@ export async function handleInboundWhatsAppMessage(
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff) {
-          const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
-          const textoAcuse = acuse ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE;
+          const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+          // R16: con la toma pendiente SIEMPRE se contesta (la base solo marca el acuse "oficial"); con la toma tomada atiende la persona y el bot calla.
+          const acuse = handoff === "pendiente" && handoffGate.acusePendiente !== undefined && (acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId)));
+          const textoAcuse = acuse ? textoParaTomaPendiente(body, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE) : ACUSE_HANDOFF_PENDIENTE;
           if (acuse) {
             await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
             if (deliverReply) {
@@ -416,6 +428,22 @@ export const LEASE_RAFAGA_SEGUNDOS = 45;
 export const ACUSE_PENDIENTE_ESPERA_MIN = 1;
 export const ACUSE_PENDIENTE_REPETIR_MIN = 15;
 export const ACUSE_HANDOFF_PENDIENTE = "Ya está avisado el equipo, quedó registrado lo que me cuenta. En cuanto lo vean le responden.";
+/** PM Ronda 16 (G7-8-10): mientras la toma sigue `pendiente`, TODO mensaje posterior recibe una respuesta breve (la base solo da `true` una vez pasado 1 min y cada 15 min: dentro
+ * de esa ventana el cliente se quedaba en silencio). Honesta: no confirma estado, no promete nada. Sin modelo. */
+export const ACUSE_HANDOFF_REPETIDO = "Sigue avisado el equipo y quedó registrado su mensaje. En cuanto lo vean le responden.";
+/** Queja con detalle durante una toma pendiente: disculpa y texto fijo, sin preguntar ni pedir direccion/pin, sin prometer reposicion ni descuento. */
+export const ACUSE_QUEJA_EN_TOMA = "Lamento mucho lo ocurrido, disculpe el inconveniente. Su mensaje quedó registrado para el gerente, que ya está avisado y revisa su caso. Yo no puedo prometerle una reposición ni un descuento.";
+
+/** Con la toma ya abierta el clasificador de quejas no ve el pedido reciente: basta que el cliente diga que algo NO llego / falto ("no mandaron el guacamole"). */
+const QUEJA_DE_FALTANTE_EN_TOMA = /\bno\s+(?:me\s+|nos\s+)?(?:mandaron|enviaron|trajeron|llego|llegaron|dieron|incluyeron)\b|\b(?:me\s+|nos\s+)?falt(?:o|aron)\s+\w+/;
+
+/** Pura: texto de la respuesta a un mensaje del cliente con la toma `pendiente`. `acuseDeLaBase` = la base dio el acuse "oficial" de este intervalo (texto acordado, con la
+ * apertura real si la sucursal esta cerrada, `textoOficial`); si no, una queja con detalle recibe su texto fijo y lo demas el recordatorio breve. */
+export function textoParaTomaPendiente(mensaje: string, acuseDeLaBase: boolean, textoOficial: string): string {
+  const queja = (classifyHighRiskIntent(mensaje)?.motivo === "queja" && quejaTraeDetalle(mensaje)) || QUEJA_DE_FALTANTE_EN_TOMA.test(normalizarParaClasificar(mensaje));
+  if (queja) return respuestaDeQuejaConDetalle(ACUSE_QUEJA_EN_TOMA, mensaje);
+  return acuseDeLaBase ? textoOficial : ACUSE_HANDOFF_REPETIDO;
+}
 
 /** Acuse con la apertura REAL de la sucursal cuando esta cerrada (la da su horario; nunca una hora inventada). Abierta o sin dato de horario: el acuse fijo. */
 export function acuseHandoffPendiente(estado: EstadoApertura | null): string {
@@ -672,9 +700,9 @@ export async function responderTrasEspera(
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
           if (handoff) {
-            const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
-            if (!acuse) return { salida: { ok: true, retryable: false }, silencio: true };
-            const textoAcuse = await textoDelAcuse(repo, organizationId, propertyId);
+            const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+            if (handoff !== "pendiente" || !handoffGate.acusePendiente || (!acuseBase && (await agenteApagadoEnSucursal(repo, propertyId)))) return { salida: { ok: true, retryable: false }, silencio: true };
+            const textoAcuse = textoParaTomaPendiente(textoPendiente, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE);
             await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
             if (deliverReply) {
               await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
