@@ -34,7 +34,7 @@ import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import { bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
-import { cierreMaquinaActiva, componerRespuestaConResumen } from "../agent-tools/cierre-maquina.ts";
+import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
@@ -48,7 +48,8 @@ import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
-import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
+import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
+import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -711,8 +712,33 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
       // En una rafaga (espera de mensajes) se revisan TODOS los mensajes del cliente sin responder, no solo el ultimo: el riesgo puede venir
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
-      // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
-      const pendientes = mensajesSinResponder(messages).slice(-5);
+      // Solo los ultimos 12 (una rafaga real llega a 12 mensajes; con 5 una queja del PRIMER mensaje se perdia): una cola mas larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
+      const pendientes = mensajesSinResponder(messages).slice(-12);
+      // NU-4 (paquete C): si el turno anterior dejo al cliente con «no alcance a registrar su pedido» (el equipo lo registra a mano), un nuevo «si» NO crea el pedido (podria duplicar el que
+      // registre el personal): texto fijo, nuevo aviso al equipo y nada mas. Cualquier otro mensaje (un cambio, una pregunta) sigue el camino normal.
+      if (perfil === "taqueria_pm" && !preview) {
+        const ultimoAg = [...messages].reverse().find((m) => m.role === "assistant");
+        const ultimoCl = pendientes.at(-1)?.content;
+        if (ultimoAg?.content.includes(MARCA_SI_SIN_REGISTRAR) && ultimoCl && clasificarRespuestaCierre(ultimoCl, { despuesDelResumen: true }) === "si") {
+          const nombreR = !customer.isNew && customer.name ? customer.name : "Cliente";
+          const avisoR = await executeAgentToolSafely(
+            repo,
+            { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+            "escalar_a_humano",
+            { customer_name: nombreR, motivo: "falla_sistema", resumen: "El cliente volvio a escribir «si» mientras el equipo registra su pedido a mano: NO se creo otro pedido desde el chat. Revisar que el pedido quede registrado una sola vez." },
+          );
+          if (!isToolErrorResult(avisoR.result)) escalarMotivo = "falla_sistema";
+          tele.resultado = "ok";
+          return done({ reply: COPY_SI_REPETIDO_SIN_REGISTRAR, orderId: null, propertyId });
+        }
+      }
+      // Paquete C: una llamada de WhatsApp (solo el aviso, sin texto de pedido) no entra al modelo ni abre toma: texto fijo, "por este medio no recibimos llamadas".
+      // Si el turno anterior ya fue este mismo aviso, la repeticion es mas breve. Nunca silencio. No cambia pedidos ni escala.
+      if (perfil === "taqueria_pm" && !preview && pendientes.length > 0 && pendientes.every((m) => esAvisoDeLlamada(m.content))) {
+        const ultimoAgente = [...messages].reverse().find((m) => m.role === "assistant");
+        tele.resultado = "ok";
+        return done({ reply: ultimoAgente?.content.includes(COPY_LLAMADA_NO_RECIBIDA) || ultimoAgente?.content.includes(COPY_LLAMADA_REPETIDA) ? COPY_LLAMADA_REPETIDA : COPY_LLAMADA_NO_RECIBIDA, orderId: null, propertyId });
+      }
       // Cotizacion/confirmacion en curso = el cliente arma un pedido NUEVO: «agrega X a mi pedido» es el carrito, no un cambio del pedido anterior (R12-01).
       // Una sola lectura del flujo para todo el turno: si falla, el clasificador sigue (sin carrito) y el error se relanza mas abajo, donde antes se leia por segunda vez.
       let flowLecturaError: unknown = null;
@@ -723,7 +749,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Una cotizacion abandonada (mas de QUOTE_TTL_MS) ya no es un carrito: la fila vive 2 h, pero el cliente ya no esta armando ese pedido. `creando` es un reclamo en curso y cuenta siempre.
       const cotizacionVigente = typeof flowSnapshot?.context?.quotedAtMs === "number" && now().getTime() - flowSnapshot.context.quotedAtMs <= QUOTE_TTL_MS;
       const carritoEnCurso = flowSnapshot?.state === "creando" || ((flowSnapshot?.state === "cotizado" || flowSnapshot?.state === "confirmado") && cotizacionVigente);
-      const riesgoClasificado = classifyHighRiskIntentInMessages(pendientes.map((m) => m.content), { ...contextoDeCliente(customer), carritoEnCurso });
+      // Paquete C: con la ventana de 12, los mensajes que se acumularon sin respuesta mientras una persona atendia (toma tomada) no deben revivir un motivo que YA se atendio antes
+      // (aviso duplicado). Un mensaje anterior al ultimo se ignora SOLO si su motivo ya aparece en lo respondido; el ultimo mensaje y los motivos nuevos siempre cuentan.
+      const ctxRiesgo = { ...contextoDeCliente(customer), carritoEnCurso };
+      const respondidos = messages.slice(0, messages.length - mensajesSinResponder(messages).length).filter((m) => m.role === "user").slice(-12);
+      const motivosYaAtendidos = new Set(respondidos.map((m) => classifyHighRiskIntent(m.content, ctxRiesgo)?.intent).filter((i): i is NonNullable<typeof i> => i !== undefined));
+      const paraRiesgo = pendientes.filter((m, i) => i === pendientes.length - 1 || !motivosYaAtendidos.has(classifyHighRiskIntent(m.content, ctxRiesgo)?.intent as never));
+      const riesgoClasificado = classifyHighRiskIntentInMessages(paraRiesgo.map((m) => m.content), ctxRiesgo);
       // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
       const textoPendiente = pendientes.map((m) => m.content).join(" / ");
       const recibeDetalle =
@@ -829,10 +861,36 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
       };
 
+      /** Total del resumen vigente si el ultimo mensaje del cliente es un «si» claro a ese resumen y aun no hay pedido; si no, null. */
+      const siPendienteSinPedido = (): number | null => {
+        const total = flowSnapshot?.context?.quotedTotal;
+        if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
+        const estado = estadoDeCierre(flowSnapshot, messages);
+        if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
+        const ultimoCliente = mensajesSinResponder(messages).at(-1)?.content;
+        if (!ultimoCliente) return null;
+        return clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, total }) === "si" ? total : null;
+      };
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
         if (orderId) return done({ reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId });
+        // NU-4 / S1 (paquete C): el cliente ya dijo «si» a un resumen VIGENTE y el turno murio antes de crear el pedido. No se culpa a un «problema tecnico» ni se pierde el si:
+        // se dice la verdad (no alcance a registrarlo), se avisa al equipo con el total confirmado y el «si» siguiente reintenta; `crear_pedido` es idempotente, sin duplicados.
+        const totalConfirmado = perfil === "taqueria_pm" && !preview ? siPendienteSinPedido() : null;
+        if (totalConfirmado !== null) {
+          const nombreC = !customer.isNew && customer.name ? customer.name : "Cliente";
+          const avisoC = await executeAgentToolSafely(
+            repo,
+            { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+            "escalar_a_humano",
+            { customer_name: nombreC, motivo: "falla_sistema", resumen: `El cliente confirmo con «si» su resumen vigente (total $${totalConfirmado}) pero el turno vencio antes de registrar el pedido: registrarlo a mano UNA sola vez tal como lo confirmo. Al cliente se le dijo que un companero lo registra; si vuelve a escribir «si» el agente NO crea el pedido (evita duplicados). Ultimo mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 200)}` },
+          );
+          if (!isToolErrorResult(avisoC.result)) {
+            escalarMotivo = "falla_sistema";
+            return done({ reply: `Recibí su confirmación, pero ${MARCA_SI_SIN_REGISTRAR} (total $${totalConfirmado}). Un compañero de la sucursal lo registra y se lo confirma por aquí.`, orderId: null, propertyId });
+          }
+        }
         // Seguimiento de #593: en una caida larga sin toma cada mensaje del cliente repetia el aviso; uno por telefono cada 15 min. El turno sigue siendo `falla_sistema` (alerta de racha).
         if (avisoFallaSistemaReciente(organizationId, phone)) {
           escalarMotivo = "falla_sistema";
