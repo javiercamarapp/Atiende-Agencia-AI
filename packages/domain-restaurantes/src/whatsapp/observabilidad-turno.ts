@@ -134,6 +134,10 @@ export interface EventoTurnoWhatsApp {
   readonly cierreMaquina?: boolean;
   /** PM-R14: el turno se corto porque el modelo insistia en crear_pedido rechazado por regla (resultado `ok`, causaError `regla`). */
   readonly cierreCortado?: boolean;
+  /** PM-R15: veces que se repitio la llamada al modelo tras agotar su tope por llamada (solo un entero; nunca contenido). */
+  readonly reintentosLlm?: number;
+  /** PM-R15: el reintento de la llamada al modelo contesto y el turno siguio con esa respuesta. */
+  readonly reintentoLlmRecuperado?: boolean;
   /** Motivo de escalacion A HUMANO (clasificador de alto riesgo o `escalar_a_humano`); null si no hubo. */
   readonly motivoEscalacion: string | null;
   /** Por que se subio de rol de modelo barato a caro dentro del turno; null si no se subio. */
