@@ -1,6 +1,6 @@
 // PAQUETE A (PM): tabla de unidades por orden y desambiguación orden / kilo / pieza. Sintético, determinista.
 import { describe, expect, it } from "vitest";
-import { analizarPiezasPedidas, clasificarMedida, familiaUnidadPm, piezasDeOrdenes } from "../src/unidades-pm.ts";
+import { analizarPiezasPedidas, avisoUnidadPorTabla, clasificarMedida, clasificarMedidas, familiaUnidadPm, piezasDeOrdenes } from "../src/unidades-pm.ts";
 
 describe("familias de unidad", () => {
   it.each([
@@ -8,10 +8,22 @@ describe("familias de unidad", () => {
     ["Tacos de Chuleta de Cerdo (orden de 3)", "tacos-3", 3],
     ["Tacos de Arrachera (orden de 3)", "tacos-3", 3],
     ["Tacos de Pechuga de Pollo (orden de 3)", "tacos-3", 3],
-    ["Taco de Pastor", "taco-pastor", 1],
+    ["Tacos de Chorizo (orden de 3)", "tacos-3", 3],
+    ["Tacos de Bistec Encebollado (orden de 3)", "tacos-3", 3],
+    ["Tacos de Poc-Chuc (orden de 3)", "tacos-3", 3],
+    ["Tacos de Costilla de Res (orden de 3)", "tacos-3", 3],
+    ["Taco Al Pastor (individual)", "taco-individual", 1],
+    ["Taco de Rajas (individual)", "taco-individual", 1],
+    ["Taco de Champiñones (individual)", "taco-individual", 1],
+    ["Alambre de Pastor", "alambre", 5],
+    ["Alambre Suizo de Bistec", "alambre", 5],
+    ["Suizo de Pastor", "suizo", 5],
+    ["Tacos Suizos de Chile Poblano y Bistec", "suizo", 5],
+    ["Papadzules (orden de 5)", "papadzules", 5],
+    ["Codzitos (orden de 4)", "codzitos", 4],
+    ["Tacos de Cochinita (orden de 4)", "tacos-cochinita", 4],
     ["Gringa de Pastor", "gringa", 2],
     ["Mestiza de Bistec", "mestiza", 2],
-    ["Quesadillas de Pastor", "quesadilla", 3],
     ["Flauta de Arrachera", "flauta", 1],
     ["Quesobich de Pastor", "quesobich", 1],
     ["Alitas de Pollo", "alitas", 7],
@@ -25,6 +37,12 @@ describe("familias de unidad", () => {
     expect(familiaUnidadPm("Gringa de Pastor")?.familia).toBe("gringa");
     expect(familiaUnidadPm("Flauta de Pastor")?.familia).toBe("flauta");
     expect(familiaUnidadPm("Refresco")).toBeNull();
+  });
+  it("lo que no está confirmado ni se confunde: quesadillas sin dato, Francés Suizo y Ceiba Mestiza fuera", () => {
+    expect(familiaUnidadPm("Quesadilla de Rajas")).toBeNull();
+    expect(familiaUnidadPm("Francés Suizo de Pastor")).toBeNull();
+    expect(familiaUnidadPm("Ceiba Mestiza")).toBeNull();
+    expect(familiaUnidadPm("Bistec de Res Encebollado — 1 kg")).toBeNull();
   });
   it("crujientes es aproximado", () => {
     expect(familiaUnidadPm("Crujientes de Pechuga de Pollo")?.aproximado).toBe(true);
@@ -41,7 +59,7 @@ describe("analizarPiezasPedidas (S01, S02)", () => {
     expect(analizarPiezasPedidas("Tacos de Bistec de Res (orden de 3)", 6)).toMatchObject({ tipo: "ok", ordenes: 2 });
   });
   it("pastor es individual: 4 tacos son 4 piezas", () => {
-    expect(analizarPiezasPedidas("Taco de Pastor", 4)).toMatchObject({ tipo: "ok", ordenes: 4 });
+    expect(analizarPiezasPedidas("Taco Al Pastor (individual)", 4)).toMatchObject({ tipo: "ok", ordenes: 4 });
   });
   it("3 gringas: opciones 2 o 4", () => {
     expect(analizarPiezasPedidas("Gringa de Pastor", 3)).toMatchObject({ tipo: "no_multiplo", opciones: [2, 4] });
@@ -70,7 +88,7 @@ describe("piezasDeOrdenes (T7-012: 3 órdenes de gringas = 6)", () => {
     expect(piezasDeOrdenes("Gringa de Pastor", 3)).toBe(6);
     expect(piezasDeOrdenes("Tacos de Bistec de Res (orden de 3)", 2)).toBe(6);
     expect(piezasDeOrdenes("Flauta de Pastor", 3)).toBe(3);
-    expect(piezasDeOrdenes("Taco de Pastor", 5)).toBe(5);
+    expect(piezasDeOrdenes("Taco Al Pastor (individual)", 5)).toBe(5);
     expect(piezasDeOrdenes("Crujientes de Pechuga de Pollo", 2)).toBeNull();
     expect(piezasDeOrdenes("Refresco", 2)).toBeNull();
   });
@@ -102,7 +120,41 @@ describe("clasificarMedida: orden vs kilo vs pieza (S03)", () => {
     expect(r.medida).toBe("ambigua");
     expect(r.pregunta).toMatch(/medio kilo/i);
   });
+  it("«3 de pastor» pide aclarar la unidad (pieza, orden o peso), no queda mudo", () => {
+    const r = clasificarMedida("3 de pastor");
+    expect(r.medida).toBe("ambigua");
+    expect(r.pregunta).toMatch(/piezas|tacos/i);
+    expect(r.pregunta).toMatch(/órdenes/i);
+    expect(r.pregunta).toMatch(/peso|kilos/i);
+  });
   it("sin medida", () => {
     expect(clasificarMedida("unas alitas").medida).toBe("sin_medida");
+  });
+});
+
+describe("clasificarMedidas: varias medidas en un mensaje", () => {
+  it("«2 tacos y medio kilo de pastor» no pierde los tacos", () => {
+    const r = clasificarMedidas("2 tacos y medio kilo de pastor");
+    expect(r).toHaveLength(2);
+    expect(r[0]).toMatchObject({ medida: "pieza", cantidad: 2 });
+    expect(r[1]).toMatchObject({ medida: "kilo", kg: 0.5 });
+  });
+  it("kilo y medio sigue siendo una sola medida; tacos + gringas + órdenes", () => {
+    expect(clasificarMedidas("kilo y medio de pastor")).toEqual([expect.objectContaining({ medida: "kilo", kg: 1.5 })]);
+    const r = clasificarMedidas("4 tacos de bistec, 2 ordenes de gringas y 3 de pastor");
+    expect(r.map((x) => x.medida)).toEqual(["pieza", "orden", "ambigua"]);
+  });
+  it("sin ninguna medida devuelve sin_medida", () => {
+    expect(clasificarMedidas("unas alitas")).toEqual([{ medida: "sin_medida" }]);
+  });
+});
+
+describe("avisoUnidadPorTabla (se usa desde buscar_producto)", () => {
+  it("solo con pack_size nulo y orden de 2 o más; no para alitas/crujientes ni con pack_size explícito", () => {
+    expect(avisoUnidadPorTabla({ name: "Mestiza de Bistec", packSize: null })).toMatch(/2 piezas/);
+    expect(avisoUnidadPorTabla({ name: "Alambre de Pastor", packSize: null })).toMatch(/5 piezas/);
+    expect(avisoUnidadPorTabla({ name: "Mestiza de Bistec", packSize: 2 })).toBeNull();
+    expect(avisoUnidadPorTabla({ name: "Crujientes de Pechuga de Pollo", packSize: null })).toBeNull();
+    expect(avisoUnidadPorTabla({ name: "Taco Al Pastor (individual)", packSize: null })).toBeNull();
   });
 });

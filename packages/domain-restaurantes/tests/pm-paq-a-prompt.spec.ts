@@ -19,13 +19,22 @@ describe("prompt PM paquete A", () => {
   it("variantes que debe preguntar", () => {
     expect(t).toMatch(/harina, maíz o mixta/i);
     expect(t).toMatch(/frijol con tostada o frijoles charros/i);
-    expect(t).toMatch(/cambray[^.]*preparada o natural/i);
+    expect(t).not.toMatch(/cambray/i); // preparada/natural NO está confirmado por Javier: pendiente, no regla
+    expect(t).toMatch(/mixta \(maíz y harina mezcladas\)/i);
+    expect(t).not.toMatch(/mitad y mitad/i);
     expect(t).toMatch(/piña[^.]*gratis[^.]*pregunt/i);
   });
   it("salsas: incluidas vs solo bajo petición, extra $19", () => {
     expect(t).toMatch(/roja, verde, cebolla con cilantro y limones/i);
     expect(t).toMatch(/habanero, crema de ajo y guacamolera[^.]*solo si el cliente las pide/i);
     expect(t).toMatch(/\$19/);
+  });
+  it("sin reglas no confirmadas: quesadillas no tienen unidad; kilo incluye lo que dice el menú; nunca reembolsos", () => {
+    expect(t).not.toMatch(/quesadilla/i);
+    expect(t).toMatch(/kilo incluye salsa roja, salsa verde, limones y tortillas/i);
+    expect(t).toMatch(/NUNCA reembolsos[^.]*disculpa[^.]*escale/i);
+    expect(t).toMatch(/alambres y tacos suizos[^.]*5/i);
+    expect(t).toMatch(/codzitos[^.]*4/i);
   });
   it("desambigua orden, kilo y pieza", () => {
     expect(t).toMatch(/orden[^.]*kilo[^.]*pieza/i);
