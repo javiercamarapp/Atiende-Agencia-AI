@@ -8,6 +8,9 @@ import { createLlmWhatsAppTurnHandler } from "../../src/whatsapp/llm-turn-handle
 import { lookupCustomerConPedidoReciente } from "../../src/customers.ts";
 import { afirmaPedidoRegistrado } from "../../src/whatsapp/guards.ts";
 import { buildRestaurantFixture } from "../fixtures.ts";
+import { seedConfirmedOrderFlow } from "../support/order-flow-seed.ts";
+import { PM_COPY } from "../../src/whatsapp/perfil-pm.ts";
+import { RESPUESTA_TOQUE_RETENIDO } from "../../src/whatsapp/botones-confirmacion.ts";
 
 const texto = (text: string): LlmCompletionResult => ({ text, model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 });
 const llamada = (name: string, args: object): LlmCompletionResult => ({ text: "", toolCalls: [{ id: "c1", name, argumentsJson: JSON.stringify(args) }], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 });
@@ -54,8 +57,40 @@ describe("escalada sin pedido: el turno no miente (NU-4 / T7-026)", () => {
     expect(t.reply).toMatch(/Ya avisé a la sucursal/);
     expect(t.reply).not.toMatch(/qued[oó] registrado/);
   });
-  it("sin escalar ni crear: «quedó» y «avisé» se quitan (no hay evidencia de ninguno)", async () => {
+  it("sin escalar ni crear: «quedó con» se quita (el «ya avisé» lo respalda el aviso honesto que el servidor deja)", async () => {
     const { t } = await turno("Sí, correcto.", [texto("Listo, el pedido quedó con un total de $126. Ya avisé a la sucursal.")]);
     expect(t.reply).not.toMatch(/qued[oó] con/);
+  });
+});
+
+describe("matices de la guardia (revision de #616)", () => {
+  it("la respuesta era SOLO «quedó con $126» y hubo escalada: dice la verdad una vez, sin pedir otro «sí»", async () => {
+    const { t } = await turno("Sí, correcto.", [ESCALA, texto("Carlos, el pedido quedó con un total de $126.")]);
+    expect(t.reply).toBe(PM_COPY.pedidoSinRegistrarEscalado);
+    expect(t.reply).not.toMatch(/me confirma con un/i);
+  });
+  async function conFlujo(estado: "creado-con-id" | "creado-sin-id", respuestas: LlmCompletionResult[]) {
+    const f = buildRestaurantFixture();
+    await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, PM);
+    const cola = [...respuestas];
+    const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+    gateway.registerLadder("default", [new FakeLlmProvider({ id: "g", script: () => cola.shift() ?? texto("ok") })]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
+    const handler = createLlmWhatsAppTurnHandler(f.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+    await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "fco-montejo", canal: "recoger", items: [{ productId: f.products.cocaCola, requestedQuantity: 2 }] });
+    const snap = await f.repo.readOrderFlow(f.organizationId, `wa:${PHONE}`);
+    const ctx = snap!.context!;
+    await f.repo.writeOrderFlow(f.organizationId, `wa:${PHONE}`, snap!.version, { state: "creado" as const, context: estado === "creado-con-id" ? { ...ctx, orderId: "00000000-0000-4000-8000-000000000001" } : ctx }, 3600);
+    return handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: [{ role: "user", content: "sí, correcto" }], customer: { isNew: true as const }, propertyId: null });
+  }
+  it("con pedido creado (evidencia de crear_pedido), «quedó con $126» SE CONSERVA", async () => {
+    const t = await conFlujo("creado-con-id", [texto("Carlos, el pedido quedó con un total de $126.")]);
+    expect(t.reply).toContain("quedó con un total de $126");
+    expect(t.reply).not.toContain(PM_COPY.pedidoSinRegistrarEscalado);
+  });
+  it("con pedido retenido vigente no se añade la frase de «no registrado» (manda el aviso de retenido)", async () => {
+    const t = await conFlujo("creado-sin-id", [ESCALA, texto("Carlos, el pedido quedó con un total de $126.")]);
+    expect(t.reply).toBe(RESPUESTA_TOQUE_RETENIDO);
+    expect(t.reply).not.toContain(PM_COPY.pedidoSinRegistrarEscalado);
   });
 });

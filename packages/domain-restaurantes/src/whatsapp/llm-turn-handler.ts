@@ -954,9 +954,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const pedidoExisteFinal = pedidoExiste || (previoActivo && !retenidoEnTurno && !armandoOtro);
           if (perfil === "taqueria_pm" && !pedidoExisteFinal) {
             const antesDeQuitar = respuesta;
-            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : undefined, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
-            // QA-PM-R16 (NU-4 / T7-026): el aviso al equipo existe (escalar_a_humano ok) pero el pedido NO: tras quitar el «quedó» se dice la verdad, no se deja solo el «ya avisé».
-            if (respuesta !== antesDeQuitar && escalacionOkEnTurno && !retenidoVigente && !guardiaSoloRegistro && !respuesta.includes(PM_COPY.pedidoSinRegistrarEscalado)) respuesta = `${respuesta} ${PM_COPY.pedidoSinRegistrarEscalado}`.trim();
+            // QA-PM-R16 (NU-4 / T7-026): el aviso al equipo existe (escalar_a_humano ok) pero el pedido NO. Si la respuesta era solo la afirmacion falsa, el sustituto propio dice la verdad
+            // (no el generico que pide otro «sí»); si quedan otras frases, se anexa la verdad una sola vez.
+            const sustitutoEscalado = escalacionOkEnTurno && !retenidoVigente && !guardiaSoloRegistro ? PM_COPY.pedidoSinRegistrarEscalado : undefined;
+            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : sustitutoEscalado, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
+            if (respuesta !== antesDeQuitar && sustitutoEscalado && !respuesta.includes(sustitutoEscalado)) respuesta = `${respuesta} ${sustitutoEscalado}`.trim();
           }
           // R11: si el modelo cerro pidiendo la confirmacion SIN el total de la cotizacion, el servidor pone su resumen canonico (no toca mensajes que preguntan otra cosa).
           if (perfil === "taqueria_pm" && !orderId && !escalarMotivo && resumenCanonicoDelTurno && cierreMaquinaActiva()) {
