@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TarjetaPedido, ViajesSalida } from "@atiende/domain-restaurantes/operacion";
 import { OperacionViajesPage } from "../../src/verticals/restaurantes/pages/OperacionViajes.tsx";
 import type { RestaurantesShellContext } from "../../src/verticals/restaurantes/RestaurantesShell.tsx";
+import { notify } from "@atiende/ui";
 import { click, renderComponent, type RenderedComponent } from "../test-utils/render.tsx";
 
 const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "t", propertyId: "prop-1", orgSlug: "demo", role: "staff", staffFullName: "Persona de prueba", staffEmail: "persona@example.test", nombreSucursal: "Sucursal de prueba" };
@@ -26,12 +27,12 @@ function viajes(porSalir: TarjetaPedido[], enCamino: TarjetaPedido[] = []): Viaj
 
 let rendered: RenderedComponent | undefined;
 const esperar = (ms = 0) => act(async () => void (await new Promise((r) => setTimeout(r, ms))));
-async function montar(f: ReturnType<typeof vi.fn>) {
+async function montar(f: ReturnType<typeof vi.fn>, ctx: RestaurantesShellContext = CTX) {
   vi.stubGlobal("fetch", f);
   await act(async () => {
     rendered = renderComponent(
       <MemoryRouter>
-        <OperacionViajesPage {...CTX} />
+        <OperacionViajesPage {...ctx} />
       </MemoryRouter>,
     );
   });
@@ -126,5 +127,91 @@ describe("Viajes", () => {
     await montar(vi.fn(async () => json(501, { code: "no_implementado", message: "x" })));
     expect(textos()).toContain("No disponible aún");
     expect(document.querySelector('[role="checkbox"]')).toBeNull();
+  });
+
+  it("sin permiso de despachar (otro rol) la pantalla es solo de consulta: ni seleccion ni boton Salió", async () => {
+    const f = vi.fn(async () => json(200, viajes([tarjeta(146)])));
+    await montar(f, { ...CTX, role: "repartidor" });
+    expect(textos()).toContain("#146 · Cliente 146");
+    expect(textos()).toContain("Solo consulta");
+    expect(document.querySelector('[role="checkbox"]')).toBeNull();
+    expect(boton(/^Salió/)).toBeUndefined();
+    expect(dispatches(f)).toHaveLength(0);
+  });
+
+  it("fallo parcial: no cuenta como salido lo que el servidor no confirmo y dice cual falto", async () => {
+    const exito = vi.spyOn(notify, "success").mockImplementation(() => "x");
+    const aviso = vi.spyOn(notify, "warning").mockImplementation(() => "x");
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return json(200, { resultados: [{ pedidoId: uuid(146), resultado: "despachado", estado: "en_camino", salioAt: null, repartidorId: CHOFER, aviso: "encolado" }] });
+      return json(200, viajes([tarjeta(146), tarjeta(147)]));
+    });
+    await montar(f as unknown as ReturnType<typeof vi.fn>);
+    click(fila(146));
+    click(fila(147));
+    await esperar(0);
+    click(boton(/^Salió/));
+    await esperar(0);
+    click(boton(/^Sí, salió$/));
+    await esperar(20);
+    expect(exito).toHaveBeenCalledWith("El pedido #146 salió con Luis.");
+    expect(aviso.mock.calls.map((c) => c[0]).join(" ")).toContain("#147");
+    exito.mockRestore();
+    aviso.mockRestore();
+  });
+
+  it("409 estado_cambio: avisa cual pedido cambio y no declara nada como salido", async () => {
+    const exito = vi.spyOn(notify, "success").mockImplementation(() => "x");
+    const aviso = vi.spyOn(notify, "warning").mockImplementation(() => "x");
+    const f = vi.fn(async (url: string, init?: RequestInit) => (init?.method === "POST" ? json(409, { code: "estado_cambio", message: "cambio", details: { pedidoId: uuid(147) } }) : json(200, viajes([tarjeta(146), tarjeta(147)]))));
+    await montar(f as unknown as ReturnType<typeof vi.fn>);
+    click(fila(146));
+    click(fila(147));
+    await esperar(0);
+    click(boton(/^Salió/));
+    await esperar(0);
+    click(boton(/^Sí, salió$/));
+    await esperar(20);
+    expect(exito).not.toHaveBeenCalled();
+    expect(aviso.mock.calls.map((c) => c[0]).join(" ")).toContain("#147 ya cambió de estado");
+    exito.mockRestore();
+    aviso.mockRestore();
+  });
+
+  it("doble toque en «Sí, salió» manda UN solo despacho", async () => {
+    let resolver: () => void = () => undefined;
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        await new Promise<void>((r) => (resolver = r));
+        return json(200, { resultados: [{ pedidoId: uuid(146), resultado: "despachado", estado: "en_camino", salioAt: null, repartidorId: CHOFER, aviso: "encolado" }] });
+      }
+      return json(200, viajes([tarjeta(146)]));
+    });
+    await montar(f as unknown as ReturnType<typeof vi.fn>);
+    click(fila(146));
+    await esperar(0);
+    click(boton(/^Salió/));
+    await esperar(0);
+    const confirmar = boton(/^Sí, salió$/);
+    click(confirmar);
+    click(confirmar);
+    await esperar(5);
+    expect(dispatches(f as unknown as ReturnType<typeof vi.fn>)).toHaveLength(1);
+    await act(async () => resolver());
+    await esperar(10);
+    expect(dispatches(f as unknown as ReturnType<typeof vi.fn>)).toHaveLength(1);
+  });
+
+  it("si un pedido ya no esta en preparando, no se manda desdeEstado", async () => {
+    const f = vi.fn(async (url: string, init?: RequestInit) => (init?.method === "POST" ? json(200, { resultados: [{ pedidoId: uuid(146), resultado: "despachado", estado: "en_camino", salioAt: null, repartidorId: CHOFER, aviso: "encolado" }] }) : json(200, viajes([tarjeta(146, { estado: "listo_para_recoger" })]))));
+    await montar(f as unknown as ReturnType<typeof vi.fn>);
+    click(fila(146));
+    await esperar(0);
+    click(boton(/^Salió/));
+    await esperar(0);
+    click(boton(/^Sí, salió$/));
+    await esperar(20);
+    const d = dispatches(f as unknown as ReturnType<typeof vi.fn>);
+    expect(JSON.parse(String((d[0]![1] as RequestInit).body))).not.toHaveProperty("desdeEstado");
   });
 });

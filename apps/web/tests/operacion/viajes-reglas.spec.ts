@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alternarSeleccion, choferInicial, depurarSeleccion, etiquetaChofer, MAX_LOTE, textoBotonSalio } from "../../src/verticals/restaurantes/lib/viajes.ts";
+import { alternarSeleccion, choferInicial, depurarSeleccion, desdeEstadoDe, etiquetaChofer, MAX_LOTE, mensajesLote, resumirLote, textoBotonSalio, textoEstadoCambio } from "../../src/verticals/restaurantes/lib/viajes.ts";
 import { MAX_PEDIDOS_POR_VIAJE } from "@atiende/domain-restaurantes/operacion";
 
 const chofer = (id: string, extra = {}) => ({ id, nombre: id, activos: 0, disponible: true, sugerido: false, ...extra });
@@ -28,5 +28,44 @@ describe("reglas de Viajes", () => {
     expect(etiquetaChofer(chofer("Pedro", { activos: 1, disponible: false }))).toContain("fuera de turno");
     expect(textoBotonSalio(1)).toBe("Salió (1 pedido)");
     expect(textoBotonSalio(3)).toBe("Salió (3 pedidos)");
+  });
+
+  const lote = [
+    { id: "a", numero: 146, estado: "preparando" },
+    { id: "b", numero: 147, estado: "preparando" },
+    { id: "c", numero: 148, estado: "preparando" },
+  ];
+  it("resumen del lote: solo cuenta como «salio» lo que vino despachado; lo que falta se nombra", () => {
+    const r = resumirLote(lote, [
+      { pedidoId: "a", resultado: "despachado", aviso: "encolado" },
+      { pedidoId: "b", resultado: "ya_aplicado", aviso: "ya_enviado" },
+    ]);
+    expect(r).toMatchObject({ salieron: [146], yaEstaban: [147], sinRespuesta: [148], sinAviso: 0 });
+    const m = mensajesLote(r, "Luis");
+    expect(m.exito).toBe("El pedido #146 salió con Luis.");
+    expect(m.atencion.join(" ")).toContain("#148");
+    expect(m.atencion.join(" ")).toContain("#147 ya estaba en camino con Luis");
+  });
+  it("contar sin aviso solo de los que salieron y reasignados", () => {
+    const r = resumirLote(lote, [
+      { pedidoId: "a", resultado: "despachado", aviso: "omitido:sin_consentimiento" },
+      { pedidoId: "b", resultado: "reasignado", aviso: "omitido:sin_consentimiento" },
+      { pedidoId: "c", resultado: "despachado", aviso: "encolado" },
+    ]);
+    expect(r.sinAviso).toBe(1);
+    expect(r.reasignados).toEqual([147]);
+    expect(mensajesLote(r, "Luis").exito).toContain("#146, #148");
+  });
+  it("sin ningun despachado no hay mensaje de exito", () => {
+    expect(mensajesLote(resumirLote(lote, []), "Luis").exito).toBeNull();
+  });
+  it("409: nombra el pedido que cambio si el servidor lo dice", () => {
+    expect(textoEstadoCambio(lote, { pedidoId: "b" })).toContain("#147");
+    expect(textoEstadoCambio(lote, null)).toContain("Alguno de los pedidos");
+  });
+  it("desdeEstado usa el estado real: si alguno no esta preparando no se manda", () => {
+    expect(desdeEstadoDe(lote)).toBe("preparando");
+    expect(desdeEstadoDe([...lote, { id: "d", numero: 149, estado: "pending" }])).toBeUndefined();
+    expect(desdeEstadoDe([])).toBeUndefined();
   });
 });
