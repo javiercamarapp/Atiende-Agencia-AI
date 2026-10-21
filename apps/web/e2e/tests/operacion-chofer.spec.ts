@@ -13,6 +13,8 @@ test.describe("chofer: Mis entregas", () => {
     await mock.agregarAEstado("op.chofer.habilitado", true);
     await page.reload();
     await expect(page.getByRole("article", { name: "Pedido 145" })).toBeVisible();
+    // «Historial del dia» (efectivo a rendir) se conserva como pestana del panel nuevo.
+    await expect(page.getByRole("tab", { name: "Historial del día" })).toBeVisible();
   }
 
   test("muestra solo sus pedidos en camino, sin telefono, con botones de 56 dp @oscuro", async ({ page, iniciarSesion, mock, vigilante }) => {

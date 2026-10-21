@@ -6,12 +6,13 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MisEntregas } from "../src/verticals/restaurantes/components/chofer/MisEntregas.tsx";
-import { leerPendientes } from "../src/verticals/restaurantes/lib/cola-entrega-offline.ts";
+import { claveCola, encolarEntrega, leerPendientes, purgarColas } from "../src/verticals/restaurantes/lib/cola-entrega-offline.ts";
 import type { AlmacenLocal } from "../src/verticals/restaurantes/lib/cola-entrega-offline.ts";
 import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 beforeEach(() => {
+  purgarColas(null, null);
   vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
   vi.setSystemTime(new Date("2026-10-21T20:00:00.000Z"));
 });
@@ -47,13 +48,15 @@ const ENTREGA = {
 const json = (status: number, cuerpo: unknown) => new Response(JSON.stringify(cuerpo), { status });
 function memoria(): AlmacenLocal {
   const d = new Map<string, string>();
-  return { getItem: (k) => d.get(k) ?? null, setItem: (k, v) => void d.set(k, v), removeItem: (k) => void d.delete(k) };
+  return { getItem: (k) => d.get(k) ?? null, setItem: (k, v) => void d.set(k, v), removeItem: (k) => void d.delete(k), key: (i) => [...d.keys()][i] ?? null, get length() { return d.size; } };
 }
+const IDENTIDAD = "ana@example.test";
+const CLAVE = claveCola("prop-1", IDENTIDAD);
 
 type Manejador = (url: string, init?: RequestInit) => Response | Promise<Response>;
 function montar(manejador: Manejador, extra: Partial<React.ComponentProps<typeof MisEntregas>> = {}) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => manejador(String(url), init));
-  rendered = renderComponent(<MisEntregas apiBaseUrl={API} token="tok" propertyId="prop-1" fetchImpl={fetchMock as unknown as typeof fetch} almacen={memoria()} {...extra} />);
+  rendered = renderComponent(<MisEntregas apiBaseUrl={API} token="tok" propertyId="prop-1" fetchImpl={fetchMock as unknown as typeof fetch} identidad={IDENTIDAD} almacen={memoria()} {...extra} />);
   return fetchMock;
 }
 const llamadas = (f: ReturnType<typeof vi.fn>, fin: string) => f.mock.calls.filter(([u, i]) => String(u).endsWith(fin) && (i as RequestInit | undefined)?.method === "POST");
@@ -92,10 +95,10 @@ describe("lista de entregas", () => {
     expect(document.querySelector('a[href^="https://www.google.com/maps/search"]')).not.toBeNull();
   });
 
-  it("los botones principales miden 56 dp (h-14)", async () => {
+  it("los botones principales miden 56 dp (h-14), incluidos «No pude entregar» y Actualizar", async () => {
     montar(servidorBasico());
     await esperar();
-    for (const nombre of [/^Entregado$/, /^Llamar$/]) {
+    for (const nombre of [/^Entregado$/, /^Llamar$/, /^No pude entregar$/, /Actualizar/]) {
       expect(boton(nombre)!.className).toContain("h-14");
     }
   });
@@ -217,7 +220,7 @@ describe("Entregado y Deshacer", () => {
     await esperar();
     click(botones().find((b) => b.textContent?.includes("Sí, entregado"))!);
     await esperar();
-    const guardadas = leerPendientes(almacen, "prop-1", Date.now());
+    const guardadas = leerPendientes(almacen, CLAVE, Date.now());
     expect(guardadas).toHaveLength(1);
     expect(document.body.textContent).toContain("guardada en tu celular");
     const llaveOriginal = guardadas[0]!.llave;
@@ -227,7 +230,44 @@ describe("Entregado y Deshacer", () => {
     const envios = llamadas(f, "/entregar");
     expect(envios.length).toBeGreaterThanOrEqual(2);
     expect(((envios.at(-1)![1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"]).toBe(llaveOriginal);
-    expect(leerPendientes(almacen, "prop-1", Date.now())).toHaveLength(0);
+    expect(leerPendientes(almacen, CLAVE, Date.now())).toHaveLength(0);
+  });
+});
+
+describe("sin almacenamiento y celular compartido", () => {
+  function servidorSinRed(hayRed: () => boolean): Manejador {
+    return (url) => {
+      if (url.endsWith("/entregar")) {
+        if (!hayRed()) throw new TypeError("Failed to fetch");
+        return json(200, { resultado: "entregado", entregadoAt: "2026-10-21T20:00:00.000Z", puedeDeshacerHasta: "2026-10-21T20:01:00.000Z" });
+      }
+      if (url.endsWith("/entregas")) return json(200, { entregas: hayRed() ? [] : [ENTREGA], actualizadoEn: "2026-10-21T20:00:00.000Z" });
+      return json(404, { code: "x", message: "?" });
+    };
+  }
+
+  it("sin localStorage: avisa que NO se guardo en el celular, no pierde la entrega y la reenvia al volver la red", async () => {
+    let red = false;
+    const f = montar(servidorSinRed(() => red), { almacen: null });
+    await esperar();
+    click(boton(/^Entregado$/)!);
+    await esperar();
+    click(botones().find((b) => b.textContent?.includes("Sí, entregado"))!);
+    await esperar();
+    expect(document.body.textContent).toContain("NO se pudo guardar en el celular");
+    expect(document.body.textContent).toContain("no cierres ni recargues");
+    red = true;
+    await esperar(15_000);
+    expect(llamadas(f, "/entregar").length).toBeGreaterThanOrEqual(2);
+    expect(document.body.textContent).not.toContain("NO se pudo guardar");
+  });
+
+  it("lo pendiente de otro chofer en el mismo celular no se reenvia desde esta sesion", async () => {
+    const almacen = memoria();
+    encolarEntrega(almacen, claveCola("prop-1", "luis@example.test"), { orderId: ID, llave: "llave-de-luis", cobradoMonto: 708, en: Date.now() });
+    const f = montar(servidorBasico(), { almacen });
+    await esperar(15_000);
+    expect(llamadas(f, "/entregar")).toHaveLength(0);
   });
 });
 

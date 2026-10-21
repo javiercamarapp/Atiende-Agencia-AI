@@ -8,7 +8,7 @@ import type { EntregaChofer, ProblemaEntrada } from "@atiende/domain-restaurante
 import { PackageOpen, RefreshCw, WifiOff } from "lucide-react";
 import { Button } from "@atiende/ui";
 import { SessionExpiredError, RepartidorClientError, deshacerEntregaChofer, entregarPedidoChofer, esErrorDeRed, esFuncionNoDisponible, fetchEntregasChofer, nuevaLlaveIdempotencia, pedirTelefonoCliente, reportarProblemaChofer } from "../../lib/repartidor-client.ts";
-import { almacenDelNavegador, encolarEntrega, leerPendientes, quitarPendiente } from "../../lib/cola-entrega-offline.ts";
+import { almacenDelNavegador, claveCola, encolarEntrega, leerPendientes, purgarColas, quitarPendiente } from "../../lib/cola-entrega-offline.ts";
 import type { AlmacenLocal } from "../../lib/cola-entrega-offline.ts";
 import { enlaceTelefono, registrarCerrados, visiblesEnPantalla } from "../../lib/chofer-entregas.ts";
 import { etiquetaActualizado } from "../../lib/sondeo-pedidos.ts";
@@ -25,12 +25,16 @@ export interface MisEntregasProps {
   readonly token: string;
   readonly propertyId: string;
   readonly fetchImpl?: typeof fetch;
+  /** Quien esta en sesion (correo): separa la cola de «Entregado» pendiente entre choferes que comparten celular. */
+  readonly identidad: string;
   /** Almacen de la cola sin senal; `undefined` = el del navegador, `null` = sin almacenamiento. */
   readonly almacen?: AlmacenLocal | null;
   /** Abre el marcador del telefono; por omision navega al enlace `tel:`. */
   readonly abrirTelefono?: (enlace: string) => void;
   /** El servidor aun no tiene las rutas del panel: el contenedor muestra la vista anterior. */
   readonly onNoDisponible?: () => void;
+  /** La primera lista respondio bien: recien entonces el contenedor cambia de la vista anterior al panel nuevo (sin parpadeo). */
+  readonly onListaLista?: () => void;
 }
 
 type Carga = { fase: "cargando" } | { fase: "error"; mensaje: string } | { fase: "listo" };
@@ -39,9 +43,11 @@ function mensajeDe(err: unknown, porOmision: string): string {
   return err instanceof Error && err.message ? err.message : porOmision;
 }
 
-export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen: almacenProp, onNoDisponible, abrirTelefono = (enlace) => void (window.location.href = enlace) }: MisEntregasProps) {
+export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identidad, almacen: almacenProp, onNoDisponible, onListaLista, abrirTelefono = (enlace) => void (window.location.href = enlace) }: MisEntregasProps) {
   const http = useMemo<typeof fetch>(() => fetchImpl ?? ((...args) => fetch(...args)), [fetchImpl]);
   const almacen = almacenProp === undefined ? almacenDelNavegador() : almacenProp;
+  const clave = useMemo(() => claveCola(propertyId, identidad), [propertyId, identidad]);
+  const [sinRespaldo, setSinRespaldo] = useState(false);
   const [carga, setCarga] = useState<Carga>({ fase: "cargando" });
   const [servidor, setServidor] = useState<readonly EntregaChofer[]>([]);
   /** Lo que el chofer acaba de cerrar aqui (entregado/problema): se conserva 2 min aunque el servidor ya no lo mande como activo. */
@@ -80,19 +86,19 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen:
 
   /** Reenvia las entregas guardadas por falta de senal, cada una con su llave original. Se detiene en el primer corte de red. */
   const enviarPendientes = useCallback(async () => {
-    for (const p of leerPendientes(almacen, propertyId, Date.now())) {
+    for (const p of leerPendientes(almacen, clave, Date.now())) {
       try {
         await entregarPedidoChofer(http, apiBaseUrl, token, propertyId, p.orderId, { cobradoMonto: p.cobradoMonto }, p.llave);
-        quitarPendiente(almacen, propertyId, p.orderId, Date.now());
+        quitarPendiente(almacen, clave, p.orderId, Date.now());
         notify.success("Se envió una entrega que estaba guardada en tu celular.");
       } catch (err) {
         if (esErrorDeRed(err)) break;
-        quitarPendiente(almacen, propertyId, p.orderId, Date.now());
+        quitarPendiente(almacen, clave, p.orderId, Date.now());
         notify.warning(mensajeDe(err, "Una entrega guardada ya no se pudo enviar. Avisa al encargado."));
       }
     }
-    setPendientes(leerPendientes(almacen, propertyId, Date.now()).map((p) => p.orderId));
-  }, [almacen, http, apiBaseUrl, token, propertyId]);
+    setPendientes(leerPendientes(almacen, clave, Date.now()).map((p) => p.orderId));
+  }, [almacen, http, apiBaseUrl, token, propertyId, clave]);
 
   const consultar = useCallback(async () => {
     try {
@@ -100,6 +106,7 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen:
       const r = await fetchEntregasChofer(http, apiBaseUrl, token, propertyId);
       setServidor(r.entregas);
       setCarga({ fase: "listo" });
+      onListaLista?.();
     } catch (err) {
       if (esFuncionNoDisponible(err, { rutaAusente: true })) {
         if (!noDisponibleAvisado.current) {
@@ -113,16 +120,17 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen:
       setCarga((previo) => (previo.fase === "listo" ? previo : { fase: "error", mensaje: mensajeDe(err, "No se pudieron cargar tus entregas.") }));
       throw err; // cuenta como fallo para el backoff del sondeo
     }
-  }, [enviarPendientes, http, apiBaseUrl, token, propertyId, onNoDisponible]);
+  }, [enviarPendientes, http, apiBaseUrl, token, propertyId, onNoDisponible, onListaLista]);
 
   const sondeo = useSondeoPedidos({ clave: propertyId, activo: true, consulta: consultar, baseMs: SONDEO_CHOFER_MS });
   refrescarRef.current = sondeo.refrescar;
 
   useEffect(() => {
-    setPendientes(leerPendientes(almacen, propertyId, Date.now()).map((p) => p.orderId));
+    purgarColas(almacen, clave); // en un celular compartido, lo pendiente de otra persona no se reenvia desde esta sesion
+    setPendientes(leerPendientes(almacen, clave, Date.now()).map((p) => p.orderId));
     void consultar().catch(() => undefined); // primera carga inmediata (el sondeo arranca esperando 15 s)
     // Solo al montar o al cambiar de sucursal/sesion: `consultar` cambia de identidad en cada render y no debe relanzar la carga.
-  }, [propertyId, token, apiBaseUrl]);
+  }, [propertyId, token, apiBaseUrl, clave]);
 
   useEffect(() => {
     const alVolverLaRed = () => void consultar().catch(() => undefined);
@@ -156,9 +164,15 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen:
       notify.success(`Pedido #${e.numero} entregado.`);
     } catch (err) {
       if (esErrorDeRed(err)) {
-        encolarEntrega(almacen, propertyId, { orderId: e.id, llave, cobradoMonto, en: Date.now() });
-        setPendientes(leerPendientes(almacen, propertyId, Date.now()).map((p) => p.orderId));
-        notify.warning("Sin conexión: la entrega quedó guardada en tu celular y se enviará sola cuando vuelva la señal.");
+        const { persistida } = encolarEntrega(almacen, clave, { orderId: e.id, llave, cobradoMonto, en: Date.now() });
+        setPendientes(leerPendientes(almacen, clave, Date.now()).map((p) => p.orderId));
+        if (persistida) {
+          setSinRespaldo(false);
+          notify.warning("Sin conexión: la entrega quedó guardada en tu celular y se enviará sola cuando vuelva la señal.");
+        } else {
+          setSinRespaldo(true);
+          notify.warning("Sin conexión y no se pudo guardar en el celular. No cierres ni recargues esta pantalla: la entrega se enviará sola al volver la señal.");
+        }
       } else {
         notify.error(mensajeDe(err, "No se pudo marcar la entrega."));
         refrescarRef.current();
@@ -226,7 +240,7 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen:
         <p className="m-0 text-sm text-muted-foreground" aria-live="polite">
           {activas === 1 ? "1 entrega en camino" : `${activas} entregas en camino`} · {etiquetaActualizado(sondeo.ultimaActualizacion, ahora)}
         </p>
-        <Button type="button" variant="outline" size="sm" className="h-11" loading={sondeo.consultando} onClick={() => sondeo.refrescar()} aria-label="Actualizar mis entregas">
+        <Button type="button" variant="outline" size="sm" className="h-14" loading={sondeo.consultando} onClick={() => sondeo.refrescar()} aria-label="Actualizar mis entregas">
           <RefreshCw />
           Actualizar
         </Button>
@@ -240,7 +254,9 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen:
       )}
       {pendientes.length > 0 && (
         <p role="status" className="m-0 rounded-lg bg-warning-tint px-3 py-2 text-sm text-warning">
-          {pendientes.length === 1 ? "Una entrega está guardada en tu celular" : `${pendientes.length} entregas están guardadas en tu celular`} y se enviará sola al volver la señal.
+          {sinRespaldo
+            ? `${pendientes.length === 1 ? "Una entrega está pendiente" : `${pendientes.length} entregas están pendientes`} y NO se pudo guardar en el celular: no cierres ni recargues esta pantalla. Se enviará sola al volver la señal.`
+            : `${pendientes.length === 1 ? "Una entrega está guardada en tu celular" : `${pendientes.length} entregas están guardadas en tu celular`} y se enviará sola al volver la señal.`}
         </p>
       )}
 

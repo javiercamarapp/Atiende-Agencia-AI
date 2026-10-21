@@ -67,8 +67,8 @@ export function urlNavegar(direccion: { readonly texto: string; readonly colonia
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partes.join(", "))}`;
 }
 
-/** `tel:` solo con digitos y el `+` inicial; cualquier otra cosa se rechaza (nunca se arma un enlace con texto del servidor sin validar). */
+/** `tel:` solo con un E.164 estricto (`+`, sin 0 inicial, 8 a 15 digitos); se toleran espacios, parentesis, puntos y guiones. Cualquier otra cosa se rechaza (nunca se arma un enlace con texto del servidor sin validar). */
 export function enlaceTelefono(telefono: string): string | null {
   const limpio = telefono.replace(/[\s().-]/g, "");
-  return /^\+?\d{8,15}$/.test(limpio) ? `tel:${limpio}` : null;
+  return /^\+[1-9]\d{7,14}$/.test(limpio) ? `tel:${limpio}` : null;
 }
