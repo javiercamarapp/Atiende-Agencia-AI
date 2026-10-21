@@ -2,7 +2,7 @@
 // confirmaba un resumen incompleto y el pedido se creaba con detalles que nunca vio (4 de 5 corridas ON). Ahora el resumen lleva TODO lo que afecta al pedido.
 // Reloj fijo: martes 2026-10-06 13:00 America/Merida.
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { esResumenParaConfirmar, resumenCanonico, terminaEnPreguntaDeConfirmacion, PREGUNTA_CANONICA_DE_CONFIRMACION } from "../src/agent-tools/cierre-maquina.ts";
 import { limpiarEntorno, prepararEntorno, setup } from "./support/cierre-r11.ts";
 
@@ -336,8 +336,88 @@ describe("R15 revision: herencia en re-cotizaciones, tortilla por indice, bander
   });
 
   it("lista de salsas larguisima con emoji en el corte: tampoco parte el par", () => {
-    const salsas = [`${"s".repeat(298)}😀😀`];
+    const salsas = [`${"s".repeat(298)}😀😀😀`];
     const t = resumenCanonico({ lineas: [{ name: "Coca-Cola", quantity: 1, lineTotal: 45 }], total: 45, canal: "recoger", datos: {}, salsas });
     expect(LONE.test(t)).toBe(false);
+    expect(t).toContain("😀…");
+  });
+
+  it("el par (renglon, tortilla) respeta el orden: maiz en el primero, harina en el segundo (y al reves)", async () => {
+    const { s, bistec } = sesion();
+    const c = await canon(s, { ...TARJETA, items: [{ ...bistec, tortilla: "maiz" }, { ...bistec, tortilla: "harina" }], canal: "recoger" });
+    const l1 = c.split("\n").filter((l) => l.startsWith("• ") && l.includes("Bistec"));
+    expect(l1[0]).toContain("(maiz)");
+    expect(l1[1]).toContain("(harina)");
+    const { s: s2, bistec: b2 } = sesion();
+    const c2 = await canon(s2, { ...TARJETA, items: [{ ...b2, tortilla: "harina" }, { ...b2, tortilla: "maiz" }], canal: "recoger" });
+    const l2 = c2.split("\n").filter((l) => l.startsWith("• ") && l.includes("Bistec"));
+    expect(l2[0]).toContain("(harina)");
+    expect(l2[1]).toContain("(maiz)");
+  });
+
+  it("notes: null (relleno del modelo) hereda, igual que omitirlo", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"], notes: "sin cebolla" });
+    const c = await canon(s, { ...TARJETA, items: [item], canal: "recoger", notes: null, requested_complements: null, omit_default_complements: null });
+    expect(c).toContain("Notas: sin cebolla");
+    expect(c).toContain("Salsas pedidas (sin costo): crema de ajo");
+  });
+
+  it("si el resumen YA se mostro, un cambio de salsas NO reescribe lo guardado ni se devuelve como vigente", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"] });
+    const guardado = await s.canonico();
+    await s.muestraResumen();
+    s.cliente("si");
+    const r = await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["salsa_habanero"] });
+    expect(await s.canonico()).toBe(guardado);
+    expect((r.result as { resumen_canonico?: string }).resumen_canonico).toBe(guardado);
+  });
+
+  it("re-cotizacion identica que cambia las salsas ANTES de mostrar: se guarda y se devuelve el mismo texto", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"] });
+    const r = await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["salsa_habanero"] });
+    const guardado = await s.canonico();
+    expect(guardado).toContain("salsa habanero");
+    expect((r.result as { resumen_canonico?: string }).resumen_canonico).toBe(guardado);
+  });
+
+  it("writeFlow en conflicto una vez: se reintenta y lo devuelto es lo guardado", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"] });
+    const original = s.f.repo.writeOrderFlow.bind(s.f.repo);
+    let llamadas = 0;
+    const espia = vi.spyOn(s.f.repo, "writeOrderFlow").mockImplementation(async (...a: Parameters<typeof original>) => (++llamadas === 1 ? "conflict" : original(...a)));
+    const r = await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["salsa_habanero"] });
+    espia.mockRestore();
+    expect(llamadas).toBeGreaterThanOrEqual(2);
+    const guardado = await s.canonico();
+    expect(guardado).toContain("salsa habanero");
+    expect((r.result as { resumen_canonico?: string }).resumen_canonico).toBe(guardado);
+  });
+
+  it("writeFlow siempre en conflicto: no se devuelve el resumen nuevo (error de conflicto)", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"] });
+    const espia = vi.spyOn(s.f.repo, "writeOrderFlow").mockResolvedValue("conflict");
+    await expect(s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["salsa_habanero"] })).rejects.toThrow();
+    espia.mockRestore();
+    expect(await s.canonico()).toContain("crema de ajo");
+  });
+
+  it("base sin migrar (writeFlow unavailable) en la re-cotizacion: no se promete un resumen no guardado", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"] });
+    const espia = vi.spyOn(s.f.repo, "writeOrderFlow").mockResolvedValue("unavailable");
+    const r = await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["salsa_habanero"] });
+    espia.mockRestore();
+    expect((r.result as { resumen_canonico?: string }).resumen_canonico).toBeUndefined();
   });
 });
