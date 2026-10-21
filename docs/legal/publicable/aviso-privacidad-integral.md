@@ -8,14 +8,20 @@ Este aviso está vigente a la fecha indicada y sustituye a cualquier versión an
 
 ## 1. Quién es el responsable de sus datos
 
-El responsable del tratamiento de sus datos personales es:
+Quién es el responsable depende de quién sea usted:
 
-- **Razón social:** ATIENDE SA de CV (en adelante, "Atiende").
+**a) Si es cliente final de un restaurante** (escribe o llama para hacer un pedido): el responsable del tratamiento de sus datos es **el restaurante** con el que habla; su nombre se indica en la conversación y su domicilio puede pedirlo en la sucursal o escribiendo a ventas@likida.ai. **ATIENDE SA de CV** (en adelante, "Atiende") es la **persona encargada**: opera el asistente virtual y trata esos datos por cuenta del restaurante, y no los usa para fines propios distintos de prestar el servicio. En este caso, "nosotros" se refiere al restaurante, con el apoyo técnico de Atiende.
+
+**b) Si usa o prueba Atiende** (personal de restaurantes y administradores del panel, prospectos y clientes que contratan el servicio): el responsable es **ATIENDE SA de CV**, descrito en el Anexo B.
+
+**Datos de Atiende**
+
+- **Razón social:** ATIENDE SA de CV.
 - **Domicilio:** Calle 43 No. 147A entre 38 y 36D, colonia Benito Juárez Norte, Mérida, Yucatán, C.P. 97119.
 - **Correo para asuntos de privacidad y derechos ARCO:** ventas@likida.ai
 - **Teléfono y persona o departamento de datos personales** (Art. 29 de la Ley): las solicitudes y consultas de privacidad las atiende el área responsable de Atiende por el correo ventas@likida.ai; para otro medio de contacto, solicítelo a ese mismo correo.
 
-**Cómo se presta el servicio.** Atiende opera un asistente virtual de inteligencia artificial con el que los restaurantes atienden a sus clientes por WhatsApp y por teléfono. Los datos que usted proporciona al asistente son tratados por Atiende como responsable y, para cumplir su pedido, se comunican al restaurante que lo prepara y lo entrega (sección 6.2). Los datos de quienes usan el panel de Atiende, y de prospectos y clientes que contratan el servicio, se describen en el Anexo B.
+**Cómo se presta el servicio.** Atiende opera un asistente virtual de inteligencia artificial con el que los restaurantes atienden a sus clientes por WhatsApp y por teléfono. Los datos de su pedido los trata Atiende por cuenta del restaurante que lo prepara y lo entrega.
 
 ## 2. Está hablando con un asistente virtual
 
@@ -63,9 +69,9 @@ Puede, en cualquier momento: (a) negarse a la grabación de la llamada; (b) pedi
 
 ## 6. Con quién compartimos sus datos
 
-### 6.1 Proveedores que tratan datos por cuenta de Atiende (encargados)
+### 6.1 Proveedores que tratan datos para prestar el servicio (subencargados)
 
-Atiende usa proveedores tecnológicos para prestar el servicio. **Solo tratan los datos para ese fin y no para los suyos propios**; esto no es una transferencia en el sentido del Art. 35, porque actúan por cuenta de Atiende como encargados. Según lo que esté activado en el servicio:
+Atiende usa proveedores tecnológicos para prestar el servicio. **Solo tratan los datos para ese fin y no para los suyos propios**; esto no es una transferencia en el sentido del Art. 35, porque actúan por cuenta de Atiende, que a su vez trata los datos por cuenta del restaurante, como encargados. Según lo que esté activado en el servicio:
 
 | Proveedor | Para qué | Datos que trata |
 | --- | --- | --- |
@@ -86,9 +92,9 @@ Varios de estos proveedores tienen su sede o tratan datos fuera de México, prin
 
 ### 6.2 Transferencias a terceros
 
-**No vendemos ni cedemos sus datos a terceros para sus propios fines.** Solo los comunicamos, **sin necesitar su consentimiento** (Art. 36), en estos casos: al restaurante que prepara y entrega su pedido, porque es necesario para mantener o cumplir la relación jurídica con usted (fr. VII); a autoridades cuando una ley o una orden fundada y motivada lo exija (fr. I y V); y cuando sea necesario para ejercer o defender un derecho en un proceso (fr. VI). Si el restaurante usa un servicio de reparto externo, se le comunican los datos estrictamente necesarios para entregar su pedido (fr. VII).
+**Ni el restaurante ni Atiende venden ni ceden sus datos a terceros para sus propios fines.** Atiende no hace transferencias propias de los datos de los clientes finales: los trata por cuenta del restaurante, y comunicarle su pedido al restaurante no es una transferencia (Art. 35 se refiere a terceros distintos de la persona encargada). Los datos solo se comunican a otros terceros, **sin necesitar su consentimiento** (Art. 36), en estos casos: a autoridades cuando una ley o una orden fundada y motivada lo exija (fr. I y V); cuando sea necesario para ejercer o defender un derecho en un proceso (fr. VI); y cuando sea necesario para mantener o cumplir la relación jurídica con usted, por ejemplo con un servicio de reparto externo que el restaurante use para entregar su pedido, en cuyo caso se le comunican solo los datos necesarios para la entrega (fr. VII).
 
-**Cláusula de transferencia (Art. 35).** Si en el futuro necesitáramos transferir sus datos a un tercero para una finalidad distinta, se lo informaremos y le pediremos su aceptación antes de hacerlo. Si usted no manifiesta su negativa respecto de las transferencias descritas en este aviso, entenderemos que las acepta.
+**Cláusula de transferencia (Art. 35).** Si en el futuro el responsable necesitara transferir sus datos a un tercero para una finalidad distinta, se lo informará y le pedirá su aceptación antes de hacerlo. Si usted no manifiesta su negativa respecto de las transferencias descritas en este aviso, entenderemos que las acepta.
 
 ## 7. Cuánto tiempo conservamos sus datos, bloqueo y supresión
 
@@ -115,6 +121,8 @@ Usted, o su representante legal, puede ejercer en cualquier momento (Arts. 21 y 
 - **Oposición** (Art. 26): oponerse al tratamiento por causa legítima o exigir que cese, **incluido el tratamiento automatizado** que le produzca efectos jurídicos no deseados o lo afecte de forma significativa.
 
 El ejercicio de un derecho no es requisito para ejercer otro (Art. 21).
+
+**Quién atiende su solicitud.** Si es cliente final de un restaurante, el responsable es el restaurante; Atiende, como persona encargada, recibe y registra la solicitud por los canales de abajo. Si es usuario, prospecto o cliente de Atiende, la atiende Atiende como responsable. En ambos casos puede escribir a ventas@likida.ai.
 
 **Dónde:** (1) por **WhatsApp**, escribiendo "mis datos personales" al número de la sucursal; el asistente le mostrará las opciones, registrará su solicitud y le dará una referencia; (2) por **llamada**, diciéndolo al asistente o en la sucursal; (3) por correo a ventas@likida.ai; (4) por escrito en Calle 43 No. 147A entre 38 y 36D, colonia Benito Juárez Norte, Mérida, Yucatán, C.P. 97119.
 
@@ -156,11 +164,11 @@ Si considera que su derecho a la protección de datos ha sido vulnerado, puede a
 
 ---
 
-## Anexo B. Datos de usuarios del panel, prospectos y clientes de Atiende
+## Anexo B. Atiende como responsable: usuarios del panel, prospectos y clientes de Atiende
 
 **Responsable:** ATIENDE SA de CV, Calle 43 No. 147A entre 38 y 36D, colonia Benito Juárez Norte, Mérida, Yucatán, C.P. 97119; correo de privacidad: ventas@likida.ai.
 
-**A quién aplica:** personas que usan el panel de Atiende (personal de restaurantes y administradores), prospectos y clientes que contratan el servicio.
+**A quién aplica:** personas que usan o prueban Atiende: personal de restaurantes y administradores del panel, prospectos y clientes que contratan el servicio. No aplica a los clientes finales de un restaurante: para ellos el responsable es el restaurante y Atiende es la persona encargada (sección 1).
 
 **Datos:** correo, nombre, identificador estable de la cuenta de Google si inicia sesión con Google (nunca su contraseña de Google; las contraseñas propias se guardan con hash), rol y organización, registros de acceso y de actividad en el panel, datos de contacto y de la empresa de prospectos y clientes, y datos de facturación y de pago de la suscripción (el pago lo procesa el proveedor, Stripe). No se piden datos sensibles.
 
