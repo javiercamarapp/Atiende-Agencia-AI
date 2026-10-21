@@ -170,9 +170,9 @@ describe("queja ligada al pedido con el autopiloto", () => {
     expect(con.escalacion).toEqual({ motivo: "queja" });
     // El aviso al equipo (handoff) guarda el subtipo de la lista cerrada; sin autopiloto el resumen es el texto del cliente, como siempre.
     const avisos = (t.fixture.repo as unknown as { callbackRequests: { reason?: string; message?: string }[] }).callbackRequests;
-    expect(avisos.find((a) => a.reason === "escalada:queja")?.message).toMatch(/^\[queja:faltante\] Me llegó incompleto/);
+    expect(avisos.find((a) => a.reason === "escalada:queja")?.message).toMatch(/Detalle: \[queja:faltante\] Me llegó incompleto/);
     const avisosSin = (sin.fixture.repo as unknown as { callbackRequests: { reason?: string; message?: string }[] }).callbackRequests;
-    expect(avisosSin.find((a) => a.reason === "escalada:queja")?.message).toBe("Me llegó incompleto, me faltó la bebida de mi pedido");
+    expect(avisosSin.find((a) => a.reason === "escalada:queja")?.message).toContain("Detalle: Me llegó incompleto, me faltó la bebida de mi pedido");
     const s = (await t.auto.listarSolicitudes(t.fixture.organizationId, { propertyIds: null, estado: "pendiente", limite: 10 })).valor;
     expect(s).toHaveLength(1);
     expect(s[0]).toMatchObject({ tipo: "compensacion", orderId: t.mem!.id, detalle: { subtipo: "faltante" } });
