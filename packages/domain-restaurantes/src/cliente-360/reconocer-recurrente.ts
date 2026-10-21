@@ -1,5 +1,6 @@
 // PAQUETE A (PM): gancho de reconocimiento de cliente recurrente («¿lo de siempre?»). SOLO DISEÑO: sin datos reales.
-// La base de clientes de PM (número + dirección) aún no llega; Javier pide que sea el PRIMER paso tras el saludo: pedir el teléfono, vincularlo,
+// NO ENLAZADO: pendiente de la base de clientes (ningún código de runtime lo llama todavía; solo pruebas).
+// La base de clientes de PM (número + dirección) aún no llega; el requisito del dueño es que sea el PRIMER paso tras el saludo: pedir el teléfono, vincularlo,
 // mostrar la dirección guardada y preguntar si es correcta; si no existe o no es correcta, registrar cliente nuevo.
 // Esos datos son personales (tratamiento como ENCARGADA de PM): este módulo no los lee de ningún lado ni los guarda en el repo.
 // Un integrador futuro implementa `ProveedorClientesRecurrentes` contra las tablas de las migraciones 049 y 054 y lo enlaza en registry.ts.
@@ -36,7 +37,7 @@ export function esLoDeSiempre(texto: string): boolean {
   const t = sinAcentos(texto);
   if (FRASES_LO_DE_SIEMPRE.some((r) => r.test(t))) return true;
   const palabras = t.split(/\s+/).filter(Boolean).length;
-  return /\blo mismo\b/.test(t) && palabras <= 6 && !/\b(?:que|como)\b/.test(t);
+  return /\blo mismo\b/.test(t) && palabras <= 6 && !/\b(?:que|como|para|de mi|del)\b/.test(t);
 }
 
 export type PlanRecurrente = {
@@ -94,12 +95,12 @@ export function planReconocimientoRecurrente(entrada: {
       recotizarConMenuVigente: true,
       confirmarAntesDeCocina: true,
       confirmarDireccion: c.direccionGuardada,
-      mensajeGuia: "Proponga el pedido anterior, recotice con el menú vigente (no con precios guardados), confirme la dirección guardada y pida el sí antes de mandar a cocina.",
+      mensajeGuia: "Proponga el pedido anterior, recotice con el menú vigente (no con precios guardados), pregunte si la dirección guardada es la misma o es otra (sin leerla completa) y pida el sí antes de mandar a cocina.",
     };
   }
   if (siempre) {
     return { ...vacio, accion: "pedir_pedido_completo", confirmarDireccion: c.direccionGuardada, mensajeGuia: "No hay un pedido anterior registrado; pida el pedido completo. No invente historial." };
   }
   if (!c.direccionGuardada) return { ...vacio, accion: "pedir_pedido_completo", mensajeGuia: "Cliente vinculado sin dirección guardada: pida la dirección de entrega." };
-  return { ...vacio, accion: "confirmar_direccion", confirmarDireccion: c.direccionGuardada, mensajeGuia: "Muestre la dirección guardada y pregunte si es correcta; si no lo es, registre la nueva." };
+  return { ...vacio, accion: "confirmar_direccion", confirmarDireccion: c.direccionGuardada, mensajeGuia: "Sin leerla completa, pregunte si la dirección guardada sigue siendo la misma o es otra; si no lo es, registre la nueva." };
 }

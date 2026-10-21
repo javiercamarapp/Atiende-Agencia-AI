@@ -1,5 +1,7 @@
 // PAQUETE A (PM): tabla de unidades por orden y desambiguación orden / kilo / pieza.
-// Datos confirmados por Javier (21-oct-2026) y por los chats de PM; SIN precios. Funciones puras: no tocan la base ni el modelo.
+// Datos del menú vigente y de las decisiones del dueño; SIN precios. Funciones puras: no tocan la base ni el modelo.
+// ENLAZADO: solo `avisoUnidadPorTabla` (desde buscar_producto en registry.ts). NO ENLAZADO todavía (lo usará un validador del flujo de pedido): analizarPiezasPedidas, piezasDeOrdenes,
+// clasificarMedida y clasificarMedidas; hoy solo las ejercen las pruebas.
 // La herramienta de cotización sigue siendo la autoridad (pack_size del menú); esto es la regla de apoyo para validar y para armar la pregunta.
 import { sinAcentos } from "./product-search.ts";
 
@@ -12,7 +14,7 @@ export type FamiliaUnidadPm = {
   readonly aproximado: boolean;
 };
 
-// Solo lo que esta en el menu vigente (web/PDF 2026) o en las decisiones de Javier (21-oct); nada mas. Patrones sobre el nombre sin acentos y en minusculas,
+// Solo lo que esta en el menu vigente (web/PDF 2026) o en las decisiones del dueño (21-oct); nada mas. Patrones sobre el nombre sin acentos y en minusculas,
 // anclados al inicio para no confundir "Frances Suizo" (torta) con "Suizo de Pastor" (orden de 5) ni "Ceiba Mestiza" (cerveza) con una mestiza.
 export const TABLA_UNIDADES_PM: readonly FamiliaUnidadPm[] = [
   { familia: "flauta", patron: /^flautas?\b/, piezasPorOrden: 1, aproximado: false },
@@ -81,7 +83,10 @@ function cantidadDe(token: string | undefined): number | null {
 /** Clasifica cómo mide el cliente lo que pide: kilo, orden o pieza. Lo dudoso es «ambigua» con la pregunta que debe hacer el agente. */
 export function clasificarMedida(texto: string): MedidaClasificada {
   const t = sinAcentos(texto).toLowerCase().replace(/\s+/g, " ").trim();
-  if (/\bmedia orden\b/.test(t)) {
+  // «1/2 orden de nachos de pastor» o «media orden de nachos»: el platillo nombrado (nachos, frijoles charros) fija que es media ORDEN.
+  const mediaOrdenPlatillo = /\b(?:media orden|1\/2 orden)(?: de)? (?:nachos|frijoles)/.test(t);
+  if (mediaOrdenPlatillo) return { medida: "orden", cantidad: 0.5 };
+  if (/\bmedia orden\b|\b1\/2 orden\b/.test(t)) {
     return { medida: "ambigua", pregunta: "¿Media orden del platillo (solo hay de nachos y frijoles charros) o medio kilo de carne?" };
   }
   if (/\bkilo y medio\b|\b1 ?1\/2 ?(?:kg|kilos?)\b|\b1\.5 ?(?:kg|kilos?)\b/.test(t)) return { medida: "kilo", kg: 1.5 };
