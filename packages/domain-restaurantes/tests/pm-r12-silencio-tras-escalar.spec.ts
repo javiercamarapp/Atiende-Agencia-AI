@@ -4,7 +4,7 @@
 //  * Q9: una falla tecnica (`falla_sistema`) o un `no_puedo_resolver` avisan al equipo pero NO callan al bot, salvo que ya exista un
 //    pedido en curso. La defensa de dinero / alto riesgo / privacidad sigue callando (no se toca).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACUSE_HANDOFF_PENDIENTE, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN, abreTomaDeHandoff, handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
+import { ACUSE_HANDOFF_PENDIENTE, ACUSE_HANDOFF_REPETIDO, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN, abreTomaDeHandoff, handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
 import { AGENT_TOOL_DEFINITIONS, MOTIVOS_ESCALACION } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
@@ -42,7 +42,7 @@ describe("Q2: acuse unico en toma pendiente", () => {
   it("sucursal abierta: el siguiente mensaje recibe el acuse fijo, sin hora inventada", async () => {
     const v = await escalado();
     avanza(min(2));
-    const r = await v.escribe("no mandaron el guacamole");
+    const r = await v.escribe("¿no me dicen nada?");
     expect(r.reply).toBe(ACUSE_Q2);
     expect(r.reply).not.toMatch(/\d{1,2}:\d{2}|a partir de las/);
     expect(r.escalated).toBe(false);
@@ -60,14 +60,14 @@ describe("Q2: acuse unico en toma pendiente", () => {
     expect(r.reply).toMatch(/cerrad/i);
   });
 
-  it("no repite el acuse en cada mensaje: callado dentro de los 15 min, otro acuse pasados los 15", async () => {
+  it("R16: el acuse oficial sale una vez por intervalo; dentro de los 15 min cada mensaje recibe el recordatorio breve (ya no hay silencio)", async () => {
     const v = await escalado();
     avanza(min(2));
     expect((await v.escribe("hola?")).reply).toBe(ACUSE_Q2);
     avanza(min(3));
-    expect((await v.escribe("¿ya salió?")).reply).toBeUndefined();
+    expect((await v.escribe("¿ya salió?")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
     avanza(min(10));
-    expect((await v.escribe("???")).reply).toBeUndefined();
+    expect((await v.escribe("???")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
     avanza(min(16));
     expect((await v.escribe("sigo aquí")).reply).toBe(ACUSE_Q2);
   });
@@ -131,7 +131,7 @@ describe("Q9: falla tecnica y no_puedo_resolver avisan al equipo sin callar al b
     expect(turnos).toBe(2);
   });
 
-  it.each(["no_puedo_resolver", "falla_sistema"])("%s CON un pedido en curso: se conserva el silencio (toma abierta)", async (motivo) => {
+  it.each(["no_puedo_resolver", "falla_sistema"])("%s CON un pedido en curso: se conserva la toma abierta (R16: recordatorio breve, sin vender)", async (motivo) => {
     const v = await nuevoViaje();
     await createOrder(v.world.repo, {
       organizationId: v.world.organizationId,
@@ -147,7 +147,7 @@ describe("Q9: falla tecnica y no_puedo_resolver avisan al equipo sin callar al b
     const r1 = await v.escribe("¿ya salió mi pedido?");
     expect(r1.escalated).toBe(true);
     expect(v.conversaciones.handoffs).toHaveLength(1);
-    expect((await v.escribe("hola?")).reply).toBeUndefined();
+    expect((await v.escribe("hola?")).reply).toBe(ACUSE_HANDOFF_REPETIDO); // R16: la toma sigue abierta (el bot no vuelve a vender) pero no calla
   });
 
   it("abreTomaDeHandoff: los motivos blandos solo abren con pedido en curso; sin contexto conservan la regla anterior (abren)", () => {
