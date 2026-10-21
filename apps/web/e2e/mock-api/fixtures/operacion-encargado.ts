@@ -4,7 +4,7 @@
 //
 // Estado en memoria por escenario (`p.estado`): un PATCH/POST de la cola se refleja en el GET siguiente, como en el servidor real.
 // Solo datos sinteticos (nombres y folios de ejemplo); nada de clientes reales.
-import { esquemaColaSalida, esquemaListoSalida, esquemaRespuestaClientePorTelefono, esquemaRespuestaCotizar, esquemaRespuestaCrearPedido, esquemaCrearPedidoOperador, esquemaCotizarPedidoOperador } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
+import { esquemaColaSalida, esquemaListoSalida, esquemaRespuestaClientePorTelefono, esquemaRespuestaCotizar, esquemaRespuestaCrearPedido, esquemaCrearPedidoOperador, esquemaCotizarPedidoOperador, esquemaViajesSalida, esquemaDespachoEntrada, esquemaDespachoSalida } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { CrearPedidoOperadorEntrada } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { AccionDisponible, ColaSalida, TarjetaPedido } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { Peticion, Ruta } from "../tipos.ts";
@@ -147,8 +147,70 @@ const rutasCaptura: readonly Ruta[] = [
   },
 ];
 
+// ---- Viajes (B3) ----
+
+const CHOFER_LUIS = uuid(900);
+const CHOFER_PEDRO = uuid(901); // fuera de turno: despacharle exige `forzar`
+
+const rutasViajes: readonly Ruta[] = [
+  {
+    metodo: "GET",
+    patron: `${BASE}/operacion/viajes`,
+    roles: ["owner", "admin", "staff"],
+    manejador: (p) => {
+      const lista = pedidos(p);
+      const enCamino = lista.filter((m) => m.estado === "en_camino");
+      const activos = (id: string) => enCamino.filter((m) => m.repartidorId === id).length;
+      return conContrato(esquemaViajesSalida, {
+        porSalir: lista.filter((m) => m.estado === "preparando" && m.canal === "domicilio").map(tarjeta),
+        enCamino: enCamino.map(tarjeta),
+        recientes: [],
+        repartidores: [
+          { id: CHOFER_LUIS, nombre: "Luis (prueba)", activos: activos(CHOFER_LUIS), disponible: true, sugerido: true },
+          { id: CHOFER_PEDRO, nombre: "Pedro (prueba)", activos: activos(CHOFER_PEDRO), disponible: false, sugerido: false },
+        ],
+        actualizadoEn: new Date().toISOString(),
+      });
+    },
+  },
+  {
+    // Despacho atomico: todo el lote o nada. Idempotente por Idempotency-Key; un pedido que ya no esta por salir revierte todo (409).
+    metodo: "POST",
+    patron: `${BASE}/orders/dispatch`,
+    roles: ["owner", "admin", "staff"],
+    manejador: (p) => {
+      const v = esquemaDespachoEntrada.validar(p.cuerpo);
+      if (!v.ok) return errorApi(400, "validation_error", "Cuerpo de despacho inválido.");
+      const llave = String(p.cabeceras["idempotency-key"] ?? "");
+      if (!llave) return errorApi(400, "validation_error", "Falta Idempotency-Key.");
+      const hechos = p.estado.obtener<Array<{ llave: string; respuesta: unknown }>>("operacion.despachos", () => []);
+      const previo = hechos.find((h) => h.llave === llave);
+      if (previo) return conContrato(esquemaDespachoSalida, previo.respuesta);
+      const { pedidos: ids, repartidorId, etaMin, forzar } = v.valor;
+      if (![CHOFER_LUIS, CHOFER_PEDRO].includes(repartidorId)) return errorApi(404, "repartidor_no_encontrado", "Ese chofer no es de esta sucursal.");
+      if (repartidorId === CHOFER_PEDRO && !forzar) return errorApi(422, "repartidor_no_disponible", "El chofer está fuera de turno.");
+      const lista = pedidos(p);
+      const elegidos = ids.map((id) => lista.find((m) => m.id === id));
+      const malo = elegidos.findIndex((m) => !m || m.estado !== "preparando" || m.canal !== "domicilio");
+      if (malo >= 0) return errorApi(409, "estado_cambio", "Alguno de los pedidos ya cambió de estado.");
+      const ahora = new Date().toISOString();
+      void etaMin;
+      const resultados = elegidos.map((m) => {
+        m!.estado = "en_camino";
+        m!.salioAt = ahora;
+        m!.repartidorId = repartidorId;
+        return { pedidoId: m!.id, resultado: "despachado", estado: "en_camino", salioAt: ahora, repartidorId, aviso: m!.sinAviso ? "omitido:sin_consentimiento" : "encolado" };
+      });
+      const respuesta = { resultados };
+      hechos.push({ llave, respuesta });
+      return conContrato(esquemaDespachoSalida, respuesta);
+    },
+  },
+];
+
 export const rutasOperacionEncargado: readonly Ruta[] = [
   ...rutasCaptura,
+  ...rutasViajes,
   {
     metodo: "GET",
     patron: `${BASE}/operacion/cola`,
