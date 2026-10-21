@@ -8,6 +8,7 @@ import { esquemaColaSalida, esquemaListoSalida } from "../../../../../packages/d
 import type { AccionDisponible, ColaSalida, TarjetaPedido } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { Peticion, Ruta } from "../tipos.ts";
 import { conContrato, errorApi } from "./operacion-comun.ts";
+import { rutasRestaurantesPanel } from "./restaurantes-panel.ts";
 
 const BASE = "/v1/restaurantes/:id/admin";
 const CLAVE = "operacion.cola";
@@ -68,6 +69,8 @@ function buscar(p: Peticion): PedidoMock | undefined {
   return pedidos(p).find((m) => m.id === p.params["orderId"]);
 }
 
+const rutaPatchEstadoEscritorio = rutasRestaurantesPanel.find((r) => r.metodo === "PATCH" && r.patron.endsWith("/orders/:orderId/status"))!;
+
 export const rutasOperacionEncargado: readonly Ruta[] = [
   {
     metodo: "GET",
@@ -82,7 +85,8 @@ export const rutasOperacionEncargado: readonly Ruta[] = [
     roles: ["owner", "admin", "staff"],
     manejador: (p) => {
       const m = buscar(p);
-      if (!m) return errorApi(404, "not_found", "Pedido no encontrado.");
+      // Un pedido que no es de la cola del panel lo atiende la fixture del panel de escritorio (Pedidos): esta ruta se registra antes y le cede el paso.
+      if (!m) return rutaPatchEstadoEscritorio.manejador(p);
       const destino = String((p.cuerpo as { status?: unknown } | null)?.status ?? "");
       if (destino === "en_camino") return errorApi(422, "usar_despacho", "Para sacar un pedido a reparto usa Viajes.");
       if (m.estado === destino) return { yaAplicado: true };

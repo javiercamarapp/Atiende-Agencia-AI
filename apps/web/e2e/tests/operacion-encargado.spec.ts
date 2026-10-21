@@ -1,5 +1,5 @@
-// Panel movil del encargado (Los Taquitos de PM): la Cola contra la API simulada. Flujo: ver la cola -> aceptar (una sola escritura con
-// Idempotency-Key) -> el pedido pasa a «En preparación» -> Listo; botones >= 56 dp y estados honestos.
+// Panel movil del encargado (Los Taquitos de PM): la Cola contra la API simulada. Flujo: ver la cola -> aceptar (una sola escritura,
+// doble toque seguro) -> el pedido pasa a «En preparación» -> Listo; botones >= 56 dp y estados honestos.
 import { expect, test } from "../helpers/fixtures.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
@@ -25,7 +25,7 @@ test.describe("operacion encargado: cola", () => {
     vigilante.verificar();
   });
 
-  test("aceptar manda una sola escritura con Idempotency-Key, el pedido pasa a preparacion y despues a Listo", async ({ page, iniciarSesion, mock, vigilante }) => {
+  test("aceptar manda una sola escritura, el pedido pasa a preparacion y despues a Listo", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("restaurantes", "staff");
     await page.goto(COLA);
     await mock.limpiarRegistro();
