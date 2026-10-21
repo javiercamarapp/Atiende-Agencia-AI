@@ -49,6 +49,7 @@ import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
+import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -713,6 +714,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // en el primero ("me cobraron dos veces") seguido de un "hola??". Sin rafaga el unico pendiente es el mensaje nuevo (igual que antes).
       // Solo los ultimos 5: una cola larga sin respuesta (p. ej. mensajes de una toma humana ya devuelta) no revive escalaciones viejas.
       const pendientes = mensajesSinResponder(messages).slice(-5);
+      // Paquete C: una llamada de WhatsApp (solo el aviso, sin texto de pedido) no entra al modelo ni abre toma: texto fijo, "por este medio no recibimos llamadas".
+      // Si el turno anterior ya fue este mismo aviso, la repeticion es mas breve. Nunca silencio. No cambia pedidos ni escala.
+      if (perfil === "taqueria_pm" && !preview && pendientes.length > 0 && pendientes.every((m) => esAvisoDeLlamada(m.content))) {
+        const ultimoAgente = [...messages].reverse().find((m) => m.role === "assistant");
+        tele.resultado = "ok";
+        return done({ reply: ultimoAgente?.content.includes(COPY_LLAMADA_NO_RECIBIDA) || ultimoAgente?.content.includes(COPY_LLAMADA_REPETIDA) ? COPY_LLAMADA_REPETIDA : COPY_LLAMADA_NO_RECIBIDA, orderId: null, propertyId });
+      }
       // Cotizacion/confirmacion en curso = el cliente arma un pedido NUEVO: «agrega X a mi pedido» es el carrito, no un cambio del pedido anterior (R12-01).
       // Una sola lectura del flujo para todo el turno: si falla, el clasificador sigue (sin carrito) y el error se relanza mas abajo, donde antes se leia por segunda vez.
       let flowLecturaError: unknown = null;

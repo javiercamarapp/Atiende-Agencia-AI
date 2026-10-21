@@ -42,7 +42,8 @@ describe("Paquete C: llamada de WhatsApp en el turno", () => {
   it("responde con el texto fijo, sin modelo, sin escalar y sin pedido", async () => {
     const v = await nuevoViaje();
     const r = await v.escribe("Llamada de voz perdida");
-    expect(r.reply).toBe(COPY_LLAMADA_NO_RECIBIDA);
+    // El primer mensaje de la conversación lleva antepuesto el aviso de privacidad (lo pone el sistema).
+    expect(r.reply?.endsWith(COPY_LLAMADA_NO_RECIBIDA)).toBe(true);
     expect(v.requests.length).toBe(0);
     expect(r.escalated).toBe(false);
     expect(v.callbacks.length).toBe(0);
@@ -56,7 +57,7 @@ describe("Paquete C: llamada de WhatsApp en el turno", () => {
 
   it("tres llamadas seguidas: nunca silencio; la repetición usa el texto breve", async () => {
     const v = await nuevoViaje();
-    expect((await v.escribe("Llamada perdida")).reply).toBe(COPY_LLAMADA_NO_RECIBIDA);
+    expect((await v.escribe("Llamada perdida")).reply?.endsWith(COPY_LLAMADA_NO_RECIBIDA)).toBe(true);
     expect((await v.escribe("Llamada perdida")).reply).toBe(COPY_LLAMADA_REPETIDA);
     expect((await v.escribe("Llamada perdida")).reply).toBe(COPY_LLAMADA_REPETIDA);
     expect(v.requests.length).toBe(0);
