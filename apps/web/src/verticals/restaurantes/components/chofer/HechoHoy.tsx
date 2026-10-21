@@ -23,7 +23,7 @@ export function HechoHoy({ apiBaseUrl, token, propertyId, fetchImpl = fetch }: H
     try {
       setEstado({ fase: "listo", hoy: await fetchHoyChofer(fetchImpl, apiBaseUrl, token, propertyId) });
     } catch (err) {
-      if (esFuncionNoDisponible(err)) setEstado({ fase: "no_disponible" });
+      if (esFuncionNoDisponible(err, { rutaAusente: true })) setEstado({ fase: "no_disponible" });
       else setEstado({ fase: "error", mensaje: err instanceof Error ? err.message : "No se pudo cargar tu resumen del día." });
     }
   }, [apiBaseUrl, token, propertyId, fetchImpl]);

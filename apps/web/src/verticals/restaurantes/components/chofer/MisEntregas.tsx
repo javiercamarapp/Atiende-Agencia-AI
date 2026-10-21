@@ -101,7 +101,7 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, almacen:
       setServidor(r.entregas);
       setCarga({ fase: "listo" });
     } catch (err) {
-      if (esFuncionNoDisponible(err)) {
+      if (esFuncionNoDisponible(err, { rutaAusente: true })) {
         if (!noDisponibleAvisado.current) {
           noDisponibleAvisado.current = true;
           onNoDisponible?.();

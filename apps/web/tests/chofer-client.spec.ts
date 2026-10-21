@@ -40,6 +40,13 @@ describe("fetchEntregasChofer", () => {
     expect(esErrorDeRed(err)).toBe(false);
   });
 
+  it("un 404 cuenta como funcion no disponible solo si se pide (lectura de lista en una API anterior a estas rutas)", async () => {
+    const fetchImpl = vi.fn(async () => json(404, { code: "not_found", message: "Ruta no encontrada" })) as unknown as typeof fetch;
+    const err = await fetchEntregasChofer(fetchImpl, API, "tok", "prop-1").catch((e: unknown) => e);
+    expect(esFuncionNoDisponible(err)).toBe(false);
+    expect(esFuncionNoDisponible(err, { rutaAusente: true })).toBe(true);
+  });
+
   it("sin red (fetch lanza) se marca como error de red y no como funcion no disponible", async () => {
     const fetchImpl = vi.fn(async () => {
       throw new TypeError("Failed to fetch");

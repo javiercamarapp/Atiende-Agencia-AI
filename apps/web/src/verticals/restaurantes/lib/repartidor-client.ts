@@ -160,9 +160,14 @@ export function nuevaLlaveIdempotencia(): string {
   return globalThis.crypto.randomUUID();
 }
 
-/** `true` si la API aun no tiene la funcion (501/404 `no_implementado`): la UI cae al panel anterior del chofer en vez de mostrar un error. */
-export function esFuncionNoDisponible(err: unknown): boolean {
-  return err instanceof RepartidorClientError && (err.status === 501 || err.code === "no_implementado" || err.code === "no_disponible");
+/**
+ * `true` si la API aun no tiene la funcion (501 o codigo `no_implementado`/`no_disponible`): la UI cae al panel anterior del chofer en vez de mostrar un
+ * error. Con `rutaAusente` (solo para las LECTURAS de lista, que no tienen un pedido que pueda "no existir") tambien cuenta un 404: una API desplegada
+ * antes de estas rutas responde 404 a una ruta que no conoce.
+ */
+export function esFuncionNoDisponible(err: unknown, opciones: { readonly rutaAusente?: boolean } = {}): boolean {
+  if (!(err instanceof RepartidorClientError)) return false;
+  return err.status === 501 || err.code === "no_implementado" || err.code === "no_disponible" || (opciones.rutaAusente === true && err.status === 404);
 }
 
 /** `true` si la peticion ni llego al servidor (sin red, corte): es el unico caso que se reintenta con la misma llave. */
