@@ -112,6 +112,14 @@ describe("Paquete C: módulo de prompt", () => {
     expect(p).not.toMatch(/s[ií] se puede cancelar|puede cancelar su pedido/i);
   });
 
+  it("queda ENLAZADO en el prompt de PM de WhatsApp (y no en el de voz)", async () => {
+    const { buildPmSystemPrompt } = await import("../src/whatsapp/perfil-pm.ts");
+    const { PM_CONFIG_POR_OMISION } = await import("../src/whatsapp/llm-turn-handler.ts");
+    const base = { businessName: PM_CONFIG_POR_OMISION.businessName, agentName: "el asistente virtual", deliveryTimeText: PM_CONFIG_POR_OMISION.deliveryTimeText, saludo: "Buenas tardes", branches: [], entryBranch: null, customer: { isNew: true as const }, fechaHoraLocal: "lunes 14:00", diaSemana: "lunes" };
+    expect(buildPmSystemPrompt(base)).toContain("PAQUETE C: SEGUIMIENTO");
+    expect(buildPmSystemPrompt({ ...base, canal: "voz" } as never)).not.toContain("PAQUETE C: SEGUIMIENTO");
+  });
+
   it("repo público: sin datos de chats reales (teléfonos, folios, direcciones) ni secretos", () => {
     expect(p).not.toMatch(/\+?\d{10,}/);
     expect(p).not.toMatch(/sk-|Bearer |api[_-]?key/i);
