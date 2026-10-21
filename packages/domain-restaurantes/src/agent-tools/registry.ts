@@ -1029,9 +1029,10 @@ function detallesDeResumen(
     return [...vistas];
   };
   // Como pago y propina: un campo que el modelo NO manda en esta cotizacion se hereda de la cotizacion vigente; uno mandado (incluso vacio) lo sustituye.
-  const salsas = input.requested_complements !== undefined ? etiquetas(input.requested_complements, canonicalRequestedComplement) : [...(previo?.salsas ?? [])];
-  const sinSalsas = input.omit_default_complements !== undefined ? etiquetas(input.omit_default_complements, (x) => (typeof x === "string" && x.trim() !== "" ? x.trim() : null)) : [...(previo?.sinSalsas ?? [])];
-  const notas = input.notes !== undefined ? sanearNotaDeResumen(input.notes) : previo?.notas;
+  // `null` es el relleno del modelo para «sin dato» (igual que omitir el campo): hereda. Vacio ([] o «») es una respuesta: sustituye.
+  const salsas = input.requested_complements != null ? etiquetas(input.requested_complements, canonicalRequestedComplement) : [...(previo?.salsas ?? [])];
+  const sinSalsas = input.omit_default_complements != null ? etiquetas(input.omit_default_complements, (x) => (typeof x === "string" && x.trim() !== "" ? x.trim() : null)) : [...(previo?.sinSalsas ?? [])];
+  const notas = input.notes != null ? sanearNotaDeResumen(input.notes) : previo?.notas;
   return { ...(salsas.length > 0 ? { salsas } : {}), ...(sinSalsas.length > 0 ? { sinSalsas } : {}), ...(notas ? { notas } : {}) };
 }
 
@@ -1117,7 +1118,7 @@ function propinaDeCotizacion(input: Record<string, unknown>, previo: OrderFlowCo
 
 /** Texto que acompana a `resumen_canonico` (solo con la maquina de cierre activa). */
 const INSTRUCCION_RESUMEN_CANONICO =
-  "Cuando ya tenga todos los datos (producto, entrega, pago y, si aplica, propina), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. El resumen solo muestra las salsas pedidas (requested_complements), las quitadas (omit_default_complements) y las notas (notes) que usted mandó en cotizar_pedido: mándelos ahí con los mismos valores que mandará en crear_pedido. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
+  "Cuando ya tenga todos los datos (producto, entrega, pago y, si aplica, propina), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. El resumen solo muestra las salsas pedidas (requested_complements), las quitadas (omit_default_complements) y las notas (notes) que usted mandó en cotizar_pedido: mándelos ahí con los mismos valores que mandará en crear_pedido. Si el cliente quita o cambia una salsa o una nota, mande la lista completa (incluso vacía) en cotizar_pedido; omitir el campo conserva lo anterior. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
 
 const CONFLICT_MESSAGE ="La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
 
@@ -1259,7 +1260,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const canonico = resumenBase
         ? resumenCanonico({ ...resumenBase, datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct } })
         : undefined;
-      const conCanonico = (r: object): object => (canonico ? { ...r, resumen_canonico: canonico, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : r);
+      const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto ? { ...r, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : r);
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&
@@ -1278,12 +1279,20 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         const vistoEnHistorial = resumenMostradoEnHistorial(previo.quotedTotal, ctx.conversacionReciente);
         const yaMostrada = previo.quotedTurn !== null && flow.turn !== null && previo.quotedTurn !== flow.turn && vistoEnHistorial !== false;
         const aviso = yaMostrada ? { ya_mostrada_al_cliente: true, siguiente_paso: SIGUIENTE_PASO_COTIZACION_REPETIDA } : {};
-        // R15: si esta re-cotizacion cambia lo que el resumen muestra (salsas, «Sin», notas) y el cliente AUN no lo ha visto, el servidor guarda el resumen nuevo (sin tocar el turno de la
-        // cotizacion): el que se muestre y el que se compare al confirmar son el mismo. Si ya se mostro, el cliente confirma lo que vio y no se reescribe.
-        if (!yaMostrada && canonico && resumenBase && canonico !== previo.resumenCanonico) {
-          await writeFlow(repo, ctx, flow, snap.version, snap.state, { ...previo, resumenCanonico: canonico, resumenBase });
+        // R15: si esta re-cotizacion cambia lo que el resumen muestra (salsas, «Sin», notas) y el cliente AUN no lo ha visto (estado «cotizado»), el servidor guarda el resumen nuevo (sin tocar
+        // el turno de la cotizacion): el que se muestre y el que se compare al confirmar son el mismo. Si ya se mostro, o ya esta «confirmado» (la firma no cubre salsas ni notas), NO se reescribe
+        // y se devuelve el texto GUARDADO: el modelo nunca pega una version distinta a la que el servidor compara. Si la escritura no se guarda, no se devuelve el resumen nuevo.
+        let textoVigente = canonico;
+        if (canonico && resumenBase && canonico !== previo.resumenCanonico) {
+          if (yaMostrada || snap.state !== "cotizado") {
+            textoVigente = previo.resumenCanonico;
+          } else {
+            const reescrito = await writeFlow(repo, ctx, flow, snap.version, snap.state, { ...previo, resumenCanonico: canonico, resumenBase });
+            if (reescrito === "conflict") continue;
+            if (reescrito === "unavailable") return outcome;
+          }
         }
-        return { ...outcome, result: conCanonico({ ...(outcome.result as object), quote_hash: quoteHash, ...aviso }), quoteHash };
+        return { ...outcome, result: conCanonico({ ...(outcome.result as object), quote_hash: quoteHash, ...aviso }, textoVigente), quoteHash };
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {
         quoteHash,
