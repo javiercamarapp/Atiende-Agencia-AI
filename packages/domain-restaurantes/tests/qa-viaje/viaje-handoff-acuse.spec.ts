@@ -26,7 +26,7 @@ describe("viaje: acuse al cliente mientras la toma sigue pendiente", () => {
     const v = await escalado();
     expect((await v.escribe("hola?")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
     avanza(min(0.5));
-    expect((await v.escribe("???")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
+    expect((await v.escribe("???")).reply).toBeUndefined(); // R16: tope de 1 recordatorio por minuto
   });
 
   it("pasado el minuto sin que nadie la tome: UN acuse oficial (queda en el historial y en el outbox); los siguientes reciben el recordatorio breve (R16)", async () => {
@@ -38,6 +38,8 @@ describe("viaje: acuse al cliente mientras la toma sigue pendiente", () => {
     expect(v.conversaciones.handoffs[0]!.estado).toBe("pendiente");
     const historial = await v.world.repo.whatsappAppendTurn(v.world.organizationId, "+5219995550111", [], null, null, null);
     expect(historial.at(-1)).toEqual({ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE });
+    expect((await v.escribe("hola?")).reply).toBeUndefined(); // R16: tope de 1 por minuto (el acuse oficial ya conto)
+    avanza(min(1.1));
     expect((await v.escribe("hola?")).reply).toBe(ACUSE_HANDOFF_REPETIDO);
     avanza(min(10));
     expect((await v.escribe("hola??")).reply).toBe(ACUSE_HANDOFF_REPETIDO);

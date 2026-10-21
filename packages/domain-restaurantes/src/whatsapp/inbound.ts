@@ -157,6 +157,16 @@ async function decisionAgenteApagado(repo: RestaurantesRepository, organizationI
   }
 }
 
+/** R16: tope por conversacion de los recordatorios en toma pendiente (1 por minuto): un cliente o bot que insiste no genera outbox ilimitado. El acuse oficial lo acota la base. Si el limitador falla, se contesta. */
+export const RECORDATORIO_TOMA_VENTANA_SEGUNDOS = 60;
+async function recordatorioPermitido(repo: RestaurantesRepository, organizationId: string, phone: string): Promise<boolean> {
+  try {
+    return (await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-toma-pendiente-recordatorio", actorHash(`${organizationId}:${phone}`), 1, RECORDATORIO_TOMA_VENTANA_SEGUNDOS))).allowed;
+  } catch {
+    return true;
+  }
+}
+
 /** R16: ¿el interruptor de la sucursal tiene al agente APAGADO? Ahi la toma es del equipo por decision del negocio: el texto fijo sale una vez y despues se calla (no se responde cada mensaje). */
 async function agenteApagadoEnSucursal(repo: RestaurantesRepository, propertyId: string | null | undefined): Promise<boolean> {
   if (!propertyId) return false;
@@ -248,7 +258,8 @@ export async function handleInboundWhatsAppMessage(
         if (handoff) {
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
           // R16: con la toma pendiente SIEMPRE se contesta (la base solo marca el acuse "oficial"); con la toma tomada atiende la persona y el bot calla.
-          const acuse = handoff === "pendiente" && handoffGate.acusePendiente !== undefined && (acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId)));
+          const permitido = handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await recordatorioPermitido(repo, organizationId, phone) : false;
+          const acuse = permitido && (acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId)));
           const textoAcuse = acuse ? textoParaTomaPendiente(body, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE) : ACUSE_HANDOFF_PENDIENTE;
           if (acuse) {
             await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
@@ -432,10 +443,10 @@ export const ACUSE_HANDOFF_PENDIENTE = "Ya está avisado el equipo, quedó regis
  * de esa ventana el cliente se quedaba en silencio). Honesta: no confirma estado, no promete nada. Sin modelo. */
 export const ACUSE_HANDOFF_REPETIDO = "Sigue avisado el equipo y quedó registrado su mensaje. En cuanto lo vean le responden.";
 /** Queja con detalle durante una toma pendiente: disculpa y texto fijo, sin preguntar ni pedir direccion/pin, sin prometer reposicion ni descuento. */
-export const ACUSE_QUEJA_EN_TOMA = "Lamento mucho lo ocurrido, disculpe el inconveniente. Su mensaje quedó registrado para el gerente, que ya está avisado y revisa su caso. Yo no puedo prometerle una reposición ni un descuento.";
+export const ACUSE_QUEJA_EN_TOMA = "Lamento mucho lo ocurrido, disculpe el inconveniente. Su mensaje quedó anotado en la conversación que atiende el equipo. Yo no puedo prometerle una reposición ni un descuento.";
 
 /** Con la toma ya abierta el clasificador de quejas no ve el pedido reciente: basta que el cliente diga que algo NO llego / falto ("no mandaron el guacamole"). */
-const QUEJA_DE_FALTANTE_EN_TOMA = /\bno\s+(?:me\s+|nos\s+)?(?:mandaron|enviaron|trajeron|llego|llegaron|dieron|incluyeron)\b|\b(?:me\s+|nos\s+)?falt(?:o|aron)\s+\w+/;
+const QUEJA_DE_FALTANTE_EN_TOMA = /\bno\s+(?:me\s+|nos\s+)?(?:mandaron|enviaron|trajeron|dieron|incluyeron)\s+\w+|\bno\s+(?:me|nos)\s+(?:llego|llegaron)\s+\w+|\b(?:me\s+|nos\s+)?falt(?:o|aron)\s+\w+/;
 
 /** Pura: texto de la respuesta a un mensaje del cliente con la toma `pendiente`. `acuseDeLaBase` = la base dio el acuse "oficial" de este intervalo (texto acordado, con la
  * apertura real si la sucursal esta cerrada, `textoOficial`); si no, una queja con detalle recibe su texto fijo y lo demas el recordatorio breve. */
@@ -701,7 +712,8 @@ export async function responderTrasEspera(
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
           if (handoff) {
             const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
-            if (handoff !== "pendiente" || !handoffGate.acusePendiente || (!acuseBase && (await agenteApagadoEnSucursal(repo, propertyId)))) return { salida: { ok: true, retryable: false }, silencio: true };
+            const permitido = handoff === "pendiente" && handoffGate.acusePendiente ? await recordatorioPermitido(repo, organizationId, phone) : false;
+            if (!permitido || (!acuseBase && (await agenteApagadoEnSucursal(repo, propertyId)))) return { salida: { ok: true, retryable: false }, silencio: true };
             const textoAcuse = textoParaTomaPendiente(textoPendiente, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE);
             await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
             if (deliverReply) {
