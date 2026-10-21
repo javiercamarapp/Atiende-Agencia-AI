@@ -14,6 +14,7 @@ import type {
   ConsolaRepository,
   OrgEquipoRepository,
   OrgFichaRepository,
+  OrgPreflightRepository,
   FichasAgenteRepository,
   ContratosRepository,
   PlataformaPrivacidadRepository,
@@ -700,6 +701,10 @@ export interface AppDeps {
    *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la
    *  lectura responde `disponible: false` y las mutaciones 503 honesto, nunca un 500. */
   readonly orgEquipoRepo?: (db: TenantDbSession) => OrgEquipoRepository;
+  /** Hechos de datos del "Listo para produccion" de una organizacion de restaurantes (go-live G-05/G-16; ver
+   *  packages/db/migrations/0057_superadmin_preflight_organizacion.sql y routes/superadmin-preflight.ts). Fabrica por sesion del caller, SOLO LECTURA.
+   *  OPCIONAL: ausente o migracion sin aplicar -> las verificaciones de datos salen "no disponible aun" (200), nunca un 500. */
+  readonly orgPreflightRepo?: (db: TenantDbSession) => OrgPreflightRepository;
   /** Fichas de agente y Model Ops de la consola (SA-L-09/SA-L-10; ver packages/db/migrations/0049_superadmin_fichas_agente.sql y
    *  routes/superadmin-agentes-fichas.ts). Fabrica por sesion del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL:
    *  ausente o migracion sin aplicar -> los campos salen `null` con su razon y `disponible: false` (200), nunca un 500. */
