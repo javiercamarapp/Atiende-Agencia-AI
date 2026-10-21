@@ -82,6 +82,30 @@ describe("PM R16: aviso al gerente armado por el servidor", () => {
     expect(spy.mock.calls[0]![0].message).toBe("Pregunta por factura");
   });
 
+  it("pedido de 30 renglones: folio, total, pago y entrega sobreviven y los productos se resumen con +N mas", async () => {
+    const items = Array.from({ length: 30 }, (_, n) => ({ id: `p${n}`, name: `Producto numero ${n} con nombre largo de prueba`, price: 10, quantity: 2 }));
+    const { spy } = await escalar("queja", "Faltó algo", { items, total: 1234.5 });
+    const msg = spy.mock.calls[0]![0].message!;
+    expect(msg).toContain("#4821");
+    expect(msg).toContain("Total: $1234.50");
+    expect(msg).toContain("Pago: tarjeta");
+    expect(msg).toContain("Entrega: Calle 20 #301");
+    expect(msg).toContain("+22 mas");
+    expect(msg).not.toContain("Producto numero 9 ");
+    expect(msg.length).toBeLessThanOrEqual(1000);
+  });
+
+  it("emoji en el borde del recorte no deja un sustituto UTF-16 suelto", async () => {
+    const { spy } = await escalar("queja", "x", { customerAddress: "Calle ".padEnd(195, "a") + "😀😀😀😀😀😀😀😀", branch: "Sucursal ".padEnd(55, "b") + "😀😀😀😀" });
+    const msg = spy.mock.calls[0]![0].message!;
+    expect(msg).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+  });
+
+  it("sin pedido reciente la instruccion de hora no afirma folio", async () => {
+    const { out } = await escalar("cancelacion_modificacion", "Agregar algo", undefined, true);
+    expect((out.result as { instruccion?: string }).instruccion).not.toMatch(/folio/);
+  });
+
   it("el prompt manda decir «le confirmo en un momento» y no dar horas al agregar a un pedido enviado", () => {
     const p = buildPmSystemPrompt({ businessName: PM_CONFIG_POR_OMISION.businessName, agentName: "el asistente virtual", deliveryTimeText: PM_CONFIG_POR_OMISION.deliveryTimeText, saludo: "Buenas", branches: [], entryBranch: null, customer: { isNew: true }, fechaHoraLocal: "lunes 14:00", diaSemana: "lunes" });
     expect(p).toContain("La HORA la confirma la sucursal");
