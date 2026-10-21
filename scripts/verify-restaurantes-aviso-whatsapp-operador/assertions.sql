@@ -348,3 +348,90 @@ select restaurantes.enqueue_messaging_outbox_diferido('00000000-0000-0000-0000-0
 reset role;
 select count(*) as filas_deberia_ser_1 from restaurantes.messaging_outbox where dedupe_key = 'k1';
 rollback;
+
+\echo '=== A10. el PRIMER consentimiento no se pisa: otro staff lo vuelve a registrar y primer_capturado_por sigue siendo el original ==='
+begin;
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5812');
+select restaurantes.registrar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '00000000-0000-0000-0000-0000000e58a1', '+529990000001', true, 'verbal_llamada', null);
+reset role;
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5813');
+select restaurantes.registrar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '00000000-0000-0000-0000-0000000e58a1', '+529990000001', true, 'verbal_llamada', null);
+reset role;
+select (primer_capturado_por = '00000000-0000-0000-0000-0000000e5812' and capturado_por = '00000000-0000-0000-0000-0000000e5813' and primera_via = 'verbal_llamada' and primer_otorgado_en is not null)::int as primer_deberia_ser_1 from restaurantes.whatsapp_aviso_consentimiento where organization_id = '00000000-0000-0000-0000-0000000e5801';
+rollback;
+
+\echo '=== A11. un NO inicial no cuenta como primer consentimiento ==='
+begin;
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5812');
+select restaurantes.registrar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '00000000-0000-0000-0000-0000000e58a1', '+529990000001', false, 'verbal_llamada', null);
+reset role;
+select (primer_otorgado_en is null and primer_capturado_por is null and revocado_por = 'staff')::int as sin_primer_deberia_ser_1 from restaurantes.whatsapp_aviso_consentimiento where organization_id = '00000000-0000-0000-0000-0000000e5801';
+rollback;
+
+\echo '=== C8. RECHAZADO: la huella del telefono no es legible para authenticated (grant por columna) -> 42501 ==='
+begin;
+set local role authenticated;
+select public.t_como('{OWNER_A}');
+select public.t_esperar_error($q$select telefono_hash from restaurantes.whatsapp_aviso_consentimiento$q$, '42501');
+rollback;
+
+\echo '=== D4. una BAJA del sistema NO la reactiva el personal: bloqueado_por_baja y sigue sin ser vigente ==='
+begin;
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5812');
+select restaurantes.registrar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '00000000-0000-0000-0000-0000000e58a1', '+529990000001', true, 'verbal_llamada', null);
+select public.t_como('');
+select restaurantes.revocar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '+529990000001');
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5812');
+select (restaurantes.registrar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '00000000-0000-0000-0000-0000000e58a1', '+529990000001', true, 'verbal_llamada', null)->>'bloqueado_por_baja' = 'true' and not restaurantes.consentimiento_aviso_vigente('00000000-0000-0000-0000-0000000e5801', '+529990000001'))::int as bloqueado_deberia_ser_1;
+rollback;
+
+\echo '=== D5. el personal tampoco pisa el registro de la BAJA con un NO: revocado_por sigue siendo sistema ==='
+begin;
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5812');
+select restaurantes.registrar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '00000000-0000-0000-0000-0000000e58a1', '+529990000001', true, 'verbal_llamada', null);
+select public.t_como('');
+select restaurantes.revocar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '+529990000001');
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5812');
+select restaurantes.registrar_consentimiento_aviso('00000000-0000-0000-0000-0000000e5801', '00000000-0000-0000-0000-0000000e58a1', '+529990000001', false, 'verbal_llamada', null);
+reset role;
+select (revocado_por = 'sistema' and primer_capturado_por = '00000000-0000-0000-0000-0000000e5812')::int as baja_deberia_ser_1 from restaurantes.whatsapp_aviso_consentimiento where organization_id = '00000000-0000-0000-0000-0000000e5801';
+rollback;
+
+\echo '=== E8. el chofer encola SOLO el aviso 'entregado' de su pedido entregado ==='
+begin;
+update restaurantes.orders set status = 'entregado', assigned_repartidor_id = '00000000-0000-0000-0000-0000000e5814' where id = '00000000-0000-0000-0000-0000000e58c1';
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5814');
+select (restaurantes.enqueue_messaging_outbox_diferido('00000000-0000-0000-0000-0000000e5801', 'whatsapp', 'pedido_entregado', 'order-status:00000000-0000-0000-0000-0000000e58c1:entregado', '{}', now() + interval '60 seconds') is not null)::int as chofer_deberia_ser_1;
+rollback;
+
+\echo '=== E9. RECHAZADO: el chofer no encola otro evento (en_camino) -> 42501 ==='
+begin;
+update restaurantes.orders set status = 'entregado', assigned_repartidor_id = '00000000-0000-0000-0000-0000000e5814' where id = '00000000-0000-0000-0000-0000000e58c1';
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5814');
+select public.t_esperar_error($q$select restaurantes.enqueue_messaging_outbox_diferido('00000000-0000-0000-0000-0000000e5801', 'whatsapp', 'pedido_en_camino', 'order-status:00000000-0000-0000-0000-0000000e58c1:en_camino', '{}', now() + interval '60 seconds')$q$, '42501');
+rollback;
+
+\echo '=== E10. RECHAZADO: el chofer no encola el 'entregado' de un pedido que NO le toca -> 42501 ==='
+begin;
+update restaurantes.orders set status = 'entregado' where id = '00000000-0000-0000-0000-0000000e58c1';
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5814');
+select public.t_esperar_error($q$select restaurantes.enqueue_messaging_outbox_diferido('00000000-0000-0000-0000-0000000e5801', 'whatsapp', 'pedido_entregado', 'order-status:00000000-0000-0000-0000-0000000e58c1:entregado', '{}', now() + interval '60 seconds')$q$, '42501');
+rollback;
+
+\echo '=== E11. RECHAZADO: el chofer no encola el 'entregado' si el pedido aun esta en camino -> 42501 ==='
+begin;
+update restaurantes.orders set status = 'en_camino', assigned_repartidor_id = '00000000-0000-0000-0000-0000000e5814' where id = '00000000-0000-0000-0000-0000000e58c1';
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5814');
+select public.t_esperar_error($q$select restaurantes.enqueue_messaging_outbox_diferido('00000000-0000-0000-0000-0000000e5801', 'whatsapp', 'pedido_entregado', 'order-status:00000000-0000-0000-0000-0000000e58c1:entregado', '{}', now() + interval '60 seconds')$q$, '42501');
+rollback;
