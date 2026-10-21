@@ -32,3 +32,69 @@ export function etiquetaChofer(c: Chofer): string {
 export function textoBotonSalio(n: number): string {
   return n === 1 ? "Salió (1 pedido)" : `Salió (${n} pedidos)`;
 }
+
+export interface PedidoLote {
+  readonly id: string;
+  readonly numero: number;
+  readonly estado: string;
+}
+
+/** `desdeEstado` del despacho: el estado REAL de los pedidos del lote. Solo `preparando` existe en el contrato; si algun pedido esta en otro estado no se manda (el servidor decide y responde `estado_cambio`). */
+export function desdeEstadoDe(lote: readonly PedidoLote[]): "preparando" | undefined {
+  return lote.length > 0 && lote.every((p) => p.estado === "preparando") ? "preparando" : undefined;
+}
+
+export interface ResultadoLote {
+  readonly pedidoId: string;
+  readonly resultado: "despachado" | "ya_aplicado" | "reasignado";
+  readonly aviso: string;
+}
+
+export interface ResumenLote {
+  readonly salieron: readonly number[];
+  readonly yaEstaban: readonly number[];
+  readonly reasignados: readonly number[];
+  /** Pedidos del lote que el servidor NO reporto: no se asume que salieron. */
+  readonly sinRespuesta: readonly number[];
+  readonly sinAviso: number;
+}
+
+/** Cruza lo enviado con lo que respondio el servidor: nada se cuenta como «salio» si no vino `despachado`. */
+export function resumirLote(lote: readonly PedidoLote[], resultados: readonly ResultadoLote[]): ResumenLote {
+  const por = new Map(resultados.map((r) => [r.pedidoId, r]));
+  const salieron: number[] = [];
+  const yaEstaban: number[] = [];
+  const reasignados: number[] = [];
+  const sinRespuesta: number[] = [];
+  let sinAviso = 0;
+  for (const p of lote) {
+    const r = por.get(p.id);
+    if (!r) sinRespuesta.push(p.numero);
+    else if (r.resultado === "despachado") salieron.push(p.numero);
+    else if (r.resultado === "ya_aplicado") yaEstaban.push(p.numero);
+    else reasignados.push(p.numero);
+    if (r && r.resultado === "despachado" && r.aviso.startsWith("omitido")) sinAviso += 1;
+  }
+  return { salieron, yaEstaban, reasignados, sinRespuesta, sinAviso };
+}
+
+const lista = (n: readonly number[]) => n.map((x) => `#${x}`).join(", ");
+
+/** Mensajes para la persona: uno de exito (si salio alguno) y uno de atencion por cada grupo que NO salio. */
+export function mensajesLote(r: ResumenLote, chofer: string): { readonly exito: string | null; readonly atencion: readonly string[] } {
+  const atencion: string[] = [];
+  if (r.sinRespuesta.length > 0) atencion.push(`El servidor no confirmó ${r.sinRespuesta.length === 1 ? "el pedido" : "los pedidos"} ${lista(r.sinRespuesta)}: revisa en «En camino» antes de volver a intentar.`);
+  if (r.yaEstaban.length > 0) atencion.push(`${lista(r.yaEstaban)} ya estaba${r.yaEstaban.length === 1 ? "" : "n"} en camino con ${chofer}.`);
+  if (r.reasignados.length > 0) atencion.push(`${lista(r.reasignados)} se reasignó${r.reasignados.length === 1 ? "" : "aron"} a ${chofer}.`);
+  if (r.sinAviso > 0) atencion.push(`${r.sinAviso === 1 ? "1 cliente quedó" : `${r.sinAviso} clientes quedaron`} sin aviso por WhatsApp: avísales por llamada.`);
+  const exito = r.salieron.length > 0 ? `${r.salieron.length === 1 ? `El pedido ${lista(r.salieron)} salió` : `Los pedidos ${lista(r.salieron)} salieron`} con ${chofer}.` : null;
+  return { exito, atencion };
+}
+
+/** 409 `estado_cambio`: dice cual pedido cambio si el servidor lo informa (`details.pedidoId`), si no, avisa del lote completo (el despacho es todo o nada). */
+export function textoEstadoCambio(lote: readonly PedidoLote[], details: Readonly<Record<string, string>> | null): string {
+  const culpable = details?.["pedidoId"] ? lote.find((p) => p.id === details["pedidoId"]) : undefined;
+  return culpable
+    ? `El pedido #${culpable.numero} ya cambió de estado y nada salió. Se actualizó la lista: revisa y vuelve a elegir.`
+    : "Alguno de los pedidos ya cambió de estado y nada salió. Se actualizó la lista: revisa y vuelve a elegir.";
+}

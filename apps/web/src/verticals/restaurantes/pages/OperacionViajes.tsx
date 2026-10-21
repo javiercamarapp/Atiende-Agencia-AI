@@ -13,11 +13,12 @@ import { etiquetaActualizado } from "../lib/sondeo-pedidos.ts";
 import { EN_CAMINO_ROJO_MIN, semaforoPedido } from "../lib/semaforo.ts";
 import { aplicarTemaAutomatico } from "../lib/tema-nocturno.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
-import { ETA_POR_OMISION_MIN, MAX_LOTE, alternarSeleccion, choferInicial, depurarSeleccion, etiquetaChofer, textoBotonSalio } from "../lib/viajes.ts";
+import { puedeEn } from "../lib/permisos.ts";
+import { ETA_POR_OMISION_MIN, MAX_LOTE, alternarSeleccion, choferInicial, depurarSeleccion, desdeEstadoDe, etiquetaChofer, mensajesLote, resumirLote, textoBotonSalio, textoEstadoCambio } from "../lib/viajes.ts";
 
 const SONDEO_VIAJES_MS = 15_000;
 
-export function OperacionViajesPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   const [datos, setDatos] = useState<ViajesSalida | null>(null);
   const [consultadoEnMs, setConsultadoEnMs] = useState<number>(() => Date.now());
   const [ultimaOk, setUltimaOk] = useState<number | null>(null);
@@ -71,27 +72,31 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId }: Restauran
   const etaNum = Number(eta);
   const etaValida = Number.isInteger(etaNum) && etaNum >= 5 && etaNum <= 240;
   const elegidos = porSalir.filter((p) => seleccion.includes(p.id));
-  const puedeSalir = elegidos.length > 0 && chofer !== null && etaValida && !enviando;
+  // El despacho es del encargado: sin el permiso la pantalla es solo de consulta (el servidor valida igual).
+  const puedeDespachar = puedeEn(role, "viajes.despachar");
+  const puedeSalir = puedeDespachar && elegidos.length > 0 && chofer !== null && etaValida && !enviando;
 
   async function despachar(forzar: boolean) {
-    if (!chofer || elegidos.length === 0) return;
+    if (enviando || !puedeDespachar || !chofer || elegidos.length === 0) return;
     const ids = elegidos.map((p) => p.id);
     const clave = JSON.stringify({ ids: [...ids].sort(), chofer: chofer.id, etaNum, forzar });
     if (intento.current?.clave !== clave) intento.current = { clave, llave: nuevaLlave() }; // misma llave solo si es el mismo intento
     setEnviando(true);
     try {
-      const r = await despacharPedidos(fetchImpl, apiBaseUrl, token, propertyId, { pedidos: ids, repartidorId: chofer.id, desdeEstado: "preparando", etaMin: etaNum, ...(forzar ? { forzar: true } : {}) }, intento.current.llave);
+      const r = await despacharPedidos(fetchImpl, apiBaseUrl, token, propertyId, { pedidos: ids, repartidorId: chofer.id, ...(desdeEstadoDe(elegidos) ? { desdeEstado: desdeEstadoDe(elegidos) } : {}), etaMin: etaNum, ...(forzar ? { forzar: true } : {}) }, intento.current.llave);
       intento.current = null;
-      setSeleccion([]);
-      const sinAviso = r.resultados.filter((x) => x.aviso.startsWith("omitido")).length;
-      notify.success(`${r.resultados.length === 1 ? "1 pedido salió" : `${r.resultados.length} pedidos salieron`} con ${chofer.nombre}.`);
-      if (sinAviso > 0) notify.warning(`${sinAviso === 1 ? "1 cliente quedó" : `${sinAviso} clientes quedaron`} sin aviso por WhatsApp: avísales por llamada.`);
+      const confirmados = new Set(r.resultados.map((x) => x.pedidoId));
+      setSeleccion((sel) => sel.filter((id) => !confirmados.has(id))); // lo que el servidor no confirmo sigue marcado
+      const m = mensajesLote(resumirLote(elegidos, r.resultados), chofer.nombre);
+      if (m.exito) notify.success(m.exito);
+      else notify.error("Ningún pedido salió.");
+      for (const t of m.atencion) notify.warning(t);
     } catch (e) {
       if (e instanceof ErrorOperacion && e.code === "repartidor_no_disponible" && !forzar) {
         setFueraDeTurno(chofer.nombre);
       } else if (e instanceof ErrorOperacion && e.esEstadoCambio) {
         intento.current = null;
-        notify.info("Alguno de los pedidos ya cambió de estado; se actualizó la lista. Revisa y vuelve a elegir.");
+        notify.warning(textoEstadoCambio(elegidos, e.details));
       } else {
         if (e instanceof ErrorOperacion && e.status >= 400 && e.status < 500) intento.current = null;
         notify.error(e instanceof ErrorOperacion ? e.message : "No hay conexión. Nada salió; vuelve a tocar Salió.");
@@ -146,6 +151,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId }: Restauran
 
         <section aria-label="Por salir" className="space-y-3">
           <h2 className="text-lg font-semibold text-foreground">Por salir ({porSalir.length})</h2>
+          {!puedeDespachar && <p role="status" className="rounded-lg border border-border bg-card p-3 text-base text-muted-foreground">Solo consulta: tu perfil no puede despachar pedidos.</p>}
           {porSalir.length === 0 ? (
             <EstadoVacio icon={Hourglass} titulo="Nada por salir" mensaje="No hay pedidos a domicilio esperando chofer." />
           ) : (
@@ -156,8 +162,9 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId }: Restauran
                   <li key={p.id}>
                     <button
                       type="button"
-                      role="checkbox"
-                      aria-checked={marcado}
+                      role={puedeDespachar ? "checkbox" : undefined}
+                      disabled={!puedeDespachar}
+                      aria-checked={puedeDespachar ? marcado : undefined}
                       data-testid={`viaje-pedido-${p.numero}`}
                       className={`flex min-h-14 w-full items-center gap-3 rounded-lg border-2 bg-card p-3 text-left ${marcado ? "border-primary" : "border-border"}`}
                       onClick={() => {
@@ -193,10 +200,10 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId }: Restauran
           )}
           {topeAvisado && <p role="status" className="text-sm text-muted-foreground">Un viaje lleva máximo {MAX_LOTE} pedidos. Quita uno para agregar otro.</p>}
 
-          {porSalir.length > 0 && (
+          {porSalir.length > 0 && puedeDespachar && (
             <div className="space-y-3 rounded-lg border border-border bg-card p-3">
               <FormField label="Chofer" required>
-                <Selector value={choferId} onChange={(e) => setChoferId(e.target.value)} className="h-12 text-base">
+                <Selector value={choferId} onChange={(e) => setChoferId(e.target.value)} className="h-14 text-base">
                   <option value="">Elige un chofer</option>
                   {(datos?.repartidores ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
@@ -206,7 +213,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId }: Restauran
                 </Selector>
               </FormField>
               <FormField label="Tiempo estimado de entrega (min)" error={etaValida ? undefined : "Escribe entre 5 y 240 minutos."}>
-                <Input type="number" inputMode="numeric" min={5} max={240} className="h-12 text-lg" value={eta} onChange={(e) => setEta(e.target.value)} />
+                <Input type="number" inputMode="numeric" min={5} max={240} className="h-14 text-lg" value={eta} onChange={(e) => setEta(e.target.value)} />
               </FormField>
               <Button type="button" className="h-14 w-full text-lg" disabled={!puedeSalir} loading={enviando} onClick={() => setConfirmando(true)}>
                 {textoBotonSalio(elegidos.length)}
