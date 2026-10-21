@@ -219,12 +219,12 @@ describe("assignBranch con geocercas", () => {
     expect(r.estado).toBe("no_reconocida");
   });
 
-  it("colonia con coordenadas dentro de T8 y SIN pin: la zona se resuelve por poligono (Altabrisa)", async () => {
+  it("colonia CON coordenadas dentro de T8 y SIN pin: NO afirma cobertura (ni por el centroide ni por el radio); pide el pin", async () => {
     const { repo, organizationId } = mundo();
     const p = interior(zona("altabrisa"));
     repo.seedKnownZone({ id: randomUUID(), organizationId, name: "Residencial Ficticia Altamira", lat: p.lat, lng: p.lng });
     const r = await assignBranch(repo, { organizationId, colonia: "Residencial Ficticia Altamira", geocercas: GEOCERCAS_PM });
-    expect(r).toMatchObject({ estado: "asignada", branchSlug: "altabrisa", via: "zona" });
+    expect(r).toEqual({ estado: "no_reconocida", message: GEOCERCA_COLONIA_SIN_PIN_MENSAJE });
   });
   it("nombre de colonia desconocido y SIN pin (p. ej. un fraccionamiento de Altabrisa o Country Towers): NO inventa cobertura; pide el pin y, si no, la sucursal confirma y escala", async () => {
     const { repo, organizationId } = mundo();
