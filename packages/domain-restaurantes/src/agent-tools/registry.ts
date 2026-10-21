@@ -1014,7 +1014,10 @@ async function horaYDireccionDeResumen(
  * R15/T7-001: lo que el cliente pidio y NO cambia el total pero SI el pedido (salsas pedidas, salsas quitadas, notas ya capturadas) para que el resumen canonico se lo muestre antes de su sí.
  * Solo lee lo que el modelo manda en cotizar_pedido (no entra a la huella ni a la firma de cierre): si no lo manda, el resumen queda como siempre.
  */
-function detallesDeResumen(input: Record<string, unknown>): { readonly salsas?: readonly string[]; readonly sinSalsas?: readonly string[]; readonly notas?: string } {
+function detallesDeResumen(
+  input: Record<string, unknown>,
+  previo?: { readonly salsas?: readonly string[]; readonly sinSalsas?: readonly string[]; readonly notas?: string },
+): { readonly salsas?: readonly string[]; readonly sinSalsas?: readonly string[]; readonly notas?: string } {
   const etiquetas = (v: unknown, canon: (x: unknown) => unknown): string[] => {
     if (!Array.isArray(v)) return [];
     const vistas = new Set<string>();
@@ -1025,9 +1028,10 @@ function detallesDeResumen(input: Record<string, unknown>): { readonly salsas?: 
     }
     return [...vistas];
   };
-  const salsas = etiquetas(input.requested_complements, canonicalRequestedComplement);
-  const sinSalsas = etiquetas(input.omit_default_complements, (x) => (typeof x === "string" && x.trim() !== "" ? x.trim() : null));
-  const notas = sanearNotaDeResumen(input.notes);
+  // Como pago y propina: un campo que el modelo NO manda en esta cotizacion se hereda de la cotizacion vigente; uno mandado (incluso vacio) lo sustituye.
+  const salsas = input.requested_complements !== undefined ? etiquetas(input.requested_complements, canonicalRequestedComplement) : [...(previo?.salsas ?? [])];
+  const sinSalsas = input.omit_default_complements !== undefined ? etiquetas(input.omit_default_complements, (x) => (typeof x === "string" && x.trim() !== "" ? x.trim() : null)) : [...(previo?.sinSalsas ?? [])];
+  const notas = input.notes !== undefined ? sanearNotaDeResumen(input.notes) : previo?.notas;
   return { ...(salsas.length > 0 ? { salsas } : {}), ...(sinSalsas.length > 0 ? { sinSalsas } : {}), ...(notas ? { notas } : {}) };
 }
 
@@ -1243,9 +1247,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const resumenBase =
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
           ? {
-              // R15/T7-001: la tortilla de un KILO no vive en el renglon cotizado (`tortilla` es null): sale de lo que el cliente eligio (`quotedItems[].tortillaKilo`).
-              lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla ?? quotedItems?.find((q) => q.id === l.productId)?.tortillaKilo ?? null })),
-              ...detallesDeResumen(input),
+              // R15/T7-001: la tortilla de un KILO no vive en el renglon cotizado (`tortilla` es null): sale de lo que el cliente eligio (`quotedItems[idx].tortillaKilo`, por indice: dos renglones del mismo producto con tortillas distintas no se mezclan).
+              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
+              ...detallesDeResumen(input, previoVigente?.resumenBase),
               total: quotedQuote.total,
               descuento: quotedQuote.descuento,
               canal: canalOf(input.canal),
@@ -1274,6 +1278,11 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         const vistoEnHistorial = resumenMostradoEnHistorial(previo.quotedTotal, ctx.conversacionReciente);
         const yaMostrada = previo.quotedTurn !== null && flow.turn !== null && previo.quotedTurn !== flow.turn && vistoEnHistorial !== false;
         const aviso = yaMostrada ? { ya_mostrada_al_cliente: true, siguiente_paso: SIGUIENTE_PASO_COTIZACION_REPETIDA } : {};
+        // R15: si esta re-cotizacion cambia lo que el resumen muestra (salsas, «Sin», notas) y el cliente AUN no lo ha visto, el servidor guarda el resumen nuevo (sin tocar el turno de la
+        // cotizacion): el que se muestre y el que se compare al confirmar son el mismo. Si ya se mostro, el cliente confirma lo que vio y no se reescribe.
+        if (!yaMostrada && canonico && resumenBase && canonico !== previo.resumenCanonico) {
+          await writeFlow(repo, ctx, flow, snap.version, snap.state, { ...previo, resumenCanonico: canonico, resumenBase });
+        }
         return { ...outcome, result: conCanonico({ ...(outcome.result as object), quote_hash: quoteHash, ...aviso }), quoteHash };
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", {

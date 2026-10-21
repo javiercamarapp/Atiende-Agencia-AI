@@ -431,7 +431,7 @@ export function sanearNotaDeResumen(nota: unknown): string | undefined {
   if (typeof nota !== "string") return undefined;
   // Recorrido lineal (sin expresiones regulares con repeticiones anidadas: la nota es texto no confiable). Una racha de digitos y separadores con 7 o mas digitos es un telefono o
   // una tarjeta y se quita; una palabra con «@» es un correo y se quita.
-  const texto = nota.length > 1000 ? nota.slice(0, 1000) : nota;
+  const texto = nota.length > 1000 ? Array.from(nota).slice(0, 1000).join("") : nota;
   let sinNumeros = "";
   let racha = "";
   let digitos = 0;
@@ -458,12 +458,13 @@ export function sanearNotaDeResumen(nota: unknown): string | undefined {
     .join(" ")
     .trim();
   if (!limpia) return undefined;
-  return limpia.length > MAX_NOTA_RESUMEN ? `${limpia.slice(0, MAX_NOTA_RESUMEN - 1).trimEnd()}…` : limpia;
+  const puntos = Array.from(limpia);
+  return puntos.length > MAX_NOTA_RESUMEN ? `${puntos.slice(0, MAX_NOTA_RESUMEN - 1).join("").trimEnd()}…` : limpia;
 }
 
 function acotarLista(items: readonly string[]): string {
-  const texto = items.join(", ");
-  return texto.length > MAX_LISTA_SALSAS_RESUMEN ? `${texto.slice(0, MAX_LISTA_SALSAS_RESUMEN - 1).trimEnd()}…` : texto;
+  const puntos = Array.from(items.join(", "));
+  return puntos.length > MAX_LISTA_SALSAS_RESUMEN ? `${puntos.slice(0, MAX_LISTA_SALSAS_RESUMEN - 1).join("").trimEnd()}…` : puntos.join("");
 }
 
 /**
