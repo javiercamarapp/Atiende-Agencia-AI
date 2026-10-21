@@ -25,9 +25,15 @@
 --
 -- Compatibilidad con la base SIN migrar: el TypeScript captura 42703 (columna) / 42883 (funcion) en SAVEPOINT y cae al comportamiento anterior
 -- (staff = encargado acotado, tiempos nulos). Orden de despliegue: aplicar ANTES o DESPUES del codigo; no cambia nada visible por si sola.
--- Reversa: alter table restaurantes.orders drop column if exists salio_at, listo_at, capturado_por, canal_captura, indicaciones_entrega, paga_con,
---   cobrado_monto; alter table core.membership drop column if exists perfil_operativo; drop function restaurantes.operador_puede(uuid, uuid, text);
---   drop function restaurantes.staff_perfil_operativo_guardar(uuid, uuid, text).
+-- REVERSA (ORDEN OBLIGATORIO 092 -> 091 -> 090: las funciones plpgsql NO registran dependencias de columnas ni de funciones, asi que revertir una base
+--   antes que quienes la usan NO falla al revertir pero rompe en tiempo de ejecucion). Esta migracion solo pierde DATOS NUEVOS (tiempos, captura, cobro,
+--   perfiles) y nada historico:
+--     drop function if exists restaurantes.staff_perfil_operativo_guardar(uuid, uuid, text);
+--     drop function if exists restaurantes.operador_puede(uuid, uuid, text);
+--     alter table core.membership drop column if exists perfil_operativo;
+--     drop index if exists restaurantes.orders_org_prop_status_created_idx;
+--     alter table restaurantes.orders drop column if exists salio_at, drop column if exists listo_at, drop column if exists capturado_por,
+--       drop column if exists canal_captura, drop column if exists indicaciones_entrega, drop column if exists paga_con, drop column if exists cobrado_monto;
 
 alter table restaurantes.orders
   add column if not exists salio_at timestamptz,
