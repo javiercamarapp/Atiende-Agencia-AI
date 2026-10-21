@@ -1,5 +1,5 @@
 // Paquete B (ubicacion y cobertura) del agente de WhatsApp de Los Taquitos de PM: reglas de prompt como MODULO APARTE.
-// Un integrador lo enlaza a `buildPmSystemPrompt` (perfil-pm.ts) DESPUES de las reglas duras y del flujo: lo que dice aqui gana sobre el paso 4 de domicilio
+// Se enlaza en `buildPmSystemPrompt` (perfil-pm.ts) SOLO con la bandera RESTAURANTES_GEOCERCAS=1 (B3/B4/B5/B7 cambian conducta productiva); va DESPUES de las reglas duras y del flujo: lo que dice aqui gana sobre el paso 4 de domicilio
 // en lo que contradiga («calle, número y colonia» y «las coordenadas nunca son dirección»). Sin datos reales: los telefonos y las zonas salen de las
 // herramientas y de DATOS DEL NEGOCIO (configuracion), nunca de este texto.
 // Decision: la cobertura de los chats es inconsistente, asi que NO se endurece ninguna regla de zona aqui; donde la herramienta no define, la sucursal confirma.
@@ -12,13 +12,3 @@ B4. OTRA SUCURSAL. Si la zona del cliente le toca a otra sucursal: no tome el do
 B5. SIN DATO NO AFIRME. Si la herramienta no define la zona (por confirmar, condicional, "hoy no llegamos", saturación o lluvia), no afirme ni niegue el reparto: diga que la sucursal se lo confirma, ofrezca recoger y pase con una persona UNA vez (escalar_a_humano, motivo zona_no_reconocida). No invente reglas de cobertura que la herramienta no devolvió.
 B6. PIN QUE CONTRADICE AL TEXTO. Si el pin, el link de mapa y la colonia escrita dicen cosas distintas, prefiera el pin y confirme la colonia en una línea ("¿Es por [colonia]?"); no discuta ni pida la dirección otra vez.
 B7. MÍNIMO Y ENVÍO, DESDE LA PRIMERA COTIZACIÓN A DOMICILIO y antes de pedir más datos: pedido mínimo de $200 en productos y sin cargo de envío. La propina es voluntaria y va al repartidor; nunca la presente como obligatoria ni como costo de envío. Si no llega al mínimo, diga cuánto falta, sugiera 2 o 3 productos del menú con el precio de buscar_producto, u ofrezca recoger (sin mínimo). Dígalo una vez, no después de que el cliente ya eligió.`;
-
-export const PM_PAQUETE_B_REGLAS_VOZ = `# UBICACIÓN Y COBERTURA (paquete B)
-B3. Con la colonia o referencia, llame buscar_sucursal_cercana ANTES de decir si llegan; nunca lo decida usted.
-B4. Zona de otra sucursal: no tome el domicilio; dé su teléfono tal como lo trae la herramienta o DATOS DEL NEGOCIO (nunca lo invente; sin teléfono, la sucursal se lo confirma) y ofrezca recoger aquí.
-B5. Sin dato de zona no afirme ni niegue: la sucursal se lo confirma; ofrezca recoger y pase con una persona UNA vez (escalar_a_humano, zona_no_reconocida).
-B7. Domicilio: mínimo $200 en productos y sin cargo de envío; la propina es voluntaria y va al repartidor. Dígalo al cotizar, antes de pedir más datos.`;
-
-export function bloquePaqueteB(canal: "whatsapp" | "voz"): string {
-  return canal === "voz" ? PM_PAQUETE_B_REGLAS_VOZ : PM_PAQUETE_B_REGLAS;
-}

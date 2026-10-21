@@ -35,6 +35,7 @@ import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
+import { evaluarDireccionEntrega, faltantesEnUnMensaje } from "../direccion-pin-tablaje.ts";
 import { geocercasActivas } from "../geocercas.ts";
 import { GEOCERCAS_PM } from "../seed/geocercas-pm.ts";
 import { kmAproxTexto } from "../nearest-branch.ts";
@@ -1918,6 +1919,11 @@ async function dispatchTool(
         if (createInput.branchSlug) await assertRecogerEnSucursalDeEntrada(repo, ctx, createInput.branchSlug, createInput.canal);
       } else if (ctx.lockedPropertyId) {
         throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
+      }
+      // Paquete B (bandera RESTAURANTES_GEOCERCAS): con el pin compartido (o un tablaje) la direccion ya esta dada; si solo falta la referencia se pide ESO, una vez, y no la calle y el numero.
+      if (geocercasActivas() && esPerfilPm && ctx.channel === "whatsapp" && (createInput.canal ?? "domicilio") === "domicilio" && ctx.sharedLocation) {
+        const dir = evaluarDireccionEntrega({ direccion: createInput.customerAddress, tienePin: true });
+        if (!dir.suficiente) throw new OrderValidationError(`${faltantesEnUnMensaje({ referencia: true }) ?? ""} NO pida calle ni número: el cliente ya compartió su ubicación (pin); pida solo la referencia, una vez, y mándela en customer_address junto con el tablaje o la privada.`);
       }
       // QA-PM-R8 T7-014: domicilio de PM con una casa descrita por referencias visuales y SIN pin ni enlace de Maps: se pide el pin una vez antes de registrar (ver `requierePinAntesDeCrear`).
       if (esPerfilPm && ctx.channel === "whatsapp" && (createInput.canal ?? "domicilio") === "domicilio" && !ctx.sharedLocation && !ctx.ubicacionEntrega && !createInput.mapsUrl && requierePinAntesDeCrear(ctx.conversacionReciente, createInput.customerAddress)) {
