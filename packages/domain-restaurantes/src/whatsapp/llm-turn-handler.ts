@@ -535,22 +535,6 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
-/**
- * PM-R15: reintento UNICO de la misma llamada al modelo cuando se agota su tope de tiempo. El tope por llamada era TODO el presupuesto restante del turno
- * (`completarConTope(deadline)`): al vencer ya no quedaba tiempo para nada y el cliente recibia "problema tecnico" (77 de 77 errores de proveedor de la ronda 15
- * fueron `tope_llamada`). Una llamada tipica tarda ~3.4 s (p95 ~5.8 s); la que sigue sin contestar a los ~10 s casi siempre esta atascada. Con al menos
- * `REINTENTO_LLM_RESTANTE_MIN_MS` de presupuesto, el primer intento se corta antes (nunca antes de `REINTENTO_LLM_PRIMER_TOPE_MIN_MS`, y dejando
- * `REINTENTO_LLM_RESERVA_MS` al reintento cuando sobra tiempo) y se repite la MISMA peticion una vez con lo que reste. El reloj del turno no cambia.
- */
-export const REINTENTO_LLM_RESTANTE_MIN_MS = 14_000;
-export const REINTENTO_LLM_PRIMER_TOPE_MIN_MS = 8_000;
-export const REINTENTO_LLM_RESERVA_MS = 8_000;
-
-/** Reparte el presupuesto restante del turno entre el primer intento y un posible reintento. Sin presupuesto suficiente: un solo intento con todo lo que queda. */
-export function planTopeLlamadaLlm(restanteMs: number): { readonly primerTopeMs: number; readonly reintenta: boolean } {
-  if (restanteMs < REINTENTO_LLM_RESTANTE_MIN_MS) return { primerTopeMs: Math.max(0, restanteMs), reintenta: false };
-  return { primerTopeMs: Math.max(REINTENTO_LLM_PRIMER_TOPE_MIN_MS, restanteMs - REINTENTO_LLM_RESERVA_MS), reintenta: true };
-}
 /** PM-R14: rechazos de regla de `crear_pedido` seguidos en un turno tras los cuales se corta el bucle del modelo. */
 export const MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR = 2;
 /** PM-R14: llamadas REPETIDAS (misma herramienta y mismos argumentos) tras un `crear_pedido` rechazado por regla con las que se corta el bucle. */
@@ -595,10 +579,6 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     cierreMaquina: boolean;
     /** PM-R14: el turno se corto por el bucle de crear_pedido rechazado (resultado `ok` con causaError `regla`). */
     cierreCortado: boolean;
-    /** PM-R15: veces que se repitio la llamada al modelo tras agotar su tope (0 o 1 por vuelta; suma del turno). */
-    reintentosLlm: number;
-    /** PM-R15: algun reintento de la llamada al modelo contesto (el turno siguio con esa respuesta). */
-    reintentoLlmRecuperado: boolean;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
   }
@@ -885,28 +865,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
         let completion: { text: string; toolCalls?: LlmToolCall[] };
         try {
-          const runId = randomUUID();
-          const llamarAlModelo = (signal: AbortSignal) => gateway.complete({
+          completion = await completarConTope(deadline, (signal) => gateway.complete({
             tenantId: organizationId,
-            runId,
+            runId: randomUUID(),
             lane: "interactive",
             role,
             // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
             ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
             request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0, signal },
-          });
-          // PM-R15: con presupuesto de sobra el primer intento tiene un tope menor y, si lo agota, se repite UNA vez la MISMA llamada con lo que reste del turno.
-          // Seguro: la llamada al modelo no tiene efectos laterales y las herramientas corren ENTRE llamadas (abajo), nunca dentro; el reintento no las repite.
-          const plan = planTopeLlamadaLlm(deadline - Date.now());
-          try {
-            completion = await completarConTope(plan.reintenta ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo);
-          } catch (errPrimerIntento) {
-            // Solo el tope de tiempo se reintenta aqui; un error rapido del proveedor (5xx, 429...) ya lo maneja la escalera del gateway.
-            if (!plan.reintenta || !(errPrimerIntento instanceof TopeLlamadaLlmError)) throw errPrimerIntento;
-            tele.reintentosLlm += 1;
-            completion = await completarConTope(deadline, llamarAlModelo);
-            tele.reintentoLlmRecuperado = true;
-          }
+          }));
         } catch (errLlm) {
           tele.resultado = "error_proveedor";
           // Solo la causa de la lista cerrada; el error en si (mensaje, cuerpo del proveedor) no se guarda ni se registra.
@@ -1218,7 +1185,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1251,8 +1218,6 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             resultado: tele.resultado,
             causaError: tele.resultado === "escalado_alto_riesgo" ? null : tele.resultado === "ok" ? (tele.causaError ?? null) : (tele.causaError ?? "otro"),
             cierreCortado: tele.cierreCortado,
-            reintentosLlm: tele.reintentosLlm,
-            reintentoLlmRecuperado: tele.reintentoLlmRecuperado,
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
