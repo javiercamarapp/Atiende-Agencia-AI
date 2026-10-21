@@ -7,7 +7,7 @@ describe("esLoDeSiempre", () => {
   it.each(["Lo mismo de siempre, cambio de 500", "lo de siempre", "Lo mismo", "repite mi último pedido", "igual que la vez pasada", "lo mismo que la vez pasada"])("sí: %s", (t) => {
     expect(esLoDeSiempre(t)).toBe(true);
   });
-  it.each(["quiero 3 tacos", "siempre me mandan frío", "hola", "quiero lo mismo que pidió mi amigo con dos salsas extra", "dame lo mismo que el vecino"])("no: %s", (t) => {
+  it.each(["quiero 3 tacos", "siempre me mandan frío", "hola", "quiero lo mismo que pidió mi amigo con dos salsas extra", "dame lo mismo que el vecino", "lo mismo para mi vecino", "lo mismo para mi mamá"])("no: %s", (t) => {
     expect(esLoDeSiempre(t)).toBe(false);
   });
 });

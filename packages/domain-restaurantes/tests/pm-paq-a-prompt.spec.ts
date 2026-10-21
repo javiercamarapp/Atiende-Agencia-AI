@@ -20,14 +20,14 @@ describe("prompt PM paquete A", () => {
     expect(t).toMatch(/harina, maíz o mixta/i);
     expect(t).toMatch(/frijol con tostada o frijoles charros/i);
     expect(t).not.toMatch(/cambray/i); // preparada/natural NO está confirmado por Javier: pendiente, no regla
-    expect(t).toMatch(/mixta \(maíz y harina mezcladas\)/i);
-    expect(t).not.toMatch(/mitad y mitad/i);
+    expect(t).toMatch(/harina, maíz o mixta\?/i); // una sola redacción, la misma de perfil-pm
     expect(t).toMatch(/piña[^.]*gratis[^.]*pregunt/i);
   });
   it("salsas: incluidas vs solo bajo petición, extra $19", () => {
     expect(t).toMatch(/roja, verde, cebolla con cilantro y limones/i);
     expect(t).toMatch(/habanero, crema de ajo y guacamolera[^.]*solo si el cliente las pide/i);
-    expect(t).toMatch(/\$19/);
+    expect(t).toMatch(/Extra Salsa[^.]*\$19/); // $19 es el producto «Extra Salsa» (doble porción), no las salsas a petición
+    expect(t).toMatch(/a petición[^.]*sin costo|sin costo[^.]*a petición/i);
   });
   it("sin reglas no confirmadas: quesadillas no tienen unidad; kilo incluye lo que dice el menú; nunca reembolsos", () => {
     expect(t).not.toMatch(/quesadilla/i);
@@ -48,6 +48,10 @@ describe("prompt PM paquete A", () => {
   it("recurrente: solo con dato real, sin inventar historial", () => {
     expect(t).toMatch(/lo de siempre/i);
     expect(t).toMatch(/nunca invente historial/i);
+  });
+  it("recurrente: nunca lee la dirección completa (regla existente de perfil-pm)", () => {
+    expect(t).toMatch(/nunca la lea completa/i);
+    expect(t).not.toMatch(/confirme la dirección guardada/i);
   });
   it("no menciona datos personales ni nombres reales", () => {
     expect(t).not.toMatch(/\b\d{10}\b/);

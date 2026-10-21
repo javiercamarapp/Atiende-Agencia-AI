@@ -127,6 +127,11 @@ describe("clasificarMedida: orden vs kilo vs pieza (S03)", () => {
     expect(r.pregunta).toMatch(/órdenes/i);
     expect(r.pregunta).toMatch(/peso|kilos/i);
   });
+  it("«1/2 orden de nachos de pastor» NO es 2 órdenes; «media orden de nachos» pide aclarar solo si no nombra el platillo", () => {
+    expect(clasificarMedida("1/2 orden de nachos de pastor")).toMatchObject({ medida: "orden", cantidad: 0.5 });
+    expect(clasificarMedida("media orden de nachos")).toMatchObject({ medida: "orden", cantidad: 0.5 });
+    expect(clasificarMedida("media orden de bistec").medida).toBe("ambigua");
+  });
   it("sin medida", () => {
     expect(clasificarMedida("unas alitas").medida).toBe("sin_medida");
   });

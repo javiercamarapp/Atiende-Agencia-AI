@@ -2,6 +2,8 @@
 // Pruebas deterministas, sin LLM. Alitas 7, crujientes ~12 (aproximado), pizza Quesobich = 1 pieza sin tortilla ni totopos.
 import { describe, expect, it } from "vitest";
 import { unidadDeVenta, unidadDeVentaSinPiezas, unidadDeVentaPizza } from "../src/product-search.ts";
+import { randomUUID } from "node:crypto";
+import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { buildPmSeedPlan } from "../src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../src/seed/pm-world.ts";
@@ -77,5 +79,36 @@ describe("el prompt de WhatsApp incluye el módulo del paquete A", () => {
       entryBranch: null, customer: { isNew: true } as never, fechaHoraLocal: "21 de octubre de 2026, 14:10", diaSemana: "miércoles",
     };
     expect(buildPmSystemPrompt(base)).toContain(PROMPT_PM_PAQUETE_A);
+  });
+});
+
+describe("buscar_producto con pack_size nulo: aviso por la tabla de unidades (avisoUnidadPorTabla)", () => {
+  function mundoNulo() {
+    const repo = new InMemoryRestaurantesRepository();
+    const organizationId = randomUUID();
+    const propertyId = randomUUID();
+    repo.seedOrganization({ id: organizationId, slug: "pm-paq-a", name: "PM Paq A" });
+    repo.seedBranch({ propertyId, organizationId, name: "Sucursal", slug: "t7", status: "active", phone: null, address: "Calle de prueba, Mérida", lat: 21.0186, lng: -89.6708 });
+    const categoryId = randomUUID();
+    repo.seedCategory({ id: categoryId, organizationId, name: "Tacos" });
+    for (const nombre of ["Gringa de Pastor", "Mestiza de Bistec", "Alambre de Pastor", "Taco Al Pastor"]) {
+      const id = randomUUID();
+      repo.seedProduct({ id, organizationId, categoryId, name: nombre, description: "Sin dato de piezas en el menú", searchKeywords: [] });
+      repo.seedBranchProduct({ propertyId, productId: id, price: 100, isAvailable: true });
+    }
+    return { repo, organizationId };
+  }
+  const buscarNulo = async (m: ReturnType<typeof mundoNulo>, query: string, nombre: string) => {
+    const out = await invokeAgentTool(m.repo, { organizationId: m.organizationId, channel: "whatsapp", phone: "9991234567" }, "buscar_producto", { query, branch_slug: "t7" });
+    return (out.result as Array<{ name: string; pack_size: number | null; unidad_de_venta?: string }>).find((p) => p.name === nombre)!;
+  };
+  it.each([["gringa de pastor", "Gringa de Pastor", /2 piezas/], ["mestiza de bistec", "Mestiza de Bistec", /2 piezas/], ["alambre de pastor", "Alambre de Pastor", /5 piezas/]] as const)(
+    "%s trae el aviso de su orden", async (q, nombre, re) => {
+      const r = await buscarNulo(mundoNulo(), q, nombre);
+      expect(r.pack_size).toBeNull();
+      expect(r.unidad_de_venta).toMatch(re);
+    });
+  it("un taco individual no lleva aviso", async () => {
+    expect((await buscarNulo(mundoNulo(), "taco al pastor", "Taco Al Pastor")).unidad_de_venta).toBeUndefined();
   });
 });
