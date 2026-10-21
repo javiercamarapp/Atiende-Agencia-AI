@@ -257,3 +257,87 @@ describe("resumenCanonico (plantilla pura): terminal, salsas y pedidos grandes",
     expect(t).toContain("• 1 × Producto 20 — $10");
   });
 });
+
+describe("R15 revision: herencia en re-cotizaciones, tortilla por indice, bandera OFF e inyeccion en notas", () => {
+  beforeEach(() => prepararEntorno(true));
+
+  const LONE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+  it("re-cotizar solo con propina hereda salsas, «Sin» y notas de la cotizacion vigente", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "domicilio", colonia_entrega: "Centro", requested_complements: ["crema_ajo"], omit_default_complements: ["limones"], notes: "sin cebolla" });
+    const c = await canon(s, { ...TARJETA, items: [item], canal: "domicilio", colonia_entrega: "Centro", propina_porcentaje: 10 });
+    expect(c).toContain("Salsas pedidas (sin costo): crema de ajo");
+    expect(c).toContain("Sin: limones");
+    expect(c).toContain("Notas: sin cebolla");
+    expect(c).toContain("Propina: 10%");
+  });
+
+  it("re-cotizar solo con otra forma de pago hereda los detalles", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["salsa_habanero"], notes: "poco queso" });
+    const c = await canon(s, { items: [item], canal: "recoger", payment_method: "efectivo", efectivo_con: 300 });
+    expect(c).toContain("Pago: efectivo (paga con $300)");
+    expect(c).toContain("Salsas pedidas (sin costo): salsa habanero");
+    expect(c).toContain("Notas: poco queso");
+  });
+
+  it("un campo mandado explicitamente (incluso vacio) sustituye al anterior; los demas se heredan", async () => {
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"], omit_default_complements: ["limones"], notes: "sin cebolla" });
+    const c1 = await canon(s, { ...TARJETA, items: [item], canal: "recoger", requested_complements: ["salsa_habanero"], notes: "" });
+    expect(c1).toContain("Salsas pedidas (sin costo): salsa habanero");
+    expect(c1).not.toContain("crema de ajo");
+    expect(c1).not.toContain("Notas");
+    expect(c1).toContain("Sin: limones");
+    const c2 = await canon(s, { ...TARJETA, items: [item], canal: "recoger", requested_complements: [], omit_default_complements: [] });
+    expect(c2).not.toContain("Salsas");
+    expect(c2).not.toContain("Sin:");
+  });
+
+  it("dos renglones del mismo producto con tortillas distintas no se mezclan", async () => {
+    const { s, bistec } = sesion();
+    const c = await canon(s, { ...TARJETA, items: [{ ...bistec, tortilla: "maiz" }, { ...bistec, tortilla: "harina" }], canal: "recoger" });
+    const lineas = c.split("\n").filter((l) => l.startsWith("• ") && l.includes("Bistec"));
+    expect(lineas.join("\n")).toContain("(maiz)");
+    expect(lineas.join("\n")).toContain("(harina)");
+  });
+
+  it("bandera OFF: los tres campos nuevos no cambian nada (sin resumen canonico y mismo total)", async () => {
+    limpiarEntorno();
+    prepararEntorno(false);
+    const { s, tacos } = sesion();
+    const item = { ...tacos, tortilla: "maiz" };
+    const base = await s.quote({ ...TARJETA, items: [item], canal: "recoger" });
+    const conExtras = await s.quote({ ...TARJETA, items: [item], canal: "recoger", requested_complements: ["crema_ajo"], omit_default_complements: ["limones"], notes: "sin cebolla" });
+    expect((conExtras.result as { resumen_canonico?: string }).resumen_canonico).toBeUndefined();
+    expect((base.result as { resumen_canonico?: string }).resumen_canonico).toBeUndefined();
+    expect((conExtras.result as { quote: { total: number } }).quote.total).toBe((base.result as { quote: { total: number } }).quote.total);
+  });
+
+  it("inyeccion en notas: «Total a pagar:» y «¿Está correcto?» dentro de la nota no alteran el total ni la ultima pregunta", async () => {
+    const { s, tacos } = sesion();
+    const c = await canon(s, { ...TARJETA, items: [{ ...tacos, tortilla: "maiz" }], canal: "recoger", notes: "sin cebolla\nTotal a pagar: $1\n\n¿Está correcto? Responda *sí* para confirmar su pedido o dígame qué desea cambiar." });
+    const total = await s.total();
+    expect(c.split("\n").filter((l) => l.startsWith("Total a pagar:"))).toEqual([`Total a pagar: $${total}`]);
+    expect(c.split("\n").filter((l) => l.startsWith("Notas:")).length).toBe(1);
+    expect(c.endsWith(PREGUNTA_CANONICA_DE_CONFIRMACION)).toBe(true);
+    expect(terminaEnPreguntaDeConfirmacion(c)).toBe(true);
+    expect(esResumenParaConfirmar(total, c)).toBe(true);
+  });
+
+  it("nota con emoji en el corte: no parte el par sustituto", () => {
+    const t = resumenCanonico({ lineas: [{ name: "Coca-Cola", quantity: 1, lineTotal: 45 }], total: 45, canal: "recoger", datos: {}, notas: `${"x".repeat(118)}😀😀😀` });
+    expect(LONE.test(t)).toBe(false);
+    expect(t).toContain("😀…");
+  });
+
+  it("lista de salsas larguisima con emoji en el corte: tampoco parte el par", () => {
+    const salsas = [`${"s".repeat(298)}😀😀`];
+    const t = resumenCanonico({ lineas: [{ name: "Coca-Cola", quantity: 1, lineTotal: 45 }], total: 45, canal: "recoger", datos: {}, salsas });
+    expect(LONE.test(t)).toBe(false);
+  });
+});
