@@ -11,7 +11,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-const avanza = (seg: number): void => vi.setSystemTime(new Date(Date.now() + seg * 1000));
+const avanza = (seg: number): void => {
+  vi.setSystemTime(new Date(Date.now() + seg * 1000));
+};
 
 async function escalado(): Promise<Viaje> {
   const v = await nuevoViaje();
