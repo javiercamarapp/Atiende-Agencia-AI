@@ -91,7 +91,19 @@ describe("urlNavegar y enlaceTelefono", () => {
   });
   it("solo acepta telefonos con digitos", () => {
     expect(enlaceTelefono("+52 999 123 4567")).toBe("tel:+529991234567");
+    expect(enlaceTelefono("(+52) 999-123-4567")).toBe("tel:+529991234567");
     expect(enlaceTelefono("javascript:alert(1)")).toBeNull();
+    expect(enlaceTelefono("tel:+529991234567")).toBeNull();
+    expect(enlaceTelefono("tel:tel:+529991234567")).toBeNull();
     expect(enlaceTelefono("123")).toBeNull();
+  });
+  it("exige E.164 estricto: con + obligatorio, sin 0 inicial y con 8 a 15 digitos", () => {
+    expect(enlaceTelefono("529991234567")).toBeNull(); // sin +
+    expect(enlaceTelefono("+0529991234567")).toBeNull(); // 0 inicial tras el +
+    expect(enlaceTelefono("9991234567")).toBeNull();
+    expect(enlaceTelefono("+1234567")).toBeNull(); // 7 digitos: corto
+    expect(enlaceTelefono("+1234567890123456")).toBeNull(); // 16 digitos: largo
+    expect(enlaceTelefono("+12345678")).toBe("tel:+12345678");
+    expect(enlaceTelefono("+529991234567 ext 5")).toBeNull();
   });
 });
