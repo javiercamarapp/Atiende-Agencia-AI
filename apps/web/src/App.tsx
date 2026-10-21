@@ -23,6 +23,11 @@ const RestaurantesComandasPosPage = cargaPerezosa(() => import("./verticals/rest
 const HistorialPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Historial.tsx"), "HistorialPage");
 const RestaurantesClienteFichaPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Clientes.tsx"), "ClienteFichaPage");
 const RestaurantesClientesListPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Clientes.tsx"), "ClientesListPage");
+// Panel movil del operador (andamiaje; cada pantalla la reemplaza su paquete): rutas dentro del shell de restaurantes.
+const OperacionColaPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionCola.tsx"), "OperacionColaPage");
+const OperacionNuevoPedidoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionNuevoPedido.tsx"), "OperacionNuevoPedidoPage");
+const OperacionViajesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionViajes.tsx"), "OperacionViajesPage");
+const OperacionTurnoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionTurno.tsx"), "OperacionTurnoPage");
 const RepartidorPedidosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Repartidor.tsx"), "RepartidorPedidosPage");
 const StaffPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Staff.tsx"), "StaffPage");
 const PromocionesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Promociones.tsx"), "PromocionesPage");
@@ -271,6 +276,10 @@ const RestaurantesProductosRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesSucursalesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <SucursalesPage {...ctx} />);
 const RestaurantesPedidosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PedidosPage {...ctx} />);
 // Captura asistida de SoftRestaurant: cola de comandas que alguien teclea en el POS (owner/admin/staff; el servidor exige MANAGER_ROLES).
+const OperacionColaRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionColaPage {...ctx} />);
+const OperacionNuevoPedidoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionNuevoPedidoPage {...ctx} />);
+const OperacionViajesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionViajesPage {...ctx} />);
+const OperacionTurnoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionTurnoPage {...ctx} />);
 const RestaurantesComandasPosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesComandasPosPage {...ctx} />);
 const RestaurantesHistorialRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <HistorialPage {...ctx} />);
 const RestaurantesClientesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesClientesListPage {...ctx} />);
@@ -1050,6 +1059,10 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/productos" element={<RestaurantesProductosRoute />} />
         <Route path="/restaurantes/:orgSlug/sucursales" element={<RestaurantesSucursalesRoute />} />
         <Route path="/restaurantes/:orgSlug/pedidos" element={<RestaurantesPedidosRoute />} />
+        <Route path="/restaurantes/:orgSlug/operacion" element={<OperacionColaRoute />} />
+        <Route path="/restaurantes/:orgSlug/operacion/nuevo" element={<OperacionNuevoPedidoRoute />} />
+        <Route path="/restaurantes/:orgSlug/operacion/viajes" element={<OperacionViajesRoute />} />
+        <Route path="/restaurantes/:orgSlug/operacion/turno" element={<OperacionTurnoRoute />} />
         <Route path="/restaurantes/:orgSlug/comandas-pos" element={<RestaurantesComandasPosRoute />} />
         <Route path="/restaurantes/:orgSlug/historial" element={<RestaurantesHistorialRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes" element={<RestaurantesClientesRoute />} />

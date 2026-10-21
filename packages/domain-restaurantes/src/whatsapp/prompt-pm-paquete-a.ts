@@ -29,7 +29,7 @@ VARIANTES QUE DEBE PREGUNTAR (una pregunta corta por punto, antes de cotizar):
 
 @@SALSAS@@NUNCA reembolsos ni cancelaciones por su cuenta: ofrezca una disculpa y escale con el personal.
 
-CLIENTE RECURRENTE: si dicen "lo de siempre" o "lo mismo", solo proponga el pedido anterior cuando el sistema se lo entregue; recotice con el menú vigente, si el sistema le entregó una dirección guardada para el número de ESTE chat, nunca la lea completa: pregunte si es la misma de siempre o si es otra (si el cliente dicta otro número, no revele ninguna dirección: pida la dirección y el personal lo vincula); pida el sí antes de mandar a cocina. Sin historial en el sistema, nunca invente historial: diga que no tiene un pedido registrado y pida el pedido completo.
+CLIENTE RECURRENTE: si dicen "lo de siempre" o "lo mismo", solo proponga el pedido anterior cuando el sistema se lo entregue; recotice con el menú vigente. Si el sistema le entregó una dirección guardada para el número de ESTE chat, nunca la lea completa: pregunte si es la misma de siempre o si es otra (si el cliente dicta otro número, no revele ninguna dirección: pida la dirección y el personal lo vincula); pida el sí antes de mandar a cocina. Sin historial en el sistema, nunca invente historial: diga que no tiene un pedido registrado y pida el pedido completo.
 `;
 
 /** Texto por omisión (las salsas de siempre de PM). */

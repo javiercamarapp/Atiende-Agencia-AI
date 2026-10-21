@@ -1,7 +1,7 @@
 // FLAUTAS (Javier, 16-oct-2026): «una orden de flautas es UNA flauta grande» (pack_size 1). Los menús públicos no traen el dato; esta es la fuente.
 // R10 T7-031 cobró $2,682 porque un cliente simulado dijo «4 flautas, una orden» y el modelo cotizó 4 órdenes con pack_size null. El guion del escenario
 // («1 orden de flautas», total $1,833) era y sigue siendo correcto; lo que cambia es que ahora la unidad está cargada y la herramienta la explica.
-// Alitas (7) y crujientes (~12) ya confirmados por Javier el 21-oct (paquete A); siguen sin pack_size porque el precio es por orden. Pruebas deterministas, sin LLM.
+// Alitas (7) y crujientes (~12) ya confirmados por el dueño el 21-oct (paquete A); siguen sin pack_size porque el precio es por orden. Pruebas deterministas, sin LLM.
 import { describe, expect, it } from "vitest";
 import { invokeAgentTool, quoteToWire } from "../src/agent-tools/registry.ts";
 import { buildOrderQuoteFromProducts } from "../src/order-quote.ts";
@@ -94,7 +94,7 @@ describe("T7-031: «4 flautas, una orden» es contradictorio; no se adivina (doc
   });
 });
 
-describe("alitas y crujientes: sin pack_size: 7 piezas y ~12 confirmadas por Javier", () => {
+describe("alitas y crujientes: sin pack_size: 7 piezas y ~12 confirmadas por el dueño", () => {
   it("pack_size null y aviso de ORDEN sin piezas; el aviso ya no menciona flautas", async () => {
     for (const q of ["alitas de pollo", "crujientes de pechuga"]) {
       const r = await buscar(q);
