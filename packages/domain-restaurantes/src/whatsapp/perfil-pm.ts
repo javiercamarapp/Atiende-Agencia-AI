@@ -12,6 +12,7 @@
 // multiplos de "orden de N", propina solo con tarjeta, cotizar antes de confirmar) las aplican las
 // HERRAMIENTAS en el servidor; este prompt es la primera linea, nunca la unica.
 import { lineasCliente360 } from "../cliente-360/prompt.ts";
+import { PROMPT_PM_PAQUETE_A } from "./prompt-pm-paquete-a.ts";
 import type { BranchSummary, CustomerLookupResult } from "../types.ts";
 
 export interface PerfilPmContexto {
@@ -331,7 +332,7 @@ ${pmCustomerContextBlock(ctx.customer)}`;
 
   if (voz) return buildPmVozPrompt(ctx, { saludo, promos, motivos, bloqueApagados, pedidoGrande });
   const conocimiento = ctx.conocimientoBloque?.trim() ? [ctx.conocimientoBloque.trim()] : [];
-  return [rol, vozYTrato, ...conocimiento, reglas, flujo, escalacion, seguridad, datos, ejemplos, cliente].join("\n\n");
+  return [rol, vozYTrato, ...conocimiento, reglas, flujo, escalacion, seguridad, datos, PROMPT_PM_PAQUETE_A, ejemplos, cliente].join("\n\n");
 }
 
 interface PartesVoz {

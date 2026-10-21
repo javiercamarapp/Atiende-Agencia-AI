@@ -8,7 +8,7 @@ describe("prompt PM paquete A", () => {
     expect(PROMPT_PM_PAQUETE_A).toBe(t);
   });
   it("unidades de la orden", () => {
-    expect(t).toMatch(/bistec, chuleta, arrachera y pollo[^.]*3 tacos/i);
+    expect(t).toMatch(/chorizo, bistec[^.]*arrachera y poc-chuc[^.]*3 tacos/i);
     expect(t).toMatch(/pastor[^.]*individual/i);
     expect(t).toMatch(/gringas[^.]*2/i);
     expect(t).toMatch(/Quesobich[^.]*UNA pieza[^.]*sin tortilla ni totopos[^.]*salsa y cebolla/i);
