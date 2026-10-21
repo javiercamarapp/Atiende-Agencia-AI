@@ -92,6 +92,11 @@ describe("aviso integral publicado (docs/legal/publicable + página estática)",
       expect(texto).toMatch(/persona encargada/);
       expect(texto).toMatch(/el responsable es (\*\*|<strong>)ATIENDE SA de CV/);
       expect(texto).toMatch(/Atiende como responsable/);
+      expect(texto).toMatch(/Atiende remitirá su solicitud al restaurante responsable/);
+      expect(texto).toMatch(/Atiende remitirá su solicitud al restaurante o le informará el domicilio/);
+      expect(texto).not.toMatch(/Atiende[^.\n]{0,40}es (la )?(persona )?responsable de (los datos de )?(sus |los )?clientes finales/i);
+      expect(texto).not.toMatch(/Los datos que usted proporciona al asistente son tratados por Atiende como responsable/);
+      expect(texto).not.toMatch(/purgas automáticas/);
     }
   });
   it("no afirma revisión de un abogado ni conserva el nombre antiguo del responsable", () => {
