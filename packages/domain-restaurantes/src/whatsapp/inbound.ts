@@ -7,10 +7,11 @@
 import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
+import { executeAgentToolSafely } from "../agent-tools/registry.ts";
 import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
-import { classifyHighRiskIntent, matchesHighRiskOtherThan, normalizarParaClasificar, pideUnaPersona, quejaTraeDetalle, respuestaDeQuejaConDetalle, retractaPeticionDePersona } from "./guards.ts";
+import { classifyHighRiskIntent, contextoDeCliente, matchesHighRiskOtherThan, normalizarParaClasificar, pideUnaPersona, quejaTraeDetalle, respuestaDeQuejaConDetalle, retractaPeticionDePersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
@@ -256,6 +257,8 @@ export async function handleInboundWhatsAppMessage(
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff) {
+          // Paquete C (G7-8-10): con la toma pendiente por OTRO motivo (cambio, cancelacion...) una queja con detalle no puede quedarse sin su aviso `queja`.
+          if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body, messageId, propertyId: propertyId ?? null });
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
           // R16: con la toma pendiente SIEMPRE se contesta (la base solo marca el acuse "oficial"); con la toma tomada atiende la persona y el bot calla.
           const permitido = handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await recordatorioPermitido(repo, organizationId, phone) : false;
@@ -788,4 +791,25 @@ async function stickerSobraTrasPedidoCerrado(repo: RestaurantesRepository, organ
   const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
   const reciente = cliente.isNew ? undefined : cliente.pedidoReciente;
   return reciente !== undefined && reciente !== null && reciente.minutosDesdeConfirmacion <= STICKER_VENTANA_PEDIDO_CERRADO_MIN;
+}
+
+/**
+ * Paquete C (G7-8-10): con una toma de handoff PENDIENTE el agente calla y solo manda el acuse, asi que una queja nueva con detalle («no mandaron las salsas») nunca llegaba al
+ * clasificador y el gerente solo veia el primer motivo (p. ej. `cancelacion_modificacion`). Aqui, sin modelo, se deja el aviso `queja` con el detalle. No cambia el acuse, no abre otra
+ * toma y no promete nada; si algo falla, el acuse sigue como siempre. Solo `queja` (alergia, cobro, cancelacion... ya tienen su camino); idempotente por id de mensaje.
+ */
+async function avisarQuejaConTomaPendiente(repo: RestaurantesRepository, a: { readonly organizationId: string; readonly phone: string; readonly body: string; readonly messageId: string; readonly propertyId: string | null }): Promise<void> {
+  try {
+    const cliente = await lookupCustomerConPedidoReciente(repo, a.organizationId, a.phone);
+    const riesgo = classifyHighRiskIntent(a.body, contextoDeCliente(cliente));
+    if (!riesgo || riesgo.motivo !== "queja" || !(quejaTraeDetalle(a.body) || riesgo.reply.includes("devoluciones de dinero"))) return;
+    await executeAgentToolSafely(
+      repo,
+      { organizationId: a.organizationId, channel: "whatsapp", phone: a.phone, lockedPropertyId: a.propertyId, entryPropertyId: a.propertyId, sourceEventId: a.messageId },
+      "escalar_a_humano",
+      { customer_name: !cliente.isNew && cliente.name ? cliente.name : "Cliente", motivo: "queja", resumen: `[queja con la toma ya abierta] ${a.body}`.slice(0, 500) },
+    );
+  } catch {
+    // El acuse al cliente no depende de este aviso.
+  }
 }
