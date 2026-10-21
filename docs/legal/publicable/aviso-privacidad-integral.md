@@ -10,7 +10,7 @@ Este aviso está vigente a la fecha indicada y sustituye a cualquier versión an
 
 Quién es el responsable depende de quién sea usted:
 
-**a) Si es cliente final de un restaurante** (escribe o llama para hacer un pedido): el responsable del tratamiento de sus datos es **el restaurante** con el que habla; su nombre se indica en la conversación y su domicilio puede pedirlo en la sucursal o escribiendo a ventas@likida.ai. **ATIENDE SA de CV** (en adelante, "Atiende") es la **persona encargada**: opera el asistente virtual y trata esos datos por cuenta del restaurante, y no los usa para fines propios distintos de prestar el servicio. En este caso, "nosotros" se refiere al restaurante, con el apoyo técnico de Atiende.
+**a) Si es cliente final de un restaurante** (escribe o llama para hacer un pedido): el responsable del tratamiento de sus datos es **el restaurante** con el que habla; su nombre se indica en la conversación y su domicilio puede pedirlo en la sucursal. Si lo pide por ventas@likida.ai, Atiende remitirá su solicitud al restaurante o le informará el domicilio si lo tiene registrado. **ATIENDE SA de CV** (en adelante, "Atiende") es la **persona encargada**: opera el asistente virtual y trata esos datos por cuenta del restaurante, y no los usa para fines propios distintos de prestar el servicio. En este caso, "nosotros" se refiere al restaurante, con el apoyo técnico de Atiende.
 
 **b) Si usa o prueba Atiende** (personal de restaurantes y administradores del panel, prospectos y clientes que contratan el servicio): el responsable es **ATIENDE SA de CV**, descrito en el Anexo B.
 
@@ -105,7 +105,7 @@ Varios de estos proveedores tienen su sede o tratan datos fuera de México, prin
 | Pedidos, comprobantes y datos fiscales | El que exijan las leyes fiscales y mercantiles aplicables |
 | Datos sobre incumplimiento de obligaciones contractuales | Conforme a la ley aplicable |
 
-Al terminar el plazo, o cuando usted pida la cancelación, sus datos pasan por un **periodo de bloqueo** (Art. 2 fr. III y Art. 24): se conservan solo para atender posibles responsabilidades, sin otro uso, hasta el plazo de prescripción aplicable, y después se **suprimen**. La plataforma ejecuta purgas automáticas por vencimiento de plazo.
+Al terminar el plazo, o cuando usted pida la cancelación, sus datos pasan por un **periodo de bloqueo** (Art. 2 fr. III y Art. 24): se conservan solo para atender posibles responsabilidades, sin otro uso, hasta el plazo de prescripción aplicable, y después se **suprimen**. Los plazos de conservación de conversaciones y transcripciones son configurables y la plataforma cuenta con una función de purga por vencimiento de plazo.
 
 ## 8. Cómo protegemos sus datos
 
@@ -122,7 +122,7 @@ Usted, o su representante legal, puede ejercer en cualquier momento (Arts. 21 y 
 
 El ejercicio de un derecho no es requisito para ejercer otro (Art. 21).
 
-**Quién atiende su solicitud.** Si es cliente final de un restaurante, el responsable es el restaurante; Atiende, como persona encargada, recibe y registra la solicitud por los canales de abajo. Si es usuario, prospecto o cliente de Atiende, la atiende Atiende como responsable. En ambos casos puede escribir a ventas@likida.ai.
+**Quién atiende su solicitud.** Si es cliente final de un restaurante, el responsable es el restaurante; Atiende, como persona encargada, recibe y registra la solicitud por los canales de abajo. Si es usuario, prospecto o cliente de Atiende, la atiende Atiende como responsable. Si usted es cliente final de un restaurante y escribe a ventas@likida.ai, Atiende remitirá su solicitud al restaurante responsable, que es quien la resuelve y a quien le corre el plazo de veinte días hábiles. En ambos casos puede escribir a ventas@likida.ai.
 
 **Dónde:** (1) por **WhatsApp**, escribiendo "mis datos personales" al número de la sucursal; el asistente le mostrará las opciones, registrará su solicitud y le dará una referencia; (2) por **llamada**, diciéndolo al asistente o en la sucursal; (3) por correo a ventas@likida.ai; (4) por escrito en Calle 43 No. 147A entre 38 y 36D, colonia Benito Juárez Norte, Mérida, Yucatán, C.P. 97119.
 
