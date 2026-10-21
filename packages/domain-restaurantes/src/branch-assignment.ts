@@ -19,7 +19,7 @@
 // omision: activarla es decision de Javier.
 //
 // Es dominio puro sobre el repositorio existente: sin SQL nuevo. Contra una base sin migrar, `listBranchDeliveryZoneIds` ya degrada a [] con SAVEPOINT.
-import { conCoordenadasPropuestas, type PuntoGeografico } from "./coordenadas-sucursales.ts";
+import { COORDENADAS_PROPUESTAS_PM, conCoordenadasPropuestas, type PuntoGeografico } from "./coordenadas-sucursales.ts";
 import { UMBRAL_AMBIGUA_KM } from "./colonias-ambiguas.ts";
 import { OrderValidationError } from "./errors.ts";
 import {
@@ -33,7 +33,7 @@ import {
 } from "./nearest-branch.ts";
 import { matchKnownZone } from "./reglas-pedido.ts";
 import type { RestaurantesRepository } from "./repository.ts";
-import { GEOCERCA_SIN_ZONA_MENSAJE, geocercasQueContienen, type Geocerca } from "./geocercas.ts";
+import { GEOCERCA_AVISO_DERIVAR, GEOCERCA_COLONIA_SIN_PIN_MENSAJE, GEOCERCA_SIN_ZONA_MENSAJE, geocercasCercanas, mensajeGeocercaSucursalNoDisponible, type Geocerca } from "./geocercas.ts";
 import { opcionesDeReferencia, referenciaDeColonia, sucursalesDeDespacho } from "./sugerencia-despacho.ts";
 import type { Branch, KnownZone, PerfilAgenteWhatsApp } from "./types.ts";
 
@@ -173,7 +173,8 @@ export function rankBranchesByKm(lat: number, lng: number, branches: readonly Br
   return ranked.sort((a, b) => a.km - b.km || a.branch.slug.localeCompare(b.branch.slug));
 }
 
-const aCercana = (branch: Branch, km: number | null): SucursalCercana => ({ slug: branch.slug, nombre: branch.name, kmAprox: km === null ? null : redondear1(km), telefono: branch.phone });
+// `conTelefono` es opt-in (solo la ruta de geocercas): el resto de los mensajes de otras organizaciones no cambia.
+const aCercana = (branch: Branch, km: number | null, conTelefono = false): SucursalCercana => ({ slug: branch.slug, nombre: branch.name, kmAprox: km === null ? null : redondear1(km), ...(conTelefono ? { telefono: branch.phone } : {}) });
 
 export async function assignBranch(repo: RestaurantesRepository, input: AssignBranchInput): Promise<BranchAssignment> {
   const hasLat = input.lat !== undefined;
@@ -202,29 +203,46 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
   const despacho = await sucursalesDeDespacho(repo, input.organizationId, input.sucursalesQueNoReparten);
   const medibles = conCoordenadasPropuestas(despacho, input.coordenadasPropuestas);
 
-  // Paquete B: con pin y geocercas la cobertura es geografica y determinista (la zona de otra sucursal deriva a ella con su telefono).
-  if (hasLat && input.geocercas && input.geocercas.length > 0) {
-    const dentro = new Set(geocercasQueContienen(input.lat as number, input.lng as number, input.geocercas));
-    const candidatas = despacho.filter((b) => dentro.has(b.slug)).sort((a, b) => a.slug.localeCompare(b.slug));
-    if (candidatas.length === 0) return { estado: "no_reconocida", message: GEOCERCA_SIN_ZONA_MENSAJE };
-    const deEntrada = input.sucursalDeEntregaPreferidaPropertyId ? candidatas.find((b) => b.propertyId === input.sucursalDeEntregaPreferidaPropertyId) : undefined;
-    const elegida = deEntrada ?? candidatas[0] as Branch;
-    const otra = candidatas.find((b) => b.propertyId !== elegida.propertyId);
-    return {
-      estado: "asignada",
-      branchSlug: elegida.slug,
-      branchName: elegida.name,
-      distanceKm: null,
-      via: "coordenadas",
-      recognizedZoneName: null,
-      ajustePorZona: false,
-      origen: "pin",
-      kmReferencia: null,
-      alternativa: null,
-      dobleCobertura: candidatas.length > 1,
-      aproximada: true,
-      message: mensajeSucursalAsignada({ principal: aCercana(elegida, null), alternativa: otra ? aCercana(otra, null) : null, origen: "pin", aproximada: true }),
-    };
+  // Paquete B: con geocercas la cobertura es geografica y determinista. Punto = el pin o, sin pin, las coordenadas de la colonia reconocida.
+  if (point && input.geocercas && input.geocercas.length > 0) {
+    const cubiertas = geocercasCercanas(point.lat, point.lng, input.geocercas);
+    if (cubiertas.length === 0 && hasLat) return { estado: "no_reconocida", message: GEOCERCA_SIN_ZONA_MENSAJE };
+    if (cubiertas.length > 0) {
+      const slugsDespacho = new Set(despacho.map((b) => b.slug));
+      const candidatas = cubiertas.filter((c) => slugsDespacho.has(c.slug));
+      if (candidatas.length === 0) {
+        const duena = (await repo.listBranchesForOrganizationAdmin(input.organizationId)).find((b) => b.slug === (cubiertas[0] as { slug: string }).slug);
+        const nombre = duena?.name ?? (cubiertas[0] as { slug: string }).slug;
+        return { estado: "no_reconocida", message: mensajeGeocercaSucursalNoDisponible(nombre, duena?.phone ?? null) };
+      }
+      const minima = (candidatas[0] as { distanciaM: number }).distanciaM;
+      // Dentro de alguna zona: compiten solo las que contienen el punto. En una rendija (ninguna lo contiene): compiten todas las que estan dentro de la holgura.
+      const empatadas = candidatas.filter((c) => minima > 0 || c.distanciaM === 0).map((c) => despacho.find((b) => b.slug === c.slug) as Branch);
+      // Desempate determinista: la sucursal por la que entro el cliente; luego la de pin mas cercano (pines de Google de Javier); luego el slug.
+      const kmAlPin = (b: Branch): number => {
+        const pin = COORDENADAS_PROPUESTAS_PM[b.slug];
+        return pin ? haversineKmExact(point.lat, point.lng, pin.lat, pin.lng) : Number.POSITIVE_INFINITY;
+      };
+      const deEntrada = input.sucursalDeEntregaPreferidaPropertyId ? empatadas.find((b) => b.propertyId === input.sucursalDeEntregaPreferidaPropertyId) : undefined;
+      const elegida = deEntrada ?? [...empatadas].sort((a, b) => kmAlPin(a) - kmAlPin(b) || a.slug.localeCompare(b.slug))[0] as Branch;
+      const deOtra = input.sucursalDeEntregaPreferidaPropertyId !== undefined && input.sucursalDeEntregaPreferidaPropertyId !== null && input.sucursalDeEntregaPreferidaPropertyId !== elegida.propertyId;
+      return {
+        estado: "asignada",
+        branchSlug: elegida.slug,
+        branchName: elegida.name,
+        // Sin km: las coordenadas vigentes de las sucursales estan desviadas; la cobertura la dicta el poligono del dueno, no una distancia.
+        distanceKm: null,
+        via,
+        recognizedZoneName: zone ? zone.name : null,
+        ajustePorZona: false,
+        origen: "cobertura_dueno",
+        kmReferencia: null,
+        alternativa: null,
+        dobleCobertura: empatadas.length > 1,
+        aproximada: false,
+        message: mensajeSucursalAsignada({ principal: aCercana(elegida, null, true), alternativa: null, origen: "cobertura_dueno" }) + (deOtra ? GEOCERCA_AVISO_DERIVAR : ""),
+      };
+    }
   }
 
   const radioOrg = input.radioMaximoKm === undefined ? RADIO_REPARTO_POR_OMISION_KM : input.radioMaximoKm;
@@ -309,7 +327,7 @@ export async function assignBranch(repo: RestaurantesRepository, input: AssignBr
     };
   }
 
-  if (!point) return { estado: "no_reconocida", message: COLONIA_NO_RECONOCIDA_MENSAJE };
+  if (!point) return { estado: "no_reconocida", message: input.geocercas && input.geocercas.length > 0 ? GEOCERCA_COLONIA_SIN_PIN_MENSAJE : COLONIA_NO_RECONOCIDA_MENSAJE };
   const ranked = rankBranchesByKm(point.lat, point.lng, medibles);
   const cubrenRanked = ranked.filter((r) => cubren.has(r.branch.propertyId));
   // Cobertura EXPLICITA del dueno (override) con alguna sucursal que cubre y NO se puede medir (Pensiones hoy, sin coordenadas): su decision manda, sin inventar km.
