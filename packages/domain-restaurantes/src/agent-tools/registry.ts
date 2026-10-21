@@ -35,6 +35,8 @@ import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
+import { geocercasActivas } from "../geocercas.ts";
+import { GEOCERCAS_PM } from "../seed/geocercas-pm.ts";
 import { kmAproxTexto } from "../nearest-branch.ts";
 import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
@@ -1711,6 +1713,7 @@ async function dispatchTool(
         radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
         ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
         ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
+        ...(perfilAgente === "taqueria_pm" && geocercasActivas() ? { geocercas: GEOCERCAS_PM } : {}), // paquete B: cobertura por poligono (PM)
         ...(ctx.entryPropertyId ? { sucursalDeEntregaPreferidaPropertyId: ctx.entryPropertyId } : {}),
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
@@ -1725,6 +1728,7 @@ async function dispatchTool(
           radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
           ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
           ...(perfilAgente === "taqueria_pm" ? { sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM } : {}),
+          ...(perfilAgente === "taqueria_pm" && geocercasActivas() ? { geocercas: GEOCERCAS_PM } : {}),
           lat: ctx.sharedLocation.lat,
           lng: ctx.sharedLocation.lng,
         });
