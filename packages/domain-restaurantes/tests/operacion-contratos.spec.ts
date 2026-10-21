@@ -147,6 +147,18 @@ describe("lecturas", () => {
   });
 });
 
+describe("tarjeta de pedido: cobro", () => {
+  it("el cobro es opcional (compatibilidad hacia atras) y valida forma y montos", () => {
+    const tarjeta = { id: U1, numero: 1, estado: "preparando", canal: "domicilio", origen: "llamada", clienteNombre: "Ana", resumenItems: "2 piezas", total: 100, creadoEn: AHORA, aceptadoEn: null, listoAt: null, salioAt: null, minutos: 3, semaforo: "verde", repartidorId: null, sinAviso: false, accionesDisponibles: ["aceptar"] };
+    const cola = (t: unknown) => esquemaColaSalida.validar({ pedidos: [t], conteos: {}, actualizadoEn: AHORA }).ok;
+    expect(cola(tarjeta)).toBe(true);
+    expect(cola({ ...tarjeta, pago: { forma: "efectivo", pagaCon: 200, totalACobrar: 100, cobrado: false } })).toBe(true);
+    expect(cola({ ...tarjeta, pago: { forma: null, totalACobrar: 100, cobrado: false } })).toBe(true);
+    expect(cola({ ...tarjeta, pago: { forma: "cheque", totalACobrar: 100, cobrado: false } })).toBe(false);
+    expect(cola({ ...tarjeta, pago: { forma: "efectivo", totalACobrar: -1, cobrado: false } })).toBe(false);
+  });
+});
+
 describe("rutas", () => {
   it("todas cuelgan de /v1/restaurantes/:propertyId y no hay dos iguales", () => {
     const claves = Object.values(RUTAS_OPERACION).map((r) => `${r.metodo} ${r.patron}`);
