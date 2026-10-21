@@ -437,7 +437,7 @@ export function extraerPackSize(name: string, description: string | null): numbe
 
 /**
  * Productos que PM vende por ORDEN con un número de piezas que el menú NO registra como pack_size (alitas, crujientes). El precio es el de la orden
- * completa y `requested_quantity` cuenta ÓRDENES: el modelo no debe multiplicar. Datos confirmados por Javier (21-oct-2026): la orden de ALITAS trae 7 piezas;
+ * completa y `requested_quantity` cuenta ÓRDENES: el modelo no debe multiplicar. Datos confirmados por el dueño (21-oct-2026): la orden de ALITAS trae 7 piezas;
  * la de CRUJIENTES DE PECHUGA trae APROXIMADAMENTE 12 (nunca se da como cifra exacta). Si el menú cargara «(orden de N)», manda el pack_size y este aviso no sale.
  * Las FLAUTAS ya no entran aquí: Javier confirmó (16-oct-2026) que «una orden de flautas es UNA flauta grande» (ver `unidadDeVentaFlautas`).
  */
@@ -464,7 +464,7 @@ export function unidadDeVentaSinPiezas(
 const ES_PIZZA_QUESOBICH = /\bquesobich\b|\bpizza\b/i;
 
 /**
- * PIZZA QUESOBICH (Javier, 21-oct-2026): es UNA pieza individual; NO incluye tortilla ni totopos; solo salsa y cebolla.
+ * PIZZA QUESOBICH (dueño, 21-oct-2026): es UNA pieza individual; NO incluye tortilla ni totopos; solo salsa y cebolla.
  * No es un producto de tacos: no se le pregunta tortilla.
  */
 export function unidadDeVentaPizza(

@@ -19,7 +19,7 @@ describe("prompt PM paquete A", () => {
   it("variantes que debe preguntar", () => {
     expect(t).toMatch(/harina, maíz o mixta/i);
     expect(t).toMatch(/frijol con tostada o frijoles charros/i);
-    expect(t).not.toMatch(/cambray/i); // preparada/natural NO está confirmado por Javier: pendiente, no regla
+    expect(t).not.toMatch(/cambray/i); // preparada/natural NO está confirmado por el dueño: pendiente, no regla
     expect(t).toMatch(/harina, maíz o mixta\?/i); // una sola redacción, la misma de perfil-pm
     expect(t).toMatch(/piña[^.]*gratis[^.]*pregunt/i);
   });

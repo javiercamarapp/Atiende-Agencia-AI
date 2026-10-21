@@ -1,4 +1,4 @@
-// PAQUETE A (PM): unidades confirmadas por Javier (21-oct-2026) en el aviso de unidad de buscar_producto y precios de flauta del seed.
+// PAQUETE A (PM): unidades confirmadas por el dueño (21-oct-2026) en el aviso de unidad de buscar_producto y precios de flauta del seed.
 // Pruebas deterministas, sin LLM. Alitas 7, crujientes ~12 (aproximado), pizza Quesobich = 1 pieza sin tortilla ni totopos.
 import { describe, expect, it } from "vitest";
 import { unidadDeVenta, unidadDeVentaSinPiezas, unidadDeVentaPizza } from "../src/product-search.ts";
