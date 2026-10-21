@@ -380,6 +380,12 @@ export interface EntradaResumen {
   readonly hora?: string;
   /** Solo a domicilio: lo que el servidor sabe del destino al cotizar (colonia y si llego el pin), p. ej. «colonia Centro». La calle completa se pide al crear. */
   readonly direccion?: string;
+  /** R15/T7-001: salsas que el cliente PIDIO ademas de las basicas (sin costo), ya con su nombre para el cliente («crema de ajo»). */
+  readonly salsas?: readonly string[];
+  /** R15: salsas basicas que el cliente quito («salsa verde»). */
+  readonly sinSalsas?: readonly string[];
+  /** R15: notas ya capturadas (ajustes como «sin cebolla»), saneadas por `sanearNotaDeResumen`: una linea, sin telefonos ni correos, acotada. */
+  readonly notas?: string;
 }
 
 const DIAS_CORTOS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"] as const;
@@ -408,21 +414,98 @@ function pesos(n: number): string {
 
 export const PREGUNTA_CANONICA_DE_CONFIRMACION = "¿Está correcto? Responda *sí* para confirmar su pedido o dígame qué desea cambiar.";
 
-/** Resumen del pedido armado por el SERVIDOR: renglones, entrega, pago, propina y TOTAL tal cual los cotizo. El LLM puede anteponer una frase de tono, nunca cambiar esto. */
+/**
+ * Largo maximo del resumen canonico. WhatsApp admite 4096 caracteres, pero el LIMITE REAL es el de la deteccion: `sinMarcadores` solo analiza los primeros 4 × MAX_MENSAJE (2400) caracteres
+ * de un mensaje, asi que un resumen mas largo perdia la pregunta de confirmacion (y el total) para `esResumenParaConfirmar` / `terminaEnPreguntaDeConfirmacion`. Se deja margen para la frase
+ * de tono (hasta 160 caracteres) que `componerRespuestaConResumen` antepone.
+ */
+export const LIMITE_RESUMEN_CANONICO = 4 * MAX_MENSAJE - 200;
+const MAX_NOTA_RESUMEN = 120;
+const MAX_LISTA_SALSAS_RESUMEN = 300;
+
+/**
+ * Nota libre del pedido ya capturada (`notes`) lista para el resumen que ve el cliente: una sola linea, sin correos ni numeros largos (telefonos, tarjetas) que el modelo
+ * haya colado, y acotada. Devuelve `undefined` si no queda nada.
+ */
+export function sanearNotaDeResumen(nota: unknown): string | undefined {
+  if (typeof nota !== "string") return undefined;
+  // Recorrido lineal (sin expresiones regulares con repeticiones anidadas: la nota es texto no confiable). Una racha de digitos y separadores con 7 o mas digitos es un telefono o
+  // una tarjeta y se quita; una palabra con «@» es un correo y se quita.
+  const texto = nota.length > 1000 ? Array.from(nota).slice(0, 1000).join("") : nota;
+  let sinNumeros = "";
+  let racha = "";
+  let digitos = 0;
+  const cerrarRacha = (): void => {
+    if (digitos < 7) sinNumeros += racha;
+    else sinNumeros += " ";
+    racha = "";
+    digitos = 0;
+  };
+  for (const ch of texto) {
+    const esDigito = ch >= "0" && ch <= "9";
+    if (esDigito || (racha !== "" && (ch === " " || ch === "-" || ch === "(" || ch === ")" || ch === "." || ch === "+"))) {
+      racha += ch;
+      if (esDigito) digitos += 1;
+    } else {
+      cerrarRacha();
+      sinNumeros += ch;
+    }
+  }
+  cerrarRacha();
+  const limpia = sinNumeros
+    .split(/\s/)
+    .filter((palabra) => palabra !== "" && !palabra.includes("@"))
+    .join(" ")
+    .trim();
+  if (!limpia) return undefined;
+  const puntos = Array.from(limpia);
+  return puntos.length > MAX_NOTA_RESUMEN ? `${puntos.slice(0, MAX_NOTA_RESUMEN - 1).join("").trimEnd()}…` : limpia;
+}
+
+function acotarLista(items: readonly string[]): string {
+  const puntos = Array.from(items.join(", "));
+  return puntos.length > MAX_LISTA_SALSAS_RESUMEN ? `${puntos.slice(0, MAX_LISTA_SALSAS_RESUMEN - 1).join("").trimEnd()}…` : puntos.join("");
+}
+
+/**
+ * Resumen del pedido armado por el SERVIDOR: renglones (con la tortilla de cada uno), salsas pedidas, notas, entrega, pago, terminal, propina y TOTAL tal cual los cotizo. El LLM puede anteponer
+ * una frase de tono, nunca cambiar esto. R15/T7-001: antes omitia salsas, tortilla de un kilo y la terminal, y el cliente confirmaba un resumen incompleto. Sin esos datos el texto es el de siempre.
+ * Un pedido enorme se acota a `LIMITE_RESUMEN_CANONICO`: se recortan renglones (con un aviso «y N renglones más»), nunca el total, el pago ni la pregunta de confirmacion.
+ */
 export function resumenCanonico(e: EntradaResumen): string {
   const renglones = e.lineas.map((l) => `• ${l.quantity} × ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
-  const filas: string[] = ["Resumen de su pedido:", ...renglones];
-  if (typeof e.descuento === "number" && e.descuento > 0) filas.push(`Descuento: -${pesos(e.descuento)}`);
-  filas.push(`Entrega: ${e.canal === "recoger" ? "recoger en sucursal" : "a domicilio"}${e.hora ? ` (${e.hora})` : ""}`);
-  if (e.canal !== "recoger" && e.direccion) filas.push(`Dirección: ${e.direccion}`);
+  const detalles: string[] = [];
+  if (e.salsas && e.salsas.length > 0) detalles.push(`Salsas pedidas (sin costo): ${acotarLista(e.salsas)}`);
+  if (e.sinSalsas && e.sinSalsas.length > 0) detalles.push(`Sin: ${acotarLista(e.sinSalsas)}`);
+  const nota = sanearNotaDeResumen(e.notas);
+  if (nota) detalles.push(`Notas: ${nota}`);
+  if (typeof e.descuento === "number" && e.descuento > 0) detalles.push(`Descuento: -${pesos(e.descuento)}`);
+  detalles.push(`Entrega: ${e.canal === "recoger" ? "recoger en sucursal" : "a domicilio"}${e.hora ? ` (${e.hora})` : ""}`);
+  if (e.canal !== "recoger" && e.direccion) detalles.push(`Dirección: ${e.direccion}`);
   const d = e.datos;
-  if (d.pago === "efectivo") filas.push(`Pago: efectivo${d.efectivoCon ? ` (paga con ${pesos(d.efectivoCon)})` : ""}`);
-  else if (d.pago === "tarjeta") filas.push("Pago: tarjeta");
-  if (d.propinaMxn) filas.push(`Propina: ${pesos(d.propinaMxn)} (no suma al total)`);
-  else if (d.propinaPct) filas.push(`Propina: ${d.propinaPct}% (no suma al total)`);
-  filas.push(`Total a pagar: ${pesos(e.total)}`);
-  filas.push("", PREGUNTA_CANONICA_DE_CONFIRMACION);
-  return filas.join("\n");
+  if (d.pago === "efectivo") detalles.push(`Pago: efectivo${d.efectivoCon ? ` (paga con ${pesos(d.efectivoCon)})` : ""}`);
+  else if (d.pago === "tarjeta") detalles.push("Pago: tarjeta");
+  // Politica operativa (#598): la tarjeta a domicilio SIEMPRE lleva terminal; el cliente debe verlo antes de aceptar.
+  if (d.pago === "tarjeta" && e.canal !== "recoger") detalles.push("Llevará terminal para cobrar con tarjeta");
+  if (d.propinaMxn) detalles.push(`Propina: ${pesos(d.propinaMxn)} (no suma al total)`);
+  else if (d.propinaPct) detalles.push(`Propina: ${d.propinaPct}% (no suma al total)`);
+  detalles.push(`Total a pagar: ${pesos(e.total)}`);
+  const cola = ["", PREGUNTA_CANONICA_DE_CONFIRMACION];
+  const armar = (visibles: readonly string[]): string => ["Resumen de su pedido:", ...visibles, ...detalles, ...cola].join("\n");
+  const completo = armar(renglones);
+  if (completo.length <= LIMITE_RESUMEN_CANONICO) return completo;
+  // Pedido grande: caben los renglones que alcancen y el resto se resume en una linea (el total ya los incluye).
+  const avisoDe = (n: number): string => `• … y ${n} ${n === 1 ? "renglón" : "renglones"} más (incluidos en el total)`;
+  const presupuesto = LIMITE_RESUMEN_CANONICO - armar([avisoDe(renglones.length)]).length;
+  const visibles: string[] = [];
+  let usado = 0;
+  for (const r of renglones) {
+    if (usado + r.length + 1 > presupuesto) break;
+    visibles.push(r);
+    usado += r.length + 1;
+  }
+  const ocultos = renglones.length - visibles.length;
+  return armar(ocultos > 0 ? [...visibles, avisoDe(ocultos)] : visibles);
 }
 
 /**

@@ -105,6 +105,7 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   // R13 (T7-026): hora en el resumen canonico y offset de programado_para / hora_recogida contra la zona de la sucursal (Merida, Cancun, Tijuana con y sin horario de verano), reloj fijo.
   "packages/domain-restaurantes/tests/pm-r13-hora-sucursal.spec.ts",
   "packages/domain-restaurantes/tests/pm-r13-resumen-con-hora.spec.ts",
+  "packages/domain-restaurantes/tests/pm-r15-resumen-canonico-completo.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.
