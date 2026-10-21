@@ -88,6 +88,20 @@ export const ACCIONES_RESTAURANTES = {
   "cfo.importar_sr": DUENO_Y_ADMIN,
   /** CFO: registrar y descargar exportaciones (Excel/PDF, CFO-06). */
   "cfo.exportar": DUENO_Y_ADMIN,
+  // ---- Panel movil del operador (PLAN-PANEL-OPERADOR D1): acciones nuevas, NO roles nuevos. `staff` cubre a cajero y encargado; el
+  // cajero que no cancela ni despacha se resuelve con un perfil operativo de la membresia (backend), nunca aqui. ----
+  /** Capturar un pedido por llamada, mostrador o WhatsApp manual (con consentimiento de avisos registrado). */
+  "pedidos.capturar": MANAGER_ROLES,
+  /** «Salio»: asignar chofer y poner el pedido en camino en una sola operacion atomica. */
+  "viajes.despachar": MANAGER_ROLES,
+  /** Cancelar un pedido (staff solo en pending/preparando y con motivo de la lista cerrada; el servidor lo aplica). */
+  "pedidos.cancelar": MANAGER_ROLES,
+  /** Ver el panel «Turno / Hoy» de la sucursal. */
+  "turno.ver": MANAGER_ROLES,
+  /** Deshacer una entrega fuera de la ventana corta del chofer. */
+  "entrega.deshacer_forzado": MANAGER_ROLES,
+  // La superficie del chofer (entregar, deshacer, problema, llamar) NO entra en esta matriz: esta tabla nunca incluye al repartidor
+  // (invariante probado) y esas rutas se autorizan con REPARTIDOR_ROLES + pertenencia del pedido, disjuntas de MANAGER_ROLES.
 } as const satisfies Record<string, readonly RestaurantesRole[]>;
 
 export type AccionRestaurantes = keyof typeof ACCIONES_RESTAURANTES;

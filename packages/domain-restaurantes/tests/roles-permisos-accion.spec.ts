@@ -15,6 +15,13 @@ const ESPERADO: Record<string, Record<string, boolean>> = {
   "cfo.capturar": { owner: true, admin: true, staff: false, repartidor: false },
   "cfo.importar_sr": { owner: true, admin: true, staff: false, repartidor: false },
   "cfo.exportar": { owner: true, admin: true, staff: false, repartidor: false },
+  // Panel movil del operador (PLAN-PANEL-OPERADOR D1). El rol `staff` cubre a cajero y encargado; separar al cajero (que NO cancela ni
+  // despacha) exige un perfil operativo en la membresia y lo resuelve el backend (paquete A1), no esta matriz de roles.
+  "pedidos.capturar": { owner: true, admin: true, staff: true, repartidor: false },
+  "viajes.despachar": { owner: true, admin: true, staff: true, repartidor: false },
+  "pedidos.cancelar": { owner: true, admin: true, staff: true, repartidor: false },
+  "turno.ver": { owner: true, admin: true, staff: true, repartidor: false },
+  "entrega.deshacer_forzado": { owner: true, admin: true, staff: true, repartidor: false },
 };
 
 describe("matriz de permisos por accion (PL-23)", () => {

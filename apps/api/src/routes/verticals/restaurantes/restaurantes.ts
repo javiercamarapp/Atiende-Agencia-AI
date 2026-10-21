@@ -10,6 +10,7 @@ import { restaurantesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { restaurantesAdminCatalogRoutes } from "./admin-catalog.ts";
 import { restaurantesAdminPromotionsRoutes } from "./admin-promotions.ts";
 import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
+import { restaurantesOperacionAndamiajeRoutes } from "./operacion-andamiaje.ts";
 import { restaurantesAdminOrdersRoutes } from "./admin-orders.ts";
 import { restaurantesAdminCustomersRoutes } from "./admin-customers.ts";
 import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
@@ -59,6 +60,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // domain-restaurantes/src/promotions.ts).
   app.route("/", restaurantesAdminPromotionsRoutes(deps));
   app.route("/", restaurantesAdminBranchesRoutes(deps));
+  // Panel del operador (andamiaje, 501 honesto): ANTES de admin-orders/admin-customers/repartidor-orders (ver el comentario del archivo).
+  app.route("/", restaurantesOperacionAndamiajeRoutes(deps));
   app.route("/", restaurantesAdminOrdersRoutes(deps));
   app.route("/", restaurantesAdminCustomersRoutes(deps));
   // Fase 8 — superficie real del rol "repartidor" (ver domain-restaurantes/src/
