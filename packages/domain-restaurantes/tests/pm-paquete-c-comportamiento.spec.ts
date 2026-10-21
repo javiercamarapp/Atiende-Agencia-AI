@@ -4,6 +4,7 @@
 //  NU-4 / S1: si el cliente ya dijo «si» a un resumen vigente y el turno muere, no se culpa a un «problema tecnico»: se dice la verdad, se avisa al equipo y el «si» siguiente crea UN pedido.
 //  Llamada perdida a media venta: el carrito sigue intacto.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { classifyHighRiskIntent } from "../src/whatsapp/guards.ts";
 import { MARTES_14H, nuevoViaje, pedidosDe, TEL_CLIENTE, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
 beforeEach(() => {
@@ -105,15 +106,25 @@ describe("NU-4 / S1: el «si» ya dado no se pierde ni se culpa al sistema", () 
     expect(r.reply).not.toMatch(/problema t[eé]cnico|del sistema|falla/i);
     expect(r.reply).toMatch(/recib[ií] su confirmaci[oó]n/i);
     expect(r.reply).toMatch(/106/);
+    // UNA sola via: lo registra el equipo; no se invita a reenviar «si» (evita un pedido duplicado con el que registre el personal).
+    expect(r.reply).toMatch(/compa[nñ]ero/i);
+    expect(r.reply).not.toMatch(/escr[ií]bame|de nuevo|otra vez/i);
     expect(motivos(v)).toContain("escalada:falla_sistema");
     expect(await pedidosDe(v)).toHaveLength(0);
     v.requests.push = empujar;
-    avanza(min(20));
-    const crear = { name: "crear_pedido", args: { branch_slug: "garcia-lavin", canal: "recoger", customer_name: "Cliente QA", items, payment_method: "efectivo", hora_recogida: "2026-10-13T14:40:00-06:00" } };
-    v.guion([{ tools: [{ name: "confirmar_resumen", args: {} }] }, { tools: [crear, crear] }, { texto: "Listo, su pedido quedó registrado." }]);
+    // Si el cliente igual vuelve a escribir «si»: NO se crea el pedido (lo registra el personal), se avisa de nuevo y no se llama al modelo.
+    const llamadas = v.requests.length;
+    const avisos = v.callbacks.length;
     const r2 = await v.escribe("sí");
-    expect(r2.orderId).toBeTruthy();
-    expect(await pedidosDe(v)).toHaveLength(1);
+    expect(r2.reply).toMatch(/compa[nñ]ero/i);
+    expect(v.requests.length).toBe(llamadas);
+    expect(v.callbacks.length).toBe(avisos + 1);
+    expect(await pedidosDe(v)).toHaveLength(0);
+    // Un mensaje que NO es un «si» (un cambio) sigue el camino normal.
+    v.guion([{ texto: "Con gusto, ¿qué desea cambiar?" }]);
+    const r3 = await v.escribe("quiero cambiar algo");
+    expect(r3.reply).toMatch(/cambiar/);
+    expect(items.length).toBe(1);
   });
 
   it("sin resumen vigente un mensaje cualquiera con el proveedor caido conserva el aviso técnico de siempre", async () => {
@@ -141,5 +152,75 @@ describe("Llamada perdida a media venta", () => {
     const r2 = await v.escribe("sí, es correcto");
     expect(r2.orderId).toBeTruthy();
     expect(await pedidosDe(v)).toHaveLength(1);
+  });
+});
+
+describe("Falsos positivos de «no mandaron / incluyeron / pusieron»", () => {
+  const entregado = { pedidoReciente: { estado: "entregado" } } as never;
+  const motivo = (t: string, ctx: never) => classifyHighRiskIntent(t, ctx)?.motivo ?? null;
+
+  it.each([
+    "no me mandes salsa picante",
+    "que no incluyan cebolla",
+    "no traigan hielo en la bebida",
+    "no puse el nombre, es Ana",
+    "no incluyas el flan",
+    "no pongan limón",
+    "que no mandaron el menú, ¿me lo pasan?",
+    "no mandaron el menú, ¿me lo pasan?",
+    "no incluyeron el flan en el menú",
+    "¿no mandaron la ubicación de la sucursal?",
+    "no enviaron la factura todavía, ¿cuándo llega?",
+    "no pusieron la promoción en el menú",
+  ])("«%s» NO es una queja (ni con pedido entregado reciente)", (t) => {
+    expect(motivo(t, entregado)).not.toBe("queja");
+    expect(motivo(t, {} as never)).not.toBe("queja");
+  });
+
+  it.each([
+    "no mandaron las salsas de mi pedido",
+    "no mandaron ninguna salsa",
+    "no incluyeron el guacamole",
+    "no trajeron las papas",
+  ])("«%s» con un pedido entregado reciente SÍ es una queja", (t) => {
+    expect(motivo(t, entregado)).toBe("queja");
+  });
+
+  it("sin pedido reciente ni hablar de «mi pedido» un «no mandaron las salsas» suelto no escala solo", () => {
+    expect(motivo("no mandaron las salsas", {} as never)).not.toBe("queja");
+  });
+});
+
+describe("Mensajes acumulados durante una toma atendida", () => {
+  it("una cancelacion ya atendida no se revive (aviso duplicado) cuando la toma se devuelve al agente", async () => {
+    const v = await nuevoViaje();
+    expect((await v.escribe("quiero cancelar mi pedido")).escalated).toBe(true);
+    const toma = v.conversaciones.handoffs[0]!;
+    await v.conversaciones.tomar(v.world.organizationId, v.t7, "whatsapp", toma.conversationId);
+    avanza(min(5));
+    // Con la toma tomada el agente calla: estos mensajes quedan acumulados sin respuesta.
+    await v.escribe("cancélalo ya por favor");
+    await v.escribe("cancela mi pedido");
+    const avisos = v.callbacks.length;
+    await v.conversaciones.devolver(v.world.organizationId, v.t7, toma.id);
+    avanza(min(5));
+    v.guion([{ texto: "Con gusto, ¿en qué le ayudo?" }]);
+    await v.escribe("gracias");
+    expect(v.callbacks.length).toBe(avisos);
+  });
+});
+
+describe("Dos pedidos distintos en la misma rafaga", () => {
+  it("el modelo recibe ambos pedidos en orden y se responde una sola vez, sin crear nada", async () => {
+    const v = await nuevoViaje();
+    v.guion([{ texto: "Entendido, son dos pedidos distintos. ¿Empezamos con el primero?" }]);
+    await v.world.repo.appendWhatsAppUserMessageOnce(v.world.organizationId, TEL_CLIENTE, { role: "user", content: "pedido 1: dos cocas para recoger" });
+    await v.world.repo.appendWhatsAppUserMessageOnce(v.world.organizationId, TEL_CLIENTE, { role: "user", content: "y aparte pedido 2: tres aguas a domicilio" });
+    const r = await v.escribe("son dos pedidos distintos");
+    expect(r.reply).toBeTruthy();
+    expect(v.requests.length).toBe(1);
+    const texto = v.requests[0]!.messages.filter((m) => m.role === "user").map((m) => String(m.content)).join("\n");
+    expect(texto.indexOf("pedido 1")).toBeLessThan(texto.indexOf("pedido 2"));
+    expect(await pedidosDe(v)).toHaveLength(0);
   });
 });
