@@ -57,6 +57,35 @@ describe("docs/legal/publicable/ no admite marcadores sin completar", () => {
   });
 });
 
+describe("aviso integral publicado (docs/legal/publicable + página estática)", () => {
+  const md = leer(join(DIR_PUBLICABLE, "aviso-privacidad-integral.md"));
+  const html = leer(join(RAIZ, "apps", "web", "public", "aviso-privacidad.html"));
+  it("nombra al responsable, su domicilio y el correo ARCO confirmados, y está vigente a la fecha", () => {
+    for (const texto of [md, html]) {
+      expect(texto).toContain("ATIENDE SA de CV");
+      expect(texto).toContain("Calle 43 No. 147A entre 38 y 36D, colonia Benito Juárez Norte, Mérida, Yucatán, C.P. 97119");
+      expect(texto).toContain("ventas@likida.ai");
+      expect(texto).toContain("21 de octubre de 2026");
+      expect(texto).toMatch(/vigente/i);
+      expect(tieneMarcadoresSinCompletar(texto)).toBe(false);
+    }
+  });
+  it("lista a todos los encargados que usa el servicio, incluidos los que omitía el borrador", () => {
+    for (const proveedor of ["Meta", "Google", "OpenRouter", "Deepgram", "ElevenLabs", "Twilio", "LiveKit", "Supabase", "Vercel", "Resend", "Sentry", "Stripe"]) {
+      expect(md).toContain(proveedor);
+      expect(html).toContain(proveedor);
+    }
+  });
+  it("no afirma revisión de un abogado ni conserva el nombre antiguo del responsable", () => {
+    for (const texto of [md, html]) {
+      expect(texto).not.toMatch(/revisad[oa] por (un |el )?abogad/i);
+      expect(texto).not.toMatch(/BORRADOR/);
+      expect(texto).not.toContain("Atiende AI");
+      expect(texto).not.toMatch(/\bOmar\b/);
+    }
+  });
+});
+
 describe("los borradores siguen siendo borrador mientras tengan datos por completar", () => {
   it.each(BORRADORES)("%s declara que es borrador, que no es asesoría legal y conserva sus marcadores", (archivo) => {
     const texto = leer(join(DIR_LEGAL, archivo));

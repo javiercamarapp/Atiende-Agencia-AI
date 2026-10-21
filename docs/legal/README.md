@@ -10,7 +10,7 @@
 | --- | --- |
 | `aviso-privacidad-integral.md` | Aviso de privacidad **integral** para un restaurante (responsable) que usa el agente de WhatsApp y voz de Atiende. Incluye el Anexo B: aviso de Atiende como responsable de sus propios usuarios y prospectos. |
 | `aviso-privacidad-simplificado.md` | Textos **simplificados**: primer mensaje de WhatsApp, guion de apertura de la llamada, texto corto para web y el mensaje de revocación. |
-| `publicable/` | Aquí solo entra una versión **ya completada y revisada por el abogado**. La prueba `privacidad-avisos-legales.spec.ts` falla si un archivo de esta carpeta conserva un marcador sin completar. |
+| `publicable/` | Aquí solo entra una versión **ya completada** (sin marcadores). Hoy contiene `aviso-privacidad-integral.md` v1.0, vigente desde el 21-oct-2026, publicado por autorización explícita del dueño del negocio **sin revisión de abogado**; se sirve como página estática en `apps/web/public/aviso-privacidad.html` (regenerar si cambia el `.md`). La prueba `privacidad-avisos-legales.spec.ts` falla si un archivo de esta carpeta conserva un marcador sin completar. |
 
 ## Datos de Atiende ya capturados (16-oct, dados por el dueño del negocio)
 
