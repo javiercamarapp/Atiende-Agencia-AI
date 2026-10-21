@@ -549,3 +549,20 @@ set local role anon;
 select public.t_esperar_error($q$select restaurantes.marcar_listo('00000000-0000-0000-0000-0000000e5701', '00000000-0000-0000-0000-0000000e57c8')$q$, '42501');
 select public.t_esperar_error($q$select restaurantes.operador_puede('00000000-0000-0000-0000-0000000e5701', '00000000-0000-0000-0000-0000000e57a1', 'capturar')$q$, '42501');
 rollback;
+
+\echo '=== A4b. reasignar deja renglon de auditoria en el historial ==='
+begin;
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5712');
+select restaurantes.despachar_pedido('00000000-0000-0000-0000-0000000e5701', '00000000-0000-0000-0000-0000000e57c1', '00000000-0000-0000-0000-0000000e5714', 35);
+select restaurantes.despachar_pedido('00000000-0000-0000-0000-0000000e5701', '00000000-0000-0000-0000-0000000e57c1', '00000000-0000-0000-0000-0000000e5715', 35);
+reset role;
+select count(*) as auditoria_deberia_ser_1 from restaurantes.order_status_events where order_id = '00000000-0000-0000-0000-0000000e57c1' and motivo = 'reasignado:00000000-0000-0000-0000-0000000e5715';
+rollback;
+
+\echo '=== B13. RECHAZADO: quien no es gestor de la organizacion recibe 42501 aun con un pedido inexistente (no se filtra la existencia) ==='
+begin;
+set local role authenticated;
+select public.t_como('00000000-0000-0000-0000-0000000e5716');
+select public.t_esperar_error($q$select restaurantes.despachar_pedido('00000000-0000-0000-0000-0000000e5701', '00000000-0000-0000-0000-0000000e57ff', '00000000-0000-0000-0000-0000000e5714', 35)$q$, '42501');
+rollback;

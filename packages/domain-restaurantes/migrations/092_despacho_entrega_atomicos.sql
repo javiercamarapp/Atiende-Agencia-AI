@@ -27,7 +27,17 @@
 --
 -- Compatibilidad con la base SIN migrar: 42883 (funcion ausente) / 42703 (columna de 090 ausente) => el TypeScript cae al camino anterior (asignar +
 -- cambiar estado) dentro de un SAVEPOINT (runWithSavepointFallback) y responde salioAt nulo.
--- Reversa: drop function para cada una de las cuatro firmas de abajo. Depende de 090 (columnas y operador_puede) y 091 no (solo toca la outbox por nombre).
+-- REVERSA (ORDEN OBLIGATORIO 092 -> 091 -> 090; las funciones plpgsql no registran dependencias): se revierte PRIMERO esta migracion:
+--     drop function if exists restaurantes.deshacer_entrega(uuid, uuid, boolean);
+--     drop function if exists restaurantes.marcar_entrega(uuid, uuid, numeric);
+--     drop function if exists restaurantes.marcar_listo(uuid, uuid);
+--     drop function if exists restaurantes.despachar_pedido(uuid, uuid, uuid, integer);
+--   No pierde datos: solo funciones. Los pedidos ya despachados/entregados conservan su estado.
+--
+-- RIESGO CONOCIDO HASTA QUE LLEGUE LA 093 (se prioriza para el final): `grant update on restaurantes.orders to authenticated` (migracion 007) es de TABLA
+--   COMPLETA y la policy de UPDATE deja actualizar a CUALQUIER miembro de la organizacion, chofer incluido. Mientras no se aplique la 093, un chofer con
+--   sesion viva puede escribir directo (PATCH a la tabla) cualquier columna de un pedido, tambien las nuevas (cobrado_monto, salio_at, listo_at). Estas
+--   funciones NO cierran ese hueco: solo ofrecen el camino atomico y verificado. La defensa actual sigue siendo la capa TypeScript.
 
 create or replace function restaurantes.despachar_pedido(
   p_organization_id uuid, p_order_id uuid, p_repartidor_id uuid, p_eta_min integer
@@ -47,6 +57,13 @@ begin
     raise exception 'despachar_pedido: eta fuera de rango' using errcode = '22023';
   end if;
 
+  -- Permiso ANTES de buscar el pedido: quien no es gestor de la organizacion recibe 42501 sin enterarse de si existe un (org, pedido).
+  if not exists (
+    select 1 from core.membership m
+    where m.user_id = auth.uid() and m.organization_id = p_organization_id and m.vertical_role in ('owner', 'admin', 'staff')
+  ) then
+    raise exception 'sin permiso para operar en esta organizacion' using errcode = '42501';
+  end if;
   select * into v_order from restaurantes.orders where id = p_order_id and organization_id = p_organization_id for update;
   if not found then
     raise exception 'pedido no encontrado' using errcode = 'P0404';
@@ -72,6 +89,9 @@ begin
       return jsonb_build_object('resultado', 'ya_aplicado', 'estado', 'en_camino', 'salio_at', v_order.salio_at, 'repartidor_id', p_repartidor_id);
     end if;
     update restaurantes.orders set assigned_repartidor_id = p_repartidor_id where id = v_order.id;
+    -- Auditoria: el cambio de chofer no cambia el estado (el trigger no dispara), asi que deja su propio renglon en el historial append-only.
+    insert into restaurantes.order_status_events (order_id, organization_id, property_id, from_status, to_status, actor, motivo)
+    values (v_order.id, v_order.organization_id, v_order.property_id, 'en_camino', 'en_camino', 'staff:' || auth.uid()::text, 'reasignado:' || p_repartidor_id::text);
     return jsonb_build_object('resultado', 'reasignado', 'estado', 'en_camino', 'salio_at', v_order.salio_at, 'repartidor_id', p_repartidor_id);
   end if;
   if v_order.status <> 'preparando' then
@@ -100,6 +120,12 @@ declare
 begin
   if auth.uid() is null then
     raise exception 'marcar_listo no es para la sesion de sistema' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from core.membership m
+    where m.user_id = auth.uid() and m.organization_id = p_organization_id and m.vertical_role in ('owner', 'admin', 'staff')
+  ) then
+    raise exception 'sin permiso para operar en esta organizacion' using errcode = '42501';
   end if;
   select * into v_order from restaurantes.orders where id = p_order_id and organization_id = p_organization_id for update;
   if not found then
@@ -198,6 +224,12 @@ declare
 begin
   if auth.uid() is null then
     raise exception 'deshacer_entrega no es para la sesion de sistema' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from core.membership m
+    where m.user_id = auth.uid() and m.organization_id = p_organization_id and m.vertical_role in ('owner', 'admin', 'staff', 'repartidor')
+  ) then
+    raise exception 'sin permiso para operar en esta organizacion' using errcode = '42501';
   end if;
   select * into v_order from restaurantes.orders where id = p_order_id and organization_id = p_organization_id for update;
   if not found then
