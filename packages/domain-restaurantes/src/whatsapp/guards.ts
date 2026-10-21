@@ -512,7 +512,13 @@ function esperaLargaDelPedido(texto: string, ctx: HighRiskContext): boolean {
   return estado === "registrado" || estado === "preparando" || estado === "salio";
 }
 // Quejas de "algo no llego / llego mal" que solo son queja si se habla de un pedido ya hecho (el mismo criterio que "me falto").
-const QUEJA_DE_ENTREGA = /\bno\s+me\s+(?:llego|llegaron|trajeron|mandaron|dieron)\b|\bno\s+(?:me\s+)?(?:mandaron|enviaron|trajeron|incluyeron|pusieron)\s+(?:ni\s+)?(?:ningun[ao]s?|nada|el|la|los|las|un|una|unos|unas|mis|sus)\b|\bvino\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada|aguado|revuelto)\b|\bme\s+(?:llego|llegaron|trajeron|mandaron)\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada)\b/;
+// «no mandaron / incluyeron / pusieron <algo>» sin «me»: reclamo por algo del pedido que no llego. Va APARTE de la regla clasica porque puede ser una pregunta («¿no mandaron el menu?»,
+// «no incluyeron el flan en el menu, ¿me lo pasan?»): ver NO_ES_RECLAMO.
+const NO_MANDARON_ALGO = /\bno\s+(?:mandaron|enviaron|trajeron|incluyeron|pusieron)\s+(?:ni\s+)?(?:ningun[ao]s?|nada|el|la|los|las|un|una|unos|unas|mis|sus)\b/;
+// Pregunta (con «?»), peticion de que se lo pasen, hablar de menu/ubicacion/factura/ticket... o un deseo («que no mandaron...»): NO es el reclamo por un producto, salsa o extra del pedido.
+const NO_ES_RECLAMO = /\?|\bme\s+lo\s+(?:pasan|pasas|mandan|mandas|envian|envias|compart\w+)\b|\b(?:menu|catalogo|carta|ubicacion|factura|ticket|recibo|promociones?|numero|telefono|link|enlace|pagina|cotizacion|aviso|mensaje|respuesta|confirmacion)\b|^\W*que\s+no\b/;
+const QUEJA_DE_ENTREGA_CLASICA = /\bno\s+me\s+(?:llego|llegaron|trajeron|mandaron|dieron)\b|\bvino\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada|aguado|revuelto)\b|\bme\s+(?:llego|llegaron|trajeron|mandaron)\s+(?:todo\s+|muy\s+)?(?:frio|fria|incompleto|incompleta|mal|equivocado|equivocada)\b/;
+const QUEJA_DE_ENTREGA = new RegExp(`${QUEJA_DE_ENTREGA_CLASICA.source}|${NO_MANDARON_ALGO.source}`);
 // Pregunta de estado o de politica sobre cancelar ("¿mi pedido se cancelo?", "¿si cancelo me cobran algo?", "¿hasta que hora se puede cancelar?"): NO pide cancelar nada.
 const CONSULTA_DE_CANCELACION =
   /\b(?:se|ya\s+se|me)\s+cancel(?:o|aron)\b|\bcancelaron\b|\bsi\s+cancel(?:o|amos|aron|an|ara|aran)\b|\bhasta\s+(?:que\s+)?hora\b[^.!?\n]{0,40}\bcancel|\bse\s+puede\s+cancel|\bpuedo\s+cancel|\bpodria\s+cancel(?:ar)?\s+(?:mi|el)\s+pedido\s*\?|\bcomo\s+(?:se\s+)?cancel|\b(?:cobran|cobra|cobro|cargo|penaliz\w*|politica)\b[^.!?\n]{0,40}\bcancel|\bcancel\w*[^.!?\n]{0,40}\b(?:cobran|cobra|cobro|cargo|penaliz\w*|politica)\b/;
@@ -971,6 +977,8 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
       if (/\bqueja\b|\bllego\s+(?:todo\s+|muy\s+)?(?:frio|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bmal\s+armado\b/.test(texto)) return true;
       // "no me llego la coca" / "vino frio todo": queja solo si habla de un pedido ya hecho.
       if (QUEJA_DE_ENTREGA.test(texto) && !/\b(?:me|le|les|nos)\s+falt(?:o|aron)\b/.test(texto)) {
+        // «no mandaron el menu, ¿me lo pasan?» / «no incluyeron el flan en el menu»: consulta, no reclamo (solo la forma nueva; la clasica «no me llego...» no cambia).
+        if (!QUEJA_DE_ENTREGA_CLASICA.test(texto) && NO_ES_RECLAMO.test(texto)) return false;
         const estadoEntrega = ctx.pedidoReciente?.estado;
         return estadoEntrega === "entregado" || estadoEntrega === "salio" || HABLA_DE_SU_PEDIDO.test(texto);
       }
