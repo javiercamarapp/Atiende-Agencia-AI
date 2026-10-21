@@ -15,6 +15,7 @@
 import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
+import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
@@ -2005,6 +2006,10 @@ async function dispatchTool(
       if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
       if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
       const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;
+      const motivoEscalada = esEscalada ? normalizarMotivoEscalacion(input.motivo) : null;
+      // R16 (T7-017/021/043): el folio, la direccion y los renglones del pedido reciente los pone el SERVIDOR (no el modelo) en las escaladas que hablan de un pedido.
+      const bloquePedido = motivoEscalada && MOTIVOS_AVISO_CON_PEDIDO.has(motivoEscalada) ? await armarBloquePedidoParaAviso(repo, organizationId, ctx.phone) : null;
+      const detalleModelo = esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined;
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
@@ -2012,12 +2017,14 @@ async function dispatchTool(
         customerPhone: ctx.phone,
         reason,
         sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,
-        message: esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined,
+        message: componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? ""),
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
       // QA-PM-R5-voz-05: por voz el agente escalaba y colgaba SIN decirle nada al cliente. El resultado trae la frase que debe decir (en WhatsApp el agente ya la escribe en el mismo turno).
       const aviso = esEscalada && ctx.channel === "voz" ? { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ, instruccion: INSTRUCCION_ESCALACION_VOZ } : {};
-      return { result: { ok: true, ...aviso }, raw: { ok: true }, orderId: null, propertyId: null };
+      // R16 (T7-043, decision de Javier): al agregar/cambiar algo de un pedido ya enviado a cocina la hora la confirma la SUCURSAL; el agente no inventa minutos.
+      const horaDelRestaurante = motivoEscalada === "cancelacion_modificacion" && ctx.channel !== "voz" ? { instruccion: INSTRUCCION_CAMBIO_HORA_SUCURSAL } : {};
+      return { result: { ok: true, ...aviso, ...horaDelRestaurante }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
 }
@@ -2068,6 +2075,9 @@ export const AVISO_SIN_ESTADO_DE_PEDIDO = "Este resultado NO trae el estado del 
 
 /** Lo que el agente de VOZ le dice al cliente tras escalar a una persona (SOLO la frase literal: `mensaje_al_cliente` se lee tal cual). */
 export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan.";
+/** Tras escalar un cambio (agregar, cancelar...) a un pedido ya enviado a cocina: el aviso ya salio; la hora la confirma el restaurante. */
+export const INSTRUCCION_CAMBIO_HORA_SUCURSAL = "Ya se avisó a la sucursal con el detalle. Dígale al cliente: «Se lo paso a cocina; le confirmo en un momento». La hora y si alcanza a salir con su pedido los confirma la sucursal: NO dé minutos, horas ni «aproximadamente» y no prometa que ya quedó agregado.";
+
 /** Instruccion para el MODELO (no para el cliente): va en `instruccion`, nunca dentro de `mensaje_al_cliente`. */
 export const INSTRUCCION_ESCALACION_VOZ = "Dígale al cliente el mensaje_al_cliente, de usted, ANTES de despedirse o cortar; no prometa hora ni resultado.";
 

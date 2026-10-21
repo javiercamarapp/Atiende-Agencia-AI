@@ -203,6 +203,8 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
     // Hasta 14 palabras sin cruzar de frase, y el participio debe ser de REGISTRAR/CREAR el pedido (o ir con «quedó/está/fue»): «el precio confirmado de $126» o «el envío confirmado a Calle 60» no cuentan.
     new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[^\\s.!?;]+){0,14}?\\s+(?:ya\\s+)?(?:registrad[oa]|generad[oa]|levantad[oa]|capturad[oa]|procesad[oa])\\b`),
     new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[^\\s.!?;]+){0,14}?\\s+(?:ya\\s+)?(?:quedo|queda|esta|fue|ha\\s+sido|va|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?(?:${PART}|${SALIDA})\\b`),
+    // QA-PM-R16 NU-4/T7-026: «el pedido quedó con un total de $126», «su pedido quedó para las 7 pm»: «quedó» (pasado) sin participio tambien afirma que el pedido existe.
+    new RegExp(`\\b${N}\\b(?:\\s+(?!${OBJETO}\\b)[^\\s.!?;]+){0,6}?\\s+(?:ya\\s+)?quedo\\s+(?:ya\\s+)?(?:con|por|para|a\\s+nombre|programad[oa]|agendad[oa])\\b`),
     // «ya quedó apartado su pedido», «ya está su pedido», «ya se generó su orden»
     new RegExp(`\\b(?:ya\\s+)?(?:quedo|esta|fue|se\\s+(?:genero|tomo|registro|confirmo|envio|mando|paso|levanto))\\s+(?:ya\\s+)?(?:${PART}\\s+)?(?:su|el)\\s+${N}\\b`),
     // «ya tomé su pedido», «ya mandé su comanda», «registré su orden»

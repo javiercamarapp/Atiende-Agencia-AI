@@ -485,8 +485,8 @@ export function resumenCanonico(e: EntradaResumen): string {
   const d = e.datos;
   if (d.pago === "efectivo") detalles.push(`Pago: efectivo${d.efectivoCon ? ` (paga con ${pesos(d.efectivoCon)})` : ""}`);
   else if (d.pago === "tarjeta") detalles.push("Pago: tarjeta");
-  // Politica operativa (#598): la tarjeta a domicilio SIEMPRE lleva terminal; el cliente debe verlo antes de aceptar.
-  if (d.pago === "tarjeta" && e.canal !== "recoger") detalles.push("Llevará terminal para cobrar con tarjeta");
+  // Politica operativa (#598) y decision NU-3: con tarjeta SIEMPRE se lleva terminal (a domicilio y al recoger); el cliente debe verlo antes de aceptar. Va en `detalles`, que nunca se recorta.
+  if (d.pago === "tarjeta") detalles.push(e.canal === "recoger" ? "Tendremos terminal para cobrar con tarjeta al recoger" : "Llevará terminal para cobrar con tarjeta");
   if (d.propinaMxn) detalles.push(`Propina: ${pesos(d.propinaMxn)} (no suma al total)`);
   else if (d.propinaPct) detalles.push(`Propina: ${d.propinaPct}% (no suma al total)`);
   detalles.push(`Total a pagar: ${pesos(e.total)}`);

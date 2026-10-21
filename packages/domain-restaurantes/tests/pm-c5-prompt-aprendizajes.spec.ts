@@ -170,7 +170,7 @@ describe("10. estado del pedido solo con lo que marco la sucursal", () => {
 
 describe("13 y 14. queja por faltante y factura", () => {
   it("faltante: disculpa, que falto, pasa a la sucursal con motivo queja, sin prometer reposicion", () => {
-    expect(p).toMatch(/FALTANTE O PRODUCTO EQUIVOCADO \(queja\): disculpa breve \("disculpe el inconveniente"\), pregunte qué faltó o qué llegó mal y escale con motivo "queja"/);
+    expect(p).toMatch(/FALTANTE O PRODUCTO EQUIVOCADO \(queja\): disculpa breve \("disculpe el inconveniente"\)\. Si el cliente ya dijo qué faltó o qué llegó mal, escale DE INMEDIATO con motivo "queja"/);
     expect(p).toMatch(/no prometa reposición, cambio ni descuento/);
   });
   it("factura: enlace en linea y QR del ticket, sin pedir RFC", () => {
