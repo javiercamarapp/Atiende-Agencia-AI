@@ -23,6 +23,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Pulsa un botón del diálogo de confirmación (Radix AlertDialog, montado en el portal de document.body) por su texto exacto. */
+async function pulsarEnDialogo(texto: string): Promise<void> {
+  const dialogo = document.body.querySelector('[role="alertdialog"]');
+  expect(dialogo).not.toBeNull();
+  const boton = [...dialogo!.querySelectorAll("button")].find((b) => b.textContent?.trim() === texto)!;
+  await act(async () => {
+    boton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+    await flushMicrotasks();
+    await flushMicrotasks();
+  });
+}
+
 function jsonResponse(body: unknown, ok = true): Response {
   return { ok, status: ok ? 200 : 500, json: async () => body } as unknown as Response;
 }
@@ -164,6 +177,9 @@ describe("StaffPage (citas)", () => {
       await flushMicrotasks();
       await flushMicrotasks();
     });
+    // Revocar pide confirmar: hasta pulsar el botón del diálogo no sale ningún DELETE.
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+    await pulsarEnDialogo("Revocar invitación");
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/admin/staff/invitaciones/inv-1" && init?.method === "DELETE");
     expect(call).toBeDefined();
@@ -181,6 +197,9 @@ describe("StaffPage (citas)", () => {
       await flushMicrotasks();
       await flushMicrotasks();
     });
+    // Cambiar el rol pide confirmar: hasta pulsar el botón del diálogo no sale ningún PATCH.
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+    await pulsarEnDialogo("Cambiar rol");
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/admin/staff/miembros/user-1" && init?.method === "PATCH");
     expect(call).toBeDefined();
@@ -205,9 +224,24 @@ describe("StaffPage (citas)", () => {
       await flushMicrotasks();
       await flushMicrotasks();
     });
+    await pulsarEnDialogo("Cambiar rol");
 
     expect(rendered.container.textContent).toContain("No puedes asignar un rol por encima del tuyo.");
     // El select real sigue mostrando el rol actual (staff), nunca el rechazado.
     expect((rendered.container.querySelector("#citas-staff-rol-user-1") as HTMLSelectElement).value).toBe("staff");
+  });
+
+  it("el selector de rol de la fila propia y el de alguien con más alcance quedan deshabilitados, y no se ofrecen roles por encima del propio", async () => {
+    const PROPIO: OrgMember = { id: "user-yo", email: "SAM@example.com", fullName: "Sam Demo", verticalRole: "admin", propertyIds: null };
+    const DUENO: OrgMember = { id: "user-dueno", email: "dueno@example.com", fullName: "Dueña Real", verticalRole: "owner", propertyIds: null };
+    stubFetch({ members: [PROPIO, DUENO, MIEMBRO_1] });
+    rendered = renderPage("admin");
+    await esperarCarga();
+
+    expect((rendered.container.querySelector("#citas-staff-rol-user-yo") as HTMLSelectElement).disabled).toBe(true);
+    expect((rendered.container.querySelector("#citas-staff-rol-user-dueno") as HTMLSelectElement).disabled).toBe(true);
+    const ajeno = rendered.container.querySelector("#citas-staff-rol-user-1") as HTMLSelectElement;
+    expect(ajeno.disabled).toBe(false);
+    expect([...ajeno.options].map((o) => o.value).sort()).toEqual(["admin", "staff"]);
   });
 });

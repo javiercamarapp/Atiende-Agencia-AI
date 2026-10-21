@@ -35,6 +35,7 @@ import { formatDateTime } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
   const [search, setSearch] = useState("");
@@ -43,21 +44,39 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
   const [total, setTotal] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Texto que de verdad se manda al servidor: espera a que se deje de teclear (una petición por pausa, no por tecla).
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [reintento, setReintento] = useState(0);
+
+  useEffect(() => {
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setOffset(0);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
 
   useEffect(() => {
     let cancelado = false;
-    fetchCustomers(fetch, apiBaseUrl, token, propertyId, { limit: PAGE_SIZE, offset, search: search || undefined })
+    setError(null);
+    fetchCustomers(fetch, apiBaseUrl, token, propertyId, { limit: PAGE_SIZE, offset, search: debouncedSearch || undefined })
       .then((page) => {
         if (cancelado) return;
         setCustomers(page.items);
         setTotal(page.total);
         setNextOffset(page.nextOffset);
       })
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudieron cargar los clientes."));
+      .catch((err: unknown) => {
+        if (cancelado) return;
+        // Sin datos viejos bajo el error: la lista anterior era de otra búsqueda/página.
+        setCustomers(null);
+        setError(err instanceof Error ? err.message : "No se pudieron cargar los clientes.");
+      });
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, offset, search]);
+  }, [apiBaseUrl, token, propertyId, offset, debouncedSearch, reintento]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -71,20 +90,17 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
           <Input
             id="citas-clientes-buscar"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setOffset(0);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nombre o teléfono…"
             className="pl-9"
           />
         </div>
       </header>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => setReintento((n) => n + 1)} />}
       {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
       {customers && customers.length === 0 && (
-        <EstadoVacio icon={Users} mensaje={search ? "Ningún cliente coincide con esa búsqueda." : "Este negocio todavía no tiene clientes."} />
+        <EstadoVacio icon={Users} mensaje={debouncedSearch ? "Ningún cliente coincide con esa búsqueda." : "Este negocio todavía no tiene clientes."} />
       )}
 
       {customers && customers.length > 0 && (
@@ -157,15 +173,18 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
   const [savingEmail, setSavingEmail] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
 
+  const [reintentoDetalle, setReintentoDetalle] = useState(0);
+
   useEffect(() => {
     let cancelado = false;
+    setError(null);
     fetchCustomerDetail(fetch, apiBaseUrl, token, propertyId, customerId)
       .then((d) => !cancelado && setDetail(d))
       .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudo cargar el cliente."));
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, customerId]);
+  }, [apiBaseUrl, token, propertyId, customerId, reintentoDetalle]);
 
   function startEditingEmail() {
     setEmailInput(detail?.customer.email ?? "");
@@ -196,7 +215,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
           Volver a clientes
         </Link>
       </Button>
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => setReintentoDetalle((n) => n + 1)} />}
       {!detail && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
       {detail && (
         <>
