@@ -19,6 +19,8 @@ import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, Sessi
 import type { AuthedFetchContext, SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 import { clearSession, persistSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
+import { CABECERA_IDEMPOTENCIA, esquemaDeshacerEntregaSalida, esquemaEntregarSalida, esquemaEntregasChoferSalida, esquemaHoyChoferSalida, esquemaLlamarSalida, esquemaProblemaSalida } from "@atiende/domain-restaurantes/operacion";
+import type { DeshacerEntregaSalida, EntregarEntrada, EntregarSalida, EntregasChoferSalida, Esquema, HoyChoferSalida, LlamarSalida, ProblemaEntrada, ProblemaSalida } from "@atiende/domain-restaurantes/operacion";
 
 export { SessionExpiredError };
 
@@ -81,7 +83,17 @@ export interface RepartidorOrder {
   readonly createdAt: string;
 }
 
-export class RepartidorClientError extends Error {}
+export class RepartidorClientError extends Error {
+  /** Estado HTTP de la respuesta (`undefined` si ni siquiera hubo respuesta: sin red). */
+  readonly status?: number;
+  /** `code` de negocio que manda la API en `{ code, message }` (`estado_cambio`, `fuera_de_ventana`, `no_implementado`...). */
+  readonly code?: string;
+  constructor(message: string, detalle: { readonly status?: number; readonly code?: string } = {}) {
+    super(message);
+    if (detalle.status !== undefined) this.status = detalle.status;
+    if (detalle.code !== undefined) this.code = detalle.code;
+  }
+}
 
 function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
@@ -110,8 +122,8 @@ async function fetchJson<T>(
     fetchImpl(url, { ...init, headers: { authorization: `Bearer ${t}`, ...(init?.headers ?? {}) } }),
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new RepartidorClientError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
+    const body = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    throw new RepartidorClientError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`, { status: res.status, ...(typeof body?.code === "string" ? { code: body.code } : {}) });
   }
   return (await res.json()) as T;
 }
@@ -136,4 +148,75 @@ export async function updateAssignedOrderStatus(
     body: JSON.stringify(incidentNote !== undefined ? { status, incidentNote } : { status }),
   });
   return body.order;
+}
+
+// ---------------------------------------------------------------------------
+// Panel del chofer (PLAN-PANEL-OPERADOR §2.3, paquete C1): rutas nuevas con los tipos y esquemas del contrato. Cada respuesta se valida
+// contra el esquema de `contratos.ts`: si el servidor manda otra forma, se avisa con un error honesto en vez de pintar datos a medias.
+// ---------------------------------------------------------------------------
+
+/** Llave de idempotencia nueva: el llamador la crea UNA vez por intento de accion y la reutiliza al reintentar tras un corte de red. */
+export function nuevaLlaveIdempotencia(): string {
+  return globalThis.crypto.randomUUID();
+}
+
+/** `true` si la API aun no tiene la funcion (501/404 `no_implementado`): la UI cae al panel anterior del chofer en vez de mostrar un error. */
+export function esFuncionNoDisponible(err: unknown): boolean {
+  return err instanceof RepartidorClientError && (err.status === 501 || err.code === "no_implementado" || err.code === "no_disponible");
+}
+
+/** `true` si la peticion ni llego al servidor (sin red, corte): es el unico caso que se reintenta con la misma llave. */
+export function esErrorDeRed(err: unknown): boolean {
+  return err instanceof RepartidorClientError && err.status === undefined;
+}
+
+async function pedirContrato<T>(fetchImpl: typeof fetch, url: string, token: string, esquema: Esquema<T>, init?: RequestInit): Promise<T> {
+  let crudo: unknown;
+  try {
+    crudo = await fetchJson<unknown>(fetchImpl, url, token, init);
+  } catch (err) {
+    if (err instanceof RepartidorClientError || err instanceof SessionExpiredError) throw err;
+    throw new RepartidorClientError("Sin conexión con el servidor.");
+  }
+  const r = esquema.validar(crudo);
+  if (!r.ok) throw new RepartidorClientError("El servidor respondió con un formato inesperado. Intenta de nuevo.", { code: "respuesta_invalida" });
+  return r.valor;
+}
+
+function rutaChofer(apiBaseUrl: string, propertyId: string, resto: string): string {
+  return `${apiBaseUrl}/v1/restaurantes/${propertyId}/repartidor/${resto}`;
+}
+
+function cuerpoJson(llave: string, cuerpo?: unknown): RequestInit {
+  return { method: "POST", headers: { "content-type": "application/json", [CABECERA_IDEMPOTENCIA]: llave }, body: JSON.stringify(cuerpo ?? {}) };
+}
+
+/** `GET repartidor/entregas`: solo SUS pedidos en camino (max 30), sin telefono ni notas libres. */
+export function fetchEntregasChofer(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<EntregasChoferSalida> {
+  return pedirContrato(fetchImpl, rutaChofer(apiBaseUrl, propertyId, "entregas"), token, esquemaEntregasChoferSalida);
+}
+
+/** `POST repartidor/orders/:id/entregar`. Repetir con la MISMA `llave` es seguro (`ya_aplicado`). */
+export function entregarPedidoChofer(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string, entrada: EntregarEntrada, llave: string): Promise<EntregarSalida> {
+  return pedirContrato(fetchImpl, rutaChofer(apiBaseUrl, propertyId, `orders/${orderId}/entregar`), token, esquemaEntregarSalida, cuerpoJson(llave, { desdeEstado: "en_camino", ...entrada }));
+}
+
+/** `POST repartidor/orders/:id/deshacer-entrega`: 409 `fuera_de_ventana` pasados los 60 s. */
+export function deshacerEntregaChofer(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string, llave: string): Promise<DeshacerEntregaSalida> {
+  return pedirContrato(fetchImpl, rutaChofer(apiBaseUrl, propertyId, `orders/${orderId}/deshacer-entrega`), token, esquemaDeshacerEntregaSalida, cuerpoJson(llave));
+}
+
+/** `POST repartidor/orders/:id/problema` con motivo de lista cerrada. */
+export function reportarProblemaChofer(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string, entrada: ProblemaEntrada, llave: string): Promise<ProblemaSalida> {
+  return pedirContrato(fetchImpl, rutaChofer(apiBaseUrl, propertyId, `orders/${orderId}/problema`), token, esquemaProblemaSalida, cuerpoJson(llave, entrada));
+}
+
+/** `POST repartidor/orders/:id/llamar`: pide el telefono (auditado, max 5 por pedido). El numero NO se guarda en estado. */
+export function pedirTelefonoCliente(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string, llave: string): Promise<LlamarSalida> {
+  return pedirContrato(fetchImpl, rutaChofer(apiBaseUrl, propertyId, `orders/${orderId}/llamar`), token, esquemaLlamarSalida, cuerpoJson(llave));
+}
+
+/** `GET repartidor/hoy`: solo lo suyo. `efectivoPorEntregar` es `null` si la base aun no guarda el cobro. */
+export function fetchHoyChofer(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<HoyChoferSalida> {
+  return pedirContrato(fetchImpl, rutaChofer(apiBaseUrl, propertyId, "hoy"), token, esquemaHoyChoferSalida);
 }
