@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// Contenedor del chofer: cae a la vista anterior si el servidor aun no tiene las rutas (501), y «Hecho hoy» nunca inventa un 0.
+// Contenedor del chofer: muestra la vista anterior hasta que la primera lista nueva responde bien (sin parpadeo), se queda en ella con 501/404,
+// y conserva «Historial del dia» (efectivo a rendir) como pestana del panel nuevo.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelChofer } from "../src/verticals/restaurantes/components/chofer/PanelChofer.tsx";
-import { HechoHoy } from "../src/verticals/restaurantes/components/chofer/HechoHoy.tsx";
 import { interpretarMonto } from "../src/verticals/restaurantes/components/chofer/ConfirmarEntrega.tsx";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
@@ -21,54 +21,44 @@ async function esperar() {
     for (let i = 0; i < 15; i++) await Promise.resolve();
   });
 }
+const visible = (texto: string) => [...document.querySelectorAll("h1, p, button, [role=tab]")].some((e) => e.textContent?.includes(texto) && !e.closest("[hidden]"));
+function montar(fetchImpl: typeof fetch) {
+  rendered = renderComponent(<PanelChofer apiBaseUrl="https://api.test" token="t" propertyId="prop-1" identidad="ana@example.test" fetchImpl={fetchImpl} almacen={null} legado={<p>VISTA ANTERIOR</p>} />);
+}
 
 describe("PanelChofer", () => {
-  it("con 501 muestra la vista anterior (legado) en lugar de un error", async () => {
-    const fetchImpl = vi.fn(async () => json(501, { code: "no_implementado", message: "No disponible aún" })) as unknown as typeof fetch;
-    rendered = renderComponent(<PanelChofer apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={fetchImpl} almacen={null} legado={<p>VISTA ANTERIOR</p>} />);
+  it("con 501 se queda en la vista anterior desde el primer pintado, sin pestanas nuevas", async () => {
+    montar(vi.fn(async () => json(501, { code: "no_implementado", message: "No disponible aún" })) as unknown as typeof fetch);
+    expect(visible("VISTA ANTERIOR")).toBe(true);
     await esperar();
-    expect(document.body.textContent).toContain("VISTA ANTERIOR");
-    expect(document.body.textContent).not.toContain("Hecho hoy");
+    expect(visible("VISTA ANTERIOR")).toBe(true);
+    expect(visible("Historial del día")).toBe(false);
   });
 
-  it("con rutas disponibles muestra el panel nuevo con sus tres pestanas y NO el legado", async () => {
-    const fetchImpl = vi.fn(async () => json(200, { entregas: [], actualizadoEn: "2026-10-21T20:00:00.000Z" })) as unknown as typeof fetch;
-    rendered = renderComponent(<PanelChofer apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={fetchImpl} almacen={null} legado={<p>VISTA ANTERIOR</p>} />);
-    await esperar();
-    const texto = document.body.textContent ?? "";
-    expect(texto).toContain("Mis entregas");
-    for (const pestana of ["En camino", "Hecho hoy", "Mi perfil"]) expect(texto).toContain(pestana);
-    expect(texto).not.toContain("VISTA ANTERIOR");
-  });
-});
-
-describe("HechoHoy", () => {
-  it("muestra las cifras del servidor y, sin efectivo registrado, un «—» con su motivo (nunca 0)", async () => {
-    const fetchImpl = vi.fn(async () => json(200, { entregasHoy: 6, enCamino: 1, efectivoPorEntregar: null })) as unknown as typeof fetch;
-    rendered = renderComponent(<HechoHoy apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={fetchImpl} />);
-    await esperar();
-    const texto = document.body.textContent ?? "";
-    expect(texto).toContain("Entregas de hoy");
-    expect(texto).toContain("6");
-    expect(texto).toContain("Falta la actualización de base");
-    expect(document.querySelector('[aria-label="Efectivo por entregar: sin dato"]')).not.toBeNull();
+  it("con 404 de lista tambien; un 403 o un 500 NO cambian de pantalla (sigue la vista anterior) ni la reemplazan por un error", async () => {
+    for (const [status, code] of [[404, "not_found"], [403, "forbidden"], [500, "internal"]] as const) {
+      montar(vi.fn(async () => json(status, { code, message: "x" })) as unknown as typeof fetch);
+      await esperar();
+      expect(visible("VISTA ANTERIOR"), `status ${status}`).toBe(true);
+      expect(visible("Historial del día"), `status ${status}`).toBe(false);
+      rendered!.unmount();
+      document.body.innerHTML = "";
+    }
   });
 
-  it("con efectivo registrado lo formatea en pesos", async () => {
-    const fetchImpl = vi.fn(async () => json(200, { entregasHoy: 6, enCamino: 0, efectivoPorEntregar: 3120 })) as unknown as typeof fetch;
-    rendered = renderComponent(<HechoHoy apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={fetchImpl} />);
+  it("mientras la primera lista no responde, la vista anterior es la visible; al responder bien cambia al panel nuevo con Historial del dia", async () => {
+    let resolver: (r: Response) => void = () => undefined;
+    montar(vi.fn(() => new Promise<Response>((r) => (resolver = r))) as unknown as typeof fetch);
     await esperar();
-    expect(document.body.textContent).toContain("$3,120.00");
-  });
-
-  it("501: estado honesto «—» con motivo; 500: error con Reintentar", async () => {
-    rendered = renderComponent(<HechoHoy apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={(async () => json(501, { code: "no_implementado", message: "x" })) as unknown as typeof fetch} />);
-    await esperar();
-    expect(document.body.textContent).toContain("Disponible cuando el servidor del panel esté activo.");
-    rendered.unmount();
-    rendered = renderComponent(<HechoHoy apiBaseUrl="https://api.test" token="t" propertyId="prop-1" fetchImpl={(async () => json(500, { code: "internal", message: "Falla" })) as unknown as typeof fetch} />);
-    await esperar();
-    expect(document.body.textContent).toContain("Falla");
+    expect(visible("VISTA ANTERIOR")).toBe(true);
+    expect(visible("En camino")).toBe(false);
+    await act(async () => {
+      resolver(json(200, { entregas: [], actualizadoEn: "2026-10-21T20:00:00.000Z" }));
+      for (let i = 0; i < 15; i++) await Promise.resolve();
+    });
+    expect(visible("VISTA ANTERIOR")).toBe(false);
+    for (const pestana of ["En camino", "Historial del día", "Mi perfil"]) expect(visible(pestana), pestana).toBe(true);
+    expect(visible("Hecho hoy")).toBe(false);
   });
 });
 

@@ -74,8 +74,8 @@ export function TarjetaEntrega({ entrega: e, ahoraMs, enCurso, pendienteDeEnvio,
           {activa && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                {mapa ? (
-                  <Button asChild variant="outline" className="h-14 w-full" disabled={ocupado}>
+                {mapa && !ocupado ? (
+                  <Button asChild variant="outline" className="h-14 w-full">
                     <a href={mapa} target="_blank" rel="noreferrer" aria-label={`Navegar al pedido ${e.numero}`}>
                       <Navigation />
                       Navegar
@@ -84,7 +84,7 @@ export function TarjetaEntrega({ entrega: e, ahoraMs, enCurso, pendienteDeEnvio,
                 ) : (
                   <Button type="button" variant="outline" className="h-14 w-full" disabled>
                     <Navigation />
-                    Sin mapa
+                    {mapa ? "Navegar" : "Sin mapa"}
                   </Button>
                 )}
                 <Button type="button" variant="outline" className="h-14 w-full" disabled={ocupado} loading={enCurso === "llamar"} aria-label={`Llamar al cliente del pedido ${e.numero}`} onClick={() => onLlamar(e)}>
@@ -96,7 +96,7 @@ export function TarjetaEntrega({ entrega: e, ahoraMs, enCurso, pendienteDeEnvio,
                 <Check />
                 Entregado
               </Button>
-              <Button type="button" variant="danger-outline" className="h-11 w-full" disabled={ocupado} aria-label={`No pude entregar el pedido ${e.numero}`} onClick={() => onProblema(e)}>
+              <Button type="button" variant="danger-outline" className="h-14 w-full" disabled={ocupado} aria-label={`No pude entregar el pedido ${e.numero}`} onClick={() => onProblema(e)}>
                 <AlertTriangle />
                 No pude entregar
               </Button>
