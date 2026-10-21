@@ -1,3 +1,4 @@
+// NU-3 (solo WhatsApp: la regla compacta de voz no cabe en el tope de 8000 caracteres de branch_voice_config; alla la terminal ya se menciona al pagar).
 // NU-3 (decision de Javier, 21-oct): con pago con tarjeta el agente SI avisa que llevan terminal, a domicilio y al recoger. Con la maquina de cierre OFF no hay resumen
 // canonico del servidor: lo arma el modelo, asi que la regla vive en el prompt. Con efectivo no se menciona terminal como cobro.
 import { describe, expect, it } from "vitest";
@@ -25,9 +26,5 @@ describe("NU-3: el prompt exige avisar que llevan terminal al pagar con tarjeta"
     const p = prompt();
     expect(p).toMatch(/Si paga con tarjeta, avise SIEMPRE que llevan terminal[^.]*a domicilio[^.]*al recoger/);
     expect(p).toMatch(/con efectivo no mencione terminal/i);
-  });
-
-  it("la regla compacta de voz tambien lo exige", () => {
-    expect(prompt("voz")).toMatch(/con tarjeta[^.\n]*avise[^.\n]*llevan terminal/i);
   });
 });
