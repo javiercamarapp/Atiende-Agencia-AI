@@ -87,6 +87,12 @@ Nota: `WHATSAPP_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` son obligatorias para
 **arrancar la API entera**, aunque solo gatean el webhook ENTRANTE de 3 verticales
 — así está escrito hoy en `env.ts::requireEnv`, sin fallback.
 
+## Agente de restaurantes PM: geocercas de reparto (opcional, APAGADA)
+
+| Variable | Dónde | Efecto |
+|---|---|---|
+| `RESTAURANTES_GEOCERCAS` | servicio de API (webhook de WhatsApp); se lee en cada turno | Sin definir o distinta de `1`: **apagada**, comportamiento idéntico a `main`. Con `1` y SOLO en el perfil `taqueria_pm`: `buscar_sucursal_cercana` decide la cobertura por polígono (`seed/geocercas-pm.ts`) con el pin del cliente, una colonia sin pin pide el pin, y el prompt agrega las reglas B1-B7 (paquete B). Activarla es decisión de Javier: ver los riesgos en el PR #621. |
+
 ## Google
 
 | Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
