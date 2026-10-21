@@ -108,6 +108,28 @@ describe("zona CFO -- bitacora de cada consulta financiera", () => {
     expect(ctx.zona!.entries()).toHaveLength(5);
   });
 
+  it("costos/uso-mensajes y gasto-api/por-rol (lecturas financieras) tambien dejan huella en la bitacora de la zona", async () => {
+    const ctx = await setup();
+    const sa = await ctx.superadmin();
+    for (const p of ["/superadmin/costos/uso-mensajes", "/superadmin/gasto-api/por-rol"]) await get(ctx, p, sa.token);
+    expect(ctx.zona!.entries().map((e) => e.recurso)).toEqual(["costos/uso-mensajes", "gasto-api/por-rol"]);
+  });
+
+  it("el rol finanzas puede leer costos/uso-mensajes y gasto-api/por-rol solo con step-up, y queda registrado", async () => {
+    fakeTime(T0);
+    const ctx = await setup();
+    const fin = await ctx.finanzas();
+    const stepUp = await ctx.activarMfa(fin);
+    for (const p of ["/superadmin/costos/uso-mensajes", "/superadmin/gasto-api/por-rol"]) {
+      const sin = await get(ctx, p, fin.token);
+      expect(sin.status, `${p} sin step-up`).toBe(403);
+      const res = await get(ctx, p, fin.token, stepUp);
+      expect(res.status, p).not.toBe(403);
+    }
+    const consultas = ctx.zona!.entries().filter((e) => e.accion === "consulta");
+    expect(consultas.map((e) => e.recurso)).toEqual(["costos/uso-mensajes", "gasto-api/por-rol"]);
+  });
+
   it("CIERRE EN FALSO: si el registro falla la consulta NO se ejecuta (503) y no hay lectura sin huella", async () => {
     const ctx = await setup();
     const sa = await ctx.superadmin();
