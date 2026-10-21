@@ -29,7 +29,7 @@ import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-recie
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
-import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
+import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
@@ -79,6 +79,7 @@ import {
   firmaDeCierre,
   mensajeDatosCambiaron,
   resumenCanonico,
+  sanearNotaDeResumen,
 } from "./cierre-maquina.ts";
 import type {
   CanalPedido,
@@ -358,6 +359,9 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
+        requested_complements: { type: "array", items: { type: "string", enum: [...COMPLEMENTOS_PEDIBLES] }, description: "Mismos complementos que mandará en crear_pedido (salsas pedidas, sin costo): mándelos AQUÍ para que el resumen los muestre al cliente antes de su sí. No cambia el total." },
+        omit_default_complements: { type: "array", items: { type: "string", enum: [...DEFAULT_COMPLEMENTS, "cebolla"] }, description: "Mismas salsas que el cliente quitó y que mandará en crear_pedido; mándelas AQUÍ para que el resumen las muestre." },
+        notes: { type: "string", description: "Mismos ajustes que mandará en crear_pedido (por ejemplo «sin cebolla»); mándelos AQUÍ para que el resumen se los muestre al cliente. Sin teléfonos ni datos personales." },
         otro_pedido: { type: "boolean", description: "true SOLO si el cliente pidió expresamente OTRO pedido igual al que ya quedó registrado. Un 'sí' de más o repetir el resumen NO es otro pedido: no lo mande." },
         efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Mándelo AQUÍ en cuanto lo dé para que el resumen lo muestre." },
         propina: { type: "number", description: "Propina en pesos que dio el cliente (solo si preguntar_propina fue true). No suma al total. Mándela aquí en cuanto la dé para que el resumen la muestre." },
@@ -1006,6 +1010,27 @@ async function horaYDireccionDeResumen(
   return { ...(hora ? { hora } : {}), ...(partes.length > 0 ? { direccion: partes.join(", ") } : {}) };
 }
 
+/**
+ * R15/T7-001: lo que el cliente pidio y NO cambia el total pero SI el pedido (salsas pedidas, salsas quitadas, notas ya capturadas) para que el resumen canonico se lo muestre antes de su sí.
+ * Solo lee lo que el modelo manda en cotizar_pedido (no entra a la huella ni a la firma de cierre): si no lo manda, el resumen queda como siempre.
+ */
+function detallesDeResumen(input: Record<string, unknown>): { readonly salsas?: readonly string[]; readonly sinSalsas?: readonly string[]; readonly notas?: string } {
+  const etiquetas = (v: unknown, canon: (x: unknown) => unknown): string[] => {
+    if (!Array.isArray(v)) return [];
+    const vistas = new Set<string>();
+    for (const x of v) {
+      const c = canon(x);
+      const e = c === null ? null : etiquetaComplementoResumen(c);
+      if (e) vistas.add(e);
+    }
+    return [...vistas];
+  };
+  const salsas = etiquetas(input.requested_complements, canonicalRequestedComplement);
+  const sinSalsas = etiquetas(input.omit_default_complements, (x) => (typeof x === "string" && x.trim() !== "" ? x.trim() : null));
+  const notas = sanearNotaDeResumen(input.notes);
+  return { ...(salsas.length > 0 ? { salsas } : {}), ...(sinSalsas.length > 0 ? { sinSalsas } : {}), ...(notas ? { notas } : {}) };
+}
+
 /** Maximo de `minutos_para_recoger` (misma cota que la recogida de hoy: `HORA_RECOGIDA_MAX_HORAS`). */
 const MINUTOS_PARA_RECOGER_MAX = 12 * 60;
 
@@ -1088,7 +1113,7 @@ function propinaDeCotizacion(input: Record<string, unknown>, previo: OrderFlowCo
 
 /** Texto que acompana a `resumen_canonico` (solo con la maquina de cierre activa). */
 const INSTRUCCION_RESUMEN_CANONICO =
-  "Cuando ya tenga todos los datos (producto, entrega, pago y, si aplica, propina), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
+  "Cuando ya tenga todos los datos (producto, entrega, pago y, si aplica, propina), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. El resumen solo muestra las salsas pedidas (requested_complements), las quitadas (omit_default_complements) y las notas (notes) que usted mandó en cotizar_pedido: mándelos ahí con los mismos valores que mandará en crear_pedido. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
 
 const CONFLICT_MESSAGE ="La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
 
@@ -1218,7 +1243,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const resumenBase =
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
           ? {
-              lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla })),
+              // R15/T7-001: la tortilla de un KILO no vive en el renglon cotizado (`tortilla` es null): sale de lo que el cliente eligio (`quotedItems[].tortillaKilo`).
+              lineas: quotedQuote.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla ?? quotedItems?.find((q) => q.id === l.productId)?.tortillaKilo ?? null })),
+              ...detallesDeResumen(input),
               total: quotedQuote.total,
               descuento: quotedQuote.descuento,
               canal: canalOf(input.canal),

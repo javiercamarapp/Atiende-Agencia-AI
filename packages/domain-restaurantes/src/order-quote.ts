@@ -41,6 +41,12 @@ const COMPLEMENT_LABELS: Record<DefaultComplement | RequestedComplement, string>
   salsa_habanero_soasado: "salsa habanero soasada",
 };
 
+/** Nombre corto de una salsa/complemento para el resumen que ve el cliente (sin el parentesis de la comanda: «salsa habanero», no «salsa habanero (soasada o picada con limón)»). `null` si no es un complemento conocido. */
+export function etiquetaComplementoResumen(valor: unknown): string | null {
+  if (typeof valor !== "string" || !Object.hasOwn(COMPLEMENT_LABELS, valor)) return null;
+  return COMPLEMENT_LABELS[valor as keyof typeof COMPLEMENT_LABELS].replace(/\s*\([^)]*\)\s*$/, "");
+}
+
 /** Tortillas validas de un renglon de tacos (`mixta` = mitad maiz, mitad harina). */
 export const TORTILLA_CHOICES: readonly TortillaChoice[] = ["maiz", "harina", "mixta"];
 

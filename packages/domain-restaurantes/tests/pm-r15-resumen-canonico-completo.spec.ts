@@ -239,7 +239,10 @@ describe("resumenCanonico (plantilla pura): terminal, salsas y pedidos grandes",
     const muchas = Array.from({ length: 200 }, (_, i) => ({ name: `Producto numero ${i + 1} con nombre bastante largo para ocupar espacio`, quantity: 3, lineTotal: 120 + i, tortilla: "maiz" }));
     const total = muchas.reduce((a, l) => a + l.lineTotal, 0);
     const t = resumenCanonico({ lineas: muchas, total, canal: "domicilio", datos: { pago: "tarjeta" }, salsas: ["crema de ajo"], notas: "sin cebolla", hora: "para las 7:00 pm", direccion: "colonia Centro" });
-    expect(t.length).toBeLessThanOrEqual(4000);
+    // WhatsApp admite 4096, pero la deteccion solo lee los primeros 2400 caracteres: con la frase de tono (160) tampoco se pasa de ahi.
+    expect(t.length + 162).toBeLessThanOrEqual(2400);
+    expect(t.length).toBeLessThanOrEqual(4096);
+    expect(terminaEnPreguntaDeConfirmacion(`Con gusto, un momento por favor.\n\n${t}`)).toBe(true);
     expect(t).toContain(`Total a pagar: $${total}`);
     expect(t).toContain("Llevará terminal");
     expect(t).toContain("renglones más");
