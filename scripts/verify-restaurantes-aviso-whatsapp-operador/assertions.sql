@@ -374,7 +374,7 @@ rollback;
 \echo '=== C8. RECHAZADO: la huella del telefono no es legible para authenticated (grant por columna) -> 42501 ==='
 begin;
 set local role authenticated;
-select public.t_como('{OWNER_A}');
+select public.t_como('00000000-0000-0000-0000-0000000e5811');
 select public.t_esperar_error($q$select telefono_hash from restaurantes.whatsapp_aviso_consentimiento$q$, '42501');
 rollback;
 
