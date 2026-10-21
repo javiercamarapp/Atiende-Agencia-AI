@@ -23,6 +23,9 @@ describe("PM paquete B enlazado al prompt real", () => {
     expect(apagado).not.toContain("paquete B");
     expect(apagado).not.toContain(PM_PAQUETE_B_REGLAS);
   });
+  it("apagada: el prompt completo coincide con el snapshot literal de main (cualquier cambio en el prompt apagado hay que revisarlo a proposito)", () => {
+    expect(buildPmSystemPrompt(ctx)).toMatchSnapshot();
+  });
   it("encendida: el prompt es el de siempre MAS el bloque, despues del flujo y antes de la escalacion", () => {
     const apagado = buildPmSystemPrompt(ctx);
     vi.stubEnv("RESTAURANTES_GEOCERCAS", "1");

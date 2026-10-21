@@ -55,7 +55,7 @@ describe("puntoEnPoligono y distancia", () => {
   });
 });
 
-describe("GEOCERCAS_PM (KMZ de Javier): geometria", () => {
+describe("GEOCERCAS_PM (KMZ del dueño): geometria", () => {
   it("5 zonas con anillo cerrado", () => {
     expect(GEOCERCAS_PM.map((g) => g.slug).sort()).toEqual([...SLUGS]);
     for (const g of GEOCERCAS_PM) expect(g.poligono[0]).toEqual(g.poligono[g.poligono.length - 1]);
