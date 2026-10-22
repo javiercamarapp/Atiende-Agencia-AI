@@ -554,11 +554,11 @@ update restaurantes.messaging_outbox set status = 'sent' where id = '00000000-00
 select count(*) as filas_deberia_ser_1 from restaurantes.messaging_outbox where id = '00000000-0000-0000-0000-0000000f6070' and payload ? 'to';
 rollback;
 
-\echo '=== G5. purgar_codigos_acceso_vencidos redacta y mata lo no terminal con mas de 10 min (pending, processing) y deja lo reciente y otros eventos ==='
+\echo '=== G5. purgar_codigos_acceso_vencidos redacta y mata lo no terminal con mas de 6 min (pending, processing) y deja lo reciente y otros eventos ==='
 begin;
-insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6071','00000000-0000-0000-0000-0000000f6001','whatsapp','auth.codigo_acceso','k71','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '11 minutes');
+insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6071','00000000-0000-0000-0000-0000000f6001','whatsapp','auth.codigo_acceso','k71','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '7 minutes');
 insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6072','00000000-0000-0000-0000-0000000f6001','whatsapp','auth.codigo_acceso','k72','{"to":"+529990000001","template":{"params":["123456"]}}','processing', now() - interval '30 minutes');
-insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6073','00000000-0000-0000-0000-0000000f6001','whatsapp','auth.codigo_acceso','k73','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '2 minutes');
+insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6073','00000000-0000-0000-0000-0000000f6001','whatsapp','auth.codigo_acceso','k73','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '5 minutes');
 insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6074','00000000-0000-0000-0000-0000000f6001','whatsapp','order.status.entregado','k74','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '40 minutes');
 select restaurantes.purgar_codigos_acceso_vencidos() as x;
 select count(*) as filas_deberia_ser_2 from restaurantes.messaging_outbox where id in ('00000000-0000-0000-0000-0000000f6071','00000000-0000-0000-0000-0000000f6072') and status = 'dead' and payload = '{"redactado": true}'::jsonb and last_error_class = 'codigo_vencido';
@@ -566,7 +566,7 @@ rollback;
 
 \echo '=== G6. la purga deja intactos lo reciente y los otros eventos ==='
 begin;
-insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6073','00000000-0000-0000-0000-0000000f6001','whatsapp','auth.codigo_acceso','k73','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '2 minutes');
+insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6073','00000000-0000-0000-0000-0000000f6001','whatsapp','auth.codigo_acceso','k73','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '5 minutes');
 insert into restaurantes.messaging_outbox (id, organization_id, channel, event_type, dedupe_key, payload, status, created_at) values ('00000000-0000-0000-0000-0000000f6074','00000000-0000-0000-0000-0000000f6001','whatsapp','order.status.entregado','k74','{"to":"+529990000001","template":{"params":["123456"]}}','pending', now() - interval '40 minutes');
 select restaurantes.purgar_codigos_acceso_vencidos() as x;
 select count(*) as filas_deberia_ser_2 from restaurantes.messaging_outbox where id in ('00000000-0000-0000-0000-0000000f6073','00000000-0000-0000-0000-0000000f6074') and status = 'pending' and payload ? 'to';

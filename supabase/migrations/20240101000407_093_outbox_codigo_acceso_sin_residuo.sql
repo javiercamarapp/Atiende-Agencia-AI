@@ -7,9 +7,9 @@
 -- residuo hasta que la fila se purgue por retencion.
 --
 -- Ademas, restaurantes.purgar_codigos_acceso_vencidos(): marca `dead` (clase `codigo_vencido`; el trigger redacta el payload) toda fila de
--- `auth.codigo_acceso` con mas de 10 minutos en cualquier estado NO terminal (pending/processing/failed). Un codigo vive 5 minutos: si el
+-- `auth.codigo_acceso` con mas de 6 minutos (> los 5 de vigencia del codigo) en cualquier estado NO terminal (pending/processing/failed). Un codigo vive 5 minutos: si el
 -- despachador estuvo caido, el codigo y el telefono no deben quedar en claro en la cola. Estados de la 007: pending, processing, sent, failed, dead;
--- terminales: sent y dead (`failed` existe en el CHECK pero ningun camino lo escribe). La API la llama tras cada solicitud (mejor esfuerzo).
+-- terminales: sent y dead (`failed` existe en el CHECK pero ningun camino lo escribe). La API la llama tras cada solicitud (mejor esfuerzo). Efecto: un envio abandonado que el cron reclame despues de 6 min ya no sale (queda `dead`, sin codigo); el repartidor pide otro.
 --
 -- Justificacion de seguridad: es un trigger BEFORE UPDATE sin SECURITY DEFINER (no amplia privilegios; corre con los del que actualiza), con
 -- search_path fijo. Sin GRANT nuevo en el trigger (ni a anon; el unico GRANT es el de la funcion de purga, mas abajo). Solo toca filas con event_type = 'auth.codigo_acceso'.
@@ -52,7 +52,7 @@ begin
      set status = 'dead', last_error_class = 'codigo_vencido', claimed_at = null
    where event_type = 'auth.codigo_acceso'
      and status in ('pending', 'processing', 'failed')
-     and created_at < now() - interval '10 minutes';
+     and created_at < now() - interval '6 minutes';
   get diagnostics v_filas = row_count;
   return v_filas;
 end;
