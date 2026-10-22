@@ -41,6 +41,38 @@ export function modeloAgentePorId(id: string | null | undefined): ModeloAgente |
   return MODELOS_AGENTE.find((m) => m.id === id) ?? null;
 }
 
+/**
+ * Modelo ALTERNO para el reintento de una llamada que agoto su tope de tiempo (fallback de proveedor del turno de WhatsApp). Solo devuelve ids de la lista
+ * permitida (`MODELOS_AGENTE`) y que ya forman parte de la escalera aprobada del rol (Luna -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite -> Muse Spark): no
+ * agrega modelos ni proveedores. El alterno nunca es el mismo modelo que se atasco: Luna (o cualquier otro) -> DeepSeek V4.1 Flash; DeepSeek -> Gemini 2.5 Flash-Lite.
+ */
+export const MODELO_ALTERNO_TOPE_ID = "deepseek/deepseek-v4.1-flash";
+export const MODELO_ALTERNO_SEGUNDO_TOPE_ID = "google/gemini-2.5-flash-lite";
+
+export function modeloAlternoParaTope(primarioId: string | null | undefined): string {
+  return primarioId === MODELO_ALTERNO_TOPE_ID ? MODELO_ALTERNO_SEGUNDO_TOPE_ID : MODELO_ALTERNO_TOPE_ID;
+}
+
+/**
+ * El respaldo por tope de tiempo solo se activa cuando el modelo que se atasco es un modelo ECONOMICO de la lista (Luna, DeepSeek V4.1 Flash, Gemini 2.5 Flash-Lite):
+ * el tope del primer intento (>= 9 s) se calibro con su latencia (p99 ~8.3 s por llamada). Los modelos con razonamiento y piso de tokens alto (Sonnet 5.5, Gemini 3.8
+ * Flash, Muse Spark) tardan mas de forma normal y un tope de 11 s degradaria en silencio turnos que hoy terminan bien a 11-18 s. Sin eleccion = el predeterminado.
+ */
+export function modeloAdmiteRespaldoPorTope(modeloId: string | null | undefined): boolean {
+  if (!modeloId) return true;
+  return modeloAgentePorId(modeloId)?.nivel === "economico";
+}
+
+/** Reduce lo que reporta el gateway (modelo del resultado o `providerId`, p.ej. "openrouter:openai/gpt-6-luna") a un id de la lista cerrada `MODELOS_AGENTE`, o "otro". Para telemetria sin PII. */
+export function idModeloDeListaCerrada(...candidatos: ReadonlyArray<string | null | undefined>): string {
+  for (const c of candidatos) {
+    if (!c) continue;
+    const limpio = c.startsWith("openrouter:") ? c.slice("openrouter:".length) : c;
+    if (modeloAgentePorId(limpio)) return limpio;
+  }
+  return "otro";
+}
+
 export function esModeloAgentePermitido(id: unknown): id is string {
   return typeof id === "string" && modeloAgentePorId(id) !== null;
 }
