@@ -118,6 +118,22 @@ export function fetchViajes(fetchImpl: typeof fetch, apiBaseUrl: string, token: 
   return leer<ViajesSalida>(fetchImpl, `${base(apiBaseUrl, propertyId)}/admin/operacion/viajes?${q.toString()}`, token);
 }
 
-export function despacharPedidos(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, entrada: DespachoEntrada, llave: string): Promise<DespachoSalida> {
-  return enviar(fetchImpl, `${base(apiBaseUrl, propertyId)}/admin/orders/dispatch`, token, "POST", entrada, llave);
+export const MENSAJE_RESPUESTA_INESPERADA = "Respuesta inesperada del servidor: revisa «En camino» y la cola antes de volver a intentar.";
+
+const RESULTADOS_VALIDOS = new Set(["despachado", "ya_aplicado", "reasignado"]);
+
+/** `resultados` bien formado: arreglo y cada elemento con `pedidoId`, `resultado` conocido y `aviso`. Cualquier otra forma NO se interpreta. */
+export function resultadosDespachoValidos(valor: unknown): valor is DespachoSalida["resultados"] {
+  return (
+    Array.isArray(valor) &&
+    valor.every((r) => typeof r === "object" && r !== null && typeof (r as { pedidoId?: unknown }).pedidoId === "string" && RESULTADOS_VALIDOS.has(String((r as { resultado?: unknown }).resultado)) && typeof (r as { aviso?: unknown }).aviso === "string")
+  );
+}
+
+export async function despacharPedidos(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, entrada: DespachoEntrada, llave: string): Promise<DespachoSalida> {
+  const r = await enviar<unknown>(fetchImpl, `${base(apiBaseUrl, propertyId)}/admin/orders/dispatch`, token, "POST", entrada, llave);
+  const resultados = (r as { resultados?: unknown } | null)?.resultados;
+  // Un 200 sin resultados utilizables no dice que salio: no se inventa exito ni se acusa falta de conexion.
+  if (!resultadosDespachoValidos(resultados)) throw new ErrorOperacion(MENSAJE_RESPUESTA_INESPERADA, 502, "respuesta_inesperada");
+  return { resultados };
 }
