@@ -73,15 +73,15 @@ export function authLoginTelefonoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     return c.json({ disponible: ok === true }, 200);
   });
 
-  /** Despacho del outbox y purga de codigos viejos, IDENTICOS exista o no la cuenta (el cuerpo no distingue), y la respuesta se alarga hasta el piso. */
+  /** Despacho del outbox y purga de codigos viejos, IDENTICOS exista o no la cuenta. Todo compite contra un DEADLINE ABSOLUTO (`inicio + piso`):
+   *  la respuesta exitosa nunca lo sobrepasa por culpa del despacho o la purga (una base lenta no delata la cuenta existente); lo que no alcance
+   *  queda para el cron. */
   async function cerrarSolicitud(inicio: number): Promise<void> {
-    await Promise.race([dispatchWhatsAppVertical(deps, "restaurantes", 5).catch(() => undefined), dormir(TOPE_DESPACHO_MS)]);
-    try {
-      await deps.engine.withAppSession({ userId: null }, (db) => deps.loginChoferRepo!(db).purgarCodigosVencidos());
-    } catch {
-      // mejor esfuerzo (p. ej. migracion 093 pendiente): nunca afecta la respuesta
-    }
-    await dormir(Math.max(0, piso - (Date.now() - inicio)));
+    const restante = () => Math.max(0, inicio + piso - Date.now());
+    await Promise.race([dispatchWhatsAppVertical(deps, "restaurantes", 5).catch(() => undefined), dormir(Math.min(TOPE_DESPACHO_MS, restante()))]);
+    const purga = deps.engine.withAppSession({ userId: null }, (db) => deps.loginChoferRepo!(db).purgarCodigosVencidos()).catch(() => undefined);
+    await Promise.race([purga, dormir(restante())]);
+    await dormir(restante());
   }
 
   app.post("/auth/login-telefono/solicitar", async (c) => {
