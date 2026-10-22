@@ -22,6 +22,7 @@
 import { createHash } from "node:crypto";
 import { OrderValidationError } from "../errors.ts";
 import type { RequestedOrderItemInput } from "../types.ts";
+import type { DatosCierre } from "./cierre-determinista.ts";
 
 export type OrderFlowState = "cotizado" | "confirmado" | "creando" | "creado";
 
@@ -93,6 +94,8 @@ export interface OrderFlowContext {
   readonly resumenRechazadoTurn?: string;
   readonly claimedAtMs?: number;
   readonly orderId?: string;
+  /** PM R18: datos que el modelo mando al cotizar y que `crear_pedido` necesita (nombre, direccion, salsas...). Solo los usa el cierre determinista tras un «si» cuando el turno muere (`cierre-determinista.ts`). */
+  readonly datosCierre?: DatosCierre;
 }
 
 /** Renglon de la cotizacion resuelto contra el catalogo. */

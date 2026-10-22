@@ -34,9 +34,10 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
-import { bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
+import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -893,10 +894,33 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
         const estado = estadoDeCierre(flowSnapshot, messages);
         if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
-        const ultimoCliente = mensajesSinResponder(messages).at(-1)?.content;
-        if (!ultimoCliente) return null;
-        return clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, total }) === "si" ? total : null;
+        // TODOS los mensajes sin responder deben ser un «si» claro: en una rafaga («mejor 3 cocas» + «si») el «si» responde al cambio, no al resumen que el servidor guardo.
+        const sinResponder = mensajesSinResponder(messages);
+        if (sinResponder.length === 0 || !sinResponder.every((m) => clasificarRespuestaCierre(m.content, { despuesDelResumen: true, total }) === "si")) return null;
+        // `confirmado` no revisa el ultimo mensaje del asistente (ya paso una confirmacion): el «si» tiene que contestar al resumen o a su pregunta de confirmacion.
+        if (estado === "confirmado" && !asistentePidioConfirmarResumen(total, [...messages].reverse().find((m) => m.role === "assistant")?.content)) return null;
+        return total;
       };
+      // PM R18 (S1 / G1): el cliente ya dijo «si» a un resumen VIGENTE y el turno muere (proveedor caido, tope de tiempo) antes de crear el pedido. En vez de dejarlo sin crear, el SERVIDOR hace los dos
+      // llamados que el modelo habria hecho (`confirmar_resumen` y `crear_pedido`) con lo guardado de la cotizacion que el cliente vio, por la MISMA maquina de estados (huella, resumen mostrado, «si»
+      // explicito, pedido grande, horario, idempotencia): si alguna regla lo rechaza, el camino de siempre (aviso honesto al equipo) sigue intacto. Una sola vez por turno; sin datos completos, nada.
+      let cierreDeterministaIntentado = false;
+      const prepararCierreDeterminista = async (): Promise<LlmToolCall[] | null> => {
+        if (perfil !== "taqueria_pm" || preview || cierreDeterministaIntentado || orderId !== null || pedidosCreadosDelTurno.length > 0 || pedidoSimulado !== undefined || escalarMotivo !== null) return null;
+        cierreDeterministaIntentado = true;
+        const totalConfirmado = siPendienteSinPedido();
+        if (totalConfirmado === null) return null;
+        // Estado FRESCO: si el modelo alcanzo a re-cotizar en este turno, el «si» ya no es de ese resumen y no se crea nada.
+        const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+        if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
+        const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
+        if (!plan.ok) return null;
+        return [
+          { id: "cierre-determinista-1", name: "confirmar_resumen", argumentsJson: "{}" },
+          { id: "cierre-determinista-2", name: "crear_pedido", argumentsJson: JSON.stringify(plan.crearPedido) },
+        ];
+      };
+      let llamadasDeterministas: LlmToolCall[] | null = null;
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
@@ -939,10 +963,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
       let modeloRespaldo: string | null = null;
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        // Con llamadas deterministas ya preparadas (el intento real fallo por tope/proveedor), la causa real queda en la telemetria: no se pisa con la del reloj.
         if (Date.now() >= deadline) {
-          tele.resultado = "presupuesto_agotado";
-          tele.causaError = "tope_turno";
-          return fallaDelSistema();
+          if (llamadasDeterministas === null) {
+            tele.resultado = "presupuesto_agotado";
+            tele.causaError = "tope_turno";
+            llamadasDeterministas = await prepararCierreDeterminista();
+            if (llamadasDeterministas === null) return fallaDelSistema();
+          }
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
         if (huboFalloDeHerramienta) tele.motivoEscaladaDeRol = "fallo_crear_pedido";
@@ -950,7 +978,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
         let completion: { text: string; toolCalls?: LlmToolCall[]; model?: string; providerId?: string };
-        try {
+        const eraCierreDeterminista = llamadasDeterministas !== null;
+        if (llamadasDeterministas !== null) {
+          completion = { text: "", toolCalls: llamadasDeterministas };
+          llamadasDeterministas = null;
+        } else try {
           const runId = randomUUID();
           const esRolPorDefecto = role === options.defaultRole;
           const llamarAlModelo = (modelo: string | undefined) => (signal: AbortSignal) => gateway.complete({
@@ -990,10 +1022,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return fallaDelSistema();
+          llamadasDeterministas = await prepararCierreDeterminista();
+          if (llamadasDeterministas === null) return fallaDelSistema();
+          continue;
         }
 
-        tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
+        // Las llamadas del cierre determinista las arma el servidor: ningun modelo respondio, la telemetria de modelo conserva lo del intento real.
+        if (!eraCierreDeterminista) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           const base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
@@ -1271,6 +1306,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             huboFalloDeHerramienta = true;
           }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+        }
+        // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
+        if (eraCierreDeterminista) {
+          const confirmacionDeterminista = confirmacionDelTurno();
+          if (confirmacionDeterminista) {
+            tele.resultado = "ok";
+            return done({ reply: confirmacionDeterminista, orderId, propertyId });
+          }
         }
       }
 
