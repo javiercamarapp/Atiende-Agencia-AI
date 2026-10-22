@@ -15,7 +15,7 @@ import {
   RESPALDO_LLM_RESERVA_MS,
   RESPALDO_LLM_RESTANTE_MIN_MS,
 } from "../../src/whatsapp/llm-turn-handler.ts";
-import { MODELOS_AGENTE, MODELO_ALTERNO_SEGUNDO_TOPE_ID, MODELO_ALTERNO_TOPE_ID, MODELO_PREDETERMINADO_ID, modeloAlternoParaTope } from "../../src/ajustes-agente/modelos.ts";
+import { MODELOS_AGENTE, MODELO_ALTERNO_SEGUNDO_TOPE_ID, MODELO_ALTERNO_TOPE_ID, MODELO_PREDETERMINADO_ID, idModeloDeListaCerrada, modeloAdmiteRespaldoPorTope, modeloAlternoParaTope } from "../../src/ajustes-agente/modelos.ts";
 import { hashTelefonoParaLogs } from "../../src/whatsapp/observabilidad-turno.ts";
 import type { EventoObservabilidadWhatsApp, EventoTurnoWhatsApp, EventoToolWhatsApp, ObservabilidadTurno } from "../../src/whatsapp/observabilidad-turno.ts";
 import { buildRestaurantFixture } from "../fixtures.ts";
@@ -108,6 +108,97 @@ describe("PM-R19 modelo alterno: solo modelos ya aprobados y distinto del que se
       expect(permitidos).toContain(alterno);
       expect(alterno).not.toBe(origen);
     }
+  });
+});
+
+describe("PM-R19 solo los modelos economicos se respaldan", () => {
+  it("economicos y el predeterminado si; modelos lentos con razonamiento y desconocidos no", () => {
+    for (const ok of [null, undefined, LUNA, DEEPSEEK, FLASH_LITE]) expect(modeloAdmiteRespaldoPorTope(ok), String(ok)).toBe(true);
+    for (const no of ["anthropic/claude-sonnet-5.5", "google/gemini-3.8-flash", "meta/muse-spark-1.3", "id/desconocido"]) expect(modeloAdmiteRespaldoPorTope(no), no).toBe(false);
+  });
+
+  it("el id que reporta el gateway se reduce a la lista cerrada", () => {
+    expect(idModeloDeListaCerrada("fake", `openrouter:${LUNA}`)).toBe(LUNA);
+    expect(idModeloDeListaCerrada(DEEPSEEK)).toBe(DEEPSEEK);
+    expect(idModeloDeListaCerrada("raro/modelo-con-datos", undefined)).toBe("otro");
+    expect(idModeloDeListaCerrada(null, "")).toBe("otro");
+  });
+
+  it.each(["anthropic/claude-sonnet-5.5", "google/gemini-3.8-flash"])("con %s elegido y atascado NO se activa el respaldo: un solo intento hasta el reloj del turno", async (modeloElegido) => {
+    const m = armar(() => COLGADA(), { turnBudgetMs: 18_000, modeloElegido });
+    const r = await m.correr();
+    expect(m.intentos).toHaveLength(1);
+    expect(r.reply).toContain("problema técnico");
+    const t = turno(m.eventos);
+    expect(t.causaError).toBe("tope_llamada");
+    expect(t.reintentosLlm).toBe(0);
+    expect(t.modeloRespaldoLlm).toBeNull();
+  });
+
+  it("con un modelo lento elegido una llamada de 15 s (que hoy termina bien) NO se corta a los 11 s", async () => {
+    const m = armar(async () => {
+      await new Promise((res) => setTimeout(res, 15_000));
+      return texto("lento pero bueno");
+    }, { turnBudgetMs: 18_000, modeloElegido: "anthropic/claude-sonnet-5.5" });
+    const r = await m.correr();
+    expect(r.reply).toContain("lento pero bueno");
+    expect(m.intentos).toHaveLength(1);
+  });
+});
+
+describe("PM-R19 telemetria del modelo que realmente contesto", () => {
+  it("turno normal: contesta el primario", async () => {
+    const m = armar(() => texto("hola"), { turnBudgetMs: 18_000 });
+    await m.correr();
+    expect(turno(m.eventos).modeloRespondioLlm).toBe(LUNA);
+  });
+
+  it("respaldo real: contesta el alterno y hay constancia del reintento", async () => {
+    const m = armar(lunaAtascada(() => texto("hola")), { turnBudgetMs: 18_000 });
+    await m.correr();
+    const t = turno(m.eventos);
+    expect(t.modeloRespondioLlm).toBe(DEEPSEEK);
+    expect(t.reintentosLlm).toBe(1);
+  });
+
+  it("caida de escalera (5xx rapido): contesta el siguiente escalon pero NO cuenta como respaldo", async () => {
+    const m = armar((_n, modelo) => {
+      if (modelo === LUNA) throw new OpenRouterError("OpenRouter 503 (m): upstream", 503, { transient: true, ladderRetryable: true });
+      return texto("hola");
+    }, { turnBudgetMs: 18_000 });
+    await m.correr();
+    const t = turno(m.eventos);
+    expect(t.modeloRespondioLlm).toBe(DEEPSEEK);
+    expect(t.reintentosLlm).toBe(0);
+    expect(t.modeloRespaldoLlm).toBeNull();
+  });
+
+  it("si ninguna llamada contesta, no hay modelo que contesto", async () => {
+    const m = armar(() => COLGADA(), { turnBudgetMs: 18_000 });
+    await m.correr();
+    expect(turno(m.eventos).modeloRespondioLlm).toBeNull();
+  });
+});
+
+describe("PM-R19 proveedor cooperativo: respeta la senal de aborto", () => {
+  it("el intento atascado rechaza al recibir el aborto, no queda trabajando y el respaldo contesta", async () => {
+    let abortadoPorSenal = false;
+    const m = armar((_n, modelo, request) => {
+      if (modelo !== LUNA) return texto("respaldo ok");
+      return new Promise<LlmCompletionResult>((_res, rej) => {
+        request.signal?.addEventListener("abort", () => {
+          abortadoPorSenal = true;
+          rej(new Error("The operation was aborted"));
+        });
+      });
+    }, { turnBudgetMs: 18_000 });
+    const r = await m.correr();
+    expect(abortadoPorSenal).toBe(true);
+    expect(r.reply).toContain("respaldo ok");
+    expect(m.intentos.map((i) => i.modelo)).toEqual([LUNA, DEEPSEEK]);
+    const t = turno(m.eventos);
+    expect(t.resultado).toBe("ok");
+    expect(t.reintentoLlmRecuperado).toBe(true);
   });
 });
 
