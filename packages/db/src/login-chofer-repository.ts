@@ -384,7 +384,11 @@ export class InMemoryLoginChoferRepository implements LoginChoferRepository {
   async quitarTelefono(organizationId: string, targetUserId: string): Promise<boolean> {
     if (!this.puedeGestionar(organizationId)) throw new LoginChoferTelefonoError("tu rol no alcanza para quitar el telefono de acceso de un repartidor");
     let borrado = false;
-    for (const [tel, v] of this.telefonos) if (v.userId === targetUserId && v.organizationId === organizationId) (this.telefonos.delete(tel), (borrado = true));
+    for (const [tel, v] of this.telefonos) {
+      if (v.userId !== targetUserId || v.organizationId !== organizationId) continue;
+      this.telefonos.delete(tel);
+      borrado = true;
+    }
     for (const c of this.codigos) if (c.userId === targetUserId && c.estado === "pendiente") c.estado = "invalidado";
     return borrado;
   }
