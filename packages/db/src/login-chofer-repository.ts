@@ -363,7 +363,10 @@ export class InMemoryLoginChoferRepository implements LoginChoferRepository {
 
   async consumir(codigoId: string): Promise<StaffUserRow | null> {
     const c = this.codigos.find((x) => x.id === codigoId);
-    if (!c || c.estado !== "pendiente" || c.expiresAt <= this.now() || !(await this.elegible(c.userId, c.organizationId))) return null;
+    if (!c) return null;
+    const elegible = await this.elegible(c.userId, c.organizationId);
+    // Comprobar y marcar SIN await entre medio: con dos verificaciones simultaneas solo una gana (en SQL lo hace un UPDATE condicional).
+    if (!elegible || c.estado !== "pendiente" || c.expiresAt <= this.now()) return null;
     c.estado = "usado";
     return this.core.findStaffById(c.userId);
   }
