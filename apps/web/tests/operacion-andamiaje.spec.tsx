@@ -3,7 +3,6 @@
 // Andamiaje del panel del operador (PLAN-PANEL-OPERADOR §6, commit 0): las cuatro pantallas existen, son honestas («No disponible aun»,
 // sin controles ni datos de ejemplo) y el interruptor del panel esta apagado, de modo que el menu del shell no las anuncia todavia.
 import { afterEach, describe, expect, it } from "vitest";
-import { OperacionColaPage } from "../src/verticals/restaurantes/pages/OperacionCola.tsx";
 import { OperacionNuevoPedidoPage } from "../src/verticals/restaurantes/pages/OperacionNuevoPedido.tsx";
 import { OperacionViajesPage } from "../src/verticals/restaurantes/pages/OperacionViajes.tsx";
 import { OperacionTurnoPage } from "../src/verticals/restaurantes/pages/OperacionTurno.tsx";
@@ -22,7 +21,6 @@ const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "
 
 describe("pantallas stub del panel del operador", () => {
   const PANTALLAS = [
-    ["Cola", OperacionColaPage],
     ["Nuevo pedido", OperacionNuevoPedidoPage],
     ["Viajes", OperacionViajesPage],
     ["Turno", OperacionTurnoPage],
