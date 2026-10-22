@@ -963,10 +963,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
       let modeloRespaldo: string | null = null;
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        // Con llamadas deterministas ya preparadas (el intento real fallo por tope/proveedor), la causa real queda en la telemetria: no se pisa con la del reloj.
         if (Date.now() >= deadline) {
-          tele.resultado = "presupuesto_agotado";
-          tele.causaError = "tope_turno";
           if (llamadasDeterministas === null) {
+            tele.resultado = "presupuesto_agotado";
+            tele.causaError = "tope_turno";
             llamadasDeterministas = await prepararCierreDeterminista();
             if (llamadasDeterministas === null) return fallaDelSistema();
           }
