@@ -1,9 +1,10 @@
 // PM Ronda 18, S1 / G1 (handler + webhook en memoria, modelo guionado, sin LLM ni llaves). Datos 100 % sinteticos.
 // El cliente dijo «si» a un resumen vigente y el turno muere: el servidor crea UN pedido con lo ya cotizado (idempotente) o, sin datos completos, conserva el aviso honesto.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { planCierreDeterminista } from "../src/agent-tools/cierre-determinista.ts";
+import { datosCierreDeCotizacion, planCierreDeterminista } from "../src/agent-tools/cierre-determinista.ts";
+import { toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
 import type { OrderFlowSnapshot } from "../src/agent-tools/order-flow.ts";
-import { MARTES_14H, nuevoViaje, pedidosDe, type Viaje } from "./qa-viaje/arnes-viaje.ts";
+import { MARTES_14H, nuevoViaje, pedidosDe, TEL_CLIENTE, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -132,6 +133,92 @@ describe.each([
     const r = await v.escribe("Sí, es correcto");
     expect(r.orderId).toBeTruthy();
     expect(await pedidosDe(v)).toHaveLength(1);
+  });
+});
+
+describe.each([
+  ["maquina de cierre apagada", undefined],
+  ["maquina de cierre encendida", "1"],
+] as const)("revision de #631: el «si» debe ser de ESTE resumen (%s)", (_nombre, flag) => {
+  beforeEach(() => {
+    if (flag) vi.stubEnv("RESTAURANTES_CIERRE_MAQUINA_ESTADOS", flag);
+  });
+
+  it("rafaga «mejor 3 cocas» + «si» con el proveedor caido: NO se crea el pedido viejo de 2", async () => {
+    const v = await nuevoViaje();
+    await conResumen(v, { customer_name: "Ana Prueba" });
+    proveedorCaido(v);
+    await v.world.repo.appendWhatsAppUserMessageOnce(v.world.organizationId, TEL_CLIENTE, { role: "user", content: "mejor 3 cocas" });
+    const r = await v.escribe("sí");
+    expect(await pedidosDe(v)).toHaveLength(0);
+    expect(r.reply).not.toMatch(/quedó registrado|registr[oó] su pedido/i);
+  });
+
+  it("rafaga de dos «si» claros si crea UN pedido", async () => {
+    const v = await nuevoViaje();
+    await conResumen(v, { customer_name: "Ana Prueba" });
+    proveedorCaido(v);
+    await v.world.repo.appendWhatsAppUserMessageOnce(v.world.organizationId, TEL_CLIENTE, { role: "user", content: "sí" });
+    await v.escribe("sí, es correcto");
+    expect(await pedidosDe(v)).toHaveLength(1);
+  });
+
+  it("una re-cotizacion con notas y complementos VACIOS los limpia: el pedido no los lleva", async () => {
+    const v = await nuevoViaje();
+    const items = await conResumen(v, { customer_name: "Ana Prueba", notes: "sin hielo", requested_complements: ["crema_ajo"] });
+    v.guion([{ tools: [{ name: "cotizar_pedido", args: { branch_slug: "garcia-lavin", canal: "recoger", payment_method: "efectivo", items, notes: "", requested_complements: [] } }] }, { texto: "Permítame repetirle su pedido: 2 Coca-Cola. Total $106.00. ¿Es correcto?" }]);
+    await v.escribe("mejor sin hielo ni crema");
+    proveedorCaido(v);
+    await v.escribe("sí");
+    const pedidos = await pedidosDe(v);
+    expect(pedidos).toHaveLength(1);
+    expect(JSON.stringify(pedidos[0])).not.toMatch(/hielo|crema/i);
+  });
+
+  it("estado confirmado: si el ultimo mensaje del asistente NO es el resumen ni su pregunta, el «si» no crea nada", async () => {
+    const v = await nuevoViaje();
+    await conResumen(v, { customer_name: "Ana Prueba" });
+    v.guion([{ tools: [{ name: "confirmar_resumen", args: {} }] }, { texto: "Un momento, reviso algo con la sucursal." }]);
+    await v.escribe("sí, es correcto");
+    expect(await pedidosDe(v)).toHaveLength(0);
+    proveedorCaido(v);
+    await v.escribe("sí");
+    expect(await pedidosDe(v)).toHaveLength(0);
+  });
+});
+
+describe("datos de cierre: semantica de vaciado, saneo y canal", () => {
+  it("«» y [] mandados LIMPIAN el campo; omitido o null lo conserva", () => {
+    const previo = datosCierreDeCotizacion({ customer_name: "Ana", notes: "sin hielo", requested_complements: ["crema_ajo"], omit_default_complements: ["cebolla"] }, undefined);
+    expect(previo).toMatchObject({ customerName: "Ana", notes: "sin hielo", requestedComplements: ["crema_ajo"], omitDefaultComplements: ["cebolla"] });
+    expect(datosCierreDeCotizacion({}, previo)).toMatchObject({ notes: "sin hielo", requestedComplements: ["crema_ajo"] });
+    expect(datosCierreDeCotizacion({ notes: null, requested_complements: null }, previo)).toMatchObject({ notes: "sin hielo", requestedComplements: ["crema_ajo"] });
+    const limpio = datosCierreDeCotizacion({ notes: "", requested_complements: [], omit_default_complements: [] }, previo);
+    expect(limpio.notes).toBeUndefined();
+    expect(limpio.requestedComplements).toBeUndefined();
+    expect(limpio.omitDefaultComplements).toBeUndefined();
+    expect(limpio.customerName).toBe("Ana");
+  });
+
+  it("las notas se sanean como en el resumen: sin telefonos ni correos", () => {
+    const d = datosCierreDeCotizacion({ notes: "sin hielo, llamar al 9991234567 o a ana@correo.com" }, undefined);
+    expect(d.notes).not.toMatch(/9991234567|@/);
+  });
+
+  it("cotizar para recoger limpia los datos de entrega guardados", () => {
+    const previo = datosCierreDeCotizacion({ canal: "domicilio", customer_address: "Calle 1", colonia_entrega: "Centro", maps_url: "https://maps.example/x", usar_ubicacion_compartida: true, customer_name: "Ana" }, undefined);
+    expect(previo.customerAddress).toBe("Calle 1");
+    const recoger = datosCierreDeCotizacion({ canal: "recoger" }, previo);
+    expect(recoger).toEqual({ customerName: "Ana" });
+  });
+
+  it("voz no ve los campos de datos del cliente en cotizar_pedido; WhatsApp si", () => {
+    const campos = ["customer_name", "customer_address", "indicaciones_acceso", "referencias_acceso", "direccion_etiqueta", "maps_url", "usar_ubicacion_compartida"];
+    const props = (canal: "voz" | "whatsapp") => Object.keys(toolDefinitionsForChannel(canal).find((t) => t.name === "cotizar_pedido")!.parameters.properties);
+    for (const c of campos) {
+      expect(props("voz")).not.toContain(c);
+      expect(props("whatsapp")).toContain(c);
+    }
   });
 });
 
