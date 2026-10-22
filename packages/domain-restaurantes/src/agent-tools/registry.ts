@@ -86,6 +86,7 @@ import {
   resumenCanonico,
   sanearNotaDeResumen,
 } from "./cierre-maquina.ts";
+import { datosCierreDeCotizacion } from "./cierre-determinista.ts";
 import type {
   CanalPedido,
   CreateOrderInput,
@@ -374,6 +375,13 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con el offset de la SUCURSAL (por ejemplo 2026-10-03T14:00:00-06:00 en Mérida; nunca Z ni UTC: un offset distinto se rechaza), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
         minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con el offset de la SUCURSAL (Mérida -06:00; un offset distinto, Z o UTC se rechaza), calculada con la HORA LOCAL de la sucursal. El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
+        customer_name: { type: "string", description: "Opcional: nombre del cliente si ya lo dio. No cambia el total; el sistema lo guarda para poder registrar el pedido confirmado si el turno se corta." },
+        customer_address: { type: "string", description: "Opcional, solo domicilio: dirección completa que dio el cliente. No cambia el total; se guarda igual que el nombre." },
+        indicaciones_acceso: { type: "string", description: "Opcional, solo domicilio: cómo llegar o avisar (una línea). Se guarda igual que el nombre." },
+        referencias_acceso: { type: "string", description: "Opcional: referencias para llegar que dio el cliente. Se guarda igual que el nombre." },
+        direccion_etiqueta: { type: "string", description: "Opcional: cómo llama el cliente a este domicilio (casa, oficina). Se guarda igual que el nombre." },
+        maps_url: { type: "string", description: "Opcional: link de Google Maps/Waze que el cliente mandó por escrito (https). Nunca lo inventes." },
+        usar_ubicacion_compartida: { type: "boolean", description: "Opcional: true solo si el cliente compartió su ubicación por WhatsApp y es la de este domicilio." },
       },
       required: ["branch_slug", "items"],
     },
@@ -1288,11 +1296,22 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         // el turno de la cotizacion): el que se muestre y el que se compare al confirmar son el mismo. Si ya se mostro, o ya esta «confirmado» (la firma no cubre salsas ni notas), NO se reescribe
         // y se devuelve el texto GUARDADO: el modelo nunca pega una version distinta a la que el servidor compara. Si la escritura no se guarda, no se devuelve el resumen nuevo.
         let textoVigente = canonico;
+        // PM R18: una re-cotizacion identica puede traer datos nuevos (nombre, direccion...): se guardan para el cierre determinista sin tocar la cotizacion ni su turno.
+        const datosFusionados = datosCierreDeCotizacion(input, previo.datosCierre);
+        let versionVigente = snap.version;
+        let previoVigenteEscrito: OrderFlowContext = previo;
+        if (JSON.stringify(datosFusionados) !== JSON.stringify(previo.datosCierre ?? {})) {
+          previoVigenteEscrito = { ...previo, datosCierre: datosFusionados };
+          const guardado = await writeFlow(repo, ctx, flow, snap.version, snap.state, previoVigenteEscrito);
+          if (guardado === "conflict") continue;
+          if (guardado === "written") versionVigente = snap.version + 1;
+          else previoVigenteEscrito = previo;
+        }
         if (canonico && resumenBase && canonico !== previo.resumenCanonico) {
           if (yaMostrada || snap.state !== "cotizado") {
             textoVigente = previo.resumenCanonico;
           } else {
-            const reescrito = await writeFlow(repo, ctx, flow, snap.version, snap.state, { ...previo, resumenCanonico: canonico, resumenBase });
+            const reescrito = await writeFlow(repo, ctx, flow, versionVigente, snap.state, { ...previoVigenteEscrito, resumenCanonico: canonico, resumenBase });
             if (reescrito === "conflict") continue;
             if (reescrito === "unavailable") return outcome;
           }
@@ -1309,6 +1328,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         ...propinaCotizada,
         ...(canonico && resumenBase ? { resumenCanonico: canonico, resumenBase } : {}),
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
+        datosCierre: datosCierreDeCotizacion(input, previoVigente?.datosCierre),
         ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
         ...(programadoCotizado ? { programadoPara: programadoCotizado } : {}),
         ...(horaCotizacion && plazoServidor !== undefined ? { minutosPlazo: plazoServidor } : {}),
@@ -1536,7 +1556,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     const acumulado = creado
       ? { sessionTotal: (claimed.context.sessionTotal ?? 0) + (repetido ? 0 : typeof creado.total === "number" ? creado.total : 0), sessionPesoKg: (claimed.context.sessionPesoKg ?? 0) + (repetido ? 0 : pesoTotalKg(creado.items ?? [])), sessionPedidos: (claimed.context.sessionPedidos ?? 0) + (repetido ? 0 : 1), sessionUltimoPedidoId: outcome.orderId ?? undefined }
       : {};
-    await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, ...acumulado, orderId: outcome.orderId ?? undefined });
+    // PM R18: ya creado, el nombre y la direccion guardados para el cierre determinista dejan de hacer falta (el pedido los tiene): no se arrastran en el estado.
+    const { datosCierre: _datosYaUsados, ...contextoCreado } = claimed.context;
+    await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...contextoCreado, ...acumulado, orderId: outcome.orderId ?? undefined });
     return outcome;
   } catch (err) {
     // Error de negocio (horario, zona, minimo...): vuelve a "confirmado" para poder corregir/reintentar.

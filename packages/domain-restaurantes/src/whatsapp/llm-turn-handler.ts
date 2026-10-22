@@ -36,6 +36,7 @@ import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import { bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -871,6 +872,26 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (!ultimoCliente) return null;
         return clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, total }) === "si" ? total : null;
       };
+      // PM R18 (S1 / G1): el cliente ya dijo «si» a un resumen VIGENTE y el turno muere (proveedor caido, tope de tiempo) antes de crear el pedido. En vez de dejarlo sin crear, el SERVIDOR hace los dos
+      // llamados que el modelo habria hecho (`confirmar_resumen` y `crear_pedido`) con lo guardado de la cotizacion que el cliente vio, por la MISMA maquina de estados (huella, resumen mostrado, «si»
+      // explicito, pedido grande, horario, idempotencia): si alguna regla lo rechaza, el camino de siempre (aviso honesto al equipo) sigue intacto. Una sola vez por turno; sin datos completos, nada.
+      let cierreDeterministaIntentado = false;
+      const prepararCierreDeterminista = async (): Promise<LlmToolCall[] | null> => {
+        if (perfil !== "taqueria_pm" || preview || cierreDeterministaIntentado || orderId !== null || pedidosCreadosDelTurno.length > 0 || pedidoSimulado !== undefined || escalarMotivo !== null) return null;
+        cierreDeterministaIntentado = true;
+        const totalConfirmado = siPendienteSinPedido();
+        if (totalConfirmado === null) return null;
+        // Estado FRESCO: si el modelo alcanzo a re-cotizar en este turno, el «si» ya no es de ese resumen y no se crea nada.
+        const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+        if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
+        const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
+        if (!plan.ok) return null;
+        return [
+          { id: "cierre-determinista-1", name: "confirmar_resumen", argumentsJson: "{}" },
+          { id: "cierre-determinista-2", name: "crear_pedido", argumentsJson: JSON.stringify(plan.crearPedido) },
+        ];
+      };
+      let llamadasDeterministas: LlmToolCall[] | null = null;
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
@@ -914,7 +935,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (Date.now() >= deadline) {
           tele.resultado = "presupuesto_agotado";
           tele.causaError = "tope_turno";
-          return fallaDelSistema();
+          if (llamadasDeterministas === null) {
+            llamadasDeterministas = await prepararCierreDeterminista();
+            if (llamadasDeterministas === null) return fallaDelSistema();
+          }
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
         if (huboFalloDeHerramienta) tele.motivoEscaladaDeRol = "fallo_crear_pedido";
@@ -922,7 +946,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
         let completion: { text: string; toolCalls?: LlmToolCall[] };
-        try {
+        const eraCierreDeterminista = llamadasDeterministas !== null;
+        if (llamadasDeterministas !== null) {
+          completion = { text: "", toolCalls: llamadasDeterministas };
+          llamadasDeterministas = null;
+        } else try {
           completion = await completarConTope(deadline, (signal) => gateway.complete({
             tenantId: organizationId,
             runId: randomUUID(),
@@ -940,7 +968,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return fallaDelSistema();
+          llamadasDeterministas = await prepararCierreDeterminista();
+          if (llamadasDeterministas === null) return fallaDelSistema();
+          continue;
         }
 
         const toolCalls = completion.toolCalls ?? [];
@@ -1220,6 +1250,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             huboFalloDeHerramienta = true;
           }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+        }
+        // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
+        if (eraCierreDeterminista) {
+          const confirmacionDeterminista = confirmacionDelTurno();
+          if (confirmacionDeterminista) {
+            tele.resultado = "ok";
+            return done({ reply: confirmacionDeterminista, orderId, propertyId });
+          }
         }
       }
 
