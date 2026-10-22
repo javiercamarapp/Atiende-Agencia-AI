@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { LlmGateway, lookupModelPrice } from "@atiende/agent-core";
 import { InMemoryTenancyEngine } from "@atiende/db";
-import { MODELOS_AGENTE, costoEstimadoModelo } from "@atiende/domain-restaurantes";
+import { MODELOS_AGENTE, costoEstimadoModelo, modeloAlternoParaTope } from "@atiende/domain-restaurantes";
 import { ALLOWED_PROVIDER_HOSTS, DEFAULT_ROUTE, routingForModel, rungParaModeloAgente, rungsDeModelosAgente } from "../src/production/llm-models.ts";
 import { RESTAURANTES_WHATSAPP_AGENT_ROLE, buildAgentModelAlternatives, buildProductionLlmGateway, buildRoleLadder } from "../src/production/llm-gateway.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -62,5 +62,16 @@ describe("registro en el gateway de produccion", () => {
       "openrouter:meta/muse-spark-1.3",
     ]);
     expect(buildProductionLlmGateway(e, new InMemoryTenancyEngine())).toBeInstanceOf(LlmGateway);
+  });
+  it("PM-R19: el modelo alterno del respaldo por tope de tiempo ya esta en la escalera aprobada del rol y se registra como alternativa (no se agrega ningun modelo ni proveedor)", () => {
+    const e = env({ openai: null, openrouter: OPENROUTER });
+    const escalera = buildRoleLadder(e, RESTAURANTES_WHATSAPP_AGENT_ROLE, { roles: {} })!.map((p) => p.model);
+    const alternativas = buildAgentModelAlternatives(e, RESTAURANTES_WHATSAPP_AGENT_ROLE, { roles: {} }).map((p) => p.model);
+    for (const primario of [null, ...MODELOS_AGENTE.map((m) => m.id)]) {
+      const alterno = modeloAlternoParaTope(primario);
+      expect(escalera, `escalera para ${alterno}`).toContain(alterno);
+      expect(alternativas, `alternativas para ${alterno}`).toContain(alterno);
+      expect(alterno).not.toBe(primario);
+    }
   });
 });

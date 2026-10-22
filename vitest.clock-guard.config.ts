@@ -29,6 +29,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",
   // PM Ronda 12 (seguimiento de #593): reloj fijo (martes 14:00 / miercoles 02:30 Merida) para el acuse con excepciones por fecha y la ventana de aviso de falla_sistema.
   "packages/domain-restaurantes/tests/pm-r12-seguimiento-silencio.spec.ts",
+  // PM Ronda 19: respaldo de proveedor cuando la llamada al modelo agota su tope; relojes simulados (vi.useFakeTimers) para los topes de 11 s y 18 s.
+  "packages/domain-restaurantes/tests/whatsapp/pm-r19-respaldo-proveedor-tope-llamada.spec.ts",
   // Ronda 2 del loop de PM: hora de recogida y programado validados contra el reloj del servidor; reloj local de consultar_sucursal.
   "packages/domain-restaurantes/tests/pm-r2-flujo-pedido-y-hora.spec.ts",
   // Ronda 5 del loop de PM: reloj fijo (miercoles 12:00 / martes 13:00 Merida) para hora de recogida, kilos, relleno del modelo y entradas hostiles.
