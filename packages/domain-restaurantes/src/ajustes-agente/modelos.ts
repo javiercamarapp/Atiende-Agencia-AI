@@ -41,6 +41,18 @@ export function modeloAgentePorId(id: string | null | undefined): ModeloAgente |
   return MODELOS_AGENTE.find((m) => m.id === id) ?? null;
 }
 
+/**
+ * Modelo ALTERNO para el reintento de una llamada que agoto su tope de tiempo (fallback de proveedor del turno de WhatsApp). Solo devuelve ids de la lista
+ * permitida (`MODELOS_AGENTE`) y que ya forman parte de la escalera aprobada del rol (Luna -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite -> Muse Spark): no
+ * agrega modelos ni proveedores. El alterno nunca es el mismo modelo que se atasco: Luna (o cualquier otro) -> DeepSeek V4.1 Flash; DeepSeek -> Gemini 2.5 Flash-Lite.
+ */
+export const MODELO_ALTERNO_TOPE_ID = "deepseek/deepseek-v4.1-flash";
+export const MODELO_ALTERNO_SEGUNDO_TOPE_ID = "google/gemini-2.5-flash-lite";
+
+export function modeloAlternoParaTope(primarioId: string | null | undefined): string {
+  return primarioId === MODELO_ALTERNO_TOPE_ID ? MODELO_ALTERNO_SEGUNDO_TOPE_ID : MODELO_ALTERNO_TOPE_ID;
+}
+
 export function esModeloAgentePermitido(id: unknown): id is string {
   return typeof id === "string" && modeloAgentePorId(id) !== null;
 }

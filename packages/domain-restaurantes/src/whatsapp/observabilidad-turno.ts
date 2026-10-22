@@ -134,6 +134,12 @@ export interface EventoTurnoWhatsApp {
   readonly cierreMaquina?: boolean;
   /** PM-R14: el turno se corto porque el modelo insistia en crear_pedido rechazado por regla (resultado `ok`, causaError `regla`). */
   readonly cierreCortado?: boolean;
+  /** PM-R19: veces que la llamada al modelo se repitio contra el modelo alterno tras agotar su tope por llamada (solo un entero; nunca contenido). */
+  readonly reintentosLlm?: number;
+  /** PM-R19: el respaldo contesto y el turno siguio con esa respuesta. */
+  readonly reintentoLlmRecuperado?: boolean;
+  /** PM-R19: id del modelo alterno usado (lista cerrada de la escalera aprobada, p.ej. "deepseek/deepseek-v4.1-flash"); null si no hubo respaldo. Sin PII. */
+  readonly modeloRespaldoLlm?: string | null;
   /** Motivo de escalacion A HUMANO (clasificador de alto riesgo o `escalar_a_humano`); null si no hubo. */
   readonly motivoEscalacion: string | null;
   /** Por que se subio de rol de modelo barato a caro dentro del turno; null si no se subio. */
