@@ -216,13 +216,13 @@ rollback;
 \echo '=== B1. el cuarto envio por telefono en la ventana se rechaza (limite 3) ==='
 begin;
 set local role authenticated;
-select count(*) filter (where ok) as permitidas_deberia_ser_3 from (select core.chofer_login_puede_solicitar('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',3,100,900,1800) as ok from generate_series(1,5)) q;
+select count(*) filter (where ok = 'ok') as permitidas_deberia_ser_3 from (select core.chofer_login_puede_solicitar('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',3,100,900,1800) as ok from generate_series(1,5)) q;
 rollback;
 
 \echo '=== B2. limite por IP aunque cambie el telefono ==='
 begin;
 set local role authenticated;
-select count(*) filter (where ok) as permitidas_deberia_ser_2 from (select core.chofer_login_puede_solicitar(lpad(g::text, 64, '0'),'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',3,2,900,1800) as ok from generate_series(1,5) g) q;
+select count(*) filter (where ok = 'ok') as permitidas_deberia_ser_2 from (select core.chofer_login_puede_solicitar(lpad(g::text, 64, '0'),'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',3,2,900,1800) as ok from generate_series(1,5) g) q;
 rollback;
 
 \echo '=== B3. dos codigos agotados bloquean temporalmente al telefono ==='
@@ -230,7 +230,15 @@ begin;
 set local role authenticated;
 select core.chofer_login_registrar_evento('codigo_agotado','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',null,null,null);
 select core.chofer_login_registrar_evento('codigo_agotado','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',null,null,null);
-select count(*) filter (where ok) as permitidas_deberia_ser_0 from (select core.chofer_login_puede_solicitar('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',3,100,900,1800) as ok) q;
+select count(*) filter (where ok = 'ok') as permitidas_deberia_ser_0 from (select core.chofer_login_puede_solicitar('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',3,100,900,1800) as ok) q;
+rollback;
+
+\echo '=== B6. el bloqueo se distingue del limite solo por dentro ('bloqueado' vs 'limitado') ==='
+begin;
+set local role authenticated;
+select core.chofer_login_registrar_evento('codigo_agotado','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',null,null,null);
+select core.chofer_login_registrar_evento('codigo_agotado','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',null,null,null);
+select count(*) as filas_deberia_ser_1 from (select core.chofer_login_puede_solicitar('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',3,100,900,1800) as r) q where r = 'bloqueado';
 rollback;
 
 \echo '=== B4. la auditoria guarda solo hashes (sin telefono ni IP en claro) ==='

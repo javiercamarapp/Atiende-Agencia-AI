@@ -141,9 +141,11 @@ revoke all on function core.chofer_login_es_elegible(uuid, uuid) from public, an
 -- ---------------------------------------------------------------------------------------------------------------
 -- Cuenta TODA solicitud (la cuenta exista o no). Devuelve false si el telefono o la IP superaron el limite de la ventana, o si el telefono
 -- esta en bloqueo temporal por abuso (>= 2 codigos agotados en la ventana de bloqueo). Si permite, registra la solicitud.
+-- Devuelve 'ok', 'limitado' (la API responde 429 igual para cualquier numero) o 'bloqueado' (la API responde como si todo hubiera salido bien
+-- y no envia nada: un bloqueo solo existe para telefonos con cuenta, asi que nunca debe distinguirse desde fuera).
 create or replace function core.chofer_login_puede_solicitar(
   p_telefono_hash text, p_ip_hash text, p_max_telefono int, p_max_ip int, p_ventana_segundos int, p_bloqueo_segundos int
-) returns boolean
+) returns text
 language plpgsql security definer set search_path = core, pg_temp
 as $$
 declare
@@ -165,7 +167,7 @@ begin
     where telefono_hash = p_telefono_hash and tipo = 'codigo_agotado' and created_at > now() - make_interval(secs => p_bloqueo_segundos);
   if v_agotados >= 2 then
     insert into core.chofer_login_evento (tipo, telefono_hash, ip_hash) values ('solicitud_bloqueada', p_telefono_hash, p_ip_hash);
-    return false;
+    return 'bloqueado';
   end if;
 
   select count(*) into v_tel from core.chofer_login_evento
@@ -178,11 +180,11 @@ begin
   end if;
   if v_tel >= p_max_telefono or v_ip >= p_max_ip then
     insert into core.chofer_login_evento (tipo, telefono_hash, ip_hash) values ('solicitud_limitada', p_telefono_hash, p_ip_hash);
-    return false;
+    return 'limitado';
   end if;
 
   insert into core.chofer_login_evento (tipo, telefono_hash, ip_hash) values ('solicitud', p_telefono_hash, p_ip_hash);
-  return true;
+  return 'ok';
 end;
 $$;
 revoke all on function core.chofer_login_puede_solicitar(text, text, int, int, int, int) from public, anon;
