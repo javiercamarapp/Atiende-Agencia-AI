@@ -86,7 +86,7 @@ import {
   resumenCanonico,
   sanearNotaDeResumen,
 } from "./cierre-maquina.ts";
-import { datosCierreDeCotizacion } from "./cierre-determinista.ts";
+import { datosCierreDeCotizacion, type DatosCierre } from "./cierre-determinista.ts";
 import type {
   CanalPedido,
   CreateOrderInput,
@@ -375,7 +375,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con el offset de la SUCURSAL (por ejemplo 2026-10-03T14:00:00-06:00 en Mérida; nunca Z ni UTC: un offset distinto se rechaza), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
         minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con el offset de la SUCURSAL (Mérida -06:00; un offset distinto, Z o UTC se rechaza), calculada con la HORA LOCAL de la sucursal. El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
-        customer_name: { type: "string", description: "Opcional: nombre del cliente si ya lo dio. No cambia el total; el sistema lo guarda para poder registrar el pedido confirmado si el turno se corta." },
+        customer_name: { type: "string", description: "Opcional: nombre del cliente si ya lo dio. No cambia el total; el sistema lo guarda (solo WhatsApp) para poder registrar el pedido ya confirmado si el turno se corta." },
         customer_address: { type: "string", description: "Opcional, solo domicilio: dirección completa que dio el cliente. No cambia el total; se guarda igual que el nombre." },
         indicaciones_acceso: { type: "string", description: "Opcional, solo domicilio: cómo llegar o avisar (una línea). Se guarda igual que el nombre." },
         referencias_acceso: { type: "string", description: "Opcional: referencias para llegar que dio el cliente. Se guarda igual que el nombre." },
@@ -479,7 +479,22 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
 
 /** Definiciones visibles para un canal (ninguna parametro de telefono, por diseño). */
 export function toolDefinitionsForChannel(channel: AgentChannel): readonly AgentToolDefinition[] {
-  return AGENT_TOOL_DEFINITIONS.filter((t) => t.channels.includes(channel));
+  const defs = AGENT_TOOL_DEFINITIONS.filter((t) => t.channels.includes(channel));
+  if (channel !== "voz") return defs;
+  // PM R18: los datos opcionales del cliente en `cotizar_pedido` son solo de WhatsApp (cierre determinista); la voz no los ve ni los guarda.
+  return defs.map((t) => {
+    if (t.name !== "cotizar_pedido") return t;
+    const properties = Object.fromEntries(Object.entries(t.parameters.properties).filter(([k]) => !CAMPOS_DATOS_CLIENTE_EN_COTIZAR.has(k)));
+    return { ...t, parameters: { ...t.parameters, properties } } as AgentToolDefinition;
+  });
+}
+
+/** Campos de `cotizar_pedido` que solo existen en WhatsApp (los guarda el flujo para el cierre determinista). */
+const CAMPOS_DATOS_CLIENTE_EN_COTIZAR: ReadonlySet<string> = new Set(["customer_name", "customer_address", "indicaciones_acceso", "referencias_acceso", "direccion_etiqueta", "maps_url", "usar_ubicacion_compartida"]);
+
+/** Datos de cierre de la cotizacion: solo en WhatsApp; en voz el flujo no guarda nada nuevo. */
+function datosDeCierreSiWhatsapp(ctx: AgentToolContext, input: Record<string, unknown>, previo: DatosCierre | undefined): DatosCierre | undefined {
+  return ctx.channel === "whatsapp" ? datosCierreDeCotizacion(input, previo) : previo;
 }
 
 /** Ruta HTTP (relativa a `/v1/restaurantes/:orgSlug`) con la que el proveedor de voz invoca cada tool. */
@@ -1297,10 +1312,10 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         // y se devuelve el texto GUARDADO: el modelo nunca pega una version distinta a la que el servidor compara. Si la escritura no se guarda, no se devuelve el resumen nuevo.
         let textoVigente = canonico;
         // PM R18: una re-cotizacion identica puede traer datos nuevos (nombre, direccion...): se guardan para el cierre determinista sin tocar la cotizacion ni su turno.
-        const datosFusionados = datosCierreDeCotizacion(input, previo.datosCierre);
+        const datosFusionados = datosDeCierreSiWhatsapp(ctx, input, previo.datosCierre);
         let versionVigente = snap.version;
         let previoVigenteEscrito: OrderFlowContext = previo;
-        if (JSON.stringify(datosFusionados) !== JSON.stringify(previo.datosCierre ?? {})) {
+        if (JSON.stringify(datosFusionados ?? {}) !== JSON.stringify(previo.datosCierre ?? {})) {
           previoVigenteEscrito = { ...previo, datosCierre: datosFusionados };
           const guardado = await writeFlow(repo, ctx, flow, snap.version, snap.state, previoVigenteEscrito);
           if (guardado === "conflict") continue;
@@ -1328,7 +1343,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         ...propinaCotizada,
         ...(canonico && resumenBase ? { resumenCanonico: canonico, resumenBase } : {}),
         ...(quotedItems ? { quotedItems, quotedBranchSlug: String(input.branch_slug ?? ""), quotedCanal: canalOf(input.canal), ...(cartHash ? { cartHash } : {}) } : {}),
-        datosCierre: datosCierreDeCotizacion(input, previoVigente?.datosCierre),
+        datosCierre: datosDeCierreSiWhatsapp(ctx, input, previoVigente?.datosCierre),
         ...(horaCotizacion ? { horaRecogida: horaCotizacion } : {}),
         ...(programadoCotizado ? { programadoPara: programadoCotizado } : {}),
         ...(horaCotizacion && plazoServidor !== undefined ? { minutosPlazo: plazoServidor } : {}),

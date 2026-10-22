@@ -4,6 +4,7 @@
 // PURO: solo decide si hay datos completos y arma el input; no escribe nada ni salta ninguna regla. Sin datos completos devuelve el motivo y el flujo sigue como antes.
 import type { OrderFlowContext, OrderFlowSnapshot } from "./order-flow.ts";
 import { QUOTE_TTL_MS, RELOJ_TOLERANCIA_MS } from "./order-flow.ts";
+import { sanearNotaDeResumen } from "./cierre-maquina.ts";
 
 /** Lo que el modelo mando en `cotizar_pedido` y que `crear_pedido` necesita pero NO viaja en la cotizacion (nombre, direccion, salsas...). Se guarda tal cual en el flujo. */
 export interface DatosCierre {
@@ -39,6 +40,7 @@ const LISTAS = [
 ] as const;
 const MAX_TEXTO = 500;
 
+/** Texto no vacio recortado, o `undefined`. */
 function texto(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, MAX_TEXTO) : undefined;
 }
@@ -48,19 +50,27 @@ function lista(v: unknown): readonly string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/** Campos de entrega: al cambiar a recoger dejan de aplicar y se limpian. */
+const CAMPOS_DE_ENTREGA = ["customerAddress", "coloniaEntrega", "indicacionesAcceso", "referenciasAcceso", "direccionEtiqueta", "mapsUrl", "usarUbicacionCompartida"] as const;
+
 /**
- * Datos de cierre de una cotizacion: lo que trae su input, fusionado con lo guardado antes (un campo omitido conserva el anterior). Los campos de la huella
- * (`dobleSalsas`, `adultConfirmed`) NO se fusionan: son los de ESTA cotizacion. Puro; nunca lanza.
+ * Datos de cierre de una cotizacion: lo que trae su input, fusionado con lo guardado antes. Misma semantica que el resumen (`detallesDeResumen`): un campo OMITIDO (o `null`) conserva el anterior;
+ * uno mandado VACIO («» o []) lo LIMPIA. Los campos de la huella (`dobleSalsas`, `adultConfirmed`) NO se fusionan: son los de ESTA cotizacion. Las notas se sanean como en el resumen
+ * (una linea, sin telefonos ni correos). Cotizar para recoger limpia los datos de entrega. Puro; nunca lanza.
  */
 export function datosCierreDeCotizacion(input: Readonly<Record<string, unknown>>, previo: DatosCierre | undefined): DatosCierre {
   const out: Record<string, unknown> = { ...(previo ?? {}) };
   for (const [wire, clave] of TEXTOS) {
-    const v = texto(input[wire]);
-    if (v !== undefined) out[clave] = v;
+    if (input[wire] == null) continue;
+    const v = clave === "notes" ? sanearNotaDeResumen(input[wire]) : texto(input[wire]);
+    if (v === undefined || v === "") delete out[clave];
+    else out[clave] = v;
   }
   for (const [wire, clave] of LISTAS) {
+    if (input[wire] == null) continue;
     const v = lista(input[wire]);
-    if (v !== undefined) out[clave] = v;
+    if (v === undefined) delete out[clave];
+    else out[clave] = v;
   }
   if (input.usar_ubicacion_compartida === true) out.usarUbicacionCompartida = true;
   const doble = lista(input.doble_salsas);
@@ -68,6 +78,7 @@ export function datosCierreDeCotizacion(input: Readonly<Record<string, unknown>>
   else delete out.dobleSalsas;
   if (input.adult_confirmed === true) out.adultConfirmed = true;
   else delete out.adultConfirmed;
+  if (input.canal === "recoger") for (const k of CAMPOS_DE_ENTREGA) delete out[k];
   return out as DatosCierre;
 }
 

@@ -33,7 +33,7 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
-import { bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
+import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
@@ -868,9 +868,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
         const estado = estadoDeCierre(flowSnapshot, messages);
         if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
-        const ultimoCliente = mensajesSinResponder(messages).at(-1)?.content;
-        if (!ultimoCliente) return null;
-        return clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, total }) === "si" ? total : null;
+        // TODOS los mensajes sin responder deben ser un «si» claro: en una rafaga («mejor 3 cocas» + «si») el «si» responde al cambio, no al resumen que el servidor guardo.
+        const sinResponder = mensajesSinResponder(messages);
+        if (sinResponder.length === 0 || !sinResponder.every((m) => clasificarRespuestaCierre(m.content, { despuesDelResumen: true, total }) === "si")) return null;
+        // `confirmado` no revisa el ultimo mensaje del asistente (ya paso una confirmacion): el «si» tiene que contestar al resumen o a su pregunta de confirmacion.
+        if (estado === "confirmado" && !asistentePidioConfirmarResumen(total, [...messages].reverse().find((m) => m.role === "assistant")?.content)) return null;
+        return total;
       };
       // PM R18 (S1 / G1): el cliente ya dijo «si» a un resumen VIGENTE y el turno muere (proveedor caido, tope de tiempo) antes de crear el pedido. En vez de dejarlo sin crear, el SERVIDOR hace los dos
       // llamados que el modelo habria hecho (`confirmar_resumen` y `crear_pedido`) con lo guardado de la cotizacion que el cliente vio, por la MISMA maquina de estados (huella, resumen mostrado, «si»
