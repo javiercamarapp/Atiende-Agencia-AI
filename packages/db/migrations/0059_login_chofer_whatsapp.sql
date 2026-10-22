@@ -18,7 +18,7 @@
 --   * Las 3 tablas: RLS habilitado y SIN policies + revoke all a public/anon/authenticated = denegacion total a cualquier query cruda. El unico
 --     camino son las funciones de abajo, que validan todo dentro de la base.
 --   * core.chofer_login_es_elegible: unica fuente de verdad de "quien puede entrar por esta via". Exige membresia `repartidor` en una organizacion
---     de restaurantes activa/en prueba, que el usuario NO tenga ninguna otra membresia (otra org, otro rol u otra vertical) y que NO sea
+--     de restaurantes activa/en prueba, que esa sea la UNICA membresia del usuario (ninguna otra organizacion, rol ni vertical) y que NO sea
 --     superadmin de plataforma. Se reevalua al reservar el intento y al consumir el codigo, asi que una baja entre ambos pasos corta el acceso.
 --     No se concede a nadie (solo la llaman las demas funciones).
 --   * core.chofer_login_puede_solicitar: serializa por telefono (advisory lock), cuenta TODA solicitud (exista o no la cuenta, para que la respuesta
@@ -37,7 +37,7 @@
 -- Reversa (sin perdida de datos de negocio; solo credenciales de este canal):
 --   drop function if exists core.chofer_login_telefono_listar(uuid), core.chofer_login_telefono_quitar(uuid, uuid), core.chofer_login_telefono_guardar(uuid, uuid, text),
 --     core.chofer_login_plantilla_disponible(), core.chofer_login_plantilla(uuid), core.chofer_login_fallo(uuid), core.chofer_login_consumir(uuid),
---     core.chofer_login_reservar_intento(text), core.chofer_login_emitir(uuid, uuid, text, text, timestamptz), core.chofer_login_resolver(text),
+--     core.chofer_login_reservar_intento(text), core.chofer_login_emitir(uuid, uuid, text, text, int), core.chofer_login_resolver(text),
 --     core.chofer_login_registrar_evento(text, text, text, uuid, uuid), core.chofer_login_puede_solicitar(text, text, int, int, int, int),
 --     core.chofer_login_puede_gestionar(uuid), core.chofer_login_es_elegible(uuid, uuid);
 --   drop table if exists core.chofer_login_evento, core.chofer_login_codigo, core.chofer_login_telefono;
@@ -124,13 +124,11 @@ as $$
         and o.vertical = 'restaurantes'
         and o.status in ('trial', 'active')
     )
-    -- Ninguna otra membresia: ni otra organizacion/vertical ni otro rol (encargado, cajero, admin, owner...).
+    -- La UNICA membresia del usuario es esta: ninguna otra organizacion (ni de otra vertical ni de otro tenant) ni otro rol. Asi un administrador de
+    -- la organizacion B no puede registrar su celular para un usuario que tambien es repartidor en A y quedarse con su sesion.
     and not exists (
-      select 1
-      from core.membership m2
-      join core.organization o2 on o2.id = m2.organization_id
-      where m2.user_id = p_user_id
-        and not (m2.vertical_role = 'repartidor' and o2.vertical = 'restaurantes')
+      select 1 from core.membership m2
+      where m2.user_id = p_user_id and m2.organization_id <> p_organization_id
     )
     and not exists (select 1 from core.platform_superadmin s where s.staff_user_id = p_user_id);
 $$;
@@ -230,7 +228,7 @@ revoke all on function core.chofer_login_resolver(text) from public, anon;
 grant execute on function core.chofer_login_resolver(text) to authenticated;
 
 -- Emite un codigo nuevo e invalida el pendiente anterior en la misma transaccion. Devuelve null si la cuenta ya no es elegible.
-create or replace function core.chofer_login_emitir(p_user_id uuid, p_organization_id uuid, p_code_hash text, p_code_salt text, p_expires_at timestamptz)
+create or replace function core.chofer_login_emitir(p_user_id uuid, p_organization_id uuid, p_code_hash text, p_code_salt text, p_ttl_segundos int)
 returns uuid
 language plpgsql security definer set search_path = core, pg_temp
 as $$
@@ -241,19 +239,20 @@ begin
     raise exception 'chofer_login_emitir: solo alcanzable desde sesion de sistema' using errcode = '42501';
   end if;
   if not core.chofer_login_es_elegible(p_user_id, p_organization_id) then return null; end if;
-  if p_expires_at > now() + interval '10 minutes' then
-    raise exception 'chofer_login_emitir: vigencia maxima de 10 minutos' using errcode = '22023';
+  -- La vigencia se calcula AQUI con el reloj de la base (no con el de la API): un desfase de reloj no puede rechazar ni alargar un codigo.
+  if p_ttl_segundos is null or p_ttl_segundos < 1 or p_ttl_segundos > 600 then
+    raise exception 'chofer_login_emitir: vigencia entre 1 segundo y 10 minutos' using errcode = '22023';
   end if;
   update core.chofer_login_codigo set estado = 'invalidado', motivo_cierre = 'reemplazado'
     where staff_user_id = p_user_id and estado = 'pendiente';
   insert into core.chofer_login_codigo (staff_user_id, organization_id, code_hash, code_salt, expires_at)
-  values (p_user_id, p_organization_id, p_code_hash, p_code_salt, p_expires_at)
+  values (p_user_id, p_organization_id, p_code_hash, p_code_salt, now() + make_interval(secs => p_ttl_segundos))
   returning id into v_id;
   return v_id;
 end;
 $$;
-revoke all on function core.chofer_login_emitir(uuid, uuid, text, text, timestamptz) from public, anon;
-grant execute on function core.chofer_login_emitir(uuid, uuid, text, text, timestamptz) to authenticated;
+revoke all on function core.chofer_login_emitir(uuid, uuid, text, text, int) from public, anon;
+grant execute on function core.chofer_login_emitir(uuid, uuid, text, text, int) to authenticated;
 
 -- Reserva UN intento: el contador sube antes de que la API compare. Devuelve el codigo solo si sigue pendiente, vigente y con intento disponible.
 create or replace function core.chofer_login_reservar_intento(p_telefono text)
