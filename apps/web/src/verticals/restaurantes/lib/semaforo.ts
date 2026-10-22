@@ -1,6 +1,6 @@
 // Semaforo de tiempo del panel movil del operador (PLAN-PANEL-OPERADOR §5.3). Funciones puras, sin DOM ni red.
 //
-// Regla oficial (decision de Javier): el tiempo prometido es 65 min a domicilio y 35 al recoger; verde hasta el 70 % del
+// Regla oficial (decisión del dueño): el tiempo prometido es 65 min a domicilio y 35 al recoger; verde hasta el 70 % del
 // prometido, amarillo hasta el 100 %, rojo despues. Un pedido sin aceptar pasa a amarillo a los 3 min y a rojo a los 5. «En camino»
 // cuenta desde la salida y se pone rojo a los 90 min. Las constantes se redeclaran aqui (apps/web no importa codigo de los paquetes
 // domain-*) y una prueba las compara con las del contrato `@atiende/domain-restaurantes/operacion` para que no se desfasen.
