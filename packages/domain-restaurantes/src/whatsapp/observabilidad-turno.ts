@@ -140,6 +140,8 @@ export interface EventoTurnoWhatsApp {
   readonly reintentoLlmRecuperado?: boolean;
   /** PM-R19: id del modelo alterno usado (lista cerrada de la escalera aprobada, p.ej. "deepseek/deepseek-v4.1-flash"); null si no hubo respaldo. Sin PII. */
   readonly modeloRespaldoLlm?: string | null;
+  /** PM-R19: modelo que realmente contesto la ultima llamada del turno (lista cerrada `MODELOS_AGENTE` o "otro"); null si ninguna contesto. Sin PII. */
+  readonly modeloRespondioLlm?: string | null;
   /** Motivo de escalacion A HUMANO (clasificador de alto riesgo o `escalar_a_humano`); null si no hubo. */
   readonly motivoEscalacion: string | null;
   /** Por que se subio de rol de modelo barato a caro dentro del turno; null si no se subio. */

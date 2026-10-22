@@ -24,7 +24,7 @@
 // propio historial de tool_calls.
 import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
-import { MODELO_PREDETERMINADO_ID, modeloAlternoParaTope } from "../ajustes-agente/modelos.ts";
+import { MODELO_PREDETERMINADO_ID, idModeloDeListaCerrada, modeloAdmiteRespaldoPorTope, modeloAlternoParaTope } from "../ajustes-agente/modelos.ts";
 import { avisoFallaSistemaReciente, marcarAvisoFallaSistema } from "./dedupe-falla-sistema.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { descripcionSeguraDeError } from "../log-seguro.ts";
@@ -604,6 +604,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     reintentoLlmRecuperado: boolean;
     /** PM-R19: id del modelo alterno usado (lista cerrada de modelos aprobados; nunca contenido); null si no hubo respaldo. */
     modeloRespaldoLlm: string | null;
+    /** PM-R19: modelo que REALMENTE contesto la ultima llamada del turno (lista cerrada o "otro"); distingue respaldo real de caida de escalera. null si ninguna contesto. */
+    modeloRespondioLlm: string | null;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
   }
@@ -947,7 +949,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         tele.vueltas += 1;
         if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
-        let completion: { text: string; toolCalls?: LlmToolCall[] };
+        let completion: { text: string; toolCalls?: LlmToolCall[]; model?: string; providerId?: string };
         try {
           const runId = randomUUID();
           const esRolPorDefecto = role === options.defaultRole;
@@ -964,7 +966,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // PM-R19: con presupuesto de sobra el primer intento tiene un tope menor y, si lo agota, se repite UNA vez la MISMA peticion contra el modelo alterno de la escalera
           // aprobada. Seguro: la llamada al modelo no tiene efectos laterales y las herramientas corren ENTRE llamadas (abajo), nunca dentro; el respaldo no las repite
           // (`crear_pedido` corre una sola vez y sigue siendo idempotente por el estado del flujo). Solo el rol por defecto: la escalera del rol escalado es otra.
-          const plan = esRolPorDefecto && modeloRespaldo === null ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
+          const plan = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
           if (esRolPorDefecto && modeloRespaldo !== null) {
             completion = await completarConTope(deadline, llamarAlModelo(modeloRespaldo));
           } else {
@@ -991,6 +993,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           return fallaDelSistema();
         }
 
+        tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           const base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
@@ -1298,7 +1301,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1334,6 +1337,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             reintentosLlm: tele.reintentosLlm,
             reintentoLlmRecuperado: tele.reintentoLlmRecuperado,
             modeloRespaldoLlm: tele.modeloRespaldoLlm,
+            modeloRespondioLlm: tele.modeloRespondioLlm,
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
