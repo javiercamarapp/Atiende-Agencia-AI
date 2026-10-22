@@ -35,6 +35,7 @@ export function ConfirmarEntrega({ entrega, onCerrar, onConfirmar }: ConfirmarEn
       }}
       titulo={entrega ? `¿Entregaste el pedido #${entrega.numero}?` : "Entregar pedido"}
       descripcion={entrega ? `Para ${entrega.clienteNombre}. Total $${formatMoney(entrega.total)}.${ofreceCobro ? " Si cobraste en efectivo, deja el monto; si no cobraste, vacíalo." : ""}` : undefined}
+      botonesGrandes
       confirmar="Sí, entregado"
       cancelar="Volver"
       {...(ofreceCobro && entrega
