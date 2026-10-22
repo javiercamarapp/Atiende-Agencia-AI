@@ -143,6 +143,11 @@ describe("Entregado y Deshacer", () => {
     return f;
   }
 
+  it("los botones de la confirmacion miden 56 dp", async () => {
+    await abrirConfirmacion();
+    for (const t of ["Volver", "Sí, entregado"]) expect(botones().find((b) => b.textContent?.includes(t))!.className, t).toContain("h-14");
+  });
+
   it("pide confirmacion antes de llamar al servidor; Volver no escribe", async () => {
     const f = await abrirConfirmacion();
     expect(dialogo()?.textContent).toContain("¿Entregaste el pedido #145?");

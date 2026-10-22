@@ -59,6 +59,7 @@ import { destinoEsPin, urlDestinoMapa } from "../lib/destino-mapa.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { HistorialDiaTab, MiPerfilTab } from "../components/RepartidorPestanas.tsx";
 import { almacenDelNavegador, purgarColas } from "../lib/cola-entrega-offline.ts";
+import { identidadDeSesion } from "../lib/identidad-sesion.ts";
 import { PanelChofer } from "../components/chofer/PanelChofer.tsx";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
@@ -329,7 +330,7 @@ export function RepartidorPedidosPage() {
       apiBaseUrl={apiBaseUrl}
       token={session.token}
       propertyId={propertyId}
-      identidad={session.email}
+      identidad={identidadDeSesion(session)}
       legado={<RepartidorPedidosView apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} />}
     />
   );
