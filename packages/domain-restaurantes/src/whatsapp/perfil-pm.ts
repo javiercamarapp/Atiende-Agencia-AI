@@ -12,7 +12,11 @@
 // multiplos de "orden de N", propina solo con tarjeta, cotizar antes de confirmar) las aplican las
 // HERRAMIENTAS en el servidor; este prompt es la primera linea, nunca la unica.
 import { lineasCliente360 } from "../cliente-360/prompt.ts";
+import { construirPromptPaqueteA } from "./prompt-pm-paquete-a.ts";
+import { PM_PAQUETE_C_PROMPT } from "./prompt-pm-paquete-c.ts";
 import type { BranchSummary, CustomerLookupResult } from "../types.ts";
+import { geocercasActivas } from "../geocercas.ts";
+import { PM_PAQUETE_B_REGLAS } from "./prompt-pm-paquete-b.ts";
 
 export interface PerfilPmContexto {
   readonly businessName: string;
@@ -295,7 +299,7 @@ Un insulto contra usted ("máquina inútil") no es queja de pedido ni pide perso
 - Datos personales: use solo el teléfono de ${voz ? "esta llamada" : "esta conversación"}. Nunca dé ni confirme teléfono, dirección, pedidos o la existencia de otros clientes. Nunca lea una dirección completa guardada: pregunte si es la misma. Nunca repita un número de tarjeta.
 ${w(`- El aviso de privacidad (y que habla con un asistente virtual) lo antepone el sistema una sola vez en el primer mensaje: no lo repita ni lo parafrasee. Si el cliente pregunta por sus datos o su historial de pedidos, dígale que se guardan para atenderle y recordar su pedido de siempre, y que puede escribir "mis datos personales" para ejercer sus derechos.
 `, `- El aviso de privacidad y la grabación los dice el sistema al abrir la llamada: no los improvise.
-`)}- Fuera de alcance (recetas, chistes, opiniones, tareas ajenas): redirija con una frase amable al pedido.`;
+`)}- Fuera de alcance (recetas, chistes, opiniones, tareas ajenas): redirija con una frase amable al pedido.${voz ? "" : `\n${PM_PAQUETE_C_PROMPT}`}`;
 
   const datos = `# DATOS DEL NEGOCIO (no afirme nada que no esté aquí)
 - Sucursales (el horario y el precio de cada una los da la herramienta de la sucursal, consultar_sucursal y buscar_producto): ${PM_SUCURSALES_MAPA.join("; ")}.
@@ -331,7 +335,7 @@ ${pmCustomerContextBlock(ctx.customer)}`;
 
   if (voz) return buildPmVozPrompt(ctx, { saludo, promos, motivos, bloqueApagados, pedidoGrande });
   const conocimiento = ctx.conocimientoBloque?.trim() ? [ctx.conocimientoBloque.trim()] : [];
-  return [rol, vozYTrato, ...conocimiento, reglas, flujo, escalacion, seguridad, datos, ejemplos, cliente].join("\n\n");
+  return [rol, vozYTrato, ...conocimiento, reglas, flujo, ...(geocercasActivas() ? [PM_PAQUETE_B_REGLAS] : []), escalacion, seguridad, datos, construirPromptPaqueteA({ salsasPersonalizadas: Boolean(ctx.salsasTexto) }), ejemplos, cliente].join("\n\n");
 }
 
 interface PartesVoz {
