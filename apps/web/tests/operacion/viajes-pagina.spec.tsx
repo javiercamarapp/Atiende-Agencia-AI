@@ -214,4 +214,23 @@ describe("Viajes", () => {
     const d = dispatches(f as unknown as ReturnType<typeof vi.fn>);
     expect(JSON.parse(String((d[0]![1] as RequestInit).body))).not.toHaveProperty("desdeEstado");
   });
+
+  it("respuesta 200 malformada: mensaje honesto de respuesta inesperada, no «sin conexion» ni exito", async () => {
+    const exito = vi.spyOn(notify, "success").mockImplementation(() => "x");
+    const error = vi.spyOn(notify, "error").mockImplementation(() => "x");
+    const f = vi.fn(async (url: string, init?: RequestInit) => (init?.method === "POST" ? json(200, {}) : json(200, viajes([tarjeta(146)]))));
+    await montar(f as unknown as ReturnType<typeof vi.fn>);
+    click(fila(146));
+    await esperar(0);
+    click(boton(/^Salió/));
+    await esperar(0);
+    click(boton(/^Sí, salió$/));
+    await esperar(20);
+    expect(exito).not.toHaveBeenCalled();
+    const textosError = error.mock.calls.map((c) => String(c[0])).join(" ");
+    expect(textosError).toContain("Respuesta inesperada del servidor");
+    expect(textosError).not.toContain("No hay conexión");
+    exito.mockRestore();
+    error.mockRestore();
+  });
 });

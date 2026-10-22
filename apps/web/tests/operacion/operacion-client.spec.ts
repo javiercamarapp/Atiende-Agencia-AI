@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { aceptarPedido, ErrorOperacion, fetchCola, marcarListo, nuevaLlave } from "../../src/verticals/restaurantes/lib/operacion-client.ts";
+import { aceptarPedido, despacharPedidos, ErrorOperacion, fetchCola, marcarListo, MENSAJE_RESPUESTA_INESPERADA, nuevaLlave } from "../../src/verticals/restaurantes/lib/operacion-client.ts";
 
 const API = "https://api.test";
 const respuesta = (status: number, cuerpo: unknown) => new Response(JSON.stringify(cuerpo), { status, headers: { "content-type": "application/json" } });
@@ -43,5 +43,19 @@ describe("operacion-client", () => {
 
   it("nuevaLlave genera llaves distintas", () => {
     expect(nuevaLlave()).not.toBe(nuevaLlave());
+  });
+
+  it("despacho: una respuesta 200 sin resultados validos es «respuesta inesperada», no exito ni falta de conexion", async () => {
+    const entrada = { pedidos: ["00000000-0000-4000-8000-000000000146"], repartidorId: "00000000-0000-4000-8000-000000000900", etaMin: 35 };
+    const malas: unknown[] = [{}, { resultados: null }, { resultados: "x" }, { resultados: [{ pedidoId: "a" }] }, { resultados: [{ pedidoId: "a", resultado: "raro", aviso: "encolado" }] }, null];
+    for (const cuerpo of malas) {
+      const f = vi.fn(async () => respuesta(200, cuerpo));
+      const e = await despacharPedidos(f as unknown as typeof fetch, API, "t", "p", entrada, "k").catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(ErrorOperacion);
+      expect((e as ErrorOperacion).code).toBe("respuesta_inesperada");
+      expect((e as ErrorOperacion).message).toBe(MENSAJE_RESPUESTA_INESPERADA);
+    }
+    const bien = vi.fn(async () => respuesta(200, { resultados: [{ pedidoId: "a", resultado: "despachado", estado: "en_camino", salioAt: null, repartidorId: "r", aviso: "encolado" }] }));
+    expect((await despacharPedidos(bien as unknown as typeof fetch, API, "t", "p", entrada, "k")).resultados).toHaveLength(1);
   });
 });
