@@ -4,7 +4,8 @@
 //
 // Estado en memoria por escenario (`p.estado`): un PATCH/POST de la cola se refleja en el GET siguiente, como en el servidor real.
 // Solo datos sinteticos (nombres y folios de ejemplo); nada de clientes reales.
-import { esquemaColaSalida, esquemaListoSalida } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
+import { esquemaColaSalida, esquemaListoSalida, esquemaRespuestaClientePorTelefono, esquemaRespuestaCotizar, esquemaRespuestaCrearPedido, esquemaCrearPedidoOperador, esquemaCotizarPedidoOperador } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
+import type { CrearPedidoOperadorEntrada } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { AccionDisponible, ColaSalida, TarjetaPedido } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { Peticion, Ruta } from "../tipos.ts";
 import { conContrato, errorApi } from "./operacion-comun.ts";
@@ -71,7 +72,83 @@ function buscar(p: Peticion): PedidoMock | undefined {
 
 const rutaPatchEstadoEscritorio = rutasRestaurantesPanel.find((r) => r.metodo === "PATCH" && r.patron.endsWith("/orders/:orderId/status"))!;
 
+
+// ---- Captura por personal (B2) ----
+
+const PRECIO_UNITARIO = 95; // el mock no conoce el menu: cada pieza vale lo mismo; el contrato solo exige que el total venga del servidor
+const ENVIO = 30;
+/** Una colonia fuera de cobertura para probar el aviso rojo. */
+const COLONIA_SIN_COBERTURA = "Zona sin reparto";
+
+function cotizar(entrada: { canal: string; items: Array<{ cantidad: number }>; direccion?: { colonia?: string | null } | null }) {
+  const subtotal = entrada.items.reduce((s, i) => s + i.cantidad * PRECIO_UNITARIO, 0);
+  const envio = entrada.canal === "domicilio" ? ENVIO : 0;
+  const dentro = !(entrada.canal === "domicilio" && entrada.direccion?.colonia === COLONIA_SIN_COBERTURA);
+  return { cotizacion: { subtotal, envio, total: subtotal + envio, tiempoEstimadoMin: entrada.canal === "domicilio" ? [60, 65] : [25, 35] }, cobertura: { dentro } };
+}
+
+const rutasCaptura: readonly Ruta[] = [
+  {
+    metodo: "POST",
+    patron: `${BASE}/orders/cotizar`,
+    roles: ["owner", "admin", "staff"],
+    manejador: (p) => {
+      const v = esquemaCotizarPedidoOperador.validar(p.cuerpo);
+      if (!v.ok) return errorApi(400, "validation_error", "Cuerpo de cotización inválido.");
+      const r = cotizar(v.valor);
+      if (!r.cobertura.dentro) return errorApi(422, "fuera_de_cobertura", "Esa dirección está fuera de la zona de reparto.");
+      return conContrato(esquemaRespuestaCotizar, r);
+    },
+  },
+  {
+    // Cliente existente: SOLO el telefono sintetico de abajo; cualquier otro es cliente nuevo (404).
+    metodo: "GET",
+    patron: `${BASE}/customers/por-telefono`,
+    roles: ["owner", "admin", "staff"],
+    manejador: (p) => {
+      if (p.query.get("telefono") !== "+529995550100") return errorApi(404, "not_found", "Cliente no encontrado.");
+      return conContrato(esquemaRespuestaClientePorTelefono, { cliente: { id: uuid(800), nombre: "Cliente Ejemplo", domicilios: [{ id: uuid(801), texto: "Calle Ficticia 123", colonia: "Centro" }], ultimoPedido: null, gustos: [] } });
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${BASE}/orders`,
+    roles: ["owner", "admin", "staff"],
+    manejador: (p) => {
+      const v = esquemaCrearPedidoOperador.validar(p.cuerpo);
+      if (!v.ok) return errorApi(400, "validation_error", "Cuerpo de captura inválido.");
+      const entrada: CrearPedidoOperadorEntrada = v.valor;
+      const llave = String(p.cabeceras["idempotency-key"] ?? "");
+      if (!llave) return errorApi(400, "validation_error", "Falta Idempotency-Key.");
+      const hechos = p.estado.obtener<Array<{ llave: string; huella: string; respuesta: unknown }>>("operacion.capturas", () => []);
+      const huella = `${entrada.cliente.telefono}|${entrada.items.map((i) => `${i.productId}x${i.cantidad}`).join(",")}`;
+      const repetido = hechos.find((h) => h.llave === llave);
+      if (repetido) return conContrato(esquemaRespuestaCrearPedido, { ...(repetido.respuesta as object), yaAplicado: true }, 200);
+      if (!entrada.forzarDuplicado && hechos.some((h) => h.huella === huella)) return errorApi(409, "pedido_duplicado_reciente", "Hay un pedido igual de hace menos de 10 minutos.");
+      const r = cotizar(entrada);
+      const lista = pedidos(p);
+      const numero = Math.max(150, ...lista.map((m) => m.numero)) + 1;
+      const preparando = entrada.confirmarYa ?? true;
+      const ahora = new Date().toISOString();
+      lista.push({
+        id: uuid(numero), numero, estado: preparando ? "preparando" : "pending", canal: entrada.canal, origen: entrada.canalCaptura, clienteNombre: entrada.cliente.nombre,
+        resumenItems: `${entrada.items.reduce((s, i) => s + i.cantidad, 0)} piezas`, total: r.cotizacion.total, creadoEn: ahora, aceptadoEn: preparando ? ahora : null,
+        listoAt: null, salioAt: null, repartidorId: null, sinAviso: !entrada.consentimientoWhatsapp.otorgado,
+      });
+      const aviso = entrada.consentimientoWhatsapp.otorgado ? { estado: "encolado", plantilla: preparando ? "pedido_confirmado" : "pedido_recibido", motivo: null } : { estado: "omitido", plantilla: null, motivo: "sin_consentimiento" };
+      const respuesta = {
+        pedido: { id: uuid(numero), numero, estado: preparando ? "preparando" : "pending", total: r.cotizacion.total, source: "admin", canalCaptura: entrada.canalCaptura, capturadoPor: null },
+        cotizacion: r.cotizacion,
+        aviso,
+      };
+      hechos.push({ llave, huella, respuesta });
+      return conContrato(esquemaRespuestaCrearPedido, respuesta, 201);
+    },
+  },
+];
+
 export const rutasOperacionEncargado: readonly Ruta[] = [
+  ...rutasCaptura,
   {
     metodo: "GET",
     patron: `${BASE}/operacion/cola`,
