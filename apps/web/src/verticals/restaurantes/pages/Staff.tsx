@@ -35,7 +35,7 @@ import {
   useConfirm,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
-import { UserPlus, UserRoundCog } from "lucide-react";
+import { Smartphone, UserPlus, UserRoundCog } from "lucide-react";
 import {
   createStaffInvite,
   fetchOrgMembers,
@@ -47,6 +47,8 @@ import {
 } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, RepartidorMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import { PerfilRepartidorDialogo } from "../components/PerfilRepartidorDialogo.tsx";
+import { TelefonoAccesoDialogo } from "../components/TelefonoAccesoDialogo.tsx";
+import { fetchTelefonosAcceso } from "../lib/login-telefono-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -104,6 +106,18 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
   const [revokingId, setRevokingId] = useState<string | null>(null);
   // R-15: perfil operativo del repartidor (solo owner/admin; FormDialog con su propia carga y guardado).
   const [perfilDe, setPerfilDe] = useState<RepartidorMember | null>(null);
+  // Celular de acceso (login del repartidor por WhatsApp): null = la base aun no lo soporta -> el control se oculta (nada de maquetas).
+  const [telefonos, setTelefonos] = useState<ReadonlyMap<string, string> | null>(null);
+  const [telefonoDe, setTelefonoDe] = useState<RepartidorMember | null>(null);
+
+  async function cargarTelefonos() {
+    try {
+      const filas = await fetchTelefonosAcceso(fetch, apiBaseUrl, token, propertyId);
+      setTelefonos(new Map(filas.map((f) => [f.userId, f.telefonoEnmascarado])));
+    } catch {
+      setTelefonos(null);
+    }
+  }
 
   async function load() {
     setError(null);
@@ -114,6 +128,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
       // angosto) -- solo se piden cuando `canManage` ya lo anticipa, para no
       // disparar un 403 esperado en cada carga.
       setRepartidores(await fetchRepartidores(fetch, apiBaseUrl, token, propertyId));
+      void cargarTelefonos();
       if (canManage) {
         setInvites(await fetchStaffInvites(fetch, apiBaseUrl, token, propertyId));
         setMembers(await fetchOrgMembers(fetch, apiBaseUrl, token, propertyId));
@@ -349,12 +364,20 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                     <p className="m-0 text-sm font-semibold text-foreground">{r.fullName}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{r.email}</p>
                   </div>
-                  {canManage && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPerfilDe(r)}>
-                      <UserRoundCog />
-                      Perfil
-                    </Button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {telefonos && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setTelefonoDe(r)}>
+                        <Smartphone />
+                        {telefonos.has(r.id) ? `Celular ${telefonos.get(r.id)}` : "Celular de acceso"}
+                      </Button>
+                    )}
+                    {canManage && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPerfilDe(r)}>
+                        <UserRoundCog />
+                        Perfil
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -399,6 +422,20 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
           token={token}
           propertyId={propertyId}
           confirmar={confirmar}
+        />
+      )}
+      {telefonos && (
+        <TelefonoAccesoDialogo
+          open={telefonoDe !== null}
+          onOpenChange={(abierto) => {
+            if (!abierto) setTelefonoDe(null);
+          }}
+          repartidor={telefonoDe}
+          telefonoEnmascarado={telefonoDe ? (telefonos.get(telefonoDe.id) ?? null) : null}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          propertyId={propertyId}
+          onCambio={() => void cargarTelefonos()}
         />
       )}
       {dialogo}

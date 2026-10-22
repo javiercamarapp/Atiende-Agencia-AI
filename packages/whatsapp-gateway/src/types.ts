@@ -31,8 +31,12 @@ export interface OutboundTemplate {
   readonly language: string;
   /** Valores de las variables del cuerpo, en orden. Maximo 10; cada uno 1-1024 caracteres sin saltos de linea. */
   readonly params: readonly string[];
+  /** Plantillas de AUTENTICACION (codigo de un solo uso): Meta exige repetir el codigo como parametro del boton "copiar codigo"
+   *  (`sub_type: "url"`, indice 0). 1-15 caracteres alfanumericos. Ausente = la plantilla no lleva boton de codigo. */
+  readonly codigoBoton?: string;
 }
 
+export const TEMPLATE_CODE_BUTTON_PATTERN = /^[A-Za-z0-9]{1,15}$/;
 export const TEMPLATE_NAME_PATTERN = /^[a-z0-9_]{1,512}$/;
 export const TEMPLATE_LANGUAGE_PATTERN = /^[a-z]{2,3}(_[A-Z]{2})?$/;
 export const MAX_TEMPLATE_PARAMS = 10;
@@ -83,6 +87,9 @@ export interface OutboundWhatsAppMessagePayload {
    *  catalogo (`core.whatsapp_plantilla`). Con `true` el cliente la envia como `type: "template"` aunque no este en la lista
    *  global de plantillas aprobadas del entorno. Ausente o `false` = decide solo la lista global (comportamiento anterior). */
   readonly templateApproved?: boolean;
+  /** Mensaje que SOLO puede salir como plantilla aprobada (p. ej. un codigo de acceso): si la plantilla no esta aprobada el cliente lanza
+   *  `WhatsAppInvalidPayloadError` (no reintentable) y NUNCA cae a texto libre, botones ni ningun otro tipo de mensaje. */
+  readonly soloPlantilla?: boolean;
   /** Mensaje interactivo `location_request_message` de la Cloud API: el cliente comparte su ubicacion con un toque. `body` es el texto que
    *  acompana al boton. Exclusivo (no se combina con botones ni plantilla) y solo vale dentro de la ventana de 24 h del cliente. */
   readonly solicitarUbicacion?: boolean;

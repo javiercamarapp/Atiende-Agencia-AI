@@ -14,6 +14,10 @@ export interface ApiEnv {
    * llamada; los secretos (global legado o por sucursal) quedan limitados a emitir ese token. Opcional:
    * ausente/false conserva el camino legado para no romper integraciones existentes. */
   readonly voiceRequireCallToken?: boolean;
+  /** Login del repartidor por celular + codigo de WhatsApp (docs/LOGIN-CHOFER-WHATSAPP.md). APAGADO por omision: solo `LOGIN_CHOFER_WHATSAPP=true` lo enciende. */
+  readonly loginChoferWhatsapp?: boolean;
+  /** Solo pruebas: piso de tiempo de respuesta de `POST /auth/login-telefono/solicitar` (nunca se lee del entorno; en produccion rige el valor fijo). */
+  readonly loginChoferPisoMs?: number;
   readonly whatsappVerifyToken: string;
   readonly whatsappAppSecret: string;
   /** Token de acceso real de la Meta App de plataforma para ENVIAR mensajes de
@@ -229,6 +233,7 @@ export function loadApiEnv(): ApiEnv {
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
     voiceToolSecret: requireEnv("VOICE_TOOL_SECRET"),
     voiceRequireCallToken: process.env.VOICE_REQUIRE_CALL_TOKEN === "true",
+    loginChoferWhatsapp: process.env.LOGIN_CHOFER_WHATSAPP === "true",
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,

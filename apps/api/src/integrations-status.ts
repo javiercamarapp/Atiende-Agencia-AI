@@ -311,6 +311,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // `env.ts::voiceRequireCallToken` -- opt-in ("true") para que las tools de voz de restaurantes
   // exijan el token por llamada. Apagado por defecto; nunca bloquea el arranque.
   "VOICE_REQUIRE_CALL_TOKEN",
+  // `env.ts::loginChoferWhatsapp` -- opt-in ("true") del login del repartidor por celular + codigo de WhatsApp (docs/LOGIN-CHOFER-WHATSAPP.md).
+  // Apagado por defecto; nunca bloquea el arranque.
+  "LOGIN_CHOFER_WHATSAPP",
   // Sandbox público de marketing: opt-in literal true; sin organizaciones ni herramientas.
   "PUBLIC_DEMO_AGENTS_ENABLED",
   // R-27 -- plantillas HSM de WhatsApp declaradas aprobadas por Meta (lista separada por comas); vacia = todo

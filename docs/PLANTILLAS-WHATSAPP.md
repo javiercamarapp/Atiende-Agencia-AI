@@ -98,3 +98,18 @@ Huecos conocidos: (1) un status que llega ANTES de que el despachador confirme e
 ignora con 200 (queda como `desconocido`); la ventana es de milisegundos pero existe. (2) Sin la migracion 066 el wamid no se guarda y los statuses se
 ignoran con 200. (3) El respaldo por correo solo cubre avisos de estado de pedido de clientes con correo (hoy solo el canal web lo captura).
 
+
+## Codigo de acceso del repartidor (`codigo_acceso`, categoria Autenticacion)
+
+El login del repartidor por celular (docs/LOGIN-CHOFER-WHATSAPP.md) envia el codigo SOLO como plantilla aprobada; nunca como texto libre (el payload
+lleva `solo_plantilla` y el gateway no lo degrada). Crear en Meta Business Manager: categoria **Autenticacion**, idioma `es_MX`, nombre exacto
+`codigo_acceso`, un parametro de cuerpo (`{{1}}` = codigo) y el boton de copiar codigo. Cuando Meta la apruebe, registrarla en el catalogo de la
+organizacion (evento `auth.codigo_acceso`, vertical `restaurantes`, nombre `codigo_acceso`, estado `aprobada`) con el SQL Editor y el visto bueno del dueno:
+
+```sql
+insert into core.whatsapp_plantilla (organization_id, vertical, evento, nombre, idioma, variables, estado)
+values ('<id de la organizacion>', 'restaurantes', 'auth.codigo_acceso', 'codigo_acceso', 'es_MX', '{codigo}', 'aprobada')
+on conflict (organization_id, vertical, evento) do update set nombre = excluded.nombre, idioma = excluded.idioma, estado = excluded.estado;
+```
+
+Sin la plantilla aprobada el acceso responde «no disponible aún» y no se envia nada.

@@ -24,6 +24,7 @@
 // propio historial de tool_calls.
 import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { randomUUID } from "node:crypto";
+import { MODELO_PREDETERMINADO_ID, idModeloDeListaCerrada, modeloAdmiteRespaldoPorTope, modeloAlternoParaTope } from "../ajustes-agente/modelos.ts";
 import { avisoFallaSistemaReciente, marcarAvisoFallaSistema } from "./dedupe-falla-sistema.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { descripcionSeguraDeError } from "../log-seguro.ts";
@@ -33,9 +34,10 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
-import { bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
+import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -536,6 +538,23 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
+/**
+ * PM-R19: respaldo de PROVEEDOR cuando la llamada al modelo agota su tope de tiempo. El tope por llamada era TODO el presupuesto restante del turno
+ * (`completarConTope(deadline)`): al vencer no quedaba tiempo para nada y el cliente recibia "problema tecnico" (`tope_llamada` fue el 100 % de los errores de
+ * proveedor de las rondas 15-18; con error el acierto es ~15 %, sin error ~71 %). El intento #610 (repetir la MISMA llamada al MISMO modelo) se revirtio porque solo
+ * salvaba el 14 % de los turnos: un modelo atascado sigue atascado. Aqui el reintento va a OTRO modelo de la escalera ya aprobada (`modeloAlternoParaTope`).
+ * Con al menos `RESPALDO_LLM_RESTANTE_MIN_MS` de presupuesto, el primer intento se corta antes (nunca antes de `RESPALDO_LLM_PRIMER_TOPE_MIN_MS`, dejando
+ * `RESPALDO_LLM_RESERVA_MS` al respaldo, ~p95 de una llamada normal) y se repite UNA vez la misma peticion contra el modelo alterno. El reloj del turno (18 s) no cambia.
+ */
+export const RESPALDO_LLM_RESTANTE_MIN_MS = 16_000;
+export const RESPALDO_LLM_PRIMER_TOPE_MIN_MS = 9_000;
+export const RESPALDO_LLM_RESERVA_MS = 7_000;
+
+/** Reparte el presupuesto restante del turno entre el primer intento y el respaldo. Sin presupuesto suficiente: un solo intento con todo lo que queda. */
+export function planTopeLlamadaLlm(restanteMs: number): { readonly primerTopeMs: number; readonly respalda: boolean } {
+  if (restanteMs < RESPALDO_LLM_RESTANTE_MIN_MS) return { primerTopeMs: Math.max(0, restanteMs), respalda: false };
+  return { primerTopeMs: Math.max(RESPALDO_LLM_PRIMER_TOPE_MIN_MS, restanteMs - RESPALDO_LLM_RESERVA_MS), respalda: true };
+}
 /** PM-R14: rechazos de regla de `crear_pedido` seguidos en un turno tras los cuales se corta el bucle del modelo. */
 export const MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR = 2;
 /** PM-R14: llamadas REPETIDAS (misma herramienta y mismos argumentos) tras un `crear_pedido` rechazado por regla con las que se corta el bucle. */
@@ -580,6 +599,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     cierreMaquina: boolean;
     /** PM-R14: el turno se corto por el bucle de crear_pedido rechazado (resultado `ok` con causaError `regla`). */
     cierreCortado: boolean;
+    /** PM-R19: veces que la llamada al modelo se repitio contra el modelo alterno tras agotar su tope (0 o 1 por turno). */
+    reintentosLlm: number;
+    /** PM-R19: el respaldo contesto y el turno siguio con esa respuesta. */
+    reintentoLlmRecuperado: boolean;
+    /** PM-R19: id del modelo alterno usado (lista cerrada de modelos aprobados; nunca contenido); null si no hubo respaldo. */
+    modeloRespaldoLlm: string | null;
+    /** PM-R19: modelo que REALMENTE contesto la ultima llamada del turno (lista cerrada o "otro"); distingue respaldo real de caida de escalera. null si ninguna contesto. */
+    modeloRespondioLlm: string | null;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
   }
@@ -867,10 +894,33 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
         const estado = estadoDeCierre(flowSnapshot, messages);
         if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
-        const ultimoCliente = mensajesSinResponder(messages).at(-1)?.content;
-        if (!ultimoCliente) return null;
-        return clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, total }) === "si" ? total : null;
+        // TODOS los mensajes sin responder deben ser un «si» claro: en una rafaga («mejor 3 cocas» + «si») el «si» responde al cambio, no al resumen que el servidor guardo.
+        const sinResponder = mensajesSinResponder(messages);
+        if (sinResponder.length === 0 || !sinResponder.every((m) => clasificarRespuestaCierre(m.content, { despuesDelResumen: true, total }) === "si")) return null;
+        // `confirmado` no revisa el ultimo mensaje del asistente (ya paso una confirmacion): el «si» tiene que contestar al resumen o a su pregunta de confirmacion.
+        if (estado === "confirmado" && !asistentePidioConfirmarResumen(total, [...messages].reverse().find((m) => m.role === "assistant")?.content)) return null;
+        return total;
       };
+      // PM R18 (S1 / G1): el cliente ya dijo «si» a un resumen VIGENTE y el turno muere (proveedor caido, tope de tiempo) antes de crear el pedido. En vez de dejarlo sin crear, el SERVIDOR hace los dos
+      // llamados que el modelo habria hecho (`confirmar_resumen` y `crear_pedido`) con lo guardado de la cotizacion que el cliente vio, por la MISMA maquina de estados (huella, resumen mostrado, «si»
+      // explicito, pedido grande, horario, idempotencia): si alguna regla lo rechaza, el camino de siempre (aviso honesto al equipo) sigue intacto. Una sola vez por turno; sin datos completos, nada.
+      let cierreDeterministaIntentado = false;
+      const prepararCierreDeterminista = async (): Promise<LlmToolCall[] | null> => {
+        if (perfil !== "taqueria_pm" || preview || cierreDeterministaIntentado || orderId !== null || pedidosCreadosDelTurno.length > 0 || pedidoSimulado !== undefined || escalarMotivo !== null) return null;
+        cierreDeterministaIntentado = true;
+        const totalConfirmado = siPendienteSinPedido();
+        if (totalConfirmado === null) return null;
+        // Estado FRESCO: si el modelo alcanzo a re-cotizar en este turno, el «si» ya no es de ese resumen y no se crea nada.
+        const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+        if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
+        const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
+        if (!plan.ok) return null;
+        return [
+          { id: "cierre-determinista-1", name: "confirmar_resumen", argumentsJson: "{}" },
+          { id: "cierre-determinista-2", name: "crear_pedido", argumentsJson: JSON.stringify(plan.crearPedido) },
+        ];
+      };
+      let llamadasDeterministas: LlmToolCall[] | null = null;
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
@@ -910,28 +960,60 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         return done({ reply: perfil === "taqueria_pm" ? PM_COPY.sinAsistenteAvisoEquipo : PROVEEDOR_CAIDO_REPLY_GENERICO, orderId: null, propertyId });
       };
 
+      // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
+      let modeloRespaldo: string | null = null;
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        // Con llamadas deterministas ya preparadas (el intento real fallo por tope/proveedor), la causa real queda en la telemetria: no se pisa con la del reloj.
         if (Date.now() >= deadline) {
-          tele.resultado = "presupuesto_agotado";
-          tele.causaError = "tope_turno";
-          return fallaDelSistema();
+          if (llamadasDeterministas === null) {
+            tele.resultado = "presupuesto_agotado";
+            tele.causaError = "tope_turno";
+            llamadasDeterministas = await prepararCierreDeterminista();
+            if (llamadasDeterministas === null) return fallaDelSistema();
+          }
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
         if (huboFalloDeHerramienta) tele.motivoEscaladaDeRol = "fallo_crear_pedido";
         tele.vueltas += 1;
         if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
-        let completion: { text: string; toolCalls?: LlmToolCall[] };
-        try {
-          completion = await completarConTope(deadline, (signal) => gateway.complete({
+        let completion: { text: string; toolCalls?: LlmToolCall[]; model?: string; providerId?: string };
+        const eraCierreDeterminista = llamadasDeterministas !== null;
+        if (llamadasDeterministas !== null) {
+          completion = { text: "", toolCalls: llamadasDeterministas };
+          llamadasDeterministas = null;
+        } else try {
+          const runId = randomUUID();
+          const esRolPorDefecto = role === options.defaultRole;
+          const llamarAlModelo = (modelo: string | undefined) => (signal: AbortSignal) => gateway.complete({
             tenantId: organizationId,
-            runId: randomUUID(),
+            runId,
             lane: "interactive",
             role,
             // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
-            ...(ajustes?.modelo && role === options.defaultRole ? { preferredModel: ajustes.modelo } : {}),
-            request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && role === options.defaultRole ? ajustes.temperatura : 0, signal },
-          }));
+            ...(modelo ? { preferredModel: modelo } : {}),
+            request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && esRolPorDefecto ? ajustes.temperatura : 0, signal },
+          });
+          const modeloElegido = ajustes?.modelo && esRolPorDefecto ? ajustes.modelo : undefined;
+          // PM-R19: con presupuesto de sobra el primer intento tiene un tope menor y, si lo agota, se repite UNA vez la MISMA peticion contra el modelo alterno de la escalera
+          // aprobada. Seguro: la llamada al modelo no tiene efectos laterales y las herramientas corren ENTRE llamadas (abajo), nunca dentro; el respaldo no las repite
+          // (`crear_pedido` corre una sola vez y sigue siendo idempotente por el estado del flujo). Solo el rol por defecto: la escalera del rol escalado es otra.
+          const plan = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
+          if (esRolPorDefecto && modeloRespaldo !== null) {
+            completion = await completarConTope(deadline, llamarAlModelo(modeloRespaldo));
+          } else {
+            try {
+              completion = await completarConTope(plan.respalda ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo(modeloElegido));
+            } catch (errPrimerIntento) {
+              // Solo el tope de tiempo se respalda aqui; un error rapido del proveedor (5xx, 429...) ya lo maneja la escalera del gateway.
+              if (!plan.respalda || !(errPrimerIntento instanceof TopeLlamadaLlmError)) throw errPrimerIntento;
+              modeloRespaldo = modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID);
+              tele.reintentosLlm += 1;
+              tele.modeloRespaldoLlm = modeloRespaldo;
+              completion = await completarConTope(deadline, llamarAlModelo(modeloRespaldo));
+              tele.reintentoLlmRecuperado = true;
+            }
+          }
         } catch (errLlm) {
           tele.resultado = "error_proveedor";
           // Solo la causa de la lista cerrada; el error en si (mensaje, cuerpo del proveedor) no se guarda ni se registra.
@@ -940,9 +1022,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return fallaDelSistema();
+          llamadasDeterministas = await prepararCierreDeterminista();
+          if (llamadasDeterministas === null) return fallaDelSistema();
+          continue;
         }
 
+        // Las llamadas del cierre determinista las arma el servidor: ningun modelo respondio, la telemetria de modelo conserva lo del intento real.
+        if (!eraCierreDeterminista) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           const base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
@@ -1221,6 +1307,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
         }
+        // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
+        if (eraCierreDeterminista) {
+          const confirmacionDeterminista = confirmacionDelTurno();
+          if (confirmacionDeterminista) {
+            tele.resultado = "ok";
+            return done({ reply: confirmacionDeterminista, orderId, propertyId });
+          }
+        }
       }
 
       tele.resultado = "loop_agotado";
@@ -1250,7 +1344,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, motivoEscalacion: null, motivoEscaladaDeRol: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1283,6 +1377,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             resultado: tele.resultado,
             causaError: tele.resultado === "escalado_alto_riesgo" ? null : tele.resultado === "ok" ? (tele.causaError ?? null) : (tele.causaError ?? "otro"),
             cierreCortado: tele.cierreCortado,
+            reintentosLlm: tele.reintentosLlm,
+            reintentoLlmRecuperado: tele.reintentoLlmRecuperado,
+            modeloRespaldoLlm: tele.modeloRespaldoLlm,
+            modeloRespondioLlm: tele.modeloRespondioLlm,
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,

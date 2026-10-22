@@ -51,6 +51,8 @@ export interface Viaje {
   /** Requests que vio el "modelo" (para afirmar que el prompt/las tools llegaron). */
   readonly requests: LlmCompletionRequest[];
   /** Encola los pasos que el modelo guionado dara en el SIGUIENTE mensaje del cliente. */
+  /** Turno del agente (para probar la ruta con espera de mensajes: `recibirMensajeConEspera` + `responderTrasEspera`). */
+  readonly handler: ReturnType<typeof createLlmWhatsAppTurnHandler>;
   guion(pasos: readonly PasoLlm[]): void;
   /** El cliente escribe por WhatsApp al numero de T7. */
   escribe(body: string, opts?: { readonly messageId?: string; readonly phone?: string }): ReturnType<typeof handleInboundWhatsAppMessage>;
@@ -104,6 +106,7 @@ export async function nuevoViaje(opts: { readonly phone?: string } = {}): Promis
     privacidad,
     callbacks,
     requests,
+    handler,
     guion: (pasos) => void cola.push(...pasos),
     escribe: (body, o = {}) =>
       handleInboundWhatsAppMessage(world.repo, handler, {
