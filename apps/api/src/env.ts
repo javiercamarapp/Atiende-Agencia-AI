@@ -16,6 +16,8 @@ export interface ApiEnv {
   readonly voiceRequireCallToken?: boolean;
   /** Login del repartidor por celular + codigo de WhatsApp (docs/LOGIN-CHOFER-WHATSAPP.md). APAGADO por omision: solo `LOGIN_CHOFER_WHATSAPP=true` lo enciende. */
   readonly loginChoferWhatsapp?: boolean;
+  /** Solo pruebas: piso de tiempo de respuesta de `POST /auth/login-telefono/solicitar` (nunca se lee del entorno; en produccion rige el valor fijo). */
+  readonly loginChoferPisoMs?: number;
   readonly whatsappVerifyToken: string;
   readonly whatsappAppSecret: string;
   /** Token de acceso real de la Meta App de plataforma para ENVIAR mensajes de

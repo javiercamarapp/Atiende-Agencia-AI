@@ -20,7 +20,7 @@ import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { normalizarTelefonoMx } from "../../../login-telefono/telefono.ts";
 
-const MENSAJE_NO_DISPONIBLE = "El acceso con celular todavía no está disponible en esta base: requiere aplicar la migración 0059.";
+const MENSAJE_NO_DISPONIBLE = "El acceso con celular todavía no está disponible: requiere activar LOGIN_CHOFER_WHATSAPP y aplicar la migración 0059.";
 
 function traducir(err: unknown): never {
   if (err instanceof LoginChoferNoDisponibleError) throw Errors.serviceUnavailable(MENSAJE_NO_DISPONIBLE);
@@ -39,7 +39,8 @@ export function restaurantesAdminStaffTelefonoRoutes(deps: AppDeps): Hono<CoreAu
   app.use(itemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   function repo(db: TenantDbSession) {
-    if (!deps.loginChoferRepo) throw Errors.serviceUnavailable(MENSAJE_NO_DISPONIBLE);
+    // Bandera apagada (por omision) = el control completo esta apagado, tambien para el encargado.
+    if (deps.env.loginChoferWhatsapp !== true || !deps.loginChoferRepo) throw Errors.serviceUnavailable(MENSAJE_NO_DISPONIBLE);
     return deps.loginChoferRepo(db);
   }
 
@@ -60,6 +61,7 @@ export function restaurantesAdminStaffTelefonoRoutes(deps: AppDeps): Hono<CoreAu
 
   app.put(itemPath, async (c) => {
     assertVerticalRole(c, MANAGER_ROLES);
+    repo(c.get("db")); // 503 antes de cualquier otra validacion si el acceso con celular esta apagado
     const organizationId = c.get("organizationId");
     const userId = c.req.param("userId");
     const raw = await readJsonCapped<{ telefono?: unknown }>(c.req.raw, 1024);

@@ -76,12 +76,14 @@ export interface LoginChoferRepository {
   /** La cuenta de repartidor ELEGIBLE dueña de ese telefono E.164, o null. */
   resolver(telefonoE164: string): Promise<LoginChoferCuenta | null>;
   plantilla(organizationId: string): Promise<{ readonly nombre: string; readonly idioma: string } | null>;
-  /** Emite un codigo (hash+sal) invalidando el pendiente anterior. Devuelve el id, o null si la cuenta ya no es elegible. */
-  emitir(input: { readonly userId: string; readonly organizationId: string; readonly codeHash: string; readonly codeSalt: string; readonly expiresAt: string }): Promise<string | null>;
+  /** Emite un codigo (hash+sal) invalidando el pendiente anterior. La vigencia (`ttlSegundos`, 1-600) la calcula la BASE con su reloj. Devuelve el id, o null si la cuenta ya no es elegible. */
+  emitir(input: { readonly userId: string; readonly organizationId: string; readonly codeHash: string; readonly codeSalt: string; readonly ttlSegundos: number }): Promise<string | null>;
   /** Reserva UN intento (el contador sube antes de comparar). null si no hay codigo vigente con intentos disponibles. */
   reservarIntento(telefonoE164: string): Promise<LoginChoferCodigoReservado | null>;
   /** Tras una comparacion fallida: con el quinto intento gastado invalida el codigo. Devuelve true si lo invalido. */
   registrarFallo(codigoId: string): Promise<boolean>;
+  /** Mata y redacta los mensajes `auth.codigo_acceso` del outbox con mas de 10 min sin estado terminal (migracion 093). Devuelve cuantos. */
+  purgarCodigosVencidos(): Promise<number>;
   /** Consumo atomico de un solo uso con la elegibilidad reevaluada. null si ya no se puede. */
   consumir(codigoId: string): Promise<StaffUserRow | null>;
 
@@ -166,9 +168,9 @@ export class PostgresLoginChoferRepository implements LoginChoferRepository {
     });
   }
 
-  async emitir(input: { readonly userId: string; readonly organizationId: string; readonly codeHash: string; readonly codeSalt: string; readonly expiresAt: string }): Promise<string | null> {
+  async emitir(input: { readonly userId: string; readonly organizationId: string; readonly codeHash: string; readonly codeSalt: string; readonly ttlSegundos: number }): Promise<string | null> {
     return this.run(async () => {
-      const { rows } = await this.db.query<{ id: string | null }>(`select core.chofer_login_emitir($1, $2, $3, $4, $5) as id;`, [input.userId, input.organizationId, input.codeHash, input.codeSalt, input.expiresAt]);
+      const { rows } = await this.db.query<{ id: string | null }>(`select core.chofer_login_emitir($1, $2, $3, $4, $5) as id;`, [input.userId, input.organizationId, input.codeHash, input.codeSalt, input.ttlSegundos]);
       return rows[0]?.id ?? null;
     });
   }
@@ -188,6 +190,13 @@ export class PostgresLoginChoferRepository implements LoginChoferRepository {
     return this.run(async () => {
       const { rows } = await this.db.query<{ cerrado: boolean }>(`select core.chofer_login_fallo($1) as cerrado;`, [codigoId]);
       return rows[0]?.cerrado === true;
+    });
+  }
+
+  async purgarCodigosVencidos(): Promise<number> {
+    return this.run(async () => {
+      const { rows } = await this.db.query<{ n: number }>(`select restaurantes.purgar_codigos_acceso_vencidos() as n;`);
+      return Number(rows[0]?.n ?? 0);
     });
   }
 
@@ -283,8 +292,8 @@ export class InMemoryLoginChoferRepository implements LoginChoferRepository {
   private async elegible(userId: string, organizationId: string): Promise<boolean> {
     if (await this.core.isPlatformSuperadmin(userId)) return false;
     const ms = await this.core.findMembershipsByUserId(userId);
-    if (!ms.some((m) => m.organizationId === organizationId && m.vertical === "restaurantes" && m.verticalRole === "repartidor")) return false;
-    return ms.every((m) => m.vertical === "restaurantes" && m.verticalRole === "repartidor");
+    // La UNICA membresia del usuario es esta (ninguna otra organizacion, rol ni vertical), igual que core.chofer_login_es_elegible.
+    return ms.length === 1 && ms[0]!.organizationId === organizationId && ms[0]!.vertical === "restaurantes" && ms[0]!.verticalRole === "repartidor";
   }
 
   async plantillaDisponible(): Promise<boolean> {
@@ -326,12 +335,13 @@ export class InMemoryLoginChoferRepository implements LoginChoferRepository {
     return this.plantillas.has(organizationId) ? { nombre: "codigo_acceso", idioma: "es_MX" } : null;
   }
 
-  async emitir(input: { readonly userId: string; readonly organizationId: string; readonly codeHash: string; readonly codeSalt: string; readonly expiresAt: string }): Promise<string | null> {
+  async emitir(input: { readonly userId: string; readonly organizationId: string; readonly codeHash: string; readonly codeSalt: string; readonly ttlSegundos: number }): Promise<string | null> {
     if (!(await this.elegible(input.userId, input.organizationId))) return null;
+    if (!Number.isInteger(input.ttlSegundos) || input.ttlSegundos < 1 || input.ttlSegundos > 600) throw new Error("vigencia entre 1 segundo y 10 minutos");
     for (const c of this.codigos) if (c.userId === input.userId && c.estado === "pendiente") c.estado = "invalidado";
     this.secuencia += 1;
     const id = `codigo-${this.secuencia}`;
-    this.codigos.push({ id, userId: input.userId, organizationId: input.organizationId, codeHash: input.codeHash, codeSalt: input.codeSalt, intentos: 0, estado: "pendiente", expiresAt: Date.parse(input.expiresAt) });
+    this.codigos.push({ id, userId: input.userId, organizationId: input.organizationId, codeHash: input.codeHash, codeSalt: input.codeSalt, intentos: 0, estado: "pendiente", expiresAt: this.now() + input.ttlSegundos * 1000 });
     return id;
   }
 
@@ -359,6 +369,10 @@ export class InMemoryLoginChoferRepository implements LoginChoferRepository {
       return true;
     }
     return false;
+  }
+
+  async purgarCodigosVencidos(): Promise<number> {
+    return 0;
   }
 
   async consumir(codigoId: string): Promise<StaffUserRow | null> {

@@ -21,7 +21,7 @@ import { logEvent } from "../logger.ts";
 import type { AppDeps } from "../deps.ts";
 import { CODIGO_MAX_INTENTOS, CODIGO_TTL_SEGUNDOS, derivarLlave, generarCodigo, generarSal, hashCodigo, iguales, normalizarCodigoIngresado, pseudonimo } from "../login-telefono/codigo.ts";
 import { normalizarTelefonoMx } from "../login-telefono/telefono.ts";
-import { triggerRestaurantesWhatsAppDispatchInline } from "./internal/whatsapp-dispatch.ts";
+import { dispatchWhatsAppVertical } from "./internal/whatsapp-dispatch.ts";
 import { issueSession } from "./auth.ts";
 
 const MENSAJE_NO_DISPONIBLE = "El acceso con celular todavía no está disponible. Entra con tu correo o pídele ayuda a tu encargado.";
@@ -35,6 +35,10 @@ const RATE_VERIFICAR = { max: 10, windowMs: 5 * 60_000 } as const;
 const BODY_MAX_BYTES = 1024;
 /** Cuerpo fijo del payload (obligatorio para el gateway): NO lleva el codigo. Con `solo_plantilla` jamas se envia como texto. */
 const CUERPO_FIJO_SIN_CODIGO = "Código de acceso de atiende";
+/** Piso de tiempo de una solicitud EXITOSA: la misma duracion exista o no la cuenta (el envio a Meta solo ocurre si existe). */
+export const PISO_RESPUESTA_MS = 1500;
+/** Tope de espera al despacho post-commit; si Meta tarda mas, el envio sigue en el cron y la respuesta no se retrasa. */
+const TOPE_DESPACHO_MS = 1200;
 const SAL_SENUELO = "0".repeat(32);
 const HASH_SENUELO = "0".repeat(64);
 
@@ -46,7 +50,10 @@ async function habilitado(deps: AppDeps): Promise<boolean> {
   return deps.env.loginChoferWhatsapp === true && deps.loginChoferRepo !== undefined;
 }
 
+const dormir = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export function authLoginTelefonoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
+  const piso = deps.env.loginChoferPisoMs ?? PISO_RESPUESTA_MS;
   const app = new Hono<CoreAuthHonoEnv>();
   const llave = derivarLlave(deps.env.jwtSecret);
 
@@ -66,7 +73,19 @@ export function authLoginTelefonoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     return c.json({ disponible: ok === true }, 200);
   });
 
+  /** Despacho del outbox y purga de codigos viejos, IDENTICOS exista o no la cuenta (el cuerpo no distingue), y la respuesta se alarga hasta el piso. */
+  async function cerrarSolicitud(inicio: number): Promise<void> {
+    await Promise.race([dispatchWhatsAppVertical(deps, "restaurantes", 5).catch(() => undefined), dormir(TOPE_DESPACHO_MS)]);
+    try {
+      await deps.engine.withAppSession({ userId: null }, (db) => deps.loginChoferRepo!(db).purgarCodigosVencidos());
+    } catch {
+      // mejor esfuerzo (p. ej. migracion 093 pendiente): nunca afecta la respuesta
+    }
+    await dormir(Math.max(0, piso - (Date.now() - inicio)));
+  }
+
   app.post("/auth/login-telefono/solicitar", async (c) => {
+    const inicio = Date.now();
     if (!(await habilitado(deps))) throw Errors.serviceUnavailable(MENSAJE_NO_DISPONIBLE);
     const raw = await readJsonCapped<{ telefono?: unknown }>(c.req.raw, BODY_MAX_BYTES).catch(() => ({}) as { telefono?: unknown });
     const telefono = normalizarTelefonoMx(raw.telefono);
@@ -104,7 +123,7 @@ export function authLoginTelefonoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         await repo.registrarEvento({ tipo: "plantilla_no_disponible", telefonoHash: telHash, ipHash, userId: cuenta.userId, organizationId: cuenta.organizationId });
         return "ok" as const;
       }
-      const codigoId = await repo.emitir({ userId: cuenta.userId, organizationId: cuenta.organizationId, codeHash: hash, codeSalt: sal, expiresAt: new Date(Date.now() + CODIGO_TTL_SEGUNDOS * 1000).toISOString() });
+      const codigoId = await repo.emitir({ userId: cuenta.userId, organizationId: cuenta.organizationId, codeHash: hash, codeSalt: sal, ttlSegundos: CODIGO_TTL_SEGUNDOS });
       if (!codigoId) {
         await repo.registrarEvento({ tipo: "cuenta_no_elegible", telefonoHash: telHash, ipHash, userId: cuenta.userId, organizationId: cuenta.organizationId });
         return "ok" as const;
@@ -119,14 +138,15 @@ export function authLoginTelefonoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         critico: true,
       });
       await repo.registrarEvento({ tipo: "codigo_encolado", telefonoHash: telHash, ipHash, userId: cuenta.userId, organizationId: cuenta.organizationId });
-      // Envio inmediato (mejor esfuerzo, SAVEPOINT propio); el cron de WhatsApp es la red de seguridad.
-      await triggerRestaurantesWhatsAppDispatchInline(deps, db, restaurantes);
+      // El envio NO se dispara aqui dentro (solo la cuenta existente llegaria hasta Meta y el tiempo la delataria): sale del despacho
+      // post-commit de `cerrarSolicitud`, que corre igual para cualquier telefono; el cron de WhatsApp es la red de seguridad.
       return "ok" as const;
     });
 
     // Los errores se lanzan DESPUES de confirmar la transaccion: los contadores/auditoria deben persistir.
     if (resultado === "no_disponible" || resultado === "plantilla") throw Errors.serviceUnavailable(MENSAJE_NO_DISPONIBLE);
     if (resultado === "limitado") throw Errors.tooManyRequests("Pediste demasiados códigos. Espera unos minutos e inténtalo de nuevo.");
+    await cerrarSolicitud(inicio);
     logEvent(c, "info", "login_telefono_solicitud", { telHash: telHash.slice(0, 12) });
     return c.json({ ok: true, expiraEnSegundos: CODIGO_TTL_SEGUNDOS }, 200);
   });
