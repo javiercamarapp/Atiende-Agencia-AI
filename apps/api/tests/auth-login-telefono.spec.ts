@@ -122,6 +122,31 @@ describe("M1: el tiempo de respuesta no distingue cuentas", () => {
     expect(Math.abs(con[0]! - sin[0]!)).toBeLessThan(120);
   });
 
+  it("peor caso: aunque la purga del outbox tarde mucho, la respuesta no sobrepasa el piso (deadline absoluto) para ninguna de las dos cuentas", async () => {
+    const e = await montar({ pisoMs: 300 });
+    const lento = new Proxy(e.repo, {
+      get(t, k) {
+        if (k === "purgarCodigosVencidos") return async () => (await new Promise((r) => setTimeout(r, 1500)), 0);
+        const v = Reflect.get(t, k) as unknown;
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+      },
+    });
+    const app = buildApp({ ...e.deps, loginChoferRepo: () => lento });
+    const medir = async (tel: string) => {
+      const t0 = performance.now();
+      const r = await app.request("/auth/login-telefono/solicitar", jsonRequestInit({ telefono: tel }, nuevaIp()));
+      expect(r.status).toBe(200);
+      return performance.now() - t0;
+    };
+    const con = await medir(TEL_CHOFER);
+    const sin = await medir(TEL_NADIE);
+    for (const t of [con, sin]) {
+      expect(t).toBeGreaterThanOrEqual(290);
+      expect(t).toBeLessThan(700);
+    }
+    expect(Math.abs(con - sin)).toBeLessThan(150);
+  });
+
   it("la solicitud no envia a Meta dentro de la transaccion: solo encola (el despacho sale post-commit)", async () => {
     const e = await montar();
     await solicitar(e, TEL_CHOFER);
