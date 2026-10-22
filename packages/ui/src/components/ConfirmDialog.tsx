@@ -1,4 +1,5 @@
 import * as React from "react";
+import { cn } from "../lib/utils";
 import { AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
 
 import {
@@ -47,6 +48,8 @@ export interface ConfirmDialogProps {
   /** @default "Cancelar" */
   readonly cancelar?: string;
   readonly campo?: ConfirmCampo;
+  /** Botones de 56 dp (`h-14`) para pantallas tactiles de uso con una mano (p. ej. el chofer en la calle). @default false */
+  readonly botonesGrandes?: boolean;
   /**
    * Se llama al confirmar con el texto recortado (si hay `campo`). Si devuelve una
    * promesa, el dialogo queda abierto con el boton en `loading` hasta que termine;
@@ -83,6 +86,7 @@ export function ConfirmDialog({
   confirmar = "Confirmar",
   cancelar = "Cancelar",
   campo,
+  botonesGrandes = false,
   onConfirm,
 }: ConfirmDialogProps) {
   const [valor, setValor] = React.useState(campo?.valorInicial ?? "");
@@ -191,10 +195,10 @@ export function ConfirmDialog({
 
           <AlertDialogFooter>
             {/* AlertDialogCancel recibe el foco inicial de Radix (opcion segura) y cierra via onOpenChange. */}
-            <AlertDialogCancel type="button" data-confirm-cancelar="" disabled={enCurso}>
+            <AlertDialogCancel type="button" data-confirm-cancelar="" disabled={enCurso} className={botonesGrandes ? "h-14" : undefined}>
               {cancelar}
             </AlertDialogCancel>
-            <Button type="submit" variant={tono === "danger" ? "danger" : "default"} className={tono === "danger" ? "ambito-peligro-solido" : undefined} disabled={bloqueado} aria-busy={enCurso || undefined}>
+            <Button type="submit" variant={tono === "danger" ? "danger" : "default"} className={cn(tono === "danger" ? "ambito-peligro-solido" : undefined, botonesGrandes ? "h-14" : undefined) || undefined} disabled={bloqueado} aria-busy={enCurso || undefined}>
               {enCurso && <Loader2 aria-hidden="true" className="animate-spin" />}
               {confirmar}
             </Button>
