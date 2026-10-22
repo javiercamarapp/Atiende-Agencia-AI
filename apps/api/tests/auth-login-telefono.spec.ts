@@ -34,7 +34,7 @@ interface Escenario {
   outbox(): ReadonlyArray<{ eventType: string; payload: unknown }>;
 }
 
-async function montar(opts: { bandera?: boolean; plantilla?: boolean } = {}): Promise<Escenario> {
+async function montar(opts: { bandera?: boolean; plantilla?: boolean; pisoMs?: number } = {}): Promise<Escenario> {
   const base = await buildTestDeps();
   const core = base.deps.coreRepo as unknown as import("@atiende/db").InMemoryCoreRepository;
   const reloj = { desfase: 0 };
@@ -44,7 +44,7 @@ async function montar(opts: { bandera?: boolean; plantilla?: boolean } = {}): Pr
   core.addStaff({ id: choferId, email: "chofer@pm.test", fullName: "Chofer Uno", passwordHash: null, createdVia: "invite", emailVerifiedAt: null });
   core.addMembership({ userId: choferId, organizationId: base.organizationId, platformRole: "member", verticalRole: "repartidor", propertyIds: null });
   repo.sembrarTelefono(choferId, base.organizationId, TEL_CHOFER_E164);
-  const deps: AppDeps = { ...base.deps, env: { ...TEST_ENV, loginChoferWhatsapp: opts.bandera !== false }, loginChoferRepo: () => repo };
+  const deps: AppDeps = { ...base.deps, env: { ...TEST_ENV, loginChoferWhatsapp: opts.bandera !== false, loginChoferPisoMs: opts.pisoMs ?? 0 }, loginChoferRepo: () => repo };
   return {
     app: buildApp(deps),
     deps,
@@ -104,6 +104,29 @@ describe("bandera y disponibilidad", () => {
     const app = buildApp(roto);
     expect((await app.request("/auth/login-telefono/solicitar", jsonRequestInit({ telefono: TEL_CHOFER }, nuevaIp()))).status).toBe(503);
     expect(await (await app.request("/auth/login-telefono/estado")).json()).toEqual({ disponible: false });
+  });
+});
+
+describe("M1: el tiempo de respuesta no distingue cuentas", () => {
+  it("con piso fijo, telefono con cuenta y sin cuenta tardan lo mismo (>= piso y diferencia pequena)", async () => {
+    const e = await montar({ pisoMs: 200 });
+    const medir = async (tel: string) => {
+      const t0 = performance.now();
+      const r = await solicitar(e, tel);
+      expect(r.status).toBe(200);
+      return performance.now() - t0;
+    };
+    const con = [await medir(TEL_CHOFER)];
+    const sin = [await medir(TEL_NADIE)];
+    for (const t of [...con, ...sin]) expect(t).toBeGreaterThanOrEqual(190);
+    expect(Math.abs(con[0]! - sin[0]!)).toBeLessThan(120);
+  });
+
+  it("la solicitud no envia a Meta dentro de la transaccion: solo encola (el despacho sale post-commit)", async () => {
+    const e = await montar();
+    await solicitar(e, TEL_CHOFER);
+    const fila = e.outbox().find((o) => o.eventType === "auth.codigo_acceso") as { status?: string } | undefined;
+    expect(fila?.status).toBe("pending");
   });
 });
 
@@ -305,7 +328,13 @@ describe("solo repartidores: nadie mas entra por esta via aunque tenga telefono 
     core.addMembership({ userId: idHotel, organizationId: orgHotel, platformRole: "member", verticalRole: "repartidor", propertyIds: null });
     e.repo.sembrarTelefono(idHotel, orgHotel, "+529992000007");
     casos.push({ nombre: "repartidor de otra vertical", telefono: "9992000007", id: idHotel });
-    return { e, casos };
+    // Repartidor en DOS organizaciones de restaurantes (M2): un admin de la otra organizacion no debe poder tomar su sesion.
+    const idDoble = crear("doble@pm.test");
+    core.addMembership({ userId: idDoble, organizationId: e.organizationId, platformRole: "member", verticalRole: "repartidor", propertyIds: null });
+    core.addMembership({ userId: idDoble, organizationId: otraOrg, platformRole: "member", verticalRole: "repartidor", propertyIds: null });
+    e.repo.sembrarTelefono(idDoble, otraOrg, "+529992000008");
+    casos.push({ nombre: "repartidor en dos organizaciones de restaurantes", telefono: "9992000008", id: idDoble });
+    return { e, casos, otraOrg, idDoble };
   }
 
   it("solicitar responde 200 igual, NO se encola ningun codigo y verificar da 401", async () => {
@@ -323,7 +352,7 @@ describe("solo repartidores: nadie mas entra por esta via aunque tenga telefono 
   it("aunque se fuerce un codigo en la base, la elegibilidad se reevalua y no hay sesion", async () => {
     const { e, casos } = await conOtros();
     for (const c of casos) {
-      const id = await e.repo.emitir({ userId: c.id, organizationId: e.organizationId, codeHash: "a".repeat(64), codeSalt: "b".repeat(32), expiresAt: new Date(Date.now() + 60_000).toISOString() });
+      const id = await e.repo.emitir({ userId: c.id, organizationId: e.organizationId, codeHash: "a".repeat(64), codeSalt: "b".repeat(32), ttlSegundos: 60 });
       expect(id, c.nombre).toBeNull();
       expect(await e.repo.consumir("codigo-inexistente")).toBeNull();
     }
@@ -334,6 +363,13 @@ describe("solo repartidores: nadie mas entra por esta via aunque tenga telefono 
     for (const c of casos.slice(0, 5)) {
       await expect(e.repo.guardarTelefono(e.organizationId, c.id, "+529993000001"), c.nombre).rejects.toThrow();
     }
+  });
+
+  it("M2: nadie puede registrar un celular a un repartidor que tambien es repartidor en otra organizacion", async () => {
+    const { e, otraOrg, idDoble } = await conOtros();
+    await expect(e.repo.guardarTelefono(otraOrg, idDoble, "+529993000002")).rejects.toThrow();
+    await expect(e.repo.guardarTelefono(e.organizationId, idDoble, "+529993000002")).rejects.toThrow();
+    expect(await e.repo.resolver("+529993000002")).toBeNull();
   });
 
   it("el login por correo existente sigue igual (owner entra con correo y contrasena)", async () => {
@@ -372,6 +408,15 @@ describe("alta del telefono por el encargado/admin", () => {
     expect(((await del.json()) as { quitado: boolean }).quitado).toBe(true);
     expect(await repo.resolver("+529997778899")).toBeNull();
     void deps;
+  });
+
+  it("B1: con la bandera apagada los endpoints del encargado responden 503 (lista, alta y baja)", async () => {
+    const { ctx, deps } = await ctxAdmin();
+    const apagada = buildApp({ ...deps, env: { ...deps.env, loginChoferWhatsapp: false } });
+    const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/staff`;
+    expect((await apagada.request(`${base}/telefonos-acceso`, authedGet(ctx.staff.owner.token))).status).toBe(503);
+    expect((await apagada.request(`${base}/miembros/${ctx.staff.repartidor.id}/telefono-acceso`, authedJson(ctx.staff.owner.token, { telefono: "9997778899" }, "PUT"))).status).toBe(503);
+    expect((await apagada.request(`${base}/miembros/${ctx.staff.repartidor.id}/telefono-acceso`, authedJson(ctx.staff.owner.token, undefined, "DELETE"))).status).toBe(503);
   });
 
   it("el encargado (staff) tambien puede registrar; un repartidor NO (403)", async () => {

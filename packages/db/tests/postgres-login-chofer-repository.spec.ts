@@ -39,6 +39,21 @@ describe("PostgresLoginChoferRepository: camino feliz", () => {
   });
 });
 
+describe("PostgresLoginChoferRepository: vigencia en la base y purga del outbox", () => {
+  it("emitir manda los SEGUNDOS de vigencia (la base calcula expires_at con su reloj), no una fecha de la API", async () => {
+    const session = new AbortAwareFakeSession([{ match: /chofer_login_emitir/, respond: () => [{ id: "c1" }] }]);
+    const repo = new PostgresLoginChoferRepository(session);
+    expect(await repo.emitir({ userId: U, organizationId: O, codeHash: "h", codeSalt: "s", ttlSegundos: 300 })).toBe("c1");
+    expect(session.calls.some((c) => /chofer_login_emitir/.test(c))).toBe(true);
+  });
+  it("purgarCodigosVencidos devuelve el conteo; sin la migracion 093 -> LoginChoferNoDisponibleError", async () => {
+    const ok = new PostgresLoginChoferRepository(new AbortAwareFakeSession([{ match: /purgar_codigos_acceso_vencidos/, respond: () => [{ n: "2" }] }]));
+    expect(await ok.purgarCodigosVencidos()).toBe(2);
+    const roto = new PostgresLoginChoferRepository(new AbortAwareFakeSession([{ match: /purgar_codigos_acceso_vencidos/, respond: () => pgError("42883", "function restaurantes.purgar_codigos_acceso_vencidos() does not exist") }]));
+    await expect(roto.purgarCodigosVencidos()).rejects.toBeInstanceOf(LoginChoferNoDisponibleError);
+  });
+});
+
 describe("PostgresLoginChoferRepository: base sin migrar", () => {
   for (const [codigo, mensaje] of [
     ["42883", "function core.chofer_login_plantilla_disponible() does not exist"],
