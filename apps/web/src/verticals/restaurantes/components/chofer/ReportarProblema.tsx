@@ -54,7 +54,7 @@ export function ReportarProblema({ entrega, onCerrar, onConfirmar }: ReportarPro
           <Button type="button" className="h-14 w-full md:w-auto" variant="danger" loading={enviando} disabled={enviando || faltaNota} onClick={() => void enviar()}>
             Reportar problema
           </Button>
-          <Button type="button" className="h-11 w-full md:w-auto" variant="outline" disabled={enviando} onClick={onCerrar}>
+          <Button type="button" className="h-14 w-full md:w-auto" variant="outline" disabled={enviando} onClick={onCerrar}>
             Volver
           </Button>
         </>

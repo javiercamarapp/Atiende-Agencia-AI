@@ -15,6 +15,8 @@ import { lineasCliente360 } from "../cliente-360/prompt.ts";
 import { construirPromptPaqueteA } from "./prompt-pm-paquete-a.ts";
 import { PM_PAQUETE_C_PROMPT } from "./prompt-pm-paquete-c.ts";
 import type { BranchSummary, CustomerLookupResult } from "../types.ts";
+import { geocercasActivas } from "../geocercas.ts";
+import { PM_PAQUETE_B_REGLAS } from "./prompt-pm-paquete-b.ts";
 
 export interface PerfilPmContexto {
   readonly businessName: string;
@@ -333,7 +335,7 @@ ${pmCustomerContextBlock(ctx.customer)}`;
 
   if (voz) return buildPmVozPrompt(ctx, { saludo, promos, motivos, bloqueApagados, pedidoGrande });
   const conocimiento = ctx.conocimientoBloque?.trim() ? [ctx.conocimientoBloque.trim()] : [];
-  return [rol, vozYTrato, ...conocimiento, reglas, flujo, escalacion, seguridad, datos, construirPromptPaqueteA({ salsasPersonalizadas: Boolean(ctx.salsasTexto) }), ejemplos, cliente].join("\n\n");
+  return [rol, vozYTrato, ...conocimiento, reglas, flujo, ...(geocercasActivas() ? [PM_PAQUETE_B_REGLAS] : []), escalacion, seguridad, datos, construirPromptPaqueteA({ salsasPersonalizadas: Boolean(ctx.salsasTexto) }), ejemplos, cliente].join("\n\n");
 }
 
 interface PartesVoz {
