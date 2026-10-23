@@ -22,7 +22,8 @@ import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-
 import { CLASE_FALLA_DEL_SISTEMA, claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { aperturaConExcepciones, fechaAnterior, fechaLocal, type EstadoApertura } from "../horarios.ts";
-import { buscarPedidoReciente, hayPedidoProgramadoVigente } from "../pedido-reciente.ts";
+import { VENTANA_PEDIDO_RECIENTE_MIN, buscarPedidoReciente, hayPedidoProgramadoVigente } from "../pedido-reciente.ts";
+import { normalizePhone } from "../phone.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
 // dijo a un cliente de prueba "no procesamos ni guardamos los datos que
@@ -261,7 +262,7 @@ export async function handleInboundWhatsAppMessage(
           if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body, messageId, propertyId: propertyId ?? null });
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
           // R16: con la toma pendiente SIEMPRE se contesta (la base solo marca el acuse "oficial"); con la toma tomada atiende la persona y el bot calla.
-          const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await estadoDePedidoParaToma(repo, organizationId, phone, body, propertyId) : null;
+          const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await respuestaFijaEnToma(repo, organizationId, phone, body, propertyId, messageId) : null;
           const permitido = textoEstado !== null || (handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await recordatorioPermitido(repo, organizationId, phone) : false);
           const acuse = permitido && (textoEstado !== null || acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId)));
           const textoAcuse = textoEstado !== null ? textoEstado : acuse ? textoParaTomaPendiente(body, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE) : ACUSE_HANDOFF_PENDIENTE;
@@ -508,6 +509,61 @@ async function estadoDePedidoParaToma(repo: RestaurantesRepository, organization
   } catch {
     return null;
   }
+}
+
+// ── R19 (T7-043): «agregar algo» a un pedido ya hecho con la toma pendiente ────────────────────────────────────────────────────────────────────
+// Decision del dueño (P-v2-28): el agregado se avisa a la sucursal; si el pedido ya salio se ofrece enviarlo aparte o pedirlo despues. Tiempos del dueño (P-v2-20, T7): domicilio ~60 min,
+// recoger 25-35 min; los confirma la sucursal. Antes el cliente recibia «quedó registrado su mensaje» y el aviso no llevaba el agregado.
+export const AGREGADO_VENTANA_SEGUNDOS = 15;
+const MAX_LARGO_AGREGADO = 160;
+const ES_AGREGADO = /\bagreg|\banad|\bsum[ae]n?\b|\bpon(?:ga|gan|erle)\b/;
+const VETO_AGREGADO = /reembols|devol|devuel|dinero|cancel|alerg|cobr|\bfri[oa]s?\b|incomplet|equivoc|queja|llego|llegaron|\bmal\b|molest|urgen/;
+
+/** Pura: ¿el mensaje pide agregar algo (corto y sin senal de reclamo, dinero o salud)? */
+export function esPeticionDeAgregado(mensaje: string): boolean {
+  const n = normalizarParaClasificar(mensaje);
+  return n.length <= MAX_LARGO_AGREGADO && ES_AGREGADO.test(n) && !VETO_AGREGADO.test(n);
+}
+
+/** Pura: texto fijo para el agregado. `folio` y `canal` del pedido mas reciente; no promete que va en el mismo envio ni da una hora exacta. */
+export function textoAgregadoEnToma(mensaje: string, folio: number | null, canal: string | null): string {
+  const pedido = folio !== null ? ` para el pedido #${folio}` : " para su pedido";
+  const cita = mensaje.replace(/\s+/g, " ").trim().slice(0, 120);
+  const aparte = canal === "recoger" ? "unos 25 a 35 minutos para recoger" : "unos 60 minutos a domicilio";
+  return `Anoté su agregado («${cita}»)${pedido} y ya está avisada la sucursal. Ella revisa si alcanza a incluirlo; si el pedido ya salió, se puede enviar aparte (${aparte}) o puede pedirlo después. La sucursal le confirma; no puedo prometerle que vaya en el mismo envío.`;
+}
+
+async function agregadoDePedidoParaToma(repo: RestaurantesRepository, organizationId: string, phone: string, mensaje: string, propertyId: string | null | undefined, messageId: string): Promise<string | null> {
+  try {
+    if (!esPeticionDeAgregado(mensaje)) return null;
+    if (await agenteApagadoEnSucursal(repo, propertyId)) return null;
+    const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
+    if (cliente.isNew || !cliente.pedidoReciente) return null;
+    const riesgo = classifyHighRiskIntent(mensaje, contextoDeCliente(cliente));
+    // Cualquier otro motivo de riesgo (queja, cobro, alergia, cancelacion...) tiene su propio camino; solo el cambio simple o ninguno pasa.
+    if (riesgo && riesgo.intent !== "modificacion_pedido") return null;
+    const desde = new Date(Date.now() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString();
+    const orden = await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), desde);
+    if (!orden) return null;
+    const permitido = (await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-toma-pendiente-agregado", actorHash(`${organizationId}:${phone}`), 1, AGREGADO_VENTANA_SEGUNDOS))).allowed;
+    if (!permitido) return null;
+    const folio = typeof orden.orderNumber === "number" && Number.isFinite(orden.orderNumber) ? orden.orderNumber : null;
+    // El aviso al equipo lleva lo que el cliente quiere agregar y el folio (la toma ya abierta no vuelve a pasar por el modelo). Si falla, el cliente igual recibe el texto.
+    await executeAgentToolSafely(
+      repo,
+      { organizationId, channel: "whatsapp", phone, lockedPropertyId: propertyId ?? null, entryPropertyId: propertyId ?? null, sourceEventId: messageId },
+      "escalar_a_humano",
+      { customer_name: !cliente.isNew && cliente.name ? cliente.name : "Cliente", motivo: "cancelacion_modificacion", resumen: `[agregado con la toma ya abierta] Pedido ${folio !== null ? `#${folio}` : "reciente"}: ${mensaje.replace(/\s+/g, " ").trim().slice(0, 300)}` },
+    );
+    return textoAgregadoEnToma(mensaje, folio, cliente.pedidoReciente.canal);
+  } catch {
+    return null;
+  }
+}
+
+/** Texto fijo de la toma pendiente: estado del pedido o agregado; null = el acuse de siempre. */
+async function respuestaFijaEnToma(repo: RestaurantesRepository, organizationId: string, phone: string, mensaje: string, propertyId: string | null | undefined, messageId: string): Promise<string | null> {
+  return (await estadoDePedidoParaToma(repo, organizationId, phone, mensaje, propertyId)) ?? (await agregadoDePedidoParaToma(repo, organizationId, phone, mensaje, propertyId, messageId));
 }
 
 /** Acuse con la apertura REAL de la sucursal cuando esta cerrada (la da su horario; nunca una hora inventada). Abierta o sin dato de horario: el acuse fijo. */
@@ -768,7 +824,7 @@ export async function responderTrasEspera(
             // PM R18 (G7-8-10): esta es la ruta de produccion (espera de mensajes). Con la toma pendiente por OTRO motivo una queja con detalle tambien deja su aviso `queja` (antes solo lo hacia la ruta directa).
             if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body: textoPendiente, messageId: pasada === 1 ? messageId : `${messageId}:p${pasada}`, propertyId: propertyId ?? null });
             const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
-            const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente ? await estadoDePedidoParaToma(repo, organizationId, phone, textoPendiente, propertyId) : null;
+            const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente ? await respuestaFijaEnToma(repo, organizationId, phone, textoPendiente, propertyId, messageId) : null;
             const permitido = textoEstado !== null || (handoff === "pendiente" && handoffGate.acusePendiente ? await recordatorioPermitido(repo, organizationId, phone) : false);
             if (!permitido || (textoEstado === null && !acuseBase && (await agenteApagadoEnSucursal(repo, propertyId)))) return { salida: { ok: true, retryable: false }, silencio: true };
             const textoAcuse = textoEstado ?? textoParaTomaPendiente(textoPendiente, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE);
