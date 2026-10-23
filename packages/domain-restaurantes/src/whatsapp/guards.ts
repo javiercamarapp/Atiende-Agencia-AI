@@ -1062,11 +1062,17 @@ function coincide(p: Patron, texto: string, ctx: HighRiskContext): boolean {
   return p.pattern.test(texto) && (p.cuando ? p.cuando(texto, ctx) : true);
 }
 
+/** «Se lo paso a cocina» (frase del guion, A32) solo es cierto mientras el pedido sigue registrado o en preparacion; ya salido, listo o entregado no se le promete nada de cocina. */
+function replyDeCancelacion(base: string, ctx: HighRiskContext): string {
+  const estado = ctx.pedidoReciente?.estado;
+  return estado === "registrado" || estado === "preparando" ? base.replace("Ya avisé al equipo", "Se lo paso a cocina y ya avisé al equipo") : base;
+}
+
 /** Pura: que motivo de alto riesgo detecta el texto entrante del cliente, si alguno. */
 export function classifyHighRiskIntent(text: string, ctx: HighRiskContext = {}): HighRiskMatch | null {
   const texto = normalizarParaClasificar(text);
   for (const p of HIGH_RISK_PATTERNS) {
-    if (coincide(p, texto, ctx)) return { intent: p.intent, motivo: p.intent === "modificacion_pedido" ? "cancelacion_modificacion" : p.intent, reply: p.reply };
+    if (coincide(p, texto, ctx)) return { intent: p.intent, motivo: p.intent === "modificacion_pedido" ? "cancelacion_modificacion" : p.intent, reply: p.intent === "cancelacion_modificacion" ? replyDeCancelacion(p.reply, ctx) : p.reply };
   }
   return null;
 }
