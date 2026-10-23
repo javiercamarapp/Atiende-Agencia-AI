@@ -2,7 +2,7 @@
 // Con la toma pendiente, pedir AGREGAR algo a un pedido ya hecho recibe el folio, el agregado y la opcion de envio aparte / pedirlo despues,
 // y el aviso al equipo lleva lo que el cliente quiere agregar (antes: «quedo registrado su mensaje» y un aviso sin el agregado).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AGREGADO_VENTANA_SEGUNDOS, esPeticionDeAgregado, sinEnlacesNiCorreos, recibirMensajeConEspera, responderTrasEspera, textoAgregadoEnToma } from "../src/whatsapp/inbound.ts";
+import { AGREGADO_AVISOS_MAX, AGREGADO_AVISOS_VENTANA_SEGUNDOS, AGREGADO_VENTANA_SEGUNDOS, esPeticionDeAgregado, sinEnlacesNiCorreos, recibirMensajeConEspera, responderTrasEspera, textoAgregadoEnToma } from "../src/whatsapp/inbound.ts";
 import { createOrder } from "../src/orders.ts";
 import { MARTES_14H, nuevoViaje, TEL_CLIENTE, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
@@ -58,10 +58,43 @@ const NO_ES_AGREGADO_SIMPLE = [
   "quiero mi reembolso y que agreguen lo que faltó",
   "agregue una coca, tengo alergia",
   "cancelen todo y agreguen una coca",
+  // 3.ª revision
+  "agrega una coca para entregar en mi casa",
+  "agrega una coca y envíala a mi casa",
+  "agrega una coca y mandala a la oficina",
+  "agrega una coca que es para llevar",
+  "agrega una coca a domicilio",
+  "agrega una coca ya tardó",
+  "agrega una coca es que tardaron",
+  "agrega una coca ya llevo esperando",
+  "agrega una coca y pago en efectivo",
+  "agrega una coca ya pagada",
+  "agrega una coca sin cargo",
+  "agrega una coca cortesía",
+  "agrega una coca de regalo",
+  "agrega una coca para mañana",
+  "agrega una coca para hoy en la noche",
+  "agrega pedido",
+  "al pedido #17 una coca",
+  "agrega esto",
+  "agrega eso",
+  "agrega lo mismo",
+  "agrega lo de siempre",
+  "agrega lo que pedí ayer",
+  "agrega el pedido de mi hermano",
+  "agrega a la orden de Pedro",
+  "agrega propina",
+  "agrega mi nombre",
+  "agrega gente",
+  "agregar pedido",
+  "agregame al grupo",
+  "agrega cebolla extra",
+  "agrega salsa extra",
+  "agrega doble queso",
   "ya salió?",
   "x".repeat(200) + " agregar",
 ];
-const SI_ES_AGREGADO_SIMPLE = ["Agréguenme también 3 tacos de pastor", "¿le pudiera agregar 3 tacos de pastor tortilla maíz naturales?", "agregue una coca porfa", "Agrega una coca, por favor", "Disculpe, ¿me agrega 2 aguas de horchata? Gracias", "agrégale una orden de frijoles"];
+const SI_ES_AGREGADO_SIMPLE = ["Agréguenme también 3 tacos de pastor", "¿le pudiera agregar 3 tacos de pastor tortilla maíz naturales?", "agregue una coca porfa", "Agrega una coca, por favor", "Disculpe, ¿me agrega 2 aguas de horchata? Gracias", "agrégale frijoles charros"];
 
 describe("esPeticionDeAgregado (pura, lista blanca)", () => {
   it.each(SI_ES_AGREGADO_SIMPLE)("%s si", (t) => expect(esPeticionDeAgregado(t)).toBe(true));
@@ -138,8 +171,12 @@ describe("T7-043: agregado con la toma pendiente", () => {
     let con = 0;
     for (let i = 0; i < 20; i++) if (/Anoté su agregado/.test((await v.escribe("Agréguenme 3 tacos de pastor")).reply ?? "")) con += 1;
     expect(con).toBe(1);
-    vi.setSystemTime(new Date(Date.now() + (AGREGADO_VENTANA_SEGUNDOS + 1) * 1000));
+    // El aviso NO lo frena la ventana de 15 s sino un tope por conversacion (6 en 10 min): 20 mensajes dejan como maximo 6 avisos.
+    const avisos = () => v.callbacks.filter((c) => /agregado con la toma ya abierta/.test(c.message ?? "")).length;
+    expect(avisos()).toBeLessThanOrEqual(AGREGADO_AVISOS_MAX);
+    vi.setSystemTime(new Date(Date.now() + (AGREGADO_AVISOS_VENTANA_SEGUNDOS + 1) * 1000));
     expect((await v.escribe("Agréguenme 3 tacos de pastor")).reply).toMatch(/Anoté su agregado/);
+    expect(AGREGADO_VENTANA_SEGUNDOS).toBeLessThan(AGREGADO_AVISOS_VENTANA_SEGUNDOS);
   });
 
   it("agente apagado en la sucursal: no se usa el texto fijo", async () => {
@@ -149,5 +186,38 @@ describe("T7-043: agregado con la toma pendiente", () => {
     await v.world.repo.fijarAgenteWhatsappActivo(v.world.organizationId, v.t7, "00000000-0000-4000-8000-0000000000f1", false);
     vi.setSystemTime(new Date(Date.now() + 120_000));
     expect((await v.escribe("Agréguenme 3 tacos de pastor")).reply ?? "").not.toMatch(/Anoté su agregado/);
+  });
+
+  it("el aviso NO se guarda: no se dice que la sucursal esta avisada, no se consume el limite y el siguiente intento si responde", async () => {
+    const v = await conPedido("domicilio");
+    v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+    await v.escribe("¿Me agrega una coca a mi pedido?");
+    vi.setSystemTime(new Date(Date.now() + 120_000));
+    const original = v.world.repo.createCallbackRequest.bind(v.world.repo);
+    v.world.repo.createCallbackRequest = async () => {
+      throw new Error("falla simulada");
+    };
+    const r1 = await v.escribe("Agréguenme 3 tacos de pastor");
+    expect(r1.reply ?? "").not.toMatch(/Anoté su agregado|ya está avisada la sucursal/);
+    v.world.repo.createCallbackRequest = original;
+    const r2 = await v.escribe("Agréguenme 3 tacos de pastor");
+    expect(r2.reply).toMatch(/Anoté su agregado/);
+  });
+
+  it.each(["entregado", "cancelado"] as const)("pedido %s: no se habla de «si ya salio»; acuse de siempre", async (estado) => {
+    const v = await conPedido("domicilio");
+    v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+    await v.escribe("¿Me agrega una coca a mi pedido?");
+    (v.world.repo as unknown as { orders: Array<{ status: string }> }).orders.at(-1)!.status = estado;
+    vi.setSystemTime(new Date(Date.now() + 120_000));
+    expect((await v.escribe("Agréguenme 3 tacos de pastor")).reply ?? "").not.toMatch(/Anoté su agregado/);
+  });
+
+  it("un producto que no esta en el menu de la sucursal no es agregado", async () => {
+    const v = await conPedido("domicilio");
+    v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+    await v.escribe("¿Me agrega una coca a mi pedido?");
+    vi.setSystemTime(new Date(Date.now() + 120_000));
+    expect((await v.escribe("agrega zzqx plumbus")).reply ?? "").not.toMatch(/Anoté su agregado/);
   });
 });
