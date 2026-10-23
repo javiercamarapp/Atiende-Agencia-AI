@@ -15,6 +15,11 @@ import { itemsCoca, llamada, ordenes, texto } from "../pm-r11-romper/arnes.ts";
 const PHONE = "+5219991234567";
 const LUNA = MODELO_PREDETERMINADO_ID;
 const DEEPSEEK = MODELO_ALTERNO_TOPE_ID;
+// El setTimeout REAL (capturado antes de instalar los timers falsos): cede unos milisegundos reales a la E/S del repositorio y de las herramientas antes de mover el reloj simulado.
+const cederAlEventLoopReal = (() => {
+  const real = globalThis.setTimeout;
+  return () => new Promise<void>((r) => real(r, 2));
+})();
 const COLGADA = (): Promise<LlmCompletionResult> => new Promise(() => undefined);
 
 beforeEach(() => {
@@ -43,9 +48,21 @@ async function armar(hacerGuion: (f: ReturnType<typeof buildRestaurantFixture>) 
   const eventos: EventoObservabilidadWhatsApp[] = [];
   const obs: ObservabilidadTurno = { emitir: (e) => void eventos.push(e), hashTelefono: (t) => hashTelefonoParaLogs(t, "llave-de-prueba") };
   const handler = createLlmWhatsAppTurnHandler(f.repo, gateway, { defaultRole: "default", escalatedRole: "escalated", observabilidad: obs, turnBudgetMs: 30_000 });
-  const correr = async (messages: Array<{ role: "user" | "assistant"; content: string }>) => {
+  /**
+   * Corre un turno. `colgados` = cuantos intentos al modelo se quedan colgados (0: ninguno; 1: solo el primario; 2: primario y respaldo).
+   * El reloj simulado SOLO avanza mientras el turno espera de verdad a un intento colgado (el proveedor ya fue invocado, y por tanto su tope ya esta armado): asi nunca
+   * se adelanta a la E/S real del turno (antes un salto fijo de 40 s podia vencer el presupuesto del turno ANTES de llegar al modelo, segun la velocidad de la maquina).
+   */
+  const correr = async (messages: Array<{ role: "user" | "assistant"; content: string }>, colgados = 0) => {
+    const antes = intentos.length;
+    let terminado = false;
     const p = handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages, customer: { isNew: true }, propertyId: null });
-    await vi.advanceTimersByTimeAsync(40_000);
+    void p.then(() => (terminado = true), () => (terminado = true));
+    while (!terminado) {
+      await cederAlEventLoopReal();
+      const invocados = intentos.length - antes;
+      if (invocados >= 1 && invocados <= colgados) await vi.advanceTimersByTimeAsync(500);
+    }
     return p;
   };
   return { f, intentos, eventos, correr };
@@ -83,7 +100,7 @@ describe.each([
     const m2 = await armar((f) => guionDe(f, () => COLGADA()));
     const previo = await resumen(m2);
     const antes = m2.intentos.length;
-    const r = await m2.correr([...previo, { role: "user", content: "Sí, es correcto" }]);
+    const r = await m2.correr([...previo, { role: "user", content: "Sí, es correcto" }], 2);
     expect(m2.intentos.slice(antes)).toEqual([LUNA, DEEPSEEK]); // 1er intento (tope) + UN respaldo; ninguna llamada mas
     const creadas = await ordenes(m2.f);
     expect(creadas).toHaveLength(1);
@@ -96,7 +113,7 @@ describe.each([
     expect(t.modeloRespondioLlm).toBeNull(); // ningun modelo contesto: no se inventa uno
     expect(tools(m2.eventos).filter((e) => e.tool === "crear_pedido")).toHaveLength(1);
     // Otro «si» despues (el modelo ya responde): no crea un segundo pedido.
-    const r3 = await m2.correr([...previo, { role: "user", content: "Sí, es correcto" }, { role: "assistant", content: r.reply }, { role: "user", content: "sí" }]);
+    const r3 = await m2.correr([...previo, { role: "user", content: "Sí, es correcto" }, { role: "assistant", content: r.reply }, { role: "user", content: "sí" }], 2);
     expect(r3.orderId ?? null).toBeNull();
     expect(await ordenes(m2.f)).toHaveLength(1);
   });
@@ -104,7 +121,7 @@ describe.each([
   it("el respaldo SI responde: el servidor no inyecta el cierre (el modelo decide)", async () => {
     const m2 = await armar((f) => guionDe(f, (modelo) => (modelo === LUNA ? COLGADA() : texto("Con gusto, ¿algo más?"))));
     const previo = await resumen(m2);
-    const r = await m2.correr([...previo, { role: "user", content: "Sí, es correcto" }]);
+    const r = await m2.correr([...previo, { role: "user", content: "Sí, es correcto" }], 1);
     expect(r.reply).toContain("Con gusto");
     expect(await ordenes(m2.f)).toHaveLength(0);
     const t = turnos(m2.eventos).at(-1)!;
