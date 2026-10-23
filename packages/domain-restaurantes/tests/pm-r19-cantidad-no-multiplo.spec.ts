@@ -19,10 +19,23 @@ describe("cantidadesNoMultiplo (pura, tabla de unidades del menu)", () => {
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ piezas: 3, piezasPorOrden: 2, opciones: [2, 4] });
   });
+  it("falsos negativos: sin «de» y cantidad al final", () => {
+    expect(cantidadesNoMultiplo("quiero 4 tacos bistec").map((x) => x.piezas)).toEqual([4]);
+    expect(cantidadesNoMultiplo("tacos de bistec 4").map((x) => x.piezas)).toEqual([4]);
+    expect(cantidadesNoMultiplo("tacos de bistec 4 pesos")).toEqual([]);
+  });
+  it("una clausula pasada no tapa un pedido nuevo en otra clausula", () => {
+    expect(cantidadesNoMultiplo("ayer pedi 6 tacos de bistec, ahora quiero 4 tacos de bistec").map((x) => x.piezas)).toEqual([4]);
+  });
   it("palabras y varios renglones", () => {
     expect(cantidadesNoMultiplo("cuatro tacos de chorizo y 5 mestizas de pastor").map((x) => x.piezas)).toEqual([4, 5]);
   });
   it.each([
+    "ordené 4 tacos de bistec y me llegaron 3",
+    "hace 4 años pedí 3 gringas de pastor",
+    "ya no quiero 4 tacos de bistec, mejor 6",
+    "me llegaron 4 tacos de bistec y quiero reembolso",
+    "cancela los 4 tacos de bistec",
     "6 tacos de bistec",
     "3 tacos de bistec",
     "4 tacos de pastor",
@@ -40,7 +53,10 @@ describe("cantidadesNoMultiplo (pura, tabla de unidades del menu)", () => {
 describe("bloqueCantidadNoMultiplo", () => {
   it("tacos: explica la presentacion, opciones con piezas y ordenes, precio de la herramienta, sin precios escritos", () => {
     const b = bloqueCantidadNoMultiplo(["Hola, para recoger 4 tacos de bistec"]);
+    expect(b).toMatch(/Si el cliente esta pidiendo ahora 4 tacos de bistec/);
     expect(b).toMatch(/ordenes de 3 piezas/);
+    expect(b).toMatch(/otro pack_size.*manda la herramienta/);
+    expect(b).toMatch(/reclama, corrige o cancela/);
     expect(b).toMatch(/3 piezas \(1 orden\) o 6 piezas \(2 ordenes\)/);
     expect(b).toMatch(/PRECIO de cada una tomado de buscar_producto/);
     expect(b).not.toMatch(/\$\s*\d/);
@@ -52,7 +68,7 @@ describe("bloqueCantidadNoMultiplo", () => {
     expect(b).toMatch(/2 piezas \(1 orden\) o 4 piezas \(2 ordenes\)/);
   });
   it("no repite el mismo renglon", () => {
-    expect(bloqueCantidadNoMultiplo(["4 tacos de bistec", "si, 4 tacos de bistec"]).match(/El cliente pidio/g)).toHaveLength(1);
+    expect(bloqueCantidadNoMultiplo(["4 tacos de bistec", "si, 4 tacos de bistec"]).match(/esta pidiendo ahora/g)).toHaveLength(1);
   });
 });
 
