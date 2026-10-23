@@ -953,6 +953,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const pesoKg = pesoTotalKg(renglones) + (c.sessionPesoKg ?? 0);
             const motivoGrande = evaluarPedidoGrande({ total, pesoKg, pagaEfectivo: false, sinHistorial: false });
             if (motivoGrande) {
+              // Un aviso `pedido_grande` por telefono cada 15 min (misma memoria y ventana que `falla_sistema`, con llave propia para que uno no tape al otro): con el proveedor caido y varios
+              // mensajes dentro de la vigencia de la cotizacion no se repite la escalada; el cliente recibe el mismo texto.
+              const llaveOrgPG = `${organizationId}:pedido_grande`;
+              if (avisoFallaSistemaReciente(llaveOrgPG, phone)) {
+                escalarMotivo = "pedido_grande";
+                return done({ reply: MENSAJE_PEDIDO_GRANDE_PENDIENTE, orderId: null, propertyId });
+              }
               const nombreG = !customer.isNew && customer.name ? customer.name : "Cliente";
               const resumenG = `${resumenPedidoGrande({ motivo: motivoGrande, total, pesoKg, items: renglones, canal: c.quotedCanal, paymentMethod: c.quotedPago })} El turno del asistente se corto antes de mostrar el resumen: contactar al cliente para confirmar el pedido.`;
               const avisoG = await executeAgentToolSafely(
@@ -962,6 +969,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 { customer_name: nombreG, motivo: "pedido_grande", resumen: resumenG.slice(0, 900) },
               );
               if (!isToolErrorResult(avisoG.result)) {
+                marcarAvisoFallaSistema(llaveOrgPG, phone);
                 escalarMotivo = "pedido_grande";
                 return done({ reply: MENSAJE_PEDIDO_GRANDE_PENDIENTE, orderId: null, propertyId });
               }
