@@ -461,7 +461,6 @@ export function textoParaTomaPendiente(mensaje: string, acuseDeLaBase: boolean, 
 }
 
 /** PM R19 (G7-8-10): «¿ya salio mi pedido?» con la toma pendiente. El limitador de recordatorios (1 por minuto) lo dejaba SIN respuesta si llegaba justo tras el acuse de la queja. */
-const PREGUNTA_DE_ESTADO_EN_TOMA = /\bya\s+(?:salio|esta\s+(?:listo|en\s+camino)|va\s+en\s+camino|lo\s+(?:mandaron|enviaron))\b|\bcuanto\s+(?:falta|tarda|se\s+tarda)\b|\bfalta\s+mucho\b|\bcomo\s+va\s+(?:mi\s+)?(?:pedido|orden)\b/;
 const SUFIJO_ESTADO_EN_TOMA = " El equipo ya está avisado y le confirma cualquier otro detalle en cuanto lo vea.";
 
 /** Pura: respuesta fija sobre el estado que marco la sucursal (nunca inventa uno). null = no es pregunta de estado, no hay pedido o el estado no se resume sin riesgo. */
@@ -481,16 +480,18 @@ export function textoEstadoEnTomaPendiente(mensaje: string, pedido: { readonly e
   }
 }
 
-/** Pregunta de estado: corta (<= 8 palabras) y sin ninguna senal de reclamo, dinero, cancelacion o salud: esos mensajes siguen el camino de siempre (aviso al equipo / acuse). */
-const MAX_PALABRAS_PREGUNTA_DE_ESTADO = 8;
-const VETO_PREGUNTA_DE_ESTADO = /reembols|devol|devuel|dinero|cancel|alerg|cobr|\bfri[oa]s?\b|incomplet|equivoc|queja|llego|llegaron|\bmal\b|\bpero\b|\bpagu|\bpago\b|molest|urgen|\bno\b/;
+/** LISTA BLANCA de preguntas de estado. Sin puntuacion ni relleno («mi pedido», «porfa», «gracias»...) el mensaje debe quedar EXACTAMENTE en una de estas formas; cualquier otra cosa
+ * (reclamos, dinero, cambios, salud, insultos, lo que sea) cae al acuse de siempre. Lista blanca y no negra: el lenguaje de riesgo es abierto y una lista de palabras siempre se queda corta. */
+const RELLENO_PREGUNTA_DE_ESTADO = /\b(?:mi|el|la|su|pedido|orden|porfa|porfis|porfavor|por favor|favor|gracias|disculpe|hola|buenas|buenos|dias|tardes|noches|oiga|me|podria|puede|decir|saber|quisiera|dime)\b/g;
+const FORMAS_DE_ESTADO: readonly RegExp[] = [/^ya salio$/, /^ya esta listo$/, /^(?:ya )?esta en camino$/, /^ya va en camino$/, /^ya (?:lo )?(?:mandaron|enviaron)$/, /^cuanto (?:falta|tarda|se tarda)$/, /^falta mucho$/, /^como va$/];
 /** Tope propio de la respuesta de estado: una por conversacion cada 15 s (el limitador de recordatorios de 60 s no aplica a esta rama). */
 export const ESTADO_TOMA_VENTANA_SEGUNDOS = 15;
 
 export function esPreguntaDeEstadoSegura(mensaje: string): boolean {
   const n = normalizarParaClasificar(mensaje);
-  if (n.length > 60 || n.trim().split(/\s+/).length > MAX_PALABRAS_PREGUNTA_DE_ESTADO) return false;
-  return PREGUNTA_DE_ESTADO_EN_TOMA.test(n) && !VETO_PREGUNTA_DE_ESTADO.test(n);
+  if (n.length > 60) return false;
+  const base = n.replace(/[^a-z0-9ñ\s]/g, " ").replace(RELLENO_PREGUNTA_DE_ESTADO, " ").replace(/\s+/g, " ").trim();
+  return FORMAS_DE_ESTADO.some((f) => f.test(base));
 }
 
 /** Texto de estado para una toma PENDIENTE, o null (= camino de siempre). Respeta R16: exige `acusePendiente` en la compuerta y el agente encendido en la sucursal; sin riesgo detectado por el clasificador. */
