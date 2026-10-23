@@ -13,7 +13,6 @@ import {
   Button,
   Callout,
   Card,
-  CardContent,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -22,6 +21,7 @@ import {
   Label,
   Selector,
   PageContainer,
+  SectionLabel,
   StatCard,
   StatusBadge,
   formatMoney,
@@ -231,36 +231,45 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
       {customers && customers.length === 0 && filtrosDisponibles && <EstadoVacio mensaje={hayFiltros ? "Ningún cliente coincide con estos filtros." : "Todavía no hay clientes: aparecen con su primer pedido o al importar tu cartera."} />}
 
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
-        {customers?.map((c) => {
-          const dias = diasDesde(c.lastOrderAt);
-          return (
-            <Link
-              key={c.id}
-              to={`/restaurantes/${orgSlug}/clientes/${c.id}`}
-              className="block rounded-lg no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <Card className="h-full transition-colors hover:bg-muted/50">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="m-0 font-semibold text-foreground">{c.name ?? c.phone}</p>
-                    {c.tier && (
-                      <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, c.tier)} className={`gap-1 px-2 py-0.5 ${tierBadgeClase(c.tier) ?? ""}`}>
-                        <span aria-hidden>{CUSTOMER_TIER_META[c.tier].glyph}</span>
-                        {CUSTOMER_TIER_META[c.tier].label}
-                      </StatusBadge>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {c.phone} · {c.orderCount} pedido{c.orderCount === 1 ? "" : "s"}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{dias === null ? "Aún no ha pedido" : dias === 0 ? "Pidió hoy" : `Último pedido hace ${dias} d`}</p>
-                </CardContent>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
+      {customers && customers.length > 0 && (
+        <section aria-label="Lista de clientes" className="flex flex-col gap-2">
+          <SectionLabel as="p" className="px-1">
+            <span data-testid="clientes-total">{customers.length} cliente{customers.length === 1 ? "" : "s"}{nextCursor ? " (hay más)" : " en total"}</span>
+          </SectionLabel>
+          <Card className="overflow-hidden p-0">
+            <ul className="m-0 list-none divide-y divide-dashed divide-border p-0">
+              {customers.map((c) => {
+                const dias = diasDesde(c.lastOrderAt);
+                return (
+                  <li key={c.id}>
+                    <Link
+                      to={`/restaurantes/${orgSlug}/clientes/${c.id}`}
+                      className="flex items-center gap-3 px-3 py-2.5 no-underline transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Users className="size-4" strokeWidth={1.75} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-ui font-medium text-foreground">{c.name ?? c.phone}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{c.phone}</span>
+                      </span>
+                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                        {c.orderCount} pedido{c.orderCount === 1 ? "" : "s"} · {dias === null ? "aún no ha pedido" : dias === 0 ? "pidió hoy" : `hace ${dias} d`}
+                      </span>
+                      {c.tier && (
+                        <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, c.tier)} className={`shrink-0 gap-1 px-2 py-0.5 ${tierBadgeClase(c.tier) ?? ""}`}>
+                          <span aria-hidden>{CUSTOMER_TIER_META[c.tier].glyph}</span>
+                          {CUSTOMER_TIER_META[c.tier].label}
+                        </StatusBadge>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </section>
+      )}
       {nextCursor && (
         <div className="flex justify-center">
           <Button type="button" size="sm" variant="outline" onClick={() => void verMas()} loading={cargandoMas}>
