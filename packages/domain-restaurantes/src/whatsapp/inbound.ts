@@ -515,21 +515,31 @@ async function estadoDePedidoParaToma(repo: RestaurantesRepository, organization
 // Decision del dueño (P-v2-28): el agregado se avisa a la sucursal; si el pedido ya salio se ofrece enviarlo aparte o pedirlo despues. Tiempos del dueño (P-v2-20, T7): domicilio ~60 min,
 // recoger 25-35 min; los confirma la sucursal. Antes el cliente recibia «quedó registrado su mensaje» y el aviso no llevaba el agregado.
 export const AGREGADO_VENTANA_SEGUNDOS = 15;
-const MAX_LARGO_AGREGADO = 160;
-const ES_AGREGADO = /\bagreg|\banad|\bsum[ae]n?\b|\bpon(?:ga|gan|erle)\b/;
-const VETO_AGREGADO = /reembols|devol|devuel|dinero|cancel|alerg|cobr|\bfri[oa]s?\b|incomplet|equivoc|queja|llego|llegaron|\bmal\b|molest|urgen/;
+const MAX_LARGO_AGREGADO = 100;
+/** LISTA BLANCA: sin puntuacion ni relleno («por favor», «tambien», «le/me», «un/una») el mensaje debe ser `agrega(r|le|me...) [cantidad de 1-2 digitos] <producto corto>` y nada mas.
+ * Todo lo demas (cambios de direccion o de pedido, quejas, descuentos, otra sucursal, preguntas de precio...) cae al acuse de siempre. */
+const RELLENO_AGREGADO = /\b(?:por favor|porfa|porfis|porfavor|favor|gracias|tambien|disculpe|oiga|hola|buenas|buenos|dias|tardes|noches|le|me|nos|un|una|uno|podria|pudiera|puede|pueden|mi pedido|al pedido|a mi pedido)\b/g;
+const FORMA_AGREGADO = /^agreg[a-z]{0,6}(?: \d{1,2})?(?: [a-z]+){1,6}$/;
+const VETO_AGREGADO = /otra|otro|nuev|gratis|descuento|promo|sucursal|direccion|recoger|ya no|quita|cambia|mejor|cuanto|precio|agregaron|falt|algo|cosa|dime|pero|quiero|cancel|devol|devuel|reembols|alerg|dinero|cobr|queja|llego|\bmal\b|molest|urgen|incomplet|equivoc/;
 
-/** Pura: ¿el mensaje pide agregar algo (corto y sin senal de reclamo, dinero o salud)? */
+/** Pura: ¿el mensaje es, EXACTAMENTE, una peticion corta de agregar un producto? */
 export function esPeticionDeAgregado(mensaje: string): boolean {
   const n = normalizarParaClasificar(mensaje);
-  return n.length <= MAX_LARGO_AGREGADO && ES_AGREGADO.test(n) && !VETO_AGREGADO.test(n);
+  if (n.length > MAX_LARGO_AGREGADO) return false;
+  const base = n.replace(/[^a-z0-9\s]/g, " ").replace(RELLENO_AGREGADO, " ").replace(/\s+/g, " ").trim();
+  return FORMA_AGREGADO.test(base) && !VETO_AGREGADO.test(base);
+}
+
+/** Sin URLs ni correos en lo que viaja al aviso del encargado. */
+export function sinEnlacesNiCorreos(texto: string): string {
+  return texto.replace(/https?:\/\/\S+|www\.\S+|\S+@\S+\.\S+/gi, "[enlace]");
 }
 
 /** Pura: texto fijo para el agregado. `folio` y `canal` del pedido mas reciente; no promete que va en el mismo envio ni da una hora exacta. */
 export function textoAgregadoEnToma(mensaje: string, folio: number | null, canal: string | null): string {
   const pedido = folio !== null ? ` para el pedido #${folio}` : " para su pedido";
   const cita = mensaje.replace(/\s+/g, " ").trim().slice(0, 120);
-  const aparte = canal === "recoger" ? "unos 25 a 35 minutos para recoger" : "unos 60 minutos a domicilio";
+  const aparte = canal === "recoger" ? "entre 25 y 35 minutos para recoger, que la sucursal confirma" : "alrededor de una hora a domicilio, que la sucursal confirma";
   return `Anoté su agregado («${cita}»)${pedido} y ya está avisada la sucursal. Ella revisa si alcanza a incluirlo; si el pedido ya salió, se puede enviar aparte (${aparte}) o puede pedirlo después. La sucursal le confirma; no puedo prometerle que vaya en el mismo envío.`;
 }
 
@@ -540,8 +550,8 @@ async function agregadoDePedidoParaToma(repo: RestaurantesRepository, organizati
     const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
     if (cliente.isNew || !cliente.pedidoReciente) return null;
     const riesgo = classifyHighRiskIntent(mensaje, contextoDeCliente(cliente));
-    // Cualquier otro motivo de riesgo (queja, cobro, alergia, cancelacion...) tiene su propio camino; solo el cambio simple o ninguno pasa.
-    if (riesgo && riesgo.intent !== "modificacion_pedido") return null;
+    // Cualquier motivo de riesgo (queja, cobro, alergia, cancelacion, cambio de pedido...) tiene su propio camino: solo pasa si NO hay ninguno.
+    if (riesgo !== null) return null;
     const desde = new Date(Date.now() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString();
     const orden = await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), desde);
     if (!orden) return null;
@@ -553,7 +563,7 @@ async function agregadoDePedidoParaToma(repo: RestaurantesRepository, organizati
       repo,
       { organizationId, channel: "whatsapp", phone, lockedPropertyId: propertyId ?? null, entryPropertyId: propertyId ?? null, sourceEventId: messageId },
       "escalar_a_humano",
-      { customer_name: !cliente.isNew && cliente.name ? cliente.name : "Cliente", motivo: "cancelacion_modificacion", resumen: `[agregado con la toma ya abierta] Pedido ${folio !== null ? `#${folio}` : "reciente"}: ${mensaje.replace(/\s+/g, " ").trim().slice(0, 300)}` },
+      { customer_name: !cliente.isNew && cliente.name ? cliente.name : "Cliente", motivo: "cancelacion_modificacion", resumen: `[agregado con la toma ya abierta] Pedido ${folio !== null ? `#${folio}` : "reciente"}: ${sinEnlacesNiCorreos(mensaje).replace(/\s+/g, " ").trim().slice(0, 300)}` },
     );
     return textoAgregadoEnToma(mensaje, folio, cliente.pedidoReciente.canal);
   } catch {
