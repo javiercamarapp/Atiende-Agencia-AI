@@ -91,7 +91,7 @@ describe("cada precio sale de un menu impreso y una prueba lo ata", () => {
 
 describe("precio y catalogo por sucursal en el motor de pedidos", () => {
   const plan = buildPmSeedPlan(data, agent);
-  const martes = new Date("2026-10-13T20:00:00Z"); // martes 14:00 en Merida: abierto y sin 2x1
+  const martes = new Date("2026-10-14T01:00:00Z"); // martes 13-oct 19:00 en Merida: abierto en todas las sucursales (T3 abre a las 18:00) y sin 2x1
 
   async function cotizar(slug: string, nombreProducto: string, cantidad = 1, datos: PmSeedData = data) {
     const world = await buildInMemoryPmWorld(buildPmSeedPlan(datos, agent));

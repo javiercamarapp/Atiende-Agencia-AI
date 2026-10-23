@@ -3,11 +3,14 @@
 // base del repo original (whatsapp-agent-core.test.ts: total alucinado, en pesos, correcto intacto, precios unitarios, sin total).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { enforceQuotedTotal, knownAmountsOfQuote } from "../../src/whatsapp/guards.ts";
-import { LUNES_14, banco, base, call, item, lastTool, say } from "./r1-arnes-whatsapp-pm.ts";
+import { banco, base, call, item, lastTool, say } from "./r1-arnes-whatsapp-pm.ts";
 
 afterEach(() => {
   vi.useRealTimers();
 });
+
+// Lunes 12-oct 19:00 en Merida: T3 Pensiones abre a las 18:00 (horario verificado el 23-oct-2026), asi que a las 14:00 estaria cerrada.
+const LUNES_19 = "2026-10-13T01:00:00.000Z";
 
 describe("enforceQuotedTotal (pura): pruebas base del original", () => {
   it("corrige un total alucinado", () => {
@@ -39,7 +42,7 @@ describe("agentes-05: 'Subtotal' no es 'total'", () => {
     expect(enforceQuotedTotal("Subtotal: $144.00. Total: $99.00", 72)).toBe("Subtotal: $144.00. Total: $72.00");
   });
   it("punta a punta (lunes, T3 recoger, 4 pastor): el cliente lee el Subtotal real y el Total", async () => {
-    const b = await banco({ now: LUNES_14 });
+    const b = await banco({ now: LUNES_19 });
     const pastor = b.pid("Taco Al Pastor (individual)");
     b.setGuion([
       call("cotizar_pedido", { branch_slug: "pensiones", canal: "recoger", items: [item(pastor, "Taco Al Pastor (individual)", 4, "maiz")] }),

@@ -158,9 +158,10 @@ describe("promociones: lunes 2x1 sin restriccion de sucursal y combo del martes 
 
   describe("motor real de cotizacion con el mundo sembrado", () => {
     afterEach(() => vi.useRealTimers());
-    const LUNES_14H = new Date("2026-10-12T20:00:00Z"); // lunes 14:00 en Merida
-    const MARTES_14H = new Date("2026-10-13T20:00:00Z");
-    const MIERCOLES_14H = new Date("2026-10-14T20:00:00Z");
+    // 19:00 en Merida (UTC-6): T3 Pensiones abre a las 18:00 (horario verificado 23-oct-2026), asi que a las 14:00 estaria cerrada.
+    const LUNES_19H = new Date("2026-10-13T01:00:00Z"); // lunes 12-oct 19:00 en Merida
+    const MARTES_19H = new Date("2026-10-14T01:00:00Z");
+    const MIERCOLES_19H = new Date("2026-10-15T01:00:00Z");
 
     async function cotizar(ahora: Date, canal: "recoger" | "domicilio", lineas: ReadonlyArray<readonly [string, number] | readonly [string, number, "maiz"]>, slug = "garcia-lavin") {
       vi.useFakeTimers({ toFake: ["Date"] });
@@ -176,7 +177,7 @@ describe("promociones: lunes 2x1 sin restriccion de sucursal y combo del martes 
     }
 
     it("martes + recoger + nachos de pastor + 2 aguas elegidas: las 2 aguas salen a $0 (total = solo los nachos)", async () => {
-      const q = await cotizar(MARTES_14H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
+      const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
       expect(q.subtotal).toBe(328 + 60 + 60);
       expect(q.descuento).toBe(120);
       expect(q.total).toBe(328);
@@ -185,13 +186,13 @@ describe("promociones: lunes 2x1 sin restriccion de sucursal y combo del martes 
 
     it("el combo vale en CUALQUIER sucursal (T1, T3 y T7), no solo en la de la fase 1", async () => {
       for (const slug of ["prol-montejo", "pensiones", "garcia-lavin"]) {
-        const q = await cotizar(MARTES_14H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Té", 1]], slug);
+        const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Té", 1]], slug);
         expect(q.total, slug).toBe(328);
       }
     });
 
     it("martes + recoger + nachos sin aguas: no hay descuento y la cotizacion sugiere elegir las aguas del combo", async () => {
-      const q = await cotizar(MARTES_14H, "recoger", [["Nachos de Pastor", 1]]);
+      const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1]]);
       expect(q.total).toBe(328);
       expect(q.promocionAplicada).toBeNull();
       expect(q.promocionesSugeridas[0]).toMatchObject({ motivo: "falta_elegir_cortesia", cortesiaPorUnidad: 2 });
@@ -199,25 +200,25 @@ describe("promociones: lunes 2x1 sin restriccion de sucursal y combo del martes 
     });
 
     it("a DOMICILIO el mismo carrito cobra todo (las promociones de PM no aplican a domicilio)", async () => {
-      const q = await cotizar(MARTES_14H, "domicilio", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
+      const q = await cotizar(MARTES_19H, "domicilio", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
       expect(q.descuento).toBe(0);
       expect(q.total).toBe(448);
       expect(q.promocionAplicada).toBeNull();
     });
 
     it("la MEDIA orden de nachos de pastor no dispara el combo", async () => {
-      const q = await cotizar(MARTES_14H, "recoger", [["Nachos de Pastor (1/2 orden)", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
+      const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor (1/2 orden)", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
       expect(q.descuento).toBe(0);
       expect(q.total).toBe(232 + 120);
     });
 
     it("lunes y miercoles el combo no aplica; el lunes si aplica el 2x1 al recoger", async () => {
-      for (const dia of [LUNES_14H, MIERCOLES_14H]) {
+      for (const dia of [LUNES_19H, MIERCOLES_19H]) {
         const q = await cotizar(dia, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
         expect(q.promocionAplicada, dia.toISOString()).toBeNull();
         expect(q.total, dia.toISOString()).toBe(448);
       }
-      const q = await cotizar(LUNES_14H, "recoger", [["Taco Al Pastor (individual)", 4, "maiz"]], "pensiones");
+      const q = await cotizar(LUNES_19H, "recoger", [["Taco Al Pastor (individual)", 4, "maiz"]], "pensiones");
       expect(q.promocionAplicada).toMatchObject({ code: "LUNES2X1PM" });
       expect(q.total).toBe(2 * 42);
     });
