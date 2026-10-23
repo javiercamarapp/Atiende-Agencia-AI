@@ -4,9 +4,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE } from "../src/agent-tools/registry.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../src/pedido-grande.ts";
+import { reiniciarDedupeFallaSistema } from "../src/whatsapp/dedupe-falla-sistema.ts";
 import { MARTES_14H, nuevoViaje, pedidosDe, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
 beforeEach(() => {
+  reiniciarDedupeFallaSistema();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(MARTES_14H));
 });
@@ -51,5 +53,16 @@ describe("A22: cotizacion de pedido grande y el turno muere", () => {
     await v.escribe("quiero 5 kilos de bistec");
     expect(motivos(v)).toContain("escalada:falla_sistema");
     expect(motivos(v)).not.toContain("escalada:pedido_grande");
+  });
+
+  it("varios mensajes seguidos con el proveedor caido: UNA sola escalada `pedido_grande`, el primero con el texto de pedido grande (los siguientes los atiende la toma abierta)", async () => {
+    const v = await nuevoViaje();
+    await cotiza(v, 5);
+    proveedorCaido(v);
+    const respuestas = [];
+    for (const t of ["efectivo", "a nombre de Ana Prueba", "paso en 1 hora"]) respuestas.push((await v.escribe(t)).reply);
+    expect(motivos(v).filter((m) => m === "escalada:pedido_grande")).toHaveLength(1);
+    expect(motivos(v)).not.toContain("escalada:falla_sistema");
+    expect(respuestas[0]).toBe(MENSAJE_PEDIDO_GRANDE_PENDIENTE);
   });
 });
