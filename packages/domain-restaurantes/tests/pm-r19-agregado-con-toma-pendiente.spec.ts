@@ -2,7 +2,7 @@
 // Con la toma pendiente, pedir AGREGAR algo a un pedido ya hecho recibe el folio, el agregado y la opcion de envio aparte / pedirlo despues,
 // y el aviso al equipo lleva lo que el cliente quiere agregar (antes: «quedo registrado su mensaje» y un aviso sin el agregado).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AGREGADO_VENTANA_SEGUNDOS, esPeticionDeAgregado, recibirMensajeConEspera, responderTrasEspera, textoAgregadoEnToma } from "../src/whatsapp/inbound.ts";
+import { AGREGADO_VENTANA_SEGUNDOS, esPeticionDeAgregado, sinEnlacesNiCorreos, recibirMensajeConEspera, responderTrasEspera, textoAgregadoEnToma } from "../src/whatsapp/inbound.ts";
 import { createOrder } from "../src/orders.ts";
 import { MARTES_14H, nuevoViaje, TEL_CLIENTE, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
@@ -40,9 +40,40 @@ async function escribeConEspera(v: Viaje, body: string) {
   return responderTrasEspera(v.world.repo, v.handler, { organizationId: v.world.organizationId, messageId, phone: TEL_CLIENTE, phoneNumberId: "qa-pn-t7", propertyId: v.t7, handoffGate: v.gate, privacy: v.privacidad });
 }
 
-describe("esPeticionDeAgregado (pura)", () => {
-  it.each(["Agréguenme también 3 tacos de pastor", "¿le pudiera agregar 3 tacos de pastor tortilla maíz naturales?", "agregue una coca porfa"])("%s si", (t) => expect(esPeticionDeAgregado(t)).toBe(true));
-  it.each(["quiero mi reembolso y que agreguen lo que faltó", "agregue una coca, tengo alergia", "cancelen todo y agreguen una coca", "ya salió?", "x".repeat(200) + " agregar"])("%s no", (t) => expect(esPeticionDeAgregado(t)).toBe(false));
+const NO_ES_AGREGADO_SIMPLE = [
+  "cambia la dirección y agrega una coca",
+  "mándalo a otra dirección y agrega coca",
+  "agrega una coca, pero cambia mi pedido a recoger",
+  "quita los tacos y agrega coca",
+  "agrega coca, ya no quiero los tacos",
+  "ya no, mejor agrega otra cosa",
+  "no me agregaron la salsa",
+  "quiero hacer otro pedido nuevo, agrega 3 tacos",
+  "agrega una coca pero para otra sucursal",
+  "agrega una coca gratis",
+  "agrega una coca, ponle descuento",
+  "agrega una orden de tacos y dime cuánto sale",
+  "agrega 999999 tacos",
+  "agrega algo",
+  "quiero mi reembolso y que agreguen lo que faltó",
+  "agregue una coca, tengo alergia",
+  "cancelen todo y agreguen una coca",
+  "ya salió?",
+  "x".repeat(200) + " agregar",
+];
+const SI_ES_AGREGADO_SIMPLE = ["Agréguenme también 3 tacos de pastor", "¿le pudiera agregar 3 tacos de pastor tortilla maíz naturales?", "agregue una coca porfa", "Agrega una coca, por favor", "Disculpe, ¿me agrega 2 aguas de horchata? Gracias", "agrégale una orden de frijoles"];
+
+describe("esPeticionDeAgregado (pura, lista blanca)", () => {
+  it.each(SI_ES_AGREGADO_SIMPLE)("%s si", (t) => expect(esPeticionDeAgregado(t)).toBe(true));
+  it.each(NO_ES_AGREGADO_SIMPLE)("%s no", (t) => expect(esPeticionDeAgregado(t)).toBe(false));
+});
+
+describe("sinEnlacesNiCorreos", () => {
+  it("quita URLs y correos del texto que viaja al aviso", () => {
+    const t = sinEnlacesNiCorreos("agrega coca https://ejemplo.invalid/x?a=1 o escribe a persona@ejemplo.invalid www.ejemplo.invalid");
+    expect(t).not.toMatch(/ejemplo\.invalid|@/);
+    expect(t).toMatch(/\[enlace\]/);
+  });
 });
 
 describe("textoAgregadoEnToma (pura)", () => {
@@ -50,11 +81,11 @@ describe("textoAgregadoEnToma (pura)", () => {
     const t = textoAgregadoEnToma("Agréguenme 3 tacos de pastor", 17, "domicilio");
     expect(t).toMatch(/pedido #17/);
     expect(t).toMatch(/3 tacos de pastor/);
-    expect(t).toMatch(/enviar aparte \(unos 60 minutos a domicilio\) o puede pedirlo después/);
+    expect(t).toMatch(/enviar aparte \(alrededor de una hora a domicilio, que la sucursal confirma\) o puede pedirlo después/);
     expect(t).toMatch(/no puedo prometerle que vaya en el mismo envío/i);
   });
   it("recoger: 25 a 35 minutos; sin folio, generico", () => {
-    expect(textoAgregadoEnToma("agregue una coca", 5, "recoger")).toMatch(/25 a 35 minutos para recoger/);
+    expect(textoAgregadoEnToma("agregue una coca", 5, "recoger")).toMatch(/entre 25 y 35 minutos para recoger, que la sucursal confirma/);
     expect(textoAgregadoEnToma("agregue una coca", null, null)).toMatch(/para su pedido/);
   });
 });
@@ -71,11 +102,23 @@ describe("T7-043: agregado con la toma pendiente", () => {
     expect(v.requests.length).toBe(llamadas); // sin modelo
     expect(r.reply).toMatch(/pedido #17/);
     expect(r.reply).toMatch(/3 tacos de pastor/);
-    expect(r.reply).toMatch(/enviar aparte.*60 minutos.*pedirlo después/);
+    expect(r.reply).toMatch(/enviar aparte.*alrededor de una hora.*pedirlo después/);
     expect(r.reply).not.toMatch(/quedó registrado su mensaje/);
     const aviso = v.callbacks.find((c) => /agregado con la toma ya abierta/.test(c.message ?? ""));
     expect(aviso?.message).toMatch(/3 tacos de pastor/);
     expect(aviso?.message).toMatch(/Pedido #17/);
+  });
+
+  it.each(NO_ES_AGREGADO_SIMPLE.filter((t) => t.length < 100))("%s con pedido en preparacion: acuse de siempre en ambas rutas", async (frase) => {
+    for (const ruta of ["directa", "espera"] as const) {
+      const v = await conPedido("domicilio");
+      v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+      await v.escribe("¿Me agrega una coca a mi pedido?");
+      vi.setSystemTime(new Date(Date.now() + 120_000));
+      const r = ruta === "directa" ? await v.escribe(frase) : await escribeConEspera(v, frase);
+      expect(r.reply ?? "").not.toMatch(/Anoté su agregado/);
+      expect(v.callbacks.some((c) => /agregado con la toma ya abierta/.test(c.message ?? ""))).toBe(false);
+    }
   });
 
   it("no es agregado (pregunta cualquiera): acuse de siempre", async () => {
