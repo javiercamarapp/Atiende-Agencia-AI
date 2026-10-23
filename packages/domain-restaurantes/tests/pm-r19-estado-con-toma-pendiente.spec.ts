@@ -101,6 +101,25 @@ const FRASES_DE_RIESGO = [
   "cuanto tarda el reembolso",
   "ya está en camino? cancela",
   "como va mi pedido, tengo alergia",
+  // 2.ª revision: lenguaje de riesgo o de cambio que una lista negra no cubre
+  "ya lo enviaron y me enferme",
+  "ya salió, hay un pelo",
+  "ya salio, voy a llamar a profeco",
+  "ya salio, abogado",
+  "ya salio, anulen el pedido",
+  "ya salió, den de baja",
+  "ya salió, cambien la direccion",
+  "manden a otra dirección, ya salió?",
+  "ya salió, agreguen una coca",
+  "cuanto falta pa que me regresen la lana",
+  "falta mucho? quiero mi lana",
+  "estafadores, ya salió?",
+  "ya salió, esto es un robo",
+  "ya salió, fraude",
+  "ladrones, cuanto falta",
+  "pésimo servicio, ya salió?",
+  "qué asco, ya salió?",
+  "pinche servicio, falta mucho?",
 ];
 
 describe("pregunta de estado: solo mensajes cortos y sin senal de riesgo", () => {
@@ -108,7 +127,7 @@ describe("pregunta de estado: solo mensajes cortos y sin senal de riesgo", () =>
     expect(esPreguntaDeEstadoSegura(frase)).toBe(false);
     expect(textoEstadoEnTomaPendiente(frase, { estado: "salio", canal: "domicilio" })).toBeNull();
   });
-  it.each(["¿Ya salió mi pedido?", "ya esta listo?", "¿Cuánto falta?", "¿falta mucho?", "como va mi pedido?"])("%s si es pregunta de estado", (frase) => {
+  it.each(["¿Ya salió mi pedido?", "ya esta listo?", "¿Cuánto falta?", "¿falta mucho?", "como va mi pedido?", "Ya salió porfa", "ya salio mi orden, gracias", "¡Ya está en camino!", "ya lo mandaron?", "Disculpe, ¿cuánto se tarda?"])("%s si es pregunta de estado", (frase) => {
     expect(esPreguntaDeEstadoSegura(frase)).toBe(true);
   });
   it("mensaje largo no cuenta aunque contenga la frase", () => {
