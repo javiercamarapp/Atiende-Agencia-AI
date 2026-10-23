@@ -78,7 +78,7 @@ export function OperacionTurnoPage({ apiBaseUrl, token, propertyId, nombreSucurs
               <span className="text-sm text-muted-foreground" aria-live="polite">
                 {datos ? `${etiquetaActualizado(sondeo.ultimaActualizacion, ahora)}` : ""}
               </span>
-              <Button type="button" variant="outline" size="sm" className="h-11" loading={sondeo.consultando} onClick={() => sondeo.refrescar()} aria-label="Actualizar el turno">
+              <Button type="button" variant="outline" size="sm" className="h-14" loading={sondeo.consultando} onClick={() => sondeo.refrescar()} aria-label="Actualizar el turno">
                 <RefreshCw />
                 Actualizar
               </Button>
