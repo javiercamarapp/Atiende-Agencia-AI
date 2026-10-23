@@ -279,6 +279,10 @@ const DOBLE_SALSAS_SCHEMA = {
   items: { type: "string", enum: [...DEFAULT_COMPLEMENTS] },
 } as const;
 
+/** PM-R20: tope de consultas extra de `buscar_producto` en una sola llamada (cada una es una lectura barata sin efectos). */
+export const MAX_CONSULTAS_ADICIONALES_BUSCAR_PRODUCTO = 5;
+const MAX_LARGO_CONSULTA_BUSCAR_PRODUCTO = 200;
+
 export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_cliente",
@@ -347,6 +351,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       properties: {
         query: { type: "string", description: "texto a buscar, ej. 'pastor' o 'kilo arrachera'" },
         branch_slug: { type: "string", description: "El branch_slug de la sucursal ya confirmada. Si todavía no se confirma la sucursal, no llames esta herramienta." },
+        consultas_adicionales: { type: "array", maxItems: MAX_CONSULTAS_ADICIONALES_BUSCAR_PRODUCTO, items: { type: "string" }, description: "Opcional: otros productos del MISMO pedido para buscar en esta misma llamada (uno por producto, hasta 5). Con ellas la respuesta trae un resultado por consulta (query incluida) en vez de la lista sola; ahorra una ida al modelo por producto." },
       },
       required: ["query", "branch_slug"],
     },
@@ -1849,7 +1854,8 @@ async function dispatchTool(
       await assertBranchAllowed(repo, ctx, branchSlug);
       const branch = await repo.findBranch(organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
-      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
+      const buscarUna = async (consulta: string) => {
+      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: consulta });
       // QA-PM-R5-voz-01 / reglas-05: el modelo buscaba "arrachera kilo", veia solo "Arrachera — 1 kg" y cotizaba el kilo cuando el cliente pidio tres cuartos ($350 de mas), o decia que
       // "no existe" 1.25 kg. Cada renglon por peso lleva las presentaciones REALES del mismo platillo y la regla para fracciones que no existen.
       const hayPeso = productos.some((p) => pesoDeProductoEnGramos(p.name) !== null);
@@ -1861,8 +1867,8 @@ async function dispatchTool(
           .sort((a, b) => (pesoDeProductoEnGramos(a.name) ?? 0) - (pesoDeProductoEnGramos(b.name) ?? 0))
           .map((c) => `${c.name} ($${Number(c.price)})`);
       // L2b: un peso que no es presentacion exacta (1.25 kg) llega ya armado con presentaciones reales y precio proporcional, para decirlo ANTES del si.
-      const pesoPedido = hayPeso ? pesoPedidoEnConsulta(String(input.query ?? "")) : null;
-      const result = productos.map((p) => {
+      const pesoPedido = hayPeso ? pesoPedidoEnConsulta(consulta) : null;
+      return productos.map((p) => {
         const otras = pesoDeProductoEnGramos(p.name) !== null ? presentaciones(p.name) : [];
         const composicion = pesoPedido !== null && otras.length > 1 ? composicionParaProducto(catalogo, p.name, pesoPedido) : null;
         return {
@@ -1882,7 +1888,17 @@ async function dispatchTool(
             : {}),
         };
       });
-      return { result, raw: result, orderId: null, propertyId: null };
+      };
+      const result = await buscarUna(String(input.query ?? ""));
+      // PM-R20: consultas extra del mismo pedido en UNA llamada (ahorra una vuelta al modelo por producto). Sin ellas la forma del resultado no cambia. Solo lecturas, en orden.
+      const extras = Array.isArray(input.consultas_adicionales)
+        ? input.consultas_adicionales.filter((c): c is string => typeof c === "string" && c.trim() !== "").map((c) => c.slice(0, MAX_LARGO_CONSULTA_BUSCAR_PRODUCTO)).slice(0, MAX_CONSULTAS_ADICIONALES_BUSCAR_PRODUCTO)
+        : [];
+      if (extras.length === 0) return { result, raw: result, orderId: null, propertyId: null };
+      const porConsulta = [{ query: String(input.query ?? ""), productos: result }];
+      for (const consulta of extras) porConsulta.push({ query: consulta, productos: await buscarUna(consulta) });
+      const agrupado = { resultados: porConsulta };
+      return { result: agrupado, raw: agrupado, orderId: null, propertyId: null };
     }
     case "cotizar_pedido": {
       // QA-PM-R5-reglas-11: un complemento inexistente ("chimichurri") se rechaza al COTIZAR, antes de que el cliente vea y confirme un total (antes solo fallaba al crear).
