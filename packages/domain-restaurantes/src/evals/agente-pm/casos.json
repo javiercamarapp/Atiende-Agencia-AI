@@ -215,7 +215,7 @@
      "hora": "en 40 minutos"
     },
     "giros": [
-     "pide dos gringas de pastor y una Coca-Cola"
+     "pide dos órdenes de gringas de pastor y una Coca-Cola"
     ]
    },
    "esperado": {
@@ -229,7 +229,7 @@
      "items": [
       {
        "producto": "Gringa de Pastor",
-       "piezas": 2
+       "piezas": 4
       },
       {
        "producto": "Coca-Cola",
@@ -966,7 +966,7 @@
      "hora": "en 35 minutos"
     },
     "giros": [
-     "pide dos gringas de pastor",
+     "pide dos órdenes de gringas de pastor",
      "las quiere sin cebolla y con mucha piña"
     ]
    },
@@ -981,7 +981,7 @@
      "items": [
       {
        "producto": "Gringa de Pastor",
-       "piezas": 2
+       "piezas": 4
       }
      ],
      "ajustes": [
@@ -1196,7 +1196,7 @@
      "pago": "efectivo"
     },
     "giros": [
-     "pide una mestiza de pastor y una gringa de pastor"
+     "pide una orden de mestiza de pastor y una orden de gringa de pastor"
     ]
    },
    "esperado": {
@@ -1210,11 +1210,11 @@
      "items": [
       {
        "producto": "Mestiza de Pastor",
-       "piezas": 1
+       "piezas": 2
       },
       {
        "producto": "Gringa de Pastor",
-       "piezas": 1
+       "piezas": 2
       }
      ],
      "propina": "no_aplica",
@@ -1339,7 +1339,7 @@
      "pago": "tarjeta"
     },
     "giros": [
-     "pide un alambre de bistec"
+     "pide una orden de alambre de bistec"
     ]
    },
    "esperado": {
@@ -1353,7 +1353,7 @@
      "items": [
       {
        "producto": "Alambre de Bistec",
-       "piezas": 1
+       "piezas": 5
       }
      ],
      "propina": "en_terminal",
@@ -2354,7 +2354,7 @@
      "hora": "en 20 minutos"
     },
     "giros": [
-     "tras escuchar las categorías, pide un suizo de pastor para recoger"
+     "tras escuchar las categorías, pide una orden de suizo de pastor para recoger"
     ]
    },
    "esperado": {
@@ -2368,7 +2368,7 @@
      "items": [
       {
        "producto": "Suizo de Pastor",
-       "piezas": 1
+       "piezas": 5
       }
      ],
      "propina": "no_aplica",
@@ -2411,7 +2411,7 @@
      "hora": "en 30 minutos"
     },
     "giros": [
-     "pide un suizo de pastor",
+     "pide una orden de suizo de pastor",
      "confirma el pedido"
     ]
    },
@@ -2595,7 +2595,7 @@
     "cliente_conocido": null
    },
    "simulador_cliente": {
-    "apertura": "Buenas noches, quiero una gringa de pastor a domicilio.",
+    "apertura": "Buenas noches, quiero una orden de gringa de pastor a domicilio.",
     "datos": {
      "nombre": "Fernanda Loría",
      "telefono": "9995550204",
@@ -2617,7 +2617,7 @@
      "items": [
       {
        "producto": "Gringa de Pastor",
-       "piezas": 1
+       "piezas": 2
       },
       {
        "producto": "Coca-Cola",
@@ -2825,7 +2825,7 @@
      "pago": "efectivo"
     },
     "giros": [
-     "pide dos gringas de bistec"
+     "pide dos órdenes de gringas de bistec"
     ]
    },
    "esperado": {
@@ -2839,7 +2839,7 @@
      "items": [
       {
        "producto": "Gringa de Bistec",
-       "piezas": 2
+       "piezas": 4
       }
      ],
      "propina": "no_aplica",
@@ -2880,7 +2880,7 @@
      "hora": "en 30 minutos"
     },
     "giros": [
-     "tras la negativa, pide dos mestizas de pastor para recoger"
+     "tras la negativa, pide dos órdenes de mestizas de pastor para recoger"
     ]
    },
    "esperado": {
@@ -2894,7 +2894,7 @@
      "items": [
       {
        "producto": "Mestiza de Pastor",
-       "piezas": 2
+       "piezas": 4
       }
      ],
      "propina": "no_aplica",
@@ -2992,7 +2992,7 @@
      "hora": "en 20 minutos"
     },
     "giros": [
-     "pide un alambre de pastor"
+     "pide una orden de alambre de pastor"
     ]
    },
    "esperado": {
@@ -3006,7 +3006,7 @@
      "items": [
       {
        "producto": "Alambre de Pastor",
-       "piezas": 1
+       "piezas": 5
       }
      ],
      "propina": "en_terminal",
@@ -3114,7 +3114,7 @@
     "cliente_conocido": null
    },
    "simulador_cliente": {
-    "apertura": "Buenas tardes. Nombre: Sofía Ake. Tel 9995550213. Domicilio: calle 7 número 215, Vista Alegre, frente a la farmacia. Orden: 2 gringas de bistec y 1 alambre de pastor. Pago: efectivo.",
+    "apertura": "Buenas tardes. Nombre: Sofía Ake. Tel 9995550213. Domicilio: calle 7 número 215, Vista Alegre, frente a la farmacia. Orden: 2 órdenes de gringas de bistec y 1 orden de alambre de pastor. Pago: efectivo.",
     "datos": {
      "nombre": "Sofía Ake",
      "telefono": "9995550213",
@@ -3136,11 +3136,11 @@
      "items": [
       {
        "producto": "Gringa de Bistec",
-       "piezas": 2
+       "piezas": 4
       },
       {
        "producto": "Alambre de Pastor",
-       "piezas": 1
+       "piezas": 5
       }
      ],
      "propina": "no_aplica",
@@ -3452,7 +3452,7 @@
      "pago": "efectivo"
     },
     "giros": [
-     "pide un suizo de pastor",
+     "pide una orden de suizo de pastor",
      "tras la confirmación del agente envía 'sí' y luego 'sí confirmo' y 'ya?'"
     ]
    },
@@ -3467,7 +3467,7 @@
      "items": [
       {
        "producto": "Suizo de Pastor",
-       "piezas": 1
+       "piezas": 5
       }
      ],
      "propina": "no_aplica",
@@ -3507,7 +3507,7 @@
      "hora": "en 30 minutos"
     },
     "giros": [
-     "pide un suizo de pastor",
+     "pide una orden de suizo de pastor",
      "confirma"
     ]
    },
