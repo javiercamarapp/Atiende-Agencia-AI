@@ -141,9 +141,9 @@ describe("GET /licitaciones/:propertyId/tenders -- paginado real (offset/limit)"
     expect(idsVistos.has(ctx.tenderId)).toBe(true);
     expect(paginas).toBe(3); // ceil(6/2)
 
-    // `GET .../tenders/matching` (sin paginar, ver listTenders) sigue viendo TODAS --
-    // paginar el listado del panel nunca debe truncar el matching real.
-    const matchingRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/matching`, authedJson(ctx.staff.owner.token));
+    // `GET .../tenders/matching` ahora esta acotado (paridad3 L-P3-13): por omision solo plazo vigente; con
+    // `incluirVencidas=true` y un `limit` suficiente ve las 6 (ninguna de estas tiene plazo).
+    const matchingRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/matching?incluirVencidas=true`, authedJson(ctx.staff.owner.token));
     const matchingBody = (await matchingRes.json()) as { results: unknown[] };
     expect(matchingBody.results).toHaveLength(TOTAL);
   });

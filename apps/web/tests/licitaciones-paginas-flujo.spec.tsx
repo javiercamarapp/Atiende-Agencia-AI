@@ -34,7 +34,7 @@ function stubFetch(routes: Routes) {
     const handler = routes[key];
     if (!handler) return { ok: false, status: 500, json: async () => ({ error: { message: `sin ruta ${key}` } }) } as unknown as Response;
     const r = handler(init);
-    return { ok: r.ok ?? true, status: r.ok === false ? 500 : 200, json: async () => r.body } as unknown as Response;
+    return { ok: r.ok ?? true, status: r.ok === false ? 500 : 200, headers: new Headers(), json: async () => r.body } as unknown as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
 }
@@ -89,7 +89,7 @@ describe("SeguimientoPage", () => {
   const reminder = { id: "rem-1", tenderId: "t1", submissionDeadline: "2026-10-05T18:00:00Z", daysRemaining: 1, message: "Cierra mañana", createdAt: "2026-10-04T00:00:00Z", acknowledgedAt: null };
   const change = { id: "chg-1", tenderId: "t1", tenderVersion: 2, reason: "Cambió la junta de aclaraciones", changedFieldNames: ["fecha"], affectedSectionKeys: ["tecnica"], createdAt: "2026-10-04T00:00:00Z", acknowledgedAt: null };
   const base: Routes = {
-    "GET /tenders": () => ({ body: { tenders: [tender("t1", "go", null)] } }),
+    "GET /tenders?limit=1&ids=t1": () => ({ body: { tenders: [tender("t1", "go", null)] } }),
     "GET /sources/deadline-reminders": () => ({ body: { reminders: [reminder] } }),
     "GET /tender-change-notifications": () => ({ body: { notifications: [change] } }),
   };
@@ -107,6 +107,19 @@ describe("SeguimientoPage", () => {
     expect(post?.[0]).toBe("https://api.test/licitaciones/prop-1/sources/deadline-reminders/rem-1/ack");
     // Con el filtro "solo pendientes" activo, el recordatorio reconocido sale de la lista.
     expect(rendered!.container.textContent).toContain("No hay recordatorios pendientes.");
+  });
+
+  it("el titulo de un aviso sale de pedir ESA convocatoria por id (aunque la organizacion tenga cientos), nunca de 'todas'", async () => {
+    const lejana = { ...reminder, id: "rem-9", tenderId: "t-251" };
+    stubFetch({
+      "GET /tenders?limit=1&ids=t-251": () => ({ body: { tenders: [tender("t-251", "go", null)] } }),
+      "GET /sources/deadline-reminders": () => ({ body: { reminders: [lejana] } }),
+      "GET /tender-change-notifications": () => ({ body: { notifications: [] } }),
+    });
+    mount(<SeguimientoPage {...CTX} />);
+    await settle();
+    expect(rendered!.container.textContent).toContain("Conv t-251");
+    expect(fetchMock.mock.calls.every(([u]) => String(u) !== "https://api.test/licitaciones/prop-1/tenders")).toBe(true);
   });
 
   it("reconocer un cambio de convocatoria y mostrar el error del servidor si falla", async () => {

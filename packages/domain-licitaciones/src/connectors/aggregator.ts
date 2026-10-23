@@ -48,6 +48,8 @@ export interface AggregatorTenderItem {
   readonly currency?: string | null;
   readonly state?: string | null;
   readonly procedureType?: string | null;
+  /** Numero de procedimiento publicado por el proveedor (huella cruzada, paridad3 L-P3-14). */
+  readonly procedureNumber?: string | null;
 }
 
 export interface AggregatorPageResponse {
@@ -92,6 +94,7 @@ export function mapAggregatorItem(item: AggregatorTenderItem): MapAggregatorItem
       currency: item.currency?.trim() || "MXN",
       state: item.state?.trim() || null,
       procedureTypeRaw: item.procedureType?.trim() || null,
+      ...(item.procedureNumber?.trim() ? { procedureNumber: item.procedureNumber.trim() } : {}),
     },
     droppedReason: null,
   };

@@ -96,15 +96,15 @@ describe("LicitacionesShell — nav móvil", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 16 destinos de un owner (15 + Copiloto), incluidos KYC 69-B, Días inhábiles, Staff, Bitácora, WhatsApp, Seguridad y Privacidad', async () => {
+  it('el botón "Más" abre los 17 destinos de un owner (16 + Copiloto), incluidos Expedientes, KYC 69-B, Días inhábiles, Staff, Bitácora, WhatsApp, Seguridad y Privacidad', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(16);
+    expect(hrefs).toHaveLength(17);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/licitaciones/demo/copiloto", "/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/bitacora", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad", "/licitaciones/demo/privacidad"]),
+      expect.arrayContaining(["/licitaciones/demo/copiloto", "/licitaciones/demo/expedientes", "/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/bitacora", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad", "/licitaciones/demo/privacidad"]),
     );
   });
 
@@ -114,7 +114,7 @@ describe("LicitacionesShell — nav móvil", () => {
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Oportunidades", "Inteligencia", "Organización"]);
     expect(categoriasAbiertas(root)).toEqual(["Oportunidades"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Convocatorias", "Seguimiento", "Radar de renovaciones"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Convocatorias", "Expedientes", "Seguimiento", "Radar de renovaciones"]);
     abrirCategoria(root, "Inteligencia");
     expect(categoriasAbiertas(root)).toEqual(["Inteligencia"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Fuentes y frescura", "KYC proveedores (69-B)", "Perfil de matching"]);
@@ -123,7 +123,7 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Owner Demo", rol: "Propietario" });
   });
 
-  it("un rol sin gestión de staff no ve Staff ni Privacidad (cosmético; el servidor es la barrera) y Más trae los otros 13", async () => {
+  it("un rol sin gestión de staff no ve Staff ni Privacidad (cosmético; el servidor es la barrera) y Más trae los otros 14", async () => {
     installMatchMediaStub();
     installMemoryLocalStorage().setItem(
       "atiende.licitaciones.session",
@@ -143,7 +143,7 @@ describe("LicitacionesShell — nav móvil", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(13);
+    expect(hrefs).toHaveLength(14);
     expect(hrefs).not.toContain("/licitaciones/demo/staff");
     expect(hrefs).not.toContain("/licitaciones/demo/privacidad");
   });

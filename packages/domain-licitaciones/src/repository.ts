@@ -3,6 +3,7 @@
 // Ningún flujo de apps/api toca SQL directamente — todo pasa por aquí.
 import type { AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit-trail.ts";
 import type { CalendarioPlazos } from "./dias-inhabiles.ts";
+import type { TenderPageOptions, TenderSummaryCounts } from "./tender-list-filter.ts";
 import type {
   TenderRecord,
   ProposalRecord,
@@ -20,6 +21,7 @@ import type {
   TenderResolutionRecord,
 } from "./types.ts";
 import type { Approval, ApprovalScope, ChangeDetected, ExpedienteApprovalStage } from "./approval-workflow.ts";
+import type { TenderSourceLink } from "./cross-source-fingerprint.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
 import type { LicitacionesRole } from "./roles.ts";
@@ -298,6 +300,10 @@ export interface TenderSourceIngestResult {
   readonly created: number;
   readonly updated: number;
   readonly tenders: readonly TenderRecord[];
+  /** Registros que NO crearon convocatoria porque otra fuente ya la tenia (misma huella cruzada): se enlazaron como fuente adicional (L-P3-14). Ausente = 0. */
+  readonly linked?: number;
+  /** Campos en los que la fuente enlazada contradice a la convocatoria (registrados, nunca sobrescritos en silencio). Ausente = 0. */
+  readonly conflicts?: number;
   /** Ids de las convocatorias NUEVAS de esta corrida (L-P3-17: la bitacora anota solo el alta, no cada reescritura idempotente). */
   readonly createdIds?: readonly string[];
 }
@@ -794,7 +800,9 @@ export interface LicitacionesRepository {
    * (arriba) se queda INTACTA a propósito -- `matching.ts` la usa para calcular score
    * contra TODAS las convocatorias, nunca solo una página; paginar esa función
    * truncaría el matching real. */
-  listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage>;
+  listTendersPage(organizationId: string, opts: TenderPageOptions): Promise<TenderPage>;
+  /** Conteos de TODA la organizacion (no de una pagina): total, abiertas, por vencer y por estado. Alimenta los KPIs del Resumen. */
+  summarizeTenders(organizationId: string, opts: { readonly nowIso: string; readonly windowDays: number }): Promise<TenderSummaryCounts>;
   /**
    * Crea o actualiza (upsert por `externalId`, ver `TenderUpsertInput`) una
    * convocatoria manual. SIEMPRE fija `source='manual'` server-side (nunca
@@ -1062,6 +1070,8 @@ export interface LicitacionesRepository {
    * conector automatizado puede traer cientos de filas por corrida).
    */
   ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult>;
+  /** Fuentes de una convocatoria: la primaria primero y despues las enlazadas por huella cruzada, con los conflictos de campos que cada una reporta (L-P3-14). Vacio si la convocatoria no es de la organizacion. En una base sin la migracion 037 devuelve solo la primaria. */
+  listTenderSources(organizationId: string, tenderId: string): Promise<readonly TenderSourceLink[]>;
   /** Organizaciones activas del vertical `licitaciones` -- mismo rol que `CitasRepository.listActiveOrganizations()`/`HotelesRepository.listActiveHotelProperties()` para el barrido de un scheduler externo (ver `apps/worker/src/jobs/licitaciones/discover-tenders.ts`, `deadline-reminders.ts`). */
   listActiveOrganizations(): Promise<readonly { id: string }[]>;
   /** Escanea `tender.submissionDeadline` de la organización y persiste un recordatorio nuevo por cada (convocatoria, fecha calendario de vencimiento) que no exista todavía -- idempotente: reescanear dentro de la misma ventana nunca duplica (mismo criterio que `scanRenewalAlerts`/`enqueueUpcomingDeadlineReminders` del repo origen). Excluye convocatorias en un estado terminal (`cancelled`/`lost`/`won`/`submitted`) -- ya no tiene sentido recordarles un plazo. */

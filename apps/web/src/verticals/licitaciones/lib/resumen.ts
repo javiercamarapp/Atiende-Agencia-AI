@@ -3,7 +3,6 @@
 import type { StatusTone } from "@atiende/ui";
 import type { SourceConnectorInfo, SourceHealthState, SourceRun } from "./sources-client.ts";
 import { SOURCE_STATE_LABELS } from "./sources-client.ts";
-import type { TenderSummary } from "./tenders-client.ts";
 
 export const DIA_MS = 24 * 60 * 60 * 1000;
 export const VENTANA_PLAZO_DIAS = 7;
@@ -24,28 +23,8 @@ export function zonaEfectiva(configurada: string | null | undefined): string {
   }
 }
 
-const ESTADOS_CERRADOS: ReadonlySet<string> = new Set(["won", "lost", "cancelled", "no_go"]);
-
-/** Convocatorias sin resolver: no ganadas, perdidas, canceladas ni descartadas (no-go). */
-export function convocatoriasAbiertas(tenders: readonly TenderSummary[]): readonly TenderSummary[] {
-  return tenders.filter((t) => t.status === null || !ESTADOS_CERRADOS.has(t.status));
-}
-
-/** Abiertas cuyo plazo de presentacion cae entre ahora y `VENTANA_PLAZO_DIAS` dias. Una propuesta ya presentada (`submitted`)
- * no cuenta: su plazo ya no pide accion. */
-export function cierranEnVentana(abiertas: readonly TenderSummary[], ahoraMs: number): readonly TenderSummary[] {
-  return abiertas.filter((t) => {
-    if (t.status === "submitted") return false;
-    if (!t.submissionDeadline) return false;
-    const ms = new Date(t.submissionDeadline).getTime() - ahoraMs;
-    return ms >= 0 && ms <= VENTANA_PLAZO_DIAS * DIA_MS;
-  });
-}
-
-/** Propuestas en preparacion = convocatorias con estatus `in_progress`. */
-export function propuestasEnPreparacion(tenders: readonly TenderSummary[]): number {
-  return tenders.filter((t) => t.status === "in_progress").length;
-}
+// Abiertas / por vencer / en preparacion ya NO se calculan aqui sobre una lista: las cuenta el servidor sobre TODA la organizacion
+// (GET .../tenders/summary, tender-list-filter.ts), porque la lista que llega al navegador esta paginada.
 
 function partesEnZona(fecha: Date, zona: string, opciones: Intl.DateTimeFormatOptions): Intl.DateTimeFormatPart[] {
   return new Intl.DateTimeFormat("es-MX", { timeZone: zona, ...opciones }).formatToParts(fecha);

@@ -58,6 +58,15 @@ export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: 
   return (await res.json()) as T;
 }
 
+/** Como `fetchJson`, pero devuelve tambien las cabeceras (paginacion: `X-Total-Count` / `X-Next-Offset`). */
+export async function fetchJsonWithHeaders<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<{ readonly body: T; readonly headers: Headers }> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) {
+    throw new LicitacionesAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
+  }
+  return { body: (await res.json()) as T, headers: res.headers };
+}
+
 export async function postJson<T>(
   fetchImpl: typeof fetch,
   url: string,

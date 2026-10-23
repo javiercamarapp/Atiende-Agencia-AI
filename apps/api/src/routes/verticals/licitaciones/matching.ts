@@ -13,6 +13,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { MatchingEngine, toOrganizationMatchingProfile } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { DEFAULT_TENDERS_LIMIT, MAX_TENDERS_LIMIT, parseOffset, parsePositiveInt, parseTenderListFilter } from "./tender-list-query.ts";
 
 export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -23,12 +24,25 @@ export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   app.use(listBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(detailBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
+  // Acotado (paridad3 L-P3-13): antes puntuaba TODAS las convocatorias en cada GET. Ahora paginado (`limit` por omision 50, techo 200,
+  // `offset`) y, salvo que se pidan `ids` concretos o `incluirVencidas=true`, solo las de plazo vigente (plazo >= ahora). El puntaje
+  // se calcula en vivo sobre la pagina pedida (no se persiste: el perfil puede cambiar).
   app.get(listBase, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
-    const [tenders, profileRecord] = await Promise.all([repo.listTenders(organizationId), repo.findMatchingProfile(organizationId)]);
+    const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_TENDERS_LIMIT, MAX_TENDERS_LIMIT);
+    const offset = parseOffset(c.req.query("offset"));
+    const filter = parseTenderListFilter((name) => c.req.query(name));
+    const incluirVencidas = c.req.query("incluirVencidas") === "true";
+    // "Plazo vigente" = plazo >= ahora: las convocatorias SIN fecha limite (submission_deadline NULL) quedan fuera de este
+    // listado por omision (NULL >= ahora no es verdadero); se ven con `incluirVencidas=true` o con un filtro de plazo propio.
+    const acotarPorPlazo = filter.ids === undefined && !incluirVencidas && filter.deadlineFrom === undefined;
+    const effective = acotarPorPlazo ? { ...filter, deadlineFrom: new Date().toISOString() } : filter;
+    const [page, profileRecord] = await Promise.all([repo.listTendersPage(organizationId, { ...effective, limit, offset }), repo.findMatchingProfile(organizationId)]);
     const profile = toOrganizationMatchingProfile(profileRecord, organizationId);
-    const results = tenders.map((tender) => engine.score(tender, profile));
+    const results = page.items.map((tender) => engine.score(tender, profile));
+    c.header("X-Total-Count", String(page.total));
+    if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
     return c.json({ results });
   });
 

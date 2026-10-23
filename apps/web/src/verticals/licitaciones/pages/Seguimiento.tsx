@@ -9,7 +9,7 @@ import { Link } from "react-router-dom";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge } from "@atiende/ui";
 import { acknowledgeDeadlineReminder, acknowledgeTenderChangeNotification, fetchDeadlineReminders, fetchTenderChangeNotifications } from "../lib/seguimiento-client.ts";
 import type { DeadlineReminder, TenderChangeNotification } from "../lib/seguimiento-client.ts";
-import { fetchTenders } from "../lib/tenders-client.ts";
+import { fetchTendersByIds } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
@@ -30,11 +30,10 @@ export function SeguimientoPage({ apiBaseUrl, token, propertyId, orgSlug, role }
 
   async function load() {
     setLoading(true);
-    const [r, c, t] = await Promise.allSettled([
-      fetchDeadlineReminders(fetch, apiBaseUrl, token, propertyId),
-      fetchTenderChangeNotifications(fetch, apiBaseUrl, token, propertyId),
-      fetchTenders(fetch, apiBaseUrl, token, propertyId),
-    ]);
+    const [r, c] = await Promise.allSettled([fetchDeadlineReminders(fetch, apiBaseUrl, token, propertyId), fetchTenderChangeNotifications(fetch, apiBaseUrl, token, propertyId)]);
+    // Solo las convocatorias a las que apuntan los avisos (nunca "todas"): sin esto, a partir de 50 convocatorias el titulo se perdia en silencio.
+    const ids = [...(r.status === "fulfilled" ? r.value.map((x) => x.tenderId) : []), ...(c.status === "fulfilled" ? c.value.map((x) => x.tenderId) : [])];
+    const t = await Promise.allSettled([ids.length > 0 ? fetchTendersByIds(fetch, apiBaseUrl, token, propertyId, ids) : Promise.resolve([])]).then((x) => x[0]!);
     const next: { reminders?: string; changes?: string } = {};
     if (r.status === "fulfilled") setReminders(r.value);
     else next.reminders = r.reason instanceof Error ? r.reason.message : "No se pudieron cargar los recordatorios.";

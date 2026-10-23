@@ -49,7 +49,15 @@ export interface DataTableProps<T> {
   readonly onOrdenChange?: (orden: DataTableOrden | null) => void;
 
   /** Paginacion en cliente. `false` la desactiva. @default { tamano: 10 } */
-  readonly paginacion?: false | { readonly tamano?: number; readonly pagina?: number; readonly onPaginaChange?: (pagina: number) => void };
+  readonly paginacion?:
+    | false
+    | {
+        readonly tamano?: number;
+        readonly pagina?: number;
+        readonly onPaginaChange?: (pagina: number) => void;
+        /** Paginacion de SERVIDOR: `filas` ya es SOLO la pagina visible y `total` es el conteo real de todo el conjunto. Sin `total`, la tabla pagina `filas` en el cliente. */
+        readonly total?: number;
+      };
 
   readonly seleccionable?: boolean;
   readonly seleccion?: ReadonlySet<string>;
@@ -174,7 +182,9 @@ export function DataTable<T>({
 
   const pag = paginacion === false ? null : paginacion;
   const tamano = Math.max(1, pag?.tamano ?? 10);
-  const totalPaginas = pag ? Math.max(1, Math.ceil(ordenadas.length / tamano)) : 1;
+  const servidor = pag?.total !== undefined;
+  const totalFilas = servidor ? (pag?.total ?? 0) : ordenadas.length;
+  const totalPaginas = pag ? Math.max(1, Math.ceil(totalFilas / tamano)) : 1;
   const [paginaInterna, setPaginaInterna] = React.useState(1);
   const paginaSolicitada = pag?.pagina ?? paginaInterna;
   const pagina = Math.min(Math.max(1, paginaSolicitada), totalPaginas);
@@ -188,8 +198,8 @@ export function DataTable<T>({
     if (pag && paginaInterna > totalPaginas && pag.pagina === undefined) setPaginaInterna(totalPaginas);
   }, [pag, paginaInterna, totalPaginas]);
 
-  const visibles = pag ? ordenadas.slice((pagina - 1) * tamano, pagina * tamano) : ordenadas;
-  const desde = ordenadas.length === 0 ? 0 : (pag ? (pagina - 1) * tamano : 0) + 1;
+  const visibles = pag && !servidor ? ordenadas.slice((pagina - 1) * tamano, pagina * tamano) : ordenadas;
+  const desde = totalFilas === 0 ? 0 : (pag ? (pagina - 1) * tamano : 0) + 1;
   const hasta = (pag ? (pagina - 1) * tamano : 0) + visibles.length;
 
   const estadoEfectivo: DataTableEstado = estado ?? (filas.length === 0 ? "empty" : "ok");
@@ -367,7 +377,7 @@ export function DataTable<T>({
         <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs text-muted-foreground">
           <p role="status" aria-live="polite">
             {seleccionable && seleccion.size > 0 ? `${seleccion.size} seleccionada${seleccion.size === 1 ? "" : "s"} · ` : ""}
-            {ordenadas.length === 0 ? "Sin resultados" : `Mostrando ${desde}–${hasta} de ${ordenadas.length}`}
+            {totalFilas === 0 ? "Sin resultados" : `Mostrando ${desde}–${hasta} de ${totalFilas}`}
           </p>
           {pag && totalPaginas > 1 && (
             <nav aria-label="Paginación" className="flex items-center gap-2">

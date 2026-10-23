@@ -183,6 +183,7 @@ const LicitacionesSeguridadPage = cargaPerezosa(() => import("./verticals/licita
 const LicitacionesWhatsappPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Whatsapp.tsx"), "WhatsappPage");
 const LicitacionesDiasInhabilesPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/DiasInhabiles.tsx"), "DiasInhabilesPage");
 const LicitacionesKyc69bPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Kyc69b.tsx"), "Kyc69bPage");
+const LicitacionesExpedientesPage = cargaPerezosa(() => import("./verticals/licitaciones/pages/Expedientes.tsx"), "ExpedientesPage");
 const RestablecerContrasenaPage = cargaPerezosa(() => import("./shell/cuenta/CuentaEnlaces.tsx"), "RestablecerContrasenaPage");
 const VerificarCorreoPage = cargaPerezosa(() => import("./shell/cuenta/CuentaEnlaces.tsx"), "VerificarCorreoPage");
 const SeguridadCuentaPagina = cargaPerezosa(() => import("./shell/cuenta/SeguridadCuentaPagina.tsx"), "SeguridadCuentaPagina");
@@ -968,6 +969,8 @@ const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
+const LicitacionesExpedientesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesExpedientesPage {...ctx} />);
+
 // L-P3-17: bitácora de escrituras de la organización (solo owner/admin; el servidor y la RLS lo exigen).
 const LicitacionesBitacoraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesBitacoraPage {...ctx} />);
 const LicitacionesDiasInhabilesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesDiasInhabilesPage {...ctx} />);
@@ -1270,6 +1273,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
         <Route path="/licitaciones/:orgSlug/whatsapp" element={<LicitacionesWhatsappRoute />} />
         <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
+        <Route path="/licitaciones/:orgSlug/expedientes" element={<LicitacionesExpedientesRoute />} />
         <Route path="/licitaciones/:orgSlug/dias-inhabiles" element={<LicitacionesDiasInhabilesRoute />} />
         <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
         <Route path="/licitaciones/:orgSlug/copiloto" element={<LicitacionesCopilotoRoute />} />

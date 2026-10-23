@@ -80,6 +80,12 @@ export class ClienteMock {
     }
   }
 
+  /** Como `agregarAEstado`, pero agrega muchos elementos de una vez (p. ej. 249 convocatorias para probar la paginacion). */
+  async agregarVariosAEstado(clave: string, agregarVarios: readonly unknown[]): Promise<void> {
+    const res = await fetch(this.ruta("estado"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clave, agregarVarios }) });
+    if (!res.ok) throw new Error(`mock-api: agregar varios al estado fallo (${res.status})`);
+  }
+
   async reiniciar(): Promise<void> {
     await fetch(this.ruta("reiniciar"), { method: "POST" });
   }
