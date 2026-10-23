@@ -9,7 +9,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InM
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { InMemoryCarteraRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
+import { validarFichaCliente, InMemoryCarteraRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -204,4 +204,11 @@ export function authedJson(token: string, body?: unknown, extraHeaders: Record<s
   headers["content-type"] = "application/json";
   headers["content-length"] = String(new TextEncoder().encode(raw).byteLength);
   return { method: "POST", body: raw, headers };
+}
+
+/** D-P3-01: la DIOT y los reportes toman el RFC del contribuyente de la ficha de cartera (nunca de un CFDI); este helper la siembra en el doble en memoria. */
+export async function sembrarFichaCliente(ctx: DespachosTestContext, rfc: string, regimenes: string[] = ["601"]): Promise<void> {
+  const f = validarFichaCliente({ rfc, razonSocial: "Cliente SA de CV", regimenesFiscales: regimenes, cpFiscal: "06600" });
+  if (!f.ok) throw new Error(`ficha invalida: ${JSON.stringify(f.errores)}`);
+  await ctx.carteraRepo.guardarFicha(ctx.propertyId, f.valor);
 }

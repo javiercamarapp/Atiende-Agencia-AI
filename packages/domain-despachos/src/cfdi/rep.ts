@@ -13,7 +13,8 @@
 // ingerida antes de D-22 (MetodoPago desconocido), se señala en `hallazgos`; nunca se asume. Solo pesos mexicanos: un
 // documento en otra moneda se reporta pero no se suma ni se convierte (no se inventa un tipo de cambio).
 // ═══════════════════════════════════════════════════════════════════════════
-import type { RepDocumentoRelacionado, RepParseResult } from "@atiende/billing";
+import { cfdiCatalogs } from "@atiende/billing";
+import type { RepDocumentoRelacionado, RepPago, RepParseResult } from "@atiende/billing";
 
 export type FlujoRep = "trasladado" | "acreditable";
 export type FuenteIvaRep = "rep" | "prorrateo_factura" | "sin_dato";
@@ -92,6 +93,32 @@ function ivaRetenidoDelRep(d: RepDocumentoRelacionado): number {
   return d.retenciones.filter((r) => r.impuesto === "002").reduce((s, r) => s + (r.importeCentavos ?? 0), 0);
 }
 
+/** c_TipoCadenaPago vigente: solo "01" (SPEI). Cualquier otro valor es un aviso, no un rechazo. */
+const TIPOS_CADENA_PAGO = new Set(["01"]);
+
+/**
+ * D-P3-31: avisos (nunca errores) sobre los campos de pago de un REP: FormaDePagoP contra el catalogo c_FormaPago (y sin "99", que el
+ * complemento de pago no admite), MonedaP con forma ISO 4217, TipoCambioP obligatorio con moneda extranjera y TipoCadPago valido.
+ */
+export function avisosPagoRep(pago: RepPago, indice: number): string[] {
+  const avisos: string[] = [];
+  const n = indice + 1;
+  if (!cfdiCatalogs.esFormaPagoValida(pago.formaDePagoP)) avisos.push(`Pago ${n}: FormaDePagoP '${pago.formaDePagoP}' no esta en el catalogo c_FormaPago.`);
+  else if (pago.formaDePagoP === "99") avisos.push(`Pago ${n}: FormaDePagoP 99 (Por definir) no es valida en un complemento de pago: debe ser la forma real en que se pago.`);
+  if (!/^[A-Z]{3}$/.test(pago.monedaP)) avisos.push(`Pago ${n}: MonedaP '${pago.monedaP}' no tiene forma de codigo ISO 4217 (3 letras mayusculas).`);
+  const extranjera = /^[A-Z]{3}$/.test(pago.monedaP) && pago.monedaP !== "MXN" && pago.monedaP !== "XXX";
+  const tipoCambio = pago.tipoCambioP ?? null;
+  if (extranjera) {
+    if (tipoCambio === null) avisos.push(`Pago ${n}: TipoCambioP es obligatorio cuando MonedaP es ${pago.monedaP} (moneda distinta de MXN).`);
+    else if (!(Number(tipoCambio) > 0)) avisos.push(`Pago ${n}: TipoCambioP '${tipoCambio}' no es un numero mayor que cero.`);
+  } else if (pago.monedaP === "MXN" && tipoCambio !== null && Number(tipoCambio) !== 1) {
+    avisos.push(`Pago ${n}: con MonedaP MXN el TipoCambioP debe ser 1 (viene '${tipoCambio}').`);
+  }
+  const cad = pago.tipoCadPago ?? null;
+  if (cad !== null && !TIPOS_CADENA_PAGO.has(cad)) avisos.push(`Pago ${n}: TipoCadPago '${cad}' no esta en el catalogo c_TipoCadenaPago.`);
+  return avisos;
+}
+
 export function analizarComplementoPago(rep: RepParseResult, rfcContribuyente: string, facturas: ReadonlyMap<string, FacturaLigable>): AnalisisRep {
   const rfc = rfcContribuyente.trim().toUpperCase();
   let flujo: FlujoRep;
@@ -103,6 +130,7 @@ export function analizarComplementoPago(rep: RepParseResult, rfcContribuyente: s
   const advertencias: string[] = [];
 
   rep.pagos.forEach((pago, pagoIndex) => {
+    advertencias.push(...avisosPagoRep(pago, pagoIndex));
     let sumaPagadoMxn = 0;
     let todosMxn = pago.monedaP === "MXN";
     for (const d of pago.documentos) {

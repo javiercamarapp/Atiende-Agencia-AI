@@ -8,7 +8,7 @@ import { hashPassword } from "@atiende/db";
 import type { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
-import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
+import { authedJson, buildDespachosTestContext, sembrarFichaCliente } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
 let ctx: DespachosTestContext;
@@ -165,6 +165,25 @@ describe("GET /v1/despachos/:orgSlug/dashboard", () => {
 });
 
 describe("GET /despachos/:propertyId/reportes/:tipo", () => {
+  beforeEach(async () => {
+    // D-P3-01: el RFC del contribuyente de los reportes sale de la ficha de cartera, no de un CFDI.
+    await sembrarFichaCliente(ctx, "CLI010101CL1");
+  });
+
+  it("D-P3-01: el reporte DIOT excluye la venta del cliente y sin ficha el RFC sale vacio", async () => {
+    const app = buildApp(ctx.deps);
+    await ingestar();
+    await ingestar({ direccion: "emitido", rfcEmisor: "CLI010101CL1", rfcReceptor: "ZZZ010101ZZ1", subtotal: 9000, total: 10440, iva: 1440 });
+    const reporte = (await (await app.request(`/despachos/${ctx.propertyId}/reportes/diot?periodo=2026-08`, authedJson(ctx.staff.auditor.token))).json()) as { secciones: { filas: { operaciones: number; montoNeto: number }[] }[]; contribuyente: { rfc: string | null } };
+    expect(reporte.secciones[0]!.filas).toHaveLength(1);
+    expect(reporte.secciones[0]!.filas[0]).toMatchObject({ operaciones: 1, montoNeto: 1000 });
+    expect(reporte.contribuyente.rfc).toBe("CLI010101CL1");
+
+    const sinFicha = await buildDespachosTestContext(buildApp);
+    const r2 = (await (await buildApp(sinFicha.deps).request(`/despachos/${sinFicha.propertyId}/reportes/diot?periodo=2026-08`, authedJson(sinFicha.staff.auditor.token))).json()) as { contribuyente: { rfc: string | null }; sinDatos: boolean };
+    expect(r2).toMatchObject({ sinDatos: true, contribuyente: { rfc: null } });
+  });
+
   it("DIOT en JSON coincide con GET .../declaraciones/diot/:periodo (misma regla, una sola fuente)", async () => {
     const app = buildApp(ctx.deps);
     await ingestar();
@@ -214,6 +233,21 @@ describe("GET /despachos/:propertyId/reportes/:tipo", () => {
     };
     const obl = r.secciones.find((s) => s.titulo.startsWith("Obligaciones"))!;
     expect(obl.filas.map((f) => f.fechaLimite)).toEqual(["2026-09-17"]);
+  });
+
+  it("D-P3-05: impuestos lee el papel de pagos provisionales guardado; sin papel dice la verdad y no repite el motivo falso", async () => {
+    const app = buildApp(ctx.deps);
+    type R = { sinDatos: boolean; secciones: { titulo: string; sinDatosMotivo: string | null; filas: { impuesto?: string; estado?: string; determinado?: number; aCargo?: number }[] }[] };
+    const url = `/despachos/${ctx.propertyId}/reportes/impuestos?periodo=2026-08`;
+    const sin = (await (await app.request(url, authedJson(ctx.staff.contador.token))).json()) as R;
+    expect(sin.secciones[0]!.sinDatosMotivo).toBe("No se ha generado el papel de pagos provisionales de 2026-08: genéralo y guárdalo en Pagos provisionales para ver aquí el IVA y el ISR del periodo.");
+    expect(JSON.stringify(sin)).not.toContain("no persiste los CFDI emitidos");
+
+    await ctx.pagosRepo.guardarPapel(ctx.propertyId, { ejercicio: 2026, mes: 8, impuesto: "IVA", regimen: "601", baseCentavos: 1_000_000, determinadoCentavos: 160_000, acreditableCentavos: 64_000, aCargoCentavos: 96_000, aFavorCentavos: 0, parametros: {}, advertencias: 0 });
+    await ctx.pagosRepo.guardarPapel(ctx.propertyId, { ejercicio: 2026, mes: 7, impuesto: "IVA", regimen: "601", baseCentavos: 5, determinadoCentavos: 5, acreditableCentavos: 0, aCargoCentavos: 5, aFavorCentavos: 0, parametros: {}, advertencias: 0 });
+    const con = (await (await app.request(url, authedJson(ctx.staff.readonly.token))).json()) as R;
+    expect(con.sinDatos).toBe(false);
+    expect(con.secciones[0]!.filas).toEqual([expect.objectContaining({ impuesto: "IVA", estado: "Borrador", determinado: 1600, aCargo: 960 })]);
   });
 
   it("formato=xlsx entrega un .xlsx real (ZIP OOXML) con content-type y nombre de archivo", async () => {

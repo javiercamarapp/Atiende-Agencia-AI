@@ -2,10 +2,11 @@
 // reales del modelo; lo que no existe se declara "sin datos".
 import { describe, expect, it } from "vitest";
 import { construirReporteBalanza, construirReporteCliente, construirReporteDiot, construirReporteImpuestos, construirReporteNomina } from "../src/reportes/builders.ts";
-import type { EntradaReporte } from "../src/reportes/builders.ts";
+import type { EntradaReporte, PapelesReporte } from "../src/reportes/builders.ts";
+import type { PapelGuardado } from "../src/pagos-provisionales/repository.ts";
 import type { FiscalDeadlineRecord, InvoiceRecord } from "../src/types.ts";
 
-const ENTRADA: EntradaReporte = { periodo: "2026-08", generadoEn: "2026-09-30", contribuyente: { nombre: "Cliente Uno SA de CV" } };
+const ENTRADA: EntradaReporte = { periodo: "2026-08", generadoEn: "2026-09-30", contribuyente: { nombre: "Cliente Uno SA de CV" }, rfcContribuyente: "CLI010101CL1" };
 
 function invoice(id: string, extra: Partial<InvoiceRecord> = {}): InvoiceRecord {
   return {
@@ -42,7 +43,7 @@ function vencimiento(id: string, extra: Partial<FiscalDeadlineRecord> = {}): Fis
 }
 
 describe("reporte DIOT", () => {
-  it("agrega por proveedor con IVA acreditable 16% y totales, RFC del contribuyente de los CFDI", () => {
+  it("agrega por proveedor con IVA acreditable 16% y totales, RFC del contribuyente de la ficha", () => {
     const r = construirReporteDiot(ENTRADA, [invoice("1"), invoice("2", { subtotal: 500, total: 580, iva: 80 })]);
     expect(r.sinDatos).toBe(false);
     expect(r.contribuyente).toEqual({ nombre: "Cliente Uno SA de CV", rfc: "CLI010101CL1" });
@@ -60,26 +61,75 @@ describe("reporte DIOT", () => {
     expect(r.secciones[0]!.sinDatosMotivo).toContain("No hay CFDI");
   });
 
+  it("D-P3-01: excluye emitidos, cancelados, no encontrados e inválidos; el RFC sale de la ficha, no del CFDI", () => {
+    const r = construirReporteDiot(ENTRADA, [
+      invoice("ok", { direccion: "recibido", estadoSat: "vigente" }),
+      invoice("venta", { direccion: "emitido", rfcEmisor: "CLI010101CL1", rfcReceptor: "CLIENTE0001X9" }),
+      invoice("cancelado", { direccion: "recibido", estadoSat: "cancelado" }),
+      invoice("noenc", { direccion: "recibido", estadoSat: "no_encontrado" }),
+      invoice("invalido", { direccion: "recibido", valido: false }),
+    ]);
+    expect(r.secciones[0]!.filas).toHaveLength(1);
+    expect(r.secciones[0]!.filas[0]).toMatchObject({ operaciones: 1, montoNeto: 1000 });
+    expect(r.contribuyente.rfc).toBe("CLI010101CL1");
+  });
+
+  it("D-P3-01: sin ficha (sin RFC) la DIOT queda sin datos con motivo verdadero, aunque haya CFDI", () => {
+    const r = construirReporteDiot({ ...ENTRADA, rfcContribuyente: null }, [invoice("1", { direccion: "recibido" })]);
+    expect(r.sinDatos).toBe(true);
+    expect(r.contribuyente.rfc).toBeNull();
+    expect(r.secciones[0]!.sinDatosMotivo).toContain("ficha");
+  });
+
+  it("D-P3-01: todo emitido -> sin datos y el motivo cuenta lo excluido", () => {
+    const r = construirReporteDiot(ENTRADA, [invoice("v", { direccion: "emitido" })]);
+    expect(r.sinDatos).toBe(true);
+    expect(r.secciones[0]!.sinDatosMotivo).toContain("1 CFDI quedaron fuera");
+  });
+
   it("excluye RFC genérico del público en general", () => {
     const r = construirReporteDiot(ENTRADA, [invoice("1", { rfcEmisor: "XAXX010101000" })]);
     expect(r.secciones[0]!.filas).toHaveLength(0);
   });
 });
 
-describe("reporte de impuestos", () => {
-  it("IVA acreditable solo de CFDI I válidos; IVA trasladado/ISR sin datos; obligaciones del período", () => {
-    const r = construirReporteImpuestos(ENTRADA, [invoice("1"), invoice("2", { valido: false }), invoice("3", { tipo: "E" })], [vencimiento("v2", { tipo: "ISR" }), vencimiento("v1")]);
-    const [iva, faltante, obligaciones] = r.secciones;
-    expect(iva!.filas[0]).toMatchObject({ cfdi: 1, base: 1000, iva: 160 });
-    expect(faltante!.filas).toEqual([]);
-    expect(faltante!.sinDatosMotivo).toContain("no persiste los CFDI emitidos");
+function papel(extra: Partial<PapelGuardado> = {}): PapelGuardado {
+  return { id: "p1", ejercicio: 2026, mes: 8, impuesto: "IVA", regimen: "601", baseCentavos: 1_000_000, determinadoCentavos: 160_000, acreditableCentavos: 64_000, aCargoCentavos: 96_000, aFavorCentavos: 0, parametros: {}, advertencias: 1, estado: "borrador", montoPagadoCentavos: null, fechaPresentacion: null, updatedAt: "2026-09-01T00:00:00Z", ...extra };
+}
+const DISPONIBLE = (papeles: PapelGuardado[]): PapelesReporte => ({ estado: "disponible", papeles });
+
+describe("reporte de impuestos (D-P3-05: lee el papel de pagos provisionales persistido)", () => {
+  it("muestra IVA e ISR del papel guardado del periodo, en pesos, y las obligaciones del periodo", () => {
+    const r = construirReporteImpuestos(
+      ENTRADA,
+      [vencimiento("v2", { tipo: "ISR" }), vencimiento("v1")],
+      DISPONIBLE([papel(), papel({ id: "p2", impuesto: "ISR", baseCentavos: 2_000_000, determinadoCentavos: 600_000, acreditableCentavos: 200_000, aCargoCentavos: 400_000, estado: "presentado", fechaPresentacion: "2026-09-12" }), papel({ id: "p3", mes: 7 })]),
+    );
+    const [papeles, obligaciones] = r.secciones;
+    expect(papeles!.sinDatosMotivo).toBeNull();
+    expect(papeles!.filas).toHaveLength(2); // el papel de julio (mes 7) no entra
+    expect(papeles!.filas[0]).toMatchObject({ impuesto: "ISR", estado: "Presentado", base: 20000, determinado: 6000, aCargo: 4000, presentado: "2026-09-12" });
+    expect(papeles!.filas[1]).toMatchObject({ impuesto: "IVA", estado: "Borrador", base: 10000, determinado: 1600, acreditable: 640, aCargo: 960, aFavor: 0 });
     expect(obligaciones!.filas.map((f) => f.obligacion)).toEqual(["ISR", "IVA"]); // misma fecha límite: orden alfabético
-    expect(r.notas.join(" ")).toContain("1 CFDI tipo Ingreso con hallazgos");
     expect(r.sinDatos).toBe(false);
+    expect(r.contribuyente.rfc).toBe("CLI010101CL1");
+    expect(r.notas.join(" ")).not.toContain("no persiste");
   });
 
-  it("sin nada en el período: todo el reporte es sin datos", () => {
-    const r = construirReporteImpuestos(ENTRADA, [], []);
+  it("sin papel guardado del periodo: sin datos con el motivo verdadero (no dice que el modelo no persiste emitidos)", () => {
+    const r = construirReporteImpuestos(ENTRADA, [], DISPONIBLE([papel({ mes: 7 })]));
+    expect(r.secciones[0]!.filas).toEqual([]);
+    expect(r.secciones[0]!.sinDatosMotivo).toBe("No se ha generado el papel de pagos provisionales de 2026-08: genéralo y guárdalo en Pagos provisionales para ver aquí el IVA y el ISR del periodo.");
+    expect(r.sinDatos).toBe(true);
+  });
+
+  it("base sin la migracion 020: sin datos con motivo honesto de no disponible", () => {
+    const r = construirReporteImpuestos(ENTRADA, [], { estado: "no_disponible", papeles: [] });
+    expect(r.secciones[0]!.sinDatosMotivo).toContain("migración 020");
+  });
+
+  it("sin nada en el período: todo el reporte es sin datos y sin RFC si no hay ficha", () => {
+    const r = construirReporteImpuestos({ ...ENTRADA, rfcContribuyente: null }, [], DISPONIBLE([]));
     expect(r.sinDatos).toBe(true);
     expect(r.contribuyente.rfc).toBeNull();
   });

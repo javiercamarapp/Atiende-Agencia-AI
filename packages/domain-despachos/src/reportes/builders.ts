@@ -5,10 +5,9 @@
 // Qué fuente real respalda cada reporte (y qué NO existe todavía):
 //  - DIOT: `invoice` (CFDI 4.0 tipo "I" reportables) vía `construirDiotDesdeInvoices` — la
 //    misma regla que `GET .../declaraciones/diot/:periodo`.
-//  - Impuestos: IVA acreditable de los CFDI tipo "I" válidos del período (`invoice.iva`,
-//    convención DIOT del repo) + obligaciones del período en `fiscal_deadline`. NO hay CFDI
-//    emitidos por el contribuyente ni ingresos persistidos => IVA trasladado/IVA a cargo e
-//    ISR del período quedan "sin datos".
+//  - Impuestos (D-P3-05): el papel de pagos provisionales persistido del período (D-25: IVA e ISR
+//    por flujo de efectivo) + obligaciones del período en `fiscal_deadline`. Sin papel guardado
+//    => "sin datos" con el motivo verdadero (no se ha generado el papel de AAAA-MM).
 //  - Nómina: CFDI tipo "N" ingeridos en el período (`invoice`). La nómina procesada
 //    (ISR retenido/IMSS por empleado) no se persiste => ese desglose queda "sin datos".
 //  - Balanza: con el libro contable (D-24, migración 020) sale de las pólizas registradas; sin libro
@@ -16,6 +15,7 @@
 //    (dato real) como insumo, rotulado como tal, nunca como balanza.
 import { construirDiotDesdeInvoices } from "../declaraciones/diot-desde-invoices.ts";
 import type { LineaBalanzaLibro } from "../libro/types.ts";
+import type { PapelGuardado } from "../pagos-provisionales/repository.ts";
 import type { FiscalDeadlineRecord, InvoiceRecord } from "../types.ts";
 import { ETIQUETA_TIPO_REPORTE } from "./types.ts";
 import type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte, TipoReporteCliente } from "./types.ts";
@@ -24,6 +24,8 @@ export interface EntradaReporte {
   readonly periodo: string; // "YYYY-MM"
   readonly generadoEn: string; // "YYYY-MM-DD"
   readonly contribuyente: { readonly nombre: string };
+  /** RFC de la ficha de cartera del cliente (D-P3-01): es el UNICO origen del RFC del contribuyente; `null`/ausente = sin ficha. */
+  readonly rfcContribuyente?: string | null;
 }
 
 const r2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -34,9 +36,9 @@ const TIPO_OPERACION_DIOT: Readonly<Record<string, string>> = {
   "85": "85 - Otros",
 };
 
-/** RFC del contribuyente según los CFDI ingeridos (receptor del primero); `null` sin CFDI. */
-function rfcDesdeInvoices(invoices: readonly InvoiceRecord[]): string | null {
-  return invoices[0]?.rfcReceptor ?? null;
+/** RFC del contribuyente: el de la ficha de cartera. Nunca se deriva de un CFDI (el receptor del primero puede ser un empleado o un tercero). */
+function rfcDeFicha(entrada: EntradaReporte): string | null {
+  return entrada.rfcContribuyente ?? null;
 }
 
 function seccionSinDatos(titulo: string, columnas: readonly ColumnaReporte[], motivo: string): SeccionReporte {
@@ -61,8 +63,14 @@ const COLUMNAS_SIN_DATOS_UNICA: readonly ColumnaReporte[] = [{ clave: "concepto"
 // ---------------------------------------------------------------------------
 // DIOT
 // ---------------------------------------------------------------------------
+function diotSinDatosMotivo(excluidos: number, rfc: string | null): string {
+  if (rfc === null) return "El cliente no tiene ficha de cartera con RFC: sin el RFC del contribuyente no se puede armar la DIOT. Captura la ficha en Cartera.";
+  if (excluidos > 0) return `No hay compras (CFDI recibidos, vigentes y válidos) reportables en el período; ${excluidos} CFDI quedaron fuera por ser emitidos por el cliente, cancelados o con hallazgos de validación.`;
+  return "No hay CFDI 4.0 tipo Ingreso recibidos y reportables ingeridos en el período para este contribuyente.";
+}
+
 export function construirReporteDiot(entrada: EntradaReporte, invoicesDelPeriodo: readonly InvoiceRecord[]): ReporteCliente {
-  const diot = construirDiotDesdeInvoices(invoicesDelPeriodo, entrada.periodo);
+  const diot = construirDiotDesdeInvoices(invoicesDelPeriodo, entrada.periodo, rfcDeFicha(entrada));
   const columnas: readonly ColumnaReporte[] = [
     { clave: "rfc", titulo: "RFC del tercero", tipo: "texto" },
     { clave: "nombre", titulo: "Nombre o razón social", tipo: "texto" },
@@ -76,7 +84,7 @@ export function construirReporteDiot(entrada: EntradaReporte, invoicesDelPeriodo
 
   const seccion: SeccionReporte =
     diot.registros.length === 0
-      ? seccionSinDatos("Operaciones con terceros", columnas, "No hay CFDI 4.0 tipo Ingreso reportables ingeridos en el período para este contribuyente.")
+      ? seccionSinDatos("Operaciones con terceros", columnas, diotSinDatosMotivo(diot.excluidos, rfcDeFicha(entrada)))
       : {
           titulo: "Operaciones con terceros",
           columnas,
@@ -103,50 +111,75 @@ export function construirReporteDiot(entrada: EntradaReporte, invoicesDelPeriodo
           sinDatosMotivo: null,
         };
 
-  return ensamblar("diot", entrada, diot.rfcContribuyente ?? rfcDesdeInvoices(invoicesDelPeriodo), [seccion], [
+  return ensamblar("diot", entrada, rfcDeFicha(entrada), [seccion], [
     "Reporte informativo para el cliente, calculado desde los CFDI 4.0 ya ingeridos; no es el archivo de carga por lotes del SAT ni sustituye la presentación de la DIOT.",
     "El tipo de operación es 85 (Otros) salvo que el proveedor tenga una naturaleza capturada explícitamente (03 servicios profesionales, 06 arrendamiento).",
     "Los RFC genéricos (XAXX010101000, XEXX010101000) se excluyen, conforme a la regla de DIOT.",
+    "Solo cuentan las compras del cliente: los CFDI que el propio cliente emitió (sus ventas), los cancelados o no encontrados ante el SAT y los que no pasan la validación no se reportan como proveedores.",
+    ...(diot.excluidos > 0 && diot.registros.length > 0 ? [`${diot.excluidos} CFDI se dejaron fuera por no ser compras vigentes y válidas del cliente.`] : []),
   ]);
 }
 
 // ---------------------------------------------------------------------------
 // Impuestos (IVA / ISR) y obligaciones fiscales
 // ---------------------------------------------------------------------------
-export function construirReporteImpuestos(entrada: EntradaReporte, invoicesDelPeriodo: readonly InvoiceRecord[], vencimientosDelPeriodo: readonly FiscalDeadlineRecord[]): ReporteCliente {
-  const ingreso = invoicesDelPeriodo.filter((i) => i.tipo === "I");
-  const validos = ingreso.filter((i) => i.valido);
-  const excluidos = ingreso.length - validos.length;
+/** Papeles de pagos provisionales YA persistidos (D-25) del periodo del reporte. `no_disponible` = la base aun no tiene la migracion 020. */
+export interface PapelesReporte {
+  readonly estado: "disponible" | "no_disponible";
+  readonly papeles: readonly PapelGuardado[];
+}
 
-  const colIva: readonly ColumnaReporte[] = [
-    { clave: "concepto", titulo: "Concepto", tipo: "texto" },
-    { clave: "cfdi", titulo: "CFDI", tipo: "entero" },
-    { clave: "base", titulo: "Base (subtotal)", tipo: "moneda" },
-    { clave: "iva", titulo: "IVA", tipo: "moneda" },
+const pesos = (centavos: number): number => r2(centavos / 100);
+
+/**
+ * D-P3-05: el reporte de impuestos sale del papel de pagos provisionales PERSISTIDO del periodo (D-25), no de una suma de CFDI.
+ * Antes decia "el modelo no persiste los CFDI emitidos" (falso desde D-22) y mostraba el IVA de los CFDI tipo I como acreditable
+ * sin distinguir emitidos de recibidos. Sin papel guardado: "sin datos" con el motivo verdadero.
+ */
+export function construirReporteImpuestos(entrada: EntradaReporte, vencimientosDelPeriodo: readonly FiscalDeadlineRecord[], papeles: PapelesReporte): ReporteCliente {
+  const [ejercicioTexto, mesTexto] = entrada.periodo.split("-");
+  const ejercicio = Number(ejercicioTexto);
+  const mes = Number(mesTexto);
+  const delPeriodo = papeles.papeles.filter((p) => p.ejercicio === ejercicio && p.mes === mes);
+
+  const colPapel: readonly ColumnaReporte[] = [
+    { clave: "impuesto", titulo: "Impuesto", tipo: "texto" },
+    { clave: "estado", titulo: "Estado del papel", tipo: "texto" },
+    { clave: "regimen", titulo: "Régimen", tipo: "texto" },
+    { clave: "base", titulo: "Base", tipo: "moneda" },
+    { clave: "determinado", titulo: "Determinado", tipo: "moneda" },
+    { clave: "acreditable", titulo: "Acreditable y retenciones", tipo: "moneda" },
+    { clave: "aCargo", titulo: "A cargo", tipo: "moneda" },
+    { clave: "aFavor", titulo: "A favor", tipo: "moneda" },
+    { clave: "presentado", titulo: "Presentado el", tipo: "texto" },
   ];
-  const seccionIva: SeccionReporte =
-    validos.length === 0
-      ? seccionSinDatos("IVA acreditable de CFDI 4.0 tipo Ingreso", colIva, "No hay CFDI 4.0 tipo Ingreso válidos ingeridos en el período.")
+  const tituloPapel = "Pagos provisionales de ISR e IVA (papel de trabajo)";
+  const motivoSinPapel =
+    papeles.estado === "no_disponible"
+      ? "Los pagos provisionales todavía no están disponibles en esta base de datos (falta aplicar la migración 020): no hay papel que mostrar."
+      : `No se ha generado el papel de pagos provisionales de ${entrada.periodo}: genéralo y guárdalo en Pagos provisionales para ver aquí el IVA y el ISR del periodo.`;
+  const seccionPapel: SeccionReporte =
+    delPeriodo.length === 0
+      ? seccionSinDatos(tituloPapel, colPapel, motivoSinPapel)
       : {
-          titulo: "IVA acreditable de CFDI 4.0 tipo Ingreso",
-          columnas: colIva,
-          filas: [
-            {
-              concepto: "IVA de CFDI válidos del período",
-              cfdi: validos.length,
-              base: r2(validos.reduce((a, i) => a + i.subtotal, 0)),
-              iva: r2(validos.reduce((a, i) => a + (i.iva ?? 0), 0)),
-            },
-          ],
+          titulo: tituloPapel,
+          columnas: colPapel,
+          filas: [...delPeriodo]
+            .sort((a, b) => a.impuesto.localeCompare(b.impuesto, "es"))
+            .map((p) => ({
+              impuesto: p.impuesto,
+              estado: p.estado === "presentado" ? "Presentado" : "Borrador",
+              regimen: p.regimen,
+              base: pesos(p.baseCentavos),
+              determinado: pesos(p.determinadoCentavos),
+              acreditable: pesos(p.acreditableCentavos),
+              aCargo: pesos(p.aCargoCentavos),
+              aFavor: pesos(p.aFavorCentavos),
+              presentado: p.fechaPresentacion,
+            })),
           totales: null,
           sinDatosMotivo: null,
         };
-
-  const seccionFaltante = seccionSinDatos(
-    "IVA trasladado, IVA a cargo/a favor e ISR del período",
-    COLUMNAS_SIN_DATOS_UNICA,
-    "El modelo no persiste los CFDI emitidos por el contribuyente ni sus ingresos del período; el IVA trasladado, el saldo de IVA y el ISR (provisional) no pueden calcularse sin inventar cifras. Use la calculadora de Declaraciones con los ingresos capturados.",
-  );
 
   const colObl: readonly ColumnaReporte[] = [
     { clave: "obligacion", titulo: "Obligación", tipo: "texto" },
@@ -169,11 +202,10 @@ export function construirReporteImpuestos(entrada: EntradaReporte, invoicesDelPe
         };
 
   const notas = [
-    "El IVA mostrado sigue la convención de la DIOT del sistema (IVA de los CFDI de ingreso ingeridos, tratado como acreditable). No es una declaración de IVA ni determina el saldo a cargo o a favor.",
-    "Los vencimientos corresponden al período fiscal indicado y se presentan hasta el día 17 del mes siguiente.",
+    "Las cifras de IVA e ISR salen del papel de pagos provisionales guardado para el período (flujo de efectivo; ver la hoja del papel para sus exclusiones y advertencias). Un papel en Borrador no es una declaración presentada.",
+    "Los vencimientos corresponden al período fiscal indicado; consulta la fecha límite de cada obligación en la tabla.",
   ];
-  if (excluidos > 0) notas.push(`${excluidos} CFDI tipo Ingreso con hallazgos de validación se excluyeron del IVA acreditable.`);
-  return ensamblar("impuestos", entrada, rfcDesdeInvoices(invoicesDelPeriodo), [seccionIva, seccionFaltante, seccionObl], notas);
+  return ensamblar("impuestos", entrada, rfcDeFicha(entrada), [seccionPapel, seccionObl], notas);
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +240,7 @@ export function construirReporteNomina(entrada: EntradaReporte, invoicesDelPerio
     "La nómina procesada (percepciones, ISR retenido, cuotas IMSS/INFONAVIT por empleado) no se persiste en el modelo; solo se conservan los recibos CFDI ingeridos. Use la calculadora de Nómina para un cálculo puntual.",
   );
 
-  return ensamblar("nomina", entrada, rfcDesdeInvoices(invoicesDelPeriodo), [seccionCfdi, seccionDesglose], [
+  return ensamblar("nomina", entrada, rfcDeFicha(entrada), [seccionCfdi, seccionDesglose], [
     "El total del recibo es el importe del CFDI tipo N ingerido; no equivale al sueldo bruto ni al neto sin el desglose de percepciones y deducciones del complemento de nómina 1.2.",
   ]);
 }
@@ -294,7 +326,7 @@ export function construirReporteBalanza(entrada: EntradaReporte, invoicesDelPeri
           sinDatosMotivo: null,
         };
 
-  return ensamblar("balanza", entrada, rfcDesdeInvoices(invoicesDelPeriodo), [seccionBalanza, seccionResumen], [
+  return ensamblar("balanza", entrada, rfcDeFicha(entrada), [seccionBalanza, seccionResumen], [
     "La clasificación por categoría proviene de la clasificación contable guardada en cada CFDI; los CFDI 'Sin clasificar' aún no tienen cuenta asignada.",
     "Mezcla CFDI de todos los tipos (I, E, T, P, N) de la fecha de emisión del período; el resumen no netea notas de crédito.",
   ]);
@@ -303,13 +335,13 @@ export function construirReporteBalanza(entrada: EntradaReporte, invoicesDelPeri
 export function construirReporteCliente(
   tipo: TipoReporteCliente,
   entrada: EntradaReporte,
-  fuentes: { readonly invoicesDelPeriodo: readonly InvoiceRecord[]; readonly vencimientosDelPeriodo: readonly FiscalDeadlineRecord[]; readonly balanzaLibro?: readonly LineaBalanzaLibro[] },
+  fuentes: { readonly invoicesDelPeriodo: readonly InvoiceRecord[]; readonly vencimientosDelPeriodo: readonly FiscalDeadlineRecord[]; readonly balanzaLibro?: readonly LineaBalanzaLibro[]; readonly papelesProvisionales?: PapelesReporte },
 ): ReporteCliente {
   switch (tipo) {
     case "diot":
       return construirReporteDiot(entrada, fuentes.invoicesDelPeriodo);
     case "impuestos":
-      return construirReporteImpuestos(entrada, fuentes.invoicesDelPeriodo, fuentes.vencimientosDelPeriodo);
+      return construirReporteImpuestos(entrada, fuentes.vencimientosDelPeriodo, fuentes.papelesProvisionales ?? { estado: "no_disponible", papeles: [] });
     case "nomina":
       return construirReporteNomina(entrada, fuentes.invoicesDelPeriodo);
     case "balanza":

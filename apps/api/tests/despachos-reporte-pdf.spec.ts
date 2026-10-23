@@ -3,6 +3,7 @@
 import { inflateSync } from "node:zlib";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
+import { construirReporteImpuestos } from "@atiende/domain-despachos";
 import type { ReporteCliente } from "@atiende/domain-despachos";
 import { formatearCelda, reporteAPdf } from "../src/routes/verticals/despachos/reporte-pdf.ts";
 
@@ -109,7 +110,18 @@ describe("reporteAPdf", () => {
     const vacio: ReporteCliente = { ...BASE, contribuyente: { nombre: "Cliente", rfc: null }, sinDatos: true, secciones: [BASE.secciones[1]!] };
     const texto = textoDelPdf(await reporteAPdf(vacio));
     expect(texto).toContain("Sin datos para el período indicado.");
-    expect(texto).toContain("RFC: sin datos (sin CFDI ingeridos)");
+    expect(texto).toContain("RFC: sin datos (sin ficha de cartera)");
+  });
+
+  it("D-P3-05: el reporte de impuestos sin papel guardado imprime el motivo verdadero y el papel guardado imprime sus cifras", async () => {
+    const entrada = { periodo: "2026-08", generadoEn: "2026-09-30", contribuyente: { nombre: "Cliente" }, rfcContribuyente: "CLI010101CL1" };
+    const sin = textoDelPdf(await reporteAPdf(construirReporteImpuestos(entrada, [], { estado: "disponible", papeles: [] })));
+    expect(sin).toContain("No se ha generado el papel de pagos provisionales de 2026-08");
+    expect(sin).not.toContain("no persiste");
+    const papel = { id: "p", ejercicio: 2026, mes: 8, impuesto: "IVA" as const, regimen: "601", baseCentavos: 1_000_000, determinadoCentavos: 160_000, acreditableCentavos: 64_000, aCargoCentavos: 96_000, aFavorCentavos: 0, parametros: {}, advertencias: 0, estado: "borrador" as const, montoPagadoCentavos: null, fechaPresentacion: null, updatedAt: "2026-09-01T00:00:00Z" };
+    const con = textoDelPdf(await reporteAPdf(construirReporteImpuestos(entrada, [], { estado: "disponible", papeles: [papel] })));
+    expect(con).toContain("Borrador");
+    expect(con).toContain("RFC: CLI010101CL1");
   });
 
   it("una palabra más ancha que la celda se corta en vez de salirse de la página", async () => {
