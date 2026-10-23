@@ -63,6 +63,7 @@ test.describe("restaurantes clientes por nivel", () => {
     await expect(page.getByTestId("cartera-kpis")).toContainText("Cliente más frecuente");
     await expect(page.getByTestId("cartera-kpis")).toContainText("********0101");
     await expect(page.getByRole("link", { name: /Marisol Pech/ })).toBeVisible();
+    await expect(page.getByTestId("clientes-total")).toContainText("en total");
 
     await page.getByRole("button", { name: "Importar clientes" }).click();
     const d = dialogo(page, "Importar clientes");
