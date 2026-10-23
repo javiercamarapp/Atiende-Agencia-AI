@@ -544,15 +544,24 @@ export const PISO_TOPE_LLAMADA_LLM_MS = 500;
  * proveedor de las rondas 15-18; con error el acierto es ~15 %, sin error ~71 %). El intento #610 (repetir la MISMA llamada al MISMO modelo) se revirtio porque solo
  * salvaba el 14 % de los turnos: un modelo atascado sigue atascado. Aqui el reintento va a OTRO modelo de la escalera ya aprobada (`modeloAlternoParaTope`).
  * Con al menos `RESPALDO_LLM_RESTANTE_MIN_MS` de presupuesto, el primer intento se corta antes (nunca antes de `RESPALDO_LLM_PRIMER_TOPE_MIN_MS`, dejando
- * `RESPALDO_LLM_RESERVA_MS` al respaldo, ~p95 de una llamada normal) y se repite UNA vez la misma peticion contra el modelo alterno. El reloj del turno (18 s) no cambia.
+ * `RESPALDO_LLM_RESERVA_MS` al respaldo, ~p95 de una llamada normal) y se repite la misma peticion contra el modelo alterno (PM-R19b: tambien en vueltas posteriores con 10 a 16 s restantes; sigue siendo UN respaldo por turno). El reloj del turno (18 s) no cambia.
  */
 export const RESPALDO_LLM_RESTANTE_MIN_MS = 16_000;
 export const RESPALDO_LLM_PRIMER_TOPE_MIN_MS = 9_000;
 export const RESPALDO_LLM_RESERVA_MS = 7_000;
+/**
+ * PM-R19b: la ronda 19 mostro que los 93 `tope_llamada` SIN respaldo cayeron todos en la 2.a vuelta o despues (ninguno en la 1.a): tras una o mas llamadas previas
+ * (~3.5 s cada una) quedan < 16 s y el respaldo de arriba no actuaba. Con 10 a 16 s restantes se activa un plan TARDIO: primer intento hasta `max(6 s, restante - 6 s)`
+ * (6 s ~ p95 de una llamada normal, 5.8 s medido) dejando al respaldo al menos 4 s (mediana de una llamada, 3.4 s). Con < 10 s ya no hay tiempo util para un respaldo.
+ */
+export const RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS = 10_000;
+export const RESPALDO_LLM_PRIMER_TOPE_MIN_TARDIO_MS = 6_000;
+export const RESPALDO_LLM_RESERVA_TARDIA_MS = 6_000;
 
 /** Reparte el presupuesto restante del turno entre el primer intento y el respaldo. Sin presupuesto suficiente: un solo intento con todo lo que queda. */
 export function planTopeLlamadaLlm(restanteMs: number): { readonly primerTopeMs: number; readonly respalda: boolean } {
-  if (restanteMs < RESPALDO_LLM_RESTANTE_MIN_MS) return { primerTopeMs: Math.max(0, restanteMs), respalda: false };
+  if (restanteMs < RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS) return { primerTopeMs: Math.max(0, restanteMs), respalda: false };
+  if (restanteMs < RESPALDO_LLM_RESTANTE_MIN_MS) return { primerTopeMs: Math.max(RESPALDO_LLM_PRIMER_TOPE_MIN_TARDIO_MS, restanteMs - RESPALDO_LLM_RESERVA_TARDIA_MS), respalda: true };
   return { primerTopeMs: Math.max(RESPALDO_LLM_PRIMER_TOPE_MIN_MS, restanteMs - RESPALDO_LLM_RESERVA_MS), respalda: true };
 }
 /** PM-R14: rechazos de regla de `crear_pedido` seguidos en un turno tras los cuales se corta el bucle del modelo. */
@@ -998,20 +1007,24 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // PM-R19: con presupuesto de sobra el primer intento tiene un tope menor y, si lo agota, se repite UNA vez la MISMA peticion contra el modelo alterno de la escalera
           // aprobada. Seguro: la llamada al modelo no tiene efectos laterales y las herramientas corren ENTRE llamadas (abajo), nunca dentro; el respaldo no las repite
           // (`crear_pedido` corre una sola vez y sigue siendo idempotente por el estado del flujo). Solo el rol por defecto: la escalera del rol escalado es otra.
-          const plan = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
-          if (esRolPorDefecto && modeloRespaldo !== null) {
-            completion = await completarConTope(deadline, llamarAlModelo(modeloRespaldo));
-          } else {
+          let huboRespaldoEnVuelta = false;
+          for (;;) {
+            const modeloActual = esRolPorDefecto && modeloRespaldo !== null ? modeloRespaldo : modeloElegido;
+            // Un solo respaldo por turno: con el alterno ya en uso (o un modelo no economico) la llamada lleva todo el presupuesto restante. Con 10 a 16 s restantes el segundo
+            // respaldo no cabria de todos modos (el primer tope siempre deja <= 7 s al siguiente).
+            const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID) : null;
+            const plan = siguiente !== null ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
             try {
-              completion = await completarConTope(plan.respalda ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo(modeloElegido));
-            } catch (errPrimerIntento) {
+              completion = await completarConTope(plan.respalda ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo(modeloActual));
+              if (huboRespaldoEnVuelta) tele.reintentoLlmRecuperado = true;
+              break;
+            } catch (errIntento) {
               // Solo el tope de tiempo se respalda aqui; un error rapido del proveedor (5xx, 429...) ya lo maneja la escalera del gateway.
-              if (!plan.respalda || !(errPrimerIntento instanceof TopeLlamadaLlmError)) throw errPrimerIntento;
-              modeloRespaldo = modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID);
+              if (siguiente === null || !plan.respalda || !(errIntento instanceof TopeLlamadaLlmError)) throw errIntento;
+              modeloRespaldo = siguiente;
+              huboRespaldoEnVuelta = true;
               tele.reintentosLlm += 1;
-              tele.modeloRespaldoLlm = modeloRespaldo;
-              completion = await completarConTope(deadline, llamarAlModelo(modeloRespaldo));
-              tele.reintentoLlmRecuperado = true;
+              tele.modeloRespaldoLlm = siguiente;
             }
           }
         } catch (errLlm) {
