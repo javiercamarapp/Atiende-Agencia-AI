@@ -4,9 +4,12 @@
 // solo aporta el copy y la imagen de restaurantes. `POST /auth/login`
 // (email+password) sigue existiendo en el backend (lo usan `accept-invite` y los
 // tests), pero esta pantalla nunca lo expone.
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { VerticalLogin } from "../../../components/VerticalLogin.tsx";
 import { useDocumentTitle } from "../../../shell/use-document-title.ts";
+import { consultarDisponibilidadLoginCelular } from "../lib/login-telefono-client.ts";
 
 export interface LoginPageProps {
   readonly apiBaseUrl: string;
@@ -18,6 +21,17 @@ export interface LoginPageProps {
 
 export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
   useDocumentTitle("Restaurantes");
+  // El acceso de repartidores por celular solo se ofrece cuando el servidor lo tiene encendido (bandera + plantilla aprobada); si no, no hay enlace.
+  const [conCelular, setConCelular] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    void consultarDisponibilidadLoginCelular(fetch, apiBaseUrl).then((ok) => {
+      if (vivo) setConCelular(ok);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl]);
   return (
     <VerticalLogin
       apiBaseUrl={apiBaseUrl}
@@ -25,6 +39,16 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
       nombre="restaurantes"
       descripcion="El panel de operación de tu restaurante."
       placeholderCorreo="tu@restaurante.com"
+      pie={
+        conCelular ? (
+          <>
+            ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>{" "}
+            <Link to="/restaurantes/acceso-repartidor" className="font-semibold text-foreground underline underline-offset-2">
+              Soy repartidor: entrar con mi celular
+            </Link>
+          </>
+        ) : undefined
+      }
       hero={{
         imagen: "images/login-hero-restaurantes.jpg",
         alt: "Taquero cortando trompo al pastor de noche.",

@@ -25,7 +25,7 @@ export interface MisEntregasProps {
   readonly token: string;
   readonly propertyId: string;
   readonly fetchImpl?: typeof fetch;
-  /** Quien esta en sesion (correo): separa la cola de «Entregado» pendiente entre choferes que comparten celular. */
+  /** Identidad estable de quien esta en sesion (ver `identidadDeSesion`; no asume correo): separa la cola de «Entregado» pendiente entre choferes que comparten celular. */
   readonly identidad: string;
   /** Almacen de la cola sin senal; `undefined` = el del navegador, `null` = sin almacenamiento. */
   readonly almacen?: AlmacenLocal | null;

@@ -23,7 +23,7 @@
 import type { CircuitBreaker } from "@atiende/agent-core/gateway";
 import { WhatsAppInvalidPayloadError, WhatsAppSendError } from "./errors.ts";
 import type { MessagingOutboxItem, MessagingOutboxPort } from "./outbox-port.ts";
-import { DOCUMENT_FILENAME_PATTERN, esUrlHttpsPublica, MAX_TEMPLATE_PARAM_LENGTH, MAX_TEMPLATE_PARAMS, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
+import { DOCUMENT_FILENAME_PATTERN, esUrlHttpsPublica, MAX_TEMPLATE_PARAM_LENGTH, MAX_TEMPLATE_PARAMS, TEMPLATE_CODE_BUTTON_PATTERN, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
 import type { OutboundButton, OutboundDocument, OutboundTemplate, WhatsAppGraphClient } from "./types.ts";
 
 /** Tope de intentos antes de `dead` — nunca reintento infinito. */
@@ -58,6 +58,8 @@ interface ValidWhatsAppOutboxPayload {
   readonly solicitar_ubicacion: boolean;
   /** Documento adjunto por enlace publico (menu en PDF): `body` es su pie. Exclusivo (no se combina con botones, plantilla ni ubicacion). */
   readonly documento?: OutboundDocument;
+  /** `true` = solo puede salir como plantilla aprobada (codigo de acceso): nunca cae a texto libre. Exige `template`. */
+  readonly solo_plantilla: boolean;
 }
 
 /** Valida el `documento` del payload. Una forma invalida es un error de ENCOLADO (el mensaje va a `dead`, no se manda nada a Meta). */
@@ -89,7 +91,10 @@ function parseTemplate(raw: unknown): OutboundTemplate {
       throw new WhatsAppInvalidPayloadError(`payload de messaging_outbox con un parametro de plantilla invalido (1-${MAX_TEMPLATE_PARAM_LENGTH} caracteres, sin saltos de linea ni tabuladores)`);
     }
   }
-  return { name: t.name, language: t.language, params: t.params as readonly string[] };
+  if (t.codigoBoton !== undefined && (typeof t.codigoBoton !== "string" || !TEMPLATE_CODE_BUTTON_PATTERN.test(t.codigoBoton))) {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "template.codigoBoton" invalido (1-15 caracteres alfanumericos)');
+  }
+  return { name: t.name, language: t.language, params: t.params as readonly string[], ...(typeof t.codigoBoton === "string" ? { codigoBoton: t.codigoBoton } : {}) };
 }
 
 function isValidButton(b: unknown): boolean {
@@ -121,11 +126,17 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
   if (p.solicitar_ubicacion !== undefined && typeof p.solicitar_ubicacion !== "boolean") {
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "solicitar_ubicacion" invalido (debe ser booleano)');
   }
+  if (p.solo_plantilla !== undefined && typeof p.solo_plantilla !== "boolean") {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "solo_plantilla" invalido (debe ser booleano)');
+  }
+  if (p.solo_plantilla === true && (!template || (Array.isArray(p.buttons) && p.buttons.length > 0) || p.solicitar_ubicacion === true || (p.documento !== undefined && p.documento !== null))) {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "solo_plantilla" exige una plantilla y nada mas (sin botones, ubicacion ni documento)');
+  }
   const documento = p.documento === undefined || p.documento === null ? undefined : parseDocumento(p.documento);
   if (documento && ((Array.isArray(p.buttons) && p.buttons.length > 0) || template || p.solicitar_ubicacion === true)) {
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "documento" no se combina con botones, plantilla ni solicitar_ubicacion');
   }
-  return { ...(documento ? { documento } : {}), to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true, solicitar_ubicacion: p.solicitar_ubicacion === true };
+  return { ...(documento ? { documento } : {}), to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true, solicitar_ubicacion: p.solicitar_ubicacion === true, solo_plantilla: p.solo_plantilla === true };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {
@@ -361,7 +372,7 @@ export class WhatsAppOutboundDispatcher {
     }
 
     try {
-      const enviado = await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}), ...(payload.documento ? { documento: payload.documento } : {}) });
+      const enviado = await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}), ...(payload.solicitar_ubicacion ? { solicitarUbicacion: true } : {}), ...(payload.documento ? { documento: payload.documento } : {}), ...(payload.solo_plantilla ? { soloPlantilla: true } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
       await port.markSent(item.id, { providerMessageId: enviado.providerMessageId, ...(enviado.enviadoComo ? { enviadoComo: enviado.enviadoComo } : {}) });
       if (medidor && medicion) {

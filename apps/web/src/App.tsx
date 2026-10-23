@@ -14,6 +14,7 @@ import { puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./vertical
 // UNI-R0: catalogo de overlays, SOLO en `vite dev` (import.meta.env.DEV es false y el chunk se descarta en el build).
 const CatalogoOverlaysPage = import.meta.env.DEV ? cargaPerezosa(() => import("./pages/CatalogoOverlays.tsx"), "CatalogoOverlaysPage") : null;
 const RestaurantesLoginPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Login.tsx"), "RestaurantesLoginPage");
+const AccesoRepartidorPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/AccesoRepartidor.tsx"), "AccesoRepartidorPage");
 const RestaurantesDashboardPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Dashboard.tsx"), "RestaurantesDashboardPage");
 const RestaurantesShell = cargaPerezosa(() => import("./verticals/restaurantes/RestaurantesShell.tsx"), "RestaurantesShell");
 const ProductosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Productos.tsx"), "ProductosPage");
@@ -269,6 +270,12 @@ function RestaurantesLoginRoute() {
       onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "restaurantes", email: session.email } })}
     />
   );
+}
+
+/** Acceso del repartidor con celular + codigo de WhatsApp (docs/LOGIN-CHOFER-WHATSAPP.md). Mismo destino que el login por correo. */
+function AccesoRepartidorRoute() {
+  const navigate = useNavigate();
+  return <AccesoRepartidorPage apiBaseUrl={API_BASE_URL} onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "restaurantes", email: session.email } })} />;
 }
 
 const RestaurantesDashboardRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesDashboardPage {...ctx} />);
@@ -1052,6 +1059,7 @@ export function App() {
       <Routes>
         {CatalogoOverlaysPage ? <Route path="/dev/catalogo" element={<CatalogoOverlaysPage />} /> : null}
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
+        <Route path="/restaurantes/acceso-repartidor" element={<AccesoRepartidorRoute />} />
         {/* PL-21: enlaces del correo de restaurantes (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
         <Route path="/restaurantes/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />
         <Route path="/restaurantes/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />

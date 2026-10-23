@@ -13,6 +13,7 @@ import type {
   CfoZoneRepository,
   ConsolaRepository,
   OrgEquipoRepository,
+  LoginChoferRepository,
   OrgFichaRepository,
   FichasAgenteRepository,
   ContratosRepository,
@@ -700,6 +701,10 @@ export interface AppDeps {
    *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la
    *  lectura responde `disponible: false` y las mutaciones 503 honesto, nunca un 500. */
   readonly orgEquipoRepo?: (db: TenantDbSession) => OrgEquipoRepository;
+  /** Login del repartidor por celular + codigo de WhatsApp (docs/LOGIN-CHOFER-WHATSAPP.md, migracion 0059). Fabrica por sesion: el login y la
+   *  verificacion usan `withAppSession({ userId: null })`; el registro del telefono, la sesion del encargado/admin. OPCIONAL: ausente o migracion
+   *  sin aplicar -> "no disponible aun" (503), nunca un 500. Ademas exige `env.loginChoferWhatsapp` (apagado por omision). */
+  readonly loginChoferRepo?: (db: TenantDbSession) => LoginChoferRepository;
   /** Fichas de agente y Model Ops de la consola (SA-L-09/SA-L-10; ver packages/db/migrations/0049_superadmin_fichas_agente.sql y
    *  routes/superadmin-agentes-fichas.ts). Fabrica por sesion del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL:
    *  ausente o migracion sin aplicar -> los campos salen `null` con su razon y `disponible: false` (200), nunca un 500. */

@@ -71,12 +71,29 @@ function buildTemplateBody(to: string, template: OutboundTemplate): Record<strin
     template: {
       name: template.name,
       language: { code: template.language },
-      ...(template.params.length > 0 ? { components: [{ type: "body", parameters: template.params.map((text) => ({ type: "text", text })) }] } : {}),
+      ...(template.params.length > 0 || template.codigoBoton
+        ? {
+            components: [
+              ...(template.params.length > 0 ? [{ type: "body", parameters: template.params.map((text) => ({ type: "text", text })) }] : []),
+              ...(template.codigoBoton ? [{ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: template.codigoBoton }] }] : []),
+            ],
+          }
+        : {}),
     },
   };
 }
 
 function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTemplates: ReadonlySet<string>): Record<string, unknown> {
+  if (message.soloPlantilla === true) {
+    // Mensaje solo-plantilla (codigo de acceso): o sale como plantilla APROBADA o no sale. Sin degradar a texto, botones ni documento.
+    if (!message.template || message.documento || message.solicitarUbicacion === true || (message.buttons && message.buttons.length > 0)) {
+      throw new WhatsAppInvalidPayloadError("mensaje solo-plantilla sin plantilla valida");
+    }
+    if (message.templateApproved !== true && !approvedTemplates.has(message.template.name)) {
+      throw new WhatsAppInvalidPayloadError("plantilla_no_aprobada");
+    }
+    return buildTemplateBody(message.to, message.template);
+  }
   if (message.documento) {
     const d = message.documento;
     if ((message.buttons && message.buttons.length > 0) || message.template || message.solicitarUbicacion === true) {
