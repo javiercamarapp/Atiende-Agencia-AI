@@ -18,6 +18,7 @@
       "lng": -89.61,
       "activa": true,
       "zona_cliente": "zona centro y norte",
+      "horario_pendiente": "Fuentes en conflicto el viernes (verificacion del 23-oct-2026): el sitio oficial dice lun-jue 18:00-01:00 y vie-sab-dom 12:00-01:00; la ficha de Google dice lun-jue 18:00-01:00, vie 18:00-01:00, sab-dom 12:00-01:00. Mientras PM no confirme el viernes, T1 usa el horario general (no se inventa).",
       "coordenadas_propuestas": {
         "lat": 21.0093272,
         "lng": -89.6135974,
@@ -39,6 +40,11 @@
       "lng": -89.605,
       "activa": false,
       "zona_cliente": "norponiente",
+      "horario": [
+        { "dias": [1, 2, 3, 4, 5], "abre": "18:00", "cierra": "00:00" },
+        { "dias": [0, 6], "abre": "12:00", "cierra": "00:00" }
+      ],
+      "horario_fuente": "Sitio oficial lostaquitosdepm.com y ficha de Google Maps, ambos leidos el 23-oct-2026: lun-vie 18:00-24:00, sab-dom 12:00-24:00.",
       "nota": "Catalogo provisional (lista T1-2026 marcada provisional_P5) hasta confirmar el catalogo exacto de la sucursal. Queda inactiva: la fase 1 del agente es T7.",
       "coordenadas_propuestas": {
         "lat": 21.0302178,
@@ -63,6 +69,10 @@
       "coordenadas_pendientes_de_verificar": "Calle 11 No. 371 x Av. 32, San Damián, Mérida (direccion del dueño; tel. 999 987 5410). Sin ficha de Google Maps ni otra fuente citable verificada: lat/lng quedan en null.",
       "activa": true,
       "zona_cliente": "poniente",
+      "horario": [
+        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "18:00", "cierra": "00:00" }
+      ],
+      "horario_fuente": "Sitio oficial lostaquitosdepm.com y ficha de Google Maps, ambos leidos el 23-oct-2026: todos los dias 18:00-24:00.",
       "nota": "Catalogo = lista T1-2026 sin comida regional ni flautas (cuestionario l.76 y l.104-105: 'precios iguales en todas'; correccion CR01/CR02 del 3-oct-2026: antes llevaba la lista 2025). Sin coordenadas: no se inventan (P7, P9), asi que T3 NO participa en la asignacion de sucursal por distancia hasta que se verifiquen.",
       "directorio": {
         "dias_domicilio": null,
@@ -88,6 +98,7 @@
       "lat": null,
       "lng": null,
       "activa": false,
+      "horario_pendiente": "Sitio oficial y ficha de Google (23-oct-2026): todos los dias 12:00-21:00 (food court). El Instagram de PM dice «12 pm a 1 am» para Galerias: conflicto. Mientras PM no confirme se deja el horario general; la sucursal no recibe pedidos.",
       "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed.",
       "directorio": {
         "visible": true,
@@ -104,7 +115,7 @@
       "lng": -89.602,
       "activa": false,
       "coordenadas_aproximadas": true,
-      "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026.",
+      "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1; la ficha de Google (23-oct-2026) dice «Cerrado temporalmente» y no publica horario, asi que solo el sitio oficial respalda 18:00-01:00). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026.",
       "directorio": {
         "visible": true,
         "acepta_domicilio": false,
