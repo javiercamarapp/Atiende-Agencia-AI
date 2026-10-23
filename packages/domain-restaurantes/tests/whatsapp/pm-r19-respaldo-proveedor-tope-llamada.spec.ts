@@ -14,6 +14,9 @@ import {
   RESPALDO_LLM_PRIMER_TOPE_MIN_MS,
   RESPALDO_LLM_RESERVA_MS,
   RESPALDO_LLM_RESTANTE_MIN_MS,
+  RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS,
+  RESPALDO_LLM_RESERVA_TARDIA_MS,
+  RESPALDO_LLM_PRIMER_TOPE_MIN_TARDIO_MS,
 } from "../../src/whatsapp/llm-turn-handler.ts";
 import { MODELOS_AGENTE, MODELO_ALTERNO_SEGUNDO_TOPE_ID, MODELO_ALTERNO_TOPE_ID, MODELO_PREDETERMINADO_ID, idModeloDeListaCerrada, modeloAdmiteRespaldoPorTope, modeloAlternoParaTope } from "../../src/ajustes-agente/modelos.ts";
 import { hashTelefonoParaLogs } from "../../src/whatsapp/observabilidad-turno.ts";
@@ -203,8 +206,8 @@ describe("PM-R19 proveedor cooperativo: respeta la senal de aborto", () => {
 });
 
 describe("PM-R19 plan del tope por llamada al modelo", () => {
-  it("por debajo del minimo de presupuesto restante no hay respaldo: el tope sigue siendo todo lo que queda", () => {
-    expect(planTopeLlamadaLlm(RESPALDO_LLM_RESTANTE_MIN_MS - 1)).toEqual({ primerTopeMs: RESPALDO_LLM_RESTANTE_MIN_MS - 1, respalda: false });
+  it("por debajo del minimo (tardio) de presupuesto restante no hay respaldo: el tope sigue siendo todo lo que queda", () => {
+    expect(planTopeLlamadaLlm(RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS - 1)).toEqual({ primerTopeMs: RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS - 1, respalda: false });
     expect(planTopeLlamadaLlm(5_000)).toEqual({ primerTopeMs: 5_000, respalda: false });
     expect(planTopeLlamadaLlm(0)).toEqual({ primerTopeMs: 0, respalda: false });
     expect(planTopeLlamadaLlm(-3)).toEqual({ primerTopeMs: 0, respalda: false });
@@ -285,8 +288,8 @@ describe("PM-R19 respaldo al modelo alterno cuando se agota el tope", () => {
     expect(Date.now() - t0).toBeLessThanOrEqual(18_000 + 5_000);
   });
 
-  it("presupuesto restante insuficiente (< 16 s): NO hay respaldo; comportamiento de siempre", async () => {
-    const m = armar(() => COLGADA(), { turnBudgetMs: RESPALDO_LLM_RESTANTE_MIN_MS - 1 });
+  it("presupuesto restante insuficiente (< 10 s): NO hay respaldo; comportamiento de siempre", async () => {
+    const m = armar(() => COLGADA(), { turnBudgetMs: RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS - 1 });
     const r = await m.correr();
     expect(m.intentos).toHaveLength(1);
     expect(r.reply).toContain("problema técnico");
@@ -435,5 +438,81 @@ describe("PM-R19 el respaldo repite SOLO la llamada al modelo, nunca las herrami
     const crudo = JSON.stringify(m.eventos);
     expect(crudo).not.toContain("Nora");
     expect(crudo).not.toContain("999 123 4567");
+  });
+});
+
+describe("PM-R19b respaldo en vueltas posteriores (plan tardio)", () => {
+  it("plan tardio: con 10 a 16 s restantes el primer intento queda en max(6 s, restante - 6 s) y siempre sobran >= 4 s al respaldo", () => {
+    for (let restante = RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS; restante < RESPALDO_LLM_RESTANTE_MIN_MS; restante += 250) {
+      const p = planTopeLlamadaLlm(restante);
+      expect(p.respalda).toBe(true);
+      expect(p.primerTopeMs).toBe(Math.max(RESPALDO_LLM_PRIMER_TOPE_MIN_TARDIO_MS, restante - RESPALDO_LLM_RESERVA_TARDIA_MS));
+      expect(restante - p.primerTopeMs).toBeGreaterThanOrEqual(4_000);
+    }
+    expect(planTopeLlamadaLlm(RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS - 1).respalda).toBe(false);
+  });
+
+  it("atasco en la 2.a vuelta con ~14 s restantes (presupuesto 18 s, la 1.a vuelta tardo 4 s): ahora SI hay respaldo y no hay 'problema tecnico'", async () => {
+    const m = armar(
+      async (_n, modelo, req) => {
+        if (pasoDelTurno(req) === 0) {
+          await new Promise((res) => setTimeout(res, 4_000));
+          return llamada("consultar_sucursal", { branch_slug: "fco-montejo" });
+        }
+        return modelo === LUNA ? COLGADA() : texto("La sucursal abre a las 9.");
+      },
+      { turnBudgetMs: 18_000 },
+    );
+    const r = await m.correr();
+    expect(r.reply).toContain("La sucursal abre");
+    expect(m.intentos.map((i) => i.modelo)).toEqual([LUNA, LUNA, DEEPSEEK]);
+    expect(m.intentos[2]!.en).toBe(4_000 + 8_000); // restante 14 s -> primer tope 8 s
+    expect(tools(m.eventos).filter((e) => e.tool === "consultar_sucursal")).toHaveLength(1);
+    const t = turno(m.eventos);
+    expect(t.resultado).toBe("ok");
+    expect(t.reintentosLlm).toBe(1);
+    expect(t.reintentoLlmRecuperado).toBe(true);
+    expect(t.latenciaTotalMs).toBeLessThanOrEqual(18_000);
+  });
+
+  it("con < 10 s restantes en la vuelta (2 herramientas de 4 s antes) NO hay respaldo: comportamiento de siempre y el turno termina en el reloj", async () => {
+    const m = armar(
+      async (_n, _modelo, req) => {
+        const paso = pasoDelTurno(req);
+        if (paso <= 1) {
+          await new Promise((res) => setTimeout(res, 4_500));
+          return llamada("consultar_sucursal", { branch_slug: "fco-montejo" });
+        }
+        return COLGADA();
+      },
+      { turnBudgetMs: 18_000 },
+    );
+    const r = await m.correr();
+    expect(m.intentos).toHaveLength(3);
+    expect(r.reply).toContain("problema técnico");
+    const t = turno(m.eventos);
+    expect(t.causaError).toBe("tope_llamada");
+    expect(t.reintentosLlm).toBe(0);
+    expect(t.latenciaTotalMs).toBeLessThanOrEqual(18_000 + 500);
+  });
+
+  it("un solo respaldo por turno: con los dos modelos atascados nunca hay una tercera llamada al modelo en la vuelta y el turno no pasa del reloj", async () => {
+    const m = armar(() => COLGADA(), { turnBudgetMs: 40_000 });
+    await m.correr();
+    expect(m.intentos.map((i) => i.modelo)).toEqual([LUNA, DEEPSEEK]);
+    const t = turno(m.eventos);
+    expect(t.causaError).toBe("tope_llamada");
+    expect(t.reintentosLlm).toBe(1);
+    expect(t.latenciaTotalMs).toBeLessThanOrEqual(40_000 + 500);
+  });
+
+  it("un modelo lento elegido (Sonnet) sigue sin respaldo tambien en vueltas posteriores", async () => {
+    const m = armar(
+      (_n, _modelo, req) => (pasoDelTurno(req) === 0 ? llamada("consultar_sucursal", { branch_slug: "fco-montejo" }) : COLGADA()),
+      { turnBudgetMs: 18_000, modeloElegido: "anthropic/claude-sonnet-5.5" },
+    );
+    await m.correr();
+    expect(m.intentos).toHaveLength(2);
+    expect(turno(m.eventos).reintentosLlm).toBe(0);
   });
 });
