@@ -24,6 +24,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { aperturaConExcepciones, fechaAnterior, fechaLocal, type EstadoApertura } from "../horarios.ts";
 import { VENTANA_PEDIDO_RECIENTE_MIN, buscarPedidoReciente, hayPedidoProgramadoVigente } from "../pedido-reciente.ts";
 import { normalizePhone } from "../phone.ts";
+import { searchProducts } from "../orders.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
 // dijo a un cliente de prueba "no procesamos ni guardamos los datos que
@@ -518,9 +519,9 @@ export const AGREGADO_VENTANA_SEGUNDOS = 15;
 const MAX_LARGO_AGREGADO = 100;
 /** LISTA BLANCA: sin puntuacion ni relleno («por favor», «tambien», «le/me», «un/una») el mensaje debe ser `agrega(r|le|me...) [cantidad de 1-2 digitos] <producto corto>` y nada mas.
  * Todo lo demas (cambios de direccion o de pedido, quejas, descuentos, otra sucursal, preguntas de precio...) cae al acuse de siempre. */
-const RELLENO_AGREGADO = /\b(?:por favor|porfa|porfis|porfavor|favor|gracias|tambien|disculpe|oiga|hola|buenas|buenos|dias|tardes|noches|le|me|nos|un|una|uno|podria|pudiera|puede|pueden|mi pedido|al pedido|a mi pedido)\b/g;
+const RELLENO_AGREGADO = /\b(?:por favor|porfa|porfis|porfavor|favor|gracias|tambien|disculpe|oiga|hola|buenas|buenos|dias|tardes|noches|le|me|nos|un|una|uno|podria|pudiera|puede|pueden)\b/g;
 const FORMA_AGREGADO = /^agreg[a-z]{0,6}(?: \d{1,2})?(?: [a-z]+){1,6}$/;
-const VETO_AGREGADO = /otra|otro|nuev|gratis|descuento|promo|sucursal|direccion|recoger|ya no|quita|cambia|mejor|cuanto|precio|agregaron|falt|algo|cosa|dime|pero|quiero|cancel|devol|devuel|reembols|alerg|dinero|cobr|queja|llego|\bmal\b|molest|urgen|incomplet|equivoc/;
+const VETO_AGREGADO = /otra|otro|nuev|gratis|descuento|promo|sucursal|direccion|recoger|ya no|quita|cambia|mejor|cuanto|precio|agregaron|falt|algo|cosa|dime|pero|quiero|cancel|devol|devuel|reembols|alerg|dinero|cobr|queja|llego|\bmal\b|molest|urgen|incomplet|equivoc|entreg|envia|manda|casa|oficina|llevar|domicilio|tard|esper|pago|pagad|transfer|tarjeta|efectivo|regalo|cortes|cargo|manana|hoy|noche|pedido|orden de|esto|eso|mismo|siempre|ayer|propina|nombre|gente|grupo|\bextra\b|\bdoble\b|salsa|cebolla|picante|\bsin\b|\bpara\b/;
 
 /** Pura: ¿el mensaje es, EXACTAMENTE, una peticion corta de agregar un producto? */
 export function esPeticionDeAgregado(mensaje: string): boolean {
@@ -528,6 +529,12 @@ export function esPeticionDeAgregado(mensaje: string): boolean {
   if (n.length > MAX_LARGO_AGREGADO) return false;
   const base = n.replace(/[^a-z0-9\s]/g, " ").replace(RELLENO_AGREGADO, " ").replace(/\s+/g, " ").trim();
   return FORMA_AGREGADO.test(base) && !VETO_AGREGADO.test(base);
+}
+
+/** Pura: palabras del producto de una peticion de agregar ya validada por la lista blanca (sin verbo, cantidad ni relleno). */
+export function productoDelAgregado(mensaje: string): string {
+  const base = normalizarParaClasificar(mensaje).replace(/[^a-z0-9\s]/g, " ").replace(RELLENO_AGREGADO, " ").replace(/\s+/g, " ").trim();
+  return base.replace(/^agreg[a-z]{0,6}(?: \d{1,2})?\s*/, "").trim();
 }
 
 /** Sin URLs ni correos en lo que viaja al aviso del encargado. */
@@ -543,28 +550,41 @@ export function textoAgregadoEnToma(mensaje: string, folio: number | null, canal
   return `Anoté su agregado («${cita}»)${pedido} y ya está avisada la sucursal. Ella revisa si alcanza a incluirlo; si el pedido ya salió, se puede enviar aparte (${aparte}) o puede pedirlo después. La sucursal le confirma; no puedo prometerle que vaya en el mismo envío.`;
 }
 
+/** Estados en los que «si ya salio, envio aparte / pedirlo despues» es verdad. Entregado, cancelado, con problema o no recogido siguen el acuse de siempre. */
+const ESTADOS_CON_AGREGADO_APARTE: ReadonlySet<string> = new Set(["registrado", "preparando", "salio", "listo_para_recoger", "programado", "por_confirmar"]);
+/** Tope de avisos de agregado por conversacion (el aviso NO se frena por la respuesta de 15 s: cada agregado distinto es informacion para la sucursal). */
+export const AGREGADO_AVISOS_MAX = 6;
+export const AGREGADO_AVISOS_VENTANA_SEGUNDOS = 600;
+
 async function agregadoDePedidoParaToma(repo: RestaurantesRepository, organizationId: string, phone: string, mensaje: string, propertyId: string | null | undefined, messageId: string): Promise<string | null> {
   try {
-    if (!esPeticionDeAgregado(mensaje)) return null;
+    if (!esPeticionDeAgregado(mensaje) || !propertyId) return null;
     if (await agenteApagadoEnSucursal(repo, propertyId)) return null;
     const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
-    if (cliente.isNew || !cliente.pedidoReciente) return null;
-    const riesgo = classifyHighRiskIntent(mensaje, contextoDeCliente(cliente));
+    if (cliente.isNew || !cliente.pedidoReciente || !ESTADOS_CON_AGREGADO_APARTE.has(cliente.pedidoReciente.estado)) return null;
     // Cualquier motivo de riesgo (queja, cobro, alergia, cancelacion, cambio de pedido...) tiene su propio camino: solo pasa si NO hay ninguno.
-    if (riesgo !== null) return null;
+    if (classifyHighRiskIntent(mensaje, contextoDeCliente(cliente)) !== null) return null;
+    // El producto tiene que existir en el menu de ESTA sucursal (buscar_producto, sin precios): «agrega esto», «agrega gente», «agrega pedido» no son un producto.
+    const consulta = productoDelAgregado(mensaje).split(" ").filter(Boolean).slice(0, 3).join(" ");
+    if (!consulta || (await searchProducts(repo, { propertyId, query: consulta })).length === 0) return null;
     const desde = new Date(Date.now() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString();
     const orden = await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), desde);
-    if (!orden) return null;
-    const permitido = (await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-toma-pendiente-agregado", actorHash(`${organizationId}:${phone}`), 1, AGREGADO_VENTANA_SEGUNDOS))).allowed;
-    if (!permitido) return null;
+    // El folio es del pedido vigente MAS RECIENTE (el repositorio excluye cancelados) y de la sucursal de este chat; si no coincide, no se afirma nada.
+    if (!orden || (orden.propertyId && orden.propertyId !== propertyId)) return null;
+    if ((await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-toma-pendiente-agregado-aviso", actorHash(`${organizationId}:${phone}`), AGREGADO_AVISOS_MAX, AGREGADO_AVISOS_VENTANA_SEGUNDOS))).allowed === false) return null;
     const folio = typeof orden.orderNumber === "number" && Number.isFinite(orden.orderNumber) ? orden.orderNumber : null;
-    // El aviso al equipo lleva lo que el cliente quiere agregar y el folio (la toma ya abierta no vuelve a pasar por el modelo). Si falla, el cliente igual recibe el texto.
-    await executeAgentToolSafely(
+    // El aviso al equipo lleva lo que el cliente quiere agregar y el folio (la toma ya abierta no vuelve a pasar por el modelo). Si NO se guarda, no se le dice al cliente que ya esta avisada
+    // la sucursal: cae al acuse de siempre.
+    const aviso = await executeAgentToolSafely(
       repo,
-      { organizationId, channel: "whatsapp", phone, lockedPropertyId: propertyId ?? null, entryPropertyId: propertyId ?? null, sourceEventId: messageId },
+      { organizationId, channel: "whatsapp", phone, lockedPropertyId: propertyId, entryPropertyId: propertyId, sourceEventId: messageId },
       "escalar_a_humano",
-      { customer_name: !cliente.isNew && cliente.name ? cliente.name : "Cliente", motivo: "cancelacion_modificacion", resumen: `[agregado con la toma ya abierta] Pedido ${folio !== null ? `#${folio}` : "reciente"}: ${sinEnlacesNiCorreos(mensaje).replace(/\s+/g, " ").trim().slice(0, 300)}` },
+      { customer_name: cliente.name ? cliente.name : "Cliente", motivo: "cancelacion_modificacion", resumen: `[agregado con la toma ya abierta] Pedido ${folio !== null ? `#${folio}` : "reciente"}: ${sinEnlacesNiCorreos(mensaje).replace(/\s+/g, " ").trim().slice(0, 300)}` },
     );
+    if (aviso.fallaSistema || (typeof aviso.result === "object" && aviso.result !== null && "error" in aviso.result)) return null;
+    // El limite de 15 s frena solo la RESPUESTA fija (el aviso ya quedo); denegado, el acuse de siempre ya es veraz porque el aviso se guardo.
+    const respuestaPermitida = (await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-toma-pendiente-agregado", actorHash(`${organizationId}:${phone}`), 1, AGREGADO_VENTANA_SEGUNDOS))).allowed;
+    if (!respuestaPermitida) return null;
     return textoAgregadoEnToma(mensaje, folio, cliente.pedidoReciente.canal);
   } catch {
     return null;
