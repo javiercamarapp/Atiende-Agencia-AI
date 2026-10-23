@@ -9,6 +9,7 @@ import { prepareCreateOrder } from "../src/orders.ts";
 import { buildPmSeedPlan, PmSeedError, renderPmSeedPlpgsql, type PmSeedData } from "../src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../src/seed/pm-world.ts";
 import { cargarMenu } from "../src/evals/agente-pm/mundo.ts";
+import { extraerPackSize } from "../src/product-search.ts";
 import { loadSeedInputs } from "../../../scripts/seed-pm-demo/seed-pm-demo.ts";
 import { dataConP5Aprobado } from "./support/pm-seed-p5.ts";
 
@@ -295,5 +296,13 @@ describe("menu-pm.json del arnes de evaluacion (regenerado desde el seed)", () =
       expect(p.regional, p.nombre).toBe(regional);
     }
     expect(menu.filter((p) => / — (250 g|500 g|750 g|1\.5 kg|2 kg)$/.test(p.nombre))).toHaveLength(40);
+  });
+
+  it("el pack_size del menu del arnes es el que el servidor deriva del seed (nombre/descripcion), sin excepciones", () => {
+    const menu = cargarMenu() as unknown as Array<{ nombre: string; pack_size: number }>;
+    for (const p of data.productos) {
+      const derivado = extraerPackSize(p.nombre, p.descripcion ?? null) ?? 1;
+      expect(menu.find((m) => m.nombre === p.nombre)?.pack_size, p.nombre).toBe(derivado);
+    }
   });
 });

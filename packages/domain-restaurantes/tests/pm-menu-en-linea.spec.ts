@@ -82,14 +82,12 @@ describe("piezas por orden confirmadas por el menú público: el servidor las us
     expect(n).toBe(3 + 8 + 7 + 7 + 6 + 17 + 3); // + 17 suizos (5) y papadzules, codzitos y tacos de cochinita (5, 4 y 4)
   });
 
-  it("DIVERGENCIA CONOCIDA (no corregida a propósito): el menú del arnés (menu-pm.json) trae pack_size 1 en gringas, mestizas y alambre, el servidor 2, 2 y 5", () => {
-    // Los casos L03, L17, L22, L25, C04, C08, C09, C11 y C13 de casos.json piden esos platillos contando ÓRDENES (piezas: 1) y sus totales salen de pack 1.
-    // Poner 2/2/5 aquí rompe 9 casos (el mundo rechaza «1 alambre»: «puedes pedir 5»). Alinear el arnés exige reescribir esos casos: decisión pendiente.
+  it("ALINEADO (decisión del dueño, 23-oct): el menú del arnés (menu-pm.json) trae el mismo pack_size que el servidor en gringas, mestizas (2) y alambre (5)", () => {
     const porNombre = new Map(MENU_EVALS.productos.map((p) => [p.nombre, p.pack_size]));
     for (const prod of ramas["garcia-lavin"].productos) {
       for (const pr of prod.presentaciones) {
         if (!["Gringas", "Mestizas", "Alambre"].includes(prod.categoria)) continue;
-        expect(porNombre.get(pr.seed_nombre!), pr.seed_nombre).toBe(1);
+        expect(porNombre.get(pr.seed_nombre!), pr.seed_nombre).toBe(pr.piezas_por_orden);
         expect(pr.piezas_por_orden, pr.seed_nombre).toBeGreaterThan(1);
       }
     }
