@@ -38,6 +38,7 @@ import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, 
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
+import { bloqueCantidadNoMultiplo } from "../unidades-pm.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -853,7 +854,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const cotizacionVigenteBloque = perfil === "taqueria_pm" && !preview ? bloqueCotizacionVigente(flowSnapshot, now().getTime(), { resumenMostrado: resumenMostradoEnHistorial(flowVigente?.quotedTotal, messages) }) : "";
       // R10 P1: lo que el servidor ya consulto y daria el mismo resultado que la herramienta se le dice al modelo (una vuelta menos). Vacio = prompt identico al de antes.
       const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
-      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque].filter((b) => b !== "").join("\n\n");
+      // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
+      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
+      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
