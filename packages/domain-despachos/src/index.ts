@@ -156,7 +156,10 @@ export {
 export type { DespachosRole } from "./roles.ts";
 
 // ---- Conciliación bancaria (Fase 5) ----
-export { conciliarMovimientos } from "./conciliacion/matching-engine.ts";
+export { conciliarMovimientos, compatibilidadDireccion } from "./conciliacion/matching-engine.ts";
+export type { CompatibilidadDireccion } from "./conciliacion/matching-engine.ts";
+export { aCentavos as aCentavosConciliacion, buscarSubconjuntos, MITM_UMBRAL, PRESUPUESTO_NODOS_POR_DEFECTO } from "./conciliacion/subset-sum.ts";
+export type { ItemSubsetSum, OpcionesSubsetSum, ResultadoSubsetSum } from "./conciliacion/subset-sum.ts";
 export { normalizarTexto as normalizarTextoConciliacion, conjuntoTokens, solapamientoTokens, ratio as ratioTexto, tokenSortRatio, partialRatio } from "./conciliacion/text-similarity.ts";
 export { fechaADate, fechaDiff } from "./conciliacion/fechas.ts";
 export {
@@ -186,6 +189,10 @@ export type {
   CoincidenciaConciliacion,
   ResultadoConciliacion,
   OpcionesMatchingEngine,
+  OpcionesSubsetSumMotor,
+  AmbiguoMultilinea,
+  MotivoSinConciliar,
+  SinConciliarMovimiento,
   AlertaAntiguedad,
 } from "./conciliacion/types.ts";
 export type { ClasificacionDeposito, ResultadoClasificacionDeposito, CasoDepositoSospechoso, BalanceIva } from "./conciliacion/classification.ts";
