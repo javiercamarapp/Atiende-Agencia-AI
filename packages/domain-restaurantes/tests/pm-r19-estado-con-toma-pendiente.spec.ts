@@ -2,8 +2,9 @@
 // Con la toma pendiente, «¿ya salio mi pedido?» recibe el estado que marco la sucursal aunque llegue dentro del minuto del acuse anterior
 // (antes el limitador de recordatorios lo dejaba sin respuesta).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recibirMensajeConEspera, responderTrasEspera, textoEstadoEnTomaPendiente } from "../src/whatsapp/inbound.ts";
+import { ESTADO_TOMA_VENTANA_SEGUNDOS, esPreguntaDeEstadoSegura, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, textoEstadoEnTomaPendiente } from "../src/whatsapp/inbound.ts";
 import { createOrder } from "../src/orders.ts";
+import { classifyHighRiskIntent } from "../src/whatsapp/guards.ts";
 import { MARTES_14H, nuevoViaje, TEL_CLIENTE, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
 beforeEach(() => {
@@ -86,5 +87,89 @@ describe("A32: cancelar un pedido ya hecho", () => {
     expect(r.reply).toMatch(/se lo paso a cocina/i);
     expect(r.reply).not.toMatch(/reembols|queda cancelado|ya cancel/i);
     expect(v.callbacks.map((c) => c.reason)).toContain("escalada:cancelacion_modificacion");
+  });
+});
+
+const ESTADO_FIJO = /figura registrado|va en preparación|marcó su pedido/i;
+const FRASES_DE_RIESGO = [
+  "Ya salió el repartidor y el pedido llegó frío, quiero reembolso",
+  "Cuánto falta para que me devuelvan mi dinero",
+  "quiero cancelar, ya salió?",
+  "ya esta listo, cancelen todo",
+  "falta mucho? ya quiero mi reembolso",
+  "Ya lo mandaron pero llegó incompleto",
+  "cuanto tarda el reembolso",
+  "ya está en camino? cancela",
+  "como va mi pedido, tengo alergia",
+];
+
+describe("pregunta de estado: solo mensajes cortos y sin senal de riesgo", () => {
+  it.each(FRASES_DE_RIESGO)("%s no recibe el texto fijo de estado (predicado)", (frase) => {
+    expect(esPreguntaDeEstadoSegura(frase)).toBe(false);
+    expect(textoEstadoEnTomaPendiente(frase, { estado: "salio", canal: "domicilio" })).toBeNull();
+  });
+  it.each(["¿Ya salió mi pedido?", "ya esta listo?", "¿Cuánto falta?", "¿falta mucho?", "como va mi pedido?"])("%s si es pregunta de estado", (frase) => {
+    expect(esPreguntaDeEstadoSegura(frase)).toBe(true);
+  });
+  it("mensaje largo no cuenta aunque contenga la frase", () => {
+    expect(esPreguntaDeEstadoSegura("Buenas tardes, disculpe la molestia, quisiera saber por favor si ya salió mi pedido de hoy")).toBe(false);
+  });
+
+  it.each(FRASES_DE_RIESGO)("%s con la toma pendiente: ninguna rama devuelve el texto de estado (ruta directa y con espera)", async (frase) => {
+    for (const ruta of ["directa", "espera"] as const) {
+      const v = await conPedido();
+      v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+      await v.escribe("¿Me agrega un guacamole a mi pedido?");
+      vi.setSystemTime(new Date(Date.now() + 120_000));
+      const r = ruta === "directa" ? await v.escribe(frase) : await escribeConEspera(v, frase);
+      expect(r.reply ?? "").not.toMatch(ESTADO_FIJO);
+    }
+  });
+});
+
+describe("estado con toma pendiente: R16 y repeticion", () => {
+  it("agente apagado en la sucursal: no se usa el texto de estado", async () => {
+    const v = await conPedido();
+    v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+    await v.escribe("¿Me agrega un guacamole a mi pedido?");
+    await v.world.repo.fijarAgenteWhatsappActivo(v.world.organizationId, v.t7, "00000000-0000-4000-8000-0000000000f1", false);
+    vi.setSystemTime(new Date(Date.now() + 120_000));
+    const r = await v.escribe("¿Ya salió mi pedido?");
+    expect(r.reply ?? "").not.toMatch(ESTADO_FIJO);
+  });
+
+  it("compuerta sin `acusePendiente`: se comporta como antes (sin texto de estado)", async () => {
+    const v = await conPedido();
+    v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+    await v.escribe("¿Me agrega un guacamole a mi pedido?");
+    const gateSinAcuse = { estadoParaAgente: v.gate.estadoParaAgente.bind(v.gate), solicitarHumano: v.gate.solicitarHumano.bind(v.gate) };
+    const r = await handleInboundWhatsAppMessage(v.world.repo, v.handler, { organizationId: v.world.organizationId, messageId: "wamid.sin-acuse", phone: TEL_CLIENTE, body: "¿Ya salió mi pedido?", phoneNumberId: "qa-pn-t7", propertyId: v.t7, handoffGate: gateSinAcuse as never, privacy: v.privacidad });
+    expect(r.reply ?? "").not.toMatch(ESTADO_FIJO);
+  });
+
+  it("20 «¿ya salió?» seguidos: el texto de estado sale una vez por ventana, no 20", async () => {
+    const v = await conPedido();
+    v.guion([escalaCambio, { texto: "Se lo paso a cocina." }]);
+    await v.escribe("¿Me agrega un guacamole a mi pedido?");
+    vi.setSystemTime(new Date(Date.now() + 120_000));
+    let con = 0;
+    for (let i = 0; i < 20; i++) {
+      const r = await v.escribe("¿ya salió?");
+      if (ESTADO_FIJO.test(r.reply ?? "")) con += 1;
+    }
+    expect(con).toBe(1);
+    vi.setSystemTime(new Date(Date.now() + (ESTADO_TOMA_VENTANA_SEGUNDOS + 1) * 1000));
+    expect(ESTADO_FIJO.test((await v.escribe("¿ya salió?")).reply ?? "")).toBe(true);
+  });
+});
+
+describe("A32: la frase «lo paso a cocina» solo con el pedido en cocina", () => {
+  it("pedido registrado: la dice; pedido ya salido: no promete cocina", () => {
+    const base = { canal: "recoger" as const, sucursal: null, confirmadoHoraLocal: "14:00", minutosDesdeConfirmacion: 5 };
+    expect(classifyHighRiskIntent("quiero cancelar mi pedido", { pedidoReciente: { ...base, estado: "registrado" } })?.reply).toMatch(/se lo paso a cocina/i);
+    expect(classifyHighRiskIntent("quiero cancelar mi pedido", { pedidoReciente: { ...base, estado: "preparando" } })?.reply).toMatch(/se lo paso a cocina/i);
+    const salido = classifyHighRiskIntent("quiero cancelar mi pedido", { pedidoReciente: { ...base, estado: "salio" } })?.reply;
+    expect(salido).toBeTruthy();
+    expect(salido).not.toMatch(/cocina/i);
   });
 });
