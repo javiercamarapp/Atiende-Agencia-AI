@@ -925,7 +925,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     // Una PREGUNTA sobre cancelar ("¿mi pedido se cancelo?", "¿hasta que hora se puede cancelar?") va al agente, que si puede contestarla.
     cuando: (texto, ctx) => ctx.pedidoReciente !== null && !CONSULTA_DE_CANCELACION.test(texto) && (!CORRECCION_DE_CARRITO.test(texto) || (ctx.pedidoReciente ?? null) !== null),
     reply:
-      "Entendido, desea cancelar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",
+      "Entendido, desea cancelar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Se lo paso a cocina y ya avisé al equipo para que lo contacte lo antes posible.",
   },
   {
     // QA-PM-R6-reglas-03: «cámbiame el pedido a harina» sobre un pedido YA creado y todavia modificable lo decide una persona (depende de si ya se empezo a preparar). Sin pedido
