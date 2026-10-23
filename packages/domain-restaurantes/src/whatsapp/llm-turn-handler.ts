@@ -36,7 +36,7 @@ import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from ".
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
-import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
@@ -47,7 +47,7 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
-import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
+import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
@@ -948,6 +948,41 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (!isToolErrorResult(avisoC.result)) {
             escalarMotivo = "falla_sistema";
             return done({ reply: `Recibí su confirmación, pero ${MARCA_SI_SIN_REGISTRAR} (total $${totalConfirmado}). Un compañero de la sucursal lo registra y se lo confirma por aquí.`, orderId: null, propertyId });
+          }
+        }
+        // PM R19 (A22): el turno murio (proveedor/tope de tiempo) con una cotizacion VIGENTE que ya supera el umbral de pedido grande y sin pedido creado. El aviso correcto para la sucursal es
+        // `pedido_grande` con el resumen (la regla del servidor de `crear_pedido`), no un `falla_sistema` generico. Solo total y kilos de lo cotizado (+ lo ya creado en la sesion): sin
+        // historial ni forma de pago no se supone nada. Si el aviso falla, sigue el camino de siempre.
+        if (perfil === "taqueria_pm" && !preview && !(config.motivosDesactivados ?? []).includes("pedido_grande")) {
+          const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+          const c = fresco?.context;
+          if (c && (fresco?.state === "cotizado" || fresco?.state === "confirmado") && typeof c.quotedTotal === "number" && typeof c.quotedAtMs === "number" && now().getTime() - c.quotedAtMs <= QUOTE_TTL_MS) {
+            const renglones = (c.quotedItems ?? []).map((i) => ({ name: i.name, quantity: i.qty }));
+            const total = Math.round((c.quotedTotal + (c.sessionTotal ?? 0)) * 100) / 100;
+            const pesoKg = pesoTotalKg(renglones) + (c.sessionPesoKg ?? 0);
+            const motivoGrande = evaluarPedidoGrande({ total, pesoKg, pagaEfectivo: false, sinHistorial: false });
+            if (motivoGrande) {
+              // Un aviso `pedido_grande` por telefono cada 15 min (misma memoria y ventana que `falla_sistema`, con llave propia para que uno no tape al otro): con el proveedor caido y varios
+              // mensajes dentro de la vigencia de la cotizacion no se repite la escalada; el cliente recibe el mismo texto.
+              const llaveOrgPG = `${organizationId}:pedido_grande`;
+              if (avisoFallaSistemaReciente(llaveOrgPG, phone)) {
+                escalarMotivo = "pedido_grande";
+                return done({ reply: MENSAJE_PEDIDO_GRANDE_PENDIENTE, orderId: null, propertyId });
+              }
+              const nombreG = !customer.isNew && customer.name ? customer.name : "Cliente";
+              const resumenG = `${resumenPedidoGrande({ motivo: motivoGrande, total, pesoKg, items: renglones, canal: c.quotedCanal, paymentMethod: c.quotedPago })} El turno del asistente se corto antes de mostrar el resumen: contactar al cliente para confirmar el pedido.`;
+              const avisoG = await executeAgentToolSafely(
+                repo,
+                { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+                "escalar_a_humano",
+                { customer_name: nombreG, motivo: "pedido_grande", resumen: resumenG.slice(0, 900) },
+              );
+              if (!isToolErrorResult(avisoG.result)) {
+                marcarAvisoFallaSistema(llaveOrgPG, phone);
+                escalarMotivo = "pedido_grande";
+                return done({ reply: MENSAJE_PEDIDO_GRANDE_PENDIENTE, orderId: null, propertyId });
+              }
+            }
           }
         }
         // Seguimiento de #593: en una caida larga sin toma cada mensaje del cliente repetia el aviso; uno por telefono cada 15 min. El turno sigue siendo `falla_sistema` (alerta de racha).
