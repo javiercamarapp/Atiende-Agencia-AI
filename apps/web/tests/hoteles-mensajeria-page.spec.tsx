@@ -29,6 +29,9 @@ function stub(estado = { whatsapp: { configurado: false, phoneNumberId: null, ha
     const method = init?.method ?? "GET";
     const json = (b: unknown) => ({ ok: true, status: 200, json: async () => b }) as unknown as Response;
     if (method === "GET" && url === M) return json(estado);
+    // H-P3-03: la seccion "Mensajes automaticos" (su propio spec: hoteles-mensajes-huesped-page.spec.tsx) consulta estos dos endpoints.
+    if (method === "GET" && url === "https://api.test/hoteles/prop-1/mensajes-huesped") return json({ disponible: false, catalogoDisponible: false, puedeConfigurar: true, whatsapp: { canalConfigurado: false, canalHabilitado: false, credencialMeta: false, listo: false, aviso: null }, ventanaGraciaHoras: 24, horasAntesPorOmision: 48, horasAntesMin: 1, horasAntesMax: 336, horaPostEstancia: 12, estadosPlantilla: [], eventos: [] });
+    if (method === "GET" && url === "https://api.test/hoteles/prop-1/mensajes-huesped/historial?limite=30") return json({ disponible: false, envios: [] });
     // La tarjeta "Probar el agente de voz" consulta el estado de la escalera (sin credenciales en estos casos).
     if (method === "GET" && url === "https://api.test/hoteles/prop-1/voz/estado") return json({ agente: { configurado: false, habilitado: false }, escalera: { operativa: false, escalones: [] }, precioMicroUsdPorMinuto: { "gemini-3.8-live": 18000, "cascada-openrouter": 14000 }, preview: { disponible: false, motivo: "requiere GEMINI_API_KEY" } });
     if (method === "PUT" && url === `${M}/whatsapp`) return json({ configurado: true, phoneNumberId: "12345678", habilitado: true, actualizadoEn: "2026-03-10T10:00:00Z" });

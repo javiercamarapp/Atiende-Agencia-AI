@@ -23,6 +23,7 @@ import {
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { programarMensajesHuesped } from "./mensajes-huesped.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -138,6 +139,9 @@ export function hotelesReservasAgenteRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     if (raw.decision !== "aprobar" && raw.decision !== "rechazar") throw Errors.validation("decision: 'aprobar' o 'rechazar'.");
     const motivo = requireText(raw.motivo, "motivo", 1, 500);
     const hold = await guarded(() => repoOf(c).decideHold(pid(c), holdId, raw.decision as "aprobar" | "rechazar", motivo));
+    // H-P3-03: el huesped se entera de la decision (hold.aprobado / hold.rechazado). Corre DESPUES del commit, en sesion de sistema, acotado a este
+    // hold; el cron de mensajes-huesped es la red de seguridad. Nunca afecta la respuesta.
+    programarMensajesHuesped(deps, c, { propertyId: pid(c), refId: holdId });
     return c.json({ hold: serializeHold(hold) });
   });
 
@@ -157,6 +161,8 @@ export function hotelesReservasAgenteRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     if (hold.status === "confirmado" && hold.reservationId) {
       // La reserva ya existe (la creo la base, con el inventario retenido por el hold); su folio primario es idempotente.
       await deps.hotelesRepo(c.get("db")).ensurePrimaryFolio(pid(c), c.get("organizationId"), hold.reservationId);
+      // H-P3-03: hold.confirmado (la reserva ya existe): aviso al huesped despues del commit.
+      programarMensajesHuesped(deps, c, { propertyId: pid(c), refId: holdId });
     }
     return c.json({ hold: serializeHold(hold) });
   });

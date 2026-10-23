@@ -246,11 +246,11 @@ select count(*)::int as b12_deberia_ser_0 from core.platform_privacy_overview('0
 rollback;
 
 -- ═══ C) Retencion por organizacion ═══
-\echo 'C1. owner A ve las 5 clases del catalogo (3 de PL-13 + 2 de rentas, migracion rentas 028)'
+\echo 'C1. owner A ve las 6 clases del catalogo (3 de PL-13 + 2 de rentas, migracion rentas 028 + hoteles_whatsapp_conversaciones, migracion hoteles 046)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f5a01', true);
-select count(*)::int as c1_deberia_ser_5 from core.org_list_retention_policies('00000000-0000-0000-0000-0000000f5a00');
+select count(*)::int as c1_deberia_ser_6 from core.org_list_retention_policies('00000000-0000-0000-0000-0000000f5a00');
 rollback;
 
 \echo 'C2. sin politica ni config de vertical rige el defecto documentado (180 dias)'

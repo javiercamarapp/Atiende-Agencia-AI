@@ -22,6 +22,17 @@ describe("redactSensitiveInfo (hoteles) — nunca guarda datos de tarjeta en tex
   it("no toca un mensaje normal sin datos sensibles", () => {
     expect(redactSensitiveInfo("Quiero dos cafés a la 305")).toBe("Quiero dos cafés a la 305");
   });
+
+  it("paridad3: oculta CURP, RFC y pasaporte que el huésped escribe para el check-in", () => {
+    expect(redactSensitiveInfo("mi CURP es PEPJ850315HDFRRN09")).toBe("mi CURP es [curp oculta]");
+    expect(redactSensitiveInfo("RFC PEPJ850315AB1 para factura")).toBe("RFC [rfc oculto] para factura");
+    expect(redactSensitiveInfo("mi pasaporte es G12345678")).toBe("mi pasaporte es [pasaporte oculto]");
+  });
+
+  it("paridad3: no toca folios, teléfonos ni montos", () => {
+    const t = "reserva F-000123, llámenme al 9981234567, pagué $3,500.00 de anticipo";
+    expect(redactSensitiveInfo(t)).toBe(t);
+  });
 });
 
 describe("extractMetaTextMessages / extractMetaPhoneNumberId (hoteles) — parsing del payload real de Meta", () => {

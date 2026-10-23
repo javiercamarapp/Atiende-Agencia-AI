@@ -213,6 +213,14 @@ async function guarded<TOk, TMissing>(db: TenantDbSession, run: () => Promise<TO
   }
 }
 
+/**
+ * Clases de dato de plataforma cuyo ejecutor es una funcion del propio vertical (no una rama de core.system_run_retention_purge, que otros
+ * cambios reescriben): clase -> funcion SQL de solo sistema con la firma (organizacion, simulacion, limite). Mapa fijo del repositorio.
+ */
+const EJECUTORES_DE_VERTICAL: Readonly<Record<string, string>> = {
+  hoteles_whatsapp_conversaciones: "hoteles.system_run_retention_conversaciones",
+};
+
 type Ts = string | Date;
 const ms = (v: Ts): number => new Date(v).getTime();
 const msOrNull = (v: Ts | null): number | null => (v === null || v === undefined ? null : new Date(v).getTime());
@@ -543,6 +551,12 @@ export class PostgresPlataformaPrivacidadRepository implements PlataformaPrivaci
     return guarded(
       this.db,
       async () => {
+        // H-P3-03: las clases de plataforma cuyo ejecutor vive en el propio vertical se enrutan a su funcion (mapa fijo, nunca texto del
+        // llamador); las demas siguen en core.system_run_retention_purge. Mismas columnas de salida, mismo bloqueo legal y mismo registro.
+        const ejecutorDeVertical = EJECUTORES_DE_VERTICAL[dataClass];
+        const consulta = ejecutorDeVertical
+          ? { sql: `select * from ${ejecutorDeVertical}($1, $2::boolean, $3::int);`, params: [orgId, dryRun, limit] as unknown[] }
+          : { sql: `select * from core.system_run_retention_purge($1, $2, $3, $4::int);`, params: [orgId, dataClass, dryRun, limit] as unknown[] };
         const { rows } = await this.db.query<{
           out_run_id: string;
           out_status: PurgeStatus;
@@ -550,7 +564,7 @@ export class PostgresPlataformaPrivacidadRepository implements PlataformaPrivaci
           out_rows_affected: number;
           out_rows_anonymized: number;
           out_rows_protected: number;
-        }>(`select * from core.system_run_retention_purge($1, $2, $3, $4::int);`, [orgId, dataClass, dryRun, limit]);
+        }>(consulta.sql, consulta.params);
         const r = rows[0];
         return {
           availability: "available" as const,
