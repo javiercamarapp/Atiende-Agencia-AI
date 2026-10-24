@@ -567,8 +567,38 @@ export interface OrderListFilter {
   readonly status?: OrderStatus;
   readonly dateFrom?: Date;
   readonly dateTo?: Date;
+  /** Historial: texto normalizado por `normalizarBusquedaPedidos` (2-60 caracteres) que se busca en el nombre del cliente y, con 4+ digitos, en su telefono. */
+  readonly busqueda?: string;
+  /** Historial: solo pedidos que no llegaron a `entregado` por problema: `problema` (incidencia) y `cancelado`. Se combina con `status` (AND). */
+  readonly soloIncidencias?: boolean;
   readonly limit: number;
   readonly cursor?: string;
+}
+
+/** Estados de «Incidencias / no entregados» del Historial (mismo criterio del repo suelto: incidencias reportadas y cancelados). */
+export const ESTADOS_INCIDENCIA: readonly OrderStatus[] = ["problema", "cancelado"];
+
+/** Largo del texto de busqueda del Historial: debajo de 2 caracteres es ruido, por encima de 60 es abuso. */
+export const BUSQUEDA_PEDIDOS_MIN = 2;
+export const BUSQUEDA_PEDIDOS_MAX = 60;
+
+/**
+ * Normaliza la busqueda libre del Historial: recorta, colapsa espacios y rechaza (undefined) lo demasiado corto. Devuelve `null`
+ * si excede el maximo (el llamador responde 400). No quita acentos ni cambia mayusculas: la comparacion es `ilike`.
+ */
+export function normalizarBusquedaPedidos(raw: string | undefined): string | undefined | null {
+  if (raw === undefined) return undefined;
+  const t = raw.replace(/\s+/g, " ").trim();
+  if (t.length === 0) return undefined;
+  if (t.length > BUSQUEDA_PEDIDOS_MAX) return null;
+  if (t.length < BUSQUEDA_PEDIDOS_MIN) return undefined;
+  return t;
+}
+
+/** Digitos del texto de busqueda para comparar telefonos; solo cuenta con 4 o mas (menos coincidiria con medio padron). */
+export function digitosBusquedaTelefono(busqueda: string): string | null {
+  const d = busqueda.replace(/\D/g, "");
+  return d.length >= 4 ? d : null;
 }
 
 export interface OrderListPage {
@@ -976,4 +1006,54 @@ export interface StorefrontCatalogRow {
   readonly displayOrder: number;
   /** Producto o categoria marcados "no se vende a domicilio" (alcohol en PM). */
   readonly noDomicilio: boolean;
+}
+
+// ---- Configuracion del Resumen (migracion 096): minutos por conversacion (horas ahorradas) y metas de IA ----
+
+export const RESUMEN_MINUTOS_MIN = 1;
+export const RESUMEN_MINUTOS_MAX = 120;
+export const RESUMEN_META_MIN = 1;
+export const RESUMEN_META_MAX = 100;
+
+/** `null` = sin configurar. */
+export interface ResumenConfig {
+  readonly minutosPorConversacion: number | null;
+  readonly metaPedidosIaPct: number | null;
+  readonly metaIngresosIaPct: number | null;
+}
+
+export const RESUMEN_CONFIG_VACIA: ResumenConfig = { minutosPorConversacion: null, metaPedidosIaPct: null, metaIngresosIaPct: null };
+
+export interface LecturaResumenConfig {
+  /** false = la base aun no tiene la migracion 096 (el Resumen dice «configuralo», nunca inventa un valor). */
+  readonly disponible: boolean;
+  readonly valor: ResumenConfig;
+  readonly actualizadoEn: string | null;
+}
+
+export class ResumenConfigInvalidaError extends Error {}
+export class ResumenConfigNoDisponibleError extends Error {
+  constructor() {
+    super("La configuracion del Resumen todavia no esta disponible en esta base (migracion 096 pendiente).");
+  }
+}
+export class ResumenConfigRechazadaError extends Error {}
+
+function entero(raw: unknown, campo: string, min: number, max: number): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < min || raw > max) throw new ResumenConfigInvalidaError(`${campo}: se esperaba un entero entre ${min} y ${max}, o null para quitarlo.`);
+  return raw;
+}
+
+/** Valida el cuerpo del PUT: los tres campos son obligatorios (null = quitar), enteros en rango. Rechaza campos desconocidos. */
+export function validarResumenConfig(raw: unknown): ResumenConfig {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new ResumenConfigInvalidaError("Se esperaba un objeto JSON.");
+  const o = raw as Record<string, unknown>;
+  for (const k of Object.keys(o)) if (!["minutosPorConversacion", "metaPedidosIaPct", "metaIngresosIaPct"].includes(k)) throw new ResumenConfigInvalidaError(`Campo desconocido: ${k}.`);
+  for (const k of ["minutosPorConversacion", "metaPedidosIaPct", "metaIngresosIaPct"]) if (!(k in o)) throw new ResumenConfigInvalidaError(`Falta ${k} (usa null para quitarlo).`);
+  return {
+    minutosPorConversacion: entero(o.minutosPorConversacion, "minutosPorConversacion", RESUMEN_MINUTOS_MIN, RESUMEN_MINUTOS_MAX),
+    metaPedidosIaPct: entero(o.metaPedidosIaPct, "metaPedidosIaPct", RESUMEN_META_MIN, RESUMEN_META_MAX),
+    metaIngresosIaPct: entero(o.metaIngresosIaPct, "metaIngresosIaPct", RESUMEN_META_MIN, RESUMEN_META_MAX),
+  };
 }

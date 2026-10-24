@@ -105,6 +105,10 @@ export interface OrderListFilter {
   readonly status?: OrderStatus;
   readonly dateFrom?: string;
   readonly dateTo?: string;
+  /** Historial: busqueda por nombre o telefono (2-60 caracteres; el telefono cuenta con 4+ digitos). */
+  readonly q?: string;
+  /** Historial: solo incidencias y cancelados. */
+  readonly incidencias?: boolean;
   readonly limit?: number;
   readonly cursor?: string;
 }
@@ -120,6 +124,8 @@ export async function fetchOrders(fetchImpl: typeof fetch, apiBaseUrl: string, t
   if (filter.status) params.set("status", filter.status);
   if (filter.dateFrom) params.set("dateFrom", filter.dateFrom);
   if (filter.dateTo) params.set("dateTo", filter.dateTo);
+  if (filter.q) params.set("q", filter.q);
+  if (filter.incidencias) params.set("incidencias", "1");
   if (filter.limit) params.set("limit", String(filter.limit));
   if (filter.cursor) params.set("cursor", filter.cursor);
   const qs = params.toString();

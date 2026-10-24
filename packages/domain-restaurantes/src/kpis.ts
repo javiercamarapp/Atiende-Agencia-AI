@@ -402,10 +402,8 @@ export interface ChannelKpis {
    * "%" real (mismo criterio `> 0 ? ... : null` que AdminDashboard.tsx:3358-3364). */
   readonly aiAdoptionPct: number | null;
   readonly aiRevenuePct: number | null;
-  /** Supuesto declarado: ~5 min de atención humana por pedido resuelto por un agente
-   * (voz o WhatsApp) — AdminDashboard.tsx:3375-3378. Siempre un número (0 es un cero
-   * real cuando no hay pedidos completados por agentes, nunca "sin datos"). */
-  readonly estimatedHoursSaved: number;
+  // Las «horas ahorradas» NO se calculan aquí (antes habia un supuesto fijo de 5 min por pedido): el Resumen las calcula con los minutos por conversacion
+  // que configura el dueño (migracion 096), para que no existan dos cifras distintas con el mismo nombre.
   /** R-30: periodo REAL al que corresponden las cifras de pedidos/ventas de arriba. `acotado:false` =
    * todo el histórico (se pidió "histórico" o la base aún no tiene la migración 036); el rótulo sale de
    * aquí, nunca del periodo pedido. Las conversaciones de WhatsApp y las horas ahorradas siguen la
@@ -435,8 +433,6 @@ export function channelPeriodLabel(period: StatsPeriod, acotado: boolean): strin
   }
 }
 
-const MINUTOS_AHORRADOS_POR_PEDIDO_IA = 5;
-
 /** Orquesta "Impacto de tus agentes" (AdminDashboard.tsx:3355-3393), acotado al periodo pedido. */
 export async function getChannelKpis(
   repo: RestaurantesRepository,
@@ -461,7 +457,6 @@ export function computeChannelKpis(
 ): ChannelKpis {
   const aiOrders = channels.voice.orders + channels.whatsapp.orders;
   const aiRevenue = channels.voice.revenue + channels.whatsapp.revenue;
-  const aiCompleted = channels.voice.completed + channels.whatsapp.completed;
   return {
     totalOrders: channels.totalOrders,
     totalRevenue: channels.totalRevenue,
@@ -470,7 +465,6 @@ export function computeChannelKpis(
     whatsappConversations: conversations,
     aiAdoptionPct: channels.totalOrders > 0 ? (aiOrders / channels.totalOrders) * 100 : null,
     aiRevenuePct: channels.totalRevenue > 0 ? (aiRevenue / channels.totalRevenue) * 100 : null,
-    estimatedHoursSaved: (aiCompleted * MINUTOS_AHORRADOS_POR_PEDIDO_IA) / 60,
     periodo: { acotado: channels.acotadoAPeriodo, etiqueta: channelPeriodLabel(period, channels.acotadoAPeriodo) },
   };
 }

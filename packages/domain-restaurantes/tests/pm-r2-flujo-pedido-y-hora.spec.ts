@@ -154,10 +154,10 @@ describe("hora_recogida la valida el servidor con su reloj (QA-PM-R2-reglas-05 /
     await expect(s.quote({ hora_recogida: "2026-10-07T14:00:00-06:00" })).rejects.toThrow(/programado_para/);
   });
 
-  it("despues del cierre se rechaza y avisa a que hora cierra (00:57, 'paso en 20 min')", async () => {
-    vi.setSystemTime(new Date("2026-10-07T00:57:00-06:00"));
+  it("despues del cierre se rechaza y avisa a que hora cierra (00:20, 'paso en 50 min')", async () => {
+    vi.setSystemTime(new Date("2026-10-07T00:20:00-06:00"));
     const s = setup();
-    await expect(s.quote({ hora_recogida: "2026-10-07T01:17:00-06:00" })).rejects.toThrow(/cierra a las 01:00/);
+    await expect(s.quote({ hora_recogida: "2026-10-07T01:10:00-06:00" })).rejects.toThrow(/cierra a las 01:00/);
   });
 
   it("hora_recogida y programado_para distintos en el mismo pedido se rechazan (la comanda decia 14:00 y 20:00)", async () => {

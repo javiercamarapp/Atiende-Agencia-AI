@@ -295,8 +295,8 @@ describe("horario: sucursal cerrada", () => {
     const error = await quoteOrder(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", items: [{ productId: f.products.cocaCola, requestedQuantity: 2 }] }).catch((e: unknown) => e);
     expect((error as Error).message).toBe("La sucursal Francisco de Montejo está cerrada en este momento; abre hoy a las 12:00.");
 
-    // martes 00:30 hora de Merida = 06:30 UTC: el turno del lunes sigue abierto
-    vi.setSystemTime(new Date("2026-09-29T06:30:00Z"));
+    // martes 00:15 hora de Merida = 06:15 UTC: el turno del lunes sigue abierto (el ultimo pedido es 00:30)
+    vi.setSystemTime(new Date("2026-09-29T06:15:00Z"));
     const quote = await quoteOrder(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", items: [{ productId: f.products.cocaCola, requestedQuantity: 2 }] });
     expect(quote.abiertoAhora).toBe(true);
     expect(quote.cierraA).toBe("01:00");

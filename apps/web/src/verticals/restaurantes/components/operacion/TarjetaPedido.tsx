@@ -60,7 +60,7 @@ export function TarjetaPedido({ pedido, minutos, ocupado, sinReconocer, alAccion
           <p className="text-base text-muted-foreground">{pedido.resumenItems}</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xl font-bold text-foreground">{formatMoney(pedido.total)}</p>
+          <p className="text-xl font-bold text-foreground">${formatMoney(pedido.total)}</p>
           <SemaforoMinutos semaforo={semaforo} minutos={minutos} prefijo={pedido.estado === "pending" ? "Esperando" : pedido.estado === "en_camino" ? "En camino" : undefined} />
         </div>
         {accion && accion !== "salio" && (

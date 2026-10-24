@@ -121,15 +121,15 @@ describe("R12-B1b el total BAJA entre confirmar y crear (no perjudica al cliente
 });
 
 describe("R12-B2 la sucursal cambia a mitad de la conversacion", () => {
-  it("cotiza a las 00:59:30 y al crear (01:00:30) la sucursal ya cerro: se rechaza con la proxima apertura y no hay pedido; el cliente puede programarlo", async () => {
+  it("cotiza a las 00:29:30 y al crear (00:30:30) ya paso el ultimo pedido: se rechaza y no hay pedido; el cliente puede programarlo", async () => {
     const f = buildRestaurantFixture();
     await conHorario(f);
-    vi.setSystemTime(new Date("2026-10-07T00:59:30-06:00"));
+    vi.setSystemTime(new Date("2026-10-07T00:29:30-06:00"));
     const { s } = await listoParaCrear(f);
-    vi.setSystemTime(new Date("2026-10-07T01:00:30-06:00"));
+    vi.setSystemTime(new Date("2026-10-07T00:30:30-06:00"));
     const out = await crear(s);
     expect(out.orderId).toBeNull();
-    expect(err(out)).toMatch(/cerrada|abre/i);
+    expect(err(out)).toMatch(/ya no toma pedidos para hoy|cerrada|abre/i);
     expect(await ordenes(f)).toHaveLength(0);
     // Tras el rechazo el flujo vuelve a "confirmado": al re-cotizar para manana (programado) se puede seguir.
     s.next();

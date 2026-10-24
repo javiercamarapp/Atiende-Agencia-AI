@@ -102,10 +102,11 @@ describe("crear un pedido programado", () => {
     await expect(createOrder(f.repo, pedido(f, { programadoPara: "2026-10-03T13:30:00-06:00" }))).resolves.toMatchObject({ status: "programado" });
   });
 
-  it("cruce de medianoche: la 01:00 -1 min del sabado cae en el turno del viernes; la 01:00 en punto ya no", async () => {
+  it("cruce de medianoche: 00:29 del sabado cae en el turno del viernes (ultimo pedido 00:30); 00:30 ya no se toma por cierre proximo y la 01:00 en punto esta cerrada", async () => {
     const f = buildRestaurantFixture();
     horarioViernesSabado(f);
-    await expect(createOrder(f.repo, pedido(f, { programadoPara: "2026-10-03T00:59:00-06:00" }))).resolves.toMatchObject({ status: "programado" });
+    await expect(createOrder(f.repo, pedido(f, { programadoPara: "2026-10-03T00:29:00-06:00" }))).resolves.toMatchObject({ status: "programado" });
+    await expect(createOrder(f.repo, pedido(f, { programadoPara: "2026-10-03T00:30:00-06:00" }))).rejects.toThrow(/ya no toma pedidos para la hora elegida/);
     await expect(createOrder(f.repo, pedido(f, { programadoPara: "2026-10-03T01:00:00-06:00", items: [{ productId: f.products.cocaCola, requestedQuantity: 3 }] }))).rejects.toThrow(
       /no atiende a la hora elegida \(sábado 03\/10 01:00\)/,
     );
