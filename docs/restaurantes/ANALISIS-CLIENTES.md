@@ -32,7 +32,8 @@ El periodo es el rango elegido (de 1 a 400 días). **Solo se ven ventas dentro d
 - **Frecuencia (F)**: ventas en el periodo, con **umbrales fijos**: 1, 2, 3 o 4 o más. No se usa `ntile`: con ~2/3 de clientes de una sola venta los empates caerían en quintiles distintos de forma arbitraria.
 - **Monetario (M)** y **recencia (R)**: puntaje de 1 a 5 por quintil de rango **entre los clientes del alcance y rango consultados** (no de toda la organización): `ceil(5 × clientes con valor igual o peor ÷ clientes)`. Los empates reciben el mismo puntaje. Con menos de 5 clientes los puntajes no son estables y la pantalla lo avisa.
 - **Intervalo propio**: días entre días de negocio consecutivos con venta del cliente (varias ventas el mismo día cuentan una vez). Sin intervalo propio si solo compró un día.
-- **Dormido (única definición)**: 2 o más ventas y recencia mayor que `max(30 días, 1.5 × su mediana de intervalo)`. Sin mediana se usa 30.
+- **Dormido (única definición)**: 2 o más ventas y recencia mayor que `max(30 días, 1.5 × su mediana de intervalo)`. Sin mediana se usa 30. **Un campeón o un leal también puede estar dormido**: la bandera se evalúa aparte del segmento. Por eso la tarjeta del Resumen dice «Dormidos (de cualquier segmento)» (cuenta la bandera en todos) y la fila de la tabla dice «Dormidos (resto)» (solo quien no cayó antes en campeón, leal o en riesgo de alto valor); las dos cifras pueden diferir.
+- **Recompra**: clientes con venta en **2 o más días distintos** ÷ clientes con venta. Dos ventas el mismo día no son una recompra (la reactivación sí usa «2 o más ventas»; ver abajo).
 - **Segmento** (se evalúa en este orden; gana el primero que cumpla):
 
   | Segmento | Regla |
@@ -64,6 +65,11 @@ El periodo es el rango elegido (de 1 a 400 días). **Solo se ven ventas dentro d
 - Base sin migrar: 42883 / 42P01 / 42703 → la sección sale `disponible: false` con su motivo y respuesta 200 (SAVEPOINT por llamada con `runWithSavepointFallback`). Sin la 095 siguen disponibles las secciones que no la necesitan (la afinidad usa la 081). Un error no recuperable en una lectura degrada solo esa sección, sin filtrar el mensaje.
 - No se crean crons (`vercel.json` sigue en 40/40) ni tablas; no hay escrituras.
 
+## Pendientes de la Fase D (rendimiento)
+
+- `cfo_clientes_rfm_base` se calcula **3 veces por petición** (RFM, reactivación e intervalo, cada una por su cuenta). Medido: ~150 000 pedidos en 1 a 3 s por función; si hace falta, se unifica en una sola pasada o se materializa por petición.
+- El rate limit (120 lecturas por minuto) es **compartido con todo el CFO** por persona y organización. Cambiar el selector «Clientes por mostrar» vuelve a pedir la vista completa al servidor (el endpoint es uno solo) aunque la pantalla solo actualice el bloque de reactivación; un parámetro para pedir solo esa sección queda pendiente.
+
 ## Orden de despliegue y reversa
 
 1. Aplicar la migración 095 (con OK de Javier; **nunca** al fusionar). 2. Desplegar el código. 3. Verificar en la pestaña. Antes del paso 1 el código ya funciona: las secciones de la 095 dicen «no disponible aún».
@@ -73,9 +79,9 @@ Reversa: `drop function` de las cinco funciones de la 095 (sin tablas ni datos q
 
 - **Exportación** (`analisis_clientes` en CSV/XLSX): diferida. Cabe en el exportador, pero `cfo_registrar_exportacion` (083) valida las vistas permitidas con una lista cerrada en SQL, y sumar una vista exige redefinirla (fuera de las reglas de esta fase: «no redefinas nada existente»). El botón de exportar se oculta en esta pestaña. Cuando se haga, debe llevar anti-inyección de CSV (prefijo `'` si la celda empieza con `= + - @`) y solo alias.
 - **Validación de la query**: el repositorio no usa Zod; se usaron los validadores cerrados de `cfo-esquemas.ts` (mismo papel que en el resto del CFO).
-- **Afinidad en varias sucursales**: `cfo_canasta_pares` corta el top por sucursal (se pide con el máximo, 500) e informa los pedidos por producto solo de los productos que salen en esos pares; con varias sucursales el lift es una **cota superior**. La pantalla lo dice.
+- **Afinidad en varias sucursales**: `cfo_canasta_pares` corta el top por sucursal (se pide con el máximo, 500) e informa los pedidos por producto solo de los productos que salen en esos pares; con varias sucursales el lift y los pedidos juntos son **aproximados** (el top por sucursal también recorta los pedidos juntos). La pantalla lo dice.
 - **Producto más frecuente por cliente** en la reactivación: no entra (exigiría leer `items` por cliente); queda para una fase posterior. Tampoco «segmentos que compran cada producto».
-- **Lista de reactivación**: tope de filas (`limite` 1..200), sin cursor ni paginación real; no es k-anónima (ver arriba).
+- **Lista de reactivación**: sirve para dimensionar (cuánta venta está en juego y cuánta tiene consentimiento); con alias de 8 caracteres no se puede saber a quién contactar. Identificar clientes y preparar campañas llegará en una fase posterior (la pantalla lo dice en el bloque). Además: tope de filas (`limite` 1..200), sin cursor ni paginación real; no es k-anónima (ver arriba).
 - **Fuera de A, declarado**: botón «Preparar campaña» (la generación de borradores es solo-sistema y requiere una función de escritura nueva, con consentimiento), quejas por tipo (no hay motivos estructurados), respuesta humana por hora (los mensajes no tienen marca de tiempo), salsas/omisiones estructuradas, historial importado (Fase B), alertas (Fase C).
 - **Historial importado**: cuando exista (Fase B) aparecerá solo aquí y rotulado; no entra a KPIs ni al cierre en vivo.
 - **Rendimiento**: probado con 10 000 ventas y 1 500 clientes (< 2 s por función). `cfo_venta_lean` es lineal en los pedidos del rango; con organizaciones muy grandes hace falta `EXPLAIN` con volumen (Fase D).
