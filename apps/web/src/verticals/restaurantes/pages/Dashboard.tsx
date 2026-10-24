@@ -33,6 +33,9 @@ import {
 import {
   Bot,
   ClipboardList,
+  Package,
+  Tag,
+  Users,
   HandHelping,
   MessageCircle,
   Mic,
@@ -48,6 +51,7 @@ import {
   PERIOD_OPTIONS,
 } from "../dashboard-client.ts";
 import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
+import { fetchCategories, fetchProducts } from "../lib/catalog-client.ts";
 import { fetchBranchTimezone } from "../lib/config-client.ts";
 import { fetchBandeja } from "../lib/conversaciones-client.ts";
 import { fetchVozKpi } from "../lib/voz-kpi-client.ts";
@@ -71,6 +75,9 @@ interface Extras {
   readonly pendientes: number | null;
   readonly ultimaWhatsapp: string | null;
   readonly ultimaVoz: string | null;
+  /** «Tu operacion»: conteos del catalogo de esta sucursal; `null` = no se pudo leer (el tile lo dice, no inventa un 0). */
+  readonly productos: number | null;
+  readonly categorias: number | null;
 }
 
 const EXTRAS_VACIOS: Extras = {
@@ -79,6 +86,8 @@ const EXTRAS_VACIOS: Extras = {
   pendientes: null,
   ultimaWhatsapp: null,
   ultimaVoz: null,
+  productos: null,
+  categorias: null,
 };
 
 async function cargarExtras(
@@ -86,12 +95,14 @@ async function cargarExtras(
   token: string,
   propertyId: string,
 ): Promise<Extras> {
-  const [tz, voz, pend, wa, vz] = await Promise.allSettled([
+  const [tz, voz, pend, wa, vz, prods, cats] = await Promise.allSettled([
     fetchBranchTimezone(fetch, apiBaseUrl, token, propertyId),
     fetchVozKpi(fetch, apiBaseUrl, token, propertyId),
     fetchBandeja(fetch, apiBaseUrl, token, propertyId, { estado: "pendiente" }),
     fetchBandeja(fetch, apiBaseUrl, token, propertyId, { canal: "whatsapp" }),
     fetchBandeja(fetch, apiBaseUrl, token, propertyId, { canal: "voz" }),
+    fetchProducts(fetch, apiBaseUrl, token, propertyId),
+    fetchCategories(fetch, apiBaseUrl, token, propertyId),
   ]);
   const bandeja = (
     r: PromiseSettledResult<Awaited<ReturnType<typeof fetchBandeja>>>,
@@ -106,6 +117,8 @@ async function cargarExtras(
     pendientes: bPend ? bPend.total : null,
     ultimaWhatsapp: bWa ? actividadMasReciente(bWa.items) : null,
     ultimaVoz: bVz ? actividadMasReciente(bVz.items) : null,
+    productos: prods.status === "fulfilled" ? prods.value.length : null,
+    categorias: cats.status === "fulfilled" ? cats.value.length : null,
   };
 }
 
@@ -360,6 +373,27 @@ export function RestaurantesDashboardPage({
             </Card>
           </div>
         </Card>
+
+        <ResumenSeccion titulo="Tu operación">
+          <TileLink
+            to={`${base}/productos`}
+            icon={Package}
+            titulo="Total de productos"
+            descripcion={extras.productos === null ? "No se pudo leer el catálogo" : formatInt(extras.productos)}
+          />
+          <TileLink
+            to={`${base}/productos`}
+            icon={Tag}
+            titulo="Categorías"
+            descripcion={extras.categorias === null ? "No se pudo leer el catálogo" : formatInt(extras.categorias)}
+          />
+          <TileLink
+            to={`${base}/clientes`}
+            icon={Users}
+            titulo="Clientes únicos"
+            descripcion={formatInt(customers.totalCustomers)}
+          />
+        </ResumenSeccion>
 
         <ResumenSeccion titulo="Orquestación de agentes">
           <TileLink
