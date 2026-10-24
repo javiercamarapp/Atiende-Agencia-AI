@@ -38,28 +38,45 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
       vertical="restaurantes"
       nombre="restaurantes"
       descripcion="El panel de operación de tu restaurante."
-      placeholderCorreo="tu@restaurante.com"
+      placeholderCorreo="tu@correo.com"
       pie={
-        conCelular ? (
-          <>
-            ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>{" "}
-            <Link to="/restaurantes/acceso-repartidor" className="font-semibold text-foreground underline underline-offset-2">
-              Soy repartidor: entrar con mi celular
-            </Link>
-          </>
-        ) : undefined
+        <>
+          ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu restaurante que te dé de alta.</span>
+          {conCelular ? (
+            <>
+              {" "}
+              <Link to="/restaurantes/acceso-repartidor" className="font-semibold text-foreground underline underline-offset-2">
+                Soy repartidor: entrar con mi celular
+              </Link>
+            </>
+          ) : null}
+        </>
       }
       hero={{
-        imagen: "images/login-hero-restaurantes.jpg",
-        alt: "Taquero cortando trompo al pastor de noche.",
-        kicker: "Pedidos por WhatsApp, sin fricción",
+        lamina: true,
+        imagen: "images/login-hero-restaurantes-lamina.jpg",
+        laminaAncho: 1054,
+        laminaAlto: 1400,
+        alt: "Taquero cortando trompo de pastor en un puesto de noche, con clientes sonriendo a su alrededor.",
+        kicker: "Pedidos por voz y WhatsApp",
         texto: (
           <>
-            El agente toma el pedido, lo manda a cocina,
+            Restaurantes en México.
             <br />
-            cobra y cierra la caja — todo por WhatsApp.
+            El cierre del turno, solo.
           </>
         ),
+        laminaEn: {
+          kicker: "Orders by voice and WhatsApp",
+          alt: "Taquero slicing trompo al pastor at a night-time stand, with smiling customers around him.",
+          texto: (
+            <>
+              Restaurants in Mexico.
+              <br />
+              Closing the shift, on its own.
+            </>
+          ),
+        },
       }}
     />
   );

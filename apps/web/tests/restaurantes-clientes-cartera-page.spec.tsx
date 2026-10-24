@@ -32,10 +32,13 @@ async function esperar(): Promise<void> {
   });
 }
 
-function stub(opts: { lista?: unknown; kpis?: unknown; branches?: unknown } = {}) {
+const TIERS = { metric: "gasto", BLACK: 1, PLATINUM: 2, GOLD: 3, BLUE: 4, withoutTier: 1 };
+
+function stub(opts: { lista?: unknown; kpis?: unknown; branches?: unknown; tiers?: unknown | "falla" | "ausente" } = {}) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url.endsWith("/admin/customers/kpis")) return json(opts.kpis ?? KPIS);
+    if (url.endsWith("/admin/kpis/customers")) return opts.tiers === "falla" ? json({ error: "x" }, 503) : opts.tiers === "ausente" ? json({}) : json({ tierDistribution: opts.tiers ?? TIERS });
     if (url === "https://api.test/v1/restaurantes/demo/admin/branches") return json(opts.branches ?? { branches: [{ propertyId: "prop-1", name: "Centro", slug: "c" }, { propertyId: "prop-2", name: "Norte", slug: "n" }] });
     if (url.endsWith("/customers/import/preview") && method === "POST") return json({ total: 3, validos: 2, duplicadosEnArchivo: 0, totalErrores: 1, errores: [{ renglon: 3, motivo: "Telefono invalido: se esperan 10 digitos (se acepta +52 o 521 al inicio)." }], muestra: [{ nombre: "Ana", telefonoEnmascarado: "******0001", direccion: null, notas: null }] });
     if (url.endsWith("/customers/import") && method === "POST") return json({ resultado: { yaImportado: false, total: 3, creados: 2, actualizados: 0, sinCambios: 0, rechazados: 1, errores: [] } });
@@ -75,14 +78,61 @@ describe("ClientesListPage -- cartera por nivel", () => {
     expect(kpis).toContain("último pedido hace 2 d");
   });
 
+  it("pinta la distribucion por nivel de la cartera completa", async () => {
+    stub();
+    montar();
+    await esperar();
+    const t = q("[data-testid='distribucion-tier']")!.textContent!;
+    expect(t).toContain("Black · 1");
+    expect(t).toContain("Platinum · 2");
+    expect(t).toContain("Gold · 3");
+    expect(t).toContain("Blue · 4");
+    expect(t).toContain("Sin nivel todavía: 1");
+    expect(t).toContain("Toda la cartera");
+    expect(t).toContain("No cambia con los filtros");
+    expect(q("[data-testid='distribucion-tier']")!.getAttribute("aria-label")).toBeNull();
+    expect(q("[data-testid='distribucion-tier-nota']")).toBeNull();
+  });
+
+  it("con nivel por frecuencia lo explica; cargando y error son role=status", async () => {
+    stub({ tiers: { metric: "frecuencia", BLACK: 1, PLATINUM: 0, GOLD: 0, BLUE: 2, withoutTier: 3 } });
+    montar();
+    expect(q("[data-testid='distribucion-tier'] [role='status']")?.textContent).toContain("Cargando");
+    await esperar();
+    expect(q("[data-testid='distribucion-tier-nota']")!.textContent).toContain("por frecuencia");
+  });
+
+  it("si la distribucion falla lo dice sin tumbar la lista", async () => {
+    stub({ tiers: "falla" });
+    montar();
+    await esperar();
+    expect(q("[data-testid='distribucion-tier']")!.textContent).toContain("Distribución no disponible");
+    expect(q("[data-testid='distribucion-tier'] [role='status']")).toBeTruthy();
+    expect(rendered!.container.textContent).toContain("Ana Torres");
+  });
+
+  it("una respuesta sin distribucion (servidor viejo) cae al aviso y no rompe la pagina", async () => {
+    stub({ tiers: "ausente" });
+    montar();
+    await esperar();
+    expect(q("[data-testid='distribucion-tier']")!.textContent).toContain("Distribución no disponible");
+  });
+
+  it("sin pedidos explica que aun no hay con que clasificar", async () => {
+    stub({ tiers: { metric: "sin_datos", BLACK: 0, PLATINUM: 0, GOLD: 0, BLUE: 0, withoutTier: 0 } });
+    montar();
+    await esperar();
+    expect(q("[data-testid='distribucion-tier']")!.textContent).toContain("Aún no hay pedidos para clasificar");
+  });
+
   it("cada cliente trae su nivel y cuanto hace que pidio", async () => {
     stub();
     montar();
     await esperar();
     const texto = rendered!.container.textContent!;
     expect(texto).toContain("Black");
-    expect(texto).toContain("Último pedido hace 2 d");
-    expect(texto).toContain("Aún no ha pedido");
+    expect(texto).toContain("hace 2 d");
+    expect(texto).toContain("aún no ha pedido");
   });
 
   it("los filtros viajan al servidor: nivel, frecuencia, dias sin pedir y sucursal", async () => {

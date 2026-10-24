@@ -556,10 +556,10 @@ describe("PM horarios y cierre (P15, P16, X40)", () => {
     await expect(createOrder(f.repo, pedido(f, [{ productId: f.p.cocaCola, requestedQuantity: 2 }], { canal: "recoger" }))).rejects.toThrow(/cerrada/);
   });
 
-  it("T-HC03 [P0] 00:30 se acepta: es la cola del servicio del dia anterior hasta la 1 am", async () => {
+  it("T-HC03 [P0] 00:20 se acepta: es la cola del servicio del dia anterior hasta la 1 am", async () => {
     const f = pmFixture();
     await conHorario(f);
-    vi.setSystemTime(new Date("2026-09-15T06:30:00Z")); // martes 00:30 local
+    vi.setSystemTime(new Date("2026-09-15T06:20:00Z")); // martes 00:20 local (el ultimo pedido es 00:30)
     expect((await solicitar(f)).abiertoAhora).toBe(true);
   });
 

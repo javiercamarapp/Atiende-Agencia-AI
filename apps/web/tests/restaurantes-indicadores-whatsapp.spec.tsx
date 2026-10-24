@@ -187,3 +187,30 @@ describe("<IndicadoresWhatsappPage />", () => {
     });
   });
 });
+
+describe("<IndicadoresWhatsappPage /> pestañas (paridad con el tablero del original)", () => {
+  const pestana = (nombre: string) => [...rendered!.container.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) => t.textContent === nombre)!;
+  async function abrir(nombre: string) {
+    await act(async () => {
+      pestana(nombre).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+  }
+
+  it("General, Herramientas y Base de conocimiento; General es la de entrada y Herramientas dice honestamente que no hay dato", async () => {
+    await pintar(stub({ 14: { status: 200, body: kpi() } }));
+    expect([...rendered!.container.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(["General", "Herramientas", "Base de conocimiento"]);
+    expect(pestana("General").getAttribute("aria-selected")).toBe("true");
+    expect(texto()).toContain("Conversaciones nuevas");
+    await abrir("Herramientas");
+    expect(pestana("Herramientas").getAttribute("aria-selected")).toBe("true");
+    expect(texto()).toContain("Uso de herramientas: no disponible aún");
+    expect(texto()).toContain("Requiere registrar cada llamada a una herramienta del agente de WhatsApp");
+    expect(texto()).not.toMatch(/\b\d+ llamadas\b/);
+  });
+
+  it("un rol sin acceso no ve pestañas", async () => {
+    await pintar(stub({}), "staff");
+    expect(rendered!.container.querySelectorAll('[role="tab"]')).toHaveLength(0);
+  });
+});
