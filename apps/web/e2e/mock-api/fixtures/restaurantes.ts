@@ -44,7 +44,7 @@ function vistaResumenConfig(config: ResumenConfigMock) {
     config,
     actualizadoEn: null,
     rangos: { minutos: { min: 1, max: 120 }, meta: { min: 1, max: 100 } },
-    formula: "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente en el periodo × minutos por conversacion que configuraste ÷ 60. Es una estimacion con tu supuesto, no una medicion.",
+    formula: "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado historico de las sucursales que puedes ver; no cambia con el periodo) × minutos por conversacion que configuraste para toda la organizacion ÷ 60. Es una estimacion con tu supuesto, no una medicion.",
   };
 }
 
@@ -57,7 +57,6 @@ const canales = {
   whatsappConversations: { total: 74, withOrder: 52, averageMessages: 7.5 },
   aiAdoptionPct: 76,
   aiRevenuePct: 82,
-  estimatedHoursSaved: 31,
   periodo: { acotado: true, etiqueta: "Últimos 30 días" },
 };
 const clientesKpis = {

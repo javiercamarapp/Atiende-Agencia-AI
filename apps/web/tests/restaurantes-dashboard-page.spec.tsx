@@ -58,7 +58,6 @@ const CHANNELS: ChannelKpis = {
   whatsappConversations: { total: 120, withOrder: 90, averageMessages: 6.5 },
   aiAdoptionPct: 41.7,
   aiRevenuePct: 40.5,
-  estimatedHoursSaved: 10.8,
   periodo: { acotado: true, etiqueta: "Últimos 30 días" },
 };
 
@@ -102,7 +101,7 @@ function stubFetch(handlers: Handlers) {
     if (url.includes("/admin/resumen/config")) {
       if (handlers.resumenCfg === "falla") return jsonResponse({}, false);
       const cfg = typeof handlers.resumenCfg === "object" ? handlers.resumenCfg : { minutosPorConversacion: null, metaPedidosIaPct: null, metaIngresosIaPct: null };
-      return jsonResponse({ disponible: handlers.resumenCfg !== "sin-migrar", config: cfg, actualizadoEn: null, rangos: { minutos: { min: 1, max: 120 }, meta: { min: 1, max: 100 } }, formula: "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente en el periodo × minutos por conversacion que configuraste ÷ 60." });
+      return jsonResponse({ disponible: handlers.resumenCfg !== "sin-migrar", config: cfg, actualizadoEn: null, rangos: { minutos: { min: 1, max: 120 }, meta: { min: 1, max: 100 } }, formula: "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado historico de las sucursales que puedes ver; no cambia con el periodo) × minutos por conversacion que configuraste para toda la organizacion ÷ 60. Es una estimacion con tu supuesto, no una medicion." });
     }
     if (url.includes("/admin/products")) return handlers.productos === "falla" ? jsonResponse({}, false) : jsonResponse({ products: Array.from({ length: handlers.productos ?? 0 }, (_, i) => ({ id: `p${i}` })) });
     if (url.includes("/admin/categories")) return handlers.categorias === "falla" ? jsonResponse({}, false) : jsonResponse({ categories: Array.from({ length: handlers.categorias ?? 0 }, (_, i) => ({ id: `c${i}` })) });
@@ -286,7 +285,7 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     const text = rendered.container.textContent!;
     expect(text.toLowerCase()).toContain("orquestación de agentes");
     const links = enlaces(rendered);
-    expect(links["WhatsApp120 conversaciones · 90 con pedido · Últimos 30 días"]).toBe("/restaurantes/demo/conversaciones");
+    expect(links["WhatsApp120 conversaciones · 90 con pedido · histórico"]).toBe("/restaurantes/demo/conversaciones");
     expect(Object.entries(links).find(([k]) => k.startsWith("Voz"))?.[1]).toBe("/restaurantes/demo/agente-voz");
     expect(text).toContain("4 llamadas hoy · 57 llamadas en el mes");
     expect(Object.entries(links).find(([k]) => k.startsWith("Toma humana"))?.[1]).toBe("/restaurantes/demo/conversaciones");
@@ -412,10 +411,10 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     await esperarCarga();
     text = rendered.container.textContent!;
     expect(text).toContain("12.0 h");
-    expect(text).toContain("120 conversaciones × 6 min ÷ 60");
+    expect(text).toContain("120 conversaciones (histórico, sucursales que ves) × 6 min ÷ 60");
     expect(text).toContain("Tu meta: 50%");
     expect(text).toContain("Tu meta: 40%");
-    expect(rendered.container.querySelector('[title*="conversaciones"][title*="minutos por conversacion"]')).not.toBeNull();
+    expect(rendered.container.querySelector('[title*="historico"][title*="no cambia con el periodo"][title*="toda la organizacion"]')).not.toBeNull();
   });
 
   it("Horas ahorradas: si la configuracion no se puede leer lo dice y no ofrece configurar", async () => {
@@ -447,5 +446,30 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     rendered = renderPage({ ...CTX, role: "staff" });
     await esperarCarga();
     expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Configurar horas y metas"))).toBe(false);
+  });
+
+  it("config ilegible: ofrece Reintentar y al reintentar vuelve a pedirla", async () => {
+    stubFetch({ resumenCfg: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    const cuantas = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/admin/resumen/config")).length;
+    const antes = cuantas();
+    const reintentar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reintentar")!;
+    expect(reintentar).toBeTruthy();
+    await act(async () => { reintentar.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    expect(cuantas()).toBeGreaterThan(antes);
+  });
+
+  it("base sin la migracion: el dialogo habla en neutro (sin «migración») y no deja guardar", async () => {
+    stubFetch({ resumenCfg: "sin-migrar" });
+    rendered = renderPage();
+    await esperarCarga();
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Configurar horas y metas"))!;
+    await act(async () => { boton.click(); await flushMicrotasks(); });
+    const texto = document.body.textContent ?? "";
+    expect(texto).toContain("Esta función aún no está disponible en tu cuenta.");
+    expect(texto.toLowerCase()).not.toContain("migración");
+    const guardar = [...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Guardar cambios") as HTMLButtonElement;
+    expect(guardar.disabled).toBe(true);
   });
 });
