@@ -160,7 +160,7 @@ revoke all on function restaurantes.cfo_clientes_rfm_base(uuid, uuid[], date, da
 --     "segmentos": [ {segmento, orden, clientes, pedidos, venta_centavos, ticket_centavos, recencia_mediana_dias} ],   -- los 6, siempre, en el orden de evaluacion
 --     "resumen":   { clientes_con_venta, clientes_recompra, activos_30, dormidos, venta_total_centavos, venta_en_riesgo_centavos },
 --     "pareto":    { puntos: [ {clientes_pct, clientes, venta_pct} ], clientes_para_50_pct, clientes_para_80_pct } }
--- venta_en_riesgo = venta del rango de los clientes DORMIDOS o en_riesgo_alto_valor. clientes_recompra = clientes con >= 2 ventas. activos_30 = recencia <= 30.
+-- venta_en_riesgo = venta del rango de los clientes DORMIDOS o en_riesgo_alto_valor. clientes_recompra = clientes con venta en >= 2 DIAS distintos (dos ventas el mismo dia no son una recompra). activos_30 = recencia <= 30.
 create or replace function restaurantes.cfo_clientes_rfm(p_org uuid, p_props uuid[], p_desde date, p_hasta date)
 returns jsonb
 language plpgsql
@@ -212,7 +212,7 @@ begin
         from segs s left join agg a on a.segmento = s.clave),
     'resumen', jsonb_build_object(
       'clientes_con_venta', (select t.n from tot t),
-      'clientes_recompra', (select count(*) from b x where x.ventas >= 2),
+      'clientes_recompra', (select count(*) from b x where x.dias_con_venta >= 2),
       'activos_30', (select count(*) from b x where x.recencia_dias <= 30),
       'dormidos', (select count(*) from b x where x.dormido),
       'venta_total_centavos', (select t.venta from tot t),

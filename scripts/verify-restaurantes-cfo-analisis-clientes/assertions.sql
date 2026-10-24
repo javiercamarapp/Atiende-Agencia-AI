@@ -14,7 +14,7 @@
 --   C8      2       500    21        18       3 2 4  ocasional             no        sucursal A2 (las demas, A1)
 --   C9      2       200    16        -        3 2 3  ocasional             no        dos ventas el MISMO dia: sin intervalo propio
 --   C10     2       40     77        10       1 2 1  dormido               si
---   total 4410 pesos; 10 clientes; recompra (>= 2 ventas) 8; activos 30 d = 6; dormidos 3; venta en riesgo = C4 + C5 + C10 = 1940.
+--   total 4410 pesos; 10 clientes; recompra (venta en >= 2 dias distintos; C9 tiene 2 ventas el mismo dia y NO cuenta) 7; activos 30 d = 6; dormidos 3; venta en riesgo = C4 + C5 + C10 = 1940.
 --   Reactivacion elegibles (>= 2 ventas y recencia > max(14, 1.5 x mediana) o > 30): C4, C5, C9, C10; prioridades 36078, 32143, 17500, 779 (pesos x 100 x factor).
 --   Intervalos: global 13 (p25 10, p50 10, p75 14, p90 16.6); campeon 7 (p90 11.2); los demas segmentos < 5 intervalos => percentiles NULL.
 --   Ruido que NO cuenta: cancelado, pedido falso, telefono demo 0009, programado, no_recogido, reposicion, venta sin cliente, venta fuera del rango.
@@ -172,11 +172,11 @@ analyze restaurantes.orders; analyze restaurantes.customers;
 -- ===========================================================================
 -- A. Positivos: valores calculados a mano
 -- ===========================================================================
-\echo '=== A1. RFM: 10 clientes, recompra 8, activos 30 d = 6, dormidos 3, venta total 441000 y en riesgo 194000 centavos (ruido excluido) ==='
+\echo '=== A1. RFM: 10 clientes, recompra 7 (C9 no), activos 30 d = 6, dormidos 3, venta total 441000 y en riesgo 194000 centavos (ruido excluido) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e4b01', true);
-select (j -> 'resumen' ->> 'clientes_con_venta' = '10' and j -> 'resumen' ->> 'clientes_recompra' = '8' and j -> 'resumen' ->> 'activos_30' = '6'
+select (j -> 'resumen' ->> 'clientes_con_venta' = '10' and j -> 'resumen' ->> 'clientes_recompra' = '7' and j -> 'resumen' ->> 'activos_30' = '6'
         and j -> 'resumen' ->> 'dormidos' = '3' and j -> 'resumen' ->> 'venta_total_centavos' = '441000' and j -> 'resumen' ->> 'venta_en_riesgo_centavos' = '194000')::int as resumen_deberia_ser_1
   from (select restaurantes.cfo_clientes_rfm(public.oa(), null, date '2026-01-01', date '2026-03-31') as j) q;
 rollback;
