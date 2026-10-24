@@ -71,12 +71,16 @@ test.describe("restaurantes: recorrido por rol @recorrido", () => {
     vigilante.verificar();
   });
 
-  // BUG-E2E-REST-001: /repartidor vive fuera del VerticalShell y no pinta ningun <main> ni "Saltar al contenido": un lector de pantalla
-  // no tiene landmark principal. test.fail documenta el defecto y avisa (falla si "pasa") cuando se corrija.
-  test("repartidor: Mis entregas tiene un landmark <main> (BUG-E2E-REST-001, defecto conocido)", async ({ page, iniciarSesion }) => {
-    test.fail(true, "BUG-E2E-REST-001: /repartidor no tiene <main>; envolver RepartidorPedidosPage en un landmark main con id=contenido-principal");
+  // BUG-E2E-REST-001 (corregido): /repartidor vive fuera del VerticalShell y pinta su propio landmark <main id="contenido-principal">.
+  test("repartidor: Mis entregas tiene un unico landmark <main> (vista anterior y panel nuevo)", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("restaurantes", "repartidor");
     await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("main#contenido-principal")).toBeVisible();
+    await mock.agregarAEstado("op.chofer.habilitado", true);
+    await page.reload();
+    await expect(page.getByRole("article", { name: "Pedido 145" })).toBeVisible();
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("main#contenido-principal")).toBeVisible();
   });
 
   test("sin sesion: una ruta del panel manda al login de restaurantes", async ({ page }) => {
