@@ -325,6 +325,7 @@ export function buildOrderQuoteFromProducts(
       tortilla,
       requiresAdultConfirmation: product.requiresAdultConfirmation,
       lineTotal,
+      ...(product.categoryName !== undefined ? { categoryName: product.categoryName } : {}),
     });
   }
 

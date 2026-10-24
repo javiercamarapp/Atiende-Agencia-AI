@@ -21,6 +21,7 @@
 //
 // Limite honesto: el servidor no puede oir al cliente; clasifica TEXTO. La clasificacion es conservadora (ante la duda NO confirma y pide un «si»).
 import { componentesLocales, fechaLocal } from "../horarios.ts";
+import { afirmaPedidoRegistrado } from "../whatsapp/guards.ts";
 import { rechazaElResumen, resumenMostradoEnHistorial, type OrderFlowContext, type OrderFlowSnapshot } from "./order-flow.ts";
 
 /** Variable de entorno que activa la maquina de estados del cierre. Por omision DESACTIVADA (camino anterior intacto). */
@@ -384,6 +385,8 @@ export interface EntradaResumen {
   readonly salsas?: readonly string[];
   /** R15: salsas basicas que el cliente quito («salsa verde»). */
   readonly sinSalsas?: readonly string[];
+  /** R21 (T7-038): salsas BASICAS que van en el pedido (las del perfil menos las que el cliente quito), con su nombre para el cliente. Sin ellas el cliente confirmaba sin ver roja y verde. */
+  readonly basicas?: readonly string[];
   /** R15: notas ya capturadas (ajustes como «sin cebolla»), saneadas por `sanearNotaDeResumen`: una linea, sin telefonos ni correos, acotada. */
   readonly notas?: string;
 }
@@ -408,6 +411,60 @@ export function etiquetaHoraEntrega(instanteMs: number, zonaHoraria: string, aho
   return `para el ${DIAS_CORTOS[dia]} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} a ${articulo} ${reloj}`;
 }
 
+/**
+ * R21 (T7-026): la hora que el CLIENTE dijo mas recientemente en un mensaje que no es pregunta ("a las 5 pm", "mejor a las 6:30", "5pm"), como minutos del dia en reloj de 12 horas
+ * (`minuto12` = (hora % 12) * 60 + minutos; `meridiano` solo si lo dijo). `null` si ningun mensaje del cliente da una hora. Sin plazos ("en 40 minutos") ni horarios preguntados.
+ * Pura; el texto es no confiable (se acota el largo).
+ */
+export function horaDichaPorElCliente(historial: readonly MensajeHistorial[]): { readonly minuto12: number; readonly meridiano: "am" | "pm" | null } | null {
+  // Atada al pedido VIGENTE: la hora de un pedido anterior (el asistente ya le dijo «su pedido quedó registrado») no vale para el nuevo; solo cuentan los mensajes del cliente posteriores a esa afirmacion.
+  let inicioPedidoVigente = 0;
+  for (let i = historial.length - 1; i >= 0; i--) {
+    const m = historial[i]!;
+    if (m.role === "assistant" && typeof m.content === "string" && m.content.split(/(?<=[.!?\n])\s+/).some((f) => afirmaPedidoRegistrado(f))) { inicioPedidoVigente = i + 1; break; }
+  }
+  let vistos = 0;
+  for (let i = historial.length - 1; i >= inicioPedidoVigente && vistos < 8; i--) {
+    const m = historial[i]!;
+    if (m.role !== "user" || typeof m.content !== "string") continue;
+    vistos += 1;
+    const crudo = m.content.slice(0, 600);
+    // Un plazo («en 40 minutos», «en cuanto esté») mas reciente que cualquier hora exacta la sustituye: no hay hora que comparar.
+    if (/\b(?:en\s+\d+\s*(?:min|minutos|hora|horas)|en\s+media\s+hora|en\s+una\s+hora|en\s+cuanto|ahorita|ya\s+mismo|para\s+ya)\b/i.test(crudo.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) return null;
+    if (/[?¿]/.test(crudo) || /\b(?:abren|abre|cierran|cierra|horario|hasta\s+que\s+hora)\b/i.test(crudo)) continue;
+    const t = crudo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    let ultima: { minuto12: number; meridiano: "am" | "pm" | null } | null = null;
+    for (const r of t.matchAll(/(\b(?:a|para)\s+las?\s+)?(?<![\d:.$])(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|de\s+la\s+(?:manana|tarde|noche))?(?![\d:])/g)) {
+      const tienePrefijo = r[1] !== undefined;
+      const tag = r[4] ?? "";
+      if (!tienePrefijo && tag === "") continue;
+      const h = Number(r[2]);
+      const min = r[3] ? Number(r[3]) : 0;
+      if (h > 23 || min > 59) continue;
+      // «a las 5 tacos», «5 kg»: un numero seguido de una unidad o producto no es una hora (salvo con minutos o meridiano).
+      const despues = t.slice((r.index ?? 0) + r[0].length);
+      if (tag === "" && r[3] === undefined && /^\s*(?:kg|kilos?|g|gr|gramos?|tacos?|ordenes|orden|piezas?|personas?|pesos|min|minutos|horas?|hrs?)\b/.test(despues)) continue;
+      const meridiano = /^p/.test(tag) || /tarde|noche/.test(tag) ? "pm" : /^a/.test(tag) || /manana/.test(tag) ? "am" : null;
+      ultima = { minuto12: (h % 12) * 60 + min, meridiano: h >= 13 ? "pm" : meridiano };
+    }
+    if (ultima) return ultima;
+  }
+  return null;
+}
+
+/** R21 (T7-026): ¿la hora cotizada (ms, zona de la sucursal) contradice la que el cliente dijo por ultima vez? Solo cuenta si hay una hora clara del cliente; con meridiano, tambien am/pm. */
+export function horaCotizadaContradiceAlCliente(instanteMs: number, zonaHoraria: string, historial: readonly MensajeHistorial[]): { readonly dicha: string } | null {
+  const dicha = horaDichaPorElCliente(historial);
+  if (!dicha) return null;
+  const { minutos } = componentesLocales(new Date(instanteMs), zonaHoraria);
+  const coincide12 = ((Math.floor(minutos / 60) % 12) * 60 + (minutos % 60)) === dicha.minuto12;
+  const coincideMeridiano = dicha.meridiano === null || (dicha.meridiano === "pm") === (minutos >= 12 * 60);
+  if (coincide12 && coincideMeridiano) return null;
+  const h = Math.floor(dicha.minuto12 / 60) || 12;
+  const mm = dicha.minuto12 % 60;
+  return { dicha: `${h}:${String(mm).padStart(2, "0")}${dicha.meridiano ? ` ${dicha.meridiano}` : ""}` };
+}
+
 function pesos(n: number): string {
   return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
 }
@@ -427,7 +484,7 @@ const MAX_LISTA_SALSAS_RESUMEN = 300;
  * Nota libre del pedido ya capturada (`notes`) lista para el resumen que ve el cliente: una sola linea, sin correos ni numeros largos (telefonos, tarjetas) que el modelo
  * haya colado, y acotada. Devuelve `undefined` si no queda nada.
  */
-export function sanearNotaDeResumen(nota: unknown): string | undefined {
+export function sanearNotaDeResumen(nota: unknown, opciones: { readonly direccion?: boolean } = {}): string | undefined {
   if (typeof nota !== "string") return undefined;
   // Recorrido lineal (sin expresiones regulares con repeticiones anidadas: la nota es texto no confiable). Una racha de digitos y separadores con 7 o mas digitos es un telefono o
   // una tarjeta y se quita; una palabra con «@» es un correo y se quita.
@@ -435,17 +492,29 @@ export function sanearNotaDeResumen(nota: unknown): string | undefined {
   let sinNumeros = "";
   let racha = "";
   let digitos = 0;
+  let contiguos = 0;
+  let maxContiguos = 0;
+  // En una DIRECCION («Calle 60 #123 x 21», «No. 1234 97000») los numeros separados por espacios no son un telefono: solo se quita una racha de 10 o mas digitos o 7 o mas digitos SEGUIDOS.
+  // Excepcion: un telefono local escrito en dos grupos («123 4567», «9999-9999») es una racha de EXACTAMENTE dos grupos de 3-4 y 4 digitos; «No. 123 21 45» (grupos 3-2-2) y «Calle 60 #123 x 21»
+  // no coinciden. Limite conocido: «No. 123 4567» como numero exterior en dos grupos se recorta (preferible a dejar pasar un telefono).
+  const esTelefonoLocalEnDosGrupos = (): boolean => {
+    const grupos = racha.split(/[^0-9]+/).filter((g) => g !== "");
+    return grupos.length === 2 && grupos[1]?.length === 4 && (grupos[0]?.length === 3 || grupos[0]?.length === 4);
+  };
+  const esTelefonoOTarjeta = (): boolean => (opciones.direccion === true ? digitos >= 10 || maxContiguos >= 7 || esTelefonoLocalEnDosGrupos() : digitos >= 7);
   const cerrarRacha = (): void => {
-    if (digitos < 7) sinNumeros += racha;
+    if (!esTelefonoOTarjeta()) sinNumeros += racha;
     else sinNumeros += " ";
     racha = "";
     digitos = 0;
+    contiguos = 0;
+    maxContiguos = 0;
   };
   for (const ch of texto) {
     const esDigito = ch >= "0" && ch <= "9";
     if (esDigito || (racha !== "" && (ch === " " || ch === "-" || ch === "(" || ch === ")" || ch === "." || ch === "+"))) {
       racha += ch;
-      if (esDigito) digitos += 1;
+      if (esDigito) { digitos += 1; contiguos += 1; if (contiguos > maxContiguos) maxContiguos = contiguos; } else contiguos = 0;
     } else {
       cerrarRacha();
       sinNumeros += ch;
@@ -475,6 +544,7 @@ function acotarLista(items: readonly string[]): string {
 export function resumenCanonico(e: EntradaResumen): string {
   const renglones = e.lineas.map((l) => `• ${l.quantity} × ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
   const detalles: string[] = [];
+  if (e.basicas && e.basicas.length > 0) detalles.push(`Salsas básicas incluidas: ${acotarLista(e.basicas)}`);
   if (e.salsas && e.salsas.length > 0) detalles.push(`Salsas pedidas (sin costo): ${acotarLista(e.salsas)}`);
   if (e.sinSalsas && e.sinSalsas.length > 0) detalles.push(`Sin: ${acotarLista(e.sinSalsas)}`);
   const nota = sanearNotaDeResumen(e.notas);

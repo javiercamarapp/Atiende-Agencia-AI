@@ -31,7 +31,7 @@ import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
-import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
+import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, horaHablada, horaLegible } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
@@ -43,7 +43,7 @@ import { kmAproxTexto } from "../nearest-branch.ts";
 import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
-import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
@@ -82,6 +82,7 @@ import {
   decidirConfirmacion,
   etiquetaHoraEntrega,
   firmaDeCierre,
+  horaCotizadaContradiceAlCliente,
   mensajeDatosCambiaron,
   resumenCanonico,
   sanearNotaDeResumen,
@@ -1031,16 +1032,23 @@ async function horaYDireccionDeResumen(
   input: Record<string, unknown>,
   horaCotizada: string | undefined,
   ahoraMs: number,
-): Promise<{ readonly hora?: string; readonly direccion?: string }> {
+  calle?: string,
+): Promise<{ readonly hora?: string; readonly direccion?: string; readonly contradiceAlCliente?: string }> {
   const programado = input.canal === "recoger" ? undefined : toProgramadoPara(input.programado_para);
   const crudo = programado ?? horaCotizada;
   const instante = crudo === undefined ? NaN : Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(crudo) ? `${crudo}:00.000Z` : crudo);
-  const hora = Number.isNaN(instante) ? undefined : etiquetaHoraEntrega(instante, (await zonaDeSucursal(repo, ctx, input.branch_slug)) ?? resolverZonaHorariaNegocio(null), ahoraMs);
+  const zona = (await zonaDeSucursal(repo, ctx, input.branch_slug)) ?? resolverZonaHorariaNegocio(null);
+  const hora = Number.isNaN(instante) ? undefined : etiquetaHoraEntrega(instante, zona, ahoraMs);
+  // R21 (T7-026): el cliente cambio la hora («mejor a las 5 pm») y la cotizacion siguio con la anterior (el pedido quedaba a las 7 pm).
+  const contradice = Number.isNaN(instante) || !ctx.conversacionReciente ? null : horaCotizadaContradiceAlCliente(instante, zona, ctx.conversacionReciente);
   const partes: string[] = [];
   const colonia = input.canal === "recoger" ? undefined : textoOpcional(input.colonia_entrega)?.trim();
-  if (colonia) partes.push(`colonia ${colonia}`);
+  // R21 (T7-001/T7-038): la direccion completa que el cliente dio (la calle, el numero, las referencias) va en el resumen que confirma; antes solo salia la colonia.
+  const direccionCompleta = input.canal === "recoger" || !calle ? undefined : sanearNotaDeResumen(calle, { direccion: true });
+  if (direccionCompleta) partes.push(direccionCompleta);
+  if (colonia && !(direccionCompleta && direccionCompleta.toLowerCase().includes(colonia.toLowerCase()))) partes.push(`colonia ${colonia}`);
   if (input.canal !== "recoger" && ctx.ubicacionEntrega) partes.push("pin de ubicación recibido");
-  return { ...(hora ? { hora } : {}), ...(partes.length > 0 ? { direccion: partes.join(", ") } : {}) };
+  return { ...(hora ? { hora } : {}), ...(partes.length > 0 ? { direccion: partes.join(", ") } : {}), ...(contradice ? { contradiceAlCliente: contradice.dicha } : {}) };
 }
 
 /**
@@ -1067,6 +1075,36 @@ function detallesDeResumen(
   const sinSalsas = input.omit_default_complements != null ? etiquetas(input.omit_default_complements, (x) => (typeof x === "string" && x.trim() !== "" ? x.trim() : null)) : [...(previo?.sinSalsas ?? [])];
   const notas = input.notes != null ? sanearNotaDeResumen(input.notes) : previo?.notas;
   return { ...(salsas.length > 0 ? { salsas } : {}), ...(sinSalsas.length > 0 ? { sinSalsas } : {}), ...(notas ? { notas } : {}) };
+}
+
+/** Respaldo SOLO para renglones sin categoria en el catalogo (filas antiguas): la regla principal es la categoria del producto (`CATEGORIAS_SIN_SALSA`). */
+const SIN_SALSA_POR_NOMBRE = /\b(?:coca|cola|agua|refresco|jarritos|cerveza|limonada|topo\s+chico|sprite|fanta|boing|jugo|cafe|te\s+helado|sidral|pepsi|mineral|postre|flan|helado|pastel)\b/i;
+/** Los crujientes (y las alitas) no traen las salsas basicas del taco; se reconocen por nombre aunque su categoria no sea de bebidas o postres. */
+const CRUJIENTE_POR_NOMBRE = /\b(?:crujientes?)\b/i;
+
+/** ¿El renglon lleva las salsas basicas? Por categoria del producto cuando se conoce; por nombre solo como respaldo. */
+function renglonLlevaSalsas(l: { readonly name: string; readonly categoryName?: string | null }): boolean {
+  if (CRUJIENTE_POR_NOMBRE.test(l.name)) return false;
+  if (typeof l.categoryName === "string" && l.categoryName.trim() !== "") return !CATEGORIAS_SIN_SALSA.test(l.categoryName.trim());
+  return !SIN_SALSA_POR_NOMBRE.test(l.name);
+}
+
+/** R21: salsas BASICAS del perfil que van en el pedido (las del perfil menos las que el cliente quito o excluyo en las notas), con su nombre para el cliente. Solo si algun renglon las lleva. */
+function salsasBasicasDeResumen(input: Record<string, unknown>, previo: { readonly resumenBase?: { readonly sinSalsas?: readonly string[] } } | undefined, renglones: readonly { readonly name: string; readonly categoryName?: string | null }[]): readonly string[] {
+  // Un pedido sin ningun renglon que lleve salsa (solo bebidas, postres o crujientes) no las muestra.
+  if (renglones.length > 0 && !renglones.some(renglonLlevaSalsas)) return [];
+  const quitadas = new Set<string>();
+  const omitidas = input.omit_default_complements != null ? (Array.isArray(input.omit_default_complements) ? input.omit_default_complements : []) : [];
+  for (const o of omitidas) if (typeof o === "string") quitadas.add(o === "cebolla" ? "cebolla_cilantro" : o);
+  for (const x of complementosExcluidosEnNotas(input.notes)) quitadas.add(x);
+  const etiquetasPrevias = new Set(input.omit_default_complements != null ? [] : (previo?.resumenBase?.sinSalsas ?? []));
+  return PM_BASIC_COMPLEMENTS.filter((c) => !quitadas.has(c))
+    .map((c) => etiquetaComplementoResumen(c))
+    .filter((e): e is string => e !== null && !etiquetasPrevias.has(e));
+}
+
+function avisoHoraDistinta(dicha: string): string {
+  return `La última hora que dijo el cliente es ${dicha}, pero esta cotización quedó con otra. NO muestre este resumen todavía: vuelva a llamar cotizar_pedido con la hora del cliente (hora_recogida o programado_para; en recoger la misma hora en las dos llamadas). Si el cliente hablaba de otra cosa y la hora cotizada es la correcta, ignore este aviso.`;
 }
 
 /** Maximo de `minutos_para_recoger` (misma cota que la recogida de hoy: `HORA_RECOGIDA_MAX_HORAS`). */
@@ -1278,6 +1316,8 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const pagoCotizado = pagoDeCotizacion(input, previoVigente);
       const propinaCotizada = propinaDeCotizacion(input, previoVigente);
       // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
+      const datosVigentes = ctx.channel === "whatsapp" ? datosDeCierreSiWhatsapp(ctx, input, previoVigente?.datosCierre) : undefined;
+      const horaYDireccion = cierreMaquinaActiva() && ctx.channel === "whatsapp" ? await horaYDireccionDeResumen(repo, ctx, input, horaCotizacion, flowNow(flow), datosVigentes?.customerAddress) : {};
       const resumenBase =
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
           ? {
@@ -1287,13 +1327,18 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
               total: quotedQuote.total,
               descuento: quotedQuote.descuento,
               canal: canalOf(input.canal),
-              ...(await horaYDireccionDeResumen(repo, ctx, input, horaCotizacion, flowNow(flow))),
+              ...(({ contradiceAlCliente: _c, ...resto }) => resto)(horaYDireccion),
+              basicas: salsasBasicasDeResumen(input, previoVigente, quotedQuote.lines),
             }
           : undefined;
       const canonico = resumenBase
         ? resumenCanonico({ ...resumenBase, datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct } })
         : undefined;
-      const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto ? { ...r, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : r);
+      // R21: si el cliente dijo otra hora que la cotizada, el resultado lo avisa para que el modelo vuelva a cotizar con la hora del cliente ANTES de mostrar el resumen.
+      // Tope: UNA sola vez por turno. Si ya hubo una cotizacion en ESTE turno (la que disparo el aviso), la re-cotizacion no lo repite: evita ciclos de recotizacion si el modelo insiste en la hora cotizada.
+      const yaCotizadoEnEsteTurno = flow.turn !== null && previo?.quotedTurn === flow.turn;
+      const avisoHora = !yaCotizadoEnEsteTurno && "contradiceAlCliente" in horaYDireccion && horaYDireccion.contradiceAlCliente ? { hora_distinta_a_la_del_cliente: true, aviso_hora: avisoHoraDistinta(horaYDireccion.contradiceAlCliente) } : {};
+      const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto ? { ...r, ...avisoHora, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : { ...r, ...avisoHora });
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&

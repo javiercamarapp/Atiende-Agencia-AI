@@ -214,3 +214,37 @@ export function bloqueCantidadNoMultiplo(mensajes: readonly string[]): string {
     "Aplica SOLO si el cliente esta haciendo ese pedido ahora; si reclama, corrige o cancela un pedido ya hecho, ignore esta regla y siga las demas. Si buscar_producto trae otro pack_size para ese producto, manda la herramienta (nunca cambie la cantidad que pidio el cliente). En ESTE mensaje: (1) dígale con calidez QUE se vende en ordenes de N piezas y por que esa cantidad no se puede; (2) ofrezca las opciones validas con el PRECIO de cada una tomado de buscar_producto (nunca de memoria ni calculado de cabeza: orden y dos ordenes); (3) no cotice, no cree pedido y no cambie la cantidad por su cuenta: espere a que el cliente elija. No repita esta regla ni mencione al servidor.",
   ].join("\n");
 }
+
+// ── R21 (T7-008): productos que el menu NO tiene ──────────────────────────────────────────────────────────────────────────────────────────────
+// El modelo rechazaba bien chistorra o salchichas pero ofrecia «tacos de chorizo» (un platillo que el cliente no pidio y que el menu no tiene) en vez de lo parecido que SI hay
+// (los crujientes de pollo). El servidor detecta la palabra en el mensaje del cliente y le fija al modelo, SOLO para ese turno, que decir. No lista precios: los da buscar_producto.
+
+/**
+ * Productos que el menu de Los Taquitos de PM NO tiene: constante del PERFIL PM, no una regla del dominio.
+ * DEUDA: esta lista es una foto del menu de oct-2026 escrita a mano. Lo correcto es que salga del catalogo/configuracion del tenant (un producto "no manejado" = no existe en el catalogo
+ * activo) y no de una lista en codigo. Por eso el bloque de abajo NUNCA da por hecho que falte: siempre manda verificar con `buscar_producto` antes de decirle al cliente que no lo manejamos.
+ * Si el menu cambia (p. ej. PM agrega chistorra), basta con que `buscar_producto` lo devuelva: el modelo lo cotiza y esta lista deja de importar.
+ */
+export const PM_PRODUCTOS_NO_MANEJADOS: readonly { readonly nombre: string; readonly patron: RegExp }[] = [
+  { nombre: "chistorra", patron: /\bchistorra\b/ },
+  { nombre: "longaniza", patron: /\blonganiza\b/ },
+  { nombre: "salchichas", patron: /\bsalchichas?\b/ },
+  { nombre: "dedos de queso", patron: /\bdedos?\s+de\s+queso\b/ },
+  { nombre: "papas a la francesa", patron: /\bpapas?\s+(?:a\s+la\s+francesa|fritas)\b/ },
+];
+
+/** Pura: nombres (canonicos) de los productos que el menu no maneja y que el cliente menciono en el texto. */
+export function productosNoManejados(texto: string): string[] {
+  const t = sinAcentos(texto).toLowerCase();
+  return PM_PRODUCTOS_NO_MANEJADOS.filter((p) => p.patron.test(t)).map((p) => p.nombre);
+}
+
+/** Bloque de sistema para el turno. Vacio si el cliente no menciono ningun producto no manejado. */
+export function bloqueProductoNoManejado(mensajes: readonly string[]): string {
+  const nombres = [...new Set(mensajes.flatMap((m) => productosNoManejados(m)))];
+  if (nombres.length === 0) return "";
+  return [
+    "REGLA DEL SERVIDOR PARA ESTE TURNO (producto que el menú no tiene):",
+    `El cliente mencionó ${nombres.join(", ")}. SIEMPRE verifique con buscar_producto antes de contestar (esta lista puede estar desactualizada: si buscar_producto SÍ lo devuelve, cotícelo normalmente). Si no aparece, diga que NO lo manejamos (sin inventarlo ni cotizarlo) y ofrezca como alternativa los CRUJIENTES DE POLLO (busque «crujientes» para dar el nombre y el precio reales). No ofrezca como sustituto tacos de chorizo ni ningún otro platillo que buscar_producto no devuelva. Los productos válidos del pedido se conservan y se cotizan normalmente.`,
+  ].join("\n");
+}
