@@ -139,6 +139,12 @@ export interface DatosLaboralesNominaXml {
   readonly periodicidadPago: string;
   /** c_Estado (Anexo 20) — ver `CLAVES_ENT_FED`. */
   readonly claveEntFed: string;
+  /** NSS (opcional, 1-15 dígitos). */
+  readonly numSeguridadSocial?: string;
+  /** YYYY-MM-DD (opcional); con él se emite `Antigüedad` en semanas (P#W) a la fecha final del periodo. */
+  readonly fechaInicioRelLaboral?: string;
+  /** c_RiesgoPuesto (opcional): 1-5 o 99. */
+  readonly riesgoPuesto?: string;
 }
 
 const CFDI_NS = "http://www.sat.gob.mx/cfd/4";
@@ -168,6 +174,8 @@ export interface DatosEmisorNominaXml {
   /** Certificado (base64) real del CSD del emisor. Vacío por defecto, mismo
    * criterio que `noCertificado`. */
   readonly certificado?: string;
+  /** Registro patronal IMSS (opcional, 1-20 caracteres) -> nomina12:Emisor/@RegistroPatronal. */
+  readonly registroPatronal?: string;
 }
 
 export interface DatosReceptorNominaXml {
@@ -204,6 +212,12 @@ export interface DatosPeriodoNominaXml {
   /** Default "NOM" — es solo la serie/etiqueta de foliación propia del
    * emisor, no un dato fiscal sensible; seguro de defaultear. */
   readonly serie?: string;
+  /** YYYY-MM-DD. Por omisión la fecha de pago con que se calculó el empleado (EmployeePayroll.fechaPago). */
+  readonly fechaPago?: string;
+  /** YYYY-MM-DD. Por omisión el día 1 del mes. */
+  readonly fechaInicialPago?: string;
+  /** YYYY-MM-DD. Por omisión el último día del mes. */
+  readonly fechaFinalPago?: string;
 }
 
 function fmt2(n: number): string {
@@ -294,33 +308,47 @@ export function generarXmlCfdiNomina(
   const tipoNomina = periodo.tipoNomina ?? "O";
   const serie = periodo.serie ?? "NOM";
   const regimenFiscalReceptor = (receptor.regimenFiscalReceptor ?? "605").trim();
+  const fechaRe = /^\d{4}-\d{2}-\d{2}$/;
+  const fechaPago = periodo.fechaPago ?? empleado.fechaPago;
+  // Sin fechas explícitas: mensual cubre el mes completo; quincenal cubre la quincena a la que pertenece FechaPago
+  // (día <= 15 -> 01 al 15; si no, 16 al último día del mes), nunca el mes entero.
+  const primeraQuincena = empleado.periodicidad === "quincenal" && Number(fechaPago.slice(8, 10)) <= 15;
+  const segundaQuincena = empleado.periodicidad === "quincenal" && !primeraQuincena;
+  const fechaInicialPago = periodo.fechaInicialPago ?? `${year}-${mm}-${segundaQuincena ? "16" : "01"}`;
+  const fechaFinalPago = periodo.fechaFinalPago ?? `${year}-${mm}-${primeraQuincena ? "15" : dd}`;
+  for (const [campo, v] of [["fechaPago", fechaPago], ["fechaInicialPago", fechaInicialPago], ["fechaFinalPago", fechaFinalPago]] as const) {
+    if (!fechaRe.test(v)) throw new Error(`CFDI Nómina: ${campo} debe tener formato YYYY-MM-DD.`);
+  }
+  if (fechaInicialPago > fechaFinalPago) throw new Error("CFDI Nómina: fechaInicialPago no puede ser posterior a fechaFinalPago.");
+  if (fechaPago < fechaInicialPago) throw new Error("CFDI Nómina: fechaPago no puede ser anterior a fechaInicialPago.");
 
-  // Total percibido = base del concepto único "Sueldos, Salarios, Rayas y
-  // Jornales" del comprobante. El Total del comprobante NO resta ISR/IMSS
-  // del trabajador (esas deducciones viven en el complemento) — mismo
-  // criterio ya verificado en nomina-integracion.e2e.spec.ts.
-  const subtotal = r2(empleado.salarioBruto + empleado.percepciones);
+  // Datos opcionales de seguridad social (nomina12:Emisor y nomina12:Receptor).
+  const registroPatronal = emisor.registroPatronal?.trim();
+  if (registroPatronal && !/^[^|]{1,20}$/.test(registroPatronal)) throw new Error("CFDI Nómina: registroPatronal debe tener entre 1 y 20 caracteres.");
+  const nss = datosLaborales.numSeguridadSocial?.trim();
+  if (nss && !/^\d{1,15}$/.test(nss)) throw new Error("CFDI Nómina: numSeguridadSocial debe tener entre 1 y 15 dígitos.");
+  const riesgoPuesto = datosLaborales.riesgoPuesto?.trim();
+  if (riesgoPuesto && !["1", "2", "3", "4", "5", "99"].includes(riesgoPuesto)) throw new Error("CFDI Nómina: riesgoPuesto debe ser 1, 2, 3, 4, 5 o 99 (c_RiesgoPuesto).");
+  const inicioRel = datosLaborales.fechaInicioRelLaboral?.trim();
+  if (inicioRel && !fechaRe.test(inicioRel)) throw new Error("CFDI Nómina: fechaInicioRelLaboral debe tener formato YYYY-MM-DD.");
+  if (inicioRel && inicioRel > fechaFinalPago) throw new Error("CFDI Nómina: fechaInicioRelLaboral no puede ser posterior al fin del periodo.");
+
+  const c = empleado.conceptos;
+  const sueldos = r2(empleado.salarioBruto + empleado.percepciones);
+  const subtotal = r2(sueldos + c.totalPercibido);
   const isr = empleado.taxes.isr;
   const imssObrero = empleado.taxes.imssObrero;
-  const totalDeducciones = r2(isr + imssObrero);
+  const descIncap = c.descuentoIncapacidad;
+  const totalDeducciones = r2(isr + imssObrero + descIncap);
+  const subsidioCausado = empleado.taxes.subsidioCausado;
+  // Sin pago en efectivo del excedente del subsidio: el importe entregado es 0.00 y el causado va en SubsidioAlEmpleo.
+  const totalOtrosPagos = 0;
 
-  // NoCertificado/Certificado: atributos OPCIONALES del XSD real, pero con
-  // facets `pattern`/`length` (20 dígitos / base64 no vacío) que un valor de
-  // cadena VACÍA viola — un validador de esquema real rechaza `NoCertificado=""`
-  // igual que rechazaría un valor inventado (ver corrección de cabecera:
-  // verificado contra el XSD real). Cuando el llamador no trae un CSD real
-  // todavía, el atributo se OMITE por completo (nunca se emite vacío) — sigue
-  // sin fabricar un número de certificado falso, pero ahora de una forma que un
-  // validador de esquema real acepta.
   const comprobanteAttrsBase: Array<readonly [string, string]> = [
     ["Version", "4.0"],
     ["Serie", serie],
     ["Folio", folio],
-    // NOTA DE FIDELIDAD: el original arma `Fecha`/`FechaPago`/
-    // `FechaInicialPago` como el PRIMER día del mes (no una fecha de pago
-    // real distinta) — se porta tal cual, es una simplificación del
-    // original, no un ajuste de este puerto.
-    ["Fecha", `${year}-${mm}-01T00:00:00`],
+    ["Fecha", `${fechaPago}T00:00:00`],
     ["FormaPago", "03"],
   ];
   if (emisor.noCertificado) comprobanteAttrsBase.push(["NoCertificado", emisor.noCertificado]);
@@ -331,9 +359,6 @@ export function generarXmlCfdiNomina(
     ["Moneda", "MXN"],
     ["Total", fmt2(subtotal)],
     ["TipoDeComprobante", "N"],
-    // Exportacion: atributo OBLIGATORIO desde CFDI 4.0 (c_Exportacion) — "01" (No
-    // aplica) es el único valor correcto para un CFDI de nómina (nunca es una
-    // operación de exportación). Ver corrección de cabecera.
     ["Exportacion", "01"],
     ["MetodoPago", "PUE"],
     ["LugarExpedicion", lugarExpedicion],
@@ -354,11 +379,6 @@ export function generarXmlCfdiNomina(
     ["UsoCFDI", "CN01"],
   ]);
 
-  // cfdi:Conceptos — nodo OBLIGATORIO (mínimo 1) que el XML anterior omitía por
-  // completo (ver corrección de cabecera). ClaveProdServ="84111505" (Servicios de
-  // nómina) y ObjetoImp="01" (No objeto de impuesto: las retenciones viven en el
-  // complemento nomina12, no aquí) son catálogo fijo correcto para todo CFDI de
-  // nómina — no datos fabricados por instancia.
   const conceptoAttrs = attrs([
     ["ClaveProdServ", "84111505"],
     ["Cantidad", "1"],
@@ -372,72 +392,89 @@ export function generarXmlCfdiNomina(
   const nominaAttrs = attrs([
     ["Version", "1.2"],
     ["TipoNomina", tipoNomina],
-    ["FechaPago", `${year}-${mm}-01`],
-    ["FechaInicialPago", `${year}-${mm}-01`],
-    ["FechaFinalPago", `${year}-${mm}-${dd}`],
+    ["FechaPago", fechaPago],
+    ["FechaInicialPago", fechaInicialPago],
+    ["FechaFinalPago", fechaFinalPago],
     ["NumDiasPagados", String(periodo.diasPagados)],
     ["TotalPercepciones", fmt2(subtotal)],
     ["TotalDeducciones", fmt2(totalDeducciones)],
+    // Nómina 1.2: TotalOtrosPagos solo existe si hay nodo OtrosPagos (aquí, el OtroPago 002 del subsidio causado).
+    ...(subsidioCausado > 0 ? ([["TotalOtrosPagos", fmt2(totalOtrosPagos)]] as const) : []),
   ]);
 
-  // nomina12:Receptor — nodo OBLIGATORIO dentro de nomina12:Nomina que el XML
-  // anterior omitía por completo (ver corrección de cabecera). Datos reales del
-  // trabajador, nunca fabricados.
-  const nominaReceptorAttrs = attrs([
-    ["Curp", curp],
-    ["NumEmpleado", numEmpleado],
-    ["TipoContrato", tipoContrato],
-    ["TipoRegimen", tipoRegimen],
-    ["PeriodicidadPago", periodicidadPago],
-    ["ClaveEntFed", claveEntFed],
-  ]);
+  const nominaEmisor = registroPatronal ? `\n      <nomina12:Emisor ${attrs([["RegistroPatronal", registroPatronal]])}/>` : "";
 
-  // TotalGravado/TotalExento son atributos `use="required"` del XSD real — el XML
-  // anterior solo emitía TotalSueldos (opcional). Este motor no distingue
-  // percepciones exentas de gravadas por separado (mismo criterio que el único
-  // ImporteGravado/ImporteExento de nomina12:Percepcion abajo): TotalGravado =
-  // subtotal, TotalExento = 0.
+  const receptorPairs: Array<readonly [string, string]> = [["Curp", curp]];
+  if (nss) receptorPairs.push(["NumSeguridadSocial", nss]);
+  if (inicioRel) {
+    const dias = Math.round((Date.parse(`${fechaFinalPago}T00:00:00Z`) - Date.parse(`${inicioRel}T00:00:00Z`)) / 86400000) + 1;
+    receptorPairs.push(["FechaInicioRelLaboral", inicioRel], ["Antigüedad", `P${Math.max(0, Math.floor(dias / 7))}W`]);
+  }
+  receptorPairs.push(["TipoContrato", tipoContrato], ["TipoRegimen", tipoRegimen], ["NumEmpleado", numEmpleado]);
+  if (riesgoPuesto) receptorPairs.push(["RiesgoPuesto", riesgoPuesto]);
+  receptorPairs.push(["PeriodicidadPago", periodicidadPago]);
+  receptorPairs.push(["SalarioBaseCotApor", fmt2(empleado.sbcDiario)], ["SalarioDiarioIntegrado", fmt2(empleado.sbcDiario)], ["ClaveEntFed", claveEntFed]);
+  const nominaReceptorAttrs = attrs(receptorPairs);
+
+  // Percepciones: 001 sueldos; 002 aguinaldo; 003 PTU; 019 horas extra (con HorasExtra); 021 prima vacacional.
+  const percepcionNodo = (tipo: string, concepto: string, grav: number, exe: number, hijos = ""): string => {
+    const a = attrs([["TipoPercepcion", tipo], ["Clave", tipo], ["Concepto", concepto], ["ImporteGravado", fmt2(grav)], ["ImporteExento", fmt2(exe)]]);
+    return hijos ? `        <nomina12:Percepcion ${a}>\n${hijos}\n        </nomina12:Percepcion>` : `        <nomina12:Percepcion ${a}/>`;
+  };
+  const percepciones: string[] = [];
+  if (sueldos > 0 || subtotal === 0) percepciones.push(percepcionNodo("001", "Sueldos, Salarios, Rayas y Jornales", sueldos, 0));
+  if (c.aguinaldo.total > 0) percepciones.push(percepcionNodo("002", "Gratificación anual (aguinaldo)", c.aguinaldo.gravado, c.aguinaldo.exento));
+  if (c.ptu.total > 0) percepciones.push(percepcionNodo("003", "Participación de los trabajadores en las utilidades PTU", c.ptu.gravado, c.ptu.exento));
+  if (c.tiempoExtra.total > 0) {
+    const hijos = empleado.horasExtra
+      .map((h) => `          <nomina12:HorasExtra ${attrs([["Dias", String(h.dias)], ["TipoHoras", h.tipo], ["HorasExtra", String(h.horas)], ["ImportePagado", fmt2(h.importe)]])}/>`)
+      .join("\n");
+    percepciones.push(percepcionNodo("019", "Horas extra", c.tiempoExtra.gravado, c.tiempoExtra.exento, hijos));
+  }
+  if (c.primaVacacional.total > 0) percepciones.push(percepcionNodo("021", "Prima vacacional", c.primaVacacional.gravado, c.primaVacacional.exento));
+  const totalGravado = r2(sueldos + c.totalGravado);
+  const totalExento = c.totalExento;
   const percepcionesAttrs = attrs([
     ["TotalSueldos", fmt2(subtotal)],
-    ["TotalGravado", fmt2(subtotal)],
-    ["TotalExento", "0.00"],
-  ]);
-  const percepcionAttrs = attrs([
-    ["TipoPercepcion", "001"],
-    ["Clave", "001"],
-    ["Concepto", "Sueldos, Salarios, Rayas y Jornales"],
-    ["ImporteGravado", fmt2(subtotal)],
-    ["ImporteExento", "0.00"],
+    ["TotalGravado", fmt2(totalGravado)],
+    ["TotalExento", fmt2(totalExento)],
   ]);
 
   let deduccionesBloque = "";
-  if (isr > 0 || imssObrero > 0) {
+  if (isr > 0 || imssObrero > 0 || descIncap > 0) {
     const deduccionesAttrs = attrs([
-      ["TotalOtrasDeducciones", fmt2(imssObrero)],
+      ["TotalOtrasDeducciones", fmt2(r2(imssObrero + descIncap))],
       ["TotalImpuestosRetenidos", fmt2(isr)],
     ]);
+    const dedNodo = (tipo: string, concepto: string, importe: number): string =>
+      `        <nomina12:Deduccion ${attrs([["TipoDeduccion", tipo], ["Clave", tipo], ["Concepto", concepto], ["Importe", fmt2(importe)]])}/>`;
     const nodos: string[] = [];
-    if (isr > 0) {
-      nodos.push(
-        `        <nomina12:Deduccion ${attrs([
-          ["TipoDeduccion", "002"],
-          ["Clave", "002"],
-          ["Concepto", "ISR"],
-          ["Importe", fmt2(isr)],
-        ])}/>`,
-      );
-    }
-    if (imssObrero > 0) {
-      nodos.push(
-        `        <nomina12:Deduccion ${attrs([
-          ["TipoDeduccion", "001"],
-          ["Clave", "001"],
-          ["Concepto", "Seguridad social (IMSS)"],
-          ["Importe", fmt2(imssObrero)],
-        ])}/>`,
-      );
-    }
+    if (isr > 0) nodos.push(dedNodo("002", "ISR", isr));
+    if (imssObrero > 0) nodos.push(dedNodo("001", "Seguridad social (IMSS)", imssObrero));
+    if (descIncap > 0) nodos.push(dedNodo("006", "Descuento por incapacidad", descIncap));
     deduccionesBloque = `\n      <nomina12:Deducciones ${deduccionesAttrs}>\n${nodos.join("\n")}\n      </nomina12:Deducciones>`;
+  }
+
+  // OtroPago 002 (subsidio para el empleo): obligatorio con SubsidioAlEmpleo/@SubsidioCausado cuando hay subsidio causado.
+  let otrosPagosBloque = "";
+  if (subsidioCausado > 0) {
+    const otroAttrs = attrs([
+      ["TipoOtroPago", "002"],
+      ["Clave", "002"],
+      ["Concepto", "Subsidio para el empleo (efectivamente entregado al trabajador)"],
+      ["Importe", fmt2(totalOtrosPagos)],
+    ]);
+    otrosPagosBloque = `\n      <nomina12:OtrosPagos>\n        <nomina12:OtroPago ${otroAttrs}>\n          <nomina12:SubsidioAlEmpleo ${attrs([["SubsidioCausado", fmt2(subsidioCausado)]])}/>\n        </nomina12:OtroPago>\n      </nomina12:OtrosPagos>`;
+  }
+
+  let incapacidadesBloque = "";
+  if (empleado.incapacidades.length > 0) {
+    const nodos = empleado.incapacidades.map((i) => {
+      const pares: Array<readonly [string, string]> = [["DiasIncapacidad", String(i.dias)], ["TipoIncapacidad", i.tipo]];
+      if (i.importe !== undefined) pares.push(["ImporteMonetario", fmt2(i.importe)]);
+      return `        <nomina12:Incapacidad ${attrs(pares)}/>`;
+    });
+    incapacidadesBloque = `\n      <nomina12:Incapacidades>\n${nodos.join("\n")}\n      </nomina12:Incapacidades>`;
   }
 
   return [
@@ -449,11 +486,11 @@ export function generarXmlCfdiNomina(
     `    <cfdi:Concepto ${conceptoAttrs}/>`,
     `  </cfdi:Conceptos>`,
     `  <cfdi:Complemento>`,
-    `    <nomina12:Nomina ${nominaAttrs}>`,
+    `    <nomina12:Nomina ${nominaAttrs}>${nominaEmisor}`,
     `      <nomina12:Receptor ${nominaReceptorAttrs}/>`,
     `      <nomina12:Percepciones ${percepcionesAttrs}>`,
-    `        <nomina12:Percepcion ${percepcionAttrs}/>`,
-    `      </nomina12:Percepciones>${deduccionesBloque}`,
+    percepciones.join("\n"),
+    `      </nomina12:Percepciones>${deduccionesBloque}${otrosPagosBloque}${incapacidadesBloque}`,
     `    </nomina12:Nomina>`,
     `  </cfdi:Complemento>`,
     `</cfdi:Comprobante>`,

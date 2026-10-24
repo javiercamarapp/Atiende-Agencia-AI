@@ -195,6 +195,47 @@ describe("POST /despachos/:propertyId/nomina/calcular", () => {
     expect(body.year).toBe(2026);
   });
 
+  it("D-P3-02/03: subsidio %UMA, IMSS por rama y prestaciones llegan por la ruta; fechaPago define la vigencia", async () => {
+    const app = buildApp(ctx.deps);
+    const payload = {
+      period: { month: 2, year: 2026, fechaPago: "2026-02-15" },
+      employees: [{ employeeId: "e1", nombre: "Ana", salarioBruto: 9000, fechaInicioRelLaboral: "2020-03-01", primaRt: 0.01, conceptos: { aguinaldo: 10000 } }],
+    };
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/calcular`, authedJson(ctx.staff.contador.token, payload));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { fechaPago: string; employees: readonly { antiguedadAnios: number; taxes: { subsidioCausado: number; imss: { patronal: { riesgoTrabajo: number }; obrero: { total: number } } }; conceptos: { aguinaldo: { exento: number; gravado: number } } }[] };
+    const e = body.employees[0]!;
+    expect(body.fechaPago).toBe("2026-02-15");
+    expect(e.antiguedadAnios).toBe(5);
+    // 9,000 + 6,480.70 de aguinaldo gravado supera el tope de 11,492.66: sin subsidio.
+    expect(e.taxes.subsidioCausado).toBe(0);
+    expect(e.conceptos.aguinaldo).toEqual({ total: 10000, exento: 3519.3, gravado: 6480.7 });
+    expect(e.taxes.imss.patronal.riesgoTrabajo).toBeGreaterThan(0);
+    const sin = await app.request(`/despachos/${ctx.propertyId}/nomina/calcular`, authedJson(ctx.staff.contador.token, { period: { month: 2, year: 2026 }, employees: [{ nombre: "Ana", salarioBruto: 9000 }] }));
+    const b2 = (await sin.json()) as { employees: readonly { taxes: { subsidioCausado: number } }[] };
+    expect(b2.employees[0]!.taxes.subsidioCausado).toBe(535.65);
+  });
+
+  it("un tenantId del cuerpo se ignora: la clave de idempotencia sale de la ruta (propertyId)", async () => {
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/calcular`, authedJson(ctx.staff.contador.token, { period: { month: 3, year: 2026 }, employees: [], tenantId: 999 }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { idempotencyKey: string; tenantId: number | null };
+    expect(body.idempotencyKey).toBe(`nomina-2026-03-${ctx.propertyId}`);
+    expect(body.tenantId).toBeNull();
+  });
+
+  it("reglas del motor violadas son 400 y no 500: periodo sin vigencia cargada, SBC en cero, concepto inválido", async () => {
+    const app = buildApp(ctx.deps);
+    const post = (payload: unknown) => app.request(`/despachos/${ctx.propertyId}/nomina/calcular`, authedJson(ctx.staff.contador.token, payload));
+    expect((await post({ period: { month: 12, year: 2025 }, employees: [{ salarioBruto: 9000 }] })).status).toBe(400);
+    expect((await post({ period: { month: 2, year: 2026 }, employees: [{ salarioBruto: 0 }] })).status).toBe(400);
+    expect((await post({ period: { month: 2, year: 2026 }, employees: [{ salarioBruto: 9000, conceptos: { aguinaldo: -1 } }] })).status).toBe(400);
+    expect((await post({ period: { month: 2, year: 2026, fechaPago: "15/02/2026" }, employees: [] })).status).toBe(400);
+    expect((await post({ period: { month: 2, year: 2026, periodicidad: "semanal" }, employees: [] })).status).toBe(400);
+    expect((await post({ period: { month: 2, year: 2026 }, employees: [{ salarioBruto: 9000, conceptos: { horasExtra: [{ dias: 1, tipo: "09", horas: 1, importe: 1 }] } }] })).status).toBe(400);
+  });
+
   it("employees no es arreglo -> 400", async () => {
     const app = buildApp(ctx.deps);
     const res = await app.request(`/despachos/${ctx.propertyId}/nomina/calcular`, authedJson(ctx.staff.admin.token, { period: {}, employees: "no-es-arreglo" }));
@@ -264,6 +305,44 @@ describe("POST /despachos/:propertyId/nomina/generar-xml", () => {
     // Las cifras del XML vienen del MISMO motor que /calcular -- cruce directo.
     const esperado = procesarNomina({ month: 7, year: 2026, diasPagados: 30 }, [{ employeeId: "e1", nombre: "Ana Pérez", salarioBruto: 15000 }], null);
     expect(comprobante.xml).toContain(`TotalPercepciones="${esperado.employees[0]!.salarioBruto.toFixed(2)}"`);
+  });
+
+  it("incluye OtroPago 002 con el subsidio causado, registro patronal, NSS, SBC y la fecha de pago real", async () => {
+    const app = buildApp(ctx.deps);
+    const base = payloadXmlNomina({ period: { month: 7, year: 2026, fechaPago: "2026-07-15" } });
+    const payload = {
+      ...base,
+      emisor: { ...base.emisor, registroPatronal: "A1234567891" },
+      employees: [{ ...(base.employees[0] as object), salarioBruto: 9000, numSeguridadSocial: "12345678901", fechaInicioRelLaboral: "2020-03-01", riesgoPuesto: "1" }],
+    };
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.contador.token, payload));
+    expect(res.status).toBe(200);
+    const xml = ((await res.json()) as { comprobantes: readonly { xml: string }[] }).comprobantes[0]!.xml;
+    expect(xml).toContain('<nomina12:Emisor RegistroPatronal="A1234567891"/>');
+    expect(xml).toContain('NumSeguridadSocial="12345678901"');
+    expect(xml).toContain('<nomina12:SubsidioAlEmpleo SubsidioCausado="535.65"/>');
+    expect(xml).toContain('FechaPago="2026-07-15"');
+    expect(xml).toContain('SalarioBaseCotApor="');
+  });
+
+  it("quincena de 4,500 de punta a punta: /calcular y el XML dan las mismas cifras de la quincena (no las de un mes)", async () => {
+    const app = buildApp(ctx.deps);
+    const base = payloadXmlNomina({ period: { month: 7, year: 2026, periodicidad: "quincenal", fechaPago: "2026-07-15" } });
+    const payload = { ...base, employees: [{ ...(base.employees[0] as object), salarioBruto: 4500 }] };
+
+    const calc = await app.request(`/despachos/${ctx.propertyId}/nomina/calcular`, authedJson(ctx.staff.contador.token, { period: payload.period, employees: payload.employees }));
+    expect(calc.status).toBe(200);
+    const c = (await calc.json()) as { totalBruto: number; totalNeto: number; employees: readonly { diasPagados: number; neto: number; taxes: { isr: number; imssObrero: number; subsidioCausado: number } }[] };
+    expect(c.totalBruto).toBe(4500);
+    expect(c.employees[0]).toMatchObject({ diasPagados: 15, neto: 4342.05, taxes: { isr: 45.81, imssObrero: 112.14, subsidioCausado: 264.3 } });
+    expect(c.totalNeto).toBe(4342.05);
+
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.contador.token, payload));
+    expect(res.status).toBe(200);
+    const xml = ((await res.json()) as { comprobantes: readonly { xml: string }[] }).comprobantes[0]!.xml;
+    expect(xml).toContain('FechaInicialPago="2026-07-01" FechaFinalPago="2026-07-15" NumDiasPagados="15" TotalPercepciones="4500.00"');
+    expect(xml).toContain('TotalDeducciones="157.95"'); // 45.81 + 112.14
+    expect(xml).toMatch(/TipoPercepcion="001"[^>]*ImporteGravado="4500.00"/);
   });
 
   it("falta domicilioFiscalReceptor de un empleado -> 400 (no genera un XML con un CP fabricado)", async () => {

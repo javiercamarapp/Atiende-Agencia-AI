@@ -1,108 +1,147 @@
-// Tipos del motor de nómina (Fase 3) — puerto de los `@dataclass` de
-// ~/Desktop/supabase/despachos/b2b_ai/features/nomina_completa/models.py
-// (PayrollTaxes, EmployeePayroll, PayrollPeriod). Solo se portan los campos
-// que payroll-engine.ts realmente produce (mismo criterio que
-// declaraciones/types.ts en Fase 2) — se omiten los campos de
-// `FiscalOutput`/`AuditTrailEntry` que el modelo Python importa pero que
-// pertenecen a infraestructura de auditoría/compliance fuera de alcance de
-// este motor de cálculo puro.
+// Tipos del motor de nómina. Salario diario/SBC, IMSS por rama, subsidio %UMA y prestaciones con exentos (paridad3).
 import type { Periodicidad } from "./subsidio-empleo.ts";
+import type { ImssDesglose } from "./imss-engine.ts";
 
 export interface PayrollTaxes {
+  /** ISR a retener: ISR causado menos subsidio causado, nunca negativo (sin pago en efectivo del excedente). */
   readonly isr: number;
+  /** ISR de la tarifa antes del subsidio. */
+  readonly isrCausado: number;
+  /** Subsidio al empleo causado en el periodo (% de la UMA, ver subsidio-empleo.ts). */
+  readonly subsidioCausado: number;
+  /** IMSS patronal por ramas (incluye retiro y CEAV; EXCLUYE INFONAVIT). */
   readonly imssPatronal: number;
   readonly imssObrero: number;
   readonly infonavit: number;
-  /** Puerto de `PayrollTaxes.total`: `isr + imssObrero + infonavit`. NO
-   * incluye `imssPatronal` (es aportación del patrón, no del trabajador) —
-   * fidelidad literal al Python, confirmado leyendo el dataclass. Es la suma
-   * de los tres campos ya redondeados, con un SEGUNDO redondeo aplicado
-   * sobre la suma — el dataclass `__post_init__` no lo aplica, pero
-   * `to_dict()` sí (`round(self.total, 2)`), y `to_dict()` es lo que
-   * cualquier consumidor real ve (y lo que el golden-set capturó). Sin este
-   * segundo redondeo, el ruido de punto flotante de la suma no coincide con
-   * el valor limpio que produce el sistema de referencia — ver
-   * payroll-engine.ts::calcularImpuestosNomina. */
+  readonly imss: ImssDesglose;
+  /** `isr + imssObrero + infonavit` redondeado (se conserva la definición histórica; no incluye imssPatronal). */
   readonly total: number;
 }
 
+export interface HoraExtraInput {
+  readonly dias: number;
+  /** "01" dobles, "02" triples (c_TipoHoras). */
+  readonly tipo: "01" | "02";
+  readonly horas: number;
+  readonly importe: number;
+}
+
+export interface IncapacidadInput {
+  readonly dias: number;
+  /** c_TipoIncapacidad: 01 riesgo de trabajo, 02 enfermedad general, 03 maternidad, 04 licencia por cuidados médicos. */
+  readonly tipo: string;
+  /** Descuento por la incapacidad (se refleja como deducción 006). */
+  readonly importe?: number;
+}
+
+export interface ConceptosPeriodoInput {
+  readonly aguinaldo?: number;
+  readonly primaVacacional?: number;
+  readonly ptu?: number;
+  readonly horasExtra?: readonly HoraExtraInput[];
+  /** Semanas del periodo para el tope de 5 UMA/semana del tiempo extra; por omisión 2 (quincenal) o 4 (mensual). */
+  readonly semanasTiempoExtra?: number;
+  readonly incapacidades?: readonly IncapacidadInput[];
+}
+
+export interface ConceptosPeriodoDesglose {
+  readonly aguinaldo: { readonly total: number; readonly exento: number; readonly gravado: number };
+  readonly primaVacacional: { readonly total: number; readonly exento: number; readonly gravado: number };
+  readonly ptu: { readonly total: number; readonly exento: number; readonly gravado: number };
+  readonly tiempoExtra: { readonly total: number; readonly exento: number; readonly gravado: number };
+  readonly descuentoIncapacidad: number;
+  readonly totalPercibido: number;
+  readonly totalExento: number;
+  readonly totalGravado: number;
+}
+
 export interface OpcionesImpuestosNomina {
-  /** Salario bruto mensual (o diario si `salaryPerDay > 0`) — puerto de
-   * `salary`. Default 0. */
+  /** YYYY-MM-DD de pago: define UMA, subsidio y tarifa vigentes. */
+  readonly fechaPago: string;
+  /** Sueldo bruto del PERIODO que se paga (mes en mensual, quincena en quincenal); se ignora para ISR/SBC si `salaryPerDay > 0`. */
   readonly salary?: number;
-  /** Prestaciones gravables — puerto de `benefits`. Default 0. */
+  /** Prestaciones gravables adicionales del periodo (misma escala que `salary`). */
   readonly benefits?: number;
-  /** Si se provee (> 0), `salary` se ignora y el cálculo usa este valor como
-   * salario diario — puerto de `salary_per_day`. Default 0. */
   readonly salaryPerDay?: number;
-  /** Días pagados en el periodo — puerto de `dias_pagados`. Default 30. */
+  /** Días pagados: por omisión 30 (mensual) o 15 (quincenal). */
   readonly diasPagados?: number;
-  /** 'mensual' o 'quincenal' — puerto de `periodicidad`. Default 'mensual'.
-   * NOTA DE FIDELIDAD (diseño §5.4): la rama 'quincenal' calcula el ISR
-   * mensual completo y lo divide entre 2 — NO usa la tabla
-   * `ISR_QUINCENAL_2026` real (que existe en `fiscal_tables.py` pero que
-   * `nomina_completa` nunca importa). Esta rama es código muerto en el camino
-   * de producción realmente cableado hoy: ningún endpoint del sistema de
-   * referencia expone `periodicidad` en su request schema. Se porta tal cual
-   * (contrato público de `calculate_taxes`), no se "activa" la tabla
-   * quincenal real — eso sería inventar comportamiento que el Python no
-   * tiene, no un puerto fiel. */
   readonly periodicidad?: Periodicidad;
-  /** Tabla ISR explícita — default documentado en isr-nomina-engine.ts. */
+  /** Años completos de antigüedad (define vacaciones y factor de integración). Por omisión 1. */
+  readonly antiguedadAnios?: number;
+  /** SBC diario explícito; si falta = salario diario × factor de integración. */
+  readonly sbc?: number;
+  /** Prima RT de la empresa (fracción). Por omisión clase I 0.54355 %. */
+  readonly primaRt?: number;
+  readonly conceptos?: ConceptosPeriodoInput;
   readonly isrTabla?: import("../declaraciones/isr-tablas.ts").TablaIsr;
-  /** Tabla de subsidio explícita — default documentado en
-   * subsidio-empleo.ts. */
-  readonly subsidioTabla?: import("./subsidio-empleo.ts").TablaSubsidio;
 }
 
 export interface EmployeePayroll {
   readonly employeeId: string;
   readonly nombre: string;
-  /** NOTA DE FIDELIDAD: este es el `salario_diario` de ENTRADA (0 si no se
-   * proveyó), NO el valor que realmente alimentó el cálculo de IMSS cuando
-   * solo se dio `salarioBruto` — en ese caso `calcularImpuestosNomina`
-   * deriva internamente `salarioBruto/30` para IMSS, pero ese valor derivado
-   * NUNCA se escribe de vuelta a este campo. Confirmado leyendo
-   * `process_payroll` (nunca reasigna `sal_diario` con el valor derivado
-   * dentro de `calculate_taxes`) y verificado en el golden-set
-   * (`process_payroll_basico`: `salario_diario` queda en 0.0 pese a que el
-   * IMSS sí se calculó sobre 15000/30). Se porta tal cual. */
+  /** Salario diario de ENTRADA (0 si solo se dio salarioBruto). */
   readonly salarioDiario: number;
+  /** Salario diario que alimentó el cálculo (entrada, o salarioBruto/30 en mensual y salarioBruto/15 en quincenal). */
+  readonly salarioDiarioCalculado: number;
+  readonly sbcDiario: number;
+  readonly factorIntegracion: number | null;
+  readonly antiguedadAnios: number;
+  /** Sueldo bruto del periodo pagado (mes o quincena según la periodicidad). */
   readonly salarioBruto: number;
   readonly percepciones: number;
-  /** `isr + imssObrero` (deducciones AL TRABAJADOR; Infonavit es patronal). */
+  readonly conceptos: ConceptosPeriodoDesglose;
+  /** `isr + imssObrero + descuentoIncapacidad` (INFONAVIT es patronal). */
   readonly deducciones: number;
   readonly taxes: PayrollTaxes;
-  /** `max(0, salarioBruto + percepciones - deducciones)`, redondeado. */
   readonly neto: number;
   readonly diasPagados: number;
+  readonly periodicidad: Periodicidad;
+  readonly fechaPago: string;
+  /** Eco de las horas extra capturadas (el XML las lista dentro de la percepción 019). */
+  readonly horasExtra: readonly HoraExtraInput[];
+  /** Eco de las incapacidades capturadas (nodo Incapacidades del XML). */
+  readonly incapacidades: readonly IncapacidadInput[];
 }
 
 export interface PayrollPeriodInput {
   readonly month?: number;
   readonly year?: number;
   readonly diasPagados?: number;
-  /** Salario diario por defecto del periodo, usado solo para el empleado que
-   * no trae su propio `salarioDiario` — puerto de `period["salario_diario"]`. */
   readonly salarioDiarioDefault?: number;
+  /** YYYY-MM-DD; por omisión el último día del mes del periodo. */
+  readonly fechaPago?: string;
+  readonly periodicidad?: Periodicidad;
+  /** Primer día del periodo pagado (YYYY-MM-DD) para el XML; por omisión el día 1 del mes. */
+  readonly fechaInicialPago?: string;
+  readonly fechaFinalPago?: string;
 }
 
 export interface EmployeePayrollInput {
   readonly employeeId?: string;
   readonly nombre?: string;
+  /** Sueldo bruto del periodo pagado (mes en mensual, quincena en quincenal). */
   readonly salarioBruto?: number;
   readonly percepciones?: number;
   readonly salarioDiario?: number;
+  readonly antiguedadAnios?: number;
+  /** YYYY-MM-DD: si viene y no hay antiguedadAnios, se calcula a la fecha de pago. */
+  readonly fechaInicioRelLaboral?: string;
+  readonly sbc?: number;
+  readonly primaRt?: number;
+  readonly conceptos?: ConceptosPeriodoInput;
 }
 
 export interface PayrollPeriod {
   readonly month: number;
   readonly year: number;
+  readonly fechaPago: string;
+  readonly periodicidad: Periodicidad;
   readonly employees: readonly EmployeePayroll[];
   readonly totalBruto: number;
   readonly totalNeto: number;
   readonly totalDeducciones: number;
   readonly totalIsr: number;
+  readonly totalSubsidioCausado: number;
   readonly totalImssPatronal: number;
   readonly totalImssObrero: number;
   readonly totalInfonavit: number;
@@ -111,10 +150,6 @@ export interface PayrollPeriod {
   readonly humanReviewReason: string;
   readonly referenciaLegal: string;
   readonly supuesto: string;
-  /** Puerto de `idempotency_key = f"nomina-{year}-{month:02d}-{tenant_id}"`.
-   * NOTA DE FIDELIDAD: cuando `tenantId` es `null`, el f-string de Python
-   * produce literalmente la cadena `"None"` (interpolación de `None`) — NO
-   * una cadena vacía ni "null". Se porta ese literal exacto, verificado en el
-   * golden-set (`process_payroll_sin_tenant_id`). */
+  /** `nomina-AAAA-MM-<tenant>`; con tenantId ausente la cadena literal "None" (se conserva por compatibilidad). */
   readonly idempotencyKey: string;
 }

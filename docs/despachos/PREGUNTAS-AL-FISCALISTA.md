@@ -92,6 +92,27 @@ Hallazgos del revisor del PR #322.
   completos. Ficha: `rmf-2.7.1.35`.
 - **9d. Retenciones y acreditamiento:** el código cita LIVA 1-B y 5; la tarea pide 1-A y 5. Fichas: `liva-1-a-5`, `liva-1-b`.
 
+### 10. Nómina 2026: subsidio, IMSS por rama, prestaciones y exentos (paridad3)
+Bloquea la fusión del PR de nómina: ningún valor está validado. Todo vive en `packages/domain-despachos/src/nomina/parametros.ts`.
+- **10a. Subsidio al empleo.** 15.59 % de la UMA 2025 (3,439.46) en enero de 2026 y 15.02 % de la UMA 2026 (3,566.22) desde febrero,
+  con ingreso mensual máximo de 11,492.66 (decreto DOF 31-dic-2025). Duda: confirmar porcentajes y tope, el prorrateo por 30.4 días
+  en periodos no mensuales y que el excedente sobre el ISR no se pague en efectivo (OtroPago 002 con importe 0.00 y el subsidio
+  causado en `SubsidioAlEmpleo`). Fichas: `lisr-113-174`.
+- **10b. UMA.** 113.14 diaria / 3,439.46 mensual desde el 1-feb-2025 y 117.31 / 3,566.22 desde el 1-feb-2026.
+- **10c. IMSS por rama.** Obrero: excedente EyM 0.40 % sobre (SBC − 3 UMA), prestaciones en dinero 0.25 %, GMP 0.375 %, IV 0.625 %,
+  CEAV 1.125 %. Patronal: cuota fija 20.40 % de la UMA, excedente 1.10 %, prestaciones en dinero 0.70 %, GMP 1.05 %, IV 1.75 %,
+  guarderías 1 %, retiro 2 %, INFONAVIT 5 %, RT por omisión clase I 0.54355 %. Ficha: `lss-infonavit`.
+- **10d. CEAV patronal progresiva 2026.** Dos fuentes secundarias discrepan en el tramo 3.51 a 4.00 UMA (6.613 % usado vs 6.94 %). Resto:
+  3.150, 3.676, 4.851, 5.556, 6.026, 6.361 y 7.513 % (4.01 UMA en adelante). Pedir la tabla oficial del decreto DOF 16-dic-2020.
+- **10e. Factor de integración y vacaciones.** 1.0493 el primer año (aguinaldo 15, vacaciones 12, prima 25 %) y escalera del art. 76 LFT.
+  Ficha: `lft-76-127`.
+- **10f. Exentos del art. 93 LISR.** Aguinaldo 30 UMA, prima vacacional 15 UMA, PTU 15 UMA, tiempo extra 50 % hasta 5 UMA por semana, y que
+  el gravado se sume al ingreso del periodo (sin la tasa efectiva del art. 174 RLISR). Ficha: `lisr-93`.
+- **10g. PTU.** Tope del art. 127-VIII: tres meses de salario o promedio de tres años, lo más favorable al trabajador.
+- **10h. XML.** `Total` y `Descuento` del comprobante no se tocaron: hoy `Total` = `SubTotal` (no resta deducciones). Confirmar la regla del
+  CFDI de nómina 4.0 (Total = SubTotal − Descuento).
+- **Dónde:** `packages/domain-despachos/src/nomina/{parametros,subsidio-empleo,imss-engine,prestaciones,payroll-engine,xml-nomina}.ts`.
+
 ## Resueltas
 
 Ninguna todavía. Formato de cada entrada cuando se cierre:
