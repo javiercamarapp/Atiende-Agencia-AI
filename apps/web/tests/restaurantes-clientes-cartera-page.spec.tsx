@@ -88,6 +88,18 @@ describe("ClientesListPage -- cartera por nivel", () => {
     expect(t).toContain("Gold · 3");
     expect(t).toContain("Blue · 4");
     expect(t).toContain("Sin nivel todavía: 1");
+    expect(t).toContain("Toda la cartera");
+    expect(t).toContain("No cambia con los filtros");
+    expect(q("[data-testid='distribucion-tier']")!.getAttribute("aria-label")).toBeNull();
+    expect(q("[data-testid='distribucion-tier-nota']")).toBeNull();
+  });
+
+  it("con nivel por frecuencia lo explica; cargando y error son role=status", async () => {
+    stub({ tiers: { metric: "frecuencia", BLACK: 1, PLATINUM: 0, GOLD: 0, BLUE: 2, withoutTier: 3 } });
+    montar();
+    expect(q("[data-testid='distribucion-tier'] [role='status']")?.textContent).toContain("Cargando");
+    await esperar();
+    expect(q("[data-testid='distribucion-tier-nota']")!.textContent).toContain("por frecuencia");
   });
 
   it("si la distribucion falla lo dice sin tumbar la lista", async () => {
@@ -95,6 +107,7 @@ describe("ClientesListPage -- cartera por nivel", () => {
     montar();
     await esperar();
     expect(q("[data-testid='distribucion-tier']")!.textContent).toContain("Distribución no disponible");
+    expect(q("[data-testid='distribucion-tier'] [role='status']")).toBeTruthy();
     expect(rendered!.container.textContent).toContain("Ana Torres");
   });
 
