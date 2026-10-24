@@ -26,6 +26,7 @@ import type { Carga } from "../voz/carga.ts";
 import { contarEjecuciones, HERRAMIENTAS_AGENTE } from "../voz/herramientas-agente.ts";
 import { formatoCostoUsd, formatoDuracion } from "../voz/formato-voz.ts";
 import { PestanaConversaciones } from "../voz/PestanaConversaciones.tsx";
+import { ResumenKpisVoz } from "../voz/ResumenKpisVoz.tsx";
 import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
 import { GloboLlamada } from "../voz/GloboLlamada.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
@@ -213,7 +214,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
         <div role="tabpanel" id={`panel-${pestana}`} aria-labelledby={`pestana-${pestana}`}>
           {config.estado === "cargando" && PESTANAS_EDITABLES.has(pestana) ? <EstadoCargando etiqueta="Cargando configuración de voz…" /> : null}
 
-          {pestana === "resumen" ? <Resumen config={config} borrador={guardado} conversaciones={conversaciones} onVistaPrevia={() => setVistaPrevia(true)} /> : null}
+          {pestana === "resumen" ? <Resumen config={config} borrador={guardado} conversaciones={conversaciones} onVistaPrevia={() => setVistaPrevia(true)} apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} /> : null}
 
           {pestana === "voz" && config.estado !== "cargando" ? (
             <div className="space-y-3">
@@ -373,7 +374,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
   );
 }
 
-function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: Carga<VozConfig | null>; borrador: VozConfigInput; conversaciones: Carga<readonly ConversacionVoz[]>; onVistaPrevia: () => void }) {
+function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, token, propertyId }: { config: Carga<VozConfig | null>; borrador: VozConfigInput; conversaciones: Carga<readonly ConversacionVoz[]>; onVistaPrevia: () => void; apiBaseUrl: string; token: string; propertyId: string }) {
   const voz = buscarVoz(borrador.vozId);
   const tieneMensaje = borrador.mensajeInicial.trim() !== "";
   const pasos: readonly { readonly ok: boolean; readonly texto: string }[] = [
@@ -384,6 +385,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
 
   return (
     <div className="space-y-3">
+      <ResumenKpisVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Card>
           <CardHeader className="p-4 pb-2">

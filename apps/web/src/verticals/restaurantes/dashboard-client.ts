@@ -157,6 +157,11 @@ export function resolveActivePropertyId(branches: readonly BranchOption[], selec
   return branches[0]!.propertyId;
 }
 
+/** Canales de los ultimos 30 dias (misma ruta que el Resumen): lo usa el Resumen del agente de voz. */
+export async function fetchChannelKpis(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, period: StatsPeriod = "30"): Promise<ChannelKpis> {
+  return fetchJson<ChannelKpis>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/kpis/channels?period=${period}`, token);
+}
+
 export async function fetchDashboardData(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
