@@ -83,6 +83,8 @@ interface Extras {
   readonly pendientes: number | null;
   readonly ultimaWhatsapp: string | null;
   readonly ultimaVoz: string | null;
+  /** Configuracion del Resumen (096): `null` = no se pudo leer. */
+  readonly resumenCfg: ResumenConfigVista | null;
 }
 
 /** «Tu operacion»: conteos del catalogo de la ORGANIZACION (el catalogo es de toda la organizacion; la disponibilidad y el precio son por sucursal). `null` = no se pudo leer (el tile lo dice, no inventa un 0). Cada conteo falla por separado. */
