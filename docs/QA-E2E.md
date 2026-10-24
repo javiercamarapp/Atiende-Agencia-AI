@@ -142,7 +142,7 @@ mide por pantalla. **No se alcanza el 95 % pedido**: queda en deuda lo marcado "
 | Historial | filtro por estado, error | filtros de fecha, Cargar mas |
 | Productos | Nueva categoria, Nuevo producto, precio por sucursal, Disponible, Popular, casillas "no a domicilio" (producto y categoria), error | — |
 | Promociones | crear, Editar vigencia, Activar/Desactivar | tipo/canal/dias/productos del formulario |
-| Clientes | busqueda, ficha, Volver a clientes, error (BUG-E2E-REST-002) | — |
+| Clientes | busqueda, ficha, Volver a clientes, error con Reintentar | — |
 | Sucursales | Editar/Guardar/Cancelar | Reglas de pedido (turnos, minimos, propina, zonas, puentes, numero) |
 | Staff | Invitar, Revocar (confirm), rol, Dar de baja (confirm) | — |
 | Configuracion | WhatsApp, zona horaria, Agregar/Quitar zona (confirm), Volver al perfil por defecto (confirm) | el resto de la seccion del agente de WhatsApp |
@@ -162,7 +162,6 @@ mide por pantalla. **No se alcanza el 95 % pedido**: queda en deuda lo marcado "
 |---|---|---|---|---|
 | BUG-E2E-001 (previo) | confirmaciones y formularios | el foco cae en `<body>` al cerrar el dialogo | `packages/ui` (`useConfirm` sin Trigger) | humo-restaurantes y dialogos |
 | BUG-E2E-REST-001 | /repartidor | sin landmark `<main>` ni "Saltar al contenido" (queda fuera del shell) | `pages/Repartidor.tsx` | roles |
-| BUG-E2E-REST-002 | Clientes | la falla de carga se pinta como EstadoError SIN boton Reintentar | `pages/Clientes.tsx:68` y `:121` | errores |
 | BUG-E2E-REST-003 | Privacidad | la falla de carga de la configuracion es texto suelto, sin EstadoError ni Reintentar | `pages/Privacidad.tsx:119` | errores |
 | BUG-E2E-REST-004 | /repartidor | ignora el modo oscuro del sistema (`<html>` sin clase `dark`; el tema lo aplica solo el shell) | ruta `/repartidor` | matriz visual |
 
