@@ -26,6 +26,12 @@ import type { AppDeps } from "../../../deps.ts";
 const FORMULA =
   "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente en el periodo × minutos por conversacion que configuraste ÷ 60. Es una estimacion con tu supuesto, no una medicion.";
 
+const texto = (n: number | null, sufijo: string) => (n === null ? "sin configurar" : `${n}${sufijo}`);
+/** Resumen legible para la bitacora: tres numeros acotados, sin PII. */
+function textoConfig(v: { minutosPorConversacion: number | null; metaPedidosIaPct: number | null; metaIngresosIaPct: number | null }): string {
+  return `minutos por conversacion: ${texto(v.minutosPorConversacion, "")}; meta de pedidos IA: ${texto(v.metaPedidosIaPct, "%")}; meta de ingresos IA: ${texto(v.metaIngresosIaPct, "%")}`;
+}
+
 function serializar(l: LecturaResumenConfig) {
   return {
     disponible: l.disponible,
@@ -76,8 +82,8 @@ export function restaurantesResumenConfigRoutes(deps: AppDeps): Hono<CoreAuthHon
       entityType: "configuracion",
       entityId: organizationId,
       campo: "resumen_config",
-      antes: anterior.disponible ? { ...anterior.valor } : null,
-      despues: { ...guardado.valor },
+      antes: anterior.disponible ? textoConfig(anterior.valor) : null,
+      despues: textoConfig(guardado.valor),
     });
     return c.json(serializar(guardado));
   });
