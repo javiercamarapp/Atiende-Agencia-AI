@@ -495,7 +495,13 @@ export function sanearNotaDeResumen(nota: unknown, opciones: { readonly direccio
   let contiguos = 0;
   let maxContiguos = 0;
   // En una DIRECCION («Calle 60 #123 x 21», «No. 1234 97000») los numeros separados por espacios no son un telefono: solo se quita una racha de 10 o mas digitos o 7 o mas digitos SEGUIDOS.
-  const esTelefonoOTarjeta = (): boolean => (opciones.direccion === true ? digitos >= 10 || maxContiguos >= 7 : digitos >= 7);
+  // Excepcion: un telefono local escrito en dos grupos («123 4567», «9999-9999») es una racha de EXACTAMENTE dos grupos de 3-4 y 4 digitos; «No. 123 21 45» (grupos 3-2-2) y «Calle 60 #123 x 21»
+  // no coinciden. Limite conocido: «No. 123 4567» como numero exterior en dos grupos se recorta (preferible a dejar pasar un telefono).
+  const esTelefonoLocalEnDosGrupos = (): boolean => {
+    const grupos = racha.split(/[^0-9]+/).filter((g) => g !== "");
+    return grupos.length === 2 && grupos[1]?.length === 4 && (grupos[0]?.length === 3 || grupos[0]?.length === 4);
+  };
+  const esTelefonoOTarjeta = (): boolean => (opciones.direccion === true ? digitos >= 10 || maxContiguos >= 7 || esTelefonoLocalEnDosGrupos() : digitos >= 7);
   const cerrarRacha = (): void => {
     if (!esTelefonoOTarjeta()) sinNumeros += racha;
     else sinNumeros += " ";

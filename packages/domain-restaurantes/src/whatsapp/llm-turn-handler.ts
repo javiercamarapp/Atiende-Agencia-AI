@@ -1170,12 +1170,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // creado (solo existe el aviso al equipo), asi que sin un pedido nuevo creado la afirmacion es falsa aunque el cliente tenga un pedido previo. Si el turno armaba un carrito
           // («anoté 3 tacos», «ya agregué las salsas») o el pedido quedo retenido, no se toca. Con el aviso al equipo hecho en el turno el sustituto lo dice; sin el, ofrece avisar.
           const creadoEnEsteTurno = orderId !== null || pedidoSimulado !== undefined || yaRegistradoEnTurno || tele.tools.some((t) => t.tool === "crear_pedido" && t.resultado === "ok");
-          if (perfil === "taqueria_pm" && !creadoEnEsteTurno && !armandoOtro && !retenidoVigente) {
+          // Solo aplica con un pedido ANTERIOR vigente (creado en el flujo o activo del telefono): con un cliente nuevo armando su primer pedido (sin cotizar aun) «ya agregué los 3 tacos»
+          // es verdad (carrito en armado) y no se borra; el aviso «pedido ya enviado» seria falso.
+          const pedidoAnteriorVigente = creadoEnFlujo || previoActivo;
+          if (perfil === "taqueria_pm" && !creadoEnEsteTurno && !armandoOtro && !retenidoVigente && pedidoAnteriorVigente) {
             const antesDeCambio = respuesta;
             const sustitutoCambio = escalacionOkEnTurno ? CAMBIO_AVISADO_SIN_REGISTRAR : CAMBIO_SIN_REGISTRAR_OFRECE_AVISO;
             // Con un pedido de un turno ANTERIOR ya creado (o uno activo del telefono) y un cliente que NO pide agregar ni cambiar nada («¿ya quedó?», «gracias»), el «quedó registrado» generico es
             // la verdad sobre ESE pedido y no se borra; solo se quitan las frases de agregado/cambio. Si el cliente pide un cambio, rige la regla completa.
-            const pedidoAnteriorVigente = creadoEnFlujo || previoActivo;
             const ultimoCliente = normalizarParaClasificar([...messages].reverse().find((m) => m.role === "user")?.content ?? "");
             const pideCambio = /\b(?:agreg|anad|suma|sumen|cambi|modific|quit|corrig|ponga|pongan|mas|otro|otra|tambien|falto|extra)/.test(ultimoCliente);
             respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, sustitutoCambio, (f) => afirmaCambioRegistrado(f, { soloAgregado: pedidoAnteriorVigente && !pideCambio }));

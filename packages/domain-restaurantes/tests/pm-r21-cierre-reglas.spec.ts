@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { FakeLlmProvider, LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
-import { datosDeCierreDeContexto, firmaDeCierre, horaCotizadaContradiceAlCliente, horaDichaPorElCliente } from "../src/agent-tools/cierre-maquina.ts";
+import { sanearNotaDeResumen, datosDeCierreDeContexto, firmaDeCierre, horaCotizadaContradiceAlCliente, horaDichaPorElCliente } from "../src/agent-tools/cierre-maquina.ts";
 import { afirmaCambioRegistrado, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, quitarAfirmacionDePedidoRegistrado } from "../src/whatsapp/guards.ts";
 import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
 import { bloquePedidoPendienteTrasFalla, esAvisoDeFallaDelSistema, mensajesPerdidosPorFalla } from "../src/whatsapp/falla-pendiente.ts";
@@ -36,6 +36,9 @@ describe("afirmaCambioRegistrado", () => {
     "Ya le cambiamos la tortilla a su pedido.",
     "Lo agregamos a su pedido.",
     "Se incluyó la salsa extra.",
+    "Ya las incluimos en su pedido.",
+    "Ya lo cambiamos.",
+    "Los agregamos a su pedido.",
   ])("afirma: %s", (t) => expect(afirmaCambioRegistrado(t)).toBe(true));
 
   it.each([
@@ -54,6 +57,11 @@ describe("afirmaCambioRegistrado", () => {
     "Le cambiamos la tortilla.",
     "La salsa está incluida.",
     "Las salsas básicas van incluidas.",
+    // El pronombre solo NO basta para incluir/cambiar (descripcion del platillo): exige «ya».
+    "Las salsas, las incluimos sin costo.",
+    "Las salsas las incluimos sin costo.",
+    "La tortilla, la cambiamos por maíz si gusta.",
+    "Lo cambiamos por harina sin costo.",
   ])("no afirma: %s", (t) => expect(afirmaCambioRegistrado(t)).toBe(false));
 
   it("con soloAgregado ignora el «quedó registrado» generico", () => {
@@ -115,6 +123,18 @@ describe("T7-043 (P0): nunca «quedó registrado» de un agregado sin pedido nue
     const handler = createLlmWhatsAppTurnHandler(f.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
     const t = await handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: [{ role: "user", content: "¿Qué incluye el pedido?" }], customer: { isNew: true as const }, propertyId: null });
     expect(t.reply).toContain(resp);
+    expect(t.reply).not.toContain(CAMBIO_SIN_REGISTRAR_OFRECE_AVISO);
+  });
+  it("cliente NUEVO armando su primer pedido (sin cotizar ni pedido previo): «ya agregué los 3 tacos» es verdad y NO se borra", async () => {
+    const f = buildRestaurantFixture();
+    await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, PM);
+    const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+    const resp = "Ya agregué los 3 tacos a su pedido. ¿Algo más?";
+    gateway.registerLadder("default", [new FakeLlmProvider({ id: "g", script: () => texto(resp) })]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
+    const handler = createLlmWhatsAppTurnHandler(f.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+    const t = await handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: [{ role: "user", content: "Quiero 3 tacos de pastor" }], customer: { isNew: true as const }, propertyId: null });
+    expect(t.reply).toContain("Ya agregué los 3 tacos a su pedido.");
     expect(t.reply).not.toContain(CAMBIO_SIN_REGISTRAR_OFRECE_AVISO);
   });
   it("una respuesta que no afirma nada se deja tal cual", async () => {
@@ -213,6 +233,15 @@ describe("el resumen canonico trae la direccion completa y las salsas basicas", 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // T7-026: la hora que dijo el cliente se persiste
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe("sanearNotaDeResumen en modo direccion: telefono local de 7-8 digitos", () => {
+  it("quita «123 4567» y «9999-9999» sin tocar direcciones normales", () => {
+    expect(sanearNotaDeResumen("Calle 60 por 21, tel 123 4567", { direccion: true })).not.toMatch(/4567/);
+    expect(sanearNotaDeResumen("Casa azul, 9999-9999", { direccion: true })).not.toMatch(/9999/);
+    expect(sanearNotaDeResumen("Calle 60 #123 x 21", { direccion: true })).toBe("Calle 60 #123 x 21");
+    expect(sanearNotaDeResumen("Calle 60 #1234 x 21 y 23, No. 123 21 45, Centro", { direccion: true })).toBe("Calle 60 #1234 x 21 y 23, No. 123 21 45, Centro");
+  });
+});
+
 describe("horaDichaPorElCliente", () => {
   const u = (...c: string[]) => c.map((content) => ({ role: "user", content }));
   it("lee la ultima hora exacta", () => {

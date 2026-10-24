@@ -245,7 +245,8 @@ export function afirmaCambioRegistrado(frase: string, opciones: { readonly soloA
   const patrones: RegExp[] = [
     // «ya agregué / añadí / sumé / incluí / modifiqué / cambié ...», «ya lo agregamos», «lo agregamos». Exige «ya» o el pronombre objeto: «incluimos salsas básicas» o «le cambiamos la tortilla»
     // (cotizacion inicial, descripcion de lo que trae el platillo) NO son una afirmacion de cambio registrado. «incluid*» tampoco cuenta como estado («el envío está incluido», «la salsa está incluida»).
-    /\b(?:ya\s+(?:(?:le|lo|la|los|las)\s+)?|(?:lo|la|los|las)\s+)(?:agregue|agregamos|anadi|anadimos|sume|sumamos|inclui|incluimos|modifique|modificamos|cambie|cambiamos|actualice|actualizamos)\b/,
+    // «inclui*» y «cambi*» exigen «ya» ( «Las salsas, las incluimos sin costo» / «lo cambiamos por X» describen lo que trae el platillo); el pronombre solo basta para agregar/sumar/modificar/actualizar.
+    /\b(?:ya\s+(?:(?:le|lo|la|los|las)\s+)?(?:agregue|agregamos|anadi|anadimos|sume|sumamos|inclui|incluimos|modifique|modificamos|cambie|cambiamos|actualice|actualizamos)|(?:lo|la|los|las)\s+(?:agregue|agregamos|anadi|anadimos|sume|sumamos|modifique|modificamos|actualice|actualizamos))\b/,
     // «se agregó / se añadió / se sumó / se incluyó / se modificó / se cambió ...»
     /\bse\s+(?:ya\s+)?(?:agreg(?:o|aron)|anadi(?:o|eron)|sum(?:o|aron)|inclu(?:yo|yeron)|modific(?:o|aron)|cambi(?:o|aron)|actualiz(?:o|aron))\b/,
     // «su agregado quedó / ya quedó agregado / quedó agregado a su pedido»
