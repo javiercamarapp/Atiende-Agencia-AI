@@ -977,3 +977,53 @@ export interface StorefrontCatalogRow {
   /** Producto o categoria marcados "no se vende a domicilio" (alcohol en PM). */
   readonly noDomicilio: boolean;
 }
+
+// ---- Configuracion del Resumen (migracion 096): minutos por conversacion (horas ahorradas) y metas de IA ----
+
+export const RESUMEN_MINUTOS_MIN = 1;
+export const RESUMEN_MINUTOS_MAX = 120;
+export const RESUMEN_META_MIN = 1;
+export const RESUMEN_META_MAX = 100;
+
+/** `null` = sin configurar. */
+export interface ResumenConfig {
+  readonly minutosPorConversacion: number | null;
+  readonly metaPedidosIaPct: number | null;
+  readonly metaIngresosIaPct: number | null;
+}
+
+export const RESUMEN_CONFIG_VACIA: ResumenConfig = { minutosPorConversacion: null, metaPedidosIaPct: null, metaIngresosIaPct: null };
+
+export interface LecturaResumenConfig {
+  /** false = la base aun no tiene la migracion 096 (el Resumen dice «configuralo», nunca inventa un valor). */
+  readonly disponible: boolean;
+  readonly valor: ResumenConfig;
+  readonly actualizadoEn: string | null;
+}
+
+export class ResumenConfigInvalidaError extends Error {}
+export class ResumenConfigNoDisponibleError extends Error {
+  constructor() {
+    super("La configuracion del Resumen todavia no esta disponible en esta base (migracion 096 pendiente).");
+  }
+}
+export class ResumenConfigRechazadaError extends Error {}
+
+function entero(raw: unknown, campo: string, min: number, max: number): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < min || raw > max) throw new ResumenConfigInvalidaError(`${campo}: se esperaba un entero entre ${min} y ${max}, o null para quitarlo.`);
+  return raw;
+}
+
+/** Valida el cuerpo del PUT: los tres campos son obligatorios (null = quitar), enteros en rango. Rechaza campos desconocidos. */
+export function validarResumenConfig(raw: unknown): ResumenConfig {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new ResumenConfigInvalidaError("Se esperaba un objeto JSON.");
+  const o = raw as Record<string, unknown>;
+  for (const k of Object.keys(o)) if (!["minutosPorConversacion", "metaPedidosIaPct", "metaIngresosIaPct"].includes(k)) throw new ResumenConfigInvalidaError(`Campo desconocido: ${k}.`);
+  for (const k of ["minutosPorConversacion", "metaPedidosIaPct", "metaIngresosIaPct"]) if (!(k in o)) throw new ResumenConfigInvalidaError(`Falta ${k} (usa null para quitarlo).`);
+  return {
+    minutosPorConversacion: entero(o.minutosPorConversacion, "minutosPorConversacion", RESUMEN_MINUTOS_MIN, RESUMEN_MINUTOS_MAX),
+    metaPedidosIaPct: entero(o.metaPedidosIaPct, "metaPedidosIaPct", RESUMEN_META_MIN, RESUMEN_META_MAX),
+    metaIngresosIaPct: entero(o.metaIngresosIaPct, "metaIngresosIaPct", RESUMEN_META_MIN, RESUMEN_META_MAX),
+  };
+}

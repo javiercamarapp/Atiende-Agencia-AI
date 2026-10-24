@@ -32,6 +32,7 @@ import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
+import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
 import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesAgentePreviewRoutes } from "./agente-preview.ts";
@@ -108,6 +109,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAgentePreviewRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
   // Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo) + conocimiento automatico + lado sistema del servicio de llamadas.
+  // Configuracion del Resumen (migración 096): minutos por conversacion (horas ahorradas) y metas de IA.
+  app.route("/", restaurantesResumenConfigRoutes(deps));
   app.route("/", restaurantesAjustesAgenteRoutes(deps));
   app.route("/", restaurantesAjustesLlamadaInternoRoutes(deps));
   // Worker de telefonía (migración 067): contexto de la llamada, costo por escalón, modo de entrada y KPI de desborde/latencia.

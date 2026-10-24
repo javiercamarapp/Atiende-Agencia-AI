@@ -13,7 +13,8 @@ import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { ClienteMemoriaNoDisponibleError, OrderConflictError, OrderValidationError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
-import { EMPTY_BRANCH_POLICY } from "./types.ts";
+import { RESUMEN_CONFIG_VACIA, ResumenConfigNoDisponibleError, EMPTY_BRANCH_POLICY } from "./types.ts";
+import type { LecturaResumenConfig, ResumenConfig } from "./types.ts";
 import { diaLocalSucursal } from "./voz/kpi.ts";
 import { InMemoryConocimientoStore } from "./conocimiento/in-memory.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
@@ -2287,6 +2288,22 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     }
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
     return { phoneNumberId };
+  }
+
+  private readonly resumenConfigs = new Map<string, { valor: ResumenConfig; actualizadoEn: string }>();
+  /** Doble de prueba: `false` simula la base sin la migracion 096. */
+  resumenConfigDisponible = true;
+
+  async leerResumenConfig(organizationId: string): Promise<LecturaResumenConfig> {
+    if (!this.resumenConfigDisponible) return { disponible: false, valor: RESUMEN_CONFIG_VACIA, actualizadoEn: null };
+    const c = this.resumenConfigs.get(organizationId);
+    return c ? { disponible: true, valor: c.valor, actualizadoEn: c.actualizadoEn } : { disponible: true, valor: RESUMEN_CONFIG_VACIA, actualizadoEn: null };
+  }
+
+  async guardarResumenConfig(organizationId: string, _actorUserId: string, valor: ResumenConfig): Promise<LecturaResumenConfig> {
+    if (!this.resumenConfigDisponible) throw new ResumenConfigNoDisponibleError();
+    this.resumenConfigs.set(organizationId, { valor, actualizadoEn: new Date().toISOString() });
+    return this.leerResumenConfig(organizationId);
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
