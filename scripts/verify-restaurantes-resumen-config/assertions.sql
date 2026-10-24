@@ -83,14 +83,14 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0c01', true);
-update restaurantes.resumen_settings set minutos_por_conversacion = 7, updated_by = '00000000-0000-0000-0000-0000000e0c01', updated_at = now() where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion;
+with u as (update restaurantes.resumen_settings set minutos_por_conversacion = 7, updated_by = '00000000-0000-0000-0000-0000000e0c01', updated_at = now() where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion) select count(*) as filas_con_minutos_7_deberia_ser_1 from u where minutos_por_conversacion = 7;
 rollback;
 
 \echo '--- 7. admin de la Org A actualiza (1 fila) ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0c02', true);
-update restaurantes.resumen_settings set minutos_por_conversacion = 8, updated_by = '00000000-0000-0000-0000-0000000e0c02', updated_at = now() where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion;
+with u as (update restaurantes.resumen_settings set minutos_por_conversacion = 8, updated_by = '00000000-0000-0000-0000-0000000e0c02', updated_at = now() where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion) select count(*) as filas_con_minutos_8_deberia_ser_1 from u where minutos_por_conversacion = 8;
 rollback;
 
 \echo '--- 8. staff de la Org A NO actualiza: 0 filas (RLS silencioso) ---'
@@ -189,12 +189,12 @@ rollback;
 
 \echo '--- 21. null = sin configurar es valido ---'
 begin;
-update restaurantes.resumen_settings set minutos_por_conversacion = null, meta_pedidos_ia_pct = null where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion;
+with u as (update restaurantes.resumen_settings set minutos_por_conversacion = null, meta_pedidos_ia_pct = null where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion, meta_pedidos_ia_pct) select count(*) as filas_con_null_deberia_ser_1 from u where minutos_por_conversacion is null and meta_pedidos_ia_pct is null;
 rollback;
 
 \echo '--- 22. limites 1 y 120 / 1 y 100 validos ---'
 begin;
-update restaurantes.resumen_settings set minutos_por_conversacion = 120, meta_pedidos_ia_pct = 1, meta_ingresos_ia_pct = 100 where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion;
+with u as (update restaurantes.resumen_settings set minutos_por_conversacion = 120, meta_pedidos_ia_pct = 1, meta_ingresos_ia_pct = 100 where organization_id = '00000000-0000-0000-0000-0000000e0a01' returning minutos_por_conversacion, meta_pedidos_ia_pct, meta_ingresos_ia_pct) select count(*) as filas_en_el_limite_deberia_ser_1 from u where minutos_por_conversacion = 120 and meta_pedidos_ia_pct = 1 and meta_ingresos_ia_pct = 100;
 rollback;
 
 \echo ''

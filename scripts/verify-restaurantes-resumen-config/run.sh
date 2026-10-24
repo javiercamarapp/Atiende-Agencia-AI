@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
-# scripts/verify-restaurantes-audit-log/run.sh. Acompaña a
-# packages/domain-restaurantes/migrations/096_resumen_horas_ahorradas_y_metas.sql:
-# prueba, contra RLS/GRANT/auth.uid() reales, los secretos de voz por sucursal, el estado
-# del pedido en el servidor y la bitácora de voz (el repositorio en memoria nunca aplica
-# ninguno de los tres).
+# Verificacion manual, opt-in, contra un Postgres LOCAL real y EFIMERO. Acompaña a
+# packages/domain-restaurantes/migrations/096_resumen_horas_ahorradas_y_metas.sql (configuracion del Resumen por organizacion:
+# minutos por conversacion para «Horas de atencion ahorradas» y metas de adopcion de IA).
 #
-# Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
-# entorno vienen con `brew install postgresql`). Si no están disponibles, este
-# script falla explícito con un mensaje claro en vez de fingir que corrió algo.
+# Prueba, contra RLS/GRANT/CHECK/auth.uid() reales: lectura (miembro, sistema, cross-tenant, anon), escritura (solo owner/admin, sin suplantacion,
+# sin cambiar de organizacion, sin DELETE), rangos de los CHECK y la base sin migrar (SAVEPOINT).
+#
+# Levanta un Postgres efimero y delega el veredicto en el gate generico (scripts/verify-real-postgres-ci/run-gate.mjs, el mismo del CI): cada escenario
+# de assertions.sql se juzga por sus convenciones (`should_fail`, `..._deberia_ser_N`, error/exito) y el script SALE con codigo != 0 si alguno no
+# se comporta como se espera: no hay que leer la salida de psql.
+#
+# Requiere `initdb`/`pg_ctl`/`psql` en PATH y `node` (>= 22). Si falta algo, falla explicito en vez de fingir que corrio.
 #
 # Uso:  scripts/verify-restaurantes-resumen-config/run.sh
 set -euo pipefail
 
-for bin in initdb pg_ctl psql; do
+for bin in initdb pg_ctl psql node; do
   if ! command -v "$bin" >/dev/null 2>&1; then
-    echo "verify-restaurantes-resumen-config: falta '$bin' en PATH — instala Postgres localmente para correr esta verificación (opcional, no bloquea npm test)." >&2
+    echo "verify-restaurantes-resumen-config: falta '$bin' en PATH -- esta verificacion necesita Postgres local y node." >&2
     exit 1
   fi
 done
@@ -29,35 +31,15 @@ LOG="$WORKDIR/postgres.log"
 
 cleanup() {
   pg_ctl -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true
-  rm -rf "$WORKDIR"
+  rm -rf "${WORKDIR:?}"
 }
 trap cleanup EXIT
 
 echo "==> initdb en $PGDATA"
 initdb -D "$PGDATA" -U postgres --no-locale --encoding=UTF8 >/dev/null
 
-echo "==> arrancando Postgres efímero en el puerto $PGPORT"
+echo "==> arrancando Postgres efimero en el puerto $PGPORT"
 pg_ctl -D "$PGDATA" -l "$LOG" -o "-p $PGPORT -k $WORKDIR" start >/dev/null
 
-PSQL=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -v ON_ERROR_STOP=1)
-
-"${PSQL[@]}" -d postgres -c "create database atiende_verify;" >/dev/null
-PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
-
-echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
-
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 096_resumen_horas_ahorradas_y_metas.sql)"
-for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
-  "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
-done
-
-echo "==> otorgando USAGE de schema a authenticated/anon (lo haría la plataforma Supabase, ver post-migrations.sql)"
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/post-migrations.sql" >/dev/null
-
-echo "==> corriendo fixtures + escenarios de autorización (ver assertions.sql)"
-echo ""
-"${PSQL_DB[@]}" -f "$HERE/assertions.sql"
-
-echo ""
-echo "==> listo — revisa arriba: los escenarios marcados \"should_fail\"/\"deberia_ser_0\" deben terminar en ERROR o 0 filas (correcto), el resto debe devolver filas/RETURNING reales."
+echo "==> bootstrap + TODAS las migraciones reales (incluye 096) + escenarios, con veredicto automatico"
+PGHOST="$WORKDIR" PGPORT="$PGPORT" PGUSER=postgres node "$REPO_ROOT/scripts/verify-real-postgres-ci/run-gate.mjs" "$HERE"
