@@ -12,6 +12,10 @@ export interface TurnoHorario {
   readonly abre: string;
   /** Si es menor o igual a `abre`, el turno termina pasada la medianoche. */
   readonly cierra: string;
+  /** Último pedido A DOMICILIO (HH:MM). Vacío = rige el margen general (30 min antes del cierre). Una hora menor que la apertura es de la madrugada del día siguiente. */
+  readonly ultimoPedidoDomicilio?: string;
+  /** Último pedido PARA RECOGER (HH:MM); mismas reglas. */
+  readonly ultimoPedidoRecoger?: string;
 }
 
 export interface PoliticaSucursal {
@@ -124,7 +128,8 @@ export function parseMontoOpcional(raw: string): number | null | undefined {
 export function describirTurno(turno: TurnoHorario): string {
   const dias = turno.dias.length === 7 ? "Todos los días" : turno.dias.map((d) => NOMBRES_DIAS[d]).join(", ");
   const cruza = turno.cierra <= turno.abre ? " (cierra al día siguiente)" : "";
-  return `${dias} ${turno.abre} a ${turno.cierra}${cruza}`;
+  const ultimos = [turno.ultimoPedidoDomicilio ? `último pedido a domicilio ${turno.ultimoPedidoDomicilio}` : null, turno.ultimoPedidoRecoger ? `para recoger ${turno.ultimoPedidoRecoger}` : null].filter((x) => x !== null);
+  return `${dias} ${turno.abre} a ${turno.cierra}${cruza}${ultimos.length > 0 ? `; ${ultimos.join(", ")}` : ""}`;
 }
 
 // ---- reporte de colonias ambiguas (X42): solo lectura, GET .../admin/config/colonias-ambiguas ----

@@ -32,7 +32,8 @@ import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composici
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, horaHablada, horaLegible } from "../horarios.ts";
+import { componentesLocales, estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
+import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
@@ -1717,6 +1718,11 @@ async function dispatchTool(
       // Reloj LOCAL de la sucursal: el modelo (sobre todo el de voz, que no trae la hora en su prompt) calculaba "en 40 minutos" con la hora UTC y guardaba
       // la recogida 6 h tarde, o "hoy" dos dias atras (QA-PM-R2-voz-03 / reglas-04). Con esto calcula sobre la hora de la sucursal.
       const zona = resolverZonaHorariaNegocio(zonaCruda);
+      // Ultimo pedido por TIPO (hora fija por sucursal: domicilio vs recoger). Sin hora fija configurada, todo sigue el margen general y estos campos repiten los de arriba.
+      const up = ultimoPedido;
+      const porTipo = up !== null && tieneUltimoPedidoPorTipo(up);
+      const ultimoGeneralA = up === null ? null : porTipo ? (up.recoger.ultimoPedidoA ?? up.domicilio.ultimoPedidoA) : up.ultimoPedidoA;
+      const domicilioDisponible = evaluarDomicilioSucursal(policy, componentesLocales(ahora, zona).dia).acepta;
       const parte = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es-MX", { timeZone: zona, hourCycle: "h23", ...opts }).format(ahora);
       const result = {
         hora_local: parte({ hour: "2-digit", minute: "2-digit" }),
@@ -1731,18 +1737,31 @@ async function dispatchTool(
         abierto_ahora: abierto,
         cierra_a: cierraA,
         // Ultimo pedido (30 min antes del cierre por omision): abierta no es lo mismo que "todavia toma pedidos". Aditivo.
-        acepta_pedidos: ultimoPedido ? ultimoPedido.aceptaPedidos : null,
-        ultimo_pedido_a: ultimoPedido?.ultimoPedidoA ?? null,
+        // Con hora fija por tipo, `acepta_pedidos` = todavia se toma algun tipo y `ultimo_pedido_a` = el del tipo que cierra mas tarde (recoger); el detalle va en los campos por tipo.
+        acepta_pedidos: up === null ? null : porTipo ? (domicilioDisponible && up.domicilio.aceptaPedidos) || up.recoger.aceptaPedidos : up.aceptaPedidos,
+        ultimo_pedido_a: ultimoGeneralA,
+        acepta_pedidos_domicilio: ultimoPedido ? domicilioDisponible && ultimoPedido.domicilio.aceptaPedidos : null,
+        ultimo_pedido_domicilio_a: ultimoPedido && domicilioDisponible ? ultimoPedido.domicilio.ultimoPedidoA : null,
+        acepta_pedidos_recoger: ultimoPedido ? ultimoPedido.recoger.aceptaPedidos : null,
+        ultimo_pedido_recoger_a: ultimoPedido?.recoger.ultimoPedidoA ?? null,
+        ultimo_pedido_por_tipo_configurado: porTipo ? true : false,
+        // Frase lista para "¿siguen abiertos?" (cierre + ultimo pedido de cada tipo); null si la sucursal solo tiene el margen general. Misma frase en WhatsApp y voz.
+        ultimo_pedido_frase: ultimoPedido ? fraseUltimoPedido(ultimoPedido, horaLegible, { domicilioDisponible }) : null,
         margen_ultimo_pedido_min: ultimoPedido?.margenMin ?? null,
         // Aditivo: "00:00" es la medianoche; el modelo debe decir "12 de la noche"/"medianoche", nunca "a las 00:00".
         cierra_a_texto: cierraA ? horaLegible(cierraA) : null,
-        ultimo_pedido_a_texto: ultimoPedido?.ultimoPedidoA ? horaLegible(ultimoPedido.ultimoPedidoA) : null,
+        ultimo_pedido_a_texto: ultimoGeneralA ? horaLegible(ultimoGeneralA) : null,
+        ultimo_pedido_domicilio_a_texto: ultimoPedido?.domicilio.ultimoPedidoA && domicilioDisponible ? horaLegible(ultimoPedido.domicilio.ultimoPedidoA) : null,
+        ultimo_pedido_recoger_a_texto: ultimoPedido?.recoger.ultimoPedidoA ? horaLegible(ultimoPedido.recoger.ultimoPedidoA) : null,
         // Solo en voz: las horas ya dichas con palabras ("doce y media de la noche"); el sintetizador lee "00:30" como cifras sueltas.
         ...(ctx.channel === "voz"
           ? {
               hora_local_hablada: horaHablada(parte({ hour: "2-digit", minute: "2-digit" })),
               cierra_a_hablada: cierraA ? horaHablada(cierraA) : null,
-              ultimo_pedido_a_hablada: ultimoPedido?.ultimoPedidoA ? horaHablada(ultimoPedido.ultimoPedidoA) : null,
+              ultimo_pedido_a_hablada: ultimoGeneralA ? horaHablada(ultimoGeneralA) : null,
+              ultimo_pedido_domicilio_a_hablada: ultimoPedido?.domicilio.ultimoPedidoA && domicilioDisponible ? horaHablada(ultimoPedido.domicilio.ultimoPedidoA) : null,
+              ultimo_pedido_recoger_a_hablada: ultimoPedido?.recoger.ultimoPedidoA ? horaHablada(ultimoPedido.recoger.ultimoPedidoA) : null,
+              ultimo_pedido_frase_hablada: ultimoPedido ? fraseUltimoPedido(ultimoPedido, horaHablada, { domicilioDisponible }) : null,
             }
           : {}),
         horario: policy.horario,

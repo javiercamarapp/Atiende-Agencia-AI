@@ -3,10 +3,11 @@
 // los pedidos ya creados no se tocan. WhatsApp y voz usan las mismas reglas del servidor y la herramienta `consultar_sucursal`.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
-import { evaluarUltimoPedido, leerHorarioPersistido, ultimoPedidoConExcepciones, validarHorario, ULTIMO_PEDIDO_MIN_POR_OMISION, type HorarioSucursal } from "../src/horarios.ts";
+import { evaluarUltimoPedido, fraseUltimoPedido, horaHablada, horaLegible, leerHorarioPersistido, ultimoPedidoConExcepciones, validarHorario, ULTIMO_PEDIDO_MIN_POR_OMISION, type HorarioSucursal } from "../src/horarios.ts";
 import { changeOrderStatus } from "../src/order-lifecycle.ts";
 import { createOrder, quoteOrder } from "../src/orders.ts";
 import { aplicarReglasDeSucursal } from "../src/reglas-pedido.ts";
+import { estadoSucursalParaPrompt } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const ZONA = "America/Merida"; // UTC-6 todo el año
@@ -46,7 +47,7 @@ describe("bordes del ultimo pedido (30 min antes del cierre)", () => {
   });
 
   it("cerrada: no acepta, sin hora de ultimo pedido", () => {
-    expect(ultimo(T4, merida("2026-10-20", "09:00")).u).toEqual({ abierto: false, margenMin: 30, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null, cierraA: null });
+    expect(ultimo(T4, merida("2026-10-20", "09:00")).u).toMatchObject({ abierto: false, margenMin: 30, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null, cierraA: null, domicilio: { aceptaPedidos: false, ultimoPedidoA: null }, recoger: { aceptaPedidos: false, ultimoPedidoA: null } });
   });
 
   it("configurable por turno: ultimoPedidoMin 0 acepta hasta el cierre; 60 deja de aceptar una hora antes; sin valor rige 30", () => {
@@ -219,5 +220,280 @@ describe("herramienta consultar_sucursal (WhatsApp y voz)", () => {
     vi.setSystemTime(merida("2026-10-20", "23:30"));
     const despues = await invokeAgentTool(f.repo, ctx, "consultar_sucursal", { branch_slug: "fco-montejo" });
     expect(despues.result).toMatchObject({ abierto_ahora: true, acepta_pedidos: false, ultimo_pedido_a: "23:30" });
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Decision de Javier: ultimo pedido FIJO por sucursal y por tipo de pedido (domicilio vs recoger). Sustituye el margen de 30 min donde esta configurado.
+// ---------------------------------------------------------------------------
+const TODOS = [0, 1, 2, 3, 4, 5, 6];
+// T1, T7, T8 (cierran 01:00): domicilio 23:15, recoger 00:30. T2, T3 (cierran 24:00): domicilio 22:15, recoger 23:30. T4 (sin domicilio): recoger 20:30.
+const T7F = validarHorario([{ dias: TODOS, abre: "12:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" }]);
+const T3F = validarHorario([{ dias: TODOS, abre: "18:00", cierra: "00:00", ultimoPedidoDomicilio: "22:15", ultimoPedidoRecoger: "23:30" }]);
+const T4F = validarHorario([{ dias: TODOS, abre: "12:00", cierra: "21:00", ultimoPedidoRecoger: "20:30" }]);
+
+function porTipo(horario: HorarioSucursal, fecha: string, hhmm: string) {
+  const u = evaluarUltimoPedido(horario, merida(fecha, hhmm), ZONA);
+  return { d: u.domicilio.aceptaPedidos, r: u.recoger.aceptaPedidos, u };
+}
+
+describe("ultimo pedido fijo por sucursal y tipo: bordes", () => {
+  it("T7 domicilio: 23:14 si, 23:15 no, 23:16 no (el local sigue abierto)", () => {
+    expect(porTipo(T7F, "2026-10-20", "23:14").d).toBe(true);
+    expect(porTipo(T7F, "2026-10-20", "23:15").d).toBe(false);
+    expect(porTipo(T7F, "2026-10-20", "23:16").d).toBe(false);
+    expect(porTipo(T7F, "2026-10-20", "23:16").u).toMatchObject({ abierto: true, domicilio: { configurado: true, ultimoPedidoA: "23:15" } });
+  });
+
+  it("T7 recoger (cruce de medianoche, 00:30 = madrugada del dia siguiente): 23:59 si, lunes 00:29 si, 00:30 no, 00:31 no", () => {
+    expect(porTipo(T7F, "2026-10-25", "23:59").r).toBe(true);
+    expect(porTipo(T7F, "2026-10-26", "00:29").r).toBe(true);
+    expect(porTipo(T7F, "2026-10-26", "00:30").r).toBe(false);
+    expect(porTipo(T7F, "2026-10-26", "00:31").r).toBe(false);
+    expect(porTipo(T7F, "2026-10-26", "00:29").u.recoger).toMatchObject({ configurado: true, ultimoPedidoA: "00:30" });
+    // En la madrugada el domicilio ya esta cerrado desde las 23:15.
+    expect(porTipo(T7F, "2026-10-26", "00:29").d).toBe(false);
+  });
+
+  it("T3 (cierra 24:00): domicilio 22:14 si / 22:15 no / 22:16 no; recoger 23:29 si / 23:30 no / 23:31 no", () => {
+    expect([porTipo(T3F, "2026-10-20", "22:14").d, porTipo(T3F, "2026-10-20", "22:15").d, porTipo(T3F, "2026-10-20", "22:16").d]).toEqual([true, false, false]);
+    expect([porTipo(T3F, "2026-10-20", "23:29").r, porTipo(T3F, "2026-10-20", "23:30").r, porTipo(T3F, "2026-10-20", "23:31").r]).toEqual([true, false, false]);
+    expect(porTipo(T3F, "2026-10-20", "23:31").u.abierto).toBe(true);
+  });
+
+  it("T4 (sin domicilio): recoger 20:29 si, 20:30 no, 20:31 no", () => {
+    expect([porTipo(T4F, "2026-10-20", "20:29").r, porTipo(T4F, "2026-10-20", "20:30").r, porTipo(T4F, "2026-10-20", "20:31").r]).toEqual([true, false, false]);
+    // Domicilio sin hora fija: cae al margen de 30 min (la politica de domicilio de la sucursal decide si se ofrece).
+    expect(porTipo(T4F, "2026-10-20", "20:29").u.domicilio).toMatchObject({ configurado: false, aceptaPedidos: true, ultimoPedidoA: "20:30" });
+  });
+
+  it("sin hora fija el tipo sigue el margen de 30 min (T7 sin campos: 00:29 si, 00:30 no, para los dos tipos)", () => {
+    const u = porTipo(T7, "2026-10-26", "00:30");
+    expect(u).toMatchObject({ d: false, r: false });
+    expect(porTipo(T7, "2026-10-26", "00:29")).toMatchObject({ d: true, r: true });
+  });
+
+  it("un turno con hora fija solo para recoger deja el domicilio con el margen (campos independientes)", () => {
+    const solo = validarHorario([{ dias: TODOS, abre: "12:00", cierra: "01:00", ultimoPedidoRecoger: "00:30" }]);
+    expect(porTipo(solo, "2026-10-20", "23:45").u).toMatchObject({ domicilio: { configurado: false, aceptaPedidos: true }, recoger: { configurado: true, aceptaPedidos: true } });
+  });
+
+  it("por dia de semana: la hora fija vive en el turno, asi que dos turnos con dias distintos pueden tener horas distintas", () => {
+    const semana = validarHorario([
+      { dias: [1, 2, 3, 4], abre: "12:00", cierra: "00:00", ultimoPedidoDomicilio: "22:15" },
+      { dias: [5, 6], abre: "12:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15" },
+    ]);
+    expect(porTipo(semana, "2026-10-20", "22:30").d).toBe(false); // martes
+    expect(porTipo(semana, "2026-10-23", "22:30").d).toBe(true); // viernes
+  });
+
+  it("turnos contiguos: manda la hora fija del turno que fija el cierre", () => {
+    const h = validarHorario([{ dias: TODOS, abre: "12:00", cierra: "16:00", ultimoPedidoRecoger: "15:30" }, { dias: TODOS, abre: "16:00", cierra: "22:00", ultimoPedidoRecoger: "21:30" }]);
+    expect(porTipo(h, "2026-10-20", "15:45").r).toBe(true);
+    expect(porTipo(h, "2026-10-20", "21:29").r).toBe(true);
+    expect(porTipo(h, "2026-10-20", "21:30").r).toBe(false);
+  });
+});
+
+describe("validacion y lectura de las horas fijas", () => {
+  it("validarHorario las conserva y rechaza formato invalido, antes de la apertura o despues del cierre", () => {
+    expect(validarHorario([{ dias: [1], abre: "12:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" }])[0]).toMatchObject({ ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" });
+    expect(validarHorario([{ dias: [1], abre: "12:00", cierra: "01:00" }])[0]).not.toHaveProperty("ultimoPedidoRecoger");
+    for (const malo of ["24:00", "9:30", 2330, "11:59", "01:01"]) {
+      expect(() => validarHorario([{ dias: [1], abre: "12:00", cierra: "01:00", ultimoPedidoRecoger: malo }])).toThrow(/ultimoPedidoRecoger/);
+    }
+    expect(() => validarHorario([{ dias: [1], abre: "18:00", cierra: "00:00", ultimoPedidoDomicilio: "17:00" }])).toThrow(/ultimoPedidoDomicilio/);
+    expect(validarHorario([{ dias: [1], abre: "18:00", cierra: "00:00", ultimoPedidoRecoger: "00:00" }])[0]).toMatchObject({ ultimoPedidoRecoger: "00:00" });
+  });
+
+  it("un valor corrupto en la base descarta SOLO esos campos: el horario no falla abierto", () => {
+    const leido = leerHorarioPersistido([{ dias: [0, 1], abre: "12:00", cierra: "01:00", ultimoPedidoDomicilio: "99:99", ultimoPedidoRecoger: "00:30" }]);
+    expect(leido).toEqual([{ dias: [0, 1], abre: "12:00", cierra: "01:00" }]);
+  });
+});
+
+describe("frases y herramienta: las mismas en WhatsApp y voz", () => {
+  it("fraseUltimoPedido: cierre y ultimo pedido de cada tipo; sin hora fija es null; T4 no menciona domicilio", () => {
+    expect(fraseUltimoPedido(porTipo(T7F, "2026-10-20", "20:00").u)).toBe("Cerramos a las 01:00. El último pedido a domicilio a las 23:15 y para recoger a las 00:30.");
+    expect(fraseUltimoPedido(porTipo(T7F, "2026-10-20", "20:00").u, horaHablada)).toBe("Cerramos a las una de la mañana. El último pedido a domicilio a las once y cuarto de la noche y para recoger a las doce y media de la noche.");
+    expect(fraseUltimoPedido(porTipo(T7, "2026-10-20", "20:00").u)).toBeNull();
+    expect(fraseUltimoPedido(porTipo(T4F, "2026-10-20", "19:00").u, horaLegible, { domicilioDisponible: false })).toBe("Cerramos a las 21:00. El último pedido para recoger a las 20:30.");
+  });
+
+  async function consulta(horario: HorarioSucursal, instante: Date, channel: "voz" | "whatsapp") {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { horario });
+    await f.repo.upsertBranchZonaHoraria(f.propertyId, ZONA);
+    vi.setSystemTime(instante);
+    return (await invokeAgentTool(f.repo, { organizationId: f.organizationId, channel, phone: "9991234567" }, "consultar_sucursal", { branch_slug: "fco-montejo" })).result;
+  }
+
+  it("consultar_sucursal expone acepta_pedidos / ultimo_pedido_a por tipo (T7 a las 23:20: domicilio no, recoger si)", async () => {
+    const r = await consulta(T7F, merida("2026-10-20", "23:20"), "whatsapp");
+    expect(r).toMatchObject({
+      abierto_ahora: true, cierra_a: "01:00", acepta_pedidos: true, ultimo_pedido_a: "00:30",
+      acepta_pedidos_domicilio: false, ultimo_pedido_domicilio_a: "23:15", acepta_pedidos_recoger: true, ultimo_pedido_recoger_a: "00:30",
+      ultimo_pedido_domicilio_a_texto: "23:15", ultimo_pedido_recoger_a_texto: "00:30", ultimo_pedido_por_tipo_configurado: true,
+      ultimo_pedido_frase: "Cerramos a las 01:00. El último pedido a domicilio a las 23:15 y para recoger a las 00:30.",
+    });
+    expect(r).not.toHaveProperty("ultimo_pedido_recoger_a_hablada");
+  });
+
+  it("en voz trae las mismas frases con las horas dichas con palabras", async () => {
+    const r = await consulta(T7F, merida("2026-10-20", "23:20"), "voz");
+    expect(r).toMatchObject({
+      ultimo_pedido_domicilio_a_hablada: "once y cuarto de la noche", ultimo_pedido_recoger_a_hablada: "doce y media de la noche",
+      ultimo_pedido_frase_hablada: "Cerramos a las una de la mañana. El último pedido a domicilio a las once y cuarto de la noche y para recoger a las doce y media de la noche.",
+    });
+  });
+
+  it("sin horas fijas todo queda como antes (margen de 30 min) y la frase es null", async () => {
+    const r = await consulta(T3, merida("2026-10-20", "23:29"), "whatsapp");
+    expect(r).toMatchObject({ acepta_pedidos: true, ultimo_pedido_a: "23:30", ultimo_pedido_por_tipo_configurado: false, ultimo_pedido_frase: null, acepta_pedidos_domicilio: true, acepta_pedidos_recoger: true });
+  });
+});
+
+describe("el servidor aplica la hora fija por tipo de pedido", () => {
+  async function fixture(horario: HorarioSucursal) {
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { horario });
+    await f.repo.upsertBranchZonaHoraria(f.propertyId, ZONA);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    return f;
+  }
+  const cot = (f: Awaited<ReturnType<typeof fixture>>, extra: Record<string, unknown> = {}) =>
+    quoteOrder(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", items: [{ productId: f.products.cocaCola, requestedQuantity: 2 }], ...extra } as never);
+
+  it("T7 domicilio a las 23:14 pasa; a las 23:15 y 23:16 se rechaza ofreciendo recoger (aun se toma hasta las 00:30) o programar para el dia siguiente", async () => {
+    const f = await fixture(T7F);
+    vi.setSystemTime(merida("2026-10-20", "23:14"));
+    await expect(cot(f)).resolves.toMatchObject({ abiertoAhora: true });
+    for (const hora of ["23:15", "23:16"]) {
+      vi.setSystemTime(merida("2026-10-20", hora));
+      const e = (await cot(f).catch((x: unknown) => x)) as Error;
+      expect(e.message).toMatch(/ya no toma pedidos a domicilio para hoy: el último pedido a domicilio es a las 23:15 \(la sucursal cierra a las 01:00\)/);
+      expect(e.message).toMatch(/Ofrezca recoger en la sucursal \(el último pedido para recoger es a las 00:30\) o programar el pedido para el día siguiente/);
+    }
+  });
+
+  it("T7 recoger: 23:16 pasa (el recoger sigue abierto), lunes 00:29 pasa y 00:31 se rechaza con la hora y la alternativa", async () => {
+    const f = await fixture(T7F);
+    vi.setSystemTime(merida("2026-10-20", "23:16"));
+    await expect(cot(f, { canal: "recoger" })).resolves.toBeTruthy();
+    vi.setSystemTime(merida("2026-10-26", "00:29"));
+    await expect(cot(f, { canal: "recoger" })).resolves.toBeTruthy();
+    vi.setSystemTime(merida("2026-10-26", "00:31"));
+    const e = (await cot(f, { canal: "recoger" }).catch((x: unknown) => x)) as Error;
+    expect(e.message).toMatch(/ya no toma pedidos para recoger para hoy: el último pedido para recoger es a las 00:30/);
+    expect(e.message).toMatch(/programar el pedido para la siguiente apertura o pedirlo mañana/);
+  });
+
+  it("crear el pedido: T7 domicilio 23:15 rechazado; recoger 23:15 creado", async () => {
+    const f = await fixture(T7F);
+    const base = { organizationId: f.organizationId, branchSlug: "fco-montejo", customerName: "Marcela Pech", customerPhone: "9991234567", customerAddress: "Calle 7 #210, Vista Alegre", items: [{ productId: f.products.cocaCola, requestedQuantity: 2 }], source: "whatsapp" as const, paymentMethod: "efectivo" as const };
+    vi.setSystemTime(merida("2026-10-20", "23:15"));
+    await expect(createOrder(f.repo, base)).rejects.toThrow(/ya no toma pedidos a domicilio/);
+    await expect(createOrder(f.repo, { ...base, canal: "recoger" })).resolves.toBeTruthy();
+  });
+
+  it("T3: domicilio 22:14 si / 22:16 no; recoger 23:29 si / 23:31 no", async () => {
+    const f = await fixture(T3F);
+    vi.setSystemTime(merida("2026-10-20", "22:14"));
+    await expect(cot(f)).resolves.toBeTruthy();
+    vi.setSystemTime(merida("2026-10-20", "22:16"));
+    await expect(cot(f)).rejects.toThrow(/último pedido a domicilio es a las 22:15/);
+    await expect(cot(f, { canal: "recoger" })).resolves.toBeTruthy();
+    vi.setSystemTime(merida("2026-10-20", "23:29"));
+    await expect(cot(f, { canal: "recoger" })).resolves.toBeTruthy();
+    vi.setSystemTime(merida("2026-10-20", "23:31"));
+    const e = (await cot(f, { canal: "recoger" }).catch((x: unknown) => x)) as Error;
+    expect(e.message).toMatch(/último pedido para recoger es a las 23:30 \(la sucursal cierra a las 12:00 a\. m\. \(medianoche\)\)/);
+    // A domicilio pasada la hora de recoger tambien: ninguna alternativa de recoger, solo programar.
+    expect(((await cot(f).catch((x: unknown) => x)) as Error).message).toMatch(/Ofrezca programar el pedido para la siguiente apertura/);
+  });
+
+  it("T4: recoger 20:29 si / 20:31 no", async () => {
+    const f = await fixture(T4F);
+    vi.setSystemTime(merida("2026-10-20", "20:29"));
+    await expect(cot(f, { canal: "recoger" })).resolves.toBeTruthy();
+    vi.setSystemTime(merida("2026-10-20", "20:31"));
+    await expect(cot(f, { canal: "recoger" })).rejects.toThrow(/último pedido para recoger es a las 20:30/);
+  });
+
+  it("voz: el mensaje dice las horas con palabras (misma frase que en WhatsApp)", async () => {
+    const f = await fixture(T7F);
+    vi.setSystemTime(merida("2026-10-20", "23:20"));
+    const e = (await createOrder(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", customerName: "Marcela Pech", customerPhone: "9991234567", customerAddress: "Calle 7 #210, Vista Alegre", items: [{ productId: f.products.cocaCola, requestedQuantity: 2 }], source: "voice", paymentMethod: "efectivo" }).catch((x: unknown) => x)) as Error;
+    expect(e.message).toMatch(/el último pedido a domicilio es a las once y cuarto de la noche \(la sucursal cierra a las una de la mañana\)/);
+    expect(e.message).toMatch(/el último pedido para recoger es a las doce y media de la noche/);
+  });
+
+  it("hora de recogida: se pide a las 22:00 para las 00:50 (posterior al ultimo pedido 00:30, <= cierre 01:00) y se acepta; el cierre exacto tambien", async () => {
+    const f = await fixture(T7F);
+    vi.setSystemTime(merida("2026-10-20", "22:00"));
+    await expect(cot(f, { canal: "recoger", horaRecogida: "2026-10-21T00:50:00-06:00" })).resolves.toBeTruthy();
+    await expect(cot(f, { canal: "recoger", horaRecogida: "2026-10-21T01:00:00-06:00" })).resolves.toBeTruthy();
+  });
+
+  it("hora de recogida despues del cierre (22:00 para 01:20): se rechaza con el motivo y se ofrece una hora anterior o programar", async () => {
+    const f = await fixture(T7F);
+    vi.setSystemTime(merida("2026-10-20", "22:00"));
+    const e = (await cot(f, { canal: "recoger", horaRecogida: "2026-10-21T01:20:00-06:00" }).catch((x: unknown) => x)) as Error;
+    expect(e.message).toMatch(/no puede entregar la recogida a la hora elegida \(miércoles 21\/10 01:20\) porque es después del cierre/);
+    expect(e.message).toMatch(/Hoy cierra a las 01:00/);
+    expect(e.message).toMatch(/hora anterior al cierre o programar el pedido para la siguiente apertura/);
+  });
+
+  it("hora de recogida pedida DESPUES del ultimo pedido de recoger (00:40 para las 00:55): se rechaza por el momento de pedir, no por la hora de recogida", async () => {
+    const f = await fixture(T7F);
+    vi.setSystemTime(merida("2026-10-21", "00:40"));
+    await expect(cot(f, { canal: "recoger", horaRecogida: "2026-10-21T00:55:00-06:00" })).rejects.toThrow(/último pedido para recoger es a las 00:30/);
+  });
+
+  it("sin hora fija la recogida posterior al ultimo pedido (margen) se sigue rechazando como en #657", async () => {
+    const f = await fixture(T3);
+    vi.setSystemTime(merida("2026-10-20", "22:00"));
+    await expect(cot(f, { canal: "recoger", horaRecogida: "2026-10-20T23:40:00-06:00" })).rejects.toThrow(/ya no toma pedidos para la hora elegida/);
+  });
+
+  it("pedido programado para recoger a las 00:45 (posterior al ultimo pedido, antes del cierre) se acepta; programado a domicilio para las 23:30 se rechaza", async () => {
+    const f = await fixture(T7F);
+    vi.setSystemTime(merida("2026-10-20", "12:00"));
+    const base = { organizationId: f.organizationId, branchSlug: "fco-montejo", customerName: "Marcela Pech", customerPhone: "9991234567", customerAddress: "Calle 7 #210, Vista Alegre", items: [{ productId: f.products.cocaCola, requestedQuantity: 2 }], source: "whatsapp" as const, paymentMethod: "efectivo" as const };
+    await expect(createOrder(f.repo, { ...base, canal: "recoger", programadoPara: "2026-10-21T00:45:00-06:00" })).resolves.toMatchObject({ status: "programado" });
+    await expect(createOrder(f.repo, { ...base, programadoPara: "2026-10-20T23:30:00-06:00" })).rejects.toThrow(/ya no toma pedidos a domicilio para la hora elegida/);
+    await expect(createOrder(f.repo, { ...base, programadoPara: "2026-10-20T23:14:00-06:00" })).resolves.toMatchObject({ status: "programado" });
+  });
+});
+
+describe("estado de la sucursal en el prompt de WhatsApp con hora fija por tipo", () => {
+  async function prompt(horario: HorarioSucursal, instante: Date, extra: { aceptaDomicilio?: boolean } = {}) {
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { horario, ...extra });
+    await f.repo.upsertBranchZonaHoraria(f.propertyId, ZONA);
+    const branch = (await f.repo.findBranch(f.organizationId, { slug: "fco-montejo" }))!;
+    return estadoSucursalParaPrompt(f.repo, branch, instante);
+  }
+
+  it("antes del ultimo pedido de domicilio: cierre y ultimo pedido de cada tipo", async () => {
+    const t = await prompt(T7F, merida("2026-10-20", "20:00"));
+    expect(t).toMatch(/ABIERTA y cierra a las 01:00\. Cerramos a las 01:00\. El último pedido a domicilio a las 23:15 y para recoger a las 00:30\./);
+    expect(t).toMatch(/un pedido para recoger hecho antes de su último pedido se acepta aunque la hora de recogida sea posterior/);
+  });
+
+  it("23:20: ya paso el domicilio, recoger sigue: ofrece recoger o programar", async () => {
+    const t = await prompt(T7F, merida("2026-10-20", "23:20"));
+    expect(t).toMatch(/YA PASÓ el último pedido a domicilio: no tome domicilio ahora; ofrezca recoger en la sucursal \(todavía se toma\) o programar para el día siguiente/);
+  });
+
+  it("00:31: ya pasaron los dos; abierta pero sin pedidos para hoy", async () => {
+    const t = await prompt(T7F, merida("2026-10-26", "00:31"));
+    expect(t).toMatch(/sigue ABIERTA \(cierra a las 01:00\), pero YA PASARON LOS ÚLTIMOS PEDIDOS/);
+  });
+
+  it("sin hora fija el texto de #657 queda igual", async () => {
+    expect(await prompt(T7, merida("2026-10-20", "20:00"))).toMatch(/el último pedido se toma hasta las 00:30/);
   });
 });
