@@ -243,6 +243,8 @@ export interface TurnoMedido {
   readonly turno: number;
   readonly herramientas: number;
   readonly servidorMs: number;
+  /** Nombres de las herramientas en el orden en que corrieron (para agrupar las de solo lectura en una ola). */
+  readonly nombres: readonly string[];
 }
 export interface CorridaMedida {
   readonly llamada: LlamadaSimulada;
@@ -251,7 +253,7 @@ export interface CorridaMedida {
 
 /** Corre un escenario con su horario y mide el servidor por turno. El llamador fija el reloj (`vi.setSystemTime(new Date(esc.ahora))`). */
 export async function correrEscenario(esc: EscenarioVoz): Promise<CorridaMedida> {
-  const porTurno = new Map<number, { herramientas: number; servidorMs: number }>();
+  const porTurno = new Map<number, { herramientas: number; servidorMs: number; nombres: string[] }>();
   const adaptador = {
     ...ADAPTADOR_SIMULADOR_PM,
     crearMundo: (): MundoVoz => {
@@ -271,8 +273,9 @@ export async function correrEscenario(esc: EscenarioVoz): Promise<CorridaMedida>
           return await base(nombre, args, senal, contexto as never);
         } finally {
           const k = contexto?.turno ?? -1;
-          const acc = porTurno.get(k) ?? { herramientas: 0, servidorMs: 0 };
+          const acc = porTurno.get(k) ?? { herramientas: 0, servidorMs: 0, nombres: [] };
           acc.herramientas += 1;
+          acc.nombres.push(nombre);
           acc.servidorMs += performance.now() - t0;
           porTurno.set(k, acc);
         }
