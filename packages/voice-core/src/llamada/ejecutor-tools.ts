@@ -155,6 +155,9 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
   }
 }
 
+/** Mensajes genericos de 5xx de Fastify y de pasarelas: no los escribe una regla de negocio, asi que la escritura queda INCIERTA. */
+const MENSAJES_GENERICOS_5XX: ReadonlySet<string> = new Set(["internal server error", "bad gateway", "service unavailable", "gateway timeout"]);
+
 export interface TransporteHttpOpciones {
   /** Raiz de las rutas de la vertical (p. ej. `https://api/v1/restaurantes/<org>`), sin barra final. */
   readonly raiz: string;
@@ -187,7 +190,9 @@ export function transporteHttp(opts: TransporteHttpOpciones): TransporteTools {
     }
     // 5xx sin mensaje de la API (pasarela: 502/503/504 con HTML o vacio): la peticion pudo haber llegado al servidor y haberse ejecutado. Se propaga como falla de red para que
     // una escritura quede INCIERTA; un 5xx con `message` de la API es una regla de negocio y sigue llegando tal cual.
-    if (!respuesta.ok && respuesta.status >= 500 && !(typeof cuerpo === "object" && cuerpo !== null && typeof (cuerpo as { message?: unknown }).message === "string")) {
+    // Fastify responde un 500 real (excepcion no controlada) con el mensaje generico «Internal Server Error»: tampoco es una regla de negocio y la escritura pudo haberse ejecutado.
+    const mensajeApi = typeof cuerpo === "object" && cuerpo !== null && typeof (cuerpo as { message?: unknown }).message === "string" ? (cuerpo as { message: string }).message : null;
+    if (!respuesta.ok && respuesta.status >= 500 && (mensajeApi === null || MENSAJES_GENERICOS_5XX.has(mensajeApi.trim().toLowerCase()))) {
       throw new Error(`HTTP ${respuesta.status}`);
     }
     if (!respuesta.ok) {

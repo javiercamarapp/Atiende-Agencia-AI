@@ -31,6 +31,21 @@ describe("escritura incierta por falla de red o 5xx", () => {
       expect(r.resultado, `status ${status}`).toMatchObject({ incierto: true });
     }
   });
+  it("transporte HTTP: un 500 real de Fastify ({message:\"Internal Server Error\"}) en crear_pedido tambien queda INCIERTO, igual que 502/503/504", async () => {
+    for (const [status, message] of [[500, "Internal Server Error"], [502, "Bad Gateway"], [503, "Service Unavailable"], [504, "Gateway Timeout"]] as const) {
+      const t = transporteHttp({ raiz: "https://api.invalid/v1", ruta: () => "/x", cabeceras: {}, fetchFn: (async () => new Response(JSON.stringify({ statusCode: status, error: message, message }), { status })) as typeof fetch });
+      const r = await ejecutor(t).ejecutar("crear_pedido", {});
+      expect(r.resultado, `status ${status}`).toMatchObject({ incierto: true, error: "INCIERTO: no asegure el pedido." });
+      expect(r.timeout).toBe(true);
+    }
+  });
+  it("transporte HTTP: un 500 con mensaje de negocio propio NO es incierto; en lectura el 500 generico es error comun", async () => {
+    const negocio = transporteHttp({ raiz: "https://api.invalid/v1", ruta: () => "/x", cabeceras: {}, fetchFn: (async () => new Response(JSON.stringify({ message: "Regla de negocio" }), { status: 500 })) as typeof fetch });
+    expect((await ejecutor(negocio).ejecutar("crear_pedido", {})).resultado).toEqual({ error: "Regla de negocio" });
+    const generico = transporteHttp({ raiz: "https://api.invalid/v1", ruta: () => "/x", cabeceras: {}, fetchFn: (async () => new Response(JSON.stringify({ message: "Internal Server Error" }), { status: 500 })) as typeof fetch });
+    const lectura = await ejecutor(generico).ejecutar("cotizar_pedido", {});
+    expect(lectura.resultado).toEqual({ error: "Error interno al ejecutar la herramienta" });
+  });
   it("transporte HTTP: un 4xx/5xx CON mensaje de la API (regla de negocio) sigue llegando tal cual al modelo", async () => {
     const t = transporteHttp({ raiz: "https://api.invalid/v1", ruta: () => "/x", cabeceras: {}, fetchFn: (async () => new Response(JSON.stringify({ message: "La sucursal esta cerrada" }), { status: 422 })) as typeof fetch });
     const r = await ejecutor(t).ejecutar("crear_pedido", {});
