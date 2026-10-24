@@ -241,10 +241,11 @@ export function afirmaCambioRegistrado(frase: string, opciones: { readonly soloA
   if (/[?¿]/.test(frase)) return false;
   if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
   if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se|puedo|podemos)|todavia\s+no|aun\s+no|falta|quedaria|podria|podrian|va\s+a|van\s+a|pudo|tampoco|nunca|le\s+confirm\w+|confirmara|confirmaran|lo\s+revisa\w*|lo\s+vera\w*|lo\s+veran|sujeto\s+a|dependera)\b/.test(t)) return false;
-  const AGREGADO = "(?:agregad[oa]s?|anadid[oa]s?|sumad[oa]s?|incluid[oa]s?|modificad[oa]s?|cambiad[oa]s?|actualizad[oa]s?)";
+  const AGREGADO = "(?:agregad[oa]s?|anadid[oa]s?|sumad[oa]s?|modificad[oa]s?|cambiad[oa]s?|actualizad[oa]s?)";
   const patrones: RegExp[] = [
-    // «ya agregué / añadí / sumé / incluí / modifiqué / cambié ...», «ya lo agregamos»
-    /\b(?:ya\s+)?(?:lo|la|los|las)?\s*(?:agregue|agregamos|anadi|anadimos|sume|sumamos|inclui|incluimos|modifique|modificamos|cambie|cambiamos|actualice|actualizamos)\b/,
+    // «ya agregué / añadí / sumé / incluí / modifiqué / cambié ...», «ya lo agregamos», «lo agregamos». Exige «ya» o el pronombre objeto: «incluimos salsas básicas» o «le cambiamos la tortilla»
+    // (cotizacion inicial, descripcion de lo que trae el platillo) NO son una afirmacion de cambio registrado. «incluid*» tampoco cuenta como estado («el envío está incluido», «la salsa está incluida»).
+    /\b(?:ya\s+(?:(?:le|lo|la|los|las)\s+)?|(?:lo|la|los|las)\s+)(?:agregue|agregamos|anadi|anadimos|sume|sumamos|inclui|incluimos|modifique|modificamos|cambie|cambiamos|actualice|actualizamos)\b/,
     // «se agregó / se añadió / se sumó / se incluyó / se modificó / se cambió ...»
     /\bse\s+(?:ya\s+)?(?:agreg(?:o|aron)|anadi(?:o|eron)|sum(?:o|aron)|inclu(?:yo|yeron)|modific(?:o|aron)|cambi(?:o|aron)|actualiz(?:o|aron))\b/,
     // «su agregado quedó / ya quedó agregado / quedó agregado a su pedido»

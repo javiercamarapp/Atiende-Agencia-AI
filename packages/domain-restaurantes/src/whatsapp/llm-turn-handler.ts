@@ -52,7 +52,7 @@ import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
-import { afirmaCambioRegistrado, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
+import { afirmaCambioRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -1173,7 +1173,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (perfil === "taqueria_pm" && !creadoEnEsteTurno && !armandoOtro && !retenidoVigente) {
             const antesDeCambio = respuesta;
             const sustitutoCambio = escalacionOkEnTurno ? CAMBIO_AVISADO_SIN_REGISTRAR : CAMBIO_SIN_REGISTRAR_OFRECE_AVISO;
-            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, sustitutoCambio, (f) => afirmaCambioRegistrado(f));
+            // Con un pedido de un turno ANTERIOR ya creado (o uno activo del telefono) y un cliente que NO pide agregar ni cambiar nada («¿ya quedó?», «gracias»), el «quedó registrado» generico es
+            // la verdad sobre ESE pedido y no se borra; solo se quitan las frases de agregado/cambio. Si el cliente pide un cambio, rige la regla completa.
+            const pedidoAnteriorVigente = creadoEnFlujo || previoActivo;
+            const ultimoCliente = normalizarParaClasificar([...messages].reverse().find((m) => m.role === "user")?.content ?? "");
+            const pideCambio = /\b(?:agreg|anad|suma|sumen|cambi|modific|quit|corrig|ponga|pongan|mas|otro|otra|tambien|falto|extra)/.test(ultimoCliente);
+            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, sustitutoCambio, (f) => afirmaCambioRegistrado(f, { soloAgregado: pedidoAnteriorVigente && !pideCambio }));
             if (respuesta !== antesDeCambio && !respuesta.includes(sustitutoCambio)) respuesta = `${respuesta} ${sustitutoCambio}`.trim();
           }
           // R11: si el modelo cerro pidiendo la confirmacion SIN el total de la cotizacion, el servidor pone su resumen canonico (no toca mensajes que preguntan otra cosa).

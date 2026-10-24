@@ -31,6 +31,9 @@ describe("afirmaCambioRegistrado", () => {
     "Su agregado quedó anotado.",
     "Listo, quedó agregado.",
     "Ya lo registré.",
+    "Ya le cambiamos la tortilla a su pedido.",
+    "Lo agregamos a su pedido.",
+    "Se incluyó la salsa extra.",
   ])("afirma: %s", (t) => expect(afirmaCambioRegistrado(t)).toBe(true));
 
   it.each([
@@ -42,6 +45,13 @@ describe("afirmaCambioRegistrado", () => {
     "Su dirección quedó registrada.",
     "Ya avisé a la sucursal de lo que me pidió.",
     "El total es de $168.",
+    // Falsos positivos de la R21 en una cotizacion inicial (sin pedido previo): descripcion del platillo, no un cambio registrado.
+    "El envío está incluido.",
+    "Incluimos salsas básicas.",
+    "Le cambiamos la tortilla si gusta.",
+    "Le cambiamos la tortilla.",
+    "La salsa está incluida.",
+    "Las salsas básicas van incluidas.",
   ])("no afirma: %s", (t) => expect(afirmaCambioRegistrado(t)).toBe(false));
 
   it("con soloAgregado ignora el «quedó registrado» generico", () => {
@@ -83,6 +93,27 @@ describe("T7-043 (P0): nunca «quedó registrado» de un agregado sin pedido nue
   it("«ya agregué los tacos» tampoco pasa", async () => {
     const { t } = await turnoConPedidoPrevio("Listo, ya agregué los 3 tacos a su pedido.");
     expect(t.reply).not.toMatch(/agregu?é/i);
+  });
+  it("un «quedó registrado» repetido sobre el pedido de un turno ANTERIOR (el cliente solo pregunta por el) no se borra", async () => {
+    const { t } = await turnoConPedidoPrevio("Sí, ya quedó registrado y lo están preparando.", "¿Ya quedó mi pedido?");
+    expect(t.reply).toContain("Sí, ya quedó registrado y lo están preparando."); // (otro guard puede anexar la pregunta de colonia)
+    expect(t.reply).not.toContain(CAMBIO_SIN_REGISTRAR_OFRECE_AVISO);
+  });
+  it("pero si el cliente pide agregar algo, el «quedó registrado» sigue sin pasar", async () => {
+    const { t } = await turnoConPedidoPrevio("Listo, quedó registrado lo que me pide.", "Agrégueme 2 refrescos por favor");
+    expect(t.reply).not.toMatch(/qued[oó] registrado/i);
+  });
+  it("cotizacion inicial sin pedido previo: «el envío está incluido» / «incluimos salsas básicas» no se tocan", async () => {
+    const f = buildRestaurantFixture();
+    await f.repo.upsertWhatsAppAgentConfig(f.organizationId, null, PM);
+    const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+    const resp = "Incluimos salsas básicas y el envío está incluido. Le cambiamos la tortilla si gusta.";
+    gateway.registerLadder("default", [new FakeLlmProvider({ id: "g", script: () => texto(resp) })]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
+    const handler = createLlmWhatsAppTurnHandler(f.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+    const t = await handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: [{ role: "user", content: "¿Qué incluye el pedido?" }], customer: { isNew: true as const }, propertyId: null });
+    expect(t.reply).toContain(resp);
+    expect(t.reply).not.toContain(CAMBIO_SIN_REGISTRAR_OFRECE_AVISO);
   });
   it("una respuesta que no afirma nada se deja tal cual", async () => {
     const { t } = await turnoConPedidoPrevio("Con gusto lo revisamos, ¿algo más?");
