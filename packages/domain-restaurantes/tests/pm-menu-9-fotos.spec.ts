@@ -317,12 +317,11 @@ describe("piezas por orden: lo que las imágenes confirman es lo que el servidor
     expect(q?.pack_size).toBe(3);
   });
 
-  it("DIVERGENCIA CONOCIDA (el arnés NO se cambió): menu-pm.json trae pack_size 1 en gringas, mestizas, alambre y los 17 suizos; las imágenes dicen 2, 2, 5 y 5", () => {
-    // Alinearlos rompe 5 pruebas del arnés en cada intento (se midió): los casos L03, L17, L22, L25, C04, C08, C09, C11 y C13 piden esos platillos contando ÓRDENES
-    // y C29 los suizos. Hacerlo exige reescribir esos casos: decisión pendiente. Esta prueba avisa si alguien lo alinea sin reescribirlos.
+  it("ALINEADO (decisión del dueño, 23-oct): menu-pm.json trae pack_size 2 en gringas y mestizas y 5 en alambre y los 17 suizos, como dicen las imágenes", () => {
     const pack = new Map(MENU_EVALS.productos.map((p) => [p.nombre, p.pack_size]));
     for (const p of data.productos) {
-      if (/^(Gringa|Mestiza|Alambre de|Suizo de|Alambre Suizo|Tacos Suizos)/.test(p.nombre)) expect(pack.get(p.nombre), p.nombre).toBe(1);
+      if (/^(Gringa|Mestiza)/.test(p.nombre)) expect(pack.get(p.nombre), p.nombre).toBe(2);
+      if (/^(Alambre de|Suizo de|Alambre Suizo|Tacos Suizos)/.test(p.nombre)) expect(pack.get(p.nombre), p.nombre).toBe(5);
     }
     expect([...pack.keys()].filter((n) => /^(Gringa|Mestiza|Alambre de|Suizo de|Alambre Suizo|Tacos Suizos)/.test(n))).toHaveLength(7 + 7 + 6 + 9 + 6 + 2);
   });

@@ -31,10 +31,9 @@ Las páginas en inglés (`/taquitospm-english-menu` = Montejo/García Lavín/Alt
 7. **Divergencia con el seed (pregunta P10 del dueño)**: Ensalada de PM, Jericallas y Café tienen precio en T2 y T3 del seed, pero **no salen** en las imágenes de Francisco de Montejo ni de Pensiones; Pensiones tampoco trae pizzas Quesobich ni Heineken 0.0. No se tocó el seed.
 8. **Horarios, envío y mínimo**: ninguna imagen los trae. El sitio sí publica horario **por sucursal** en la portada y las preguntas frecuentes (entrega de 40 a 50 min, con lluvia 1 h a 1 h 20; tarjeta o contra entrega; salsas extra con costo); los horarios por sucursal quedaron en `sitio.json` (`horarios_por_sucursal_portada`). Horario por producto, agotados, «solo fin de semana», límites de cantidad, pedido mínimo y costo de envío: **no aparecen** (`null` en cada JSON).
 
-## Divergencia conocida del arnés (no corregida a propósito)
+## Arnés alineado (decisión del dueño, 23-oct-2026)
 
-`packages/domain-restaurantes/src/evals/agente-pm/menu-pm.json` trae `pack_size` 1 en gringas, mestizas, alambre y los 17 suizos; las imágenes dicen 2, 2, 5 y 5.
-Se probó alinearlos y **rompe 5 pruebas en cada intento** (gringas/mestizas/alambre: los 68 casos, totales de comanda, contrato actual, y dos pruebas de graders; suizos: C29 y los agregados), porque los casos L03, L17, L22, L25, C04, C08, C09, C11 y C13 piden esos platillos contando órdenes. No se cambió el arnés ni se debilitó ninguna prueba: alinearlo exige reescribir esos casos (decisión pendiente). Una prueba fija la divergencia.
+`packages/domain-restaurantes/src/evals/agente-pm/menu-pm.json` ya trae `pack_size` 2 en gringas y mestizas y 5 en alambre y los 17 suizos, igual que el servidor y las imágenes. Antes traía 1 (el arnés contaba órdenes); se reescribieron los casos que lo asumían (`casos.json`: L03, L17, L22, L25, L46, C04, C08, C09, C11, C13, C20, L47, C21 y C29 de `escenarios-e2e-original.json`): ahora piden «N órdenes de …» y su `piezas` son piezas (órdenes × pack), con los mismos totales. Una prueba compara el `pack_size` de todo el menú del arnés con el que el servidor deriva del seed.
 
 ## Pruebas
 

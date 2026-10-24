@@ -99,7 +99,7 @@
  },
  "arnes": {
   "archivo": "packages/domain-restaurantes/src/evals/agente-pm/menu-pm.json",
-  "estado": "NO se cambió",
-  "divergencia": "pack_size 1 en gringas, mestizas, alambre y los 17 suizos; las imágenes dicen 2, 2, 5 y 5. Alinear solo gringas/mestizas/alambre rompe 5 pruebas (los 68 casos del set, totales de comanda, contrato actual, y dos del arnés de graders: R1 mínimo y hora de recogida); alinear solo los suizos rompe 5 (C29 y los agregados). El arnés cuenta órdenes y los casos L03, L17, L22, L25, C04, C08, C09, C11 y C13 asumen pack 1. Alinearlo exige reescribir esos casos: decisión pendiente."
+  "estado": "ALINEADO el 23-oct-2026 (decisión del dueño): pack_size 2 en gringas y mestizas, 5 en alambre y los 17 suizos",
+  "divergencia": "Resuelta. Antes: pack_size 1 en gringas, mestizas, alambre y los 17 suizos mientras las imágenes dicen 2, 2, 5 y 5. Se reescribieron los casos que contaban órdenes (L03, L17, L22, L25, L46, L47, C04, C08, C09, C11, C13, C20, C21 y C29 del E2E original): piden «N órdenes» y su `piezas` son piezas, con los mismos totales."
  }
 }
