@@ -34,11 +34,11 @@ async function esperar(): Promise<void> {
 
 const TIERS = { metric: "gasto", BLACK: 1, PLATINUM: 2, GOLD: 3, BLUE: 4, withoutTier: 1 };
 
-function stub(opts: { lista?: unknown; kpis?: unknown; branches?: unknown; tiers?: unknown | "falla" } = {}) {
+function stub(opts: { lista?: unknown; kpis?: unknown; branches?: unknown; tiers?: unknown | "falla" | "ausente" } = {}) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url.endsWith("/admin/customers/kpis")) return json(opts.kpis ?? KPIS);
-    if (url.endsWith("/admin/kpis/customers")) return opts.tiers === "falla" ? json({ error: "x" }, 503) : json({ tierDistribution: opts.tiers ?? TIERS });
+    if (url.endsWith("/admin/kpis/customers")) return opts.tiers === "falla" ? json({ error: "x" }, 503) : opts.tiers === "ausente" ? json({}) : json({ tierDistribution: opts.tiers ?? TIERS });
     if (url === "https://api.test/v1/restaurantes/demo/admin/branches") return json(opts.branches ?? { branches: [{ propertyId: "prop-1", name: "Centro", slug: "c" }, { propertyId: "prop-2", name: "Norte", slug: "n" }] });
     if (url.endsWith("/customers/import/preview") && method === "POST") return json({ total: 3, validos: 2, duplicadosEnArchivo: 0, totalErrores: 1, errores: [{ renglon: 3, motivo: "Telefono invalido: se esperan 10 digitos (se acepta +52 o 521 al inicio)." }], muestra: [{ nombre: "Ana", telefonoEnmascarado: "******0001", direccion: null, notas: null }] });
     if (url.endsWith("/customers/import") && method === "POST") return json({ resultado: { yaImportado: false, total: 3, creados: 2, actualizados: 0, sinCambios: 0, rechazados: 1, errores: [] } });
@@ -96,6 +96,13 @@ describe("ClientesListPage -- cartera por nivel", () => {
     await esperar();
     expect(q("[data-testid='distribucion-tier']")!.textContent).toContain("Distribución no disponible");
     expect(rendered!.container.textContent).toContain("Ana Torres");
+  });
+
+  it("una respuesta sin distribucion (servidor viejo) cae al aviso y no rompe la pagina", async () => {
+    stub({ tiers: "ausente" });
+    montar();
+    await esperar();
+    expect(q("[data-testid='distribucion-tier']")!.textContent).toContain("Distribución no disponible");
   });
 
   it("sin pedidos explica que aun no hay con que clasificar", async () => {
