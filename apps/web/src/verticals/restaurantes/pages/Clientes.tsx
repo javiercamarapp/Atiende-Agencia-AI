@@ -22,6 +22,7 @@ import {
   Label,
   Selector,
   PageContainer,
+  SectionLabel,
   StatCard,
   StatusBadge,
   formatMoney,
@@ -30,8 +31,8 @@ import {
 import { Crown, Receipt, Repeat, Search, Upload, Users } from "lucide-react";
 import { fetchBranches } from "../dashboard-client.ts";
 import type { BranchOption } from "../dashboard-client.ts";
-import { fetchCarteraKpis, fetchCustomers } from "../lib/customers-client.ts";
-import type { CarteraKpisWire, CustomerSummary, CustomerTier, FrecuenciaCliente } from "../lib/customers-client.ts";
+import { fetchCarteraKpis, fetchCustomers, fetchDistribucionTier } from "../lib/customers-client.ts";
+import type { CarteraKpisWire, CustomerSummary, DistribucionTierWire, CustomerTier, FrecuenciaCliente } from "../lib/customers-client.ts";
 import { ImportarClientesDialog } from "../components/ImportarClientesDialog.tsx";
 import { CUSTOMER_TIER_META, CUSTOMER_TIER_TONES, tierBadgeClase } from "../lib/status-tones.ts";
 import { BotonExportar } from "../components/BotonExportar.tsx";
@@ -59,6 +60,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   const [cargandoMas, setCargandoMas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [kpis, setKpis] = useState<CarteraKpisWire | null>(null);
+  const [distribucion, setDistribucion] = useState<DistribucionTierWire | null | "error">(null);
   const [importando, setImportando] = useState(false);
   const [version, setVersion] = useState(0);
   const puedeImportar = ADMIN_ROLES.has(role);
@@ -81,6 +83,17 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
     fetchCarteraKpis(fetch, apiBaseUrl, token, propertyId)
       .then((k) => !cancelado && setKpis(k))
       .catch(() => !cancelado && setKpis(null));
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, version]);
+
+  // Distribucion por nivel (cartera completa de la organizacion). Si falla, se dice «no disponible» sin tumbar la lista.
+  useEffect(() => {
+    let cancelado = false;
+    fetchDistribucionTier(fetch, apiBaseUrl, token, propertyId)
+      .then((d) => !cancelado && setDistribucion(d))
+      .catch(() => !cancelado && setDistribucion("error"));
     return () => {
       cancelado = true;
     };
@@ -147,6 +160,23 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           />
         </section>
       )}
+      <section aria-label="Distribución por nivel" className="flex flex-wrap items-center gap-2" data-testid="distribucion-tier">
+        <SectionLabel as="p">Distribución por nivel</SectionLabel>
+        {distribucion === null && <span className="text-xs text-muted-foreground">Cargando…</span>}
+        {distribucion === "error" && <span className="text-xs text-muted-foreground">Distribución no disponible por ahora.</span>}
+        {distribucion !== null && distribucion !== "error" && (
+          <>
+            {NIVELES.map((n) => (
+              <StatusBadge key={n} dot={false} tone={statusTone(CUSTOMER_TIER_TONES, n)} className={`gap-1 px-2 py-0.5 ${tierBadgeClase(n) ?? ""}`}>
+                <span aria-hidden>{CUSTOMER_TIER_META[n].glyph}</span>
+                {CUSTOMER_TIER_META[n].label} · {distribucion[n]}
+              </StatusBadge>
+            ))}
+            {distribucion.withoutTier > 0 && <span className="text-xs text-muted-foreground">Sin nivel todavía: {distribucion.withoutTier}</span>}
+            {distribucion.metric === "sin_datos" && <span className="text-xs text-muted-foreground">Aún no hay pedidos para clasificar.</span>}
+          </>
+        )}
+      </section>
       {kpis && !kpis.disponible && (
         <Callout tone="neutral" titulo="Resumen de cartera no disponible aún" data-testid="cartera-kpis-sin-migracion">
           Requiere la migración 054 de restaurantes en esta base de datos.

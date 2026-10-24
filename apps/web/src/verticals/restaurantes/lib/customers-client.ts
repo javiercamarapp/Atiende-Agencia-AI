@@ -257,6 +257,21 @@ export async function fetchCarteraKpis(fetchImpl: typeof fetch, apiBaseUrl: stri
   return fetchJson<CarteraKpisWire>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/customers/kpis`, token);
 }
 
+/** Distribucion de la cartera por nivel (misma ruta de KPIs de clientes que usa el Resumen; la RLS acota a la organizacion). */
+export interface DistribucionTierWire {
+  readonly metric: "gasto" | "frecuencia" | "sin_datos";
+  readonly BLACK: number;
+  readonly PLATINUM: number;
+  readonly GOLD: number;
+  readonly BLUE: number;
+  readonly withoutTier: number;
+}
+
+export async function fetchDistribucionTier(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<DistribucionTierWire> {
+  const k = await fetchJson<{ tierDistribution: DistribucionTierWire }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/kpis/customers`, token);
+  return k.tierDistribution;
+}
+
 export interface ErrorRenglonImportacionWire {
   readonly renglon: number;
   readonly motivo: string;
