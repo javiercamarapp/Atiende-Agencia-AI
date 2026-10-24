@@ -1,7 +1,7 @@
 // Productor `citas.recordatorio.fallido`: el cron del recordatorio de 24 h avisa (una por organizacion por dia, solo el conteo) cuando
 // algun recordatorio no salio; sin fallos no emite, y una emision que falla (base sin 0039) no cambia el barrido ni el 200.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildCitasTestContext, type CitasTestContext } from "./citas-fixtures.ts";
 import { conEmisiones } from "./support/emisiones.ts";
@@ -46,6 +46,19 @@ function envenenar(ctx: CitasTestContext, phone: string) {
 
 const cron = (app: ReturnType<typeof buildApp>, secret: string) => app.request("/internal/citas/confirmacion-cita", { method: "POST", headers: { "x-atiende-internal-secret": secret } });
 
+// Reloj fijo a las 23:30 de Merida: la clave de dedupe usa el dia LOCAL del negocio (zonedDateStr), no el dia UTC; de noche difieren
+// y un `new Date().toISOString().slice(0, 10)` falla segun la hora a la que corra la prueba.
+const MERIDA_2330 = new Date("2026-10-17T05:30:00.000Z"); // 23:30 del 16-oct en Merida (UTC-6): el dia local (16) y el UTC (17) difieren
+const HOY_LOCAL = "2026-10-16";
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(MERIDA_2330);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("citas.recordatorio.fallido", () => {
   it("un recordatorio que falla emite UNA por organizacion con el conteo, sin datos de la cita ni del cliente", async () => {
     const ctx = await buildCitasTestContext(buildApp);
@@ -60,7 +73,7 @@ describe("citas.recordatorio.fallido", () => {
     const mias = emisiones.filter((e) => e.organizationId === ctx.organizationId && e.evento === "citas.recordatorio.fallido");
     expect(mias).toHaveLength(1);
     expect(mias[0]).toMatchObject({ evento: "citas.recordatorio.fallido", categoria: "salud", severidad: "atencion", cuerpo: "Sin enviar: 1.", enlace: "/citas/{orgSlug}/mensajes-whatsapp", roles: null });
-    expect(mias[0]!.dedupeKey).toBe(`citas.recordatorio.fallido:${ctx.organizationId}:${new Date().toISOString().slice(0, 10)}`);
+    expect(mias[0]!.dedupeKey).toBe(`citas.recordatorio.fallido:${ctx.organizationId}:${HOY_LOCAL}`);
     expect(JSON.stringify(mias[0])).not.toContain("99900000");
   });
 
