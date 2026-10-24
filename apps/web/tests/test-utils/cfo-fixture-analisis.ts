@@ -75,7 +75,7 @@ async function vista(modo: "normal" | "sin095" | "vacio"): Promise<AnalisisClien
     organizationId: ORG,
     alcance: { propertyIds: [T1, T2], todas: true, organizacionCompleta: true },
     propertyIdsSql: null,
-    sucursales: [{ propertyId: T1, nombre: "Prolongación Montejo", slug: "montejo", activa: true }, { propertyId: T2, nombre: "Francisco de Montejo", slug: "fco-montejo", activa: true }],
+    sucursales: [{ propertyId: T1, nombre: "Sucursal Norte", slug: "sucursal-norte", activa: true }, { propertyId: T2, nombre: "Sucursal Centro", slug: "sucursal-centro", activa: true }],
     ahora: new Date(`${RANGO_FIXTURE_ANALISIS.hasta}T12:00:00Z`),
   });
   const v = await servicio.analisisClientesVista({ ...RANGO_FIXTURE_ANALISIS, comparar: "periodo_anterior", granularidad: "dia" }, 50);

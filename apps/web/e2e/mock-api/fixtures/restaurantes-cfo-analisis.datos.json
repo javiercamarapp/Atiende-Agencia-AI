@@ -12,14 +12,14 @@
   "sucursales": [
    {
     "propertyId": "00000000-0000-4000-8000-0000000000a1",
-    "nombre": "Prolongación Montejo",
-    "slug": "montejo",
+    "nombre": "Sucursal Norte",
+    "slug": "sucursal-norte",
     "activa": true
    },
    {
     "propertyId": "00000000-0000-4000-8000-0000000000a2",
-    "nombre": "Francisco de Montejo",
-    "slug": "fco-montejo",
+    "nombre": "Sucursal Centro",
+    "slug": "sucursal-centro",
     "activa": true
    }
   ],
@@ -443,14 +443,14 @@
   "sucursales": [
    {
     "propertyId": "00000000-0000-4000-8000-0000000000a1",
-    "nombre": "Prolongación Montejo",
-    "slug": "montejo",
+    "nombre": "Sucursal Norte",
+    "slug": "sucursal-norte",
     "activa": true
    },
    {
     "propertyId": "00000000-0000-4000-8000-0000000000a2",
-    "nombre": "Francisco de Montejo",
-    "slug": "fco-montejo",
+    "nombre": "Sucursal Centro",
+    "slug": "sucursal-centro",
     "activa": true
    }
   ],
@@ -614,14 +614,14 @@
   "sucursales": [
    {
     "propertyId": "00000000-0000-4000-8000-0000000000a1",
-    "nombre": "Prolongación Montejo",
-    "slug": "montejo",
+    "nombre": "Sucursal Norte",
+    "slug": "sucursal-norte",
     "activa": true
    },
    {
     "propertyId": "00000000-0000-4000-8000-0000000000a2",
-    "nombre": "Francisco de Montejo",
-    "slug": "fco-montejo",
+    "nombre": "Sucursal Centro",
+    "slug": "sucursal-centro",
     "activa": true
    }
   ],

@@ -269,6 +269,7 @@ begin
      where x.ventas >= 2
        and (x.recencia_dias > greatest(14::numeric, 1.5 * coalesce(x.mediana_intervalo, 0)) or x.recencia_dias > 30)
   ),
+  -- nullif(e.rec,0): evita dividir entre cero si la recencia fuera 0 (compra el dia del corte); la prioridad quedaria NULL, y el filtro de recencia de `el` ya excluye esos casos.
   pr as (
     select e.*, round(e.venta_centavos * least(1::numeric, e.umbral / nullif(e.rec, 0)))::bigint as prioridad,
            row_number() over (order by round(e.venta_centavos * least(1::numeric, e.umbral / nullif(e.rec, 0))) desc, e.customer_id) as rn
