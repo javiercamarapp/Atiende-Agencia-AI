@@ -21,7 +21,7 @@ export interface MundoVoz {
   readonly repo: InMemoryRestaurantesRepository;
   readonly organizationId: string;
   readonly propertyId: string;
-  readonly productos: Readonly<Record<"bistec" | "pastor" | "gringa" | "horchata" | "cola" | "cerveza" | "nachos", ProductoSembrado>>;
+  readonly productos: Readonly<Record<"bistec" | "pastor" | "gringa" | "horchata" | "cola" | "cerveza" | "nachos" | "gringasOrden" | "alambre", ProductoSembrado>>;
   /** Callbacks (escaladas y avisos) que quedaron registrados, en orden. */
   readonly callbacks: CallbackRequestInput[];
   pedidos(): Promise<readonly Order[]>;
@@ -69,6 +69,9 @@ export function crearMundoVoz(): MundoVoz {
     horchata: sembrar("Agua de Horchata", catBebidas, 40, ["horchata", "agua fresca"]),
     cola: sembrar("Coca-Cola", catBebidas, 45, ["coca", "refresco", "cola"]),
     cerveza: sembrar("Cerveza Sol", catCervezas, 66, ["cerveza", "chela", "sol", "cheve"]),
+    // Ordenes con pack_size (el menu real las trae como «orden de N»): gringas de 2 y alambre de 5 (decision del dueño para voz y WhatsApp).
+    gringasOrden: sembrar("Gringas Mixtas (orden de 2)", catAntojos, 150, ["gringas mixtas", "orden de gringas"]),
+    alambre: sembrar("Alambre Especial (orden de 5)", catAntojos, 180, ["alambre"]),
     nachos: sembrar("Nachos de Pastor", catAntojos, 89, ["nachos"]),
     // Carnes por peso (QA-PM-R4-reglas-03): el kilo y el cuarto son productos distintos; la cantidad es de piezas, nunca gramos.
     arracheraKilo: sembrar("Arrachera — 1 kg", catTacos, 900, ["arrachera", "arrachera kilo"]),

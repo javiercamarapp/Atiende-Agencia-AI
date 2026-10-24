@@ -252,6 +252,36 @@ export function horaLegible(hhmm: string): string {
   return hhmm === "00:00" ? "12:00 a. m. (medianoche)" : hhmm;
 }
 
+const UNIDADES = ["cero", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuna", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"];
+const DECENAS = ["", "", "", "treinta", "cuarenta", "cincuenta"];
+function numeroEnPalabras(n: number): string {
+  if (n < 30) return UNIDADES[n]!;
+  const d = Math.floor(n / 10);
+  const u = n % 10;
+  return u === 0 ? DECENAS[d]! : `${DECENAS[d]!} y ${UNIDADES[u]!}`;
+}
+/** Los MINUTOS van en masculino («doce y veintiuno», «una y treinta y uno»): «una» / «veintiuna» son de la hora (la una), no de los minutos. */
+function minutosEnPalabras(n: number): string {
+  return numeroEnPalabras(n).replace(/\bveintiuna$/, "veintiuno").replace(/\buna$/, "uno");
+}
+
+/** Hora para DECIRLA por telefono: "00:30" -> "doce y media de la noche", "13:45" -> "una y cuarenta y cinco de la tarde". El sintetizador lee "00:30" como cifras sueltas;
+ * `horaLegible` (HH:MM) queda para texto escrito. Una entrada que no sea HH:MM valida se devuelve tal cual (nunca inventa una hora). */
+export function horaHablada(hhmm: string): string {
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmm);
+  if (!m) return hhmm;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return hhmm;
+  if (h === 0 && min === 0) return "doce de la noche (medianoche)";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const franja = h === 12 ? "del día" : h < 12 ? "de la mañana" : h < 20 ? "de la tarde" : "de la noche";
+  // 00:xx es pasada la medianoche: "doce y media de la noche", no "de la mañana".
+  const periodo = h === 0 ? "de la noche" : franja;
+  const minutos = min === 0 ? "" : min === 15 ? " y cuarto" : min === 30 ? " y media" : ` y ${minutosEnPalabras(min)}`;
+  return `${numeroEnPalabras(h12)}${minutos} ${periodo}`;
+}
+
 /** Mensaje claro para el cliente cuando la sucursal está cerrada. */
 export function mensajeSucursalCerrada(nombreSucursal: string, estado: EstadoApertura): string {
   if (!estado.proximaApertura) return `La sucursal ${nombreSucursal} está cerrada en este momento.`;

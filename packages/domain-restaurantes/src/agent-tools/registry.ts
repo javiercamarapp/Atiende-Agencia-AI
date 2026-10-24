@@ -32,7 +32,7 @@ import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composici
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, horaLegible } from "../horarios.ts";
+import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, horaHablada, horaLegible } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
@@ -474,7 +474,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
           description:
             "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande / tiempos_entrega (pedido muy grande o exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
         },
-        resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente." },
+        resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente. Si quiere CANCELAR un pedido ya registrado, diga «cancelar» en el resumen (el sistema usa la frase de cancelación); si solo agrega o cambia algo, no use esa palabra." },
       },
       required: ["motivo"],
     },
@@ -1736,6 +1736,15 @@ async function dispatchTool(
         margen_ultimo_pedido_min: ultimoPedido?.margenMin ?? null,
         // Aditivo: "00:00" es la medianoche; el modelo debe decir "12 de la noche"/"medianoche", nunca "a las 00:00".
         cierra_a_texto: cierraA ? horaLegible(cierraA) : null,
+        ultimo_pedido_a_texto: ultimoPedido?.ultimoPedidoA ? horaLegible(ultimoPedido.ultimoPedidoA) : null,
+        // Solo en voz: las horas ya dichas con palabras ("doce y media de la noche"); el sintetizador lee "00:30" como cifras sueltas.
+        ...(ctx.channel === "voz"
+          ? {
+              hora_local_hablada: horaHablada(parte({ hour: "2-digit", minute: "2-digit" })),
+              cierra_a_hablada: cierraA ? horaHablada(cierraA) : null,
+              ultimo_pedido_a_hablada: ultimoPedido?.ultimoPedidoA ? horaHablada(ultimoPedido.ultimoPedidoA) : null,
+            }
+          : {}),
         horario: policy.horario,
         pedido_minimo_domicilio: policy.pedidoMinimoDomicilio,
         pedido_minimo_recoger: policy.pedidoMinimoRecoger,
@@ -2093,9 +2102,17 @@ async function dispatchTool(
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
       // QA-PM-R5-voz-05: por voz el agente escalaba y colgaba SIN decirle nada al cliente. El resultado trae la frase que debe decir (en WhatsApp el agente ya la escribe en el mismo turno).
-      const aviso = esEscalada && ctx.channel === "voz" ? { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ, instruccion: INSTRUCCION_ESCALACION_VOZ } : {};
+      // Cancelar NO es agregar: la frase de agregados («alcanza a salir») no aplica. Cancelacion = el `resumen` del modelo habla de cancelar/anular (la herramienta no tiene otro campo).
+      const esCancelacion = motivoEscalada === "cancelacion_modificacion" && ES_CANCELACION.test(textoOpcional(input.resumen) ?? "");
+      const aviso = esEscalada && ctx.channel === "voz"
+        ? motivoEscalada !== "cancelacion_modificacion"
+          ? { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ, instruccion: INSTRUCCION_ESCALACION_VOZ }
+          : esCancelacion
+            ? { mensaje_al_cliente: MENSAJE_CANCELACION_PEDIDO_ENVIADO, instruccion: INSTRUCCION_ESCALACION_VOZ }
+            : { mensaje_al_cliente: MENSAJE_CAMBIO_PEDIDO_ENVIADO, instruccion: INSTRUCCION_ESCALACION_VOZ }
+        : {};
       // R16 (T7-043, decision de Javier): al agregar/cambiar algo de un pedido ya enviado a cocina la hora la confirma la SUCURSAL; el agente no inventa minutos.
-      const horaDelRestaurante = motivoEscalada === "cancelacion_modificacion" && ctx.channel !== "voz" ? { instruccion: INSTRUCCION_CAMBIO_HORA_SUCURSAL } : {};
+      const horaDelRestaurante = motivoEscalada === "cancelacion_modificacion" ? { instruccion: esCancelacion ? INSTRUCCION_CANCELACION_SUCURSAL : INSTRUCCION_CAMBIO_HORA_SUCURSAL } : {};
       return { result: { ok: true, ...aviso, ...horaDelRestaurante }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
@@ -2147,8 +2164,15 @@ export const AVISO_SIN_ESTADO_DE_PEDIDO = "Este resultado NO trae el estado del 
 
 /** Lo que el agente de VOZ le dice al cliente tras escalar a una persona (SOLO la frase literal: `mensaje_al_cliente` se lee tal cual). */
 export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan.";
+/** Decision del dueño (chats de voz y WhatsApp): agregados a un pedido ya enviado, SIN minutos. Misma frase en los dos canales. */
+export const MENSAJE_CAMBIO_PEDIDO_ENVIADO = "Lo paso ahorita a la sucursal; ellos le confirman si alcanza a salir con su pedido, y si ya salió se lo pueden enviar aparte. Le confirmo en un momento.";
 /** Tras escalar un cambio (agregar, cancelar...) a un pedido ya enviado a cocina: el aviso ya salio; la hora la confirma el restaurante. */
-export const INSTRUCCION_CAMBIO_HORA_SUCURSAL = "Ya se avisó a la sucursal con el detalle. Dígale al cliente: «Se lo paso a cocina; le confirmo en un momento». La hora y si alcanza a salir con su pedido los confirma la sucursal: NO dé minutos, horas ni «aproximadamente» y no prometa que ya quedó agregado.";
+export const INSTRUCCION_CAMBIO_HORA_SUCURSAL = `Ya se avisó a la sucursal con el detalle. Dígale al cliente: «${MENSAJE_CAMBIO_PEDIDO_ENVIADO}» La hora y si alcanza a salir con su pedido los confirma la sucursal: NO dé minutos, horas ni «aproximadamente» y no prometa que ya quedó agregado.`;
+
+/** Cancelacion de un pedido ya registrado (frase PROPIA, distinta de la de agregados): se avisa a la sucursal y ella confirma si todavia se puede cancelar. Misma frase en voz y WhatsApp. */
+export const MENSAJE_CANCELACION_PEDIDO_ENVIADO = "Ya avisé a la sucursal que quiere cancelar su pedido; ellos le confirman si todavía se puede cancelar, porque si ya está en preparación o ya salió puede que no. Le confirmo en un momento.";
+export const INSTRUCCION_CANCELACION_SUCURSAL = `Ya se avisó a la sucursal con el detalle. Dígale al cliente: «${MENSAJE_CANCELACION_PEDIDO_ENVIADO}» Si todavía se puede cancelar lo confirma la SUCURSAL: NO diga que ya quedó cancelado, ni prometa reembolso, ni dé minutos.`;
+const ES_CANCELACION = /\b(?:cancel\w*|anul\w*)/i;
 
 /** Instruccion para el MODELO (no para el cliente): va en `instruccion`, nunca dentro de `mensaje_al_cliente`. */
 export const INSTRUCCION_ESCALACION_VOZ = "Dígale al cliente el mensaje_al_cliente, de usted, ANTES de despedirse o cortar; no prometa hora ni resultado.";
