@@ -86,7 +86,7 @@ import type {
   StorefrontCatalogRow,
 } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
-import { EMPTY_BRANCH_POLICY, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
+import { digitosBusquedaTelefono, EMPTY_BRANCH_POLICY, ESTADOS_INCIDENCIA, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
 import type {
@@ -2433,6 +2433,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     if (filter.dateTo !== undefined) {
       params.push(filter.dateTo.toISOString());
       conditions.push(`created_at < $${params.length}::timestamptz`);
+    }
+    if (filter.soloIncidencias) {
+      params.push([...ESTADOS_INCIDENCIA]);
+      conditions.push(`status = any($${params.length}::text[])`);
+    }
+    if (filter.busqueda !== undefined) {
+      // Todo parametrizado: el texto del usuario nunca se concatena. `%` y `_` del usuario se escapan para que no sean comodines.
+      params.push(`%${filter.busqueda.replace(/[\\%_]/g, "\\$&")}%`);
+      const iNombre = params.length;
+      const digitos = digitosBusquedaTelefono(filter.busqueda);
+      if (digitos === null) {
+        conditions.push(`customer_name ilike $${iNombre} escape '\\'`);
+      } else {
+        params.push(`%${digitos}%`);
+        conditions.push(`(customer_name ilike $${iNombre} escape '\\' or regexp_replace(customer_phone, '[^0-9]', '', 'g') like $${params.length})`);
+      }
     }
 
     const cursor = decodeCursor(filter.cursor);

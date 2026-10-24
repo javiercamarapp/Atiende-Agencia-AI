@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, MOTIVOS_CANCELACION, assertOrderCanBeDispatched, cargaDeRepartidor, sugerirRepartidor, avisarProgramadosPromovidos, changeOrderStatus, esMotivoCancelacion, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { BUSQUEDA_PEDIDOS_MAX, MANAGER_ROLES, MOTIVOS_CANCELACION, normalizarBusquedaPedidos, assertOrderCanBeDispatched, cargaDeRepartidor, sugerirRepartidor, avisarProgramadosPromovidos, changeOrderStatus, esMotivoCancelacion, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { CandidatoRepartidor, CargaRepartidor, Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { cortarComandaDePedidoCancelado, encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -112,6 +112,20 @@ function parseDate(raw: string | undefined, field: string): Date | undefined {
   return parsed;
 }
 
+/** Busqueda libre del Historial (`q`): 2-60 caracteres; mas largo es 400 (nada de textos arbitrarios contra la base). */
+export function parseBusqueda(raw: string | undefined): string | undefined {
+  const t = normalizarBusquedaPedidos(raw);
+  if (t === null) throw Errors.validation(`q: maximo ${BUSQUEDA_PEDIDOS_MAX} caracteres.`);
+  return t;
+}
+
+/** `incidencias=1|true` = solo incidencias y cancelados; cualquier otro valor no vacio es 400. */
+export function parseIncidencias(raw: string | undefined): boolean {
+  if (raw === undefined || raw === "" || raw === "0" || raw === "false") return false;
+  if (raw === "1" || raw === "true") return true;
+  throw Errors.validation("incidencias: se esperaba 1 o 0.");
+}
+
 function parseStatus(raw: string | undefined) {
   if (raw === undefined || raw === "") return undefined;
   if (!isOrderStatus(raw)) throw Errors.validation("status: valor de estado desconocido.");
@@ -156,6 +170,8 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const dateTo = parseDate(c.req.query("dateTo"), "dateTo");
     const limit = parseLimit(c.req.query("limit"));
     const cursor = c.req.query("cursor") || undefined;
+    const busqueda = parseBusqueda(c.req.query("q"));
+    const soloIncidencias = parseIncidencias(c.req.query("incidencias"));
 
     // R-11: auto-promocion de pedidos programados al CONSULTAR (sin cron). Solo cuando la consulta puede incluir
     // pedidos que acaban de pasar a `pending` (sin filtro de estado o con `pending`/`programado`); un historial
@@ -163,7 +179,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (status === undefined || status === "pending" || status === "programado") {
       await promoverAlConsultar(c, repo, organizationId, propertyIds);
     }
-    const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, limit, cursor });
+    const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, busqueda, soloIncidencias, limit, cursor });
     return c.json({ orders: await serializeOrders(repo, organizationId, page.orders), nextCursor: page.nextCursor });
   });
 
