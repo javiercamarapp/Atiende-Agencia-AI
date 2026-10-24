@@ -388,7 +388,3 @@
   .login-editorial .login-story-copy h2 { font-size: 32px; margin-top: 20px; }
   .login-editorial .login-story-description { font-size: 14px; margin-top: 15px; }
 }
-
-/* Lamina con foto (login de Restaurantes, como el repo suelto): leyenda sobre el velo. */
-.login-lamina-kicker { color: color-mix(in srgb, white 78%, transparent); }
-.login-lamina-texto { color: white; font-size: clamp(20px, 1.9vw, 27px); }

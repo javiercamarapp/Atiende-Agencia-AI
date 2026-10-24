@@ -313,29 +313,29 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
               alt={en && hero.laminaEn ? hero.laminaEn.alt : hero.alt}
               width={hero.laminaAncho}
               height={hero.laminaAlto}
-              loading="lazy"
+              fetchPriority="high"
               decoding="async"
               className="login-foto"
             />
             <div className="login-velo" />
-            <figcaption className="absolute inset-x-0 bottom-0 z-10 p-9">
-              <p className="login-kicker login-lamina-kicker">{en && hero.laminaEn ? hero.laminaEn.kicker : hero.kicker}</p>
-              <p className="login-serif login-lamina-texto mt-3.5">{en && hero.laminaEn ? hero.laminaEn.texto : hero.texto}</p>
+            <figcaption className="login-lamina-texto absolute inset-x-0 bottom-0 z-10 p-9">
+              <p className="login-kicker">{en && hero.laminaEn ? hero.laminaEn.kicker : hero.kicker}</p>
+              <p className="login-serif mt-3.5 text-[clamp(20px,1.9vw,27px)]">{en && hero.laminaEn ? hero.laminaEn.texto : hero.texto}</p>
             </figcaption>
           </figure>
         </aside>
         ) : null
       ) : (
       <aside className="login-aside login-story-panel hidden lg:flex lg:flex-col" aria-label={`Atiende ${nombre}`}>
-          <div className="login-story-surface">
-            <div className="login-story-copy">
-              <p className="login-kicker">Atiende · {en ? englishNames[vertical] ?? nombre : nombre}</p>
-              <h2 className="login-serif">{displayStory?.title ?? hero.kicker}</h2>
-              <p className="login-story-description">{displayStory?.description ?? hero.texto}</p>
-            </div>
-            {story ? <LoginArtwork vertical={vertical} /> : <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto" />}
+        <div className="login-story-surface">
+          <div className="login-story-copy">
+            <p className="login-kicker">Atiende · {en ? englishNames[vertical] ?? nombre : nombre}</p>
+            <h2 className="login-serif">{displayStory?.title ?? hero.kicker}</h2>
+            <p className="login-story-description">{displayStory?.description ?? hero.texto}</p>
           </div>
-        </aside>
+          {story ? <LoginArtwork vertical={vertical} /> : <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto" />}
+        </div>
+      </aside>
       )}
     </main>
   );
