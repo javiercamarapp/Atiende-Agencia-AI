@@ -104,6 +104,6 @@ test("restaurantes en móvil no descarga la foto de la lámina; en inglés tradu
   await page.getByRole("button", { name: "English", exact: true }).click();
   await expect(page.getByText("Closing the shift, on its own.")).toBeVisible();
   await expect(page.getByText("Orders by voice and WhatsApp")).toBeVisible();
-  await expect(page.locator(".login-lamina img")).toHaveAttribute("alt", /Taquero slicing al pastor/);
+  await expect(page.locator(".login-lamina img")).toHaveAttribute("alt", /Taquero slicing trompo al pastor/);
   await expect(page.getByText("Ask your business to add you.")).toBeVisible();
 });
