@@ -195,8 +195,9 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
     setReintento((n) => n + 1);
   }
 
+  // min-w-0 en la pagina y en cada hijo: la tabla de solicitudes ARCO (min-content ancho) no debe ensanchar la pagina mas alla de 375 px.
   return (
-    <PageContainer padding="none">
+    <PageContainer padding="none" className="min-w-0 *:min-w-0">
       <header>
         <h1 className="sr-only">Privacidad</h1>
         <p className="m-0 text-ui text-muted-foreground">
@@ -254,7 +255,9 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
           )}
           {!error && items === null && <EstadoCargando lineas={4} />}
           {!error && items !== null && (
-            <SolicitudesArcoPanel solicitudes={items} disponible={disponible} puedeGestionar respuestaDias={plazos.respuestaDias} ejecucionDias={plazos.ejecucionDias} onCambiarEstado={cambiarEstado} />
+            <div className="min-w-0 overflow-x-auto">
+              <SolicitudesArcoPanel solicitudes={items} disponible={disponible} puedeGestionar respuestaDias={plazos.respuestaDias} ejecucionDias={plazos.ejecucionDias} onCambiarEstado={cambiarEstado} />
+            </div>
           )}
           {!error && items !== null && disponible && items.length > 0 && (
             <div className="flex items-center justify-between text-xs text-muted-foreground">
