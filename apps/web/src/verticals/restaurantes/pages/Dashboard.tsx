@@ -396,7 +396,7 @@ export function RestaurantesDashboardPage({
         </Card>
 
         <ResumenSeccion titulo="Impacto de tus agentes">
-          <div className="flex min-w-0 flex-col gap-1.5" title={extras.resumenCfg?.formula ?? "Horas ahorradas = conversaciones atendidas por el agente × minutos por conversación ÷ 60."}>
+          <div className="flex min-w-0 flex-col gap-1.5" title={extras.resumenCfg?.formula ?? "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado histórico de tus sucursales visibles; no cambia con el periodo) × minutos por conversación ÷ 60."}>
             <StatCard
               variante="neutra"
               icon={Clock}
@@ -407,9 +407,14 @@ export function RestaurantesDashboardPage({
                   ? "No se pudo leer la configuración"
                   : minutos === null
                     ? "Configúralo: minutos que ahorra cada conversación atendida por el agente"
-                    : `${formatInt(conversaciones)} conversaciones × ${minutos} min ÷ 60 · estimación con tu supuesto, no una medición`
+                    : `${formatInt(conversaciones)} conversaciones (histórico, sucursales que ves) × ${minutos} min ÷ 60 · estimación con tu supuesto (config. de toda la organización), no una medición`
               }
             />
+            {extras.resumenCfg === null && (
+              <Button type="button" variant="outline" size="sm" className="self-start" iconLeft={<RefreshCw />} onClick={() => void cargar(period)}>
+                Reintentar
+              </Button>
+            )}
             {puedeConfigurar && extras.resumenCfg !== null && (
               <Button type="button" variant="outline" size="sm" className="self-start" iconLeft={<Settings2 />} onClick={() => setConfigAbierta(true)}>
                 Configurar horas y metas
@@ -444,7 +449,7 @@ export function RestaurantesDashboardPage({
             to={`${base}/conversaciones`}
             icon={MessageCircle}
             titulo="WhatsApp"
-            descripcion={`${plural(channels.whatsappConversations.total, "conversación", "conversaciones")} · ${formatInt(channels.whatsappConversations.withOrder)} con pedido · ${periodoCanales}`}
+            descripcion={`${plural(channels.whatsappConversations.total, "conversación", "conversaciones")} · ${formatInt(channels.whatsappConversations.withOrder)} con pedido · histórico`}
           />
           {ROLES_VOZ.has(role) && (
             <TileLink
@@ -591,7 +596,7 @@ function ConfigResumenDialogo({
       guardarDeshabilitado={!vista.disponible}
     >
       <div className="grid gap-4">
-        {!vista.disponible && <p className="text-ui text-muted-foreground">Guardar no está disponible aún: requiere la migración 096 en la base.</p>}
+        {!vista.disponible && <p className="text-ui text-muted-foreground">Esta función aún no está disponible en tu cuenta.</p>}
         <FormField label="Minutos que ahorra cada conversación atendida por el agente">
           <Input id="resumen-minutos" inputMode="numeric" value={minutos} onChange={(e) => setMinutos(e.target.value)} placeholder={`${vista.rangos.minutos.min} a ${vista.rangos.minutos.max}`} />
         </FormField>

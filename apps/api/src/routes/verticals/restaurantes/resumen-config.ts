@@ -24,7 +24,7 @@ import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const FORMULA =
-  "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente en el periodo × minutos por conversacion que configuraste ÷ 60. Es una estimacion con tu supuesto, no una medicion.";
+  "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado historico de las sucursales que puedes ver; no cambia con el periodo) × minutos por conversacion que configuraste para toda la organizacion ÷ 60. Es una estimacion con tu supuesto, no una medicion.";
 
 const texto = (n: number | null, sufijo: string) => (n === null ? "sin configurar" : `${n}${sufijo}`);
 /** Resumen legible para la bitacora: tres numeros acotados, sin PII. */
