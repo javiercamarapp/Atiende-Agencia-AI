@@ -579,6 +579,17 @@ export function planTopeLlamadaLlm(restanteMs: number): { readonly primerTopeMs:
 export const MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR = 2;
 /** PM-R14: llamadas REPETIDAS (misma herramienta y mismos argumentos) tras un `crear_pedido` rechazado por regla con las que se corta el bucle. */
 export const MAX_LLAMADAS_REPETIDAS_TRAS_RECHAZO_AL_CREAR = 3;
+/** R21: el texto del modelo tras un pedido que el servidor ya creo contradice la confirmacion del servidor (niega el registro, o trae un monto u hora que el servidor no tiene). */
+export function textoContradiceConfirmacion(textoModelo: string, confirmacionServidor: string): boolean {
+  if (/\bno\s+(?:pude|pudimos|alcanc[eé]|logr[eé]|se\s+pudo|fue\s+posible)(?![a-záéíóúñ])[^.!?\n]*(?:registr|cre|guard|proces)|\b(?:problema|error|falla)\s+(?:t[eé]cnic|al\s+registr)|\bsin\s+registrar\b|\bpendiente\s+de\s+registr/i.test(textoModelo)) return true;
+  const montos = (t: string) => new Set([...t.matchAll(/\$\s?(\d+(?:[.,]\d+)?)/g)].map((m) => Number(m[1]!.replace(",", "."))));
+  const horas = (t: string) => new Set([...t.matchAll(/\b(\d{1,2}):(\d{2})\b/g)].map((m) => `${Number(m[1])}:${m[2]}`));
+  const mS = montos(confirmacionServidor);
+  for (const m of montos(textoModelo)) if (!mS.has(m)) return true;
+  const hS = horas(confirmacionServidor);
+  for (const h of horas(textoModelo)) if (!hS.has(h)) return true;
+  return false;
+}
 /** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
 export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   const v = (env.WHATSAPP_CIERRE_UNA_VUELTA ?? "").trim().toLowerCase();
@@ -887,7 +898,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // pedido, asi que no se inyecta la nota ni se responde con texto fijo; el modelo lee el texto y vuelve a cotizar.
       const soloToques = pendientes.length > 0 && pendientes.every((m) => toqueDeMensaje(m.content) !== null);
       let toqueConfirmarVigente = false;
-      if (ultimoDelCliente && soloToques && toqueUltimo?.accion === "confirmar") {
+      // TODOS los toques pendientes deben ser «Confirmar»: en una rafaga [Cambiar, Confirmar] el cliente pidio cambiar algo, asi que no se confirma ni se responde con texto fijo.
+      const todosConfirman = pendientes.every((m) => toqueDeMensaje(m.content)?.accion === "confirmar");
+      if (ultimoDelCliente && soloToques && todosConfirman && toqueUltimo?.accion === "confirmar") {
         const vigencia = vigenciaDelToque(flowSnapshot, toqueUltimo, options.now ? options.now().getTime() : Date.now());
         const fija = respuestaDeToqueQueNoSigue(vigencia);
         if (fija) return done({ reply: fija, orderId: null, propertyId });
@@ -941,12 +954,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let cierreDeterministaIntentado = false;
       const prepararCierreDeterminista = async (porToque = false): Promise<LlmToolCall[] | null> => {
         if (perfil !== "taqueria_pm" || preview || cierreDeterministaIntentado || orderId !== null || pedidosCreadosDelTurno.length > 0 || pedidoSimulado !== undefined || escalarMotivo !== null) return null;
-        cierreDeterministaIntentado = true;
+        // R21: se marca como intentado solo si la lectura del estado fresco respondio; un fallo transitorio de lectura deja libre el respaldo R18 (deadline / proveedor caido).
         // `porToque`: el toque «Confirmar pedido» vigente ya es el «si» explicito (el texto del boton no se clasifica como un «si» escrito).
         const totalConfirmado = porToque ? (typeof flowSnapshot?.context?.quotedTotal === "number" && cotizacionVigente ? flowSnapshot.context.quotedTotal : null) : siPendienteSinPedido();
         if (totalConfirmado === null) return null;
         // Estado FRESCO: si el modelo alcanzo a re-cotizar en este turno, el «si» ya no es de ese resumen y no se crea nada.
-        const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+        let lecturaFallida = false;
+        const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => { lecturaFallida = true; return null; });
+        if (lecturaFallida) return null;
+        cierreDeterministaIntentado = true;
         if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
         const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
         if (!plan.ok) return null;
@@ -1150,7 +1166,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (!eraCierreDeterminista) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          let base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          // R21: el pedido lo creo el SERVIDOR antes de la vuelta; si el texto del modelo lo contradice (dice que no lo registro, o cambia total u hora) manda la confirmacion del servidor.
+          if (cierreAdelantado) {
+            const delServidor = confirmacionDelTurno();
+            if (delServidor && textoContradiceConfirmacion(base, delServidor)) base = delServidor;
+          }
           if (noEntiendeActivo) {
             // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
             if (completion.text && pideRepetir(completion.text)) {
