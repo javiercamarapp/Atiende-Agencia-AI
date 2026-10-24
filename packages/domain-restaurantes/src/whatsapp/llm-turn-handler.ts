@@ -43,7 +43,7 @@ import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRep
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
-import { estaAbiertoAhora } from "../horarios.ts";
+import { estaAbiertoAhora, horaLegible } from "../horarios.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
@@ -306,8 +306,8 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
       if (!policy.horario || policy.horario.length === 0) return "";
       const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
       const estado = estaAbiertoAhora(policy.horario, ahora, zona);
-      if (estado.abierto) return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${estado.cierraA}` : ""}. Un pedido para recoger cuya hora caiga después del cierre no se puede tomar.`;
-      const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${estado.proximaApertura.hora}` : "";
+      if (estado.abierto) return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${horaLegible(estado.cierraA)}` : ""}. Un pedido para recoger cuya hora caiga después del cierre no se puede tomar.`;
+      const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${horaLegible(estado.proximaApertura.hora)}` : "";
       return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; tome el pedido y PROGRÁMELO con programado_para para la apertura u otra hora dentro del horario (H16), sin decir que ya está en cocina.`;
     });
   } catch {
