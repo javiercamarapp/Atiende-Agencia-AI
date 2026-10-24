@@ -15,13 +15,15 @@ import type { BranchDetail } from "../lib/branches-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 import { puedeEn } from "../lib/permisos.ts";
 import { ReglasSucursal } from "./ReglasSucursal.tsx";
+import { ControlesSucursal } from "../components/ControlesSucursal.tsx";
+import { Link } from "react-router-dom";
 import { AVISO_FUERA_DE_YUCATAN, esEnlaceCortoDeMaps, fueraDeYucatan, interpretarCoordenadasPegadas, textoCoordenada, urlVerEnMapa, validarPar } from "../lib/coordenadas.ts";
 
 // Mismo criterio que STAFF_NAV_ROLES de RestaurantesShell.tsx: cosmético, el servidor (admin-modelo-pm.ts
 // + RLS) es el enforcement real.
 const REGLAS_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
-export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }: RestaurantesShellContext) {
   const [branches, setBranches] = useState<readonly BranchDetail[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -128,7 +130,8 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
     <PageContainer padding="none">
       <h1 className="sr-only">Sucursales</h1>
       <Callout tone="info">
-        Crear una sucursal nueva o activar/desactivarla todavía no está disponible desde el panel — requiere un cambio de plataforma compartido por todas las verticales (ver README de este vertical).
+        Crear una sucursal nueva o darla de baja no está disponible aún desde este panel: es una operación de plataforma que afecta tu plan y facturación. Pídela a tu contacto de Atiende; consulta tu plan en{" "}
+        <Link to={`/restaurantes/${orgSlug}/plan`} className="underline">Plan y uso</Link>. Sí puedes encender o apagar aquí el agente de voz y el de WhatsApp de cada sucursal.
       </Callout>
 
       {!puedeEditar && <Callout tone="info">Solo el dueño o un administrador puede editar los datos de la sucursal.</Callout>}
@@ -168,6 +171,10 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                     Editar
                   </Button>
                 )}
+              </div>
+
+              <div className="mt-3">
+                <ControlesSucursal apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} branchId={b.propertyId} branchName={b.name} puedeCambiar={REGLAS_ROLES.has(role)} />
               </div>
 
               {editing === b.propertyId ? (
