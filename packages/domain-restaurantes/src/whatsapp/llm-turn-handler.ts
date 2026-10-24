@@ -38,7 +38,8 @@ import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, 
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
-import { bloqueCantidadNoMultiplo } from "../unidades-pm.ts";
+import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
+import { bloqueRecuperacionTrasFalla } from "./recuperacion-falla.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -51,7 +52,7 @@ import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
-import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
+import { afirmaCambioRegistrado, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -862,7 +863,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
       // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
       const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
-      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque].filter((b) => b !== "").join("\n\n");
+      // R21 (T7-008): un producto que el menu no tiene (chistorra, longaniza, salchichas...) se rechaza con la alternativa correcta, no con un platillo inventado.
+      const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
+      // R21 (G1/NU-2/T7-012): tras un aviso de falla del sistema el pedido que el cliente ya dijo no se vuelve a preguntar.
+      const recuperacionFallaBloque = perfil === "taqueria_pm" && !preview ? bloqueRecuperacionTrasFalla(messages) : "";
+      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, recuperacionFallaBloque].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -1160,6 +1165,16 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const sustitutoEscalado = escalacionOkEnTurno && !retenidoVigente && !guardiaSoloRegistro ? PM_COPY.pedidoSinRegistrarEscalado : undefined;
             respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : sustitutoEscalado, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
             if (respuesta !== antesDeQuitar && sustitutoEscalado && !respuesta.includes(sustitutoEscalado)) respuesta = `${respuesta} ${sustitutoEscalado}`.trim();
+          }
+          // R21 (T7-043, P0): «quedó registrado lo que me cuenta» / «ya agregué los 3 tacos» sobre un cambio o agregado a un pedido que NO se creo en este turno. Ninguna herramienta modifica un pedido ya
+          // creado (solo existe el aviso al equipo), asi que sin un pedido nuevo creado la afirmacion es falsa aunque el cliente tenga un pedido previo. Si el turno armaba un carrito
+          // («anoté 3 tacos», «ya agregué las salsas») o el pedido quedo retenido, no se toca. Con el aviso al equipo hecho en el turno el sustituto lo dice; sin el, ofrece avisar.
+          const creadoEnEsteTurno = orderId !== null || pedidoSimulado !== undefined || yaRegistradoEnTurno || tele.tools.some((t) => t.tool === "crear_pedido" && t.resultado === "ok");
+          if (perfil === "taqueria_pm" && !creadoEnEsteTurno && !armandoOtro && !retenidoVigente) {
+            const antesDeCambio = respuesta;
+            const sustitutoCambio = escalacionOkEnTurno ? CAMBIO_AVISADO_SIN_REGISTRAR : CAMBIO_SIN_REGISTRAR_OFRECE_AVISO;
+            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, sustitutoCambio, (f) => afirmaCambioRegistrado(f));
+            if (respuesta !== antesDeCambio && !respuesta.includes(sustitutoCambio)) respuesta = `${respuesta} ${sustitutoCambio}`.trim();
           }
           // R11: si el modelo cerro pidiendo la confirmacion SIN el total de la cotizacion, el servidor pone su resumen canonico (no toca mensajes que preguntan otra cosa).
           if (perfil === "taqueria_pm" && !orderId && !escalarMotivo && resumenCanonicoDelTurno && cierreMaquinaActiva()) {

@@ -80,7 +80,7 @@ describe("variantes del resumen canonico completo", () => {
     const { s, bistec } = sesion();
     const c = await canon(s, { ...TARJETA, items: [{ ...bistec, tortilla: "maiz" }], canal: "domicilio", colonia_entrega: "Centro" });
     expect(c).toContain("(maiz)");
-    expect(c).not.toContain("Salsas");
+    expect(c).not.toContain("Salsas pedidas");
     expect(c).not.toContain("Notas");
   });
 
@@ -307,7 +307,7 @@ describe("R15 revision: herencia en re-cotizaciones, tortilla por indice, bander
     expect(c1).not.toContain("Notas");
     expect(c1).toContain("Sin: limones");
     const c2 = await canon(s, { ...TARJETA, items: [item], canal: "recoger", requested_complements: [], omit_default_complements: [] });
-    expect(c2).not.toContain("Salsas");
+    expect(c2).not.toContain("Salsas pedidas");
     expect(c2).not.toContain("Sin:");
   });
 

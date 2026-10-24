@@ -384,6 +384,8 @@ export interface EntradaResumen {
   readonly salsas?: readonly string[];
   /** R15: salsas basicas que el cliente quito («salsa verde»). */
   readonly sinSalsas?: readonly string[];
+  /** R21 (T7-038): salsas BASICAS que van en el pedido (las del perfil menos las que el cliente quito), con su nombre para el cliente. Sin ellas el cliente confirmaba sin ver roja y verde. */
+  readonly basicas?: readonly string[];
   /** R15: notas ya capturadas (ajustes como «sin cebolla»), saneadas por `sanearNotaDeResumen`: una linea, sin telefonos ni correos, acotada. */
   readonly notas?: string;
 }
@@ -406,6 +408,54 @@ export function etiquetaHoraEntrega(instanteMs: number, zonaHoraria: string, aho
   if (diasDeDiferencia === 0) return `para ${articulo} ${reloj}`;
   if (diasDeDiferencia === 1) return `para mañana a ${articulo} ${reloj}`;
   return `para el ${DIAS_CORTOS[dia]} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} a ${articulo} ${reloj}`;
+}
+
+/**
+ * R21 (T7-026): la hora que el CLIENTE dijo mas recientemente en un mensaje que no es pregunta ("a las 5 pm", "mejor a las 6:30", "5pm"), como minutos del dia en reloj de 12 horas
+ * (`minuto12` = (hora % 12) * 60 + minutos; `meridiano` solo si lo dijo). `null` si ningun mensaje del cliente da una hora. Sin plazos ("en 40 minutos") ni horarios preguntados.
+ * Pura; el texto es no confiable (se acota el largo).
+ */
+export function horaDichaPorElCliente(historial: readonly MensajeHistorial[]): { readonly minuto12: number; readonly meridiano: "am" | "pm" | null } | null {
+  let vistos = 0;
+  for (let i = historial.length - 1; i >= 0 && vistos < 8; i--) {
+    const m = historial[i]!;
+    if (m.role !== "user" || typeof m.content !== "string") continue;
+    vistos += 1;
+    const crudo = m.content.slice(0, 600);
+    // Un plazo («en 40 minutos», «en cuanto esté») mas reciente que cualquier hora exacta la sustituye: no hay hora que comparar.
+    if (/\b(?:en\s+\d+\s*(?:min|minutos|hora|horas)|en\s+media\s+hora|en\s+una\s+hora|en\s+cuanto|ahorita|ya\s+mismo|para\s+ya)\b/i.test(crudo.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) return null;
+    if (/[?¿]/.test(crudo) || /\b(?:abren|abre|cierran|cierra|horario|hasta\s+que\s+hora)\b/i.test(crudo)) continue;
+    const t = crudo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    let ultima: { minuto12: number; meridiano: "am" | "pm" | null } | null = null;
+    for (const r of t.matchAll(/(\b(?:a|para)\s+las?\s+)?(?<![\d:.$])(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|de\s+la\s+(?:manana|tarde|noche))?(?![\d:])/g)) {
+      const tienePrefijo = r[1] !== undefined;
+      const tag = r[4] ?? "";
+      if (!tienePrefijo && tag === "") continue;
+      const h = Number(r[2]);
+      const min = r[3] ? Number(r[3]) : 0;
+      if (h > 23 || min > 59) continue;
+      // «a las 5 tacos», «5 kg»: un numero seguido de una unidad o producto no es una hora (salvo con minutos o meridiano).
+      const despues = t.slice((r.index ?? 0) + r[0].length);
+      if (tag === "" && r[3] === undefined && /^\s*(?:kg|kilos?|g|gr|gramos?|tacos?|ordenes|orden|piezas?|personas?|pesos|min|minutos|horas?|hrs?)\b/.test(despues)) continue;
+      const meridiano = /^p/.test(tag) || /tarde|noche/.test(tag) ? "pm" : /^a/.test(tag) || /manana/.test(tag) ? "am" : null;
+      ultima = { minuto12: (h % 12) * 60 + min, meridiano: h >= 13 ? "pm" : meridiano };
+    }
+    if (ultima) return ultima;
+  }
+  return null;
+}
+
+/** R21 (T7-026): ¿la hora cotizada (ms, zona de la sucursal) contradice la que el cliente dijo por ultima vez? Solo cuenta si hay una hora clara del cliente; con meridiano, tambien am/pm. */
+export function horaCotizadaContradiceAlCliente(instanteMs: number, zonaHoraria: string, historial: readonly MensajeHistorial[]): { readonly dicha: string } | null {
+  const dicha = horaDichaPorElCliente(historial);
+  if (!dicha) return null;
+  const { minutos } = componentesLocales(new Date(instanteMs), zonaHoraria);
+  const coincide12 = ((Math.floor(minutos / 60) % 12) * 60 + (minutos % 60)) === dicha.minuto12;
+  const coincideMeridiano = dicha.meridiano === null || (dicha.meridiano === "pm") === (minutos >= 12 * 60);
+  if (coincide12 && coincideMeridiano) return null;
+  const h = Math.floor(dicha.minuto12 / 60) || 12;
+  const mm = dicha.minuto12 % 60;
+  return { dicha: `${h}:${String(mm).padStart(2, "0")}${dicha.meridiano ? ` ${dicha.meridiano}` : ""}` };
 }
 
 function pesos(n: number): string {
@@ -475,6 +525,7 @@ function acotarLista(items: readonly string[]): string {
 export function resumenCanonico(e: EntradaResumen): string {
   const renglones = e.lineas.map((l) => `• ${l.quantity} × ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
   const detalles: string[] = [];
+  if (e.basicas && e.basicas.length > 0) detalles.push(`Salsas básicas incluidas: ${acotarLista(e.basicas)}`);
   if (e.salsas && e.salsas.length > 0) detalles.push(`Salsas pedidas (sin costo): ${acotarLista(e.salsas)}`);
   if (e.sinSalsas && e.sinSalsas.length > 0) detalles.push(`Sin: ${acotarLista(e.sinSalsas)}`);
   const nota = sanearNotaDeResumen(e.notas);

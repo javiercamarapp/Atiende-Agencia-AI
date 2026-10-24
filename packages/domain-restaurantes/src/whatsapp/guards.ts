@@ -229,6 +229,44 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
   return patrones.some((r) => r.test(t));
 }
 
+/**
+ * R21 (T7-043, P0): la frase AFIRMA que un CAMBIO o AGREGADO ya quedo hecho/registrado («quedó registrado lo que me cuenta», «ya agregué los 3 tacos», «se agregó a su pedido», «su agregado quedó anotado»).
+ * No hay herramienta que modifique un pedido ya creado: solo existe un aviso al equipo. Sin un pedido NUEVO creado en el turno, esa frase es falsa. Una pregunta, un condicional, una negacion o un futuro
+ * («le agrego», «si quiere lo agregamos», «el equipo lo agregará») no cuentan; «pedido registrado» con sujeto pedido lo cubre `afirmaPedidoRegistrado`. `soloAgregado` limita a las frases de agregado/cambio
+ * (para turnos que arman un carrito, donde «anoté 3 tacos» es normal).
+ */
+export function afirmaCambioRegistrado(frase: string, opciones: { readonly soloAgregado?: boolean } = {}): boolean {
+  if (typeof frase !== "string" || !frase) return false;
+  const t = normalizarParaClasificar(frase);
+  if (/[?¿]/.test(frase)) return false;
+  if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
+  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se|puedo|podemos)|todavia\s+no|aun\s+no|falta|quedaria|podria|podrian|va\s+a|van\s+a|pudo|tampoco|nunca|le\s+confirm\w+|confirmara|confirmaran|lo\s+revisa\w*|lo\s+vera\w*|lo\s+veran|sujeto\s+a|dependera)\b/.test(t)) return false;
+  const AGREGADO = "(?:agregad[oa]s?|anadid[oa]s?|sumad[oa]s?|incluid[oa]s?|modificad[oa]s?|cambiad[oa]s?|actualizad[oa]s?)";
+  const patrones: RegExp[] = [
+    // «ya agregué / añadí / sumé / incluí / modifiqué / cambié ...», «ya lo agregamos»
+    /\b(?:ya\s+)?(?:lo|la|los|las)?\s*(?:agregue|agregamos|anadi|anadimos|sume|sumamos|inclui|incluimos|modifique|modificamos|cambie|cambiamos|actualice|actualizamos)\b/,
+    // «se agregó / se añadió / se sumó / se incluyó / se modificó / se cambió ...»
+    /\bse\s+(?:ya\s+)?(?:agreg(?:o|aron)|anadi(?:o|eron)|sum(?:o|aron)|inclu(?:yo|yeron)|modific(?:o|aron)|cambi(?:o|aron)|actualiz(?:o|aron))\b/,
+    // «su agregado quedó / ya quedó agregado / quedó agregado a su pedido»
+    new RegExp(`\\b(?:quedo|queda|esta|fue|ya\\s+esta|ya\\s+quedo)\\s+(?:ya\\s+)?${AGREGADO}\\b`),
+    new RegExp(`\\b(?:su|el|los|las)\\s+(?:agregado|agregados|cambio|cambios|ajuste|ajustes|modificacion|extra|extras)\\b(?:\\s+[a-z0-9]+){0,4}?\\s+(?:ya\\s+)?(?:quedo|queda|esta|fue|se\\s+registro)\\b`),
+  ];
+  if (opciones.soloAgregado !== true) {
+    patrones.push(
+      // «quedó registrado lo que me cuenta», «quedó registrado el cambio», «quedó anotado»: sin sujeto pedido/orden/comanda (esas las cubre afirmaPedidoRegistrado) y sin dato personal.
+      /^(?!.*\b(?:pedido|orden|comanda|direccion|domicilio|nombre|telefono|datos|correo|ubicacion|propina|nota|notas|factura)\b).*\b(?:quedo|queda|esta|fue)\s+(?:ya\s+)?(?:registrad[oa]s?|anotad[oa]s?|apuntad[oa]s?)\b/,
+      /^(?!.*\b(?:pedido|orden|comanda|direccion|domicilio|nombre|telefono|datos|correo|ubicacion|propina|nota|notas|factura)\b).*\bya\s+(?:lo|la|los|las)\s+(?:registre|registramos|anote|anotamos|apunte|apuntamos)\b/,
+    );
+  }
+  return patrones.some((r) => r.test(t));
+}
+
+/** Texto honesto cuando se quita la afirmacion falsa de un cambio y el equipo SI fue avisado en el turno. */
+export const CAMBIO_AVISADO_SIN_REGISTRAR = "Ya avisé a la sucursal de lo que me pidió; ellos le confirman si alcanza a incluirlo. Por aquí no puedo modificar un pedido que ya se envió.";
+
+/** Sustituto cuando se quita la afirmacion falsa de un cambio y NO se avisó al equipo en el turno: no promete nada, ofrece avisar. */
+export const CAMBIO_SIN_REGISTRAR_OFRECE_AVISO = "Por aquí todavía no puedo registrar ese cambio en un pedido ya enviado. ¿Quiere que avise a la sucursal para que lo revise?";
+
 /** La frase habla del ESTADO de un pedido (va en camino, en preparacion, en cocina, listo, salio a reparto...), no solo de su registro. */
 export function hablaDelEstadoDelPedido(frase: string): boolean {
   return /\b(?:en\s+(?:camino|cocina|preparacion|proceso|marcha)|preparandose|se\s+esta\s+(?:preparando|cocinando|armando|haciendo)|(?:entro|llego|salio|paso)\s+(?:ya\s+)?a\s+(?:la\s+)?(?:cocina|reparto)|va\s+para\s+alla|list[oa]\s+para)\b/.test(normalizarParaClasificar(frase));
