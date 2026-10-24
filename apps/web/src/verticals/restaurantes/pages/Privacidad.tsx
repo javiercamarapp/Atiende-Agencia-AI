@@ -254,8 +254,9 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
             />
           )}
           {!error && items === null && <EstadoCargando lineas={4} />}
+          {/* El Table de @atiende/ui trae su propio contenedor overflow-x-auto: se neutraliza para que el unico scroller sea esta region enfocable (teclado). */}
           {!error && items !== null && (
-            <div className="min-w-0 overflow-x-auto">
+            <div className="min-w-0 overflow-x-auto p-0.5 [&_.overflow-x-auto]:overflow-x-visible" tabIndex={0} role="region" aria-label="Solicitudes ARCO">
               <SolicitudesArcoPanel solicitudes={items} disponible={disponible} puedeGestionar respuestaDias={plazos.respuestaDias} ejecucionDias={plazos.ejecucionDias} onCambiarEstado={cambiarEstado} />
             </div>
           )}
