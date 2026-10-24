@@ -38,26 +38,30 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
       vertical="restaurantes"
       nombre="restaurantes"
       descripcion="El panel de operación de tu restaurante."
-      placeholderCorreo="tu@restaurante.com"
+      placeholderCorreo="tu@correo.com"
       pie={
-        conCelular ? (
-          <>
-            ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>{" "}
-            <Link to="/restaurantes/acceso-repartidor" className="font-semibold text-foreground underline underline-offset-2">
-              Soy repartidor: entrar con mi celular
-            </Link>
-          </>
-        ) : undefined
+        <>
+          ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu restaurante que te dé de alta.</span>
+          {conCelular ? (
+            <>
+              {" "}
+              <Link to="/restaurantes/acceso-repartidor" className="font-semibold text-foreground underline underline-offset-2">
+                Soy repartidor: entrar con mi celular
+              </Link>
+            </>
+          ) : null}
+        </>
       }
       hero={{
-        imagen: "images/login-hero-restaurantes.jpg",
-        alt: "Taquero cortando trompo al pastor de noche.",
-        kicker: "Pedidos por WhatsApp, sin fricción",
+        lamina: true,
+        imagen: "images/login-hero-restaurantes-lamina.png",
+        alt: "Pase de una cocina comercial vacía en la hora azul, con vapor sobre la barra de acero.",
+        kicker: "Pedidos por voz y WhatsApp",
         texto: (
           <>
-            El agente toma el pedido, lo manda a cocina,
+            Restaurantes en México.
             <br />
-            cobra y cierra la caja — todo por WhatsApp.
+            El cierre del turno, solo.
           </>
         ),
       }}
