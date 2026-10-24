@@ -119,9 +119,9 @@ describe("tortilla obligatoria solo si el menu lo dice", () => {
 
 describe("salsa doble sin producto 'Extra salsa' (no regresion)", () => {
   it("con el producto en el catalogo (T1, T3, T7: $19) la doble porcion se cobra a $19 por salsa, nunca otro precio", async () => {
-    // El horario de la sucursal se evalua con el reloj real: martes 14:00 en Merida (abierto, sin 2x1) para no depender de la hora de la corrida.
+    // El horario de la sucursal se evalua con el reloj real: martes 19:00 en Merida (abierto en T1, T3 y T7, sin 2x1) para no depender de la hora de la corrida.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-10-13T20:00:00Z"));
+    vi.setSystemTime(new Date("2026-10-14T01:00:00Z"));
     try {
       await cobraVeintePorSalsa();
     } finally {

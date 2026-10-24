@@ -6,7 +6,7 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnterior, fechaLocal, horaLegible, mensajeProgramadoFueraDeHorario, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
@@ -259,7 +259,7 @@ async function validarHoraRecogida(
   if (a.horarioBase || cubrePickup) {
     const r = aperturaConExcepciones(a.horarioBase ?? [], excepciones, pickup, a.zonaCruda);
     if (!r.estado.abierto) {
-      const cierre = a.aperturaAhora?.cierraA ? ` Hoy cierra a las ${a.aperturaAhora.cierraA}: ofrezca pasar antes.` : "";
+      const cierre = a.aperturaAhora?.cierraA ? ` Hoy cierra a las ${horaLegible(a.aperturaAhora.cierraA)}: ofrezca pasar antes.` : "";
       throw new OrderValidationError(`${mensajeProgramadoFueraDeHorario(a.branch.name, etiquetaPickup, r.estado)}${cierre}`);
     }
     if (a.diaNegocioAhora !== null && r.diaNegocio !== a.diaNegocioAhora) {

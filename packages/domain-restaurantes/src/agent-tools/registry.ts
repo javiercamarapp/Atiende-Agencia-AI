@@ -32,7 +32,7 @@ import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composici
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
+import { estaAbiertoAhora, fechaLocal, horaLegible } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
@@ -630,7 +630,7 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Parti
     ...(quote.pedidoMinimo !== undefined && quote.pedidoMinimo !== null ? { pedido_minimo: quote.pedidoMinimo } : {}),
     ...(quote.propinaPolitica ? { propina_politica: quote.propinaPolitica, preguntar_propina: quote.preguntarPropina === true } : {}),
     ...(quote.programadoPara ? { programado_para: quote.programadoPara } : {}),
-    ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null } : {}),
+    ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null, cierra_a_texto: quote.cierraA ? horaLegible(quote.cierraA) : null } : {}),
   };
 }
 
@@ -1728,6 +1728,8 @@ async function dispatchTool(
         telefono: branch.phone,
         abierto_ahora: abierto,
         cierra_a: cierraA,
+        // Aditivo: "00:00" es la medianoche; el modelo debe decir "12 de la noche"/"medianoche", nunca "a las 00:00".
+        cierra_a_texto: cierraA ? horaLegible(cierraA) : null,
         horario: policy.horario,
         pedido_minimo_domicilio: policy.pedidoMinimoDomicilio,
         pedido_minimo_recoger: policy.pedidoMinimoRecoger,
