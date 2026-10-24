@@ -21,6 +21,13 @@ describe("horaHablada", () => {
     ["18:00", "seis de la tarde"],
     ["20:30", "ocho y media de la noche"],
     ["23:59", "once y cincuenta y nueve de la noche"],
+    ["01:15", "una y cuarto de la mañana"],
+    ["23:45", "once y cuarenta y cinco de la noche"],
+    ["12:30", "doce y media del día"],
+    ["12:21", "doce y veintiuno del día"],
+    ["00:01", "doce y uno de la noche"],
+    ["01:31", "una y treinta y uno de la mañana"],
+    ["13:01", "una y uno de la tarde"],
   ])("%s -> %s", (hhmm, dicho) => expect(horaHablada(hhmm)).toBe(dicho));
   it("una entrada que no es HH:MM se devuelve tal cual (nunca inventa una hora)", () => {
     expect(horaHablada("pronto")).toBe("pronto");
