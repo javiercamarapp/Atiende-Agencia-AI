@@ -142,6 +142,11 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
             latenciaMs: Math.max(0, ahora() - t0),
           };
         }
+        // Falla de RED (conexion cortada, DNS, 5xx de pasarela) sin que el timeout propio la haya abortado: en una ESCRITURA el servidor pudo haber registrado el pedido
+        // antes de que se cortara. Mismo trato que el timeout: resultado incierto (no asegurar al cliente, una persona verifica y la maquina avisa). Lectura: error comun.
+        if (inciertas.has(nombre)) {
+          return { resultado: { error: opts.registro.mensajeIncierto, timeout: true, incierto: true }, ok: false, timeout: true, entidadId: null, latenciaMs: Math.max(0, ahora() - t0) };
+        }
         return { resultado: { error: "Error interno al ejecutar la herramienta" }, ok: false, timeout: false, entidadId: null, latenciaMs: Math.max(0, ahora() - t0) };
       } finally {
         if (temporizador) clearTimeout(temporizador);
@@ -179,6 +184,11 @@ export function transporteHttp(opts: TransporteHttpOpciones): TransporteTools {
       cuerpo = await respuesta.json();
     } catch {
       cuerpo = null;
+    }
+    // 5xx sin mensaje de la API (pasarela: 502/503/504 con HTML o vacio): la peticion pudo haber llegado al servidor y haberse ejecutado. Se propaga como falla de red para que
+    // una escritura quede INCIERTA; un 5xx con `message` de la API es una regla de negocio y sigue llegando tal cual.
+    if (!respuesta.ok && respuesta.status >= 500 && !(typeof cuerpo === "object" && cuerpo !== null && typeof (cuerpo as { message?: unknown }).message === "string")) {
+      throw new Error(`HTTP ${respuesta.status}`);
     }
     if (!respuesta.ok) {
       const mensaje = typeof cuerpo === "object" && cuerpo !== null && "message" in cuerpo && typeof (cuerpo as { message: unknown }).message === "string" ? (cuerpo as { message: string }).message : `HTTP ${respuesta.status}`;
