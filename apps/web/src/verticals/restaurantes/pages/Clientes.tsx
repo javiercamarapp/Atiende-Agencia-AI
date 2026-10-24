@@ -232,7 +232,10 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       {customers && customers.length === 0 && filtrosDisponibles && <EstadoVacio mensaje={hayFiltros ? "Ningún cliente coincide con estos filtros." : "Todavía no hay clientes: aparecen con su primer pedido o al importar tu cartera."} />}
 
       {customers && customers.length > 0 && (
-        <section aria-label="Lista de clientes" className="flex flex-col gap-2">
+        <section aria-labelledby="clientes-lista-titulo" className="flex flex-col gap-2">
+          <h2 id="clientes-lista-titulo" className="sr-only">
+            Lista de clientes
+          </h2>
           <SectionLabel as="p" className="px-1">
             <span data-testid="clientes-total">{customers.length} cliente{customers.length === 1 ? "" : "s"}{nextCursor ? " (hay más)" : " en total"}</span>
           </SectionLabel>
@@ -240,6 +243,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
             <ul className="m-0 list-none divide-y divide-dashed divide-border p-0">
               {customers.map((c) => {
                 const dias = diasDesde(c.lastOrderAt);
+                const resumenPedidos = `${c.orderCount} pedido${c.orderCount === 1 ? "" : "s"} · ${dias === null ? "aún no ha pedido" : dias === 0 ? "pidió hoy" : `hace ${dias} d`}`;
                 return (
                   <li key={c.id}>
                     <Link
@@ -252,10 +256,9 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-ui font-medium text-foreground">{c.name ?? c.phone}</span>
                         <span className="block truncate text-xs text-muted-foreground">{c.phone}</span>
+                        <span className="block truncate text-xs text-muted-foreground sm:hidden">{resumenPedidos}</span>
                       </span>
-                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                        {c.orderCount} pedido{c.orderCount === 1 ? "" : "s"} · {dias === null ? "aún no ha pedido" : dias === 0 ? "pidió hoy" : `hace ${dias} d`}
-                      </span>
+                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{resumenPedidos}</span>
                       {c.tier && (
                         <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, c.tier)} className={`shrink-0 gap-1 px-2 py-0.5 ${tierBadgeClase(c.tier) ?? ""}`}>
                           <span aria-hidden>{CUSTOMER_TIER_META[c.tier].glyph}</span>
