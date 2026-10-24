@@ -1712,7 +1712,7 @@ async function dispatchTool(
         const estado = estaAbiertoAhora(policy.horario, ahora, zonaCruda);
         abierto = estado.abierto;
         cierraA = estado.cierraA;
-        ultimoPedido = evaluarUltimoPedido(estado, policy.horario, ahora, zonaCruda);
+        ultimoPedido = evaluarUltimoPedido(policy.horario, ahora, zonaCruda);
       }
       // Reloj LOCAL de la sucursal: el modelo (sobre todo el de voz, que no trae la hora en su prompt) calculaba "en 40 minutos" con la hora UTC y guardaba
       // la recogida 6 h tarde, o "hoy" dos dias atras (QA-PM-R2-voz-03 / reglas-04). Con esto calcula sobre la hora de la sucursal.

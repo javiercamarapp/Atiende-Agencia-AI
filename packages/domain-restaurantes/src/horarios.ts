@@ -72,6 +72,14 @@ export function leerHorarioPersistido(raw: unknown): HorarioSucursal | null {
   try {
     return validarHorario(raw);
   } catch {
+    // Un `ultimoPedidoMin` corrupto no invalida el horario (fallaria ABIERTO las 24 h): se descarta SOLO el margen y se conservan dias/abre/cierra.
+    if (Array.isArray(raw)) {
+      try {
+        return validarHorario(raw.map((t) => (t && typeof t === "object" ? Object.fromEntries(Object.entries(t as Record<string, unknown>).filter(([k]) => k !== "ultimoPedidoMin")) : t)));
+      } catch {
+        return null;
+      }
+    }
     return null;
   }
 }
@@ -164,14 +172,18 @@ export function estaAbiertoAhora(
 // ---------------------------------------------------------------------------
 
 export interface UltimoPedido {
-  /** Minutos antes del cierre en que se deja de tomar pedidos. */
+  /** true = el local esta abierto en ese instante (turnos que se tocan cuentan como uno solo). */
+  readonly abierto: boolean;
+  /** Margen EFECTIVO en minutos: el del turno que cierra (omision 30), recortado a la duracion del servicio menos 1 para que un turno corto no quede sin pedidos. */
   readonly margenMin: number;
-  /** Minutos que faltan para el cierre del turno vigente (cruce de medianoche incluido); null si esta cerrada. */
+  /** Minutos que faltan para el cierre del servicio vigente (cruce de medianoche incluido); null si esta cerrada. */
   readonly minutosParaCierre: number | null;
   /** true = todavia se toman pedidos (abierta y faltan MAS de `margenMin` minutos para el cierre). */
   readonly aceptaPedidos: boolean;
   /** Hora (HH:MM, hora de la sucursal) a partir de la cual ya no se toman pedidos; null si esta cerrada. */
   readonly ultimoPedidoA: string | null;
+  /** Hora (HH:MM) en que cierra el servicio vigente (ya con los turnos contiguos fusionados); null si esta cerrada. */
+  readonly cierraA: string | null;
 }
 
 function aHHMM(minutos: number): string {
@@ -179,26 +191,50 @@ function aHHMM(minutos: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-/** Margen de ultimo pedido del turno que cierra a `cierraA` (el primero que lo declare entre `turnos`); sin valor, el de omision. */
-export function margenUltimoPedido(turnos: readonly TurnoHorario[], cierraA: string | null): number {
-  const t = turnos.find((x) => x.cierra === cierraA && x.ultimoPedidoMin !== undefined);
-  return t?.ultimoPedidoMin ?? ULTIMO_PEDIDO_MIN_POR_OMISION;
+interface Tramo {
+  start: number;
+  end: number;
+  margen: number;
 }
 
 /**
- * ¿Se toman pedidos en `instante`? Parte del estado de apertura ya calculado (`cierraA`) y calcula cuanto falta para el cierre:
- * T3 cierra 00:00 => 23:29 si, 23:30 no. Un turno que cruza la medianoche cuenta los minutos hasta el cierre del dia siguiente.
- * Abierta = "el local esta abierto"; `aceptaPedidos` = "todavia se toman pedidos".
+ * Ultimo pedido en `instante`. Calcula el cierre EFECTIVO del servicio: los turnos que se tocan (el cierre de uno es la apertura de otro, tambien a medianoche)
+ * se fusionan y se cuenta hasta el cierre del ultimo; con una pausa real entre turnos el ultimo pedido aplica al cierre de CADA turno. El margen es el
+ * `ultimoPedidoMin` del turno que cierra (omision 30). T3 cierra 00:00 => 23:29 si, 23:30 no. `horarioAyer` = el horario que rigio ayer (puentes); sin valor, `horario`.
  */
-export function evaluarUltimoPedido(estado: EstadoApertura, turnos: readonly TurnoHorario[], instante: Date, zonaHorariaSucursal?: string | null): UltimoPedido {
-  const margenMin = margenUltimoPedido(turnos, estado.cierraA);
-  if (!estado.abierto || !estado.cierraA) return { margenMin, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null };
+export function evaluarUltimoPedido(horario: HorarioSucursal, instante: Date, zonaHorariaSucursal?: string | null, horarioAyer: HorarioSucursal = horario, horarioManana: HorarioSucursal = horario): UltimoPedido {
   const zona = resolverZonaHorariaNegocio(zonaHorariaSucursal);
-  const { minutos } = componentesLocales(instante, zona);
-  const cierre = aMinutos(estado.cierraA);
-  // Cierre ya pasado en el reloj de pared = el turno cruzo la medianoche (cierra al dia siguiente).
-  const minutosParaCierre = cierre > minutos ? cierre - minutos : cierre + MINUTOS_DIA - minutos;
-  return { margenMin, minutosParaCierre, aceptaPedidos: minutosParaCierre > margenMin, ultimoPedidoA: aHHMM(cierre - margenMin) };
+  const { dia, minutos } = componentesLocales(instante, zona);
+  const tramos: Tramo[] = [];
+  const agrega = (turnos: HorarioSucursal, delDia: number, desplazamiento: number) => {
+    for (const t of turnos) {
+      if (!t.dias.includes(delDia)) continue;
+      const abre = aMinutos(t.abre);
+      const cierra = aMinutos(t.cierra);
+      const fin = cierra > abre ? cierra : cierra + MINUTOS_DIA;
+      tramos.push({ start: abre + desplazamiento, end: fin + desplazamiento, margen: t.ultimoPedidoMin ?? ULTIMO_PEDIDO_MIN_POR_OMISION });
+    }
+  };
+  agrega(horarioAyer, (dia + 6) % 7, -MINUTOS_DIA);
+  agrega(horario, dia, 0);
+  agrega(horarioManana, (dia + 1) % 7, MINUTOS_DIA);
+  tramos.sort((x, y) => x.start - y.start || x.end - y.end);
+  // Fusion de tramos que se tocan o se traslapan; el margen sale del tramo que fija el cierre.
+  const cadenas: { start: number; end: number; margen: number }[] = [];
+  for (const t of tramos) {
+    const ultima = cadenas[cadenas.length - 1];
+    if (ultima && t.start <= ultima.end) {
+      if (t.end > ultima.end) {
+        ultima.end = t.end;
+        ultima.margen = t.margen;
+      }
+    } else cadenas.push({ ...t });
+  }
+  const cadena = cadenas.find((c) => c.start <= minutos && minutos < c.end);
+  if (!cadena) return { abierto: false, margenMin: ULTIMO_PEDIDO_MIN_POR_OMISION, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null, cierraA: null };
+  const margenMin = Math.max(0, Math.min(cadena.margen, cadena.end - cadena.start - 1));
+  const minutosParaCierre = cadena.end - minutos;
+  return { abierto: true, margenMin, minutosParaCierre, aceptaPedidos: minutosParaCierre > margenMin, ultimoPedidoA: aHHMM(cadena.end - margenMin), cierraA: aHHMM(cadena.end) };
 }
 
 /** Mensaje al cliente cuando la sucursal sigue abierta pero ya paso el ultimo pedido. Nunca promete una hora que no este en el horario. */
@@ -260,6 +296,29 @@ export function fechaLocal(instante: Date, zonaHoraria: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: zonaHoraria, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instante);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Dia siguiente de una fecha YYYY-MM-DD (aritmetica UTC pura). */
+export function fechaSiguiente(fecha: string): string {
+  return new Date(Date.parse(`${fecha}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Ultimo pedido con las excepciones por fecha (puentes): cada dia usa SU horario (el de la excepcion que lo cubre, o el semanal); nunca se mezclan. */
+export function ultimoPedidoConExcepciones(
+  horario: HorarioSucursal,
+  excepciones: readonly { readonly fechaDesde: string; readonly fechaHasta: string; readonly horario: HorarioSucursal }[],
+  instante: Date,
+  zonaHorariaSucursal?: string | null,
+): UltimoPedido {
+  const zona = resolverZonaHorariaNegocio(zonaHorariaSucursal);
+  const hoy = fechaLocal(instante, zona);
+  return evaluarUltimoPedido(
+    horarioParaFecha(horario, excepciones, hoy),
+    instante,
+    zona,
+    horarioParaFecha(horario, excepciones, fechaAnterior(hoy)),
+    horarioParaFecha(horario, excepciones, fechaSiguiente(hoy)),
+  );
 }
 
 /** Dia anterior de una fecha YYYY-MM-DD (aritmetica UTC pura: no depende de ninguna zona). */

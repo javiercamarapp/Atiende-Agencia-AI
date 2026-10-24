@@ -6,7 +6,7 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, evaluarUltimoPedido, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeUltimoPedidoPasado, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeUltimoPedidoPasado, ultimoPedidoConExcepciones, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
@@ -152,7 +152,7 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     // Ultimo pedido (30 min antes del cierre por omision): el SERVIDOR deja de aceptar aunque el local siga abierto. Solo mira el instante del pedido
     // (ahora, o la hora programada): un pedido ya creado no se toca. El panel del negocio (`admin`) puede capturar pedidos hasta el cierre.
     if (apertura.abierto && (args.source !== "admin" || args.exigirAbierto === true)) {
-      const ultimo = evaluarUltimoPedido(apertura, turnosDeReferencia(horarioBase, excepciones), ahora, zonaCruda);
+      const ultimo = ultimoPedidoConExcepciones(horarioBase ?? [], excepciones, ahora, zonaCruda);
       if (!ultimo.aceptaPedidos) throw new OrderValidationError(mensajeUltimoPedidoPasado(branch.name, ultimo, args.exigirAbierto === true ? etiquetaHoraLocal(ahora, zona) : undefined));
     }
   }
@@ -229,11 +229,6 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
   return { policy, apertura, pedidoMinimo, preguntarPropina, diaNegocio };
 }
 
-/** Turnos (horario semanal + los de las excepciones por fecha) de donde sale el margen de ultimo pedido del turno vigente. */
-function turnosDeReferencia(horarioBase: BranchPolicy["horario"] | null, excepciones: readonly { readonly horario: NonNullable<BranchPolicy["horario"]> }[]): NonNullable<BranchPolicy["horario"]> {
-  return [...(horarioBase ?? []), ...excepciones.flatMap((e) => e.horario)];
-}
-
 /** QA-PM-R2-reglas-05 / voz-03 / wa-15: la hora de recogida la valida el SERVIDOR. Lanza `OrderValidationError` con un mensaje accionable
  * (incluye la hora local actual de la sucursal, que el modelo no sabia). */
 async function validarHoraRecogida(
@@ -274,7 +269,7 @@ async function validarHoraRecogida(
       throw new OrderValidationError(`${mensajeProgramadoFueraDeHorario(a.branch.name, etiquetaPickup, r.estado)}${cierre}`);
     }
     // Ultimo pedido tambien para la HORA de recogida: una recogida dentro de los ultimos minutos antes del cierre ya no se toma.
-    const ultimoPickup = evaluarUltimoPedido(r.estado, turnosDeReferencia(a.horarioBase, excepciones), pickup, a.zonaCruda);
+    const ultimoPickup = ultimoPedidoConExcepciones(a.horarioBase ?? [], excepciones, pickup, a.zonaCruda);
     if (!ultimoPickup.aceptaPedidos) throw new OrderValidationError(mensajeUltimoPedidoPasado(a.branch.name, ultimoPickup, etiquetaPickup));
     if (a.diaNegocioAhora !== null && r.diaNegocio !== a.diaNegocioAhora) {
       throw new OrderValidationError(

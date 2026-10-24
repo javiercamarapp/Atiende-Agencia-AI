@@ -307,7 +307,7 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
       const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
       const estado = estaAbiertoAhora(policy.horario, ahora, zona);
       if (estado.abierto) {
-        const ultimo = evaluarUltimoPedido(estado, policy.horario, ahora, zona);
+        const ultimo = evaluarUltimoPedido(policy.horario, ahora, zona);
         if (!ultimo.aceptaPedidos) {
           return `${branch.name} sigue ABIERTA${estado.cierraA ? ` (cierra a las ${estado.cierraA})` : ""}, pero YA PASÓ EL ÚLTIMO PEDIDO (${ultimo.margenMin} minutos antes del cierre${ultimo.ultimoPedidoA ? `, hasta las ${ultimo.ultimoPedidoA}` : ""}): ya no se toman pedidos para hoy. Dígalo en su primer mensaje y ofrezca programar para la siguiente apertura o pedir mañana; no prometa horarios fuera del horario.`;
         }
