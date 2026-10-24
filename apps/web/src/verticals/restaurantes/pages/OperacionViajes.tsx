@@ -191,7 +191,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
                           )}
                         </span>
                       </span>
-                      <span className="shrink-0 text-lg font-bold text-foreground">{formatMoney(p.total)}</span>
+                      <span className="shrink-0 text-lg font-bold text-foreground">${formatMoney(p.total)}</span>
                     </button>
                   </li>
                 );
@@ -245,7 +245,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
                       #{p.numero} · {p.clienteNombre}
                     </p>
                     <p className="text-base text-muted-foreground">
-                      Chofer: {nombreChofer(p.repartidorId)} · {formatMoney(p.total)}
+                      Chofer: {nombreChofer(p.repartidorId)} · ${formatMoney(p.total)}
                     </p>
                     <SemaforoMinutos semaforo={semaforoPedido("en_camino", p.canal, m)} minutos={m} prefijo="En camino" />
                   </li>
@@ -264,7 +264,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
                   <span>
                     #{p.numero} · {p.clienteNombre}
                   </span>
-                  <span>{formatMoney(p.total)}</span>
+                  <span>${formatMoney(p.total)}</span>
                 </li>
               ))}
             </ul>

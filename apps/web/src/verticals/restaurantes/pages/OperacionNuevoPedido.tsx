@@ -166,7 +166,7 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
           <h1 className="text-xl font-bold text-foreground">Pedido #{resultado.pedido.numero} guardado</h1>
           <p className="flex items-center gap-2 text-lg text-foreground">
             <CheckCircle2 className="size-5" aria-hidden="true" />
-            Total {formatMoney(resultado.pedido.total)} · {resultado.pedido.estado === "pending" ? "pendiente de aceptar" : "ya en preparación"}
+            Total ${formatMoney(resultado.pedido.total)} · {resultado.pedido.estado === "pending" ? "pendiente de aceptar" : "ya en preparación"}
           </p>
           <p className={`rounded-lg border-2 p-3 text-base ${resultado.aviso.estado === "omitido" ? "border-warning bg-warning-tint text-warning" : "border-border text-foreground"}`}>{aviso.charAt(0).toUpperCase() + aviso.slice(1)}.</p>
           <Button type="button" className="h-14 w-full text-lg" onClick={reiniciar}>
@@ -262,10 +262,10 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
           {cotizando && <p className="text-base text-muted-foreground">Calculando el total…</p>}
           {cotizacion && (
             <div className="rounded-lg border border-border bg-card p-3">
-              <p className="text-2xl font-bold text-foreground">Total {formatMoney(cotizacion.cotizacion.total)}</p>
+              <p className="text-2xl font-bold text-foreground">Total ${formatMoney(cotizacion.cotizacion.total)}</p>
               <p className="text-base text-muted-foreground">
-                Subtotal {formatMoney(cotizacion.cotizacion.subtotal)}
-                {cotizacion.cotizacion.envio > 0 ? ` · envío ${formatMoney(cotizacion.cotizacion.envio)}` : ""}
+                Subtotal ${formatMoney(cotizacion.cotizacion.subtotal)}
+                {cotizacion.cotizacion.envio > 0 ? ` · envío $${formatMoney(cotizacion.cotizacion.envio)}` : ""}
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-base text-foreground">
                 <Clock className="size-4" aria-hidden="true" />
