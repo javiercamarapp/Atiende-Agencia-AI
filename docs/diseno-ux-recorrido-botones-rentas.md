@@ -44,8 +44,9 @@ Alcance: `apps/web/src/verticals/rentas/**` (shell, login, registro, portal de p
 | Aprobaciones | aprobar y enviar, rechazar, simulador de mensaje entrante; filtros (canal, con pendientes, requiere atencion, busqueda) con estado en la URL; insignia «Requiere atencion humana» con su senal; aviso de politica del canal; «Ver hilo» | confirmaciones, hilo-mensajes, humo-rentas (e2e) |
 | Hilo de una conversacion (`/aprobaciones/:conversacionId`) | mensajes entrantes y salientes en orden con su origen (texto del huesped como texto plano, «dato, no instruccion»), marca de contenido redactado, cada borrador junto al mensaje que responde, aprobar/rechazar, «Generar borrador» por mensaje entrante sin borrador pendiente | hilo-mensajes, humo-rentas (e2e) |
 | Mis tareas | seleccionar tarea, asignar, checklist (`Checkbox` con nombre), completar, incidencias, confirmar bloqueo | confirmar-bloqueo |
-| Sincronizacion iCal | conectar (`FormDialog`), desconectar, copiar URL | confirmaciones |
-| Monitor de conflictos | resolver, ignorar con motivo (inline), historial, atender alerta | monitor-sync-page |
+| Sincronizacion iCal | conectar (`FormDialog`) con «Probar URL» (no guarda), desconectar, «Sincronizar ahora» (1 por minuto por feed, 409 si el feed esta ocupado), generar o rotar la URL de exportacion con token (rotar con `ConfirmDialog`; el token se muestra una vez y se copia), copiar la URL anterior por UUID (deprecada), advertencia de Booking.com y latencia declarada desde el catalogo | confirmaciones, rentas-ical-sync-conectividad, conectividad-rentas (e2e) |
+| Conectividad | matriz unidades x canales con el estado real (conectado, solo importa, solo exporta, sin conectar, pendiente, fallando, en cuarentena), «Asistente» por celda con pasos marcados por evidencia, catalogo de canales de Mexico con el motivo y la cita de lo bloqueado (sin botones de conectar API) | rentas-conectividad-page, conectividad-rentas (e2e) |
+| Monitor de conflictos | resolver, ignorar con motivo (inline), historial, atender alerta, «Sincronizar ahora» en la tabla de feeds | monitor-sync-page, rentas-ical-sync-conectividad |
 | Acceso al huesped | politica, instrucciones por unidad, marcar pagada/revocar | acceso-huesped-page |
 | Precios | cotizador y 5 formularios de configuracion | no |
 | Finanzas | movimiento por reserva, owner statements, payouts | no |

@@ -332,6 +332,94 @@ export const rutasRentas: readonly Ruta[] = [
     } },
   { metodo: "POST", patron: `${R}/unidades/:uid/reservas/:oid/cancelar`, manejador: (p) => cancelar(p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla), p.params.oid) },
   { metodo: "POST", patron: `${R}/unidades/:uid/bloqueos/:oid/cancelar`, manejador: (p) => cancelar(p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla), p.params.oid) },
+  // Paridad3 conectividad (Rn-13, Rn-P3-15/16/17/23): feeds iCal por unidad, catalogo de canales, tokens de exportacion, probar URL,
+  // sincronizar ahora y la matriz. El estado vive por escenario (conectar/rotar se reflejan en el GET siguiente). Solo existe en la API
+  // simulada de e2e; las formas son las de apps/api/.../ical-sync.ts e ical-conectividad.ts.
+  { metodo: "GET", patron: `${R}/unidades/:uid/ical-sync`, manejador: (p) => ({ feeds: feedsMock(p).filter((f) => f.unidadId === p.params.uid).map(feedAJson) }) },
+  { metodo: "POST", patron: `${R}/unidades/:uid/canales/:canal/ical-sync`, manejador: (p) => {
+      const canal = p.params.canal ?? "";
+      const url = (p.cuerpo as { url?: string } | null)?.url ?? "";
+      const lista = feedsMock(p);
+      const existente = lista.find((f) => f.unidadId === p.params.uid && f.canal === canal);
+      if (existente) Object.assign(existente, { urlImportacion: url, activo: true });
+      else lista.push({ id: `feed-${lista.length + 1}`, unidadId: p.params.uid ?? "", canal, urlImportacion: url, activo: true, sincronizado: false });
+      return conStatus(201, { id: "feed-nuevo", canal, conectado: true });
+    } },
+  { metodo: "GET", patron: `${R}/canales/catalogo`, manejador: () => ({ canales: CATALOGO_CANALES_MOCK }) },
+  { metodo: "GET", patron: `${R}/unidades/:uid/feed-tokens`, manejador: (p) => ({ disponible: true, url_uuid_activa: true, tokens: tokensMock(p).filter((t) => t.unidadId === p.params.uid).map((t) => ({ canal: t.canal, creado_en: t.creadoEn, ultimo_acceso_en: null })) }) },
+  { metodo: "POST", patron: `${R}/unidades/:uid/canales/:canal/feed-token/rotar`, manejador: (p) => {
+      const lista = tokensMock(p);
+      const canal = p.params.canal ?? "";
+      const previo = lista.findIndex((t) => t.unidadId === p.params.uid && t.canal === canal);
+      if (previo >= 0) lista.splice(previo, 1);
+      const creadoEn = "2026-10-07T12:00:00.000Z";
+      lista.push({ unidadId: p.params.uid ?? "", canal, creadoEn });
+      const token = `E2E${"x".repeat(40)}`;
+      return conStatus(201, { canal, token, ruta: `/rentas/feed/${token}.ics`, creado_en: creadoEn, url_uuid_activa: true });
+    } },
+  { metodo: "POST", patron: `${R}/unidades/:uid/ical-feeds/probar`, manejador: () => ({ ok: true, status_http: 200, eventos: 3, cancelados: 0, desde: "2026-11-01", hasta: "2027-01-15", errores: [] }) },
+  { metodo: "POST", patron: `${R}/unidades/:uid/ical-feeds/:canal/sincronizar`, manejador: (p) => {
+      const feed = feedsMock(p).find((f) => f.unidadId === p.params.uid && f.canal === p.params.canal && f.activo);
+      if (!feed) return fallo(404, "No hay un feed conectado para esta unidad/canal.");
+      feed.sincronizado = true;
+      return { canal: feed.canal, ok: true, resultado: "exito_con_eventos", eventos_aplicados: 3, reservas_nuevas: 1, conflictos_detectados: 0 };
+    } },
+  { metodo: "GET", patron: `${R}/conectividad`, manejador: (p) => ({
+      ahora: "2026-10-07T12:00:00.000Z",
+      tokens_disponibles: true,
+      canales: CATALOGO_CANALES_MOCK.filter((c) => c.canal_atiende !== null),
+      unidades: UNIDADES.map((u) => ({
+        id: u.id,
+        nombre: u.nombre,
+        celdas: ["airbnb", "vrbo", "booking"].map((canal) => {
+          const feed = feedsMock(p).find((f) => f.unidadId === u.id && f.canal === canal && f.activo);
+          const token = tokensMock(p).find((t) => t.unidadId === u.id && t.canal === canal);
+          const imp = !feed ? "sin_conectar" : feed.sincronizado ? "ok" : "pendiente";
+          const exp = token ? "token_sin_consulta" : "sin_token";
+          return {
+            canal,
+            estado: imp === "ok" ? "solo_import" : imp === "pendiente" ? "pendiente" : "sin_conectar",
+            import: { estado: imp, ultima_sincronizacion_exitosa_en: feed?.sincronizado ? "2026-10-07T11:50:00.000Z" : null, en_cuarentena_desde: null, motivo_cuarentena: null, intentos_fallidos_consecutivos: 0 },
+            export: { estado: exp, token_creado_en: token?.creadoEn ?? null, ultimo_acceso_en: null },
+          };
+        }),
+      })),
+    }) },
+];
+
+interface FeedMock {
+  id: string;
+  unidadId: string;
+  canal: string;
+  urlImportacion: string;
+  activo: boolean;
+  sincronizado: boolean;
+}
+interface TokenMock {
+  unidadId: string;
+  canal: string;
+  creadoEn: string;
+}
+const feedsMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<FeedMock[]>("rentas.ical.feeds", () => []);
+const tokensMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<TokenMock[]>("rentas.ical.tokens", () => []);
+const feedAJson = (f: FeedMock) => ({
+  id: f.id,
+  canal: f.canal,
+  url_importacion: f.urlImportacion,
+  activo: f.activo,
+  ultima_sincronizacion_exitosa_en: f.sincronizado ? "2026-10-07T11:50:00.000Z" : null,
+  en_cuarentena_desde: null,
+  intentos_fallidos_consecutivos: 0,
+  motivo_cuarentena: null,
+  drift_ultima_reconciliacion_completa: 0,
+  ultimo_resumen: null,
+});
+const CATALOGO_BASE = { via_hoy: "ical", via_ical: "disponible", bloqueo: null, requisitos: [], url_proceso_oficial: null, nota_anti_paridad: "", capacidades: { import: true, export: true, tarifas: false, mensajes: false }, capacidades_con_partner: null, fuentes: [] };
+const CATALOGO_CANALES_MOCK = [
+  { ...CATALOGO_BASE, codigo: "airbnb", nombre: "Airbnb", canal_atiende: "airbnb", descripcion_via: "iCal import/export (única vía sin aprobación de partner)", latencia: { texto: "~3 horas", confianza: "baja", fuente: "RV03 S1", nota: "" } },
+  { ...CATALOGO_BASE, codigo: "booking", nombre: "Booking.com", canal_atiende: "booking", via_hoy: "sin_evidencia", via_ical: "sin_evidencia", descripcion_via: "Ninguna vía directa documentada", latencia: { texto: "SIN EVIDENCIA", confianza: "sin_evidencia", fuente: null, nota: "" }, bloqueo: { motivo: "Pausado activamente por el canal", cita: "b002-archivo F01" } },
+  { ...CATALOGO_BASE, codigo: "vrbo", nombre: "Vrbo", canal_atiende: "vrbo", descripcion_via: "iCal import/export (única vía sin aprobación de partner)", latencia: { texto: "~30 min + 20 min de propagación", confianza: "media", fuente: "RV22 F14", nota: "" } },
+  { ...CATALOGO_BASE, codigo: "expedia", nombre: "Expedia Group", canal_atiende: null, via_hoy: "partner", via_ical: "no_disponible", descripcion_via: "Lodging Connectivity API: requiere acuerdo de partner", latencia: { texto: "sin SLA publicado", confianza: "baja", fuente: "RV22 F04-F13", nota: "" }, bloqueo: { motivo: "Requiere PCI/TLS/license agreement y aprobación de partner", cita: "RV22 F04-F13" } },
 ];
 
 function cancelar(lista: Ocupacion[], id: string | undefined) {

@@ -73,3 +73,43 @@ export interface EntradaUpsertBloqueoExportado {
   readonly hashContenido: string;
   readonly sequence: number;
 }
+
+// ---- Rn-13 / Rn-P3-23 (migración 037): token de exportación del feed y reclamo manual ----
+
+/** Token vigente de exportación de una (unidad, canal), tal como lo ve el staff (nunca el hash ni el valor en claro). */
+export interface FeedTokenEstado {
+  readonly tokenId: string;
+  readonly unidadId: string;
+  readonly canalId: string;
+  readonly canalCodigo: string;
+  readonly creadoEn: string;
+  /** Última vez que una OTA (o cualquiera con la URL) consultó el feed por este token; `null` si nunca. */
+  readonly ultimoAccesoEn: string | null;
+}
+
+/** `disponible: false` = la base todavía no tiene la migración 037 (SQLSTATE 42883/42P01/42703). */
+export type ResultadoRotarFeedToken = { readonly disponible: false } | { readonly disponible: true; readonly tokenId: string; readonly creadoEn: string };
+export type ResultadoListarFeedTokens = { readonly disponible: false } | { readonly disponible: true; readonly tokens: readonly FeedTokenEstado[] };
+
+export interface FeedTokenResuelto {
+  readonly tokenId: string;
+  readonly tokenHash: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalId: string;
+  readonly canalCodigo: string;
+}
+/** `token: null` = el hash no corresponde a ningún token vigente (desconocido o revocado). */
+export type ResultadoResolverFeedToken = { readonly disponible: false } | { readonly disponible: true; readonly token: FeedTokenResuelto | null };
+
+export interface RotarFeedTokenInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalId: string;
+  readonly tokenHash: string;
+}
+
+/** `leaseToken: null` = el feed ya tiene un lease vigente (otro proceso lo está sincronizando) o está inactivo. */
+export type ResultadoReclamoManual = { readonly disponible: false } | { readonly disponible: true; readonly leaseToken: string | null };

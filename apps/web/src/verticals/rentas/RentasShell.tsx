@@ -32,6 +32,7 @@ import {
   LayoutDashboard,
   Lock,
   MessageSquareText,
+  Network,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
@@ -104,6 +105,7 @@ function buildSections(orgSlug: string, canSeeCopiloto: boolean, canSeePrivacida
     {
       title: "Canales",
       items: [
+        { to: ruta("conectividad"), label: "Conectividad", icon: Network },
         { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
         { to: ruta("monitor-sync"), label: "Monitor de conflictos", icon: AlertTriangle },
       ],

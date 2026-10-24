@@ -670,3 +670,41 @@ sale a Vercel y es seguro contra la base sin migrar (rutas con `disponible: fals
    de purga no se agenda (decisión de costo). Ver `docs/PRIVACIDAD-PLATAFORMA.md`.
 6. ARCO (Rn-07): el admin de la gestora registra y atiende solicitudes en `/rentas/<org>/privacidad`; la vista de toda la organización
    está en `/rentas/<org>/privacidad-organizacion`.
+
+## Rentas — conectividad de canales (Rn-13, Rn-P3-15/16/17/23): URL de exportación con token y "Sincronizar ahora"
+
+Migración única `packages/domain-rentas/migrations/037_rentas_feed_export_token.sql` (espejo
+`supabase/migrations/20240101000360_037_rentas_feed_export_token.sql`). Es aditiva y **requiere** la 024 (lease por feed) ya aplicada.
+Crea `rentas.feed_export_token` (solo el hash SHA-256 del token), `rentas.rotar_feed_export_token` (staff),
+`rentas.resolver_feed_export_token` (solo sistema) y `rentas.claim_ical_feed_manual` (solo sistema). El código sale a Vercel y es seguro
+contra la base sin migrar: sin la 037 la matriz responde con la exportación "no disponible aún", rotar y "Sincronizar ahora" responden 409
+con un motivo legible, la URL con token da 404 y la URL por UUID sigue funcionando. Verificación contra Postgres real:
+`scripts/verify-rentas-feed-token/` (36 escenarios, en el gate de CI).
+
+**Qué cambia para una OTA (Airbnb, Booking, Vrbo).** La URL pública por UUID (`/rentas/:propertyId/unidades/:unidadId/canales/:canal/feed.ics`)
+no se puede rotar y su tope era 30 consultas cada 5 min **por IP**. Las OTA consultan desde rangos de IP compartidos: una gestora con 40
+unidades x 3 canales podía recibir más de 30 consultas de la misma IP en 5 minutos, la OTA recibía un 429 y la noche no se cerraba (riesgo de
+overbooking). La URL nueva (`/rentas/feed/<token>.ics`) limita **por token** (12 por minuto) y por IP solo con un tope alto contra scrapers
+(600 cada 5 min). El token (256 bits) se muestra una vez al generarlo o rotarlo; si se pierde, se genera otro. Responde con `ETag` estable (no
+cambia aunque cambie el `DTSTAMP`) y `304`, y `Cache-Control: max-age=300` sin `public`/`s-maxage`, a propósito: así el CDN no la guarda y cada
+consulta de la OTA llega al límite por token y deja registrado su último acceso.
+
+**URL por UUID (deprecada, NO se apaga por omisión).** Sigue respondiendo con el encabezado `Deprecation: true`, ya sin el tope de 30 por IP
+(ahora 600 cada 5 min). Riesgo documentado de mantenerla: no se puede rotar, y quien la conozca puede leer las noches ocupadas (nunca datos de
+huésped) hasta que se apague; adivinarla exige acertar dos UUID v4. **La fecha para apagarla la decide Javier**; apagarla obliga a cada
+gestora a pegar la URL nueva en cada OTA. Para apagarla: variable de entorno `RENTAS_ICAL_FEED_UUID_LEGACY=off` en Vercel (responde 410); para
+volver a encenderla, quitarla o ponerle otro valor. (No es un `platform_switch` porque `core.platform_switch` solo admite los alcances
+`global`, `agente` y `cron`; agregar un cuarto exige una migración de core fuera de este PR.)
+
+**Orden de despliegue (cualquier orden es seguro):**
+1. Mergear el PR. Hasta aquí, nada cambia para el staff salvo: Conectividad en el menú, "Probar URL", "Sincronizar ahora" (409 sin la 037) y
+   las URL por UUID sin el tope de 30 por IP.
+2. Aplicar la migración 037 a la base real (junto con las que falten). Desde aquí el staff puede generar la URL con token.
+3. Cada gestora genera la URL con token en Sincronización iCal y la pega en cada canal. La columna "Última consulta" y la matriz de
+   Conectividad muestran cuándo el canal la consultó de verdad.
+4. Cuando todas las gestoras migraron (decisión de Javier): `RENTAS_ICAL_FEED_UUID_LEGACY=off`.
+
+**Asistente y catálogo.** `GET /rentas/:propertyId/canales/catalogo` devuelve ocho canales de México con su latencia declarada, la confianza y
+la fuente; lo que el repo de origen no documenta aparece como "sin evidencia" (Booking.com no trae ninguna cifra). Los canales de solo
+partner (Expedia, Despegar, Google Vacation Rentals) muestran el motivo y la cita: no hay adaptador de API en Atiende (Rn-08/Rn-09 siguen
+fuera, requieren acuerdos de partner) y no se ofrece ningún botón de conectar.

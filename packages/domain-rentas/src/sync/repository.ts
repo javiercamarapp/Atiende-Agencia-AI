@@ -20,7 +20,20 @@ import type { EstadoFeedCanal } from "./cuarentena.ts";
 import type { EventoBitacora, OpcionesReclamo, ResultadoReclamo } from "./lease.ts";
 import type { AccionConflicto } from "./conflictos.ts";
 import type { FeedMonitorRecord, FiltroEstadoConflictos, HistorialConflicto, ListadoBitacora, ListadoConflictos, ResultadoDecisionConflicto, ResultadoMarcarResuelto } from "./monitor.ts";
-import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
+import type {
+  BloqueoExportadoPrevio,
+  EntradaUpsertBloqueoExportado,
+  EntradaUpsertEventoImportado,
+  FeedExternoRecord,
+  NewFeedExternoInput,
+  OcupacionActivaExportable,
+  ResultadoListarFeedTokens,
+  ResultadoReclamoManual,
+  ResultadoResolverFeedToken,
+  ResultadoRotarFeedToken,
+  RotarFeedTokenInput,
+  VersionPreviaAlmacenada,
+} from "./tipos.ts";
 
 export interface RentasCalendarSyncRepository {
   // ---- Zona horaria de la property (rentas.property_config, migrations/001) ----
@@ -125,6 +138,23 @@ export interface RentasCalendarSyncRepository {
   listarHistorialConflicto(propertyId: string, conflictoId: string): Promise<HistorialConflicto>;
   listarBitacora(propertyId: string, opciones: { soloAlertasAbiertas: boolean; limite: number }): Promise<ListadoBitacora>;
   atenderAlerta(propertyId: string, alertaId: string, actorUserId: string): Promise<ResultadoMarcarResuelto>;
+
+  // ---- Rn-13: token rotable de la URL de exportación (migración 037) ----
+  // Contra una base sin la migración 037 los tres devuelven `disponible: false` (SAVEPOINT +
+  // SQLSTATE 42883/42P01/42703): la ruta cae a la URL por UUID y responde un "aún no disponible" honesto.
+  /** Revoca el token vigente de (unidad, canal) y crea uno nuevo con `tokenHash`, atómicamente. Staff (sesión por
+   * request): la base exige acceso a la property y un rol de escritura de calendario. */
+  rotarFeedToken(input: RotarFeedTokenInput): Promise<ResultadoRotarFeedToken>;
+  /** Tokens vigentes (uno por unidad y canal) de la property, o solo de `unidadId`; sin hash ni valor en claro. */
+  listarFeedTokens(propertyId: string, unidadId?: string): Promise<ResultadoListarFeedTokens>;
+  /** SOLO SISTEMA (ruta pública del feed, auth.uid() NULL): resuelve un hash a (unidad, canal) y registra el último
+   * acceso (a lo más una escritura por minuto y token). Ignora los tokens revocados. */
+  resolverFeedToken(tokenHash: string): Promise<ResultadoResolverFeedToken>;
+
+  // ---- Rn-P3-23: "Sincronizar ahora" (migración 037) ----
+  /** SOLO SISTEMA: reclama UN feed concreto con el lease de 024, ignorando backoff y piso de espaciamiento pero
+   * nunca un lease vigente. Se libera con `liberarFeed`. */
+  reclamarFeedManual(feedId: string, leaseSegundos: number): Promise<ResultadoReclamoManual>;
 }
 
 export type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";

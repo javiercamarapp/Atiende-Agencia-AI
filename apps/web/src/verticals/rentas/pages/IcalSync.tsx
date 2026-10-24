@@ -28,6 +28,11 @@
 //     red) -- se muestra siempre que se puede leer la página, nunca gateada por
 //     escritura, exactamente igual que "ver el detalle de un payout" en Finanzas.
 //
+// Paridad3 (Rn-13, Rn-P3-15/17/23): el bloque de EXPORTACIÓN usa una URL con TOKEN opaco y rotable (se muestra UNA vez, al
+// generarla o rotarla; la URL por UUID queda como "anterior" con aviso de deprecación); el catálogo de canales aporta la latencia
+// declarada (con su confianza) y la advertencia de Booking.com; "Probar URL" descarga y resume el .ics sin guardar nada;
+// "Sincronizar ahora" corre el ciclo de UN feed con el lease existente.
+//
 // Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Badge/Input/
 // Label/EstadoCargando/EstadoError + clases de token en vez de los `style={{...}}`
 // hechos a mano. El formulario de "conectar feed" pasa a <FormDialog>
@@ -35,7 +40,8 @@
 // validación local ("La URL del feed a importar es requerida.") y su recarga
 // (`onCambio`). CERO cambios de lógica ni de gates de rol.
 import { useEffect, useState } from "react";
-import { Copy, Link2, Plug, Unplug } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, CheckCircle2, Copy, KeyRound, Link2, Plug, RefreshCcw, Unplug } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, ConfirmDialog, EstadoCargando, EstadoError, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
 import {
   CANALES_CON_MARKUP,
@@ -46,6 +52,8 @@ import {
   fetchUnidades,
 } from "../lib/ical-sync-client.ts";
 import type { FeedIcalSync, UnidadOption } from "../lib/ical-sync-client.ts";
+import { fetchCatalogoCanales, fetchFeedTokens, probarUrlFeed, resumenSincronizacion, rotarFeedToken, sincronizarFeedAhora } from "../lib/conectividad-client.ts";
+import type { CanalCatalogo, FeedTokensUnidad, ResultadoProbarUrl } from "../lib/conectividad-client.ts";
 import { feedCanalTone } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
@@ -146,7 +154,7 @@ export function IcalSyncPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
       {error && <EstadoError mensaje={error} />}
 
-      {unidadId && <CanalesSync apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} puedeEscribir={puedeEscribir} />}
+      {unidadId && <CanalesSync apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} orgSlug={orgSlug} puedeEscribir={puedeEscribir} />}
     </PageContainer>
   );
 }
@@ -156,12 +164,27 @@ interface CanalesSyncProps {
   readonly token: string;
   readonly propertyId: string;
   readonly unidadId: string;
+  readonly orgSlug: string;
   readonly puedeEscribir: boolean;
 }
 
-function CanalesSync({ apiBaseUrl, token, propertyId, unidadId, puedeEscribir }: CanalesSyncProps) {
+function CanalesSync({ apiBaseUrl, token, propertyId, unidadId, orgSlug, puedeEscribir }: CanalesSyncProps) {
   const [feeds, setFeeds] = useState<readonly FeedIcalSync[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Catálogo de canales y tokens de exportación: complementos de la pantalla. Si alguna de las dos lecturas falla, la pantalla sigue
+  // siendo útil (sin advertencias de catálogo / solo con la URL por UUID) y lo dice; nunca bloquea la conexión de feeds.
+  const [catalogo, setCatalogo] = useState<readonly CanalCatalogo[] | null>(null);
+  const [tokens, setTokens] = useState<FeedTokensUnidad | null>(null);
+  const [errorTokens, setErrorTokens] = useState<string | null>(null);
+
+  async function recargarTokens() {
+    try {
+      setTokens(await fetchFeedTokens(fetch, apiBaseUrl, token, propertyId, unidadId));
+      setErrorTokens(null);
+    } catch (err) {
+      setErrorTokens(err instanceof Error ? err.message : "No se pudo consultar el estado de la URL con token.");
+    }
+  }
 
   async function recargar() {
     try {
@@ -176,12 +199,24 @@ function CanalesSync({ apiBaseUrl, token, propertyId, unidadId, puedeEscribir }:
   useEffect(() => {
     let cancelado = false;
     setFeeds(null);
+    setTokens(null);
     (async () => {
       try {
         const list = await fetchFeedsUnidad(fetch, apiBaseUrl, token, propertyId, unidadId);
         if (!cancelado) setFeeds(list);
       } catch (err) {
         if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar el estado de sincronización de esta unidad.");
+      }
+    })();
+    (async () => {
+      try {
+        const [cat, tok] = await Promise.all([fetchCatalogoCanales(fetch, apiBaseUrl, token, propertyId), fetchFeedTokens(fetch, apiBaseUrl, token, propertyId, unidadId)]);
+        if (cancelado) return;
+        setCatalogo(cat);
+        setTokens(tok);
+        setErrorTokens(null);
+      } catch (err) {
+        if (!cancelado) setErrorTokens(err instanceof Error ? err.message : "No se pudo consultar el catálogo de canales ni la URL con token.");
       }
     })();
     return () => {
@@ -213,6 +248,11 @@ function CanalesSync({ apiBaseUrl, token, propertyId, unidadId, puedeEscribir }:
           feed={feedPorCanal.get(canal.codigo) ?? null}
           puedeEscribir={puedeEscribir}
           onCambio={recargar}
+          orgSlug={orgSlug}
+          catalogo={catalogo?.find((c) => c.canalAtiende === canal.codigo) ?? null}
+          tokens={tokens}
+          errorTokens={errorTokens}
+          onTokensCambio={recargarTokens}
         />
       ))}
     </div>
@@ -229,9 +269,18 @@ interface CanalCardProps {
   readonly feed: FeedIcalSync | null;
   readonly puedeEscribir: boolean;
   readonly onCambio: () => void;
+  readonly orgSlug: string;
+  /** Entrada del catálogo de canales (latencia declarada, vía iCal, bloqueo); `null` si no se pudo leer. */
+  readonly catalogo: CanalCatalogo | null;
+  /** Tokens de exportación de la unidad; `null` mientras cargan o si la lectura falló. */
+  readonly tokens: FeedTokensUnidad | null;
+  readonly errorTokens: string | null;
+  readonly onTokensCambio: () => void;
 }
 
-function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canalNombre, feed, puedeEscribir, onCambio }: CanalCardProps) {
+const ETIQUETA_CONFIANZA = { alta: "alta", media: "media", baja: "baja", sin_evidencia: "sin evidencia" } as const;
+
+function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canalNombre, feed, puedeEscribir, onCambio, orgSlug, catalogo, tokens, errorTokens, onTokensCambio }: CanalCardProps) {
   const [urlImportacion, setUrlImportacion] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -239,8 +288,23 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
   const [confirmandoDesconectar, setConfirmandoDesconectar] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Probar URL (Rn-P3-17): descarga y resume el .ics sin guardar nada.
+  const [probando, setProbando] = useState(false);
+  const [prueba, setPrueba] = useState<ResultadoProbarUrl | null>(null);
+  // Sincronizar ahora (Rn-P3-23).
+  const [sincronizando, setSincronizando] = useState(false);
+  const [resultadoSync, setResultadoSync] = useState<string | null>(null);
+  // URL con token (Rn-13): el valor en claro solo existe en memoria tras generarla/rotarla; al recargar la página ya no se puede ver.
+  const [urlNueva, setUrlNueva] = useState<string | null>(null);
+  const [copiadoNueva, setCopiadoNueva] = useState(false);
+  const [generando, setGenerando] = useState(false);
+  const [confirmandoRotar, setConfirmandoRotar] = useState(false);
 
   const urlExportacion = construirUrlFeedExportacion(apiBaseUrl, propertyId, unidadId, canalCodigo);
+  const tokenCanal = tokens?.disponible ? (tokens.tokens.find((t) => t.canal === canalCodigo) ?? null) : null;
+  // Sin vía iCal en el catálogo (`no_disponible`) no se ofrece conectar; `sin_evidencia` (Booking.com) sí, pero con la advertencia.
+  const viaIcalBloqueada = catalogo?.viaIcal === "no_disponible";
+  const viaIcalSinEvidencia = catalogo?.viaIcal === "sin_evidencia";
 
   async function handleConectar() {
     setError(null);
@@ -282,6 +346,60 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
     }
   }
 
+  async function handleCopiarNueva() {
+    if (!urlNueva) return;
+    try {
+      await navigator.clipboard.writeText(urlNueva);
+      setCopiadoNueva(true);
+      setTimeout(() => setCopiadoNueva(false), 2000);
+    } catch {
+      // Sin portapapeles: la URL sigue visible y seleccionable en el campo de arriba.
+    }
+  }
+
+  async function handleGenerarToken() {
+    setError(null);
+    setGenerando(true);
+    try {
+      const r = await rotarFeedToken(fetch, apiBaseUrl, token, propertyId, unidadId, canalCodigo);
+      setUrlNueva(r.url);
+      onTokensCambio();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo generar la URL con token.");
+    } finally {
+      setGenerando(false);
+    }
+  }
+
+  async function handleProbar() {
+    setError(null);
+    setPrueba(null);
+    if (!urlImportacion.trim()) return setError("Escribe la URL del feed antes de probarla.");
+    setProbando(true);
+    try {
+      setPrueba(await probarUrlFeed(fetch, apiBaseUrl, token, propertyId, unidadId, urlImportacion.trim()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo probar la URL.");
+    } finally {
+      setProbando(false);
+    }
+  }
+
+  async function handleSincronizarAhora() {
+    setError(null);
+    setResultadoSync(null);
+    setSincronizando(true);
+    try {
+      const r = await sincronizarFeedAhora(fetch, apiBaseUrl, token, propertyId, unidadId, canalCodigo);
+      setResultadoSync(resumenSincronizacion(r));
+      onCambio();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo sincronizar el feed.");
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="p-4 pb-2 flex-row items-center justify-between gap-2 space-y-0">
@@ -298,6 +416,35 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
           </p>
         )}
 
+        {catalogo && (
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <p className="m-0">
+              <strong className="text-foreground">Latencia declarada:</strong> {catalogo.latencia.texto} (confianza {ETIQUETA_CONFIANZA[catalogo.latencia.confianza]}
+              {catalogo.latencia.fuente ? `; fuente ${catalogo.latencia.fuente}` : ""}). La latencia es del canal, no de Atiende.
+            </p>
+            <Link to={`/rentas/${orgSlug}/conectividad?unidad=${unidadId}&canal=${canalCodigo}`} className="self-start text-primary hover:underline">
+              Asistente de conexión paso a paso
+            </Link>
+          </div>
+        )}
+        {catalogo && (viaIcalSinEvidencia || viaIcalBloqueada) && (
+          <div role="note" className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-xs text-foreground">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" strokeWidth={1.75} aria-hidden />
+            <div className="flex flex-col gap-1">
+              <p className="m-0 font-semibold">
+                {viaIcalBloqueada ? `${canalNombre} no tiene una vía iCal disponible` : `Sin evidencia de que ${canalNombre} ofrezca iCal`}
+              </p>
+              <p className="m-0 text-muted-foreground">{catalogo.descripcionVia}.</p>
+              {catalogo.bloqueo && (
+                <p className="m-0 text-muted-foreground">
+                  {catalogo.bloqueo.motivo} <span className="italic">({catalogo.bloqueo.cita})</span>
+                </p>
+              )}
+              {catalogo.latencia.confianza === "sin_evidencia" && <p className="m-0 text-muted-foreground">No hay ninguna cifra de latencia con fuente: no se muestra una estimada.</p>}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5">
           <p className={RUBRO_CLASES}>Importar desde {canalNombre}</p>
           {feed ? (
@@ -312,32 +459,102 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
                 </p>
               )}
               {puedeEscribir && (
-                <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmandoDesconectar(true)} disabled={desconectando} className="self-start">
-                  <Unplug className="w-4 h-4" strokeWidth={1.75} />
-                  {desconectando ? "Desconectando…" : "Desconectar"}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {feed.activo && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleSincronizarAhora()} disabled={sincronizando}>
+                      <RefreshCcw className="w-4 h-4" strokeWidth={1.75} />
+                      {sincronizando ? "Sincronizando…" : "Sincronizar ahora"}
+                    </Button>
+                  )}
+                  <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmandoDesconectar(true)} disabled={desconectando}>
+                    <Unplug className="w-4 h-4" strokeWidth={1.75} />
+                    {desconectando ? "Desconectando…" : "Desconectar"}
+                  </Button>
+                </div>
+              )}
+              {resultadoSync && (
+                <p role="status" className="m-0 text-xs text-muted-foreground">
+                  {resultadoSync}
+                </p>
               )}
             </div>
-          ) : puedeEscribir ? (
+          ) : puedeEscribir && !viaIcalBloqueada ? (
             <Button type="button" size="sm" onClick={() => setModalAbierto(true)} className="self-start">
               <Plug className="w-4 h-4" strokeWidth={1.75} />
               Conectar
             </Button>
           ) : (
-            <p className="m-0 text-xs text-muted-foreground">Ningún feed conectado todavía.</p>
+            <p className="m-0 text-xs text-muted-foreground">{viaIcalBloqueada ? "Este canal no se puede conectar por iCal." : "Ningún feed conectado todavía."}</p>
           )}
         </div>
 
-        <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+        <div className="flex flex-col gap-2 border-t border-border pt-3">
           <p className={RUBRO_CLASES}>Exportar hacia {canalNombre}</p>
           <p className="m-0 text-xs text-muted-foreground">Pega esta URL como feed de importación dentro de {canalNombre} para que reciba nuestra disponibilidad.</p>
-          <div className="flex gap-2 items-center flex-wrap">
-            <Input readOnly value={urlExportacion} onFocus={(e) => e.currentTarget.select()} className="flex-1 min-w-[260px] text-xs" />
-            <Button type="button" variant="outline" size="sm" onClick={handleCopiarExport}>
-              <Copy className="w-4 h-4" strokeWidth={1.75} />
-              {copiado ? "¡Copiada!" : "Copiar"}
-            </Button>
-          </div>
+
+          {errorTokens && (
+            <p role="alert" className="m-0 text-xs text-destructive">
+              {errorTokens}
+            </p>
+          )}
+
+          {tokens?.disponible && (
+            <div className="flex flex-col gap-2">
+              <p className="m-0 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <KeyRound className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+                {tokenCanal ? (
+                  <span>
+                    URL con token creada el {formatearFecha(tokenCanal.creadoEn)}. Última consulta de {canalNombre}: {tokenCanal.ultimoAccesoEn ? formatearFecha(tokenCanal.ultimoAccesoEn) : "aún no la ha consultado"}.
+                  </span>
+                ) : (
+                  <span>Todavía no generas una URL con token para este canal.</span>
+                )}
+              </p>
+              {urlNueva && (
+                <div className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/40 p-3">
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <Input readOnly value={urlNueva} aria-label={`URL con token para ${canalNombre}`} onFocus={(e) => e.currentTarget.select()} className="flex-1 min-w-[260px] text-xs" />
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleCopiarNueva()}>
+                      <Copy className="w-4 h-4" strokeWidth={1.75} />
+                      {copiadoNueva ? "¡Copiada!" : "Copiar"}
+                    </Button>
+                  </div>
+                  <p className="m-0 flex items-start gap-1.5 text-xs text-foreground">
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" strokeWidth={1.75} aria-hidden />
+                    Cópiala ahora y pégala en {canalNombre}: por seguridad no se vuelve a mostrar. Si la pierdes, genera una nueva.
+                  </p>
+                </div>
+              )}
+              {puedeEscribir && (
+                <Button type="button" variant="outline" size="sm" className="self-start" disabled={generando} onClick={() => (tokenCanal ? setConfirmandoRotar(true) : void handleGenerarToken())}>
+                  <KeyRound className="w-4 h-4" strokeWidth={1.75} />
+                  {generando ? "Generando…" : tokenCanal ? "Rotar URL" : "Generar URL con token"}
+                </Button>
+              )}
+            </div>
+          )}
+          {tokens && !tokens.disponible && (
+            <p className="m-0 text-xs text-muted-foreground">La URL con token aún no está disponible en este entorno (requiere actualizar la base de datos). Mientras tanto usa la URL de abajo.</p>
+          )}
+
+          {/* URL por UUID: con token disponible queda como "anterior" (deprecada); sin token es la única que hay. */}
+          {(!tokens || !tokens.disponible || tokens.urlUuidActiva) && (
+            <div className="flex flex-col gap-1.5">
+              {tokens?.disponible && (
+                <p role="note" className="m-0 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" strokeWidth={1.75} aria-hidden />
+                  URL anterior (deprecada). Actualiza la URL en {canalNombre}: la anterior dejará de funcionar.
+                </p>
+              )}
+              <div className="flex gap-2 items-center flex-wrap">
+                <Input readOnly value={urlExportacion} aria-label={`URL de exportación por UUID para ${canalNombre}`} onFocus={(e) => e.currentTarget.select()} className="flex-1 min-w-[260px] text-xs" />
+                <Button type="button" variant="outline" size="sm" onClick={handleCopiarExport}>
+                  <Copy className="w-4 h-4" strokeWidth={1.75} />
+                  {copiado ? "¡Copiada!" : "Copiar"}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
 
@@ -353,13 +570,27 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
         onConfirm={() => handleDesconectar()}
       />
 
+      {/* Rotar la URL deja sin calendario a la OTA hasta que pegues la nueva: pide confirmación; "Cancelar", Escape o clic fuera no rotan nada. */}
+      <ConfirmDialog
+        open={confirmandoRotar}
+        onOpenChange={setConfirmandoRotar}
+        tono="danger"
+        titulo={`¿Rotar la URL de exportación de ${canalNombre}?`}
+        descripcion={`${canalNombre} dejará de ver tu calendario hasta que pegues la URL nueva en su panel.`}
+        confirmar="Sí, rotar URL"
+        onConfirm={() => handleGenerarToken()}
+      />
+
       {/* Conectar feed: mismo submit exacto que el <form> inline previo, ahora en el
           shell de modal del repo. */}
       <FormDialog
         open={modalAbierto}
         onOpenChange={(abierto) => {
           setModalAbierto(abierto);
-          if (!abierto) setError(null);
+          if (!abierto) {
+            setError(null);
+            setPrueba(null);
+          }
         }}
         titulo={`Conectar ${canalNombre}`}
         subtitulo="Importa la disponibilidad de este canal para evitar doble reserva en esta unidad."
@@ -383,6 +614,28 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
             <Link2 className="w-3.5 h-3.5 mt-0.5 shrink-0" strokeWidth={1.75} />
             La encuentras en la configuración de calendario de {canalNombre}, como "exportar calendario".
           </p>
+          <div className="flex flex-col gap-1.5">
+            <Button type="button" variant="outline" size="sm" className="self-start" disabled={probando} onClick={() => void handleProbar()}>
+              {probando ? "Probando…" : "Probar URL"}
+            </Button>
+            <p className="m-0 text-xs text-muted-foreground">Descarga el calendario y cuenta sus eventos sin guardar nada.</p>
+            {prueba?.ok === true && (
+              <p role="status" className="m-0 flex items-start gap-1.5 text-xs text-foreground">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" strokeWidth={1.75} aria-hidden />
+                <span>
+                  La URL funciona: {prueba.eventos} evento{prueba.eventos === 1 ? "" : "s"}
+                  {prueba.desde && prueba.hasta ? `, del ${prueba.desde} al ${prueba.hasta}` : ""}
+                  {prueba.cancelados > 0 ? ` (${prueba.cancelados} cancelado${prueba.cancelados === 1 ? "" : "s"})` : ""}.
+                </span>
+              </p>
+            )}
+            {prueba?.ok === false && (
+              <p role="alert" className="m-0 text-xs text-destructive">
+                {prueba.mensaje}
+                {prueba.errores.length > 0 ? ` ${prueba.errores.map((e) => e.mensaje).join(" ")}` : ""}
+              </p>
+            )}
+          </div>
           {error && (
             <p role="alert" className="m-0 text-sm text-destructive">
               {error}
