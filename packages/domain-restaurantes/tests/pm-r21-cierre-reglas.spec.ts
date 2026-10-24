@@ -10,7 +10,7 @@ import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-c
 import { horaCotizadaContradiceAlCliente, horaDichaPorElCliente } from "../src/agent-tools/cierre-maquina.ts";
 import { afirmaCambioRegistrado, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, quitarAfirmacionDePedidoRegistrado } from "../src/whatsapp/guards.ts";
 import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
-import { bloqueRecuperacionTrasFalla, esAvisoDeFalla, mensajesPerdidosPorFalla } from "../src/whatsapp/recuperacion-falla.ts";
+import { bloquePedidoPendienteTrasFalla, esAvisoDeFallaDelSistema, mensajesPerdidosPorFalla } from "../src/whatsapp/falla-pendiente.ts";
 import { PM_COPY } from "../src/whatsapp/perfil-pm.ts";
 import { bloqueProductoNoManejado, productosNoManejados } from "../src/unidades-pm.ts";
 import { seedConfirmedOrderFlow } from "./support/order-flow-seed.ts";
@@ -222,20 +222,21 @@ describe("recuperacion tras un aviso de falla del sistema", () => {
     { role: "user", content: "Sigo aquí, es todo" },
   ];
   it("detecta los avisos de falla", () => {
-    expect(esAvisoDeFalla(PM_COPY.sinAsistenteAvisoEquipo)).toBe(true);
-    expect(esAvisoDeFalla("Claro, ¿qué desea pedir?")).toBe(false);
+    expect(esAvisoDeFallaDelSistema(PM_COPY.sinAsistenteAvisoEquipo)).toBe(true);
+    expect(esAvisoDeFallaDelSistema("Claro, ¿qué desea pedir?")).toBe(false);
   });
   it("junta los mensajes que la falla dejo sin atender", () => {
-    expect(mensajesPerdidosPorFalla(historial)).toEqual([pedido, "Sigo aquí, es todo"]);
+    expect(mensajesPerdidosPorFalla(historial).map((m) => m.content)).toEqual([pedido]);
   });
   it("sin falla como ultima respuesta del asistente no hay bloque", () => {
-    expect(bloqueRecuperacionTrasFalla([{ role: "user", content: pedido }])).toBe("");
-    expect(bloqueRecuperacionTrasFalla([...historial, { role: "assistant", content: "Listo, ¿algo más?" }, { role: "user", content: "no" }])).toBe("");
+    expect(bloquePedidoPendienteTrasFalla([{ role: "user", content: pedido }])).toBe("");
+    expect(bloquePedidoPendienteTrasFalla([...historial, { role: "assistant", content: "Listo, ¿algo más?" }, { role: "user", content: "no" }])).toBe("");
   });
-  it("el bloque prohibe volver a preguntar que desea pedir y cita el pedido", () => {
-    const b = bloqueRecuperacionTrasFalla(historial);
-    expect(b).toContain(pedido);
-    expect(b).toMatch(/NO le vuelva a preguntar qué desea pedir/);
+  it("el bloque prohibe volver a preguntar que desea pedir, no abre otro pedido y NO cita texto del cliente", () => {
+    const b = bloquePedidoPendienteTrasFalla(historial);
+    expect(b).not.toContain(pedido);
+    expect(b).toMatch(/no le vuelva a preguntar/i);
+    expect(b).toMatch(/no abra otro/i);
   });
   it("llega al prompt del turno siguiente a la falla", async () => {
     let sistema = "";
@@ -246,7 +247,7 @@ describe("recuperacion tras un aviso de falla del sistema", () => {
     gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
     const handler = createLlmWhatsAppTurnHandler(f.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
     await handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: historial as never, customer: { isNew: true as const }, propertyId: null });
-    expect(sistema).toContain("recuperación tras una falla del sistema");
-    expect(sistema).toContain(pedido);
+    expect(sistema).toContain("falla previa del sistema");
+    expect(sistema).not.toContain(pedido);
   });
 });

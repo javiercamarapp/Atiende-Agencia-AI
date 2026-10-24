@@ -39,7 +39,7 @@ import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConRes
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
-import { bloqueRecuperacionTrasFalla } from "./recuperacion-falla.ts";
+import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -865,9 +865,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (T7-008): un producto que el menu no tiene (chistorra, longaniza, salchichas...) se rechaza con la alternativa correcta, no con un platillo inventado.
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
-      // R21 (G1/NU-2/T7-012): tras un aviso de falla del sistema el pedido que el cliente ya dijo no se vuelve a preguntar.
-      const recuperacionFallaBloque = perfil === "taqueria_pm" && !preview ? bloqueRecuperacionTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, recuperacionFallaBloque].filter((b) => b !== "").join("\n\n");
+      // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
+      const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
+      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
