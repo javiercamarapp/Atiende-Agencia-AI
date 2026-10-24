@@ -6,7 +6,7 @@
 import type { ConversationMessage } from "../repository.ts";
 import { PM_COPY } from "./perfil-pm.ts";
 
-/** Avisos de falla que el servidor le manda al cliente cuando el turno no pudo contestar (PM y genericos). */
+/** Lista unica de avisos de falla reconocibles (la misma que usa el PR de reglas de cierre R21). Avisos de falla que el servidor le manda al cliente cuando el turno no pudo contestar (PM y genericos). */
 const AVISOS_DE_FALLA: readonly string[] = [
   PM_COPY.sinAsistenteAvisoEquipo,
   PM_COPY.problemaTecnico,
@@ -22,15 +22,19 @@ export function esAvisoDeFallaDelSistema(contenido: string): boolean {
 }
 
 /**
- * Mensajes del cliente que quedaron sin atender porque el turno murio: los que van entre la respuesta anterior del agente y el aviso de falla, SOLO si ese aviso
+ * Mensajes del cliente que quedaron sin atender porque el turno murio: los que van entre la ultima respuesta REAL del agente y el ultimo aviso de falla (cruzando avisos consecutivos), SOLO si ese aviso
  * es la ULTIMA respuesta del agente en el historial. Vacio si la ultima respuesta fue del modelo (nada que retomar).
  */
 export function mensajesPerdidosPorFalla(messages: readonly ConversationMessage[]): readonly ConversationMessage[] {
   let ultimoAsistente = -1;
   messages.forEach((m, i) => { if (m.role === "assistant") ultimoAsistente = i; });
   if (ultimoAsistente < 0 || !esAvisoDeFallaDelSistema(messages[ultimoAsistente]!.content)) return [];
+  // Retrocede por los avisos de falla CONSECUTIVOS (aviso, aviso) hasta la ultima respuesta REAL del asistente: asi no se pierde el pedido original si hubo dos fallas seguidas.
   let anterior = -1;
-  for (let i = ultimoAsistente - 1; i >= 0; i--) if (messages[i]!.role === "assistant") { anterior = i; break; }
+  for (let i = ultimoAsistente - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === "assistant" && !esAvisoDeFallaDelSistema(m.content)) { anterior = i; break; }
+  }
   return messages.slice(anterior + 1, ultimoAsistente).filter((m) => m.role === "user").slice(-MAX_MENSAJES_PENDIENTES);
 }
 
@@ -41,6 +45,6 @@ export function bloquePedidoPendienteTrasFalla(messages: readonly ConversationMe
   return [
     "REGLA DEL SERVIDOR PARA ESTE TURNO (falla previa del sistema):",
     `Su ultima respuesta en la conversacion («problema tecnico / ya avise al equipo») NO la escribio usted: fue un aviso automatico porque el sistema fallo. Los ${perdidos.length === 1 ? "mensaje" : `${perdidos.length} mensajes`} del cliente justo antes de ese aviso NO fueron atendidos por usted. Tomelos como el pedido o la duda VIGENTE, junto con el mensaje nuevo (si el nuevo solo dice «hola», «?», «gracias» o «sigue ahi», es una espera de respuesta a lo anterior).`,
-    "Continue desde ahi: no le vuelva a preguntar lo que ya dijo (que desea pedir, productos, cantidades, sucursal, direccion), no repita el aviso de falla y ofrezcale una disculpa breve. Un pedido solo se crea por el camino de siempre (cotizar, resumen, «si» explicito del cliente y crear_pedido): no cree nada sin esa confirmacion y no asuma que alguien ya registro el pedido. No mencione al servidor.",
+    "Continue desde ahi: no le vuelva a preguntar lo que ya dijo (que desea pedir, productos, cantidades, sucursal, direccion), no repita el aviso de falla y ofrezcale una disculpa breve. Un pedido solo se crea por el camino de siempre (cotizar, resumen, «si» explicito del cliente y crear_pedido): no cree nada sin esa confirmacion y no asuma que alguien ya registro el pedido. Si el cliente ya tiene un pedido creado, no abra otro. No mencione al servidor.",
   ].join("\n");
 }
