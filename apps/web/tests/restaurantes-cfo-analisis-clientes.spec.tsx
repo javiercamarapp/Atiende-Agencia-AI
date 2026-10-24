@@ -78,9 +78,10 @@ describe("<CfoAnalisisClientes /> con datos", () => {
     const t = b.q("[data-testid=analisis-resumen]")!.textContent ?? "";
     expect(t).toContain("Clientes con venta");
     expect(t).toContain("10");
-    expect(t).toMatch(/Recompra.*80 %/);
+    expect(t).toMatch(/Recompra.*70 %/);
     expect(t).toMatch(/Intervalo mediano.*10 d/);
-    expect(t).toContain("Dormidos");
+    expect(t).toContain("Dormidos (de cualquier segmento)");
+    expect(t).toContain("compraron en 2 o más días distintos");
     expect(t).toContain("$1,940");
   });
 
@@ -135,6 +136,24 @@ describe("<CfoAnalisisClientes /> con datos", () => {
     await elegirOpcion(b.q("[data-testid=analisis-limite]") as HTMLElement, "100 clientes");
     await b.esperar(() => api.peticiones("GET", "/analisis-clientes").length >= 2, "segunda petición");
     expect(api.peticiones("GET", "/analisis-clientes").at(-1)!.consulta.get("limite")).toBe("100");
+    // Solo se recarga la reactivación: el resto de la pantalla no vuelve a «cargando» ni se reemplaza.
+    expect(b.q("[data-testid=analisis-cargando]")).toBeNull();
+    expect(b.q("[data-testid=cfo-analisis-clientes]")!.getAttribute("aria-busy")).not.toBe("true");
+    expect(b.q("[data-testid=bloque-resumen]")!.getAttribute("data-estado")).toBe("listo");
+  });
+
+  it("avisa en la pantalla que la lista sirve para dimensionar y que identificar clientes llegará después", async () => {
+    await b.pintar(CfoAnalisisClientes, crearApiCfo());
+    await listo();
+    expect(b.q("[data-testid=reactivacion-alcance]")!.textContent).toContain("sirve para dimensionar");
+    expect(b.q("[data-testid=reactivacion-alcance]")!.textContent).toContain("llegará en una fase posterior");
+  });
+
+  it("rotula «Dormidos (resto)» en la tabla de segmentos, distinto de la tarjeta del resumen", async () => {
+    await b.pintar(CfoAnalisisClientes, crearApiCfo());
+    await listo();
+    expect(b.q("tr[data-segmento=dormido]")!.textContent).toContain("Dormidos (resto)");
+    expect(b.q("[data-testid=segmentos-definiciones]")!.textContent).toContain("un campeón o un leal también puede estar dormido");
   });
 
   it("sin PII: ningún teléfono ni nombre, solo alias", async () => {
@@ -167,7 +186,7 @@ describe("<CfoAnalisisClientes /> con datos", () => {
     const nota = b.q("[data-testid=afinidad-nota]")!.textContent ?? "";
     expect(nota).toContain("5 o más pedidos juntos");
     expect(nota).toContain("1 pares con menos pedidos se ocultan por privacidad");
-    expect(nota).toContain("cota superior");
+    expect(nota).toContain("aproximados");
   });
 
   it("tortilla: maíz, harina y mixta por renglones, y las salsas como «no disponible aún»", async () => {
@@ -202,7 +221,7 @@ describe("<CfoAnalisisClientes /> estados", () => {
     });
     expect(r.container.querySelector("[data-testid=analisis-cargando]")).not.toBeNull();
     const bloques = [...r.container.querySelectorAll("[data-testid^=bloque-]")];
-    expect(bloques.length).toBeGreaterThanOrEqual(5);
+    expect(bloques.map((x) => x.getAttribute("data-testid"))).toEqual(["bloque-resumen", "bloque-segmentos", "bloque-concentracion", "bloque-reactivacion", "bloque-intervalo", "bloque-afinidad", "bloque-tortilla"]);
     for (const x of bloques) {
       expect(x.getAttribute("data-estado")).toBe("cargando");
       expect(x.querySelector("[role=status]")).not.toBeNull();

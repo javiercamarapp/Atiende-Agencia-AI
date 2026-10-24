@@ -41,7 +41,7 @@ function datasetAnalisis(A: string): Partial<DatasetCfoMemoria> {
         { segmento: "dormido", orden: 5, clientes: 1, pedidos: 2, ventaCentavos: 4_000, ticketCentavos: 2_000, recenciaMedianaDias: 77 },
         { segmento: "ocasional", orden: 6, clientes: 4, pedidos: 7, ventaCentavos: 92_000, ticketCentavos: 13_143, recenciaMedianaDias: 18.5 },
       ],
-      resumen: { clientesConVenta: 10, clientesRecompra: 8, activos30: 6, dormidos: 3, ventaTotalCentavos: 441_000, ventaEnRiesgoCentavos: 194_000 },
+      resumen: { clientesConVenta: 10, clientesRecompra: 7, activos30: 6, dormidos: 3, ventaTotalCentavos: 441_000, ventaEnRiesgoCentavos: 194_000 },
       pareto: { puntos: [{ clientesPct: 10, clientes: 1, ventaPct: 22.7 }, { clientesPct: 100, clientes: 10, ventaPct: 100 }], clientesPara50Pct: 30, clientesPara80Pct: 50 },
     },
     analisisIntervalo: [
@@ -150,7 +150,7 @@ describe("contenido", () => {
     expect(j.periodo).toMatchObject({ desde: "2026-07-01", hasta: "2026-09-27" });
     const s = j.secciones;
     for (const k of ["resumen", "segmentos", "concentracion", "intervalo", "reactivacion", "afinidad", "tortilla"]) expect(s[k].disponible, k).toBe(true);
-    expect(s.resumen.datos).toMatchObject({ clientesConVenta: 10, clientesRecompra: 8, recompraPct: 80, activos30: 6, dormidos: 3, intervaloMedianoDias: 10, ventaEnRiesgoCentavos: 194_000 });
+    expect(s.resumen.datos).toMatchObject({ clientesConVenta: 10, clientesRecompra: 7, recompraPct: 70, activos30: 6, dormidos: 3, intervaloMedianoDias: 10, ventaEnRiesgoCentavos: 194_000 });
     expect(s.segmentos.datos.segmentos.map((x: { segmento: string }) => x.segmento)).toEqual(["campeon", "leal", "en_riesgo_alto_valor", "nuevo_prometedor", "dormido", "ocasional"]);
     expect(s.segmentos.datos.segmentos[0]).toMatchObject({ etiqueta: "Campeones" });
     expect(s.segmentos.datos.pocosClientes).toBe(false);

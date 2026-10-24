@@ -33,7 +33,7 @@ function datasetSintetico(): Partial<DatasetCfoMemoria> {
         { segmento: "dormido", orden: 5, clientes: 1, pedidos: 2, ventaCentavos: 4_000, ticketCentavos: 2_000, recenciaMedianaDias: 77 },
         { segmento: "ocasional", orden: 6, clientes: 4, pedidos: 7, ventaCentavos: 92_000, ticketCentavos: 13_143, recenciaMedianaDias: 18.5 },
       ],
-      resumen: { clientesConVenta: 10, clientesRecompra: 8, activos30: 6, dormidos: 3, ventaTotalCentavos: 441_000, ventaEnRiesgoCentavos: 194_000 },
+      resumen: { clientesConVenta: 10, clientesRecompra: 7, activos30: 6, dormidos: 3, ventaTotalCentavos: 441_000, ventaEnRiesgoCentavos: 194_000 },
       pareto: {
         puntos: [22.7, 45.4, 65.8, 77.1, 86.2, 90.7, 94.3, 97.7, 99.1, 100].map((v, i) => ({ clientesPct: (i + 1) * 10, clientes: i + 1, ventaPct: v })),
         clientesPara50Pct: 30,
