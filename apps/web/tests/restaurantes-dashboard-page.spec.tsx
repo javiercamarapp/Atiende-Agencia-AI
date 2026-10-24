@@ -92,10 +92,14 @@ interface Handlers {
   salesOk?: boolean;
   channelsOk?: boolean;
   customersOk?: boolean;
+  productos?: number | "falla";
+  categorias?: number | "falla";
 }
 
 function stubFetch(handlers: Handlers) {
   fetchMock = vi.fn(async (url: string) => {
+    if (url.includes("/admin/products")) return handlers.productos === "falla" ? jsonResponse({}, false) : jsonResponse({ products: Array.from({ length: handlers.productos ?? 0 }, (_, i) => ({ id: `p${i}` })) });
+    if (url.includes("/admin/categories")) return handlers.categorias === "falla" ? jsonResponse({}, false) : jsonResponse({ categories: Array.from({ length: handlers.categorias ?? 0 }, (_, i) => ({ id: `c${i}` })) });
     if (url.includes("/admin/config/zona-horaria")) return jsonResponse({ zonaHoraria: handlers.zona ?? null });
     if (url.includes("/admin/voz/kpi")) {
       if (!handlers.voz) return jsonResponse({ disponible: false }, false);
@@ -365,5 +369,24 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     });
     expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAntes);
     expect(fetchMock.mock.calls.some(([url]) => url.includes("/kpis/sales?period=30"))).toBe(true);
+  });
+
+  it("Tu operación: productos, categorías y clientes únicos con datos reales y su destino; si el catálogo falla lo dice en vez de poner 0", async () => {
+    stubFetch({ productos: 42, categorias: 6 });
+    rendered = renderPage();
+    await esperarCarga();
+    const text = rendered.container.textContent!;
+    expect(text.toLowerCase()).toContain("tu operación");
+    const links = enlaces(rendered);
+    expect(links["Total de productos42"]).toBe("/restaurantes/demo/productos");
+    expect(links["Categorías6"]).toBe("/restaurantes/demo/productos");
+    expect(Object.entries(links).find(([k]) => k.startsWith("Clientes únicos"))?.[1]).toBe("/restaurantes/demo/clientes");
+    rendered.unmount();
+
+    stubFetch({ productos: "falla", categorias: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("No se pudo leer el catálogo");
+    expect(enlaces(rendered)["Total de productosNo se pudo leer el catálogo"]).toBe("/restaurantes/demo/productos");
   });
 });
