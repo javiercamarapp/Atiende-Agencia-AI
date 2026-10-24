@@ -86,7 +86,24 @@ test("restaurantes usa la lámina con foto del login original, sin el panel edit
   await expect(page.getByText("Pídele a tu restaurante que te dé de alta.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Olvidaste tu contraseña/ }).or(page.getByText("¿Olvidaste tu contraseña?"))).toBeVisible();
   await page.setViewportSize({ width: 375, height: 667 });
-  await expect(page.locator(".login-lamina")).toBeHidden();
+  await expect(page.locator(".login-lamina")).toHaveCount(0);
   const b = await page.evaluate(() => ({ w: document.documentElement.scrollWidth, vw: innerWidth }));
   expect(b.w).toBeLessThanOrEqual(b.vw);
+});
+
+test("restaurantes en móvil no descarga la foto de la lámina; en inglés traduce la leyenda y el texto alternativo", async ({ page }) => {
+  const fotos: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("login-hero-")) fotos.push(r.url()); });
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto("/restaurantes/login");
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("textbox", { name: "Tu correo" })).toBeVisible();
+  expect(fotos).toEqual([]);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator(".login-lamina img")).toHaveAttribute("alt", /Taquero cortando trompo/);
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await expect(page.getByText("Closing the shift, on its own.")).toBeVisible();
+  await expect(page.getByText("Orders by voice and WhatsApp")).toBeVisible();
+  await expect(page.locator(".login-lamina img")).toHaveAttribute("alt", /Taquero slicing al pastor/);
+  await expect(page.getByText("Ask your business to add you.")).toBeVisible();
 });
