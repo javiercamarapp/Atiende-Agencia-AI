@@ -152,12 +152,6 @@ export interface AfinidadCalculada {
 
 const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Redondeo a 2 decimales determinista (sin Math.round sobre flotantes con ruido). */
-function razon2(num: number, den: number): number | null {
-  if (!(den > 0)) return null;
-  return Math.round((num * 100) / den) / 100;
-}
-
 /**
  * Consolida los pares de las sucursales en alcance (los `pedidosJuntos` SÍ suman entre sucursales) y calcula soporte, confianza y lift sobre el conjunto.
  * Limitación declarada: `cfo_canasta_pares` corta el top POR SUCURSAL (se pide con el máximo de 500) y solo informa `pedidosConProducto` de los productos
@@ -295,6 +289,8 @@ export const ETIQUETAS_TORTILLA: Readonly<Record<TipoTortilla, string>> = { maiz
 
 /** Definiciones que la pantalla muestra en cada tooltip junto con el periodo (misma redacción que el comentario de la migración 095). */
 export const DEFINICIONES_ANALISIS_CLIENTES: Readonly<Record<string, string>> = {
+  resumen:
+    "Clientes con al menos una venta con cliente identificado en el periodo. Recompra = clientes con 2 o más ventas ÷ clientes. Intervalo mediano = mediana de días entre compras. Venta en riesgo = venta del periodo de los clientes dormidos o en riesgo de alto valor.",
   recencia: "Días entre la última venta del cliente y el último día del periodo consultado (no «hoy»).",
   frecuencia: "Ventas del cliente en el periodo. Puntaje fijo: 1, 2, 3 o 4 o más ventas.",
   monetario: "Venta neta del cliente en el periodo. Recencia y monto se puntúan de 1 a 5 por quintil entre los clientes consultados; los empates reciben el mismo puntaje.",

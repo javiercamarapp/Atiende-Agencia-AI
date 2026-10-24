@@ -34,6 +34,7 @@ import {
   type ResultadoImportacionSr,
   type UmbralesClientes,
 } from "./repositorio.ts";
+import { SEGMENTOS_RFM } from "./analisis-clientes.ts";
 import type { FilaIntervaloRecompra, LecturaReactivacion, LecturaRfm, LecturaTortilla } from "./analisis-clientes.ts";
 import {
   CFO_CONFIG_POR_DEFECTO,
@@ -105,6 +106,13 @@ const DATASET_VACIO: DatasetCfoMemoria = {
   clientesResumen: [], clientesCohortes: [], clientesAltas: [], clientesSegmentoHora: [], agenteDiario: [], escalacionesHora: [], entregas: [], entregasPercentiles: [],
   repartidores: [], colonias: [], comandasPos: [], agotados: [], srResumen: [],
 };
+
+const RFM_SIN_VENTAS: Omit<LecturaRfm, "disponible"> = {
+  segmentos: SEGMENTOS_RFM.map((segmento, i) => ({ segmento, orden: i + 1, clientes: 0, pedidos: 0, ventaCentavos: 0, ticketCentavos: null, recenciaMedianaDias: null })),
+  resumen: { clientesConVenta: 0, clientesRecompra: 0, activos30: 0, dormidos: 0, ventaTotalCentavos: 0, ventaEnRiesgoCentavos: 0 },
+  pareto: { puntos: [], clientesPara50Pct: null, clientesPara80Pct: null },
+};
+const INTERVALO_SIN_VENTAS: readonly FilaIntervaloRecompra[] = (["global", ...SEGMENTOS_RFM] as const).map((segmento) => ({ segmento, clientes: 0, intervalos: 0, p25: null, p50: null, p75: null, p90: null }));
 
 export interface OpcionesCfoMemoria {
   readonly dataset?: Partial<DatasetCfoMemoria>;
@@ -398,7 +406,8 @@ export class InMemoryCfoRepository implements CfoRepository {
     this.alcance(p);
     this.contar("clientesRfm");
     if (!this.mig.m095) return { disponible: false, segmentos: [], resumen: null, pareto: null };
-    return { disponible: true, ...(this.dataset.analisisRfm ?? { segmentos: [], resumen: null, pareto: null }) };
+    // Sin ventas con cliente la SQL devuelve igualmente los 6 segmentos en cero, el resumen en cero y el Pareto vacío (no «nada»).
+    return { disponible: true, ...(this.dataset.analisisRfm ?? RFM_SIN_VENTAS) };
   }
   async clientesReactivacion(p: ParamsCfo, r: RangoCfo, limite: number): Promise<LecturaReactivacion> {
     this.validarRango(r);
@@ -413,7 +422,7 @@ export class InMemoryCfoRepository implements CfoRepository {
   async clientesIntervaloRecompra(p: ParamsCfo, r: RangoCfo): Promise<LecturaCfo<FilaIntervaloRecompra>> {
     this.validarRango(r);
     this.alcance(p);
-    return this.lectura("clientesIntervaloRecompra", this.mig.m095, () => [...(this.dataset.analisisIntervalo ?? [])]);
+    return this.lectura("clientesIntervaloRecompra", this.mig.m095, () => [...(this.dataset.analisisIntervalo ?? INTERVALO_SIN_VENTAS)]);
   }
   async pedidosTortilla(p: ParamsCfo, r: RangoCfo): Promise<LecturaTortilla> {
     this.validarRango(r);
