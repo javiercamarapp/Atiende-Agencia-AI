@@ -247,7 +247,8 @@ export function clasificarRespuestaCierre(mensaje: unknown, opciones: OpcionesCl
   if (/^confirmar pedido$/.test(t)) return "si";
   if (/^cambiar algo$/.test(t)) return "cambio";
   // Rechazo o correccion explicita del resumen.
-  if (rechazaElResumen(crudo)) return "no";
+  // Una peticion de cambio sin negacion («cámbialo a tarjeta pero sin propina») es un cambio, no un «no»; ninguna de las dos confirma.
+  if (rechazaElResumen(crudo)) return /\bcambi(?:a|ame|alo|ala)\b|\bcorrig\w+/.test(t) && !/\b(?:no|mal|incorrect[oa]s?)\b/.test(t) ? "cambio" : "no";
   if (esRechazoSuelto(t) || /^(?:no|nel|nop|nope)\s*,?\s*(?:todavia|aun)?\s*no\W*$/.test(t) || /^\W*(?:no\s+lo\s+(?:confirmo|quiero)|espera|esperate|alto|cancela|cancelar|cancelalo)\b/.test(t)) return "no";
   // Visto bueno en negativo: solo si contesta al resumen.
   if (VISTO_BUENO_EN_NEGATIVO.test(t)) return opciones.despuesDelResumen ? "si" : "dato";
