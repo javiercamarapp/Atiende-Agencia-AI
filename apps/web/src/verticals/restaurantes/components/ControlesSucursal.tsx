@@ -73,7 +73,6 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
 
   async function cambiarVoz(habilitado: boolean) {
     if (voz.fase !== "listo" || voz.valor === null) return;
-    const actual = voz.valor;
     if (!habilitado) {
       const ok = await confirmar({
         titulo: `Apagar el agente de voz de ${branchName}`,
@@ -86,7 +85,15 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
     }
     setGuardando("voz");
     try {
-      const nueva = await updateVozConfig(fetch, apiBaseUrl, token, branchId, { ...actual, habilitado });
+      // El PUT reemplaza la config completa: se relee justo antes de escribir para no pisar ediciones hechas desde que se cargo la lista (lost-update).
+      const fresca = await fetchVozConfig(fetch, apiBaseUrl, token, branchId);
+      if (fresca === null) {
+        setVoz({ fase: "listo", valor: null });
+        notify.error("El agente de voz ya no tiene configuración guardada. Configúralo en Agente de voz.");
+        return;
+      }
+      // updateVozConfig arma el cuerpo solo con campos editables (habilitado, proveedor, voz, comportamiento, saludo): nada de solo lectura.
+      const nueva = await updateVozConfig(fetch, apiBaseUrl, token, branchId, { ...fresca, habilitado });
       setVoz({ fase: "listo", valor: nueva });
       notify.success(habilitado ? `Agente de voz encendido en ${branchName}.` : `Agente de voz apagado en ${branchName}.`);
     } catch (e) {
@@ -116,28 +123,28 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
           id={`ctrl-voz-${branchId}`}
           aria-label={`Agente de voz activo, ${branchName}`}
           checked={voz.fase === "listo" && voz.valor !== null && voz.valor.habilitado}
-          disabled={!puedeCambiar || voz.fase !== "listo" || vozSinConfig || guardando !== null}
+          disabled={voz.fase !== "listo" || vozSinConfig || guardando !== null}
           onCheckedChange={(v) => void cambiarVoz(v)}
         />
         <label htmlFor={`ctrl-voz-${branchId}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Voz
         </label>
-        {voz.fase === "error" && <span className="text-xs text-danger">No se pudo leer</span>}
-        {vozSinConfig && <span className="text-xs text-muted-foreground">Sin configurar</span>}
+        {voz.fase === "error" && <span role="status" aria-live="polite" className="text-xs text-danger">No se pudo leer</span>}
+        {vozSinConfig && <span role="status" aria-live="polite" className="text-xs text-muted-foreground">Sin configurar</span>}
       </div>
       <div className="flex items-center gap-2">
         <Switch
           id={`ctrl-wa-${branchId}`}
           aria-label={`Agente de WhatsApp activo, ${branchName}`}
           checked={wa.fase === "listo" && wa.valor.activo}
-          disabled={!puedeCambiar || wa.fase !== "listo" || waNoDisponible || guardando !== null}
+          disabled={wa.fase !== "listo" || waNoDisponible || guardando !== null}
           onCheckedChange={(v) => void cambiarWhatsapp(v)}
         />
         <label htmlFor={`ctrl-wa-${branchId}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           WhatsApp
         </label>
-        {wa.fase === "error" && <span className="text-xs text-danger">No se pudo leer</span>}
-        {waNoDisponible && <span className="text-xs text-muted-foreground">No disponible aún</span>}
+        {wa.fase === "error" && <span role="status" aria-live="polite" className="text-xs text-danger">No se pudo leer</span>}
+        {waNoDisponible && <span role="status" aria-live="polite" className="text-xs text-muted-foreground">No disponible aún</span>}
       </div>
       {(wa.fase === "error" || voz.fase === "error") && (
         <Button type="button" variant="link" size="xs" onClick={() => void cargar()}>

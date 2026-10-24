@@ -24,7 +24,7 @@ const WA = `https://api.test/v1/restaurantes/${ORG}/admin/config/sucursales/${BR
 const VOZ = `https://api.test/v1/restaurantes/${BRANCH}/admin/voz/config`;
 type Llamada = { method: string; url: string; body?: unknown };
 
-function stub(calls: Llamada[], opciones: { vozConfigurada?: boolean; fallaWhatsapp?: boolean } = {}) {
+function stub(calls: Llamada[], opciones: { vozConfigurada?: boolean; fallaWhatsapp?: boolean; fallaVoz?: boolean; editarVozAntesDelPut?: boolean } = {}) {
   let waActivo = true;
   let voz = { disponible: true, configurada: opciones.vozConfigurada !== false, habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Atiende con calidez", mensajeInicial: "Hola", mensajeInicialInterrumpible: true };
   vi.stubGlobal(
@@ -38,9 +38,23 @@ function stub(calls: Llamada[], opciones: { vozConfigurada?: boolean; fallaWhats
         waActivo = (JSON.parse(init!.body as string) as { activo: boolean }).activo;
         return json({ disponible: true, agenteActivo: waActivo });
       }
-      if (url === VOZ && method === "GET") return json(voz);
+      if (url === VOZ && method === "GET") {
+        const r = json(voz);
+        // Otra persona edita el comportamiento despues de la primera lectura (la de la carga de la lista).
+        if (opciones.editarVozAntesDelPut && calls.filter((c) => c.url === VOZ && c.method === "GET").length === 1) voz = { ...voz, comportamiento: "Editado por otra persona" };
+        return r;
+      }
       if (url === VOZ && method === "PUT") {
-        voz = { ...voz, ...(JSON.parse(init!.body as string) as object) };
+        if (opciones.fallaVoz) return json({ message: "No se pudo guardar la voz" }, 500);
+        const cuerpo = JSON.parse(init!.body as string) as Record<string, unknown>;
+        // Esquema estricto como el servidor (parseConfig): exactamente estos campos editables; cualquier otro (p. ej. los de solo lectura disponible/configurada) es 400.
+        const permitidos = ["habilitado", "proveedor", "voiceId", "comportamiento", "mensajeInicial", "mensajeInicialInterrumpible"];
+        const extra = Object.keys(cuerpo).filter((k) => !permitidos.includes(k));
+        const faltan = permitidos.filter((k) => !(k in cuerpo));
+        if (extra.length > 0 || faltan.length > 0 || typeof cuerpo.habilitado !== "boolean" || typeof cuerpo.mensajeInicialInterrumpible !== "boolean") {
+          return json({ message: `cuerpo invalido (extra: ${extra.join(",")}; faltan: ${faltan.join(",")})` }, 400);
+        }
+        voz = { ...voz, ...cuerpo } as typeof voz;
         return json(voz);
       }
       throw new Error(`fetch inesperado: ${method} ${url}`);
@@ -95,6 +109,42 @@ describe("controles de sucursal (voz, WhatsApp, copiar ID)", () => {
     const put = calls.find((c) => c.method === "PUT" && c.url === VOZ)!;
     expect(put.body).toMatchObject({ habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Atiende con calidez", mensajeInicial: "Hola" });
     expect(interruptor(/voz/).getAttribute("aria-checked")).toBe("false");
+    expect(Object.keys(put.body as object).sort()).toEqual(["comportamiento", "habilitado", "mensajeInicial", "mensajeInicialInterrumpible", "proveedor", "voiceId"]);
+  });
+
+  it("apagar voz relee la config justo antes del PUT: no pisa una edicion ajena (lost-update)", async () => {
+    const calls: Llamada[] = [];
+    stub(calls, { editarVozAntesDelPut: true });
+    rendered = render();
+    await settle();
+    click(interruptor(/voz/));
+    await settle();
+    await pulsarEnDialogo("Apagar agente");
+    const idxPut = calls.findIndex((c) => c.method === "PUT" && c.url === VOZ);
+    expect(calls.slice(0, idxPut).filter((c) => c.method === "GET" && c.url === VOZ)).toHaveLength(2); // carga + relectura
+    expect((calls[idxPut]!.body as { comportamiento: string }).comportamiento).toBe("Editado por otra persona");
+  });
+
+  it("un fallo del servidor al apagar voz deja el interruptor encendido y avisa", async () => {
+    const calls: Llamada[] = [];
+    stub(calls, { fallaVoz: true });
+    rendered = render();
+    await settle();
+    click(interruptor(/voz/));
+    await settle();
+    await pulsarEnDialogo("Apagar agente");
+    expect(calls.some((c) => c.method === "PUT" && c.url === VOZ)).toBe(true);
+    expect(interruptor(/voz/).getAttribute("aria-checked")).toBe("true");
+    expect(interruptor(/voz/).hasAttribute("disabled")).toBe(false); // se libera tras el error
+  });
+
+  it("los estados de error se anuncian con role=status", async () => {
+    const calls: Llamada[] = [];
+    stub(calls, { vozConfigurada: false });
+    rendered = render();
+    await settle();
+    const sinConfig = [...rendered.container.querySelectorAll('[role="status"]')].find((e) => e.textContent === "Sin configurar");
+    expect(sinConfig).toBeTruthy();
   });
 
   it("encender no pide confirmacion; voz sin configurar queda deshabilitada y lo dice", async () => {
