@@ -131,7 +131,14 @@ describe("alertas de voz (costo del dia y tasa de error)", () => {
     expect(emisiones.map((e) => e.evento)).toEqual(["restaurantes.costo.umbral_voz", "restaurantes.voz.tasa_error_alta"]);
     expect(emisiones[0]).toMatchObject({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, categoria: "cierres", enlace: "/restaurantes/{orgSlug}/agente-voz", dedupeKey: `restaurantes.costo.umbral_voz:${ctx.propertyIdA}:2026-03-10`, roles: null });
     expect(emisiones[1]).toMatchObject({ categoria: "salud", dedupeKey: `restaurantes.voz.tasa_error_alta:${ctx.propertyIdA}:2026-03-10` });
-    expect(JSON.stringify(emisiones)).not.toMatch(/10000|8000/);
+    // «Sin cifras»: el texto visible no trae el costo ni el umbral. Solo se revisan los campos de texto de la persona; los identificadores
+    // (UUID, clave de dedupe, enlace) llevan digitos aleatorios y harian la aserción intermitente.
+    const ID = new Set(["evento", "organizationId", "propertyId", "categoria", "enlace", "dedupeKey", "severidad", "tipo"]);
+    for (const e of emisiones) {
+      const textos = Object.entries(e as unknown as Record<string, unknown>).filter(([k, v]) => !ID.has(k) && typeof v === "string").map(([, v]) => v as string);
+      expect(textos.length).toBeGreaterThan(0);
+      for (const t of textos) expect(t).not.toMatch(/\b(?:10[,. ]?000|8[,. ]?000)\b|\$\s?\d|MXN/);
+    }
     expect((await evaluar()).status).toBe(200);
     expect(emisiones).toHaveLength(2);
   });
