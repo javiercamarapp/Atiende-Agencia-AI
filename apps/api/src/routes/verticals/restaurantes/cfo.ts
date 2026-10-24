@@ -51,6 +51,7 @@ import {
   parsearFiltroPedidos,
   parsearHistorial,
   parsearLimite,
+  parsearLimiteReactivacion,
   parsearOrden,
   parsearRangoMeses,
   parsearSucursales,
@@ -189,6 +190,16 @@ export function restaurantesCfoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   lectura("/clientes", (ctx, q) => ctx.servicio.clientesVista(consultaDe(q)));
   lectura("/productos", (ctx, q) => ctx.servicio.productosVista(consultaDe(q)));
   lectura("/patrones", (ctx, q) => ctx.servicio.patronesVista(consultaDe(q)));
+  // Análisis de clientes (SQL 095, solo lectura): RFM, concentración, reactivación, afinidad con lift y tortilla. Sin PII (alias de 8 caracteres). Con la base
+  // sin la 095 responde 200 con cada sección `disponible: false` y su motivo (nunca 500). Bitácora: una línea de log por lectura, sin datos de clientes.
+  lectura("/analisis-clientes", async (ctx, q, c) => {
+    const limite = parsearLimiteReactivacion(c.req.query("limite"));
+    const vista = await ctx.servicio.analisisClientesVista(consultaDe(q), limite);
+    logEvent(c, "info", "restaurantes_cfo_analisis_clientes_leido", {
+      actorUserId: c.get("userId"), organizationId: ctx.organizationId, desde: q.desde, hasta: q.hasta, sucursales: ctx.alcance.propertyIds.length, disponible: vista.disponible,
+    });
+    return vista;
+  });
   lectura("/operacion", (ctx, q) => ctx.servicio.operacionVista(consultaDe(q)));
   lectura("/pedidos", (ctx, q, c) => ctx.servicio.pedidosVista(consultaDe(q), parsearFiltroPedidos(c.req.query("filtro")), parsearLimite(c.req.query("limite")), parsearCursor(c.req.query("cursor"))));
   lectura("/softrestaurant/cuadre", (ctx, q) => ctx.servicio.cuadreSr(consultaDe(q)));

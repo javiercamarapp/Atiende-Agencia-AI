@@ -7,6 +7,7 @@
 //  - Nunca se inventan cifras: lo que no llega se queda como null.
 import type {
   AlcanceVista,
+  AnalisisClientesVista,
   ClientesVista,
   ConceptoCosto,
   ConfigVista,
@@ -203,6 +204,14 @@ export async function descargarExportacionCfo(c: ContextoCfo, f: FiltrosCfo, vis
 
 export function fetchClientes(c: ContextoCfo, f: FiltrosCfo): Promise<ClientesVista> {
   return leer<ClientesVista>(c.fetchImpl, url(c, "/clientes", consultaApi(f)), c.token);
+}
+
+/**
+ * Análisis de clientes (SQL 095). No usa `leer`: la vista responde 200 con `disponible: false` cuando ALGUNA sección no está (base sin la 095), y la pantalla
+ * pinta las demás; solo un 404/503 (ruta ausente en el despliegue) se trata como «no disponible» de toda la pestaña.
+ */
+export function fetchAnalisisClientes(c: ContextoCfo, f: FiltrosCfo, limite: number): Promise<AnalisisClientesVista> {
+  return pedirCfo<AnalisisClientesVista>(c.fetchImpl, url(c, "/analisis-clientes", consultaApi(f, { limite: String(limite) })), c.token, { method: "GET" });
 }
 
 export function fetchProductos(c: ContextoCfo, f: FiltrosCfo): Promise<ProductosVista> {

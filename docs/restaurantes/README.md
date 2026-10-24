@@ -11,6 +11,7 @@ crons de `vercel.json`.
 | [`agente-conocimiento-menu.md`](agente-conocimiento-menu.md) | De dónde sabe el agente el menú y los precios (no hay documento estático) y cómo mantenerlo |
 | [`whatsapp-setup.md`](whatsapp-setup.md) | Alta del número de WhatsApp (Meta Cloud API), variables, webhook, plantillas y verificación |
 | [`runbook-operacion.md`](runbook-operacion.md) | Operación diaria, incidentes, señales y qué hacer en cada caso |
+| [`ANALISIS-CLIENTES.md`](ANALISIS-CLIENTES.md) | Pestaña CFO «Análisis de clientes» (solo lectura): definiciones de RFM, dormido, reactivación y lift, seguridad, orden de despliegue y huecos conocidos |
 
 Otros documentos que se cruzan con estos: `docs/CICLO-PUNTA-A-PUNTA-RESTAURANTES.md` (el ciclo por rol y qué es simulado), `docs/demo-pm/` (guion y carga de la
 demo), `docs/VOZ-PM.md` (voz), `docs/CREDENCIALES.md`, `docs/CRONS.md`, `docs/runbooks/INCIDENTES.md` y `docs/NOTIFICACIONES.md`.

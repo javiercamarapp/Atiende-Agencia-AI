@@ -7,6 +7,7 @@
 //  - node-postgres entrega bigint y numeric como STRING: el adaptador Postgres los convierte con `numericoSql`; este puerto ya habla en números.
 //  - NULL ≠ 0: los campos que la SQL deja NULL (costo de Meta con 0 eventos, LLM en demos, centavos sin tipo de cambio) llegan como `null`.
 //  - Sin PII: ninguna fila lleva nombre, teléfono ni dirección de cliente (el detalle de pedidos identifica con un alias de 8 caracteres).
+import type { FilaIntervaloRecompra, LecturaReactivacion, LecturaRfm, LecturaTortilla } from "./analisis-clientes.ts";
 import type {
   CfoConfig,
   ConceptoCosto,
@@ -251,6 +252,16 @@ export interface CfoRepository {
   clientesFrecuentesDormidos(p: ParamsCfo, hasta: string, params: ParamsFrecuentesDormidos): Promise<LecturaCfo<FilaFrecuentesDormidos>>;
   /** p90 del descuento % diario de los `dias` días que terminan en `hasta` (14..365). Base sin la 084: `disponible: false`. */
   descuentoP90(p: ParamsCfo, hasta: string, dias: number): Promise<LecturaCfo<FilaDescuentoP90>>;
+
+  // ---- 095: análisis de clientes (solo lectura; base sin la 095: `disponible: false`) ----
+  /** RFM: segmentos, resumen y curva de concentración. Recencia anclada a `r.hasta`. */
+  clientesRfm(p: ParamsCfo, r: RangoCfo): Promise<LecturaRfm>;
+  /** Reactivación priorizada (alias de 8 caracteres, consentimiento visible); `limite` 1..200. */
+  clientesReactivacion(p: ParamsCfo, r: RangoCfo, limite: number): Promise<LecturaReactivacion>;
+  /** Percentiles de días entre compras: global y por segmento. */
+  clientesIntervaloRecompra(p: ParamsCfo, r: RangoCfo): Promise<LecturaCfo<FilaIntervaloRecompra>>;
+  /** Renglones, unidades y pedidos por tipo de tortilla (items[].tortilla). */
+  pedidosTortilla(p: ParamsCfo, r: RangoCfo): Promise<LecturaTortilla>;
 
   // ---- 083: configuración, costos capturados, SoftRestaurant, bitácora ----
   configLeer(organizationId: string): Promise<LecturaConfig>;

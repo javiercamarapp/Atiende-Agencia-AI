@@ -4,6 +4,7 @@
 import { vi } from "vitest";
 import { rutasRestaurantesCfo } from "../../e2e/mock-api/fixtures/restaurantes-cfo.ts";
 import { rutasRestaurantesCfoB } from "../../e2e/mock-api/fixtures/restaurantes-cfo-b.ts";
+import { rutasRestaurantesCfoAnalisis } from "../../e2e/mock-api/fixtures/restaurantes-cfo-analisis.ts";
 import { esRespuestaMarcada } from "../../e2e/mock-api/respuestas.ts";
 import type { EstadoEscenario, Peticion } from "../../e2e/mock-api/tipos.ts";
 import type { AlcanceVista } from "@atiende/domain-restaurantes/cfo";
@@ -70,7 +71,7 @@ export function crearApiCfo(forzar: Readonly<Record<string, Forzado>> = {}) {
         return respuesta(200, r);
       }
     }
-    for (const r of [...rutasRestaurantesCfo, ...rutasRestaurantesCfoB]) {
+    for (const r of [...rutasRestaurantesCfo, ...rutasRestaurantesCfoB, ...rutasRestaurantesCfoAnalisis]) {
       if (r.metodo !== metodo) continue;
       const params = coincide(r.patron.replace(":id", "[^/]+"), url.pathname);
       if (!params) continue;
