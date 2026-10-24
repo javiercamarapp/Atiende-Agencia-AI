@@ -265,7 +265,7 @@ async function flujoFalla(mundo: Mundo): Promise<void> {
   await flujoComanda(mundo, {
     canal: "recoger",
     sucursal: mundo.caso.contexto.sucursal_contexto,
-    items: [{ producto: "Suizo de Pastor", piezas: 1 }],
+    items: [{ producto: "Suizo de Pastor", piezas: 5 }], // una orden = 5 tacos (pack_size 5)
     pago: "efectivo",
     nombre: datos.nombre ?? "Cliente",
     ajustes: [],
