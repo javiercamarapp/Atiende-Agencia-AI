@@ -135,7 +135,7 @@ describe("alertas de voz (costo del dia y tasa de error)", () => {
     // (UUID, clave de dedupe, enlace) llevan digitos aleatorios y harian la aserción intermitente.
     const ID = new Set(["evento", "organizationId", "propertyId", "categoria", "enlace", "dedupeKey", "severidad", "tipo"]);
     for (const e of emisiones) {
-      const textos = Object.entries(e as Record<string, unknown>).filter(([k, v]) => !ID.has(k) && typeof v === "string").map(([, v]) => v as string);
+      const textos = Object.entries(e as unknown as Record<string, unknown>).filter(([k, v]) => !ID.has(k) && typeof v === "string").map(([, v]) => v as string);
       expect(textos.length).toBeGreaterThan(0);
       for (const t of textos) expect(t).not.toMatch(/\b(?:10[,. ]?000|8[,. ]?000)\b|\$\s?\d|MXN/);
     }
