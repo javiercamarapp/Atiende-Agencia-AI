@@ -214,7 +214,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
         <div role="tabpanel" id={`panel-${pestana}`} aria-labelledby={`pestana-${pestana}`}>
           {config.estado === "cargando" && PESTANAS_EDITABLES.has(pestana) ? <EstadoCargando etiqueta="Cargando configuración de voz…" /> : null}
 
-          {pestana === "resumen" ? <Resumen config={config} borrador={guardado} conversaciones={conversaciones} onVistaPrevia={() => setVistaPrevia(true)} apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} /> : null}
+          {pestana === "resumen" ? <Resumen config={config} borrador={guardado} conversaciones={conversaciones} onVistaPrevia={() => setVistaPrevia(true)} apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} /> : null}
 
           {pestana === "voz" && config.estado !== "cargando" ? (
             <div className="space-y-3">
@@ -374,7 +374,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
   );
 }
 
-function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, token, propertyId }: { config: Carga<VozConfig | null>; borrador: VozConfigInput; conversaciones: Carga<readonly ConversacionVoz[]>; onVistaPrevia: () => void; apiBaseUrl: string; token: string; propertyId: string }) {
+function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, token, propertyId, role }: { config: Carga<VozConfig | null>; borrador: VozConfigInput; conversaciones: Carga<readonly ConversacionVoz[]>; onVistaPrevia: () => void; apiBaseUrl: string; token: string; propertyId: string; role: string }) {
   const voz = buscarVoz(borrador.vozId);
   const tieneMensaje = borrador.mensajeInicial.trim() !== "";
   const pasos: readonly { readonly ok: boolean; readonly texto: string }[] = [
@@ -385,7 +385,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, 
 
   return (
     <div className="space-y-3">
-      <ResumenKpisVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
+      <ResumenKpisVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Card>
           <CardHeader className="p-4 pb-2">
