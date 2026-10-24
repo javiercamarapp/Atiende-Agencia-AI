@@ -3,7 +3,7 @@
 // los pedidos ya creados no se tocan. WhatsApp y voz usan las mismas reglas del servidor y la herramienta `consultar_sucursal`.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
-import { evaluarUltimoPedido, estaAbiertoAhora, margenUltimoPedido, validarHorario, ULTIMO_PEDIDO_MIN_POR_OMISION, type HorarioSucursal } from "../src/horarios.ts";
+import { evaluarUltimoPedido, leerHorarioPersistido, ultimoPedidoConExcepciones, validarHorario, ULTIMO_PEDIDO_MIN_POR_OMISION, type HorarioSucursal } from "../src/horarios.ts";
 import { changeOrderStatus } from "../src/order-lifecycle.ts";
 import { createOrder, quoteOrder } from "../src/orders.ts";
 import { aplicarReglasDeSucursal } from "../src/reglas-pedido.ts";
@@ -19,8 +19,8 @@ afterEach(() => vi.useRealTimers());
 const merida = (fecha: string, hhmm: string) => new Date(`${fecha}T${hhmm}:00-06:00`);
 
 function ultimo(horario: HorarioSucursal, instante: Date, ayer: HorarioSucursal = horario) {
-  const estado = estaAbiertoAhora(horario, instante, ZONA, ayer);
-  return { estado, u: evaluarUltimoPedido(estado, [...horario, ...ayer], instante, ZONA) };
+  const u = evaluarUltimoPedido(horario, instante, ZONA, ayer);
+  return { estado: { abierto: u.abierto }, u };
 }
 
 describe("bordes del ultimo pedido (30 min antes del cierre)", () => {
@@ -46,12 +46,12 @@ describe("bordes del ultimo pedido (30 min antes del cierre)", () => {
   });
 
   it("cerrada: no acepta, sin hora de ultimo pedido", () => {
-    expect(ultimo(T4, merida("2026-10-20", "09:00")).u).toEqual({ margenMin: 30, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null });
+    expect(ultimo(T4, merida("2026-10-20", "09:00")).u).toEqual({ abierto: false, margenMin: 30, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null, cierraA: null });
   });
 
   it("configurable por turno: ultimoPedidoMin 0 acepta hasta el cierre; 60 deja de aceptar una hora antes; sin valor rige 30", () => {
     const sin = validarHorario([{ dias: [2], abre: "12:00", cierra: "21:00" }]);
-    expect(margenUltimoPedido(sin, "21:00")).toBe(ULTIMO_PEDIDO_MIN_POR_OMISION);
+    expect(ultimo(sin, merida("2026-10-20", "13:00")).u.margenMin).toBe(ULTIMO_PEDIDO_MIN_POR_OMISION);
     const cero = validarHorario([{ dias: [2], abre: "12:00", cierra: "21:00", ultimoPedidoMin: 0 }]);
     expect(ultimo(cero, merida("2026-10-20", "20:59")).u).toMatchObject({ aceptaPedidos: true, margenMin: 0 });
     const sesenta = validarHorario([{ dias: [2], abre: "12:00", cierra: "21:00", ultimoPedidoMin: 60 }]);
@@ -63,6 +63,47 @@ describe("bordes del ultimo pedido (30 min antes del cierre)", () => {
     expect(validarHorario([{ dias: [1], abre: "12:00", cierra: "21:00", ultimoPedidoMin: 45 }])[0]).toMatchObject({ ultimoPedidoMin: 45 });
     expect(validarHorario([{ dias: [1], abre: "12:00", cierra: "21:00" }])[0]).not.toHaveProperty("ultimoPedidoMin");
     for (const malo of [-1, 181, 10.5, "30"]) expect(() => validarHorario([{ dias: [1], abre: "12:00", cierra: "21:00", ultimoPedidoMin: malo }])).toThrow(/ultimoPedidoMin/);
+  });
+});
+
+describe("turnos contiguos, turnos cortos, horario corrupto y excepciones", () => {
+  it("turnos que se tocan se fusionan: 10-14 y 14-22 a las 13:45 sigue aceptando; el ultimo pedido es 21:30", () => {
+    const contiguo = validarHorario([{ dias: [2], abre: "10:00", cierra: "14:00" }, { dias: [2], abre: "14:00", cierra: "22:00" }]);
+    expect(ultimo(contiguo, merida("2026-10-20", "13:45")).u).toMatchObject({ aceptaPedidos: true, cierraA: "22:00", ultimoPedidoA: "21:30" });
+    expect(ultimo(contiguo, merida("2026-10-20", "21:30")).u.aceptaPedidos).toBe(false);
+  });
+
+  it("turnos que se tocan a medianoche (18:00-00:00 y 00:00-02:00 del dia siguiente) se fusionan", () => {
+    const horario = validarHorario([{ dias: [2], abre: "18:00", cierra: "00:00" }, { dias: [3], abre: "00:00", cierra: "02:00" }]);
+    expect(ultimo(horario, merida("2026-10-20", "23:45")).u).toMatchObject({ aceptaPedidos: true, cierraA: "02:00", ultimoPedidoA: "01:30" });
+  });
+
+  it("pausa real entre turnos: el ultimo pedido aplica al cierre de CADA turno (regla de 30 min antes del cierre)", () => {
+    const partido = validarHorario([{ dias: [2], abre: "10:00", cierra: "14:00" }, { dias: [2], abre: "16:00", cierra: "22:00" }]);
+    expect(ultimo(partido, merida("2026-10-20", "13:29")).u).toMatchObject({ aceptaPedidos: true, cierraA: "14:00" });
+    expect(ultimo(partido, merida("2026-10-20", "13:30")).u).toMatchObject({ abierto: true, aceptaPedidos: false, ultimoPedidoA: "13:30" });
+    expect(ultimo(partido, merida("2026-10-20", "16:00")).u.aceptaPedidos).toBe(true);
+  });
+
+  it("un turno mas corto que el margen no queda sin pedidos: margen efectivo = duracion - 1 y el ultimo pedido no es anterior a la apertura", () => {
+    const corto = validarHorario([{ dias: [2], abre: "12:00", cierra: "12:20" }]);
+    expect(ultimo(corto, merida("2026-10-20", "12:00")).u).toMatchObject({ aceptaPedidos: true, margenMin: 19, ultimoPedidoA: "12:01" });
+    expect(ultimo(corto, merida("2026-10-20", "12:01")).u.aceptaPedidos).toBe(false);
+  });
+
+  it("un ultimoPedidoMin corrupto en la base descarta SOLO el margen: dias, abre y cierra se conservan (no falla abierto 24 h)", () => {
+    const leido = leerHorarioPersistido([{ dias: [0, 1, 2], abre: "12:00", cierra: "21:00", ultimoPedidoMin: 999 }, { dias: [3], abre: "18:00", cierra: "00:00", ultimoPedidoMin: 45 }]);
+    expect(leido).toEqual([{ dias: [0, 1, 2], abre: "12:00", cierra: "21:00" }, { dias: [3], abre: "18:00", cierra: "00:00" }]);
+    expect(leerHorarioPersistido([{ dias: [9], abre: "12:00", cierra: "21:00" }])).toBeNull();
+  });
+
+  it("excepciones por fecha: cada dia usa su horario; el margen de la excepcion no se mezcla con el semanal", () => {
+    const semanal = validarHorario([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "21:00", ultimoPedidoMin: 30 }]);
+    const puente = { fechaDesde: "2026-10-20", fechaHasta: "2026-10-20", horario: validarHorario([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "21:00", ultimoPedidoMin: 90 }]) };
+    // El 20 rige la excepcion (90 min): 19:29 si y 19:30 no; el 21 rige el semanal (30 min): 20:29 si.
+    expect(ultimoPedidoConExcepciones(semanal, [puente], merida("2026-10-20", "19:29"), ZONA)).toMatchObject({ aceptaPedidos: true, margenMin: 90 });
+    expect(ultimoPedidoConExcepciones(semanal, [puente], merida("2026-10-20", "19:30"), ZONA)).toMatchObject({ aceptaPedidos: false, margenMin: 90 });
+    expect(ultimoPedidoConExcepciones(semanal, [puente], merida("2026-10-21", "20:29"), ZONA)).toMatchObject({ aceptaPedidos: true, margenMin: 30 });
   });
 });
 
@@ -90,6 +131,16 @@ describe("el servidor deja de aceptar pedidos en los ultimos 30 minutos", () => 
     expect(error.message).toMatch(/30 minutos antes del cierre \(hasta las 23:30\)/);
     expect(error.message).toMatch(/programar el pedido para la siguiente apertura o pedirlo mañana/);
     await expect(createOrder(f.repo, pedido(f))).rejects.toThrow(/ya no toma pedidos/);
+  });
+
+  it("carrera cotizar a confirmar: cotizo a las 23:29 y confirma a las 23:31, se rechaza al crear con el mensaje claro de la regla (nunca se crea un pedido fuera del ultimo pedido)", async () => {
+    const f = await fixture(T3);
+    vi.setSystemTime(merida("2026-10-20", "23:29"));
+    await expect(quoteOrder(f.repo, { organizationId: f.organizationId, branchSlug: "fco-montejo", items: items(f) })).resolves.toBeTruthy();
+    vi.setSystemTime(merida("2026-10-20", "23:31"));
+    const error = (await createOrder(f.repo, pedido(f)).catch((e: unknown) => e)) as Error;
+    expect(error.message).toMatch(/ya no toma pedidos para hoy por el cierre próximo: el último pedido se toma 30 minutos antes del cierre \(hasta las 23:30\)/);
+    expect(error.message).toMatch(/programar el pedido para la siguiente apertura o pedirlo mañana/);
   });
 
   it("T7 domingo a lunes: 00:29 pasa; 00:30 se rechaza; T4 20:29 pasa y 20:30 se rechaza", async () => {
