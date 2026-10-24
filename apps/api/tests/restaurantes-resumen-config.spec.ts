@@ -29,7 +29,8 @@ describe("admin/resumen/config", () => {
     const aud = await ctx.restaurantesRepo.listAuditoria(ctx.organizationId, {}, { limit: 50 });
     const fila = aud.items.find((i) => i.action === "configuracion.resumen_actualizada");
     expect(fila).toBeTruthy();
-    expect(JSON.stringify(fila)).toContain("minutosPorConversacion");
+    expect(JSON.stringify(fila)).toContain("minutos por conversacion: 6");
+    expect(JSON.stringify(fila)).toContain("minutos por conversacion: sin configurar");
   });
 
   it("quitar un valor con null; rangos y campos invalidos son 400", async () => {
