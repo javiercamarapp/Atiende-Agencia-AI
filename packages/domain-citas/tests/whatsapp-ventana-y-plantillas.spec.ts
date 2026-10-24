@@ -1,5 +1,5 @@
 // PL-31 -- ventana de 24 h de Meta y plantillas HSM por organizacion en los avisos proactivos de citas. Reloj simulado (`now`), sin red.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { InMemoryCitasRepository } from "../src/in-memory-repository.ts";
@@ -175,6 +175,15 @@ describe("recordatorio de 24 h (runConfirmacionCitaCore)", () => {
 });
 
 describe("lista de espera", () => {
+  // El optimizador ya no ofrece huecos pasados: el reloj se fija ANTES de los horarios del escenario (el hueco es del 16-sep-2026).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-14T18:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function conLista(opts: { readonly email?: string } = {}) {
     const fixture = buildCitasFixture();
     fixture.repo.habilitarPlantillasYVentanaWhatsapp();
