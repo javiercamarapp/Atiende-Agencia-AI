@@ -32,7 +32,7 @@ import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composici
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, horaLegible } from "../horarios.ts";
+import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, horaHablada, horaLegible } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
@@ -1736,6 +1736,15 @@ async function dispatchTool(
         margen_ultimo_pedido_min: ultimoPedido?.margenMin ?? null,
         // Aditivo: "00:00" es la medianoche; el modelo debe decir "12 de la noche"/"medianoche", nunca "a las 00:00".
         cierra_a_texto: cierraA ? horaLegible(cierraA) : null,
+        ultimo_pedido_a_texto: ultimoPedido?.ultimoPedidoA ? horaLegible(ultimoPedido.ultimoPedidoA) : null,
+        // Solo en voz: las horas ya dichas con palabras ("doce y media de la noche"); el sintetizador lee "00:30" como cifras sueltas.
+        ...(ctx.channel === "voz"
+          ? {
+              hora_local_hablada: horaHablada(parte({ hour: "2-digit", minute: "2-digit" })),
+              cierra_a_hablada: cierraA ? horaHablada(cierraA) : null,
+              ultimo_pedido_a_hablada: ultimoPedido?.ultimoPedidoA ? horaHablada(ultimoPedido.ultimoPedidoA) : null,
+            }
+          : {}),
         horario: policy.horario,
         pedido_minimo_domicilio: policy.pedidoMinimoDomicilio,
         pedido_minimo_recoger: policy.pedidoMinimoRecoger,
