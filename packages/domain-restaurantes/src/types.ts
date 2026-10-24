@@ -98,6 +98,8 @@ export interface QuotedOrderLine {
   readonly tortilla: TortillaChoice | null;
   readonly requiresAdultConfirmation: boolean;
   readonly lineTotal: number;
+  /** Categoria del menu del producto (para reglas por tipo: bebidas, postres y crujientes no llevan salsas). Ausente si el catalogo no la trae. */
+  readonly categoryName?: string | null;
 }
 
 export interface OrderQuote {
