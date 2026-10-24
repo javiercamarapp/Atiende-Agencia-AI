@@ -1,0 +1,919 @@
+{
+ "normal": {
+  "alcance": {
+   "propertyIds": [
+    "00000000-0000-4000-8000-0000000000a1",
+    "00000000-0000-4000-8000-0000000000a2"
+   ],
+   "todas": true,
+   "organizacionCompleta": true,
+   "etiqueta": "Todas sus sucursales"
+  },
+  "sucursales": [
+   {
+    "propertyId": "00000000-0000-4000-8000-0000000000a1",
+    "nombre": "Prolongación Montejo",
+    "slug": "montejo",
+    "activa": true
+   },
+   {
+    "propertyId": "00000000-0000-4000-8000-0000000000a2",
+    "nombre": "Francisco de Montejo",
+    "slug": "fco-montejo",
+    "activa": true
+   }
+  ],
+  "periodo": {
+   "desde": "2026-09-21",
+   "hasta": "2026-09-27",
+   "dias": 7,
+   "comparar": "periodo_anterior",
+   "granularidad": "dia",
+   "comparadoDesde": "2026-09-14",
+   "comparadoHasta": "2026-09-20"
+  },
+  "disponible": true,
+  "bloques": {
+   "ventas": true,
+   "clientes": true,
+   "captura": true
+  },
+  "fuentes": [
+   {
+    "id": "pedidos",
+    "nombre": "Pedidos del agente (WhatsApp y voz)",
+    "confianza": "medido",
+    "cobertura": {
+     "desde": null,
+     "hasta": null
+    },
+    "disponible": true
+   }
+  ],
+  "avisos": [
+   "SINTÉTICO: datos de demostración generados por computadora; no son cifras reales de ningún negocio.",
+   "La recencia se mide contra el último día del periodo y solo se ven ventas dentro del periodo (máximo 400 días). Las ventas sin cliente identificado no entran."
+  ],
+  "avisoLegal": "Este tablero organiza tus datos operativos para que tomes decisiones. No sustituye a tu contabilidad, ni a tus estados financieros dictaminados, ni da asesoría fiscal o financiera. Las cifras marcadas como estimadas o capturadas dependen de supuestos o de datos que tú ingresaste.",
+  "secciones": {
+   "resumen": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "clientesConVenta": 10,
+     "activos30": 6,
+     "clientesRecompra": 8,
+     "recompraPct": 80,
+     "intervaloMedianoDias": 10,
+     "dormidos": 3,
+     "ventaTotalCentavos": 441000,
+     "ventaEnRiesgoCentavos": 194000
+    }
+   },
+   "segmentos": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "segmentos": [
+      {
+       "segmento": "campeon",
+       "orden": 1,
+       "clientes": 2,
+       "pedidos": 9,
+       "ventaCentavos": 140000,
+       "ticketCentavos": 15556,
+       "recenciaMedianaDias": 3.5,
+       "etiqueta": "Campeones",
+       "definicion": "4 o más ventas y recencia de 4 o 5."
+      },
+      {
+       "segmento": "leal",
+       "orden": 2,
+       "clientes": 0,
+       "pedidos": 0,
+       "ventaCentavos": 0,
+       "ticketCentavos": null,
+       "recenciaMedianaDias": null,
+       "etiqueta": "Leales",
+       "definicion": "3 o más ventas y recencia de 3 o más (si no es campeón)."
+      },
+      {
+       "segmento": "en_riesgo_alto_valor",
+       "orden": 3,
+       "clientes": 2,
+       "pedidos": 5,
+       "ventaCentavos": 190000,
+       "ticketCentavos": 38000,
+       "recenciaMedianaDias": 64,
+       "etiqueta": "En riesgo de alto valor",
+       "definicion": "Recencia de 1 o 2 y monto de 4 o 5."
+      },
+      {
+       "segmento": "nuevo_prometedor",
+       "orden": 4,
+       "clientes": 1,
+       "pedidos": 1,
+       "ventaCentavos": 15000,
+       "ticketCentavos": 15000,
+       "recenciaMedianaDias": 3,
+       "etiqueta": "Nuevos prometedores",
+       "definicion": "Una sola venta y recencia de 4 o 5."
+      },
+      {
+       "segmento": "dormido",
+       "orden": 5,
+       "clientes": 1,
+       "pedidos": 2,
+       "ventaCentavos": 4000,
+       "ticketCentavos": 2000,
+       "recenciaMedianaDias": 77,
+       "etiqueta": "Dormidos",
+       "definicion": "Cliente con 2 o más ventas que lleva sin pedir más de 30 días y más de 1.5 veces su intervalo mediano propio. Es la única definición de «dormido»."
+      },
+      {
+       "segmento": "ocasional",
+       "orden": 6,
+       "clientes": 4,
+       "pedidos": 7,
+       "ventaCentavos": 92000,
+       "ticketCentavos": 13143,
+       "recenciaMedianaDias": 18.5,
+       "etiqueta": "Ocasionales",
+       "definicion": "Todo lo demás, incluido quien tiene una sola venta antigua (no tiene ritmo propio para llamarlo dormido)."
+      }
+     ],
+     "pocosClientes": false
+    }
+   },
+   "concentracion": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "puntos": [
+      {
+       "clientesPct": 10,
+       "clientes": 1,
+       "ventaPct": 22.7
+      },
+      {
+       "clientesPct": 20,
+       "clientes": 2,
+       "ventaPct": 45.4
+      },
+      {
+       "clientesPct": 30,
+       "clientes": 3,
+       "ventaPct": 65.8
+      },
+      {
+       "clientesPct": 40,
+       "clientes": 4,
+       "ventaPct": 77.1
+      },
+      {
+       "clientesPct": 50,
+       "clientes": 5,
+       "ventaPct": 86.2
+      },
+      {
+       "clientesPct": 60,
+       "clientes": 6,
+       "ventaPct": 90.7
+      },
+      {
+       "clientesPct": 70,
+       "clientes": 7,
+       "ventaPct": 94.3
+      },
+      {
+       "clientesPct": 80,
+       "clientes": 8,
+       "ventaPct": 97.7
+      },
+      {
+       "clientesPct": 90,
+       "clientes": 9,
+       "ventaPct": 99.1
+      },
+      {
+       "clientesPct": 100,
+       "clientes": 10,
+       "ventaPct": 100
+      }
+     ],
+     "clientesPara50Pct": 30,
+     "clientesPara80Pct": 50
+    }
+   },
+   "intervalo": {
+    "disponible": true,
+    "motivo": null,
+    "datos": [
+     {
+      "segmento": "global",
+      "clientes": 10,
+      "intervalos": 13,
+      "p25": 10,
+      "p50": 10,
+      "p75": 14,
+      "p90": 16.6
+     },
+     {
+      "segmento": "campeon",
+      "clientes": 2,
+      "intervalos": 7,
+      "p25": 10,
+      "p50": 10,
+      "p75": 10,
+      "p90": 11.2
+     },
+     {
+      "segmento": "en_riesgo_alto_valor",
+      "clientes": 2,
+      "intervalos": 3,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     }
+    ]
+   },
+   "reactivacion": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "totalElegibles": 4,
+     "mostrados": 4,
+     "ventaEnJuegoCentavos": 214000,
+     "dormidos": 3,
+     "consentimiento": {
+      "otorgado": 2,
+      "revocado": 1,
+      "sinRegistro": 1
+     },
+     "filas": [
+      {
+       "alias": "a1b2c3d4",
+       "ventas": 3,
+       "ultimaVenta": "2026-08-01",
+       "diasSinPedir": 58,
+       "intervaloMedianoDias": 15.5,
+       "umbralDias": 23.3,
+       "ventaCentavos": 90000,
+       "ticketCentavos": 30000,
+       "canalFrecuente": "recoger",
+       "dormido": true,
+       "consentimiento": "otorgado",
+       "prioridadCentavos": 36078
+      },
+      {
+       "alias": "e5f6a7b8",
+       "ventas": 2,
+       "ultimaVenta": "2026-07-20",
+       "diasSinPedir": 70,
+       "intervaloMedianoDias": 15,
+       "umbralDias": 22.5,
+       "ventaCentavos": 100000,
+       "ticketCentavos": 50000,
+       "canalFrecuente": "domicilio",
+       "dormido": true,
+       "consentimiento": "revocado",
+       "prioridadCentavos": 32143
+      },
+      {
+       "alias": "c9d0e1f2",
+       "ventas": 2,
+       "ultimaVenta": "2026-09-11",
+       "diasSinPedir": 16,
+       "intervaloMedianoDias": null,
+       "umbralDias": 14,
+       "ventaCentavos": 20000,
+       "ticketCentavos": 10000,
+       "canalFrecuente": "recoger",
+       "dormido": false,
+       "consentimiento": "sin_registro",
+       "prioridadCentavos": 17500
+      },
+      {
+       "alias": "0a1b2c3d",
+       "ventas": 2,
+       "ultimaVenta": "2026-07-13",
+       "diasSinPedir": 77,
+       "intervaloMedianoDias": 10,
+       "umbralDias": 15,
+       "ventaCentavos": 4000,
+       "ticketCentavos": 2000,
+       "canalFrecuente": "recoger",
+       "dormido": true,
+       "consentimiento": "otorgado",
+       "prioridadCentavos": 779
+      }
+     ],
+     "limite": 50
+    }
+   },
+   "afinidad": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "pares": [
+      {
+       "productoA": "flan",
+       "nombreA": "Flan",
+       "productoB": "refresco",
+       "nombreB": "Refresco",
+       "pedidosJuntos": 8,
+       "soportePct": 8,
+       "confianzaAB": 80,
+       "confianzaBA": 16,
+       "lift": 1.6
+      },
+      {
+       "productoA": "refresco",
+       "nombreA": "Refresco",
+       "productoB": "taco",
+       "nombreB": "Tacos al pastor",
+       "pedidosJuntos": 30,
+       "soportePct": 30,
+       "confianzaAB": 60,
+       "confianzaBA": 75,
+       "lift": 1.5
+      }
+     ],
+     "ocultosPorPrivacidad": 1,
+     "pedidosTotales": 100,
+     "minimoPedidos": 5,
+     "multiSucursal": true
+    }
+   },
+   "tortilla": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "pedidosConItems": 40,
+     "tortilla": [
+      {
+       "tipo": "maiz",
+       "renglones": 20,
+       "unidades": 30,
+       "pedidos": 18,
+       "etiqueta": "Maíz"
+      },
+      {
+       "tipo": "harina",
+       "renglones": 6,
+       "unidades": 8,
+       "pedidos": 6,
+       "etiqueta": "Harina"
+      },
+      {
+       "tipo": "mixta",
+       "renglones": 1,
+       "unidades": 1,
+       "pedidos": 1,
+       "etiqueta": "Mixta"
+      }
+     ],
+     "salsas": {
+      "disponible": false,
+      "motivo": "No disponible aún: requiere decidir un campo estructurado para salsas y omisiones (hoy son texto libre)."
+     }
+    }
+   }
+  },
+  "pendientes": [
+   {
+    "clave": "quejas_por_tipo",
+    "titulo": "Quejas por tipo",
+    "motivo": "No disponible aún: requiere un catálogo estructurado de motivos de queja (hoy solo hay texto libre de incidencias)."
+   },
+   {
+    "clave": "respuesta_humana",
+    "titulo": "Respuesta humana por hora",
+    "motivo": "No disponible aún: requiere marcas de tiempo por mensaje en las conversaciones (hoy solo se mide el tiempo de toma de un handoff)."
+   },
+   {
+    "clave": "segmentos_por_producto",
+    "titulo": "Segmentos que compran cada producto",
+    "motivo": "No disponible aún: requiere cruzar el segmento de cada cliente con el detalle de sus pedidos (fase posterior)."
+   },
+   {
+    "clave": "salsas_omisiones",
+    "titulo": "Salsas y omisiones",
+    "motivo": "No disponible aún: requiere decidir un campo estructurado para salsas y omisiones (hoy viven como texto libre en las notas)."
+   },
+   {
+    "clave": "historial_importado",
+    "titulo": "Historial importado de chats",
+    "motivo": "No disponible aún: requiere el importador de historial (fase B)."
+   }
+  ],
+  "definiciones": {
+   "resumen": "Clientes con al menos una venta con cliente identificado en el periodo. Recompra = clientes con 2 o más ventas ÷ clientes. Intervalo mediano = mediana de días entre compras. Venta en riesgo = venta del periodo de los clientes dormidos o en riesgo de alto valor.",
+   "recencia": "Días entre la última venta del cliente y el último día del periodo consultado (no «hoy»).",
+   "frecuencia": "Ventas del cliente en el periodo. Puntaje fijo: 1, 2, 3 o 4 o más ventas.",
+   "monetario": "Venta neta del cliente en el periodo. Recencia y monto se puntúan de 1 a 5 por quintil entre los clientes consultados; los empates reciben el mismo puntaje.",
+   "dormido": "Cliente con 2 o más ventas que lleva sin pedir más de 30 días y más de 1.5 veces su intervalo mediano propio. Es la única definición de «dormido».",
+   "campeon": "4 o más ventas y recencia de 4 o 5.",
+   "leal": "3 o más ventas y recencia de 3 o más (si no es campeón).",
+   "en_riesgo_alto_valor": "Recencia de 1 o 2 y monto de 4 o 5.",
+   "nuevo_prometedor": "Una sola venta y recencia de 4 o 5.",
+   "ocasional": "Todo lo demás, incluido quien tiene una sola venta antigua (no tiene ritmo propio para llamarlo dormido).",
+   "concentracion": "Porcentaje de la venta que reúne el 10 %, 20 %… 100 % de los clientes con más venta del periodo.",
+   "reactivacion": "Clientes con 2 o más ventas cuyo tiempo sin pedir supera su ritmo (más de 14 días y 1.5 veces su intervalo mediano propio) o pasa de 30 días.",
+   "prioridad": "Venta del periodo × el menor entre 1 y (umbral ÷ días sin pedir). Heurística simple para ordenar, no una probabilidad calibrada.",
+   "consentimiento": "Estado del consentimiento de mensajes promocionales por WhatsApp. Solo se muestra: esta pantalla no envía nada.",
+   "intervalo": "Días entre días consecutivos con venta de un mismo cliente. Con menos de 5 intervalos no se calcula el percentil.",
+   "soporte": "Porcentaje de los pedidos del periodo que llevan los dos productos.",
+   "confianza": "De los pedidos que llevan un producto, porcentaje que también lleva el otro.",
+   "lift": "Soporte ÷ (porcentaje de pedidos con A × porcentaje con B). 1 = independientes; 2 = se piden juntos el doble de lo esperado. Solo pares con 5 o más pedidos.",
+   "tortilla": "Renglones de pedidos vendidos con tortilla de maíz, harina o mixta (campo estructurado del pedido). Salsas y omisiones no están estructuradas."
+  }
+ },
+ "sin095": {
+  "alcance": {
+   "propertyIds": [
+    "00000000-0000-4000-8000-0000000000a1",
+    "00000000-0000-4000-8000-0000000000a2"
+   ],
+   "todas": true,
+   "organizacionCompleta": true,
+   "etiqueta": "Todas sus sucursales"
+  },
+  "sucursales": [
+   {
+    "propertyId": "00000000-0000-4000-8000-0000000000a1",
+    "nombre": "Prolongación Montejo",
+    "slug": "montejo",
+    "activa": true
+   },
+   {
+    "propertyId": "00000000-0000-4000-8000-0000000000a2",
+    "nombre": "Francisco de Montejo",
+    "slug": "fco-montejo",
+    "activa": true
+   }
+  ],
+  "periodo": {
+   "desde": "2026-09-21",
+   "hasta": "2026-09-27",
+   "dias": 7,
+   "comparar": "periodo_anterior",
+   "granularidad": "dia",
+   "comparadoDesde": "2026-09-14",
+   "comparadoHasta": "2026-09-20"
+  },
+  "disponible": false,
+  "bloques": {
+   "ventas": true,
+   "clientes": true,
+   "captura": true
+  },
+  "fuentes": [
+   {
+    "id": "pedidos",
+    "nombre": "Pedidos del agente (WhatsApp y voz)",
+    "confianza": "medido",
+    "cobertura": {
+     "desde": null,
+     "hasta": null
+    },
+    "disponible": true
+   }
+  ],
+  "avisos": [
+   "SINTÉTICO: datos de demostración generados por computadora; no son cifras reales de ningún negocio.",
+   "La recencia se mide contra el último día del periodo y solo se ven ventas dentro del periodo (máximo 400 días). Las ventas sin cliente identificado no entran."
+  ],
+  "avisoLegal": "Este tablero organiza tus datos operativos para que tomes decisiones. No sustituye a tu contabilidad, ni a tus estados financieros dictaminados, ni da asesoría fiscal o financiera. Las cifras marcadas como estimadas o capturadas dependen de supuestos o de datos que tú ingresaste.",
+  "secciones": {
+   "resumen": {
+    "disponible": false,
+    "motivo": "No disponible aún: requiere aplicar la actualización 095 de la base de datos.",
+    "datos": null
+   },
+   "segmentos": {
+    "disponible": false,
+    "motivo": "No disponible aún: requiere aplicar la actualización 095 de la base de datos.",
+    "datos": null
+   },
+   "concentracion": {
+    "disponible": false,
+    "motivo": "No disponible aún: requiere aplicar la actualización 095 de la base de datos.",
+    "datos": null
+   },
+   "intervalo": {
+    "disponible": false,
+    "motivo": "No disponible aún: requiere aplicar la actualización 095 de la base de datos.",
+    "datos": null
+   },
+   "reactivacion": {
+    "disponible": false,
+    "motivo": "No disponible aún: requiere aplicar la actualización 095 de la base de datos (y la 052 de marketing para el consentimiento).",
+    "datos": null
+   },
+   "afinidad": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "pares": [
+      {
+       "productoA": "flan",
+       "nombreA": "Flan",
+       "productoB": "refresco",
+       "nombreB": "Refresco",
+       "pedidosJuntos": 8,
+       "soportePct": 8,
+       "confianzaAB": 80,
+       "confianzaBA": 16,
+       "lift": 1.6
+      },
+      {
+       "productoA": "refresco",
+       "nombreA": "Refresco",
+       "productoB": "taco",
+       "nombreB": "Tacos al pastor",
+       "pedidosJuntos": 30,
+       "soportePct": 30,
+       "confianzaAB": 60,
+       "confianzaBA": 75,
+       "lift": 1.5
+      }
+     ],
+     "ocultosPorPrivacidad": 1,
+     "pedidosTotales": 100,
+     "minimoPedidos": 5,
+     "multiSucursal": true
+    }
+   },
+   "tortilla": {
+    "disponible": false,
+    "motivo": "No disponible aún: requiere aplicar la actualización 095 de la base de datos.",
+    "datos": null
+   }
+  },
+  "pendientes": [
+   {
+    "clave": "quejas_por_tipo",
+    "titulo": "Quejas por tipo",
+    "motivo": "No disponible aún: requiere un catálogo estructurado de motivos de queja (hoy solo hay texto libre de incidencias)."
+   },
+   {
+    "clave": "respuesta_humana",
+    "titulo": "Respuesta humana por hora",
+    "motivo": "No disponible aún: requiere marcas de tiempo por mensaje en las conversaciones (hoy solo se mide el tiempo de toma de un handoff)."
+   },
+   {
+    "clave": "segmentos_por_producto",
+    "titulo": "Segmentos que compran cada producto",
+    "motivo": "No disponible aún: requiere cruzar el segmento de cada cliente con el detalle de sus pedidos (fase posterior)."
+   },
+   {
+    "clave": "salsas_omisiones",
+    "titulo": "Salsas y omisiones",
+    "motivo": "No disponible aún: requiere decidir un campo estructurado para salsas y omisiones (hoy viven como texto libre en las notas)."
+   },
+   {
+    "clave": "historial_importado",
+    "titulo": "Historial importado de chats",
+    "motivo": "No disponible aún: requiere el importador de historial (fase B)."
+   }
+  ],
+  "definiciones": {
+   "resumen": "Clientes con al menos una venta con cliente identificado en el periodo. Recompra = clientes con 2 o más ventas ÷ clientes. Intervalo mediano = mediana de días entre compras. Venta en riesgo = venta del periodo de los clientes dormidos o en riesgo de alto valor.",
+   "recencia": "Días entre la última venta del cliente y el último día del periodo consultado (no «hoy»).",
+   "frecuencia": "Ventas del cliente en el periodo. Puntaje fijo: 1, 2, 3 o 4 o más ventas.",
+   "monetario": "Venta neta del cliente en el periodo. Recencia y monto se puntúan de 1 a 5 por quintil entre los clientes consultados; los empates reciben el mismo puntaje.",
+   "dormido": "Cliente con 2 o más ventas que lleva sin pedir más de 30 días y más de 1.5 veces su intervalo mediano propio. Es la única definición de «dormido».",
+   "campeon": "4 o más ventas y recencia de 4 o 5.",
+   "leal": "3 o más ventas y recencia de 3 o más (si no es campeón).",
+   "en_riesgo_alto_valor": "Recencia de 1 o 2 y monto de 4 o 5.",
+   "nuevo_prometedor": "Una sola venta y recencia de 4 o 5.",
+   "ocasional": "Todo lo demás, incluido quien tiene una sola venta antigua (no tiene ritmo propio para llamarlo dormido).",
+   "concentracion": "Porcentaje de la venta que reúne el 10 %, 20 %… 100 % de los clientes con más venta del periodo.",
+   "reactivacion": "Clientes con 2 o más ventas cuyo tiempo sin pedir supera su ritmo (más de 14 días y 1.5 veces su intervalo mediano propio) o pasa de 30 días.",
+   "prioridad": "Venta del periodo × el menor entre 1 y (umbral ÷ días sin pedir). Heurística simple para ordenar, no una probabilidad calibrada.",
+   "consentimiento": "Estado del consentimiento de mensajes promocionales por WhatsApp. Solo se muestra: esta pantalla no envía nada.",
+   "intervalo": "Días entre días consecutivos con venta de un mismo cliente. Con menos de 5 intervalos no se calcula el percentil.",
+   "soporte": "Porcentaje de los pedidos del periodo que llevan los dos productos.",
+   "confianza": "De los pedidos que llevan un producto, porcentaje que también lleva el otro.",
+   "lift": "Soporte ÷ (porcentaje de pedidos con A × porcentaje con B). 1 = independientes; 2 = se piden juntos el doble de lo esperado. Solo pares con 5 o más pedidos.",
+   "tortilla": "Renglones de pedidos vendidos con tortilla de maíz, harina o mixta (campo estructurado del pedido). Salsas y omisiones no están estructuradas."
+  }
+ },
+ "vacio": {
+  "alcance": {
+   "propertyIds": [
+    "00000000-0000-4000-8000-0000000000a1",
+    "00000000-0000-4000-8000-0000000000a2"
+   ],
+   "todas": true,
+   "organizacionCompleta": true,
+   "etiqueta": "Todas sus sucursales"
+  },
+  "sucursales": [
+   {
+    "propertyId": "00000000-0000-4000-8000-0000000000a1",
+    "nombre": "Prolongación Montejo",
+    "slug": "montejo",
+    "activa": true
+   },
+   {
+    "propertyId": "00000000-0000-4000-8000-0000000000a2",
+    "nombre": "Francisco de Montejo",
+    "slug": "fco-montejo",
+    "activa": true
+   }
+  ],
+  "periodo": {
+   "desde": "2026-09-21",
+   "hasta": "2026-09-27",
+   "dias": 7,
+   "comparar": "periodo_anterior",
+   "granularidad": "dia",
+   "comparadoDesde": "2026-09-14",
+   "comparadoHasta": "2026-09-20"
+  },
+  "disponible": true,
+  "bloques": {
+   "ventas": true,
+   "clientes": true,
+   "captura": true
+  },
+  "fuentes": [
+   {
+    "id": "pedidos",
+    "nombre": "Pedidos del agente (WhatsApp y voz)",
+    "confianza": "medido",
+    "cobertura": {
+     "desde": null,
+     "hasta": null
+    },
+    "disponible": true
+   }
+  ],
+  "avisos": [
+   "SINTÉTICO: datos de demostración generados por computadora; no son cifras reales de ningún negocio.",
+   "La recencia se mide contra el último día del periodo y solo se ven ventas dentro del periodo (máximo 400 días). Las ventas sin cliente identificado no entran.",
+   "No hay ventas con cliente identificado en el periodo seleccionado."
+  ],
+  "avisoLegal": "Este tablero organiza tus datos operativos para que tomes decisiones. No sustituye a tu contabilidad, ni a tus estados financieros dictaminados, ni da asesoría fiscal o financiera. Las cifras marcadas como estimadas o capturadas dependen de supuestos o de datos que tú ingresaste.",
+  "secciones": {
+   "resumen": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "clientesConVenta": 0,
+     "activos30": 0,
+     "clientesRecompra": 0,
+     "recompraPct": null,
+     "intervaloMedianoDias": null,
+     "dormidos": 0,
+     "ventaTotalCentavos": 0,
+     "ventaEnRiesgoCentavos": 0
+    }
+   },
+   "segmentos": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "segmentos": [
+      {
+       "segmento": "campeon",
+       "orden": 1,
+       "clientes": 0,
+       "pedidos": 0,
+       "ventaCentavos": 0,
+       "ticketCentavos": null,
+       "recenciaMedianaDias": null,
+       "etiqueta": "Campeones",
+       "definicion": "4 o más ventas y recencia de 4 o 5."
+      },
+      {
+       "segmento": "leal",
+       "orden": 2,
+       "clientes": 0,
+       "pedidos": 0,
+       "ventaCentavos": 0,
+       "ticketCentavos": null,
+       "recenciaMedianaDias": null,
+       "etiqueta": "Leales",
+       "definicion": "3 o más ventas y recencia de 3 o más (si no es campeón)."
+      },
+      {
+       "segmento": "en_riesgo_alto_valor",
+       "orden": 3,
+       "clientes": 0,
+       "pedidos": 0,
+       "ventaCentavos": 0,
+       "ticketCentavos": null,
+       "recenciaMedianaDias": null,
+       "etiqueta": "En riesgo de alto valor",
+       "definicion": "Recencia de 1 o 2 y monto de 4 o 5."
+      },
+      {
+       "segmento": "nuevo_prometedor",
+       "orden": 4,
+       "clientes": 0,
+       "pedidos": 0,
+       "ventaCentavos": 0,
+       "ticketCentavos": null,
+       "recenciaMedianaDias": null,
+       "etiqueta": "Nuevos prometedores",
+       "definicion": "Una sola venta y recencia de 4 o 5."
+      },
+      {
+       "segmento": "dormido",
+       "orden": 5,
+       "clientes": 0,
+       "pedidos": 0,
+       "ventaCentavos": 0,
+       "ticketCentavos": null,
+       "recenciaMedianaDias": null,
+       "etiqueta": "Dormidos",
+       "definicion": "Cliente con 2 o más ventas que lleva sin pedir más de 30 días y más de 1.5 veces su intervalo mediano propio. Es la única definición de «dormido»."
+      },
+      {
+       "segmento": "ocasional",
+       "orden": 6,
+       "clientes": 0,
+       "pedidos": 0,
+       "ventaCentavos": 0,
+       "ticketCentavos": null,
+       "recenciaMedianaDias": null,
+       "etiqueta": "Ocasionales",
+       "definicion": "Todo lo demás, incluido quien tiene una sola venta antigua (no tiene ritmo propio para llamarlo dormido)."
+      }
+     ],
+     "pocosClientes": true
+    }
+   },
+   "concentracion": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "puntos": [],
+     "clientesPara50Pct": null,
+     "clientesPara80Pct": null
+    }
+   },
+   "intervalo": {
+    "disponible": true,
+    "motivo": null,
+    "datos": [
+     {
+      "segmento": "global",
+      "clientes": 0,
+      "intervalos": 0,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     },
+     {
+      "segmento": "campeon",
+      "clientes": 0,
+      "intervalos": 0,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     },
+     {
+      "segmento": "leal",
+      "clientes": 0,
+      "intervalos": 0,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     },
+     {
+      "segmento": "en_riesgo_alto_valor",
+      "clientes": 0,
+      "intervalos": 0,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     },
+     {
+      "segmento": "nuevo_prometedor",
+      "clientes": 0,
+      "intervalos": 0,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     },
+     {
+      "segmento": "dormido",
+      "clientes": 0,
+      "intervalos": 0,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     },
+     {
+      "segmento": "ocasional",
+      "clientes": 0,
+      "intervalos": 0,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "p90": null
+     }
+    ]
+   },
+   "reactivacion": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "totalElegibles": 0,
+     "mostrados": 0,
+     "ventaEnJuegoCentavos": 0,
+     "dormidos": 0,
+     "consentimiento": {
+      "otorgado": 0,
+      "revocado": 0,
+      "sinRegistro": 0
+     },
+     "filas": [],
+     "limite": 50
+    }
+   },
+   "afinidad": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "pares": [],
+     "ocultosPorPrivacidad": 0,
+     "pedidosTotales": 0,
+     "minimoPedidos": 5,
+     "multiSucursal": true
+    }
+   },
+   "tortilla": {
+    "disponible": true,
+    "motivo": null,
+    "datos": {
+     "pedidosConItems": 0,
+     "tortilla": [],
+     "salsas": {
+      "disponible": false,
+      "motivo": "No disponible aún: requiere decidir un campo estructurado para salsas y omisiones (hoy son texto libre)."
+     }
+    }
+   }
+  },
+  "pendientes": [
+   {
+    "clave": "quejas_por_tipo",
+    "titulo": "Quejas por tipo",
+    "motivo": "No disponible aún: requiere un catálogo estructurado de motivos de queja (hoy solo hay texto libre de incidencias)."
+   },
+   {
+    "clave": "respuesta_humana",
+    "titulo": "Respuesta humana por hora",
+    "motivo": "No disponible aún: requiere marcas de tiempo por mensaje en las conversaciones (hoy solo se mide el tiempo de toma de un handoff)."
+   },
+   {
+    "clave": "segmentos_por_producto",
+    "titulo": "Segmentos que compran cada producto",
+    "motivo": "No disponible aún: requiere cruzar el segmento de cada cliente con el detalle de sus pedidos (fase posterior)."
+   },
+   {
+    "clave": "salsas_omisiones",
+    "titulo": "Salsas y omisiones",
+    "motivo": "No disponible aún: requiere decidir un campo estructurado para salsas y omisiones (hoy viven como texto libre en las notas)."
+   },
+   {
+    "clave": "historial_importado",
+    "titulo": "Historial importado de chats",
+    "motivo": "No disponible aún: requiere el importador de historial (fase B)."
+   }
+  ],
+  "definiciones": {
+   "resumen": "Clientes con al menos una venta con cliente identificado en el periodo. Recompra = clientes con 2 o más ventas ÷ clientes. Intervalo mediano = mediana de días entre compras. Venta en riesgo = venta del periodo de los clientes dormidos o en riesgo de alto valor.",
+   "recencia": "Días entre la última venta del cliente y el último día del periodo consultado (no «hoy»).",
+   "frecuencia": "Ventas del cliente en el periodo. Puntaje fijo: 1, 2, 3 o 4 o más ventas.",
+   "monetario": "Venta neta del cliente en el periodo. Recencia y monto se puntúan de 1 a 5 por quintil entre los clientes consultados; los empates reciben el mismo puntaje.",
+   "dormido": "Cliente con 2 o más ventas que lleva sin pedir más de 30 días y más de 1.5 veces su intervalo mediano propio. Es la única definición de «dormido».",
+   "campeon": "4 o más ventas y recencia de 4 o 5.",
+   "leal": "3 o más ventas y recencia de 3 o más (si no es campeón).",
+   "en_riesgo_alto_valor": "Recencia de 1 o 2 y monto de 4 o 5.",
+   "nuevo_prometedor": "Una sola venta y recencia de 4 o 5.",
+   "ocasional": "Todo lo demás, incluido quien tiene una sola venta antigua (no tiene ritmo propio para llamarlo dormido).",
+   "concentracion": "Porcentaje de la venta que reúne el 10 %, 20 %… 100 % de los clientes con más venta del periodo.",
+   "reactivacion": "Clientes con 2 o más ventas cuyo tiempo sin pedir supera su ritmo (más de 14 días y 1.5 veces su intervalo mediano propio) o pasa de 30 días.",
+   "prioridad": "Venta del periodo × el menor entre 1 y (umbral ÷ días sin pedir). Heurística simple para ordenar, no una probabilidad calibrada.",
+   "consentimiento": "Estado del consentimiento de mensajes promocionales por WhatsApp. Solo se muestra: esta pantalla no envía nada.",
+   "intervalo": "Días entre días consecutivos con venta de un mismo cliente. Con menos de 5 intervalos no se calcula el percentil.",
+   "soporte": "Porcentaje de los pedidos del periodo que llevan los dos productos.",
+   "confianza": "De los pedidos que llevan un producto, porcentaje que también lleva el otro.",
+   "lift": "Soporte ÷ (porcentaje de pedidos con A × porcentaje con B). 1 = independientes; 2 = se piden juntos el doble de lo esperado. Solo pares con 5 o más pedidos.",
+   "tortilla": "Renglones de pedidos vendidos con tortilla de maíz, harina o mixta (campo estructurado del pedido). Salsas y omisiones no están estructuradas."
+  }
+ }
+}

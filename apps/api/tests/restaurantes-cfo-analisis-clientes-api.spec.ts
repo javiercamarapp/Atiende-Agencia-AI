@@ -180,10 +180,14 @@ describe("contenido", () => {
     const r = await app.request(url(Q), authedGet(ctx.staff.owner.token));
     expect(r.status).toBe(200);
     const j = await r.json();
-    expect(j.secciones.segmentos.datos.segmentos).toEqual([]);
+    // Como la SQL: los 6 segmentos en cero y el resumen en cero (disponible, vacío), no «sin migrar».
+    expect(j.secciones.segmentos.datos.segmentos).toHaveLength(6);
+    expect(j.secciones.segmentos.datos.segmentos.every((x: { clientes: number }) => x.clientes === 0)).toBe(true);
+    expect(j.secciones.resumen).toMatchObject({ disponible: true, datos: { clientesConVenta: 0, recompraPct: null, intervaloMedianoDias: null } });
+    expect(j.secciones.concentracion.datos.puntos).toEqual([]);
     expect(j.secciones.afinidad.datos.pares).toEqual([]);
     expect(j.secciones.reactivacion.datos.filas).toEqual([]);
-    expect(j.secciones.resumen.disponible).toBe(false);
+    expect(j.avisos.join(" ")).toContain("No hay ventas con cliente identificado");
   });
 
   it("sin PII: ni nombre, teléfono, dirección ni customer_id en la respuesta", async () => {
