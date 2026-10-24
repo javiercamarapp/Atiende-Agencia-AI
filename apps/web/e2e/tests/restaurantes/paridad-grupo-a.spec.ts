@@ -54,4 +54,33 @@ test.describe("restaurantes paridad grupo A: Resumen e Historial @recorrido", ()
     await expect(main(page).getByTestId("historial-conteo")).toBeVisible();
     vigilante.verificar();
   });
+
+  test("Resumen: Horas ahorradas pide configurarse, el dueño la configura y las metas salen en sus tiles; el staff no ve el boton", async ({ page, mock, vigilante }) => {
+    await ir(page, "");
+    await expect(main(page).getByText("Configúralo", { exact: false })).toBeVisible();
+    await expect(main(page).getByText("Tu operación", { exact: true })).toBeVisible();
+    await main(page).getByRole("button", { name: "Configurar horas y metas" }).click();
+    const dlg = page.getByRole("dialog", { name: "Horas y metas del Resumen" });
+    await dlg.getByLabel("Minutos que ahorra cada conversación atendida por el agente").fill("500");
+    await dlg.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(dlg.getByRole("alert")).toContainText("entre 1 y 120");
+    expect((await mock.buscar({ metodo: "PUT", ruta: "/resumen/config" })).length).toBe(0);
+    await dlg.getByLabel("Minutos que ahorra cada conversación atendida por el agente").fill("6");
+    await dlg.getByLabel("Meta de pedidos por agentes IA (%)").fill("80");
+    await dlg.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(dlg).toBeHidden();
+    expect((await mock.buscar({ metodo: "PUT", ruta: "/resumen/config" })).length).toBe(1);
+    await expect(main(page).getByText("conversaciones × 6 min ÷ 60", { exact: false })).toBeVisible();
+    await expect(main(page).getByText("Tu meta: 80%", { exact: false })).toBeVisible();
+    vigilante.verificar();
+  });
+});
+
+test.describe("restaurantes paridad grupo A: Resumen como staff @recorrido", () => {
+  test("el staff ve las horas y no puede configurarlas", async ({ page, iniciarSesion }) => {
+    await iniciarSesion("restaurantes", "staff");
+    await ir(page, "");
+    await expect(main(page).getByText("Horas de atención ahorradas", { exact: true })).toBeVisible();
+    await expect(main(page).getByRole("button", { name: "Configurar horas y metas" })).toHaveCount(0);
+  });
 });

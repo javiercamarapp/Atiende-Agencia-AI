@@ -92,12 +92,18 @@ interface Handlers {
   salesOk?: boolean;
   channelsOk?: boolean;
   customersOk?: boolean;
+  resumenCfg?: { minutosPorConversacion: number | null; metaPedidosIaPct: number | null; metaIngresosIaPct: number | null } | "falla" | "sin-migrar";
   productos?: number | "falla";
   categorias?: number | "falla";
 }
 
 function stubFetch(handlers: Handlers) {
   fetchMock = vi.fn(async (url: string) => {
+    if (url.includes("/admin/resumen/config")) {
+      if (handlers.resumenCfg === "falla") return jsonResponse({}, false);
+      const cfg = typeof handlers.resumenCfg === "object" ? handlers.resumenCfg : { minutosPorConversacion: null, metaPedidosIaPct: null, metaIngresosIaPct: null };
+      return jsonResponse({ disponible: handlers.resumenCfg !== "sin-migrar", config: cfg, actualizadoEn: null, rangos: { minutos: { min: 1, max: 120 }, meta: { min: 1, max: 100 } }, formula: "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente en el periodo × minutos por conversacion que configuraste ÷ 60." });
+    }
     if (url.includes("/admin/products")) return handlers.productos === "falla" ? jsonResponse({}, false) : jsonResponse({ products: Array.from({ length: handlers.productos ?? 0 }, (_, i) => ({ id: `p${i}` })) });
     if (url.includes("/admin/categories")) return handlers.categorias === "falla" ? jsonResponse({}, false) : jsonResponse({ categories: Array.from({ length: handlers.categorias ?? 0 }, (_, i) => ({ id: `c${i}` })) });
     if (url.includes("/admin/config/zona-horaria")) return jsonResponse({ zonaHoraria: handlers.zona ?? null });
@@ -130,9 +136,9 @@ function renderPage(ctx: RestaurantesShellContext = CTX): RenderedComponent {
   );
 }
 
-/** Etiquetas de las tarjetas KPI, en el orden en que aparecen en el DOM. */
+/** Etiquetas de las tarjetas KPI de la rejilla, en el orden del DOM. «Horas de atención ahorradas» vive en su propia seccion («Impacto de tus agentes»). */
 function etiquetasKpi(r: RenderedComponent): string[] {
-  return [...r.container.querySelectorAll('[data-testid="stat-card-chip"]')].map((chip) => chip.nextElementSibling?.textContent ?? "");
+  return [...r.container.querySelectorAll('[data-testid="stat-card-chip"]')].map((chip) => chip.nextElementSibling?.textContent ?? "").filter((t) => t !== "Horas de atención ahorradas");
 }
 
 function tarjeta(r: RenderedComponent, etiqueta: string): HTMLElement {
@@ -168,7 +174,7 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     expect(rendered.container.querySelectorAll('[data-testid="stat-card-chip"]').length).toBe(0);
   });
 
-  it("los KPIs salen en el orden de Likida y sin 'Horas de atención ahorradas' (el endpoint la estima con un supuesto, no la mide)", async () => {
+  it("los KPIs de la rejilla salen en el orden de Likida; «Horas de atención ahorradas» no va entre ellos sino en su seccion, con formula explicita y configurable", async () => {
     stubFetch({});
     rendered = renderPage();
     await esperarCarga();
@@ -181,7 +187,7 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
       "Pedidos por voz",
       "Clientes recurrentes",
     ]);
-    expect(rendered.container.textContent).not.toContain("Horas de atención ahorradas");
+    expect(rendered.container.textContent).toContain("Impacto de tus agentes");
     expect(rendered.container.textContent).not.toContain("Estimado");
   });
 
@@ -388,5 +394,58 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     await esperarCarga();
     expect(rendered.container.textContent).toContain("No se pudo leer el catálogo");
     expect(enlaces(rendered)["Total de productosNo se pudo leer el catálogo"]).toBe("/restaurantes/demo/productos");
+  });
+
+  it("Horas ahorradas: sin configurar dice «Configúralo» y no inventa una cifra; con minutos aplica la formula explicita y muestra las metas", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+    let text = rendered.container.textContent!;
+    expect(text).toContain("Horas de atención ahorradas");
+    expect(text).toContain("Configúralo");
+    expect(text).not.toMatch(/\d+\.\d h/);
+    expect(text).not.toContain("Tu meta");
+    rendered.unmount();
+
+    stubFetch({ resumenCfg: { minutosPorConversacion: 6, metaPedidosIaPct: 50, metaIngresosIaPct: 40 } });
+    rendered = renderPage();
+    await esperarCarga();
+    text = rendered.container.textContent!;
+    expect(text).toContain("12.0 h");
+    expect(text).toContain("120 conversaciones × 6 min ÷ 60");
+    expect(text).toContain("Tu meta: 50%");
+    expect(text).toContain("Tu meta: 40%");
+    expect(rendered.container.querySelector('[title*="conversaciones"][title*="minutos por conversacion"]')).not.toBeNull();
+  });
+
+  it("Horas ahorradas: si la configuracion no se puede leer lo dice y no ofrece configurar", async () => {
+    stubFetch({ resumenCfg: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("No se pudo leer la configuración");
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Configurar horas y metas"))).toBe(false);
+  });
+
+  it("Configurar horas y metas: solo owner/admin; guarda con PUT y actualiza el tile; fuera de rango no llama al API", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+    const boton = () => [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Configurar horas y metas"))!;
+    expect(boton()).toBeTruthy();
+    await act(async () => { boton().click(); await flushMicrotasks(); });
+    const input = document.body.querySelector("#resumen-minutos") as HTMLInputElement;
+    const set = (el: HTMLInputElement, v: string) => { const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!; d.set!.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); };
+    await act(async () => { set(input, "500"); await flushMicrotasks(); });
+    const guardarBtn = () => [...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Guardar cambios")!;
+    await act(async () => { guardarBtn().click(); await flushMicrotasks(); });
+    expect(document.body.textContent).toContain("entre 1 y 120");
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT")).toBe(false);
+  });
+
+  it("staff no ve el boton de configurar", async () => {
+    stubFetch({});
+    rendered = renderPage({ ...CTX, role: "staff" });
+    await esperarCarga();
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Configurar horas y metas"))).toBe(false);
   });
 });
