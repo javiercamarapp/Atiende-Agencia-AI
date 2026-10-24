@@ -91,8 +91,6 @@ interface Extras {
 interface ConteosCatalogo {
   readonly productos: number | null;
   readonly categorias: number | null;
-  /** Configuracion del Resumen (096): `null` = no se pudo leer. */
-  readonly resumenCfg: ResumenConfigVista | null;
 }
 
 const EXTRAS_VACIOS: Extras = {
