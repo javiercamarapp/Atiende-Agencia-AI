@@ -11,6 +11,9 @@ export interface FiltrosExportarHistorial {
   /** ISO 8601, mismos limites que la pantalla de Historial (medianoche local de la persona). */
   readonly dateFrom?: string;
   readonly dateTo?: string;
+  readonly branchId?: string;
+  readonly q?: string;
+  readonly incidencias?: boolean;
 }
 
 export function urlExportarHistorial(apiBaseUrl: string, propertyId: string, formato: FormatoExportacion, f: FiltrosExportarHistorial): string {
@@ -18,6 +21,9 @@ export function urlExportarHistorial(apiBaseUrl: string, propertyId: string, for
   if (f.status) p.set("status", f.status);
   if (f.dateFrom) p.set("dateFrom", f.dateFrom);
   if (f.dateTo) p.set("dateTo", f.dateTo);
+  if (f.branchId) p.set("branchId", f.branchId);
+  if (f.q) p.set("q", f.q);
+  if (f.incidencias) p.set("incidencias", "1");
   return `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/exportar/historial?${p.toString()}`;
 }
 
