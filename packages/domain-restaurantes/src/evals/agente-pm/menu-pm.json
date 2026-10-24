@@ -93,7 +93,7 @@
    "nombre": "Gringa de Pastor",
    "categoria": "Gringas",
    "precio_mxn": 194,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -101,7 +101,7 @@
    "nombre": "Gringa de Bistec",
    "categoria": "Gringas",
    "precio_mxn": 224,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -109,7 +109,7 @@
    "nombre": "Gringa de Pechuga de Pollo",
    "categoria": "Gringas",
    "precio_mxn": 212,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -117,7 +117,7 @@
    "nombre": "Gringa de Chuleta",
    "categoria": "Gringas",
    "precio_mxn": 212,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -125,7 +125,7 @@
    "nombre": "Gringa de Costilla",
    "categoria": "Gringas",
    "precio_mxn": 217,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -133,7 +133,7 @@
    "nombre": "Gringa de Arrachera",
    "categoria": "Gringas",
    "precio_mxn": 299,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -141,7 +141,7 @@
    "nombre": "Gringa de Poc-Chuc",
    "categoria": "Gringas",
    "precio_mxn": 217,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -149,7 +149,7 @@
    "nombre": "Mestiza de Pastor",
    "categoria": "Mestizas",
    "precio_mxn": 168,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -157,7 +157,7 @@
    "nombre": "Mestiza de Poc-Chuc",
    "categoria": "Mestizas",
    "precio_mxn": 175,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -165,7 +165,7 @@
    "nombre": "Mestiza de Bistec",
    "categoria": "Mestizas",
    "precio_mxn": 194,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -173,7 +173,7 @@
    "nombre": "Mestiza de Pechuga",
    "categoria": "Mestizas",
    "precio_mxn": 184,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -181,7 +181,7 @@
    "nombre": "Mestiza de Chuleta",
    "categoria": "Mestizas",
    "precio_mxn": 184,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -189,7 +189,7 @@
    "nombre": "Mestiza de Costilla",
    "categoria": "Mestizas",
    "precio_mxn": 189,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -197,7 +197,7 @@
    "nombre": "Mestiza de Arrachera",
    "categoria": "Mestizas",
    "precio_mxn": 269,
-   "pack_size": 1,
+   "pack_size": 2,
    "es_alcohol": false,
    "regional": false
   },
@@ -205,7 +205,7 @@
    "nombre": "Alambre de Pastor",
    "categoria": "Alambre",
    "precio_mxn": 276,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -213,7 +213,7 @@
    "nombre": "Alambre de Bistec",
    "categoria": "Alambre",
    "precio_mxn": 283,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -221,7 +221,7 @@
    "nombre": "Alambre de Pechuga",
    "categoria": "Alambre",
    "precio_mxn": 269,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -229,7 +229,7 @@
    "nombre": "Alambre de Chuleta",
    "categoria": "Alambre",
    "precio_mxn": 269,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -237,7 +237,7 @@
    "nombre": "Alambre de Costilla",
    "categoria": "Alambre",
    "precio_mxn": 276,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -245,7 +245,7 @@
    "nombre": "Alambre de Arrachera",
    "categoria": "Alambre",
    "precio_mxn": 343,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -253,7 +253,7 @@
    "nombre": "Suizo de Pastor",
    "categoria": "Tacos Suizos",
    "precio_mxn": 247,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -261,7 +261,7 @@
    "nombre": "Suizo de Bistec",
    "categoria": "Tacos Suizos",
    "precio_mxn": 291,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -269,7 +269,7 @@
    "nombre": "Suizo de Chuleta",
    "categoria": "Tacos Suizos",
    "precio_mxn": 284,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -277,7 +277,7 @@
    "nombre": "Suizo de Pechuga",
    "categoria": "Tacos Suizos",
    "precio_mxn": 284,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -285,7 +285,7 @@
    "nombre": "Suizo de Costilla",
    "categoria": "Tacos Suizos",
    "precio_mxn": 284,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -293,7 +293,7 @@
    "nombre": "Suizo de Arrachera",
    "categoria": "Tacos Suizos",
    "precio_mxn": 373,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -301,7 +301,7 @@
    "nombre": "Suizo de Poc-Chuc",
    "categoria": "Tacos Suizos",
    "precio_mxn": 284,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -309,7 +309,7 @@
    "nombre": "Suizo de Chorizo",
    "categoria": "Tacos Suizos",
    "precio_mxn": 209,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -317,7 +317,7 @@
    "nombre": "Suizo de Chile Poblano",
    "categoria": "Tacos Suizos",
    "precio_mxn": 204,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -325,7 +325,7 @@
    "nombre": "Alambre Suizo de Pastor",
    "categoria": "Tacos Suizos",
    "precio_mxn": 306,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -333,7 +333,7 @@
    "nombre": "Alambre Suizo de Bistec",
    "categoria": "Tacos Suizos",
    "precio_mxn": 314,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -341,7 +341,7 @@
    "nombre": "Alambre Suizo de Pechuga",
    "categoria": "Tacos Suizos",
    "precio_mxn": 306,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -349,7 +349,7 @@
    "nombre": "Alambre Suizo de Chuleta",
    "categoria": "Tacos Suizos",
    "precio_mxn": 306,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -357,7 +357,7 @@
    "nombre": "Alambre Suizo de Costilla",
    "categoria": "Tacos Suizos",
    "precio_mxn": 306,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -365,7 +365,7 @@
    "nombre": "Alambre Suizo de Arrachera",
    "categoria": "Tacos Suizos",
    "precio_mxn": 371,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -373,7 +373,7 @@
    "nombre": "Tacos Suizos de Chile Poblano y Bistec",
    "categoria": "Tacos Suizos",
    "precio_mxn": 328,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },
@@ -381,7 +381,7 @@
    "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
    "categoria": "Tacos Suizos",
    "precio_mxn": 378,
-   "pack_size": 1,
+   "pack_size": 5,
    "es_alcohol": false,
    "regional": false
   },

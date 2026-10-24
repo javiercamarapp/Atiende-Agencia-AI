@@ -63,6 +63,10 @@ test.describe("restaurantes clientes por nivel", () => {
     await expect(page.getByTestId("cartera-kpis")).toContainText("Cliente más frecuente");
     await expect(page.getByTestId("cartera-kpis")).toContainText("********0101");
     await expect(page.getByRole("link", { name: /Marisol Pech/ })).toBeVisible();
+    // «en total» porque la fixture no devuelve cursor; con cursor el rotulo dice «(hay más)».
+    await expect(page.getByTestId("clientes-total")).toContainText("en total");
+    // En movil (375 px) el conteo y la recencia van bajo el telefono: exactamente un bloque visible, en escritorio y en movil.
+    await expect(page.getByRole("link", { name: /Marisol Pech/ }).getByText(/pedidos · hace/).locator("visible=true")).toHaveCount(1);
 
     await page.getByRole("button", { name: "Importar clientes" }).click();
     const d = dialogo(page, "Importar clientes");

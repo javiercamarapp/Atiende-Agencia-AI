@@ -81,8 +81,8 @@ describe("ClientesListPage -- cartera por nivel", () => {
     await esperar();
     const texto = rendered!.container.textContent!;
     expect(texto).toContain("Black");
-    expect(texto).toContain("Último pedido hace 2 d");
-    expect(texto).toContain("Aún no ha pedido");
+    expect(texto).toContain("hace 2 d");
+    expect(texto).toContain("aún no ha pedido");
   });
 
   it("los filtros viajan al servidor: nivel, frecuencia, dias sin pedir y sucursal", async () => {

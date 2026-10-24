@@ -11,6 +11,7 @@
 // El rol repartidor no tiene Resumen: el Shell ya lo manda a /repartidor; aqui se repite como defensa en profundidad.
 import { useCallback, useEffect, useState } from "react";
 import { RestaurantesFijadosCopiloto } from "./Copiloto.tsx";
+import { GraficaTendencia } from "../components/GraficaTendencia.tsx";
 import { Navigate } from "react-router-dom";
 import {
   AgentRunCard,
@@ -108,43 +109,9 @@ async function cargarExtras(
   };
 }
 
-/** Sparkline SVG inline simple: no se agrega una libreria de graficas solo para dos mini-graficas. */
-function Sparkline({
-  points,
-  className,
-}: {
-  points: readonly number[];
-  className: string;
-}) {
-  const width = 320;
-  const height = 64;
-  if (points.length === 0) return null;
-  const max = Math.max(...points, 1);
-  const min = Math.min(...points, 0);
-  const range = max - min || 1;
-  const step = points.length > 1 ? width / (points.length - 1) : 0;
-  const coords = points.map(
-    (v, i) =>
-      `${(i * step).toFixed(1)},${(height - ((v - min) / range) * height).toFixed(1)}`,
-  );
-  return (
-    <svg
-      width="100%"
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      role="img"
-      aria-label="Tendencia"
-      className={className}
-    >
-      <polyline
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        points={coords.join(" ")}
-      />
-    </svg>
-  );
+/** Marca del eje Y: pesos enteros con separador de miles (sin centavos, el eje no los necesita). */
+function formatMoneyCorto(v: number): string {
+  return `$${formatInt(Math.round(v))}`;
 }
 
 function plural(n: number, uno: string, varios: string): string {
@@ -365,6 +332,35 @@ export function RestaurantesDashboardPage({
           </>
         }
       >
+        <Card className="p-3" role="region" aria-labelledby="resumen-tendencias">
+          <SectionLabel id="resumen-tendencias">Tendencias</SectionLabel>
+          <div className="mt-2 grid grid-cols-1 gap-2.5 lg:grid-cols-2">
+            <Card className="p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span aria-hidden="true" className="size-3 rounded-full bg-primary" />
+                <span className="text-ui font-medium text-foreground">Ventas ($)</span>
+              </div>
+              <GraficaTendencia
+                puntos={trend.map((p) => ({ etiqueta: p.label, valor: p.revenue }))}
+                etiquetaSerie="Ventas ($)"
+                formatoValor={(v) => formatMoneyCorto(v)}
+              />
+            </Card>
+            <Card className="p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span aria-hidden="true" className="size-3 rounded-full bg-secondary" />
+                <span className="text-ui font-medium text-foreground">Órdenes</span>
+              </div>
+              <GraficaTendencia
+                puntos={trend.map((p) => ({ etiqueta: p.label, valor: p.orders }))}
+                etiquetaSerie="Órdenes"
+                formatoValor={(v) => formatInt(v)}
+                tono="secondary"
+              />
+            </Card>
+          </div>
+        </Card>
+
         <ResumenSeccion titulo="Orquestación de agentes">
           <TileLink
             to={`${base}/conversaciones`}
@@ -434,26 +430,6 @@ export function RestaurantesDashboardPage({
           </div>
         </Card>
 
-        <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
-          <Card className="p-3">
-            <SectionLabel>Ventas ($)</SectionLabel>
-            <div className="mt-2">
-              <Sparkline
-                points={trend.map((p) => p.revenue)}
-                className="text-foreground"
-              />
-            </div>
-          </Card>
-          <Card className="p-3">
-            <SectionLabel>Órdenes</SectionLabel>
-            <div className="mt-2">
-              <Sparkline
-                points={trend.map((p) => p.orders)}
-                className="text-foreground"
-              />
-            </div>
-          </Card>
-        </div>
         <RestaurantesFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
       </ResumenLayout>
     </PageContainer>
