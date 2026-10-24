@@ -43,7 +43,7 @@ import { kmAproxTexto } from "../nearest-branch.ts";
 import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
-import { createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
@@ -1044,7 +1044,7 @@ async function horaYDireccionDeResumen(
   const partes: string[] = [];
   const colonia = input.canal === "recoger" ? undefined : textoOpcional(input.colonia_entrega)?.trim();
   // R21 (T7-001/T7-038): la direccion completa que el cliente dio (la calle, el numero, las referencias) va en el resumen que confirma; antes solo salia la colonia.
-  const direccionCompleta = input.canal === "recoger" || !calle ? undefined : sanearNotaDeResumen(calle);
+  const direccionCompleta = input.canal === "recoger" || !calle ? undefined : sanearNotaDeResumen(calle, { direccion: true });
   if (direccionCompleta) partes.push(direccionCompleta);
   if (colonia && !(direccionCompleta && direccionCompleta.toLowerCase().includes(colonia.toLowerCase()))) partes.push(`colonia ${colonia}`);
   if (input.canal !== "recoger" && ctx.ubicacionEntrega) partes.push("pin de ubicación recibido");
@@ -1077,12 +1077,22 @@ function detallesDeResumen(
   return { ...(salsas.length > 0 ? { salsas } : {}), ...(sinSalsas.length > 0 ? { sinSalsas } : {}), ...(notas ? { notas } : {}) };
 }
 
-const SOLO_BEBIDA = /\b(?:coca|cola|agua|refresco|jarritos|cerveza|limonada|topo\s+chico|sprite|fanta|boing|jugo|cafe|te\s+helado|sidral|pepsi|mineral)\b/i;
+/** Respaldo SOLO para renglones sin categoria en el catalogo (filas antiguas): la regla principal es la categoria del producto (`CATEGORIAS_SIN_SALSA`). */
+const SIN_SALSA_POR_NOMBRE = /\b(?:coca|cola|agua|refresco|jarritos|cerveza|limonada|topo\s+chico|sprite|fanta|boing|jugo|cafe|te\s+helado|sidral|pepsi|mineral|postre|flan|helado|pastel)\b/i;
+/** Los crujientes (y las alitas) no traen las salsas basicas del taco; se reconocen por nombre aunque su categoria no sea de bebidas o postres. */
+const CRUJIENTE_POR_NOMBRE = /\b(?:crujientes?)\b/i;
 
-/** R21: salsas BASICAS del perfil que van en el pedido (las del perfil menos las que el cliente quito o excluyo en las notas), con su nombre para el cliente. */
-function salsasBasicasDeResumen(input: Record<string, unknown>, previo: { readonly resumenBase?: { readonly sinSalsas?: readonly string[] } } | undefined, nombresDeRenglones: readonly string[]): readonly string[] {
-  // Un pedido de solo bebidas no lleva salsas: no se muestran.
-  if (nombresDeRenglones.length > 0 && nombresDeRenglones.every((n) => SOLO_BEBIDA.test(n))) return [];
+/** ¿El renglon lleva las salsas basicas? Por categoria del producto cuando se conoce; por nombre solo como respaldo. */
+function renglonLlevaSalsas(l: { readonly name: string; readonly categoryName?: string | null }): boolean {
+  if (CRUJIENTE_POR_NOMBRE.test(l.name)) return false;
+  if (typeof l.categoryName === "string" && l.categoryName.trim() !== "") return !CATEGORIAS_SIN_SALSA.test(l.categoryName.trim());
+  return !SIN_SALSA_POR_NOMBRE.test(l.name);
+}
+
+/** R21: salsas BASICAS del perfil que van en el pedido (las del perfil menos las que el cliente quito o excluyo en las notas), con su nombre para el cliente. Solo si algun renglon las lleva. */
+function salsasBasicasDeResumen(input: Record<string, unknown>, previo: { readonly resumenBase?: { readonly sinSalsas?: readonly string[] } } | undefined, renglones: readonly { readonly name: string; readonly categoryName?: string | null }[]): readonly string[] {
+  // Un pedido sin ningun renglon que lleve salsa (solo bebidas, postres o crujientes) no las muestra.
+  if (renglones.length > 0 && !renglones.some(renglonLlevaSalsas)) return [];
   const quitadas = new Set<string>();
   const omitidas = input.omit_default_complements != null ? (Array.isArray(input.omit_default_complements) ? input.omit_default_complements : []) : [];
   for (const o of omitidas) if (typeof o === "string") quitadas.add(o === "cebolla" ? "cebolla_cilantro" : o);
@@ -1318,7 +1328,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
               descuento: quotedQuote.descuento,
               canal: canalOf(input.canal),
               ...(({ contradiceAlCliente: _c, ...resto }) => resto)(horaYDireccion),
-              basicas: salsasBasicasDeResumen(input, previoVigente, quotedQuote.lines.map((l) => l.name)),
+              basicas: salsasBasicasDeResumen(input, previoVigente, quotedQuote.lines),
             }
           : undefined;
       const canonico = resumenBase

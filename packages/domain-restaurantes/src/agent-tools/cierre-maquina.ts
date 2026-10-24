@@ -484,7 +484,7 @@ const MAX_LISTA_SALSAS_RESUMEN = 300;
  * Nota libre del pedido ya capturada (`notes`) lista para el resumen que ve el cliente: una sola linea, sin correos ni numeros largos (telefonos, tarjetas) que el modelo
  * haya colado, y acotada. Devuelve `undefined` si no queda nada.
  */
-export function sanearNotaDeResumen(nota: unknown): string | undefined {
+export function sanearNotaDeResumen(nota: unknown, opciones: { readonly direccion?: boolean } = {}): string | undefined {
   if (typeof nota !== "string") return undefined;
   // Recorrido lineal (sin expresiones regulares con repeticiones anidadas: la nota es texto no confiable). Una racha de digitos y separadores con 7 o mas digitos es un telefono o
   // una tarjeta y se quita; una palabra con «@» es un correo y se quita.
@@ -492,17 +492,23 @@ export function sanearNotaDeResumen(nota: unknown): string | undefined {
   let sinNumeros = "";
   let racha = "";
   let digitos = 0;
+  let contiguos = 0;
+  let maxContiguos = 0;
+  // En una DIRECCION («Calle 60 #123 x 21», «No. 1234 97000») los numeros separados por espacios no son un telefono: solo se quita una racha de 10 o mas digitos o 7 o mas digitos SEGUIDOS.
+  const esTelefonoOTarjeta = (): boolean => (opciones.direccion === true ? digitos >= 10 || maxContiguos >= 7 : digitos >= 7);
   const cerrarRacha = (): void => {
-    if (digitos < 7) sinNumeros += racha;
+    if (!esTelefonoOTarjeta()) sinNumeros += racha;
     else sinNumeros += " ";
     racha = "";
     digitos = 0;
+    contiguos = 0;
+    maxContiguos = 0;
   };
   for (const ch of texto) {
     const esDigito = ch >= "0" && ch <= "9";
     if (esDigito || (racha !== "" && (ch === " " || ch === "-" || ch === "(" || ch === ")" || ch === "." || ch === "+"))) {
       racha += ch;
-      if (esDigito) digitos += 1;
+      if (esDigito) { digitos += 1; contiguos += 1; if (contiguos > maxContiguos) maxContiguos = contiguos; } else contiguos = 0;
     } else {
       cerrarRacha();
       sinNumeros += ch;

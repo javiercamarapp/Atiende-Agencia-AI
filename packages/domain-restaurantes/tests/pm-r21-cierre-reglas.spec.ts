@@ -4,15 +4,16 @@
 //  - T7-026: la ultima hora que dijo el cliente (5 pm) contradice la cotizada (7 pm): el servidor lo avisa antes de mostrar el resumen.
 //  - T7-008: chistorra / salchichas -> alternativa correcta (crujientes de pollo), no «tacos de chorizo».
 //  - G1 / NU-2: tras un aviso de falla no se vuelve a preguntar «¿Qué desea pedir?».
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { FakeLlmProvider, LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
-import { horaCotizadaContradiceAlCliente, horaDichaPorElCliente } from "../src/agent-tools/cierre-maquina.ts";
+import { datosDeCierreDeContexto, firmaDeCierre, horaCotizadaContradiceAlCliente, horaDichaPorElCliente } from "../src/agent-tools/cierre-maquina.ts";
 import { afirmaCambioRegistrado, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, quitarAfirmacionDePedidoRegistrado } from "../src/whatsapp/guards.ts";
 import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
 import { bloquePedidoPendienteTrasFalla, esAvisoDeFallaDelSistema, mensajesPerdidosPorFalla } from "../src/whatsapp/falla-pendiente.ts";
 import { PM_COPY } from "../src/whatsapp/perfil-pm.ts";
-import { bloqueProductoNoManejado, productosNoManejados } from "../src/unidades-pm.ts";
+import { bloqueProductoNoManejado, PM_PRODUCTOS_NO_MANEJADOS, productosNoManejados } from "../src/unidades-pm.ts";
 import { seedConfirmedOrderFlow } from "./support/order-flow-seed.ts";
 import { limpiarEntorno, prepararEntorno, setup } from "./support/cierre-r11.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
@@ -161,6 +162,51 @@ describe("el resumen canonico trae la direccion completa y las salsas basicas", 
     await s.quote({ canal: "recoger" });
     expect(await s.canonico()).not.toContain("Salsas básicas");
   });
+  /** Producto extra del menu con su categoria, para probar que la decision de salsas es por CATEGORIA y no por una lista de nombres. */
+  const producto = (s: ReturnType<typeof setup>, categoria: string, nombre: string, precio: number) => {
+    const categoryId = randomUUID();
+    const id = randomUUID();
+    s.f.repo.seedCategory({ id: categoryId, organizationId: s.f.organizationId, name: categoria });
+    s.f.repo.seedProduct({ id, organizationId: s.f.organizationId, categoryId, name: nombre, description: null, searchKeywords: [] });
+    s.f.repo.seedBranchProduct({ propertyId: s.f.propertyId, productId: id, price: precio, isAvailable: true });
+    return [{ product_id: id, product_name: nombre, requested_quantity: 1 }];
+  };
+  it.each([
+    ["Postres", "Flan napolitano"],
+    ["Aguas frescas", "Horchata"], // un nombre que ninguna lista de bebidas por nombre reconoceria: manda la categoria
+    ["Bebidas", "Kombucha de jamaica"],
+    ["Guarniciones extra", "Cebollitas"],
+    ["Pollo", "Crujientes de Pechuga de Pollo"],
+  ])("renglones sin salsa (%s: %s) NO listan «Salsas básicas incluidas»", async (categoria, nombre) => {
+    const s = setup();
+    await s.quote({ items: producto(s, categoria, nombre, 80), canal: "recoger" });
+    expect(await s.canonico()).not.toContain("Salsas básicas");
+  });
+  it("un pedido mixto (tacos + postre) si las lista, porque los tacos las llevan", async () => {
+    const s = setup();
+    await s.quote({ items: [...tacos(s.f), ...producto(s, "Postres", "Flan napolitano", 50)], canal: "recoger" });
+    expect(await s.canonico()).toContain("Salsas básicas incluidas");
+  });
+  it("direccion con numeros largos o separados («Calle 60 #123 x 21») no se sobre-recorta; un telefono si se quita", async () => {
+    const s = setup();
+    await s.quote({ items: tacos(s.f), canal: "domicilio", colonia_entrega: "Centro", customer_address: "Calle 60 #1234 x 21 y 23, No. 123 21 45, Centro tel 999 123 4567" });
+    const c = await s.canonico();
+    expect(c).toContain("Calle 60 #1234 x 21 y 23, No. 123 21 45");
+    expect(c).not.toContain("4567");
+    const s2 = setup();
+    await s2.quote({ items: tacos(s2.f), canal: "domicilio", colonia_entrega: "Centro", customer_address: "Calle 60 #123 x 21" });
+    expect(await s2.canonico()).toContain("Dirección: Calle 60 #123 x 21, colonia Centro");
+  });
+  it("las salsas basicas y la direccion NO entran a la firma del cierre ni a la decision de confirmar", async () => {
+    const a = setup();
+    await a.quote({ items: tacos(a.f), canal: "domicilio", colonia_entrega: "Centro", customer_address: "Calle 60 #123 x 21" });
+    const b = setup();
+    await b.quote({ items: tacos(b.f), canal: "domicilio", colonia_entrega: "Centro", customer_address: "Otra calle 5", omit_default_complements: ["salsa_verde"] });
+    const ca = (await a.snap())!.context!;
+    const cb = (await b.snap())!.context!;
+    expect(ca.resumenCanonico).not.toEqual(cb.resumenCanonico);
+    expect(firmaDeCierre(datosDeCierreDeContexto(ca))).toEqual(firmaDeCierre(datosDeCierreDeContexto(cb)));
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -245,6 +291,8 @@ describe("producto que el menu no tiene -> alternativa correcta", () => {
     expect(b).toContain("CRUJIENTES DE POLLO");
     expect(b).toContain("chistorra");
     expect(b).toMatch(/No ofrezca como sustituto tacos de chorizo/);
+    expect(b).toMatch(/SIEMPRE verifique con buscar_producto/); // la lista es deuda del perfil PM: el catalogo manda
+    expect(PM_PRODUCTOS_NO_MANEJADOS.map((p) => p.nombre)).toEqual(["chistorra", "longaniza", "salchichas", "dedos de queso", "papas a la francesa"]);
     expect(bloqueProductoNoManejado(["3 tacos de pastor"])).toBe("");
   });
   it("llega al prompt del turno de PM", async () => {

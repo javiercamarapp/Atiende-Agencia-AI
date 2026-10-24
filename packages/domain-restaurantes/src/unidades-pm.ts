@@ -219,7 +219,13 @@ export function bloqueCantidadNoMultiplo(mensajes: readonly string[]): string {
 // El modelo rechazaba bien chistorra o salchichas pero ofrecia «tacos de chorizo» (un platillo que el cliente no pidio y que el menu no tiene) en vez de lo parecido que SI hay
 // (los crujientes de pollo). El servidor detecta la palabra en el mensaje del cliente y le fija al modelo, SOLO para ese turno, que decir. No lista precios: los da buscar_producto.
 
-const NO_MANEJADOS: readonly { readonly nombre: string; readonly patron: RegExp }[] = [
+/**
+ * Productos que el menu de Los Taquitos de PM NO tiene: constante del PERFIL PM, no una regla del dominio.
+ * DEUDA: esta lista es una foto del menu de oct-2026 escrita a mano. Lo correcto es que salga del catalogo/configuracion del tenant (un producto "no manejado" = no existe en el catalogo
+ * activo) y no de una lista en codigo. Por eso el bloque de abajo NUNCA da por hecho que falte: siempre manda verificar con `buscar_producto` antes de decirle al cliente que no lo manejamos.
+ * Si el menu cambia (p. ej. PM agrega chistorra), basta con que `buscar_producto` lo devuelva: el modelo lo cotiza y esta lista deja de importar.
+ */
+export const PM_PRODUCTOS_NO_MANEJADOS: readonly { readonly nombre: string; readonly patron: RegExp }[] = [
   { nombre: "chistorra", patron: /\bchistorra\b/ },
   { nombre: "longaniza", patron: /\blonganiza\b/ },
   { nombre: "salchichas", patron: /\bsalchichas?\b/ },
@@ -230,7 +236,7 @@ const NO_MANEJADOS: readonly { readonly nombre: string; readonly patron: RegExp 
 /** Pura: nombres (canonicos) de los productos que el menu no maneja y que el cliente menciono en el texto. */
 export function productosNoManejados(texto: string): string[] {
   const t = sinAcentos(texto).toLowerCase();
-  return NO_MANEJADOS.filter((p) => p.patron.test(t)).map((p) => p.nombre);
+  return PM_PRODUCTOS_NO_MANEJADOS.filter((p) => p.patron.test(t)).map((p) => p.nombre);
 }
 
 /** Bloque de sistema para el turno. Vacio si el cliente no menciono ningun producto no manejado. */
@@ -239,6 +245,6 @@ export function bloqueProductoNoManejado(mensajes: readonly string[]): string {
   if (nombres.length === 0) return "";
   return [
     "REGLA DEL SERVIDOR PARA ESTE TURNO (producto que el menú no tiene):",
-    `El cliente mencionó ${nombres.join(", ")}. Verifique con buscar_producto; si no aparece, diga que NO lo manejamos (sin inventarlo ni cotizarlo) y ofrezca como alternativa los CRUJIENTES DE POLLO (busque «crujientes» para dar el nombre y el precio reales). No ofrezca como sustituto tacos de chorizo ni ningún otro platillo que buscar_producto no devuelva. Los productos válidos del pedido se conservan y se cotizan normalmente.`,
+    `El cliente mencionó ${nombres.join(", ")}. SIEMPRE verifique con buscar_producto antes de contestar (esta lista puede estar desactualizada: si buscar_producto SÍ lo devuelve, cotícelo normalmente). Si no aparece, diga que NO lo manejamos (sin inventarlo ni cotizarlo) y ofrezca como alternativa los CRUJIENTES DE POLLO (busque «crujientes» para dar el nombre y el precio reales). No ofrezca como sustituto tacos de chorizo ni ningún otro platillo que buscar_producto no devuelva. Los productos válidos del pedido se conservan y se cotizan normalmente.`,
   ].join("\n");
 }
