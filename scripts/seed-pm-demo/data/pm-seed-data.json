@@ -18,7 +18,12 @@
       "lng": -89.61,
       "activa": true,
       "zona_cliente": "zona centro y norte",
-      "horario_pendiente": "Fuentes en conflicto el viernes (verificacion del 23-oct-2026): el sitio oficial dice lun-jue 18:00-01:00 y vie-sab-dom 12:00-01:00; la ficha de Google dice lun-jue 18:00-01:00, vie 18:00-01:00, sab-dom 12:00-01:00. Mientras PM no confirme el viernes, T1 usa el horario general (no se inventa).",
+      "horario": [
+        { "dias": [1, 2, 3, 4, 5], "abre": "18:00", "cierra": "01:00" },
+        { "dias": [0, 6], "abre": "12:00", "cierra": "01:00" }
+      ],
+      "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026) coinciden en lun-jue 18:00-01:00 y sab-dom 12:00-01:00; el cierre a la 1 am quedo confirmado por el equipo.",
+      "horario_pendiente": "VIERNES PROVISIONAL, confirmar con PM: el sitio oficial dice vie 12:00-01:00 y la ficha de Google dice vie 18:00-01:00. Se usa 18:00 (lo conservador: no tomar pedidos cuando podria estar cerrado). Si PM confirma 12:00, cambiar el viernes a 12:00-01:00.",
       "coordenadas_propuestas": {
         "lat": 21.0093272,
         "lng": -89.6135974,
@@ -98,7 +103,10 @@
       "lat": null,
       "lng": null,
       "activa": false,
-      "horario_pendiente": "Sitio oficial y ficha de Google (23-oct-2026): todos los dias 12:00-21:00 (food court). El Instagram de PM dice «12 pm a 1 am» para Galerias: conflicto. Mientras PM no confirme se deja el horario general; la sucursal no recibe pedidos.",
+      "horario": [
+        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "12:00", "cierra": "21:00" }
+      ],
+      "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026): todos los dias 12:00-21:00 (food court de Plaza Galerias). El Instagram generico de PM dice «12 pm a 1 am» y no pesa mas que esas dos fuentes. Sucursal inactiva: no recibe pedidos.",
       "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed.",
       "directorio": {
         "visible": true,

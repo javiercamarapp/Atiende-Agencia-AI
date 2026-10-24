@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOrder } from "../src/orders.ts";
-import { estaAbiertoAhora } from "../src/horarios.ts";
+import { estaAbiertoAhora, horaLegible } from "../src/horarios.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { PromotionError } from "../src/errors.ts";
 import {
@@ -67,15 +67,31 @@ describe("buildPmSeedPlan", () => {
     });
   });
 
-  it("horario por sucursal (verificado 23-oct-2026 con sitio oficial y ficha de Google): T2 lun-vie 18:00-24:00 y sab-dom 12:00-24:00; T3 todos los dias 18:00-24:00; el resto usa el general", () => {
+  it("horario por sucursal (verificado 23-oct-2026 con sitio oficial y ficha de Google): T1 y T2 entre semana desde las 18:00, T3 desde las 18:00, T4 12:00-21:00; T7 y T8 usan el general", () => {
     const porId = Object.fromEntries(plan.branches.map((b) => [b.id, b.horario]));
+    expect(porId.T1).toEqual([
+      { dias: [1, 2, 3, 4, 5], abre: "18:00", cierra: "01:00" }, // viernes PROVISIONAL (sitio 12:00, Google 18:00): pendiente de confirmar con PM
+      { dias: [0, 6], abre: "12:00", cierra: "01:00" },
+    ]);
     expect(porId.T2).toEqual([
       { dias: [1, 2, 3, 4, 5], abre: "18:00", cierra: "00:00" },
       { dias: [0, 6], abre: "12:00", cierra: "00:00" },
     ]);
     expect(porId.T3).toEqual([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "18:00", cierra: "00:00" }]);
-    // T1 (viernes en conflicto entre fuentes), T4 (conflicto con Instagram), T5 (una fuente) y T7/T8 (ya coinciden con el general): sin horario propio.
-    for (const id of ["T1", "T4", "T5", "T7", "T8"]) expect(porId[id]).toBeUndefined();
+    expect(porId.T4).toEqual([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "21:00" }]);
+    // T5 (cerrada hasta Semana Santa, una sola fuente) y T7/T8 (ya coinciden con el general): sin horario propio.
+    for (const id of ["T5", "T7", "T8"]) expect(porId[id]).toBeUndefined();
+  });
+
+  it("T1: el viernes provisional (18:00) deja cerrada la sucursal a las 14:00 y abierta a las 19:00; el sabado abre a las 12:00", () => {
+    const zona = "America/Merida";
+    const t1 = plan.branches.find((b) => b.id === "T1")!.horario!;
+    // 2026-10-23 es viernes; Merida es UTC-6.
+    expect(estaAbiertoAhora(t1, new Date("2026-10-23T20:00:00Z"), zona).abierto).toBe(false);
+    expect(estaAbiertoAhora(t1, new Date("2026-10-24T01:00:00Z"), zona).abierto).toBe(true);
+    expect(estaAbiertoAhora(t1, new Date("2026-10-24T19:00:00Z"), zona).abierto).toBe(true);
+    expect(estaAbiertoAhora(t1, new Date("2026-10-24T06:30:00Z"), zona).abierto).toBe(true); // viernes 00:30 del sabado: el turno del viernes sigue hasta la 01:00
+    expect(estaAbiertoAhora(t1, new Date("2026-10-24T07:30:00Z"), zona).abierto).toBe(false); // 01:30
   });
 
   it("T3 a las 14:00 de un martes esta cerrada y a las 18:30 abierta; T2 un sabado a las 13:00 abierta y un martes a las 13:00 cerrada", () => {
@@ -87,6 +103,27 @@ describe("buildPmSeedPlan", () => {
     expect(estaAbiertoAhora(t3, new Date("2026-10-21T00:30:00Z"), zona).abierto).toBe(true);
     expect(estaAbiertoAhora(t2, new Date("2026-10-24T19:00:00Z"), zona).abierto).toBe(true);
     expect(estaAbiertoAhora(t2, new Date("2026-10-20T19:00:00Z"), zona).abierto).toBe(false);
+  });
+
+  it("bordes de medianoche (cierre 00:00 y cierre 01:00): T3 martes 23:59 abierta y 00:00 cerrada; T2 domingo 23:30 abierta y lunes 00:00 cerrada; T1 lunes 00:30 abierta (turno del domingo) y 01:00 cerrada", () => {
+    const zona = "America/Merida"; // UTC-6 todo el año
+    const h = (id: string) => plan.branches.find((b) => b.id === id)!.horario!;
+    const abierto = (id: string, utc: string) => estaAbiertoAhora(h(id), new Date(utc), zona);
+    // 2026-10-20 es martes.
+    expect(abierto("T3", "2026-10-21T05:59:00Z")).toMatchObject({ abierto: true, cierraA: "00:00" });
+    expect(abierto("T3", "2026-10-21T06:00:00Z").abierto).toBe(false);
+    // 2026-10-25 es domingo.
+    expect(abierto("T2", "2026-10-26T05:30:00Z")).toMatchObject({ abierto: true, cierraA: "00:00" });
+    expect(abierto("T2", "2026-10-26T06:00:00Z").abierto).toBe(false);
+    // T1: el turno del domingo (12:00-01:00) cruza a lunes; el del lunes abre a las 18:00.
+    expect(abierto("T1", "2026-10-26T06:30:00Z")).toMatchObject({ abierto: true, cierraA: "01:00" });
+    expect(abierto("T1", "2026-10-26T07:00:00Z").abierto).toBe(false);
+  });
+
+  it("al cliente un cierre 00:00 se le dice «12:00 a. m. (medianoche)», nunca «00:00»; el resto de las horas no cambia", () => {
+    expect(horaLegible("00:00")).toBe("12:00 a. m. (medianoche)");
+    expect(horaLegible("01:00")).toBe("01:00");
+    expect(horaLegible("18:00")).toBe("18:00");
   });
 
   it("el SQL del seed siembra el horario propio de la sucursal y cae al general si no lo tiene", () => {
