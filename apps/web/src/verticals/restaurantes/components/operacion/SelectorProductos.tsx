@@ -53,7 +53,7 @@ export function SelectorProductos({
           <li key={p.id}>
             <Button type="button" variant="outline" className="h-12 w-full justify-between text-base" onClick={() => agregar(p)} aria-label={`Agregar ${p.name}`}>
               <span className="truncate text-left">{p.name}</span>
-              <span className="shrink-0">{formatMoney(precioDe(p))}</span>
+              <span className="shrink-0">${formatMoney(precioDe(p))}</span>
             </Button>
           </li>
         ))}
@@ -65,7 +65,7 @@ export function SelectorProductos({
             <li key={`${l.productId}-${i}`} className="space-y-2 rounded-lg border border-border bg-card p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-base font-medium text-foreground">{l.nombre}</p>
-                <p className="text-base text-muted-foreground">{formatMoney((precios.get(l.productId) ?? 0) * l.cantidad)}</p>
+                <p className="text-base text-muted-foreground">${formatMoney((precios.get(l.productId) ?? 0) * l.cantidad)}</p>
               </div>
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" className="size-12" aria-label={`Quitar una ${l.nombre}`} disabled={l.cantidad <= 1} onClick={() => cambiar(i, { cantidad: l.cantidad - 1 })}>

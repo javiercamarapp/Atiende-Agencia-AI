@@ -204,9 +204,9 @@ describe("PEDIDO DE PRUEBA de punta a punta por WhatsApp en T7 (catalogo real de
     ).rejects.toThrow(/domicilio|recoger/i);
   });
 
-  it("horario: 00:30 (cruce de medianoche) se acepta; 01:10 se rechaza con el horario; 11:50 se rechaza", async () => {
+  it("horario: 00:15 (cruce de medianoche) se acepta; 01:10 se rechaza con el horario; 11:50 se rechaza", async () => {
     const pastor = (b: Banco) => [{ productId: b.pid("Taco Al Pastor (individual)"), requestedQuantity: 5, tortilla: "maiz" as const }];
-    const media = await banco({ now: "2026-10-14T06:30:00.000Z" }); // miercoles 00:30 Merida
+    const media = await banco({ now: "2026-10-14T06:15:00.000Z" }); // miercoles 00:15 Merida
     await expect(quoteOrder(media.w.repo, { organizationId: media.w.organizationId, branchSlug: "garcia-lavin", canal: "recoger", items: pastor(media) })).resolves.toMatchObject({ total: 210 });
     const tarde = await banco({ now: "2026-10-14T07:10:00.000Z" }); // 01:10
     await expect(quoteOrder(tarde.w.repo, { organizationId: tarde.w.organizationId, branchSlug: "garcia-lavin", canal: "recoger", items: pastor(tarde) })).rejects.toThrow(/cerrad|horario|abre/i);

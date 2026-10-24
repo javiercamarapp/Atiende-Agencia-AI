@@ -223,7 +223,7 @@ describe("horas locales correctas (reloj fijo martes 13:00 Merida; horario 12:00
     ["«a las 7 pm» hoy", "2026-10-06T19:00:00-06:00", "2026-10-07T01:00:00.000Z"],
     ["«a las 19:00» hoy", "2026-10-06T19:00:00-06:00", "2026-10-07T01:00:00.000Z"],
     ["«mediodia» de manana", "2026-10-07T12:00:00-06:00", "2026-10-07T18:00:00.000Z"],
-    ["«a las 12:30 am» (cruce de dia: sigue en el turno del martes)", "2026-10-07T00:30:00-06:00", "2026-10-07T06:30:00.000Z"],
+    ["«a las 12:15 am» (cruce de dia: sigue en el turno del martes)", "2026-10-07T00:15:00-06:00", "2026-10-07T06:15:00.000Z"],
     ["«medianoche» exacta", "2026-10-07T00:00:00-06:00", "2026-10-07T06:00:00.000Z"],
     ["justo 30 minutos adelante (14:00 es hora valida)", "2026-10-06T14:00:00-06:00", "2026-10-06T20:00:00.000Z"],
     ["dentro de 7 dias a las 3 pm", "2026-10-13T12:00:00-06:00", "2026-10-13T18:00:00.000Z"],

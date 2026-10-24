@@ -5,7 +5,7 @@
 // el vigilante de e2e trata todo 5xx como fallo y los recorridos existentes del repartidor (vista anterior, `repartidor/orders`) deben seguir intactos.
 // La SPA reconoce el codigo `no_implementado` (y tambien el 501 real: ver `esFuncionNoDisponible`). Una prueba del panel nuevo la abre con
 // `mock.agregarAEstado("op.chofer.habilitado", true)` (la lista nace con la primera peticion, por eso la prueba recarga la pagina despues).
-import { esquemaDeshacerEntregaSalida, esquemaEntregarSalida, esquemaEntregasChoferSalida, esquemaHoyChoferSalida, esquemaLlamarSalida, esquemaProblemaSalida } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
+import { esquemaOperacionHoy, esquemaDeshacerEntregaSalida, esquemaEntregarSalida, esquemaEntregasChoferSalida, esquemaHoyChoferSalida, esquemaLlamarSalida, esquemaProblemaSalida } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { EntregaChofer } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
 import type { Peticion, Ruta } from "../tipos.ts";
 import { MENSAJE_NO_IMPLEMENTADO } from "../../../../../packages/domain-restaurantes/src/operacion/contratos.ts";
@@ -100,5 +100,34 @@ export const rutasOperacionChofer: readonly Ruta[] = [
       const todas = entregas(p);
       const hechas = todas.filter((e) => e.estado === "entregado").length;
       return conContrato(esquemaHoyChoferSalida, { entregasHoy: 4 + hechas, enCamino: todas.filter((e) => e.estado === "en_camino").length, efectivoPorEntregar: null });
+    } },
+];
+
+// ---------------------------------------------------------------------------
+// Turno de hoy (paquete C2): `GET admin/operacion/hoy`, con la misma compuerta (por omision `no_implementado`). Cifras ficticias; las alertas y el
+// efectivo salen del estado de las entregas del chofer para que un cambio en una pantalla se refleje en la otra.
+// ---------------------------------------------------------------------------
+const hoyMock = (turno: string, p: Peticion) => {
+  const ahora = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const entregadas = entregas(p).filter((e) => e.estado === "entregado").length;
+  return {
+    corte: { desde: iso(ahora - 8 * 3_600_000), hasta: iso(ahora) },
+    pedidos: { total: turno === "dia" ? 30 : 23, porEstado: { pending: 2, preparando: 5, en_camino: 3, entregado: 11 + entregadas, cancelado: 1, problema: 1 } },
+    ventas: 16300, ticketPromedio: 708,
+    puntuales: { pct: 91, evaluados: 20, umbralMin: { domicilio: 65, recoger: 35 } },
+    tiempos: { preparacionMinProm: 14, entregaMinProm: 31, entregaMinP90: 48, sinDato: 0 },
+    cancelados: { total: 1, porMotivo: { cliente_cancelo: 1 } },
+    porCanal: { whatsapp: 9, voz: 4, llamada: 7, mostrador: 2, web: 1 },
+    alertas: { sinAceptar: [{ pedidoId: "00000000-0000-4000-8000-0000000c0150", numero: 150, minutos: 6 }], enCaminoMas90: [{ pedidoId: "00000000-0000-4000-8000-0000000c0141", numero: 141, minutos: 104 }] },
+    efectivoPorChofer: { disponible: true, choferes: [{ repartidorId: "00000000-0000-4000-8000-00000000a001", nombre: "Chofer de prueba", entregas: 6, efectivoPorEntregar: 3120 }] },
+    actualizadoEn: iso(ahora),
+  };
+};
+
+export const rutasOperacionTurno: readonly Ruta[] = [
+  { metodo: "GET", patron: RUTAS_OPERACION.hoy.patron, roles: ["owner", "admin", "staff"], manejador: (p) => {
+      if (!habilitado(p)) return respuestaNoImplementada();
+      return conContrato(esquemaOperacionHoy, hoyMock(p.query.get("turno") === "dia" ? "dia" : "actual", p));
     } },
 ];

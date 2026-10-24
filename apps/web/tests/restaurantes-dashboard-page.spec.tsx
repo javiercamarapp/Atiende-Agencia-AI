@@ -58,7 +58,6 @@ const CHANNELS: ChannelKpis = {
   whatsappConversations: { total: 120, withOrder: 90, averageMessages: 6.5 },
   aiAdoptionPct: 41.7,
   aiRevenuePct: 40.5,
-  estimatedHoursSaved: 10.8,
   periodo: { acotado: true, etiqueta: "Últimos 30 días" },
 };
 
@@ -92,10 +91,20 @@ interface Handlers {
   salesOk?: boolean;
   channelsOk?: boolean;
   customersOk?: boolean;
+  resumenCfg?: { minutosPorConversacion: number | null; metaPedidosIaPct: number | null; metaIngresosIaPct: number | null } | "falla" | "sin-migrar";
+  productos?: number | "falla";
+  categorias?: number | "falla";
 }
 
 function stubFetch(handlers: Handlers) {
   fetchMock = vi.fn(async (url: string) => {
+    if (url.includes("/admin/resumen/config")) {
+      if (handlers.resumenCfg === "falla") return jsonResponse({}, false);
+      const cfg = typeof handlers.resumenCfg === "object" ? handlers.resumenCfg : { minutosPorConversacion: null, metaPedidosIaPct: null, metaIngresosIaPct: null };
+      return jsonResponse({ disponible: handlers.resumenCfg !== "sin-migrar", config: cfg, actualizadoEn: null, rangos: { minutos: { min: 1, max: 120 }, meta: { min: 1, max: 100 } }, formula: "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado historico de las sucursales que puedes ver; no cambia con el periodo) × minutos por conversacion que configuraste para toda la organizacion ÷ 60. Es una estimacion con tu supuesto, no una medicion." });
+    }
+    if (url.includes("/admin/products")) return handlers.productos === "falla" ? jsonResponse({}, false) : jsonResponse({ products: Array.from({ length: handlers.productos ?? 0 }, (_, i) => ({ id: `p${i}` })) });
+    if (url.includes("/admin/categories")) return handlers.categorias === "falla" ? jsonResponse({}, false) : jsonResponse({ categories: Array.from({ length: handlers.categorias ?? 0 }, (_, i) => ({ id: `c${i}` })) });
     if (url.includes("/admin/config/zona-horaria")) return jsonResponse({ zonaHoraria: handlers.zona ?? null });
     if (url.includes("/admin/voz/kpi")) {
       if (!handlers.voz) return jsonResponse({ disponible: false }, false);
@@ -126,9 +135,9 @@ function renderPage(ctx: RestaurantesShellContext = CTX): RenderedComponent {
   );
 }
 
-/** Etiquetas de las tarjetas KPI, en el orden en que aparecen en el DOM. */
+/** Etiquetas de las tarjetas KPI de la rejilla, en el orden del DOM. «Horas de atención ahorradas» vive en su propia seccion («Impacto de tus agentes»). */
 function etiquetasKpi(r: RenderedComponent): string[] {
-  return [...r.container.querySelectorAll('[data-testid="stat-card-chip"]')].map((chip) => chip.nextElementSibling?.textContent ?? "");
+  return [...r.container.querySelectorAll('[data-testid="stat-card-chip"]')].map((chip) => chip.nextElementSibling?.textContent ?? "").filter((t) => t !== "Horas de atención ahorradas");
 }
 
 function tarjeta(r: RenderedComponent, etiqueta: string): HTMLElement {
@@ -164,7 +173,7 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     expect(rendered.container.querySelectorAll('[data-testid="stat-card-chip"]').length).toBe(0);
   });
 
-  it("los KPIs salen en el orden de Likida y sin 'Horas de atención ahorradas' (el endpoint la estima con un supuesto, no la mide)", async () => {
+  it("los KPIs de la rejilla salen en el orden de Likida; «Horas de atención ahorradas» no va entre ellos sino en su seccion, con formula explicita y configurable", async () => {
     stubFetch({});
     rendered = renderPage();
     await esperarCarga();
@@ -177,7 +186,7 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
       "Pedidos por voz",
       "Clientes recurrentes",
     ]);
-    expect(rendered.container.textContent).not.toContain("Horas de atención ahorradas");
+    expect(rendered.container.textContent).toContain("Impacto de tus agentes");
     expect(rendered.container.textContent).not.toContain("Estimado");
   });
 
@@ -276,7 +285,7 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     const text = rendered.container.textContent!;
     expect(text.toLowerCase()).toContain("orquestación de agentes");
     const links = enlaces(rendered);
-    expect(links["WhatsApp120 conversaciones · 90 con pedido · Últimos 30 días"]).toBe("/restaurantes/demo/conversaciones");
+    expect(links["WhatsApp120 conversaciones · 90 con pedido · histórico"]).toBe("/restaurantes/demo/conversaciones");
     expect(Object.entries(links).find(([k]) => k.startsWith("Voz"))?.[1]).toBe("/restaurantes/demo/agente-voz");
     expect(text).toContain("4 llamadas hoy · 57 llamadas en el mes");
     expect(Object.entries(links).find(([k]) => k.startsWith("Toma humana"))?.[1]).toBe("/restaurantes/demo/conversaciones");
@@ -365,5 +374,145 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     });
     expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAntes);
     expect(fetchMock.mock.calls.some(([url]) => url.includes("/kpis/sales?period=30"))).toBe(true);
+  });
+
+  it("Tu operación: productos, categorías y clientes únicos con datos reales y su destino; si el catálogo falla lo dice en vez de poner 0", async () => {
+    stubFetch({ productos: 42, categorias: 6 });
+    rendered = renderPage();
+    await esperarCarga();
+    const text = rendered.container.textContent!;
+    expect(text.toLowerCase()).toContain("tu operación");
+    const links = enlaces(rendered);
+    expect(links["Total de productos42 en el catálogo"]).toBe("/restaurantes/demo/productos");
+    expect(links["Categorías6 en el catálogo"]).toBe("/restaurantes/demo/productos");
+    expect(Object.entries(links).find(([k]) => k.startsWith("Clientes registrados"))?.[1]).toBe("/restaurantes/demo/clientes");
+    rendered.unmount();
+
+    stubFetch({ productos: "falla", categorias: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("No se pudo leer el catálogo");
+    expect(enlaces(rendered)["Total de productosNo se pudo leer el catálogo"]).toBe("/restaurantes/demo/productos");
+  });
+
+  it("Horas ahorradas: sin configurar dice «Configúralo» y no inventa una cifra; con minutos aplica la formula explicita y muestra las metas", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+    let text = rendered.container.textContent!;
+    expect(text).toContain("Horas de atención ahorradas");
+    expect(text).toContain("Configúralo");
+    expect(text).not.toMatch(/\d+\.\d h/);
+    expect(text).not.toContain("Tu meta");
+    rendered.unmount();
+
+    stubFetch({ resumenCfg: { minutosPorConversacion: 6, metaPedidosIaPct: 50, metaIngresosIaPct: 40 } });
+    rendered = renderPage();
+    await esperarCarga();
+    text = rendered.container.textContent!;
+    expect(text).toContain("12.0 h");
+    expect(text).toContain("120 conversaciones (histórico, sucursales que ves) × 6 min ÷ 60");
+    expect(text).toContain("Tu meta: 50%");
+    expect(text).toContain("Tu meta: 40%");
+    expect(rendered.container.querySelector('[title*="historico"][title*="no cambia con el periodo"][title*="toda la organizacion"]')).not.toBeNull();
+  });
+
+  it("Horas ahorradas: si la configuracion no se puede leer lo dice y no ofrece configurar", async () => {
+    stubFetch({ resumenCfg: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("No se pudo leer la configuración");
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Configurar horas y metas"))).toBe(false);
+  });
+
+  it("Configurar horas y metas: solo owner/admin; guarda con PUT y actualiza el tile; fuera de rango no llama al API", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+    const boton = () => [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Configurar horas y metas"))!;
+    expect(boton()).toBeTruthy();
+    await act(async () => { boton().click(); await flushMicrotasks(); });
+    const input = document.body.querySelector("#resumen-minutos") as HTMLInputElement;
+    const set = (el: HTMLInputElement, v: string) => { const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!; d.set!.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); };
+    await act(async () => { set(input, "500"); await flushMicrotasks(); });
+    const guardarBtn = () => [...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Guardar cambios")!;
+    await act(async () => { guardarBtn().click(); await flushMicrotasks(); });
+    expect(document.body.textContent).toContain("entre 1 y 120");
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT")).toBe(false);
+  });
+
+  it("staff no ve el boton de configurar", async () => {
+    stubFetch({});
+    rendered = renderPage({ ...CTX, role: "staff" });
+    await esperarCarga();
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Configurar horas y metas"))).toBe(false);
+  });
+
+  it("config ilegible: ofrece Reintentar y al reintentar vuelve a pedirla", async () => {
+    stubFetch({ resumenCfg: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    const cuantas = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/admin/resumen/config")).length;
+    const antes = cuantas();
+    const reintentar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reintentar")!;
+    expect(reintentar).toBeTruthy();
+    await act(async () => { reintentar.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    expect(cuantas()).toBeGreaterThan(antes);
+  });
+
+  it("base sin la migracion: el dialogo habla en neutro (sin «migración») y no deja guardar", async () => {
+    stubFetch({ resumenCfg: "sin-migrar" });
+    rendered = renderPage();
+    await esperarCarga();
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Configurar horas y metas"))!;
+    await act(async () => { boton.click(); await flushMicrotasks(); });
+    const texto = document.body.textContent ?? "";
+    expect(texto).toContain("Esta función aún no está disponible en tu cuenta.");
+    expect(texto.toLowerCase()).not.toContain("migración");
+    const guardar = [...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Guardar cambios") as HTMLButtonElement;
+    expect(guardar.disabled).toBe(true);
+  });
+
+  it("Tu operación: si falla solo categorías, los productos se muestran y solo ese tile dice que no pudo leer", async () => {
+    stubFetch({ productos: 42, categorias: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    const links = enlaces(rendered);
+    expect(links["Total de productos42 en el catálogo"]).toBe("/restaurantes/demo/productos");
+    expect(links["CategoríasNo se pudo leer el catálogo"]).toBe("/restaurantes/demo/productos");
+  });
+
+  it("Tu operación: el catálogo se pide UNA vez por montaje, no al cambiar de periodo ni con Actualizar; clientes se rotula como registrados", async () => {
+    stubFetch({ productos: 3, categorias: 2 });
+    rendered = renderPage();
+    await esperarCarga();
+    const pedidosCatalogo = () => fetchMock.mock.calls.filter(([url]) => /\/admin\/(products|categories)/.test(String(url))).length;
+    expect(pedidosCatalogo()).toBe(2);
+    const siete = [...rendered.container.querySelectorAll("label")].find((l) => l.textContent?.trim() === "7 días")!;
+    await act(async () => { siete.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    const actualizar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Actualizar"))!;
+    await act(async () => { actualizar.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/kpis/sales?period=7"))).toBe(true);
+    expect(pedidosCatalogo()).toBe(2);
+    expect(rendered.container.textContent).toContain("Clientes registrados");
+    expect(rendered.container.textContent).not.toContain("Clientes únicos");
+  });
+
+  it("Horas ahorradas: la configuración se pide UNA vez por montaje, no al cambiar de periodo ni con Actualizar, y el tile de WhatsApp ya se rotula «histórico»", async () => {
+    stubFetch({ resumenCfg: { minutosPorConversacion: 6, metaPedidosIaPct: 50, metaIngresosIaPct: 40 } });
+    rendered = renderPage();
+    await esperarCarga();
+    const pedidosCfg = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/admin/resumen/config")).length;
+    expect(pedidosCfg()).toBe(1);
+    const siete = [...rendered.container.querySelectorAll("label")].find((l) => l.textContent?.trim() === "7 días")!;
+    await act(async () => { siete.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    const actualizar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Actualizar"))!;
+    await act(async () => { actualizar.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/kpis/sales?period=7"))).toBe(true);
+    expect(pedidosCfg()).toBe(1);
+    // La cifra sigue ahi tras recargar los KPIs (la configuracion ya no vive en los extras que se reemplazan).
+    expect(rendered.container.textContent).toContain("12.0 h");
+    // Cambio de significado del tile de WhatsApp: ya no es «del periodo», es el acumulado historico y asi se rotula.
+    expect(enlaces(rendered)["WhatsApp120 conversaciones · 90 con pedido · histórico"]).toBe("/restaurantes/demo/conversaciones");
   });
 });

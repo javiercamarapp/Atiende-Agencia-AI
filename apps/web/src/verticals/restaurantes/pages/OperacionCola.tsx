@@ -181,10 +181,10 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
 
   return (
     <PageContainer padding="none">
-      <div className="mx-auto w-full max-w-2xl space-y-3 pb-6">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3 pb-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-bold text-foreground">Cola de pedidos</h1>
-          <span className="text-sm text-muted-foreground" aria-live="off">
+          <h1 className="sr-only">Cola de pedidos</h1>
+          <span className="ml-auto text-sm text-muted-foreground" aria-live="off">
             {etiquetaActualizado(ultimaOk, ahoraMs)}
           </span>
         </div>
@@ -223,11 +223,11 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
 
         <div className="space-y-2 rounded-lg border border-border bg-card p-3">
           {sonido ? (
-            <Button type="button" variant="outline" className="h-14 w-full text-lg" onClick={desactivarSonido} iconLeft={<Volume2 className="size-5" aria-hidden="true" />}>
+            <Button type="button" variant="outline" className="h-auto min-h-14 w-full whitespace-normal py-2 text-lg" onClick={desactivarSonido} iconLeft={<Volume2 className="size-5" aria-hidden="true" />}>
               Sonido activado · Desactivar
             </Button>
           ) : (
-            <Button type="button" className="h-14 w-full text-lg" onClick={() => void activarSonido()} iconLeft={<VolumeX className="size-5" aria-hidden="true" />}>
+            <Button type="button" className="h-auto min-h-14 w-full whitespace-normal py-2 text-lg" onClick={() => void activarSonido()} iconLeft={<VolumeX className="size-5" aria-hidden="true" />}>
               Activar sonido y mantener pantalla encendida
             </Button>
           )}

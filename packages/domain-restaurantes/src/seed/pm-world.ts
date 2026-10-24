@@ -56,7 +56,7 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
       if (price !== undefined) repo.seedBranchProduct({ propertyId, productId: productIds.get(p.name)!, price, isAvailable: true });
     }
     repo.seedBranchPolicy(propertyId, {
-      horario: plan.policy.horario as never,
+      horario: (b.horario ?? plan.policy.horario) as never,
       pedidoMinimoDomicilio: plan.policy.pedidoMinimoDomicilio,
       pedidoMinimoRecoger: plan.policy.pedidoMinimoRecoger,
       propinaPolitica: plan.policy.propinaPolitica as never,

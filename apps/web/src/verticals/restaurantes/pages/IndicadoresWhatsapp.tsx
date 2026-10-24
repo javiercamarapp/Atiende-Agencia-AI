@@ -3,8 +3,9 @@
 // Rótulos veraces: el costo LLM es de la ORGANIZACIÓN (la base lo guarda por día y rol, no por conversación ni sucursal), así que
 // "Costo LLM promedio por pedido" es un promedio del periodo, no el costo real de cada pedido. Sin dato = "—" con su razón.
 import { useCallback, useEffect, useState } from "react";
-import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp } from "lucide-react";
-import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard } from "@atiende/ui";
+import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp, Wrench } from "lucide-react";
+import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import { fetchWhatsappKpi } from "../lib/whatsapp-kpi-client.ts";
 import type { WhatsappEntrega, WhatsappEntregaDiaSerie, WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
 import { desdeError } from "../voz/carga.ts";
@@ -132,7 +133,8 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
 
   return (
     <>
-    <PageContainer padding="none">
+    {/* pb-24: el boton flotante «Iniciar chat» (fixed, 56 px + 24 px de margen) no debe tapar el ultimo texto de la pagina. */}
+    <PageContainer padding="none" className={puedeVer ? "pb-24" : undefined}>
       <header className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-display truncate text-xl font-semibold">Indicadores del agente de WhatsApp</h1>
@@ -159,18 +161,39 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> ven los indicadores del agente — tu rol actual es{" "}
           <strong className="text-foreground">{role}</strong>.
         </Callout>
-      ) : datos.estado === "cargando" ? (
-        <EstadoCargando etiqueta="Cargando indicadores…" />
-      ) : datos.estado === "no_disponible" ? (
-        <EstadoVacio
-          icon={Activity}
-          titulo="Indicadores no disponibles todavía"
-          mensaje="Los indicadores del agente de WhatsApp aún no están activos en este negocio (requieren la actualización de base de datos pendiente). Cuando lo estén, aquí verás conversaciones, conversión a pedido, handoff y costo por día."
-        />
-      ) : datos.estado === "error" ? (
-        <EstadoError mensaje={datos.mensaje} onReintentar={reintentar} />
       ) : (
-        <Contenido kpi={datos.datos} />
+        <Tabs defaultValue="general" className="flex flex-col gap-3">
+          <TabsList className="self-start">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="herramientas">Herramientas</TabsTrigger>
+            <TabsTrigger value="conocimiento">Base de conocimiento</TabsTrigger>
+          </TabsList>
+          <TabsContent value="general" className="mt-0">
+            {datos.estado === "cargando" ? (
+              <EstadoCargando etiqueta="Cargando indicadores…" />
+            ) : datos.estado === "no_disponible" ? (
+              <EstadoVacio
+                icon={Activity}
+                titulo="Indicadores no disponibles todavía"
+                mensaje="Los indicadores del agente de WhatsApp aún no están activos en este negocio (requieren la actualización de base de datos pendiente). Cuando lo estén, aquí verás conversaciones, conversión a pedido, handoff y costo por día."
+              />
+            ) : datos.estado === "error" ? (
+              <EstadoError mensaje={datos.mensaje} onReintentar={reintentar} />
+            ) : (
+              <Contenido kpi={datos.datos} />
+            )}
+          </TabsContent>
+          <TabsContent value="herramientas" className="mt-0">
+            <EstadoVacio
+              icon={Wrench}
+              titulo="Uso de herramientas: no disponible aún"
+              mensaje="Requiere registrar cada llamada a una herramienta del agente de WhatsApp (buscar producto, cotizar, crear pedido…). Hoy solo el agente de voz guarda ese conteo; por eso aquí no se inventan cifras. Cuando exista el registro verás cuántas veces usó cada herramienta y su latencia."
+            />
+          </TabsContent>
+          <TabsContent value="conocimiento" className="mt-0">
+            <ConocimientoNegocio apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canal="whatsapp" />
+          </TabsContent>
+        </Tabs>
       )}
     </PageContainer>
     {/* Chat de WhatsApp de demostración (botón flotante «Iniciar chat»), como en el panel original: prueba el agente real sin efectos. */}

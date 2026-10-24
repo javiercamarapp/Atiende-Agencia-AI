@@ -7,7 +7,7 @@
 // función de negocio de customers.ts/orders.ts/whatsapp/* toca SQL directamente —
 // todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
 // en producción.
-import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { LecturaResumenConfig, ResumenConfig, VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
@@ -598,6 +598,12 @@ export interface RestaurantesRepository {
   /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo
    *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */
   listKnownZones(organizationId: string): Promise<readonly KnownZone[]>;
+
+  // ---- Configuracion del Resumen (migracion 096) ----
+  /** Nunca lanza por base sin migrar: `disponible:false` con la configuracion vacia (SAVEPOINT en la implementacion Postgres). */
+  leerResumenConfig(organizationId: string): Promise<LecturaResumenConfig>;
+  /** Upsert por organizacion (owner/admin: RLS es la autoridad). Base sin migrar -> `ResumenConfigNoDisponibleError`; RLS -> `ResumenConfigRechazadaError`. */
+  guardarResumenConfig(organizationId: string, actorUserId: string, valor: ResumenConfig): Promise<LecturaResumenConfig>;
   createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone>;
   /** Colonias con la referencia del piloto original (migracion 056) para el reporte de colonias ambiguas. Contra la base sin migrar
    *  devuelve `{ disponible: false, zonas: [] }` (con SAVEPOINT: nunca aborta la transaccion del request). */

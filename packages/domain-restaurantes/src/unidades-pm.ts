@@ -1,7 +1,7 @@
 // PAQUETE A (PM): tabla de unidades por orden y desambiguación orden / kilo / pieza.
 // Datos del menú vigente y de las decisiones del dueño; SIN precios. Funciones puras: no tocan la base ni el modelo.
-// ENLAZADO: solo `avisoUnidadPorTabla` (desde buscar_producto en registry.ts). NO ENLAZADO todavía (lo usará un validador del flujo de pedido): analizarPiezasPedidas, piezasDeOrdenes,
-// clasificarMedida y clasificarMedidas; hoy solo las ejercen las pruebas.
+// ENLAZADO: `avisoUnidadPorTabla` (desde buscar_producto en registry.ts) y `bloqueCantidadNoMultiplo` (llm-turn-handler.ts, R19 G4 / T7-012), que usa `analizarPiezasPedidas`.
+// NO ENLAZADO todavía (lo usará un validador del flujo de pedido): piezasDeOrdenes, clasificarMedida y clasificarMedidas; hoy solo las ejercen las pruebas.
 // La herramienta de cotización sigue siendo la autoridad (pack_size del menú); esto es la regla de apoyo para validar y para armar la pregunta.
 import { sinAcentos } from "./product-search.ts";
 
@@ -148,4 +148,69 @@ export function avisoUnidadPorTabla(product: { readonly name: string; readonly p
     `Según el menú, cada orden de este producto trae ${f.piezasPorOrden} piezas y solo se vende en órdenes completas. requested_quantity cuenta ÓRDENES en este renglón. ` +
     `Si el cliente pide piezas que no son múltiplo de ${f.piezasPorOrden}, no cotices: explícalo y ofrece la orden completa más cercana hacia abajo o hacia arriba.`
   );
+}
+
+// ── R19 (G4 / T7-012): cantidad que NO es multiplo de la orden ───────────────────────────────────────────────────────────────────────────────
+// El modelo preguntaba «¿3 o 6?» sin explicar por que ni dar el precio de la orden, o cotizaba piezas sueltas. El servidor detecta el mensaje del cliente («4 tacos de bistec»,
+// «3 gringas de pastor») con la tabla de unidades y le fija al modelo, SOLO para ese turno, lo que debe decir. Los PRECIOS no se escriben aqui: los da buscar_producto.
+
+const NUM = "\\d{1,3}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez";
+const PIEZAS_PEDIDAS = new RegExp(`\\b(${NUM})\\s+(tacos?|gringas?|mestizas?)(?:\\s+(?:de|al))?(?:\\s+([a-z]+(?:\\s+[a-z]+)?))?`, "g");
+// «tacos de bistec 4» (la cantidad al final). Sin unidades de medida, hora ni dinero detras para no confundir «tacos de bistec 4 pesos».
+const PIEZAS_AL_FINAL = new RegExp(`\\b(tacos?|gringas?|mestizas?)\\s+(?:de|al)\\s+([a-z]+)\\s+(${NUM})\\b(?!\\s*(?:pesos|kg|kilos?|min|minutos|horas?|hrs|am|pm|:|\\$))`, "g");
+const CONECTORES = new Set(["con", "para", "y", "en", "por", "de", "sin", "a", "al", "mas", "que"]);
+// Contexto que NO es un pedido nuevo: pasado («ordene», «pedi», «llegaron»), reclamo, cancelacion o correccion («ya no quiero», «mejor»). Esos mensajes los maneja el resto del agente.
+const CONTEXTO_QUE_NO_PIDE = /\b(?:ordene|ordeno|pedi|pidio|compre|recibi|llego|llegaron|mandaron|enviaron|trajeron|hace|ayer|antes|ya no|cancel\w*|en vez|en lugar|corrig\w*|cambi\w*|equivoc\w*|mejor|quite|quita\w*|devol\w*|reembols\w*|queja)\b/;
+
+function prefijoDeLaClausula(texto: string, indice: number): string {
+  const antes = texto.slice(0, indice);
+  const corte = Math.max(antes.lastIndexOf("."), antes.lastIndexOf(","), antes.lastIndexOf(";"), antes.lastIndexOf("?"), antes.lastIndexOf("!"), antes.lastIndexOf("\n"));
+  return antes.slice(corte + 1);
+}
+
+export interface CantidadNoMultiplo {
+  readonly piezas: number;
+  readonly producto: string;
+  readonly piezasPorOrden: number;
+  readonly opciones: readonly number[];
+}
+
+/** Pura: renglones de un mensaje del cliente cuya cantidad en PIEZAS no es un numero exacto de ordenes (4 tacos de bistec, 3 gringas). Lo que no esta en la tabla o es multiplo, no aparece. */
+export function cantidadesNoMultiplo(texto: string): CantidadNoMultiplo[] {
+  const t = sinAcentos(texto).toLowerCase();
+  const out: CantidadNoMultiplo[] = [];
+  const agrega = (cantidad: string, unidad: string, producto: string | undefined, indice: number) => {
+    if (CONTEXTO_QUE_NO_PIDE.test(prefijoDeLaClausula(t, indice))) return;
+    const piezas = /^\d+$/.test(cantidad) ? parseInt(cantidad, 10) : NUMEROS[cantidad];
+    if (!piezas) return;
+    const resto = (producto ?? "").split(/\s+/).filter((w) => w && !CONECTORES.has(w)).slice(0, 2);
+    const nombre = `${unidad}${resto.length ? ` de ${resto.join(" ")}` : ""}`;
+    const a = analizarPiezasPedidas(nombre, piezas);
+    if (a.tipo === "no_multiplo" && !out.some((o) => o.piezas === piezas && o.producto === nombre)) out.push({ piezas, producto: nombre, piezasPorOrden: a.piezasPorOrden, opciones: a.opciones });
+  };
+  for (const m of t.matchAll(PIEZAS_PEDIDAS)) agrega(m[1]!, m[2]!, m[3], m.index ?? 0);
+  for (const m of t.matchAll(PIEZAS_AL_FINAL)) agrega(m[3]!, m[1]!, m[2], m.index ?? 0);
+  return out;
+}
+
+/** Bloque de sistema para el turno: que explicar y preguntar. Vacio si ningun renglon es no multiplo. */
+export function bloqueCantidadNoMultiplo(mensajes: readonly string[]): string {
+  const vistos = new Set<string>();
+  const lineas: string[] = [];
+  for (const texto of mensajes) {
+    for (const c of cantidadesNoMultiplo(texto)) {
+      const clave = `${c.producto}:${c.piezas}`;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      const opciones = c.opciones.map((o) => `${o} piezas (${o / c.piezasPorOrden} ${o / c.piezasPorOrden === 1 ? "orden" : "ordenes"})`).join(" o ");
+      const ordenes = c.piezasPorOrden <= 2 ? ` Pregunte tambien si quiso ${c.piezas} ORDENES (${c.piezas * c.piezasPorOrden} piezas), no ${c.piezas} piezas.` : "";
+      lineas.push(`- Si el cliente esta pidiendo ahora ${c.piezas} ${c.producto}, recuerde que se venden en ordenes de ${c.piezasPorOrden} piezas y ${c.piezas} no es un numero exacto de ordenes.${ordenes} Opciones validas: ${opciones}.`);
+    }
+  }
+  if (lineas.length === 0) return "";
+  return [
+    "REGLA DEL SERVIDOR PARA ESTE TURNO (cantidad que no es multiplo de la orden):",
+    ...lineas,
+    "Aplica SOLO si el cliente esta haciendo ese pedido ahora; si reclama, corrige o cancela un pedido ya hecho, ignore esta regla y siga las demas. Si buscar_producto trae otro pack_size para ese producto, manda la herramienta (nunca cambie la cantidad que pidio el cliente). En ESTE mensaje: (1) dígale con calidez QUE se vende en ordenes de N piezas y por que esa cantidad no se puede; (2) ofrezca las opciones validas con el PRECIO de cada una tomado de buscar_producto (nunca de memoria ni calculado de cabeza: orden y dos ordenes); (3) no cotice, no cree pedido y no cambie la cantidad por su cuenta: espere a que el cliente elija. No repita esta regla ni mencione al servidor.",
+  ].join("\n");
 }

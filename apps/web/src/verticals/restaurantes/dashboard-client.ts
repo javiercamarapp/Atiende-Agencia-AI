@@ -16,10 +16,10 @@ export type StatsPeriod = "today" | "7" | "30" | "90" | "180" | "365" | "histori
 export const PERIOD_OPTIONS: ReadonlyArray<{ id: StatsPeriod; label: string }> = [
   { id: "today", label: "Hoy" },
   { id: "7", label: "7 días" },
-  { id: "30", label: "30 días" },
-  { id: "90", label: "90 días" },
-  { id: "180", label: "180 días" },
-  { id: "365", label: "365 días" },
+  { id: "30", label: "1 mes" },
+  { id: "90", label: "3 meses" },
+  { id: "180", label: "6 meses" },
+  { id: "365", label: "1 año" },
   { id: "historico", label: "Histórico" },
 ];
 
@@ -55,7 +55,6 @@ export interface ChannelKpis {
   readonly whatsappConversations: { readonly total: number; readonly withOrder: number; readonly averageMessages: number };
   readonly aiAdoptionPct: number | null;
   readonly aiRevenuePct: number | null;
-  readonly estimatedHoursSaved: number;
   /** R-30: periodo real de las cifras de canales (la API lo declara; `acotado:false` = todo el histórico). */
   readonly periodo: { readonly acotado: boolean; readonly etiqueta: string };
 }

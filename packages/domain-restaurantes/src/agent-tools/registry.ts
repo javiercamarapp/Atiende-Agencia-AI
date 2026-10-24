@@ -32,7 +32,7 @@ import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composici
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
+import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, horaLegible } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
@@ -279,6 +279,10 @@ const DOBLE_SALSAS_SCHEMA = {
   items: { type: "string", enum: [...DEFAULT_COMPLEMENTS] },
 } as const;
 
+/** PM-R20: tope de consultas extra de `buscar_producto` en una sola llamada (cada una es una lectura barata sin efectos). */
+export const MAX_CONSULTAS_ADICIONALES_BUSCAR_PRODUCTO = 5;
+const MAX_LARGO_CONSULTA_BUSCAR_PRODUCTO = 200;
+
 export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_cliente",
@@ -347,6 +351,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       properties: {
         query: { type: "string", description: "texto a buscar, ej. 'pastor' o 'kilo arrachera'" },
         branch_slug: { type: "string", description: "El branch_slug de la sucursal ya confirmada. Si todavía no se confirma la sucursal, no llames esta herramienta." },
+        consultas_adicionales: { type: "array", maxItems: MAX_CONSULTAS_ADICIONALES_BUSCAR_PRODUCTO, items: { type: "string" }, description: "Opcional: otros productos del MISMO pedido para buscar en esta misma llamada (uno por producto, hasta 5). Con ellas la respuesta trae un resultado por consulta (query incluida) en vez de la lista sola; ahorra una ida al modelo por producto." },
       },
       required: ["query", "branch_slug"],
     },
@@ -625,7 +630,7 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Parti
     ...(quote.pedidoMinimo !== undefined && quote.pedidoMinimo !== null ? { pedido_minimo: quote.pedidoMinimo } : {}),
     ...(quote.propinaPolitica ? { propina_politica: quote.propinaPolitica, preguntar_propina: quote.preguntarPropina === true } : {}),
     ...(quote.programadoPara ? { programado_para: quote.programadoPara } : {}),
-    ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null } : {}),
+    ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null, cierra_a_texto: quote.cierraA ? horaLegible(quote.cierraA) : null } : {}),
   };
 }
 
@@ -1700,12 +1705,14 @@ async function dispatchTool(
       const policy = await repo.findBranchPolicy(branch.propertyId);
       let abierto: boolean | null = null;
       let cierraA: string | null = null;
+      let ultimoPedido: ReturnType<typeof evaluarUltimoPedido> | null = null;
       const zonaCruda = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
       const ahora = new Date();
       if (policy.horario && policy.horario.length > 0) {
         const estado = estaAbiertoAhora(policy.horario, ahora, zonaCruda);
         abierto = estado.abierto;
         cierraA = estado.cierraA;
+        ultimoPedido = evaluarUltimoPedido(policy.horario, ahora, zonaCruda);
       }
       // Reloj LOCAL de la sucursal: el modelo (sobre todo el de voz, que no trae la hora en su prompt) calculaba "en 40 minutos" con la hora UTC y guardaba
       // la recogida 6 h tarde, o "hoy" dos dias atras (QA-PM-R2-voz-03 / reglas-04). Con esto calcula sobre la hora de la sucursal.
@@ -1723,6 +1730,12 @@ async function dispatchTool(
         telefono: branch.phone,
         abierto_ahora: abierto,
         cierra_a: cierraA,
+        // Ultimo pedido (30 min antes del cierre por omision): abierta no es lo mismo que "todavia toma pedidos". Aditivo.
+        acepta_pedidos: ultimoPedido ? ultimoPedido.aceptaPedidos : null,
+        ultimo_pedido_a: ultimoPedido?.ultimoPedidoA ?? null,
+        margen_ultimo_pedido_min: ultimoPedido?.margenMin ?? null,
+        // Aditivo: "00:00" es la medianoche; el modelo debe decir "12 de la noche"/"medianoche", nunca "a las 00:00".
+        cierra_a_texto: cierraA ? horaLegible(cierraA) : null,
         horario: policy.horario,
         pedido_minimo_domicilio: policy.pedidoMinimoDomicilio,
         pedido_minimo_recoger: policy.pedidoMinimoRecoger,
@@ -1849,7 +1862,8 @@ async function dispatchTool(
       await assertBranchAllowed(repo, ctx, branchSlug);
       const branch = await repo.findBranch(organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
-      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
+      const buscarUna = async (consulta: string) => {
+      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: consulta });
       // QA-PM-R5-voz-01 / reglas-05: el modelo buscaba "arrachera kilo", veia solo "Arrachera — 1 kg" y cotizaba el kilo cuando el cliente pidio tres cuartos ($350 de mas), o decia que
       // "no existe" 1.25 kg. Cada renglon por peso lleva las presentaciones REALES del mismo platillo y la regla para fracciones que no existen.
       const hayPeso = productos.some((p) => pesoDeProductoEnGramos(p.name) !== null);
@@ -1861,8 +1875,8 @@ async function dispatchTool(
           .sort((a, b) => (pesoDeProductoEnGramos(a.name) ?? 0) - (pesoDeProductoEnGramos(b.name) ?? 0))
           .map((c) => `${c.name} ($${Number(c.price)})`);
       // L2b: un peso que no es presentacion exacta (1.25 kg) llega ya armado con presentaciones reales y precio proporcional, para decirlo ANTES del si.
-      const pesoPedido = hayPeso ? pesoPedidoEnConsulta(String(input.query ?? "")) : null;
-      const result = productos.map((p) => {
+      const pesoPedido = hayPeso ? pesoPedidoEnConsulta(consulta) : null;
+      return productos.map((p) => {
         const otras = pesoDeProductoEnGramos(p.name) !== null ? presentaciones(p.name) : [];
         const composicion = pesoPedido !== null && otras.length > 1 ? composicionParaProducto(catalogo, p.name, pesoPedido) : null;
         return {
@@ -1882,7 +1896,17 @@ async function dispatchTool(
             : {}),
         };
       });
-      return { result, raw: result, orderId: null, propertyId: null };
+      };
+      const result = await buscarUna(String(input.query ?? ""));
+      // PM-R20: consultas extra del mismo pedido en UNA llamada (ahorra una vuelta al modelo por producto). Sin ellas la forma del resultado no cambia. Solo lecturas, en orden.
+      const extras = Array.isArray(input.consultas_adicionales)
+        ? input.consultas_adicionales.filter((c): c is string => typeof c === "string" && c.trim() !== "").map((c) => c.slice(0, MAX_LARGO_CONSULTA_BUSCAR_PRODUCTO)).slice(0, MAX_CONSULTAS_ADICIONALES_BUSCAR_PRODUCTO)
+        : [];
+      if (extras.length === 0) return { result, raw: result, orderId: null, propertyId: null };
+      const porConsulta = [{ query: String(input.query ?? ""), productos: result }];
+      for (const consulta of extras) porConsulta.push({ query: consulta, productos: await buscarUna(consulta) });
+      const agrupado = { resultados: porConsulta };
+      return { result: agrupado, raw: agrupado, orderId: null, propertyId: null };
     }
     case "cotizar_pedido": {
       // QA-PM-R5-reglas-11: un complemento inexistente ("chimichurri") se rechaza al COTIZAR, antes de que el cliente vea y confirme un total (antes solo fallaba al crear).

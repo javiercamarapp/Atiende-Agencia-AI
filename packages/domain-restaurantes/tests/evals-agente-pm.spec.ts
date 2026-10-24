@@ -337,11 +337,11 @@ describe("hora de recogida: el mundo lee solo el campo hora_recogida de crear_pe
     expect(conHora.mundo.comandas[0]!.horaRecogerMin).toBe(20);
     const mundo = new Mundo(c);
     const q = mundo.ejecutar("buscar_producto", { query: "alambre de pastor", branch_slug: "t1" }) as { id: string }[];
-    mundo.cliente("quiero un alambre");
-    mundo.ejecutar("cotizar_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", items: [{ product_id: q[0]!.id, requested_quantity: 1 }] });
+    mundo.cliente("quiero una orden de alambre");
+    mundo.ejecutar("cotizar_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", items: [{ product_id: q[0]!.id, requested_quantity: 5 }] });
     mundo.cliente("sí");
     mundo.ejecutar("confirmar_resumen", {});
-    mundo.ejecutar("crear_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", customer_name: "Luz Moo", items: [{ product_id: q[0]!.id, requested_quantity: 1 }], notes: "Recoge en 20 minutos" });
+    mundo.ejecutar("crear_pedido", { branch_slug: "t1", canal: "recoger", payment_method: "tarjeta", customer_name: "Luz Moo", items: [{ product_id: q[0]!.id, requested_quantity: 5 }], notes: "Recoge en 20 minutos" });
     expect(mundo.comandas[0]!.horaRecogerMin).toBeNull();
   });
 });

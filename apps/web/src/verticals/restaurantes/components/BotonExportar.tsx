@@ -18,6 +18,7 @@ export function BotonExportar({
   urlPara,
   fetchImpl,
   etiqueta = "Exportar",
+  variante = "outline",
 }: {
   readonly role: string;
   readonly token: string;
@@ -25,6 +26,8 @@ export function BotonExportar({
   readonly urlPara: (formato: FormatoExportacion) => string;
   readonly fetchImpl?: typeof fetch;
   readonly etiqueta?: string;
+  /** Historial usa el CTA azul del original; Clientes conserva el secundario. */
+  readonly variante?: "outline" | "default";
 }) {
   const [exportando, setExportando] = useState(false);
   if (!puedeExportar(role)) return null;
@@ -44,7 +47,7 @@ export function BotonExportar({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm" loading={exportando} disabled={exportando}>
+        <Button type="button" variant={variante} size="sm" loading={exportando} disabled={exportando}>
           <Download />
           {etiqueta}
         </Button>

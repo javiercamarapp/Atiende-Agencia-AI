@@ -21,7 +21,7 @@ import { TEXTO_BOTONES_APARTE, cabeEnMensajeInteractivo, construirBotonesDeConfi
 import { resolverCuerpoConNotaDeVoz, type TranscripcionDeEntrada } from "./nota-de-voz.ts";
 import { CLASE_FALLA_DEL_SISTEMA, claseErrorTurno } from "../alertas-duenio/timeouts-agente.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { aperturaConExcepciones, fechaAnterior, fechaLocal, type EstadoApertura } from "../horarios.ts";
+import { aperturaConExcepciones, fechaAnterior, fechaLocal, horaLegible, type EstadoApertura } from "../horarios.ts";
 import { VENTANA_PEDIDO_RECIENTE_MIN, buscarPedidoReciente, hayPedidoProgramadoVigente } from "../pedido-reciente.ts";
 import { normalizePhone } from "../phone.ts";
 import { searchProducts } from "../orders.ts";
@@ -600,7 +600,7 @@ async function respuestaFijaEnToma(repo: RestaurantesRepository, organizationId:
 export function acuseHandoffPendiente(estado: EstadoApertura | null): string {
   if (!estado || estado.abierto || !estado.proximaApertura) return ACUSE_HANDOFF_PENDIENTE;
   const { dia, hora, hoy } = estado.proximaApertura;
-  return `${ACUSE_HANDOFF_PENDIENTE} La sucursal está cerrada por ahora; responden a partir de ${hoy ? `las ${hora}` : `el ${dia} a las ${hora}`}.`;
+  return `${ACUSE_HANDOFF_PENDIENTE} La sucursal está cerrada por ahora; responden a partir de ${hoy ? `las ${horaLegible(hora)}` : `el ${dia} a las ${horaLegible(hora)}`}.`;
 }
 
 /** Fecha YYYY-MM-DD `n` dias despues de `fecha` (aritmetica UTC pura). */

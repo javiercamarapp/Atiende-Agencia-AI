@@ -36,18 +36,19 @@ import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from ".
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
-import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
+import { bloqueCantidadNoMultiplo } from "../unidades-pm.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
-import { estaAbiertoAhora } from "../horarios.ts";
+import { estaAbiertoAhora, evaluarUltimoPedido, horaLegible } from "../horarios.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
-import { PEDIDO_GRANDE_TOTAL_MXN } from "../pedido-grande.ts";
+import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
@@ -305,8 +306,14 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
       if (!policy.horario || policy.horario.length === 0) return "";
       const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
       const estado = estaAbiertoAhora(policy.horario, ahora, zona);
-      if (estado.abierto) return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${estado.cierraA}` : ""}. Un pedido para recoger cuya hora caiga después del cierre no se puede tomar.`;
-      const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${estado.proximaApertura.hora}` : "";
+      if (estado.abierto) {
+        const ultimo = evaluarUltimoPedido(policy.horario, ahora, zona);
+        if (!ultimo.aceptaPedidos) {
+          return `${branch.name} sigue ABIERTA${estado.cierraA ? ` (cierra a las ${horaLegible(estado.cierraA)})` : ""}, pero YA PASÓ EL ÚLTIMO PEDIDO (${ultimo.margenMin} minutos antes del cierre${ultimo.ultimoPedidoA ? `, hasta las ${horaLegible(ultimo.ultimoPedidoA)}` : ""}): ya no se toman pedidos para hoy. Dígalo en su primer mensaje y ofrezca programar para la siguiente apertura o pedir mañana; no prometa horarios fuera del horario.`;
+        }
+        return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${horaLegible(estado.cierraA)}` : ""}${ultimo.ultimoPedidoA ? `; el último pedido se toma hasta las ${horaLegible(ultimo.ultimoPedidoA)}` : ""}. Un pedido para recoger cuya hora caiga después del último pedido no se puede tomar.`;
+      }
+      const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${horaLegible(estado.proximaApertura.hora)}` : "";
       return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; tome el pedido y PROGRÁMELO con programado_para para la apertura u otra hora dentro del horario (H16), sin decir que ya está en cocina.`;
     });
   } catch {
@@ -544,15 +551,24 @@ export const PISO_TOPE_LLAMADA_LLM_MS = 500;
  * proveedor de las rondas 15-18; con error el acierto es ~15 %, sin error ~71 %). El intento #610 (repetir la MISMA llamada al MISMO modelo) se revirtio porque solo
  * salvaba el 14 % de los turnos: un modelo atascado sigue atascado. Aqui el reintento va a OTRO modelo de la escalera ya aprobada (`modeloAlternoParaTope`).
  * Con al menos `RESPALDO_LLM_RESTANTE_MIN_MS` de presupuesto, el primer intento se corta antes (nunca antes de `RESPALDO_LLM_PRIMER_TOPE_MIN_MS`, dejando
- * `RESPALDO_LLM_RESERVA_MS` al respaldo, ~p95 de una llamada normal) y se repite UNA vez la misma peticion contra el modelo alterno. El reloj del turno (18 s) no cambia.
+ * `RESPALDO_LLM_RESERVA_MS` al respaldo, ~p95 de una llamada normal) y se repite la misma peticion contra el modelo alterno (PM-R19b: tambien en vueltas posteriores con 10 a 16 s restantes; sigue siendo UN respaldo por turno). El reloj del turno (18 s) no cambia.
  */
 export const RESPALDO_LLM_RESTANTE_MIN_MS = 16_000;
 export const RESPALDO_LLM_PRIMER_TOPE_MIN_MS = 9_000;
 export const RESPALDO_LLM_RESERVA_MS = 7_000;
+/**
+ * PM-R19b: la ronda 19 mostro que los 93 `tope_llamada` SIN respaldo cayeron todos en la 2.a vuelta o despues (ninguno en la 1.a): tras una o mas llamadas previas
+ * (~3.5 s cada una) quedan < 16 s y el respaldo de arriba no actuaba. Con 10 a 16 s restantes se activa un plan TARDIO: primer intento hasta `max(6 s, restante - 6 s)`
+ * (6 s ~ p95 de una llamada normal, 5.8 s medido) dejando al respaldo al menos 4 s (mediana de una llamada, 3.4 s). Con < 10 s ya no hay tiempo util para un respaldo.
+ */
+export const RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS = 10_000;
+export const RESPALDO_LLM_PRIMER_TOPE_MIN_TARDIO_MS = 6_000;
+export const RESPALDO_LLM_RESERVA_TARDIA_MS = 6_000;
 
 /** Reparte el presupuesto restante del turno entre el primer intento y el respaldo. Sin presupuesto suficiente: un solo intento con todo lo que queda. */
 export function planTopeLlamadaLlm(restanteMs: number): { readonly primerTopeMs: number; readonly respalda: boolean } {
-  if (restanteMs < RESPALDO_LLM_RESTANTE_MIN_MS) return { primerTopeMs: Math.max(0, restanteMs), respalda: false };
+  if (restanteMs < RESPALDO_LLM_RESTANTE_MIN_TARDIO_MS) return { primerTopeMs: Math.max(0, restanteMs), respalda: false };
+  if (restanteMs < RESPALDO_LLM_RESTANTE_MIN_MS) return { primerTopeMs: Math.max(RESPALDO_LLM_PRIMER_TOPE_MIN_TARDIO_MS, restanteMs - RESPALDO_LLM_RESERVA_TARDIA_MS), respalda: true };
   return { primerTopeMs: Math.max(RESPALDO_LLM_PRIMER_TOPE_MIN_MS, restanteMs - RESPALDO_LLM_RESERVA_MS), respalda: true };
 }
 /** PM-R14: rechazos de regla de `crear_pedido` seguidos en un turno tras los cuales se corta el bucle del modelo. */
@@ -844,7 +860,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const cotizacionVigenteBloque = perfil === "taqueria_pm" && !preview ? bloqueCotizacionVigente(flowSnapshot, now().getTime(), { resumenMostrado: resumenMostradoEnHistorial(flowVigente?.quotedTotal, messages) }) : "";
       // R10 P1: lo que el servidor ya consulto y daria el mismo resultado que la herramienta se le dice al modelo (una vuelta menos). Vacio = prompt identico al de antes.
       const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
-      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque].filter((b) => b !== "").join("\n\n");
+      // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
+      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
+      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -941,6 +959,41 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             return done({ reply: `Recibí su confirmación, pero ${MARCA_SI_SIN_REGISTRAR} (total $${totalConfirmado}). Un compañero de la sucursal lo registra y se lo confirma por aquí.`, orderId: null, propertyId });
           }
         }
+        // PM R19 (A22): el turno murio (proveedor/tope de tiempo) con una cotizacion VIGENTE que ya supera el umbral de pedido grande y sin pedido creado. El aviso correcto para la sucursal es
+        // `pedido_grande` con el resumen (la regla del servidor de `crear_pedido`), no un `falla_sistema` generico. Solo total y kilos de lo cotizado (+ lo ya creado en la sesion): sin
+        // historial ni forma de pago no se supone nada. Si el aviso falla, sigue el camino de siempre.
+        if (perfil === "taqueria_pm" && !preview && !(config.motivosDesactivados ?? []).includes("pedido_grande")) {
+          const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+          const c = fresco?.context;
+          if (c && (fresco?.state === "cotizado" || fresco?.state === "confirmado") && typeof c.quotedTotal === "number" && typeof c.quotedAtMs === "number" && now().getTime() - c.quotedAtMs <= QUOTE_TTL_MS) {
+            const renglones = (c.quotedItems ?? []).map((i) => ({ name: i.name, quantity: i.qty }));
+            const total = Math.round((c.quotedTotal + (c.sessionTotal ?? 0)) * 100) / 100;
+            const pesoKg = pesoTotalKg(renglones) + (c.sessionPesoKg ?? 0);
+            const motivoGrande = evaluarPedidoGrande({ total, pesoKg, pagaEfectivo: false, sinHistorial: false });
+            if (motivoGrande) {
+              // Un aviso `pedido_grande` por telefono cada 15 min (misma memoria y ventana que `falla_sistema`, con llave propia para que uno no tape al otro): con el proveedor caido y varios
+              // mensajes dentro de la vigencia de la cotizacion no se repite la escalada; el cliente recibe el mismo texto.
+              const llaveOrgPG = `${organizationId}:pedido_grande`;
+              if (avisoFallaSistemaReciente(llaveOrgPG, phone)) {
+                escalarMotivo = "pedido_grande";
+                return done({ reply: MENSAJE_PEDIDO_GRANDE_PENDIENTE, orderId: null, propertyId });
+              }
+              const nombreG = !customer.isNew && customer.name ? customer.name : "Cliente";
+              const resumenG = `${resumenPedidoGrande({ motivo: motivoGrande, total, pesoKg, items: renglones, canal: c.quotedCanal, paymentMethod: c.quotedPago })} El turno del asistente se corto antes de mostrar el resumen: contactar al cliente para confirmar el pedido.`;
+              const avisoG = await executeAgentToolSafely(
+                repo,
+                { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+                "escalar_a_humano",
+                { customer_name: nombreG, motivo: "pedido_grande", resumen: resumenG.slice(0, 900) },
+              );
+              if (!isToolErrorResult(avisoG.result)) {
+                marcarAvisoFallaSistema(llaveOrgPG, phone);
+                escalarMotivo = "pedido_grande";
+                return done({ reply: MENSAJE_PEDIDO_GRANDE_PENDIENTE, orderId: null, propertyId });
+              }
+            }
+          }
+        }
         // Seguimiento de #593: en una caida larga sin toma cada mensaje del cliente repetia el aviso; uno por telefono cada 15 min. El turno sigue siendo `falla_sistema` (alerta de racha).
         if (avisoFallaSistemaReciente(organizationId, phone)) {
           escalarMotivo = "falla_sistema";
@@ -998,20 +1051,24 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // PM-R19: con presupuesto de sobra el primer intento tiene un tope menor y, si lo agota, se repite UNA vez la MISMA peticion contra el modelo alterno de la escalera
           // aprobada. Seguro: la llamada al modelo no tiene efectos laterales y las herramientas corren ENTRE llamadas (abajo), nunca dentro; el respaldo no las repite
           // (`crear_pedido` corre una sola vez y sigue siendo idempotente por el estado del flujo). Solo el rol por defecto: la escalera del rol escalado es otra.
-          const plan = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
-          if (esRolPorDefecto && modeloRespaldo !== null) {
-            completion = await completarConTope(deadline, llamarAlModelo(modeloRespaldo));
-          } else {
+          let huboRespaldoEnVuelta = false;
+          for (;;) {
+            const modeloActual = esRolPorDefecto && modeloRespaldo !== null ? modeloRespaldo : modeloElegido;
+            // Un solo respaldo por turno: con el alterno ya en uso (o un modelo no economico) la llamada lleva todo el presupuesto restante. Con 10 a 16 s restantes el segundo
+            // respaldo no cabria de todos modos (el primer tope siempre deja <= 7 s al siguiente).
+            const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID) : null;
+            const plan = siguiente !== null ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
             try {
-              completion = await completarConTope(plan.respalda ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo(modeloElegido));
-            } catch (errPrimerIntento) {
+              completion = await completarConTope(plan.respalda ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo(modeloActual));
+              if (huboRespaldoEnVuelta) tele.reintentoLlmRecuperado = true;
+              break;
+            } catch (errIntento) {
               // Solo el tope de tiempo se respalda aqui; un error rapido del proveedor (5xx, 429...) ya lo maneja la escalera del gateway.
-              if (!plan.respalda || !(errPrimerIntento instanceof TopeLlamadaLlmError)) throw errPrimerIntento;
-              modeloRespaldo = modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID);
+              if (siguiente === null || !plan.respalda || !(errIntento instanceof TopeLlamadaLlmError)) throw errIntento;
+              modeloRespaldo = siguiente;
+              huboRespaldoEnVuelta = true;
               tele.reintentosLlm += 1;
-              tele.modeloRespaldoLlm = modeloRespaldo;
-              completion = await completarConTope(deadline, llamarAlModelo(modeloRespaldo));
-              tele.reintentoLlmRecuperado = true;
+              tele.modeloRespaldoLlm = siguiente;
             }
           }
         } catch (errLlm) {
