@@ -1070,7 +1070,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const intercambio = intercambioPrecargado(precargados);
         if (intercambio) {
           working.push(...intercambio.mensajes);
-          for (const l of intercambio.llamadas) tele.tools.push({ tool: l.tool, latenciaMs: l.latenciaMs, resultado: "ok", vuelta: 0 });
+          for (const l of intercambio.llamadas) tele.tools.push({ tool: l.tool, latenciaMs: l.latenciaMs, resultado: "ok", vuelta: 0, codigoRegla: null });
         }
         tele.precargado = { cliente: clientePrecargado !== null, productos: productosPrecargados };
       }
