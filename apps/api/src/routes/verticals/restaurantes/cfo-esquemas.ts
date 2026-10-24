@@ -114,6 +114,14 @@ export function parsearFiltroPedidos(raw: string | undefined): FiltroPedidosDeta
   return out as FiltroPedidosDetalle;
 }
 
+/** `limite` de la lista de reactivación de `/analisis-clientes`: entero 1..200 (el mismo tope que valida la SQL 095); por omisión 50. */
+export const CFO_REACTIVACION_LIMITE_MAX = 200;
+export function parsearLimiteReactivacion(raw: string | undefined): number {
+  if (raw === undefined) return 50;
+  if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > CFO_REACTIVACION_LIMITE_MAX) throw invalido(`limite debe ser un entero entre 1 y ${CFO_REACTIVACION_LIMITE_MAX}.`);
+  return Number(raw);
+}
+
 export function parsearLimite(raw: string | undefined): number {
   if (raw === undefined) return 50;
   if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > CFO_PEDIDOS_LIMITE_MAX) throw invalido(`limite debe ser un entero entre 1 y ${CFO_PEDIDOS_LIMITE_MAX}.`);

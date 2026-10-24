@@ -70,6 +70,22 @@ import {
   type TipoServicioSr,
 } from "./tipos.ts";
 import { numericoSql } from "./util.ts";
+import {
+  CONSENTIMIENTOS_MARKETING,
+  SEGMENTOS_RFM,
+  TIPOS_TORTILLA,
+  type ConsentimientoMarketing,
+  type FilaIntervaloRecompra,
+  type FilaReactivacion,
+  type FilaSegmentoRfm,
+  type FilaTortilla,
+  type LecturaReactivacion,
+  type LecturaRfm,
+  type LecturaTortilla,
+  type ParetoRfm,
+  type ResumenRfm,
+  type SegmentoRfm,
+} from "./analisis-clientes.ts";
 
 // ---- Errores de Postgres -----------------------------------------------------------------------------------------------------------------
 
@@ -101,7 +117,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresCfoRepository: las funciones del CFO todavia no existen en esta base (SQLSTATE 42883/42P01/42703) -- aplica las migraciones " +
-      "081_cfo_ventas_productos, 082_cfo_clientes_agente_operacion, 083_cfo_captura_y_softrestaurant_import y 084_cfo_huecos_frecuentes_p90_es_venta_forma_pago (supabase/migrations/). El CFO responde 'disponible: false'.",
+      "081_cfo_ventas_productos, 082_cfo_clientes_agente_operacion, 083_cfo_captura_y_softrestaurant_import y 084_cfo_huecos_frecuentes_p90_es_venta_forma_pago y 095_cfo_analisis_clientes (supabase/migrations/). El CFO responde 'disponible: false'.",
     err,
   );
 }
@@ -582,6 +598,102 @@ export function mapCanasta(j: unknown): Pick<LecturaCanasta, "pares" | "totales"
   return { pares, totales, tickets };
 }
 
+// ---- 095: análisis de clientes (jsonb ya parseado por node-postgres; los números dentro del jsonb son números JSON) ----------------------------
+
+function objeto(j: unknown): Fila {
+  const crudo = typeof j === "string" ? safeJson(j) : j;
+  return crudo && typeof crudo === "object" && !Array.isArray(crudo) ? (crudo as Fila) : {};
+}
+function lista(v: unknown): Fila[] {
+  return Array.isArray(v) ? (v.filter((x) => x && typeof x === "object") as Fila[]) : [];
+}
+
+/** Salida jsonb de `cfo_clientes_rfm`. Un segmento desconocido (versión futura de la SQL) se descarta en vez de romper la vista. */
+export function mapRfm(j: unknown): Pick<LecturaRfm, "segmentos" | "resumen" | "pareto"> {
+  const o = objeto(j);
+  const segmentos: FilaSegmentoRfm[] = lista(o["segmentos"])
+    .filter((s) => (SEGMENTOS_RFM as readonly string[]).includes(texto(s["segmento"])))
+    .map((s) => ({
+      segmento: texto(s["segmento"]) as SegmentoRfm,
+      orden: entero(s["orden"]),
+      clientes: entero(s["clientes"]),
+      pedidos: entero(s["pedidos"]),
+      ventaCentavos: entero(s["venta_centavos"]),
+      ticketCentavos: anulable(s["ticket_centavos"]),
+      recenciaMedianaDias: anulable(s["recencia_mediana_dias"]),
+    }));
+  const r = objeto(o["resumen"]);
+  const resumen: ResumenRfm | null = Object.keys(r).length === 0 ? null : {
+    clientesConVenta: entero(r["clientes_con_venta"]),
+    clientesRecompra: entero(r["clientes_recompra"]),
+    activos30: entero(r["activos_30"]),
+    dormidos: entero(r["dormidos"]),
+    ventaTotalCentavos: entero(r["venta_total_centavos"]),
+    ventaEnRiesgoCentavos: entero(r["venta_en_riesgo_centavos"]),
+  };
+  const pa = objeto(o["pareto"]);
+  const pareto: ParetoRfm | null = Object.keys(pa).length === 0 ? null : {
+    puntos: lista(pa["puntos"]).map((x) => ({ clientesPct: entero(x["clientes_pct"]), clientes: entero(x["clientes"]), ventaPct: anulable(x["venta_pct"]) ?? 0 })),
+    clientesPara50Pct: anulable(pa["clientes_para_50_pct"]),
+    clientesPara80Pct: anulable(pa["clientes_para_80_pct"]),
+  };
+  return { segmentos, resumen, pareto };
+}
+
+/** Salida jsonb de `cfo_clientes_reactivacion`. */
+export function mapReactivacion(j: unknown): Omit<LecturaReactivacion, "disponible"> {
+  const o = objeto(j);
+  const c = objeto(o["consentimiento"]);
+  const filas: FilaReactivacion[] = lista(o["filas"]).map((f) => {
+    const consentimiento = texto(f["consentimiento"]);
+    return {
+      alias: texto(f["alias"]),
+      ventas: entero(f["ventas"]),
+      ultimaVenta: fecha(f["ultima_venta"]),
+      diasSinPedir: entero(f["dias_sin_pedir"]),
+      intervaloMedianoDias: anulable(f["intervalo_mediano_dias"]),
+      umbralDias: anulable(f["umbral_dias"]) ?? 0,
+      ventaCentavos: entero(f["venta_centavos"]),
+      ticketCentavos: entero(f["ticket_centavos"]),
+      canalFrecuente: textoNulo(f["canal_frecuente"]),
+      dormido: f["dormido"] === true,
+      consentimiento: ((CONSENTIMIENTOS_MARKETING as readonly string[]).includes(consentimiento) ? consentimiento : "sin_registro") as ConsentimientoMarketing,
+      prioridadCentavos: entero(f["prioridad_centavos"]),
+    };
+  });
+  return {
+    totalElegibles: entero(o["total_elegibles"]),
+    mostrados: entero(o["mostrados"]),
+    ventaEnJuegoCentavos: entero(o["venta_en_juego_centavos"]),
+    dormidos: entero(o["dormidos"]),
+    consentimiento: { otorgado: entero(c["otorgado"]), revocado: entero(c["revocado"]), sinRegistro: entero(c["sin_registro"]) },
+    filas,
+  };
+}
+
+/** Fila de `cfo_intervalo_recompra`: percentiles NULL = muestra insuficiente (nunca 0). */
+export function mapIntervaloRecompra(r: Fila): FilaIntervaloRecompra {
+  const s = texto(r["segmento"]);
+  return {
+    segmento: s === "global" ? "global" : ((SEGMENTOS_RFM as readonly string[]).includes(s) ? (s as SegmentoRfm) : "ocasional"),
+    clientes: entero(r["clientes"]),
+    intervalos: entero(r["intervalos"]),
+    p25: anulable(r["p25"]),
+    p50: anulable(r["p50"]),
+    p75: anulable(r["p75"]),
+    p90: anulable(r["p90"]),
+  };
+}
+
+/** Salida jsonb de `cfo_pedidos_tortilla`. */
+export function mapTortilla(j: unknown): Omit<LecturaTortilla, "disponible"> {
+  const o = objeto(j);
+  const tortilla: FilaTortilla[] = lista(o["tortilla"])
+    .filter((t) => (TIPOS_TORTILLA as readonly string[]).includes(texto(t["tipo"])))
+    .map((t) => ({ tipo: texto(t["tipo"]) as FilaTortilla["tipo"], renglones: entero(t["renglones"]), unidades: entero(t["unidades"]), pedidos: entero(t["pedidos"]) }));
+  return { pedidosConItems: entero(o["pedidos_con_items"]), tortilla };
+}
+
 // ---- Adaptador -----------------------------------------------------------------------------------------------------------------------------
 
 const D = (col: string): string => `to_char(${col}, 'YYYY-MM-DD') as ${col}`;
@@ -848,6 +960,69 @@ export class PostgresCfoRepository implements CfoRepository {
          from restaurantes.cfo_agotados($1::uuid, $2::uuid[]);`,
       [p.organizationId, PROPS(p)],
       mapAgotado,
+    );
+  }
+
+  // ---- 095 ----
+
+  /** Lectura jsonb con SAVEPOINT: 42883/42P01/42703 -> `vacia` (`disponible: false`); 22023 / 42501 -> errores tipados. */
+  private async leerJson<T>(nombre: string, sql: string, params: unknown[], mapear: (j: unknown) => T, vacia: T): Promise<T> {
+    try {
+      return await runWithSavepointFallback<T>({
+        session: this.db,
+        savepointName: `sp_cfo_${nombre}`,
+        primary: async () => {
+          const { rows } = await this.db.query<Fila>(sql, params);
+          return mapear(rows[0]?.["j"]);
+        },
+        isRecoverable: esBaseSinMigrar,
+        fallback: async (err) => {
+          advertirNoDisponible(err);
+          return vacia;
+        },
+      });
+    } catch (err) {
+      return traducirErrorPg(err);
+    }
+  }
+
+  clientesRfm(p: ParamsCfo, r: RangoCfo): Promise<LecturaRfm> {
+    return this.leerJson<LecturaRfm>(
+      "clientes_rfm",
+      "select restaurantes.cfo_clientes_rfm($1::uuid, $2::uuid[], $3::date, $4::date) as j;",
+      [p.organizationId, PROPS(p), r.desde, r.hasta],
+      (j) => ({ disponible: true, ...mapRfm(j) }),
+      { disponible: false, segmentos: [], resumen: null, pareto: null },
+    );
+  }
+
+  clientesReactivacion(p: ParamsCfo, r: RangoCfo, limite: number): Promise<LecturaReactivacion> {
+    return this.leerJson<LecturaReactivacion>(
+      "clientes_reactivacion",
+      "select restaurantes.cfo_clientes_reactivacion($1::uuid, $2::uuid[], $3::date, $4::date, $5::integer) as j;",
+      [p.organizationId, PROPS(p), r.desde, r.hasta, limite],
+      (j) => ({ disponible: true, ...mapReactivacion(j) }),
+      { disponible: false, totalElegibles: 0, mostrados: 0, ventaEnJuegoCentavos: 0, dormidos: 0, consentimiento: { otorgado: 0, revocado: 0, sinRegistro: 0 }, filas: [] },
+    );
+  }
+
+  clientesIntervaloRecompra(p: ParamsCfo, r: RangoCfo): Promise<LecturaCfo<FilaIntervaloRecompra>> {
+    return this.leer(
+      "clientes_intervalo_recompra",
+      `select segmento, clientes, intervalos, p25, p50, p75, p90
+         from restaurantes.cfo_intervalo_recompra($1::uuid, $2::uuid[], $3::date, $4::date);`,
+      [p.organizationId, PROPS(p), r.desde, r.hasta],
+      mapIntervaloRecompra,
+    );
+  }
+
+  pedidosTortilla(p: ParamsCfo, r: RangoCfo): Promise<LecturaTortilla> {
+    return this.leerJson<LecturaTortilla>(
+      "pedidos_tortilla",
+      "select restaurantes.cfo_pedidos_tortilla($1::uuid, $2::uuid[], $3::date, $4::date) as j;",
+      [p.organizationId, PROPS(p), r.desde, r.hasta],
+      (j) => ({ disponible: true, ...mapTortilla(j) }),
+      { disponible: false, pedidosConItems: 0, tortilla: [] },
     );
   }
 
