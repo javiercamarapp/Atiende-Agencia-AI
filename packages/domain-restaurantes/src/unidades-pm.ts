@@ -145,7 +145,7 @@ export function avisoUnidadPorTabla(product: { readonly name: string; readonly p
   const f = familiaUnidadPm(product.name);
   if (!f || f.aproximado || f.piezasPorOrden < 2) return null;
   return (
-    `Según el menú, cada orden de este producto trae ${f.piezasPorOrden} piezas y solo se vende en órdenes completas. requested_quantity cuenta ÓRDENES en este renglón. ` +
+    `Según el menú, cada orden de este producto trae ${f.piezasPorOrden} piezas y solo se vende en órdenes completas. Como el menú no trae pack_size para este renglón, el servidor cobra UNA orden por cada unidad: requested_quantity cuenta ÓRDENES (una orden = 1, no multiplique por las piezas). ` +
     `Si el cliente pide piezas que no son múltiplo de ${f.piezasPorOrden}, no cotices: explícalo y ofrece la orden completa más cercana hacia abajo o hacia arriba.`
   );
 }
