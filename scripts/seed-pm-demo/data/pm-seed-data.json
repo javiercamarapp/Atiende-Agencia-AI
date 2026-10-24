@@ -19,11 +19,11 @@
       "activa": true,
       "zona_cliente": "zona centro y norte",
       "horario": [
-        { "dias": [1, 2, 3, 4, 5], "abre": "18:00", "cierra": "01:00" },
-        { "dias": [0, 6], "abre": "12:00", "cierra": "01:00" }
+        { "dias": [1, 2, 3, 4], "abre": "18:00", "cierra": "01:00" },
+        { "dias": [0, 5, 6], "abre": "12:00", "cierra": "01:00" }
       ],
-      "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026) coinciden en lun-jue 18:00-01:00 y sab-dom 12:00-01:00; el cierre a la 1 am quedo confirmado por el equipo.",
-      "horario_pendiente": "VIERNES PROVISIONAL, confirmar con PM: el sitio oficial dice vie 12:00-01:00 y la ficha de Google dice vie 18:00-01:00. Se usa 18:00 (lo conservador: no tomar pedidos cuando podria estar cerrado). Si PM confirma 12:00, cambiar el viernes a 12:00-01:00.",
+      "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026) coinciden en lun-jue 18:00-01:00 y sab-dom 12:00-01:00; el cierre a la 1 am coincide en las dos. El viernes se tomo del sitio oficial (12:00-01:00).",
+      "horario_pendiente": "viernes: sitio 12:00, Google 18:00; confirmar con T1 (llamar a la sucursal). Si abre a las 18:00, cambiar el viernes a 18:00-01:00.",
       "coordenadas_propuestas": {
         "lat": 21.0093272,
         "lng": -89.6135974,
