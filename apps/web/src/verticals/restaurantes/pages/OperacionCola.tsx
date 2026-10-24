@@ -181,10 +181,10 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
 
   return (
     <PageContainer padding="none">
-      <div className="mx-auto w-full min-w-0 max-w-2xl space-y-3 pb-6">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3 pb-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-bold text-foreground">Cola de pedidos</h1>
-          <span className="text-sm text-muted-foreground" aria-live="off">
+          <h1 className="sr-only">Cola de pedidos</h1>
+          <span className="ml-auto text-sm text-muted-foreground" aria-live="off">
             {etiquetaActualizado(ultimaOk, ahoraMs)}
           </span>
         </div>

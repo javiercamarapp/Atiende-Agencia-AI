@@ -136,10 +136,10 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
 
   return (
     <PageContainer padding="none">
-      <div className="mx-auto w-full max-w-2xl space-y-4 pb-6">
+      <div className="mx-auto w-full max-w-3xl space-y-4 pb-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-bold text-foreground">Viajes</h1>
-          <span className="text-sm text-muted-foreground">{etiquetaActualizado(ultimaOk, ahoraMs)}</span>
+          <h1 className="sr-only">Viajes</h1>
+          <span className="ml-auto text-sm text-muted-foreground">{etiquetaActualizado(ultimaOk, ahoraMs)}</span>
         </div>
         {sinConexion && (
           <div role="status" className="flex items-center gap-2 rounded-lg border-2 border-warning bg-warning-tint p-3 text-base text-warning">

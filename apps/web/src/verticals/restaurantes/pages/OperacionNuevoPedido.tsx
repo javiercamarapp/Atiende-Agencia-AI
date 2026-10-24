@@ -183,9 +183,9 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
   const esDomicilio = form.canal === "domicilio";
   return (
     <PageContainer padding="none">
-      <div className="mx-auto w-full max-w-2xl space-y-4 pb-4">
+      <div className="mx-auto w-full max-w-3xl space-y-4 pb-4">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-xl font-bold text-foreground">Nuevo pedido</h1>
+          <h1 className="sr-only">Nuevo pedido</h1>
         </div>
 
         <FormField label="Cómo entró el pedido">
@@ -292,12 +292,11 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
 
         <ConsentimientoWhatsapp valor={form.consentimiento} alCambiar={(consentimiento) => cambiar({ consentimiento })} />
 
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
-          <label htmlFor="confirmar-ya" className="text-base text-foreground">
-            Confirmar ya (pasa directo a preparación)
-          </label>
+        {/* Toda la fila es el objetivo tactil (>= 56 dp): el interruptor solo mide 24x40 px y el panel se usa con el pulgar. */}
+        <label htmlFor="confirmar-ya" className="flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 text-base text-foreground">
+          <span>Confirmar ya (pasa directo a preparación)</span>
           <Switch id="confirmar-ya" checked={form.confirmarYa} onCheckedChange={(confirmarYa) => cambiar({ confirmarYa })} />
-        </div>
+        </label>
 
         <div className="sticky bottom-0 -mx-1 space-y-2 border-t border-border bg-background p-2">
           {falta.length > 0 && (
