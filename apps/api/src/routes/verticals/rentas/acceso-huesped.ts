@@ -8,6 +8,11 @@
 //   GET     /rentas/:propertyId/acceso-huesped/reservas   reservas próximas con estado de pago/liberación
 //   GET/PUT /rentas/:propertyId/unidades/:unidadId/acceso-instrucciones
 //   POST    /rentas/:propertyId/reservas/:ocupacionId/pago-confirmado   { confirmado: boolean }
+//   Rn-P3-08/09 (migracion 036):
+//   GET/PUT /rentas/:propertyId/acceso-huesped/precheckin       enlace publico de la property, texto sugerido para la OTA y reglamento de la casa
+//   GET     /rentas/:propertyId/acceso-huesped/pendientes       reservas proximas cuyo acceso se omitio por falta de correo y nadie entrego
+//   GET     /rentas/:propertyId/reservas/:ocupacionId/acceso-mensaje   mensaje con las instrucciones DESCIFRADAS (bitacora lectura_admin, no-store)
+//   POST    /rentas/:propertyId/reservas/:ocupacionId/entrega-manual   registra `entregada_manual` (la liberacion automatica ya no la toma)
 // Cron (guard de secreto interno/Vercel Cron, igual que checkin-recordatorio.ts):
 //   GET|POST /internal/rentas/acceso-huesped
 // Cron en vercel.json (cada hora, minuto 10; ver docs/CRONS.md).
@@ -21,8 +26,8 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { ACCESO_HUESPED_ROLES, AccesoDescifradoError, AccesoNoDisponibleError, POLITICA_ACCESO_POR_DEFECTO, PostgresRentasAccesoRepository, ejecutarLiberacionAcceso, validarInstruccion, validarPolitica } from "@atiende/domain-rentas";
-import type { PoliticaAcceso, RentasAccesoRepository } from "@atiende/domain-rentas";
+import { ACCESO_HUESPED_ROLES, AccesoDescifradoError, AccesoNoDisponibleError, POLITICA_ACCESO_POR_DEFECTO, PostgresRentasAccesoRepository, PostgresRentasPrecheckinRepository, ejecutarLiberacionAcceso, mensajeAccesoParaOta, textoSugeridoPrecheckin, validarInstruccion, validarPolitica, validarReglamento } from "@atiende/domain-rentas";
+import type { PoliticaAcceso, RentasAccesoRepository, RentasPrecheckinRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
@@ -73,7 +78,13 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     return new PostgresRentasAccesoRepository(db, cipher, error);
   };
 
+  const precheckinRepo = (db: Parameters<AppDeps["rentasRepo"]>[0]): RentasPrecheckinRepository => (deps.rentasPrecheckinRepo ? deps.rentasPrecheckinRepo(db) : new PostgresRentasPrecheckinRepository(db));
+
   const rutas = [
+    "/rentas/:propertyId/acceso-huesped/precheckin",
+    "/rentas/:propertyId/acceso-huesped/pendientes",
+    "/rentas/:propertyId/reservas/:ocupacionId/acceso-mensaje",
+    "/rentas/:propertyId/reservas/:ocupacionId/entrega-manual",
     "/rentas/:propertyId/acceso-huesped/politica",
     "/rentas/:propertyId/acceso-huesped/bitacora",
     "/rentas/:propertyId/acceso-huesped/reservas",
@@ -167,6 +178,78 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (r === "no_disponible") throw Errors.conflict("La liberación de acceso al huésped aún no está disponible en este ambiente (migración pendiente).");
     if (r === "no_encontrada") throw Errors.notFound("Reserva no encontrada en esta property.");
     return c.json({ reserva_id: ocupacionId, pago_confirmado: r === "confirmado" }, 200);
+  });
+
+  // ---- Rn-P3-08: enlace publico de pre-check-in y reglamento de la casa ----
+  const configAJson = (propertyId: string, reglamento: string | null, version: number) => {
+    const enlace = `${deps.env.appBaseUrl}/rentas/precheckin/${propertyId}`;
+    return { disponible: true, enlace_publico: enlace, texto_sugerido: textoSugeridoPrecheckin(enlace), reglamento, reglamento_version: version };
+  };
+
+  app.get("/rentas/:propertyId/acceso-huesped/precheckin", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const r = await precheckinRepo(c.get("db")).obtenerConfig(propertyId);
+    if (!r.disponible) return c.json({ disponible: false, enlace_publico: null, texto_sugerido: null, reglamento: null, reglamento_version: 1 }, 200);
+    return c.json(configAJson(propertyId, r.valor.reglamento, r.valor.reglamentoVersion), 200);
+  });
+
+  app.put("/rentas/:propertyId/acceso-huesped/precheckin", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const v = validarReglamento(await leerJson(c));
+    if (!v.ok) throw Errors.validation(v.error);
+    const propertyId = c.req.param("propertyId");
+    const r = await precheckinRepo(c.get("db")).guardarReglamento(c.get("organizationId") as string, propertyId, v.valor.reglamento, c.get("userId"));
+    if (!r.disponible) throw Errors.conflict("El pre-check-in aún no está disponible en este ambiente (migración pendiente).");
+    return c.json(configAJson(propertyId, r.valor.reglamento, r.valor.reglamentoVersion), 200);
+  });
+
+  // ---- Rn-P3-09: accesos omitidos por falta de correo ----
+  app.get("/rentas/:propertyId/acceso-huesped/pendientes", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const r = await accesoRepo(c.get("db")).listarPendientesEntrega(c.req.param("propertyId"), 100);
+    if (!r.disponible) return c.json({ disponible: false, pendientes: [] }, 200);
+    return c.json(
+      {
+        disponible: true,
+        pendientes: r.valor.map((p) => ({
+          reserva_id: p.ocupacionId,
+          unidad_id: p.unidadId,
+          unidad_nombre: p.unidadNombre,
+          canal: p.canal,
+          check_in: p.checkIn,
+          check_out: p.checkOut,
+          huesped_nombre: p.huespedNombre,
+          omitida_en: p.omitidaEn,
+        })),
+      },
+      200,
+    );
+  });
+
+  app.get("/rentas/:propertyId/reservas/:ocupacionId/acceso-mensaje", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const ocupacionId = requireUuid(c.req.param("ocupacionId"), "ocupacionId");
+    const propertyId = c.req.param("propertyId");
+    const repo = accesoRepo(c.get("db"));
+    c.header("Cache-Control", "no-store");
+    const reserva = await repo.obtenerReservaParaMensaje(propertyId, ocupacionId);
+    if (!reserva.disponible) return c.json({ disponible: false, mensaje: null }, 200);
+    if (reserva.valor === null) throw Errors.notFound("Reserva no encontrada en esta property.");
+    // Descifra con bitacora `lectura_admin` (Rn-29); sin llave valida responde 503, nunca texto plano.
+    const instruccion = await conLlave(() => repo.obtenerInstruccion(propertyId, reserva.valor!.unidadId));
+    if (!instruccion.disponible) return c.json({ disponible: false, mensaje: null }, 200);
+    if (instruccion.valor === null) throw Errors.conflict("La unidad no tiene instrucciones de acceso capturadas: captúralas antes de copiar el mensaje.");
+    return c.json({ disponible: true, mensaje: mensajeAccesoParaOta(reserva.valor, instruccion.valor) }, 200);
+  });
+
+  app.post("/rentas/:propertyId/reservas/:ocupacionId/entrega-manual", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const ocupacionId = requireUuid(c.req.param("ocupacionId"), "ocupacionId");
+    const r = await accesoRepo(c.get("db")).marcarEntregadaManual(ocupacionId, c.req.param("propertyId"));
+    if (r === "no_disponible") throw Errors.conflict("La entrega manual aún no está disponible en este ambiente (migración pendiente).");
+    if (r === "no_encontrada") throw Errors.notFound("Reserva no encontrada en esta property.");
+    return c.json({ reserva_id: ocupacionId, entregada: true, nueva: r === "entregada" }, 200);
   });
 
   // ---- Barrido de cifrado de las instrucciones heredadas en texto plano (Rn-29) ----
