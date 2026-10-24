@@ -6,13 +6,15 @@
 // (POST .../cerrar — `CERRAR_PERIODO_ROLES = ["admin"]`: acción irreversible en
 // esta fase, sin reapertura implementada, ver roles.ts). El reporte de cierre
 // (GET .../reporte) se trae bajo demanda para no pedirlo en cada carga de la
-// página.
+// página. paridad3: el detalle trae las validaciones calculadas en el servidor
+// (bloquean el cierre; un admin puede forzar con motivo), y al cerrar los
+// entregables pre-generados (XML de contabilidad electrónica) y la entrega al cliente.
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, FileBarChart, Lock } from "lucide-react";
-import { Button, Card, CardContent, ConfirmDialog, EstadoCargando, EstadoError, PageContainer, Separator, StatusBadge, statusTone } from "@atiende/ui";
-import { cerrarPeriodoCierre, completarTareaCierre, fetchPeriodoDetalle, fetchReporteCierre } from "../lib/cierre-mensual-client.ts";
-import type { CloseTask, PeriodoDetalle, ReporteCierre } from "../lib/cierre-mensual-client.ts";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, Download, FileBarChart, Lock } from "lucide-react";
+import { Button, Callout, Card, CardContent, ConfirmDialog, EstadoCargando, EstadoError, FormDialog, Input, Label, PageContainer, Separator, StatusBadge, Textarea, statusTone } from "@atiende/ui";
+import { cerrarPeriodoCierre, completarTareaCierre, descargarArtefactoCierre, ETIQUETA_ARTEFACTO, fetchPeriodoDetalle, fetchReporteCierre, motivoForzadoValido, textoPosCierre } from "../lib/cierre-mensual-client.ts";
+import type { ArtefactoCierre, CloseTask, PeriodoDetalle, PosCierre, ReporteCierre } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo, formatTaskCategory, formatTaskStatus } from "../lib/format.ts";
 import { TAREA_STATUS_TONES } from "../lib/status-tones.ts";
 import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
@@ -43,6 +45,12 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   // todas formas, así que esto no es solo cosmético del lado del cliente: sin
   // él, cada intento devolvería 400.
   const [confirmando, setConfirmando] = useState(false);
+  // paridad3 D-P3-15: si las validaciones derivadas fallan, un admin puede FORZAR el cierre con un motivo obligatorio (queda en el periodo).
+  const [forzando, setForzando] = useState(false);
+  const [motivoForzado, setMotivoForzado] = useState("");
+  const [textoForzado, setTextoForzado] = useState("");
+  const [posCierre, setPosCierre] = useState<PosCierre | null>(null);
+  const [descargando, setDescargando] = useState<string | null>(null);
 
   async function load() {
     if (!periodoId) return;
@@ -79,19 +87,42 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
 
   // `texto` es el período que el staff tecleó en el diálogo (ya recortado). Si el servidor rechaza el cierre se
   // relanza el error: `ConfirmDialog` deja el diálogo abierto (mostrando `actionError`) en vez de cerrarlo solo.
-  async function handleCerrar(texto: string) {
+  async function handleCerrar(texto: string, forzado?: { readonly motivo: string }) {
     if (!periodoId) return;
     setActionError(null);
     setCerrando(true);
     try {
-      await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId, texto);
+      const cerrado = await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId, texto, forzado);
+      setPosCierre(cerrado.posCierre ?? null);
       setConfirmando(false);
+      setForzando(false);
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "No se pudo cerrar el período.");
+      // Si el servidor bloqueo el cierre por validaciones, la lista de abajo se refresca para mostrar exactamente que falta.
+      await load();
       throw err;
     } finally {
       setCerrando(false);
+    }
+  }
+
+  async function handleDescargar(a: ArtefactoCierre) {
+    if (!periodoId) return;
+    setActionError(null);
+    setDescargando(a.id);
+    try {
+      const { blob, nombre } = await descargarArtefactoCierre(fetch, apiBaseUrl, token, propertyId, periodoId, a.id, a.nombreArchivo);
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = nombre;
+      enlace.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "No se pudo descargar el archivo.");
+    } finally {
+      setDescargando(null);
     }
   }
 
@@ -115,6 +146,10 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
 
   const { periodo, tareas, estado } = detalle;
   const periodoTexto = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
+  const validaciones = detalle.validaciones;
+  const fallidas = validaciones?.items.filter((v) => v.bloqueante && !v.ok) ?? [];
+  const bloqueado = validaciones?.disponible === true && !validaciones.puedeCerrar;
+  const documentos = validaciones?.items.find((v) => v.clave === "solicitud_documentos");
 
   return (
     <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
@@ -132,6 +167,12 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
             {formatPeriodStatus(periodo.status)} · Abierto {formatDate(periodo.openedAt)}
             {periodo.closedAt && ` · Cerrado ${formatDate(periodo.closedAt)}`}
           </p>
+          {documentos && validaciones?.disponible && periodo.status !== "closed" && (
+            <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              Documentos del cliente:
+              <StatusBadge tone={documentos.detalle.estado === null ? "neutral" : documentos.ok ? "success" : "warning"}>{documentos.detalle.estado === null ? "Sin pedir" : documentos.ok ? "Completos" : `Faltan ${String(documentos.detalle.pendientes ?? 0)}`}</StatusBadge>
+            </p>
+          )}
         </div>
         {periodo.status !== "closed" && CERRAR_ROLES.has(role) && !confirmando && (
           <Button
@@ -140,11 +181,12 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
             className="border-destructive/40 text-destructive hover:border-destructive"
             onClick={() => {
               setActionError(null);
-              setConfirmando(true);
+              if (bloqueado) setForzando(true);
+              else setConfirmando(true);
             }}
           >
             <Lock />
-            Cerrar período
+            {bloqueado ? "Cerrar con excepciones" : "Cerrar período"}
           </Button>
         )}
       </header>
@@ -184,6 +226,59 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
         />
       )}
 
+      {periodo.status !== "closed" && CERRAR_ROLES.has(role) && bloqueado && (
+        <FormDialog
+          open={forzando}
+          onOpenChange={(abierto) => !abierto && !cerrando && setForzando(false)}
+          titulo={`Cerrar ${formatPeriodo(periodo.year, periodo.month)} con excepciones`}
+          subtitulo="Hay validaciones sin cumplir. Cerrar es irreversible."
+          anchoClase="max-w-2xl"
+          bloquearCierre={cerrando}
+          footer={
+            <>
+              <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setForzando(false)} disabled={cerrando}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-full px-6"
+                disabled={cerrando || textoForzado !== periodoTexto || !motivoForzadoValido(motivoForzado)}
+                onClick={() => void handleCerrar(textoForzado, { motivo: motivoForzado.trim() }).catch(() => undefined)}
+              >
+                {cerrando ? "Cerrando…" : "Cerrar de todos modos"}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <Callout tone="warning" role="status">
+              Se cerrará {formatPeriodo(periodo.year, periodo.month)} aunque no se cumpla lo siguiente. El motivo queda registrado en el período y la bitácora anota qué validaciones se saltaron.
+            </Callout>
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-sm text-foreground">
+              {fallidas.map((v) => (
+                <li key={v.clave}>
+                  <strong>{v.titulo}:</strong> {v.mensaje}
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="motivo-forzado">Motivo (10 a 500 caracteres)</Label>
+              <Textarea id="motivo-forzado" rows={3} maxLength={500} value={motivoForzado} onChange={(e) => setMotivoForzado(e.target.value)} placeholder="Por qué se cierra con estas excepciones" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="texto-forzado">Escribe exactamente {periodoTexto} para confirmar</Label>
+              <Input id="texto-forzado" value={textoForzado} onChange={(e) => setTextoForzado(e.target.value.trim())} placeholder={periodoTexto} />
+            </div>
+            {actionError && (
+              <p role="alert" className="text-sm text-destructive">
+                {actionError}
+              </p>
+            )}
+          </div>
+        </FormDialog>
+      )}
+
       <Card>
         <CardContent className="p-4">
           <div className="mb-1.5 flex justify-between text-sm text-foreground">
@@ -197,6 +292,82 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
           {estado.blocked.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{estado.blocked.length} tarea(s) bloqueada(s) por dependencias.</p>}
         </CardContent>
       </Card>
+
+      {posCierre && textoPosCierre(posCierre).length > 0 && (
+        <Callout tone="info" role="status">
+          <ul className="m-0 flex list-disc flex-col gap-1 pl-4">
+            {textoPosCierre(posCierre).map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </Callout>
+      )}
+
+      {validaciones?.disponible && validaciones.items.length > 0 && periodo.status !== "closed" && (
+        <Card>
+          <CardContent className="flex flex-col gap-2 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-base font-semibold text-foreground">Validaciones del cierre</h2>
+              <StatusBadge tone={validaciones.puedeCerrar ? "success" : "danger"}>{validaciones.puedeCerrar ? "Listo para cerrar" : `${fallidas.length} sin cumplir`}</StatusBadge>
+            </div>
+            <p className="text-xs text-muted-foreground">Las calcula el servidor desde lo que ya está registrado; se actualizan solas cada vez que abres el período.</p>
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              {validaciones.items.map((v) => (
+                <li key={v.clave} className="flex items-start gap-2 text-sm">
+                  {v.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" strokeWidth={1.75} aria-label="Cumple" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" strokeWidth={1.75} aria-label="No cumple" />}
+                  <span>
+                    <strong className="text-foreground">{v.titulo}.</strong> <span className="text-muted-foreground">{v.mensaje}</span>
+                    {v.clave === "solicitud_documentos" && !v.ok && (
+                      <>
+                        {" "}
+                        <Link to={`/despachos/${orgSlug}/cartera`} className="text-foreground underline underline-offset-2">
+                          Ver en Cartera
+                        </Link>
+                      </>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+      {validaciones && !validaciones.disponible && periodo.status !== "closed" && (
+        <Callout tone="warning" role="status">
+          No disponible aún: las validaciones automáticas del cierre requieren aplicar la migración 027 en este ambiente. Mientras tanto el cierre se rige solo por las tareas.
+        </Callout>
+      )}
+
+      {periodo.status === "closed" && ((detalle.artefactos?.length ?? 0) > 0 || detalle.entrega) && (
+        <Card>
+          <CardContent className="flex flex-col gap-3 p-4">
+            <h2 className="font-display text-base font-semibold text-foreground">Entregables del cierre</h2>
+            {(detalle.artefactos?.length ?? 0) > 0 && (
+              <ul className="m-0 flex list-none flex-col gap-2 p-0">
+                {detalle.artefactos!.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="text-foreground">
+                      {ETIQUETA_ARTEFACTO[a.tipo]} <span className="text-xs text-muted-foreground">· generado al cerrar, no presentado</span>
+                    </span>
+                    {GESTIONAR_ROLES.has(role) && (
+                      <Button type="button" size="sm" variant="outline" disabled={descargando === a.id} onClick={() => void handleDescargar(a)}>
+                        <Download />
+                        {descargando === a.id ? "Descargando…" : "Descargar"}
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {detalle.entrega && (
+              <p className="text-sm text-muted-foreground">
+                Entrega al cliente: {detalle.entrega.archivos.length} PDF publicado(s) en su portal el {formatDate(detalle.entrega.creadaEn)}
+                {detalle.entrega.correoEncoladoEn ? ` · aviso por correo enviado el ${formatDate(detalle.entrega.correoEncoladoEn)}` : " · sin aviso por correo"}.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {actionError && (
         <p role="alert" className="text-destructive text-sm">

@@ -8,7 +8,7 @@ import type { HallazgoCfdi } from "@atiende/billing";
 import { DespachosConfigUnavailableError, EfosUnavailableError, EstadoSatInvalidoError, EstadoSatNoDisponibleError, InvoiceAlreadyExistsError, InvoiceNoEncontradoError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import { EFOS_NO_DISPONIBLE } from "./cfdi/efos.ts";
 import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
-import type { DespachosRepository, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EfosInvoiceAfectado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
+import type { DespachosRepository, DetalleCancelacionSat, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EfosInvoiceAfectado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CategoriaContable,
   CollectionEventChannel,
@@ -186,6 +186,10 @@ interface InvoiceRawRow {
   ieps_centavos?: string | null;
   estado_sat?: EstadoSatCfdi;
   estado_sat_verificado_en?: string | Date | null;
+  es_cancelable?: string | null;
+  estatus_cancelacion?: string | null;
+  codigo_estatus?: string | null;
+  validacion_efos?: string | null;
 }
 
 const numOrNull = (v: string | number | null | undefined): number | null => (v === null || v === undefined ? null : Number(v));
@@ -227,6 +231,10 @@ function mapInvoice(row: InvoiceRawRow): InvoiceRecord {
     ivaRetenidoCentavos: numOrNull(row.iva_retenido_centavos),
     iepsCentavos: numOrNull(row.ieps_centavos),
     estadoSat: row.estado_sat ?? "pendiente",
+    esCancelable: row.es_cancelable ?? null,
+    estatusCancelacion: row.estatus_cancelacion ?? null,
+    codigoEstatus: row.codigo_estatus ?? null,
+    validacionEfos: row.validacion_efos ?? null,
     estadoSatVerificadoEn: row.estado_sat_verificado_en === null || row.estado_sat_verificado_en === undefined ? null : String(row.estado_sat_verificado_en instanceof Date ? row.estado_sat_verificado_en.toISOString() : row.estado_sat_verificado_en),
   };
 }
@@ -424,6 +432,14 @@ function mapDespachosAuditLogRow(row: DespachosAuditLogRawRow) {
 // (p. ej. core.has_property_access ausente) es un bug real y se repropaga.
 const EFOS_FN_PREFIX = "despachos.efos_";
 
+/** Traduce los errores SQL de las funciones de estado SAT a los errores de dominio (los de dominio ya traducidos pasan tal cual). */
+function traducirErrorEstadoSat(err: unknown, funcion: string): unknown {
+  const code = (err as { code?: string } | null)?.code;
+  if (code === "P0002") return new InvoiceNoEncontradoError();
+  if (code === "22023") return new EstadoSatInvalidoError(err instanceof Error ? err.message.replace(new RegExp(`^${funcion}:\\s*`), "") : undefined);
+  return err;
+}
+
 export class PostgresDespachosRepository implements DespachosRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -605,10 +621,31 @@ export class PostgresDespachosRepository implements DespachosRepository {
         },
       });
     } catch (err) {
-      const code = (err as { code?: string } | null)?.code;
-      if (code === "P0002") throw new InvoiceNoEncontradoError();
-      if (code === "22023") throw new EstadoSatInvalidoError(err instanceof Error ? err.message.replace(/^invoice_estado_sat_registrar:\s*/, "") : undefined);
-      throw err;
+      throw traducirErrorEstadoSat(err, "invoice_estado_sat_registrar");
+    }
+  }
+
+  async registrarDetalleSatInvoice(propertyId: string, invoiceId: string, estado: EstadoSatCfdi, detalle: DetalleCancelacionSat): Promise<{ readonly cancelacionEnProcesoNueva: boolean }> {
+    try {
+      return await runWithSavepointFallback<{ readonly cancelacionEnProcesoNueva: boolean }>({
+        session: this.db,
+        savepointName: "sp_despachos_invoice_sat_detalle",
+        primary: async () => {
+          const { rows } = await this.db.query<{ out_cancelacion_en_proceso_nueva: boolean }>(
+            "select out_cancelacion_en_proceso_nueva from despachos.invoice_estado_sat_detalle_registrar($1, $2, $3, $4, $5, $6, $7);",
+            [propertyId, invoiceId, estado, detalle.esCancelable, detalle.estatusCancelacion, detalle.codigoEstatus, detalle.validacionEfos],
+          );
+          return { cancelacionEnProcesoNueva: rows[0]?.out_cancelacion_en_proceso_nueva === true };
+        },
+        isRecoverable: (err) => isMigrationPendingError(err, "despachos.invoice_estado_sat_detalle_registrar"),
+        // Base sin la migracion 027: solo el estado (camino anterior); el detalle de cancelacion no se guarda.
+        fallback: async () => {
+          await this.registrarEstadoSatInvoice(propertyId, invoiceId, estado);
+          return { cancelacionEnProcesoNueva: false };
+        },
+      });
+    } catch (err) {
+      throw traducirErrorEstadoSat(err, "invoice_estado_sat_detalle_registrar");
     }
   }
 

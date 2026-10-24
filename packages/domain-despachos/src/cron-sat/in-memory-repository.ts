@@ -4,11 +4,14 @@
 import type { EstadoSatCfdi } from "../cfdi/modelo-cfdi.ts";
 import type { NivelEscalamiento } from "../vencimientos/engine.ts";
 import { CronSatNoDisponibleError } from "./types.ts";
-import type { CfdiPendienteEstatusSat, ClienteFichaSistema, CronSatRepository, EfosAfectadoSistema, RegistroEstatusSat, VencimientoPorEscalar } from "./types.ts";
+import type { CfdiPendienteEstatusSat, ClienteFichaSistema, CronSatRepository, DetalleEstatusSat, EfosAfectadoSistema, RegistroEstatusSat, VencimientoPorEscalar } from "./types.ts";
 
 const RANGO: Readonly<Record<NivelEscalamiento, number>> = { nivel_1: 1, nivel_2: 2, nivel_3: 3, nivel_4: 4 };
 
 type CfdiSembrado = { -readonly [K in keyof CfdiPendienteEstatusSat]: CfdiPendienteEstatusSat[K] } & {
+  /** Fecha de emision (YYYY-MM-DD). Sin ella se trata como reciente. */
+  fecha?: string;
+  detalle: DetalleEstatusSat;
   intentadoEn: number | null;
   verificadoEn: number | null;
   readonly creadoEn: number;
@@ -35,12 +38,13 @@ export class InMemoryCronSatRepository implements CronSatRepository {
   /** Escalamientos registrados, en orden (para aserciones). */
   readonly escalamientos: { deadlineId: string; nivel: NivelEscalamiento; notas: string }[] = [];
 
-  sembrarCfdi(c: Omit<CfdiPendienteEstatusSat, "estadoSat"> & { estadoSat?: EstadoSatCfdi; intentadoEn?: number | null }): void {
-    this.cfdi.set(c.invoiceId, { ...c, estadoSat: c.estadoSat ?? "pendiente", intentadoEn: c.intentadoEn ?? null, verificadoEn: null, creadoEn: ++this.secuencia });
+  sembrarCfdi(c: Omit<CfdiPendienteEstatusSat, "estadoSat" | "prioridad"> & { estadoSat?: EstadoSatCfdi; intentadoEn?: number | null; fecha?: string; estatusCancelacion?: string | null }): void {
+    const { estatusCancelacion, ...resto } = c;
+    this.cfdi.set(c.invoiceId, { ...resto, estadoSat: c.estadoSat ?? "pendiente", detalle: { esCancelable: null, estatusCancelacion: estatusCancelacion ?? null, codigoEstatus: null, validacionEfos: null }, intentadoEn: c.intentadoEn ?? null, verificadoEn: null, creadoEn: ++this.secuencia });
   }
-  estadoCfdi(invoiceId: string): { estadoSat: EstadoSatCfdi; intentadoEn: number | null; verificadoEn: number | null } {
+  estadoCfdi(invoiceId: string): { estadoSat: EstadoSatCfdi; intentadoEn: number | null; verificadoEn: number | null; detalle: DetalleEstatusSat } {
     const c = this.cfdi.get(invoiceId)!;
-    return { estadoSat: c.estadoSat, intentadoEn: c.intentadoEn, verificadoEn: c.verificadoEn };
+    return { estadoSat: c.estadoSat, intentadoEn: c.intentadoEn, verificadoEn: c.verificadoEn, detalle: c.detalle };
   }
   sembrarEfosAfectado(a: EfosAfectadoSistema): void {
     this.efos.push(a);
@@ -59,27 +63,72 @@ export class InMemoryCronSatRepository implements CronSatRepository {
     if (!this.disponible) throw new CronSatNoDisponibleError();
   }
 
-  async listarCfdiPendientesEstatusSat(limite: number, reintentoDias: number): Promise<readonly CfdiPendienteEstatusSat[] | null> {
-    if (!this.disponible) return null;
-    const corte = Date.now() - reintentoDias * 86_400_000;
-    return [...this.cfdi.values()]
-      .filter((c) => c.estadoSat !== "cancelado" && (c.intentadoEn === null || c.intentadoEn < corte))
-      .sort((a, b) => (a.intentadoEn ?? 0) - (b.intentadoEn ?? 0) || a.creadoEn - b.creadoEn)
-      .slice(0, Math.min(limite, 500))
-      .map(({ intentadoEn: _i, verificadoEn: _v, creadoEn: _c, ...c }) => c);
+  /** false = simula la base con la migracion 022 pero SIN la 027 (orden anterior y sin detalle de cancelacion). */
+  migracion027 = true;
+  /** Ahora (ms) inyectable para las pruebas de ventana y reintento. */
+  ahora: () => number = Date.now;
+
+  private prioridadDe(c: CfdiSembrado): number {
+    const enProceso = /^en proceso/i.test((c.detalle.estatusCancelacion ?? "").trim());
+    if (c.intentadoEn === null) return 0;
+    if (enProceso) return 1;
+    const fecha = c.fecha ? Date.parse(`${c.fecha}T00:00:00Z`) : this.ahora();
+    return this.ahora() - fecha <= 90 * 86_400_000 ? 2 : 3;
   }
 
-  async registrarEstatusSatSistema(invoiceId: string, estado: EstadoSatCfdi): Promise<RegistroEstatusSat> {
+  async listarCfdiPendientesEstatusSat(limite: number, reintentoDias: number, ventanaEjercicios = 2, porProperty = 15): Promise<readonly CfdiPendienteEstatusSat[] | null> {
+    if (!this.disponible) return null;
+    const limpiar = ({ intentadoEn: _i, verificadoEn: _v, creadoEn: _c, fecha: _f, detalle: _d, ...c }: CfdiSembrado): CfdiPendienteEstatusSat => c;
+    if (!this.migracion027) {
+      const corte = this.ahora() - reintentoDias * 86_400_000;
+      return [...this.cfdi.values()]
+        .filter((c) => c.estadoSat !== "cancelado" && (c.intentadoEn === null || c.intentadoEn < corte))
+        .sort((a, b) => (a.intentadoEn ?? 0) - (b.intentadoEn ?? 0) || a.creadoEn - b.creadoEn)
+        .slice(0, Math.min(limite, 500))
+        .map(limpiar);
+    }
+    const ahora = this.ahora();
+    const corte = ahora - reintentoDias * 86_400_000;
+    const desde = Date.UTC(new Date(ahora).getUTCFullYear() - (ventanaEjercicios - 1), 0, 1);
+    const candidatos = [...this.cfdi.values()].filter((c) => {
+      if (c.estadoSat === "cancelado") return false;
+      if (c.intentadoEn === null) return true;
+      const enProceso = /^en proceso/i.test((c.detalle.estatusCancelacion ?? "").trim());
+      if (enProceso && c.intentadoEn < ahora - 20 * 3_600_000) return true;
+      const fecha = c.fecha ? Date.parse(`${c.fecha}T00:00:00Z`) : ahora;
+      return fecha >= desde && c.intentadoEn < corte;
+    });
+    const orden = (a: CfdiSembrado, b: CfdiSembrado) => this.prioridadDe(a) - this.prioridadDe(b) || (a.intentadoEn ?? 0) - (b.intentadoEn ?? 0) || a.creadoEn - b.creadoEn;
+    const porCliente = new Map<string, number>();
+    return candidatos
+      .sort(orden)
+      .filter((c) => {
+        const n = (porCliente.get(c.propertyId) ?? 0) + 1;
+        porCliente.set(c.propertyId, n);
+        return n <= porProperty;
+      })
+      .slice(0, Math.min(limite, 500))
+      .map((c) => ({ ...limpiar(c), prioridad: this.prioridadDe(c) }));
+  }
+
+  async registrarEstatusSatSistema(invoiceId: string, estado: EstadoSatCfdi, detalle?: DetalleEstatusSat): Promise<RegistroEstatusSat> {
     this.requerirDisponible();
     const c = this.cfdi.get(invoiceId);
     if (!c) throw Object.assign(new Error("CFDI no encontrado"), { code: "P0002" });
     const anterior = c.estadoSat;
-    c.intentadoEn = Date.now();
+    const enProceso = (v: string | null) => /^en proceso/i.test((v ?? "").trim());
+    const detalleAnterior = c.detalle;
+    c.intentadoEn = this.ahora();
+    let cancelacionEnProcesoNueva = false;
     if (estado !== "pendiente" && anterior !== "cancelado") {
       c.estadoSat = estado;
-      c.verificadoEn = Date.now();
+      c.verificadoEn = this.ahora();
+      if (this.migracion027) {
+        c.detalle = detalle ?? { esCancelable: null, estatusCancelacion: null, codigoEstatus: null, validacionEfos: null };
+        cancelacionEnProcesoNueva = enProceso(c.detalle.estatusCancelacion) && !enProceso(detalleAnterior.estatusCancelacion);
+      }
     }
-    return { organizationId: c.organizationId, propertyId: c.propertyId, estadoAnterior: anterior, estadoNuevo: c.estadoSat, cambioACancelado: anterior !== "cancelado" && c.estadoSat === "cancelado" };
+    return { organizationId: c.organizationId, propertyId: c.propertyId, estadoAnterior: anterior, estadoNuevo: c.estadoSat, cambioACancelado: anterior !== "cancelado" && c.estadoSat === "cancelado", cancelacionEnProcesoNueva };
   }
 
   async listarEfosAfectadosSistema(limite: number): Promise<readonly EfosAfectadoSistema[] | null> {
