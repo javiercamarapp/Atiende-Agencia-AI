@@ -83,8 +83,6 @@ interface Extras {
   readonly pendientes: number | null;
   readonly ultimaWhatsapp: string | null;
   readonly ultimaVoz: string | null;
-  /** Configuracion del Resumen (096): `null` = no se pudo leer. */
-  readonly resumenCfg: ResumenConfigVista | null;
 }
 
 /** «Tu operacion»: conteos del catalogo de la ORGANIZACION (el catalogo es de toda la organizacion; la disponibilidad y el precio son por sucursal). `null` = no se pudo leer (el tile lo dice, no inventa un 0). Cada conteo falla por separado. */
@@ -99,7 +97,6 @@ const EXTRAS_VACIOS: Extras = {
   pendientes: null,
   ultimaWhatsapp: null,
   ultimaVoz: null,
-  resumenCfg: null,
 };
 
 async function cargarExtras(
@@ -107,13 +104,12 @@ async function cargarExtras(
   token: string,
   propertyId: string,
 ): Promise<Extras> {
-  const [tz, voz, pend, wa, vz, cfg] = await Promise.allSettled([
+  const [tz, voz, pend, wa, vz] = await Promise.allSettled([
     fetchBranchTimezone(fetch, apiBaseUrl, token, propertyId),
     fetchVozKpi(fetch, apiBaseUrl, token, propertyId),
     fetchBandeja(fetch, apiBaseUrl, token, propertyId, { estado: "pendiente" }),
     fetchBandeja(fetch, apiBaseUrl, token, propertyId, { canal: "whatsapp" }),
     fetchBandeja(fetch, apiBaseUrl, token, propertyId, { canal: "voz" }),
-    fetchResumenConfig(fetch, apiBaseUrl, token, propertyId),
   ]);
   const bandeja = (
     r: PromiseSettledResult<Awaited<ReturnType<typeof fetchBandeja>>>,
@@ -128,7 +124,6 @@ async function cargarExtras(
     pendientes: bPend ? bPend.total : null,
     ultimaWhatsapp: bWa ? actividadMasReciente(bWa.items) : null,
     ultimaVoz: bVz ? actividadMasReciente(bVz.items) : null,
-    resumenCfg: cfg.status === "fulfilled" ? cfg.value : null,
   };
 }
 
@@ -153,6 +148,8 @@ export function RestaurantesDashboardPage({
   const [period, setPeriod] = useState<StatsPeriod>("30");
   const [data, setData] = useState<DashboardData | null>(null);
   const [extras, setExtras] = useState<Extras>(EXTRAS_VACIOS);
+  /** Configuracion del Resumen (096): `undefined` = cargando, `null` = no se pudo leer. Se lee UNA vez por montaje (no depende del periodo). */
+  const [resumenCfg, setResumenCfg] = useState<ResumenConfigVista | null | undefined>(undefined);
   const [catalogo, setCatalogo] = useState<ConteosCatalogo | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [configAbierta, setConfigAbierta] = useState(false);
@@ -203,6 +200,22 @@ export function RestaurantesDashboardPage({
       vivo = false;
     };
   }, [apiBaseUrl, token, propertyId, role]);
+
+  // La configuracion de horas y metas es de toda la organizacion y no cambia con el periodo ni con «Actualizar»: se lee UNA vez por montaje (y si cambia la
+  // sucursal), igual que el catalogo. «Reintentar» del tile la vuelve a pedir.
+  const cargarCfg = useCallback(async () => {
+    setResumenCfg(undefined);
+    try {
+      setResumenCfg(await fetchResumenConfig(fetch, apiBaseUrl, token, propertyId));
+    } catch {
+      setResumenCfg(null);
+    }
+  }, [apiBaseUrl, token, propertyId]);
+
+  useEffect(() => {
+    if (role === "repartidor") return;
+    void cargarCfg();
+  }, [cargarCfg, role]);
 
   const base = `/restaurantes/${orgSlug}`;
   // El repartidor no tiene Resumen (el Shell ya lo redirige): defensa en profundidad si se monta la pagina suelta.
@@ -255,9 +268,9 @@ export function RestaurantesDashboardPage({
   const ingresosIa = channels.voice.revenue + channels.whatsapp.revenue;
   const deltaNota = sales.periodLabel;
 
-  const metaPedidos = extras.resumenCfg?.config.metaPedidosIaPct ?? null;
-  const metaIngresos = extras.resumenCfg?.config.metaIngresosIaPct ?? null;
-  const minutos = extras.resumenCfg?.config.minutosPorConversacion ?? null;
+  const metaPedidos = resumenCfg?.config.metaPedidosIaPct ?? null;
+  const metaIngresos = resumenCfg?.config.metaIngresosIaPct ?? null;
+  const minutos = resumenCfg?.config.minutosPorConversacion ?? null;
   const conversaciones = channels.whatsappConversations.total;
   const horas = horasAhorradas(conversaciones, minutos);
   const puedeConfigurar = ROLES_VOZ.has(role);
@@ -411,26 +424,28 @@ export function RestaurantesDashboardPage({
         </Card>
 
         <ResumenSeccion titulo="Impacto de tus agentes">
-          <div className="flex min-w-0 flex-col gap-1.5" title={extras.resumenCfg?.formula ?? "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado histórico de tus sucursales visibles; no cambia con el periodo) × minutos por conversación ÷ 60."}>
+          <div className="flex min-w-0 flex-col gap-1.5" title={resumenCfg?.formula ?? "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado histórico de tus sucursales visibles; no cambia con el periodo) × minutos por conversación ÷ 60."}>
             <StatCard
               variante="neutra"
               icon={Clock}
               label="Horas de atención ahorradas"
               value={horas === null ? "—" : `${horas.toFixed(1)} h`}
               nota={
-                extras.resumenCfg === null
+                resumenCfg === undefined
+                  ? "Cargando configuración…"
+                  : resumenCfg === null
                   ? "No se pudo leer la configuración"
                   : minutos === null
                     ? "Configúralo: minutos que ahorra cada conversación atendida por el agente"
                     : `${formatInt(conversaciones)} conversaciones (histórico, sucursales que ves) × ${minutos} min ÷ 60 · estimación con tu supuesto (config. de toda la organización), no una medición`
               }
             />
-            {extras.resumenCfg === null && (
-              <Button type="button" variant="outline" size="sm" className="self-start" iconLeft={<RefreshCw />} onClick={() => void cargar(period)}>
+            {resumenCfg === null && (
+              <Button type="button" variant="outline" size="sm" className="self-start" iconLeft={<RefreshCw />} onClick={() => void cargarCfg()}>
                 Reintentar
               </Button>
             )}
-            {puedeConfigurar && extras.resumenCfg !== null && (
+            {puedeConfigurar && resumenCfg != null && (
               <Button type="button" variant="outline" size="sm" className="self-start" iconLeft={<Settings2 />} onClick={() => setConfigAbierta(true)}>
                 Configurar horas y metas
               </Button>
@@ -530,14 +545,14 @@ export function RestaurantesDashboardPage({
 
         <RestaurantesFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
       </ResumenLayout>
-      {extras.resumenCfg !== null && (
+      {resumenCfg != null && (
         <ConfigResumenDialogo
           abierto={configAbierta}
           onCerrar={() => setConfigAbierta(false)}
-          vista={extras.resumenCfg}
+          vista={resumenCfg}
           onGuardar={async (config) => {
             const nueva = await guardarResumenConfig(fetch, apiBaseUrl, token, propertyId, config);
-            setExtras((e) => ({ ...e, resumenCfg: nueva }));
+            setResumenCfg(nueva);
             notify.success("Configuración del Resumen guardada.");
           }}
         />

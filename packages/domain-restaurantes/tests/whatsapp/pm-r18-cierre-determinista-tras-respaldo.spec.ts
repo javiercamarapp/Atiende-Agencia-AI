@@ -25,6 +25,8 @@ const COLGADA = (): Promise<LlmCompletionResult> => new Promise(() => undefined)
 beforeEach(() => {
   resetOrderFlowWarningForTests();
   vi.useFakeTimers();
+  // Reloj fijo a mediodia de Merida: el horario de la sucursal (con el «ultimo pedido 30 min antes del cierre») no debe depender de la hora real en que corre el CI.
+  vi.setSystemTime(new Date("2026-10-20T12:00:00-06:00"));
 });
 afterEach(() => {
   vi.useRealTimers();

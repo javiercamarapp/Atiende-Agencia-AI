@@ -331,3 +331,53 @@ describe("GET /v1/restaurantes/:propertyId/admin/repartidor-sugerido", () => {
     expect(((await vacio.json()) as { sugerencias: object }).sugerencias).toEqual({});
   });
 });
+
+describe("GET /v1/restaurantes/:propertyId/admin/orders: busqueda e incidencias del Historial", () => {
+  async function sembrar() {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const base = { organizationId: ctx.organizationId, propertyId: ctx.propertyIdA };
+    ctx.restaurantesRepo.seedOrder(makeOrder({ ...base, status: "entregado", total: 10, customerName: "Marisol Pech", customerPhone: "+529995550101" }));
+    ctx.restaurantesRepo.seedOrder(makeOrder({ ...base, status: "cancelado", total: 20, customerName: "Jorge Canul", customerPhone: "+529995550102" }));
+    ctx.restaurantesRepo.seedOrder(makeOrder({ ...base, status: "problema", total: 30, customerName: "Ana Pool", customerPhone: "+529995550103" }));
+    ctx.restaurantesRepo.seedOrder(makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdB, status: "problema", total: 40, customerName: "Marisol de Otra Sucursal", customerPhone: "+529995550199" }));
+    return ctx;
+  }
+  const nombres = async (res: Response) => ((await res.json()) as { orders: Array<{ customerName: string }> }).orders.map((o) => o.customerName).sort();
+
+  it("q busca por nombre sin distinguir mayusculas y por telefono con 4+ digitos; dentro del alcance de la sucursal del staff", async () => {
+    const ctx = await sembrar();
+    const app = buildApp(ctx.deps);
+    const url = (q: string) => `/v1/restaurantes/${ctx.propertyIdA}/admin/orders?q=${encodeURIComponent(q)}`;
+    expect(await nombres(await app.request(url("marisol"), authedGet(ctx.staff.owner.token)))).toEqual(["Marisol Pech", "Marisol de Otra Sucursal"]);
+    expect(await nombres(await app.request(url("marisol"), authedGet(ctx.staff.staffSucursalA.token)))).toEqual(["Marisol Pech"]);
+    expect(await nombres(await app.request(url("555 0102"), authedGet(ctx.staff.owner.token)))).toEqual(["Jorge Canul"]);
+    // 3 digitos no buscan telefono (mitad del padron); un solo caracter se ignora (sin filtro).
+    expect(await nombres(await app.request(url("010"), authedGet(ctx.staff.owner.token)))).toEqual([]);
+    expect((await nombres(await app.request(url("a"), authedGet(ctx.staff.owner.token)))).length).toBe(4);
+  });
+
+  it("incidencias=1 deja solo problema y cancelado, y se combina con q y con status", async () => {
+    const ctx = await sembrar();
+    const app = buildApp(ctx.deps);
+    const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/orders`;
+    expect(await nombres(await app.request(`${base}?incidencias=1&branchId=${ctx.propertyIdA}`, authedGet(ctx.staff.owner.token)))).toEqual(["Ana Pool", "Jorge Canul"]);
+    expect(await nombres(await app.request(`${base}?incidencias=1&q=ana&branchId=${ctx.propertyIdA}`, authedGet(ctx.staff.owner.token)))).toEqual(["Ana Pool"]);
+    expect(await nombres(await app.request(`${base}?incidencias=1&status=cancelado&branchId=${ctx.propertyIdA}`, authedGet(ctx.staff.owner.token)))).toEqual(["Jorge Canul"]);
+  });
+
+  it("valida: q de mas de 60 caracteres e incidencias distinto de 1/0 son 400; los comodines del usuario no son comodines", async () => {
+    const ctx = await sembrar();
+    const app = buildApp(ctx.deps);
+    const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/orders`;
+    expect((await app.request(`${base}?q=${"x".repeat(61)}`, authedGet(ctx.staff.owner.token))).status).toBe(400);
+    expect((await app.request(`${base}?incidencias=quizas`, authedGet(ctx.staff.owner.token))).status).toBe(400);
+    expect((await app.request(`${base}?q=${encodeURIComponent("%%")}`, authedGet(ctx.staff.owner.token))).status).toBe(200);
+  });
+
+  it("el repartidor sigue sin acceso con los filtros nuevos (403)", async () => {
+    const ctx = await sembrar();
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/orders?q=marisol&incidencias=1`, authedGet(ctx.staff.repartidor.token));
+    expect(res.status).toBe(403);
+  });
+});

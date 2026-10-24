@@ -6,7 +6,7 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnterior, fechaLocal, mensajeProgramadoFueraDeHorario, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, componentesLocales, etiquetaHoraLocal, fechaAnterior, fechaLocal, horaLegible, mensajeProgramadoFueraDeHorario, mensajeUltimoPedidoPasado, ultimoPedidoConExcepciones, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
@@ -149,6 +149,12 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     if (!apertura.abierto && (args.source !== "admin" || args.exigirAbierto === true)) {
       throw new OrderValidationError(args.mensajeCerrado ? args.mensajeCerrado(apertura, zona) : mensajeSucursalCerrada(branch.name, apertura));
     }
+    // Ultimo pedido (30 min antes del cierre por omision): el SERVIDOR deja de aceptar aunque el local siga abierto. Solo mira el instante del pedido
+    // (ahora, o la hora programada): un pedido ya creado no se toca. El panel del negocio (`admin`) puede capturar pedidos hasta el cierre.
+    if (apertura.abierto && (args.source !== "admin" || args.exigirAbierto === true)) {
+      const ultimo = ultimoPedidoConExcepciones(horarioBase ?? [], excepciones, ahora, zonaCruda);
+      if (!ultimo.aceptaPedidos) throw new OrderValidationError(mensajeUltimoPedidoPasado(branch.name, ultimo, args.exigirAbierto === true ? etiquetaHoraLocal(ahora, zona) : undefined));
+    }
   }
 
   if (args.horaRecogida && canal === "recoger") {
@@ -259,9 +265,12 @@ async function validarHoraRecogida(
   if (a.horarioBase || cubrePickup) {
     const r = aperturaConExcepciones(a.horarioBase ?? [], excepciones, pickup, a.zonaCruda);
     if (!r.estado.abierto) {
-      const cierre = a.aperturaAhora?.cierraA ? ` Hoy cierra a las ${a.aperturaAhora.cierraA}: ofrezca pasar antes.` : "";
+      const cierre = a.aperturaAhora?.cierraA ? ` Hoy cierra a las ${horaLegible(a.aperturaAhora.cierraA)}: ofrezca pasar antes.` : "";
       throw new OrderValidationError(`${mensajeProgramadoFueraDeHorario(a.branch.name, etiquetaPickup, r.estado)}${cierre}`);
     }
+    // Ultimo pedido tambien para la HORA de recogida: una recogida dentro de los ultimos minutos antes del cierre ya no se toma.
+    const ultimoPickup = ultimoPedidoConExcepciones(a.horarioBase ?? [], excepciones, pickup, a.zonaCruda);
+    if (!ultimoPickup.aceptaPedidos) throw new OrderValidationError(mensajeUltimoPedidoPasado(a.branch.name, ultimoPickup, etiquetaPickup));
     if (a.diaNegocioAhora !== null && r.diaNegocio !== a.diaNegocioAhora) {
       throw new OrderValidationError(
         `La hora de recogida (${etiquetaPickup}) cae en otro día de negocio (ahora son las ${etiquetaAhora}). Para otro día use un pedido programado (programado_para).`,

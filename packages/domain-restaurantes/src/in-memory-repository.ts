@@ -13,7 +13,7 @@ import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import { ClienteMemoriaNoDisponibleError, OrderConflictError, OrderValidationError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
-import { RESUMEN_CONFIG_VACIA, ResumenConfigNoDisponibleError, EMPTY_BRANCH_POLICY } from "./types.ts";
+import { RESUMEN_CONFIG_VACIA, ResumenConfigNoDisponibleError, digitosBusquedaTelefono, EMPTY_BRANCH_POLICY, ESTADOS_INCIDENCIA } from "./types.ts";
 import type { LecturaResumenConfig, ResumenConfig } from "./types.ts";
 import { diaLocalSucursal } from "./voz/kpi.ts";
 import { InMemoryConocimientoStore } from "./conocimiento/in-memory.ts";
@@ -1973,6 +1973,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       const createdMs = Date.parse(o.createdAt);
       if (fromMs !== null && createdMs < fromMs) return false;
       if (toMs !== null && createdMs >= toMs) return false;
+      if (filter.soloIncidencias && !ESTADOS_INCIDENCIA.includes(o.status)) return false;
+      if (filter.busqueda !== undefined) {
+        const digitos = digitosBusquedaTelefono(filter.busqueda);
+        const porNombre = o.customerName.toLowerCase().includes(filter.busqueda.toLowerCase());
+        const porTelefono = digitos !== null && o.customerPhone.replace(/\D/g, "").includes(digitos);
+        if (!porNombre && !porTelefono) return false;
+      }
       return true;
     });
     matching = matching.sort((a, b) => (a.createdAt === b.createdAt ? b.id.localeCompare(a.id) : b.createdAt.localeCompare(a.createdAt)));

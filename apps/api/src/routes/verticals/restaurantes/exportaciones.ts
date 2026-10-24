@@ -28,6 +28,7 @@ import { Errors } from "../../../errors.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds, parseBranchId } from "./admin-scope.ts";
+import { parseBusqueda, parseIncidencias } from "./admin-orders.ts";
 import { tablaAPdf } from "./exportar-pdf.ts";
 
 const PAGINA = 500;
@@ -87,12 +88,14 @@ export function restaurantesExportacionesRoutes(deps: AppDeps): Hono<CoreAuthHon
     const status: OrderStatus | undefined = statusRaw ? (statusRaw as OrderStatus) : undefined;
     const dateFrom = leerFecha(c.req.query("dateFrom"), "dateFrom");
     const dateTo = leerFecha(c.req.query("dateTo"), "dateTo");
+    const busqueda = parseBusqueda(c.req.query("q"));
+    const soloIncidencias = parseIncidencias(c.req.query("incidencias"));
 
     const tope = formato === "csv" ? EXPORTAR_MAX_FILAS_CSV : EXPORTAR_MAX_FILAS_PDF;
     const pedidos: Order[] = [];
     let cursor: string | undefined;
     do {
-      const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, limit: PAGINA, cursor });
+      const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, busqueda, soloIncidencias, limit: PAGINA, cursor });
       pedidos.push(...page.orders);
       if (pedidos.length > tope) demasiadas(tope);
       cursor = page.nextCursor ?? undefined;

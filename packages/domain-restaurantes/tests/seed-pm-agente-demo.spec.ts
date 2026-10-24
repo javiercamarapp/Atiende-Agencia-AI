@@ -173,8 +173,8 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
   it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger en Pensiones (T3) Y en Prolongacion Montejo (T1); a domicilio o en otro dia no", async () => {
     const plan = buildPmSeedPlan(data, agent);
     const world = await buildInMemoryPmWorld(plan);
-    const lunes = new Date("2026-10-12T20:00:00Z"); // lunes 14:00 en Merida
-    const martes = new Date("2026-10-13T20:00:00Z");
+    const lunes = new Date("2026-10-13T01:00:00Z"); // lunes 12-oct 19:00 en Merida (T3 abre a las 18:00)
+    const martes = new Date("2026-10-14T01:00:00Z");
     const pedido = (canal: "recoger" | "domicilio", branchSlug = "pensiones") => ({
       organizationId: world.organizationId,
       branchSlug,

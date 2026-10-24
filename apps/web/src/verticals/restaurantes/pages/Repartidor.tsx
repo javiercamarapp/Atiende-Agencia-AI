@@ -146,7 +146,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
   const resto = orders?.filter((o) => o.status !== "preparando" && o.status !== "en_camino") ?? [];
 
   return (
-    <div className="min-h-screen bg-background">
+    <main id="contenido-principal" tabIndex={-1} className="min-h-screen bg-background focus:outline-none">
       <PageContainer padding="default" className="mx-auto max-w-2xl gap-4">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
 
@@ -244,7 +244,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
 
       {dialogo}
       </PageContainer>
-    </div>
+    </main>
   );
 }
 

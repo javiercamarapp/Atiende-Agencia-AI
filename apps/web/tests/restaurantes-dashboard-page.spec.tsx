@@ -497,4 +497,22 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     expect(rendered.container.textContent).toContain("Clientes registrados");
     expect(rendered.container.textContent).not.toContain("Clientes únicos");
   });
+
+  it("Horas ahorradas: la configuración se pide UNA vez por montaje, no al cambiar de periodo ni con Actualizar, y el tile de WhatsApp ya se rotula «histórico»", async () => {
+    stubFetch({ resumenCfg: { minutosPorConversacion: 6, metaPedidosIaPct: 50, metaIngresosIaPct: 40 } });
+    rendered = renderPage();
+    await esperarCarga();
+    const pedidosCfg = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/admin/resumen/config")).length;
+    expect(pedidosCfg()).toBe(1);
+    const siete = [...rendered.container.querySelectorAll("label")].find((l) => l.textContent?.trim() === "7 días")!;
+    await act(async () => { siete.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    const actualizar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Actualizar"))!;
+    await act(async () => { actualizar.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/kpis/sales?period=7"))).toBe(true);
+    expect(pedidosCfg()).toBe(1);
+    // La cifra sigue ahi tras recargar los KPIs (la configuracion ya no vive en los extras que se reemplazan).
+    expect(rendered.container.textContent).toContain("12.0 h");
+    // Cambio de significado del tile de WhatsApp: ya no es «del periodo», es el acumulado historico y asi se rotula.
+    expect(enlaces(rendered)["WhatsApp120 conversaciones · 90 con pedido · histórico"]).toBe("/restaurantes/demo/conversaciones");
+  });
 });

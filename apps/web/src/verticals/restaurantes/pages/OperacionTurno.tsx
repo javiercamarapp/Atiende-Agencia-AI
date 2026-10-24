@@ -65,8 +65,8 @@ export function OperacionTurnoPage({ apiBaseUrl, token, propertyId, nombreSucurs
   const alertas = useMemo(() => (datos ? alertasTurno(datos.alertas) : []), [datos]);
 
   return (
-    <PageContainer padding="default" className="mx-auto max-w-4xl gap-3">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Turno de hoy{nombreSucursal ? ` · ${nombreSucursal}` : ""}</h1>
+    <PageContainer padding="none" className="mx-auto w-full max-w-3xl gap-3">
+      <h1 className="sr-only">Turno de hoy{nombreSucursal ? ` · ${nombreSucursal}` : ""}</h1>
 
       {carga.fase === "no_disponible" ? (
         <EstadoVacio icon={Hourglass} titulo="Turno de hoy" mensaje="No disponible aún: el resumen del turno se activa cuando el servidor del panel del operador esté listo." />

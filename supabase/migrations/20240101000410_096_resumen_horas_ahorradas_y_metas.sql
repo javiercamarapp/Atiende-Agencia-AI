@@ -18,6 +18,11 @@
 --    la bitacora de auditoria, que escribe la API con antes/despues).
 --  * `service_role` conserva todos los privilegios (mantenimiento de plataforma), igual que el resto de las tablas del paquete.
 --  * CHECK por columna: minutos 1..120 y metas 1..100; valores fuera de rango mueren en la base aunque alguien salte la validacion de la API.
+-- REVERSA (manual, no se ejecuta sola): la migracion solo CREA una tabla nueva y nada mas la referencia, asi que deshacerla es borrarla. Las politicas,
+-- los GRANT y los CHECK caen con ella:
+--     drop table restaurantes.resumen_settings;
+-- No hay funciones, tipos, indices ni secuencias aparte que limpiar. Se pierde la configuracion guardada (minutos y metas); el Resumen vuelve a decir
+-- «configuralo» sin romperse, porque el TypeScript degrada a «sin configurar» cuando la tabla no existe (SQLSTATE 42P01).
 create table restaurantes.resumen_settings (
   organization_id uuid primary key references core.organization(id) on delete cascade,
   -- null = sin configurar: el Resumen no calcula horas ahorradas (muestra «configúralo»).

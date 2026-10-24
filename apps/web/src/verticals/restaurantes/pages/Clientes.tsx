@@ -13,7 +13,6 @@ import {
   Button,
   Callout,
   Card,
-  CardContent,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -22,6 +21,7 @@ import {
   Label,
   Selector,
   PageContainer,
+  SectionLabel,
   StatCard,
   StatusBadge,
   formatMoney,
@@ -30,8 +30,8 @@ import {
 import { Crown, Receipt, Repeat, Search, Upload, Users } from "lucide-react";
 import { fetchBranches } from "../dashboard-client.ts";
 import type { BranchOption } from "../dashboard-client.ts";
-import { fetchCarteraKpis, fetchCustomers } from "../lib/customers-client.ts";
-import type { CarteraKpisWire, CustomerSummary, CustomerTier, FrecuenciaCliente } from "../lib/customers-client.ts";
+import { fetchCarteraKpis, fetchCustomers, fetchDistribucionTier } from "../lib/customers-client.ts";
+import type { CarteraKpisWire, CustomerSummary, DistribucionTierWire, CustomerTier, FrecuenciaCliente } from "../lib/customers-client.ts";
 import { ImportarClientesDialog } from "../components/ImportarClientesDialog.tsx";
 import { CUSTOMER_TIER_META, CUSTOMER_TIER_TONES, tierBadgeClase } from "../lib/status-tones.ts";
 import { BotonExportar } from "../components/BotonExportar.tsx";
@@ -59,6 +59,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   const [cargandoMas, setCargandoMas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [kpis, setKpis] = useState<CarteraKpisWire | null>(null);
+  const [distribucion, setDistribucion] = useState<DistribucionTierWire | null | "error">(null);
   const [importando, setImportando] = useState(false);
   const [version, setVersion] = useState(0);
   const puedeImportar = ADMIN_ROLES.has(role);
@@ -81,6 +82,17 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
     fetchCarteraKpis(fetch, apiBaseUrl, token, propertyId)
       .then((k) => !cancelado && setKpis(k))
       .catch(() => !cancelado && setKpis(null));
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, version]);
+
+  // Distribucion por nivel (cartera completa de la organizacion). Si falla, se dice «no disponible» sin tumbar la lista.
+  useEffect(() => {
+    let cancelado = false;
+    fetchDistribucionTier(fetch, apiBaseUrl, token, propertyId)
+      .then((d) => !cancelado && setDistribucion(d))
+      .catch(() => !cancelado && setDistribucion("error"));
     return () => {
       cancelado = true;
     };
@@ -147,6 +159,39 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           />
         </section>
       )}
+      <section aria-labelledby="clientes-distribucion-titulo" className="flex flex-wrap items-center gap-2" data-testid="distribucion-tier">
+        <SectionLabel as="h2" id="clientes-distribucion-titulo">
+          Toda la cartera · distribución por nivel
+        </SectionLabel>
+        {distribucion === null && (
+          <span role="status" className="text-xs text-muted-foreground">
+            Cargando…
+          </span>
+        )}
+        {distribucion === "error" && (
+          <span role="status" className="text-xs text-muted-foreground">
+            Distribución no disponible por ahora.
+          </span>
+        )}
+        {distribucion !== null && distribucion !== "error" && (
+          <>
+            {NIVELES.map((n) => (
+              <StatusBadge key={n} dot={false} tone={statusTone(CUSTOMER_TIER_TONES, n)} className={`gap-1 px-2 py-0.5 ${tierBadgeClase(n) ?? ""}`}>
+                <span aria-hidden>{CUSTOMER_TIER_META[n].glyph}</span>
+                {CUSTOMER_TIER_META[n].label} · {distribucion[n]}
+              </StatusBadge>
+            ))}
+            {distribucion.withoutTier > 0 && <span className="text-xs text-muted-foreground">Sin nivel todavía: {distribucion.withoutTier}</span>}
+            {distribucion.metric === "sin_datos" && <span className="text-xs text-muted-foreground">Aún no hay pedidos para clasificar.</span>}
+            {distribucion.metric === "frecuencia" && (
+              <span className="text-xs text-muted-foreground" data-testid="distribucion-tier-nota">
+                El nivel se calcula por frecuencia de pedidos (aún hay pocos con gasto): «sin nivel» y los niveles no suman el total de la cartera.
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">No cambia con los filtros de abajo.</span>
+          </>
+        )}
+      </section>
       {kpis && !kpis.disponible && (
         <Callout tone="neutral" titulo="Resumen de cartera no disponible aún" data-testid="cartera-kpis-sin-migracion">
           Requiere la migración 054 de restaurantes en esta base de datos.
@@ -231,36 +276,48 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
       {customers && customers.length === 0 && filtrosDisponibles && <EstadoVacio mensaje={hayFiltros ? "Ningún cliente coincide con estos filtros." : "Todavía no hay clientes: aparecen con su primer pedido o al importar tu cartera."} />}
 
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
-        {customers?.map((c) => {
-          const dias = diasDesde(c.lastOrderAt);
-          return (
-            <Link
-              key={c.id}
-              to={`/restaurantes/${orgSlug}/clientes/${c.id}`}
-              className="block rounded-lg no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <Card className="h-full transition-colors hover:bg-muted/50">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="m-0 font-semibold text-foreground">{c.name ?? c.phone}</p>
-                    {c.tier && (
-                      <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, c.tier)} className={`gap-1 px-2 py-0.5 ${tierBadgeClase(c.tier) ?? ""}`}>
-                        <span aria-hidden>{CUSTOMER_TIER_META[c.tier].glyph}</span>
-                        {CUSTOMER_TIER_META[c.tier].label}
-                      </StatusBadge>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {c.phone} · {c.orderCount} pedido{c.orderCount === 1 ? "" : "s"}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{dias === null ? "Aún no ha pedido" : dias === 0 ? "Pidió hoy" : `Último pedido hace ${dias} d`}</p>
-                </CardContent>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
+      {customers && customers.length > 0 && (
+        <section aria-labelledby="clientes-lista-titulo" className="flex flex-col gap-2">
+          <h2 id="clientes-lista-titulo" className="sr-only">
+            Lista de clientes
+          </h2>
+          <SectionLabel as="p" className="px-1">
+            <span data-testid="clientes-total">{customers.length} cliente{customers.length === 1 ? "" : "s"}{nextCursor ? " (hay más)" : " en total"}</span>
+          </SectionLabel>
+          <Card className="overflow-hidden p-0">
+            <ul className="m-0 list-none divide-y divide-dashed divide-border p-0">
+              {customers.map((c) => {
+                const dias = diasDesde(c.lastOrderAt);
+                const resumenPedidos = `${c.orderCount} pedido${c.orderCount === 1 ? "" : "s"} · ${dias === null ? "aún no ha pedido" : dias === 0 ? "pidió hoy" : `hace ${dias} d`}`;
+                return (
+                  <li key={c.id}>
+                    <Link
+                      to={`/restaurantes/${orgSlug}/clientes/${c.id}`}
+                      className="flex items-center gap-3 px-3 py-2.5 no-underline transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Users className="size-4" strokeWidth={1.75} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-ui font-medium text-foreground">{c.name ?? c.phone}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{c.phone}</span>
+                        <span className="block truncate text-xs text-muted-foreground sm:hidden">{resumenPedidos}</span>
+                      </span>
+                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{resumenPedidos}</span>
+                      {c.tier && (
+                        <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, c.tier)} className={`shrink-0 gap-1 px-2 py-0.5 ${tierBadgeClase(c.tier) ?? ""}`}>
+                          <span aria-hidden>{CUSTOMER_TIER_META[c.tier].glyph}</span>
+                          {CUSTOMER_TIER_META[c.tier].label}
+                        </StatusBadge>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </section>
+      )}
       {nextCursor && (
         <div className="flex justify-center">
           <Button type="button" size="sm" variant="outline" onClick={() => void verMas()} loading={cargandoMas}>
