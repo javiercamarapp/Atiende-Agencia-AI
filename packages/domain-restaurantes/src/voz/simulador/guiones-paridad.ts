@@ -122,7 +122,7 @@ export const ESCENARIOS_PARIDAD: readonly EscenarioVoz[] = [
       titulo: "'Quiero cancelar mi pedido': no hay herramienta de cancelar; el agente escala con el motivo cancelacion_modificacion y no se crea nada",
       rasgos: ["cancelar", "handoff por motivo"],
       turnos: [
-        { kind: "voz", cliente: "Buenas tardes, quiero cancelar el pedido que hice hace rato", agente: [{ tool: "escalar_a_humano", args: { customer_name: "Ana Pech", motivo: "cancelacion_modificacion", resumen: "El cliente quiere cancelar su pedido de hace un rato." } }, dice("Permítame avisar al gerente; una persona le confirmará la cancelación.")] },
+        { kind: "voz", cliente: "Buenas tardes, quiero cancelar el pedido que hice hace rato", agente: [{ tool: "escalar_a_humano", args: { customer_name: "Ana Pech", motivo: "cancelacion_modificacion", resumen: "El cliente quiere cancelar su pedido de hace un rato." } }, dice("Ya avisé a la sucursal que quiere cancelar su pedido; ellos le confirman si todavía se puede cancelar, porque si ya está en preparación o ya salió puede que no. Le confirmo en un momento.")] },
       ],
       esperado: { resultado: "escalado", sinPedido: true, callbacks: ["escalada:cancelacion_modificacion"] },
     },
