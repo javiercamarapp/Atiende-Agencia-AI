@@ -159,10 +159,20 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           />
         </section>
       )}
-      <section aria-label="Distribución por nivel" className="flex flex-wrap items-center gap-2" data-testid="distribucion-tier">
-        <SectionLabel as="p">Distribución por nivel</SectionLabel>
-        {distribucion === null && <span className="text-xs text-muted-foreground">Cargando…</span>}
-        {distribucion === "error" && <span className="text-xs text-muted-foreground">Distribución no disponible por ahora.</span>}
+      <section aria-labelledby="clientes-distribucion-titulo" className="flex flex-wrap items-center gap-2" data-testid="distribucion-tier">
+        <SectionLabel as="h2" id="clientes-distribucion-titulo">
+          Toda la cartera · distribución por nivel
+        </SectionLabel>
+        {distribucion === null && (
+          <span role="status" className="text-xs text-muted-foreground">
+            Cargando…
+          </span>
+        )}
+        {distribucion === "error" && (
+          <span role="status" className="text-xs text-muted-foreground">
+            Distribución no disponible por ahora.
+          </span>
+        )}
         {distribucion !== null && distribucion !== "error" && (
           <>
             {NIVELES.map((n) => (
@@ -173,6 +183,12 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
             ))}
             {distribucion.withoutTier > 0 && <span className="text-xs text-muted-foreground">Sin nivel todavía: {distribucion.withoutTier}</span>}
             {distribucion.metric === "sin_datos" && <span className="text-xs text-muted-foreground">Aún no hay pedidos para clasificar.</span>}
+            {distribucion.metric === "frecuencia" && (
+              <span className="text-xs text-muted-foreground" data-testid="distribucion-tier-nota">
+                El nivel se calcula por frecuencia de pedidos (aún hay pocos con gasto): «sin nivel» y los niveles no suman el total de la cartera.
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">No cambia con los filtros de abajo.</span>
           </>
         )}
       </section>
