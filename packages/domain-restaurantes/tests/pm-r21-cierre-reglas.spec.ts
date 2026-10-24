@@ -12,6 +12,7 @@ import { datosDeCierreDeContexto, firmaDeCierre, horaCotizadaContradiceAlCliente
 import { afirmaCambioRegistrado, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, quitarAfirmacionDePedidoRegistrado } from "../src/whatsapp/guards.ts";
 import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
 import { bloquePedidoPendienteTrasFalla, esAvisoDeFallaDelSistema, mensajesPerdidosPorFalla } from "../src/whatsapp/falla-pendiente.ts";
+import type { ConversationMessage } from "../src/repository.ts";
 import { PM_COPY } from "../src/whatsapp/perfil-pm.ts";
 import { bloqueProductoNoManejado, PM_PRODUCTOS_NO_MANEJADOS, productosNoManejados } from "../src/unidades-pm.ts";
 import { seedConfirmedOrderFlow } from "./support/order-flow-seed.ts";
@@ -313,7 +314,7 @@ describe("producto que el menu no tiene -> alternativa correcta", () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 describe("recuperacion tras un aviso de falla del sistema", () => {
   const pedido = "Hola, 1 kg de bistec y 1 kg de pastor, mixta, para recoger a las 7 pm";
-  const historial = [
+  const historial: ConversationMessage[] = [
     { role: "user", content: pedido },
     { role: "assistant", content: PM_COPY.sinAsistenteAvisoEquipo },
     { role: "user", content: "Sigo aquí, es todo" },
@@ -326,8 +327,8 @@ describe("recuperacion tras un aviso de falla del sistema", () => {
     expect(mensajesPerdidosPorFalla(historial).map((m) => m.content)).toEqual([pedido]);
   });
   it("sin falla como ultima respuesta del asistente no hay bloque", () => {
-    expect(bloquePedidoPendienteTrasFalla([{ role: "user", content: pedido }])).toBe("");
-    expect(bloquePedidoPendienteTrasFalla([...historial, { role: "assistant", content: "Listo, ¿algo más?" }, { role: "user", content: "no" }])).toBe("");
+    expect(bloquePedidoPendienteTrasFalla([{ role: "user" as const, content: pedido }])).toBe("");
+    expect(bloquePedidoPendienteTrasFalla([...historial, { role: "assistant" as const, content: "Listo, ¿algo más?" }, { role: "user" as const, content: "no" }])).toBe("");
   });
   it("el bloque prohibe volver a preguntar que desea pedir, no abre otro pedido y NO cita texto del cliente", () => {
     const b = bloquePedidoPendienteTrasFalla(historial);
