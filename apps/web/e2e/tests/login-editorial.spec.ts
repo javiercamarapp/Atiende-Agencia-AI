@@ -5,7 +5,7 @@ import { expect, test } from "../helpers/fixtures.ts";
 test("la animación responde al cursor y respeta movimiento reducido sin controles", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/restaurantes/login");
+  await page.goto("/hoteles/login");
   await page.waitForLoadState("networkidle");
   const canvas = page.locator("canvas");
   const pixels = () => canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL());
@@ -41,10 +41,10 @@ test("el panel editorial no descarga fotografías ni ocupa espacio en móvil", a
   expect(bounds.height).toBeLessThanOrEqual(bounds.vh);
 });
 
-test("las seis verticales separan el texto de la geometría en escritorio compacto", async ({ page }) => {
+test("las cinco verticales con panel editorial (restaurantes usa la lámina del original) separan el texto de la geometría en escritorio compacto", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const vertical of ["restaurantes", "hoteles", "rentas", "despachos", "licitaciones", "citas"]) {
+  for (const vertical of ["hoteles", "rentas", "despachos", "licitaciones", "citas"]) {
     await page.goto(`/${vertical}/login`);
     await page.waitForLoadState("networkidle");
     const copy = await page.locator(".login-story-copy").boundingBox();
@@ -70,4 +70,23 @@ test("idiomas cambian el acceso y la recuperación sin perder el correo", async 
   await page.getByRole("button", { name: "Back to sign in", exact: true }).click();
   await page.getByRole("button", { name: "Español", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Bienvenido a atiende restaurantes");
+});
+
+test("restaurantes usa la lámina con foto del login original, sin el panel editorial, y conserva sus controles", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/restaurantes/login");
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Bienvenido a atiende restaurantes");
+  await expect(page.locator(".login-lamina img")).toBeVisible();
+  await expect(page.locator(".login-story-panel")).toHaveCount(0);
+  await expect(page.locator("canvas")).toHaveCount(0);
+  await expect(page.getByText("El cierre del turno, solo.")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Tu correo" })).toHaveAttribute("placeholder", "tu@correo.com");
+  await expect(page.getByRole("button", { name: "Continuar con correo" })).toBeVisible();
+  await expect(page.getByText("Pídele a tu restaurante que te dé de alta.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Olvidaste tu contraseña/ }).or(page.getByText("¿Olvidaste tu contraseña?"))).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 667 });
+  await expect(page.locator(".login-lamina")).toBeHidden();
+  const b = await page.evaluate(() => ({ w: document.documentElement.scrollWidth, vw: innerWidth }));
+  expect(b.w).toBeLessThanOrEqual(b.vw);
 });
