@@ -37,7 +37,7 @@ export interface FilaSegmentoRfm {
 
 export interface ResumenRfm {
   readonly clientesConVenta: number;
-  /** Clientes con 2 o más ventas en el rango. */
+  /** Clientes con venta en 2 o más DÍAS distintos del rango (dos ventas el mismo día no son una recompra). */
   readonly clientesRecompra: number;
   /** Clientes con recencia ≤ 30 días contra `hasta`. */
   readonly activos30: number;
@@ -155,7 +155,7 @@ const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 /**
  * Consolida los pares de las sucursales en alcance (los `pedidosJuntos` SÍ suman entre sucursales) y calcula soporte, confianza y lift sobre el conjunto.
  * Limitación declarada: `cfo_canasta_pares` corta el top POR SUCURSAL (se pide con el máximo de 500) y solo informa `pedidosConProducto` de los productos
- * que aparecen en esos pares; un producto ausente de la lista de una sucursal cuenta 0 ahí, así que en consultas multisucursal el lift es una cota superior.
+ * que aparecen en esos pares; un producto ausente de la lista de una sucursal cuenta 0 ahí, así que en consultas multisucursal el lift es aproximado (el top por sucursal también recorta los pedidos juntos).
  */
 export function calcularAfinidad(
   pares: readonly FilaCanastaPar[],
@@ -243,7 +243,7 @@ export interface ReactivacionAnalisis extends Omit<LecturaReactivacion, "disponi
 
 export interface AfinidadAnalisis extends AfinidadCalculada {
   readonly minimoPedidos: number;
-  /** true = la consulta abarca más de una sucursal (el lift es una cota superior; ver `calcularAfinidad`). */
+  /** true = la consulta abarca más de una sucursal (el lift es aproximado; ver `calcularAfinidad`). */
   readonly multiSucursal: boolean;
 }
 
@@ -281,7 +281,7 @@ export const ETIQUETAS_SEGMENTO: Readonly<Record<SegmentoRfm, string>> = {
   leal: "Leales",
   en_riesgo_alto_valor: "En riesgo de alto valor",
   nuevo_prometedor: "Nuevos prometedores",
-  dormido: "Dormidos",
+  dormido: "Dormidos (resto)",
   ocasional: "Ocasionales",
 };
 
@@ -290,11 +290,11 @@ export const ETIQUETAS_TORTILLA: Readonly<Record<TipoTortilla, string>> = { maiz
 /** Definiciones que la pantalla muestra en cada tooltip junto con el periodo (misma redacción que el comentario de la migración 095). */
 export const DEFINICIONES_ANALISIS_CLIENTES: Readonly<Record<string, string>> = {
   resumen:
-    "Clientes con al menos una venta con cliente identificado en el periodo. Recompra = clientes con 2 o más ventas ÷ clientes. Intervalo mediano = mediana de días entre compras. Venta en riesgo = venta del periodo de los clientes dormidos o en riesgo de alto valor.",
+    "Clientes con al menos una venta con cliente identificado en el periodo. Recompra = clientes que compraron en 2 o más días distintos ÷ clientes (dos ventas el mismo día no cuentan). Dormidos = todos los que cumplen la definición de dormido, aunque su segmento sea otro (campeón, leal o en riesgo). Intervalo mediano = mediana de días entre compras. Venta en riesgo = venta del periodo de los clientes dormidos o en riesgo de alto valor.",
   recencia: "Días entre la última venta del cliente y el último día del periodo consultado (no «hoy»).",
   frecuencia: "Ventas del cliente en el periodo. Puntaje fijo: 1, 2, 3 o 4 o más ventas.",
   monetario: "Venta neta del cliente en el periodo. Recencia y monto se puntúan de 1 a 5 por quintil entre los clientes consultados; los empates reciben el mismo puntaje.",
-  dormido: "Cliente con 2 o más ventas que lleva sin pedir más de 30 días y más de 1.5 veces su intervalo mediano propio. Es la única definición de «dormido».",
+  dormido: "Cliente con 2 o más ventas que lleva sin pedir más de 30 días y más de 1.5 veces su intervalo mediano propio. Es la única definición de «dormido». Como segmento, «Dormidos (resto)» incluye solo a quien no cayó antes en campeón, leal o en riesgo de alto valor; un campeón o un leal también puede estar dormido.",
   campeon: "4 o más ventas y recencia de 4 o 5.",
   leal: "3 o más ventas y recencia de 3 o más (si no es campeón).",
   en_riesgo_alto_valor: "Recencia de 1 o 2 y monto de 4 o 5.",

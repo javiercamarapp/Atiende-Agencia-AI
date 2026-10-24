@@ -1,11 +1,11 @@
 // CFO «Análisis de clientes» (Fase A, solo lectura): resumen, segmentos RFM, concentración (Pareto), reactivación priorizada, intervalo de recompra, productos
 // con afinidad (soporte, confianza y lift) y tortilla. Cada bloque tiene carga, error, vacío y «no disponible aún: requiere …», y una definición con su periodo
 // en el tooltip. Sin nombres, teléfonos ni direcciones: los clientes se muestran con un alias de 8 caracteres. Esta pantalla no envía nada ni crea campañas.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Activity, Clock, Info, PlugZap, Repeat2, TrendingDown, Users } from "lucide-react";
-import type { AfinidadAnalisis, AnalisisClientesVista, ConsentimientoMarketing, FilaIntervaloRecompra, FilaReactivacion, ParAfinidadApi, ParetoRfm, SeccionAnalisis } from "@atiende/domain-restaurantes/cfo";
+import type { AfinidadAnalisis, AnalisisClientesVista, ConsentimientoMarketing, FilaIntervaloRecompra, FilaReactivacion, ParAfinidadApi, ParetoRfm, ReactivacionAnalisis, SeccionAnalisis } from "@atiende/domain-restaurantes/cfo";
 import { BarChartSimple, ChartCard, Callout, DataTable, EstadoCargando, EstadoVacio, PageContainer, Selector, StatCard, StatusBadge, TablaDatosGrafica, Popover, PopoverContent, PopoverTrigger } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
 import { fetchAnalisisClientes } from "./cfo-client.ts";
@@ -90,9 +90,9 @@ function Resumen({ d }: { readonly d: AnalisisClientesVista }) {
         ) : (
           <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5" data-testid="analisis-resumen">
             <StatCard icon={Users} label="Clientes con venta" value={entero(r.clientesConVenta)} nota={`${entero(r.activos30)} compraron en los últimos 30 días del periodo`} />
-            <StatCard icon={Repeat2} label="Recompra" value={porcentaje(r.recompraPct)} nota={`${entero(r.clientesRecompra)} clientes con 2 o más ventas`} />
+            <StatCard icon={Repeat2} label="Recompra" value={porcentaje(r.recompraPct)} nota={`${entero(r.clientesRecompra)} clientes compraron en 2 o más días distintos`} />
             <StatCard icon={Clock} label="Intervalo mediano" value={dias(r.intervaloMedianoDias)} nota={r.intervaloMedianoDias === null ? "Menos de 5 intervalos: sin dato" : "Entre una compra y la siguiente"} />
-            <StatCard icon={TrendingDown} label="Dormidos" value={entero(r.dormidos)} nota="Con 2+ ventas y sin pedir más de lo habitual" />
+            <StatCard icon={TrendingDown} label="Dormidos (de cualquier segmento)" value={entero(r.dormidos)} nota="Con 2+ ventas y sin pedir más de lo habitual; incluye a campeones o leales que ya tardan" />
             <StatCard icon={Activity} label="Venta en riesgo" value={pesos(r.ventaEnRiesgoCentavos)} nota={`De ${pesos(r.ventaTotalCentavos)} vendidos; dormidos y en riesgo de alto valor`} />
           </div>
         )
@@ -166,11 +166,14 @@ function Concentracion({ d }: { readonly d: AnalisisClientesVista }) {
   );
 }
 
-function Reactivacion({ d, limite, onLimite, base }: { readonly d: AnalisisClientesVista; readonly limite: number; readonly onLimite: (n: number) => void; readonly base: string }) {
+function Reactivacion({ d, seccion, ocupado, limite, onLimite, base }: { readonly d: AnalisisClientesVista; readonly seccion: SeccionAnalisis<ReactivacionAnalisis>; readonly ocupado: boolean; readonly limite: number; readonly onLimite: (n: number) => void; readonly base: string }) {
   return (
-    <Bloque id="reactivacion" titulo="Reactivación priorizada" subtitulo="Clientes que ya tardan más de lo habitual en volver" definicion={`${d.definiciones["reactivacion"] ?? ""} ${d.definiciones["prioridad"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={d.secciones.reactivacion}>
+    <Bloque id="reactivacion" titulo="Reactivación priorizada" subtitulo="Clientes que ya tardan más de lo habitual en volver" definicion={`${d.definiciones["reactivacion"] ?? ""} ${d.definiciones["prioridad"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={seccion}>
       {(r) => (
-        <div className="space-y-2">
+        <div className="space-y-2" aria-busy={ocupado} data-testid="reactivacion-contenido">
+          <Callout tone="info" data-testid="reactivacion-alcance">
+            Esta lista sirve para dimensionar cuánta venta está en juego. Por privacidad los clientes aparecen con un alias y aquí no se puede saber a quién contactar: identificar clientes y preparar campañas llegará en una fase posterior.
+          </Callout>
           <div className="flex flex-wrap items-end justify-between gap-2">
             <p className="text-sm" data-testid="reactivacion-resumen">
               {entero(r.totalElegibles)} clientes por reactivar · {pesos(r.ventaEnJuegoCentavos)} de venta del periodo en juego · {entero(r.dormidos)} dormidos. Consentimiento de mensajes: {entero(r.consentimiento.otorgado)} otorgado, {entero(r.consentimiento.revocado)} revocado, {entero(r.consentimiento.sinRegistro)} sin registro.
@@ -276,7 +279,7 @@ function Afinidad({ d }: { readonly d: AnalisisClientesVista }) {
           )}
           <p className="text-xs text-muted-foreground" data-testid="afinidad-nota">
             Solo se muestran pares con {a.minimoPedidos} o más pedidos juntos{a.ocultosPorPrivacidad > 0 ? ` (${entero(a.ocultosPorPrivacidad)} pares con menos pedidos se ocultan por privacidad)` : ""}. A→B = de los pedidos con el primer producto, cuántos llevan también el segundo.
-            {a.multiSucursal ? " Con varias sucursales el lift es una cota superior." : ""}
+            {a.multiSucursal ? " Con varias sucursales el lift y los pedidos juntos son aproximados (el top por sucursal también los recorta)." : ""}
           </p>
         </div>
       )}
@@ -335,7 +338,7 @@ function Pendientes({ d }: { readonly d: AnalisisClientesVista }) {
 
 const periodoTexto = (d: AnalisisClientesVista): string => `${diaCorto(d.periodo.desde)} a ${diaCorto(d.periodo.hasta)} (${entero(d.periodo.dias)} días)`;
 
-function Contenido({ d, props, limite, onLimite }: { readonly d: AnalisisClientesVista; readonly props: CfoPaginaProps; readonly limite: number; readonly onLimite: (n: number) => void }) {
+function Contenido({ d, props, limite, onLimite, reactivacion, ocupado }: { readonly d: AnalisisClientesVista; readonly props: CfoPaginaProps; readonly limite: number; readonly onLimite: (n: number) => void; readonly reactivacion: SeccionAnalisis<ReactivacionAnalisis>; readonly ocupado: boolean }) {
   return (
     <>
       <div className="space-y-2.5">
@@ -346,7 +349,7 @@ function Contenido({ d, props, limite, onLimite }: { readonly d: AnalisisCliente
         <Resumen d={d} />
         <Segmentos d={d} />
         <Concentracion d={d} />
-        <Reactivacion d={d} limite={limite} onLimite={onLimite} base={props.base} />
+        <Reactivacion d={d} seccion={reactivacion} ocupado={ocupado} limite={limite} onLimite={onLimite} base={props.base} />
         <Intervalo d={d} />
         <Afinidad d={d} />
         <Tortilla d={d} />
@@ -358,7 +361,7 @@ function Contenido({ d, props, limite, onLimite }: { readonly d: AnalisisCliente
 
 /** Esqueleto: cada bloque muestra su propia carga mientras llega la respuesta. */
 function Esqueleto() {
-  const bloques: ReadonlyArray<readonly [string, string]> = [["resumen", "Resumen"], ["segmentos", "Segmentos RFM"], ["concentracion", "Concentración (Pareto)"], ["reactivacion", "Reactivación priorizada"], ["afinidad", "Productos que se piden juntos"]];
+  const bloques: ReadonlyArray<readonly [string, string]> = [["resumen", "Resumen"], ["segmentos", "Segmentos RFM"], ["concentracion", "Concentración (Pareto)"], ["reactivacion", "Reactivación priorizada"], ["intervalo", "Intervalo de recompra"], ["afinidad", "Productos que se piden juntos"], ["tortilla", "Tortilla en los pedidos"]];
   return (
     <>
       <div className="space-y-2.5" data-testid="analisis-cargando">
@@ -372,17 +375,45 @@ function Esqueleto() {
   );
 }
 
+/** Límite con el que se carga toda la vista; otro límite solo recarga el bloque de reactivación (el resto de la pantalla no parpadea). */
+const LIMITE_INICIAL = 50;
+
 export function CfoAnalisisClientes(props: CfoPaginaProps) {
   const { api, filtros } = props;
-  const [limite, setLimite] = useState<number>(50);
-  const { carga, recargando, recargar } = useCargaCfo(() => fetchAnalisisClientes(api, filtros, limite), [claveCarga(filtros), api.propertyId, api.token, limite]);
+  const [limite, setLimite] = useState<number>(LIMITE_INICIAL);
+  const { carga, recargando, recargar } = useCargaCfo(() => fetchAnalisisClientes(api, filtros, LIMITE_INICIAL), [claveCarga(filtros), api.propertyId, api.token]);
+  // Reactivación con otro límite: se pide la vista y solo se toma ese bloque (el endpoint es uno solo); lo demás se conserva tal cual.
+  const [otra, setOtra] = useState<{ readonly limite: number; readonly seccion: SeccionAnalisis<ReactivacionAnalisis> } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const clave = claveCarga(filtros);
+  useEffect(() => {
+    if (limite === LIMITE_INICIAL) {
+      setOtra(null);
+      return;
+    }
+    let cancelado = false;
+    setOcupado(true);
+    fetchAnalisisClientes(api, filtros, limite)
+      .then((v) => {
+        if (!cancelado) setOtra({ limite, seccion: v.secciones.reactivacion });
+      })
+      .catch(() => {
+        if (!cancelado) setOtra({ limite, seccion: { disponible: false, motivo: "No se pudo actualizar esta lista. Intente de nuevo.", datos: null } });
+      })
+      .finally(() => {
+        if (!cancelado) setOcupado(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [limite, clave, api.propertyId, api.token]);
   return (
     <PageContainer padding="none" aria-busy={recargando} data-testid="cfo-analisis-clientes">
       {carga.estado === "cargando" ? (
         <Esqueleto />
       ) : (
         <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el análisis de clientes…">
-          {(d) => <Contenido d={d} props={props} limite={limite} onLimite={setLimite} />}
+          {(d) => <Contenido d={d} props={props} limite={limite} onLimite={setLimite} reactivacion={otra && otra.limite === limite ? otra.seccion : d.secciones.reactivacion} ocupado={ocupado} />}
         </CargaCfoVista>
       )}
     </PageContainer>
