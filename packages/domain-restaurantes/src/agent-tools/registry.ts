@@ -2102,9 +2102,13 @@ async function dispatchTool(
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
       // QA-PM-R5-voz-05: por voz el agente escalaba y colgaba SIN decirle nada al cliente. El resultado trae la frase que debe decir (en WhatsApp el agente ya la escribe en el mismo turno).
-      const aviso = esEscalada && ctx.channel === "voz" ? { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ, instruccion: INSTRUCCION_ESCALACION_VOZ } : {};
+      const aviso = esEscalada && ctx.channel === "voz"
+        ? motivoEscalada === "cancelacion_modificacion"
+          ? { mensaje_al_cliente: MENSAJE_CAMBIO_PEDIDO_ENVIADO, instruccion: INSTRUCCION_ESCALACION_VOZ }
+          : { mensaje_al_cliente: MENSAJE_ESCALACION_VOZ, instruccion: INSTRUCCION_ESCALACION_VOZ }
+        : {};
       // R16 (T7-043, decision de Javier): al agregar/cambiar algo de un pedido ya enviado a cocina la hora la confirma la SUCURSAL; el agente no inventa minutos.
-      const horaDelRestaurante = motivoEscalada === "cancelacion_modificacion" && ctx.channel !== "voz" ? { instruccion: INSTRUCCION_CAMBIO_HORA_SUCURSAL } : {};
+      const horaDelRestaurante = motivoEscalada === "cancelacion_modificacion" ? { instruccion: INSTRUCCION_CAMBIO_HORA_SUCURSAL } : {};
       return { result: { ok: true, ...aviso, ...horaDelRestaurante }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
@@ -2156,8 +2160,10 @@ export const AVISO_SIN_ESTADO_DE_PEDIDO = "Este resultado NO trae el estado del 
 
 /** Lo que el agente de VOZ le dice al cliente tras escalar a una persona (SOLO la frase literal: `mensaje_al_cliente` se lee tal cual). */
 export const MENSAJE_ESCALACION_VOZ = "Ya avisé al gerente de la sucursal; le responden en cuanto puedan.";
+/** Decision del dueño (chats de voz y WhatsApp): agregados a un pedido ya enviado, SIN minutos. Misma frase en los dos canales. */
+export const MENSAJE_CAMBIO_PEDIDO_ENVIADO = "Lo paso ahorita a la sucursal; ellos le confirman si alcanza a salir con su pedido, y si ya salió se lo pueden enviar aparte. Le confirmo en un momento.";
 /** Tras escalar un cambio (agregar, cancelar...) a un pedido ya enviado a cocina: el aviso ya salio; la hora la confirma el restaurante. */
-export const INSTRUCCION_CAMBIO_HORA_SUCURSAL = "Ya se avisó a la sucursal con el detalle. Dígale al cliente: «Se lo paso a cocina; le confirmo en un momento». La hora y si alcanza a salir con su pedido los confirma la sucursal: NO dé minutos, horas ni «aproximadamente» y no prometa que ya quedó agregado.";
+export const INSTRUCCION_CAMBIO_HORA_SUCURSAL = `Ya se avisó a la sucursal con el detalle. Dígale al cliente: «${MENSAJE_CAMBIO_PEDIDO_ENVIADO}» La hora y si alcanza a salir con su pedido los confirma la sucursal: NO dé minutos, horas ni «aproximadamente» y no prometa que ya quedó agregado.`;
 
 /** Instruccion para el MODELO (no para el cliente): va en `instruccion`, nunca dentro de `mensaje_al_cliente`. */
 export const INSTRUCCION_ESCALACION_VOZ = "Dígale al cliente el mensaje_al_cliente, de usted, ANTES de despedirse o cortar; no prometa hora ni resultado.";

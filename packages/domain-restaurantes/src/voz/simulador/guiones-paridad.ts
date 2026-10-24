@@ -236,6 +236,51 @@ export const ESCENARIOS_PARIDAD: readonly EscenarioVoz[] = [
       esperado: { resultado: "escalado", pedido: PEDIDO_PASTOR_RECOGER(120), callbacks: ["escalada:cliente_lo_pide"] },
     },
   },
+  {
+    ahora: MIERCOLES_12,
+    horario: HORARIO_PM,
+    guion: {
+      id: "P14-gringas-por-ordenes-de-dos",
+      titulo: "'Gringas' sin cantidad: el agente explica que van por ordenes de dos; '3 piezas' se rechaza y '3 ordenes' son 6 piezas (precio x3)",
+      rasgos: ["pack_size", "ordenes de 2", "N ordenes se multiplica"],
+      turnos: [
+        { kind: "voz", cliente: "Quiero unas gringas para recoger", agente: [buscar("gringas"), dice("Las gringas se venden por órdenes, y cada orden trae dos. ¿Cuántas órdenes le anoto?")] },
+        { kind: "voz", cliente: "Tres gringas", agente: [cotizar((m) => [linea(m, "gringas mixtas", 3)]), cotizar((m) => [linea(m, "gringas mixtas", 2)]), dice("Cada orden trae dos; una orden son ciento cincuenta pesos. ¿Cuántas órdenes le anoto?")] },
+        { kind: "voz", cliente: "Tres órdenes", agente: [cotizar((m) => [linea(m, "gringas mixtas", 6)]), dice("Son tres órdenes de gringas, cuatrocientos cincuenta pesos. ¿Es correcto?")] },
+        { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear((m) => [linea(m, "gringas mixtas", 6)]), dice("Listo, su pedido quedó registrado. Gracias.")] },
+      ],
+      esperado: { resultado: "pedido_creado", herramientasRechazadas: [{ nombre: "cotizar_pedido", error: /orden|m[uú]ltiplo|2/i }], pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 450, items: [{ nombre: "Gringas Mixtas (orden de 2)", cantidad: 3 }] } },
+    },
+  },
+  {
+    ahora: MIERCOLES_12,
+    horario: HORARIO_PM,
+    guion: {
+      id: "P15-alambre-por-ordenes-de-cinco",
+      titulo: "'Dos ordenes de alambre' son 10 piezas (pack de 5): se cotiza y se crea con el total de dos ordenes",
+      rasgos: ["pack_size", "ordenes de 5", "N ordenes se multiplica"],
+      turnos: [
+        { kind: "voz", cliente: "Dos órdenes de alambre para recoger", agente: [buscar("alambre"), cotizar((m) => [linea(m, "alambre", 10)]), dice("Son dos órdenes de alambre, trescientos sesenta pesos. ¿Es correcto?")] },
+        { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear((m) => [linea(m, "alambre", 10)]), dice("Listo, su pedido quedó registrado. Gracias.")] },
+      ],
+      esperado: { resultado: "pedido_creado", pedido: { sucursal: "Francisco de Montejo", canal: "recoger", pago: "efectivo", total: 360, items: [{ nombre: "Alambre Especial (orden de 5)", cantidad: 2 }] } },
+    },
+  },
+  {
+    ahora: MIERCOLES_12,
+    horario: HORARIO_PM,
+    guion: {
+      id: "P16-agregado-a-pedido-ya-enviado",
+      titulo: "Con el pedido registrado pide agregar algo: se escala (cambio) y la herramienta entrega la frase decidida (sucursal confirma, sin minutos); el pedido original no se duplica",
+      rasgos: ["agregado a pedido enviado", "sin minutos", "paridad con WhatsApp"],
+      turnos: [
+        { kind: "voz", cliente: "Tres tacos de pastor de maíz para recoger", agente: [buscar("pastor"), cotizar(pastor3), dice("Son ciento veinte pesos. ¿Es correcto?")] },
+        { kind: "voz", cliente: "Sí, a nombre de Ana Pech, en efectivo", agente: [confirmar, crear(pastor3), dice("Listo, su pedido quedó registrado. ¿Algo más?")] },
+        { kind: "voz", cliente: "Ah, agrégueme una horchata a ese pedido", agente: [{ tool: "escalar_a_humano", args: { customer_name: "Ana Pech", motivo: "cancelacion_modificacion", resumen: "Quiere agregar una horchata a su pedido ya registrado." } }, dice("Lo paso ahorita a la sucursal; ellos le confirman si alcanza a salir con su pedido, y si ya salió se lo pueden enviar aparte. Le confirmo en un momento.")] },
+      ],
+      esperado: { resultado: "pedido_creado", pedido: PEDIDO_PASTOR_RECOGER(120), callbacks: ["escalada:cancelacion_modificacion"] },
+    },
+  },
 ];
 
 /** Telemetria de un turno del cliente: herramientas que corrio el agente y tiempo REAL de servidor (en proceso) que gastaron. */

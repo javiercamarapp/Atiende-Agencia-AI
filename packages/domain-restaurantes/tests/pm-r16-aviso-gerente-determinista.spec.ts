@@ -59,7 +59,7 @@ describe("PM R16: aviso al gerente armado por el servidor", () => {
     const { out } = await escalar("cancelacion_modificacion", "Agregar 3 tacos");
     const r = out.result as { ok: boolean; instruccion?: string };
     expect(r.ok).toBe(true);
-    expect(r.instruccion).toContain("le confirmo en un momento");
+    expect(r.instruccion).toMatch(/le confirmo en un momento/i);
     expect(r.instruccion).toMatch(/NO dé minutos/);
   });
 
