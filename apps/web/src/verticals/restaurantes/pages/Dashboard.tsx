@@ -33,6 +33,9 @@ import {
 import {
   Bot,
   ClipboardList,
+  Package,
+  Tag,
+  Users,
   HandHelping,
   MessageCircle,
   Mic,
@@ -48,6 +51,7 @@ import {
   PERIOD_OPTIONS,
 } from "../dashboard-client.ts";
 import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
+import { fetchCategories, fetchProducts } from "../lib/catalog-client.ts";
 import { fetchBranchTimezone } from "../lib/config-client.ts";
 import { fetchBandeja } from "../lib/conversaciones-client.ts";
 import { fetchVozKpi } from "../lib/voz-kpi-client.ts";
@@ -71,6 +75,12 @@ interface Extras {
   readonly pendientes: number | null;
   readonly ultimaWhatsapp: string | null;
   readonly ultimaVoz: string | null;
+}
+
+/** «Tu operacion»: conteos del catalogo de la ORGANIZACION (el catalogo es de toda la organizacion; la disponibilidad y el precio son por sucursal). `null` = no se pudo leer (el tile lo dice, no inventa un 0). Cada conteo falla por separado. */
+interface ConteosCatalogo {
+  readonly productos: number | null;
+  readonly categorias: number | null;
 }
 
 const EXTRAS_VACIOS: Extras = {
@@ -130,6 +140,7 @@ export function RestaurantesDashboardPage({
   const [period, setPeriod] = useState<StatsPeriod>("30");
   const [data, setData] = useState<DashboardData | null>(null);
   const [extras, setExtras] = useState<Extras>(EXTRAS_VACIOS);
+  const [catalogo, setCatalogo] = useState<ConteosCatalogo | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,6 +172,23 @@ export function RestaurantesDashboardPage({
     if (role === "repartidor") return;
     void cargar(period);
   }, [cargar, period, role]);
+
+  // El catalogo se cuenta UNA vez por montaje (y si cambia la sucursal): `GET admin/products` resuelve el estado por producto y no tiene por que repetirse
+  // en cada cambio de periodo ni en «Actualizar», que no lo afectan.
+  useEffect(() => {
+    if (role === "repartidor") return undefined;
+    let vivo = true;
+    void Promise.allSettled([fetchProducts(fetch, apiBaseUrl, token, propertyId), fetchCategories(fetch, apiBaseUrl, token, propertyId)]).then(([prods, cats]) => {
+      if (!vivo) return;
+      setCatalogo({
+        productos: prods.status === "fulfilled" ? prods.value.length : null,
+        categorias: cats.status === "fulfilled" ? cats.value.length : null,
+      });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl, token, propertyId, role]);
 
   const base = `/restaurantes/${orgSlug}`;
   // El repartidor no tiene Resumen (el Shell ya lo redirige): defensa en profundidad si se monta la pagina suelta.
@@ -360,6 +388,27 @@ export function RestaurantesDashboardPage({
             </Card>
           </div>
         </Card>
+
+        <ResumenSeccion titulo="Tu operación">
+          <TileLink
+            to={`${base}/productos`}
+            icon={Package}
+            titulo="Total de productos"
+            descripcion={catalogo === undefined ? "Cargando…" : catalogo.productos === null ? "No se pudo leer el catálogo" : `${formatInt(catalogo.productos)} en el catálogo`}
+          />
+          <TileLink
+            to={`${base}/productos`}
+            icon={Tag}
+            titulo="Categorías"
+            descripcion={catalogo === undefined ? "Cargando…" : catalogo.categorias === null ? "No se pudo leer el catálogo" : `${formatInt(catalogo.categorias)} en el catálogo`}
+          />
+          <TileLink
+            to={`${base}/clientes`}
+            icon={Users}
+            titulo="Clientes registrados"
+            descripcion={`${formatInt(customers.totalCustomers)} en tu cartera (con o sin pedidos)`}
+          />
+        </ResumenSeccion>
 
         <ResumenSeccion titulo="Orquestación de agentes">
           <TileLink

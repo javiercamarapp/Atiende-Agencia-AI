@@ -92,10 +92,14 @@ interface Handlers {
   salesOk?: boolean;
   channelsOk?: boolean;
   customersOk?: boolean;
+  productos?: number | "falla";
+  categorias?: number | "falla";
 }
 
 function stubFetch(handlers: Handlers) {
   fetchMock = vi.fn(async (url: string) => {
+    if (url.includes("/admin/products")) return handlers.productos === "falla" ? jsonResponse({}, false) : jsonResponse({ products: Array.from({ length: handlers.productos ?? 0 }, (_, i) => ({ id: `p${i}` })) });
+    if (url.includes("/admin/categories")) return handlers.categorias === "falla" ? jsonResponse({}, false) : jsonResponse({ categories: Array.from({ length: handlers.categorias ?? 0 }, (_, i) => ({ id: `c${i}` })) });
     if (url.includes("/admin/config/zona-horaria")) return jsonResponse({ zonaHoraria: handlers.zona ?? null });
     if (url.includes("/admin/voz/kpi")) {
       if (!handlers.voz) return jsonResponse({ disponible: false }, false);
@@ -365,5 +369,49 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     });
     expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAntes);
     expect(fetchMock.mock.calls.some(([url]) => url.includes("/kpis/sales?period=30"))).toBe(true);
+  });
+
+  it("Tu operación: productos, categorías y clientes únicos con datos reales y su destino; si el catálogo falla lo dice en vez de poner 0", async () => {
+    stubFetch({ productos: 42, categorias: 6 });
+    rendered = renderPage();
+    await esperarCarga();
+    const text = rendered.container.textContent!;
+    expect(text.toLowerCase()).toContain("tu operación");
+    const links = enlaces(rendered);
+    expect(links["Total de productos42 en el catálogo"]).toBe("/restaurantes/demo/productos");
+    expect(links["Categorías6 en el catálogo"]).toBe("/restaurantes/demo/productos");
+    expect(Object.entries(links).find(([k]) => k.startsWith("Clientes registrados"))?.[1]).toBe("/restaurantes/demo/clientes");
+    rendered.unmount();
+
+    stubFetch({ productos: "falla", categorias: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("No se pudo leer el catálogo");
+    expect(enlaces(rendered)["Total de productosNo se pudo leer el catálogo"]).toBe("/restaurantes/demo/productos");
+  });
+
+  it("Tu operación: si falla solo categorías, los productos se muestran y solo ese tile dice que no pudo leer", async () => {
+    stubFetch({ productos: 42, categorias: "falla" });
+    rendered = renderPage();
+    await esperarCarga();
+    const links = enlaces(rendered);
+    expect(links["Total de productos42 en el catálogo"]).toBe("/restaurantes/demo/productos");
+    expect(links["CategoríasNo se pudo leer el catálogo"]).toBe("/restaurantes/demo/productos");
+  });
+
+  it("Tu operación: el catálogo se pide UNA vez por montaje, no al cambiar de periodo ni con Actualizar; clientes se rotula como registrados", async () => {
+    stubFetch({ productos: 3, categorias: 2 });
+    rendered = renderPage();
+    await esperarCarga();
+    const pedidosCatalogo = () => fetchMock.mock.calls.filter(([url]) => /\/admin\/(products|categories)/.test(String(url))).length;
+    expect(pedidosCatalogo()).toBe(2);
+    const siete = [...rendered.container.querySelectorAll("label")].find((l) => l.textContent?.trim() === "7 días")!;
+    await act(async () => { siete.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    const actualizar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Actualizar"))!;
+    await act(async () => { actualizar.click(); await flushMicrotasks(); await flushMicrotasks(); });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/kpis/sales?period=7"))).toBe(true);
+    expect(pedidosCatalogo()).toBe(2);
+    expect(rendered.container.textContent).toContain("Clientes registrados");
+    expect(rendered.container.textContent).not.toContain("Clientes únicos");
   });
 });
