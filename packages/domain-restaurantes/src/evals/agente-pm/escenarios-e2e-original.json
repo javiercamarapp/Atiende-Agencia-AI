@@ -482,7 +482,7 @@
      "hora": "en 20 minutos"
     },
     "giros": [
-     "pide un suizo de bistec",
+     "pide una orden de suizo de bistec",
      "tras quedar registrado manda un mensaje confuso ('jajaja ok')",
      "después pregunta '¿ya quedó?'"
     ]
@@ -498,7 +498,7 @@
      "items": [
       {
        "producto": "Suizo de Bistec",
-       "piezas": 1
+       "piezas": 5
       }
      ],
      "propina": "en_terminal",

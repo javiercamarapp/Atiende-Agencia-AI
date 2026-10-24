@@ -21,17 +21,19 @@ import {
   Selector,
   PageContainer,
   StatusBadge,
-  formatMoney,
   statusTone,
   useConfirm,
 } from "@atiende/ui";
 import { ChevronDown } from "lucide-react";
-import { fetchOrders, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import { etiquetaFolio, fetchOrders, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { BotonExportar } from "../components/BotonExportar.tsx";
 import { urlExportarHistorial } from "../lib/exportar-client.ts";
-import { medianocheLocalUTC, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
+import { fechaAnioHoraEsMx, medianocheLocalUTC, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
+import { PedidoDetalle } from "../components/pedidos/PedidoDetalle.tsx";
+import { HistorialPedidoDialogo } from "../components/HistorialPedidoDialogo.tsx";
+import { montoFila } from "../components/pedidos/formato.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ALL_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
@@ -48,6 +50,9 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
   // Acciones sobre un pedido entregado (cerrar / registrar incidencia): su error no se mezcla con el de la lista.
   const [accionError, setAccionError] = useState<string | null>(null);
   const [accionId, setAccionId] = useState<string | null>(null);
+  // Clic en una fila = detalle del pedido a pagina completa (como el original); «Volver» regresa a la lista con los mismos filtros.
+  const [detalleId, setDetalleId] = useState<string | null>(null);
+  const [historialDe, setHistorialDe] = useState<OrderSummary | null>(null);
   const { pedirTexto, dialogo } = useConfirm();
   // Generacion de la carga vigente (QA-restaurantes-R1-botones-06/07): cambiar un filtro la incrementa y una respuesta de una
   // generacion anterior (mas lenta) se descarta en vez de pisar el filtro actual, igual que Auditoria.tsx.
@@ -135,6 +140,32 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
     }
   }
 
+  if (detalleId) {
+    return (
+      <PageContainer padding="none">
+        <h1 className="sr-only">Detalle del pedido</h1>
+        <PedidoDetalle
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          propertyId={propertyId}
+          orderId={detalleId}
+          repartidores={null}
+          onVolver={() => setDetalleId(null)}
+          onSelect={setDetalleId}
+          onHistorial={setHistorialDe}
+        />
+        <HistorialPedidoDialogo
+          orderId={historialDe?.id ?? null}
+          titulo={historialDe ? `${historialDe.customerName} · ${etiquetaFolio(historialDe)}` : ""}
+          onClose={() => setHistorialDe(null)}
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          propertyId={propertyId}
+        />
+      </PageContainer>
+    );
+  }
+
   return (
     <PageContainer padding="none">
       <h1 className="sr-only">Historial de órdenes</h1>
@@ -164,6 +195,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
         {/* R-17: exporta con los filtros vigentes (mismos limites de fecha que la tabla). Solo owner/admin. */}
         <div className="ml-auto">
           <BotonExportar
+            variante="default"
             role={role}
             token={token}
             urlPara={(formato) =>
@@ -183,7 +215,10 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
       {!(error && orders.length === 0) && (
         <Card>
           <CardHeader className="p-3 pb-2">
-            <CardTitle>Órdenes</CardTitle>
+            <CardTitle className="sr-only">Órdenes</CardTitle>
+            <p className="font-mono text-eyebrow tabular-nums text-muted-foreground" data-testid="historial-conteo">
+              {orders.length === 0 ? "0 pedidos" : `Mostrando ${orders.length}${nextCursor ? " · hay más" : ""}`}
+            </p>
           </CardHeader>
           <CardContent className="p-0">
             <DataTable<OrderSummary>
@@ -193,12 +228,24 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
               estado={loading && orders.length === 0 ? "loading" : orders.length === 0 ? "empty" : "ok"}
               vacio={{ titulo: "Sin pedidos", mensaje: "No hay pedidos en este filtro." }}
               paginacion={false}
+              onFilaClick={(o) => setDetalleId(o.id)}
               columnas={[
-                { id: "fecha", encabezado: "Fecha", principal: true, className: "whitespace-nowrap", celda: (o) => new Date(o.createdAt).toLocaleString("es-MX") },
-                { id: "cliente", encabezado: "Cliente", celda: (o) => o.customerName },
-                { id: "sucursal", encabezado: "Sucursal", celda: (o) => <span className="text-muted-foreground">{o.branch ?? "—"}</span> },
+                {
+                  id: "cliente",
+                  encabezado: "Cliente",
+                  principal: true,
+                  celda: (o) => (
+                    <span className="block">
+                      <span className="block font-medium text-foreground">{o.customerName}</span>
+                      {o.customerPhone ? <span className="block text-eyebrow text-muted-foreground">{o.customerPhone}</span> : null}
+                    </span>
+                  ),
+                },
+                { id: "pedido", encabezado: "N° de pedido", className: "whitespace-nowrap font-mono text-eyebrow text-muted-foreground", celda: (o) => etiquetaFolio(o) },
+                { id: "sucursal", encabezado: "Sucursal", celda: (o) => o.branch ?? "—" },
+                { id: "total", encabezado: "Monto", alinear: "right", className: "font-semibold tabular-nums", celda: (o) => montoFila(o.total) },
                 { id: "estado", encabezado: "Estado", celda: (o) => <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge> },
-                { id: "total", encabezado: "Total", alinear: "right", className: "tabular-nums", celda: (o) => `$${formatMoney(o.total)}` },
+                { id: "fecha", encabezado: "Fecha", className: "whitespace-nowrap text-muted-foreground", celda: (o) => fechaAnioHoraEsMx(o.createdAt) },
                 {
                   id: "acciones",
                   encabezado: "Acciones",
