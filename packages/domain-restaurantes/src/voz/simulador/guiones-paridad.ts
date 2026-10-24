@@ -5,7 +5,7 @@
 // Menu, importes y nombres son inventados para el arnes.
 import { correrGuionConAdaptador } from "@atiende/voice-core/simulador";
 import { LIMITES_VOZ_PM } from "../llamada/maquina.ts";
-import type { HorarioSucursal } from "../../types.ts";
+import type { HorarioSucursal } from "../../horarios.ts";
 import { ADAPTADOR_SIMULADOR_PM } from "./correr-guion.ts";
 import { BRANCH_SLUG_PRINCIPAL, crearMundoVoz } from "./mundo-voz.ts";
 import type { MundoVoz } from "./mundo-voz.ts";
