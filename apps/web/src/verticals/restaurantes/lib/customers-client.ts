@@ -269,6 +269,8 @@ export interface DistribucionTierWire {
 
 export async function fetchDistribucionTier(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<DistribucionTierWire> {
   const k = await fetchJson<{ tierDistribution: DistribucionTierWire }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/kpis/customers`, token);
+  // Una respuesta sin la distribucion (servidor viejo) es «no disponible», no un cruce de datos: la pagina lo trata como error.
+  if (!k || typeof k.tierDistribution !== "object" || k.tierDistribution === null) throw new Error("La distribución por nivel no está disponible.");
   return k.tierDistribution;
 }
 
