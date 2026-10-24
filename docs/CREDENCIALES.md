@@ -197,6 +197,7 @@ extracción de licitaciones cae a solo reglas deterministas.
 | `OPENROUTER_COUNTRY_OF_RESIDENCE` | opcional: ISO 3166-1 alpha-2 SOLO si confirmaste que la ruta cumple | No |
 | `OPENAI_API_KEY` + `OPENAI_MODEL` | LEGADO: solo si no hay llave de OpenRouter | Sí / No |
 | `PM_URL_FACTURACION` | enlace https de facturación en línea del negocio (Los Taquitos de PM); sin ella el agente no inventa uno y escala la factura a una persona | No |
+| `WHATSAPP_CONTEXTO_PRECARGADO` | `1` enciende (R11, Arquitectura A) el contexto precargado + llamadas en lote del agente de WhatsApp de restaurantes (perfil PM): el servidor hace antes de la primera vuelta las lecturas `buscar_cliente`/`buscar_producto` y se las entrega al modelo. Apagada por omisión; sin efecto en preview ni en otros perfiles. Pensada para el A/B, no la enciendas en producción sin medirla | No |
 
 **Modelos baratos del Copiloto (CHAT-05).** No hay variables nuevas: el modelo barato del chat (`*:data_chat`) y el escalado de la
 cascada de cifras (`*:data_chat_retry`) se eligen con `LLM_MODELS_JSON` (validado: solo proveedores de EE.UU. con ZDR,
