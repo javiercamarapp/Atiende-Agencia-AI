@@ -575,6 +575,12 @@ export function planTopeLlamadaLlm(restanteMs: number): { readonly primerTopeMs:
 export const MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR = 2;
 /** PM-R14: llamadas REPETIDAS (misma herramienta y mismos argumentos) tras un `crear_pedido` rechazado por regla con las que se corta el bucle. */
 export const MAX_LLAMADAS_REPETIDAS_TRAS_RECHAZO_AL_CREAR = 3;
+/** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
+export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  const v = (env.WHATSAPP_CIERRE_UNA_VUELTA ?? "").trim().toLowerCase();
+  return !(v === "0" || v === "false" || v === "off" || v === "no");
+}
+
 /** PM-R14: respaldo: llamadas siguientes (sin una cotizacion exitosa) tras un rechazo, aunque los argumentos cambien. El tope de vueltas del turno (8 en PM) sigue acotando el peor caso. */
 export const MAX_LLAMADAS_TRAS_RECHAZO_AL_CREAR = 6;
 
@@ -872,10 +878,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Solo es un «si» a ese resumen si TODO lo pendiente son toques: con texto escrito junto (en una rafaga, antes o despues del toque: «mejor 5») el cliente pudo cambiar el
       // pedido, asi que no se inyecta la nota ni se responde con texto fijo; el modelo lee el texto y vuelve a cotizar.
       const soloToques = pendientes.length > 0 && pendientes.every((m) => toqueDeMensaje(m.content) !== null);
+      let toqueConfirmarVigente = false;
       if (ultimoDelCliente && soloToques && toqueUltimo?.accion === "confirmar") {
         const vigencia = vigenciaDelToque(flowSnapshot, toqueUltimo, options.now ? options.now().getTime() : Date.now());
         const fija = respuestaDeToqueQueNoSigue(vigencia);
         if (fija) return done({ reply: fija, orderId: null, propertyId });
+        toqueConfirmarVigente = vigencia === "vigente";
         const ultimoEnHistorial = working.findLastIndex((m) => m.role === "user");
         if (ultimoEnHistorial >= 0) working[ultimoEnHistorial] = { role: "user", content: contenidoParaElModelo(ultimoDelCliente.content, { esElUltimo: true, confirmarVigente: true }) };
       }
@@ -923,10 +931,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // llamados que el modelo habria hecho (`confirmar_resumen` y `crear_pedido`) con lo guardado de la cotizacion que el cliente vio, por la MISMA maquina de estados (huella, resumen mostrado, «si»
       // explicito, pedido grande, horario, idempotencia): si alguna regla lo rechaza, el camino de siempre (aviso honesto al equipo) sigue intacto. Una sola vez por turno; sin datos completos, nada.
       let cierreDeterministaIntentado = false;
-      const prepararCierreDeterminista = async (): Promise<LlmToolCall[] | null> => {
+      const prepararCierreDeterminista = async (porToque = false): Promise<LlmToolCall[] | null> => {
         if (perfil !== "taqueria_pm" || preview || cierreDeterministaIntentado || orderId !== null || pedidosCreadosDelTurno.length > 0 || pedidoSimulado !== undefined || escalarMotivo !== null) return null;
         cierreDeterministaIntentado = true;
-        const totalConfirmado = siPendienteSinPedido();
+        // `porToque`: el toque «Confirmar pedido» vigente ya es el «si» explicito (el texto del boton no se clasifica como un «si» escrito).
+        const totalConfirmado = porToque ? (typeof flowSnapshot?.context?.quotedTotal === "number" && cotizacionVigente ? flowSnapshot.context.quotedTotal : null) : siPendienteSinPedido();
         if (totalConfirmado === null) return null;
         // Estado FRESCO: si el modelo alcanzo a re-cotizar en este turno, el «si» ya no es de ese resumen y no se crea nada.
         const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
@@ -939,6 +948,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         ];
       };
       let llamadasDeterministas: LlmToolCall[] | null = null;
+      let cierreAdelantado = false;
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
@@ -1012,6 +1022,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         escalarMotivo = "falla_sistema";
         return done({ reply: perfil === "taqueria_pm" ? PM_COPY.sinAsistenteAvisoEquipo : PROVEEDOR_CAIDO_REPLY_GENERICO, orderId: null, propertyId });
       };
+
+      // R21 (latencia): el «si» a un resumen VIGENTE (escrito o por el toque «Confirmar pedido») costaba 3 vueltas del modelo (confirmar_resumen, crear_pedido, texto; 112 de 117 turnos de
+      // cierre en la R20, ~3.6 s cada vuelta) aunque el prompt pide juntar las dos llamadas. El SERVIDOR hace esas dos llamadas ANTES de la primera vuelta con lo ya cotizado (el mismo plan y
+      // la misma maquina de estados que el cierre determinista de la R18) y el modelo solo redacta el texto: 1 llamada real en vez de 3. Si faltan datos (nombre, pago, direccion) o una regla
+      // lo rechaza, el modelo ve el resultado y sigue como siempre. Apagable: `WHATSAPP_CIERRE_UNA_VUELTA=0`.
+      if (perfil === "taqueria_pm" && !preview && cierreUnaVueltaActivo() && llamadasDeterministas === null) {
+        const porToque = toqueConfirmarVigente;
+        if (porToque || siPendienteSinPedido() !== null) {
+          llamadasDeterministas = await prepararCierreDeterminista(porToque);
+          // El texto al cliente sigue siendo del MODELO (tono, tiempo estimado, notas): solo se le ahorran las dos vueltas de herramientas. Si esa llamada falla, la confirmacion del servidor lo cubre.
+          cierreAdelantado = llamadasDeterministas !== null;
+        }
+      }
 
       // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
       let modeloRespaldo: string | null = null;
@@ -1365,7 +1388,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
         }
         // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
-        if (eraCierreDeterminista) {
+        if (eraCierreDeterminista && !cierreAdelantado) {
           const confirmacionDeterminista = confirmacionDelTurno();
           if (confirmacionDeterminista) {
             tele.resultado = "ok";
