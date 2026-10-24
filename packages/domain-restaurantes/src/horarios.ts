@@ -17,7 +17,14 @@ export interface TurnoHorario {
   readonly dias: readonly number[];
   readonly abre: string;
   readonly cierra: string;
+  /** Ultimo pedido: minutos ANTES del cierre de este turno en que se deja de tomar pedidos (0 a 180). Opcional: sin valor rige
+   * `ULTIMO_PEDIDO_MIN_POR_OMISION` (30). Vive en el jsonb `branch_policy.horario`, asi que no necesita migracion ni columna. */
+  readonly ultimoPedidoMin?: number;
 }
+
+/** Decision del negocio: el ultimo pedido se toma 30 minutos antes del cierre, en todas las sucursales, salvo que el turno diga otra cosa. */
+export const ULTIMO_PEDIDO_MIN_POR_OMISION = 30;
+export const ULTIMO_PEDIDO_MIN_MAXIMO = 180;
 
 export type HorarioSucursal = readonly TurnoHorario[];
 
@@ -49,7 +56,11 @@ export function validarHorario(raw: unknown): HorarioSucursal {
     if (t.abre === t.cierra) {
       throw new OrderValidationError(`Turno ${n}: 'abre' y 'cierra' no pueden ser iguales.`);
     }
-    return { dias: [...new Set(t.dias)].sort((a, b) => a - b), abre: t.abre, cierra: t.cierra };
+    const margen = (t as { ultimoPedidoMin?: unknown }).ultimoPedidoMin;
+    if (margen !== undefined && (typeof margen !== "number" || !Number.isInteger(margen) || margen < 0 || margen > ULTIMO_PEDIDO_MIN_MAXIMO)) {
+      throw new OrderValidationError(`Turno ${n}: 'ultimoPedidoMin' debe ser un entero de 0 a ${ULTIMO_PEDIDO_MIN_MAXIMO} (minutos antes del cierre).`);
+    }
+    return { dias: [...new Set(t.dias)].sort((a, b) => a - b), abre: t.abre, cierra: t.cierra, ...(margen !== undefined ? { ultimoPedidoMin: margen } : {}) };
   });
 }
 
@@ -146,6 +157,57 @@ export function estaAbiertoAhora(
     cierraA: null,
     proximaApertura: mejor ? { dia: DIAS_SEMANA[(dia + mejor.offset) % 7]!, hora: mejor.hora, hoy: mejor.offset === 0 } : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Ultimo pedido: 30 minutos antes del cierre (configurable por turno con `ultimoPedidoMin`).
+// ---------------------------------------------------------------------------
+
+export interface UltimoPedido {
+  /** Minutos antes del cierre en que se deja de tomar pedidos. */
+  readonly margenMin: number;
+  /** Minutos que faltan para el cierre del turno vigente (cruce de medianoche incluido); null si esta cerrada. */
+  readonly minutosParaCierre: number | null;
+  /** true = todavia se toman pedidos (abierta y faltan MAS de `margenMin` minutos para el cierre). */
+  readonly aceptaPedidos: boolean;
+  /** Hora (HH:MM, hora de la sucursal) a partir de la cual ya no se toman pedidos; null si esta cerrada. */
+  readonly ultimoPedidoA: string | null;
+}
+
+function aHHMM(minutos: number): string {
+  const m = ((minutos % MINUTOS_DIA) + MINUTOS_DIA) % MINUTOS_DIA;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/** Margen de ultimo pedido del turno que cierra a `cierraA` (el primero que lo declare entre `turnos`); sin valor, el de omision. */
+export function margenUltimoPedido(turnos: readonly TurnoHorario[], cierraA: string | null): number {
+  const t = turnos.find((x) => x.cierra === cierraA && x.ultimoPedidoMin !== undefined);
+  return t?.ultimoPedidoMin ?? ULTIMO_PEDIDO_MIN_POR_OMISION;
+}
+
+/**
+ * ¿Se toman pedidos en `instante`? Parte del estado de apertura ya calculado (`cierraA`) y calcula cuanto falta para el cierre:
+ * T3 cierra 00:00 => 23:29 si, 23:30 no. Un turno que cruza la medianoche cuenta los minutos hasta el cierre del dia siguiente.
+ * Abierta = "el local esta abierto"; `aceptaPedidos` = "todavia se toman pedidos".
+ */
+export function evaluarUltimoPedido(estado: EstadoApertura, turnos: readonly TurnoHorario[], instante: Date, zonaHorariaSucursal?: string | null): UltimoPedido {
+  const margenMin = margenUltimoPedido(turnos, estado.cierraA);
+  if (!estado.abierto || !estado.cierraA) return { margenMin, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null };
+  const zona = resolverZonaHorariaNegocio(zonaHorariaSucursal);
+  const { minutos } = componentesLocales(instante, zona);
+  const cierre = aMinutos(estado.cierraA);
+  // Cierre ya pasado en el reloj de pared = el turno cruzo la medianoche (cierra al dia siguiente).
+  const minutosParaCierre = cierre > minutos ? cierre - minutos : cierre + MINUTOS_DIA - minutos;
+  return { margenMin, minutosParaCierre, aceptaPedidos: minutosParaCierre > margenMin, ultimoPedidoA: aHHMM(cierre - margenMin) };
+}
+
+/** Mensaje al cliente cuando la sucursal sigue abierta pero ya paso el ultimo pedido. Nunca promete una hora que no este en el horario. */
+export function mensajeUltimoPedidoPasado(nombreSucursal: string, ultimo: UltimoPedido, etiquetaHora?: string): string {
+  const cuando = etiquetaHora ? `para la hora elegida (${etiquetaHora})` : "para hoy";
+  return (
+    `La sucursal ${nombreSucursal} ya no toma pedidos ${cuando} por el cierre próximo: el último pedido se toma ${ultimo.margenMin} minutos antes del cierre` +
+    `${ultimo.ultimoPedidoA ? ` (hasta las ${ultimo.ultimoPedidoA})` : ""}. Ofrezca programar el pedido para la siguiente apertura o pedirlo mañana; no prometa una hora fuera del horario de la sucursal.`
+  );
 }
 
 /** Mensaje claro para el cliente cuando la sucursal está cerrada. */

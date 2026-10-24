@@ -32,7 +32,7 @@ import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composici
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { estaAbiertoAhora, fechaLocal } from "../horarios.ts";
+import { estaAbiertoAhora, evaluarUltimoPedido, fechaLocal } from "../horarios.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
 import { COORDENADAS_PROPUESTAS_PM, coordenadasPropuestasActivas } from "../coordenadas-sucursales.ts";
@@ -1705,12 +1705,14 @@ async function dispatchTool(
       const policy = await repo.findBranchPolicy(branch.propertyId);
       let abierto: boolean | null = null;
       let cierraA: string | null = null;
+      let ultimoPedido: ReturnType<typeof evaluarUltimoPedido> | null = null;
       const zonaCruda = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
       const ahora = new Date();
       if (policy.horario && policy.horario.length > 0) {
         const estado = estaAbiertoAhora(policy.horario, ahora, zonaCruda);
         abierto = estado.abierto;
         cierraA = estado.cierraA;
+        ultimoPedido = evaluarUltimoPedido(estado, policy.horario, ahora, zonaCruda);
       }
       // Reloj LOCAL de la sucursal: el modelo (sobre todo el de voz, que no trae la hora en su prompt) calculaba "en 40 minutos" con la hora UTC y guardaba
       // la recogida 6 h tarde, o "hoy" dos dias atras (QA-PM-R2-voz-03 / reglas-04). Con esto calcula sobre la hora de la sucursal.
@@ -1728,6 +1730,10 @@ async function dispatchTool(
         telefono: branch.phone,
         abierto_ahora: abierto,
         cierra_a: cierraA,
+        // Ultimo pedido (30 min antes del cierre por omision): abierta no es lo mismo que "todavia toma pedidos". Aditivo.
+        acepta_pedidos: ultimoPedido ? ultimoPedido.aceptaPedidos : null,
+        ultimo_pedido_a: ultimoPedido?.ultimoPedidoA ?? null,
+        margen_ultimo_pedido_min: ultimoPedido?.margenMin ?? null,
         horario: policy.horario,
         pedido_minimo_domicilio: policy.pedidoMinimoDomicilio,
         pedido_minimo_recoger: policy.pedidoMinimoRecoger,
