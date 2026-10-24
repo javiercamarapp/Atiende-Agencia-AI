@@ -20,6 +20,10 @@ import {
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
+  FormField,
+  Input,
+  notify,
   Odometro,
   PageContainer,
   PillLink,
@@ -32,6 +36,8 @@ import {
 } from "@atiende/ui";
 import {
   Bot,
+  Clock,
+  Settings2,
   ClipboardList,
   Package,
   Tag,
@@ -52,6 +58,8 @@ import {
 } from "../dashboard-client.ts";
 import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
 import { fetchCategories, fetchProducts } from "../lib/catalog-client.ts";
+import { fetchResumenConfig, guardarResumenConfig, horasAhorradas } from "../lib/resumen-config-client.ts";
+import type { ResumenConfigVista } from "../lib/resumen-config-client.ts";
 import { fetchBranchTimezone } from "../lib/config-client.ts";
 import { fetchBandeja } from "../lib/conversaciones-client.ts";
 import { fetchVozKpi } from "../lib/voz-kpi-client.ts";
@@ -140,8 +148,11 @@ export function RestaurantesDashboardPage({
   const [period, setPeriod] = useState<StatsPeriod>("30");
   const [data, setData] = useState<DashboardData | null>(null);
   const [extras, setExtras] = useState<Extras>(EXTRAS_VACIOS);
+  /** Configuracion del Resumen (096): `undefined` = cargando, `null` = no se pudo leer. Se lee UNA vez por montaje (no depende del periodo). */
+  const [resumenCfg, setResumenCfg] = useState<ResumenConfigVista | null | undefined>(undefined);
   const [catalogo, setCatalogo] = useState<ConteosCatalogo | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [configAbierta, setConfigAbierta] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(
@@ -189,6 +200,22 @@ export function RestaurantesDashboardPage({
       vivo = false;
     };
   }, [apiBaseUrl, token, propertyId, role]);
+
+  // La configuracion de horas y metas es de toda la organizacion y no cambia con el periodo ni con «Actualizar»: se lee UNA vez por montaje (y si cambia la
+  // sucursal), igual que el catalogo. «Reintentar» del tile la vuelve a pedir.
+  const cargarCfg = useCallback(async () => {
+    setResumenCfg(undefined);
+    try {
+      setResumenCfg(await fetchResumenConfig(fetch, apiBaseUrl, token, propertyId));
+    } catch {
+      setResumenCfg(null);
+    }
+  }, [apiBaseUrl, token, propertyId]);
+
+  useEffect(() => {
+    if (role === "repartidor") return;
+    void cargarCfg();
+  }, [cargarCfg, role]);
 
   const base = `/restaurantes/${orgSlug}`;
   // El repartidor no tiene Resumen (el Shell ya lo redirige): defensa en profundidad si se monta la pagina suelta.
@@ -241,6 +268,13 @@ export function RestaurantesDashboardPage({
   const ingresosIa = channels.voice.revenue + channels.whatsapp.revenue;
   const deltaNota = sales.periodLabel;
 
+  const metaPedidos = resumenCfg?.config.metaPedidosIaPct ?? null;
+  const metaIngresos = resumenCfg?.config.metaIngresosIaPct ?? null;
+  const minutos = resumenCfg?.config.minutosPorConversacion ?? null;
+  const conversaciones = channels.whatsappConversations.total;
+  const horas = horasAhorradas(conversaciones, minutos);
+  const puedeConfigurar = ROLES_VOZ.has(role);
+
   const kpis = [
     <StatCard
       key="ordenes"
@@ -268,11 +302,11 @@ export function RestaurantesDashboardPage({
       icon={Bot}
       label="Pedidos por agentes IA"
       value={formatInt(pedidosIa)}
-      nota={
+      nota={`${
         channels.aiAdoptionPct === null
           ? `Voz y WhatsApp · ${periodoCanales}`
           : `${channels.aiAdoptionPct.toFixed(0)}% de los pedidos · ${periodoCanales}`
-      }
+      }${metaPedidos === null ? "" : ` · Tu meta: ${metaPedidos}%`}`}
     />,
     <StatCard
       key="ingresos-ia"
@@ -280,7 +314,7 @@ export function RestaurantesDashboardPage({
       icon={Sparkles}
       label="Ingresos por agentes IA"
       value={formatMoney(ingresosIa)}
-      nota={`Voz y WhatsApp, sin cancelados · ${periodoCanales}`}
+      nota={`Voz y WhatsApp, sin cancelados · ${periodoCanales}${metaIngresos === null ? "" : ` · Tu meta: ${metaIngresos}%`}`}
     />,
     <StatCard
       key="whatsapp"
@@ -389,6 +423,36 @@ export function RestaurantesDashboardPage({
           </div>
         </Card>
 
+        <ResumenSeccion titulo="Impacto de tus agentes">
+          <div className="flex min-w-0 flex-col gap-1.5" title={resumenCfg?.formula ?? "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado histórico de tus sucursales visibles; no cambia con el periodo) × minutos por conversación ÷ 60."}>
+            <StatCard
+              variante="neutra"
+              icon={Clock}
+              label="Horas de atención ahorradas"
+              value={horas === null ? "—" : `${horas.toFixed(1)} h`}
+              nota={
+                resumenCfg === undefined
+                  ? "Cargando configuración…"
+                  : resumenCfg === null
+                  ? "No se pudo leer la configuración"
+                  : minutos === null
+                    ? "Configúralo: minutos que ahorra cada conversación atendida por el agente"
+                    : `${formatInt(conversaciones)} conversaciones (histórico, sucursales que ves) × ${minutos} min ÷ 60 · estimación con tu supuesto (config. de toda la organización), no una medición`
+              }
+            />
+            {resumenCfg === null && (
+              <Button type="button" variant="outline" size="sm" className="self-start" iconLeft={<RefreshCw />} onClick={() => void cargarCfg()}>
+                Reintentar
+              </Button>
+            )}
+            {puedeConfigurar && resumenCfg != null && (
+              <Button type="button" variant="outline" size="sm" className="self-start" iconLeft={<Settings2 />} onClick={() => setConfigAbierta(true)}>
+                Configurar horas y metas
+              </Button>
+            )}
+          </div>
+        </ResumenSeccion>
+
         <ResumenSeccion titulo="Tu operación">
           <TileLink
             to={`${base}/productos`}
@@ -415,7 +479,7 @@ export function RestaurantesDashboardPage({
             to={`${base}/conversaciones`}
             icon={MessageCircle}
             titulo="WhatsApp"
-            descripcion={`${plural(channels.whatsappConversations.total, "conversación", "conversaciones")} · ${formatInt(channels.whatsappConversations.withOrder)} con pedido · ${periodoCanales}`}
+            descripcion={`${plural(channels.whatsappConversations.total, "conversación", "conversaciones")} · ${formatInt(channels.whatsappConversations.withOrder)} con pedido · histórico`}
           />
           {ROLES_VOZ.has(role) && (
             <TileLink
@@ -481,6 +545,99 @@ export function RestaurantesDashboardPage({
 
         <RestaurantesFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
       </ResumenLayout>
+      {resumenCfg != null && (
+        <ConfigResumenDialogo
+          abierto={configAbierta}
+          onCerrar={() => setConfigAbierta(false)}
+          vista={resumenCfg}
+          onGuardar={async (config) => {
+            const nueva = await guardarResumenConfig(fetch, apiBaseUrl, token, propertyId, config);
+            setResumenCfg(nueva);
+            notify.success("Configuración del Resumen guardada.");
+          }}
+        />
+      )}
     </PageContainer>
+  );
+}
+
+/** Dialogo de «Horas y metas» (owner/admin). Vacio = quitar el valor. Los rangos vienen del servidor; si la base no tiene la migracion avisa y no guarda. */
+function ConfigResumenDialogo({
+  abierto,
+  onCerrar,
+  vista,
+  onGuardar,
+}: {
+  readonly abierto: boolean;
+  readonly onCerrar: () => void;
+  readonly vista: ResumenConfigVista;
+  readonly onGuardar: (config: { minutosPorConversacion: number | null; metaPedidosIaPct: number | null; metaIngresosIaPct: number | null }) => Promise<void>;
+}) {
+  const [minutos, setMinutos] = useState("");
+  const [metaPedidos, setMetaPedidos] = useState("");
+  const [metaIngresos, setMetaIngresos] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!abierto) return;
+    setMinutos(vista.config.minutosPorConversacion?.toString() ?? "");
+    setMetaPedidos(vista.config.metaPedidosIaPct?.toString() ?? "");
+    setMetaIngresos(vista.config.metaIngresosIaPct?.toString() ?? "");
+    setError(null);
+  }, [abierto, vista]);
+
+  const leer = (texto: string, nombre: string, min: number, max: number): number | null | "error" => {
+    const t = texto.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < min || n > max) {
+      setError(`${nombre}: escribe un entero entre ${min} y ${max}, o déjalo vacío para quitarlo.`);
+      return "error";
+    }
+    return n;
+  };
+
+  async function guardar() {
+    setError(null);
+    const m = leer(minutos, "Minutos por conversación", vista.rangos.minutos.min, vista.rangos.minutos.max);
+    const mp = leer(metaPedidos, "Meta de pedidos por agentes", vista.rangos.meta.min, vista.rangos.meta.max);
+    const mi = leer(metaIngresos, "Meta de ingresos por agentes", vista.rangos.meta.min, vista.rangos.meta.max);
+    if (m === "error" || mp === "error" || mi === "error") return;
+    setGuardando(true);
+    try {
+      await onGuardar({ minutosPorConversacion: m, metaPedidosIaPct: mp, metaIngresosIaPct: mi });
+      onCerrar();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la configuración.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <FormDialog
+      open={abierto}
+      onOpenChange={(o) => { if (!o) onCerrar(); }}
+      titulo="Horas y metas del Resumen"
+      subtitulo={vista.formula}
+      anchoClase="max-w-3xl"
+      onGuardar={() => void guardar()}
+      guardando={guardando}
+      guardarDeshabilitado={!vista.disponible}
+    >
+      <div className="grid gap-4">
+        {!vista.disponible && <p className="text-ui text-muted-foreground">Esta función aún no está disponible en tu cuenta.</p>}
+        <FormField label="Minutos que ahorra cada conversación atendida por el agente">
+          <Input id="resumen-minutos" inputMode="numeric" value={minutos} onChange={(e) => setMinutos(e.target.value)} placeholder={`${vista.rangos.minutos.min} a ${vista.rangos.minutos.max}`} />
+        </FormField>
+        <FormField label="Meta de pedidos por agentes IA (%)">
+          <Input id="resumen-meta-pedidos" inputMode="numeric" value={metaPedidos} onChange={(e) => setMetaPedidos(e.target.value)} placeholder={`${vista.rangos.meta.min} a ${vista.rangos.meta.max}`} />
+        </FormField>
+        <FormField label="Meta de ingresos por agentes IA (%)">
+          <Input id="resumen-meta-ingresos" inputMode="numeric" value={metaIngresos} onChange={(e) => setMetaIngresos(e.target.value)} placeholder={`${vista.rangos.meta.min} a ${vista.rangos.meta.max}`} />
+        </FormField>
+        {error !== null && <p role="alert" className="text-ui text-destructive">{error}</p>}
+      </div>
+    </FormDialog>
   );
 }

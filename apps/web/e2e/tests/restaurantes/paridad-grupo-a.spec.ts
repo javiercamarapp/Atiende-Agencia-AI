@@ -54,4 +54,53 @@ test.describe("restaurantes paridad grupo A: Resumen e Historial @recorrido", ()
     await expect(main(page).getByTestId("historial-conteo")).toBeVisible();
     vigilante.verificar();
   });
+
+  test("Resumen: Horas ahorradas pide configurarse, el dueño la configura y las metas salen en sus tiles; el staff no ve el boton", async ({ page, mock, vigilante }) => {
+    await ir(page, "");
+    await expect(main(page).getByText("Configúralo", { exact: false })).toBeVisible();
+    await expect(main(page).getByText("Tu operación", { exact: true })).toBeVisible();
+    await main(page).getByRole("button", { name: "Configurar horas y metas" }).click();
+    const dlg = page.getByRole("dialog", { name: "Horas y metas del Resumen" });
+    await dlg.getByLabel("Minutos que ahorra cada conversación atendida por el agente").fill("500");
+    await dlg.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(dlg.getByRole("alert")).toContainText("entre 1 y 120");
+    expect((await mock.buscar({ metodo: "PUT", ruta: "/resumen/config" })).length).toBe(0);
+    await dlg.getByLabel("Minutos que ahorra cada conversación atendida por el agente").fill("6");
+    await dlg.getByLabel("Meta de pedidos por agentes IA (%)").fill("80");
+    await dlg.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(dlg).toBeHidden();
+    expect((await mock.buscar({ metodo: "PUT", ruta: "/resumen/config" })).length).toBe(1);
+    await expect(main(page).getByText("conversaciones (histórico, sucursales que ves) × 6 min ÷ 60", { exact: false })).toBeVisible();
+    await expect(main(page).getByText("Tu meta: 80%", { exact: false })).toBeVisible();
+    vigilante.verificar();
+  });
+});
+
+test.describe("restaurantes paridad grupo A: Resumen, teclado del dialogo de configuracion @recorrido", () => {
+  test("abre con Enter, el foco entra y queda atrapado en el dialogo, y Escape lo cierra", async ({ page, iniciarSesion }) => {
+    await iniciarSesion("restaurantes", "owner");
+    await ir(page, "");
+    const boton = main(page).getByRole("button", { name: "Configurar horas y metas" });
+    await boton.focus();
+    await page.keyboard.press("Enter");
+    const dlg = page.getByRole("dialog", { name: "Horas y metas del Resumen" });
+    await expect(dlg).toBeVisible();
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+    // Tab no se escapa del dialogo (foco atrapado).
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Tab");
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(dlg).toBeHidden();
+    // Que el foco VUELVA al boton al cerrar es el defecto conocido BUG-E2E-001 de FormDialog (hay test.fail en humo-restaurantes y recorrido-dialogos);
+    // no se afirma aqui para no duplicarlo ni esconderlo: cuando se arregle ese defecto, esos test.fail avisaran.
+  });
+});
+
+test.describe("restaurantes paridad grupo A: Resumen como staff @recorrido", () => {
+  test("el staff ve las horas y no puede configurarlas", async ({ page, iniciarSesion }) => {
+    await iniciarSesion("restaurantes", "staff");
+    await ir(page, "");
+    await expect(main(page).getByText("Horas de atención ahorradas", { exact: true })).toBeVisible();
+    await expect(main(page).getByRole("button", { name: "Configurar horas y metas" })).toHaveCount(0);
+  });
 });
