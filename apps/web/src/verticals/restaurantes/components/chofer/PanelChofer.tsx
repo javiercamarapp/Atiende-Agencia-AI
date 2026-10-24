@@ -25,7 +25,8 @@ export function PanelChofer({ legado, ...conexion }: PanelChoferProps) {
   if (modo === "legado") return <>{legado}</>;
 
   const panel = (
-    <main id="contenido-principal" tabIndex={-1} className="min-h-screen bg-background focus:outline-none" hidden={modo !== "nuevo"}>
+    // El id solo existe cuando el panel es el visible: en "probando" la vista anterior (legado) trae su propio main#contenido-principal y el oculto no debe duplicarlo.
+    <main id={modo === "nuevo" ? "contenido-principal" : undefined} tabIndex={-1} className="min-h-screen bg-background focus:outline-none" hidden={modo !== "nuevo"}>
       <PageContainer padding="default" className="mx-auto max-w-2xl gap-4">
         <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
         <Tabs defaultValue="entregas" className="flex flex-col gap-3">
