@@ -34,7 +34,8 @@ async function esperar(): Promise<void> {
 
 const TIERS = { metric: "gasto", BLACK: 1, PLATINUM: 2, GOLD: 3, BLUE: 4, withoutTier: 1 };
 
-function stub(opts: { lista?: unknown; kpis?: unknown; branches?: unknown; tiers?: unknown | "falla" | "ausente" } = {}) {
+function stub(opts: { lista?: unknown; kpis?: unknown; branches?: unknown; tiers?: unknown | "falla" | "ausente"; fallosLista?: number } = {}) {
+  let fallos = opts.fallosLista ?? 0;
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url.endsWith("/admin/customers/kpis")) return json(opts.kpis ?? KPIS);
@@ -42,6 +43,10 @@ function stub(opts: { lista?: unknown; kpis?: unknown; branches?: unknown; tiers
     if (url === "https://api.test/v1/restaurantes/demo/admin/branches") return json(opts.branches ?? { branches: [{ propertyId: "prop-1", name: "Centro", slug: "c" }, { propertyId: "prop-2", name: "Norte", slug: "n" }] });
     if (url.endsWith("/customers/import/preview") && method === "POST") return json({ total: 3, validos: 2, duplicadosEnArchivo: 0, totalErrores: 1, errores: [{ renglon: 3, motivo: "Telefono invalido: se esperan 10 digitos (se acepta +52 o 521 al inicio)." }], muestra: [{ nombre: "Ana", telefonoEnmascarado: "******0001", direccion: null, notas: null }] });
     if (url.endsWith("/customers/import") && method === "POST") return json({ resultado: { yaImportado: false, total: 3, creados: 2, actualizados: 0, sinCambios: 0, rechazados: 1, errores: [] } });
+    if (url.startsWith(BASE) && method === "GET" && fallos > 0) {
+      fallos -= 1;
+      return json({ error: "boom" }, 500);
+    }
     if (url.startsWith(BASE) && method === "GET") return json(opts.lista ?? { customers: CLIENTES, nextCursor: null, filtrosDisponibles: true });
     throw new Error(`fetch inesperado en el test: ${method} ${url}`);
   });
@@ -149,6 +154,18 @@ describe("ClientesListPage -- cartera por nivel", () => {
     await esperar();
     const url = new URL(listados().at(-1)!);
     expect(Object.fromEntries(url.searchParams)).toMatchObject({ nivel: "GOLD", frecuencia: "recurrentes", inactivoDias: "30", branchId: "prop-2", limit: "50" });
+  });
+
+  it("si la lista falla muestra el error con Reintentar y al reintentar recupera", async () => {
+    stub({ fallosLista: 1 });
+    montar();
+    await esperar();
+    const boton = Array.from(rendered!.container.querySelectorAll("button")).find((b) => b.textContent?.includes("Reintentar"));
+    expect(boton).toBeTruthy();
+    click(boton!);
+    await esperar();
+    expect(rendered!.container.textContent).toContain("Ana Torres");
+    expect(rendered!.container.textContent).not.toContain("Reintentar");
   });
 
   it("sin coincidencias dice que ningun cliente coincide con los filtros", async () => {
