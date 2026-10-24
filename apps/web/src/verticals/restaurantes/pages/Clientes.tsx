@@ -227,7 +227,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           Los filtros por nivel, frecuencia, días sin pedir y sucursal requieren la migración 054 de restaurantes en esta base de datos.
         </Callout>
       )}
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => setVersion((v) => v + 1)} />}
       {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
       {customers && customers.length === 0 && filtrosDisponibles && <EstadoVacio mensaje={hayFiltros ? "Ningún cliente coincide con estos filtros." : "Todavía no hay clientes: aparecen con su primer pedido o al importar tu cartera."} />}
 
