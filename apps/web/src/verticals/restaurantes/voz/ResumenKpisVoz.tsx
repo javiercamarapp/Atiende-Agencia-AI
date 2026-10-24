@@ -27,8 +27,9 @@ interface Datos {
 const ROLES_TELEMETRIA: ReadonlySet<string> = new Set(["owner", "admin"]);
 
 /** Un decimal en todas las tarjetas (es-MX), para que 90.0 % y 8.0 % se lean igual. */
+const PCT1 = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 function formatoPct1(pct: number | null): string {
-  return pct === null || !Number.isFinite(pct) ? "—" : `${pct.toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+  return pct === null || !Number.isFinite(pct) ? "—" : `${PCT1.format(pct)}%`;
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
