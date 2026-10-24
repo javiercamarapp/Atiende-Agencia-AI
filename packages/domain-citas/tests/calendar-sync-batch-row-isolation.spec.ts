@@ -16,7 +16,7 @@
 // El aislamiento real a nivel SAVEPOINT de Postgres (que la transacción del lote NO
 // quede abortada) ya lo prueba `savepoint-fallback.spec.ts` (packages/db) contra el
 // helper genérico que `PostgresCitasRepository.runWithRowSavepoint` reutiliza.
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "../src/appointments.ts";
 import { syncPendingAppointmentsMultiProvider } from "../src/calendar-sync.ts";
 import type { ResolveCalendarSyncPort } from "../src/calendar-sync.ts";
@@ -24,6 +24,15 @@ import { FakeCalendarSyncPort } from "../src/calendar-sync-port.ts";
 import { InMemoryCitasRepository } from "../src/in-memory-repository.ts";
 import { buildCitasFixture } from "./fixtures.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const NEXT_MONDAY_9AM_MERIDA = zonedTimeToUtc("2026-09-14", "09:00", "America/Merida").toISOString();
 const NEXT_MONDAY_10AM_MERIDA = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();

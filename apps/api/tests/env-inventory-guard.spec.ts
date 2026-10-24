@@ -43,6 +43,9 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // plataforma que no es una credencial de integración" — se excluye a propósito
   // por si algún día se lee.
   "NODE_ENV",
+  // URL de un Postgres EFIMERO LOCAL que solo leen las pruebas opt-in de QA contra base real (packages/domain-citas/tests/qa-citas-r1-api-caos-postgres-real.spec.ts);
+  // sin ella la prueba se omite. No es una credencial de la plataforma ni se lee en codigo de produccion.
+  "QA_CITAS_PG_URL",
   // Bandera opt-in para correr la prueba de integración del CFO contra un Postgres efímero local
   // (scripts/verify-restaurantes-cfo-repos/run.sh); no es una credencial.
   "CFO_REAL_PG",
