@@ -54,8 +54,10 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
       }
       hero={{
         lamina: true,
-        imagen: "images/login-hero-restaurantes-lamina.png",
-        alt: "Pase de una cocina comercial vacía en la hora azul, con vapor sobre la barra de acero.",
+        imagen: "images/login-hero-restaurantes-lamina.jpg",
+        laminaAncho: 880,
+        laminaAlto: 1168,
+        alt: "Taquero cortando trompo de pastor en un puesto de noche, con clientes sonriendo a su alrededor.",
         kicker: "Pedidos por voz y WhatsApp",
         texto: (
           <>
@@ -64,6 +66,17 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
             El cierre del turno, solo.
           </>
         ),
+        laminaEn: {
+          kicker: "Orders by voice and WhatsApp",
+          alt: "Taquero slicing al pastor meat at a night-time stand, with smiling customers around him.",
+          texto: (
+            <>
+              Restaurants in Mexico.
+              <br />
+              Closing the shift, on its own.
+            </>
+          ),
+        },
       }}
     />
   );
