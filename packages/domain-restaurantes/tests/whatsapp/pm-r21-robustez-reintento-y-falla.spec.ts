@@ -123,6 +123,29 @@ describe("H2: el mensaje del cliente que cayo en falla_sistema", () => {
     expect(bloquePedidoPendienteTrasFalla([{ role: "user", content: "hola" }])).toBe("");
   });
 
+  it("dos fallas seguidas (aviso, aviso): retrocede hasta la ultima respuesta REAL y no pierde el pedido original", () => {
+    const h: Msg[] = [
+      { role: "user", content: "hola" }, { role: "assistant", content: "Bienvenido" },
+      { role: "user", content: "2 gringas de bistec" }, { role: "assistant", content: PM_COPY.problemaTecnico },
+      { role: "user", content: "hola? sigue ahi" }, { role: "assistant", content: PM_COPY.sinAsistenteAvisoEquipo },
+      { role: "user", content: "?" },
+    ];
+    expect(mensajesPerdidosPorFalla(h).map((x) => x.content)).toEqual(["2 gringas de bistec", "hola? sigue ahi"]);
+    expect(bloquePedidoPendienteTrasFalla(h)).toContain("falla previa del sistema");
+    // tambien con los avisos genericos del proveedor caido
+    const g: Msg[] = [
+      { role: "assistant", content: "Bienvenido" }, { role: "user", content: "3 tacos de pastor" },
+      { role: "assistant", content: "Ahorita tenemos un problema técnico, por favor inténtelo de nuevo en un momento." },
+      { role: "user", content: "?" },
+      { role: "assistant", content: "Ahorita tenemos un problema técnico. Ya avisé al equipo del restaurante para que una persona lo contacte lo antes posible." },
+    ];
+    expect(mensajesPerdidosPorFalla(g).map((x) => x.content)).toEqual(["3 tacos de pastor", "?"]);
+  });
+
+  it("el bloque dice que si ya hay un pedido creado no se abra otro", () => {
+    expect(bloquePedidoPendienteTrasFalla(historia)).toMatch(/ya tiene un pedido creado, no abra otro/i);
+  });
+
   it("el bloque no cita ni copia texto del cliente (no abre una via de inyeccion al prompt de sistema)", () => {
     expect(bloquePedidoPendienteTrasFalla(historia)).not.toContain("Ana");
   });
