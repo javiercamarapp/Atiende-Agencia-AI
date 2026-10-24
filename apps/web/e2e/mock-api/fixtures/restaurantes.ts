@@ -33,6 +33,21 @@ export const MIEMBROS_SEMILLA = [
   { id: "usr-2", email: "ramon.uc@example.test", fullName: "Ramon Uc", verticalRole: "repartidor", propertyIds: null },
 ];
 
+interface ResumenConfigMock {
+  minutosPorConversacion: number | null;
+  metaPedidosIaPct: number | null;
+  metaIngresosIaPct: number | null;
+}
+function vistaResumenConfig(config: ResumenConfigMock) {
+  return {
+    disponible: true,
+    config,
+    actualizadoEn: null,
+    rangos: { minutos: { min: 1, max: 120 }, meta: { min: 1, max: 100 } },
+    formula: "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente en el periodo × minutos por conversacion que configuraste ÷ 60. Es una estimacion con tu supuesto, no una medicion.",
+  };
+}
+
 const kpisVentas = { revenue: 18450, orders: 96, customers: 61, averageOrder: 192.2, revenueChangePct: 8.4, ordersChangePct: 5.1, customersChangePct: 2.3, avgOrderChangePct: 3.2, periodLabel: "Ultimos 7 dias" };
 const canales = {
   totalOrders: 96,
@@ -302,6 +317,18 @@ export const rutasRestaurantes: readonly Ruta[] = [
       const nuevos = { ...AJUSTES_POR_OMISION, ...c } as AjustesMock;
       p.estado.guardar("rest.ajustes-agente", { ajustes: nuevos, configurados: true });
       return vistaAjustes(nuevos, true);
+    } },
+  // Configuracion del Resumen (096): minutos por conversacion y metas de IA; PUT solo owner/admin con los rangos del servidor.
+  { metodo: "GET", patron: `${B}/resumen/config`, manejador: (p) => vistaResumenConfig(p.estado.obtener<ResumenConfigMock>("rest.resumen-config", () => ({ minutosPorConversacion: null, metaPedidosIaPct: null, metaIngresosIaPct: null }))) },
+  { metodo: "PUT", patron: `${B}/resumen/config`, roles: ["owner", "admin"], manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as Record<string, unknown>;
+      const rango = (v: unknown, min: number, max: number) => v === null || (typeof v === "number" && Number.isInteger(v) && v >= min && v <= max);
+      if (!rango(c["minutosPorConversacion"], 1, 120)) return fallo(400, "minutosPorConversacion: se esperaba un entero entre 1 y 120, o null para quitarlo.");
+      if (!rango(c["metaPedidosIaPct"], 1, 100)) return fallo(400, "metaPedidosIaPct: se esperaba un entero entre 1 y 100, o null para quitarlo.");
+      if (!rango(c["metaIngresosIaPct"], 1, 100)) return fallo(400, "metaIngresosIaPct: se esperaba un entero entre 1 y 100, o null para quitarlo.");
+      const nuevo = { minutosPorConversacion: c["minutosPorConversacion"] as number | null, metaPedidosIaPct: c["metaPedidosIaPct"] as number | null, metaIngresosIaPct: c["metaIngresosIaPct"] as number | null };
+      p.estado.guardar("rest.resumen-config", nuevo);
+      return vistaResumenConfig(nuevo);
     } },
   { metodo: "GET", patron: `${B}/agente/conocimiento`, roles: ["owner", "admin"], manejador: () => CONOCIMIENTO_MOCK },
   { metodo: "GET", patron: `${B}/voz/config`, roles: ["owner", "admin"], manejador: (p) => p.estado.obtener("rest.voz-config", () => ({ ...VOZ_CONFIG_MOCK })) },
