@@ -34,6 +34,7 @@ import {
   type ResultadoImportacionSr,
   type UmbralesClientes,
 } from "./repositorio.ts";
+import type { FilaIntervaloRecompra, LecturaReactivacion, LecturaRfm, LecturaTortilla } from "./analisis-clientes.ts";
 import {
   CFO_CONFIG_POR_DEFECTO,
   type CfoConfig,
@@ -92,6 +93,11 @@ export interface DatasetCfoMemoria {
   /** 084 (opcionales: sin sembrar, la lectura devuelve vacío). */
   readonly frecuentesDormidos?: readonly FilaFrecuentesDormidos[];
   readonly descuentoP90?: readonly FilaDescuentoP90[];
+  /** 095 (opcionales: sin sembrar, la lectura devuelve vacío). Los filtros de alcance y rango los aplica quien siembra: aquí solo se valida. */
+  readonly analisisRfm?: Omit<LecturaRfm, "disponible">;
+  readonly analisisReactivacion?: Omit<LecturaReactivacion, "disponible">;
+  readonly analisisIntervalo?: readonly FilaIntervaloRecompra[];
+  readonly analisisTortilla?: Omit<LecturaTortilla, "disponible">;
 }
 
 const DATASET_VACIO: DatasetCfoMemoria = {
@@ -109,7 +115,7 @@ export interface OpcionesCfoMemoria {
   /** true (por omisión) = owner/admin sin `property_ids` acotado: ve «No asignado» y puede escribir costos/config de la organización. */
   readonly organizacionCompleta?: boolean;
   /** Migración aplicada por bloque; por omisión todas. */
-  readonly migraciones?: { readonly m081?: boolean; readonly m082?: boolean; readonly m083?: boolean; readonly m084?: boolean };
+  readonly migraciones?: { readonly m081?: boolean; readonly m082?: boolean; readonly m083?: boolean; readonly m084?: boolean; readonly m095?: boolean };
   readonly config?: CfoConfig;
   /** Reloj inyectable para `created_at` de costos y lotes. */
   readonly ahora?: () => Date;
@@ -162,7 +168,7 @@ export class InMemoryCfoRepository implements CfoRepository {
   private readonly sucursalesOrg: ReadonlySet<string>;
   private readonly permitidas: ReadonlySet<string>;
   private readonly orgCompleta: boolean;
-  private readonly mig: { m081: boolean; m082: boolean; m083: boolean; m084: boolean };
+  private readonly mig: { m081: boolean; m082: boolean; m083: boolean; m084: boolean; m095: boolean };
   private config: CfoConfig;
   private configurada = false;
   private readonly costos: CostoVersion[] = [];
@@ -177,7 +183,7 @@ export class InMemoryCfoRepository implements CfoRepository {
     this.sucursalesOrg = new Set(opciones.sucursales);
     this.permitidas = new Set(opciones.permitidas ?? opciones.sucursales);
     this.orgCompleta = opciones.organizacionCompleta ?? true;
-    this.mig = { m081: opciones.migraciones?.m081 ?? true, m082: opciones.migraciones?.m082 ?? true, m083: opciones.migraciones?.m083 ?? true, m084: opciones.migraciones?.m084 ?? true };
+    this.mig = { m081: opciones.migraciones?.m081 ?? true, m082: opciones.migraciones?.m082 ?? true, m083: opciones.migraciones?.m083 ?? true, m084: opciones.migraciones?.m084 ?? true, m095: opciones.migraciones?.m095 ?? true };
     this.config = opciones.config ?? CFO_CONFIG_POR_DEFECTO;
     this.srFilas = [...this.dataset.srResumen];
     this.ahora = opciones.ahora ?? (() => new Date());
@@ -383,6 +389,38 @@ export class InMemoryCfoRepository implements CfoRepository {
       const { props } = this.alcance(p);
       return (this.dataset.descuentoP90 ?? []).filter((f) => (f.propertyId === null ? true : props.has(f.propertyId)));
     });
+  }
+
+  // ---- 095 ----
+
+  async clientesRfm(p: ParamsCfo, r: RangoCfo): Promise<LecturaRfm> {
+    this.validarRango(r);
+    this.alcance(p);
+    this.contar("clientesRfm");
+    if (!this.mig.m095) return { disponible: false, segmentos: [], resumen: null, pareto: null };
+    return { disponible: true, ...(this.dataset.analisisRfm ?? { segmentos: [], resumen: null, pareto: null }) };
+  }
+  async clientesReactivacion(p: ParamsCfo, r: RangoCfo, limite: number): Promise<LecturaReactivacion> {
+    this.validarRango(r);
+    this.alcance(p);
+    if (!Number.isInteger(limite) || limite < 1 || limite > 200) throw new CfoParametroInvalidoError("cfo_clientes_reactivacion: limite invalido");
+    this.contar("clientesReactivacion");
+    if (!this.mig.m095) return { disponible: false, totalElegibles: 0, mostrados: 0, ventaEnJuegoCentavos: 0, dormidos: 0, consentimiento: { otorgado: 0, revocado: 0, sinRegistro: 0 }, filas: [] };
+    const d = this.dataset.analisisReactivacion ?? { totalElegibles: 0, mostrados: 0, ventaEnJuegoCentavos: 0, dormidos: 0, consentimiento: { otorgado: 0, revocado: 0, sinRegistro: 0 }, filas: [] };
+    const filas = d.filas.slice(0, limite);
+    return { disponible: true, ...d, filas, mostrados: filas.length };
+  }
+  async clientesIntervaloRecompra(p: ParamsCfo, r: RangoCfo): Promise<LecturaCfo<FilaIntervaloRecompra>> {
+    this.validarRango(r);
+    this.alcance(p);
+    return this.lectura("clientesIntervaloRecompra", this.mig.m095, () => [...(this.dataset.analisisIntervalo ?? [])]);
+  }
+  async pedidosTortilla(p: ParamsCfo, r: RangoCfo): Promise<LecturaTortilla> {
+    this.validarRango(r);
+    this.alcance(p);
+    this.contar("pedidosTortilla");
+    if (!this.mig.m095) return { disponible: false, pedidosConItems: 0, tortilla: [] };
+    return { disponible: true, ...(this.dataset.analisisTortilla ?? { pedidosConItems: 0, tortilla: [] }) };
   }
 
   // ---- 083 ----
