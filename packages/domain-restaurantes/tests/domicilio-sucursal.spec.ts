@@ -14,7 +14,7 @@ afterEach(() => {
 // Merida es UTC-6 todo el año. 2026-10-09 es viernes.
 const VIERNES_MEDIODIA = new Date("2026-10-09T18:00:00Z");
 const MARTES_MEDIODIA = new Date("2026-10-06T18:00:00Z");
-const SABADO_0030_MERIDA = new Date("2026-10-10T06:30:00Z");
+const SABADO_0030_MERIDA = new Date("2026-10-10T06:15:00Z"); // 00:15 del sabado (el ultimo pedido es 00:30 con cierre 01:00)
 const VIE_A_DOM = [5, 6, 0] as const;
 
 describe("helpers de domicilio", () => {
@@ -90,7 +90,7 @@ describe("la regla corre en cotizar y crear pedido (mismo dominio para WhatsApp,
     await expect(aplicarReglasDeSucursal(f.repo, { branch: (await f.repo.findBranch(f.organizationId, { slug: "fco-montejo" }))!, canal: "recoger", subtotal: 100, now: VIERNES_MEDIODIA })).resolves.toBeTruthy();
   });
 
-  it("usa el dia de NEGOCIO: a la 00:30 del sabado, la cola del turno del viernes todavia cuenta como viernes", async () => {
+  it("usa el dia de NEGOCIO: a la 00:15 del sabado, la cola del turno del viernes todavia cuenta como viernes", async () => {
     const f = buildRestaurantFixture();
     f.repo.seedBranchPolicy(f.propertyId, { diasDomicilio: [5], horario: [{ dias: [5], abre: "12:00", cierra: "01:00" }] });
     const branch = (await f.repo.findBranch(f.organizationId, { slug: "fco-montejo" }))!;
