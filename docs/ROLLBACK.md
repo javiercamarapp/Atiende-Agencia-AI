@@ -68,3 +68,11 @@ el rollback real nunca se ejecuta en pruebas).
 - `prod-health.yml` sondea `/health` cada 15 min (ver `.github/workflows/README.md`).
 - El despachador de alertas de la app (`ALERTAS_*`, `SENTRY_DSN`; ver `docs/CREDENCIALES.md`) se configura en
   Vercel; el CI nunca lo usa ni envía alertas.
+
+## Reversa de migraciones aditivas de base
+
+Las migraciones no se revierten con `scripts/rollback/rollback.sh` (solo toca Vercel). Reversas manuales conocidas:
+
+| Migración | Reversa |
+|---|---|
+| 095 `cfo_analisis_clientes` | `drop function` de sus cinco funciones de `restaurantes` (`cfo_clientes_rfm_base`, `cfo_clientes_rfm`, `cfo_clientes_reactivacion`, `cfo_intervalo_recompra`, `cfo_pedidos_tortilla`) (sin tablas ni datos que revertir; la pantalla vuelve a «no disponible aún»). Detalle en `docs/restaurantes/ANALISIS-CLIENTES.md`. |

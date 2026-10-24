@@ -151,6 +151,15 @@ import {
   ventanas4Semanas,
 } from "./servicio-util.ts";
 import { AVISO_CFO } from "./estado-resultados.ts";
+import {
+  DEFINICIONES_ANALISIS_CLIENTES,
+  LIMITE_PARES_CANASTA,
+  PENDIENTES_ANALISIS_CLIENTES,
+  armarSeccionesAnalisis,
+  nombresPorRef,
+  type AnalisisClientesVista,
+  type EntradaAnalisis,
+} from "./analisis-clientes.ts";
 import { cifra, diaSemanaIso, diasEntre, primerDiaMesSiguiente, expandirDias, fechaLocal, mesDe, pct1, promedioMin1, divEntera, sinDato, sumarDiasFecha } from "./util.ts";
 
 export interface EntradaServicioCfo {
@@ -1262,6 +1271,57 @@ export class ServicioCfo {
       efectoPromocion: efecto,
       agotados,
     };
+  }
+
+  // ---- /analisis-clientes --------------------------------------------------------------------------------------------------------------
+
+  /**
+   * Análisis de clientes (solo lectura): RFM, concentración, reactivación priorizada, intervalo de recompra, afinidad de productos con lift y tortilla.
+   * Cada sección degrada por separado (base sin la 095, error no recuperable): el resto de la vista sigue. Autorización y parámetros inválidos sí cortan.
+   * La recencia se mide contra `q.hasta`; las ventas sin cliente identificado no entran.
+   */
+  async analisisClientesVista(q: ConsultaCfo, limiteReactivacion = 50): Promise<AnalisisClientesVista> {
+    const r: RangoCfo = { desde: q.desde, hasta: q.hasta };
+    const conError = new Set<EntradaAnalisis["conError"] extends ReadonlySet<infer K> ? K : never>();
+    const intentar = async <T,>(clave: "rfm" | "intervalo" | "reactivacion" | "tortilla" | "afinidad", f: () => Promise<T>, vacio: T): Promise<T> => {
+      try {
+        return await f();
+      } catch (err) {
+        if (ServicioCfo.esFatal(err)) throw err;
+        conError.add(clave);
+        this.e.onError?.(`analisis_clientes_${clave}`, err);
+        return vacio;
+      }
+    };
+    const rfm = await intentar("rfm", () => this.e.repo.clientesRfm(this.params, r), { disponible: false, segmentos: [], resumen: null, pareto: null });
+    const intervalo = await intentar("intervalo", () => this.e.repo.clientesIntervaloRecompra(this.params, r), { disponible: false, filas: [] });
+    const reactivacion = await intentar("reactivacion", () => this.e.repo.clientesReactivacion(this.params, r, limiteReactivacion), {
+      disponible: false, totalElegibles: 0, mostrados: 0, ventaEnJuegoCentavos: 0, dormidos: 0, consentimiento: { otorgado: 0, revocado: 0, sinRegistro: 0 }, filas: [],
+    });
+    const tortilla = await intentar("tortilla", () => this.e.repo.pedidosTortilla(this.params, r), { disponible: false, pedidosConItems: 0, tortilla: [] });
+    this.usados.add("ventas");
+    const canasta = await intentar("afinidad", () => this.e.repo.canastaPares(this.params, r, LIMITE_PARES_CANASTA), { disponible: false, pares: [], totales: [], tickets: [] });
+    if (!canasta.disponible && !conError.has("afinidad")) this.caidos.add("ventas");
+    const prod = canasta.disponible ? await this.productosDe(r) : { disponible: false, filas: [] };
+    const secciones = armarSeccionesAnalisis({
+      rfm,
+      intervalo,
+      reactivacion,
+      tortilla,
+      canasta: { disponible: canasta.disponible, pares: this.soloSucursales(canasta.pares), totales: this.soloSucursales(canasta.totales) },
+      nombres: nombresPorRef(prod.filas),
+      limiteReactivacion,
+      multiSucursal: this.idsAlcance.size > 1,
+      conError,
+    });
+    const avisos: string[] = [
+      "La recencia se mide contra el último día del periodo y solo se ven ventas dentro del periodo (máximo 400 días). Las ventas sin cliente identificado no entran.",
+    ];
+    if (secciones.resumen.disponible && secciones.resumen.datos?.clientesConVenta === 0) avisos.push("No hay ventas con cliente identificado en el periodo seleccionado.");
+    if (secciones.segmentos.datos?.pocosClientes && (secciones.resumen.datos?.clientesConVenta ?? 0) > 0) avisos.push("Con menos de 5 clientes los puntajes de recencia y monto no son estables.");
+    const cab = await this.cabecera(q, avisos);
+    const principales = secciones.resumen.disponible && secciones.segmentos.disponible && secciones.reactivacion.disponible;
+    return { ...cab, disponible: cab.disponible && principales, secciones, pendientes: PENDIENTES_ANALISIS_CLIENTES, definiciones: DEFINICIONES_ANALISIS_CLIENTES };
   }
 
   // ---- /patrones ----------------------------------------------------------------------------------------------------------------------

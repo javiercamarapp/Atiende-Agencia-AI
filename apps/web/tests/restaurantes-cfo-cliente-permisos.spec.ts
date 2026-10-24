@@ -111,10 +111,12 @@ describe("cliente del CFO", () => {
 describe("registro de pestañas y enlaces de «Lo más importante»", () => {
   const F = { ...filtrosPorDefecto("2026-09-28"), comparar: "anio_anterior" as const };
   const DISPONIBLES = new Set(PAGINAS_CFO.map((p) => p.slug));
-  it("el registro trae las 9 pestañas de CFO-07 y CFO-08, con slug único y vista de exportación", () => {
-    expect(PAGINAS_CFO.map((p) => p.slug)).toEqual(["resumen", "ventas", "sucursales", "estado-resultados", "clientes", "platillos", "patrones", "operacion", "softrestaurant"]);
+  it("el registro trae las 10 pestañas (CFO-07, CFO-08 y Análisis de clientes), con slug único y vista de exportación", () => {
+    expect(PAGINAS_CFO.map((p) => p.slug)).toEqual(["resumen", "ventas", "sucursales", "estado-resultados", "clientes", "analisis-clientes", "platillos", "patrones", "operacion", "softrestaurant"]);
     expect(new Set(PAGINAS_CFO.map((p) => p.slug)).size).toBe(PAGINAS_CFO.length);
-    for (const p of PAGINAS_CFO) expect(p.vistaExportacion, p.slug).not.toBeNull();
+    // Análisis de clientes (Fase A) todavía no exporta: la vista `analisis_clientes` del exportador queda para una fase posterior (se oculta el botón).
+    for (const p of PAGINAS_CFO) if (p.slug === "analisis-clientes") expect(p.vistaExportacion, p.slug).toBeNull();
+    else expect(p.vistaExportacion, p.slug).not.toBeNull();
   });
   it("enlaza a una pestaña existente con la sucursal, el rango y el filtro de pedidos de la acción", () => {
     const to = enlaceDeAccion("/cfo/ventas?sucursal=s4&desde=2026-09-21&hasta=2026-09-27&es_compensacion=1", "/restaurantes/demo", F, DISPONIBLES)!;
