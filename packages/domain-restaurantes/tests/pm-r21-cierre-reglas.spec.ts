@@ -181,6 +181,15 @@ describe("horaDichaPorElCliente", () => {
     expect(horaDichaPorElCliente(u("a las 5 pm", "mejor en 40 minutos"))).toBeNull();
     expect(horaDichaPorElCliente([{ role: "assistant", content: "¿a las 5 pm?" }])).toBeNull();
   });
+  it("se ata al pedido vigente: la hora de un pedido anterior (ya registrado) no cuenta para el nuevo", () => {
+    const h = [
+      { role: "user", content: "lo paso a buscar a las 5 pm" },
+      { role: "assistant", content: "Listo, su pedido quedó registrado." },
+      { role: "user", content: "quiero otras 2 cocas para recoger" },
+    ];
+    expect(horaDichaPorElCliente(h)).toBeNull();
+    expect(horaDichaPorElCliente([...h, { role: "user", content: "mejor a las 8 pm" }])).toEqual({ minuto12: 480, meridiano: "pm" });
+  });
   it("horaCotizadaContradiceAlCliente compara en la zona de la sucursal", () => {
     const siete = Date.parse("2026-10-06T19:00:00-06:00");
     const cinco = Date.parse("2026-10-06T17:00:00-06:00");
@@ -202,6 +211,15 @@ describe("cotizar_pedido avisa si la hora cotizada no es la que dijo el cliente"
     const r = (await s.quote({ canal: "recoger", programado_para: "2026-10-06T19:00:00-06:00" })).result as Record<string, unknown>;
     expect(r.hora_distinta_a_la_del_cliente).toBe(true);
     expect(String(r.aviso_hora)).toContain("5:00 pm");
+  });
+  it("el aviso sale UNA sola vez por turno: la re-cotizacion del mismo turno no lo repite (sin ciclos)", async () => {
+    const s = setup();
+    s.cliente("Lo paso a buscar a las 5 pm por favor");
+    const a = (await s.quote({ canal: "recoger", programado_para: "2026-10-06T19:00:00-06:00" })).result as Record<string, unknown>;
+    expect(a.hora_distinta_a_la_del_cliente).toBe(true);
+    const b = (await s.quote({ canal: "recoger", programado_para: "2026-10-06T19:00:00-06:00" })).result as Record<string, unknown>;
+    expect(b.hora_distinta_a_la_del_cliente).toBeUndefined();
+    expect(b.aviso_hora).toBeUndefined();
   });
   it("con la hora correcta no hay aviso y el resumen lleva esa hora", async () => {
     const s = setup();

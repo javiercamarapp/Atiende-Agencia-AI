@@ -21,6 +21,7 @@
 //
 // Limite honesto: el servidor no puede oir al cliente; clasifica TEXTO. La clasificacion es conservadora (ante la duda NO confirma y pide un «si»).
 import { componentesLocales, fechaLocal } from "../horarios.ts";
+import { afirmaPedidoRegistrado } from "../whatsapp/guards.ts";
 import { rechazaElResumen, resumenMostradoEnHistorial, type OrderFlowContext, type OrderFlowSnapshot } from "./order-flow.ts";
 
 /** Variable de entorno que activa la maquina de estados del cierre. Por omision DESACTIVADA (camino anterior intacto). */
@@ -416,8 +417,14 @@ export function etiquetaHoraEntrega(instanteMs: number, zonaHoraria: string, aho
  * Pura; el texto es no confiable (se acota el largo).
  */
 export function horaDichaPorElCliente(historial: readonly MensajeHistorial[]): { readonly minuto12: number; readonly meridiano: "am" | "pm" | null } | null {
+  // Atada al pedido VIGENTE: la hora de un pedido anterior (el asistente ya le dijo «su pedido quedó registrado») no vale para el nuevo; solo cuentan los mensajes del cliente posteriores a esa afirmacion.
+  let inicioPedidoVigente = 0;
+  for (let i = historial.length - 1; i >= 0; i--) {
+    const m = historial[i]!;
+    if (m.role === "assistant" && typeof m.content === "string" && m.content.split(/(?<=[.!?\n])\s+/).some((f) => afirmaPedidoRegistrado(f))) { inicioPedidoVigente = i + 1; break; }
+  }
   let vistos = 0;
-  for (let i = historial.length - 1; i >= 0 && vistos < 8; i--) {
+  for (let i = historial.length - 1; i >= inicioPedidoVigente && vistos < 8; i--) {
     const m = historial[i]!;
     if (m.role !== "user" || typeof m.content !== "string") continue;
     vistos += 1;

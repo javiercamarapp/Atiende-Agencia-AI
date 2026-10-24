@@ -1325,7 +1325,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         ? resumenCanonico({ ...resumenBase, datos: { pago: pagoCotizado.quotedPago, efectivoCon: pagoCotizado.quotedEfectivoCon, propinaMxn: propinaCotizada.quotedPropinaMxn, propinaPct: propinaCotizada.quotedPropinaPct } })
         : undefined;
       // R21: si el cliente dijo otra hora que la cotizada, el resultado lo avisa para que el modelo vuelva a cotizar con la hora del cliente ANTES de mostrar el resumen.
-      const avisoHora = "contradiceAlCliente" in horaYDireccion && horaYDireccion.contradiceAlCliente ? { hora_distinta_a_la_del_cliente: true, aviso_hora: avisoHoraDistinta(horaYDireccion.contradiceAlCliente) } : {};
+      // Tope: UNA sola vez por turno. Si ya hubo una cotizacion en ESTE turno (la que disparo el aviso), la re-cotizacion no lo repite: evita ciclos de recotizacion si el modelo insiste en la hora cotizada.
+      const yaCotizadoEnEsteTurno = flow.turn !== null && previo?.quotedTurn === flow.turn;
+      const avisoHora = !yaCotizadoEnEsteTurno && "contradiceAlCliente" in horaYDireccion && horaYDireccion.contradiceAlCliente ? { hora_distinta_a_la_del_cliente: true, aviso_hora: avisoHoraDistinta(horaYDireccion.contradiceAlCliente) } : {};
       const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto ? { ...r, ...avisoHora, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : { ...r, ...avisoHora });
       if (
         previo &&
