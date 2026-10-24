@@ -199,7 +199,7 @@ describe("R11-5D horarios limite: cierre 01:00, medianoche y cambio de dia (turn
     expect(diaDeNegocio(merida("2026-10-06T23:59:00.000"), "America/Merida", horario)).toBe("2026-10-06");
   });
 
-  it("(servidor) cotizar un pedido PROGRAMADO para 00:59 de manana pasa; para las 01:00, 01:01 y 11:59 se rechaza; para las 12:00 pasa", async () => {
+  it("(servidor) cotizar un pedido PROGRAMADO para 00:29 de manana pasa; para las 00:30 (ultimo pedido), 01:00, 01:01 y 11:59 se rechaza; para las 12:00 pasa", async () => {
     const f = buildRestaurantFixture();
     f.repo.seedBranchPolicy(f.propertyId, { horario });
     await f.repo.upsertBranchZonaHoraria(f.propertyId, "America/Merida");
@@ -208,8 +208,8 @@ describe("R11-5D horarios limite: cierre 01:00, medianoche y cambio de dia (turn
       const out = await s.seguro("cotizar_pedido", s.base(2, { programado_para: iso }));
       return JSON.stringify(out.result);
     };
-    expect(await programa("2026-10-07T00:59:00-06:00")).not.toMatch(/"error"/);
-    for (const iso of ["2026-10-07T01:00:00-06:00", "2026-10-07T01:01:00-06:00", "2026-10-07T11:59:00-06:00"]) expect(await programa(iso), iso).toMatch(/"error"/);
+    expect(await programa("2026-10-07T00:29:00-06:00")).not.toMatch(/"error"/);
+    for (const iso of ["2026-10-07T00:30:00-06:00", "2026-10-07T01:00:00-06:00", "2026-10-07T01:01:00-06:00", "2026-10-07T11:59:00-06:00"]) expect(await programa(iso), iso).toMatch(/"error"/);
     expect(await programa("2026-10-07T12:00:00-06:00")).not.toMatch(/"error"/);
   });
 

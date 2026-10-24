@@ -72,7 +72,8 @@ describe("reglas de pedido por sucursal (UI)", () => {
     render();
     await settle();
     expect(botonReglas()).toBeDefined();
-    expect(calls.map((c) => c.url)).toEqual([`${BASE}/sucursales`]);
+    // Los interruptores de voz y WhatsApp de la lista leen su estado al pintar; NADA de las reglas se pide hasta abrirlas.
+    expect(calls.map((c) => c.url).filter((u) => !/\/agente-whatsapp$|\/voz\/config$/.test(u))).toEqual([`${BASE}/sucursales`]);
     rendered!.unmount();
 
     for (const role of ["staff", "repartidor"]) {

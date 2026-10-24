@@ -132,8 +132,8 @@ describe("de punta a punta: horario, puente y promocion del lunes (en memoria)",
     return { ...f, orden, items };
   }
 
-  it("lunes 00:30 del martes (turno del lunes): la promo del lunes AUN aplica (dia de negocio)", async () => {
-    vi.setSystemTime(merida("2026-09-29T00:30:00"));
+  it("lunes 00:15 del martes (turno del lunes): la promo del lunes AUN aplica (dia de negocio)", async () => {
+    vi.setSystemTime(merida("2026-09-29T00:15:00"));
     const f = await seed();
     const q = await quoteOrder(f.repo, { ...f.orden, canal: "recoger", items: f.items });
     expect(q.abiertoAhora).toBe(true);

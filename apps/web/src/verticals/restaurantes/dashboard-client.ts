@@ -55,7 +55,6 @@ export interface ChannelKpis {
   readonly whatsappConversations: { readonly total: number; readonly withOrder: number; readonly averageMessages: number };
   readonly aiAdoptionPct: number | null;
   readonly aiRevenuePct: number | null;
-  readonly estimatedHoursSaved: number;
   /** R-30: periodo real de las cifras de canales (la API lo declara; `acotado:false` = todo el histórico). */
   readonly periodo: { readonly acotado: boolean; readonly etiqueta: string };
 }

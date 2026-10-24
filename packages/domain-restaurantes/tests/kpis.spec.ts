@@ -252,8 +252,8 @@ describe("getChannelKpis — 'Impacto de tus agentes'", () => {
     expect(kpis.aiAdoptionPct).toBe(75);
     // (voz.ingreso + whatsapp.ingreso) / ventasNetas * 100 = (200+150)/450*100
     expect(kpis.aiRevenuePct).toBeCloseTo((350 / 450) * 100, 10);
-    // (voz.completados + whatsapp.completados) * 5 / 60 = (1+1)*5/60
-    expect(kpis.estimatedHoursSaved).toBeCloseTo((2 * 5) / 60, 10);
+    // Sin supuesto fijo de horas ahorradas: la cifra depende de lo que configura el dueño (096).
+    expect("estimatedHoursSaved" in kpis).toBe(false);
   });
 
   it("R-30: con periodo, solo cuenta pedidos dentro de la ventana y el rotulo lo declara", async () => {
@@ -285,7 +285,6 @@ describe("getChannelKpis — 'Impacto de tus agentes'", () => {
     const kpis = await getChannelKpis(fixture.repo, fixture.organizationId, null);
     expect(kpis.aiAdoptionPct).toBeNull();
     expect(kpis.aiRevenuePct).toBeNull();
-    expect(kpis.estimatedHoursSaved).toBe(0);
   });
 });
 
