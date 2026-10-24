@@ -167,11 +167,12 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
     }
     if (m[2] === "notificaciones") {
       // Solo del mock: simula que un evento del ciclo emitio una notificacion nueva (sin leer) para esta sesion.
-      const nueva = ((await leerCuerpo(req)) ?? {}) as { titulo?: unknown; severidad?: unknown; categoria?: unknown; enlace?: unknown };
+      const nueva = ((await leerCuerpo(req)) ?? {}) as { titulo?: unknown; cuerpo?: unknown; severidad?: unknown; categoria?: unknown; enlace?: unknown };
       if (typeof nueva.titulo !== "string" || nueva.titulo === "") return enviar(res, 400, { message: "titulo requerido" }, origen);
       const severidad = nueva.severidad === "critica" || nueva.severidad === "info" ? nueva.severidad : "atencion";
       const fila = agregarNotificacion(estadoDe(e), {
         titulo: nueva.titulo,
+        ...(typeof nueva.cuerpo === "string" ? { cuerpo: nueva.cuerpo } : {}),
         severidad,
         ...(typeof nueva.categoria === "string" ? { categoria: nueva.categoria } : {}),
         ...(typeof nueva.enlace === "string" ? { enlace: nueva.enlace } : {}),

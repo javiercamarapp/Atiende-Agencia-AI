@@ -27,6 +27,7 @@ import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvit
 import { INVITACION_STAFF_TONES } from "../lib/status-tones.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import { fetchTenantConfig, updateTenantConfigTimezone } from "../lib/admin-client.ts";
+import { AvisoNuevoMatch } from "../components/AvisoNuevoMatch.tsx";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -70,6 +71,8 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
   const [savingTimezone, setSavingTimezone] = useState(false);
   const [timezoneError, setTimezoneError] = useState<string | null>(null);
   const [timezoneSavedAt, setTimezoneSavedAt] = useState<number | null>(null);
+  // L-P3-09: umbral del aviso de nuevo match (misma lectura de tenant-config que la zona horaria).
+  const [newMatchMinScore, setNewMatchMinScore] = useState<number | null>(null);
 
   const [email, setEmail] = useState("");
   const [verticalRole, setVerticalRole] = useState<StaffVerticalRole>("analyst");
@@ -114,6 +117,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
       const config = await fetchTenantConfig(fetch, apiBaseUrl, token, orgSlug);
       setTimezone(config.timezone);
       setTimezoneInput(config.timezone ?? "");
+      setNewMatchMinScore(config.newMatchMinScore);
     } catch (err) {
       setTimezoneError(err instanceof Error ? err.message : "No se pudo cargar la zona horaria.");
     } finally {
@@ -231,6 +235,8 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
           </CardContent>
         </Card>
       )}
+
+      {canManage && <AvisoNuevoMatch apiBaseUrl={apiBaseUrl} token={token} orgSlug={orgSlug} cargado={timezoneLoaded} error={timezoneError} valor={newMatchMinScore} />}
 
       {canManage && (
         <Card>
