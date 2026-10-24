@@ -23,6 +23,28 @@ export interface VerticalLoginHero {
   readonly alt: string;
   readonly kicker: string;
   readonly texto: ReactNode;
+  /** Lamina con foto a la derecha (como el login del repo suelto de Restaurantes) en vez del panel editorial. Solo la vertical que lo pide cambia. */
+  readonly lamina?: boolean;
+  /** Leyenda y texto alternativo de la lamina en ingles (la rama editorial ya trae los suyos). */
+  readonly laminaEn?: { readonly kicker: string; readonly texto: ReactNode; readonly alt: string };
+  /** Dimensiones de la imagen de la lamina (evita saltos de layout). */
+  readonly laminaAncho?: number;
+  readonly laminaAlto?: number;
+}
+
+/** `true` solo en escritorio (>= lg). La lamina con foto no se monta en movil: un <img> dentro de `hidden` se descarga igual. */
+function useEscritorio(): boolean {
+  const consulta = "(min-width: 1024px)";
+  const [escritorio, setEscritorio] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(consulta).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return undefined;
+    const m = window.matchMedia(consulta);
+    const alCambiar = () => setEscritorio(m.matches);
+    alCambiar();
+    m.addEventListener("change", alCambiar);
+    return () => m.removeEventListener("change", alCambiar);
+  }, []);
+  return escritorio;
 }
 
 export interface VerticalLoginProps {
@@ -60,6 +82,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
   const [searchParams, setSearchParams] = useSearchParams();
   const locale = searchParams.get("lang") === "en" ? "en" : "es";
   const en = locale === "en";
+  const escritorio = useEscritorio();
   const tr = (es: string, english: string) => en ? english : es;
   const englishNames: Record<string, string> = { restaurantes: "restaurants", hoteles: "hotels", rentas: "vacation rentals", despachos: "accounting firms", licitaciones: "tenders", citas: "appointments" };
   const englishDescriptions: Record<string, string> = {
@@ -146,7 +169,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
 
   // El formulario mantiene sus estados y su orden de teclado; la lámina editorial es complementaria.
   return (
-    <main className="login login-pantalla login-editorial lg:grid lg:grid-cols-2" data-vertical={vertical} lang={locale}>
+    <main className={`login login-pantalla ${hero.lamina ? "login-lamina-pantalla" : "login-editorial"} lg:grid lg:grid-cols-2`} data-vertical={vertical} lang={locale}>
       <section className="login-seccion flex flex-col px-6 sm:px-10 lg:px-14">
         <div className="mx-auto flex w-full max-w-[530px] flex-1 flex-col">
           <header className="login-entra login-access-header flex items-center">
@@ -161,7 +184,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
           <div className="login-contenido flex flex-1 items-center">
             <div className="w-full">
               <p className="login-entra [--retraso:40ms] login-kicker">{en ? "WORKSPACE ACCESS" : kicker}</p>
-              <h1 className="login-entra [--retraso:90ms] login-serif login-titulo mt-5 text-foreground">{tr("Bienvenido a atiende", "Welcome to atiende")} {en ? englishNames[vertical] ?? nombre : nombre}</h1>
+              <h1 className="login-entra [--retraso:90ms] login-serif login-titulo mt-5 text-foreground">{tr("Bienvenido a atiende", "Welcome to atiende")}{" "}{en ? englishNames[vertical] ?? nombre : nombre}</h1>
               {/* En "olvidé mi contraseña" el panel ya explica la pantalla: se omite la bajada para que esa vista tampoco pase del alto de la ventana. */}
               {!modoOlvido && <p className="login-entra [--retraso:140ms] login-cuerpo login-descripcion mt-4 text-muted-foreground">{en ? englishDescriptions[vertical] ?? descripcion : descripcion}</p>}
 
@@ -281,6 +304,28 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
         </div>
       </section>
 
+      {hero.lamina ? (
+        escritorio ? (
+        <aside className="login-aside hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10" aria-label={`Atiende ${nombre}`}>
+          <figure className="login-lamina flex min-h-0 flex-1 items-center justify-center">
+            <img
+              src={`${import.meta.env.BASE_URL}${hero.imagen}`}
+              alt={en && hero.laminaEn ? hero.laminaEn.alt : hero.alt}
+              width={hero.laminaAncho}
+              height={hero.laminaAlto}
+              fetchPriority="high"
+              decoding="async"
+              className="login-foto"
+            />
+            <div className="login-velo" />
+            <figcaption className="login-lamina-texto absolute inset-x-0 bottom-0 z-10 p-9">
+              <p className="login-kicker">{en && hero.laminaEn ? hero.laminaEn.kicker : hero.kicker}</p>
+              <p className="login-serif mt-3.5 text-[clamp(20px,1.9vw,27px)]">{en && hero.laminaEn ? hero.laminaEn.texto : hero.texto}</p>
+            </figcaption>
+          </figure>
+        </aside>
+        ) : null
+      ) : (
       <aside className="login-aside login-story-panel hidden lg:flex lg:flex-col" aria-label={`Atiende ${nombre}`}>
         <div className="login-story-surface">
           <div className="login-story-copy">
@@ -291,6 +336,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
           {story ? <LoginArtwork vertical={vertical} /> : <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto" />}
         </div>
       </aside>
+      )}
     </main>
   );
 }

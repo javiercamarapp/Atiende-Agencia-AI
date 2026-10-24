@@ -27,7 +27,7 @@ import {
   pgListarConocimientoPublicado,
 } from "./conocimiento/postgres.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
-import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { LecturaResumenConfig, ResumenConfig, VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type {
   Branch,
   BranchProductState,
@@ -86,7 +86,7 @@ import type {
   StorefrontCatalogRow,
 } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
-import { EMPTY_BRANCH_POLICY, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
+import { RESUMEN_CONFIG_VACIA, ResumenConfigNoDisponibleError, ResumenConfigRechazadaError, digitosBusquedaTelefono, EMPTY_BRANCH_POLICY, ESTADOS_INCIDENCIA, MOTIVOS_ESCALACION_DESACTIVABLES, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
 import type {
@@ -2434,6 +2434,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       params.push(filter.dateTo.toISOString());
       conditions.push(`created_at < $${params.length}::timestamptz`);
     }
+    if (filter.soloIncidencias) {
+      params.push([...ESTADOS_INCIDENCIA]);
+      conditions.push(`status = any($${params.length}::text[])`);
+    }
+    if (filter.busqueda !== undefined) {
+      // Todo parametrizado: el texto del usuario nunca se concatena. `%` y `_` del usuario se escapan para que no sean comodines.
+      params.push(`%${filter.busqueda.replace(/[\\%_]/g, "\\$&")}%`);
+      const iNombre = params.length;
+      const digitos = digitosBusquedaTelefono(filter.busqueda);
+      if (digitos === null) {
+        conditions.push(`customer_name ilike $${iNombre} escape '\\'`);
+      } else {
+        params.push(`%${digitos}%`);
+        conditions.push(`(customer_name ilike $${iNombre} escape '\\' or regexp_replace(customer_phone, '[^0-9]', '', 'g') like $${params.length})`);
+      }
+    }
 
     const cursor = decodeCursor(filter.cursor);
     if (cursor) {
@@ -2868,6 +2884,52 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if ((err as { code?: string } | null)?.code === "23505") throw new WhatsappNumberInUseError();
       throw err;
     }
+  }
+
+  async leerResumenConfig(organizationId: string): Promise<LecturaResumenConfig> {
+    return runWithSavepointFallback<LecturaResumenConfig>({
+      session: this.db,
+      savepointName: "sp_restaurantes_resumen_config_leer",
+      primary: async () => {
+        const { rows } = await this.db.query<{ minutos_por_conversacion: number | null; meta_pedidos_ia_pct: number | null; meta_ingresos_ia_pct: number | null; updated_at: Date | string }>(
+          `select minutos_por_conversacion, meta_pedidos_ia_pct, meta_ingresos_ia_pct, updated_at
+           from restaurantes.resumen_settings where organization_id = $1;`,
+          [organizationId],
+        );
+        const r = rows[0];
+        if (!r) return { disponible: true, valor: RESUMEN_CONFIG_VACIA, actualizadoEn: null };
+        return {
+          disponible: true,
+          valor: { minutosPorConversacion: r.minutos_por_conversacion, metaPedidosIaPct: r.meta_pedidos_ia_pct, metaIngresosIaPct: r.meta_ingresos_ia_pct },
+          actualizadoEn: new Date(r.updated_at).toISOString(),
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false, valor: RESUMEN_CONFIG_VACIA, actualizadoEn: null }),
+    });
+  }
+
+  async guardarResumenConfig(organizationId: string, actorUserId: string, valor: ResumenConfig): Promise<LecturaResumenConfig> {
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_resumen_config_guardar",
+      primary: async () => {
+        await this.db.query(
+          `insert into restaurantes.resumen_settings (organization_id, minutos_por_conversacion, meta_pedidos_ia_pct, meta_ingresos_ia_pct, updated_by, updated_at)
+           values ($1, $2, $3, $4, $5, now())
+           on conflict (organization_id) do update set
+             minutos_por_conversacion = excluded.minutos_por_conversacion, meta_pedidos_ia_pct = excluded.meta_pedidos_ia_pct,
+             meta_ingresos_ia_pct = excluded.meta_ingresos_ia_pct, updated_by = excluded.updated_by, updated_at = excluded.updated_at;`,
+          [organizationId, valor.minutosPorConversacion, valor.metaPedidosIaPct, valor.metaIngresosIaPct, actorUserId],
+        );
+      },
+      isRecoverable: (err) => isMigrationPendingError(err) || (err as { code?: string }).code === "42501",
+      fallback: async (err) => {
+        if (isMigrationPendingError(err)) throw new ResumenConfigNoDisponibleError();
+        throw new ResumenConfigRechazadaError("Solo owner o admin pueden cambiar la configuracion del Resumen.");
+      },
+    });
+    return this.leerResumenConfig(organizationId);
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {

@@ -71,12 +71,23 @@ test.describe("restaurantes: recorrido por rol @recorrido", () => {
     vigilante.verificar();
   });
 
-  // BUG-E2E-REST-001: /repartidor vive fuera del VerticalShell y no pinta ningun <main> ni "Saltar al contenido": un lector de pantalla
-  // no tiene landmark principal. test.fail documenta el defecto y avisa (falla si "pasa") cuando se corrija.
-  test("repartidor: Mis entregas tiene un landmark <main> (BUG-E2E-REST-001, defecto conocido)", async ({ page, iniciarSesion }) => {
-    test.fail(true, "BUG-E2E-REST-001: /repartidor no tiene <main>; envolver RepartidorPedidosPage en un landmark main con id=contenido-principal");
+  // BUG-E2E-REST-001 (corregido): /repartidor vive fuera del VerticalShell y pinta su propio landmark <main id="contenido-principal">.
+  test("repartidor: Mis entregas tiene un unico landmark <main> (vista anterior y panel nuevo)", async ({ page, iniciarSesion, mock }) => {
+    const mains = page.getByRole("main");
+    const idsPrincipales = page.locator('[id="contenido-principal"]');
     await iniciarSesion("restaurantes", "repartidor");
-    await expect(page.locator("main")).toHaveCount(1);
+    await expect(mains).toHaveCount(1);
+    await expect(idsPrincipales).toHaveCount(1);
+    await mock.agregarAEstado("op.chofer.habilitado", true);
+    await page.reload();
+    // Tras recargar el panel pasa por "probando" (legado visible + panel nuevo oculto): nunca dos main ni dos ids, en ningun momento.
+    await expect(idsPrincipales).toHaveCount(1);
+    // Espera a que el modo sea "nuevo": solo entonces el panel nuevo esta visible (pestanas del panel).
+    await expect(page.getByRole("tab", { name: "En camino" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Pedido 145" })).toBeVisible();
+    await expect(mains).toHaveCount(1);
+    await expect(idsPrincipales).toHaveCount(1);
+    await expect(page.locator("main#contenido-principal")).toBeVisible();
   });
 
   test("sin sesion: una ruta del panel manda al login de restaurantes", async ({ page }) => {
