@@ -242,15 +242,21 @@ export function mensajeUltimoPedidoPasado(nombreSucursal: string, ultimo: Ultimo
   const cuando = etiquetaHora ? `para la hora elegida (${etiquetaHora})` : "para hoy";
   return (
     `La sucursal ${nombreSucursal} ya no toma pedidos ${cuando} por el cierre próximo: el último pedido se toma ${ultimo.margenMin} minutos antes del cierre` +
-    `${ultimo.ultimoPedidoA ? ` (hasta las ${ultimo.ultimoPedidoA})` : ""}. Ofrezca programar el pedido para la siguiente apertura o pedirlo mañana; no prometa una hora fuera del horario de la sucursal.`
+    `${ultimo.ultimoPedidoA ? ` (hasta las ${horaLegible(ultimo.ultimoPedidoA)})` : ""}. Ofrezca programar el pedido para la siguiente apertura o pedirlo mañana; no prometa una hora fuera del horario de la sucursal.`
   );
+}
+
+/** Hora para decirla al cliente: "00:00" se dice "12:00 a. m. (medianoche)" (un cierre a las 24:00 se guarda como 00:00 y "a las 00:00" no se dice en español);
+ * cualquier otra hora queda tal cual (HH:MM). */
+export function horaLegible(hhmm: string): string {
+  return hhmm === "00:00" ? "12:00 a. m. (medianoche)" : hhmm;
 }
 
 /** Mensaje claro para el cliente cuando la sucursal está cerrada. */
 export function mensajeSucursalCerrada(nombreSucursal: string, estado: EstadoApertura): string {
   if (!estado.proximaApertura) return `La sucursal ${nombreSucursal} está cerrada en este momento.`;
   const { dia, hora, hoy } = estado.proximaApertura;
-  return `La sucursal ${nombreSucursal} está cerrada en este momento; abre ${hoy ? "hoy" : `el ${dia}`} a las ${hora}.`;
+  return `La sucursal ${nombreSucursal} está cerrada en este momento; abre ${hoy ? "hoy" : `el ${dia}`} a las ${horaLegible(hora)}.`;
 }
 
 /** Etiqueta legible de un instante en la zona del negocio ("sábado 03/10 14:30"), para mensajes de pedidos
@@ -268,7 +274,7 @@ export function mensajeProgramadoFueraDeHorario(nombreSucursal: string, etiqueta
   const base = `La sucursal ${nombreSucursal} no atiende a la hora elegida (${etiquetaHora}).`;
   if (!estado.proximaApertura) return `${base} Elija otra hora dentro de su horario.`;
   const { dia, hora, hoy } = estado.proximaApertura;
-  return `${base} La siguiente apertura es ${hoy ? "ese mismo día" : `el ${dia}`} a las ${hora}: elija una hora dentro del horario.`;
+  return `${base} La siguiente apertura es ${hoy ? "ese mismo día" : `el ${dia}`} a las ${horaLegible(hora)}: elija una hora dentro del horario.`;
 }
 
 // ---------------------------------------------------------------------------

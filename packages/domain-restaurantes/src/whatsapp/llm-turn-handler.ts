@@ -43,7 +43,7 @@ import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRep
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
-import { estaAbiertoAhora, evaluarUltimoPedido } from "../horarios.ts";
+import { estaAbiertoAhora, evaluarUltimoPedido, horaLegible } from "../horarios.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
@@ -309,11 +309,11 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
       if (estado.abierto) {
         const ultimo = evaluarUltimoPedido(policy.horario, ahora, zona);
         if (!ultimo.aceptaPedidos) {
-          return `${branch.name} sigue ABIERTA${estado.cierraA ? ` (cierra a las ${estado.cierraA})` : ""}, pero YA PASÓ EL ÚLTIMO PEDIDO (${ultimo.margenMin} minutos antes del cierre${ultimo.ultimoPedidoA ? `, hasta las ${ultimo.ultimoPedidoA}` : ""}): ya no se toman pedidos para hoy. Dígalo en su primer mensaje y ofrezca programar para la siguiente apertura o pedir mañana; no prometa horarios fuera del horario.`;
+          return `${branch.name} sigue ABIERTA${estado.cierraA ? ` (cierra a las ${horaLegible(estado.cierraA)})` : ""}, pero YA PASÓ EL ÚLTIMO PEDIDO (${ultimo.margenMin} minutos antes del cierre${ultimo.ultimoPedidoA ? `, hasta las ${horaLegible(ultimo.ultimoPedidoA)}` : ""}): ya no se toman pedidos para hoy. Dígalo en su primer mensaje y ofrezca programar para la siguiente apertura o pedir mañana; no prometa horarios fuera del horario.`;
         }
-        return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${estado.cierraA}` : ""}${ultimo.ultimoPedidoA ? `; el último pedido se toma hasta las ${ultimo.ultimoPedidoA}` : ""}. Un pedido para recoger cuya hora caiga después del último pedido no se puede tomar.`;
+        return `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${horaLegible(estado.cierraA)}` : ""}${ultimo.ultimoPedidoA ? `; el último pedido se toma hasta las ${horaLegible(ultimo.ultimoPedidoA)}` : ""}. Un pedido para recoger cuya hora caiga después del último pedido no se puede tomar.`;
       }
-      const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${estado.proximaApertura.hora}` : "";
+      const abre = estado.proximaApertura ? `; abre ${estado.proximaApertura.hoy ? "hoy" : `el ${estado.proximaApertura.dia}`} a las ${horaLegible(estado.proximaApertura.hora)}` : "";
       return `${branch.name} está CERRADA ahora${abre}. Diga en su primer mensaje que está cerrada y cuándo abre; tome el pedido y PROGRÁMELO con programado_para para la apertura u otra hora dentro del horario (H16), sin decir que ya está en cocina.`;
     });
   } catch {

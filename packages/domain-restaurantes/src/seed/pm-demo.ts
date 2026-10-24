@@ -19,8 +19,9 @@
 //   * Todo producto de alcohol queda `no_domicilio = true` (el cuestionario prohibe alcohol a domicilio).
 //   * `products.price` es solo el precio de REFERENCIA (T1-2026, o el primero disponible); la cotizacion usa el
 //     `branch_products.price` de cada sucursal. Nunca hay centavos ni fracciones de kilo (P11).
-//   * Horario 12:00-01:00 todos los dias (una franja: la hora de cambio de turno no esta definida y no
-//     se inventa), pedido minimo a domicilio $200, propina solo con tarjeta.
+//   * Horario general 12:00-01:00 todos los dias (una franja: la hora de cambio de turno no esta definida y no
+//     se inventa); T2 (lun-vie 18:00-24:00, sab-dom 12:00-24:00) y T3 (todos los dias 18:00-24:00) llevan horario PROPIO
+//     porque el sitio oficial y la ficha de Google coinciden (verificado el 23-oct-2026). Pedido minimo a domicilio $200, propina solo con tarjeta.
 //   * Promociones (solo recoger, todas las sucursales): el 2x1 del lunes y el combo de cortesia del martes (nachos de pastor
 //     con 2 aguas); las que aun no se modelen se listan en `promociones_no_modeladas` de los datos.
 //   * Sin gasto de proveedores: la voz se carga DESHABILITADA (`habilitado = false`).
@@ -67,6 +68,13 @@ export interface PmSeedBranch {
    * fila que choque con `unique (organization_id, slug)`. */
   readonly slugs_anteriores?: readonly string[];
   readonly nota?: string;
+  /** Horario PROPIO de la sucursal (mismo formato que `branch_policy.horario`). Solo se declara cuando dos fuentes independientes (sitio oficial y ficha
+   * de Google) coinciden; sin valor la sucursal usa `horario_general`. */
+  readonly horario?: readonly { readonly dias: readonly number[]; readonly abre: string; readonly cierra: string }[];
+  /** De donde sale `horario` (documentacion; el plan no la usa). */
+  readonly horario_fuente?: string;
+  /** Por que NO hay `horario` propio todavia (fuentes en conflicto o una sola fuente); documentacion, el plan no la usa. */
+  readonly horario_pendiente?: string;
   /** Directorio publico y domicilio (migracion 057). Todo opcional: sin esto la sucursal sigue a su estado (visible si esta activa,
    * reparte todos los dias). `dias_domicilio` en 0 (domingo) a 6 (sabado); null = todos los dias. */
   readonly directorio?: {
@@ -250,6 +258,14 @@ export interface PmAgentFiles {
 
 export class PmSeedError extends Error {}
 
+function validarHorarioSucursal(nombre: string, raw: unknown): ReturnType<typeof validarHorario> {
+  try {
+    return validarHorario(raw);
+  } catch (err) {
+    throw new PmSeedError(`${nombre}: horario invalido: ${(err as Error).message}`);
+  }
+}
+
 /** Limites reales de `restaurantes.branch_voice_config` (migracion 025). */
 export const COMPORTAMIENTO_MAX = COMPORTAMIENTO_VOZ_MAX;
 export const MENSAJE_INICIAL_MAX = 500;
@@ -328,6 +344,8 @@ export interface PmSeedPlan {
     readonly aceptaDomicilio: boolean;
     readonly diasDomicilio: readonly number[] | null;
     readonly deTemporada: boolean;
+    /** Horario propio de la sucursal ya validado; ausente = rige `policy.horario` (el general). */
+    readonly horario?: ReturnType<typeof validarHorario>;
   }[];
   readonly categories: readonly { readonly name: string; readonly slug: string; readonly displayOrder: number }[];
   readonly products: readonly {
@@ -792,6 +810,7 @@ export function buildPmSeedPlan(datos: PmSeedData, agent: PmAgentFiles, options:
       aceptaDomicilio: b.directorio?.acepta_domicilio ?? true,
       diasDomicilio: b.directorio?.dias_domicilio ? [...b.directorio.dias_domicilio] : null,
       deTemporada: b.directorio?.de_temporada ?? false,
+      ...(b.horario ? { horario: validarHorarioSucursal(b.nombre, b.horario) } : {}),
     })),
     categories: categorias,
     products,
@@ -1060,11 +1079,11 @@ begin
 
   -- 7) politica por sucursal: horario, minimos, propina
   insert into restaurantes.branch_policy (property_id, organization_id, horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica, visible_en_directorio, acepta_domicilio, dias_domicilio, de_temporada)
-    select p.id, v_org, (v->'policy'->'horario'), (v->'policy'->>'pedidoMinimoDomicilio')::numeric, (v->'policy'->>'pedidoMinimoRecoger')::numeric, v->'policy'->>'propinaPolitica',
+    select p.id, v_org, coalesce(b.horario, v->'policy'->'horario'), (v->'policy'->>'pedidoMinimoDomicilio')::numeric, (v->'policy'->>'pedidoMinimoRecoger')::numeric, v->'policy'->>'propinaPolitica',
            b."visibleEnDirectorio", coalesce(b."aceptaDomicilio", true),
            case when jsonb_typeof(b."diasDomicilio") = 'array' then (select array_agg(d::smallint) from jsonb_array_elements_text(b."diasDomicilio") d) end,
            coalesce(b."deTemporada", false)
-    from jsonb_to_recordset(v->'branches') as b(name text, "visibleEnDirectorio" boolean, "aceptaDomicilio" boolean, "diasDomicilio" jsonb, "deTemporada" boolean)
+    from jsonb_to_recordset(v->'branches') as b(name text, "visibleEnDirectorio" boolean, "aceptaDomicilio" boolean, "diasDomicilio" jsonb, "deTemporada" boolean, horario jsonb)
     join core.property p on p.organization_id = v_org and p.name = b.name
     on conflict (property_id) do update set horario = excluded.horario, pedido_minimo_domicilio = excluded.pedido_minimo_domicilio,
       pedido_minimo_recoger = excluded.pedido_minimo_recoger, propina_politica = excluded.propina_politica,
