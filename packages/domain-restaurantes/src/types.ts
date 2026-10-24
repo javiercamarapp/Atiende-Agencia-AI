@@ -567,8 +567,38 @@ export interface OrderListFilter {
   readonly status?: OrderStatus;
   readonly dateFrom?: Date;
   readonly dateTo?: Date;
+  /** Historial: texto normalizado por `normalizarBusquedaPedidos` (2-60 caracteres) que se busca en el nombre del cliente y, con 4+ digitos, en su telefono. */
+  readonly busqueda?: string;
+  /** Historial: solo pedidos que no llegaron a `entregado` por problema: `problema` (incidencia) y `cancelado`. Se combina con `status` (AND). */
+  readonly soloIncidencias?: boolean;
   readonly limit: number;
   readonly cursor?: string;
+}
+
+/** Estados de «Incidencias / no entregados» del Historial (mismo criterio del repo suelto: incidencias reportadas y cancelados). */
+export const ESTADOS_INCIDENCIA: readonly OrderStatus[] = ["problema", "cancelado"];
+
+/** Largo del texto de busqueda del Historial: debajo de 2 caracteres es ruido, por encima de 60 es abuso. */
+export const BUSQUEDA_PEDIDOS_MIN = 2;
+export const BUSQUEDA_PEDIDOS_MAX = 60;
+
+/**
+ * Normaliza la busqueda libre del Historial: recorta, colapsa espacios y rechaza (undefined) lo demasiado corto. Devuelve `null`
+ * si excede el maximo (el llamador responde 400). No quita acentos ni cambia mayusculas: la comparacion es `ilike`.
+ */
+export function normalizarBusquedaPedidos(raw: string | undefined): string | undefined | null {
+  if (raw === undefined) return undefined;
+  const t = raw.replace(/\s+/g, " ").trim();
+  if (t.length === 0) return undefined;
+  if (t.length > BUSQUEDA_PEDIDOS_MAX) return null;
+  if (t.length < BUSQUEDA_PEDIDOS_MIN) return undefined;
+  return t;
+}
+
+/** Digitos del texto de busqueda para comparar telefonos; solo cuenta con 4 o mas (menos coincidiria con medio padron). */
+export function digitosBusquedaTelefono(busqueda: string): string | null {
+  const d = busqueda.replace(/\D/g, "");
+  return d.length >= 4 ? d : null;
 }
 
 export interface OrderListPage {

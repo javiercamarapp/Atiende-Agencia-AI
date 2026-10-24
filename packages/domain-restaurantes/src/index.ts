@@ -65,7 +65,7 @@ export type {
   WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
-export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS } from "./types.ts";
+export { EMPTY_BRANCH_POLICY, CUSTOMER_FRECUENCIAS, CUSTOMER_TIERS, BUSQUEDA_PEDIDOS_MAX, BUSQUEDA_PEDIDOS_MIN, ESTADOS_INCIDENCIA, digitosBusquedaTelefono, normalizarBusquedaPedidos } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError, esGuardaSqlDeNegocioDePedido, WhatsappNumberInUseError } from "./errors.ts";
 
