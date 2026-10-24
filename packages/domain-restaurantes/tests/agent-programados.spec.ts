@@ -91,10 +91,10 @@ describe.each(["whatsapp", "voz"] as const)("agente %s: pedido programado", (cha
     await expect(s.quote({ programado_para: "2026-10-03T14:00:00" })).rejects.toThrow(/zona horaria/);
   });
 
-  it("el horario se evalua en la zona de la sucursal: 00:30 del sabado es del turno del viernes", async () => {
+  it("el horario se evalua en la zona de la sucursal: 00:15 del sabado es del turno del viernes", async () => {
     const s = setup(channel);
-    const quoted = await s.quote({ programado_para: "2026-10-03T00:30:00-06:00" });
-    expect((quoted.result as { quote: { programado_para?: string } }).quote.programado_para).toBe("2026-10-03T06:30:00.000Z");
+    const quoted = await s.quote({ programado_para: "2026-10-03T00:15:00-06:00" });
+    expect((quoted.result as { quote: { programado_para?: string } }).quote.programado_para).toBe("2026-10-03T06:15:00.000Z");
   });
 
   it("contra una base sin la migracion 034 el agente recibe un mensaje de negocio, no un error interno ni un pedido inmediato", async () => {
