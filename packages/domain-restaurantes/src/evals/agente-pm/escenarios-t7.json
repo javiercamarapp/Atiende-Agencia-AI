@@ -15,7 +15,7 @@
     "Depa [N]",
     "Pago con tarjeta por favor"
    ],
-   "comportamiento_esperado": "Reconoce 1/4 kg de bistec como fracción vendible a precio proporcional ($275 con la lista 2026). Confirma salsas: las básicas (roja, verde, cebolla con cilantro, limones) más crema de ajo y guacamolera a petición sin costo. Anota 'llevar terminal'. Valida zona con el pin, da el tiempo real de la sucursal, repite el pedido completo con total y pide un 'sí'.",
+   "comportamiento_esperado": "Reconoce 1/4 kg de bistec como fracción vendible a precio proporcional ($275 con la lista 2026). Confirma salsas: las básicas (roja, verde, cebolla con cilantro, limones) más crema de ajo y guacamolera a petición sin costo. Anota 'llevar terminal'. Valida la zona: con el pin si el cliente lo manda; si no lo manda, el botón de ubicación que envía el sistema cuenta como pedirlo y la sucursal asignada por colonia es válida. Da el tiempo real de la sucursal, repite el pedido completo con total y pide un 'sí'.",
    "que_no_debe_hacer": "Decir que solo se vende el kilo completo; cobrar las salsas pedidas como extra; mandar la plantilla larga de bienvenida cuando el cliente ya dio todo; prometer 40-50 min fijos.",
    "dudas": [],
    "estado": "activo",
@@ -761,8 +761,8 @@
     "Terminal por favor",
     "(16 min después) Disculpe, ¿le pudiera agregar 3 tacos de pastor tortilla maíz naturales?"
    ],
-   "comportamiento_esperado": "Avisa de inmediato a la sucursal con el producto y la cantidad del agregado y le dice al cliente que la sucursal le confirma si alcanza a salir con su pedido (sin minutos y sin prometer que alcanza). Si el sistema o la sucursal indican que ya salió, se disculpa, explica que no se puede agregar al mismo viaje y ofrece un pedido nuevo (mínimo $200 a domicilio, o recoger) sin inventar tiempos ni prometer una llamada de vuelta.",
-   "que_no_debe_hacer": "Prometer que va en el mismo envío; dar minutos o decir «aproximadamente 60 minutos»; decir que ya quedó agregado sin que la sucursal lo confirme; crear un pedido nuevo debajo del mínimo sin la sucursal.",
+   "comportamiento_esperado": "Los minutos del turno de CONFIRMACIÓN del pedido original («aproximadamente 60 a 75 minutos») los exige el prompt y NO se penalizan. En la respuesta al agregado: avisa de inmediato a la sucursal con el producto y la cantidad del agregado y le dice al cliente que la sucursal le confirma si alcanza a salir con su pedido (sin minutos y sin prometer que alcanza). Si el sistema o la sucursal indican que ya salió, se disculpa, explica que no se puede agregar al mismo viaje y ofrece un pedido nuevo (mínimo $200 a domicilio, o recoger) sin inventar tiempos ni prometer una llamada de vuelta.",
+   "que_no_debe_hacer": "Prometer que va en el mismo envío; en la RESPUESTA AL AGREGADO (el turno posterior a «(16 min después)») dar minutos o decir «aproximadamente 60 minutos» (el tiempo que dio el agente al confirmar el pedido original no cuenta); decir que ya quedó agregado sin que la sucursal lo confirme; crear un pedido nuevo debajo del mínimo sin la sucursal.",
    "dudas": [
     "P20"
    ],
@@ -1281,8 +1281,8 @@
     "Efectivo, pago con 500",
     "(50 min después) Disculpe, ¿le puedo agregar una orden de frijol con tostadas? Ya salió, ¿verdad?"
    ],
-   "comportamiento_esperado": "Pasa el agregado a la sucursal. Cuando se sabe que el pedido ya salió a reparto, se disculpa, dice que ya no se le puede agregar al mismo viaje y ofrece un pedido nuevo con eso (mínimo $200 a domicilio, o recoger en la sucursal) preguntando si se lo toma. No promete una llamada de vuelta; si el cliente pide hablar con alguien, da el teléfono de la sucursal.",
-   "que_no_debe_hacer": "Decir que ya quedó agregado; dar minutos inventados; volver a escalar el mismo agregado; contestar seco sin alternativa.",
+   "comportamiento_esperado": "Pasa el agregado a la sucursal con UN solo aviso. (1) Sin confirmación de la sucursal ni estado «en ruta» en el sistema: dice que no tiene el estado actualizado del pedido, que la sucursal confirma si el agregado alcanza o si ya salió, y cierra con «le confirmo en un momento», sin minutos y sin ofrecer aún el pedido nuevo. (2) Solo si el sistema o la sucursal ya indican que el pedido salió a reparto: se disculpa, dice que ya no se le puede agregar al mismo viaje y ofrece un pedido nuevo con eso (mínimo $200 a domicilio, o recoger en la sucursal) preguntando si se lo toma. En ambos casos no promete que lo van a llamar; si el cliente pide hablar con alguien, da el teléfono de la sucursal.",
+   "que_no_debe_hacer": "Decir que ya quedó agregado; dar minutos inventados; volver a escalar el mismo agregado; prometer que lo van a llamar; contestar seco sin alternativa.",
    "dudas": [],
    "estado": "activo",
    "fuente": "chats de agregados rechazados (2 casos) y decisión de PM"
@@ -1300,8 +1300,8 @@
     "Sí, es correcto",
     "(10 min después) Oiga, ¿le puedo agregar un agua de horchata al pedido?"
    ],
-   "comportamiento_esperado": "Con el pedido ya registrado, avisa de inmediato a la sucursal con el producto y la cantidad que agrega, recotiza el total del agregado con la herramienta y le dice al cliente que la sucursal le confirma si alcanza a quedar con su pedido y que, si no, se lo entregan aparte al recoger. Cierra con «le confirmo en un momento», sin minutos ni horas.",
-   "que_no_debe_hacer": "Dar minutos o una hora; prometer que alcanza; crear otro pedido por su cuenta; hablar de envío en un pedido para recoger.",
+   "comportamiento_esperado": "Con el pedido ya registrado, avisa de inmediato a la sucursal con el producto y la cantidad que agrega (sin crear otro pedido), le dice el precio del agregado según el menú (buscar_producto) y que la sucursal confirma el total y si alcanza a quedar con su pedido y que, si no, se lo entregan aparte al recoger. No hace falta volver a cotizar con cotizar_pedido. Cierra con «le confirmo en un momento», sin minutos ni horas nuevas.",
+   "que_no_debe_hacer": "Dar minutos o una hora nuevos; prometer que alcanza; crear otro pedido por su cuenta (ni recotizar creando uno nuevo); hablar de envío en un pedido para recoger.",
    "dudas": [],
    "estado": "activo",
    "fuente": "chats de agregados aceptados (23 casos) y decisión de PM"
@@ -1317,8 +1317,8 @@
     "Para recoger",
     "1 orden de alambre con queso, mixta, y 2 órdenes de mestizas, también mixtas"
    ],
-   "comportamiento_esperado": "Aclara que los alambres se venden por orden y cada orden trae 5 tacos y pregunta cuántas órdenes y si con o sin queso; en las mestizas aclara que cada orden trae 2 y pregunta cuántas órdenes. Cuando el cliente contesta «1 orden de alambre con queso» toma 5 piezas de alambre suizo y cuando dice «2 órdenes de mestizas» lo multiplica (4 mestizas) y lo repite sin volver a preguntar. En la pregunta de tortilla distingue los dos renglones (alambre y mestizas) en vez de una sola pregunta genérica.",
-   "que_no_debe_hacer": "Cotizar «1 alambre» como una pieza; suponer que 2 mestizas son 2 órdenes o 1 orden sin preguntar; preguntar dos veces lo mismo.",
+   "comportamiento_esperado": "Aclara que los alambres se venden por orden y cada orden trae 5 tacos; en las mestizas aclara que cada orden trae 2 y pregunta cuántas órdenes. Toma «1 alambre» como 1 orden de 5 piezas, y cuando el cliente dice «2 órdenes de mestizas» lo multiplica (4 mestizas) y lo repite sin volver a preguntar. No vuelve a preguntar lo que el cliente ya dio (con queso, tortilla mixta); si falta una tortilla, la pregunta una sola vez por renglón.",
+   "que_no_debe_hacer": "Cotizar «1 alambre» como una pieza; suponer que 2 mestizas son 2 órdenes o 1 orden sin preguntar; preguntar dos veces lo mismo o preguntar algo que el cliente ya contestó.",
    "dudas": [],
    "estado": "activo",
    "fuente": "chats de órdenes ambiguas (5 casos), alambre de 5 por decisión de PM"
