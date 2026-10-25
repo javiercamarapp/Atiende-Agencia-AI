@@ -10,7 +10,7 @@
 // Uso (desde el directorio de QA con stack.ts / lib.ts / llm.ts y la API local):
 //   VOZ_QA_DIR=<dir de QA> OPENROUTER_API_KEY=... VOZ_REP=1 [VOZ_CORTE_USD=1.5] [VOZ_FILTRO=^P0] [VOZ_MODELO=<id>] vite-node -c vite-node.config.ts ejecutar.ts
 // Sale con codigo 3 si se corto por el tope de gasto de la corrida (quedan escenarios pendientes: volver a lanzar con el mismo VOZ_REP continua donde se quedo).
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { DATOS_POR_OMISION, ESCENARIOS, RELOJES } from "./escenarios.ts";
 import type { Chk, Escenario, Evento } from "./escenarios.ts";
 import { cortarMensaje, rngDesdeSemilla, ruidoStt } from "./ruido-stt.ts";
@@ -210,7 +210,19 @@ Las horas deben decirse habladas («doce y media», no «12:30»). Un turno larg
 Responde SOLO JSON: {"veredicto":"PASA"|"PARCIAL"|"FALLA","motivo":"1-2 frases","causa":"modelo|prompt|herramienta|ruido_stt|arnes|ninguna","severidad":"P0|P1|P2|P3|ninguna"}
 causa: modelo = el agente razono o decidio mal pese a un prompt/herramienta correctos; prompt = falta o se contradice una regla de la instruccion; herramienta = la herramienta/servidor dio un resultado o error incorrecto; ruido_stt = el error de transcripcion bastaba para confundir a cualquier agente; arnes = el cliente simulado o el guion se comporto de forma inverosimil.`;
 
-const previo: any[] = existsSync(ARCHIVO) ? JSON.parse(readFileSync(ARCHIVO, "utf8")) : [];
+// Lectura sin comprobar antes la existencia (evita la carrera comprobar-usar): si no esta o no es JSON valido, se empieza de cero.
+const previo: any[] = (() => { try { const j = JSON.parse(readFileSync(ARCHIVO, "utf8")); return Array.isArray(j) ? j : []; } catch { return []; } })();
+// Todo lo que viene de la red (respuestas de modelos y de la API, transcripciones) se sanea antes de escribirlo: sin caracteres de control y con tope de largo por texto.
+const sanear = (v: unknown, prof = 0): unknown => {
+  if (typeof v === "string") return Array.from(v.slice(0, 20000)).filter((c) => { const n = c.charCodeAt(0); return n === 9 || n === 10 || n === 13 || (n >= 32 && n !== 127); }).join("");
+  if (typeof v === "number" || typeof v === "boolean" || v === null) return v;
+  if (prof > 8) return null;
+  if (Array.isArray(v)) return v.slice(0, 2000).map((x) => sanear(x, prof + 1));
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).slice(0, 200).map(([k, x]) => [k.slice(0, 80), sanear(x, prof + 1)]));
+  return null;
+};
+// Escritura atomica (archivo temporal + rename) del resultado saneado.
+const guardar = () => { const tmp = `${ARCHIVO}.tmp`; writeFileSync(tmp, JSON.stringify(sanear(results), null, 1), { mode: 0o600 }); renameSync(tmp, ARCHIVO); };
 const hechos = new Set(previo.filter((r) => !r.excepcion).map((r) => r.id));
 const results: any[] = previo.filter((r) => !r.excepcion || r.intentos >= 3);
 const uso0 = (await usoRealOpenRouter()) ?? 0;
@@ -238,7 +250,7 @@ for (const e of ESCENARIOS) {
   if (err || !llamada) {
     rec.excepcion = true; rec.veredicto = "FALLA"; rec.causa = "arnes"; rec.motivo = "EXCEPCION: " + err;
     const i = results.findIndex((r) => r.id === e.id); if (i >= 0) results[i] = rec; else results.push(rec);
-    writeFileSync(ARCHIVO, JSON.stringify(results, null, 1)); console.log("EXCEPCION", e.id, err?.slice(0, 200)); continue;
+    guardar(); console.log("EXCEPCION", e.id, err?.slice(0, 200)); continue;
   }
   const orders = (await s.pool.query(`select total::float total, canal, status, items, property_id, customer_address from restaurantes.orders where customer_phone like $1`, [`%${phone10}`])).rows;
   const callbacks = (await s.pool.query(`select reason from restaurantes.callback_requests where customer_phone like $1`, [`%${phone10}`])).rows;
@@ -277,7 +289,7 @@ for (const e of ESCENARIOS) {
     v2llm: llamada.v2log.filter((l: any) => l.evento === "v2_llm").map((l: any) => l.campos).slice(0, 60),
   });
   const i = results.findIndex((r) => r.id === e.id); if (i >= 0) results[i] = rec; else results.push(rec);
-  writeFileSync(ARCHIVO, JSON.stringify(results, null, 1));
+  guardar();
   const p50 = pct(rec.msTurno as number[], 0.5);
   console.log(`${rec.veredicto} ${e.id} ${e.titulo} [juez ${jr.veredicto}/${jr.causa}] res=${llamada.resultado} ${rec.durS}s turno_p50=${p50}ms llm=$${rec.llmUsd.toFixed(3)} | ${String(jr.motivo ?? "").slice(0, 120)} ${hard.length ? "| HARD: " + hard.join("; ").slice(0, 200) : ""}${caidas.length ? " | INFRA " + caidas.join(",") : ""}`);
 }
