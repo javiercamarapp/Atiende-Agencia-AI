@@ -63,6 +63,21 @@ describe("Q6 agregados a un pedido ya enviado", () => {
   });
 });
 
+describe("Q6 orden de aviso y rechazo; Q5 corto y cifras", () => {
+  it("WhatsApp: el rechazo solo tras confirmación del sistema o la sucursal; antes, solo el aviso", () => {
+    expect(wa).toContain("solo cuando el sistema o la sucursal YA confirmaron que el pedido salió o que no cabe; antes de esa respuesta diga solo el aviso de arriba, sin prometer envío aparte ni exigir los $200");
+  });
+  it("voz: mismo orden del rechazo", () => {
+    expect(REGLAS_VIVAS_VOZ).toContain("Solo cuando el sistema o la sucursal ya lo confirmaron (antes, solo el aviso, sin exigir los doscientos pesos)");
+  });
+  it("las cifras las dice el cliente salvo multiplicar «N órdenes» por el pack_size, también en la variante corta (voz)", () => {
+    expect(wa).toContain("nunca las ajuste usted, salvo multiplicar «N órdenes» por el pack_size.");
+    const voz = buildPmSystemPrompt({ ...ctx, canal: "voz" as const });
+    expect(voz).toContain("«N órdenes» = N×pack_size (3 de gringas = 6)");
+    expect(voz).not.toContain("sin convertir usted");
+  });
+});
+
 describe("Q7 tortilla, cambio de hora y cobertura", () => {
   it("WhatsApp: las tortillas van aparte; el kilo las incluye; sin conteos ni empaque", () => {
     expect(wa).toContain("Las tortillas van aparte de la carne; el kilo las incluye.");
@@ -112,6 +127,10 @@ describe("arnés: escenarios y menú alineados con las decisiones", () => {
   it("T7-043: sin «aprox. 60 min»; la sucursal confirma y, si ya salió, pedido nuevo", () => {
     expect(porId("T7-043").comportamiento_esperado).not.toMatch(/aprox\. 60 min/);
     expect(porId("T7-043").comportamiento_esperado).toMatch(/mínimo \$200 a domicilio, o recoger/);
+  });
+  it("T7-074: el cliente contesta lo del alambre (con o sin queso) y el criterio distingue alambre de mestizas en la tortilla", () => {
+    expect(porId("T7-074").turnos_cliente.join(" ")).toMatch(/alambre con queso/);
+    expect(porId("T7-074").comportamiento_esperado).toMatch(/distingue los dos renglones \(alambre y mestizas\)/);
   });
   it("T7-072..T7-074 existen y están activos (rechazo, agregado aceptado, alambre/mestizas)", () => {
     expect(["T7-072", "T7-073", "T7-074"].map((id) => [porId(id).intencion, porId(id).estado])).toEqual([

@@ -1315,9 +1315,9 @@
     "Buenas noches, para hacer un pedido",
     "Quiero 1 alambre de bistec y 2 mestizas de pastor",
     "Para recoger",
-    "Mixta, 2 órdenes de mestizas"
+    "1 orden de alambre con queso, mixta, y 2 órdenes de mestizas, también mixtas"
    ],
-   "comportamiento_esperado": "Aclara que los alambres se venden por orden y cada orden trae 5 tacos y pregunta cuántas órdenes y si con o sin queso; en las mestizas aclara que cada orden trae 2 y pregunta cuántas órdenes. Cuando el cliente dice «2 órdenes de mestizas», lo multiplica (4 mestizas) y lo repite sin volver a preguntar. Pregunta la tortilla de cada renglón de tacos.",
+   "comportamiento_esperado": "Aclara que los alambres se venden por orden y cada orden trae 5 tacos y pregunta cuántas órdenes y si con o sin queso; en las mestizas aclara que cada orden trae 2 y pregunta cuántas órdenes. Cuando el cliente contesta «1 orden de alambre con queso» toma 5 piezas de alambre suizo y cuando dice «2 órdenes de mestizas» lo multiplica (4 mestizas) y lo repite sin volver a preguntar. En la pregunta de tortilla distingue los dos renglones (alambre y mestizas) en vez de una sola pregunta genérica.",
    "que_no_debe_hacer": "Cotizar «1 alambre» como una pieza; suponer que 2 mestizas son 2 órdenes o 1 orden sin preguntar; preguntar dos veces lo mismo.",
    "dudas": [],
    "estado": "activo",
