@@ -394,6 +394,10 @@ function parseRouting(raw: unknown, where: string, errors: string[]): OpenRouter
     if (typeof v === "boolean") out[key] = v;
     else errors.push(`${where}: "${key}" debe ser booleano`);
   }
+  if (raw.sort !== undefined) {
+    if (raw.sort === "price" || raw.sort === "latency" || raw.sort === "throughput") out.sort = raw.sort;
+    else errors.push(`${where}: "sort" debe ser "price", "latency" o "throughput" (solo reordena los proveedores permitidos; no los amplia)`);
+  }
   for (const key of ["order", "only", "ignore"] as const) {
     const v = raw[key];
     if (v === undefined) continue;
