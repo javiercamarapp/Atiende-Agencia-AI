@@ -38,6 +38,8 @@
     "verify:env": "node --experimental-strip-types scripts/verify-env/verify-env.ts",
     "test:e2e": "npm run test:e2e -w @atiende/web --",
     "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --",
+    "e2e:ds3": "npm run e2e:ds3 -w @atiende/web --",
+    "build:catalogo": "npm run build:catalogo -w @atiende/web",
     "voz:pregrabados": "vite-node scripts/voz-pregrabados.ts --",
     "voz:twilio": "node --experimental-strip-types scripts/voz/configurar-twilio.ts",
     "voz:livekit": "node --experimental-strip-types scripts/voz/configurar-livekit.ts",
