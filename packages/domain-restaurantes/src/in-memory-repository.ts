@@ -66,6 +66,8 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -2241,6 +2243,26 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       createdAtMs: Date.now(),
       seq: this.auditLogSeq,
     });
+  }
+
+  /** Solo pruebas: `false` simula la base sin la migracion 097 (`registrarAcceso` devuelve `registrado: false`). */
+  bitacoraAccesoDisponible = true;
+
+  async registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado> {
+    // Mismo contrato que `restaurantes.registrar_acceso` (097): una fila 'acceso' en la MISMA bitacora y el conteo del actor sobre la entidad
+    // (ventana de 24 h); la misma llave de idempotencia no vuelve a insertar. `bitacoraAccesoDisponible = false` simula la base sin la 097.
+    if (!this.bitacoraAccesoDisponible) return { registrado: false, intentos: 0 };
+    const mismos = () => this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId);
+    const llave = input.llave ?? null;
+    const ahora = Date.now();
+    // Idempotencia ACOTADA (espejo de la 097): reintento = misma llave en < 10 min; deja fila ':r' sin consumir cupo, max 3 por llave; luego ':x' (cuenta).
+    let despues: string | null = llave;
+    if (llave !== null && mismos().some((r) => r.despues === llave && r.createdAtMs > ahora - 10 * 60 * 1000)) {
+      const replays = mismos().filter((r) => r.despues === `${llave}:r` && r.createdAtMs > ahora - 10 * 60 * 1000).length;
+      despues = `${llave}${replays < 3 ? ":r" : ":x"}`;
+    }
+    await this.registrarAuditoria({ organizationId: input.organizationId, actorUserId: input.actorUserId, action: input.action, entityType: "acceso", entityId: input.entityId, campo: input.propertyId, despues });
+    return { registrado: true, intentos: mismos().filter((r) => r.createdAtMs > ahora - 24 * 3600 * 1000 && !(r.despues ?? "").endsWith(":r")).length };
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {

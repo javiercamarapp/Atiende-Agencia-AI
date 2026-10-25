@@ -75,6 +75,8 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -2773,6 +2775,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       // hecha.
       console.error("PostgresRestaurantesRepository.registrarAuditoria: fallo inesperado al escribir en restaurantes.audit_log (la acción de negocio ya se completó y NO se revierte).", descripcionSeguraDeError(err));
     }
+  }
+
+  /**
+   * Registra un acceso a datos personales (`restaurantes.registrar_acceso`, migracion 097) y devuelve el conteo del actor sobre la entidad.
+   * Base sin migrar (42883/42P01/42703): `{ registrado: false }` (el llamador decide; nunca un 500). Cualquier otro error (p. ej. 42501: el
+   * actor no pertenece / sucursal fuera de alcance) SE PROPAGA: aqui no se enmascara un rechazo de seguridad. SAVEPOINT propio para no
+   * abortar la transaccion compartida del request.
+   */
+  async registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado> {
+    return runWithSavepointFallback<AccesoRegistrado>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ n: number }>(`select restaurantes.registrar_acceso($1, $2, $3, $4, $5) as n;`, [
+          input.organizationId,
+          input.propertyId,
+          input.action,
+          input.entityId,
+          input.llave ?? null,
+        ]);
+        return { registrado: true, intentos: Number(rows[0]?.n ?? 0) };
+      },
+      isRecoverable: esErrorCompatibilidadAuditLogBaseSinMigrar,
+      fallback: async (err) => {
+        advertirAuditLogEscrituraNoDisponible(err);
+        return { registrado: false, intentos: 0 };
+      },
+    });
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {
