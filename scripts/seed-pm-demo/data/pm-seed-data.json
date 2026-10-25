@@ -123,6 +123,10 @@
       "lng": -89.602,
       "activa": false,
       "coordenadas_aproximadas": true,
+      "horario": [
+        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "12:00", "cierra": "01:00" }
+      ],
+      "horario_fuente": "Horario provisional heredado del general (12:00-01:00) SIN horas de ultimo pedido: sucursal de temporada, inactiva y solo para recoger; el horario real sigue pendiente de P1 (ver nota). Se declara propio a proposito para que NO herede ultimoPedidoDomicilio/ultimoPedidoRecoger del horario_general.",
       "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1; la ficha de Google (23-oct-2026) dice «Cerrado temporalmente» y no publica horario, asi que solo el sitio oficial respalda 18:00-01:00). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026.",
       "directorio": {
         "visible": true,
