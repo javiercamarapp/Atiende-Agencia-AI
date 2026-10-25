@@ -366,6 +366,7 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       pedidoGrandeTexto: config.largeOrderText ?? null,
       urlFacturacion: config.invoiceUrl ?? null,
       conocimientoBloque,
+      ...(prefijoEstableActivo() ? { prefijoEstable: true } : {}),
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
@@ -613,6 +614,12 @@ export function textoContradiceConfirmacion(textoModelo: string, confirmacionSer
   for (const h of horas(textoModelo)) if (!hS.has(h)) return true;
   return false;
 }
+/** PM-R21: interruptor de entorno del prompt con prefijo estable (cache de prompt del proveedor). APAGADO por omision; encendido solo con `1`, `true`, `on` o `si`. */
+export function prefijoEstableActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  const v = (env.WHATSAPP_PROMPT_PREFIJO_ESTABLE ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "on" || v === "si";
+}
+
 /** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
 export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   const v = (env.WHATSAPP_CIERRE_UNA_VUELTA ?? "").trim().toLowerCase();
