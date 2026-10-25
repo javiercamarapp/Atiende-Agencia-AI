@@ -155,7 +155,7 @@ describe("9. cambios despues de confirmar", () => {
   it("aviso inmediato y prioritario a la sucursal, sin crear otro pedido ni cancelar por su cuenta", () => {
     expect(p).toMatch(/CAMBIOS DESPUÉS DE CONFIRMAR \(agregar algo, cancelar, pasar de domicilio a recoger, cambiar el pago, corregir el número de casa\)/);
     expect(p).toMatch(/avise a la sucursal DE INMEDIATO con escalar_a_humano \(motivo "cancelacion_modificacion"/);
-    expect(p).toContain("Lo paso a cocina; si el pedido ya salió, se lo pueden enviar aparte.");
+    expect(p).toContain("Lo paso ahorita a la sucursal; ellos le confirman si alcanza a salir con su pedido, y si ya salió se lo pueden enviar aparte. Le confirmo en un momento");
     expect(p).toMatch(/No cree otro pedido ni cancele por su cuenta/);
   });
 });
