@@ -64,6 +64,8 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -575,6 +577,10 @@ export interface RestaurantesRepository {
    *  acción de negocio que ya se completó en la MISMA transacción del request;
    *  ver `PostgresRestaurantesRepository.registrarAuditoria`. */
   registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void>;
+
+  /** Registra un ACCESO a datos personales (migracion 097) y devuelve cuantos lleva el actor sobre esa entidad. Nunca lanza por base sin migrar
+   *  (`registrado: false`); un fallo de permisos (42501) SI se propaga: el actor no debia llegar aqui. */
+  registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado>;
 
   /** `disponible: false` (nunca lanza) cuando `restaurantes.audit_log`/
    *  `restaurantes.record_audit_log` todavía no existen en esta base (SQLSTATE

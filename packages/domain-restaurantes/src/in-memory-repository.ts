@@ -66,6 +66,8 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -2241,6 +2243,21 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       createdAtMs: Date.now(),
       seq: this.auditLogSeq,
     });
+  }
+
+  async registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado> {
+    // Mismo contrato que `restaurantes.registrar_acceso` (097): una fila 'acceso' en la MISMA bitacora y el conteo del actor sobre la entidad.
+    await this.registrarAuditoria({
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      action: input.action,
+      entityType: "acceso",
+      entityId: input.entityId,
+      campo: input.propertyId,
+      despues: input.detalle ?? null,
+    });
+    const intentos = this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId).length;
+    return { registrado: true, intentos };
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {
