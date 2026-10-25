@@ -100,6 +100,8 @@ export const ACCIONES_RESTAURANTES = {
   "turno.ver": MANAGER_ROLES,
   /** Deshacer una entrega fuera de la ventana corta del chofer. */
   "entrega.deshacer_forzado": MANAGER_ROLES,
+  /** «Agregados por validar»: ver y aceptar/rechazar lo que un cliente pide agregar a un pedido ya enviado a la sucursal. Owner/admin/staff con alcance a la sucursal; el repartidor NO. */
+  "pedidos.agregados": MANAGER_ROLES,
   // La superficie del chofer (entregar, deshacer, problema, llamar) NO entra en esta matriz: esta tabla nunca incluye al repartidor
   // (invariante probado) y esas rutas se autorizan con REPARTIDOR_ROLES + pertenencia del pedido, disjuntas de MANAGER_ROLES.
 } as const satisfies Record<string, readonly RestaurantesRole[]>;

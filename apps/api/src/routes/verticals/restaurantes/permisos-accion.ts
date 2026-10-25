@@ -16,6 +16,7 @@ const MENSAJE_POR_ACCION: Partial<Record<AccionRestaurantes, string>> = {
   "cfo.capturar": "Solo el dueño o un administrador puede capturar costos y configurar el CFO.",
   "cfo.importar_sr": "Solo el dueño o un administrador puede importar reportes de SoftRestaurant.",
   "cfo.exportar": "Solo el dueño o un administrador puede exportar el CFO.",
+  "pedidos.agregados": "Tu rol no puede validar agregados a pedidos.",
 };
 
 export function assertAccion(c: Context<CoreAuthHonoEnv>, accion: AccionRestaurantes): void {

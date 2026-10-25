@@ -22,6 +22,7 @@ const ESPERADO: Record<string, Record<string, boolean>> = {
   "pedidos.cancelar": { owner: true, admin: true, staff: true, repartidor: false },
   "turno.ver": { owner: true, admin: true, staff: true, repartidor: false },
   "entrega.deshacer_forzado": { owner: true, admin: true, staff: true, repartidor: false },
+  "pedidos.agregados": { owner: true, admin: true, staff: true, repartidor: false },
 };
 
 describe("matriz de permisos por accion (PL-23)", () => {

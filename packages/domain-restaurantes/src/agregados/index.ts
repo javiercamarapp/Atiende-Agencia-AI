@@ -4,3 +4,4 @@ export type { PedidoAgregableMemoria, EventoMemoria } from "./in-memory-reposito
 export { PostgresAgregadosRepository } from "./postgres-repository.ts";
 export { fusionarRenglones } from "./fusion.ts";
 export * from "./servicio.ts";
+export { aTarjetaAgregado } from "./serializar.ts";

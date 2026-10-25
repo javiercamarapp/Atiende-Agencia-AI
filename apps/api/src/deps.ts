@@ -28,7 +28,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
@@ -200,6 +200,9 @@ export interface AppDeps {
    * responden 503 honesto y el tick lo omite. En producción es `(db) => new PostgresAutopilotoRepository(db)` (degrada con SAVEPOINT a "no disponible"
    * contra la base sin migrar). */
   readonly autopilotoRepo?: (db: TenantDbSession) => AutopilotoRepository;
+  /** Agregados por validar (migración 097): lo que un cliente pide agregar a un pedido ya enviado a la sucursal. OPCIONAL: sin él las rutas responden 503 honesto, el agente cae a
+   * la escalada de siempre (escalar_a_humano) y el tick lo omite. En producción es `(db) => new PostgresAgregadosRepository(db)` (degrada con SAVEPOINT a "no disponible"). */
+  readonly agregadosRepo?: (db: TenantDbSession) => AgregadosRepository;
   /** R-15 (migración 044): perfil operativo del repartidor. OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresRepartidorPerfilRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
   readonly repartidorPerfilRepo?: (db: TenantDbSession) => RepartidorPerfilRepository;
