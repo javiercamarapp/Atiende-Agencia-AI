@@ -186,3 +186,10 @@ export interface AgregadosRepository {
   registrarEvento(evento: EventoAgregadoEntrada): Promise<void>;
   listarEventos(organizationId: string, id: string, propertyIds: readonly string[] | null): Promise<LecturaAgregados<readonly { readonly evento: EventoAgregado; readonly actor: string; readonly at: string; readonly detalle: Readonly<Record<string, unknown>> }[]>>;
 }
+
+/** Lo que la herramienta del agente necesita de los agregados (la fija SOLO el servidor en el contexto, nunca el modelo): crear/fusionar la solicitud (con su aviso a la sucursal) y retirar la abierta. */
+export interface AgregadosHook {
+  crear(input: NuevoAgregado): Promise<ResultadoCrearAgregado>;
+  /** El cliente se arrepintio: cierra la solicitud abierta de ese pedido. `true` si habia una. */
+  cancelarPendiente(organizationId: string, orderId: string): Promise<boolean>;
+}

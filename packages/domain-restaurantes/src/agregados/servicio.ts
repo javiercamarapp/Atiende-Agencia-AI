@@ -14,7 +14,7 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { toWhatsAppRecipient } from "../phone.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import { FRASE_MOTIVO_AL_CLIENTE, SLA_AGREGADO } from "./tipos.ts";
-import type { AgregadosRepository, AgregadoVista, DecisionAgregado, NuevoAgregado, ResultadoCrearAgregado, ResultadoDecidirAgregado } from "./tipos.ts";
+import type { AgregadosHook, AgregadosRepository, AgregadoVista, DecisionAgregado, NuevoAgregado, ResultadoCrearAgregado, ResultadoDecidirAgregado } from "./tipos.ts";
 
 export interface AgregadosServicioDeps {
   readonly agregados: AgregadosRepository;
@@ -222,4 +222,12 @@ export async function barrerAgregadosSla(deps: AgregadosServicioDeps, ahora: Dat
 export async function cancelarAgregadoPorCliente(deps: AgregadosServicioDeps, organizationId: string, orderId: string): Promise<AgregadoVista | null> {
   const r = await deps.agregados.cancelarPorCliente(organizationId, orderId);
   return r.valor;
+}
+
+/** Hook de la herramienta `solicitar_agregado_pedido` sobre UNA sesion (WhatsApp: el turno; voz: la llamada). Cada operacion degrada a «no disponible» contra la base sin migrar. */
+export function crearHookAgregados(deps: AgregadosServicioDeps): AgregadosHook {
+  return {
+    crear: (input) => registrarSolicitudAgregado(deps, input),
+    cancelarPendiente: async (organizationId, orderId) => (await cancelarAgregadoPorCliente(deps, organizationId, orderId)) !== null,
+  };
 }
