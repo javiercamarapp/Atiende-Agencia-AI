@@ -260,6 +260,13 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       throw Errors.unauthorized("Refresh token inválido o expirado.");
     }
 
+    // BAJA DE EMPLEADO: una persona que ya no tiene NINGUNA membresia (se le dio de baja) y no es superadmin de plataforma no reemite sesion,
+    // aunque su refresh token siga siendo criptograficamente valido y no se haya revocado uno por uno. Defensa en profundidad junto con
+    // la revocacion total que dispara la baja (restaurantes/admin-staff.ts).
+    if ((await deps.coreRepo.findMembershipsByUserId(sub)).length === 0 && !(await deps.coreRepo.isPlatformSuperadmin(sub))) {
+      throw Errors.unauthorized("Refresh token inválido o expirado.");
+    }
+
     // Hallazgo de auditoría (rubro 2, severidad ALTA, "el refresh token vive 30 días
     // sin rotación"): se revoca el refresh token PRESENTADO antes de emitir uno nuevo
     // — cada uso es de un solo tiro. Un replay del mismo refresh token (robado o

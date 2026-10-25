@@ -488,6 +488,22 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
     logEvent(c, "info", "restaurantes_admin_staff_dado_de_baja", { actorUserId: callerUserId, organizationId, targetUserId });
 
+    // BAJA INMEDIATA: borrar la membresia ya corta la API (cada request contrasta la membresia EN VIVO) y arrastra el vinculo de celular del
+    // repartidor (`core.chofer_login_telefono` cae en cascada). Ademas, si la persona se queda SIN ninguna membresia, se invalidan todos sus
+    // refresh tokens para que nadie pueda reemitir sesiones con ellos. Corre DESPUES del commit (la baja ya es visible) y es best-effort: un
+    // fallo aqui se registra pero no deshace la baja (el control real sigue siendo la membresia). Si conserva membresia en otra organizacion
+    // no se toca su sesion.
+    c.get("postCommitTasks").push(async () => {
+      try {
+        const restantes = await deps.coreRepo.findMembershipsByUserId(targetUserId);
+        if (restantes.length === 0 && !(await deps.coreRepo.isPlatformSuperadmin(targetUserId))) {
+          await deps.coreRepo.revokeAllRefreshTokens(targetUserId);
+        }
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_admin_staff_baja_revocar_sesiones_fallo", { organizationId, targetUserId, error: err instanceof Error ? err.message : "desconocido" });
+      }
+    });
+
     // FASE 3 (producto) — "baja ... de staff" (ver migrations/
     // 019_restaurantes_audit_log.sql). Nunca guarda el correo del target (ya
     // visible en el listado mientras existió, no hace falta duplicarlo en una
