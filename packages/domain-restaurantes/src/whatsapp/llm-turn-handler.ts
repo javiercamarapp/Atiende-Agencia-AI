@@ -43,6 +43,7 @@ import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-
 import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
+import { BLOQUE_CONTEXTO_PRECARGADO, intercambioPrecargado, precargarBusquedas, resultadoClientePrecargado } from "./contexto-precargado.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { aperturaConExcepciones, estaAbiertoAhora, evaluarUltimoPedido, fraseUltimoPedido, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
@@ -507,6 +508,9 @@ export interface WhatsAppLlmAgentOptions {
   /** R-PM-15: sumidero de eventos estructurados por turno y por tool (sin texto del cliente ni telefono en
    * claro). Ausente = sin observabilidad; emitir nunca lanza ni retrasa el turno. */
   readonly observabilidad?: ObservabilidadTurno;
+  /** R11 Arquitectura A: contexto precargado + llamadas en lote (ver `contexto-precargado.ts`). Solo perfil PM y nunca en la vista previa del panel. Ausente o `false` = el turno
+   * se comporta EXACTAMENTE como antes. Produccion lo enciende con la variable de entorno `WHATSAPP_CONTEXTO_PRECARGADO=1`. */
+  readonly contextoPrecargado?: boolean;
 }
 
 /** Encola la comanda del pedido recien creado. Nunca lanza: un fallo aqui no puede tumbar el turno ni
@@ -600,6 +604,23 @@ export function planTopeLlamadaLlm(restanteMs: number): { readonly primerTopeMs:
 export const MAX_RECHAZOS_MISMO_CODIGO_AL_CREAR = 2;
 /** PM-R14: llamadas REPETIDAS (misma herramienta y mismos argumentos) tras un `crear_pedido` rechazado por regla con las que se corta el bucle. */
 export const MAX_LLAMADAS_REPETIDAS_TRAS_RECHAZO_AL_CREAR = 3;
+/** R21: el texto del modelo tras un pedido que el servidor ya creo contradice la confirmacion del servidor (niega el registro, o trae un monto u hora que el servidor no tiene). */
+export function textoContradiceConfirmacion(textoModelo: string, confirmacionServidor: string): boolean {
+  if (/\bno\s+(?:pude|pudimos|alcanc[eé]|logr[eé]|se\s+pudo|fue\s+posible)(?![a-záéíóúñ])[^.!?\n]*(?:registr|cre|guard|proces)|\b(?:problema|error|falla)\s+(?:t[eé]cnic|al\s+registr)|\bsin\s+registrar\b|\bpendiente\s+de\s+registr/i.test(textoModelo)) return true;
+  const montos = (t: string) => new Set([...t.matchAll(/\$\s?(\d+(?:[.,]\d+)?)/g)].map((m) => Number(m[1]!.replace(",", "."))));
+  const horas = (t: string) => new Set([...t.matchAll(/\b(\d{1,2}):(\d{2})\b/g)].map((m) => `${Number(m[1])}:${m[2]}`));
+  const mS = montos(confirmacionServidor);
+  for (const m of montos(textoModelo)) if (!mS.has(m)) return true;
+  const hS = horas(confirmacionServidor);
+  for (const h of horas(textoModelo)) if (!hS.has(h)) return true;
+  return false;
+}
+/** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
+export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  const v = (env.WHATSAPP_CIERRE_UNA_VUELTA ?? "").trim().toLowerCase();
+  return !(v === "0" || v === "false" || v === "off" || v === "no");
+}
+
 /** PM-R14: respaldo: llamadas siguientes (sin una cotizacion exitosa) tras un rechazo, aunque los argumentos cambien. El tope de vueltas del turno (8 en PM) sigue acotando el peor caso. */
 export const MAX_LLAMADAS_TRAS_RECHAZO_AL_CREAR = 6;
 
@@ -650,6 +671,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     modeloRespondioLlm: string | null;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
+    /** Solo con `contextoPrecargado` encendido: que llamadas hizo el servidor antes de la primera vuelta. */
+    precargado: { cliente: boolean; productos: number } | null;
   }
 
   async function ejecutarTurno(
@@ -887,11 +910,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
       // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
       const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
+      // R11 A (bandera apagada por omision): contexto precargado + llamadas en lote. Solo PM, nunca en preview.
+      const precargaActiva = options.contextoPrecargado === true && perfil === "taqueria_pm" && !preview;
       // R21 (T7-008): un producto que el menu no tiene (chistorra, longaniza, salchichas...) se rechaza con la alternativa correcta, no con un platillo inventado.
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
       const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia].filter((b) => b !== "").join("\n\n");
+      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -901,10 +926,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Solo es un «si» a ese resumen si TODO lo pendiente son toques: con texto escrito junto (en una rafaga, antes o despues del toque: «mejor 5») el cliente pudo cambiar el
       // pedido, asi que no se inyecta la nota ni se responde con texto fijo; el modelo lee el texto y vuelve a cotizar.
       const soloToques = pendientes.length > 0 && pendientes.every((m) => toqueDeMensaje(m.content) !== null);
-      if (ultimoDelCliente && soloToques && toqueUltimo?.accion === "confirmar") {
+      let toqueConfirmarVigente = false;
+      // TODOS los toques pendientes deben ser «Confirmar»: en una rafaga [Cambiar, Confirmar] el cliente pidio cambiar algo, asi que no se confirma ni se responde con texto fijo.
+      const todosConfirman = pendientes.every((m) => toqueDeMensaje(m.content)?.accion === "confirmar");
+      if (ultimoDelCliente && soloToques && todosConfirman && toqueUltimo?.accion === "confirmar") {
         const vigencia = vigenciaDelToque(flowSnapshot, toqueUltimo, options.now ? options.now().getTime() : Date.now());
         const fija = respuestaDeToqueQueNoSigue(vigencia);
         if (fija) return done({ reply: fija, orderId: null, propertyId });
+        toqueConfirmarVigente = vigencia === "vigente";
         const ultimoEnHistorial = working.findLastIndex((m) => m.role === "user");
         if (ultimoEnHistorial >= 0) working[ultimoEnHistorial] = { role: "user", content: contenidoParaElModelo(ultimoDelCliente.content, { esElUltimo: true, confirmarVigente: true }) };
       }
@@ -952,13 +981,17 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // llamados que el modelo habria hecho (`confirmar_resumen` y `crear_pedido`) con lo guardado de la cotizacion que el cliente vio, por la MISMA maquina de estados (huella, resumen mostrado, «si»
       // explicito, pedido grande, horario, idempotencia): si alguna regla lo rechaza, el camino de siempre (aviso honesto al equipo) sigue intacto. Una sola vez por turno; sin datos completos, nada.
       let cierreDeterministaIntentado = false;
-      const prepararCierreDeterminista = async (): Promise<LlmToolCall[] | null> => {
+      const prepararCierreDeterminista = async (porToque = false): Promise<LlmToolCall[] | null> => {
         if (perfil !== "taqueria_pm" || preview || cierreDeterministaIntentado || orderId !== null || pedidosCreadosDelTurno.length > 0 || pedidoSimulado !== undefined || escalarMotivo !== null) return null;
-        cierreDeterministaIntentado = true;
-        const totalConfirmado = siPendienteSinPedido();
+        // R21: se marca como intentado solo si la lectura del estado fresco respondio; un fallo transitorio de lectura deja libre el respaldo R18 (deadline / proveedor caido).
+        // `porToque`: el toque «Confirmar pedido» vigente ya es el «si» explicito (el texto del boton no se clasifica como un «si» escrito).
+        const totalConfirmado = porToque ? (typeof flowSnapshot?.context?.quotedTotal === "number" && cotizacionVigente ? flowSnapshot.context.quotedTotal : null) : siPendienteSinPedido();
         if (totalConfirmado === null) return null;
         // Estado FRESCO: si el modelo alcanzo a re-cotizar en este turno, el «si» ya no es de ese resumen y no se crea nada.
-        const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+        let lecturaFallida = false;
+        const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => { lecturaFallida = true; return null; });
+        if (lecturaFallida) return null;
+        cierreDeterministaIntentado = true;
         if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
         const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
         if (!plan.ok) return null;
@@ -968,6 +1001,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         ];
       };
       let llamadasDeterministas: LlmToolCall[] | null = null;
+      let cierreAdelantado = false;
       const fallaDelSistema = async (): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null; readonly escalacion?: { readonly motivo: string } }> => {
         const confirmacion = confirmacionDelTurno();
         if (confirmacion) return done({ reply: confirmacion, orderId, propertyId });
@@ -1041,6 +1075,50 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         escalarMotivo = "falla_sistema";
         return done({ reply: perfil === "taqueria_pm" ? PM_COPY.sinAsistenteAvisoEquipo : PROVEEDOR_CAIDO_REPLY_GENERICO, orderId: null, propertyId });
       };
+
+      // R21 (latencia): el «si» a un resumen VIGENTE (escrito o por el toque «Confirmar pedido») costaba 3 vueltas del modelo (confirmar_resumen, crear_pedido, texto; 112 de 117 turnos de
+      // cierre en la R20, ~3.6 s cada vuelta) aunque el prompt pide juntar las dos llamadas. El SERVIDOR hace esas dos llamadas ANTES de la primera vuelta con lo ya cotizado (el mismo plan y
+      // la misma maquina de estados que el cierre determinista de la R18) y el modelo solo redacta el texto: 1 llamada real en vez de 3. Si faltan datos (nombre, pago, direccion) o una regla
+      // lo rechaza, el modelo ve el resultado y sigue como siempre. Apagable: `WHATSAPP_CIERRE_UNA_VUELTA=0`.
+      if (perfil === "taqueria_pm" && !preview && cierreUnaVueltaActivo() && llamadasDeterministas === null) {
+        const porToque = toqueConfirmarVigente;
+        if (porToque || siPendienteSinPedido() !== null) {
+          llamadasDeterministas = await prepararCierreDeterminista(porToque);
+          // El texto al cliente sigue siendo del MODELO (tono, tiempo estimado, notas): solo se le ahorran las dos vueltas de herramientas. Si esa llamada falla, la confirmacion del servidor lo cubre.
+          cierreAdelantado = llamadasDeterministas !== null;
+        }
+      }
+
+      // R11 A: consultas de LECTURA que el servidor hace antes de la primera vuelta y le entrega al modelo como llamadas ya hechas (un intercambio efimero al final del
+      // historial del turno; nunca se persiste). Mismas herramientas y mismas guardas que las llamadas del modelo. Nada de esto crea ni cambia estado.
+      if (precargaActiva && llamadasDeterministas === null) {
+        const precargados: Array<{ tool: string; args: Record<string, unknown>; result: unknown; latenciaMs: number }> = [];
+        const clientePrecargado = resultadoClientePrecargado(customer);
+        if (clientePrecargado) precargados.push({ tool: "buscar_cliente", args: {}, result: clientePrecargado, latenciaMs: 0 });
+        let productosPrecargados = 0;
+        const textoDelCliente = pendientes.at(-1)?.content;
+        // Sin sucursal de entrada no se sabe cual es hasta buscar_sucursal_cercana (cruce colonia/pin de #556): ahi no se precarga producto alguno.
+        if (activeEntryBranch && textoDelCliente) {
+          const consultas = await precargarBusquedas(textoDelCliente, async (query) => {
+            const inicio = Date.now();
+            const r = await executeAgentToolSafely(
+              repo,
+              { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch.propertyId, sourceEventId: messageId ?? null },
+              "buscar_producto",
+              { query, branch_slug: activeEntryBranch.slug },
+            );
+            return { result: r.result, latenciaMs: Date.now() - inicio, error: isToolErrorResult(r.result) };
+          });
+          for (const c of consultas) precargados.push({ tool: "buscar_producto", args: { query: c.query, branch_slug: activeEntryBranch.slug }, result: c.result, latenciaMs: c.latenciaMs });
+          productosPrecargados = consultas.length;
+        }
+        const intercambio = intercambioPrecargado(precargados);
+        if (intercambio) {
+          working.push(...intercambio.mensajes);
+          for (const l of intercambio.llamadas) tele.tools.push({ tool: l.tool, latenciaMs: l.latenciaMs, resultado: "ok", vuelta: 0, codigoRegla: null });
+        }
+        tele.precargado = { cliente: clientePrecargado !== null, productos: productosPrecargados };
+      }
 
       // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
       let modeloRespaldo: string | null = null;
@@ -1117,7 +1195,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (!eraCierreDeterminista) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          let base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          // R21: el pedido lo creo el SERVIDOR antes de la vuelta; si el texto del modelo lo contradice (dice que no lo registro, o cambia total u hora) manda la confirmacion del servidor.
+          if (cierreAdelantado) {
+            const delServidor = confirmacionDelTurno();
+            if (delServidor && textoContradiceConfirmacion(base, delServidor)) base = delServidor;
+          }
           if (noEntiendeActivo) {
             // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
             if (completion.text && pideRepetir(completion.text)) {
@@ -1411,7 +1494,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
         }
         // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
-        if (eraCierreDeterminista) {
+        if (eraCierreDeterminista && !cierreAdelantado) {
           const confirmacionDeterminista = confirmacionDelTurno();
           if (confirmacionDeterminista) {
             tele.resultado = "ok";
@@ -1447,7 +1530,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, motivoEscalacion: null, motivoEscaladaDeRol: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1487,6 +1570,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
+            ...(tele.precargado ? { precargado: tele.precargado } : {}),
             telefonoHash,
           });
         }
