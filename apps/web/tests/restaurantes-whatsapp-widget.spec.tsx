@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Chat de WhatsApp de demostración (WidgetWhatsApp): botón flotante «Iniciar chat», panel estilo WhatsApp conectado al agente real en modo preview.
+// Chat de WhatsApp de demostración (WidgetWhatsApp): globo «Probar conversación» (logo oficial), vista previa estilo WhatsApp conectado al agente real en modo preview.
 // Se afirma lo que ve el dueño y lo que viaja a la API: apertura/cierre, burbujas con hora (reloj fijo), pedido simulado PRUEBA con su insignia,
 // errores honestos 503/429/500, reinicio (sesión nueva), cliente simulado, borrador sin guardar y la accesibilidad del registro en vivo.
 import { act } from "react";
@@ -47,7 +47,7 @@ function montar(responder: (cuerpo: Record<string, unknown>) => Response, props:
   rendered = renderComponent(<WidgetWhatsApp apiBaseUrl="https://api.test" token="tok" propertyId="prop-1" nombreNegocio="Sucursal Centro" {...(props.borrador ? { borrador: formDesdeWire(null) } : {})} />);
 }
 async function abrir() {
-  click(boton("Iniciar chat")!);
+  click(boton("Probar conversación")!);
   await esperar();
 }
 async function escribir(texto: string) {
@@ -73,13 +73,17 @@ afterEach(() => {
 });
 
 describe("<WidgetWhatsApp />", () => {
-  it("cerrado solo muestra el botón flotante verde «Iniciar chat»; al abrir, el panel (diálogo no modal) con encabezado de WhatsApp y el aviso de prueba", async () => {
+  it("cerrado solo muestra el globo «Probar conversación» con el logo oficial; al abrir, la vista previa (diálogo modal) con encabezado de WhatsApp, el aviso de prueba, y el globo se oculta", async () => {
     montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
-    expect(boton("Iniciar chat")?.textContent).toContain("Iniciar chat");
+    const globo = q<HTMLButtonElement>('[data-testid="globo-whatsapp"]')!;
+    expect(globo.textContent).toContain("Probar conversación");
+    expect(globo.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(globo.querySelector("svg path")?.getAttribute("d")).toContain("M17.472 14.382");
     expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
     await abrir();
     const panel = q('[role="dialog"]')!;
-    expect(panel.getAttribute("aria-modal")).toBe("false");
+    expect(panel.getAttribute("aria-modal")).toBe("true");
+    expect(q('[data-testid="globo-whatsapp"]')).toBeNull();
     expect(panel.textContent).toContain("Sucursal Centro");
     expect(panel.textContent).toContain("En línea");
     expect(panel.textContent).toContain("no se crean pedidos ni se avisa a nadie");
@@ -138,7 +142,7 @@ describe("<WidgetWhatsApp />", () => {
       await flushMicrotasks();
     });
     expect(q('[role="status"]')?.textContent).toContain("El agente está escribiendo");
-    expect(q(".wa-cabecera__estado")?.textContent).toContain("escribiendo…");
+    expect(q(".wa-chat__estado")?.textContent).toContain("escribiendo…");
     expect(caja().disabled).toBe(true);
     await act(async () => {
       soltar(json({ respuesta: "ya", escalado: false, pedidoSimulado: null }));
@@ -267,24 +271,103 @@ describe("<WidgetWhatsApp />", () => {
     expect(q(".wa-burbuja--cliente")?.textContent).toContain("13:15");
   });
 
-  it("Escape cierra el chat y el foco vuelve al botón flotante; «Cerrar chat» también; la conversación se conserva al reabrir", async () => {
+  it("Escape cierra el chat y el foco vuelve al botón flotante; «‹ Atrás» también; la conversación se conserva al reabrir", async () => {
     montar(() => json({ respuesta: "Se conserva", escalado: false, pedidoSimulado: null }));
     await abrir();
     await escribir("hola");
     keydown(caja(), "Escape");
     await esperar();
-    expect(boton("Iniciar chat")).toBeDefined();
-    expect(document.activeElement).toBe(boton("Iniciar chat"));
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 260));
-    });
+    expect(boton("Probar conversación")).toBeDefined();
+    expect(document.activeElement).toBe(boton("Probar conversación"));
     expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
     await abrir();
     expect(document.body.textContent).toContain("Se conserva");
-    click(boton("Cerrar chat")!);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 260));
-    });
+    click(boton("Cerrar la vista previa")!);
     expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
+  });
+
+  it("el globo ya no está mientras la vista previa está abierta y vuelve al cerrar (como el de voz)", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    expect(q('[data-testid="globo-whatsapp"]')).not.toBeNull();
+    await abrir();
+    expect(q('[data-testid="globo-whatsapp"]')).toBeNull();
+    click(q('[data-testid="cerrar-chat-whatsapp"]')!);
+    await esperar();
+    expect(q('[data-testid="globo-whatsapp"]')).not.toBeNull();
+    expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
+  });
+
+  it("palomitas: grises (entregado) mientras el agente escribe y azules (leído) cuando contesta; con texto para lectores de pantalla", async () => {
+    let soltar: (r: Response) => void = () => undefined;
+    montar(() => json({}));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/admin/customers")) return json({ customers: [], nextCursor: null });
+      return new Promise<Response>((r) => {
+        soltar = r;
+      });
+    });
+    await abrir();
+    await act(async () => changeValue(caja(), "hola"));
+    await act(async () => {
+      void submitForm(q<HTMLFormElement>(".wa-barra")!);
+      await flushMicrotasks();
+    });
+    expect(q(".wa-palomitas")?.getAttribute("data-estado")).toBe("entregado");
+    expect(q(".wa-escribiendo")).not.toBeNull();
+    await act(async () => {
+      soltar(json({ respuesta: "ya", escalado: false, pedidoSimulado: null }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(q(".wa-palomitas")?.getAttribute("data-estado")).toBe("leido");
+    expect(q(".wa-palomitas")?.textContent).toBe("Leído");
+    expect(q(".wa-escribiendo")).toBeNull();
+  });
+
+  it("burbujas: separador «Hoy», cola solo en la primera de cada grupo y formato de WhatsApp (negrita, lista, enlace seguro) sin inyectar HTML", async () => {
+    montar(() => json({ respuesta: "Hola *amigo*\n- tacos\n- horchata\nMenú: https://ejemplo.mx/menu <b>x</b>", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    await escribir("uno");
+    expect(q(".wa-fecha")?.textContent?.toLowerCase()).toBe("hoy");
+    expect(q(".wa-burbuja--cliente")?.getAttribute("data-cola")).toBe("true");
+    const agente = q(".wa-burbuja--agente")!;
+    expect(agente.querySelector("strong")?.textContent).toBe("amigo");
+    expect(agente.querySelectorAll(".wa-linea--vineta")).toHaveLength(2);
+    const enlace = agente.querySelector<HTMLAnchorElement>("a.wa-enlace")!;
+    expect(enlace.getAttribute("href")).toBe("https://ejemplo.mx/menu");
+    expect(enlace.getAttribute("rel")).toContain("noopener");
+    expect(agente.querySelector("b")).toBeNull();
+    expect(agente.textContent).toContain("<b>x</b>");
+  });
+
+  it("dos mensajes seguidos del mismo remitente comparten grupo: solo el primero lleva cola", async () => {
+    montar(() => json({ respuesta: "r", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    await escribir("uno");
+    await act(async () => changeValue(caja(), "dos"));
+    // el segundo mensaje del cliente va tras la respuesta del agente: vuelve a haber cola (grupo nuevo)
+    await act(async () => {
+      await submitForm(q<HTMLFormElement>(".wa-barra")!);
+    });
+    await esperar();
+    const colas = Array.from(document.body.querySelectorAll(".wa-burbuja--cliente")).map((b) => b.getAttribute("data-cola"));
+    expect(colas).toEqual(["true", "true"]);
+  });
+
+  it("accesibilidad: diálogo modal con nombre, Tab y Shift+Tab no salen del diálogo y el log anuncia solo lo nuevo", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    const dialogo = q('[role="dialog"]')!;
+    expect(dialogo.getAttribute("aria-modal")).toBe("true");
+    expect(dialogo.getAttribute("aria-label")).toContain("Sucursal Centro");
+    expect(q('[role="log"]')?.getAttribute("aria-relevant")).toBe("additions");
+    const enfocables = Array.from(dialogo.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'));
+    enfocables[enfocables.length - 1]!.focus();
+    keydown(enfocables[enfocables.length - 1]!, "Tab");
+    expect(document.activeElement).toBe(enfocables[0]);
+    keydown(enfocables[0]!, "Tab", { shiftKey: true });
+    expect(document.activeElement).toBe(enfocables[enfocables.length - 1]);
+    // todos los botones solo-icono tienen nombre accesible
+    for (const b of Array.from(dialogo.querySelectorAll("button"))) expect((b.getAttribute("aria-label") ?? b.textContent ?? "").trim()).not.toBe("");
   });
 });

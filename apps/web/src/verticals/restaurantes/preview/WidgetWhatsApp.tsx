@@ -1,18 +1,20 @@
-// Chat de WhatsApp de DEMOSTRACIÓN del panel: réplica del widget del repo original (components/WidgetWhatsApp.tsx) —botón flotante verde «Iniciar
-// chat» abajo a la derecha que abre un panel con forma de WhatsApp (encabezado con avatar/nombre/estado, burbujas del cliente a la derecha y del
-// agente a la izquierda con hora y palomitas, mensajes de sistema, «escribiendo…», barra de entrada)— pero conectado al agente REAL en modo preview:
-//  · el servidor corre las mismas herramientas SIN efectos: `crear_pedido` devuelve un pedido simulado PRUEBA-xxxx (el original sí creaba pedidos
-//    reales; aquí NO), nada se escribe y a nadie se le avisa; el historial vive solo en el navegador;
-//  · sin proveedor de IA el servidor contesta 503/429 y el chat lo dice tal cual en una burbuja del agente con el detalle del servidor: nunca hay respuestas por palabras clave.
-// Lo que el original no tenía y el monorepo conserva (Simular cliente, probar con los cambios sin guardar, Reiniciar conversación) vive en el
-// encabezado: «Reiniciar» como icono y «Opciones de prueba» como bandeja que se despliega bajo él.
-// Las animaciones son CSS (apps/web no usa framer-motion) y se apagan con prefers-reduced-motion. Estilos: widget-whatsapp.css.
-import { useEffect, useId, useRef, useState } from "react";
+// Probador de conversación del Agente de WhatsApp: gemelo del probador de voz (voz/GloboLlamada.tsx + VistaPreviaLlamada de @atiende/ui).
+//  · GLOBO flotante «Probar conversación» (logo oficial de WhatsApp) abajo a la derecha, mismas medidas y entrada que el de voz; se oculta mientras
+//    la vista previa está abierta.
+//  · VISTA PREVIA a pantalla completa (marco del shell en escritorio, <body> en móvil): cabecera «‹ Atrás», panel decorativo a la izquierda y el CHAT a
+//    la derecha, con la forma de WhatsApp (cabecera con avatar y estado, fondo con patrón, burbujas con cola, hora y palomitas, separador de fecha,
+//    agrupación, «escribiendo…», formato de texto, tarjeta del pedido simulado). Diálogo modal: foco atrapado, Escape y «Atrás» cierran.
+// Conectado al agente REAL en modo preview (la lógica de simulación no cambió):
+//  · el servidor corre las mismas herramientas SIN efectos: `crear_pedido` devuelve un pedido simulado PRUEBA-xxxx; nada se escribe ni se avisa a nadie;
+//    el historial vive solo en el navegador;
+//  · sin proveedor de IA el servidor contesta 503/429 y el chat lo dice tal cual en una burbuja del agente: nunca hay respuestas por palabras clave.
+// Simular cliente, probar con los cambios sin guardar y Reiniciar viven en el encabezado. Estilos y variables --wa-* (re-tematizables): widget-whatsapp.css.
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { RotateCcw, Send, SlidersHorizontal, X } from "lucide-react";
-import { Checkbox, FormField, Selector } from "@atiende/ui";
-import { hora24EsMx } from "../../../lib/formato-fecha.ts";
+import { Check, CheckCheck, RotateCcw, Send, SlidersHorizontal } from "lucide-react";
+import { Checkbox, FormField, Selector, useMarcoShell } from "@atiende/ui";
+import { fechaCortaEsMx, hora24EsMx } from "../../../lib/formato-fecha.ts";
 import { enviarMensajePrueba } from "../lib/agente-whatsapp-client.ts";
 import type { ConfigAgenteForm, MensajePrueba } from "../lib/agente-whatsapp-client.ts";
 import { fetchBranchTimezone } from "../lib/config-client.ts";
@@ -20,7 +22,9 @@ import { fetchCustomers } from "../lib/customers-client.ts";
 import type { CustomerSummary } from "../lib/customers-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { PedidoSimulado } from "../lib/voz-client.ts";
+import { FormatoWhatsApp } from "./formato-whatsapp.tsx";
 import { TarjetaPedidoSimulado } from "./TarjetaPedidoSimulado.tsx";
+import { WhatsAppIcon } from "./WhatsAppIcon.tsx";
 import "./widget-whatsapp.css";
 
 interface Props {
@@ -37,54 +41,40 @@ type Mensaje =
   | { readonly id: string; readonly rol: "cliente" | "agente"; readonly texto: string; readonly hora: Date }
   | { readonly id: string; readonly rol: "sistema"; readonly texto: string; readonly hora: Date; readonly pedido: PedidoSimulado };
 
-const MS_ANIMACION = 200;
 /** Tope del servidor (AGENTE_PREVIEW_LIMITES.maxMensajes). */
 const LIMITE_MENSAJES = 40;
 /** Mensaje del agente cuando algo falla, como en el original; el detalle honesto del servidor va debajo. */
 const TEXTO_FALLO = "Ahorita no pude procesar tu mensaje — intenta de nuevo en un momento.";
+const CONSULTA_ESCRITORIO = "(min-width: 768px)";
+const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/** Reconstrucción del glifo de WhatsApp (burbuja verde con el teléfono blanco recortado): icono inline propio, no el asset oficial. */
-function GlifoWhatsApp({ className }: { readonly className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-      <rect width="24" height="24" rx="6" fill="var(--wa-verde)" />
-      <path
-        d="M12.04 4.4C7.83 4.4 4.4 7.83 4.4 12.04c0 1.42.38 2.79 1.09 4l-1.16 4.24 4.34-1.14a7.6 7.6 0 0 0 3.37.79h.01c4.21 0 7.64-3.43 7.64-7.64s-3.43-7.89-7.65-7.89Zm0 13.95h-.01a6.31 6.31 0 0 1-3.22-.88l-.23-.14-2.4.63.64-2.34-.15-.24a6.3 6.3 0 0 1-.97-3.34c0-3.48 2.83-6.31 6.32-6.31 1.69 0 3.27.66 4.47 1.85a6.28 6.28 0 0 1 1.85 4.47c0 3.48-2.83 6.3-6.3 6.3Z"
-        fill="currentColor"
-        className="wa-glifo-blanco"
-      />
-      <path
-        d="M9.99 8.2c-.16-.36-.33-.37-.48-.37l-.42-.01c-.14 0-.38.05-.58.27-.2.22-.75.73-.75 1.78s.77 2.06.88 2.2c.1.15 1.49 2.39 3.68 3.25 1.82.71 2.19.57 2.58.53.4-.04 1.28-.52 1.46-1.02.18-.5.18-.94.12-1.03-.06-.09-.2-.14-.42-.25-.22-.11-1.28-.63-1.48-.7-.2-.08-.34-.11-.49.1-.14.22-.56.7-.69.85-.13.14-.26.16-.48.05-.22-.1-.91-.34-1.74-1.07-.64-.57-1.08-1.28-1.2-1.5-.13-.22-.01-.34.1-.45.1-.1.22-.26.33-.38.1-.13.14-.22.21-.36.08-.15.04-.28-.02-.38-.05-.1-.48-1.2-.68-1.64Z"
-        fill="var(--wa-verde)"
-      />
-    </svg>
+/** `true`/`false` según el ancho de la ventana; `null` sin matchMedia (pruebas). Misma regla que la vista previa de llamada. */
+function useEscritorio(): boolean | null {
+  return useSyncExternalStore(
+    (aviso) => {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
+      const mq = window.matchMedia(CONSULTA_ESCRITORIO);
+      mq.addEventListener("change", aviso);
+      return () => mq.removeEventListener("change", aviso);
+    },
+    () => (typeof window.matchMedia === "function" ? window.matchMedia(CONSULTA_ESCRITORIO).matches : null),
+    () => null,
   );
 }
 
-function Palomitas() {
+/** Palomitas: una gris (enviado), dos grises (entregado) o dos azules (leído). El estado también va en texto para lectores de pantalla. */
+function Palomitas({ leido, entregado }: { readonly leido: boolean; readonly entregado: boolean }) {
+  const estado = leido ? "Leído" : entregado ? "Entregado" : "Enviado";
   return (
-    <svg viewBox="0 0 16 11" className="wa-palomitas" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-      <path d="M1 5.5 4.2 8.7 9.4 2" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5.5 5.5 8.7 8.7 15 1.4" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <span className="wa-palomitas" data-estado={leido ? "leido" : entregado ? "entregado" : "enviado"}>
+      {entregado ? <CheckCheck aria-hidden="true" strokeWidth={2.25} /> : <Check aria-hidden="true" strokeWidth={2.25} />}
+      <span className="wa-solo-lectores">{estado}</span>
+    </span>
   );
-}
-
-/** Mantiene montado un elemento mientras dura su animación de salida. */
-function usePresencia(visible: boolean) {
-  const [conservar, setConservar] = useState(visible);
-  useEffect(() => {
-    if (visible) {
-      setConservar(true);
-      return undefined;
-    }
-    const t = setTimeout(() => setConservar(false), MS_ANIMACION);
-    return () => clearTimeout(t);
-  }, [visible]);
-  return { montado: visible || conservar, saliendo: !visible && conservar };
 }
 
 const nuevaSesion = (): string => crypto.randomUUID();
+const inicial = (nombre: string): string => (nombre.trim().charAt(0) || "A").toLocaleUpperCase("es-MX");
 
 export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = "Agente de WhatsApp", borrador }: Props) {
   const [abierto, setAbierto] = useState(false);
@@ -102,13 +92,16 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   const [zona, setZona] = useState<string | undefined>(undefined);
   const fin = useRef<HTMLDivElement | null>(null);
   const campo = useRef<HTMLInputElement | null>(null);
-  const botonFlotante = useRef<HTMLButtonElement | null>(null);
+  const globo = useRef<HTMLButtonElement | null>(null);
+  const panel = useRef<HTMLDivElement | null>(null);
   const yaAbrio = useRef(false);
   const idOpciones = useId();
-  const boton = usePresencia(!abierto);
-  const panel = usePresencia(abierto);
+  const marco = useMarcoShell();
+  const escritorio = useEscritorio();
+  // Móvil: pantalla completa fija sobre TODO, montada en <body>. Escritorio con marco del shell: cubre la barra superior y la página.
+  const enBody = escritorio === false;
 
-  // Clientes de la organización para «Simular cliente»: se piden en cada apertura del panel.
+  // Clientes de la organización para «Simular cliente»: se piden en cada apertura.
   useEffect(() => {
     if (!abierto) return undefined;
     let cancelado = false;
@@ -141,16 +134,26 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   useEffect(() => {
     const reducido = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     fin.current?.scrollIntoView?.({ behavior: reducido ? "auto" : "smooth", block: "end" });
-  }, [mensajes, escribiendo, error]);
+  }, [mensajes, escribiendo, error, abierto]);
 
-  // El foco entra al campo al abrir y vuelve al botón flotante al cerrar.
+  // Diálogo modal: el foco entra al campo al abrir, Escape cierra y al cerrar vuelve al globo (que reaparece al cerrar).
+  const alCerrar = useRef(() => setAbierto(false));
   useEffect(() => {
-    if (abierto) {
-      yaAbrio.current = true;
-      campo.current?.focus();
-    } else if (yaAbrio.current) {
-      botonFlotante.current?.focus();
+    if (!abierto) {
+      if (yaAbrio.current) globo.current?.focus();
+      return undefined;
     }
+    yaAbrio.current = true;
+    campo.current?.focus();
+    const alTeclear = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // La lista de Simular cliente vive en un portal: Escape con ella abierta cierra solo la lista.
+      if ((e.target as HTMLElement | null)?.closest?.('[role="listbox"]') || document.querySelector('[role="listbox"]')) return;
+      e.stopPropagation();
+      alCerrar.current();
+    };
+    document.addEventListener("keydown", alTeclear);
+    return () => document.removeEventListener("keydown", alTeclear);
   }, [abierto]);
 
   function reiniciar() {
@@ -195,78 +198,109 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
     }
   }
 
-  function alTeclear(e: KeyboardEvent<HTMLDivElement>) {
-    // La lista de Simular cliente vive en un portal pero sus eventos de React suben hasta este panel: Escape dentro de ella cierra solo la lista.
-    if ((e.target as HTMLElement).closest('[role="listbox"]')) return;
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      setAbierto(false);
+  // Tab no sale del diálogo (foco atrapado).
+  function atraparTab(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab" || !panel.current) return;
+    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(ENFOCABLES));
+    if (items.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const primero = items[0]!;
+    const ultimo = items[items.length - 1]!;
+    const dentro = panel.current.contains(document.activeElement);
+    if (e.shiftKey && (document.activeElement === primero || document.activeElement === panel.current || !dentro)) {
+      e.preventDefault();
+      ultimo.focus();
+    } else if (!e.shiftKey && (document.activeElement === ultimo || !dentro)) {
+      e.preventDefault();
+      primero.focus();
     }
   }
 
   const noDisponible = error?.startsWith("No disponible") ?? false;
-  const estado = escribiendo ? "escribiendo…" : "En línea";
+  const hayMensajes = mensajes.length > 0;
+  const hoy = fechaCortaEsMx(new Date(), zona);
+  const estadoChat = escribiendo ? "escribiendo…" : "En línea";
+  const chip = escribiendo ? "● Escribiendo" : hayMensajes ? "● Conversación" : "Vista previa";
+  // Palomitas: azules cuando el agente ya contestó después de ese mensaje; grises (entregado) mientras espera.
+  const ultimoAgente = mensajes.reduce((acc, m, i) => (m.rol === "agente" ? i : acc), -1);
 
-  return createPortal(
-    <div className="wa-widget">
-      {boton.montado ? (
-        <button
-          ref={botonFlotante}
-          type="button"
-          className="wa-boton"
-          data-testid="abrir-chat-whatsapp"
-          data-saliendo={boton.saliendo ? "true" : undefined}
-          aria-hidden={boton.saliendo ? true : undefined}
-          tabIndex={boton.saliendo ? -1 : 0}
-          aria-label="Iniciar chat de prueba con el agente de WhatsApp"
-          onClick={() => setAbierto(true)}
-        >
-          <GlifoWhatsApp className="wa-boton__glifo" />
-          <span>Iniciar chat</span>
-        </button>
+  const vista = (
+    <div
+      ref={panel}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Vista previa de conversación: Agente de WhatsApp de ${nombreNegocio}`}
+      tabIndex={-1}
+      onKeyDown={atraparTab}
+      className={`wa-widget wa-vista voz-aparece ${enBody ? "wa-vista--fija" : "wa-vista--marco"}`}
+      data-testid="chat-whatsapp"
+    >
+      <header className="wa-top">
+        <div className="wa-top__izq">
+          <button type="button" className="wa-atras" onClick={() => setAbierto(false)} aria-label="Cerrar la vista previa, volver atrás" data-testid="cerrar-chat-whatsapp">
+            ‹ Atrás
+          </button>
+          <span className="wa-top__sep" aria-hidden="true">
+            |
+          </span>
+          <div className="wa-top__titulo">
+            <p>Agente de WhatsApp</p>
+            <p>{nombreNegocio}</p>
+          </div>
+        </div>
+        <div className="wa-top__der">
+          <button type="button" className="wa-icono" onClick={reiniciar} disabled={escribiendo} aria-label="Reiniciar conversación" title="Reiniciar conversación" data-testid="reiniciar-prueba">
+            <RotateCcw aria-hidden="true" strokeWidth={1.75} />
+          </button>
+          <button type="button" className="wa-icono" onClick={() => setOpcionesAbiertas((v) => !v)} aria-expanded={opcionesAbiertas} aria-controls={idOpciones} aria-label="Opciones de prueba" title="Opciones de prueba">
+            <SlidersHorizontal aria-hidden="true" strokeWidth={1.75} />
+          </button>
+          <span data-testid="chip-estado" className="wa-chip" data-activo={escribiendo || hayMensajes ? "true" : undefined}>
+            {chip}
+          </span>
+        </div>
+      </header>
+
+      {opcionesAbiertas ? (
+        <div id={idOpciones} className="wa-opciones" role="group" aria-label="Opciones de prueba">
+          <FormField label="Simular cliente" {...(hayMensajes ? { hint: "Reinicia la conversación para cambiar de cliente." } : {})}>
+            <Selector value={clienteId} onChange={(e) => setClienteId(e.target.value)} disabled={hayMensajes}>
+              <option value="">Cliente nuevo</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name ?? "Sin nombre"} · {c.orderCount} {c.orderCount === 1 ? "pedido" : "pedidos"}
+                </option>
+              ))}
+            </Selector>
+          </FormField>
+          {borrador ? <Checkbox label="Probar con los cambios sin guardar" checked={usarBorrador} onChange={(e) => setUsarBorrador(e.target.checked)} /> : null}
+        </div>
       ) : null}
 
-      {panel.montado ? (
-        <div role="dialog" aria-modal="false" aria-label={`Chat de prueba con el agente de WhatsApp de ${nombreNegocio}`} className="wa-panel" data-testid="chat-whatsapp" data-saliendo={panel.saliendo ? "true" : undefined} onKeyDown={alTeclear}>
-          <div className="wa-cabecera">
-            <div className="wa-avatar">
-              <GlifoWhatsApp />
-            </div>
-            <div className="wa-cabecera__texto">
-              <p className="wa-cabecera__nombre">{nombreNegocio}</p>
-              <p className="wa-cabecera__estado">{estado} · Prueba</p>
-            </div>
-            <div className="wa-cabecera__acciones">
-              <button type="button" className="wa-icono" onClick={reiniciar} disabled={escribiendo} aria-label="Reiniciar conversación" title="Reiniciar conversación" data-testid="reiniciar-prueba">
-                <RotateCcw aria-hidden="true" strokeWidth={1.75} />
-              </button>
-              <button type="button" className="wa-icono" onClick={() => setOpcionesAbiertas((v) => !v)} aria-expanded={opcionesAbiertas} aria-controls={idOpciones} aria-label="Opciones de prueba" title="Opciones de prueba">
-                <SlidersHorizontal aria-hidden="true" strokeWidth={1.75} />
-              </button>
-              <button type="button" className="wa-icono wa-icono--cerrar" onClick={() => setAbierto(false)} aria-label="Cerrar chat" title="Cerrar chat">
-                <X aria-hidden="true" strokeWidth={2} />
-              </button>
+      <div className="wa-cuerpo-vista">
+        <aside className="wa-lateral">
+          <span className="wa-lateral__logo">
+            <WhatsAppIcon />
+          </span>
+          <p className="wa-lateral__titulo">{hayMensajes ? "Conversación de prueba en curso" : "Aún no hay una conversación"}</p>
+          <p className="wa-lateral__texto">Escríbele al agente como lo haría un cliente. Puede tomar un pedido de principio a fin, pero es una prueba: no se crean pedidos ni se avisa a nadie.</p>
+        </aside>
+
+        <section className="wa-chat" aria-label="Chat de prueba">
+          <div className="wa-chat__cabecera">
+            <span className="wa-avatar" aria-hidden="true">
+              {inicial(nombreNegocio)}
+            </span>
+            <div className="wa-chat__cabecera-texto">
+              <p className="wa-chat__nombre">{nombreNegocio}</p>
+              <p className="wa-chat__estado">{estadoChat} · Prueba</p>
             </div>
           </div>
 
-          {opcionesAbiertas ? (
-            <div id={idOpciones} className="wa-opciones" role="group" aria-label="Opciones de prueba">
-              <FormField label="Simular cliente" {...(mensajes.length > 0 ? { hint: "Reinicia la conversación para cambiar de cliente." } : {})}>
-                <Selector value={clienteId} onChange={(e) => setClienteId(e.target.value)} disabled={mensajes.length > 0}>
-                  <option value="">Cliente nuevo</option>
-                  {clientes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name ?? "Sin nombre"} · {c.orderCount} {c.orderCount === 1 ? "pedido" : "pedidos"}
-                    </option>
-                  ))}
-                </Selector>
-              </FormField>
-              {borrador ? <Checkbox label="Probar con los cambios sin guardar" checked={usarBorrador} onChange={(e) => setUsarBorrador(e.target.checked)} /> : null}
-            </div>
-          ) : null}
-
           <div className="wa-cuerpo" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversación de prueba">
-            {mensajes.length === 0 && !error ? (
+            {!hayMensajes && !error ? (
               <div className="wa-vacio">
                 <p>
                   Escríbele al agente de WhatsApp de {nombreNegocio} como lo haría un cliente. Puede tomar un pedido de principio a fin, pero es una prueba: no se crean pedidos ni se avisa a nadie.
@@ -274,32 +308,50 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
               </div>
             ) : null}
 
-            {mensajes.map((m) =>
-              m.rol === "sistema" ? (
-                <div key={m.id} className="wa-sistema">
-                  <span className="wa-sistema__pildora">{m.texto}</span>
-                  <div className="wa-sistema__tarjeta">
-                    <TarjetaPedidoSimulado pedido={m.pedido} compacta />
+            {mensajes.map((m, i) => {
+              const previo = mensajes[i - 1];
+              const dia = fechaCortaEsMx(m.hora, zona);
+              const separador = !previo || fechaCortaEsMx(previo.hora, zona) !== dia ? (dia === hoy ? "Hoy" : dia) : null;
+              const sep = separador ? (
+                <div className="wa-fecha" key={`f-${m.id}`}>
+                  <span>{separador}</span>
+                </div>
+              ) : null;
+              if (m.rol === "sistema") {
+                return (
+                  <div key={m.id} className="wa-sistema">
+                    {sep}
+                    <span className="wa-sistema__pildora">{m.texto}</span>
+                    <div className="wa-sistema__tarjeta">
+                      <TarjetaPedidoSimulado pedido={m.pedido} compacta />
+                    </div>
+                  </div>
+                );
+              }
+              const primero = !previo || previo.rol !== m.rol || separador !== null;
+              const pie = (
+                <span className="wa-hora">
+                  {hora24EsMx(m.hora, zona)}
+                  {m.rol === "cliente" ? <Palomitas entregado leido={i < ultimoAgente} /> : null}
+                </span>
+              );
+              return (
+                <div key={m.id} className="wa-grupo">
+                  {sep}
+                  <div className={`wa-fila wa-fila--${m.rol}`} data-primero={primero ? "true" : undefined}>
+                    <div className={`wa-burbuja wa-burbuja--${m.rol}`} data-cola={primero ? "true" : undefined}>
+                      <span className="wa-solo-lectores">{m.rol === "cliente" ? "Cliente: " : "Agente: "}</span>
+                      <FormatoWhatsApp texto={m.texto} fin={pie} />
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <div key={m.id} className={`wa-fila wa-fila--${m.rol}`}>
-                  <div className={`wa-burbuja wa-burbuja--${m.rol}`}>
-                    <span className="wa-solo-lectores">{m.rol === "cliente" ? "Cliente: " : "Agente: "}</span>
-                    <span>{m.texto}</span>
-                    <span className="wa-hora">
-                      {hora24EsMx(m.hora, zona)}
-                      {m.rol === "cliente" ? <Palomitas /> : null}
-                    </span>
-                  </div>
-                </div>
-              ),
-            )}
+              );
+            })}
 
             {escribiendo ? (
-              <div className="wa-fila wa-fila--agente" role="status">
+              <div className="wa-fila wa-fila--agente" role="status" data-primero="true">
                 <span className="wa-solo-lectores">El agente está escribiendo…</span>
-                <div className="wa-escribiendo" aria-hidden="true">
+                <div className="wa-escribiendo wa-burbuja--agente" data-cola="true" aria-hidden="true">
                   <span className="wa-punto" />
                   <span className="wa-punto" />
                   <span className="wa-punto" />
@@ -314,8 +366,8 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
             ) : null}
 
             {error ? (
-              <div className="wa-fila wa-fila--agente" role="alert" data-testid="error-prueba">
-                <div className="wa-burbuja wa-burbuja--agente wa-burbuja--error">
+              <div className="wa-fila wa-fila--agente" role="alert" data-testid="error-prueba" data-primero="true">
+                <div className="wa-burbuja wa-burbuja--agente wa-burbuja--error" data-cola="true">
                   <span>{noDisponible ? "Por ahora no puedo contestar." : TEXTO_FALLO}</span>
                   <span className="wa-burbuja__detalle">{error}</span>
                 </div>
@@ -336,9 +388,34 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
               <Send aria-hidden="true" strokeWidth={2} />
             </button>
           </form>
-        </div>
-      ) : null}
-    </div>,
-    document.body,
+        </section>
+      </div>
+    </div>
+  );
+
+  const destino = enBody ? document.body : escritorio && marco ? marco : null;
+
+  return (
+    <>
+      {abierto ? null : createPortal(
+        <div className="wa-widget">
+          <button
+            ref={globo}
+            type="button"
+            className="globo-whatsapp"
+            data-testid="globo-whatsapp"
+            aria-label="Probar conversación con el agente de WhatsApp (vista previa)"
+            onClick={() => setAbierto(true)}
+          >
+            <span className="globo-whatsapp__logo" aria-hidden="true">
+              <WhatsAppIcon />
+            </span>
+            <span>Probar conversación</span>
+          </button>
+        </div>,
+        document.body,
+      )}
+      {abierto ? (destino ? createPortal(vista, destino) : vista) : null}
+    </>
   );
 }
