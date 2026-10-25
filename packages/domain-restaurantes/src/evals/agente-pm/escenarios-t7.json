@@ -1,7 +1,7 @@
 {
  "suite": "escenarios-t7-muestra-2oct",
  "version": "2026-10-02",
- "nota": "71 escenarios sacados de la muestra ANONIMIZADA de 104 chats reales de WhatsApp de T7 Garcia Lavin (8 semanas, 2-oct-2026). Sin telefonos, nombres de clientes, direcciones exactas ni coordenadas (una prueba lo vigila). `comportamiento_esperado` y `que_no_debe_hacer` son texto libre para el juez (LLM o persona): no se evaluan de forma determinista. `estado: pendiente_decision` = depende de una decision de Javier aun abierta (`dudas`): se listan pero NO fallan el CI.",
+ "nota": "74 escenarios (71 de la muestra y 3 de las decisiones de PM, T7-072..T7-074) sacados de la muestra ANONIMIZADA de 104 chats reales de WhatsApp de T7 Garcia Lavin (8 semanas, 2-oct-2026). Sin telefonos, nombres de clientes, direcciones exactas ni coordenadas (una prueba lo vigila). `comportamiento_esperado` y `que_no_debe_hacer` son texto libre para el juez (LLM o persona): no se evaluan de forma determinista. `estado: pendiente_decision` = depende de una decision de Javier aun abierta (`dudas`): se listan pero NO fallan el CI.",
  "escenarios": [
   {
    "id": "T7-001",
@@ -212,8 +212,8 @@
     "Hola, buenas tardes",
     "[NOMBRE] [TEL] [DIRECCIÓN, Montes de Amé] 3 gringas de pastor de harina, todas las salsas incluyendo ajo, guacamole y piña. Pago en efectivo"
    ],
-   "comportamiento_esperado": "Aclara que las gringas vienen en orden de 2 y pregunta si son 3 órdenes (6 gringas) o 3 piezas (no se venden sueltas). Cotiza según la respuesta y pregunta con cuánto paga.",
-   "que_no_debe_hacer": "Suponer la cantidad; cobrar 3 piezas sueltas.",
+   "comportamiento_esperado": "Aclara que las gringas se venden por orden y cada orden trae 2, y hace UNA sola pregunta de cuántas órdenes (3 órdenes serían 6 gringas). No cotiza piezas sueltas ni asume. Cuando el cliente responde, cotiza según las órdenes y pregunta con cuánto paga.",
+   "que_no_debe_hacer": "Suponer la cantidad; cobrar 3 piezas sueltas; convertir por su cuenta las piezas a órdenes sin preguntar.",
    "dudas": [],
    "estado": "activo",
    "fuente": "chat 00003014"
@@ -440,8 +440,8 @@
     "Una pregunta: la tortilla está aparte, ¿verdad?",
     "Voy a tener que cambiar la hora, lo paso a buscar a las 5 pm por favor"
    ],
-   "comportamiento_esperado": "Revisa la cobertura con el link. Si no cubre, lo dice y ofrece recoger. Toma 1 kg + 1 kg con tortilla mixta ($2,000), registra la hora de recogida estructurada (7 pm y luego la cambia a 5 pm) y confirma que la tortilla va aparte.",
-   "que_no_debe_hacer": "Aceptar domicilio fuera de zona; escalar solo por el monto de $2,000 si el umbral se sube [P19]; registrar la hora solo como nota libre.",
+   "comportamiento_esperado": "Consulta la cobertura con la herramienta; si no cubre lo dice (la sucursal que llega y su teléfono) y ofrece recoger. Toma 1 kg + 1 kg con tortilla mixta, confirma que las tortillas van aparte de la carne y que el kilo las incluye, registra la hora de recogida de forma estructurada (7 pm y luego 5 pm) sin dar minutos nuevos, y no escala por el monto.",
+   "que_no_debe_hacer": "Aceptar domicilio fuera de zona; escalar solo por el monto de $2,000 si el umbral se sube [P19]; registrar la hora solo como nota libre; describir conteo o empaque de tortillas; cobrar la tortilla aparte.",
    "dudas": [
     "P19"
    ],
@@ -761,8 +761,8 @@
     "Terminal por favor",
     "(16 min después) Disculpe, ¿le pudiera agregar 3 tacos de pastor tortilla maíz naturales?"
    ],
-   "comportamiento_esperado": "Pasa el agregado de inmediato a la sucursal y le avisa al cliente: si el pedido ya salió, se lo pueden enviar aparte (aprox. 60 min) o puede pedirlo después [P20].",
-   "que_no_debe_hacer": "Prometer que va en el mismo envío; crear un pedido nuevo debajo del mínimo sin la sucursal.",
+   "comportamiento_esperado": "Avisa de inmediato a la sucursal con el producto y la cantidad del agregado y le dice al cliente que la sucursal le confirma si alcanza a salir con su pedido (sin minutos y sin prometer que alcanza). Si el sistema o la sucursal indican que ya salió, se disculpa, explica que no se puede agregar al mismo viaje y ofrece un pedido nuevo (mínimo $200 a domicilio, o recoger) sin inventar tiempos ni prometer una llamada de vuelta.",
+   "que_no_debe_hacer": "Prometer que va en el mismo envío; dar minutos o decir «aproximadamente 60 minutos»; decir que ya quedó agregado sin que la sucursal lo confirme; crear un pedido nuevo debajo del mínimo sin la sucursal.",
    "dudas": [
     "P20"
    ],
@@ -1267,6 +1267,61 @@
    "dudas": [],
    "estado": "activo",
    "fuente": "chat 00003054"
+  },
+  {
+   "id": "T7-072",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "rechazo_agregado_ya_salio",
+   "turnos_cliente": [
+    "Buenas noches, para hacer un pedido",
+    "1 orden de nachos de pastor",
+    "Domicilio",
+    "[DIRECCIÓN, Montebello] [UBICACIÓN]",
+    "Efectivo, pago con 500",
+    "(50 min después) Disculpe, ¿le puedo agregar una orden de frijol con tostadas? Ya salió, ¿verdad?"
+   ],
+   "comportamiento_esperado": "Pasa el agregado a la sucursal. Cuando se sabe que el pedido ya salió a reparto, se disculpa, dice que ya no se le puede agregar al mismo viaje y ofrece un pedido nuevo con eso (mínimo $200 a domicilio, o recoger en la sucursal) preguntando si se lo toma. No promete una llamada de vuelta; si el cliente pide hablar con alguien, da el teléfono de la sucursal.",
+   "que_no_debe_hacer": "Decir que ya quedó agregado; dar minutos inventados; volver a escalar el mismo agregado; contestar seco sin alternativa.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chats de agregados rechazados (2 casos) y decisión de PM"
+  },
+  {
+   "id": "T7-073",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "agregado_aceptado_sin_minutos",
+   "turnos_cliente": [
+    "Buenas tardes, quiero hacer un pedido",
+    "2 refrescos de cola y una orden de nachos de pastor",
+    "Para recoger",
+    "Pago con tarjeta",
+    "Sí, es correcto",
+    "(10 min después) Oiga, ¿le puedo agregar un agua de horchata al pedido?"
+   ],
+   "comportamiento_esperado": "Con el pedido ya registrado, avisa de inmediato a la sucursal con el producto y la cantidad que agrega, recotiza el total del agregado con la herramienta y le dice al cliente que la sucursal le confirma si alcanza a quedar con su pedido y que, si no, se lo entregan aparte al recoger. Cierra con «le confirmo en un momento», sin minutos ni horas.",
+   "que_no_debe_hacer": "Dar minutos o una hora; prometer que alcanza; crear otro pedido por su cuenta; hablar de envío en un pedido para recoger.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chats de agregados aceptados (23 casos) y decisión de PM"
+  },
+  {
+   "id": "T7-074",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "alambre_orden_de_5_y_mestizas",
+   "turnos_cliente": [
+    "Buenas noches, para hacer un pedido",
+    "Quiero 1 alambre de bistec y 2 mestizas de pastor",
+    "Para recoger",
+    "1 orden de alambre con queso, mixta, y 2 órdenes de mestizas, también mixtas"
+   ],
+   "comportamiento_esperado": "Aclara que los alambres se venden por orden y cada orden trae 5 tacos y pregunta cuántas órdenes y si con o sin queso; en las mestizas aclara que cada orden trae 2 y pregunta cuántas órdenes. Cuando el cliente contesta «1 orden de alambre con queso» toma 5 piezas de alambre suizo y cuando dice «2 órdenes de mestizas» lo multiplica (4 mestizas) y lo repite sin volver a preguntar. En la pregunta de tortilla distingue los dos renglones (alambre y mestizas) en vez de una sola pregunta genérica.",
+   "que_no_debe_hacer": "Cotizar «1 alambre» como una pieza; suponer que 2 mestizas son 2 órdenes o 1 orden sin preguntar; preguntar dos veces lo mismo.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chats de órdenes ambiguas (5 casos), alambre de 5 por decisión de PM"
   }
  ]
 }

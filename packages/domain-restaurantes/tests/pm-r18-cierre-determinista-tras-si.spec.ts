@@ -7,6 +7,8 @@ import type { OrderFlowSnapshot } from "../src/agent-tools/order-flow.ts";
 import { MARTES_14H, nuevoViaje, pedidosDe, TEL_CLIENTE, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
 beforeEach(() => {
+  // Cubre el cierre determinista como RESPALDO tras la falla del proveedor; el cierre antes de la primera vuelta (R21) tiene su propia prueba (pm-r21-cierre-una-vuelta.spec.ts).
+  vi.stubEnv("WHATSAPP_CIERRE_UNA_VUELTA", "0");
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(MARTES_14H));
 });
