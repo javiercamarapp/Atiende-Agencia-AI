@@ -14,6 +14,7 @@ import type { CustomerAddressChanges, CustomerFrecuencia, CustomerListItem, Cust
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { telefonoDeCliente, vistaMinimaPii } from "./pii-minimo.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
@@ -23,8 +24,8 @@ const IMPORT_BODY_MAX_BYTES = 4 * 1024 * 1024;
 const ERRORES_MAX_EN_RESPUESTA = 100;
 const HUELLA_PATTERN = /^[0-9a-f]{64}$/;
 
-function serializeCustomer(cust: CustomerListItem) {
-  return { id: cust.id, name: cust.name, phone: cust.phone, orderCount: cust.orderCount, tier: cust.tier, lastOrderAt: cust.lastOrderAt };
+function serializeCustomer(cust: CustomerListItem, minima: boolean) {
+  return { id: cust.id, name: cust.name, phone: telefonoDeCliente(minima, cust.phone), orderCount: cust.orderCount, tier: cust.tier, lastOrderAt: cust.lastOrderAt };
 }
 
 function parseNivel(raw: string | undefined): CustomerTier | undefined {
@@ -144,7 +145,7 @@ export function restaurantesAdminCustomersRoutes(deps: AppDeps): Hono<CoreAuthHo
     const propertyId = branchId === null ? undefined : (await resolveEffectivePropertyIds(deps, c, c.get("organizationId"), branchId))?.[0];
 
     const page = await repo.listCustomers(c.get("organizationId"), { search, limit, cursor, nivel, frecuencia, inactivoDias, propertyId });
-    return c.json({ customers: page.customers.map(serializeCustomer), nextCursor: page.nextCursor, filtrosDisponibles: page.filtrosDisponibles });
+    return c.json({ customers: page.customers.map((cust) => serializeCustomer(cust, vistaMinimaPii(c))), nextCursor: page.nextCursor, filtrosDisponibles: page.filtrosDisponibles });
   });
 
   // KPIs de cartera: total, recurrentes, ticket promedio y el cliente mas frecuente (telefono enmascarado).
@@ -260,7 +261,10 @@ export function restaurantesAdminCustomersRoutes(deps: AppDeps): Hono<CoreAuthHo
       if (!ficha) throw Errors.notFound("Cliente no encontrado.");
       const tier = await repo.calcCustomerTier(organizationId, customerId);
       const notes = await repo.getCustomerNotes(organizationId, customerId);
-      return c.json({ ficha: { ...ficha, tier, notes } });
+      // Minimo de PII para `staff`: telefono enmascarado y sin correo (pii-minimo.ts).
+      const minima = vistaMinimaPii(c);
+      const cliente = minima ? { ...ficha.customer, phone: telefonoDeCliente(true, ficha.customer.phone), email: null } : ficha.customer;
+      return c.json({ ficha: { ...ficha, customer: cliente, tier, notes } });
     } catch (err) {
       return traducirErrorCliente(err);
     }
