@@ -25,7 +25,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { assertAdminGeneral, resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { conAvisoOnboardingListo } from "./onboarding-aviso.ts";
 
 const PHONE_NUMBER_ID_RE = /^\d{5,32}$/;
@@ -423,6 +423,7 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   async function setMark(c: Context<CoreAuthHonoEnv>, kind: "producto" | "categoria", id: string) {
     // Escribe restaurantes.products/categories, que desde la 065 solo actualizan owner/admin: la misma accion que editar el catalogo.
     assertAccion(c, "catalogo.precio");
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<{ noDomicilio?: unknown }>(c.req.raw, 1024);
     if (typeof raw.noDomicilio !== "boolean") throw Errors.validation("noDomicilio: se esperaba true o false.");

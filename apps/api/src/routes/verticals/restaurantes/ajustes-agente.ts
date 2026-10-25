@@ -51,6 +51,7 @@ import {
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { assertAdminGeneral } from "./admin-scope.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { UUID_RE } from "./voz-admin.ts";
 
@@ -168,6 +169,7 @@ export function restaurantesAjustesAgenteRoutes(deps: AppDeps): Hono<CoreAuthHon
 
   app.put(ajustesPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const actorUserId = c.get("userId");
     const r = repo(c);
