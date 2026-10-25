@@ -57,7 +57,12 @@ describe("PM-R21 prompt con prefijo estable", () => {
     expect(iBloque).toBeGreaterThan(p.length * 0.8);
     expect(iBloque).toBeLessThan(iCliente);
     const bloque = p.slice(iBloque, iCliente);
-    expect(bloque).toContain("Fecha y hora local (America/Merida): 6 de octubre de 2026, 14:00; día de la semana: martes");
+    // La linea exacta la produce Intl (el separador cambia segun la version de ICU del Node): se toma del prompt SIN la bandera, del mismo instante, y debe aparecer igual en el bloque.
+    vi.stubEnv("WHATSAPP_PROMPT_PREFIJO_ESTABLE", "");
+    const lineaDeSiempre = /- (Fecha y hora local \(America\/Merida\): [^\n]*)/.exec(armar(T_1400))![1]!;
+    vi.stubEnv("WHATSAPP_PROMPT_PREFIJO_ESTABLE", "1");
+    expect(lineaDeSiempre).toMatch(/6 de octubre de 2026.*14:00.*martes/);
+    expect(bloque).toContain(lineaDeSiempre);
     expect(bloque).toContain("Estado de la sucursal de este chat AHORA");
     expect(bloque).toContain("Prolongación Montejo está ABIERTA y cierra a las 01:00.");
     expect(bloque).toContain('[SALUDO] en el paso 1 es: "Buenas tardes"');
