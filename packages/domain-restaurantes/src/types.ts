@@ -826,7 +826,7 @@ export interface PromotionPatch {
 export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion" | "acceso";
 
 /** Acciones del catalogo cerrado de `restaurantes.registrar_acceso` (migracion 097): accesos a datos personales del cliente. */
-export type RestaurantesAccesoAccion = "pii.llamar" | "pii.telefono_ver" | "pii.cliente_ficha";
+export type RestaurantesAccesoAccion = "pii.llamar" | "pii.telefono_ver" | "pii.cliente_ficha" | "sesion.login";
 
 export interface RegistrarAccesoInput {
   readonly organizationId: string;
