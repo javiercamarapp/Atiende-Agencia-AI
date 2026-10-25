@@ -78,6 +78,39 @@ describe("POST repartidor/orders/:orderId/llamar", () => {
     expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar")).toHaveLength(MAX_LLAMADAS_POR_PEDIDO + 1);
   });
 
+  it("sin la bitacora de accesos (097 sin aplicar) NO entrega el numero: 503", async () => {
+    const { ctx, order, app } = await conPedidoAsignado();
+    ctx.restaurantesRepo.bitacoraAccesoDisponible = false;
+    const res = await app.request(ruta(ctx, order.id), authedJson(ctx.staff.repartidor.token, {}, "POST"));
+    expect(res.status).toBe(503);
+    expect(await res.text()).not.toContain(TELEFONO);
+  });
+
+  it("la misma llave de idempotencia (reintento por mala red) no consume cupo ni duplica la fila", async () => {
+    const { ctx, order, app } = await conPedidoAsignado();
+    const conLlave = (llave: string) => app.request(ruta(ctx, order.id), { ...authedJson(ctx.staff.repartidor.token, {}, "POST"), headers: { ...(authedJson(ctx.staff.repartidor.token, {}, "POST").headers as Record<string, string>), "Idempotency-Key": llave } });
+    for (let i = 0; i < MAX_LLAMADAS_POR_PEDIDO + 3; i += 1) expect((await conLlave("llave-reintento-1")).status).toBe(200);
+    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso")).toHaveLength(1);
+    // Llaves distintas si cuentan: el tope sigue vigente.
+    for (let i = 0; i < MAX_LLAMADAS_POR_PEDIDO - 1; i += 1) expect((await conLlave(`llave-nueva-${i}-xx`)).status).toBe(200);
+    expect((await conLlave("llave-excedente-1")).status).toBe(429);
+  });
+
+  it("el cupo es por pedido y por repartidor: otro pedido propio parte de cero; el pedido de OTRO repartidor de la misma sucursal es 404", async () => {
+    const { ctx, order, app } = await conPedidoAsignado();
+    for (let i = 0; i < MAX_LLAMADAS_POR_PEDIDO; i += 1) await app.request(ruta(ctx, order.id), authedJson(ctx.staff.repartidor.token, {}, "POST"));
+    const otro = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "en_camino", customerPhone: "9995550000" });
+    ctx.restaurantesRepo.seedOrder(otro);
+    await ctx.restaurantesRepo.assignRepartidorToOrder(ctx.organizationId, otro.id, ctx.staff.repartidor.id, null);
+    expect((await app.request(ruta(ctx, otro.id), authedJson(ctx.staff.repartidor.token, {}, "POST"))).status).toBe(200);
+    const deOtroRepartidor = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "en_camino", customerPhone: "9995551111" });
+    ctx.restaurantesRepo.seedOrder(deOtroRepartidor);
+    await ctx.restaurantesRepo.assignRepartidorToOrder(ctx.organizationId, deOtroRepartidor.id, ctx.staff.admin.id, null);
+    const res = await app.request(ruta(ctx, deOtroRepartidor.id), authedJson(ctx.staff.repartidor.token, {}, "POST"));
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("9995551111");
+  });
+
   it("owner/admin leen las filas en la bitacora (tipo=acceso); staff no", async () => {
     const { ctx, order, app } = await conPedidoAsignado();
     await app.request(ruta(ctx, order.id), authedJson(ctx.staff.repartidor.token, {}, "POST"));

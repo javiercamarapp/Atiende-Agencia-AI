@@ -95,8 +95,15 @@ export function restaurantesRepartidorOrdersRoutes(deps: AppDeps): Hono<CoreAuth
     if (!ESTADOS_LLAMABLES.includes(order.status)) throw Errors.conflict("El pedido ya terminó: el teléfono del cliente ya no está disponible.");
     const telefono = toWhatsAppRecipient(order.customerPhone);
     if (!telefono) throw Errors.conflict("Este pedido no tiene un teléfono válido para llamar.");
-    const acceso = await repo.registrarAcceso({ organizationId, propertyId: order.propertyId, actorUserId: c.get("userId"), action: "pii.llamar", entityId: order.id });
-    if (acceso.registrado && acceso.intentos > MAX_LLAMADAS_POR_PEDIDO) {
+    // Llave de idempotencia del cliente web (cabecera `Idempotency-Key`, como manda `repartidor-client.ts`; el cuerpo es un respaldo): un reintento
+    // por mala red con la misma llave NO consume cupo. Sin llave valida, cada llamada cuenta.
+    const llaveValida = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null);
+    const cuerpo = (await readJsonCapped<{ llave?: unknown }>(c.req.raw, 1024).catch(() => ({}))) as { llave?: unknown };
+    const llave = llaveValida(c.req.header("Idempotency-Key")) ?? llaveValida(cuerpo.llave);
+    const acceso = await repo.registrarAcceso({ organizationId, propertyId: order.propertyId, actorUserId: c.get("userId"), action: "pii.llamar", entityId: order.id, llave });
+    // Sin bitacora no hay telefono: si la 097 no esta aplicada no se entrega el numero (ni sin auditoria ni sin tope).
+    if (!acceso.registrado) throw Errors.serviceUnavailable("El registro de accesos no está disponible: por ahora no se puede mostrar el teléfono. Avisa a tu encargado.");
+    if (acceso.intentos > MAX_LLAMADAS_POR_PEDIDO) {
       throw Errors.tooManyRequests("Ya pediste el teléfono de este pedido varias veces. Si necesitas más, avisa a tu encargado.");
     }
     return c.json({ telefono });

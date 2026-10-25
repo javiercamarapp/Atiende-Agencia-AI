@@ -1,4 +1,4 @@
-// PM-C5 -- los 71 escenarios de la muestra anonimizada de chats reales de T7 entran al arnes de evaluacion. Lo verificable de forma
+// PM-C5 -- los 74 escenarios (71 de la muestra y 3 de las decisiones de PM) anonimizada de chats reales de T7 entran al arnes de evaluacion. Lo verificable de forma
 // determinista: estructura, que NO haya datos personales (el repo es publico), que los pendientes de decision no cuenten, y que las
 // cifras que citan los escenarios coincidan con lo que cobra el motor real de pedidos sobre el catalogo sembrado de T7.
 import { describe, expect, it, vi } from "vitest";
@@ -11,9 +11,9 @@ import { loadSeedInputs } from "../../../scripts/seed-pm-demo/seed-pm-demo.ts";
 const suite = cargarEscenariosT7();
 
 describe("escenarios de T7: estructura", () => {
-  it("son 71, con id unico T7-001..T7-071, de chat y de la sucursal T7", () => {
-    expect(suite.escenarios).toHaveLength(71);
-    expect(suite.escenarios.map((e) => e.id)).toEqual(Array.from({ length: 71 }, (_, i) => `T7-${String(i + 1).padStart(3, "0")}`));
+  it("son 74, con id unico T7-001..T7-074, de chat y de la sucursal T7", () => {
+    expect(suite.escenarios).toHaveLength(74);
+    expect(suite.escenarios.map((e) => e.id)).toEqual(Array.from({ length: 74 }, (_, i) => `T7-${String(i + 1).padStart(3, "0")}`));
     for (const e of suite.escenarios) {
       expect(e.canal, e.id).toBe("chat");
       expect(e.sucursal, e.id).toBe("garcia-lavin");
@@ -25,7 +25,7 @@ describe("escenarios de T7: estructura", () => {
   });
 
   it("la intencion identifica el escenario: ninguna se repite", () => {
-    expect(new Set(suite.escenarios.map((e) => e.intencion)).size).toBe(71);
+    expect(new Set(suite.escenarios.map((e) => e.intencion)).size).toBe(74);
   });
 });
 
@@ -58,8 +58,8 @@ describe("escenarios de T7: pendientes de decision no fallan el CI", () => {
     }
   });
 
-  it("63 activos y 8 pendientes (P1/P18 programados antes de abrir, P3/P7 cobertura, P22 menu, P25 celulares)", () => {
-    expect(escenariosT7Activos()).toHaveLength(63);
+  it("66 activos y 8 pendientes (P1/P18 programados antes de abrir, P3/P7 cobertura, P22 menu, P25 celulares)", () => {
+    expect(escenariosT7Activos()).toHaveLength(66);
     expect(escenariosT7PendientesDeDecision().map((e) => e.id)).toEqual(["T7-007", "T7-010", "T7-018", "T7-027", "T7-036", "T7-053", "T7-054", "T7-065"]);
   });
 

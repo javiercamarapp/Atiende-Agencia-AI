@@ -26,6 +26,20 @@ insert into core.membership (user_id, organization_id, property_ids, platform_ro
   ('00000000-0000-0000-0000-000000000034', '00000000-0000-0000-0000-0000000000d2', null, 'owner', 'owner')
 on conflict do nothing;
 
+-- Fixtures: pedidos de la org A (e1, e2) y de la B (e9), un cliente de la A (c1). property f1 es de la A.
+insert into core.property (id, organization_id, vertical, name, status) values
+  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000d1', 'restaurantes', 'Suc A1', 'active'),
+  ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000d1', 'restaurantes', 'Suc A2', 'active'),
+  ('00000000-0000-0000-0000-0000000000f9', '00000000-0000-0000-0000-0000000000d2', 'restaurantes', 'Suc B1', 'active')
+on conflict do nothing;
+insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, items) values
+  ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'Cliente', '9990000000', 100, '[]'),
+  ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'Cliente', '9990000000', 100, '[]'),
+  ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'Cliente', '9990000000', 100, '[]'),
+  ('00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-0000000000f9', 'Cliente', '9990000001', 100, '[]')
+on conflict do nothing;
+insert into restaurantes.customers (id, organization_id, phone) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000d1', '9990000002') on conflict do nothing;
+
 \echo '--- 1. repartidor registra dos llamadas: conteo 1 y 2 (deberia_ser_1, deberia_ser_2) y la fila es de tipo acceso ---'
 begin;
 set local role authenticated;
@@ -77,3 +91,21 @@ begin; set local role authenticated; select set_config('request.jwt.claim.sub', 
 select count(*) as deberia_ser_0 from restaurantes.audit_log where entity_type = 'acceso'; rollback;
 begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
 select count(*) as deberia_ser_0 from restaurantes.audit_log where entity_type = 'acceso'; rollback;
+
+\echo '--- 7. entidad de OTRA organizacion o inexistente -> 22023 (cada uno debe terminar en ERROR 22023) ---'
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e9', null); rollback;
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-00000000dead', null); rollback;
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000031', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'pii.cliente_ficha', '00000000-0000-0000-0000-0000000000e1', null); rollback; -- un pedido no es un cliente
+
+\echo '--- 8. texto libre: llave invalida (22023); llave valida se guarda en despues ---'
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'telefono 9991234567'); rollback;
+
+\echo '--- 9. idempotencia: misma llave dos veces -> deberia_ser_1 las dos; llave nueva -> deberia_ser_2 ---'
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-uno-abcdef') as deberia_ser_1;
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-uno-abcdef') as deberia_ser_1;
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-dos-abcdef') as deberia_ser_2; rollback;

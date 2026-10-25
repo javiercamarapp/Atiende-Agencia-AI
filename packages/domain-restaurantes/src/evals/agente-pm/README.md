@@ -24,8 +24,8 @@ Un LLM hace de agente (prompt de PM + herramientas del registro) y otro de clien
 lista los casos sin correr. La frase `debe_decir_algo_equivalente_a` no se evalua de forma determinista (requiere juez LLM, pendiente).
 
 ## Escenarios de chats reales de T7 (PM-C5)
-`escenarios-t7.json` (+ `escenarios-t7.ts`): 71 escenarios sacados de una muestra ANONIMIZADA de 104 chats reales de WhatsApp de T7
-Garcia Lavin (8 semanas, 2-oct-2026). A diferencia de los casos dorados de `casos.json`, cada escenario trae lo que el cliente escribe
+`escenarios-t7.json` (+ `escenarios-t7.ts`): 74 escenarios (71 sacados de una muestra ANONIMIZADA de 104 chats reales de WhatsApp de T7
+Garcia Lavin (8 semanas, 2-oct-2026), más 3 de las decisiones de PM, T7-072..T7-074). A diferencia de los casos dorados de `casos.json`, cada escenario trae lo que el cliente escribe
 (`turnos_cliente`), lo que el agente debe hacer (`comportamiento_esperado`) y lo que NO debe hacer (`que_no_debe_hacer`) en texto libre
 para un juez (LLM o persona): no se evaluan con graders deterministas ni corren en el modo LLM real todavia.
 - `estado: "pendiente_decision"` = depende de una decision de Javier aun abierta (`dudas`, ver `DECISIONES_PENDIENTES`): se listan pero
