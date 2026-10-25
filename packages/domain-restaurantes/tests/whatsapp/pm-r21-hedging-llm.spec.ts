@@ -9,6 +9,7 @@ import { resetOrderFlowWarningForTests } from "../../src/agent-tools/order-flow.
 import {
   createLlmWhatsAppTurnHandler,
 } from "../../src/whatsapp/llm-turn-handler.ts";
+import { HEDGES_MAX_POR_TURNO } from "../../src/whatsapp/llm-turn-handler.ts";
 import { MODELO_ALTERNO_SEGUNDO_TOPE_ID, MODELO_ALTERNO_TOPE_ID, MODELO_PREDETERMINADO_ID } from "../../src/ajustes-agente/modelos.ts";
 import { hashTelefonoParaLogs } from "../../src/whatsapp/observabilidad-turno.ts";
 import type { EventoObservabilidadWhatsApp, EventoTurnoWhatsApp, EventoToolWhatsApp, ObservabilidadTurno } from "../../src/whatsapp/observabilidad-turno.ts";
@@ -25,7 +26,7 @@ const FLASH_LITE = MODELO_ALTERNO_SEGUNDO_TOPE_ID;
 beforeEach(() => {
   resetOrderFlowWarningForTests();
   vi.stubEnv(CIERRE_MAQUINA_ENV, "");
-  vi.stubEnv("WHATSAPP_LLM_HEDGE_MS", "");
+  vi.stubEnv("WHATSAPP_LLM_HEDGE_MS", "5500");
   vi.useFakeTimers();
 });
 afterEach(() => {
@@ -263,5 +264,30 @@ describe("PM-R21 hedging: el alterno entra en paralelo, no despues de cortar al 
     const m = armar(lunaAtascada(() => texto("rapido")), { turnBudgetMs: 18_000 });
     await m.correr();
     expect(m.intentos.map((i) => i.en)).toEqual([0, 4_000]);
+  });
+
+  it("sin la variable (omision) el hedging esta APAGADO: respaldo secuencial de R19", async () => {
+    vi.stubEnv("WHATSAPP_LLM_HEDGE_MS", "");
+    const m = armar(lunaAtascada(() => texto("secuencial")), { turnBudgetMs: 18_000 });
+    await m.correr();
+    expect(m.intentos.map((i) => i.en)).toEqual([0, 11_000]);
+    expect(turno(m.eventos).hedgesLlm).toBe(0);
+  });
+
+  it("tope duro: como maximo HEDGES_MAX_POR_TURNO (2) vueltas con hedging; la tercera vuelta atascada va sola hasta el reloj", async () => {
+    expect(HEDGES_MAX_POR_TURNO).toBe(2);
+    // Luna lenta (7 s) en cada vuelta: gana Luna tras lanzar el alterno (hedge), 3 vueltas con herramienta.
+    const m = armar(
+      (_n, modelo, req) => {
+        if (modelo !== LUNA) return lenta(20_000, () => texto("tarde"))();
+        const paso = pasoDelTurno(req);
+        return lenta(7_000, () => (paso < 3 ? llamada("consultar_sucursal", { branch_slug: "fco-montejo" }, `c_${paso}`) : texto("fin")))();
+      },
+      { turnBudgetMs: 60_000 },
+    );
+    await m.correr();
+    const t = turno(m.eventos);
+    expect(t.hedgesLlm).toBe(2);
+    expect(m.intentos.filter((i) => i.modelo === DEEPSEEK)).toHaveLength(2);
   });
 });

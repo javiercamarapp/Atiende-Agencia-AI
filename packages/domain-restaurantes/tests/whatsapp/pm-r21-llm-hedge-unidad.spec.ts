@@ -38,12 +38,14 @@ const nunca = (log: string[], nombre: string) => (signal: AbortSignal) =>
   });
 
 describe("PM-R21 hedging: configuracion", () => {
-  it("por omision 5.5 s; 0/off/false/no lo apagan; un valor invalido o bajo el piso cae al valor por omision (nunca apaga por error)", () => {
-    expect(hedgeLlmDespuesMs({})).toBe(HEDGE_LLM_DESPUES_MS_POR_OMISION);
+  it("APAGADO por omision (ausente o vacio); 0/off/false/no lo apagan; un numero >= 1500 lo enciende; invalido o bajo el piso lo deja apagado", () => {
+    expect(hedgeLlmDespuesMs({})).toBeNull();
+    expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: "  " })).toBeNull();
     for (const v of ["0", "off", "OFF", "false", "no"]) expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: v }), v).toBeNull();
+    expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: String(HEDGE_LLM_DESPUES_MS_POR_OMISION) })).toBe(5500);
     expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: "4000" })).toBe(4000);
-    expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: "abc" })).toBe(HEDGE_LLM_DESPUES_MS_POR_OMISION);
-    expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: String(HEDGE_LLM_DESPUES_MIN_MS - 1) })).toBe(HEDGE_LLM_DESPUES_MS_POR_OMISION);
+    expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: "abc" })).toBeNull();
+    expect(hedgeLlmDespuesMs({ WHATSAPP_LLM_HEDGE_MS: String(HEDGE_LLM_DESPUES_MIN_MS - 1) })).toBeNull();
   });
   it("retraso efectivo: el configurado si sobra tiempo; si el presupuesto aprieta se adelanta para dejarle 3.5 s al alterno; con menos de ~7 s no hay hedging", () => {
     expect(hedgeLlmRetrasoEfectivoMs(18_000, 5_500)).toBe(5_500);
@@ -177,5 +179,30 @@ describe("PM-R21 hedging: fallos", () => {
     const asercion = expect(p).rejects.toBeInstanceOf(HedgeLlmFalloError);
     await vi.advanceTimersByTimeAsync(10_001);
     await asercion;
+  });
+});
+
+describe("PM-R21 hedging: resolucion simultanea", () => {
+  it("si las dos patas resuelven en el mismo tick gana una sola, la otra queda cancelada y el resultado se resuelve una vez", async () => {
+    const p = completarConHedging({ limiteMs: Date.now() + 18_000, hedgeDespuesMs: 1_500, primario: () => new Promise<string>((r) => void setTimeout(() => r("P"), 2_000)), alterno: () => new Promise<string>((r) => void setTimeout(() => r("A"), 500)) });
+    await vi.advanceTimersByTimeAsync(2_001);
+    const r = await p;
+    expect(["P", "A"]).toContain(r.valor);
+    expect(r.patas.filter((x) => x.resultado === "ok")).toHaveLength(1);
+    expect(r.patas.filter((x) => x.resultado === "cancelada")).toHaveLength(1);
+  });
+
+  it("al limite del turno el primario se aborta como falla real y el alterno como cancelacion (no se culpa al alterno recien lanzado)", async () => {
+    const s: Record<string, AbortSignal> = {};
+    const colgar = (n: string) => (signal: AbortSignal) => {
+      s[n] = signal;
+      return new Promise<string>(() => undefined);
+    };
+    const q = completarConHedging({ limiteMs: Date.now() + 8_000, hedgeDespuesMs: 4_500, primario: colgar("P"), alterno: colgar("A") });
+    const asercion = expect(q).rejects.toBeInstanceOf(HedgeLlmFalloError);
+    await vi.advanceTimersByTimeAsync(8_001);
+    await asercion;
+    expect(esCancelacionDelLlamador(s.P)).toBe(false);
+    expect(esCancelacionDelLlamador(s.A)).toBe(true);
   });
 });

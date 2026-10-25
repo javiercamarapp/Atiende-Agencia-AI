@@ -63,3 +63,27 @@ describe('LlmGateway — cancelacion deliberada del llamador', () => {
     expect(await breaker.getBreakerState('lento')).toBe('open');
   });
 });
+
+describe('LlmGateway — costo de la pata cancelada', () => {
+  async function liquidacion(motivo: 'cancelada' | 'tope'): Promise<number[]> {
+    const base = new InMemoryBudgetLedgerStore();
+    const liquidados: number[] = [];
+    const budgetStore = { reserve: base.reserve.bind(base), settle: async (t: string, id: string, usd: number) => { liquidados.push(usd); return base.settle(t, id, usd); } };
+    const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore, budgetLimits: { maxRunUsd: 100, maxTenantDailyUsd: 100 }, costEstimator: () => 0.5 });
+    gateway.registerLadder('r:rol', [colgado]);
+    const c = new AbortController();
+    const p = llamar(gateway, c.signal);
+    if (motivo === 'cancelada') c.abort(new LlmCallCancelledError());
+    else c.abort();
+    await expect(p).rejects.toThrow();
+    return liquidados;
+  }
+
+  it('una pata cancelada por el llamador se liquida al estimado (el hedge cuenta como gasto), no a 0', async () => {
+    expect(await liquidacion('cancelada')).toEqual([0.5]);
+  });
+
+  it('un fallo o tope normal sigue liberando la reserva a 0', async () => {
+    expect(await liquidacion('tope')).toEqual([0]);
+  });
+});
