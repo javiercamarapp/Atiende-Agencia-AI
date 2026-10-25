@@ -36,6 +36,7 @@ export const HERRAMIENTAS_REGISTRO = [
   "registrar_contacto",
   "enviar_menu",
   "escalar_a_humano",
+  "solicitar_agregado_pedido",
 ] as const;
 
 const AQUI = new URL("./", import.meta.url);
@@ -186,6 +187,9 @@ export class Mundo {
       }
       case "escalar_a_humano":
         return this.escalar(args);
+      case "solicitar_agregado_pedido":
+        // Agregar a un pedido ya registrado: en el mundo de evaluacion cuenta como el aviso a la sucursal (cancelacion_modificacion) que ya califican los graders.
+        return this.escalar({ motivo: "cancelacion_modificacion", resumen: `Agregar: ${JSON.stringify(args.items ?? [])}` });
       default:
         throw new ErrorNegocio(`Herramienta desconocida: ${nombre}`);
     }

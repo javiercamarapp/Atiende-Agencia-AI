@@ -4,7 +4,8 @@
 import type { Context } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { puedeEjecutar } from "@atiende/domain-restaurantes";
-import type { AccionRestaurantes } from "@atiende/domain-restaurantes";
+import type { AccionOperador, AccionRestaurantes } from "@atiende/domain-restaurantes";
+import type { AppDeps } from "../../../deps.ts";
 import { Errors } from "../../../errors.ts";
 
 const MENSAJE_POR_ACCION: Partial<Record<AccionRestaurantes, string>> = {
@@ -16,9 +17,31 @@ const MENSAJE_POR_ACCION: Partial<Record<AccionRestaurantes, string>> = {
   "cfo.capturar": "Solo el dueño o un administrador puede capturar costos y configurar el CFO.",
   "cfo.importar_sr": "Solo el dueño o un administrador puede importar reportes de SoftRestaurant.",
   "cfo.exportar": "Solo el dueño o un administrador puede exportar el CFO.",
+  "pedidos.agregados": "Tu rol no puede validar agregados a pedidos.",
 };
 
 export function assertAccion(c: Context<CoreAuthHonoEnv>, accion: AccionRestaurantes): void {
   if (puedeEjecutar(c.get("verticalRole"), accion)) return;
   throw Errors.forbidden(MENSAJE_POR_ACCION[accion] ?? `Tu rol (${c.get("verticalRole") ?? "sin resolver"}) no puede realizar esta acción.`);
+}
+
+/**
+ * Perfil operativo del `staff` (migracion 090): el CAJERO captura, acepta y prepara pero NO despacha ni cancela; el ENCARGADO (o perfil nulo,
+ * el valor por omision, asi nada cambia hasta que alguien marque a un cajero) hace todo. Owner/admin siempre pueden. Se pregunta a
+ * `restaurantes.operador_puede` (fuente unica en SQL) por medio del repositorio; base sin migrar = comportamiento anterior.
+ */
+export async function assertOperadorPuede(deps: AppDeps, c: Context<CoreAuthHonoEnv>, propertyId: string, accion: AccionOperador): Promise<void> {
+  const ok = await deps.restaurantesRepo(c.get("db")).operadorPuede({
+    organizationId: c.get("organizationId"),
+    propertyId,
+    userId: c.get("userId"),
+    verticalRole: c.get("verticalRole") ?? "",
+    accion,
+  });
+  if (ok) return;
+  throw Errors.forbidden(
+    accion === "cancelar"
+      ? "Con tu perfil de cajero no puedes cancelar pedidos: avisa al encargado."
+      : "Con tu perfil de cajero no puedes despachar pedidos ni asignar repartidor: avisa al encargado.",
+  );
 }

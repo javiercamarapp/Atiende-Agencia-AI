@@ -158,7 +158,7 @@ catálogo, promociones o sucursales piden roles con una lista suelta en lugar de
 | `promociones.ver` / `promociones.editar` | sí | sí | no | no |
 | `sucursal.ver` | sí | sí | sí | no |
 | `sucursal.editar` (dirección, teléfono, coordenadas, slug, orden) | sí | sí | no | no |
-| `pedidos.gestionar` (aceptar, avanzar, cancelar, asignar repartidor; sin cambio) | sí | sí | sí | no |
+| `pedidos.gestionar` (aceptar, avanzar, cancelar, asignar repartidor; el `staff` queda además acotado por su perfil operativo, ver abajo) | sí | sí | sí | no |
 
 Tres capas, la misma regla: la API (`assertAccion`, 403 con "Solo el dueño o un administrador puede cambiar precios..."), la base (migración 065: policies por rol,
 GRANT de `UPDATE` por columna en `branch_products` y un trigger que devuelve `42501` si un staff cambia el precio; verificado en
@@ -167,6 +167,24 @@ aparecen para él). Los cambios de precio, de disponibilidad, de promociones, de
 bitácora (`restaurantes.audit_log`) con antes y después. Si la base todavía no tiene la 065 el panel y la API se comportan igual que antes en lo demás:
 la regla de la API ya aplica y solo falta la defensa en profundidad de la base. No se crearon roles nuevos: cajero, cocina y gerente siguen siendo
 `staff`/`admin`; si el dueño necesita distinguir cajero de cocina, es una decisión de producto pendiente.
+
+### Perfil operativo del staff (cajero / encargado)
+
+El `staff` se subdivide con una bandera de la membresía (migración 090, sin rol nuevo; nulo = encargado). Fuente en SQL: `restaurantes.operador_puede`;
+espejo y prueba de matriz: `ACCIONES_PERFIL_OPERATIVO` en `roles.ts`. Owner y admin siempre pueden.
+
+| Acción | cajero | encargado |
+|---|---|---|
+| capturar pedidos | sí | sí |
+| aceptar y preparar | sí | sí |
+| poner en camino, asignar repartidor y marcar «entregado» / «completado» (despachar) | no | sí |
+| cancelar | no | sí |
+
+Solo el dueño o un administrador con acceso a todas las sucursales cambia el perfil (`PUT .../staff/miembros/:id/perfil-operativo`, 403 al administrador
+acotado). El cambio se audita con el perfil previo (`antes`) por una vía que no traga errores: si la bitácora no se puede escribir, el cambio no queda
+(migración 100 lee el perfil previo). Si la base no tiene la 090, la API abre como antes pero lo deja en el log de error `PERFIL_OPERATIVO_SIN_MIGRAR`,
+y cierra para un cajero ya marcado si la función falta pero la columna existe. El staff tampoco entra a las rutas del repartidor, así que no hay otra
+vía para despachar o cerrar entregas.
 
 ## 8. Superadmin y automatizaciones
 
