@@ -55,7 +55,8 @@ describe("admin acotado: escrituras de toda la organizacion", () => {
 
   // Escrituras que cambian a TODA la organizacion: [metodo, ruta bajo /admin, cuerpo]. El cuerpo puede no ser valido para el handler: el
   // control de alcance corre antes y lo que se verifica es 403 (acotado) contra "no 403" (admin general y dueño).
-  const ORG_WIDE: ReadonlyArray<readonly [string, string, string, unknown]> = [
+  type Metodo = "POST" | "PUT" | "PATCH" | "DELETE";
+  const ORG_WIDE: ReadonlyArray<readonly [string, Metodo, string, unknown]> = [
     ["zonas POST", "POST", "/config/zonas", { name: "Centro", fee: 30 }],
     ["zonas DELETE", "DELETE", "/config/zonas/00000000-0000-4000-8000-000000000001", undefined],
     ["zona horaria", "PATCH", "/config/zona-horaria", { timezone: "America/Merida" }],
