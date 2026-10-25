@@ -317,9 +317,12 @@ export class LlmGateway {
         // libera la reserva a $0 — mismo criterio que el proyecto origen en el catch de
         // `once()`/`attempt()` (BACKEND-19C2-1): no liquidar al monto
         // reservado en un error donde no hubo uso real.
-        await settleBudget(this.budgetStore, budget, reservation, 0);
+        // Excepcion (hedging): una pata que el llamador CANCELO a proposito ya habia salido al proveedor y pudo generar tokens sin que lleguemos a verlos; se liquida
+        // al estimado (gasto conservador) en vez de liberarla a $0, para que el hedge cuente contra el tope y no sea gasto invisible.
+        const canceladaPorLlamador = esCancelacionDelLlamador(opts.request.signal);
+        await settleBudget(this.budgetStore, budget, reservation, canceladaPorLlamador ? estimate : 0);
         if (this.orgMonthlyBudgetStore && monthlyReservationId) {
-          await this.orgMonthlyBudgetStore.settle(opts.tenantId, monthlyReservationId, 0).catch(() => {});
+          await this.orgMonthlyBudgetStore.settle(opts.tenantId, monthlyReservationId, canceladaPorLlamador ? estimateMicroUsd : 0).catch(() => {});
         }
         const message = err instanceof Error ? err.message : String(err);
         attempts.push({ providerId: provider.id, error: message });
