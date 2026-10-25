@@ -52,4 +52,55 @@ describe("admin acotado: escrituras de toda la organizacion", () => {
     const waGeneral = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/config/whatsapp`, authedJson(ctx.staff.admin.token, { phoneNumberId: "123456789" }, "PUT"));
     expect(waGeneral.status).toBeLessThan(300);
   });
+
+  // Escrituras que cambian a TODA la organizacion: [metodo, ruta bajo /admin, cuerpo]. El cuerpo puede no ser valido para el handler: el
+  // control de alcance corre antes y lo que se verifica es 403 (acotado) contra "no 403" (admin general y dueño).
+  const ORG_WIDE: ReadonlyArray<readonly [string, string, string, unknown]> = [
+    ["zonas POST", "POST", "/config/zonas", { name: "Centro", fee: 30 }],
+    ["zonas DELETE", "DELETE", "/config/zonas/00000000-0000-4000-8000-000000000001", undefined],
+    ["zona horaria", "PATCH", "/config/zona-horaria", { timezone: "America/Merida" }],
+    ["agente WhatsApp (alcance organizacion)", "PUT", "/config/agente-whatsapp", { alcance: "organizacion" }],
+    ["restablecer agente", "POST", "/config/agente-whatsapp/restablecer", { alcance: "organizacion" }],
+    ["marketing config", "PUT", "/marketing/config", { activo: true }],
+    ["marketing decidir", "POST", "/marketing/campanas/00000000-0000-4000-8000-000000000001/decidir", { accion: "aprobar" }],
+    ["ajustes del agente", "PUT", "/agente/ajustes", {}],
+    ["alertas al dueño (umbrales)", "PUT", "/alertas-duenio", { silencioActivo: true, silencioVentanaMin: 60, silencioHistoricoMin: 10 }],
+    ["SoftRestaurant modo", "PUT", "/softrestaurant/config", { modo: "apagado" }],
+  ];
+  for (const [nombre, metodo, ruta, cuerpo] of ORG_WIDE) {
+    it(`${nombre}: 403 al admin acotado; el admin general y el dueño no reciben 403`, async () => {
+      const ctx = await buildRestaurantesKpiTestContext(buildApp);
+      const app = buildApp(ctx.deps);
+      const url = `/v1/restaurantes/${ctx.propertyIdA}/admin${ruta}`;
+      const llamar = (token: string) => app.request(url, cuerpo === undefined ? { method: metodo, headers: { authorization: `Bearer ${token}` } } : authedJson(token, cuerpo, metodo));
+      expect((await llamar(ctx.staff.adminSucursalA.token)).status).toBe(403);
+      expect((await llamar(ctx.staff.admin.token)).status).not.toBe(403);
+      expect((await llamar(ctx.staff.owner.token)).status).not.toBe(403);
+    });
+  }
+
+  it("agente WhatsApp con alcance de UNA sucursal: el acotado no recibe 403 en la suya", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/config/agente-whatsapp`, authedJson(ctx.staff.adminSucursalA.token, { alcance: "sucursal" }, "PUT"));
+    expect(res.status).not.toBe(403);
+  });
+
+  // Estas son POR SUCURSAL (ya validan el alcance): propia permitida, ajena 403.
+  for (const [nombre, metodo, sufijo, cuerpo] of [
+    ["secreto de voz", "POST", "voz/secreto", undefined],
+    ["interruptor del agente", "PUT", "agente-whatsapp-interruptor", { activo: true }],
+  ] as const) {
+    it(`${nombre} por sucursal: la propia no da 403; una ajena si`, async () => {
+      const ctx = await buildRestaurantesKpiTestContext(buildApp);
+      const app = buildApp(ctx.deps);
+      const ruta = (branch: string) => (sufijo === "voz/secreto" ? `/config/sucursales/${branch}/voz/secreto` : `/config/sucursales/${branch}/agente-whatsapp`);
+      const llamar = (branch: string) => {
+        const url = `/v1/restaurantes/${ctx.propertyIdA}/admin${ruta(branch)}`;
+        return app.request(url, cuerpo === undefined ? { method: metodo, headers: { authorization: `Bearer ${ctx.staff.adminSucursalA.token}` } } : authedJson(ctx.staff.adminSucursalA.token, cuerpo, metodo));
+      };
+      expect((await llamar(ctx.propertyIdB)).status).toBe(403);
+      expect((await llamar(ctx.propertyIdA)).status).not.toBe(403);
+    });
+  }
 });

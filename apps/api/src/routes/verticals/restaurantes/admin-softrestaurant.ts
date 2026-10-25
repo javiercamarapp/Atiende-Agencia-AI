@@ -37,7 +37,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { assertAdminGeneral, parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { softRestaurantPortFor, softRestaurantStoreFor } from "./softrestaurant-wiring.ts";
 
 const ESTADOS_POR_DEFECTO: readonly EstadoComanda[] = ["captura_manual", "fallida", "pendiente", "enviada"];
@@ -168,6 +168,8 @@ export function restaurantesAdminSoftRestauranteRoutes(deps: AppDeps): Hono<Core
 
   app.put(`${prefix}/config`, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    // El modo de SoftRestaurant es de toda la organizacion.
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<ConfigBody>(c.req.raw, 2 * 1024);
     if (!esModoSoftRestaurant(raw.modo)) throw Errors.validation("modo: se esperaba apagado, sombra o activo.");

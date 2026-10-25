@@ -408,6 +408,8 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const propertyId = c.req.param("propertyId") ?? "";
     const raw = await readJsonCapped<UpsertAgenteWhatsappBody>(c.req.raw, 4 * 1024);
     const alcancePropertyId = alcanceDe(raw.alcance, propertyId);
+    // El alcance "organizacion" cambia a todas las sucursales: exige admin general. El de "sucursal" ya lo acota requirePropertyMembership.
+    if (alcancePropertyId === null) await assertAdminGeneral(deps, c);
     const config = validarCuerpo(raw);
     const actualizado = await guardar(c, alcancePropertyId, config, "actualizado", parseVersionEsperada(raw.versionEsperada), "configuracion.agente_whatsapp_actualizado");
     return c.json(serializeAgenteWhatsapp(actualizado));
