@@ -24,6 +24,7 @@ import type { CodigoRechazoMarketing } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { assertAdminGeneral } from "./admin-scope.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const MENSAJE_RECHAZO: Readonly<Record<CodigoRechazoMarketing, string>> = {
@@ -78,6 +79,7 @@ export function restaurantesAdminMarketingRoutes(deps: AppDeps): Hono<CoreAuthHo
 
   app.put(`${base}/config`, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<ConfigBody>(c.req.raw, 4 * 1024);
     if (typeof raw.activo !== "boolean") throw Errors.validation("activo: se esperaba un booleano.");
@@ -107,6 +109,7 @@ export function restaurantesAdminMarketingRoutes(deps: AppDeps): Hono<CoreAuthHo
 
   app.post(`${base}/campanas/:campanaId/decidir`, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const campanaId = c.req.param("campanaId") ?? "";
     if (!/^[0-9a-fA-F-]{36}$/.test(campanaId)) throw Errors.validation("campanaId: se esperaba un id de campaña válido.");
