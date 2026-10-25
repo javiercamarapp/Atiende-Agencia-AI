@@ -65,5 +65,3 @@ export interface ResolverAgregadoSalida {
   readonly resultado: "aplicado" | "ya_resuelto" | "no_aplicable";
   readonly agregado: TarjetaAgregado;
 }
-
-export const MENSAJE_AGREGADOS_NO_DISPONIBLES = "Agregados por validar todavía no está disponible en esta cuenta (falta aplicar la actualización de base de datos).";
