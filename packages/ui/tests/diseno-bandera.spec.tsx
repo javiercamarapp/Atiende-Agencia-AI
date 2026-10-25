@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 //
+// (.tsx a proposito: el tsconfig raiz no tiene DOM y excluye los .tsx de packages/ui; el typecheck de la UI no incluye tests.)
 // ds3 / 0.2: `DISENO_DS3` se lee UNA vez al cargar el modulo. Fuentes: `html.dataset.diseno` (lo pone /theme-boot.js) y el valor
 // de build VITE_DISENO_DEFAULT (vacio = diseno actual).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 async function cargar() {
   vi.resetModules();
-  return import("../src/lib/diseno");
+  return import("../src/lib/diseno.ts");
 }
 
 beforeEach(() => {
