@@ -142,6 +142,18 @@ export interface EventoTurnoWhatsApp {
   readonly modeloRespaldoLlm?: string | null;
   /** PM-R19: modelo que realmente contesto la ultima llamada del turno (lista cerrada `MODELOS_AGENTE` o "otro"); null si ninguna contesto. Sin PII. */
   readonly modeloRespondioLlm?: string | null;
+  /**
+   * PM-R21: CADA llamada al modelo del turno (una pata por intento, en orden), para distinguir por que se cae el modelo: `ms` es lo que tardo la pata hasta
+   * contestar, vencer su tope (`tope`: el modelo ya llevaba `ms` sin contestar), fallar (`error`, con `causa` de la lista cerrada) o ser cancelada porque la otra
+   * pata gano (`cancelada`). `modelo` es la lista cerrada de `MODELOS_AGENTE` o "otro". Solo clases y duraciones; nunca contenido. Acotado a 12 entradas.
+   */
+  readonly llamadasLlm?: ReadonlyArray<{ readonly pata: "primario" | "alterno" | "respaldo_secuencial"; readonly resultado: "ok" | "tope" | "error" | "cancelada"; readonly ms: number; readonly modelo: string; readonly causa?: CausaErrorTurno }>;
+  /** PM-R21: el hedging lanzo el modelo alterno EN PARALELO porque el primario paso del retraso configurado sin contestar. */
+  readonly hedgeLlmLanzado?: boolean;
+  /** PM-R21: vueltas del turno que lanzaron el alterno en paralelo (0 a 2): la metrica de gasto extra del hedging por organizacion. */
+  readonly hedgesLlm?: number;
+  /** PM-R21: quien contesto cuando hubo hedging ("primario" si el primario contesto aun con el alterno en vuelo; null si no hubo hedging o ninguno contesto). */
+  readonly hedgeLlmGanador?: "primario" | "alterno" | null;
   /** Motivo de escalacion A HUMANO (clasificador de alto riesgo o `escalar_a_humano`); null si no hubo. */
   readonly motivoEscalacion: string | null;
   /** Por que se subio de rol de modelo barato a caro dentro del turno; null si no se subio. */

@@ -10,6 +10,23 @@ export class GatewayError extends Error {
   }
 }
 
+/**
+ * El LLAMADOR cancelo la llamada a proposito (p. ej. el hedging abortó la pata que perdió la carrera porque la otra ya contestó). Se pasa como `reason` de
+ * `AbortController.abort(...)`: el gateway reconoce la cancelacion y NO la cuenta como falla del proveedor en el circuit breaker (el proveedor no fallo: se le
+ * cancelo). Un tope de tiempo del llamador SI sigue contando (es evidencia de que el modelo no contesta).
+ */
+export class LlmCallCancelledError extends Error {
+  constructor() {
+    super('llamada al LLM cancelada por el llamador');
+    this.name = 'LlmCallCancelledError';
+  }
+}
+
+/** True si la senal esta abortada con `LlmCallCancelledError` como motivo. */
+export function esCancelacionDelLlamador(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true && (signal.reason as { name?: unknown } | null | undefined)?.name === 'LlmCallCancelledError';
+}
+
 /** El circuit breaker de este proveedor está OPEN: no se intenta la llamada,
  *  se salta directo al siguiente proveedor de la escalera (o se rechaza si
  *  no hay más). Puerto de `CircuitOpenError` en
