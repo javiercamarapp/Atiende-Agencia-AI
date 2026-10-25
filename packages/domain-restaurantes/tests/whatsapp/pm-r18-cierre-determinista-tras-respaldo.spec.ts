@@ -23,6 +23,8 @@ const cederAlEventLoopReal = (() => {
 const COLGADA = (): Promise<LlmCompletionResult> => new Promise(() => undefined);
 
 beforeEach(() => {
+  // Estas pruebas cubren el cierre determinista COMO RESPALDO tras una falla del proveedor; el cierre del «si» antes de la primera vuelta (R21) lo cubre pm-r21-cierre-una-vuelta.spec.ts.
+  vi.stubEnv("WHATSAPP_CIERRE_UNA_VUELTA", "0");
   resetOrderFlowWarningForTests();
   vi.useFakeTimers();
   // Reloj fijo a mediodia de Merida: el horario de la sucursal (con el «ultimo pedido 30 min antes del cierre») no debe depender de la hora real en que corre el CI.
@@ -91,7 +93,7 @@ describe.each([
   ["maquina de cierre apagada", ""],
   ["maquina de cierre encendida", "1"],
 ] as const)("cierre determinista tras el respaldo de proveedor (%s)", (_n, flag) => {
-  beforeEach(() => vi.stubEnv(CIERRE_MAQUINA_ENV, flag));
+  beforeEach(() => { vi.stubEnv("WHATSAPP_CIERRE_UNA_VUELTA", "0"); vi.stubEnv(CIERRE_MAQUINA_ENV, flag); });
 
   async function resumen(m: Awaited<ReturnType<typeof armar>>) {
     const r1 = await m.correr([{ role: "user", content: "dos coca para recoger, soy Ana" }]);
