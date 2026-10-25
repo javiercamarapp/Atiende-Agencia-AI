@@ -2792,7 +2792,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
           input.propertyId,
           input.action,
           input.entityId,
-          input.detalle ?? null,
+          input.llave ?? null,
         ]);
         return { registrado: true, intentos: Number(rows[0]?.n ?? 0) };
       },

@@ -62,4 +62,15 @@ echo ""
 "${PSQL_DB[@]}" -f "$HERE/assertions.sql"
 
 echo ""
+echo "==> concurrencia: 4 sesiones simultaneas piden el mismo acceso (cada una retiene su transaccion 1 s). Con el candado los conteos son 1,2,3,4 distintos; sin el, todas veian 1."
+OUT="$WORKDIR/conc"; mkdir -p "$OUT"
+for i in 1 2 3 4; do
+  "${PSQL_DB[@]}" -At -v ON_ERROR_STOP=1 -c "begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true); select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e3', null); select pg_sleep(1); commit;" > "$OUT/$i.txt" 2>&1 &
+done
+wait
+CONTEOS="$(grep -hE '^[0-9]+$' "$OUT"/*.txt | sort -n | tr '\n' ' ')"
+echo "conteos devueltos: $CONTEOS"
+if [ "$CONTEOS" = "1 2 3 4 " ]; then echo "CONCURRENCIA: PASS"; else echo "CONCURRENCIA: FAIL" >&2; exit 1; fi
+
+echo ""
 echo "==> listo — revisa arriba: los escenarios marcados \"should_fail\"/\"deberia_ser_0\" deben terminar en ERROR o 0 filas (correcto), el resto debe devolver filas/RETURNING reales."

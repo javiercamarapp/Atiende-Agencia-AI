@@ -836,7 +836,8 @@ export interface RegistrarAccesoInput {
   readonly action: RestaurantesAccesoAccion;
   /** Pedido o cliente al que se accede. Nunca el dato personal en si. */
   readonly entityId: string | null;
-  readonly detalle?: string | null;
+  /** Llave de idempotencia del cliente (^[A-Za-z0-9_-]{8,64}$): repetirla no vuelve a registrar ni consume cupo. NO es texto libre. */
+  readonly llave?: string | null;
 }
 
 export interface AccesoRegistrado {

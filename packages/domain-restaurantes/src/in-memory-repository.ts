@@ -2245,19 +2245,28 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  /** Solo pruebas: `false` simula la base sin la migracion 097 (`registrarAcceso` devuelve `registrado: false`). */
+  bitacoraAccesoDisponible = true;
+
   async registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado> {
-    // Mismo contrato que `restaurantes.registrar_acceso` (097): una fila 'acceso' en la MISMA bitacora y el conteo del actor sobre la entidad.
-    await this.registrarAuditoria({
-      organizationId: input.organizationId,
-      actorUserId: input.actorUserId,
-      action: input.action,
-      entityType: "acceso",
-      entityId: input.entityId,
-      campo: input.propertyId,
-      despues: input.detalle ?? null,
-    });
-    const intentos = this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId).length;
-    return { registrado: true, intentos };
+    // Mismo contrato que `restaurantes.registrar_acceso` (097): una fila 'acceso' en la MISMA bitacora y el conteo del actor sobre la entidad
+    // (ventana de 24 h); la misma llave de idempotencia no vuelve a insertar. `bitacoraAccesoDisponible = false` simula la base sin la 097.
+    if (!this.bitacoraAccesoDisponible) return { registrado: false, intentos: 0 };
+    const mismos = () => this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId);
+    const llave = input.llave ?? null;
+    if (llave === null || !mismos().some((r) => r.despues === llave)) {
+      await this.registrarAuditoria({
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        action: input.action,
+        entityType: "acceso",
+        entityId: input.entityId,
+        campo: input.propertyId,
+        despues: llave,
+      });
+    }
+    const desde = Date.now() - 24 * 3600 * 1000;
+    return { registrado: true, intentos: mismos().filter((r) => r.createdAtMs > desde).length };
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {
