@@ -15,7 +15,7 @@
 import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
-import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso } from "../aviso-pedido-gerente.ts";
+import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
@@ -492,7 +492,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
           description:
             "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, tiempos_entrega (exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
         },
-        resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente. Si quiere CANCELAR un pedido ya registrado, diga «cancelar» en el resumen (el sistema usa la frase de cancelación); si solo agrega o cambia algo, no use esa palabra." },
+        resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente. No escriba «no se ha cotizado» si ya cotizó: ponga lo cotizado. Si quiere CANCELAR un pedido ya registrado, diga «cancelar» en el resumen (el sistema usa la frase de cancelación); si solo agrega o cambia algo, no use esa palabra." },
       },
       required: ["motivo"],
     },
@@ -2173,7 +2173,10 @@ async function dispatchTool(
       const motivoEscalada = esEscalada ? normalizarMotivoEscalacion(input.motivo) : null;
       // R16 (T7-017/021/043): el folio, la direccion y los renglones del pedido reciente los pone el SERVIDOR (no el modelo) en las escaladas que hablan de un pedido.
       const bloquePedido = motivoEscalada && MOTIVOS_AVISO_CON_PEDIDO.has(motivoEscalada) ? await armarBloquePedidoParaAviso(repo, organizationId, ctx.phone) : null;
-      const detalleModelo = esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined;
+      const detalleDelModelo = esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined;
+      // T7-038: si ya hay una cotizacion vigente el aviso no puede decir «no se ha cotizado».
+      const totalCotizado = esEscalada && ctx.flow && detalleDelModelo ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.quotedTotal : undefined;
+      const detalleModelo = corregirAvisoCotizado(detalleDelModelo, totalCotizado);
       await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
