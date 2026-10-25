@@ -19,6 +19,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
+import { assertOperadorPuede } from "./permisos-accion.ts";
 import { correoDePedido, telefonoDePedido, vistaMinimaPii } from "./pii-minimo.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
@@ -266,6 +267,10 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (typeof raw.status !== "string" || !isOrderStatus(raw.status)) {
       throw Errors.validation("status: valor de estado desconocido.");
     }
+    // Perfil operativo (migracion 090): el cajero no cancela ni pone en camino; el encargado y el dueño/admin si.
+    // Despachar incluye salir a reparto y cerrar la entrega: el cajero tampoco marca «entregado» ni «completado».
+    if (raw.status === "cancelado") await assertOperadorPuede(deps, c, order.propertyId, "cancelar");
+    else if (raw.status === "en_camino" || raw.status === "entregado" || raw.status === "completado") await assertOperadorPuede(deps, c, order.propertyId, "despachar");
     // Taxonomia cerrada de cancelacion (A-24/C-13): cancelar SIN motivo se rechaza antes de tocar el pedido.
     let motivoCancelacion: string | null = null;
     if (raw.status === "cancelado") {
@@ -450,6 +455,9 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (!order) throw Errors.notFound("Pedido no encontrado.");
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
+
+    // Perfil operativo (migracion 090): asignar repartidor es despachar; el cajero no.
+    await assertOperadorPuede(deps, c, order.propertyId, "despachar");
 
     const raw = await readJsonCapped<AssignRepartidorBody>(c.req.raw, 2 * 1024);
     if (typeof raw.repartidorId !== "string" || raw.repartidorId.length === 0) {

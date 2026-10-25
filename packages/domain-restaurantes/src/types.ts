@@ -826,7 +826,7 @@ export interface PromotionPatch {
 export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion" | "acceso";
 
 /** Acciones del catalogo cerrado de `restaurantes.registrar_acceso` (migracion 097): accesos a datos personales del cliente. */
-export type RestaurantesAccesoAccion = "pii.llamar" | "pii.telefono_ver" | "pii.cliente_ficha";
+export type RestaurantesAccesoAccion = "pii.llamar" | "pii.telefono_ver" | "pii.cliente_ficha" | "sesion.login";
 
 export interface RegistrarAccesoInput {
   readonly organizationId: string;
@@ -845,6 +845,29 @@ export interface AccesoRegistrado {
   readonly registrado: boolean;
   /** Cuantos accesos del mismo actor/accion/entidad hay, incluido este (0 si `registrado` es false). */
   readonly intentos: number;
+}
+
+/** Perfil operativo de un `staff` (migracion 090, `core.membership.perfil_operativo`): el CAJERO captura, acepta y prepara; el ENCARGADO ademas despacha y cancela. Nulo = encargado. */
+export type PerfilOperativo = "encargado" | "cajero";
+/** Acciones que `restaurantes.operador_puede` (090) distingue por perfil. */
+export type AccionOperador = "capturar" | "gestionar" | "despachar" | "cancelar";
+
+export interface GuardarPerfilOperativoResultado {
+  /** `false` si la base aun no tiene la migracion 090. */
+  readonly disponible: boolean;
+  /** Perfil previo (null = sin marcar). `antesDisponible: false` si la base no tiene la migracion 100 (no se pudo leer). */
+  readonly antes: PerfilOperativo | null;
+  readonly antesDisponible: boolean;
+}
+
+export interface OperadorPuedeInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  /** Solo lo usa el repositorio en memoria (el real toma al usuario de `auth.uid()`). */
+  readonly userId: string;
+  /** Solo lo usa el repositorio en memoria: el rol ya validado por la ruta. */
+  readonly verticalRole: string;
+  readonly accion: AccionOperador;
 }
 
 export interface RegistrarAuditoriaInput {

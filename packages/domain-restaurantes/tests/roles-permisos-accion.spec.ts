@@ -1,6 +1,6 @@
 // PL-23 -- matriz de permisos por accion: cada accion x cada rol, fail-closed y consistencia con MANAGER_ROLES/STAFF_INVITE_ROLES.
 import { describe, expect, it } from "vitest";
-import { ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, MANAGER_ROLES, RESTAURANTES_ROLES, STAFF_INVITE_ROLES, permisosEfectivos, puedeEjecutar, rolesParaAccion } from "../src/index.ts";
+import { ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, MANAGER_ROLES, RESTAURANTES_ROLES, ACCIONES_PERFIL_OPERATIVO, perfilPuede, STAFF_INVITE_ROLES, permisosEfectivos, puedeEjecutar, rolesParaAccion } from "../src/index.ts";
 
 const ESPERADO: Record<string, Record<string, boolean>> = {
   "catalogo.ver": { owner: true, admin: true, staff: true, repartidor: false },
@@ -62,5 +62,30 @@ describe("matriz de permisos por accion (PL-23)", () => {
     expect(permisosEfectivos("admin")["catalogo.precio"]).toBe(true);
     expect(Object.values(permisosEfectivos("repartidor")).every((v) => v === false)).toBe(true);
     expect(Object.values(permisosEfectivos(undefined)).every((v) => v === false)).toBe(true);
+  });
+});
+
+describe("matriz del perfil operativo del staff (cajero / encargado)", () => {
+  const ESPERADO_PERFIL: Record<string, Record<string, boolean>> = {
+    capturar: { cajero: true, encargado: true },
+    gestionar: { cajero: true, encargado: true },
+    despachar: { cajero: false, encargado: true },
+    cancelar: { cajero: false, encargado: true },
+  };
+  it("cubre exactamente las acciones esperadas", () => {
+    expect(Object.keys(ACCIONES_PERFIL_OPERATIVO).sort()).toEqual(Object.keys(ESPERADO_PERFIL).sort());
+  });
+  for (const [accion, porPerfil] of Object.entries(ESPERADO_PERFIL)) {
+    for (const [perfil, ok] of Object.entries(porPerfil)) {
+      it(`${accion} x ${perfil} -> ${ok}`, () => {
+        expect(perfilPuede(perfil, accion)).toBe(ok);
+      });
+    }
+  }
+  it("perfil nulo = encargado; accion o perfil desconocido se niega a quien no es encargado", () => {
+    expect(perfilPuede(null, "despachar")).toBe(true);
+    expect(perfilPuede(undefined, "cancelar")).toBe(true);
+    expect(perfilPuede("cajero", "toString")).toBe(false);
+    expect(perfilPuede("gerente", "despachar")).toBe(false);
   });
 });

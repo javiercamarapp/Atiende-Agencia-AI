@@ -259,6 +259,8 @@ export function restaurantesAdminCustomersRoutes(deps: AppDeps): Hono<CoreAuthHo
     try {
       const ficha = await repo.getCustomerFicha(organizationId, customerId);
       if (!ficha) throw Errors.notFound("Cliente no encontrado.");
+      // Lectura de la ficha completa (nombre, telefono, direcciones, historial) = acceso a datos personales: queda en la bitacora de accesos.
+      await repo.registrarAcceso({ organizationId, propertyId: c.req.param("propertyId") ?? null, actorUserId: c.get("userId"), action: "pii.cliente_ficha", entityId: customerId });
       const tier = await repo.calcCustomerTier(organizationId, customerId);
       const notes = await repo.getCustomerNotes(organizationId, customerId);
       // Minimo de PII para `staff`: telefono enmascarado y sin correo (pii-minimo.ts).

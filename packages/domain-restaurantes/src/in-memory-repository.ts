@@ -66,6 +66,9 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  OperadorPuedeInput,
+  GuardarPerfilOperativoResultado,
+  PerfilOperativo,
   AccesoRegistrado,
   RegistrarAccesoInput,
   RegistrarAuditoriaInput,
@@ -2245,6 +2248,30 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  /** Perfiles operativos sembrados por `guardarPerfilOperativo` (clave `org:usuario`). */
+  readonly perfilesOperativos = new Map<string, PerfilOperativo | null>();
+
+  async operadorPuede(input: OperadorPuedeInput): Promise<boolean> {
+    if (input.verticalRole === "owner" || input.verticalRole === "admin") return true;
+    if (input.verticalRole !== "staff") return false;
+    if (input.accion === "capturar" || input.accion === "gestionar") return true;
+    return (this.perfilesOperativos.get(`${input.organizationId}:${input.userId}`) ?? "encargado") === "encargado";
+  }
+
+  async guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<GuardarPerfilOperativoResultado> {
+    const antes = this.perfilesOperativos.get(`${organizationId}:${userId}`) ?? null;
+    this.perfilesOperativos.set(`${organizationId}:${userId}`, perfil);
+    return { disponible: true, antes, antesDisponible: true };
+  }
+
+  /** Solo pruebas: fuerza que la bitacora obligatoria falle (la ruta debe responder error y no dejar el cambio a medias). */
+  fallarAuditoriaObligatoria = false;
+
+  async registrarAuditoriaObligatoria(input: RegistrarAuditoriaInput): Promise<void> {
+    if (this.fallarAuditoriaObligatoria) throw new Error("bitacora no disponible (simulado)");
+    await this.registrarAuditoria(input);
+  }
+
   /** Solo pruebas: `false` simula la base sin la migracion 097 (`registrarAcceso` devuelve `registrado: false`). */
   bitacoraAccesoDisponible = true;
 
@@ -2254,6 +2281,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!this.bitacoraAccesoDisponible) return { registrado: false, intentos: 0 };
     const mismos = () => this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId);
     const llave = input.llave ?? null;
+    // `sesion.login` no usa idempotencia ni conteo (la llave es el canal de entrada del catalogo; devuelve 0).
+    if (input.action === "sesion.login") {
+      await this.registrarAuditoria({ organizationId: input.organizationId, actorUserId: input.actorUserId, action: input.action, entityType: "acceso", entityId: input.entityId, campo: input.propertyId, despues: llave });
+      return { registrado: true, intentos: 0 };
+    }
     const ahora = Date.now();
     // Idempotencia ACOTADA (espejo de la 097): reintento = misma llave en < 10 min; deja fila ':r' sin consumir cupo, max 3 por llave; luego ':x' (cuenta).
     let despues: string | null = llave;
