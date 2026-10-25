@@ -2254,21 +2254,20 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!this.bitacoraAccesoDisponible) return { registrado: false, intentos: 0 };
     const mismos = () => this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId);
     const llave = input.llave ?? null;
-    // `sesion.login` no usa idempotencia ni conteo (la llave es el canal de entrada del catalogo).
-    if (input.action === "sesion.login" || llave === null || !mismos().some((r) => r.despues === llave)) {
-      await this.registrarAuditoria({
-        organizationId: input.organizationId,
-        actorUserId: input.actorUserId,
-        action: input.action,
-        entityType: "acceso",
-        entityId: input.entityId,
-        campo: input.propertyId,
-        despues: llave,
-      });
+    // `sesion.login` no usa idempotencia ni conteo (la llave es el canal de entrada del catalogo; devuelve 0).
+    if (input.action === "sesion.login") {
+      await this.registrarAuditoria({ organizationId: input.organizationId, actorUserId: input.actorUserId, action: input.action, entityType: "acceso", entityId: input.entityId, campo: input.propertyId, despues: llave });
+      return { registrado: true, intentos: 0 };
     }
-    if (input.action === "sesion.login") return { registrado: true, intentos: 0 };
-    const desde = Date.now() - 24 * 3600 * 1000;
-    return { registrado: true, intentos: mismos().filter((r) => r.createdAtMs > desde).length };
+    const ahora = Date.now();
+    // Idempotencia ACOTADA (espejo de la 097): reintento = misma llave en < 10 min; deja fila ':r' sin consumir cupo, max 3 por llave; luego ':x' (cuenta).
+    let despues: string | null = llave;
+    if (llave !== null && mismos().some((r) => r.despues === llave && r.createdAtMs > ahora - 10 * 60 * 1000)) {
+      const replays = mismos().filter((r) => r.despues === `${llave}:r` && r.createdAtMs > ahora - 10 * 60 * 1000).length;
+      despues = `${llave}${replays < 3 ? ":r" : ":x"}`;
+    }
+    await this.registrarAuditoria({ organizationId: input.organizationId, actorUserId: input.actorUserId, action: input.action, entityType: "acceso", entityId: input.entityId, campo: input.propertyId, despues });
+    return { registrado: true, intentos: mismos().filter((r) => r.createdAtMs > ahora - 24 * 3600 * 1000 && !(r.despues ?? "").endsWith(":r")).length };
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {

@@ -29,6 +29,7 @@ declare
   v_props uuid[];
   v_n integer;
   v_clave bigint;
+  v_replays integer;
 begin
   if v_actor is null then
     raise exception 'restaurantes.registrar_acceso: requiere un actor autenticado (auth.uid() es NULL).' using errcode = '28000';
@@ -52,7 +53,7 @@ begin
     if p_llave is not null and p_llave not in ('correo', 'google', 'enlace', 'celular', 'otro') then
       raise exception 'restaurantes.registrar_acceso: canal de inicio de sesion invalido.' using errcode = '22023';
     end if;
-    -- Un login no tiene tope: se inserta y se sale sin recorrer la bitacora (devuelve 0).
+    -- Un login no tiene tope ni idempotencia: se inserta y se sale sin recorrer la bitacora (devuelve 0).
     insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
     values (p_organization_id, v_actor, p_action, 'acceso', null, left(coalesce(p_property_id::text, ''), 200), null, p_llave);
     return 0;
@@ -60,10 +61,16 @@ begin
   if p_llave is not null and p_llave !~ '^[A-Za-z0-9_-]{8,64}$' then
     raise exception 'restaurantes.registrar_acceso: llave de idempotencia invalida.' using errcode = '22023';
   end if;
-  -- La entidad debe existir en ESTA organizacion (pedido para llamar/ver telefono, cliente para la ficha).
+  -- La entidad debe existir en ESTA organizacion (y, para un pedido, en la sucursal indicada): pedido para llamar/ver telefono, cliente para la ficha.
+  -- Una membresia acotada exige indicar la sucursal (no se puede omitir para esquivar el chequeo de alcance).
+  if p_property_id is null and v_props is not null then
+    raise exception 'restaurantes.registrar_acceso: indica la sucursal.' using errcode = '22023';
+  end if;
   if p_action in ('pii.llamar', 'pii.telefono_ver') then
-    if p_entity_id is null or not exists (select 1 from restaurantes.orders o where o.id = p_entity_id and o.organization_id = p_organization_id) then
-      raise exception 'restaurantes.registrar_acceso: el pedido no pertenece a la organizacion.' using errcode = '22023';
+    if p_entity_id is null or p_property_id is null or not exists (
+      select 1 from restaurantes.orders o where o.id = p_entity_id and o.organization_id = p_organization_id and o.property_id = p_property_id
+    ) then
+      raise exception 'restaurantes.registrar_acceso: el pedido no pertenece a la organizacion y sucursal indicadas.' using errcode = '22023';
     end if;
   elsif p_action = 'pii.cliente_ficha' then
     if p_entity_id is null or not exists (select 1 from restaurantes.customers cu where cu.id = p_entity_id and cu.organization_id = p_organization_id) then
@@ -75,16 +82,28 @@ begin
   v_clave := hashtextextended(v_actor::text || '|' || p_action || '|' || coalesce(p_entity_id::text, ''), 0);
   perform pg_advisory_xact_lock(v_clave);
 
-  -- Idempotencia: la misma llave del mismo actor/accion/entidad no vuelve a registrar ni a consumir cupo.
-  if p_llave is null or not exists (
+  -- Idempotencia ACOTADA (la llave la controla el cliente, asi que no puede dar telefono ilimitado): solo cuenta como reintento si la misma llave
+  -- se uso hace menos de 10 min para esta entidad. Cada reintento SI deja fila en la bitacora (despues = llave || ':r') pero no consume cupo,
+  -- hasta 3 reintentos por llave; del cuarto en adelante la fila (llave || ':x') cuenta como una llamada normal contra el tope.
+  if p_llave is not null and exists (
     select 1 from restaurantes.audit_log a
     where a.organization_id = p_organization_id and a.actor_user_id = v_actor and a.entity_type = 'acceso'
       and a.action = p_action and a.entity_id is not distinct from p_entity_id and a.despues = p_llave
+      and a.created_at > now() - interval '10 minutes'
   ) then
+    select count(*)::integer into v_replays from restaurantes.audit_log a
+    where a.organization_id = p_organization_id and a.actor_user_id = v_actor and a.entity_type = 'acceso'
+      and a.action = p_action and a.entity_id is not distinct from p_entity_id and a.despues = p_llave || ':r'
+      and a.created_at > now() - interval '10 minutes';
+    insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
+    values (p_organization_id, v_actor, p_action, 'acceso', p_entity_id, left(coalesce(p_property_id::text, ''), 200), null,
+            p_llave || case when v_replays < 3 then ':r' else ':x' end);
+  else
     insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
     values (p_organization_id, v_actor, p_action, 'acceso', p_entity_id, left(coalesce(p_property_id::text, ''), 200), null, p_llave);
   end if;
 
+  -- Cupo: todas las filas salvo los reintentos gratuitos (':r'), en las ultimas 24 h.
   select count(*)::integer into v_n
     from restaurantes.audit_log a
     where a.organization_id = p_organization_id
@@ -92,7 +111,8 @@ begin
       and a.entity_type = 'acceso'
       and a.action = p_action
       and a.entity_id is not distinct from p_entity_id
-      and a.created_at > now() - interval '24 hours';
+      and a.created_at > now() - interval '24 hours'
+      and (a.despues is null or a.despues !~ ':r$');
   return v_n;
 end;
 $$;

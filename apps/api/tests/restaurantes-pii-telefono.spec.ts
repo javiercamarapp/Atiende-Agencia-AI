@@ -86,14 +86,16 @@ describe("POST repartidor/orders/:orderId/llamar", () => {
     expect(await res.text()).not.toContain(TELEFONO);
   });
 
-  it("la misma llave de idempotencia (reintento por mala red) no consume cupo ni duplica la fila", async () => {
+  it("la misma llave: los primeros reintentos no consumen cupo, pero la misma llave 20 veces NO da telefono ilimitado (acaba en 429) y todo queda en la bitacora", async () => {
     const { ctx, order, app } = await conPedidoAsignado();
     const conLlave = (llave: string) => app.request(ruta(ctx, order.id), { ...authedJson(ctx.staff.repartidor.token, {}, "POST"), headers: { ...(authedJson(ctx.staff.repartidor.token, {}, "POST").headers as Record<string, string>), "Idempotency-Key": llave } });
-    for (let i = 0; i < MAX_LLAMADAS_POR_PEDIDO + 3; i += 1) expect((await conLlave("llave-reintento-1")).status).toBe(200);
-    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar")).toHaveLength(1);
-    // Llaves distintas si cuentan: el tope sigue vigente.
-    for (let i = 0; i < MAX_LLAMADAS_POR_PEDIDO - 1; i += 1) expect((await conLlave(`llave-nueva-${i}-xx`)).status).toBe(200);
-    expect((await conLlave("llave-excedente-1")).status).toBe(429);
+    const estados: number[] = [];
+    for (let i = 0; i < 20; i += 1) estados.push((await conLlave("llave-reintento-1")).status);
+    expect(estados.slice(0, 4)).toEqual([200, 200, 200, 200]);
+    expect(estados.filter((e) => e === 200).length).toBeLessThanOrEqual(MAX_LLAMADAS_POR_PEDIDO + 3);
+    expect(estados.at(-1)).toBe(429);
+    // Cada entrega de telefono deja fila (los reintentos gratuitos tambien).
+    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar")).toHaveLength(20);
   });
 
   it("el cupo es por pedido y por repartidor: otro pedido propio parte de cero; el pedido de OTRO repartidor de la misma sucursal es 404", async () => {

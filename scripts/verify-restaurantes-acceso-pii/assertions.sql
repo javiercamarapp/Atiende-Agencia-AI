@@ -110,6 +110,17 @@ select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00
 select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-uno-abcdef') as deberia_ser_1;
 select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-dos-abcdef') as deberia_ser_2; rollback;
 
+\echo '--- 11. la MISMA llave 20 veces no da acceso ilimitado: el conteo final debe pasar de 5 (REPLAY_ACOTADO deberia_ser_true) ---'
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+do $$ declare i int; n int; begin for i in 1..20 loop n := restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e2', 'llave-abusiva-1'); end loop; raise notice 'REPLAY_ACOTADO ultimo conteo=% deberia_ser_true=%', n, n > 5; end $$;
+rollback;
+
+\echo '--- 12. pedido de otra sucursal (22023) y membresia acotada sin sucursal (22023) ---'
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000031', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f2', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', null); rollback;
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', null); rollback;
+
 \echo '--- 10. (098) sesion.login: devuelve 0 sin contar; canal del catalogo; canal libre -> 22023 ---'
 begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
 select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'sesion.login', null, 'correo') as deberia_ser_0;
