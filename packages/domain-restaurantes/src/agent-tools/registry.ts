@@ -45,7 +45,7 @@ import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
 import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { acumuladoReciente, evaluarPedidoGrande, PEDIDO_GRANDE_KG, PEDIDO_GRANDE_TOTAL_MXN, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { acumuladoReciente, evaluarPedidoGrande, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
 import { parsearProgramadoPara } from "../pedidos-programados.ts";
@@ -261,7 +261,7 @@ export type MotivoEscalacion = (typeof MOTIVOS_ESCALACION)[number];
 
 /** Motivos que el sistema usa por su cuenta (vueltas agotadas, limites de la llamada) y que NO se ofrecen al modelo: PM Ronda 12 (T7-008 Luna r1) el modelo escalaba
  * `no_puedo_resolver` ante un producto que no existe ("chistorra") y la toma callaba al agente. Siguen siendo motivos validos (`normalizarMotivoEscalacion`). */
-export const MOTIVOS_SOLO_DEL_SISTEMA: ReadonlySet<string> = new Set(["no_puedo_resolver", "pedido_grande"]);
+export const MOTIVOS_SOLO_DEL_SISTEMA: ReadonlySet<string> = new Set(["no_puedo_resolver"]);
 
 /** PM R21 (T7-061): `pedido_grande` lo fija SOLO el servidor al superar el umbral (cotizar/crear). Si el modelo lo manda en `escalar_a_humano` se rechaza: una compra
  * normal escalada asi abria una toma de handoff y el «sí» del resumen ya no creaba el pedido. */
@@ -281,12 +281,24 @@ export function solicitudEsPedidoGrande(texto: string): boolean {
 
 async function servidorConfirmaPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext): Promise<boolean> {
   if (ctx.pedidoGrandeDelServidor === true) return true;
+  // Sin flujo de pedido (voz, otros llamadores): no hay con que contrastar y NO se rechaza a ciegas (el servidor de `crear_pedido` retiene el pedido grande por su cuenta).
+  if (!ctx.flow) return true;
   // La solicitud del propio cliente (sus ultimos mensajes) ya pide una cantidad de pedido grande: el servidor lo reconoce sin esperar a la cotizacion.
   if ((ctx.conversacionReciente ?? []).filter((m) => m.role === "user").slice(-3).some((m) => solicitudEsPedidoGrande(m.content))) return true;
-  if (!ctx.flow) return false;
   const contexto = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context;
-  if (!contexto) return false;
-  return (contexto.quotedTotal ?? 0) + (contexto.sessionTotal ?? 0) > PEDIDO_GRANDE_TOTAL_MXN || (contexto.sessionPesoKg ?? 0) > PEDIDO_GRANDE_KG;
+  if (!contexto || typeof contexto.quotedTotal !== "number") return false;
+  // Misma regla que el servidor aplica al crear: total acumulado, kilos y (sin historial y en efectivo) el umbral menor.
+  const cliente = ctx.phone ? await repo.findCustomerByPhone(ctx.organizationId, normalizePhone(ctx.phone)).catch(() => null) : null;
+  const sesionPedidos = contexto.sessionPedidos ?? 0;
+  const pesoKg = pesoTotalKg((contexto.quotedItems ?? []).map((i) => ({ name: i.name, quantity: i.qty }))) + (contexto.sessionPesoKg ?? 0);
+  return (
+    evaluarPedidoGrande({
+      total: Math.round((contexto.quotedTotal + (contexto.sessionTotal ?? 0)) * 100) / 100,
+      pesoKg,
+      pagaEfectivo: contexto.quotedPago === "efectivo",
+      sinHistorial: !cliente || cliente.orderCount - sesionPedidos <= 0,
+    }) !== null
+  );
 }
 
 export const MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR = "El motivo pedido_grande lo fija el sistema al superar el umbral; no lo use. Si el cliente quiere cerrar su pedido, siga con cotizar_pedido y crear_pedido. Si necesita una persona por otra razón, use el motivo que corresponda (por ejemplo pedido_especial u otro).";
@@ -505,7 +517,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
           type: "string",
           enum: MOTIVOS_ESCALACION.filter((m) => !MOTIVOS_SOLO_DEL_SISTEMA.has(m)),
           description:
-            "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, tiempos_entrega (exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
+            "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande (SOLO si pide mas de 30 piezas, mas de 5 kg o la cotizacion pasa de $4,000; el servidor lo valida y rechaza una compra normal) / tiempos_entrega (exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
         },
         resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente. No escriba «no se ha cotizado» si ya cotizó: ponga lo cotizado. Si quiere CANCELAR un pedido ya registrado, diga «cancelar» en el resumen (el sistema usa la frase de cancelación); si solo agrega o cambia algo, no use esa palabra." },
       },

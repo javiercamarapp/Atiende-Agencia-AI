@@ -18,10 +18,10 @@ const cotizar = (v: Viaje, cantidad = 1) => ({ name: "cotizar_pedido", args: { b
 const motivos = (v: Viaje) => v.callbacks.map((c) => c.reason);
 
 describe("T7-061: pedido_grande solo lo fija el servidor", () => {
-  it("el enum de la herramienta para el modelo ya no ofrece pedido_grande", () => {
+  it("el enum sigue ofreciendo pedido_grande (el prompt lo pide) pero su descripcion lo acota", () => {
     const def = toolDefinitionsForChannel("whatsapp").find((t) => t.name === "escalar_a_humano")!;
     const enumMotivos = (def.parameters.properties.motivo as { enum: string[] }).enum;
-    expect(enumMotivos).not.toContain("pedido_grande");
+    expect(enumMotivos).toContain("pedido_grande");
     expect(enumMotivos).toContain("tiempos_entrega");
   });
 
@@ -54,9 +54,9 @@ describe("T7-061: pedido_grande solo lo fija el servidor", () => {
 });
 
 describe("T7-061: el «sí» al resumen con una toma pendiente crea el pedido (sin duplicar)", () => {
-  async function cotizadoConTomaPendiente(): Promise<Viaje> {
+  async function cotizadoConTomaPendiente(motivo = "modificacion_platillo"): Promise<Viaje> {
     const v = await nuevoViaje();
-    v.guion([{ tools: [cotizar(v)] }, { tools: [{ name: "escalar_a_humano", args: { motivo: "modificacion_platillo", resumen: "Nota de acceso: tocar timbre" } }] }, { texto: "Permítame repetirle su pedido:\n- 1 Pastor — 500 g\nTotal a pagar: $450.00 en efectivo, para recoger.\n¿Es correcto?" }]);
+    v.guion([{ tools: [cotizar(v)] }, { tools: [{ name: "escalar_a_humano", args: { motivo, resumen: "Nota de acceso: tocar timbre" } }] }, { texto: "Permítame repetirle su pedido:\n- 1 Pastor — 500 g\nTotal a pagar: $450.00 en efectivo, para recoger.\n¿Es correcto?" }]);
     await v.escribe("quiero medio kilo de pastor para recoger");
     expect(v.conversaciones.handoffs[0]?.estado).toBe("pendiente");
     return v;
@@ -81,6 +81,45 @@ describe("T7-061: el «sí» al resumen con una toma pendiente crea el pedido (s
     expect(r.reply).toBe(ACUSE_HANDOFF_REPETIDO);
     expect(v.requests.length).toBe(antes);
     expect(await pedidosDe(v)).toHaveLength(0);
+  });
+
+  it.each(["alergia_salud", "transferencia", "cancelacion_modificacion", "urgencia", "queja"])("toma por motivo critico (%s): el «sí» NO pasa al agente y no se crea pedido", async (motivo) => {
+    const v = await cotizadoConTomaPendiente(motivo);
+    expect(v.conversaciones.handoffs[0]?.estado).toBe("pendiente");
+    const antes = v.requests.length;
+    const r = await v.escribe("Sí, es correcto");
+    expect(r.reply).toBe(ACUSE_HANDOFF_REPETIDO);
+    expect(v.requests.length).toBe(antes);
+    expect(await pedidosDe(v)).toHaveLength(0);
+  });
+
+  it.each(["claro que no", "ok cancela el pedido", "va a tardar mucho", "sí pero cambie a transferencia", "sí quiero cancelar", "no, mejor no"])("«%s» no cuenta como el «sí» al resumen", async (texto) => {
+    const v = await cotizadoConTomaPendiente();
+    const antes = v.requests.length;
+    const r = await v.escribe(texto);
+    expect(r.reply).toBe(ACUSE_HANDOFF_REPETIDO);
+    expect(v.requests.length).toBe(antes);
+  });
+
+  it("una cotizacion vencida (mas de 20 min) tampoco deja pasar el «sí»", async () => {
+    const v = await cotizadoConTomaPendiente();
+    vi.setSystemTime(new Date(Date.now() + 21 * 60_000));
+    const antes = v.requests.length;
+    await v.escribe("Sí, es correcto");
+    expect(v.requests.length).toBe(antes);
+    expect(await pedidosDe(v)).toHaveLength(0);
+  });
+
+  it("un segundo «sí» con OTRO messageId tras crearse el pedido no crea un segundo pedido", async () => {
+    const v = await cotizadoConTomaPendiente();
+    v.guion([{ tools: [{ name: "confirmar_resumen", args: {} }] }, { tools: [crear(v)] }, { texto: "Listo, su pedido quedó registrado." }]);
+    await v.escribe("Sí, es correcto", { messageId: "wamid.si-A" });
+    expect(await pedidosDe(v)).toHaveLength(1);
+    const antes = v.requests.length;
+    vi.setSystemTime(new Date(Date.now() + 2 * 60_000));
+    await v.escribe("Sí, es correcto", { messageId: "wamid.si-B" });
+    expect(v.requests.length).toBe(antes);
+    expect(await pedidosDe(v)).toHaveLength(1);
   });
 
   it("sin pedido cotizado, hasta un «sí» sigue por la toma pendiente (comportamiento de siempre)", async () => {

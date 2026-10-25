@@ -28,6 +28,8 @@ describe("afirmaPedidoProgramado", () => {
     "Lo dejaré programado en cuanto me confirme.",
     "Le repito su pedido: 2 tacos. Total $84.00. ¿Está correcto?",
     "La sucursal abre a las 12:00 p. m.; si quiere, el pedido se puede programar.",
+    "Para que lo deje programado necesito su sí.",
+    "Su pedido anterior quedó programado para las 12:00.",
     "Programar un pedido es posible hasta con 7 días de anticipación.",
     "",
   ])("no afirma: %s", (t) => {

@@ -239,7 +239,9 @@ export function afirmaPedidoProgramado(frase: string): boolean {
   const t = normalizarParaClasificar(frase);
   if (/[?¿]/.test(frase)) return false;
   if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
-  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se|puedo|podemos)|todavia\s+no|aun\s+no|quedaria|quedarian|podria|podrian|puedo|podemos|va\s+a|van\s+a|vamos\s+a|pudo|tampoco|nunca|dejare|dejaremos|programare|agendare|quede|quedara)\b/.test(t)) return false;
+  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se|puedo|podemos)|todavia\s+no|aun\s+no|quedaria|quedarian|podria|podrian|puedo|podemos|va\s+a|van\s+a|vamos\s+a|pudo|tampoco|nunca|dejare|dejaremos|programare|agendare|quede|quedara|que\s+(?:lo\s+|la\s+)?deje|que\s+(?:lo\s+|la\s+)?dejemos)\b/.test(t)) return false;
+  // «su pedido anterior quedó programado» habla de OTRO pedido ya creado, no del que se esta armando.
+  if (/\b(?:anterior|previo|pasado|de\s+ayer|otro\s+pedido|primer\s+pedido)\b/.test(t)) return false;
   const patrones: RegExp[] = [
     // «lo dejé programado», «la dejamos agendada», «dejé programado su pedido»
     /(?<!\bno\s+(?:lo\s+|la\s+|le\s+)?)\b(?:deje|dejamos)\s+(?:ya\s+)?(?:programad|agendad)[oa]s?\b/,

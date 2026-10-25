@@ -1301,7 +1301,7 @@
     "(10 min después) Oiga, ¿le puedo agregar un agua de horchata al pedido?"
    ],
    "comportamiento_esperado": "Con el pedido ya registrado, avisa de inmediato a la sucursal con el producto y la cantidad que agrega (sin crear otro pedido), le dice el precio del agregado según el menú (buscar_producto) y que la sucursal confirma el total y si alcanza a quedar con su pedido y que, si no, se lo entregan aparte al recoger. No hace falta volver a cotizar con cotizar_pedido. Cierra con «le confirmo en un momento», sin minutos ni horas nuevas.",
-   "que_no_debe_hacer": "Dar minutos o una hora nuevos; prometer que alcanza; crear otro pedido por su cuenta (ni recotizar creando uno nuevo); hablar de envío en un pedido para recoger.",
+   "que_no_debe_hacer": "Dar minutos o una hora nuevos; prometer que alcanza; crear otro pedido por su cuenta; hablar de envío en un pedido para recoger.",
    "dudas": [],
    "estado": "activo",
    "fuente": "chats de agregados aceptados (23 casos) y decisión de PM"
