@@ -1,0 +1,79 @@
+-- Verifica contra Postgres REAL (GRANT/RLS/auth.uid() reales) la migracion 097: restaurantes.registrar_acceso.
+--   1. repartidor real de la org A registra 'pii.llamar' en su sucursal -> devuelve 1, 2 (conteo por actor/accion/entidad); la fila
+--      queda con entity_type 'acceso' y NUNCA guarda un telefono.
+--   2. sucursal fuera de su alcance (property_ids acotado) -> 42501.
+--   3. cross-tenant (owner de la org B sobre la org A) -> 42501.
+--   4. sin sesion (auth.uid() nulo) -> 28000; anon sin EXECUTE.
+--   5. accion fuera del catalogo cerrado -> 22023.
+--   6. la bitacora de accesos la LEEN owner/admin, no staff ni repartidor (RLS de 019).
+\set ON_ERROR_STOP off
+\pset pager off
+
+insert into core.organization (id, vertical, name, slug) values
+  ('00000000-0000-0000-0000-0000000000d1', 'restaurantes', 'Org A (acceso pii)', 'org-a-acceso-pii'),
+  ('00000000-0000-0000-0000-0000000000d2', 'restaurantes', 'Org B (acceso pii, ajena)', 'org-b-acceso-pii')
+on conflict do nothing;
+insert into core.staff_user (id, email, full_name, created_via) values
+  ('00000000-0000-0000-0000-000000000031', 'owner-a-pii@example.com', 'Owner A', 'seed'),
+  ('00000000-0000-0000-0000-000000000032', 'staff-a-pii@example.com', 'Staff A', 'seed'),
+  ('00000000-0000-0000-0000-000000000033', 'repartidor-a-pii@example.com', 'Repartidor A', 'seed'),
+  ('00000000-0000-0000-0000-000000000034', 'owner-b-pii@example.com', 'Owner B', 'seed')
+on conflict do nothing;
+insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
+  ('00000000-0000-0000-0000-000000000031', '00000000-0000-0000-0000-0000000000d1', null, 'owner', 'owner'),
+  ('00000000-0000-0000-0000-000000000032', '00000000-0000-0000-0000-0000000000d1', null, 'member', 'staff'),
+  ('00000000-0000-0000-0000-000000000033', '00000000-0000-0000-0000-0000000000d1', array['00000000-0000-0000-0000-0000000000f1']::uuid[], 'member', 'repartidor'),
+  ('00000000-0000-0000-0000-000000000034', '00000000-0000-0000-0000-0000000000d2', null, 'owner', 'owner')
+on conflict do nothing;
+
+\echo '--- 1. repartidor registra dos llamadas: conteo 1 y 2 (deberia_ser_1, deberia_ser_2) y la fila es de tipo acceso ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', null) as deberia_ser_1;
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', null) as deberia_ser_2;
+reset role;
+select count(*) as deberia_ser_2 from restaurantes.audit_log where entity_type = 'acceso' and actor_user_id = '00000000-0000-0000-0000-000000000033';
+rollback;
+
+\echo '--- 2. should_fail (42501): sucursal fuera del alcance acotado del repartidor ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f2', 'pii.llamar', null, null);
+rollback;
+
+\echo '--- 3. should_fail (42501): owner de la org B sobre la org A ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000034', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'pii.llamar', null, null);
+rollback;
+
+\echo '--- 4. should_fail: sin sesion (28000) y anon (permission denied) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'pii.llamar', null, null);
+rollback;
+begin;
+set local role anon;
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'pii.llamar', null, null);
+rollback;
+
+\echo '--- 5. should_fail (22023): accion fuera del catalogo cerrado ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000031', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'pii.inventada', null, null);
+rollback;
+
+\echo '--- 6. lectura: owner ve la fila (deberia_ser_1); staff y repartidor ven 0 ---'
+insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo)
+values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-000000000033', 'pii.llamar', 'acceso', '00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000f1');
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000031', true);
+select count(*) as deberia_ser_1 from restaurantes.audit_log where entity_type = 'acceso'; rollback;
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000032', true);
+select count(*) as deberia_ser_0 from restaurantes.audit_log where entity_type = 'acceso'; rollback;
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select count(*) as deberia_ser_0 from restaurantes.audit_log where entity_type = 'acceso'; rollback;
