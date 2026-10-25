@@ -37,3 +37,15 @@ export function parseBranchId(raw: string | undefined): string | null {
   if (raw.length > 200) throw Errors.validation("branchId inválido.");
   return raw;
 }
+
+/**
+ * Catalogo, precios, promociones globales y configuracion del agente/canales son de TODA la organizacion (no existe "precio de una sola
+ * sucursal" en esas filas). Un admin con membresia acotada (`property_ids`) solo gobierna sus sucursales, asi que estas escrituras exigen
+ * owner/admin con alcance de toda la organizacion (`property_ids` nulo). 403 claro, nunca un cambio silencioso a las demas sucursales.
+ * Lo que SI es por sucursal (precio/disponibilidad en una sucursal de su alcance, datos de la sucursal, promociones acotadas) sigue como antes.
+ */
+export async function assertAdminGeneral(deps: AppDeps, c: Context<CoreAuthHonoEnv>): Promise<void> {
+  const alcance = await resolveEffectivePropertyIds(deps, c, c.get("organizationId"), null);
+  if (alcance === null) return;
+  throw Errors.forbidden("Tu acceso está limitado a algunas sucursales: solo el dueño o un administrador con acceso a todas puede cambiar esto, porque afecta a toda la organización.");
+}
