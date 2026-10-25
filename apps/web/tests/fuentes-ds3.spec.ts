@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 const RAIZ = join(__dirname, "../../..");
 const FUENTES = join(RAIZ, "apps/web/public/fonts");
+const CSS_FUENTES = join(RAIZ, "apps/web/src/fuentes-ds3.css");
 const SANS = ["hankengrotesk-400.woff2", "hankengrotesk-500.woff2", "hankengrotesk-600.woff2"];
 const MONO = ["ibmplexmono-400.woff2", "ibmplexmono-500.woff2"];
 
@@ -112,8 +113,9 @@ describe("fuentes autoalojadas ds3", () => {
     expect(origen).toContain("@fontsource/ibm-plex-mono");
   });
 
-  it("index.css declara las 5 caras con font-display swap y cada url apunta a un archivo existente", () => {
-    const css = readFileSync(join(RAIZ, "packages/ui/src/index.css"), "utf8");
+  it("fuentes-ds3.css declara las 5 caras con font-display swap y cada url apunta a un archivo existente", () => {
+    const css = readFileSync(CSS_FUENTES, "utf8");
+    expect(readFileSync(join(RAIZ, "apps/web/src/index.css"), "utf8")).toContain('@import "./fuentes-ds3.css"');
     const urls = [...css.matchAll(/url\("\/fonts\/((?:hankengrotesk|ibmplexmono)-\d+\.woff2)"\)/g)].map((m) => m[1]!);
     expect(urls.sort()).toEqual([...SANS, ...MONO].sort());
     const caras = css.split("@font-face").slice(1).filter((c) => /hankengrotesk|ibmplexmono/.test(c));
