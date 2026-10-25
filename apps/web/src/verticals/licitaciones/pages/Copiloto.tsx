@@ -1,4 +1,4 @@
-// Copiloto ("Pregunta a tus datos") de licitaciones: conecta la pagina generica `CopilotoPage` con la API real
+// Copiloto ("Pregúntale a tus datos") de licitaciones: conecta la pagina generica `CopilotoPage` con la API real
 // `/licitaciones/:propertyId/chat-datos` (sesion con refresh de `defaultAuthCtx`). El alcance (organizacion) y el rol los decide el
 // servidor a partir del token: licitaciones deja pasar a TODO rol de la vertical (la lectura ya es de todo miembro por RLS); un
 // usuario que el servidor rechace (403 en /estado) ve el estado "Sin acceso" de la pagina generica.

@@ -343,7 +343,7 @@ const RestaurantesPrimerosPasosRoute = shellRoute(RestaurantesShell, "/restauran
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
 // R-16: avisos del staff (Mis avisos para todos; matriz del equipo y umbral de entrega tardia para owner/admin).
 const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAvisosPage {...ctx} />);
-// CHAT-08 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de restaurantes.
+// CHAT-08 -- Copiloto ("Pregúntale a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de restaurantes.
 const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCopilotoPage {...ctx} />);
 // CFO-07 -- apartado CFO (Resumen, Ventas, Sucursales, Estado de resultados); owner/admin (el marco también lo exige: fail-closed).
 const RestaurantesCfoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCfoPage {...ctx} />);
@@ -621,7 +621,7 @@ function HotelesLoginRoute() {
  * verticals/hoteles/pages/Dashboard.tsx para el detalle de las dos variantes por
  * rol. */
 const HotelesDashboardRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesDashboardPage {...ctx} />);
-// CHAT-09 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de hoteles (solo owner/gm).
+// CHAT-09 -- Copiloto ("Pregúntale a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de hoteles (solo owner/gm).
 const HotelesCopilotoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesCopilotoPage {...ctx} />);
 const HotelesReservasRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <ReservasPage {...ctx} />);
 
@@ -791,7 +791,7 @@ const RentasPrivacidadOrganizacionRoute = shellRoute(RentasShell, "/rentas/login
 const RentasAuditoriaRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAuditoriaPage {...ctx} />);
 /** Rn-19 -- catálogo (propiedades, unidades, propietarios) y Rn-20 -- equipo (invitar, rol, baja). */
 const RentasCatalogoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasCatalogoPage {...ctx} />);
-// CHAT-10 -- Copiloto ("Pregunta a tus datos") de rentas: pagina generica de @atiende/ui conectada al chat-datos real (admin_gestora/contador).
+// CHAT-10 -- Copiloto ("Pregúntale a tus datos") de rentas: pagina generica de @atiende/ui conectada al chat-datos real (admin_gestora/contador).
 const RentasCopilotoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasCopilotoPage {...ctx} />);
 const RentasEquipoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasEquipoPage {...ctx} />);
 
@@ -836,7 +836,7 @@ function CitasRootRedirect() {
 }
 
 const CitasResumenRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasResumenPage {...ctx} />);
-// CHAT-13 -- Copiloto ("Pregunta a tus datos") de citas: pagina generica de @atiende/ui conectada al chat-datos real (solo owner/admin).
+// CHAT-13 -- Copiloto ("Pregúntale a tus datos") de citas: pagina generica de @atiende/ui conectada al chat-datos real (solo owner/admin).
 const CitasCopilotoRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasCopilotoPage {...ctx} />);
 // C-06 -- checklist de primeros pasos (owner/admin; la pagina gatea por rol).
 const CitasPrimerosPasosRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrimerosPasosPage {...ctx} />);
@@ -943,7 +943,7 @@ const LicitacionesRadarRenovacionesRoute = shellRoute(LicitacionesShell, "/licit
 const LicitacionesPerfilMatchingRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PerfilMatchingPage {...ctx} />);
 const LicitacionesDatosEmpresaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <DatosEmpresaPage {...ctx} />);
 // L-01: verificación en dos pasos + cierre de otras sesiones.
-// CHAT-12 -- Copiloto ("Pregunta a tus datos") de licitaciones: pagina generica de @atiende/ui conectada al chat-datos real.
+// CHAT-12 -- Copiloto ("Pregúntale a tus datos") de licitaciones: pagina generica de @atiende/ui conectada al chat-datos real.
 const LicitacionesCopilotoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesCopilotoPage {...ctx} />);
 const LicitacionesPanelRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesPanelPage {...ctx} />);
 const LicitacionesFuentesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <FuentesFrescuraPage {...ctx} />);
@@ -1009,7 +1009,7 @@ function DespachosRootRedirect() {
 }
 
 const DespachosDashboardRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosDashboardPage {...ctx} />);
-// CHAT-11 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de despachos (admin, contador, auditor, readonly).
+// CHAT-11 -- Copiloto ("Pregúntale a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de despachos (admin, contador, auditor, readonly).
 const DespachosCopilotoRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosCopilotoPage {...ctx} />);
 const DespachosReportesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosReportesPage {...ctx} />);
 const DespachosCierreMensualRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualPage {...ctx} />);

@@ -156,6 +156,7 @@ function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onN
     <>
       {Icono ? <Icono aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : null}
       <span className="truncate">{pildora.label}</span>
+      {pildora.indicador ? <span data-testid="pildora-indicador" aria-label="Hay pendientes" className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
     </>
   );
   const clase = cn(claseFilaHoja, "w-full text-foreground hover:bg-muted-foreground/10");
@@ -216,7 +217,7 @@ export function MobileHeader({
       data-testid="mobile-header"
       className="md:hidden fixed inset-x-0 top-0 z-40 bg-card safe-area-top pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
-      <header className="md:hidden flex min-h-14 items-center justify-between border-b border-border px-4">
+      <header className="md:hidden flex min-h-12 items-center justify-between border-b border-border px-4">
         {title}
         {action}
       </header>

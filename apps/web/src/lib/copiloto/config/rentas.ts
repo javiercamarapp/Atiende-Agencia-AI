@@ -15,7 +15,7 @@ export const SUGERENCIAS_COPILOTO_RENTAS: readonly string[] = [
 export const COPILOTO_RENTAS: CopilotoConfigVertical = {
   vertical: "rentas",
   textos: {
-    titulo: "Pregunta a tus datos",
+    titulo: "Pregúntale a tus datos",
     subtitulo: "Tu ocupación, ingresos y operación, con la cifra que ya calculó el sistema.",
     nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números.",
     placeholder: "Pregunta sobre tus propiedades…",

@@ -9,7 +9,7 @@ export interface MobileAccountMenuProps {
   onLogout: () => void;
   /** Mientras el cierre de sesión está en vuelo: deshabilita el botón y cambia su texto. */
   loggingOut?: boolean;
-  /** Controles extra de la cuenta (p. ej. el botón "Chatea con tus datos"). */
+  /** Controles extra de la cuenta (p. ej. el botón "Pregúntale a tus datos"). */
   children?: ReactNode;
 }
 
@@ -28,7 +28,7 @@ export function MobileAccountMenu({ user, onLogout, loggingOut = false, children
         onClick={() => setAbierto(true)}
         aria-label="Abrir menú de cuenta"
         aria-haspopup="dialog"
-        className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+        className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
       >
         <UserRound className="w-5 h-5" strokeWidth={1.75} />
       </button>

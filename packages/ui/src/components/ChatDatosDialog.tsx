@@ -1,4 +1,4 @@
-// Dialogo de "Chatea con tus datos": presentacional (sin red ni estado de negocio). El shell de cada
+// Dialogo de "Pregúntale a tus datos": presentacional (sin red ni estado de negocio). El shell de cada
 // vertical lo conecta a su API; el motor y el catalogo viven en el backend (docs/DATA-CHAT.md).
 // Muestra lo que el servidor ya verifico: las tablas y graficas salen de los RESULTADOS de las
 // consultas (nunca del texto del modelo) y cada respuesta cita de que datos sale, el periodo y el
@@ -265,7 +265,7 @@ export function ChatDatosDialog({ open, onOpenChange, nombreNegocio, mensajes, e
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
-            Chatea con tus datos
+            Pregúntale a tus datos
           </DialogTitle>
           <DialogDescription>
             Pregunta sobre {nombreNegocio ?? "tu negocio"}. Solo consulto tus datos (no modifico nada) y siempre te digo de dónde salen las cifras.
