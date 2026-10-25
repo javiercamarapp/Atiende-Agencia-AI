@@ -187,3 +187,24 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033
 select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', null) as should_fail;
 rollback;
 
+\echo '--- 13. (098) sesion.login con canal del catalogo devuelve 0 (deberia_ser_0) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'sesion.login', null, 'correo') as deberia_ser_0;
+rollback;
+
+\echo '--- 13b. (098) sesion.login sin canal devuelve 0 (deberia_ser_0) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'sesion.login', null, null) as deberia_ser_0;
+rollback;
+
+\echo '--- 13c. should_fail (22023): sesion.login con texto libre -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'sesion.login', null, '/auth/login 1.2.3.4') as should_fail;
+rollback;
+

@@ -2254,6 +2254,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!this.bitacoraAccesoDisponible) return { registrado: false, intentos: 0 };
     const mismos = () => this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId);
     const llave = input.llave ?? null;
+    // `sesion.login` no usa idempotencia ni conteo (la llave es el canal de entrada del catalogo; devuelve 0).
+    if (input.action === "sesion.login") {
+      await this.registrarAuditoria({ organizationId: input.organizationId, actorUserId: input.actorUserId, action: input.action, entityType: "acceso", entityId: input.entityId, campo: input.propertyId, despues: llave });
+      return { registrado: true, intentos: 0 };
+    }
     const ahora = Date.now();
     // Idempotencia ACOTADA (espejo de la 097): reintento = misma llave en < 10 min; deja fila ':r' sin consumir cupo, max 3 por llave; luego ':x' (cuenta).
     let despues: string | null = llave;
