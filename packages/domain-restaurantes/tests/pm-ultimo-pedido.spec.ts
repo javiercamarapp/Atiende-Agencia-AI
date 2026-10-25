@@ -497,3 +497,31 @@ describe("estado de la sucursal en el prompt de WhatsApp con hora fija por tipo"
     expect(await prompt(T7, merida("2026-10-20", "20:00"))).toMatch(/el último pedido se toma hasta las 00:30/);
   });
 });
+
+describe("dia de NEGOCIO para domicilioDisponible (madrugada 00:00-01:00 con diasDomicilio restringido)", () => {
+  // 2026-10-27 es martes: a las 00:20 el turno que sigue abierto es el del LUNES (cierra 01:00); 2026-10-26 es lunes y su madrugada pertenece al DOMINGO.
+  async function conDias(instante: Date, diasDomicilio: number[]) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const f = buildRestaurantFixture();
+    f.repo.seedBranchPolicy(f.propertyId, { horario: T7F, aceptaDomicilio: true, diasDomicilio });
+    await f.repo.upsertBranchZonaHoraria(f.propertyId, ZONA);
+    vi.setSystemTime(instante);
+    const herramienta = (await invokeAgentTool(f.repo, { organizationId: f.organizationId, channel: "whatsapp", phone: "9991234567" }, "consultar_sucursal", { branch_slug: "fco-montejo" })).result;
+    const branch = (await f.repo.findBranch(f.organizationId, { slug: "fco-montejo" }))!;
+    return { herramienta, prompt: await estadoSucursalParaPrompt(f.repo, branch, instante) };
+  }
+
+  it("00:20 del martes con domicilio solo los lunes: el turno es del lunes, el domicilio SI se menciona (consultar_sucursal y prompt)", async () => {
+    const r = await conDias(merida("2026-10-27", "00:20"), [1]);
+    expect(r.herramienta).toMatchObject({ ultimo_pedido_domicilio_a: "23:15", ultimo_pedido_domicilio_a_texto: "23:15" });
+    expect((r.herramienta as { ultimo_pedido_frase: string }).ultimo_pedido_frase).toContain("a domicilio a las 23:15");
+    expect(r.prompt).toContain("a domicilio a las 23:15");
+  });
+
+  it("00:20 del lunes con domicilio solo los lunes: la madrugada es del domingo, el domicilio NO se menciona", async () => {
+    const r = await conDias(merida("2026-10-26", "00:20"), [1]);
+    expect(r.herramienta).toMatchObject({ ultimo_pedido_domicilio_a: null, ultimo_pedido_domicilio_a_texto: null });
+    expect((r.herramienta as { ultimo_pedido_frase: string }).ultimo_pedido_frase).not.toContain("a domicilio");
+    expect(r.prompt).not.toContain("a domicilio a las 23:15");
+  });
+});

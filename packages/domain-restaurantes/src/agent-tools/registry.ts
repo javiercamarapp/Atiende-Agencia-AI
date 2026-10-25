@@ -32,7 +32,7 @@ import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composici
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
 import { avisoUnidadPorTabla } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
-import { componentesLocales, estaAbiertoAhora, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
+import { componentesLocales, estaAbiertoAhora, aperturaConExcepciones, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { assignBranch, radioRepartoDelPerfil } from "../branch-assignment.ts";
@@ -1767,7 +1767,9 @@ async function dispatchTool(
       const up = ultimoPedido;
       const porTipo = up !== null && tieneUltimoPedidoPorTipo(up);
       const ultimoGeneralA = up === null ? null : porTipo ? (up.recoger.ultimoPedidoA ?? up.domicilio.ultimoPedidoA) : up.ultimoPedidoA;
-      const domicilioDisponible = evaluarDomicilioSucursal(policy, componentesLocales(ahora, zona).dia).acepta;
+      // Dia de NEGOCIO (no calendario): a las 00:30 del martes con turno del lunes abierto, "hoy" para diasDomicilio es lunes (mismo criterio que reglas-pedido.ts).
+      const diaNegocioAhora = policy.horario && policy.horario.length > 0 ? aperturaConExcepciones(policy.horario, [], ahora, zonaCruda).diaNegocio : componentesLocales(ahora, zona).dia;
+      const domicilioDisponible = evaluarDomicilioSucursal(policy, diaNegocioAhora).acepta;
       const parte = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es-MX", { timeZone: zona, hourCycle: "h23", ...opts }).format(ahora);
       const result = {
         hora_local: parte({ hour: "2-digit", minute: "2-digit" }),

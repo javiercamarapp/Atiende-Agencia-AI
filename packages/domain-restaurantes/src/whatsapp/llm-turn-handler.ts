@@ -44,7 +44,7 @@ import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRep
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
-import { componentesLocales, estaAbiertoAhora, evaluarUltimoPedido, fraseUltimoPedido, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
+import { aperturaConExcepciones, estaAbiertoAhora, evaluarUltimoPedido, fraseUltimoPedido, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
@@ -312,7 +312,8 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
         const ultimo = evaluarUltimoPedido(policy.horario, ahora, zona);
         // Hora fija de ultimo pedido por tipo (domicilio / recoger): el agente da cierre y ultimo pedido del tipo que le interesa al cliente. Misma frase que consultar_sucursal.
         if (tieneUltimoPedidoPorTipo(ultimo)) {
-          const domicilioDisponible = evaluarDomicilioSucursal(policy, componentesLocales(ahora, resolverZonaHorariaNegocio(zona)).dia).acepta;
+          // Dia de NEGOCIO (no calendario): en la madrugada del turno de ayer rigen los diasDomicilio de ayer.
+          const domicilioDisponible = evaluarDomicilioSucursal(policy, aperturaConExcepciones(policy.horario, [], ahora, zona).diaNegocio).acepta;
           const frase = fraseUltimoPedido(ultimo, horaLegible, { domicilioDisponible });
           const dom = domicilioDisponible ? ultimo.domicilio : null;
           const alguno = (dom?.aceptaPedidos ?? false) || ultimo.recoger.aceptaPedidos;
