@@ -138,7 +138,7 @@ describe("solicitar_agregado_pedido: degradacion honesta (el aviso a la sucursal
   for (const [titulo, montarFallo] of [
     ["sin el hook cableado", async () => montar({ sinHook: true })],
     [
-      "con la base sin la migracion 097",
+      "con la base sin la migracion 099",
       async () => {
         const t = await montar();
         t.agregados.disponible = false;

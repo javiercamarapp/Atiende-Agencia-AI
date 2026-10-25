@@ -61,7 +61,7 @@ export class InMemoryAgregadosRepository implements AgregadosRepository {
   /** Nombre visible de quien decide (la base lo une con core.staff_user). */
   readonly nombresPersonal = new Map<string, string>();
   private readonly filas: FilaAgregado[] = [];
-  /** `false` simula la base sin la migracion 097: todo devuelve «no disponible». */
+  /** `false` simula la base sin la migracion 099: todo devuelve «no disponible». */
   disponible = true;
   ahora: () => Date = () => new Date();
 

@@ -1,4 +1,4 @@
-// Agregados por validar (097): repositorio en memoria + servicio con reloj controlado. Un solo abierto por pedido con fusion, aceptar aplica al pedido, rechazar
+// Agregados por validar (099): repositorio en memoria + servicio con reloj controlado. Un solo abierto por pedido con fusion, aceptar aplica al pedido, rechazar
 // exige motivo y deja la tarea de devolver llamada, doble clic = un efecto, alcance por sucursal, SLA derivado y barrido (10 y 20 min), base sin migrar.
 // La semantica real de SQL (RLS, grants, trigger, concurrencia) la prueba scripts/verify-restaurantes-agregados contra Postgres.
 import type { TenantDbSession } from "@atiende/core-tenancy";
@@ -235,7 +235,7 @@ describe("SLA: barrido del tick de 5 minutos (sin cron nuevo)", () => {
   });
 });
 
-describe("base sin la migracion 097", () => {
+describe("base sin la migracion 099", () => {
   it("todo degrada a «no disponible» sin lanzar", async () => {
     const t = await montar();
     t.agregados.disponible = false;

@@ -176,7 +176,7 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     menuPdfBaseUrl: menuPdfBaseDeEntorno(),
     // Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido; degrada a "no disponible" sin la 050.
     autopiloto: crearHooksAutopilotoTurnoPostgres({ repo, db }),
-    // Agregados por validar (097): solicitar_agregado_pedido crea la solicitud real; sin la 097 el agente escala como siempre (degrada por SAVEPOINT a "no disponible").
+    // Agregados por validar (099): solicitar_agregado_pedido crea la solicitud real; sin la 099 el agente escala como siempre (degrada por SAVEPOINT a "no disponible").
     agregados: crearHookAgregados({ agregados: new PostgresAgregadosRepository(db), repo, db }),
     ...(observabilidad ? { observabilidad } : {}),
     // Ajustes del agente (modelo y temperatura elegidos por la organizacion). El repositorio degrada con SAVEPOINT contra la base sin migrar.
@@ -409,7 +409,7 @@ export function buildProductionDeps(): AppDeps {
     cfoRestaurantesRepo: (db) => new PostgresCfoRestaurantesRepository(db),
     // Autopiloto (migración 050): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
     autopilotoRepo: (db) => new PostgresAutopilotoRepository(db),
-    // Agregados por validar (migración 097): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
+    // Agregados por validar (migración 099): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
     agregadosRepo: (db) => new PostgresAgregadosRepository(db),
     repartidorPerfilRepo: (db) => new PostgresRepartidorPerfilRepository(db),
     // Privacidad (migración 030): ARCO, aviso simplificado y retención; cada operación degrada con SAVEPOINT.

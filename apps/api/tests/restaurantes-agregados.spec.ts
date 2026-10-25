@@ -1,4 +1,4 @@
-// «Agregados por validar» (migracion 097) -- contrato HTTP de punta a punta: listar / aceptar / rechazar con permiso `pedidos.agregados` (repartidor NO), alcance por sucursal,
+// «Agregados por validar» (migracion 099) -- contrato HTTP de punta a punta: listar / aceptar / rechazar con permiso `pedidos.agregados` (repartidor NO), alcance por sucursal,
 // idempotencia (doble clic = un efecto), auditoria sin PII, aviso al cliente, tarea de devolver llamada, base sin migrar, y el SLA derivado al leer + barrido en el tick EXISTENTE de 5 min.
 // La semantica real de SQL (RLS, grants, trigger, concurrencia) la prueba scripts/verify-restaurantes-agregados contra Postgres real.
 import { describe, expect, it } from "vitest";

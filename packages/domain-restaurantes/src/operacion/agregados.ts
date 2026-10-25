@@ -47,7 +47,7 @@ export interface TarjetaAgregado {
 }
 
 export interface ListaAgregados {
-  /** `false` = la base aun no tiene la migracion 097 (estado honesto, lista vacia). */
+  /** `false` = la base aun no tiene la migracion 099 (estado honesto, lista vacia). */
   readonly disponible: boolean;
   readonly agregados: readonly TarjetaAgregado[];
   /** Pendientes (conteo para el globo del menu y el banner). */

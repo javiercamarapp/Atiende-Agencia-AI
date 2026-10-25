@@ -247,7 +247,7 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   });
 
   // POST /v1/restaurantes/:orgSlug/orders/amendment (solicitar_agregado_pedido): el cliente ya tiene un pedido registrado y quiere agregarle productos. Crea la solicitud que la
-  // sucursal acepta o rechaza (nunca se confirma por la llamada). El telefono y la sucursal salen del token de llamada; sin la migracion 097 cae a la escalada de siempre.
+  // sucursal acepta o rechaza (nunca se confirma por la llamada). El telefono y la sucursal salen del token de llamada; sin la migracion 099 cae a la escalada de siempre.
   app.post("/v1/restaurantes/:orgSlug/orders/amendment", async (c) => {
     if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
     const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 8 * 1024);

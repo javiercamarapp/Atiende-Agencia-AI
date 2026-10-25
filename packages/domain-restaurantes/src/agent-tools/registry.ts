@@ -193,7 +193,7 @@ export interface AgentToolContext {
   /** Autopiloto: con el, un pedido grande de WhatsApp/voz se CREA y queda `por_aprobar` (la sucursal lo aprueba con un clic). Sin el (o con la base sin la
    * migracion 050) `crear_pedido` sigue por el aviso `escalada:pedido_grande` de siempre. Solo lo fija el servidor. */
   readonly pedidoGrande?: PedidoGrandeHook;
-  /** Agregados por validar (migracion 097): crea la solicitud que la sucursal acepta o rechaza. Sin el (o con la base sin migrar) `solicitar_agregado_pedido` cae al aviso de siempre
+  /** Agregados por validar (migracion 099): crea la solicitud que la sucursal acepta o rechaza. Sin el (o con la base sin migrar) `solicitar_agregado_pedido` cae al aviso de siempre
    * (`escalar_a_humano`, cancelacion_modificacion). Solo lo fija el servidor. */
   readonly agregados?: AgregadosHook;
   /** Mide `buscar_sucursal_cercana` contra los pines propuestos de Google (`COORDENADAS_PROPUESTAS_PM`) en lugar de las coordenadas vigentes. Ausente = la bandera

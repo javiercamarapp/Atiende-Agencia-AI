@@ -30,7 +30,7 @@ export interface ResumenTickAutopiloto {
   /** Tomas PENDIENTES sin tomar que avisaron al owner en este tick (QA R2 viaje-06). */
   readonly handoffsSinTomar: number;
   readonly agotadosRepuestos: number;
-  /** Agregados por validar (migración 097): avisados a los 10 min sin respuesta y cerrados como vencidos a los 20 (el sistema NUNCA acepta solo). */
+  /** Agregados por validar (migración 099): avisados a los 10 min sin respuesta y cerrados como vencidos a los 20 (el sistema NUNCA acepta solo). */
   readonly agregadosAvisados: number;
   readonly agregadosVencidos: number;
   /** Alertas de voz (costo del dia / tasa de error) disparadas por primera vez en esta corrida. */
@@ -44,7 +44,7 @@ export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Dat
   if (!autoFactory && !deps.agregadosRepo) return resumen;
 
   async function paso<T>(nombre: string, fn: (s: AutopilotoServicioDeps) => Promise<T>): Promise<T | null> {
-    if (!autoFactory) return null; // solo agregados (097) esta cableado: los pasos del autopiloto (050) no corren
+    if (!autoFactory) return null; // solo agregados (099) esta cableado: los pasos del autopiloto (050) no corren
     try {
       return await deps.engine.withAppSession({ userId: null }, (db) => {
         const repo = deps.restaurantesRepo(db);
@@ -91,7 +91,7 @@ export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Dat
   const sinTomar = await paso("handoffs_sin_tomar", (s) => escalarHandoffsSinTomar(s, ahora));
   const agotados = await paso("agotados", (s) => reponerAgotadosDelDia(s, ahora));
   // Alertas de voz (paridad A21): se evaluan solas en este mismo tick, sin cron nuevo ni boton.
-  // Agregados por validar (097): SLA de 10/20 min en este mismo tick de 5 min (SIN cron nuevo), en su PROPIA sesión de sistema. Limitación honesta: los avisos salen entre el minuto 10
+  // Agregados por validar (099): SLA de 10/20 min en este mismo tick de 5 min (SIN cron nuevo), en su PROPIA sesión de sistema. Limitación honesta: los avisos salen entre el minuto 10
   // y el 15, y el cierre entre el 20 y el 25; la lectura del panel calcula el estado exacto por el reloj sin esperar a este tick.
   let agregados: Awaited<ReturnType<typeof barrerAgregadosSla>> | null = null;
   if (deps.agregadosRepo) {

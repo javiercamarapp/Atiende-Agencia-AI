@@ -73,7 +73,7 @@ describe("R11-1A el cliente es hostil y el modelo se porta bien: el texto del cl
 describe("R11-1B superficie de herramientas: el modelo (y por tanto el cliente) no tiene como cambiar precios, estados ni datos ajenos", () => {
   it("las herramientas son exactamente las 13 conocidas: ninguna cambia el estado de un pedido ya creado, ni aplica descuentos o reembolsos", () => {
     expect(AGENT_TOOL_DEFINITIONS.map((t) => t.name).sort()).toEqual(
-      // solicitar_agregado_pedido (097) solo CREA una solicitud que la sucursal acepta o rechaza: no cambia el pedido, el estado ni el precio (los renglones salen del catalogo y el pedido, del telefono del contexto).
+      // solicitar_agregado_pedido (099) solo CREA una solicitud que la sucursal acepta o rechaza: no cambia el pedido, el estado ni el precio (los renglones salen del catalogo y el pedido, del telefono del contexto).
       // enviar_menu (PR #570) manda el PDF del menu de la sucursal: es de solo lectura/envio, no toca pedidos, precios ni descuentos.
       ["buscar_cliente", "buscar_producto", "buscar_sucursal_cercana", "confirmar_resumen", "consultar_sucursal", "cotizar_pedido", "crear_pedido", "enviar_menu", "escalar_a_humano", "historial_pedidos", "registrar_contacto", "repetir_pedido", "solicitar_agregado_pedido"].sort(),
     );

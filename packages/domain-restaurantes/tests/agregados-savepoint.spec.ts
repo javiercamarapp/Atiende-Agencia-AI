@@ -1,4 +1,4 @@
-// Agregados (097) contra la base SIN migrar: cada operacion degrada con SAVEPOINT a «no disponible» (nunca 25P02) y la transaccion sigue usable; un error
+// Agregados (099) contra la base SIN migrar: cada operacion degrada con SAVEPOINT a «no disponible» (nunca 25P02) y la transaccion sigue usable; un error
 // que NO es de migracion pendiente se repropaga; y el SQL de aceptar escribe la solicitud y el pedido con compare-and-set.
 import { describe, expect, it } from "vitest";
 import { PostgresAgregadosRepository } from "../src/agregados/index.ts";

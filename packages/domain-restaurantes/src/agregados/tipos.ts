@@ -1,4 +1,4 @@
-// Agregados por validar (migracion 097): el cliente ya tiene un pedido enviado a la sucursal y pide agregar productos por WhatsApp o llamada. El agente
+// Agregados por validar (migracion 099): el cliente ya tiene un pedido enviado a la sucursal y pide agregar productos por WhatsApp o llamada. El agente
 // crea la SOLICITUD; una persona de la sucursal la acepta o la rechaza con motivo. Nunca se acepta sola ni el agente la confirma al cliente.
 // Este archivo es PURO (tipos, constantes, reglas del SLA): lo importan el repositorio en memoria, el de Postgres, el servicio, la API y, por copia
 // deliberada de sus contratos, la web (apps/web no importa paquetes domain-*).
@@ -41,7 +41,7 @@ export function pedidoAceptaAgregado(status: OrderStatus): boolean {
   return ESTADOS_PEDIDO_AGREGABLES.includes(status);
 }
 
-/** Topes de la solicitud (espejo de los CHECK de la migracion 097). */
+/** Topes de la solicitud (espejo de los CHECK de la migracion 099). */
 export const AGREGADO_MAX_RENGLONES = 30;
 export const AGREGADO_NOTA_MAX = 300;
 
@@ -76,7 +76,7 @@ export function calcularSla(estado: EstadoAgregado, requestedAtIso: string, ahor
 
 export type CanalAgregado = "whatsapp" | "voice";
 
-/** Lectura que degrada: `disponible: false` = la base aun no tiene la migracion 097 (estado honesto, valor vacio). */
+/** Lectura que degrada: `disponible: false` = la base aun no tiene la migracion 099 (estado honesto, valor vacio). */
 export interface LecturaAgregados<T> {
   readonly disponible: boolean;
   readonly valor: T;
@@ -128,7 +128,7 @@ export interface NuevoAgregado {
 
 export type ResultadoCrearAgregado =
   | { readonly estado: "creado" | "fusionado" | "repetido"; readonly agregado: AgregadoVista }
-  /** La base aun no tiene la 097: quien llama cae a la escalada de siempre. */
+  /** La base aun no tiene la 099: quien llama cae a la escalada de siempre. */
   | { readonly estado: "no_disponible" }
   | { readonly estado: "pedido_no_encontrado" }
   | { readonly estado: "pedido_no_agregable"; readonly orderStatus: OrderStatus };

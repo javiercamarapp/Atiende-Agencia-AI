@@ -1,4 +1,4 @@
-// «Agregados por validar» (migración 097): el cliente ya tiene un pedido enviado a la sucursal y pide agregar productos. El agente crea la solicitud; aquí la sucursal decide.
+// «Agregados por validar» (migración 099): el cliente ya tiene un pedido enviado a la sucursal y pide agregar productos. El agente crea la solicitud; aquí la sucursal decide.
 //   GET  /v1/restaurantes/:propertyId/admin/agregados?estado=pendientes|recientes   cola (la más antigua primero) con el pedido original, lo agregado y el cronómetro
 //   POST /v1/restaurantes/:propertyId/admin/agregados/:id/visto                      marca la primera vez que una persona la vio (idempotente)
 //   POST /v1/restaurantes/:propertyId/admin/agregados/:id/aceptar                    aplica los renglones al pedido y avisa al cliente (compare-and-set: doble clic = un efecto)

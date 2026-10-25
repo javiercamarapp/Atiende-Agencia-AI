@@ -200,7 +200,7 @@ export interface AppDeps {
    * responden 503 honesto y el tick lo omite. En producción es `(db) => new PostgresAutopilotoRepository(db)` (degrada con SAVEPOINT a "no disponible"
    * contra la base sin migrar). */
   readonly autopilotoRepo?: (db: TenantDbSession) => AutopilotoRepository;
-  /** Agregados por validar (migración 097): lo que un cliente pide agregar a un pedido ya enviado a la sucursal. OPCIONAL: sin él las rutas responden 503 honesto, el agente cae a
+  /** Agregados por validar (migración 099): lo que un cliente pide agregar a un pedido ya enviado a la sucursal. OPCIONAL: sin él las rutas responden 503 honesto, el agente cae a
    * la escalada de siempre (escalar_a_humano) y el tick lo omite. En producción es `(db) => new PostgresAgregadosRepository(db)` (degrada con SAVEPOINT a "no disponible"). */
   readonly agregadosRepo?: (db: TenantDbSession) => AgregadosRepository;
   /** R-15 (migración 044): perfil operativo del repartidor. OPCIONAL: sin él las rutas responden 503 honesto. En producción es

@@ -1,6 +1,6 @@
--- 097 -- «Agregados por validar»: el cliente ya tiene un pedido enviado a la sucursal y pide agregar productos por WhatsApp o llamada. El agente NUNCA lo
+-- 099 -- «Agregados por validar»: el cliente ya tiene un pedido enviado a la sucursal y pide agregar productos por WhatsApp o llamada. El agente NUNCA lo
 -- confirma por su cuenta: crea una solicitud (`order_amendments`) que una persona de la sucursal acepta o rechaza con motivo. Prefijo de supabase/migrations
--- asignado: 20240101000411 (interno 097).
+-- asignado: 20240101000413 (interno 099).
 --
 -- Decision de diseno: DOS tablas NUEVAS y ninguna restriccion existente cambia. La DECISION (aceptar/rechazar) es un UPDATE con compare-and-set
 -- (`where status = 'pendiente'`) que las policies de RLS ya acotan por organizacion y sucursal, y la bitacora es append-only por GRANT: sin funciones para eso.

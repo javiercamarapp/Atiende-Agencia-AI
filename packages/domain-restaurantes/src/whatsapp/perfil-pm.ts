@@ -47,7 +47,7 @@ export interface PerfilPmContexto {
   readonly pedidoGrandeTexto?: string | null;
   /** Enlace de facturación en línea (https) que configuró el negocio. Sin valor, el agente NO inventa uno: dice que una persona se lo confirma y escala. */
   readonly urlFacturacion?: string | null;
-  /** Agregados por validar (migracion 097) cableados: AGREGAR productos a un pedido ya registrado va por `solicitar_agregado_pedido` en vez de escalar. Solo lo fija el servidor; sin el, el prompt es identico al de siempre. */
+  /** Agregados por validar (migracion 099) cableados: AGREGAR productos a un pedido ya registrado va por `solicitar_agregado_pedido` en vez de escalar. Solo lo fija el servidor; sin el, el prompt es identico al de siempre. */
   readonly agregadosActivos?: boolean;
   /** Conocimiento del negocio ya armado (`bloqueConocimientoPrompt`; migracion 053). Va ANTES de las reglas duras: las reglas van despues y ganan.
    * Vacio/ausente = el prompt es identico al de antes. Solo el canal WhatsApp; la voz lo antepone al comportamiento guardado. */

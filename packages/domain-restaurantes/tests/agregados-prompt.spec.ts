@@ -1,4 +1,4 @@
-// La regla de agregados del prompt solo existe cuando el servidor cablea los agregados (097): sin eso el prompt es BYTE-IDENTICO al de siempre (nada de reglas que se pelean).
+// La regla de agregados del prompt solo existe cuando el servidor cablea los agregados (099): sin eso el prompt es BYTE-IDENTICO al de siempre (nada de reglas que se pelean).
 import { describe, expect, it } from "vitest";
 import { PM_CONFIG_POR_OMISION, buildSystemPrompt } from "../src/whatsapp/llm-turn-handler.ts";
 import { PM_AGREGADOS_REGLA } from "../src/whatsapp/perfil-pm.ts";

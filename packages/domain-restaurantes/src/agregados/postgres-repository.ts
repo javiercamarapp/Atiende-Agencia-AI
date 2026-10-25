@@ -1,5 +1,5 @@
-// Adaptador Postgres de los agregados (migracion 097). REGLA DURA de compatibilidad con la base SIN migrar: mergear despliega el codigo al instante y la
-// 097 no se aplica sola. Toda llamada corre dentro de la transaccion UNICA del request/unidad (`withAppSession`): un error de Postgres la deja abortada
+// Adaptador Postgres de los agregados (migracion 099). REGLA DURA de compatibilidad con la base SIN migrar: mergear despliega el codigo al instante y la
+// 099 no se aplica sola. Toda llamada corre dentro de la transaccion UNICA del request/unidad (`withAppSession`): un error de Postgres la deja abortada
 // (25P02), por eso cada operacion usa `runWithSavepointFallback` y degrada a «no disponible» ante 42P01 (tabla), 42703 (columna) y 42883 (funcion).
 // Cualquier otro error se repropaga. Sin funciones SECURITY DEFINER: las policies de RLS (organizacion + alcance de sucursal) son la autoridad y esta capa
 // agrega el mismo filtro de alcance como defensa en profundidad. Aceptar escribe la solicitud y el pedido en la MISMA transaccion (o ninguno).
@@ -99,7 +99,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresAgregadosRepository: las tablas de agregados todavia no existen en esta base (SQLSTATE 42P01/42703/42883) -- " +
-      "aplica packages/domain-restaurantes/migrations/097_agregados_pedido_por_validar.sql (o su espejo en supabase/migrations/).",
+      "aplica packages/domain-restaurantes/migrations/099_agregados_pedido_por_validar.sql (o su espejo en supabase/migrations/).",
     err,
   );
 }
@@ -137,7 +137,7 @@ export class PostgresAgregadosRepository implements AgregadosRepository {
     return this.degradable<ResultadoCrearAgregado>("crear", { estado: "no_disponible" }, async () => {
       const sumar = redondear(input.items.reduce((s, i) => s + i.price * i.quantity, 0));
       const nota = input.customerNote ? input.customerNote.slice(0, 300) : null;
-      // El sistema no ve `orders`: la validacion del pedido, el bloqueo y el alta ocurren en la funcion solo-sistema (migracion 097).
+      // El sistema no ve `orders`: la validacion del pedido, el bloqueo y el alta ocurren en la funcion solo-sistema (migracion 099).
       const { rows } = await this.db.query<{ r: { estado: string; agregado?: FilaVista; orderStatus?: OrderStatus } }>(
         "select restaurantes.agregado_crear_sistema($1, $2, $3, $4, $5::jsonb, $6, $7, $8) as r;",
         [input.organizationId, input.propertyId, input.orderId, input.channel, JSON.stringify(input.items), sumar, nota, input.sourceEventId ?? null],

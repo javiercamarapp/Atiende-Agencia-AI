@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificacion manual, opt-in, contra un Postgres LOCAL real y EFIMERO. Acompaña a
-# packages/domain-restaurantes/migrations/097_agregados_pedido_por_validar.sql (agregados a un pedido ya enviado: solicitud del agente
+# packages/domain-restaurantes/migrations/099_agregados_pedido_por_validar.sql (agregados a un pedido ya enviado: solicitud del agente
 # que una persona de la sucursal acepta o rechaza, con SLA).
 #
 # Prueba, contra RLS/GRANT/CHECK/trigger/auth.uid() reales: lectura (staff con alcance, admin acotado, repartidor, cross-tenant, sistema, anon), creacion (solo
@@ -42,5 +42,5 @@ initdb -D "$PGDATA" -U postgres --no-locale --encoding=UTF8 >/dev/null
 echo "==> arrancando Postgres efimero en el puerto $PGPORT"
 pg_ctl -D "$PGDATA" -l "$LOG" -o "-p $PGPORT -k $WORKDIR" start >/dev/null
 
-echo "==> bootstrap + TODAS las migraciones reales (incluye 097) + escenarios, con veredicto automatico"
+echo "==> bootstrap + TODAS las migraciones reales (incluye 099) + escenarios, con veredicto automatico"
 PGHOST="$WORKDIR" PGPORT="$PGPORT" PGUSER=postgres node "$REPO_ROOT/scripts/verify-real-postgres-ci/run-gate.mjs" "$HERE"

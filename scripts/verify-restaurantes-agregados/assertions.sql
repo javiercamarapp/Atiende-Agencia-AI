@@ -1,4 +1,4 @@
--- Fixtures + assertions contra Postgres REAL para packages/domain-restaurantes/migrations/097_agregados_pedido_por_validar.sql
+-- Fixtures + assertions contra Postgres REAL para packages/domain-restaurantes/migrations/099_agregados_pedido_por_validar.sql
 -- (agregados a un pedido ya enviado: el agente crea la solicitud, una persona de la sucursal la acepta o rechaza).
 --
 --   A. Lectura: owner, admin ACOTADO a una sucursal, staff y sistema ven lo suyo; el repartidor no; otra organizacion no; anon no tiene ni SELECT.
