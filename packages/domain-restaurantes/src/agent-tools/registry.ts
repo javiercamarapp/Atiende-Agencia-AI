@@ -2271,7 +2271,6 @@ async function solicitarAgregadoPedido(repo: RestaurantesRepository, ctx: AgentT
     estado: "pendiente_de_validar",
     solicitud: r.estado,
     total_del_agregado: r.agregado.totalAdded,
-    nuevo_total_si_la_sucursal_acepta: r.agregado.totalAfter,
     renglones_agregados: r.agregado.itemsAdded.map((i) => ({ name: i.name, quantity: i.quantity })),
     mensaje_al_cliente: MENSAJE_CAMBIO_PEDIDO_ENVIADO,
     instruccion: instruccionDecir,

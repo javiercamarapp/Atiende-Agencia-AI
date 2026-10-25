@@ -30,8 +30,9 @@
 --    al cliente (el sistema no ve `orders` por RLS); sin parametros de organizacion: el barrido recorre todas, igual que el tick de los demas pasos.
 --  * UPDATE de order_amendments: sistema o staff con alcance, y SOLO sobre filas `pendiente` (using); with check: un usuario no puede dejar `decided_by` ajeno
 --    (decided_by = auth.uid()) ni resolver a nombre del sistema. GRANT por COLUMNA (sin organization_id, property_id, order_id, channel, source_event_id, requested_at).
---    El trigger `order_amendments_guardia` (SECURITY INVOKER) impide que un USUARIO cambie lo que pidio el cliente (items_added, totales, nota, version): solo el
---    sistema (fusion) lo puede. Las transiciones fuera de la maquina de estados mueren en el trigger y en el CHECK.
+--    El trigger `order_amendments_guardia` (SECURITY INVOKER) impide que un USUARIO cambie lo que pidio el cliente (items_added, totales, nota, version) o el
+--    escalamiento, y solo lo deja transitar a aceptado/rechazado(con motivo)/no_aplicable firmando con su id, o a vencido pasados 20 min del reloj de la base:
+--    el UPDATE directo por PostgREST no se salta la maquina de estados. Solo el sistema (fusion, escalamiento, cancelado_por_cliente) hace lo demas.
 --  * Sin DELETE para authenticated: nada se borra; la bitacora queda completa. `service_role` conserva todos los privilegios (mantenimiento), como el resto del paquete.
 --  * order_amendment_events: append-only. SELECT con el mismo alcance; INSERT de sistema o staff con alcance y `actor_user_id = auth.uid()` (o nulo si es sistema);
 --    sin UPDATE ni DELETE para nadie salvo service_role. El detalle es jsonb acotado (< 4 kB) y no lleva PII.
@@ -108,8 +109,15 @@ create table restaurantes.order_amendment_events (
 );
 create index order_amendment_events_amendment_idx on restaurantes.order_amendment_events(amendment_id, created_at);
 
--- Guardia (SECURITY INVOKER, sin privilegios propios): un USUARIO solo resuelve; lo que pidio el cliente y la identidad de la solicitud no cambian, y el estado
--- sigue la maquina (de pendiente a cualquier estado final; un estado final no se mueve). El sistema (auth.uid() nulo) sigue pudiendo fusionar y escalar.
+-- Guardia (SECURITY INVOKER, sin privilegios propios): defensa en profundidad contra el UPDATE directo por PostgREST (el GRANT por columna deja a un miembro con
+-- alcance escribir status/decided_*/reject_*/escalation_* saltandose la API y el permiso `pedidos.agregados`). Un USUARIO (auth.uid() no nulo) solo puede:
+--   * marcar `first_seen_at` (sin cambiar el estado);
+--   * pasar de `pendiente` a `aceptado`, `rechazado` (con motivo) o `no_aplicable`, firmando con SU id en `decided_by`;
+--   * cerrar como `vencido` SOLO si el reloj de la base ya marca 20+ minutos desde `requested_at` (escalation_level = 2, sin decided_by): es el cierre de un
+--     intento de decidir tarde; el reloj lo verifica la base, no el cliente.
+-- Nunca toca `escalation_*` por otra via, ni `cancelado_por_cliente` (es del agente), ni lo que pidio el cliente (items, totales, nota, version). El SISTEMA
+-- (auth.uid() nulo) sigue fusionando y escalando. Una solicitud resuelta no se mueve (ni por el sistema). Limite honesto: la base no puede saber si quien pasa a
+-- `aceptado` tambien aplico los renglones al pedido; eso lo hace la API en la MISMA transaccion y la UPDATE de `orders` tiene sus propias policies.
 create function restaurantes.order_amendments_guardia() returns trigger
 language plpgsql
 set search_path = restaurantes, pg_temp
@@ -118,12 +126,32 @@ begin
   if old.status <> 'pendiente' then
     raise exception 'order_amendments: una solicitud resuelta no se modifica' using errcode = '22023';
   end if;
-  if auth.uid() is not null and (
-       new.items_added is distinct from old.items_added or new.total_before is distinct from old.total_before
-    or new.total_added is distinct from old.total_added or new.total_after is distinct from old.total_after
-    or new.customer_note is distinct from old.customer_note or new.version is distinct from old.version
-  ) then
-    raise exception 'order_amendments: un usuario no puede cambiar lo que pidio el cliente' using errcode = '42501';
+  if auth.uid() is not null then
+    if new.items_added is distinct from old.items_added or new.total_before is distinct from old.total_before
+       or new.total_added is distinct from old.total_added or new.total_after is distinct from old.total_after
+       or new.customer_note is distinct from old.customer_note or new.version is distinct from old.version then
+      raise exception 'order_amendments: un usuario no puede cambiar lo que pidio el cliente' using errcode = '42501';
+    end if;
+    if new.status not in ('pendiente', 'aceptado', 'rechazado', 'no_aplicable', 'vencido') then
+      raise exception 'order_amendments: un usuario no puede llevar la solicitud a ese estado' using errcode = '42501';
+    end if;
+    if new.status = 'vencido' then
+      if now() - old.requested_at < interval '20 minutes' or new.escalation_level is distinct from 2 or new.decided_by is not null then
+        raise exception 'order_amendments: solo se cierra como vencido pasados 20 minutos y por el sistema de escalamiento' using errcode = '42501';
+      end if;
+    elsif new.escalation_level is distinct from old.escalation_level or new.escalated_at is distinct from old.escalated_at then
+      raise exception 'order_amendments: un usuario no puede tocar el escalamiento' using errcode = '42501';
+    end if;
+    if new.status = 'pendiente' and (new.decided_at is distinct from old.decided_at or new.decided_by is distinct from old.decided_by
+       or new.reject_reason is distinct from old.reject_reason or new.reject_note is distinct from old.reject_note) then
+      raise exception 'order_amendments: una solicitud abierta no lleva datos de decision' using errcode = '42501';
+    end if;
+    if new.status in ('aceptado', 'rechazado', 'no_aplicable') and new.decided_by is distinct from auth.uid() then
+      raise exception 'order_amendments: la decision se firma con el id de quien decide' using errcode = '42501';
+    end if;
+    if new.status <> 'rechazado' and (new.reject_reason is not null or new.reject_note is not null) then
+      raise exception 'order_amendments: el motivo solo aplica al rechazo' using errcode = '42501';
+    end if;
   end if;
   return new;
 end;

@@ -1,8 +1,10 @@
 // «Agregados por validar» (migración 099): el cliente ya tiene un pedido enviado a la sucursal y pide agregar productos. El agente crea la solicitud; aquí la sucursal decide.
 //   GET  /v1/restaurantes/:propertyId/admin/agregados?estado=pendientes|recientes   cola (la más antigua primero) con el pedido original, lo agregado y el cronómetro
 //   POST /v1/restaurantes/:propertyId/admin/agregados/:id/visto                      marca la primera vez que una persona la vio (idempotente)
-//   POST /v1/restaurantes/:propertyId/admin/agregados/:id/aceptar                    aplica los renglones al pedido y avisa al cliente (compare-and-set: doble clic = un efecto)
-//   POST /v1/restaurantes/:propertyId/admin/agregados/:id/rechazar {motivo, nota?}   motivo de lista cerrada; avisa al cliente y deja la tarea de devolver llamada
+//   POST /v1/restaurantes/:propertyId/admin/agregados/:id/aceptar {version}          aplica los renglones al pedido y avisa al cliente (compare-and-set: doble clic = un efecto)
+//   POST /v1/restaurantes/:propertyId/admin/agregados/:id/rechazar {version, motivo, nota?}   motivo de lista cerrada; avisa al cliente y deja la tarea de devolver llamada
+// `version` es OBLIGATORIA: la que la persona vio en pantalla. Si el cliente pidio mas entre tanto (fusion, version + 1) responde 409 `agregado_version_cambio` con la tarjeta
+// vigente y NO decide nada (el pedido y el aviso al cliente nunca quedan desfasados). Si ya pasaron 20 min la solicitud se cierra como vencida y responde 409 `agregado_vencido`.
 // Permiso: acción `pedidos.agregados` (owner/admin/staff; el repartidor NO). Alcance: la membresía (admin acotado o staff de sucursal ve solo lo suyo; fuera de alcance = 404).
 // Idempotencia: la base hace compare-and-set sobre `pendiente`; la segunda llamada responde 200 `ya_resuelto` con quién y cuándo, sin repetir ningún efecto.
 // SLA: el estado efectivo (`estadoEfectivo`, `sla`) se DERIVA del reloj al leer; el cierre y los avisos los hace el tick existente de 5 min (sin cron nuevo).
@@ -70,7 +72,7 @@ export function restaurantesAdminAgregadosRoutes(deps: AppDeps): Hono<CoreAuthHo
     return c.json({ ok: true });
   });
 
-  async function decidir(c: Context<CoreAuthHonoEnv>, decision: DecisionAgregado) {
+  async function decidir(c: Context<CoreAuthHonoEnv>, decision: DecisionAgregado, versionEsperada: number) {
     assertAccion(c, "pedidos.agregados");
     const id = idDe(c);
     const organizationId = c.get("organizationId");
@@ -78,10 +80,18 @@ export function restaurantesAdminAgregadosRoutes(deps: AppDeps): Hono<CoreAuthHo
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     const agregados = repoAgregados(c);
     const repo = deps.restaurantesRepo(c.get("db"));
-    const { resultado, efectos } = await resolverAgregado({ agregados, repo, db: c.get("db") }, { organizationId, id, decision, actorUserId, propertyIds: scope });
+    const { resultado, efectos } = await resolverAgregado({ agregados, repo, db: c.get("db") }, { organizationId, id, decision, actorUserId, propertyIds: scope, versionEsperada });
     if (resultado.resultado === "no_disponible") throw Errors.serviceUnavailable("Agregados por validar todavía no está disponible en esta cuenta.");
     if (resultado.resultado === "no_encontrado") throw Errors.notFound("No se encontró ese agregado.");
     const tarjeta = aTarjetaAgregado(resultado.agregado, new Date());
+    // 409 SIN lanzar: lo escrito (el cierre por vencimiento y sus avisos) debe confirmarse; un throw revertiria la transaccion. La tarjeta viaja para que la pantalla se refresque.
+    if (resultado.resultado === "vencido") {
+      logEvent(c, "info", "restaurantes_agregado_vencido_al_decidir", { agregadoId: id, efectos: efectos.length });
+      return c.json({ code: "agregado_vencido", message: "Esta solicitud ya venció (pasaron más de 20 minutos) y se cerró sin aceptarse. Ofrece al cliente un pedido aparte.", resultado: "vencido", agregado: tarjeta }, 409);
+    }
+    if (resultado.resultado === "version_cambio") {
+      return c.json({ code: "agregado_version_cambio", message: "El cliente agregó más productos mientras la veías. Revisa la solicitud actualizada y decide de nuevo.", resultado: "version_cambio", agregado: tarjeta }, 409);
+    }
     // Bitácora de auditoría SOLO cuando esta llamada resolvió (un doble clic no duplica la entrada). Sin PII: folio, ids y motivo de lista cerrada.
     if (resultado.resultado !== "ya_resuelto") {
       await repo.registrarAuditoria({
@@ -104,15 +114,24 @@ export function restaurantesAdminAgregadosRoutes(deps: AppDeps): Hono<CoreAuthHo
     return c.json({ resultado: resultado.resultado, agregado: tarjeta });
   }
 
-  app.post(`${base}/:id/aceptar`, async (c) => decidir(c, { tipo: "aceptar" }));
+  function versionDe(raw: { version?: unknown }): number {
+    if (typeof raw.version !== "number" || !Number.isInteger(raw.version) || raw.version < 1 || raw.version > 50) throw Errors.validation("version: indica la versión de la solicitud que viste (entero 1..50).");
+    return raw.version;
+  }
+
+  app.post(`${base}/:id/aceptar`, async (c) => {
+    assertAccion(c, "pedidos.agregados");
+    const raw = await readJsonCapped<{ version?: unknown }>(c.req.raw, 1024);
+    return decidir(c, { tipo: "aceptar" }, versionDe(raw));
+  });
 
   app.post(`${base}/:id/rechazar`, async (c) => {
     assertAccion(c, "pedidos.agregados");
-    const raw = await readJsonCapped<{ motivo?: unknown; nota?: unknown }>(c.req.raw, 2 * 1024);
+    const raw = await readJsonCapped<{ version?: unknown; motivo?: unknown; nota?: unknown }>(c.req.raw, 2 * 1024);
     if (!esMotivoRechazoAgregado(raw.motivo)) throw Errors.validation(`motivo: debe ser uno de ${MOTIVOS_RECHAZO_AGREGADO.map((m) => `«${m}» (${ETIQUETAS_MOTIVO_RECHAZO[m]})`).join(", ")}.`);
     if (raw.nota !== undefined && raw.nota !== null && (typeof raw.nota !== "string" || raw.nota.length > 300)) throw Errors.validation("nota: texto de hasta 300 caracteres.");
     if (raw.motivo === "otro" && (typeof raw.nota !== "string" || raw.nota.trim().length === 0)) throw Errors.validation("Con el motivo «Otro motivo» escribe una nota breve.");
-    return decidir(c, { tipo: "rechazar", motivo: raw.motivo, nota: typeof raw.nota === "string" ? raw.nota.trim() || null : null });
+    return decidir(c, { tipo: "rechazar", motivo: raw.motivo, nota: typeof raw.nota === "string" ? raw.nota.trim() || null : null }, versionDe(raw));
   });
 
   return app;

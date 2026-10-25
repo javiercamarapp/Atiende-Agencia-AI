@@ -4,10 +4,10 @@
 import { randomUUID } from "node:crypto";
 import type { OrderStatus, PersistedOrderItem } from "../types.ts";
 import { fusionarRenglones } from "./fusion.ts";
-import { AGREGADO_MAX_RENGLONES, pedidoAceptaAgregado } from "./tipos.ts";
+import { AGREGADO_MAX_RENGLONES, SLA_AGREGADO, pedidoAceptaAgregado } from "./tipos.ts";
 import type {
   AgregadosRepository, AgregadoVista, DecisionAgregado, EstadoAgregado, EventoAgregadoEntrada, FiltroAgregados, LecturaAgregados, MotivoRechazoAgregado, NuevoAgregado,
-  ResultadoCrearAgregado, ResultadoDecidirAgregado,
+  OpcionesDecidir, ResultadoCrearAgregado, ResultadoDecidirAgregado,
 } from "./tipos.ts";
 
 /** El pedido tal como lo ve este repositorio (las pruebas lo siembran; en produccion es `restaurantes.orders`). */
@@ -192,12 +192,18 @@ export class InMemoryAgregadosRepository implements AgregadosRepository {
     await this.registrarEvento({ amendmentId: f.id, organizationId, propertyId: f.propertyId, tipoEvento: "visto", actor: { tipo: "usuario", userId: actorUserId } });
   }
 
-  async decidir(organizationId: string, id: string, decision: DecisionAgregado, actorUserId: string, propertyIds: readonly string[] | null): Promise<ResultadoDecidirAgregado> {
+  async decidir(organizationId: string, id: string, decision: DecisionAgregado, actorUserId: string, propertyIds: readonly string[] | null, opciones?: OpcionesDecidir): Promise<ResultadoDecidirAgregado> {
     if (!this.disponible) return { resultado: "no_disponible" };
     const f = this.filas.find((x) => x.id === id && x.organizationId === organizationId);
     if (!f) return { resultado: "no_encontrado" };
     if (!this.enAlcance(f.propertyId, propertyIds)) return { resultado: "no_encontrado" }; // nunca se distingue «no existe» de «es de otra sucursal»
     if (f.estado !== "pendiente") return { resultado: "ya_resuelto", agregado: this.vista(f) };
+    // Una pendiente con 20+ minutos YA esta vencida aunque el tick no la haya cerrado: se cierra aqui y no se acepta ni se rechaza.
+    if (this.ahora().getTime() - Date.parse(f.requestedAt) >= SLA_AGREGADO.vencimientoMin * 60_000) {
+      await this.vencer(organizationId, id, this.ahora());
+      return { resultado: "vencido", agregado: this.vista(f) };
+    }
+    if (opciones?.versionEsperada !== undefined && opciones.versionEsperada !== f.version) return { resultado: "version_cambio", agregado: this.vista(f) };
     const ahora = this.ahora().toISOString();
     if (decision.tipo === "rechazar") {
       f.estado = "rechazado";

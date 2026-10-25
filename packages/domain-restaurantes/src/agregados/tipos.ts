@@ -143,8 +143,17 @@ export type ResultadoDecidirAgregado =
   | { readonly resultado: "ya_resuelto"; readonly agregado: AgregadoVista }
   /** Al aceptar, el pedido ya no admite agregados (salio, se entrego o se cancelo): la solicitud queda `no_aplicable` y NO se toca el pedido. */
   | { readonly resultado: "no_aplicable"; readonly agregado: AgregadoVista }
+  /** La solicitud seguia `pendiente` pero ya pasaron 20+ minutos: se cerro AHORA como `vencido` (con los mismos efectos que el tick) y NO se acepto ni se rechazo. */
+  | { readonly resultado: "vencido"; readonly agregado: AgregadoVista }
+  /** La solicitud cambio (el cliente pidio mas y se fusiono, version + 1) despues de que la persona la vio: no se decide nada; debe recargar y volver a decidir. */
+  | { readonly resultado: "version_cambio"; readonly agregado: AgregadoVista }
   | { readonly resultado: "no_encontrado" }
   | { readonly resultado: "no_disponible" };
+
+export interface OpcionesDecidir {
+  /** Version que la persona vio en pantalla. Si la solicitud ya es otra (fusion), no se decide. Omitida = sin verificacion (solo para pruebas y llamadas internas). */
+  readonly versionEsperada?: number;
+}
 
 export interface FiltroAgregados {
   /** `null` = todas las sucursales de la organizacion; arreglo = alcance de la membresia (admin acotado / staff de sucursal). */
@@ -174,7 +183,7 @@ export interface AgregadosRepository {
   /** Marca la primera vez que una persona la vio (idempotente). */
   marcarVisto(organizationId: string, id: string, actorUserId: string, propertyIds: readonly string[] | null): Promise<void>;
   /** Aceptar (aplica los renglones al pedido en la misma transaccion) o rechazar. Compare-and-set sobre `pendiente`: la segunda llamada recibe `ya_resuelto`. */
-  decidir(organizationId: string, id: string, decision: DecisionAgregado, actorUserId: string, propertyIds: readonly string[] | null): Promise<ResultadoDecidirAgregado>;
+  decidir(organizationId: string, id: string, decision: DecisionAgregado, actorUserId: string, propertyIds: readonly string[] | null, opciones?: OpcionesDecidir): Promise<ResultadoDecidirAgregado>;
   /** El cliente se arrepiente: cierra la solicitud abierta del pedido. */
   cancelarPorCliente(organizationId: string, orderId: string): Promise<LecturaAgregados<AgregadoVista | null>>;
   /** Solicitudes `pendiente` con `requestedAt <= antesDe` (el barrido del SLA, entre organizaciones, solo sesion de sistema). */

@@ -6,7 +6,8 @@
 --      por pedido; idempotente por evento; CHECK de forma y de importes; el barrido del sistema trae el pedido.
 --   C. Decision: compare-and-set sobre `pendiente` (doble clic = un efecto), alcance por sucursal, sin suplantacion, aceptar aplica al pedido,
 --      rechazar exige motivo, vencido es de sistema, un estado final no se mueve.
---   D. Guardia: un usuario no puede cambiar lo que pidio el cliente (items/importes/nota/version); el sistema si (fusion).
+--   D. Guardia: un usuario no puede cambiar lo que pidio el cliente (items/importes/nota/version) ni el escalamiento, ni llevar la solicitud a un estado de sistema
+--      (UPDATE directo por PostgREST), solo cerrar como vencido pasados 20 min del reloj de la base; el sistema si fusiona; carrera con la fusion por `version`.
 --   E. Bitacora append-only: el actor es quien escribe, sin suplantacion, sin UPDATE/DELETE, con alcance por sucursal.
 --   F. Base SIN migrar: la tabla eliminada da 42P01 y un SAVEPOINT real la recupera.
 --
@@ -444,6 +445,68 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 with a as (update restaurantes.order_amendments set items_added = items_added || '[{"id":"p3","name":"Agua","price":20,"quantity":1}]'::jsonb, total_added = 80, total_after = 180, version = version + 1 where id = '00000000-0000-0000-0000-0000000f0f01' and status = 'pendiente' returning id)
 select count(*) as filas_fusionadas_deberia_ser_1 from a;
+rollback;
+
+\echo '--- 46a. UPDATE directo (PostgREST) de un usuario: no toca el escalamiento ni se auto-vence antes de 20 min ni cancela por el cliente: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0c03', true);
+select public.t_esperar_error($q$update restaurantes.order_amendments set escalation_level = 2 where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as escalamiento_solo;
+select public.t_esperar_error($q$update restaurantes.order_amendments set escalation_level = 1, escalated_at = now() where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as escalamiento_1;
+select public.t_esperar_error($q$update restaurantes.order_amendments set status = 'vencido', escalation_level = 2, escalated_at = now(), decided_at = now() where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as vencido_antes_de_tiempo;
+select public.t_esperar_error($q$update restaurantes.order_amendments set status = 'cancelado_por_cliente', decided_at = now() where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as cancelado_por_cliente;
+rollback;
+
+\echo '--- 46b. UPDATE directo: no escribe datos de decision sobre una solicitud que sigue pendiente, ni motivo ajeno al rechazo: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0c03', true);
+select public.t_esperar_error($q$update restaurantes.order_amendments set decided_at = now() where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as decided_at_en_pendiente;
+select public.t_esperar_error($q$update restaurantes.order_amendments set decided_by = '00000000-0000-0000-0000-0000000f0c03' where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as decided_by_en_pendiente;
+select public.t_esperar_error($q$update restaurantes.order_amendments set reject_note = 'x' where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as nota_en_pendiente;
+select public.t_esperar_error($q$update restaurantes.order_amendments set status = 'aceptado', decided_at = now(), decided_by = '00000000-0000-0000-0000-0000000f0c03', reject_note = 'x' where id = '00000000-0000-0000-0000-0000000f0f01'$q$, '42501') as nota_en_aceptado;
+rollback;
+
+\echo '--- 46c. el usuario SI puede marcar first_seen_at, aceptar (firmando con su id), rechazar con motivo y marcar no_aplicable ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0c03', true);
+with a as (update restaurantes.order_amendments set first_seen_at = now() where id = '00000000-0000-0000-0000-0000000f0f01' returning id)
+select count(*) as visto_deberia_ser_1 from a;
+with a as (update restaurantes.order_amendments set status = 'no_aplicable', decided_at = now(), decided_by = '00000000-0000-0000-0000-0000000f0c03' where id = '00000000-0000-0000-0000-0000000f0f01' returning id)
+select count(*) as no_aplicable_deberia_ser_1 from a;
+rollback;
+
+\echo '--- 46d. pasados 20 minutos del reloj de la BASE el usuario SI cierra como vencido (escalation 2, sin decided_by); con decided_by o sin escalation 2: RECHAZADO ---'
+begin;
+update restaurantes.order_amendments set requested_at = now() - interval '25 minutes' where id = '00000000-0000-0000-0000-0000000f0f02';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0c03', true);
+select public.t_esperar_error($q$update restaurantes.order_amendments set status = 'vencido', escalation_level = 2, escalated_at = now(), decided_at = now(), decided_by = '00000000-0000-0000-0000-0000000f0c03' where id = '00000000-0000-0000-0000-0000000f0f02'$q$, '42501') as con_decided_by;
+select public.t_esperar_error($q$update restaurantes.order_amendments set status = 'vencido', escalation_level = 1, decided_at = now() where id = '00000000-0000-0000-0000-0000000f0f02'$q$, '42501') as sin_escalamiento_2;
+with a as (update restaurantes.order_amendments set status = 'vencido', escalation_level = 2, escalated_at = now(), decided_at = now() where id = '00000000-0000-0000-0000-0000000f0f02' and status = 'pendiente' returning id)
+select count(*) as vencido_por_reloj_deberia_ser_1 from a;
+rollback;
+
+\echo '--- 46e. CARRERA con la fusion: el sistema fusiona (version 2) y la decision con la version LEIDA (1) no toca ninguna fila; con la vigente (2) si ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+update restaurantes.order_amendments set items_added = items_added || '[{"id":"p3","name":"Agua","price":20,"quantity":1}]'::jsonb, total_added = 80, total_after = 180, version = version + 1 where id = '00000000-0000-0000-0000-0000000f0f01' and status = 'pendiente';
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0c03', true);
+with a as (update restaurantes.order_amendments set status = 'aceptado', decided_at = now(), decided_by = '00000000-0000-0000-0000-0000000f0c03' where id = '00000000-0000-0000-0000-0000000f0f01' and status = 'pendiente' and version = 1 returning id)
+select count(*) as con_version_vieja_deberia_ser_0 from a;
+with a as (update restaurantes.order_amendments set status = 'aceptado', decided_at = now(), decided_by = '00000000-0000-0000-0000-0000000f0c03' where id = '00000000-0000-0000-0000-0000000f0f01' and status = 'pendiente' and version = 2 returning id)
+select count(*) as con_version_vigente_deberia_ser_1 from a;
+rollback;
+
+\echo '--- 46f. un USUARIO no puede resolver a nombre del sistema: la bitacora de la decision se firma como usuario (sistema/agente: RECHAZADO) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0c03', true);
+select public.t_esperar_error($q$insert into restaurantes.order_amendment_events (amendment_id, organization_id, property_id, event_type, actor_kind) values ('00000000-0000-0000-0000-0000000f0f01', '00000000-0000-0000-0000-0000000f0a01', '00000000-0000-0000-0000-0000000f0b01', 'cliente_avisado', 'sistema')$q$, '42501') as sistema_rechazado;
+with e as (insert into restaurantes.order_amendment_events (amendment_id, organization_id, property_id, event_type, actor_kind, actor_user_id, detail) values ('00000000-0000-0000-0000-0000000f0f01', '00000000-0000-0000-0000-0000000f0a01', '00000000-0000-0000-0000-0000000f0b01', 'cliente_avisado', 'usuario', '00000000-0000-0000-0000-0000000f0c03', '{"tipo":"aceptado"}') returning id)
+select count(*) as evento_como_usuario_deberia_ser_1 from e;
 rollback;
 
 \echo ''

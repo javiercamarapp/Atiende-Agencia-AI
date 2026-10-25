@@ -118,14 +118,69 @@ describe("agregados: SQL de aceptar", () => {
     expect(sesion.calls.some((c) => /update restaurantes\.orders/.test(c))).toBe(false);
   });
 
-  it("aceptar pierde la carrera (el compare-and-set no actualiza ninguna fila): ya_resuelto y el pedido queda intacto", async () => {
+  it("aceptar pierde el compare-and-set porque OTRA persona ya la resolvio: ya_resuelto y el pedido queda intacto", async () => {
+    let lecturas = 0;
     const { repo, sesion } = montar([
-      { match: /^\s*select a\.id[\s\S]*from restaurantes\.order_amendments a/, respond: () => [FILA] },
+      { match: /^\s*select a\.id[\s\S]*from restaurantes\.order_amendments a/, respond: () => [lecturas++ === 0 ? FILA : { ...FILA, status: "rechazado", reject_reason: "otro", decided_by: "u-2" }] },
       { match: /select status from restaurantes\.orders[\s\S]*for update/, respond: () => [{ status: "preparando" }] },
       { match: /update restaurantes\.order_amendments set status = 'aceptado'/, respond: () => [] },
     ]);
     expect((await repo.decidir("org-1", "a-1", { tipo: "aceptar" }, "u-1", null)).resultado).toBe("ya_resuelto");
     expect(sesion.calls.some((c) => /update restaurantes\.orders/.test(c))).toBe(false);
+  });
+
+  it("CARRERA con la fusion: el agente sube la version entre la lectura y el UPDATE; el compare-and-set (version = $4) no toca nada: version_cambio, el pedido intacto", async () => {
+    let lecturas = 0;
+    const { repo, sesion } = montar([
+      { match: /^\s*select a\.id[\s\S]*from restaurantes\.order_amendments a/, respond: () => [lecturas++ === 0 ? FILA : { ...FILA, version: 2, total_added: "85.00", total_after: "185.00" }] },
+      { match: /select status from restaurantes\.orders[\s\S]*for update/, respond: () => [{ status: "preparando" }] },
+      { match: /update restaurantes\.order_amendments set status = 'aceptado'/, respond: () => [] },
+    ]);
+    const r = await repo.decidir("org-1", "a-1", { tipo: "aceptar" }, "u-1", null);
+    expect(r).toMatchObject({ resultado: "version_cambio", agregado: { version: 2 } });
+    expect(sesion.calls.some((c) => /update restaurantes\.orders/.test(c))).toBe(false);
+    expect(sesion.calls.some((c) => /set status = 'aceptado'[\s\S]*and version = \$4/.test(c))).toBe(true);
+  });
+
+  it("CARRERA al rechazar y al marcar no_aplicable: los dos compare-and-set exigen la version leida", async () => {
+    for (const caso of ["rechazar", "no_aplicable"] as const) {
+      let lecturas = 0;
+      const { repo, sesion } = montar([
+        { match: /^\s*select a\.id[\s\S]*from restaurantes\.order_amendments a/, respond: () => [lecturas++ === 0 ? FILA : { ...FILA, version: 2 }] },
+        { match: /select status from restaurantes\.orders[\s\S]*for update/, respond: () => [{ status: "en_camino" }] },
+        { match: /update restaurantes\.order_amendments set status = '(rechazado|no_aplicable)'/, respond: () => [] },
+      ]);
+      const decision = caso === "rechazar" ? ({ tipo: "rechazar", motivo: "otro", nota: "x" } as const) : ({ tipo: "aceptar" } as const);
+      expect((await repo.decidir("org-1", "a-1", decision, "u-1", null)).resultado).toBe("version_cambio");
+      // (la sesion falsa solo registra la primera linea del SQL; el predicado `version = $n` del rechazo, multilinea, lo prueba el escenario SQL real)
+      if (caso === "no_aplicable") expect(sesion.calls.some((c) => /set status = 'no_aplicable'[\s\S]*and version = \$4/.test(c))).toBe(true);
+    }
+  });
+
+  it("versionEsperada distinta de la leida: version_cambio SIN escribir nada", async () => {
+    const { repo, sesion } = montar([{ match: /^\s*select a\.id[\s\S]*from restaurantes\.order_amendments a/, respond: () => [{ ...FILA, version: 2 }] }]);
+    expect((await repo.decidir("org-1", "a-1", { tipo: "aceptar" }, "u-1", null, { versionEsperada: 1 })).resultado).toBe("version_cambio");
+    expect(sesion.calls.some((c) => /update /.test(c))).toBe(false);
+  });
+
+  it("20+ min con status pendiente (reloj de la BASE): decidir cierra como vencido, firma el evento como el usuario y no toca el pedido", async () => {
+    let lecturas = 0;
+    const { repo, sesion } = montar([
+      { match: /^\s*select a\.id[\s\S]*from restaurantes\.order_amendments a/, respond: () => [lecturas++ === 0 ? { ...FILA, vencida_por_reloj: true } : { ...FILA, status: "vencido", escalation_level: 2, decided_at: "2026-10-24T18:21:00Z" }] },
+      { match: /update restaurantes\.order_amendments set status = 'vencido'/, respond: () => [{ property_id: "prop-1" }] },
+      { match: /insert into restaurantes\.order_amendment_events/, respond: () => [] },
+    ]);
+    const r = await repo.decidir("org-1", "a-1", { tipo: "aceptar" }, "u-1", null, { versionEsperada: 1 });
+    expect(r).toMatchObject({ resultado: "vencido", agregado: { estado: "vencido" } });
+    expect(sesion.calls.some((c) => /update restaurantes\.orders|set status = 'aceptado'|select status from restaurantes\.orders/.test(c))).toBe(false);
+  });
+
+  it("20+ min pero otra persona/tick ya la cerro entre la lectura y el cierre: ya_resuelto", async () => {
+    const { repo } = montar([
+      { match: /^\s*select a\.id[\s\S]*from restaurantes\.order_amendments a/, respond: () => [{ ...FILA, vencida_por_reloj: true }] },
+      { match: /update restaurantes\.order_amendments set status = 'vencido'/, respond: () => [] },
+    ]);
+    expect((await repo.decidir("org-1", "a-1", { tipo: "aceptar" }, "u-1", null)).resultado).toBe("ya_resuelto");
   });
 
   it("si el pedido no se pudo actualizar tras aceptar, lanza (la transaccion entera se revierte)", async () => {
