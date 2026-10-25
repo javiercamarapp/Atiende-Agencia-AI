@@ -55,4 +55,24 @@ describe("baja inmediata", () => {
     expect((await baja(app, ctx, ctx.staff.admin.id)).status).toBe(200);
     expect((await refrescar(app, sesion.refreshToken)).status).toBe(200);
   });
+
+  // El refresh NO rechaza globalmente a quien tiene cero membresias: la baja corta por el corte de sesiones, no por contar membresias.
+  it("sin membresia y SIN baja previa (registro autoservicio / invitado antes de aceptar): el refresh reemite sesion (200)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const sesion = await login(app, ctx.staff.repartidor);
+    // Se quita la membresia directo en el repositorio, sin pasar por la baja (no se fija el corte de sesiones).
+    await (ctx.deps.coreRepo as unknown as { removeMembership(o: string, u: string): Promise<void> }).removeMembership(ctx.organizationId, ctx.staff.repartidor.id);
+    expect((await refrescar(app, sesion.refreshToken)).status).toBe(200);
+  });
+
+  it("superadmin de plataforma sin membresias: el refresh reemite sesion (200)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const sesion = await login(app, ctx.staff.repartidor);
+    const core = ctx.deps.coreRepo as unknown as { removeMembership(o: string, u: string): Promise<void>; addPlatformSuperadmin?(id: string): void };
+    await core.removeMembership(ctx.organizationId, ctx.staff.repartidor.id);
+    core.addPlatformSuperadmin?.(ctx.staff.repartidor.id);
+    expect((await refrescar(app, sesion.refreshToken)).status).toBe(200);
+  });
 });
