@@ -28,6 +28,10 @@ function sesion() {
 const SALSAS_T7_001 = ["crema_ajo", "salsa_guacamolera", "salsa_mexicana", "salsa_habanero"];
 const TARJETA = { payment_method: "tarjeta", efectivo_con: undefined };
 
+/** Lineas del resumen que hablan de salsas (las pedidas, las basicas incluidas...). Las basicas SOLO deben salir donde hay platillos que las llevan, y aqui se afirma EXACTAMENTE cual es esa unica linea. */
+const BASICAS_COMPLETAS = "Salsas básicas incluidas: salsa roja, salsa verde, cebolla con cilantro, limones";
+const lineasDeSalsas = (c: string): string[] => c.split("\n").filter((l) => /salsas/i.test(l)).map((l) => l.trim());
+
 async function canon(s: Sesion, extra: Record<string, unknown>): Promise<string> {
   await s.quote(extra);
   return s.canonico();
@@ -80,7 +84,7 @@ describe("variantes del resumen canonico completo", () => {
     const { s, bistec } = sesion();
     const c = await canon(s, { ...TARJETA, items: [{ ...bistec, tortilla: "maiz" }], canal: "domicilio", colonia_entrega: "Centro" });
     expect(c).toContain("(maiz)");
-    expect(c).not.toContain("Salsas");
+    expect(lineasDeSalsas(c)).toEqual([BASICAS_COMPLETAS]); // ni «Salsas pedidas» ni ninguna otra linea de salsas
     expect(c).not.toContain("Notas");
   });
 
@@ -307,7 +311,7 @@ describe("R15 revision: herencia en re-cotizaciones, tortilla por indice, bander
     expect(c1).not.toContain("Notas");
     expect(c1).toContain("Sin: limones");
     const c2 = await canon(s, { ...TARJETA, items: [item], canal: "recoger", requested_complements: [], omit_default_complements: [] });
-    expect(c2).not.toContain("Salsas");
+    expect(lineasDeSalsas(c2)).toEqual([BASICAS_COMPLETAS]);
     expect(c2).not.toContain("Sin:");
   });
 

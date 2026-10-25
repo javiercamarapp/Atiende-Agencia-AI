@@ -69,7 +69,7 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
 
 /** Categorias que NO traen las 9 salsas incluidas: un pedido solo de ellas no tiene salsa que duplicar (QA-PM-R2-reglas-14: 2 Coca-Cola con doble salsa
  * cobraban un Extra Salsa de $19). */
-const CATEGORIAS_SIN_SALSA = /^(?:bebidas?|aguas frescas|refrescos|cervezas|licores y cocktails|postres|guarniciones extra)$/i;
+export const CATEGORIAS_SIN_SALSA = /^(?:bebidas?|aguas frescas|refrescos|cervezas|licores y cocktails|postres|guarniciones extra)$/i;
 
 /** La doble porcion de salsa exige al menos un platillo que traiga salsas incluidas. */
 export function assertDobleSalsaAplica(products: readonly ProductoEncontrado[], orderedProductIds: readonly string[], doubleSalsas: readonly unknown[] | undefined): void {
