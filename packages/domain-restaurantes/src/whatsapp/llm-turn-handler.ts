@@ -62,6 +62,8 @@ import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { RESPUESTA_TOQUE_RETENIDO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import { clasificarCausaError, TopeLlamadaLlmError } from "./observabilidad-turno.ts";
+import { completarConHedging, HedgeLlmFalloError, hedgeLlmDespuesMs, hedgeLlmRetrasoEfectivoMs } from "./llm-hedge.ts";
+import type { PataHedgeInforme } from "./llm-hedge.ts";
 import type { CausaErrorTurno, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -665,6 +667,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     modeloRespaldoLlm: string | null;
     /** PM-R19: modelo que REALMENTE contesto la ultima llamada del turno (lista cerrada o "otro"); distingue respaldo real de caida de escalera. null si ninguna contesto. */
     modeloRespondioLlm: string | null;
+    /** PM-R21: una entrada por llamada al modelo (ver `EventoTurnoWhatsApp.llamadasLlm`); acotada a 12. */
+    llamadasLlm: Array<{ pata: "primario" | "alterno" | "respaldo_secuencial"; resultado: "ok" | "tope" | "error" | "cancelada"; ms: number; modelo: string; causa?: CausaErrorTurno }>;
+    /** PM-R21: el hedging lanzo el alterno en paralelo en alguna vuelta del turno. */
+    hedgeLlmLanzado: boolean;
+    /** PM-R21: quien contesto la ULTIMA vuelta con hedging (null si no hubo). */
+    hedgeLlmGanador: "primario" | "alterno" | null;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
     /** Solo con `contextoPrecargado` encendido: que llamadas hizo el servidor antes de la primera vuelta. */
@@ -1155,17 +1163,62 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // aprobada. Seguro: la llamada al modelo no tiene efectos laterales y las herramientas corren ENTRE llamadas (abajo), nunca dentro; el respaldo no las repite
           // (`crear_pedido` corre una sola vez y sigue siendo idempotente por el estado del flujo). Solo el rol por defecto: la escalera del rol escalado es otra.
           let huboRespaldoEnVuelta = false;
+          const registrarPata = (pata: PataHedgeInforme["pata"] | "respaldo_secuencial", resultado: "ok" | "tope" | "error" | "cancelada", ms: number, modelo: string | undefined, error?: unknown) => {
+            if (tele.llamadasLlm.length >= 12) return;
+            tele.llamadasLlm.push({ pata, resultado, ms: Math.max(0, Math.round(ms)), modelo: idModeloDeListaCerrada(modelo ?? MODELO_PREDETERMINADO_ID), ...(resultado === "error" ? { causa: clasificarCausaError(error) } : {}) });
+          };
+          const hedgeMs = hedgeLlmDespuesMs();
           for (;;) {
             const modeloActual = esRolPorDefecto && modeloRespaldo !== null ? modeloRespaldo : modeloElegido;
             // Un solo respaldo por turno: con el alterno ya en uso (o un modelo no economico) la llamada lleva todo el presupuesto restante. Con 10 a 16 s restantes el segundo
             // respaldo no cabria de todos modos (el primer tope siempre deja <= 7 s al siguiente).
             const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID) : null;
+            // PM-R21 (hedging, apagable con WHATSAPP_LLM_HEDGE_MS=0): el alterno se lanza EN PARALELO cuando el primario pasa de ~5.5 s sin contestar, en vez de cortarlo a los 9-11 s y
+            // dejar al alterno 7 s o menos (en R20 el respaldo secuencial tambien se quedo sin contestar en 71 de 113 turnos con error). Gana el primero que conteste; la otra se aborta.
+            const retrasoHedge = siguiente !== null && hedgeMs !== null ? hedgeLlmRetrasoEfectivoMs(deadline - Date.now(), hedgeMs) : null;
+            if (siguiente !== null && retrasoHedge !== null) {
+              const modeloPrimario = modeloActual ?? MODELO_PREDETERMINADO_ID;
+              const anotar = (patas: readonly PataHedgeInforme[]) => {
+                for (const pt of patas) registrarPata(pt.pata, pt.resultado, pt.ms, pt.pata === "primario" ? modeloPrimario : siguiente, pt.error);
+              };
+              try {
+                const r = await completarConHedging({ limiteMs: deadline, hedgeDespuesMs: retrasoHedge, primario: llamarAlModelo(modeloActual), alterno: llamarAlModelo(siguiente) });
+                anotar(r.patas);
+                completion = r.valor;
+                if (r.alternoLanzado) {
+                  tele.hedgeLlmLanzado = true;
+                  tele.hedgeLlmGanador = r.ganador;
+                  tele.reintentosLlm += 1;
+                  tele.modeloRespaldoLlm = siguiente;
+                }
+                if (r.ganador === "alterno") {
+                  // Como el respaldo de R19: el primario ya demostro estar atascado, el resto del turno sigue con el alterno.
+                  modeloRespaldo = siguiente;
+                  tele.reintentoLlmRecuperado = true;
+                }
+                break;
+              } catch (errHedge) {
+                if (!(errHedge instanceof HedgeLlmFalloError)) throw errHedge;
+                anotar(errHedge.patas);
+                if (errHedge.alternoLanzado) {
+                  tele.hedgeLlmLanzado = true;
+                  tele.hedgeLlmGanador = null;
+                  tele.reintentosLlm += 1;
+                  tele.modeloRespaldoLlm = siguiente;
+                }
+                throw errHedge.causa;
+              }
+            }
             const plan = siguiente !== null ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
+            const inicioIntento = Date.now();
+            const pataSecuencial = huboRespaldoEnVuelta ? "respaldo_secuencial" : "primario";
             try {
               completion = await completarConTope(plan.respalda ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo(modeloActual));
+              registrarPata(pataSecuencial, "ok", Date.now() - inicioIntento, modeloActual);
               if (huboRespaldoEnVuelta) tele.reintentoLlmRecuperado = true;
               break;
             } catch (errIntento) {
+              registrarPata(pataSecuencial, errIntento instanceof TopeLlamadaLlmError ? "tope" : "error", Date.now() - inicioIntento, modeloActual, errIntento);
               // Solo el tope de tiempo se respalda aqui; un error rapido del proveedor (5xx, 429...) ya lo maneja la escalera del gateway.
               if (siguiente === null || !plan.respalda || !(errIntento instanceof TopeLlamadaLlmError)) throw errIntento;
               modeloRespaldo = siguiente;
@@ -1526,7 +1579,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1563,6 +1616,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             reintentoLlmRecuperado: tele.reintentoLlmRecuperado,
             modeloRespaldoLlm: tele.modeloRespaldoLlm,
             modeloRespondioLlm: tele.modeloRespondioLlm,
+            llamadasLlm: tele.llamadasLlm,
+            hedgeLlmLanzado: tele.hedgeLlmLanzado,
+            hedgeLlmGanador: tele.hedgeLlmGanador,
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
