@@ -36,6 +36,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { assertAdminGeneral } from "./admin-scope.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -119,7 +120,11 @@ export function restaurantesAdminAvisosRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (raw.sonido !== undefined && typeof raw.sonido !== "boolean") throw Errors.validation("sonido: debe ser verdadero o falso.");
     if (raw.userId !== undefined && raw.userId !== null && (typeof raw.userId !== "string" || !UUID_RE.test(raw.userId))) throw Errors.validation("userId: identificador inválido.");
     const objetivo = typeof raw.userId === "string" && raw.userId !== callerId ? raw.userId : null;
-    if (objetivo !== null) assertVerticalRole(c, STAFF_INVITE_ROLES);
+    if (objetivo !== null) {
+      assertVerticalRole(c, STAFF_INVITE_ROLES);
+      // Cambiar las preferencias de OTRA persona de la organizacion es un alcance de toda la organizacion.
+      await assertAdminGeneral(deps, c);
+    }
 
     const db = c.get("db");
     try {

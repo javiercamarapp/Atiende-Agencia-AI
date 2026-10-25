@@ -32,7 +32,8 @@
 // apps/api/tests/voice-order-closed-loop.spec.ts.
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { canonicalizeMexicanPhone, consumeRateLimit, invokeAgentTool, OrderValidationError } from "@atiende/domain-restaurantes";
+import { canonicalizeMexicanPhone, consumeRateLimit, crearHookAgregados, invokeAgentTool, OrderValidationError } from "@atiende/domain-restaurantes";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { AgentToolContext, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
@@ -87,7 +88,7 @@ export async function runVoiceToolRoute(
   c: Context,
   orgSlug: string,
   options: VoiceToolRouteOptions,
-  exec: (args: { repo: RestaurantesRepository; org: { id: string }; caller: VoiceCaller; toolCtx: AgentToolContext }) => Promise<Response>,
+  exec: (args: { repo: RestaurantesRepository; db: TenantDbSession; org: { id: string }; caller: VoiceCaller; toolCtx: AgentToolContext }) => Promise<Response>,
 ): Promise<Response> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const repo = deps.restaurantesRepo(db);
@@ -105,7 +106,7 @@ export async function runVoiceToolRoute(
     }
 
     try {
-      const response = await repo.runWithRowSavepoint(() => exec({ repo, org, caller, toolCtx: voiceToolContext(org.id, caller, voiceTurnFromRequest(c)) }));
+      const response = await repo.runWithRowSavepoint(() => exec({ repo, db, org, caller, toolCtx: voiceToolContext(org.id, caller, voiceTurnFromRequest(c)) }));
       await auditVoice(repo, org, caller, options.tool, "ok", null);
       return response;
     } catch (err) {
@@ -241,6 +242,18 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
     const body = await readJsonCapped<{ quote_hash?: unknown }>(c.req.raw, 2 * 1024);
     return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "confirmar_resumen", accept: "required" }, async ({ repo, toolCtx }) => {
       const outcome = await invokeAgentTool(repo, toolCtx, "confirmar_resumen", { quote_hash: typeof body.quote_hash === "string" ? body.quote_hash : undefined });
+      return c.json(outcome.result as object);
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/orders/amendment (solicitar_agregado_pedido): el cliente ya tiene un pedido registrado y quiere agregarle productos. Crea la solicitud que la
+  // sucursal acepta o rechaza (nunca se confirma por la llamada). El telefono y la sucursal salen del token de llamada; sin la migracion 099 cae a la escalada de siempre.
+  app.post("/v1/restaurantes/:orgSlug/orders/amendment", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 8 * 1024);
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "solicitar_agregado_pedido", accept: "required" }, async ({ repo, db, toolCtx }) => {
+      const ctx = deps.agregadosRepo ? { ...toolCtx, agregados: crearHookAgregados({ agregados: deps.agregadosRepo(db), repo, db }) } : toolCtx;
+      const outcome = await invokeAgentTool(repo, ctx, "solicitar_agregado_pedido", body);
       return c.json(outcome.result as object);
     });
   });

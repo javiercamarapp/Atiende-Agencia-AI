@@ -64,6 +64,11 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  OperadorPuedeInput,
+  GuardarPerfilOperativoResultado,
+  PerfilOperativo,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -575,6 +580,23 @@ export interface RestaurantesRepository {
    *  acción de negocio que ya se completó en la MISMA transacción del request;
    *  ver `PostgresRestaurantesRepository.registrarAuditoria`. */
   registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void>;
+
+  /** Fuente unica "quien puede operar" (migracion 090, `restaurantes.operador_puede`): owner/admin todo; `staff` captura/gestiona siempre y
+   *  despacha/cancela solo si su perfil operativo es encargado (o nulo). Base sin migrar (42883/42P01/42703): `true` -- el comportamiento
+   *  anterior (todo `staff` opera igual) -- porque la ruta ya valido el rol; nunca un 500. */
+  operadorPuede(input: OperadorPuedeInput): Promise<boolean>;
+
+  /** Marca a un `staff` como cajero/encargado (o nulo = encargado) via `restaurantes.staff_perfil_operativo_guardar` (solo owner/admin con
+   *  alcance de toda la organizacion, validado en SQL). Devuelve el perfil previo (migracion 100) para la bitacora. `disponible: false` si la
+   *  base aun no tiene la migracion 090. */
+  guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<GuardarPerfilOperativoResultado>;
+
+  /** Como `registrarAuditoria` pero NUNCA traga el error: si la bitacora no se puede escribir, lanza (y la transaccion del request, que incluye
+   *  el cambio de negocio, se revierte). Para cambios de permisos, donde una accion sin rastro no es aceptable. */
+  registrarAuditoriaObligatoria(input: RegistrarAuditoriaInput): Promise<void>;
+  /** Registra un ACCESO a datos personales (migracion 097) y devuelve cuantos lleva el actor sobre esa entidad. Nunca lanza por base sin migrar
+   *  (`registrado: false`); un fallo de permisos (42501) SI se propaga: el actor no debia llegar aqui. */
+  registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado>;
 
   /** `disponible: false` (nunca lanza) cuando `restaurantes.audit_log`/
    *  `restaurantes.record_audit_log` todavía no existen en esta base (SQLSTATE
