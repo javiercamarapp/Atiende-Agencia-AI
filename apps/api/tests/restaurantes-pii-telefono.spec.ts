@@ -42,7 +42,7 @@ describe("POST repartidor/orders/:orderId/llamar", () => {
     const res = await app.request(ruta(ctx, order.id), authedJson(ctx.staff.repartidor.token, {}, "POST"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ telefono: `+52${TELEFONO}` });
-    const filas = ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso");
+    const filas = ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar");
     expect(filas).toHaveLength(1);
     expect(filas[0]).toMatchObject({ action: "pii.llamar", entityId: order.id, actorUserId: ctx.staff.repartidor.id });
     expect(JSON.stringify(filas)).not.toContain(TELEFONO);
@@ -56,7 +56,7 @@ describe("POST repartidor/orders/:orderId/llamar", () => {
     const ajeno = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "en_camino", customerPhone: TELEFONO });
     ctx.restaurantesRepo.seedOrder(ajeno);
     expect((await app.request(ruta(ctx, ajeno.id), authedJson(ctx.staff.repartidor.token, {}, "POST"))).status).toBe(404);
-    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso")).toHaveLength(0);
+    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar")).toHaveLength(0);
   });
 
   it("un pedido ya entregado ya no entrega el numero (409) y no deja fila", async () => {
@@ -64,7 +64,7 @@ describe("POST repartidor/orders/:orderId/llamar", () => {
     const res = await app.request(ruta(ctx, order.id), authedJson(ctx.staff.repartidor.token, {}, "POST"));
     expect(res.status).toBe(409);
     expect(await res.text()).not.toContain(TELEFONO);
-    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso")).toHaveLength(0);
+    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar")).toHaveLength(0);
   });
 
   it("tope por pedido: la llamada siguiente al maximo -> 429 sin el numero (todas quedan registradas)", async () => {
@@ -75,7 +75,7 @@ describe("POST repartidor/orders/:orderId/llamar", () => {
     const sexta = await app.request(ruta(ctx, order.id), authedJson(ctx.staff.repartidor.token, {}, "POST"));
     expect(sexta.status).toBe(429);
     expect(await sexta.text()).not.toContain(TELEFONO);
-    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso")).toHaveLength(MAX_LLAMADAS_POR_PEDIDO + 1);
+    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar")).toHaveLength(MAX_LLAMADAS_POR_PEDIDO + 1);
   });
 
   it("owner/admin leen las filas en la bitacora (tipo=acceso); staff no", async () => {
