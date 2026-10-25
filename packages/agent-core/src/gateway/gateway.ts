@@ -32,7 +32,7 @@ import { deriveVerticalFromRole, NoopUsageRecorder, usdToMicroUsd, type UsageRec
 import { applyResidencyGate, DEFAULT_RESIDENCY_POLICY, type ResidencyPolicy } from './residency.js';
 import { isRetryableProviderError } from './retryable.js';
 import { lookupModelPrice } from './prices.js';
-import { AllProvidersFailedError, GatewayError } from './errors.js';
+import { AllProvidersFailedError, esCancelacionDelLlamador, GatewayError } from './errors.js';
 import { KillSwitchEngagedError, type GatewayKillSwitch } from './kill-switch.js';
 import type { LlmCompletionRequest, LlmCompletionResult, LlmCostEstimator, LlmLane, LlmProvider } from './types.js';
 
@@ -327,7 +327,8 @@ export class LlmGateway {
         const retryable = err instanceof GatewayError ? err.retryable : isRetryableProviderError(err);
         // Un 402 (sin credito / saldo insuficiente) NO es una caida del proveedor: contarlo por cada modelo de la escalera dejaba varios circuitos abiertos
         // hasta el enfriamiento aun despues de recargar el saldo. La escalera sigue probando el siguiente modelo, pero el breaker no se entera.
-        if ((err as { status?: unknown } | null)?.status !== 402) await this.breaker.reportFailure(provider.id, message);
+        // Tampoco una cancelacion deliberada del llamador (hedging: la otra pata ya contesto): el proveedor no fallo.
+        if ((err as { status?: unknown } | null)?.status !== 402 && !esCancelacionDelLlamador(opts.request.signal)) await this.breaker.reportFailure(provider.id, message);
 
         if (streamedText) {
           // Ya se emitio texto de este escalon: no se reintenta con otro modelo (duplicaria la salida).
