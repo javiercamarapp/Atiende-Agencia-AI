@@ -22,7 +22,7 @@ import { eventoSinPII } from "../log-sin-pii.ts";
 import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
 import { crearSegmentadorFrases } from "./frases.ts";
-import { ejecutarHerramientas } from "./herramientas.ts";
+import { ejecutarHerramientas, type EstadoEspera } from "./herramientas.ts";
 import { ColaAsync } from "./puertos.ts";
 import type { ContextoTurnoLlm, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts } from "./puertos.ts";
 import { crearSttDeepgram, keytermsDe } from "./deepgram-stt.ts";
@@ -42,7 +42,7 @@ export interface CascadaV2Opciones {
   /** Herramientas de solo lectura que pueden correr en paralelo al inicio de un turno (el resto, en serie). */
   readonly herramientasEnParalelo?: ReadonlySet<string>;
   /** Si el modelo pide `confirmar` y `crear` en la MISMA respuesta, solo se ejecuta `confirmar`: `crear` espera la confirmacion del cliente en un turno posterior (restaurantes: confirmar_resumen / crear_pedido). */
-  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string };
+  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
   /** Tope de vueltas modelo -> herramienta -> modelo dentro de un turno. */
   readonly vueltasToolMax?: number;
   /** Modelo del LLM por omision (de lo contrario `config.cascadaV2.llm.modelo`). */
@@ -115,7 +115,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
   /** Linea de tiempo del audio del turno (la ultima respuesta): lo generado, para estimar lo que ya sono. Persiste tras terminar el turno mientras el audio siga sonando. */
   private audio: LineaAudio | null = null;
   /** Regla confirmar -> crear a nivel de sesion (ver `herramientas.ts`): se apaga cuando el cliente vuelve a hablar. */
-  private readonly esperandoAlCliente = { pendiente: false };
+  private readonly esperandoAlCliente: EstadoEspera = { pendiente: false, huellaOida: null, huellaCotizada: null, cotizoEnTurno: false };
   /** Vuelta (modelo -> herramienta -> modelo) en curso: solo el texto de esa vuelta se corrige al interrumpir. */
   private vueltaActual = 0;
   /** Lo que ya sono al momento de interrumpir (se fija en `interrumpir`, antes de que el reloj avance). */
@@ -186,6 +186,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
     if (!enCurso && !this.reproduciendo()) return;
     // Lo que ya sono se fija AHORA: despues el reloj sigue avanzando.
     this.oidasAlInterrumpir = this.oidasAhora();
+    // Interrumpir una lectura que aun suena: el cliente puede no haber oido el resumen completo; el siguiente «si» no cuenta como respuesta al resumen (se lee de nuevo).
+    this.esperandoAlCliente.huellaOida = null;
     if (enCurso) {
       this.generacion += 1;
       this.control?.abort();
@@ -318,8 +320,15 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.vueltaActual = 0;
     this.turnosCliente += 1;
     this.mensajes.push({ role: "user", content: texto });
+    this.esperandoAlCliente.cotizoEnTurno = false;
+    this.esperandoAlCliente.huellaCotizada = null;
+    let habloTrasCotizar = false;
 
     const cola = new ColaAsync<FraseLlm>();
+    const empujar = (f: FraseLlm): void => {
+      if (this.esperandoAlCliente.cotizoEnTurno === true && f.frase.trim() !== "") habloTrasCotizar = true;
+      cola.push(f);
+    };
     let fallaTts: unknown = null;
     const bombeo = this.bombearFrases(cola, senal, vigente).catch((err: unknown) => {
       // El TTS se cayo: se detiene tambien el LLM (no tiene caso seguir escribiendo una respuesta que nadie puede decir).
@@ -342,7 +351,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
           if (ttft === null) ttft = this.ahora() - t0;
           for (const f of segmentador.agregar(delta)) {
             frasesRonda.push(f);
-            cola.push({ frase: f, vuelta });
+            empujar({ frase: f, vuelta });
           }
         });
         // El costo se registra SIEMPRE que el proveedor lo reporto, aunque el cliente haya interrumpido mientras tanto (una llamada abortada antes de terminar no trae uso).
@@ -351,10 +360,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
         const truncada = r.finishReason === "length" && r.toolCalls.length === 0 && r.texto.trim() !== "";
         // Una respuesta cortada por el tope de tokens termina a media oracion: ese fragmento NO se dice; se cierra con una frase de respaldo.
         const resto = truncada ? (segmentador.vaciar(), null) : segmentador.vaciar();
-        if (resto !== null) cola.push({ frase: resto, vuelta });
+        if (resto !== null) empujar({ frase: resto, vuelta });
         if (truncada) {
           this.log("v2_respuesta_cortada", { proveedor: modelo, motivo: "length" });
-          cola.push({ frase: cfg.llm.fraseCorte, vuelta });
+          empujar({ frase: cfg.llm.fraseCorte, vuelta });
           this.mensajes.push({ role: "assistant", content: [...frasesRonda, cfg.llm.fraseCorte].join(" ") });
           this.indiceRespuestaFinal = this.mensajes.length - 1;
           break;
@@ -367,7 +376,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
             vacios += 1;
             continue;
           }
-          cola.push({ frase: cfg.llm.fraseRespaldo, vuelta });
+          empujar({ frase: cfg.llm.fraseRespaldo, vuelta });
           this.mensajes.push({ role: "assistant", content: cfg.llm.fraseRespaldo });
           this.indiceRespuestaFinal = this.mensajes.length - 1;
           break;
@@ -412,6 +421,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
         this.falla(errorLlm, "llm");
         return;
       }
+      // El agente termino de hablar tras cotizar y nadie lo interrumpio: ese resumen ya se le leyo al cliente (el «si» siguiente responde a EL).
+      if (habloTrasCotizar && this.esperandoAlCliente.huellaCotizada) this.esperandoAlCliente.huellaOida = this.esperandoAlCliente.huellaCotizada;
       this.h.agenteTermino();
     } finally {
       if (this.generacion === mia) this.ocupada = false;

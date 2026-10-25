@@ -5,7 +5,10 @@
 //  - `continuar`: se consulta ANTES de cada herramienta en serie. Si el cliente interrumpio ("no, espere") a media confirmar_resumen, lo que sigue NO corre
 //    (respuesta `interrumpido_por_el_cliente`): un crear_pedido nunca se ejecuta sobre un resumen que el cliente acaba de rechazar.
 //  - `confirmacionAntesDeCrear`: Anthropic en OpenRouter no admite `parallel_tool_calls` (con require_parameters daria 404), asi que el cliente impide que el modelo
-//    confirme y cree en la MISMA respuesta: tras `confirmar`, un `crear` posterior espera la respuesta del cliente (`espera_confirmacion_del_cliente`).
+//    confirme y cree sin que el cliente haya dicho «si»: tras `confirmar`, un `crear` posterior espera la respuesta del cliente (`espera_confirmacion_del_cliente`).
+//    Con `cotizar` configurado la regla es de MAQUINA DE ESTADOS (la que el servidor ya hace cumplir en el cierre): si el resumen de la ultima cotizacion YA se le leyo al
+//    cliente en un turno anterior (`huellaOida`) y `confirmar` tuvo exito en este turno (el servidor solo lo acepta en un turno POSTERIOR a la cotizacion, o sea, tras el «si»),
+//    `crear` corre sin pedir un segundo «si». Si el resumen no se ha leido, cambio, o `confirmar` fue rechazado, `crear` espera como antes.
 import type { ToolCallLlmVoz } from "../cascada-openrouter.ts";
 import type { ToolCallPedida } from "../sesion.ts";
 
@@ -16,13 +19,41 @@ export interface ResultadoHerramienta {
 
 export interface OpcionesHerramientas {
   readonly enParalelo?: ReadonlySet<string>;
-  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string };
+  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
   /** Falso = el turno ya no esta vigente (el cliente interrumpio o la llamada cerro): no se inicia ninguna herramienta mas. */
   readonly continuar?: () => boolean;
   /** Estado de la regla a nivel de SESION: `pendiente` = el modelo ya confirmo el resumen y espera la respuesta del cliente. Se enciende al ejecutar `confirmar` y la sesion lo apaga
    * cuando el cliente habla de nuevo; mientras este encendido ningun `crear` corre, ni en la misma respuesta ni en una vuelta posterior del MISMO turno. */
-  readonly esperandoAlCliente?: { pendiente: boolean };
+  readonly esperandoAlCliente?: EstadoEspera;
 }
+
+/** Estado de la regla a nivel de sesion. `huellaOida` = huella (`quote_hash`) de la cotizacion cuyo resumen ya se le leyo al cliente en un turno anterior; la sesion la fija al
+ * terminar un turno en que el agente hablo tras cotizar. `huellaCotizada` / `cotizoEnTurno` son del turno en curso (la sesion los limpia al empezar cada turno). */
+export interface EstadoEspera {
+  pendiente: boolean;
+  huellaOida?: string | null;
+  huellaCotizada?: string | null;
+  cotizoEnTurno?: boolean;
+}
+
+function huellaDe(salida: unknown): string | null {
+  if (salida && typeof salida === "object" && !Array.isArray(salida)) {
+    const h = (salida as Record<string, unknown>)["quote_hash"];
+    if (typeof h === "string" && h.trim() !== "") return h.trim().toLowerCase();
+  }
+  return null;
+}
+
+function conError(salida: unknown): boolean {
+  if (salida === null || salida === undefined) return true;
+  if (typeof salida !== "object" || Array.isArray(salida)) return false;
+  const o = salida as Record<string, unknown>;
+  return ("error" in o && o["error"] !== undefined && o["error"] !== null && o["error"] !== false) || o["ok"] === false;
+}
+
+export const MENSAJE_ESPERA_CONFIRMACION =
+  "Todavia no se puede crear el pedido: el cliente aun no contesto al resumen. Lea el resumen completo (pedido, entrega, pago y total) UNA vez, pida UN solo «si» y termine su respuesta sin llamar crear_pedido. " +
+  "Cuando el cliente diga que si, llame crear_pedido (no le pida otro «si» ni vuelva a leer el resumen).";
 
 function argumentosDe(argsJson: string): Record<string, unknown> {
   try {
@@ -40,7 +71,21 @@ export async function ejecutarHerramientas(
   opciones: OpcionesHerramientas = {},
 ): Promise<ResultadoHerramienta[]> {
   const { enParalelo, confirmacionAntesDeCrear: regla, continuar } = opciones;
-  const espera = opciones.esperandoAlCliente ?? { pendiente: false };
+  const espera: EstadoEspera = opciones.esperandoAlCliente ?? { pendiente: false };
+  /** Marca que `confirmar` se ejecuto (o ya se ejecuto en la racha inicial) y arma la espera salvo que el resumen ya se haya leido y la confirmacion haya tenido exito. */
+  const alConfirmar = (salida: unknown): void => {
+    if (!regla) return;
+    const leido = regla.cotizar !== undefined && (espera.huellaOida ?? null) !== null && !conError(salida);
+    if (!leido) espera.pendiente = true;
+  };
+  /** Anota la cotizacion: si su huella es distinta de la que el cliente oyo, el resumen nuevo aun no se ha leido. */
+  const alCotizar = (salida: unknown): void => {
+    if (!regla?.cotizar) return;
+    espera.cotizoEnTurno = true;
+    const h = huellaDe(salida);
+    espera.huellaCotizada = h;
+    if (h === null || h !== espera.huellaOida) espera.huellaOida = null;
+  };
   const una = async (tc: ToolCallLlmVoz): Promise<ResultadoHerramienta> => {
     try {
       return { llamada: tc, salida: await ejecutar({ id: tc.id, nombre: tc.nombre, args: argumentosDe(tc.argsJson) }) };
@@ -51,7 +96,10 @@ export async function ejecutarHerramientas(
   let racha = 0;
   while (enParalelo && racha < llamadas.length && enParalelo.has(llamadas[racha]?.nombre ?? "")) racha++;
   const resultados = racha > 1 ? await Promise.all(llamadas.slice(0, racha).map((tc) => una(tc))) : [];
-  if (regla && resultados.some((r) => r.llamada.nombre === regla.confirmar)) espera.pendiente = true;
+  for (const r of resultados) {
+    if (regla && r.llamada.nombre === regla.cotizar) alCotizar(r.salida);
+    if (regla && r.llamada.nombre === regla.confirmar) alConfirmar(r.salida);
+  }
   for (let i = resultados.length; i < llamadas.length; i++) {
     const tc = llamadas[i] as ToolCallLlmVoz;
     if (continuar && !continuar()) {
@@ -59,11 +107,15 @@ export async function ejecutarHerramientas(
       continue;
     }
     if (regla && espera.pendiente && tc.nombre === regla.crear) {
-      resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: "Lea el resumen al cliente y espere su respuesta antes de crear el pedido." } });
+      resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
       continue;
     }
-    resultados.push(await una(tc));
-    if (regla && tc.nombre === regla.confirmar) espera.pendiente = true;
+    const res = await una(tc);
+    resultados.push(res);
+    if (regla && tc.nombre === regla.cotizar) alCotizar(res.salida);
+    if (regla && tc.nombre === regla.confirmar) alConfirmar(res.salida);
+    // Pedido creado: ese resumen ya se uso. Un segundo «si» (o un crear repetido) debe pasar por una confirmacion nueva; la idempotencia sigue siendo del servidor.
+    if (regla?.cotizar && tc.nombre === regla.crear && !conError(res.salida)) espera.huellaOida = null;
   }
   return resultados;
 }

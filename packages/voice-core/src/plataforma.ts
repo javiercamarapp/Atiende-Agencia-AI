@@ -31,7 +31,7 @@ export interface DepsPlataformaVoz extends CredencialesVoz {
   /** Puerto del LLM EN STREAMING de la cascada v2 (honra el modelo y el esfuerzo por turno). Sin el, la cascada v2 queda sin configurar. */
   readonly llmV2?: PuertoLlmVoz | null;
   /** Ver `CascadaV2Opciones.confirmacionAntesDeCrear` (restaurantes: confirmar_resumen / crear_pedido). */
-  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string };
+  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
   readonly crearSocketDeepgram?: CrearSocketDeepgram;
   /** Registro de eventos de la cascada v2 (sin PII: modelo, tokens, latencias). */
   readonly log?: SumideroLog;
