@@ -95,7 +95,7 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(22); // 20 destinos + Copiloto + Seguridad de la cuenta (PL-21)
+    expect(hrefs).toHaveLength(23); // 20 destinos + Copiloto + Notificaciones + Seguridad de la cuenta (PL-21)
     // CHAT-11: el Copiloto tambien esta en la hoja "Más" (admin, contador, auditor y readonly).
     expect(hrefs).toContain("/despachos/demo/copiloto");
     expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/libro-contable", "/despachos/demo/pagos-provisionales", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
@@ -120,14 +120,14 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
 
   // CHAT-11: el Copiloto es una PAGINA para los roles que el servidor deja usar chat-datos (admin, contador, auditor, readonly). Con el
   // asistente activo el boton del header y la pildora del pie son enlaces a /despachos/:org/copiloto y ya no abren el dialogo viejo.
-  it("admin/contador/auditor/readonly: con el asistente activo, el botón del header y la píldora del pie enlazan a la página del Copiloto", async () => {
+  it("admin/contador/auditor/readonly: con el asistente activo, la píldora del pie enlaza a la página del Copiloto (el header ya no lleva botón)", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith("/estado") ? { available: true, permitido: true, motivo: null, usoHoyPct: 0 } : {}), { status: 200, headers: { "content-type": "application/json" } })));
     for (const rol of ["admin", "contador", "auditor", "readonly"]) {
       rendered = await renderShell(rol);
       const root = rendered.container;
       const hrefs = (texto: string) => [...root.querySelectorAll("a")].filter((a) => a.textContent?.includes(texto)).map((a) => a.getAttribute("href"));
-      expect(hrefs("Chatea con tus datos")).toContain("/despachos/demo/copiloto");
-      expect(hrefs("Pregunta a tus datos")).toContain("/despachos/demo/copiloto");
+      expect(root.querySelector('[data-testid="barra-pagina"]')!.querySelector("a, button"), "el encabezado ya no lleva el boton de chat").toBeNull();
+      expect(hrefs("Pregúntale a tus datos")).toContain("/despachos/demo/copiloto");
       expect(hrefs("Copiloto")).toContain("/despachos/demo/copiloto");
       expect(document.body.querySelector('[role="dialog"]')).toBeNull();
       rendered.unmount();
@@ -143,29 +143,29 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
       const root = rendered.container;
       expect(linksSidebar(root)).not.toContain("Copiloto");
       const textos = [...root.querySelectorAll("a, button")].map((e) => e.textContent ?? "");
-      expect(textos.some((t) => t.includes("Chatea con tus datos") || t.includes("Pregunta a tus datos"))).toBe(false);
+      expect(textos.some((t) => t.includes("Pregúntale a tus datos") || t.includes("Pregúntale a tus datos"))).toBe(false);
       rendered.unmount();
       rendered = undefined;
     }
     expect(fetchMock.mock.calls.filter(([u]) => u.includes("/chat-datos"))).toHaveLength(0);
   });
 
-  it("si /estado no confirma el asistente, el botón sigue diciendo Pronto (aviso honesto) y no hay píldora ni enlace", async () => {
+  it("si /estado no confirma el asistente, no hay botón de chat ni píldora ni enlace (aviso honesto: nunca un control Pronto)", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "x" }), { status: 403 })));
     rendered = await renderShell();
     const root = rendered.container;
-    const boton = [...root.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos"));
-    expect(boton?.textContent).toContain("Pronto");
-    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregunta a tus datos"))).toBe(false);
+    // Sin confirmacion del servidor ya no hay boton "Pronto" en el header: no hay ningun control de chat.
+    expect([...root.querySelectorAll("button")].some((b) => b.textContent?.includes("Pregúntale a tus datos"))).toBe(false);
+    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregúntale a tus datos"))).toBe(false);
   });
 
-  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
     rendered = await renderShell();
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]'), "sin campana en el encabezado movil").toBeNull();
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
-    expect(hoja.textContent).toContain("Chatea con tus datos");
+    expect(hoja.textContent).not.toContain("Pregúntale a tus datos");
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
     await act(async () => {

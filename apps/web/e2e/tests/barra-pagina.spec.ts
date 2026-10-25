@@ -2,20 +2,18 @@
 // item de navegacion activo), no un titulo fijo. Solo el Resumen conserva el titulo de la consola.
 // Se recorre el menu real con clics en las 7 consolas (superadmin y las 6 verticales). La barra es de escritorio
 // (en movil la oculta el shell), por eso el movil se salta.
-// Tambien afirma que en CADA pagina la barra lleva a la derecha la campana de notificaciones (real: enlace a la pagina de
-// notificaciones de la consola) y el chip de fecha (no solo en el Resumen): un solo componente (`BarraPagina`) las monta.
+// Tambien afirma que en CADA pagina la barra va delgada: sin campana, sin "Pregúntale a tus datos" y sin chip de fecha (orden del
+// dueno); la campana sigue accesible como pildora "Notificaciones" del pie del menu lateral.
 import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { esMovil, irASeccion, seccionesDelPanel } from "../helpers/navegacion.ts";
 
-// El Copiloto de cada consola pone en la barra el nombre de su portada ("Pregunta a tus datos") con `useTituloBarra`, no el rotulo "Copiloto" del menu.
-const TITULO_COPILOTO = "Pregunta a tus datos";
+// El Copiloto de cada consola pone en la barra el nombre de su portada ("Pregúntale a tus datos") con `useTituloBarra`, no el rotulo "Copiloto" del menu.
+const TITULO_COPILOTO = "Pregúntale a tus datos";
 // Las 6 verticales llevan el titulo nuevo; el superadmin tiene su propia pagina del Copiloto (rotulo "Copiloto").
 const nombreEsperado = (texto: string, objetivo: ObjetivoLogin): string[] => (texto === "Copiloto" ? (objetivo === "superadmin" ? [texto] : [TITULO_COPILOTO]) : [texto]);
 
-// "4 oct 2026" / "15 sept 2026": dia, mes corto es-MX y ano.
-const FORMATO_FECHA = /^\d{1,2} [a-z]{3,5}\.? \d{4}$/;
 
 const CONSOLAS: ReadonlyArray<{ objetivo: ObjetivoLogin; titulo: RegExp }> = [
   { objetivo: "superadmin", titulo: /^Consola de Atiende$/ },
@@ -57,17 +55,13 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
         } else {
           expect(nombreEsperado(seccion.texto, objetivo), `${objetivo}: la barra de ${seccion.href} debe llevar el nombre de la pagina`).toContain(texto);
         }
-        // Campana y fecha en CADA pagina (no solo en la de aterrizaje).
+        // La barra va delgada en CADA pagina: sin campana, sin chat, sin fecha. Las funciones siguen en el pie del menu lateral.
         const barraCompleta = page.getByTestId("barra-pagina");
         await expect(barraCompleta, `${seccion.href}: la barra superior debe estar visible`).toBeVisible();
-        const campana = barraCompleta.getByRole("button", { name: /^Notificaciones/ });
-        await expect(campana, `${seccion.href}: la campana debe estar en la barra`).toHaveCount(1);
-        // La campana abre el centro y "Ver todas" lleva a la pagina de notificaciones de la consola.
-        await campana.click();
-        await expect(page.getByRole("link", { name: "Ver todas las notificaciones" }), `${seccion.href}: "Ver todas" debe llevar a la pagina de notificaciones`).toHaveAttribute("href", /\/notificaciones\/?$/);
-        await page.keyboard.press("Escape");
-        const fecha = ((await barraCompleta.getByTestId("barra-pagina-fecha").textContent()) ?? "").trim();
-        expect(fecha, `${seccion.href}: el chip de fecha debe llevar la fecha de hoy`).toMatch(FORMATO_FECHA);
+        await expect(barraCompleta.locator('[aria-label^="Notificaciones"]'), `${seccion.href}: sin campana en la barra`).toHaveCount(0);
+        await expect(barraCompleta.getByTestId("barra-pagina-fecha"), `${seccion.href}: sin chip de fecha en la barra`).toHaveCount(0);
+        await expect(barraCompleta.getByText(/Pregúntale a tus datos/), `${seccion.href}: sin "Pregúntale a tus datos" en la barra`).toHaveCount(0);
+        await expect(page.locator("aside").getByRole("link", { name: "Notificaciones" }), `${seccion.href}: Notificaciones accesible en el pie del menu`).toHaveCount(1);
         nombres.add(texto);
         await expect(page.getByRole("heading", { level: 1 }), `${seccion.href}: un solo <h1> por pantalla`).toHaveCount(1);
       }

@@ -1,4 +1,4 @@
-// Conexion generica de "Chatea con tus datos" (despachos, licitaciones): cuerpo sin identidad, tope de
+// Conexion generica de "Pregúntale a tus datos" (despachos, licitaciones): cuerpo sin identidad, tope de
 // historial y degradacion honesta ante errores. El transporte esta inyectado: nada toca la red.
 import { describe, expect, it } from "vitest";
 import { MAX_HISTORY, MAX_TURN_CHARS, consultarDisponibilidad, crearConexionChatDatos, ejecutarConsultaDirecta, enviarPregunta, type TransporteChatDatos } from "../src/lib/chat-datos-conexion.ts";

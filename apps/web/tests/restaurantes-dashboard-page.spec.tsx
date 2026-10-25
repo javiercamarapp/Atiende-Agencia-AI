@@ -252,15 +252,15 @@ describe("RestaurantesDashboardPage (Resumen)", () => {
     expect(t.textContent).not.toContain("0%");
   });
 
-  it("pildoras con su ruta real; 'Pregunta a tus datos' NO se repite en el cuerpo (el acceso al Copiloto vive en la barra y en el Sidebar)", async () => {
+  it("pildoras con su ruta real; 'Pregúntale a tus datos' NO se repite en el cuerpo (el acceso al Copiloto vive en la barra y en el Sidebar)", async () => {
     stubFetch({});
     rendered = renderPage();
     await esperarCarga();
     const links = enlaces(rendered);
     expect(links["Ver pedidos"]).toBe("/restaurantes/demo/pedidos");
     expect(links["Ver historial"]).toBe("/restaurantes/demo/historial");
-    expect(links["Pregunta a tus datos"]).toBeUndefined();
-    expect(rendered.container.textContent).not.toContain("Chatea con tus datos");
+    expect(links["Pregúntale a tus datos"]).toBeUndefined();
+    expect(rendered.container.textContent).not.toContain("Pregúntale a tus datos");
   });
 
   it("el repartidor no llega aquí: se le lleva a su panel sin pedir ningún KPI", async () => {

@@ -17,7 +17,7 @@ test.describe("despachos @humo", () => {
     await iniciarSesion("despachos", "admin");
     await page.goto(`/despachos/${despachos.orgSlug}/copiloto`);
     await afirmarPantallaSana(page, "copiloto");
-    await expect(page.getByRole("heading", { level: 1, name: "Pregunta a tus datos" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toBeVisible();
     await expect(page.getByRole("button", { name: "¿Cuánto me deben mis clientes hoy?" })).toBeVisible();
     vigilante.verificar();
   });

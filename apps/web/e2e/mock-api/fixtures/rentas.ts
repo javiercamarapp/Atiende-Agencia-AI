@@ -74,7 +74,7 @@ function ocupacionesSemilla(): Ocupacion[] {
   ];
 }
 
-// CHAT-10 -- Copiloto ("Pregunta a tus datos") de rentas: respuesta fija en el formato REAL del servidor (NDJSON paso/fin con
+// CHAT-10 -- Copiloto ("Pregúntale a tus datos") de rentas: respuesta fija en el formato REAL del servidor (NDJSON paso/fin con
 // conversacionId y seq; conversaciones guardadas por escenario). Solo admin_gestora ("admin") y contador ("finanzas") entran: el resto
 // recibe 403 como en la API real. Solo existe en la API simulada de e2e.
 interface ConversacionMock {

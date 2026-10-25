@@ -1,4 +1,4 @@
-// Cliente de "Chatea con tus datos" de hoteles, rentas y citas: rutas, cuerpo sin identidad, tope de historial, refresh de
+// Cliente de "Pregúntale a tus datos" de hoteles, rentas y citas: rutas, cuerpo sin identidad, tope de historial, refresh de
 // sesion de CADA vertical y degradacion honesta ante errores. `fetch` inyectado: nada toca la red.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hotelesDataChat, SUGERENCIAS_HOTELES } from "../src/verticals/hoteles/lib/data-chat-client.ts";

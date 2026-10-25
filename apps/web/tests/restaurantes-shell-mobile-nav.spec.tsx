@@ -126,6 +126,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Auditoría",
       "Privacidad",
       "Privacidad de la organización",
+      "Notificaciones", // la campana salio del encabezado: vive en la seccion "Cuenta" de la hoja
       "Seguridad de la cuenta", // PL-21: destino comun del pie, seccion "Cuenta" de la hoja
     ]);
   });
@@ -168,28 +169,28 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(linksSidebar(rendered.container)).toContain("Avisos");
   });
 
-  // CHAT-08: el Copiloto es una PÁGINA. Con el asistente activo, el botón del header y la píldora "Pregunta a tus datos" del pie son
+  // CHAT-08: el Copiloto es una PÁGINA. Con el asistente activo, el botón del header y la píldora "Pregúntale a tus datos" del pie son
   // enlaces a /restaurantes/:org/copiloto (ya no abren el diálogo); la entrada del Sidebar apunta a la misma ruta.
-  it("con el asistente activo, el botón del header y la píldora del pie enlazan a la página del Copiloto", async () => {
+  it("con el asistente activo, la píldora del pie enlaza a la página del Copiloto (el header ya no lleva botón)", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith("/estado") ? { available: true, permitido: true, motivo: null, usoHoyPct: 0 } : {}), { status: 200, headers: { "content-type": "application/json" } })));
     rendered = await renderShell();
     const root = rendered.container;
     const hrefs = (texto: string) => [...root.querySelectorAll("a")].filter((a) => a.textContent?.includes(texto)).map((a) => a.getAttribute("href"));
-    expect(hrefs("Chatea con tus datos")).toContain("/restaurantes/demo/copiloto");
-    expect(hrefs("Pregunta a tus datos")).toContain("/restaurantes/demo/copiloto");
+    expect(root.querySelector('[data-testid="barra-pagina"]')!.querySelector("a, button"), "el encabezado ya no lleva el boton de chat").toBeNull();
+    expect(hrefs("Pregúntale a tus datos")).toContain("/restaurantes/demo/copiloto");
     expect(hrefs("Copiloto")).toContain("/restaurantes/demo/copiloto");
     // Y ya no abre el diálogo del chat viejo.
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("si /estado no confirma el asistente, el botón sigue diciendo Pronto (aviso honesto) y no hay píldora ni enlace", async () => {
+  it("si /estado no confirma el asistente, no hay botón de chat ni píldora ni enlace (aviso honesto: nunca un control Pronto)", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "x" }), { status: 403 })));
     rendered = await renderShell();
     const root = rendered.container;
-    const boton = [...root.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos"));
-    expect(boton?.textContent).toContain("Pronto");
-    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregunta a tus datos"))).toBe(false);
-    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Chatea con tus datos"))).toBe(false);
+    // Sin confirmacion del servidor ya no hay boton "Pronto" en el header: no hay ningun control de chat.
+    expect([...root.querySelectorAll("button")].some((b) => b.textContent?.includes("Pregúntale a tus datos"))).toBe(false);
+    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregúntale a tus datos"))).toBe(false);
+    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregúntale a tus datos"))).toBe(false);
   });
 
   it("expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical restaurantes", async () => {
@@ -212,7 +213,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
   });
 
-  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
     rendered = await renderShell();
     await cerrarSesionDesdeMenuMovil(rendered.container);
     expect(window.localStorage.getItem("atiende.restaurantes.session")).toBeNull();

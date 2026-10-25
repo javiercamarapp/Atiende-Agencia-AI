@@ -3,12 +3,11 @@
 // F-01 del informe de diseno-ux: hoteles y despachos no tenian navegacion movil
 // y el logout/campana/chat no eran alcanzables en movil. Componentes compartidos
 // nuevos: BottomNav con "Más" (todas las secciones) y MobileAccountMenu
-// (cuenta + tema + cerrar sesion), compuestos por MobileHeaderActions.
+// (cuenta + tema + cerrar sesion). La campana y el chat viven en el pie del Sidebar / hoja "Mas".
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { BedDouble, LayoutDashboard, Wrench, Users, Receipt, Settings } from "lucide-react";
 import { BOTTOM_NAV_MAX_DESTINOS, BottomNav, MobileAccountMenu, MobileHeader, type SidebarSection } from "@atiende/ui";
-import { MobileHeaderActions } from "../src/components/MobileHeaderActions.tsx";
 import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -194,7 +193,7 @@ describe("MobileHeader", () => {
     const marco = rendered.container.querySelector('[data-testid="mobile-header"]')!;
     for (const c of ["md:hidden", "fixed", "top-0", "z-40", "safe-area-top"]) expect(marco.className, c).toContain(c);
     const header = marco.querySelector("header")!;
-    for (const c of ["md:hidden", "min-h-14", "border-b", "px-4"]) expect(header.className, c).toContain(c);
+    for (const c of ["md:hidden", "min-h-12", "border-b", "px-4"]) expect(header.className, c).toContain(c);
     const t = marco.querySelector('[data-testid="mobile-pagina-titulo"]')!;
     expect(t.textContent).toBe("Reservas");
     expect(t.getAttribute("role")).toBe("heading");
@@ -218,36 +217,5 @@ describe("MobileAccountMenu", () => {
     rendered = renderComponent(<MobileAccountMenu user={null} onLogout={() => {}} loggingOut />);
     click(rendered.container.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     expect(botonPorTexto("Saliendo…")!.disabled).toBe(true);
-  });
-});
-
-describe("MobileHeaderActions", () => {
-  const notif = { unreadCount: 3, hayNoLeidas: true, refetch: () => {} };
-
-  it("expone la campana (enlace con punto rojo sin número), chat (marcado Pronto) y cerrar sesión", () => {
-    const onLogout = vi.fn();
-    rendered = renderComponent(
-      <MemoryRouter>
-        <MobileHeaderActions notif={notif} notificacionesHref="/v/demo/notificaciones" user={{ email: "a@b.com", rol: "admin" }} onLogout={onLogout} />
-      </MemoryRouter>,
-    );
-    const campana = rendered.container.querySelector('a[aria-label="Notificaciones: hay avisos sin leer"]');
-    expect(campana?.getAttribute("href")).toBe("/v/demo/notificaciones");
-    expect(campana?.textContent).toBe("");
-    click(rendered.container.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
-    const hoja = document.body.querySelector('[role="dialog"]')!;
-    expect(hoja.textContent).toContain("Chatea con tus datos");
-    click(botonPorTexto("Cerrar sesión", hoja)!);
-    expect(onLogout).toHaveBeenCalledTimes(1);
-  });
-
-  it("conChat=false (superadmin) no muestra Chatea con tus datos", () => {
-    rendered = renderComponent(
-      <MemoryRouter>
-        <MobileHeaderActions notif={notif} notificacionesHref="/v/demo/notificaciones" user={null} onLogout={() => {}} conChat={false} />
-      </MemoryRouter>,
-    );
-    click(rendered.container.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
-    expect(document.body.querySelector('[role="dialog"]')!.textContent).not.toContain("Chatea con tus datos");
   });
 });

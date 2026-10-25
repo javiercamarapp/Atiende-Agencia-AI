@@ -123,7 +123,7 @@ test.describe("rentas @humo", () => {
     }
     await expect(page).toHaveURL(new RegExp(`${RUTA_COPILOTO}$`));
     await afirmarPantallaSana(page, "copiloto");
-    await expect(page.getByRole("heading", { level: 1, name: "Pregunta a tus datos" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toBeVisible();
 
     await page.getByRole("button", { name: PREGUNTA }).click();
     const hilo = page.getByRole("log", { name: "Conversación con el Copiloto" });
@@ -166,7 +166,7 @@ test.describe("rentas @humo", () => {
     } else {
       await expect(sidebar(page).getByRole("link", { name: "Copiloto" })).toHaveCount(0);
     }
-    await expect(page.getByRole("link", { name: /Chatea con tus datos/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Pregúntale a tus datos/ })).toHaveCount(0);
     await page.goto(RUTA_COPILOTO);
     await expect(page.getByText(/no tiene acceso al Copiloto/)).toBeVisible();
     await expect(page.getByRole("textbox")).toHaveCount(0);

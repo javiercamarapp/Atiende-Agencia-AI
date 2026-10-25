@@ -102,7 +102,7 @@ describe("LicitacionesShell — nav móvil", () => {
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(16);
+    expect(hrefs).toHaveLength(17); // + Notificaciones (ya no hay campana en el encabezado)
     expect(hrefs).toEqual(
       expect.arrayContaining(["/licitaciones/demo/copiloto", "/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/bitacora", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad", "/licitaciones/demo/privacidad"]),
     );
@@ -143,7 +143,7 @@ describe("LicitacionesShell — nav móvil", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(13);
+    expect(hrefs).toHaveLength(14); // + Notificaciones
     expect(hrefs).not.toContain("/licitaciones/demo/staff");
     expect(hrefs).not.toContain("/licitaciones/demo/privacidad");
   });
@@ -166,7 +166,7 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(mains[0]!.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
     const onRequireLogin = vi.fn();
     installMatchMediaStub();
     installMemoryLocalStorage().setItem("atiende.licitaciones.session", JSON.stringify(SESSION));
@@ -182,7 +182,7 @@ describe("LicitacionesShell — nav móvil", () => {
       await flushMicrotasks();
     });
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]'), "sin campana en el encabezado movil").toBeNull();
     const fetchMock = await cerrarSesionDesdeMenuMovil(rendered.container);
     // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con el refreshToken de la sesión.
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/logout", expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }));

@@ -49,7 +49,7 @@ function estadoDe(tareas: Tarea[]) {
   return { totalTasks: tareas.length, done, skipped: 0, pending: tareas.length - done, inProgress: 0, progressPercent: Math.round((done / tareas.length) * 100), blocked: [], overdue: [] };
 }
 
-// CHAT-11 -- Copiloto ("Pregunta a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
+// CHAT-11 -- Copiloto ("Pregúntale a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
 // seq; conversaciones guardadas por escenario). En el servidor real lo usan admin, contador, auditor y readonly; en e2e la persona "admin" es el unico rol con acceso.
 // Solo existe en la API simulada de e2e.
 interface ConversacionMock {

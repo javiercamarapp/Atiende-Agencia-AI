@@ -8,7 +8,7 @@ const ORG = orgDe("citas");
 const P = "/v1/citas/properties/:id";
 const C = "/citas/:id";
 
-// CHAT-13 -- Copiloto ("Pregunta a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
+// CHAT-13 -- Copiloto ("Pregúntale a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
 // seq; conversaciones guardadas por escenario). Solo owner/admin lo usan en el servidor real (DATA_CHAT_ROLES); en e2e `roles` hace que
 // staff reciba 403 igual que el servidor. Solo existe en la API simulada de e2e.
 interface ConversacionMock {

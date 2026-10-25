@@ -173,18 +173,11 @@ test.describe("UNI-R0b ambito restaurantes @recorrido @oscuro", () => {
     vigilante.verificar();
   });
 
-  test("sin regresiones de espaciado: popover de la campana sin relleno propio; Button respeta px/texto/radio de quien llama", async ({ page, iniciarSesion, vigilante }, info) => {
-    const movil = info.project.name.startsWith("movil");
+  test("sin regresiones de espaciado: Button respeta px/texto/radio de quien llama", async ({ page, iniciarSesion, vigilante }) => {
     await iniciarSesion("restaurantes", "owner");
     await ir(page, "");
-    const campana = page.getByTestId("barra-pagina").getByRole("button", { name: /^Notificaciones/ });
-    if (!movil) {
-      await campana.click();
-      const popover = page.getByRole("dialog").filter({ has: page.getByRole("link", { name: "Ver todas las notificaciones" }) });
-      await expect(popover).toBeVisible();
-      expect(await popover.evaluate((el) => getComputedStyle(el).paddingTop), "CentroNotificaciones declara p-0").toBe("0px");
-      await page.keyboard.press("Escape");
-    }
+    // La campana ya no va en el encabezado (orden del dueno): no queda popover que medir aqui; el centro se cubre en ui-r0-overlays.spec.tsx.
+    await expect(page.getByTestId("barra-pagina").getByRole("button", { name: /^Notificaciones/ }), "sin campana en la barra").toHaveCount(0);
     // Botones reales con override de quien llama, en varias pantallas: el CSS del ambito no pisa su px-N / text-xs / rounded-lg.
     let verificados = 0;
     for (const sub of ["/clientes", "/pedidos", "/agente-voz", "/historial"]) {

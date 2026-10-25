@@ -152,7 +152,7 @@ describe("pagina /superadmin/copiloto", () => {
     const root = await montarPagina();
     expect(llamadas[0]?.url).toBe(`${API}/superadmin/copiloto/estado`);
     expect(llamadas[0]?.headers["authorization"]).toBe(`Bearer ${TOKEN}`);
-    expect(root.querySelector("h1")?.textContent).toBe("Pregunta a tus datos");
+    expect(root.querySelector("h1")?.textContent).toBe("Pregúntale a tus datos");
     expect(root.textContent).toContain("Toda la plataforma");
     expect(COPILOTO_SUPERADMIN.sugerencias).toHaveLength(5);
     for (const chip of COPILOTO_SUPERADMIN.sugerencias) expect(porTexto(root, chip)).toBeDefined();
@@ -402,14 +402,15 @@ describe("panel Cmd+J en el shell (layout)", () => {
     expect(botones(document.body).some((b) => b.textContent?.includes("⌘J"))).toBe(false);
   });
 
-  it("'Chatea con tus datos' de la barra tambien lo abre y declara aria-expanded", async () => {
+  it("la pildora 'Pregúntale a tus datos' del pie (ya no hay boton en la barra) tambien lo abre y declara aria-pressed", async () => {
     await montarShell();
-    const boton = botones(document.body).find((b) => b.textContent?.includes("Chatea con tus datos") && b.getAttribute("aria-controls") === "copiloto-panel")!;
-    expect(boton.getAttribute("aria-expanded")).toBe("false");
+    expect(document.body.querySelector('[data-testid="barra-pagina"]')!.textContent).not.toContain("Pregúntale a tus datos");
+    const boton = botones(document.body).find((b) => b.getAttribute("aria-label") === "Pregúntale a tus datos" && b.getAttribute("aria-controls") === "copiloto-panel")!;
+    expect(boton.getAttribute("aria-pressed")).toBe("false");
     click(boton);
     await esperar();
     expect(panel().dataset["abierto"]).toBe("true");
-    expect(boton.getAttribute("aria-expanded")).toBe("true");
+    expect(boton.getAttribute("aria-pressed")).toBe("true");
   });
 });
 

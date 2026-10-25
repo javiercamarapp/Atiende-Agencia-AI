@@ -61,9 +61,7 @@ function renderShell(o: Opciones = {}): RenderedComponent {
         mobileItems={MOBILE}
         user={{ email: "staff@example.com", rol: "owner" }}
         onLogout={o.onLogout ?? (() => {})}
-        header={{ icon: <span />, title: "Demo · acme", fecha: "30 sept 2026" }}
-        notificationBell={<button type="button" aria-label="Notificaciones (campana)" />}
-        chatButton={<button type="button">Chatea con tus datos</button>}
+        header={{ icon: <span />, title: "Demo · acme" }}
         branchSelector={<p>Sucursal Centro</p>}
         organizationSelector={o.organizationSelector}
         contentKey={o.contentKey}
@@ -142,7 +140,7 @@ describe("VerticalShell — marco de Likida", () => {
   it("los paddings del <main> usan safe-area arriba (cabecera movil) y abajo (barra inferior)", () => {
     rendered = renderShell();
     const clase = rendered.container.querySelector("main")!.className;
-    expect(clase).toContain("pt-[calc(6rem+var(--safe-area-top))]");
+    expect(clase).toContain("pt-[calc(5.5rem+var(--safe-area-top))]");
     expect(clase).toContain("pb-[calc(7rem+var(--safe-area-bottom))]");
     expect(clase).toContain("md:pt-3.5");
   });
@@ -182,9 +180,8 @@ describe("VerticalShell — móvil", () => {
           mobileItems={MOBILE}
           user={null}
           onLogout={() => {}}
-          header={{ icon: <span />, title: "Demo", fecha: "x" }}
-          notificationBell={<span />}
-          sidebarPie={[{ label: "Costos de IA", to: "/v/demo/costos" }, { label: "Pregunta a tus datos", onClick: alta }, { label: "Solo texto" }]}
+          header={{ icon: <span />, title: "Demo" }}
+          sidebarPie={[{ label: "Costos de IA", to: "/v/demo/costos" }, { label: "Pregúntale a tus datos", onClick: alta }, { label: "Solo texto" }]}
         >
           <p>c</p>
         </VerticalShell>
@@ -198,7 +195,7 @@ describe("VerticalShell — móvil", () => {
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect(hoja.textContent).toContain("Cuenta");
     expect(hoja.textContent).not.toContain("Solo texto");
-    click([...hoja.querySelectorAll("button")].find((b) => b.textContent === "Pregunta a tus datos")!);
+    click([...hoja.querySelectorAll("button")].find((b) => b.textContent === "Pregúntale a tus datos")!);
     expect(alta).toHaveBeenCalledTimes(1);
   });
 
@@ -212,8 +209,7 @@ describe("VerticalShell — móvil", () => {
             mobileItems={MOBILE}
             user={null}
             onLogout={() => {}}
-            header={{ icon: <span />, title: "Consola de Demo", fecha: "x", resumenTo: "/v/demo" }}
-            notificationBell={<span />}
+            header={{ icon: <span />, title: "Consola de Demo", resumenTo: "/v/demo" }}
             sidebarPie={[{ label: "Ver los otros paneles", to: "/v/demo/paneles", icon: UserRound }, { label: "Costos de IA", to: "/v/demo/staff" }]}
           >
             <p>c</p>
@@ -239,10 +235,12 @@ describe("VerticalShell — móvil", () => {
     click([...hoja.querySelectorAll("a")][3]!);
 
     const mobileHeader = [...root.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]'), "la campana ya no va en el encabezado movil").toBeNull();
+    expect(mobileHeader.textContent).not.toContain("Pregúntale a tus datos");
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const cuenta = document.body.querySelector('[role="dialog"]')!;
-    expect(cuenta.textContent).toContain("Chatea con tus datos");
+    expect(cuenta.textContent).not.toContain("Pregúntale a tus datos");
+    expect(cuenta.textContent).toContain("Tu cuenta");
     click([...cuenta.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cerrar sesión")!);
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
@@ -285,8 +283,7 @@ describe("VerticalShell — slots, transiciones y remontaje", () => {
           mobileItems={MOBILE}
           user={null}
           onLogout={() => {}}
-          header={{ icon: <span />, title: "Demo · acme", fecha: "x" }}
-          notificationBell={<span />}
+          header={{ icon: <span />, title: "Demo · acme" }}
           contentKey="b"
         >
           <HijoMontaje />

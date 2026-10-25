@@ -1,10 +1,10 @@
 // UNI-MARCO (restaurantes): UNA sola barra superior del marco en CADA ruta del panel, sin controles repetidos.
-// Convencion: la barra (`BarraPagina`, montada una vez por el `VerticalShell`) lleva titulo de la pagina + "Chatea con tus datos" +
-// campana (centro de notificaciones) + fecha. Ninguna pagina repite esos controles en su cuerpo.
+// Convencion: la barra (`BarraPagina`, montada una vez por el `VerticalShell`) lleva SOLO el titulo de la pagina (y las acciones propias de
+// la pagina): sin "Pregúntale a tus datos", campana ni fecha (orden del dueno). Ninguna pagina los repite en su cuerpo.
 // En las 29 rutas con shell, en claro, oscuro y 375 px, exige EXACTAMENTE UNA instancia visible de cada control:
-//   escritorio: barra con titulo, chat, campana y fecha; cero copias en el <main>.
-//   movil (375 px): la barra de escritorio no existe; el encabezado movil (logo + campana + menu de cuenta + fila con el titulo) la
-//   sustituye; "Chatea con tus datos" vive UNA vez en el menu de cuenta.
+//   escritorio: barra delgada solo con titulo; campana y chat accesibles desde el pie del menu lateral.
+//   movil (375 px): la barra de escritorio no existe; el encabezado movil (logo + menu de cuenta + fila con el titulo) la
+//   sustituye; campana y chat viven en "Mas" > "Cuenta".
 // El PNG solo se escribe si CAPTURAS_UNI_MARCO_DIR apunta a una carpeta (CI no genera nada). Corre tambien en oscuro (@oscuro).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -50,8 +50,7 @@ export const RUTAS_RESTAURANTES: ReadonlyArray<readonly [string, string]> = [
   ["no-encontrada", "/ruta-que-no-existe"],
 ];
 
-const FORMATO_FECHA = /^\d{1,2} [a-z]{3,5}\.? \d{4}$/;
-const NOMBRE_CHAT = /^Chatea con tus datos/;
+const NOMBRE_CHAT = /^Pregúntale a tus datos/;
 
 function destino(): string | undefined {
   const base = process.env["CAPTURAS_UNI_MARCO_DIR"];
@@ -66,15 +65,15 @@ async function contarChat(page: Page): Promise<{ total: number; enMain: number; 
   const total = await chat.filter({ visible: true }).count();
   const enMain = await page.locator("main#contenido-principal").getByRole("link", { name: NOMBRE_CHAT }).or(page.locator("main#contenido-principal").getByRole("button", { name: NOMBRE_CHAT })).count();
   // Ademas del rol: ningun otro nodo visible repite el rotulo (p. ej. un titulo o un enlace de texto suelto).
-  const textos = await page.getByText(/Chatea con tus datos/).filter({ visible: true }).count();
+  const textos = await page.getByText(/Pregúntale a tus datos/).filter({ visible: true }).count();
   return { total, enMain, textos };
 }
 
-/** Campanas visibles en toda la pantalla: la campana lleva `aria-label` "Notificaciones..." (el item del menu lateral es texto, no aria-label). */
+/** Controles con `aria-label` "Notificaciones..." visibles en toda la pantalla (en escritorio incluye la pildora del pie del menu lateral; en movil, con el menu cerrado, ninguno). */
 const campanas = (page: Page) => page.locator('[aria-label^="Notificaciones"]').filter({ visible: true });
 
 test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controles @oscuro", () => {
-  test("las 29 rutas llevan exactamente una barra con chat, campana y fecha (o su equivalente movil)", async ({ page, iniciarSesion, vigilante }, info) => {
+  test("las 29 rutas llevan exactamente una barra delgada (solo titulo; sin chat, campana ni fecha)", async ({ page, iniciarSesion, vigilante }, info) => {
     test.setTimeout(240_000);
     await iniciarSesion("restaurantes", "owner");
     const dir = destino();
@@ -85,43 +84,41 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
       await afirmarSinScrollHorizontal(page);
 
       // El Resumen no repite el acceso al Copiloto en su cuerpo (vive en la barra / menu de cuenta y en el Sidebar).
-      await expect(page.locator("main#contenido-principal").getByRole("link", { name: /Pregunta a tus datos/ }), `${nombre}: sin pildora «Pregunta a tus datos» en el cuerpo`).toHaveCount(0);
+      await expect(page.locator("main#contenido-principal").getByRole("link", { name: /Pregúntale a tus datos/ }), `${nombre}: sin pildora «Pregúntale a tus datos» en el cuerpo`).toHaveCount(0);
       if (!esMovil(page)) {
         const barra = page.getByTestId("barra-pagina");
         await expect(barra, `${nombre}: exactamente una barra visible`).toHaveCount(1);
         await expect(barra).toBeVisible();
         await expect(page.getByTestId("barra-pagina-titulo"), `${nombre}: titulo de la pagina en la barra`).toHaveText(/\S/);
+        // Orden del dueno: la barra va delgada. Sin "Pregúntale a tus datos", sin campana, sin fecha (ni en la barra ni en el cuerpo).
         const chat = await contarChat(page);
-        expect(chat.total, `${nombre}: UN solo "Chatea con tus datos" visible`).toBe(1);
-        expect(chat.textos, `${nombre}: el rotulo "Chatea con tus datos" aparece una vez`).toBe(1);
-        expect(chat.enMain, `${nombre}: ningun "Chatea con tus datos" dentro del cuerpo de la pagina`).toBe(0);
-        await expect(barra.getByRole("link", { name: NOMBRE_CHAT }).or(barra.getByRole("button", { name: NOMBRE_CHAT })), `${nombre}: el chat vive en la barra`).toHaveCount(1);
-        await expect(campanas(page), `${nombre}: UNA sola campana visible`).toHaveCount(1);
-        await expect(barra.locator('[aria-label^="Notificaciones"]'), `${nombre}: la campana vive en la barra`).toHaveCount(1);
-        await expect(page.locator("main#contenido-principal").locator('[aria-label^="Notificaciones"]'), `${nombre}: ninguna campana en el cuerpo`).toHaveCount(0);
-        await expect(page.getByTestId("barra-pagina-fecha"), `${nombre}: un solo chip de fecha`).toHaveCount(1);
-        expect(((await page.getByTestId("barra-pagina-fecha").textContent()) ?? "").trim(), `${nombre}: fecha de hoy`).toMatch(FORMATO_FECHA);
+        expect(chat.total, `${nombre}: ningun "Pregúntale a tus datos" visible`).toBe(0);
+        expect(chat.textos, `${nombre}: el rotulo "Pregúntale a tus datos" no aparece`).toBe(0);
+        await expect(barra.locator('[aria-label^="Notificaciones"]'), `${nombre}: sin campana en la barra`).toHaveCount(0);
+        await expect(page.getByTestId("barra-pagina-fecha"), `${nombre}: sin chip de fecha`).toHaveCount(0);
+        expect(((await barra.boundingBox())?.height ?? 99), `${nombre}: barra delgada (~44 px)`).toBeLessThanOrEqual(48);
+        // Las funciones siguen accesibles desde el pie del menu lateral.
+        await expect(page.locator("aside").getByRole("link", { name: "Notificaciones" }), `${nombre}: Notificaciones en el pie del menu`).toHaveCount(1);
         await expect(page.getByTestId("mobile-header"), `${nombre}: el encabezado movil no se ve en escritorio`).toBeHidden();
       } else {
         await expect(page.getByTestId("barra-pagina"), `${nombre}: la barra de escritorio no se ve en movil`).toBeHidden();
         const cabecera = page.getByTestId("mobile-header");
         await expect(cabecera, `${nombre}: un solo encabezado movil visible`).toBeVisible();
         await expect(page.getByTestId("mobile-pagina-titulo"), `${nombre}: titulo de la pagina en el encabezado movil`).toHaveText(/\S/);
-        await expect(campanas(page), `${nombre}: UNA sola campana visible`).toHaveCount(1);
-        await expect(cabecera.locator('[aria-label^="Notificaciones"]'), `${nombre}: la campana vive en el encabezado movil`).toHaveCount(1);
-        // El chat no se pinta suelto en el encabezado ni en el cuerpo; vive una vez en el menu de cuenta.
+        await expect(campanas(page), `${nombre}: sin campana en el encabezado movil`).toHaveCount(0);
+        expect((await cabecera.boundingBox())?.height ?? 99, `${nombre}: encabezado movil compacto`).toBeLessThanOrEqual(84);
         const antes = await contarChat(page);
-        expect(antes.total, `${nombre}: sin "Chatea con tus datos" suelto antes de abrir el menu de cuenta`).toBe(0);
+        expect(antes.total, `${nombre}: sin "Pregúntale a tus datos" en el encabezado ni en el cuerpo`).toBe(0);
         expect(antes.enMain, `${nombre}: ningun chat dentro del cuerpo`).toBe(0);
+        // El menu de cuenta conserva tema y cierre de sesion; el chat y las notificaciones viven en "Mas" > "Cuenta".
         await cabecera.getByRole("button", { name: "Abrir menú de cuenta" }).click();
         const menu = page.getByRole("dialog");
-        await expect(menu.getByRole("link", { name: NOMBRE_CHAT }).or(menu.getByRole("button", { name: NOMBRE_CHAT })), `${nombre}: UN chat en el menu de cuenta`).toHaveCount(1);
-        const abierto = await contarChat(page);
-        expect(abierto.total, `${nombre}: UN solo chat visible con el menu abierto`).toBe(1);
+        await expect(menu.getByRole("button", { name: "Cerrar sesión" }), `${nombre}: cerrar sesion sigue en el menu de cuenta`).toHaveCount(1);
+        await expect(menu.getByRole("link", { name: NOMBRE_CHAT }).or(menu.getByRole("button", { name: NOMBRE_CHAT })), `${nombre}: el chat ya no va en el menu de cuenta`).toHaveCount(0);
         await page.keyboard.press("Escape");
         await expect(menu).toBeHidden();
       }
-      if (nombre === "copiloto") await expect(page.getByTestId("barra-pagina-titulo").or(page.getByTestId("mobile-pagina-titulo")).first(), "el Copiloto lleva su nombre en la barra").toHaveText("Pregunta a tus datos");
+      if (nombre === "copiloto") await expect(page.getByTestId("barra-pagina-titulo").or(page.getByTestId("mobile-pagina-titulo")).first(), "el Copiloto lleva su nombre en la barra").toHaveText("Pregúntale a tus datos");
       if (dir) await page.screenshot({ path: join(dir, `${nombre}-${info.project.name}.png`) });
       if (nombre === "copiloto" && dir) {
         // "Consulta" con el campo vacio abre las tarjetas (VENTAS, OPERACION, CLIENTES, CFO).
