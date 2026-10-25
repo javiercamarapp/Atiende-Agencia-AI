@@ -64,6 +64,8 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  OperadorPuedeInput,
+  PerfilOperativo,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -575,6 +577,15 @@ export interface RestaurantesRepository {
    *  acción de negocio que ya se completó en la MISMA transacción del request;
    *  ver `PostgresRestaurantesRepository.registrarAuditoria`. */
   registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void>;
+
+  /** Fuente unica "quien puede operar" (migracion 090, `restaurantes.operador_puede`): owner/admin todo; `staff` captura/gestiona siempre y
+   *  despacha/cancela solo si su perfil operativo es encargado (o nulo). Base sin migrar (42883/42P01/42703): `true` -- el comportamiento
+   *  anterior (todo `staff` opera igual) -- porque la ruta ya valido el rol; nunca un 500. */
+  operadorPuede(input: OperadorPuedeInput): Promise<boolean>;
+
+  /** Marca a un `staff` como cajero/encargado (o nulo = encargado) via `restaurantes.staff_perfil_operativo_guardar` (solo owner/admin con
+   *  alcance de toda la organizacion, validado en SQL). `false` si la base aun no tiene la migracion 090. */
+  guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<boolean>;
 
   /** `disponible: false` (nunca lanza) cuando `restaurantes.audit_log`/
    *  `restaurantes.record_audit_log` todavía no existen en esta base (SQLSTATE

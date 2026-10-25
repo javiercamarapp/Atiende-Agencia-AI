@@ -75,6 +75,8 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  OperadorPuedeInput,
+  PerfilOperativo,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -2773,6 +2775,31 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       // hecha.
       console.error("PostgresRestaurantesRepository.registrarAuditoria: fallo inesperado al escribir en restaurantes.audit_log (la acción de negocio ya se completó y NO se revierte).", descripcionSeguraDeError(err));
     }
+  }
+
+  async operadorPuede(input: OperadorPuedeInput): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ ok: boolean | null }>(`select restaurantes.operador_puede($1, $2, $3) as ok;`, [input.organizationId, input.propertyId, input.accion]);
+        return rows[0]?.ok === true;
+      },
+      isRecoverable: esErrorCompatibilidadAuditLogBaseSinMigrar,
+      // Base sin la 090: todo `staff` opera igual que hoy (la ruta ya valido el rol).
+      fallback: async () => true,
+    });
+  }
+
+  async guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      primary: async () => {
+        await this.db.query(`select restaurantes.staff_perfil_operativo_guardar($1, $2, $3);`, [organizationId, userId, perfil]);
+        return true;
+      },
+      isRecoverable: esErrorCompatibilidadAuditLogBaseSinMigrar,
+      fallback: async () => false,
+    });
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {

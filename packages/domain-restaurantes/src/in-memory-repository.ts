@@ -66,6 +66,8 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  OperadorPuedeInput,
+  PerfilOperativo,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -2241,6 +2243,21 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       createdAtMs: Date.now(),
       seq: this.auditLogSeq,
     });
+  }
+
+  /** Perfiles operativos sembrados por `guardarPerfilOperativo` (clave `org:usuario`). */
+  readonly perfilesOperativos = new Map<string, PerfilOperativo | null>();
+
+  async operadorPuede(input: OperadorPuedeInput): Promise<boolean> {
+    if (input.verticalRole === "owner" || input.verticalRole === "admin") return true;
+    if (input.verticalRole !== "staff") return false;
+    if (input.accion === "capturar" || input.accion === "gestionar") return true;
+    return (this.perfilesOperativos.get(`${input.organizationId}:${input.userId}`) ?? "encargado") === "encargado";
+  }
+
+  async guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<boolean> {
+    this.perfilesOperativos.set(`${organizationId}:${userId}`, perfil);
+    return true;
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {

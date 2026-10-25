@@ -825,6 +825,21 @@ export interface PromotionPatch {
 // ---------------------------------------------------------------------------
 export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion";
 
+/** Perfil operativo de un `staff` (migracion 090, `core.membership.perfil_operativo`): el CAJERO captura, acepta y prepara; el ENCARGADO ademas despacha y cancela. Nulo = encargado. */
+export type PerfilOperativo = "encargado" | "cajero";
+/** Acciones que `restaurantes.operador_puede` (090) distingue por perfil. */
+export type AccionOperador = "capturar" | "gestionar" | "despachar" | "cancelar";
+
+export interface OperadorPuedeInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  /** Solo lo usa el repositorio en memoria (el real toma al usuario de `auth.uid()`). */
+  readonly userId: string;
+  /** Solo lo usa el repositorio en memoria: el rol ya validado por la ruta. */
+  readonly verticalRole: string;
+  readonly accion: AccionOperador;
+}
+
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;
   /** Usado SOLO por `InMemoryRestaurantesRepository` (sin `auth.uid()`) para
