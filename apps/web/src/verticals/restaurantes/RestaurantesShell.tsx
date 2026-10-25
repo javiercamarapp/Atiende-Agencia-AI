@@ -24,6 +24,7 @@ import {
   LayoutDashboard,
   LineChart,
   ListChecks,
+  ListPlus,
   Lock,
   Megaphone,
   MessageSquare,
@@ -58,6 +59,7 @@ import type { BranchOption } from "./dashboard-client.ts";
 import { SUGERENCIAS_RESTAURANTES, ejecutarConsultaDirecta, fetchDataChatDisponible, preguntarDatos } from "./data-chat-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { PuertaOnboarding } from "./PuertaOnboarding.tsx";
+import { BannerAgregados } from "./components/operacion/BannerAgregados.tsx";
 
 /** Adaptador de sesión de restaurantes. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const RESTAURANTES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -114,7 +116,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false): SidebarSection[] {
+function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false, canSeeAgregados = false): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
@@ -131,6 +133,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
     {
       title: "Operación",
       items: [
+        // Agregados por validar (099): lo que un cliente pide agregar a un pedido ya enviado. Visible para quien tiene `pedidos.agregados` (owner/admin/staff), con o sin el panel movil.
+        ...(canSeeAgregados ? [{ to: `${base}/operacion/agregados`, label: "Agregados", icon: ListPlus }] : []),
         // Panel movil del operador (cola, captura, viajes, turno): solo con el interruptor encendido y para quien el servidor deja pasar (`pedidos.capturar`).
         ...(canSeeOperacion
           ? [
@@ -274,7 +278,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="restaurantes"
       copilotoHref={`/restaurantes/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_ROLES.has(role)}
-      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"), OPERACION_PANEL_ACTIVO && puedeEn(role, "pedidos.capturar"))}
+      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"), OPERACION_PANEL_ACTIVO && puedeEn(role, "pedidos.capturar"), puedeEn(role, "pedidos.agregados"))}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
@@ -287,6 +291,8 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
       <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
         <VarianteEstadoVacioProvider value="centrado">
+          {/* Banner persistente de agregados por validar en cualquier pantalla (solo con permiso; se oculta en la propia pantalla de Agregados). */}
+          <BannerAgregados apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} activo={puedeEn(role, "pedidos.agregados")} />
           {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, nombreSucursal: activeBranch.name })}
         </VarianteEstadoVacioProvider>
       </PuertaOnboarding>

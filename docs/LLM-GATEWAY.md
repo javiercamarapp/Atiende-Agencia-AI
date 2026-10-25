@@ -151,7 +151,7 @@ registra modelos elegibles que no entran a la escalera por defecto. Hoy lo usa e
    `llm_models_json_invalid` en los logs y siguen vigentes los defaults de ese rol.
 5. Campos por modelo: `model` (id de OpenRouter), `reasoningEffort` (`none|minimal|low|medium|high|xhigh`),
    `temperature` (`"omit"` o 0-2), `maxTokens`, `minMaxTokens`, `supportsStructuredOutput`. Campos de
-   `routing`: `zdr`, `requireParameters`, `allowFallbacks`, `order`, `only`, `ignore` y `dataCollection`
+   `routing`: `zdr`, `requireParameters`, `allowFallbacks`, `order`, `only`, `ignore`, `sort` (`price|latency|throughput`: reordena los endpoints ya permitidos por `only`, nunca los amplía; en OpenRouter, `order` explícito tiene prioridad sobre `sort` para los proveedores listados) y `dataCollection`
    (solo acepta `"deny"`: la privacidad no se puede relajar por configuración). Ver "Política de proveedores".
 6. Antes de cambiar el primario de un rol, corre el eval propio (sección Evals) y una llamada de humo.
 

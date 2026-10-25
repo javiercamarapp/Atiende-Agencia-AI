@@ -823,7 +823,52 @@ export interface PromotionPatch {
 // en el schema base para ninguno de los dos — ver el comentario de cabecera de
 // esa migración).
 // ---------------------------------------------------------------------------
-export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion";
+export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion" | "acceso";
+
+/** Acciones del catalogo cerrado de `restaurantes.registrar_acceso` (migracion 097): accesos a datos personales del cliente. */
+export type RestaurantesAccesoAccion = "pii.llamar" | "pii.telefono_ver" | "pii.cliente_ficha" | "sesion.login";
+
+export interface RegistrarAccesoInput {
+  readonly organizationId: string;
+  readonly propertyId: string | null;
+  /** Solo lo usa el repositorio en memoria (el real toma al actor de `auth.uid()` dentro de la funcion SQL). */
+  readonly actorUserId: string;
+  readonly action: RestaurantesAccesoAccion;
+  /** Pedido o cliente al que se accede. Nunca el dato personal en si. */
+  readonly entityId: string | null;
+  /** Llave de idempotencia del cliente (^[A-Za-z0-9_-]{8,64}$): repetirla no vuelve a registrar ni consume cupo. NO es texto libre. */
+  readonly llave?: string | null;
+}
+
+export interface AccesoRegistrado {
+  /** `false` si la bitacora de accesos no existe todavia en esta base (migracion 097 sin aplicar). */
+  readonly registrado: boolean;
+  /** Cuantos accesos del mismo actor/accion/entidad hay, incluido este (0 si `registrado` es false). */
+  readonly intentos: number;
+}
+
+/** Perfil operativo de un `staff` (migracion 090, `core.membership.perfil_operativo`): el CAJERO captura, acepta y prepara; el ENCARGADO ademas despacha y cancela. Nulo = encargado. */
+export type PerfilOperativo = "encargado" | "cajero";
+/** Acciones que `restaurantes.operador_puede` (090) distingue por perfil. */
+export type AccionOperador = "capturar" | "gestionar" | "despachar" | "cancelar";
+
+export interface GuardarPerfilOperativoResultado {
+  /** `false` si la base aun no tiene la migracion 090. */
+  readonly disponible: boolean;
+  /** Perfil previo (null = sin marcar). `antesDisponible: false` si la base no tiene la migracion 100 (no se pudo leer). */
+  readonly antes: PerfilOperativo | null;
+  readonly antesDisponible: boolean;
+}
+
+export interface OperadorPuedeInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  /** Solo lo usa el repositorio en memoria (el real toma al usuario de `auth.uid()`). */
+  readonly userId: string;
+  /** Solo lo usa el repositorio en memoria: el rol ya validado por la ruta. */
+  readonly verticalRole: string;
+  readonly accion: AccionOperador;
+}
 
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;

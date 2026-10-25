@@ -48,11 +48,15 @@ function noImplementado(c: Context<CoreAuthHonoEnv>, nombre: NombreRutaOperacion
   throw new ApiError(501, "no_implementado", MENSAJE_NO_IMPLEMENTADO);
 }
 
+/** Rutas que ya tienen logica real en su archivo definitivo: el andamiaje NO las registra (el 501 taparia la real). */
+const IMPLEMENTADAS: ReadonlySet<NombreRutaOperacion> = new Set<NombreRutaOperacion>(["llamar"]);
+
 export function restaurantesOperacionAndamiajeRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const sesion = (): MiddlewareHandler<CoreAuthHonoEnv>[] => [authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId")];
 
   for (const nombre of Object.keys(RUTAS_OPERACION) as NombreRutaOperacion[]) {
+    if (IMPLEMENTADAS.has(nombre)) continue;
     const { metodo, patron } = RUTAS_OPERACION[nombre];
     const [m1, m2, m3] = sesion();
     const manejador = async (c: Context<CoreAuthHonoEnv>): Promise<Response> => noImplementado(c, nombre);

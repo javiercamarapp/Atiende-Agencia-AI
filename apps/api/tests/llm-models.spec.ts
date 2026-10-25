@@ -120,6 +120,28 @@ describe("politica de proveedores (allowlist)", () => {
   });
 });
 
+describe("PM-R21 routing.sort (ordenar los endpoints permitidos por latencia)", () => {
+  const ruta = (sort: unknown) => JSON.stringify({ roles: { "restaurantes:whatsapp_agent": { models: [{ model: "openai/gpt-6-luna", reasoningEffort: "low", temperature: "omit" }], routing: { allowFallbacks: true, sort } } } });
+
+  it.each(["latency", "throughput", "price"])("acepta sort=%s y llega al cuerpo de OpenRouter sin ampliar los proveedores ni relajar la privacidad", (sort) => {
+    const { config, errors } = parseLlmModelsJson(ruta(sort));
+    expect(errors).toEqual([]);
+    const route = config.roles["restaurantes:whatsapp_agent"]!;
+    const wire = buildOpenRouterProviderPrefs(routingForModel(route, "openai/gpt-6-luna", false));
+    expect(wire).toMatchObject({ sort, only: ["openai", "azure"], data_collection: "deny", require_parameters: true });
+  });
+
+  it("un sort desconocido descarta la ruta completa (los defaults siguen vigentes) con un error claro", () => {
+    const { config, errors } = parseLlmModelsJson(ruta("random"));
+    expect(config.roles).toEqual({});
+    expect(errors.join(" ")).toContain('"sort" debe ser');
+  });
+
+  it("los defaults NO traen sort (el reparto de OpenRouter no cambia hasta que se pida)", () => {
+    expect(buildOpenRouterProviderPrefs(routingForModel(DEFAULT_ROUTE, "openai/gpt-6-luna", false))).not.toHaveProperty("sort");
+  });
+});
+
 describe("parseLlmModelsJson", () => {
   const ok = { roles: { "*:data_chat": { models: [{ model: "openai/gpt-6-sol", reasoningEffort: "medium", temperature: "omit", maxTokens: 2000 }], routing: { zdr: true, only: ["openai"] } } } };
 
