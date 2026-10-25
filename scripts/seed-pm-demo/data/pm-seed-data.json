@@ -19,8 +19,8 @@
       "activa": true,
       "zona_cliente": "zona centro y norte",
       "horario": [
-        { "dias": [1, 2, 3, 4], "abre": "18:00", "cierra": "01:00" },
-        { "dias": [0, 5, 6], "abre": "12:00", "cierra": "01:00" }
+        { "dias": [1, 2, 3, 4], "abre": "18:00", "cierra": "01:00", "ultimoPedidoDomicilio": "23:15", "ultimoPedidoRecoger": "00:30" },
+        { "dias": [0, 5, 6], "abre": "12:00", "cierra": "01:00", "ultimoPedidoDomicilio": "23:15", "ultimoPedidoRecoger": "00:30" }
       ],
       "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026): COINCIDEN en lun-jue 18:00-01:00, sab-dom 12:00-01:00 y el cierre a la 1 am; el VIERNES estan en CONFLICTO (sitio 12:00, Google 18:00) y se uso el del sitio oficial (12:00-01:00) por decision del equipo.",
       "horario_pendiente": "viernes: sitio 12:00, Google 18:00; confirmar con T1 (llamar a la sucursal). Si abre a las 18:00, cambiar el viernes a 18:00-01:00.",
@@ -46,8 +46,8 @@
       "activa": false,
       "zona_cliente": "norponiente",
       "horario": [
-        { "dias": [1, 2, 3, 4, 5], "abre": "18:00", "cierra": "00:00" },
-        { "dias": [0, 6], "abre": "12:00", "cierra": "00:00" }
+        { "dias": [1, 2, 3, 4, 5], "abre": "18:00", "cierra": "00:00", "ultimoPedidoDomicilio": "22:15", "ultimoPedidoRecoger": "23:30" },
+        { "dias": [0, 6], "abre": "12:00", "cierra": "00:00", "ultimoPedidoDomicilio": "22:15", "ultimoPedidoRecoger": "23:30" }
       ],
       "horario_fuente": "Sitio oficial lostaquitosdepm.com y ficha de Google Maps, ambos leidos el 23-oct-2026: lun-vie 18:00-24:00, sab-dom 12:00-24:00.",
       "nota": "Catalogo provisional (lista T1-2026 marcada provisional_P5) hasta confirmar el catalogo exacto de la sucursal. Queda inactiva: la fase 1 del agente es T7.",
@@ -75,7 +75,7 @@
       "activa": true,
       "zona_cliente": "poniente",
       "horario": [
-        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "18:00", "cierra": "00:00" }
+        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "18:00", "cierra": "00:00", "ultimoPedidoDomicilio": "22:15", "ultimoPedidoRecoger": "23:30" }
       ],
       "horario_fuente": "Sitio oficial lostaquitosdepm.com y ficha de Google Maps, ambos leidos el 23-oct-2026: todos los dias 18:00-24:00.",
       "nota": "Catalogo = lista T1-2026 sin comida regional ni flautas (cuestionario l.76 y l.104-105: 'precios iguales en todas'; correccion CR01/CR02 del 3-oct-2026: antes llevaba la lista 2025). Sin coordenadas: no se inventan (P7, P9), asi que T3 NO participa en la asignacion de sucursal por distancia hasta que se verifiquen.",
@@ -104,7 +104,7 @@
       "lng": null,
       "activa": false,
       "horario": [
-        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "12:00", "cierra": "21:00" }
+        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "12:00", "cierra": "21:00", "ultimoPedidoRecoger": "20:30" }
       ],
       "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026): todos los dias 12:00-21:00 (food court de Plaza Galerias). El Instagram generico de PM dice «12 pm a 1 am» y no pesa mas que esas dos fuentes. Sucursal inactiva: no recibe pedidos.",
       "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed.",
@@ -123,6 +123,10 @@
       "lng": -89.602,
       "activa": false,
       "coordenadas_aproximadas": true,
+      "horario": [
+        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "12:00", "cierra": "01:00" }
+      ],
+      "horario_fuente": "Horario provisional heredado del general (12:00-01:00) SIN horas de ultimo pedido: sucursal de temporada, inactiva y solo para recoger; el horario real sigue pendiente de P1 (ver nota). Se declara propio a proposito para que NO herede ultimoPedidoDomicilio/ultimoPedidoRecoger del horario_general.",
       "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1; la ficha de Google (23-oct-2026) dice «Cerrado temporalmente» y no publica horario, asi que solo el sitio oficial respalda 18:00-01:00). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026.",
       "directorio": {
         "visible": true,
@@ -181,6 +185,8 @@
   "horario_general": {
     "abre": "12:00",
     "cierra": "01:00",
+    "ultimoPedidoDomicilio": "23:15",
+    "ultimoPedidoRecoger": "00:30",
     "dias": [
       0,
       1,

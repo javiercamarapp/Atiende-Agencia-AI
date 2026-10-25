@@ -20,7 +20,16 @@ export interface TurnoHorario {
   /** Ultimo pedido: minutos ANTES del cierre de este turno en que se deja de tomar pedidos (0 a 180). Opcional: sin valor rige
    * `ULTIMO_PEDIDO_MIN_POR_OMISION` (30). Vive en el jsonb `branch_policy.horario`, asi que no necesita migracion ni columna. */
   readonly ultimoPedidoMin?: number;
+  /** Ultimo pedido A DOMICILIO (HH:MM, hora de la sucursal) de este turno. Si falta, ese tipo de pedido sigue el margen de `ultimoPedidoMin`/30 min.
+   * Con un turno que cruza la medianoche, una hora anterior a la apertura es de la madrugada del dia siguiente ("00:30" en un turno 12:00-01:00). Debe caer dentro del turno. */
+  readonly ultimoPedidoDomicilio?: string;
+  /** Ultimo pedido PARA RECOGER (HH:MM); mismas reglas que `ultimoPedidoDomicilio`. Manda sobre el MOMENTO de pedir, no sobre la hora de recogida (que solo debe ser <= cierre). */
+  readonly ultimoPedidoRecoger?: string;
 }
+
+/** Tipo de pedido al que aplica el ultimo pedido (mismo catalogo que `CanalPedido`). */
+export type TipoUltimoPedido = "domicilio" | "recoger";
+const CAMPOS_ULTIMO_PEDIDO = { domicilio: "ultimoPedidoDomicilio", recoger: "ultimoPedidoRecoger" } as const;
 
 /** Decision del negocio: el ultimo pedido se toma 30 minutos antes del cierre, en todas las sucursales, salvo que el turno diga otra cosa. */
 export const ULTIMO_PEDIDO_MIN_POR_OMISION = 30;
@@ -60,7 +69,18 @@ export function validarHorario(raw: unknown): HorarioSucursal {
     if (margen !== undefined && (typeof margen !== "number" || !Number.isInteger(margen) || margen < 0 || margen > ULTIMO_PEDIDO_MIN_MAXIMO)) {
       throw new OrderValidationError(`Turno ${n}: 'ultimoPedidoMin' debe ser un entero de 0 a ${ULTIMO_PEDIDO_MIN_MAXIMO} (minutos antes del cierre).`);
     }
-    return { dias: [...new Set(t.dias)].sort((a, b) => a - b), abre: t.abre, cierra: t.cierra, ...(margen !== undefined ? { ultimoPedidoMin: margen } : {}) };
+    const porTipo: { ultimoPedidoDomicilio?: string; ultimoPedidoRecoger?: string } = {};
+    for (const tipo of ["domicilio", "recoger"] as const) {
+      const campo = CAMPOS_ULTIMO_PEDIDO[tipo];
+      const valor = (t as Record<string, unknown>)[campo];
+      if (valor === undefined) continue;
+      if (typeof valor !== "string" || !HORA_RE.test(valor)) throw new OrderValidationError(`Turno ${n}: '${campo}' debe tener formato HH:MM (24 horas).`);
+      const duracion = (aMinutos(t.cierra) - aMinutos(t.abre) + MINUTOS_DIA) % MINUTOS_DIA;
+      const desdeApertura = (aMinutos(valor) - aMinutos(t.abre) + MINUTOS_DIA) % MINUTOS_DIA;
+      if (desdeApertura < 1 || desdeApertura > duracion) throw new OrderValidationError(`Turno ${n}: '${campo}' (${valor}) debe caer después de la apertura (${t.abre}) y a más tardar al cierre (${t.cierra}).`);
+      porTipo[campo] = valor;
+    }
+    return { dias: [...new Set(t.dias)].sort((a, b) => a - b), abre: t.abre, cierra: t.cierra, ...(margen !== undefined ? { ultimoPedidoMin: margen } : {}), ...porTipo };
   });
 }
 
@@ -72,10 +92,10 @@ export function leerHorarioPersistido(raw: unknown): HorarioSucursal | null {
   try {
     return validarHorario(raw);
   } catch {
-    // Un `ultimoPedidoMin` corrupto no invalida el horario (fallaria ABIERTO las 24 h): se descarta SOLO el margen y se conservan dias/abre/cierra.
+    // Un `ultimoPedidoMin` / `ultimoPedidoDomicilio` / `ultimoPedidoRecoger` corrupto no invalida el horario (fallaria ABIERTO las 24 h): se descartan SOLO esos campos y se conservan dias/abre/cierra.
     if (Array.isArray(raw)) {
       try {
-        return validarHorario(raw.map((t) => (t && typeof t === "object" ? Object.fromEntries(Object.entries(t as Record<string, unknown>).filter(([k]) => k !== "ultimoPedidoMin")) : t)));
+        return validarHorario(raw.map((t) => (t && typeof t === "object" ? Object.fromEntries(Object.entries(t as Record<string, unknown>).filter(([k]) => k !== "ultimoPedidoMin" && k !== "ultimoPedidoDomicilio" && k !== "ultimoPedidoRecoger")) : t)));
       } catch {
         return null;
       }
@@ -184,6 +204,17 @@ export interface UltimoPedido {
   readonly ultimoPedidoA: string | null;
   /** Hora (HH:MM) en que cierra el servicio vigente (ya con los turnos contiguos fusionados); null si esta cerrada. */
   readonly cierraA: string | null;
+  /** Ultimo pedido por TIPO. `configurado` = el turno que cierra trae la hora fija de ese tipo; si no, sigue el margen general (mismos valores que arriba). */
+  readonly domicilio: UltimoPedidoTipo;
+  readonly recoger: UltimoPedidoTipo;
+}
+
+export interface UltimoPedidoTipo {
+  readonly configurado: boolean;
+  /** true = todavia se toma un pedido de este tipo AHORA. */
+  readonly aceptaPedidos: boolean;
+  /** Hora (HH:MM) a partir de la cual ya no se toma este tipo de pedido; null si la sucursal esta cerrada. */
+  readonly ultimoPedidoA: string | null;
 }
 
 function aHHMM(minutos: number): string {
@@ -195,6 +226,9 @@ interface Tramo {
   start: number;
   end: number;
   margen: number;
+  /** Fin absoluto (minutos, mismo marco que start/end) del ultimo pedido por tipo; null = sin hora fija. */
+  domicilio: number | null;
+  recoger: number | null;
 }
 
 /**
@@ -212,7 +246,12 @@ export function evaluarUltimoPedido(horario: HorarioSucursal, instante: Date, zo
       const abre = aMinutos(t.abre);
       const cierra = aMinutos(t.cierra);
       const fin = cierra > abre ? cierra : cierra + MINUTOS_DIA;
-      tramos.push({ start: abre + desplazamiento, end: fin + desplazamiento, margen: t.ultimoPedidoMin ?? ULTIMO_PEDIDO_MIN_POR_OMISION });
+      const fija = (hhmm: string | undefined): number | null => {
+        if (!hhmm) return null;
+        const desde = (aMinutos(hhmm) - abre + MINUTOS_DIA) % MINUTOS_DIA;
+        return desde >= 1 && abre + desde <= fin ? abre + desde + desplazamiento : null;
+      };
+      tramos.push({ start: abre + desplazamiento, end: fin + desplazamiento, margen: t.ultimoPedidoMin ?? ULTIMO_PEDIDO_MIN_POR_OMISION, domicilio: fija(t.ultimoPedidoDomicilio), recoger: fija(t.ultimoPedidoRecoger) });
     }
   };
   agrega(horarioAyer, (dia + 6) % 7, -MINUTOS_DIA);
@@ -220,36 +259,122 @@ export function evaluarUltimoPedido(horario: HorarioSucursal, instante: Date, zo
   agrega(horarioManana, (dia + 1) % 7, MINUTOS_DIA);
   tramos.sort((x, y) => x.start - y.start || x.end - y.end);
   // Fusion de tramos que se tocan o se traslapan; el margen sale del tramo que fija el cierre.
-  const cadenas: { start: number; end: number; margen: number }[] = [];
+  const cadenas: Tramo[] = [];
   for (const t of tramos) {
     const ultima = cadenas[cadenas.length - 1];
     if (ultima && t.start <= ultima.end) {
       if (t.end > ultima.end) {
         ultima.end = t.end;
         ultima.margen = t.margen;
+        ultima.domicilio = t.domicilio;
+        ultima.recoger = t.recoger;
       }
     } else cadenas.push({ ...t });
   }
   const cadena = cadenas.find((c) => c.start <= minutos && minutos < c.end);
-  if (!cadena) return { abierto: false, margenMin: ULTIMO_PEDIDO_MIN_POR_OMISION, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null, cierraA: null };
+  const cerradoTipo: UltimoPedidoTipo = { configurado: false, aceptaPedidos: false, ultimoPedidoA: null };
+  if (!cadena) return { abierto: false, margenMin: ULTIMO_PEDIDO_MIN_POR_OMISION, minutosParaCierre: null, aceptaPedidos: false, ultimoPedidoA: null, cierraA: null, domicilio: cerradoTipo, recoger: cerradoTipo };
   const margenMin = Math.max(0, Math.min(cadena.margen, cadena.end - cadena.start - 1));
   const minutosParaCierre = cadena.end - minutos;
-  return { abierto: true, margenMin, minutosParaCierre, aceptaPedidos: minutosParaCierre > margenMin, ultimoPedidoA: aHHMM(cadena.end - margenMin), cierraA: aHHMM(cadena.end) };
+  const aceptaPedidos = minutosParaCierre > margenMin;
+  const ultimoPedidoA = aHHMM(cadena.end - margenMin);
+  // Hora fija del turno que cierra (si la trae): el tipo acepta hasta ESA hora (23:14 si, 23:15 no); sin ella, el margen general.
+  const tipo = (fija: number | null): UltimoPedidoTipo => (fija === null ? { configurado: false, aceptaPedidos, ultimoPedidoA } : { configurado: true, aceptaPedidos: minutos < fija, ultimoPedidoA: aHHMM(fija) });
+  return { abierto: true, margenMin, minutosParaCierre, aceptaPedidos, ultimoPedidoA, cierraA: aHHMM(cadena.end), domicilio: tipo(cadena.domicilio), recoger: tipo(cadena.recoger) };
 }
 
-/** Mensaje al cliente cuando la sucursal sigue abierta pero ya paso el ultimo pedido. Nunca promete una hora que no este en el horario. */
-export function mensajeUltimoPedidoPasado(nombreSucursal: string, ultimo: UltimoPedido, etiquetaHora?: string): string {
+/** Como decir una hora: `horaLegible` (texto escrito, WhatsApp) o `horaHablada` (voz). Las frases son las mismas en los dos canales; solo cambia la hora. */
+export type FormatoHora = (hhmm: string) => string;
+
+/** Ultimo pedido del tipo pedido. Con hora fija configurada manda esa; si no, el margen general. */
+export function ultimoPedidoDeTipo(ultimo: UltimoPedido, tipo: TipoUltimoPedido): UltimoPedidoTipo {
+  return ultimo[tipo];
+}
+
+/** true = la sucursal trae al menos una hora fija de ultimo pedido (domicilio o recoger) en el turno vigente. */
+export function tieneUltimoPedidoPorTipo(ultimo: UltimoPedido): boolean {
+  return ultimo.domicilio.configurado || ultimo.recoger.configurado;
+}
+
+/**
+ * Mensaje al cliente cuando la sucursal sigue abierta pero ya paso el ultimo pedido. Nunca promete una hora que no este en el horario.
+ * Con `canal` y hora fija configurada para ese tipo (decision por sucursal y tipo de pedido) nombra el tipo y ofrece la alternativa correcta:
+ * un domicilio tardio se ofrece para recoger si recoger aun se toma; si no, programar para la siguiente apertura. Sin hora fija: el margen de siempre.
+ */
+export function mensajeUltimoPedidoPasado(nombreSucursal: string, ultimo: UltimoPedido, etiquetaHora?: string, canal?: TipoUltimoPedido, hora: FormatoHora = horaLegible): string {
   const cuando = etiquetaHora ? `para la hora elegida (${etiquetaHora})` : "para hoy";
+  if (canal && ultimo[canal].configurado) {
+    const propio = ultimo[canal];
+    const otro = ultimo[canal === "domicilio" ? "recoger" : "domicilio"];
+    const tipoTexto = canal === "domicilio" ? "a domicilio" : "para recoger";
+    const cierre = ultimo.cierraA ? ` (la sucursal cierra a las ${hora(ultimo.cierraA)})` : "";
+    const base = `La sucursal ${nombreSucursal} ya no toma pedidos ${tipoTexto} ${cuando}: el último pedido ${tipoTexto} es a las ${hora(propio.ultimoPedidoA ?? "")}${cierre}.`;
+    const alternativa =
+      canal === "domicilio" && otro.aceptaPedidos && otro.ultimoPedidoA
+        ? ` Ofrezca recoger en la sucursal (el último pedido para recoger es a las ${hora(otro.ultimoPedidoA)}) o programar el pedido para el día siguiente.`
+        : " Ofrezca programar el pedido para la siguiente apertura o pedirlo mañana.";
+    return `${base}${alternativa} No prometa una hora fuera del horario de la sucursal.`;
+  }
   return (
     `La sucursal ${nombreSucursal} ya no toma pedidos ${cuando} por el cierre próximo: el último pedido se toma ${ultimo.margenMin} minutos antes del cierre` +
-    `${ultimo.ultimoPedidoA ? ` (hasta las ${horaLegible(ultimo.ultimoPedidoA)})` : ""}. Ofrezca programar el pedido para la siguiente apertura o pedirlo mañana; no prometa una hora fuera del horario de la sucursal.`
+    `${ultimo.ultimoPedidoA ? ` (hasta las ${hora(ultimo.ultimoPedidoA)})` : ""}. Ofrezca programar el pedido para la siguiente apertura o pedirlo mañana; no prometa una hora fuera del horario de la sucursal.`
   );
+}
+
+/** Mensaje cuando la hora de recogida pedida es posterior al cierre: se rechaza con el motivo y se ofrece una hora anterior o programar. */
+export function mensajeRecogidaDespuesDelCierre(nombreSucursal: string, etiquetaHora: string, cierraA: string | null, hora: FormatoHora = horaLegible): string {
+  const cierre = cierraA ? ` Hoy cierra a las ${hora(cierraA)}: ` : " ";
+  return `La sucursal ${nombreSucursal} no puede entregar la recogida a la hora elegida (${etiquetaHora}) porque es después del cierre.${cierre}ofrezca una hora anterior al cierre o programar el pedido para la siguiente apertura.`;
+}
+
+/**
+ * Frase para "¿siguen abiertos?" / horario: cierre y ultimo pedido del TIPO que le interesa al cliente (o de los dos). Misma frase en WhatsApp y voz (cambia `hora`).
+ * `null` = la sucursal no tiene horas fijas por tipo: quien llama usa el margen general de siempre. `domicilioDisponible=false` omite el domicilio (T4 no reparte).
+ */
+export function fraseUltimoPedido(ultimo: UltimoPedido, hora: FormatoHora = horaLegible, opts: { readonly domicilioDisponible?: boolean } = {}): string | null {
+  if (!ultimo.abierto || !tieneUltimoPedidoPorTipo(ultimo)) return null;
+  const partes: string[] = [];
+  if (opts.domicilioDisponible !== false && ultimo.domicilio.ultimoPedidoA) partes.push(`a domicilio a las ${hora(ultimo.domicilio.ultimoPedidoA)}`);
+  if (ultimo.recoger.ultimoPedidoA) partes.push(`para recoger a las ${hora(ultimo.recoger.ultimoPedidoA)}`);
+  if (partes.length === 0) return null;
+  const cierre = ultimo.cierraA ? `Cerramos a las ${hora(ultimo.cierraA)}. ` : "";
+  return `${cierre}El último pedido ${partes.join(" y ")}.`;
 }
 
 /** Hora para decirla al cliente: "00:00" se dice "12:00 a. m. (medianoche)" (un cierre a las 24:00 se guarda como 00:00 y "a las 00:00" no se dice en español);
  * cualquier otra hora queda tal cual (HH:MM). */
 export function horaLegible(hhmm: string): string {
   return hhmm === "00:00" ? "12:00 a. m. (medianoche)" : hhmm;
+}
+
+const UNIDADES = ["cero", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuna", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"];
+const DECENAS = ["", "", "", "treinta", "cuarenta", "cincuenta"];
+function numeroEnPalabras(n: number): string {
+  if (n < 30) return UNIDADES[n]!;
+  const d = Math.floor(n / 10);
+  const u = n % 10;
+  return u === 0 ? DECENAS[d]! : `${DECENAS[d]!} y ${UNIDADES[u]!}`;
+}
+/** Los MINUTOS van en masculino («doce y veintiuno», «una y treinta y uno»): «una» / «veintiuna» son de la hora (la una), no de los minutos. */
+function minutosEnPalabras(n: number): string {
+  return numeroEnPalabras(n).replace(/\bveintiuna$/, "veintiuno").replace(/\buna$/, "uno");
+}
+
+/** Hora para DECIRLA por telefono: "00:30" -> "doce y media de la noche", "13:45" -> "una y cuarenta y cinco de la tarde". El sintetizador lee "00:30" como cifras sueltas;
+ * `horaLegible` (HH:MM) queda para texto escrito. Una entrada que no sea HH:MM valida se devuelve tal cual (nunca inventa una hora). */
+export function horaHablada(hhmm: string): string {
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmm);
+  if (!m) return hhmm;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return hhmm;
+  if (h === 0 && min === 0) return "doce de la noche (medianoche)";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const franja = h === 12 ? "del día" : h < 12 ? "de la mañana" : h < 20 ? "de la tarde" : "de la noche";
+  // 00:xx es pasada la medianoche: "doce y media de la noche", no "de la mañana".
+  const periodo = h === 0 ? "de la noche" : franja;
+  const minutos = min === 0 ? "" : min === 15 ? " y cuarto" : min === 30 ? " y media" : ` y ${minutosEnPalabras(min)}`;
+  return `${numeroEnPalabras(h12)}${minutos} ${periodo}`;
 }
 
 /** Mensaje claro para el cliente cuando la sucursal está cerrada. */

@@ -113,4 +113,76 @@ describe("R21: cierre del «si» en una sola llamada al modelo", () => {
     expect(vueltas).toBe(1);
     expect(await pedidosDe(v)).toHaveLength(0);
   });
+
+  // --- Cierre adelantado + resumen canonico (#662) + ultimo pedido por tipo (#665) ---
+  const enMerida = (fecha: string, hhmm: string) => new Date(`${fecha}T${hhmm}:00-06:00`);
+  const cotiza = (v: Viaje, canal: "domicilio" | "recoger", extra: Record<string, unknown> = {}, total = canal === "domicilio" ? 212 : 106) =>
+    v.guion([
+      { tools: [{ name: "cotizar_pedido", args: { branch_slug: "garcia-lavin", canal, payment_method: "efectivo", customer_name: "Ana Prueba", items: canal === "domicilio" ? [{ ...items(v)[0]!, requested_quantity: 4 }] : items(v), ...extra } }] },
+      { texto: `Permítame repetirle su pedido. Total $${total}.00. ¿Es correcto?` },
+    ]);
+
+  it("«si» tras un resumen con direccion y salsas: el pedido sale con la direccion y las salsas del resumen, en 1 llamada", async () => {
+    vi.setSystemTime(enMerida("2026-10-13", "19:00")); // martes abre a las 18:00
+    const v = await nuevoViaje();
+    const PASTOR = "Pastor — 500 g"; // platillo con salsas incluidas: la doble salsa solo aplica a esos
+    const itemsSalsa = [{ product_id: v.producto(PASTOR), product_name: PASTOR, requested_quantity: 1 }, { product_id: v.producto("Coca-Cola"), product_name: "Coca-Cola", requested_quantity: 2 }];
+    v.guion([
+      { tools: [{ name: "cotizar_pedido", args: { branch_slug: "garcia-lavin", canal: "domicilio", colonia_entrega: "Temozón Norte", customer_address: "Calle 60 #123 entre 21 y 23", customer_name: "Ana Prueba", payment_method: "efectivo", doble_salsas: ["salsa_verde"], items: itemsSalsa } }] },
+      { texto: "Permítame repetirle su pedido: 1/2 kg de pastor con doble salsa verde y 2 Coca-Cola. Total $575.00. ¿Es correcto?" },
+    ]);
+    await v.escribe("dos cocas a domicilio con doble salsa verde");
+    const flow = await v.world.repo.readOrderFlow(v.world.organizationId, `wa:${TEL_CLIENTE}`);
+    expect(flow?.context?.quotedTotal, JSON.stringify(v.requests.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => m.content))).toBeTypeOf("number");
+    v.guion([{ texto: "Su pedido ya quedó registrado." }]);
+    const { vueltas } = await vueltasDe(v, "Sí, es correcto");
+    expect(vueltas).toBe(1);
+    const pedidos = await pedidosDe(v);
+    expect(pedidos).toHaveLength(1);
+    expect(JSON.stringify(pedidos[0])).toMatch(/Calle 60/);
+    const llamadas = v.requests.at(-1)!.messages.flatMap((m) => (m.role === "assistant" && m.toolCalls ? m.toolCalls : []));
+    const crear = llamadas.find((c) => c.name === "crear_pedido")!;
+    expect(JSON.parse(crear.argumentsJson)).toMatchObject({ customer_address: "Calle 60 #123 entre 21 y 23", colonia_entrega: "Temozón Norte", doble_salsas: ["salsa_verde"] });
+  });
+
+  it("T7 ultimo pedido de DOMICILIO 23:15: el «si» de las 23:16 (cotizado a las 23:10) NO crea pedido; el modelo ve el rechazo y lo explica", async () => {
+    vi.setSystemTime(enMerida("2026-10-13", "23:10"));
+    const v = await nuevoViaje();
+    cotiza(v, "domicilio", { colonia_entrega: "Temozón Norte", customer_address: "Calle 60 #123" });
+    await v.escribe("dos cocas a domicilio");
+    const flow = await v.world.repo.readOrderFlow(v.world.organizationId, `wa:${TEL_CLIENTE}`);
+    expect(flow?.context?.quotedTotal, JSON.stringify(v.requests.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => m.content))).toBeTypeOf("number");
+    vi.setSystemTime(enMerida("2026-10-13", "23:16"));
+    v.guion([{ texto: "Lo siento, ya pasó el último pedido a domicilio (23:15). Puede recoger hasta las 12:30 de la noche." }]);
+    const { r, vueltas } = await vueltasDe(v, "Sí, es correcto");
+    expect(vueltas).toBe(1);
+    expect(await pedidosDe(v)).toHaveLength(0);
+    expect(r.orderId).toBeNull();
+    const resultados = v.requests.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => String(m.content)).join("\n");
+    expect(resultados).toMatch(/ya no toma pedidos|último pedido|ultimo pedido/i);
+    expect(r.reply).toMatch(/último pedido/);
+  });
+
+  it("T7 ultimo pedido de RECOGER 00:30: el «si» de las 00:29 crea el pedido; el de las 00:31 no (control del mismo tipo)", async () => {
+    vi.setSystemTime(enMerida("2026-10-14", "00:20"));
+    const v = await nuevoViaje();
+    cotiza(v, "recoger");
+    await v.escribe("dos cocas para recoger");
+    vi.setSystemTime(enMerida("2026-10-14", "00:29"));
+    v.guion([{ texto: "Su pedido ya quedó registrado." }]);
+    const ok = await vueltasDe(v, "Sí, es correcto");
+    expect(ok.vueltas).toBe(1);
+    expect(await pedidosDe(v), JSON.stringify(v.requests.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => m.content))).toHaveLength(1);
+
+    const w = await nuevoViaje({ phone: "+5219995550177" });
+    vi.setSystemTime(enMerida("2026-10-14", "00:20"));
+    cotiza(w, "recoger");
+    await w.escribe("dos cocas para recoger", { phone: "+5219995550177" });
+    vi.setSystemTime(enMerida("2026-10-14", "00:31"));
+    w.guion([{ texto: "Lo siento, ya pasó el último pedido para recoger." }]);
+    const r = await w.escribe("Sí, es correcto", { phone: "+5219995550177" });
+    expect(await pedidosDe(w)).toHaveLength(0);
+    expect(r.orderId ?? null).toBeNull();
+    expect(r.reply).toMatch(/último pedido/);
+  });
 });

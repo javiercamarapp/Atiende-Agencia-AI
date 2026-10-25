@@ -153,13 +153,13 @@ select count(*)::int as politicas_correctas_deberia_ser_7
   join core.organization o on o.id = bp.organization_id
   join restaurantes.branch_detail bd on bd.property_id = bp.property_id
   join (values
-    ('prol-montejo',  '[{"dias":[1,2,3,4],"abre":"18:00","cierra":"01:00"},{"dias":[0,5,6],"abre":"12:00","cierra":"01:00"}]'::jsonb),
-    ('fco-montejo',   '[{"dias":[1,2,3,4,5],"abre":"18:00","cierra":"00:00"},{"dias":[0,6],"abre":"12:00","cierra":"00:00"}]'::jsonb),
-    ('pensiones',     '[{"dias":[0,1,2,3,4,5,6],"abre":"18:00","cierra":"00:00"}]'::jsonb),
-    ('galerias',      '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"21:00"}]'::jsonb),
+    ('prol-montejo',  '[{"dias":[1,2,3,4],"abre":"18:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"},{"dias":[0,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
+    ('fco-montejo',   '[{"dias":[1,2,3,4,5],"abre":"18:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"},{"dias":[0,6],"abre":"12:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"}]'::jsonb),
+    ('pensiones',     '[{"dias":[0,1,2,3,4,5,6],"abre":"18:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"}]'::jsonb),
+    ('galerias',      '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"21:00","ultimoPedidoRecoger":"20:30"}]'::jsonb),
     ('playa',         '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00"}]'::jsonb),
-    ('garcia-lavin',  '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00"}]'::jsonb),
-    ('altabrisa',     '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00"}]'::jsonb)
+    ('garcia-lavin',  '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
+    ('altabrisa',     '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb)
   ) as e(slug, horario) on e.slug = bd.slug and e.horario = bp.horario
   where o.slug = 'los-taquitos-de-pm' and bp.pedido_minimo_domicilio = 200 and bp.pedido_minimo_recoger is null and bp.propina_politica = 'solo_tarjeta';
 rollback;

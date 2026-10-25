@@ -70,7 +70,7 @@ export interface PmSeedBranch {
   readonly nota?: string;
   /** Horario PROPIO de la sucursal (mismo formato que `branch_policy.horario`). Solo se declara cuando dos fuentes independientes (sitio oficial y ficha
    * de Google) coinciden; sin valor la sucursal usa `horario_general`. */
-  readonly horario?: readonly { readonly dias: readonly number[]; readonly abre: string; readonly cierra: string }[];
+  readonly horario?: readonly { readonly dias: readonly number[]; readonly abre: string; readonly cierra: string; readonly ultimoPedidoDomicilio?: string; readonly ultimoPedidoRecoger?: string }[];
   /** De donde sale `horario` (documentacion; el plan no la usa). */
   readonly horario_fuente?: string;
   /** Por que NO hay `horario` propio todavia (fuentes en conflicto o una sola fuente); documentacion, el plan no la usa. */
@@ -198,7 +198,7 @@ export interface PmSeedData {
   readonly version: string;
   readonly organizacion: { readonly nombre: string; readonly slug: string; readonly ciudad: string; readonly zona_horaria: string };
   readonly sucursales: readonly PmSeedBranch[];
-  readonly horario_general: { readonly abre: string; readonly cierra: string; readonly dias: readonly number[] };
+  readonly horario_general: { readonly abre: string; readonly cierra: string; readonly dias: readonly number[]; readonly ultimoPedidoDomicilio?: string; readonly ultimoPedidoRecoger?: string };
   /** Colonias del piloto original (`known_zone` sin coordenadas + `branch_delivery_zone`); ver `colonias_meta` para la regla de asignacion. */
   readonly colonias?: readonly PmSeedColonia[];
   /** Fuente, regla y conteos de la lista de colonias (documentacion versionada junto a los datos; el plan no la usa). */
@@ -526,7 +526,8 @@ export function buildPmSeedPlan(datos: PmSeedData, agent: PmAgentFiles, options:
   // --- horario / reglas ------------------------------------------------------------------------
   let horario: ReturnType<typeof validarHorario>;
   try {
-    horario = validarHorario([{ dias: [...data.horario_general.dias], abre: data.horario_general.abre, cierra: data.horario_general.cierra }]);
+    const g = data.horario_general;
+    horario = validarHorario([{ dias: [...g.dias], abre: g.abre, cierra: g.cierra, ...(g.ultimoPedidoDomicilio ? { ultimoPedidoDomicilio: g.ultimoPedidoDomicilio } : {}), ...(g.ultimoPedidoRecoger ? { ultimoPedidoRecoger: g.ultimoPedidoRecoger } : {}) }]);
   } catch (err) {
     return fail(`Horario invalido: ${(err as Error).message}`);
   }

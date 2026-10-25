@@ -13,6 +13,7 @@ export * from "./repositorio.ts";
 export * from "./repositorio-memoria.ts";
 export * from "./servicio.ts";
 export * from "./tipos-api.ts";
+export * from "./analisis-clientes.ts";
 export { restarAnio, rangoAnterior, rangoAnioAnterior, ventanas4Semanas, rangoComparativo } from "./servicio-util.ts";
 export {
   cifra,
