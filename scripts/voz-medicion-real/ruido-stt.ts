@@ -42,24 +42,41 @@ const esNumeral = (p: string): boolean => {
   return k in UNIDADES || k in DECENAS || k in CENTENAS || k === "mil" || k === "y";
 };
 
-/** Convierte una corrida de palabras numericas ("trescientos cuarenta y cinco") a su valor; null si no es una cifra bien formada. */
+/** Convierte una corrida de palabras numericas ("trescientos cuarenta y cinco") a su valor; null si no es UNA cifra bien formada ("doce cincuenta" son dos cifras: null). */
 export function palabrasANumero(palabras: readonly string[]): number | null {
-  let total = 0;
-  let actual = 0;
-  let visto = false;
-  for (const p of palabras) {
-    const k = sinTildes(p);
-    if (k === "y") continue;
-    visto = true;
-    if (k in UNIDADES) actual += UNIDADES[k]!;
-    else if (k in DECENAS) actual += DECENAS[k]!;
-    else if (k in CENTENAS) actual += CENTENAS[k]!;
-    else if (k === "mil") { total += (actual === 0 ? 1 : actual) * 1000; actual = 0; } else return null;
-  }
-  return visto ? total + actual : null;
+  const partes = partirCifras(palabras);
+  return partes.length === 1 ? partes[0]! : null;
 }
 
-/** Cada corrida de palabras-numero pasa a cifra con probabilidad `p` (Deepgram con formato inteligente escribe cifras; a veces las deja en letra). Un "una"/"un" suelto no se toca. */
+/** Parte una corrida de palabras-numero en cifras separadas segun la gramatica del espanol: [centena] [decena [y unidad] | unidad | 11-29] [mil ...].
+ *  "doce cincuenta" -> [12, 50] (una hora), "trescientos cuarenta y cinco" -> [345], "veinte y veintidos" -> [20, 22] (cruzamientos). */
+export function partirCifras(palabras: readonly string[]): number[] {
+  const salida: number[] = [];
+  let total = 0;
+  let actual = 0;
+  let tieneCentena = false;
+  let tieneDecena = false; // decena 30-90 abierta (admite "y unidad")
+  let tieneBajo = false; // unidad o 10-29 ya puesta (cierra el bloque)
+  let abierta = false;
+  const cerrar = () => { if (abierta) salida.push(total + actual); total = 0; actual = 0; tieneCentena = tieneDecena = tieneBajo = abierta = false; };
+  for (let i = 0; i < palabras.length; i += 1) {
+    const k = sinTildes(palabras[i]!);
+    if (k === "y") continue;
+    const conY = i > 0 && sinTildes(palabras[i - 1]!) === "y";
+    if (k === "mil") { total = abierta ? total + (actual === 0 ? 1 : actual) * 1000 : 1000; actual = 0; abierta = true; tieneCentena = tieneDecena = tieneBajo = false; continue; }
+    if (k in CENTENAS) { if (tieneCentena || tieneDecena || tieneBajo) cerrar(); actual += CENTENAS[k]!; tieneCentena = true; abierta = true; continue; }
+    if (k in DECENAS) { if (tieneDecena || tieneBajo) cerrar(); actual += DECENAS[k]!; tieneDecena = true; abierta = true; continue; }
+    if (k in UNIDADES) {
+      const v = UNIDADES[k]!;
+      if (tieneBajo || (tieneDecena && !(conY && v < 10)) ) cerrar();
+      actual += v; tieneBajo = true; abierta = true; continue;
+    }
+  }
+  cerrar();
+  return salida;
+}
+
+/** Cada corrida de palabras-numero pasa a cifras con probabilidad `p` (Deepgram con formato inteligente escribe cifras; a veces las deja en letra). Un "una"/"un" suelto no se toca. */
 export function numerosACifras(texto: string, rng: Rng, p: number): string {
   const tokens = texto.split(/(\s+)/);
   const salida: string[] = [];
@@ -71,29 +88,24 @@ export function numerosACifras(texto: string, rng: Rng, p: number): string {
       let j = i;
       const corrida: string[] = [];
       let puntuacionFinal = "";
+      let fin = i;
       while (j < tokens.length) {
         const u = tokens[j]!;
         if (u.trim() === "") { j += 1; continue; }
         const l = u.replace(/[.,;:!?¿¡]+$/g, "");
         if (!esNumeral(l)) break;
-        // "veinte y veintidos" son DOS cifras (calle 20 por 22); "treinta y cinco" es una sola. Una "y" solo une decena + unidad.
-        if (sinTildes(l) === "y") {
-          const prev = sinTildes(corrida[corrida.length - 1] ?? "");
-          const sig = sinTildes((tokens.slice(j + 1).find((x) => x.trim() !== "") ?? "").replace(/[.,;:!?¿¡]+$/g, ""));
-          if (!(prev in DECENAS && sig in UNIDADES && UNIDADES[sig]! < 10)) break;
-        }
+        if (sinTildes(l) === "y" && !sigueNumeral(tokens, j + 1)) break;
         corrida.push(l);
         puntuacionFinal = u.slice(l.length);
         j += 1;
+        fin = j;
         if (puntuacionFinal !== "") break;
       }
-      const valor = palabrasANumero(corrida);
+      j = fin;
+      const cifras = partirCifras(corrida);
       const soloUno = corrida.length === 1 && ["un", "uno", "una"].includes(sinTildes(corrida[0]!));
-      if (valor !== null && !soloUno && rng() < p) {
-        salida.push(String(valor) + puntuacionFinal);
-      } else {
-        for (let k = i; k < j; k += 1) salida.push(tokens[k]!);
-      }
+      if (cifras.length > 0 && !soloUno && rng() < p) salida.push(cifras.join(" ") + puntuacionFinal);
+      else for (let k = i; k < j; k += 1) salida.push(tokens[k]!);
       i = j;
       continue;
     }
@@ -102,6 +114,11 @@ export function numerosACifras(texto: string, rng: Rng, p: number): string {
   }
   return salida.join("");
 }
+
+const sigueNumeral = (tokens: readonly string[], desde: number): boolean => {
+  const sig = tokens.slice(desde).find((x) => x.trim() !== "");
+  return sig !== undefined && esNumeral(sig.replace(/[.,;:!?¿¡]+$/g, "")) && sinTildes(sig.replace(/[.,;:!?¿¡]+$/g, "")) !== "y";
+};
 
 interface Confusion {
   readonly re: RegExp;

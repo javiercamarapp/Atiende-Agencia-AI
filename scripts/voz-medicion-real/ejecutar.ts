@@ -58,10 +58,17 @@ const priceMap = new Map<string, number>();
 for (const r of (await s.pool.query("select property_id, product_id, price::float p from restaurantes.branch_products")).rows) priceMap.set(`${r.property_id}:${r.product_id}`, r.p);
 
 // ---- LLM de la cascada: el puerto del worker, SIN tocar su enrutamiento (ZDR) ----
-const llmPuerto = crearPuertoLlmVozV2(key, undefined, { modelo: MODELO, config: { ...VOZ_PLATAFORMA, cascadaV2: { ...VOZ_PLATAFORMA.cascadaV2, llm: { ...VOZ_PLATAFORMA.cascadaV2.llm, esfuerzo: ESFUERZO } } } });
+// VOZ_SIN_ZDR=1: SOLO para modelos baratos sin endpoint de retencion cero (control de costo); la medicion oficial va con el enrutamiento de produccion.
+const fetchSinZdr: typeof fetch | undefined = process.env.VOZ_SIN_ZDR === "1"
+  ? (async (url: any, init: any) => { try { const b = JSON.parse(String(init?.body)); if (b.provider) { delete b.provider.zdr; delete b.provider.only; b.provider.data_collection = "deny"; } b.usage = { include: true }; return fetch(url, { ...init, body: JSON.stringify(b) }); } catch { return fetch(url, init); } }) as typeof fetch
+  : undefined;
+const llmPuerto = crearPuertoLlmVozV2(key, fetchSinZdr, { modelo: MODELO, config: { ...VOZ_PLATAFORMA, cascadaV2: { ...VOZ_PLATAFORMA.cascadaV2, llm: { ...VOZ_PLATAFORMA.cascadaV2.llm, esfuerzo: ESFUERZO } } } });
 
 // ---- STT y TTS falsos: el cliente entra por texto; el TTS devuelve silencio proporcional a los caracteres (sin esperar) ----
-const sttFalso = { abrir: async () => ({ enviarAudio: () => undefined, cerrar: async () => undefined }) };
+// El cliente "habla" entregando el texto como si fuera el FINAL del STT (`turnoFinal`): es el mismo camino que usa el audio real (alTurnoFinal limpia la espera de la regla
+// confirmar -> crear, corta al agente si hablaba y avisa al controlador). `enviarTexto` NO hace eso y dejaria `crear_pedido` bloqueado para siempre (hallazgo del arnes).
+let eventosStt: { turnoFinal(t: string): void; parcial(t: string): void } | null = null;
+const sttFalso = { abrir: async (_o: unknown, ev: { turnoFinal(t: string): void; parcial(t: string): void }) => { eventosStt = ev; return { enviarAudio: () => undefined, cerrar: async () => undefined }; } };
 const ttsFalso = {
   abrir: async () => ({
     flushesDisponibles: () => 1000,
@@ -123,11 +130,12 @@ async function correrLlamada(e: Escenario, phone: string, instruccion: string, v
 
   const hablar = async (dicho: string, opciones: { interrumpe?: boolean; sinRuido?: boolean } = {}) => {
     const r = opciones.sinRuido || e.sinRuido ? { texto: dicho, cambios: [] as string[] } : ruidoStt(dicho, rng, { nivel: NIVEL_RUIDO });
-    if (opciones.interrumpe) await ctrl.usuarioHabla();
+    if (opciones.interrumpe) eventosStt?.parcial(r.texto.split(" ").slice(0, 3).join(" "));
     const nTools0 = tools.length;
     primeraFraseT = null;
     const t0 = performance.now();
-    await ctrl.usuarioDijo(r.texto);
+    if (!eventosStt) throw new Error("el STT falso no se abrio");
+    eventosStt.turnoFinal(r.texto);
     await sincronizar();
     const t1 = performance.now();
     const agente = ultimoAgente();
@@ -248,8 +256,15 @@ for (const e of ESCENARIOS) {
   const caidas = llamada.v2log.filter((l: any) => /caida|vacia/.test(l.evento)).map((l: any) => `${l.evento}:${l.campos?.codigo ?? ""}`);
   const trTxt = llamada.registro.map((x: TurnoRegistro) => x.quien === "cliente" ? `CLIENTE [dijo]: ${x.dicho}${x.oido !== x.dicho ? `\n         [STT]: ${x.oido}` : ""}` : x.quien === "agente" ? `AGENTE: ${x.texto}${x.herramientas?.length ? `  <herramientas: ${x.herramientas.join(", ")}>` : ""}` : `SISTEMA: ${x.texto}`).join("\n").slice(0, 9000);
   const usr = `ESCENARIO ${e.id}: ${e.titulo}\nDEBE: ${e.debe}\nNO DEBE: ${e.noDebe}\nRESULTADO DE LA LLAMADA: ${llamada.resultado}\nTRANSCRIPCION:\n${trTxt}\nTOOLS: ${JSON.stringify(llamada.tools.map((t: any) => ({ n: t.nombre, r: JSON.stringify(t.resultado).slice(0, 180) }))).slice(0, 2800)}\nBD: pedidos=${JSON.stringify(orders.map((o: any) => ({ total: o.total, canal: o.canal, direccion: o.customer_address, items: o.items.map((i: any) => `${i.quantity}x ${i.name}@${i.price}`) })))}; callbacks=${JSON.stringify(callbacks.map((c: any) => c.reason))}\nFALLAS DETERMINISTAS: ${hard.join(" ; ") || "ninguna"}${caidas.length ? `\nINFRA: ${caidas.join(",")}` : ""}`;
-  let jr: any = { veredicto: "PARCIAL", motivo: "juez sin respuesta", causa: "arnes", severidad: "ninguna" };
-  try { jr = JSON.parse((await chat([{ role: "system", content: JUEZ_SYS }, { role: "user", content: usr }], { max: 700, json: true, model: JUEZ })).replace(/^```json|```$/g, "")); } catch { /* */ }
+  let jr: any = { veredicto: "PARCIAL", motivo: "juez sin respuesta tras 3 intentos", causa: "juez", severidad: "ninguna" };
+  for (let intento = 0; intento < 3; intento += 1) {
+    try {
+      const out = await chat([{ role: "system", content: JUEZ_SYS }, { role: "user", content: usr }], { max: 1500, json: true, model: JUEZ });
+      const m = /\{[\s\S]*\}/.exec(out);
+      const j = JSON.parse(m ? m[0] : out);
+      if (typeof j.veredicto === "string") { jr = j; break; }
+    } catch { /* reintenta */ }
+  }
   const turnosAg = llamada.registro.filter((x: TurnoRegistro) => x.quien === "agente" && x.msTurno !== undefined);
   const palabras = turnosAg.map((x: TurnoRegistro) => (x.texto ?? "").split(/\s+/).filter(Boolean).length);
   Object.assign(rec, {
