@@ -47,6 +47,8 @@ export interface PerfilPmContexto {
   readonly pedidoGrandeTexto?: string | null;
   /** Enlace de facturación en línea (https) que configuró el negocio. Sin valor, el agente NO inventa uno: dice que una persona se lo confirma y escala. */
   readonly urlFacturacion?: string | null;
+  /** Agregados por validar (migracion 099) cableados: AGREGAR productos a un pedido ya registrado va por `solicitar_agregado_pedido` en vez de escalar. Solo lo fija el servidor; sin el, el prompt es identico al de siempre. */
+  readonly agregadosActivos?: boolean;
   /** Conocimiento del negocio ya armado (`bloqueConocimientoPrompt`; migracion 053). Va ANTES de las reglas duras: las reglas van despues y ganan.
    * Vacio/ausente = el prompt es identico al de antes. Solo el canal WhatsApp; la voz lo antepone al comportamiento guardado. */
   readonly conocimientoBloque?: string;
@@ -351,9 +353,14 @@ Usted: "Con mucho gusto le ayudo con su pedido, pero la promoción es válida ú
 ${pmCustomerContextBlock(ctx.customer)}`;
 
   if (voz) return buildPmVozPrompt(ctx, { saludo, promos, motivos, bloqueApagados, pedidoGrande });
+  const agregados = ctx.agregadosActivos ? [PM_AGREGADOS_REGLA] : [];
   const conocimiento = ctx.conocimientoBloque?.trim() ? [ctx.conocimientoBloque.trim()] : [];
-  return [rol, vozYTrato, ...conocimiento, reglas, flujo, ...(geocercasActivas() ? [PM_PAQUETE_B_REGLAS] : []), escalacion, seguridad, datos, construirPromptPaqueteA({ salsasPersonalizadas: Boolean(ctx.salsasTexto) }), ejemplos, cliente].join("\n\n");
+  return [rol, vozYTrato, ...conocimiento, reglas, flujo, ...(geocercasActivas() ? [PM_PAQUETE_B_REGLAS] : []), escalacion, ...agregados, seguridad, datos, construirPromptPaqueteA({ salsasPersonalizadas: Boolean(ctx.salsasTexto) }), ejemplos, cliente].join("\n\n");
 }
+
+/** Regla vigente cuando los agregados por validar estan cableados: reemplaza al paso 13 SOLO para AGREGAR productos (cancelar y los demas cambios siguen por escalar_a_humano). */
+export const PM_AGREGADOS_REGLA = `# AGREGAR PRODUCTOS A UN PEDIDO YA REGISTRADO (esta regla manda sobre el paso 13 solo para agregar)
+Si el cliente ya tiene un pedido registrado y quiere AGREGARLE productos: busque cada producto con buscar_producto y llame solicitar_agregado_pedido con SOLO lo que agrega (no el pedido completo), en lugar de escalar_a_humano. Dígale al cliente EXACTAMENTE el mensaje_al_cliente que devuelve: la sucursal acepta o rechaza el agregado y le confirma. NUNCA diga que ya quedó agregado, NO dé minutos ni horas y no cree otro pedido. Si devuelve ok:false siga su instrucción (por ejemplo, si el pedido ya salió se ofrece un pedido nuevo). Cancelar, cambiar domicilio a recoger, el pago o la dirección siguen por escalar_a_humano (paso 13).`;
 
 interface PartesVoz {
   readonly saludo: string;

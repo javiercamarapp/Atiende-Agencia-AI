@@ -43,7 +43,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { assertAdminGeneral, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 // 7 días — misma vigencia que el portal de propietario de rentas
 // (`rentasOwnerPortalInviteRoutes::INVITE_TTL_MS`), razonable para que quien invita
@@ -187,6 +187,7 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.use(repartidoresPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(miembrosPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(miembroItemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(`${miembroItemPath}/perfil-operativo`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(collectionPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
@@ -435,6 +436,50 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     }
   });
 
+  // Perfil operativo (migracion 090): marca a un `staff` como CAJERO (captura, acepta y prepara; no despacha ni cancela) o ENCARGADO (todo; es
+  // el valor por omision). Es una bandera de la membresia, no un rol nuevo. Autoridad real: `restaurantes.staff_perfil_operativo_guardar`
+  // (solo owner/admin con alcance de toda la organizacion); aqui el primer filtro y el mejor mensaje.
+  app.put(`${miembroItemPath}/perfil-operativo`, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    // Solo el dueño o un admin con alcance de TODA la organizacion (mismo helper que el resto de escrituras globales; la funcion SQL lo repite).
+    await assertAdminGeneral(deps, c);
+    const organizationId = c.get("organizationId");
+    const callerUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+    const raw = await readJsonCapped<{ perfil?: unknown }>(c.req.raw, 1 * 1024);
+    if (raw.perfil !== null && raw.perfil !== "encargado" && raw.perfil !== "cajero") {
+      throw Errors.validation('perfil: se esperaba "encargado", "cajero" o null.');
+    }
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw Errors.notFound("Ese staff no pertenece a esta organización.");
+    if (target.verticalRole !== "staff") throw Errors.conflict("El perfil operativo solo aplica al personal de sucursal (staff).");
+    const repo = deps.restaurantesRepo(c.get("db"));
+    let resultado;
+    try {
+      resultado = await repo.guardarPerfilOperativo(organizationId, targetUserId, raw.perfil);
+      if (!resultado.disponible) throw Errors.serviceUnavailable("Esta función requiere la migración 090 de restaurantes, aún no aplicada en esta base.");
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "42501") throw Errors.forbidden("Solo el dueño o un administrador con acceso a todas las sucursales puede cambiar el perfil.");
+      if (code === "P0404") throw Errors.notFound("Ese staff no pertenece a esta organización.");
+      throw err;
+    }
+    if (!resultado.antesDisponible) logEvent(c, "error", "restaurantes_perfil_operativo_antes_no_disponible", { organizationId, targetUserId });
+    // Bitacora OBLIGATORIA (no traga errores): si no se puede escribir, la transaccion del request se revierte y el cambio de permisos no queda.
+    await repo.registrarAuditoriaObligatoria({
+      organizationId,
+      actorUserId: callerUserId,
+      action: "staff.perfil_operativo_actualizado",
+      entityType: "staff",
+      entityId: targetUserId,
+      campo: "perfilOperativo",
+      antes: resultado.antesDisponible ? (resultado.antes ?? "encargado") : null,
+      despues: raw.perfil ?? "encargado",
+    });
+    return c.json({ ok: true, perfil: raw.perfil });
+  });
+
   // FASE 3 (producto) — hallazgo real: hasta ahora NO existía ninguna forma de dar
   // de baja a un miembro de staff YA ACEPTADO (`core.membership`) -- solo revocar
   // una invitación PENDIENTE (`DELETE itemPath` de arriba). Mismo umbral de
@@ -487,6 +532,30 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     }
 
     logEvent(c, "info", "restaurantes_admin_staff_dado_de_baja", { actorUserId: callerUserId, organizationId, targetUserId });
+
+    // BAJA INMEDIATA: borrar la membresia ya corta la API (cada request contrasta la membresia EN VIVO) y arrastra el vinculo de celular del
+    // repartidor (`core.chofer_login_telefono` cae en cascada). Ademas, si la persona se queda SIN ninguna membresia, se invalidan todos sus
+    // refresh tokens para que nadie pueda reemitir sesiones con ellos. Corre DESPUES del commit (la baja ya es visible) y es best-effort: un
+    // fallo aqui se registra pero no deshace la baja (el control real sigue siendo la membresia). Si conserva membresia en otra organizacion
+    // no se toca su sesion.
+    c.get("postCommitTasks").push(async () => {
+      // Hasta 3 intentos (la baja ya es visible; si TODOS fallan el refresh token seguiria vivo hasta 30 dias, asi que se deja un error con nombre
+      // propio para alertar: `restaurantes_baja_revocacion_sesiones_FALLIDA`, y el corte por sesion lo puede repetir un admin con "cerrar sesiones").
+      let ultimoError = "desconocido";
+      for (let intento = 1; intento <= 3; intento += 1) {
+        try {
+          const restantes = await deps.coreRepo.findMembershipsByUserId(targetUserId);
+          if (restantes.length === 0 && !(await deps.coreRepo.isPlatformSuperadmin(targetUserId))) {
+            await deps.coreRepo.revokeAllRefreshTokens(targetUserId);
+          }
+          return;
+        } catch (err) {
+          ultimoError = err instanceof Error ? err.message : "desconocido";
+          logEvent(c, "warn", "restaurantes_admin_staff_baja_revocar_sesiones_reintento", { organizationId, targetUserId, intento, error: ultimoError });
+        }
+      }
+      logEvent(c, "error", "restaurantes_baja_revocacion_sesiones_FALLIDA", { organizationId, targetUserId, error: ultimoError });
+    });
 
     // FASE 3 (producto) — "baja ... de staff" (ver migrations/
     // 019_restaurantes_audit_log.sql). Nunca guarda el correo del target (ya
