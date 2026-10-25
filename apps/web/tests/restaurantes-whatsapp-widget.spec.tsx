@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Chat de WhatsApp de demostración (WidgetWhatsApp): globo «Probar conversación» (logo oficial), vista previa estilo WhatsApp conectado al agente real en modo preview.
+// Chat de WhatsApp de demostración (WidgetWhatsApp): globo «Probar conversación» (logo de WhatsApp), vista previa estilo WhatsApp conectado al agente real en modo preview.
 // Se afirma lo que ve el dueño y lo que viaja a la API: apertura/cierre, burbujas con hora (reloj fijo), pedido simulado PRUEBA con su insignia,
 // errores honestos 503/429/500, reinicio (sesión nueva), cliente simulado, borrador sin guardar y la accesibilidad del registro en vivo.
 import { act } from "react";
@@ -73,7 +73,7 @@ afterEach(() => {
 });
 
 describe("<WidgetWhatsApp />", () => {
-  it("cerrado solo muestra el globo «Probar conversación» con el logo oficial; al abrir, la vista previa (diálogo modal) con encabezado de WhatsApp, el aviso de prueba, y el globo se oculta", async () => {
+  it("cerrado solo muestra el globo «Probar conversación» con el logo de WhatsApp; al abrir, la vista previa (diálogo modal) con encabezado de WhatsApp, el aviso de prueba, y el globo se oculta", async () => {
     montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
     const globo = q<HTMLButtonElement>('[data-testid="globo-whatsapp"]')!;
     expect(globo.textContent).toContain("Probar conversación");
@@ -340,18 +340,30 @@ describe("<WidgetWhatsApp />", () => {
     expect(agente.textContent).toContain("<b>x</b>");
   });
 
-  it("dos mensajes seguidos del mismo remitente comparten grupo: solo el primero lleva cola", async () => {
+  it("la conversación que cruza la medianoche muestra la fecha del día anterior (no «Hoy») y vuelve a abrir grupo con cola", async () => {
     montar(() => json({ respuesta: "r", escalado: false, pedidoSimulado: null }));
     await abrir();
     await escribir("uno");
-    await act(async () => changeValue(caja(), "dos"));
-    // el segundo mensaje del cliente va tras la respuesta del agente: vuelve a haber cola (grupo nuevo)
-    await act(async () => {
-      await submitForm(q<HTMLFormElement>(".wa-barra")!);
-    });
+    // un día después (el reloj de la prueba solo congela Date)
+    vi.setSystemTime(new Date("2026-10-09T20:15:00.000Z"));
+    await escribir("dos");
+    const fechas = Array.from(document.body.querySelectorAll(".wa-fecha")).map((f) => f.textContent?.toLowerCase());
+    expect(fechas).toHaveLength(2);
+    expect(fechas[0]).not.toBe("hoy");
+    expect(fechas[1]).toBe("hoy");
+    expect(Array.from(document.body.querySelectorAll(".wa-burbuja--cliente")).map((b) => b.getAttribute("data-cola"))).toEqual(["true", "true"]);
+  });
+
+  it("con un listbox AJENO abierto en el documento, Escape igualmente cierra el chat", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    const ajeno = document.createElement("div");
+    ajeno.setAttribute("role", "listbox");
+    document.body.appendChild(ajeno);
+    keydown(caja(), "Escape");
     await esperar();
-    const colas = Array.from(document.body.querySelectorAll(".wa-burbuja--cliente")).map((b) => b.getAttribute("data-cola"));
-    expect(colas).toEqual(["true", "true"]);
+    ajeno.remove();
+    expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
   });
 
   it("accesibilidad: diálogo modal con nombre, Tab y Shift+Tab no salen del diálogo y el log anuncia solo lo nuevo", async () => {

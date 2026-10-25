@@ -1,5 +1,5 @@
 // Probador de conversación del Agente de WhatsApp: gemelo del probador de voz (voz/GloboLlamada.tsx + VistaPreviaLlamada de @atiende/ui).
-//  · GLOBO flotante «Probar conversación» (logo oficial de WhatsApp) abajo a la derecha, mismas medidas y entrada que el de voz; se oculta mientras
+//  · GLOBO flotante «Probar conversación» (glifo de WhatsApp) abajo a la derecha, mismas medidas y entrada que el de voz; se oculta mientras
 //    la vista previa está abierta.
 //  · VISTA PREVIA a pantalla completa (marco del shell en escritorio, <body> en móvil): cabecera «‹ Atrás», panel decorativo a la izquierda y el CHAT a
 //    la derecha, con la forma de WhatsApp (cabecera con avatar y estado, fondo con patrón, burbujas con cola, hora y palomitas, separador de fecha,
@@ -14,7 +14,7 @@ import type { KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, CheckCheck, RotateCcw, Send, SlidersHorizontal } from "lucide-react";
 import { Checkbox, FormField, Selector, useMarcoShell } from "@atiende/ui";
-import { fechaCortaEsMx, hora24EsMx } from "../../../lib/formato-fecha.ts";
+import { hora24EsMx } from "../../../lib/formato-fecha.ts";
 import { enviarMensajePrueba } from "../lib/agente-whatsapp-client.ts";
 import type { ConfigAgenteForm, MensajePrueba } from "../lib/agente-whatsapp-client.ts";
 import { fetchBranchTimezone } from "../lib/config-client.ts";
@@ -22,6 +22,7 @@ import { fetchCustomers } from "../lib/customers-client.ts";
 import type { CustomerSummary } from "../lib/customers-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { PedidoSimulado } from "../lib/voz-client.ts";
+import { agruparMensajes } from "./agrupar-mensajes.ts";
 import { FormatoWhatsApp } from "./formato-whatsapp.tsx";
 import { TarjetaPedidoSimulado } from "./TarjetaPedidoSimulado.tsx";
 import { WhatsAppIcon } from "./WhatsAppIcon.tsx";
@@ -147,14 +148,33 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
     campo.current?.focus();
     const alTeclear = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      // La lista de Simular cliente vive en un portal: Escape con ella abierta cierra solo la lista.
-      if ((e.target as HTMLElement | null)?.closest?.('[role="listbox"]') || document.querySelector('[role="listbox"]')) return;
+      // La lista de Simular cliente vive en un portal: Escape con ELLA abierta (el evento nace en su lista o su selector está expandido) cierra solo la lista.
+      // Se acota a este diálogo: un listbox ajeno en el documento no debe impedir cerrar el chat.
+      if ((e.target as HTMLElement | null)?.closest?.('[role="listbox"]') || panel.current?.querySelector('[role="combobox"][aria-expanded="true"]')) return;
       e.stopPropagation();
       alCerrar.current();
     };
     document.addEventListener("keydown", alTeclear);
     return () => document.removeEventListener("keydown", alTeclear);
   }, [abierto]);
+
+  // Móvil con teclado: la pantalla completa sigue al viewport visual (el teclado lo recorta) para que la barra de entrada no quede tapada.
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    const el = panel.current;
+    if (!abierto || !enBody || !vv || !el) return undefined;
+    const ajustar = () => {
+      el.style.setProperty("--wa-alto", `${vv.height}px`);
+      el.style.setProperty("--wa-arriba", `${vv.offsetTop}px`);
+    };
+    ajustar();
+    vv.addEventListener("resize", ajustar);
+    vv.addEventListener("scroll", ajustar);
+    return () => {
+      vv.removeEventListener("resize", ajustar);
+      vv.removeEventListener("scroll", ajustar);
+    };
+  }, [abierto, enBody]);
 
   function reiniciar() {
     setSesionId(nuevaSesion());
@@ -220,7 +240,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
 
   const noDisponible = error?.startsWith("No disponible") ?? false;
   const hayMensajes = mensajes.length > 0;
-  const hoy = fechaCortaEsMx(new Date(), zona);
+  const marcas = agruparMensajes(mensajes, zona);
   const estadoChat = escribiendo ? "escribiendo…" : "En línea";
   const chip = escribiendo ? "● Escribiendo" : hayMensajes ? "● Conversación" : "Vista previa";
   // Palomitas: azules cuando el agente ya contestó después de ese mensaje; grises (entregado) mientras espera.
@@ -309,9 +329,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
             ) : null}
 
             {mensajes.map((m, i) => {
-              const previo = mensajes[i - 1];
-              const dia = fechaCortaEsMx(m.hora, zona);
-              const separador = !previo || fechaCortaEsMx(previo.hora, zona) !== dia ? (dia === hoy ? "Hoy" : dia) : null;
+              const { primero, separador } = marcas[i]!;
               const sep = separador ? (
                 <div className="wa-fecha" key={`f-${m.id}`}>
                   <span>{separador}</span>
@@ -328,7 +346,6 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
                   </div>
                 );
               }
-              const primero = !previo || previo.rol !== m.rol || separador !== null;
               const pie = (
                 <span className="wa-hora">
                   {hora24EsMx(m.hora, zona)}

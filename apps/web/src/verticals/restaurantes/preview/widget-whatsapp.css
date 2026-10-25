@@ -20,13 +20,13 @@
   --wa-texto-tenue: rgb(17 27 33 / 0.62);
   --wa-barra: #f0f2f5;
   --wa-campo: #ffffff;
-  --wa-palomitas: #53bdeb;
+  --wa-palomitas: #1b88b8;
   --wa-palomitas-gris: rgb(17 27 33 / 0.5);
   --wa-sistema-fondo: #ffffffd9;
   --wa-sistema-texto: #54656f;
   --wa-fecha-fondo: #ffffffe6;
   --wa-fecha-texto: #54656f;
-  --wa-enlace: #027eb5;
+  --wa-enlace: #016a99;
   --wa-error-fondo: hsl(var(--destructive) / 0.12);
   --wa-borde: rgb(0 0 0 / 0.1);
   --wa-sombra-burbuja: 0 1px 0.5px rgb(11 20 26 / 0.13);
@@ -39,7 +39,8 @@
   --wa-burbuja-cliente: #005c4b;
   --wa-burbuja-agente: #1f2c34;
   --wa-texto: #e9edef;
-  --wa-texto-tenue: rgb(233 237 239 / 0.68);
+  --wa-texto-tenue: rgb(233 237 239 / 0.8);
+  --wa-palomitas: #53bdeb;
   --wa-barra: #1f2c34;
   --wa-campo: #2a3942;
   --wa-palomitas-gris: rgb(233 237 239 / 0.55);
@@ -47,7 +48,7 @@
   --wa-sistema-texto: #8696a0;
   --wa-fecha-fondo: #182229e6;
   --wa-fecha-texto: #8696a0;
-  --wa-enlace: #53bdeb;
+  --wa-enlace: #9fdcf5;
   --wa-borde: rgb(255 255 255 / 0.12);
 }
 
@@ -77,7 +78,7 @@
 .globo-whatsapp:hover { filter: brightness(1.03); }
 .globo-whatsapp:active { transform: scale(0.97); }
 .globo-whatsapp:focus-visible { outline: 3px solid hsl(var(--ring)); outline-offset: 2px; }
-/* Logo oficial en blanco sobre el círculo verde de marca (combinación permitida por las pautas de WhatsApp). */
+/* Glifo de WhatsApp en blanco sobre el círculo verde de marca (combinación permitida por las pautas de WhatsApp). */
 .globo-whatsapp__logo {
   display: flex;
   align-items: center;
@@ -99,12 +100,14 @@
 /* ---- Vista previa (gemelo de la de llamada): absoluta sobre el marco del shell en escritorio; fija sobre todo en móvil ---- */
 .wa-vista { display: flex; flex-direction: column; background: hsl(var(--background)); color: hsl(var(--foreground)); outline: none; }
 .wa-vista--marco { position: absolute; inset: 0; z-index: 30; }
-.wa-vista--fija { position: fixed; inset: 0; z-index: 50; }
+/* Móvil: dvh para la barra de direcciones; con el teclado abierto el JS fija --wa-alto/--wa-arriba desde visualViewport para que la barra de entrada quede visible. */
+.wa-vista--fija { position: fixed; inset: auto 0 auto 0; top: var(--wa-arriba, 0px); height: var(--wa-alto, 100dvh); z-index: 50; }
 
+.wa-vista--fija .wa-top { height: calc(3rem + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); }
 .wa-top { display: flex; height: 3rem; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0 1rem; border-bottom: 1px solid hsl(var(--border)); }
 .wa-top__izq, .wa-top__der { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
 .wa-top__der { flex-shrink: 0; gap: 0.25rem; }
-.wa-atras { flex-shrink: 0; padding: 0.25rem 0; border: 0; background: none; color: hsl(var(--muted-foreground)); font: inherit; font-size: 0.8125rem; cursor: pointer; transition: color 150ms; }
+.wa-atras { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 2rem; padding: 0 0.25rem; border: 0; background: none; color: hsl(var(--muted-foreground)); font: inherit; font-size: 0.8125rem; cursor: pointer; transition: color 150ms; }
 .wa-atras:hover { color: hsl(var(--foreground)); }
 .wa-atras:focus-visible, .wa-icono:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; border-radius: 0.375rem; }
 .wa-top__sep { flex-shrink: 0; color: hsl(var(--border)); }
@@ -119,6 +122,11 @@
 .wa-icono[aria-expanded="true"] { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .wa-icono:disabled { opacity: 0.4; cursor: not-allowed; }
 .wa-icono svg { width: 1.125rem; height: 1.125rem; }
+/* Objetivos táctiles de 44 px en pantallas táctiles (en puntero fino bastan 32). */
+@media (pointer: coarse) {
+  .wa-atras { min-height: 2.75rem; min-width: 2.75rem; }
+  .wa-icono { width: 2.75rem; height: 2.75rem; }
+}
 
 .wa-opciones { flex-shrink: 0; padding: 0.75rem 1rem; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground)); display: flex; flex-direction: column; gap: 0.625rem; max-width: 100%; }
 @media (min-width: 768px) { .wa-opciones { flex-direction: row; align-items: flex-end; flex-wrap: wrap; } .wa-opciones > :first-child { min-width: 18rem; } }
@@ -207,7 +215,7 @@
 .wa-punto:nth-child(3) { animation-delay: 300ms; }
 
 /* ---- Barra de entrada ---- */
-.wa-barra { flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--wa-barra); }
+.wa-barra { flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); background: var(--wa-barra); }
 .wa-campo { flex: 1; min-width: 0; height: 2.5rem; padding: 0 1rem; border: 0; border-radius: 9999px; background: var(--wa-campo); color: var(--wa-texto); font: inherit; font-size: 0.875rem; outline: none; }
 .wa-campo::placeholder { color: var(--wa-texto-tenue); }
 .wa-campo:disabled { opacity: 0.7; }

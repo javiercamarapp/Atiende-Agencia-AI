@@ -1,7 +1,8 @@
-// Glifo oficial de WhatsApp (burbuja con el teléfono recortado) como SVG inline de una sola forma: hereda el color con `currentColor`.
-// Pautas de la marca: se usa sin deformar y solo en verde de marca (#25D366, variable --wa-verde) o en blanco/monocromo sobre fondo de contraste;
-// aquí el contenedor decide el color (blanco sobre el círculo verde del globo, verde sobre claro). La ruta es la del glifo monocromo público
-// (Simple Icons, dominio público CC0), no una reconstrucción propia.
+// Glifo de WhatsApp (burbuja con el teléfono recortado) como SVG inline de una sola forma: hereda el color con `currentColor`.
+// MARCA: el archivo de la ruta es CC0 (Simple Icons), pero WhatsApp y su logotipo son marcas registradas de WhatsApp LLC / Meta; aquí se usa de forma
+// nominativa (identifica el canal «WhatsApp») y conforme a sus pautas de marca: sin deformar y solo en verde de marca (#25D366, variable --wa-verde)
+// o en blanco/monocromo sobre fondo de contraste (el contenedor decide el color). No implica patrocinio ni afiliación.
+// TODO(decisión #7): mover a `LogoMarca` en packages/ui cuando se unifique el sistema de diseño con Vexa; hasta entonces vive aquí.
 interface Props {
   readonly className?: string;
   /** Texto accesible; sin él el icono es decorativo (aria-hidden). */
