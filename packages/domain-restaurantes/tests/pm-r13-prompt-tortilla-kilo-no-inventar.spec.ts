@@ -20,14 +20,22 @@ const prompt = buildPmSystemPrompt({
   diaSemana: "lunes",
 });
 
-describe("PM R13 Q6: el bot repite lo que el menú dice de la tortilla del kilo y no inventa cómo viaja", () => {
+describe("PM R13 Q6 + decisión Q7: el bot dice que la tortilla va aparte y que el kilo la incluye, sin inventar conteos ni empaque", () => {
   it("permite decir lo que el menú dice: «el kilo incluye tortillas»", () => {
     expect(prompt).toContain("«Incluye salsa roja, salsa verde, limones y tortillas»");
     expect(prompt).toContain("«el kilo incluye tortillas»");
   });
 
-  it("prohíbe describir cómo viajan las tortillas: ni aparte, ni empacadas, ni para que no se remojen", () => {
-    expect(prompt).toMatch(/NO describa cómo viajan las tortillas \(ni aparte, ni empacadas, ni «para que no se remojen»\)/);
+  it("permite decir que las tortillas van aparte de la carne (decisión de PM, todas las sucursales, solo kilos)", () => {
+    expect(prompt).toContain("Puede decir que las tortillas van aparte de la carne y que el kilo las incluye");
+    expect(prompt).toContain("Las tortillas van aparte de la carne; el kilo las incluye. ¿Las quiere de maíz, de harina o mixtas?");
+    expect(prompt).toContain("vale para todas las sucursales y solo para los kilos, nunca para tacos, gringas ni platillos");
+  });
+
+  it("sigue prohibiendo conteos y empaque de las tortillas, y que se cobren aparte", () => {
+    expect(prompt).toMatch(/NO diga cuántas tortillas son ni cómo se empacan/);
+    expect(prompt).toContain("La tortilla no se cobra aparte.");
+    expect(prompt).not.toMatch(/NO describa cómo viajan las tortillas/);
   });
 
   it("manda responder «la sucursal le confirma cómo se entrega la tortilla» cuando pregunten", () => {
