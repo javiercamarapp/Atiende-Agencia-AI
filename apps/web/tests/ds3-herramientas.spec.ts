@@ -1,7 +1,7 @@
 // ds3 / 0.4 -- guards de las herramientas de verificacion: (1) excepciones.json y axe-baseline.json son trinquetes que SOLO pueden
 // encogerse; (2) solo-agrega-specs.sh detecta un spec modificado, borrado, renombrado o con skip/only, y deja pasar uno nuevo.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,9 +11,13 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.resolve(aqui, "..", "..", "..");
 const json = <T>(archivo: string): T => JSON.parse(readFileSync(path.join(aqui, archivo), "utf8")) as T;
 
+const entradasSpecs = readFileSync(path.join(raiz, "scripts/diseno/excepciones-specs.txt"), "utf8")
+  .split("\n")
+  .filter((l) => l.trim() !== "" && !l.trim().startsWith("#"));
+
 describe("excepciones del medidor (trinquete que solo encoge)", () => {
   const excepciones = JSON.parse(readFileSync(path.join(aqui, "..", "e2e-ds3", "excepciones.json"), "utf8")) as Array<Record<string, unknown>>;
-  const { maximo } = json<{ maximo: number }>("ds3-excepciones-baseline.json");
+  const { maximo, maximoSpecs } = json<{ maximo: number; maximoSpecs: number }>("ds3-excepciones-baseline.json");
 
   it("cada excepcion declara ruta, tipo, motivo y vencimiento", () => {
     for (const e of excepciones) {
@@ -28,6 +32,20 @@ describe("excepciones del medidor (trinquete que solo encoge)", () => {
 
   it("cuando una excepcion se retira, el baseline baja con ella (el piso solo desciende)", () => {
     expect(maximo - excepciones.length, `baja ds3-excepciones-baseline.json de ${maximo} a ${excepciones.length}`).toBeLessThanOrEqual(0);
+  });
+
+  it("cada excepcion de specs declara ruta | commit/PR | razon y apunta a un spec", () => {
+    for (const l of entradasSpecs) {
+      const partes = l.split("|").map((p) => p.trim());
+      expect(partes.length, l).toBe(3);
+      expect(partes.every((p) => p.length > 5), l).toBe(true);
+      expect(partes[0]).toMatch(/\.spec\.[a-z]+$/);
+    }
+  });
+
+  it("las excepciones de specs tambien solo pueden encogerse (excepciones-specs.txt vs maximoSpecs)", () => {
+    expect(entradasSpecs.length, `hay ${entradasSpecs.length} y el baseline es ${maximoSpecs}`).toBeLessThanOrEqual(maximoSpecs);
+    expect(maximoSpecs - entradasSpecs.length, `baja maximoSpecs a ${entradasSpecs.length}`).toBeLessThanOrEqual(0);
   });
 
   it("el baseline de axe empieza vacio (formato [{ruta, regla, nodos}]) y es una lista", () => {
@@ -58,9 +76,20 @@ describe("scripts/diseno/solo-agrega-specs.sh", () => {
     git(d, "checkout", "-q", "-b", "trabajo");
     return d;
   }
-  const correr = (d: string): { codigo: number; salida: string } => {
+  /** Lista de excepciones temporal (la variable DS3_EXCEPCIONES_SPECS reemplaza a la real). */
+  const lista = (d: string, ...rutas: string[]): string => {
+    const f = path.join(d, "excepciones.txt");
+    writeFileSync(f, rutas.map((r) => `${r} | PR #1 | razon de prueba suficiente\n`).join(""));
+    return f;
+  };
+  const correr = (d: string, excepciones?: string): { codigo: number; salida: string } => {
     try {
-      const salida = execFileSync("bash", [path.join(raiz, "scripts/diseno/solo-agrega-specs.sh"), "base"], { cwd: d, encoding: "utf8", stdio: "pipe" });
+      const salida = execFileSync("bash", [path.join(raiz, "scripts/diseno/solo-agrega-specs.sh"), "base"], {
+        cwd: d,
+        encoding: "utf8",
+        stdio: "pipe",
+        env: { ...process.env, DS3_EXCEPCIONES_SPECS: excepciones ?? path.join(d, "no-hay.txt") },
+      });
       return { codigo: 0, salida };
     } catch (e) {
       const err = e as { status: number; stderr: string };
@@ -102,5 +131,52 @@ describe("scripts/diseno/solo-agrega-specs.sh", () => {
     escribir(d, "b/tres.spec.ts", `${"it"}.${"skip"}('tres', () => {});\n`);
     confirmar(d);
     expect(correr(d).codigo).toBe(1);
+  });
+
+  /** Repo con un spec que tiene un test.fail y una asercion, para probar las excepciones documentadas. */
+  function repoConFail(): string {
+    const d = mkdtempSync(path.join(tmpdir(), "ds3-exc-"));
+    dirs.push(d);
+    git(d, "init", "-q", "-b", "base");
+    escribir(d, "m.spec.ts", "// BUG-1: pendiente\ntest('m', async () => {\n  test.fail(oscuro, 'BUG-1');\n  expect(1).toBe(1);\n});\n");
+    git(d, "add", "-A");
+    git(d, "commit", "-q", "-m", "base");
+    git(d, "checkout", "-q", "-b", "trabajo");
+    return d;
+  }
+
+  it("excepcion documentada: acepta quitar solo el test.fail (y su comentario)", () => {
+    const d = repoConFail();
+    escribir(d, "m.spec.ts", "// BUG-1 resuelto\ntest('m', async () => {\n  expect(1).toBe(1);\n});\n");
+    confirmar(d);
+    expect(correr(d, lista(d, "m.spec.ts")).codigo).toBe(0);
+  });
+
+  it("excepcion documentada: un diff que elimina un expect FALLA", () => {
+    const d = repoConFail();
+    escribir(d, "m.spec.ts", "// BUG-1 resuelto\ntest('m', async () => {\n});\n");
+    confirmar(d);
+    const r = correr(d, lista(d, "m.spec.ts"));
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain("elimina un expect");
+  });
+
+  it("excepcion documentada: cambiar una asercion o agregar codigo FALLA", () => {
+    const d = repoConFail();
+    escribir(d, "m.spec.ts", "// BUG-1\ntest('m', async () => {\n  expect(1).toBe(2);\n});\n");
+    confirmar(d);
+    expect(correr(d, lista(d, "m.spec.ts")).codigo).toBe(1);
+  });
+
+  it("un archivo que NO esta en la lista sigue rechazado aunque solo quite el test.fail", () => {
+    const d = repoConFail();
+    escribir(d, "m.spec.ts", "// BUG-1 resuelto\ntest('m', async () => {\n  expect(1).toBe(1);\n});\n");
+    confirmar(d);
+    expect(correr(d, lista(d, "otro.spec.ts")).codigo).toBe(1);
+  });
+
+  it("la lista real registra el spec de BUG-E2E-REST-004 y apunta a una ruta que existe en main", () => {
+    expect(entradasSpecs.some((l) => l.startsWith("apps/web/e2e/tests/restaurantes/matriz-restaurantes-visual.spec.ts"))).toBe(true);
+    for (const l of entradasSpecs) expect(existsSync(path.join(raiz, l.split("|")[0]!.trim())), l).toBe(true);
   });
 });
