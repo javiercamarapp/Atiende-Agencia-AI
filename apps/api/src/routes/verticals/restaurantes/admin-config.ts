@@ -53,6 +53,7 @@ import type { BranchTimezoneConfig, KnownZone, WhatsAppAgentConfigAccion, WhatsA
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { assertAdminGeneral } from "./admin-scope.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { conAvisoOnboardingListo } from "./onboarding-aviso.ts";
 
@@ -179,6 +180,7 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.put(whatsappPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const staffId = c.get("userId");
 
@@ -224,6 +226,7 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.post(zonasPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const staffId = c.get("userId");
 
@@ -263,6 +266,7 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.delete(zonaItemPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const staffId = c.get("userId");
     const zoneId = c.req.param("zoneId");
@@ -306,6 +310,7 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.patch(zonaHorariaPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const staffId = c.get("userId");
@@ -461,6 +466,7 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   // historial como `restablecido`. Sin config propia en ese alcance no hay nada que restablecer (404).
   app.post(agenteSub.restablecer, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId") ?? "";
     const raw = await readJsonCapped<{ alcance?: unknown; versionEsperada?: unknown }>(c.req.raw, 1024);

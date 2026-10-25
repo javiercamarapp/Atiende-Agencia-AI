@@ -22,6 +22,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { puedeEjecutar, sinAcentos } from "@atiende/domain-restaurantes";
 import type { Category, Product } from "@atiende/domain-restaurantes";
 import { assertAccion } from "./permisos-accion.ts";
+import { assertAdminGeneral } from "./admin-scope.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -166,6 +167,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
 
   app.post("/v1/restaurantes/:propertyId/admin/categories", async (c) => {
     assertAccion(c, "catalogo.precio");
+    await assertAdminGeneral(deps, c);
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<CategoryBody>(c.req.raw, 8 * 1024);
     const name = requireNonEmptyString(raw.name, "name", 120);
@@ -188,6 +190,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
 
   app.patch("/v1/restaurantes/:propertyId/admin/categories/:categoryId", async (c) => {
     assertAccion(c, "catalogo.precio");
+    await assertAdminGeneral(deps, c);
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<CategoryBody>(c.req.raw, 8 * 1024);
     const patch = {
@@ -228,6 +231,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
 
   app.post("/v1/restaurantes/:propertyId/admin/products", async (c) => {
     assertAccion(c, "catalogo.precio");
+    await assertAdminGeneral(deps, c);
     const repo = deps.restaurantesRepo(c.get("db"));
     const raw = await readJsonCapped<ProductBody>(c.req.raw, 16 * 1024);
     const name = requireNonEmptyString(raw.name, "name", 160);
@@ -267,6 +271,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
 
   app.patch("/v1/restaurantes/:propertyId/admin/products/:productId", async (c) => {
     assertAccion(c, "catalogo.precio");
+    await assertAdminGeneral(deps, c);
     const repo = deps.restaurantesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const productId = c.req.param("productId");
