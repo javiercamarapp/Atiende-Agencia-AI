@@ -134,6 +134,30 @@ export interface IssueSessionContext {
   readonly replacesJti?: string | null;
 }
 
+/**
+ * Registra el inicio de sesion en la bitacora de accesos (`restaurantes.registrar_acceso`, 'sesion.login'). Sesion de aplicacion con la propia
+ * persona (auth.uid()) y todo dentro de try/catch: la bitacora NUNCA impide entrar. Solo guarda actor, momento y ruta de entrada.
+ */
+/** Canal de entrada para la bitacora de accesos: catalogo cerrado (la migracion 098 rechaza cualquier otro valor); nunca la ruta ni texto libre. */
+function canalDeInicioSesion(path: string): "correo" | "google" | "enlace" | "celular" | "otro" {
+  const p = path.toLowerCase();
+  if (p.includes("google") || p.includes("exchange")) return "google";
+  if (p.includes("magic") || p.includes("verify")) return "enlace";
+  if (p.includes("chofer") || p.includes("whatsapp") || p.includes("celular")) return "celular";
+  if (p.includes("login") || p.includes("refresh")) return "correo";
+  return "otro";
+}
+
+async function registrarInicioSesionBestEffort(deps: AppDeps, ctx: IssueSessionContext, staffId: string, organizationId: string): Promise<void> {
+  try {
+    await deps.engine.withAppSession({ userId: staffId }, async (db) => {
+      await deps.restaurantesRepo(db).registrarAcceso({ organizationId, propertyId: null, actorUserId: staffId, action: "sesion.login", entityId: null, llave: canalDeInicioSesion(ctx.c.req.path) });
+    });
+  } catch (err) {
+    console.error("auth: no se pudo registrar el inicio de sesion en la bitacora de accesos (el login sigue).", err instanceof Error ? err.message : "error");
+  }
+}
+
 export async function issueSession(deps: AppDeps, staffId: string, email: string, fullName: string, ctx?: IssueSessionContext) {
   const memberships = await deps.coreRepo.findMembershipsByUserId(staffId);
   const first = memberships[0];
@@ -154,6 +178,8 @@ export async function issueSession(deps: AppDeps, staffId: string, email: string
   );
   const refreshToken = await signRefreshToken(staffId, deps.env.jwtSecret, deps.env.refreshTokenTtlSeconds);
   if (ctx) await registrarSesionBestEffort(deps, ctx, staffId, refreshToken);
+  // Auditoria de INICIOS de sesion del personal de restaurantes (migracion 098): solo un login nuevo, no la rotacion de /auth/refresh.
+  if (ctx && !ctx.replacesJti && first?.vertical === "restaurantes") await registrarInicioSesionBestEffort(deps, ctx, staffId, first.organizationId);
   return {
     token,
     refreshToken,

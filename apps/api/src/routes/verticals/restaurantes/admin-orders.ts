@@ -20,6 +20,7 @@ import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { assertOperadorPuede } from "./permisos-accion.ts";
+import { correoDePedido, telefonoDePedido, vistaMinimaPii } from "./pii-minimo.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { softRestaurantComandaDeps, softRestaurantStoreFor } from "./softrestaurant-wiring.ts";
@@ -38,14 +39,14 @@ async function scheduleInfoByOrder(repo: RestaurantesRepository, organizationId:
 }
 
 /** Pedidos serializados con canal/propina/hora de recogida (031) y programacion (034) leidos aparte. */
-async function serializeOrders(repo: RestaurantesRepository, organizationId: string, orders: readonly Order[]) {
+async function serializeOrders(repo: RestaurantesRepository, organizationId: string, orders: readonly Order[], minima: boolean) {
   // Secuencial a proposito: ambas lecturas llevan SAVEPOINT sobre la MISMA transaccion y no deben intercalarse.
   const pickup = await pickupInfoByOrder(repo, organizationId, orders);
   const schedule = await scheduleInfoByOrder(repo, organizationId, orders);
-  return orders.map((o) => serializeOrder(o, pickup.get(o.id), schedule.get(o.id)));
+  return orders.map((o) => serializeOrder(o, minima, pickup.get(o.id), schedule.get(o.id)));
 }
 
-function serializeOrder(o: Order, pickup?: OrderPickupInfo, schedule?: OrderScheduleInfo) {
+function serializeOrder(o: Order, minima: boolean, pickup?: OrderPickupInfo, schedule?: OrderScheduleInfo) {
   return {
     id: o.id,
     // Folio corto («Venta 1001») = `orders.order_number` (columna de la migracion 001, sin SQL nuevo). `null` si el repositorio no lo trae (p. ej. el de memoria de los tests).
@@ -56,9 +57,10 @@ function serializeOrder(o: Order, pickup?: OrderPickupInfo, schedule?: OrderSche
     branch: o.branch,
     customerId: o.customerId,
     customerName: o.customerName,
-    customerPhone: o.customerPhone,
+    // Minimo de PII para `staff` (pii-minimo.ts): telefono enmascarado en pedidos terminados y sin correo.
+    customerPhone: telefonoDePedido(minima, o.customerPhone, o.status),
     customerAddress: o.customerAddress,
-    customerEmail: o.customerEmail,
+    customerEmail: correoDePedido(minima, o.customerEmail),
     total: o.total,
     status: o.status,
     items: o.items,
@@ -181,7 +183,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       await promoverAlConsultar(c, repo, organizationId, propertyIds);
     }
     const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, busqueda, soloIncidencias, limit, cursor });
-    return c.json({ orders: await serializeOrders(repo, organizationId, page.orders), nextCursor: page.nextCursor });
+    return c.json({ orders: await serializeOrders(repo, organizationId, page.orders, vistaMinimaPii(c)), nextCursor: page.nextCursor });
   });
 
   // R-11: pestana "Programados" -- pedidos en estado `programado` (el mas proximo primero). Promueve antes de
@@ -198,7 +200,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const result = await repo.listScheduledOrders(organizationId, { propertyIds, limit });
     return c.json({
       disponible: result.disponible,
-      orders: await serializeOrders(repo, organizationId, result.orders),
+      orders: await serializeOrders(repo, organizationId, result.orders, vistaMinimaPii(c)),
       promovidos: promovidos.map((o) => o.id),
       serverNow: new Date().toISOString(),
     });
@@ -247,7 +249,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (!order) throw Errors.notFound("Pedido no encontrado.");
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
-    return c.json({ order: (await serializeOrders(repo, organizationId, [order]))[0] });
+    return c.json({ order: (await serializeOrders(repo, organizationId, [order], vistaMinimaPii(c)))[0] });
   });
 
   app.patch("/v1/restaurantes/:propertyId/admin/orders/:orderId/status", async (c) => {
@@ -374,7 +376,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         if (corte.cortadas > 0) logEvent(c, "info", "restaurantes_comanda_cortada_por_cancelacion", { actorUserId: c.get("userId"), organizationId, orderId, cortadas: corte.cortadas });
       }
 
-      return c.json({ order: (await serializeOrders(repo, organizationId, [updated]))[0] });
+      return c.json({ order: (await serializeOrders(repo, organizationId, [updated], vistaMinimaPii(c)))[0] });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
       if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los estados de recoger todavía no están disponibles en esta base de datos (falta aplicar la migración 031).");
@@ -505,7 +507,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       despues: raw.repartidorId,
     });
 
-    return c.json({ order: (await serializeOrders(repo, organizationId, [updated]))[0] });
+    return c.json({ order: (await serializeOrders(repo, organizationId, [updated], vistaMinimaPii(c)))[0] });
   });
 
   // Fase 9 — bandeja de notificaciones internas al staff (ver order-notifications.ts):

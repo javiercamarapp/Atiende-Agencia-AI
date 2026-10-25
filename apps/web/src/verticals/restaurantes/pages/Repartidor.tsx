@@ -53,7 +53,8 @@ import { AlertTriangle, MapPin, Map as MapIcon, Phone } from "lucide-react";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { fetchBranches } from "../dashboard-client.ts";
-import { fetchAssignedOrders, isSessionExpiredEventForRepartidor, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
+import { fetchAssignedOrders, isSessionExpiredEventForRepartidor, nuevaLlaveIdempotencia, pedirTelefonoCliente, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
+import { enlaceTelefono } from "../lib/chofer-entregas.ts";
 import type { RepartidorOrder, RepartidorOrderStatus } from "../lib/repartidor-client.ts";
 import { destinoEsPin, urlDestinoMapa } from "../lib/destino-mapa.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
@@ -115,6 +116,22 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el pedido.");
+    } finally {
+      setChangingId(null);
+    }
+  }
+
+  // «Llamar»: el listado trae el telefono enmascarado; el numero real se pide aqui (auditado, con tope por pedido) y se marca sin pintarlo.
+  async function handleLlamar(order: RepartidorOrder) {
+    setChangingId(order.id);
+    setError(null);
+    try {
+      const { telefono } = await pedirTelefonoCliente(fetch, apiBaseUrl, token, propertyId, order.id, nuevaLlaveIdempotencia());
+      const enlace = enlaceTelefono(telefono);
+      if (enlace) window.location.href = enlace;
+      else setError("El número del cliente no es válido. Avisa al encargado.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo obtener el número del cliente.");
     } finally {
       setChangingId(null);
     }
@@ -205,12 +222,12 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
                     </a>
                   </Button>
                 )}
-                <Button asChild variant="outline">
-                  <a href={`tel:${o.customerPhone}`}>
+                {o.status !== "entregado" && o.status !== "cancelado" && (
+                  <Button type="button" variant="outline" onClick={() => void handleLlamar(o)} disabled={changingId === o.id}>
                     <Phone />
                     Llamar
-                  </a>
-                </Button>
+                  </Button>
+                )}
                 {nextLabel && (
                   <Button type="button" onClick={() => void handleAvanzar(o)} loading={changingId === o.id}>
                     {nextLabel}

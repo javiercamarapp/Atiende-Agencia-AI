@@ -67,6 +67,8 @@ import type {
   OperadorPuedeInput,
   GuardarPerfilOperativoResultado,
   PerfilOperativo,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -592,6 +594,9 @@ export interface RestaurantesRepository {
   /** Como `registrarAuditoria` pero NUNCA traga el error: si la bitacora no se puede escribir, lanza (y la transaccion del request, que incluye
    *  el cambio de negocio, se revierte). Para cambios de permisos, donde una accion sin rastro no es aceptable. */
   registrarAuditoriaObligatoria(input: RegistrarAuditoriaInput): Promise<void>;
+  /** Registra un ACCESO a datos personales (migracion 097) y devuelve cuantos lleva el actor sobre esa entidad. Nunca lanza por base sin migrar
+   *  (`registrado: false`); un fallo de permisos (42501) SI se propaga: el actor no debia llegar aqui. */
+  registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado>;
 
   /** `disponible: false` (nunca lanza) cuando `restaurantes.audit_log`/
    *  `restaurantes.record_audit_log` todavía no existen en esta base (SQLSTATE

@@ -78,6 +78,8 @@ import type {
   OperadorPuedeInput,
   GuardarPerfilOperativoResultado,
   PerfilOperativo,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
@@ -465,6 +467,17 @@ function mapBranchProductState(row: BranchProductRow): BranchProductState {
 // ---------------------------------------------------------------------------
 const RESTAURANTES_AUDIT_LOG_WRITE_SAVEPOINT = "sp_restaurantes_audit_log_write";
 const RESTAURANTES_AUDIT_LOG_READ_SAVEPOINT = "sp_restaurantes_audit_log_read";
+
+/** Los avisos de «base sin migrar» del perfil operativo se emiten a lo mas una vez por proceso cada 10 min (si no, se repetirian en CADA request). */
+const AVISO_PERFIL_OPERATIVO_VENTANA_MS = 10 * 60 * 1000;
+const ultimoAvisoPerfilOperativo = new Map<string, number>();
+function avisarPerfilOperativoUnaVez(clave: string, mensaje: string): void {
+  const ahora = Date.now();
+  const previo = ultimoAvisoPerfilOperativo.get(clave);
+  if (previo !== undefined && ahora - previo < AVISO_PERFIL_OPERATIVO_VENTANA_MS) return;
+  ultimoAvisoPerfilOperativo.set(clave, ahora);
+  console.error(mensaje);
+}
 
 /** Funcion (42883) o columna (42703) del perfil operativo (migraciones 090/100) inexistente. Propio de este dominio: no reutiliza el de la bitacora. */
 function esErrorPerfilOperativoSinMigrar(err: unknown): boolean {
@@ -2818,7 +2831,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       fallback: async () => "sin_columna" as const,
     });
     const cierra = perfil === "cajero" && (input.accion === "despachar" || input.accion === "cancelar");
-    console.error(
+    avisarPerfilOperativoUnaVez(
+      cierra ? "operador_puede_cierra" : "operador_puede_abre",
       `PostgresRestaurantesRepository.operadorPuede: PERFIL_OPERATIVO_SIN_MIGRAR restaurantes.operador_puede no existe en esta base (migracion 090); ${cierra ? "se NIEGA a un cajero marcado" : "se permite como antes (sin perfiles marcados)"}. Aplica la migracion 090.`,
     );
     return !cierra;
@@ -2835,7 +2849,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorPerfilOperativoSinMigrar,
       fallback: async () => {
-        console.error("PostgresRestaurantesRepository.guardarPerfilOperativo: PERFIL_OPERATIVO_LEER_SIN_MIGRAR falta la migracion 100; el perfil previo no se registra en la bitacora.");
+        avisarPerfilOperativoUnaVez("leer_sin_migrar", "PostgresRestaurantesRepository.guardarPerfilOperativo: PERFIL_OPERATIVO_LEER_SIN_MIGRAR falta la migracion 100; el perfil previo no se registra en la bitacora.");
         return { antes: null, ok: false };
       },
     });
@@ -2862,6 +2876,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       input.antes ?? null,
       input.despues ?? null,
     ]);
+  }
+
+  /**
+   * Registra un acceso a datos personales (`restaurantes.registrar_acceso`, migracion 097) y devuelve el conteo del actor sobre la entidad.
+   * Base sin migrar (42883/42P01/42703): `{ registrado: false }` (el llamador decide; nunca un 500). Cualquier otro error (p. ej. 42501: el
+   * actor no pertenece / sucursal fuera de alcance) SE PROPAGA: aqui no se enmascara un rechazo de seguridad. SAVEPOINT propio para no
+   * abortar la transaccion compartida del request.
+   */
+  async registrarAcceso(input: RegistrarAccesoInput): Promise<AccesoRegistrado> {
+    return runWithSavepointFallback<AccesoRegistrado>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ n: number }>(`select restaurantes.registrar_acceso($1, $2, $3, $4, $5) as n;`, [
+          input.organizationId,
+          input.propertyId,
+          input.action,
+          input.entityId,
+          input.llave ?? null,
+        ]);
+        return { registrado: true, intentos: Number(rows[0]?.n ?? 0) };
+      },
+      isRecoverable: esErrorCompatibilidadAuditLogBaseSinMigrar,
+      fallback: async (err) => {
+        advertirAuditLogEscrituraNoDisponible(err);
+        return { registrado: false, intentos: 0 };
+      },
+    });
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {

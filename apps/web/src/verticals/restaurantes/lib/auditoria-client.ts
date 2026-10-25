@@ -5,9 +5,9 @@
 // mismo patrón que branches-client.ts/catalog-client.ts de este mismo directorio.
 import { fetchJson } from "./admin-client.ts";
 
-export type AuditLogEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion";
+export type AuditLogEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion" | "acceso";
 
-export const AUDIT_LOG_ENTITY_TYPES: readonly AuditLogEntityType[] = ["producto", "promocion", "pedido", "repartidor", "staff", "configuracion", "exportacion"];
+export const AUDIT_LOG_ENTITY_TYPES: readonly AuditLogEntityType[] = ["producto", "promocion", "pedido", "repartidor", "staff", "configuracion", "exportacion", "acceso"];
 
 /** Etiqueta legible por humano de cada tipo -- usada por el filtro de la pantalla. */
 export const AUDIT_LOG_ENTITY_TYPE_LABELS: Record<AuditLogEntityType, string> = {
@@ -18,6 +18,7 @@ export const AUDIT_LOG_ENTITY_TYPE_LABELS: Record<AuditLogEntityType, string> = 
   staff: "Staff",
   configuracion: "Configuración",
   exportacion: "Exportaciones",
+  acceso: "Accesos a datos personales",
 };
 
 export interface AuditLogEntry {
