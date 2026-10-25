@@ -43,6 +43,8 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "/privacidad", nombre: "Privacidad", soloGestion: true },
   { sub: "/privacidad-organizacion", nombre: "Privacidad de la organización", soloGestion: true },
   { sub: "/seguridad", nombre: "Seguridad de la cuenta", soloGestion: false },
+  // La campana salio del encabezado: ahora es la pildora "Notificaciones" del pie del menu (un destino mas del panel).
+  { sub: "/notificaciones", nombre: "Notificaciones", soloGestion: false },
 ];
 
 /** Va a una pagina del panel por URL y espera a que el shell pinte (el <main> con foco programatico). */

@@ -60,7 +60,8 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
         await expect(barraCompleta, `${seccion.href}: la barra superior debe estar visible`).toBeVisible();
         await expect(barraCompleta.locator('[aria-label^="Notificaciones"]'), `${seccion.href}: sin campana en la barra`).toHaveCount(0);
         await expect(barraCompleta.getByTestId("barra-pagina-fecha"), `${seccion.href}: sin chip de fecha en la barra`).toHaveCount(0);
-        await expect(barraCompleta.getByText(/Pregúntale a tus datos/), `${seccion.href}: sin "Pregúntale a tus datos" en la barra`).toHaveCount(0);
+        // (En el Copiloto el TITULO de la barra es ese nombre: lo que no debe haber es un boton o enlace de chat.)
+        await expect(barraCompleta.getByRole("link", { name: /Pregúntale a tus datos/ }).or(barraCompleta.getByRole("button", { name: /Pregúntale a tus datos/ })), `${seccion.href}: sin boton de "Pregúntale a tus datos" en la barra`).toHaveCount(0);
         await expect(page.locator("aside").getByRole("link", { name: "Notificaciones" }), `${seccion.href}: Notificaciones accesible en el pie del menu`).toHaveCount(1);
         nombres.add(texto);
         await expect(page.getByRole("heading", { level: 1 }), `${seccion.href}: un solo <h1> por pantalla`).toHaveCount(1);

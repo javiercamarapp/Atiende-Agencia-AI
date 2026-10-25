@@ -10,6 +10,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { expect, test } from "../helpers/fixtures.ts";
+import type { Locator } from "@playwright/test";
 import type { Page } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { esMovil } from "../helpers/navegacion.ts";
@@ -92,8 +93,12 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
         await expect(page.getByTestId("barra-pagina-titulo"), `${nombre}: titulo de la pagina en la barra`).toHaveText(/\S/);
         // Orden del dueno: la barra va delgada. Sin "Pregúntale a tus datos", sin campana, sin fecha (ni en la barra ni en el cuerpo).
         const chat = await contarChat(page);
-        expect(chat.total, `${nombre}: ningun "Pregúntale a tus datos" visible`).toBe(0);
-        expect(chat.textos, `${nombre}: el rotulo "Pregúntale a tus datos" no aparece`).toBe(0);
+        const entradaChat = (raiz: Locator) => raiz.getByRole("link", { name: NOMBRE_CHAT }).or(raiz.getByRole("button", { name: NOMBRE_CHAT }));
+        await expect(entradaChat(barra), `${nombre}: la barra no lleva boton de "Pregúntale a tus datos"`).toHaveCount(0);
+        // UNA sola entrada con ese nombre en toda la pantalla: la pildora del pie del menu lateral (el titulo de la barra del Copiloto es texto, no control).
+        expect(chat.total, `${nombre}: UNA sola entrada "Pregúntale a tus datos" visible`).toBe(1);
+        await expect(entradaChat(page.locator("aside")), `${nombre}: la entrada vive en el pie del menu`).toHaveCount(1);
+        expect(chat.enMain, `${nombre}: ningun "Pregúntale a tus datos" dentro del cuerpo de la pagina`).toBe(0);
         await expect(barra.locator('[aria-label^="Notificaciones"]'), `${nombre}: sin campana en la barra`).toHaveCount(0);
         await expect(page.getByTestId("barra-pagina-fecha"), `${nombre}: sin chip de fecha`).toHaveCount(0);
         expect(((await barra.boundingBox())?.height ?? 99), `${nombre}: barra delgada (~44 px)`).toBeLessThanOrEqual(48);
