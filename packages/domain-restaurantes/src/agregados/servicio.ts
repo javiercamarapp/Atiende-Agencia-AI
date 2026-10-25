@@ -3,6 +3,9 @@
 //   * El agente NUNCA confirma el agregado: crea la solicitud y dice la frase aprobada (sin minutos). Solo una persona la acepta o la rechaza.
 //   * Aceptar aplica los renglones al pedido (misma transaccion) y avisa al cliente. Rechazar exige motivo, avisa al cliente con disculpa y oferta de pedido
 //     nuevo, y deja una tarea de devolver llamada con guion sugerido.
+//   * LIMITE CONOCIDO (aceptar con el pedido ya en cocina): aceptar SOLO anexa los renglones y el total a `orders` y avisa al cliente. NO reimprime ni reenvia una
+//     comanda al POS/cocina: la comanda del pedido es idempotente por pedido (outbox de SoftRestaurant) y no existe un mecanismo de «comanda adicional» que reutilizar.
+//     Por eso la tarjeta del panel marca `pedido.yaEnCocina` y la pantalla avisa en ambar que hay que pasar el agregado a cocina de viva voz o a mano.
 //   * SLA por sucursal (sin distinguir cajero de encargado): a los 10 min sin respuesta se avisa al dueno y al cliente (aviso UNICO); a los 20 min se cierra como
 //     `vencido` y se ofrece pedido aparte o recoger. El sistema nunca acepta solo. Se calcula al LEER (estado derivado) y en el tick existente de 5 min.
 //   * Ningun texto lleva «retraso», dinero a devolver ni minutos prometidos. Los mensajes al cliente van como texto libre dentro de la ventana de 24 h (el cliente
@@ -14,13 +17,17 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { toWhatsAppRecipient } from "../phone.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import { FRASE_MOTIVO_AL_CLIENTE, SLA_AGREGADO } from "./tipos.ts";
-import type { AgregadosHook, AgregadosRepository, AgregadoVista, DecisionAgregado, NuevoAgregado, ResultadoCrearAgregado, ResultadoDecidirAgregado } from "./tipos.ts";
+import type { AgregadosHook, AgregadosRepository, AgregadoVista, DecisionAgregado, EventoAgregadoEntrada, NuevoAgregado, ResultadoCrearAgregado, ResultadoDecidirAgregado } from "./tipos.ts";
 
 export interface AgregadosServicioDeps {
   readonly agregados: AgregadosRepository;
   readonly repo: RestaurantesRepository;
   readonly db: TenantDbSession;
 }
+
+/** Quien firma las anotaciones de la bitacora: la RLS solo deja a una sesion de USUARIO escribir como ese usuario; el sistema (tick) escribe como sistema. */
+type ActorBitacora = EventoAgregadoEntrada["actor"];
+const SISTEMA: ActorBitacora = { tipo: "sistema" };
 
 const formatoMxn = (n: number): string => `$${n.toFixed(2).replace(/\.00$/, "")}`;
 
@@ -49,8 +56,11 @@ export const textoAgregadoVencido = (a: AgregadoVista): string =>
   `${saludo(a)}no alcanzamos a confirmar el agregado de ${listaProductos(a.itemsAdded)} a tu pedido${folio(a)}. Tu pedido original sigue en marcha. ` +
   `Si gustas, te tomamos un pedido aparte con eso, o puedes recogerlo en la sucursal. Respóndenos por aquí.`;
 
-export const textoAgregadoNoAplicable = (a: AgregadoVista): string =>
-  `${saludo(a)}una disculpa: tu pedido${folio(a)} ya no admite agregados porque ya salió de la sucursal. Si gustas, te tomamos un pedido nuevo con ${listaProductos(a.itemsAdded)}; respóndenos por aquí.`;
+/** El motivo depende del estado REAL del pedido: uno cancelado no «salio de la sucursal». */
+export const textoAgregadoNoAplicable = (a: AgregadoVista): string => {
+  const motivo = a.orderStatus === "cancelado" ? "fue cancelado" : a.orderStatus === "entregado" || a.orderStatus === "completado" ? "ya fue entregado" : "ya salió de la sucursal";
+  return `${saludo(a)}una disculpa: tu pedido${folio(a)} ya no admite agregados porque ${motivo}. Si gustas, te tomamos un pedido nuevo con ${listaProductos(a.itemsAdded)}; respóndenos por aquí.`;
+};
 
 /** Guion sugerido para quien devuelve la llamada (solo texto: nunca se lee en voz alta por la IA). */
 export function guionDevolverLlamada(a: AgregadoVista, motivo: keyof typeof FRASE_MOTIVO_AL_CLIENTE): string {
@@ -81,14 +91,14 @@ async function conSavepoint(deps: AgregadosServicioDeps, nombre: string, fn: () 
   }
 }
 
-async function avisoClienteConBitacora(deps: AgregadosServicioDeps, a: AgregadoVista, tipo: string, cuerpo: string): Promise<void> {
+async function avisoClienteConBitacora(deps: AgregadosServicioDeps, a: AgregadoVista, tipo: string, cuerpo: string, actor: ActorBitacora): Promise<void> {
   await conSavepoint(deps, `aviso_cliente_${tipo}`, async () => {
     const encolado = await avisarCliente(deps, a, tipo, cuerpo);
-    await deps.agregados.registrarEvento({ amendmentId: a.id, organizationId: a.organizationId, propertyId: a.propertyId, tipoEvento: "cliente_avisado", actor: { tipo: "sistema" }, detalle: { tipo, encolado } });
+    await deps.agregados.registrarEvento({ amendmentId: a.id, organizationId: a.organizationId, propertyId: a.propertyId, tipoEvento: "cliente_avisado", actor, detalle: { tipo, encolado } });
   });
 }
 
-async function crearTareaDevolverLlamada(deps: AgregadosServicioDeps, a: AgregadoVista, reason: "agregado_rechazado" | "agregado_vencido", guion: string): Promise<void> {
+async function crearTareaDevolverLlamada(deps: AgregadosServicioDeps, a: AgregadoVista, reason: "agregado_rechazado" | "agregado_vencido", guion: string, actor: ActorBitacora): Promise<void> {
   await conSavepoint(deps, `callback_${reason}`, async () => {
     const cb = await registerCallbackRequest(deps.repo, {
       organizationId: a.organizationId,
@@ -100,7 +110,7 @@ async function crearTareaDevolverLlamada(deps: AgregadosServicioDeps, a: Agregad
       source: "admin",
       sourceEventId: `agregado:${a.id}:${reason}`,
     });
-    await deps.agregados.registrarEvento({ amendmentId: a.id, organizationId: a.organizationId, propertyId: a.propertyId, tipoEvento: "callback_creado", actor: { tipo: "sistema" }, detalle: { callbackId: cb.id, reason } });
+    await deps.agregados.registrarEvento({ amendmentId: a.id, organizationId: a.organizationId, propertyId: a.propertyId, tipoEvento: "callback_creado", actor, detalle: { callbackId: cb.id, reason } });
   });
 }
 
@@ -136,26 +146,56 @@ export interface ResultadoResolverAgregado {
 
 export async function resolverAgregado(
   deps: AgregadosServicioDeps,
-  input: { readonly organizationId: string; readonly id: string; readonly decision: DecisionAgregado; readonly actorUserId: string; readonly propertyIds: readonly string[] | null },
+  input: { readonly organizationId: string; readonly id: string; readonly decision: DecisionAgregado; readonly actorUserId: string; readonly propertyIds: readonly string[] | null; readonly versionEsperada?: number },
 ): Promise<ResultadoResolverAgregado> {
-  const resultado = await deps.agregados.decidir(input.organizationId, input.id, input.decision, input.actorUserId, input.propertyIds);
+  const resultado = await deps.agregados.decidir(input.organizationId, input.id, input.decision, input.actorUserId, input.propertyIds, input.versionEsperada === undefined ? undefined : { versionEsperada: input.versionEsperada });
   const efectos: string[] = [];
+  const actor: ActorBitacora = { tipo: "usuario", userId: input.actorUserId }; // sesion de usuario: la bitacora la firma quien decide
   if (resultado.resultado === "aplicado") {
     const a = resultado.agregado;
     if (input.decision.tipo === "aceptar") {
-      await avisoClienteConBitacora(deps, a, "aceptado", textoAgregadoAceptado(a));
+      await avisoClienteConBitacora(deps, a, "aceptado", textoAgregadoAceptado(a), actor);
       efectos.push("aviso_cliente_aceptado");
     } else {
-      await avisoClienteConBitacora(deps, a, "rechazado", textoAgregadoRechazado(a));
+      await avisoClienteConBitacora(deps, a, "rechazado", textoAgregadoRechazado(a), actor);
       efectos.push("aviso_cliente_rechazado");
-      await crearTareaDevolverLlamada(deps, a, "agregado_rechazado", guionDevolverLlamada(a, input.decision.motivo));
+      await crearTareaDevolverLlamada(deps, a, "agregado_rechazado", guionDevolverLlamada(a, input.decision.motivo), actor);
       efectos.push("tarea_devolver_llamada");
     }
   } else if (resultado.resultado === "no_aplicable") {
-    await avisoClienteConBitacora(deps, resultado.agregado, "no_aplicable", textoAgregadoNoAplicable(resultado.agregado));
+    await avisoClienteConBitacora(deps, resultado.agregado, "no_aplicable", textoAgregadoNoAplicable(resultado.agregado), actor);
     efectos.push("aviso_cliente_no_aplicable");
+  } else if (resultado.resultado === "vencido") {
+    // Pasaron 20+ min y el tick aun no la cerraba: se cerro AHORA con los mismos efectos que el tick (campana, aviso al cliente, tarea de devolver llamada).
+    const a = resultado.agregado;
+    const minutos = Math.floor((Date.now() - Date.parse(a.requestedAt)) / 60_000);
+    await efectosVencimiento(deps, a, minutos, actor);
+    efectos.push("vencido_al_decidir");
   }
   return { resultado, efectos };
+}
+
+async function notificarSinRespuesta(deps: AgregadosServicioDeps, a: AgregadoVista, minutos: number): Promise<void> {
+  await emitirNotificacion(deps.db, {
+    evento: "restaurantes.pedido.agregado_sin_respuesta",
+    organizationId: a.organizationId,
+    propertyId: a.propertyId,
+    clave: a.id,
+    entidadTipo: "order_amendment",
+    entidadId: a.id,
+    parametros: { minutos },
+  });
+}
+
+async function avisosVencimiento(deps: AgregadosServicioDeps, a: AgregadoVista, actor: ActorBitacora): Promise<void> {
+  await avisoClienteConBitacora(deps, a, "vencido", textoAgregadoVencido(a), actor);
+  await crearTareaDevolverLlamada(deps, a, "agregado_vencido", guionDevolverLlamada(a, "otro"), actor);
+}
+
+/** Efectos de cerrar una solicitud como vencida FUERA del barrido (al intentar decidirla tarde). Cada uno es independiente: uno que falle no deshace el cierre. */
+async function efectosVencimiento(deps: AgregadosServicioDeps, a: AgregadoVista, minutos: number, actor: ActorBitacora): Promise<void> {
+  await conSavepoint(deps, "notificacion_vencido", () => notificarSinRespuesta(deps, a, minutos));
+  await avisosVencimiento(deps, a, actor);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -194,21 +234,9 @@ export async function barrerAgregadosSla(deps: AgregadosServicioDeps, ahora: Dat
           if (!(await deps.agregados.escalarNivel1(a.organizationId, a.id, ahora))) return;
           avisados++;
         }
-        await emitirNotificacion(deps.db, {
-          evento: "restaurantes.pedido.agregado_sin_respuesta",
-          organizationId: a.organizationId,
-          propertyId: a.propertyId,
-          clave: a.id,
-          entidadTipo: "order_amendment",
-          entidadId: a.id,
-          parametros: { minutos },
-        });
-        if (vence) {
-          await avisoClienteConBitacora(deps, a, "vencido", textoAgregadoVencido(a));
-          await crearTareaDevolverLlamada(deps, a, "agregado_vencido", guionDevolverLlamada(a, "otro"));
-        } else {
-          await avisoClienteConBitacora(deps, a, "seguimiento", textoAgregadoSeguimiento(a));
-        }
+        await notificarSinRespuesta(deps, a, minutos);
+        if (vence) await avisosVencimiento(deps, a, SISTEMA);
+        else await avisoClienteConBitacora(deps, a, "seguimiento", textoAgregadoSeguimiento(a), SISTEMA);
       });
     } catch (err) {
       errores++;

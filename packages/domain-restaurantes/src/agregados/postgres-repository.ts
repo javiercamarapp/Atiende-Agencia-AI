@@ -1,16 +1,19 @@
 // Adaptador Postgres de los agregados (migracion 099). REGLA DURA de compatibilidad con la base SIN migrar: mergear despliega el codigo al instante y la
 // 099 no se aplica sola. Toda llamada corre dentro de la transaccion UNICA del request/unidad (`withAppSession`): un error de Postgres la deja abortada
 // (25P02), por eso cada operacion usa `runWithSavepointFallback` y degrada a «no disponible» ante 42P01 (tabla), 42703 (columna) y 42883 (funcion).
-// Cualquier otro error se repropaga. Sin funciones SECURITY DEFINER: las policies de RLS (organizacion + alcance de sucursal) son la autoridad y esta capa
-// agrega el mismo filtro de alcance como defensa en profundidad. Aceptar escribe la solicitud y el pedido en la MISMA transaccion (o ninguno).
+// Cualquier otro error se repropaga. Las decisiones de una PERSONA (decidir, visto) son UPDATE con RLS (organizacion + alcance de sucursal) y el trigger de
+// guardia de la 099; esta capa agrega el mismo filtro de alcance como defensa en profundidad. Las unicas funciones SECURITY DEFINER (crear, releer y barrer)
+// son de la sesion de SISTEMA, que no ve `orders` por RLS. Aceptar escribe la solicitud y el pedido en la MISMA transaccion (o ninguno).
+// Concurrencia: la decision es compare-and-set sobre `status = 'pendiente' and version = <la leida>`; si el agente fusiona (version + 1) entre la lectura y la
+// escritura, el UPDATE no toca nada, se relee y se responde `version_cambio` (nada se aplica al pedido ni se avisa al cliente con datos desfasados).
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { OrderStatus, PersistedOrderItem } from "../types.ts";
 import { fusionarRenglones } from "./fusion.ts";
-import { AGREGADO_MAX_RENGLONES, ESTADOS_PEDIDO_AGREGABLES, pedidoAceptaAgregado } from "./tipos.ts";
+import { AGREGADO_MAX_RENGLONES, ESTADOS_PEDIDO_AGREGABLES, SLA_AGREGADO, pedidoAceptaAgregado } from "./tipos.ts";
 import type {
   AgregadosRepository, AgregadoVista, DecisionAgregado, EstadoAgregado, EventoAgregado, EventoAgregadoEntrada, FiltroAgregados, LecturaAgregados, MotivoRechazoAgregado, NuevoAgregado,
-  ResultadoCrearAgregado, ResultadoDecidirAgregado,
+  OpcionesDecidir, ResultadoCrearAgregado, ResultadoDecidirAgregado,
 } from "./tipos.ts";
 
 interface FilaVista {
@@ -43,6 +46,8 @@ interface FilaVista {
   customer_name: string;
   customer_phone: string;
   sucursal: string | null;
+  /** Reloj de la BASE: `now() - requested_at >= 20 min` (solo lo calcula la lectura de `leerUna`; las funciones solo-sistema no lo traen). */
+  vencida_por_reloj?: boolean;
 }
 
 const iso = (v: string | Date): string => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
@@ -55,7 +60,8 @@ const SELECT_VISTA = `
          a.version, a.requested_at, a.first_seen_at, a.decided_at, a.decided_by, a.reject_reason, a.reject_note, a.escalation_level, a.escalated_at,
          (select su.full_name from core.staff_user su where su.id = a.decided_by) as decided_by_name,
          o.order_number, o.status as order_status, o.items as order_items, o.total as order_total, o.created_at as order_created_at,
-         o.customer_name, o.customer_phone, o.branch as sucursal
+         o.customer_name, o.customer_phone, o.branch as sucursal,
+         (now() - a.requested_at) >= make_interval(mins => ${SLA_AGREGADO.vencimientoMin}) as vencida_por_reloj
   from restaurantes.order_amendments a
   join restaurantes.orders o on o.id = a.order_id and o.organization_id = a.organization_id`;
 
@@ -120,9 +126,14 @@ export class PostgresAgregadosRepository implements AgregadosRepository {
     });
   }
 
-  private async leerUna(organizationId: string, id: string, propertyIds: readonly string[] | null): Promise<AgregadoVista | null> {
+  private async leerFila(organizationId: string, id: string, propertyIds: readonly string[] | null): Promise<FilaVista | null> {
     const { rows } = await this.db.query<FilaVista>(`${SELECT_VISTA} where a.id = $1 and a.organization_id = $2 and ($3::uuid[] is null or a.property_id = any($3::uuid[]));`, [id, organizationId, propertyIds]);
-    return rows[0] ? aVista(rows[0]) : null;
+    return rows[0] ?? null;
+  }
+
+  private async leerUna(organizationId: string, id: string, propertyIds: readonly string[] | null): Promise<AgregadoVista | null> {
+    const fila = await this.leerFila(organizationId, id, propertyIds);
+    return fila ? aVista(fila) : null;
   }
 
   /** Relee una solicitud como SISTEMA (el sistema no ve `orders` por RLS): por la funcion solo-sistema, que devuelve la solicitud con los datos del pedido. */
@@ -201,22 +212,42 @@ export class PostgresAgregadosRepository implements AgregadosRepository {
     });
   }
 
-  async decidir(organizationId: string, id: string, decision: DecisionAgregado, actorUserId: string, propertyIds: readonly string[] | null): Promise<ResultadoDecidirAgregado> {
+  async decidir(organizationId: string, id: string, decision: DecisionAgregado, actorUserId: string, propertyIds: readonly string[] | null, opciones?: OpcionesDecidir): Promise<ResultadoDecidirAgregado> {
     return this.degradable<ResultadoDecidirAgregado>("decidir", { resultado: "no_disponible" }, async () => {
-      const actual = await this.leerUna(organizationId, id, propertyIds);
-      if (!actual) return { resultado: "no_encontrado" }; // inexistente, de otra organizacion o fuera de alcance: nunca se distingue
+      const fila = await this.leerFila(organizationId, id, propertyIds);
+      if (!fila) return { resultado: "no_encontrado" }; // inexistente, de otra organizacion o fuera de alcance: nunca se distingue
+      const actual = aVista(fila);
       if (actual.estado !== "pendiente") return { resultado: "ya_resuelto", agregado: actual };
       const actor = { tipo: "usuario", userId: actorUserId } as const;
       const releer = async (): Promise<AgregadoVista> => (await this.leerUna(organizationId, id, null))!;
+      // Un compare-and-set que no toca nada: o ya la resolvio otra persona (ya_resuelto), o el agente la fusiono (version + 1) y lo que la persona vio ya no es lo
+      // que hay (version_cambio). Nunca se aplica nada a medias.
+      const perdida = async (): Promise<ResultadoDecidirAgregado> => {
+        const ahora = await releer();
+        return ahora.estado !== "pendiente" ? { resultado: "ya_resuelto", agregado: ahora } : { resultado: "version_cambio", agregado: ahora };
+      };
+
+      // Vencimiento: pasados 20 min la solicitud YA es terminal aunque el tick no la haya cerrado. El reloj es el de la base (el trigger de la 099 verifica el mismo).
+      if (fila.vencida_por_reloj) {
+        const cerrada = await this.db.query<{ property_id: string }>(
+          "update restaurantes.order_amendments set status = 'vencido', escalation_level = 2, escalated_at = now(), decided_at = now() where id = $1 and organization_id = $2 and status = 'pendiente' returning property_id;",
+          [id, organizationId],
+        );
+        if (!cerrada.rows[0]) return { resultado: "ya_resuelto", agregado: await releer() };
+        await this.registrarEvento({ amendmentId: id, organizationId, propertyId: actual.propertyId, tipoEvento: "vencido", actor, detalle: { alDecidir: true } });
+        return { resultado: "vencido", agregado: await releer() };
+      }
+
+      if (opciones?.versionEsperada !== undefined && opciones.versionEsperada !== actual.version) return { resultado: "version_cambio", agregado: actual };
 
       if (decision.tipo === "rechazar") {
         const { rows } = await this.db.query<{ id: string }>(
           `update restaurantes.order_amendments set status = 'rechazado', decided_at = now(), decided_by = $3, reject_reason = $4, reject_note = $5
-           where id = $1 and organization_id = $2 and status = 'pendiente' returning id;`,
-          [id, organizationId, actorUserId, decision.motivo, decision.nota ? decision.nota.slice(0, 300) : null],
+           where id = $1 and organization_id = $2 and status = 'pendiente' and version = $6 returning id;`,
+          [id, organizationId, actorUserId, decision.motivo, decision.nota ? decision.nota.slice(0, 300) : null, actual.version],
         );
-        if (!rows[0]) return { resultado: "ya_resuelto", agregado: await releer() };
-        await this.registrarEvento({ amendmentId: id, organizationId, propertyId: actual.propertyId, tipoEvento: "rechazado", actor, detalle: { motivo: decision.motivo } });
+        if (!rows[0]) return perdida();
+        await this.registrarEvento({ amendmentId: id, organizationId, propertyId: actual.propertyId, tipoEvento: "rechazado", actor, detalle: { motivo: decision.motivo, version: actual.version } });
         return { resultado: "aplicado", agregado: await releer() };
       }
 
@@ -224,18 +255,18 @@ export class PostgresAgregadosRepository implements AgregadosRepository {
       const pedido = await this.db.query<{ status: OrderStatus }>("select status from restaurantes.orders where id = $1 and organization_id = $2 for update;", [actual.orderId, organizationId]);
       if (!pedido.rows[0] || !pedidoAceptaAgregado(pedido.rows[0].status)) {
         const { rows } = await this.db.query<{ id: string }>(
-          "update restaurantes.order_amendments set status = 'no_aplicable', decided_at = now(), decided_by = $3 where id = $1 and organization_id = $2 and status = 'pendiente' returning id;",
-          [id, organizationId, actorUserId],
+          "update restaurantes.order_amendments set status = 'no_aplicable', decided_at = now(), decided_by = $3 where id = $1 and organization_id = $2 and status = 'pendiente' and version = $4 returning id;",
+          [id, organizationId, actorUserId, actual.version],
         );
-        if (!rows[0]) return { resultado: "ya_resuelto", agregado: await releer() };
+        if (!rows[0]) return perdida();
         await this.registrarEvento({ amendmentId: id, organizationId, propertyId: actual.propertyId, tipoEvento: "no_aplicable", actor, detalle: { estadoPedido: pedido.rows[0]?.status ?? null } });
         return { resultado: "no_aplicable", agregado: await releer() };
       }
       const { rows } = await this.db.query<{ id: string }>(
-        "update restaurantes.order_amendments set status = 'aceptado', decided_at = now(), decided_by = $3 where id = $1 and organization_id = $2 and status = 'pendiente' returning id;",
-        [id, organizationId, actorUserId],
+        "update restaurantes.order_amendments set status = 'aceptado', decided_at = now(), decided_by = $3 where id = $1 and organization_id = $2 and status = 'pendiente' and version = $4 returning id;",
+        [id, organizationId, actorUserId, actual.version],
       );
-      if (!rows[0]) return { resultado: "ya_resuelto", agregado: await releer() };
+      if (!rows[0]) return perdida();
       const aplicado = await this.db.query<{ id: string }>(
         `update restaurantes.orders set items = coalesce(items, '[]'::jsonb) || $3::jsonb, total = total + $4
          where id = $1 and organization_id = $2 and status = any($5::text[]) returning id;`,

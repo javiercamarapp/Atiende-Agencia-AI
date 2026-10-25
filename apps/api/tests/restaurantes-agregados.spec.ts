@@ -80,7 +80,7 @@ describe("GET .../admin/agregados", () => {
     const s = await t.solicitud();
     expect((await t.app.request(`${t.url()}?estado=otro`, authedGet(t.ctx.staff.owner.token))).status).toBe(400);
     t.agregados.nombresPersonal.set(t.ctx.staff.owner.id, "Dueño");
-    await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, {}));
+    await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }));
     const pend = await (await t.app.request(t.url(), authedGet(t.ctx.staff.owner.token))).json();
     expect(pend.agregados).toHaveLength(0);
     const rec = await (await t.app.request(`${t.url()}?estado=recientes`, authedGet(t.ctx.staff.owner.token))).json();
@@ -102,10 +102,10 @@ describe("GET .../admin/agregados", () => {
     const t = await construir({ disponible: false });
     expect(await (await t.app.request(t.url(), authedGet(t.ctx.staff.owner.token))).json()).toMatchObject({ disponible: false, agregados: [], pendientes: 0 });
     const id = "00000000-0000-4000-8000-000000000999";
-    expect((await t.app.request(`${t.url()}/${id}/aceptar`, authedJson(t.ctx.staff.owner.token, {}))).status).toBe(503);
+    expect((await t.app.request(`${t.url()}/${id}/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }))).status).toBe(503);
     const sin = await construir({ sinRepo: true });
     expect(await (await sin.app.request(sin.url(), authedGet(sin.ctx.staff.owner.token))).json()).toMatchObject({ disponible: false });
-    expect((await sin.app.request(`${sin.url()}/${id}/aceptar`, authedJson(sin.ctx.staff.owner.token, {}))).status).toBe(503);
+    expect((await sin.app.request(`${sin.url()}/${id}/aceptar`, authedJson(sin.ctx.staff.owner.token, { version: 1 }))).status).toBe(503);
   });
 });
 
@@ -113,7 +113,7 @@ describe("POST .../aceptar", () => {
   it("aplica los renglones y el total al pedido, avisa al cliente por WhatsApp y deja auditoria SIN telefono ni nombre", async () => {
     const t = await construir();
     const s = await t.solicitud();
-    const res = await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, {}));
+    const res = await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 1 }));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ resultado: "aplicado", agregado: { estado: "aceptado", cliente: { telefono: null } } });
     expect(t.agregados.pedidos.get(s.pedido.id)).toMatchObject({ total: 190 });
@@ -129,8 +129,8 @@ describe("POST .../aceptar", () => {
   it("DOBLE CLIC (o dos cajeros a la vez): la segunda llamada es 200 ya_resuelto, no repite aviso, total ni auditoria", async () => {
     const t = await construir();
     const s = await t.solicitud();
-    await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, {}));
-    const otra = await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, {}));
+    await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 1 }));
+    const otra = await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }));
     expect(otra.status).toBe(200);
     expect((await otra.json()).resultado).toBe("ya_resuelto");
     expect(t.agregados.pedidos.get(s.pedido.id)?.total).toBe(190);
@@ -142,23 +142,76 @@ describe("POST .../aceptar", () => {
     const t = await construir();
     const s = await t.solicitud();
     t.agregados.pedidos.get(s.pedido.id)!.status = "en_camino";
-    const res = await (await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, {}))).json();
+    const res = await (await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }))).json();
     expect(res.resultado).toBe("no_aplicable");
     expect(t.agregados.pedidos.get(s.pedido.id)?.total).toBe(100);
     expect(JSON.stringify(t.ctx.restaurantesRepo.getOutbox().filter((r) => r.eventType === "agregado.no_aplicable"))).toContain("ya salió");
+  });
+
+  it("pedido cancelado antes de decidir: el aviso al cliente dice que fue cancelado, no «ya salió»", async () => {
+    const t = await construir();
+    const s = await t.solicitud();
+    t.agregados.pedidos.get(s.pedido.id)!.status = "cancelado";
+    expect((await (await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }))).json()).resultado).toBe("no_aplicable");
+    const txt = JSON.stringify(t.ctx.restaurantesRepo.getOutbox().filter((r) => r.eventType === "agregado.no_aplicable"));
+    expect(txt).toContain("fue cancelado");
+    expect(txt).not.toContain("ya salió");
+  });
+
+  it("sin `version` (o invalida) es 400 y la solicitud sigue pendiente", async () => {
+    const t = await construir();
+    const s = await t.solicitud();
+    for (const cuerpo of [{}, { version: "1" }, { version: 0 }, { version: 1.5 }, { version: 51 }]) expect((await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, cuerpo))).status).toBe(400);
+    expect((await t.agregados.obtener(t.ctx.organizationId, s.id, null)).valor?.estado).toBe("pendiente");
+  });
+
+  it("CARRERA con la fusion: el cliente pidio mas (version 2) mientras la persona veia la 1 -> 409 agregado_version_cambio con la tarjeta vigente, sin aplicar ni avisar; con la 2 si", async () => {
+    const t = await construir();
+    const s = await t.solicitud();
+    await t.agregados.crear({ organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, orderId: s.pedido.id, channel: "whatsapp", items: [{ id: "p-flan", name: "Flan", price: 40, quantity: 1 }] });
+    const viejo = await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 1 }));
+    expect(viejo.status).toBe(409);
+    expect(await viejo.json()).toMatchObject({ code: "agregado_version_cambio", agregado: { estado: "pendiente", agregado: { version: 2, total: 130 } } });
+    expect(t.agregados.pedidos.get(s.pedido.id)?.total).toBe(100);
+    expect(t.ctx.restaurantesRepo.getOutbox().filter((r) => r.eventType === "agregado.aceptado")).toHaveLength(0);
+    const rech = await t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 1, motivo: "producto_agotado" }));
+    expect(rech.status).toBe(409);
+    expect(t.ctx.restaurantesRepo.listCallbackRequests(t.ctx.organizationId)).toHaveLength(0);
+    const bien = await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 2 }));
+    expect(bien.status).toBe(200);
+    expect(t.agregados.pedidos.get(s.pedido.id)?.total).toBe(230);
+  });
+
+  it("a los 20+ min con status todavia pendiente: 409 agregado_vencido (aceptar y rechazar), se cierra como vencida CON sus efectos confirmados y el pedido no cambia", async () => {
+    for (const accion of ["aceptar", "rechazar"] as const) {
+      const t = await construir();
+      const s = await t.solicitud();
+      t.agregados.envejecer(s.id, 21);
+      const res = await t.app.request(`${t.url()}/${s.id}/${accion}`, authedJson(t.ctx.staff.owner.token, { version: 1, motivo: "otro", nota: "x" }));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "agregado_vencido", resultado: "vencido", agregado: { estado: "vencido", estadoEfectivo: "vencido" } });
+      expect((await t.agregados.obtener(t.ctx.organizationId, s.id, null)).valor).toMatchObject({ estado: "vencido", decidedBy: null });
+      expect(t.agregados.pedidos.get(s.pedido.id)?.total).toBe(100);
+      expect(t.ctx.restaurantesRepo.getOutbox().filter((r) => r.eventType === "agregado.vencido")).toHaveLength(1);
+      expect(t.ctx.restaurantesRepo.listCallbackRequests(t.ctx.organizationId).map((c) => c.reason)).toEqual(["agregado_vencido"]);
+      // El segundo intento es ya_resuelto (200), nunca repite el aviso.
+      const otra = await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }));
+      expect((await otra.json()).resultado).toBe("ya_resuelto");
+      expect(t.ctx.restaurantesRepo.getOutbox().filter((r) => r.eventType === "agregado.vencido")).toHaveLength(1);
+    }
   });
 
   it("permisos y alcance: el repartidor 403; el staff de A no decide uno de B (404); id invalido 400; inexistente 404", async () => {
     const t = await construir();
     const a = await t.solicitud(t.ctx.propertyIdA);
     const b = await t.solicitud(t.ctx.propertyIdB);
-    expect((await t.app.request(`${t.url()}/${a.id}/aceptar`, authedJson(t.ctx.staff.repartidor.token, {}))).status).toBe(403);
-    expect((await t.app.request(`${t.url()}/${b.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, {}))).status).toBe(404);
-    expect((await t.app.request(`${t.url()}/${b.id}/rechazar`, authedJson(t.ctx.staff.adminSucursalA.token, { motivo: "otro", nota: "x" }))).status).toBe(404);
-    expect((await t.app.request(`${t.url()}/no-es-uuid/aceptar`, authedJson(t.ctx.staff.owner.token, {}))).status).toBe(400);
-    expect((await t.app.request(`${t.url()}/00000000-0000-4000-8000-0000000000ff/aceptar`, authedJson(t.ctx.staff.owner.token, {}))).status).toBe(404);
+    expect((await t.app.request(`${t.url()}/${a.id}/aceptar`, authedJson(t.ctx.staff.repartidor.token, { version: 1 }))).status).toBe(403);
+    expect((await t.app.request(`${t.url()}/${b.id}/aceptar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 1 }))).status).toBe(404);
+    expect((await t.app.request(`${t.url()}/${b.id}/rechazar`, authedJson(t.ctx.staff.adminSucursalA.token, { version: 1, motivo: "otro", nota: "x" }))).status).toBe(404);
+    expect((await t.app.request(`${t.url()}/no-es-uuid/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }))).status).toBe(400);
+    expect((await t.app.request(`${t.url()}/00000000-0000-4000-8000-0000000000ff/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }))).status).toBe(404);
     expect(t.agregados.pedidos.get(b.pedido.id)?.total).toBe(100);
-    expect((await t.app.request(`${t.url()}/${a.id}/aceptar`, authedJson(t.ctx.staff.otroOrgOwner.token, {}))).status).toBeGreaterThanOrEqual(403);
+    expect((await t.app.request(`${t.url()}/${a.id}/aceptar`, authedJson(t.ctx.staff.otroOrgOwner.token, { version: 1 }))).status).toBeGreaterThanOrEqual(403);
   });
 });
 
@@ -166,7 +219,7 @@ describe("POST .../rechazar", () => {
   it("con motivo: avisa al cliente con disculpa y oferta de pedido nuevo y crea la tarea de devolver llamada con guion", async () => {
     const t = await construir();
     const s = await t.solicitud();
-    const res = await t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.staffSucursalA.token, { motivo: "ya_salio_de_cocina" }));
+    const res = await t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 1, motivo: "ya_salio_de_cocina" }));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ resultado: "aplicado", agregado: { estado: "rechazado", motivoRechazo: "ya_salio_de_cocina" } });
     expect(t.agregados.pedidos.get(s.pedido.id)?.total).toBe(100);
@@ -184,7 +237,7 @@ describe("POST .../rechazar", () => {
   it("validacion: sin motivo, motivo fuera de la lista, «otro» sin nota o nota de mas de 300: 400 y la solicitud sigue pendiente", async () => {
     const t = await construir();
     const s = await t.solicitud();
-    const post = (cuerpo: unknown) => t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.owner.token, cuerpo));
+    const post = (cuerpo: unknown) => t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.owner.token, { version: 1, ...(cuerpo as object) }));
     for (const malo of [{}, { motivo: "porque_si" }, { motivo: "otro" }, { motivo: "otro", nota: "   " }, { motivo: "producto_agotado", nota: "x".repeat(301) }, { motivo: 5 }]) expect((await post(malo)).status).toBe(400);
     expect((await t.agregados.obtener(t.ctx.organizationId, s.id, null)).valor?.estado).toBe("pendiente");
     expect((await post({ motivo: "otro", nota: "Cocina saturada" })).status).toBe(200);
@@ -193,8 +246,8 @@ describe("POST .../rechazar", () => {
   it("doble clic: la segunda llamada es ya_resuelto, una sola tarea y un solo WhatsApp", async () => {
     const t = await construir();
     const s = await t.solicitud();
-    await t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.owner.token, { motivo: "producto_agotado" }));
-    const otra = await (await t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.staffSucursalA.token, { motivo: "otro", nota: "x" }))).json();
+    await t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.owner.token, { version: 1, motivo: "producto_agotado" }));
+    const otra = await (await t.app.request(`${t.url()}/${s.id}/rechazar`, authedJson(t.ctx.staff.staffSucursalA.token, { version: 1, motivo: "otro", nota: "x" }))).json();
     expect(otra.resultado).toBe("ya_resuelto");
     expect(otra.agregado.motivoRechazo).toBe("producto_agotado");
     expect(t.ctx.restaurantesRepo.listCallbackRequests(t.ctx.organizationId)).toHaveLength(1);
@@ -212,6 +265,15 @@ describe("POST .../visto", () => {
     await t.app.request(`${t.url()}/${s.id}/visto`, authedJson(t.ctx.staff.owner.token, {}));
     expect((await t.agregados.obtener(t.ctx.organizationId, s.id, null)).valor!.firstSeenAt).toBe(primera);
     expect((await t.app.request(`${t.url()}/${s.id}/visto`, authedJson(t.ctx.staff.repartidor.token, {}))).status).toBe(403);
+    expect((await t.app.request(`${t.url()}/${s.id}/visto`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(401);
+  });
+
+  it("el staff de otra sucursal y otra organizacion no la marcan (alcance): firstSeenAt sigue nulo", async () => {
+    const t = await construir();
+    const b = await t.solicitud(t.ctx.propertyIdB);
+    await t.app.request(`${t.url()}/${b.id}/visto`, authedJson(t.ctx.staff.staffSucursalA.token, {}));
+    await t.app.request(`${t.url()}/${b.id}/visto`, authedJson(t.ctx.staff.otroOrgOwner.token, {}));
+    expect((await t.agregados.obtener(t.ctx.organizationId, b.id, null)).valor!.firstSeenAt).toBeNull();
   });
 });
 
@@ -241,7 +303,7 @@ describe("tick /internal/restaurantes/promover-programados: SLA de agregados (si
     const t = await construir();
     const s = await t.solicitud();
     expect((await t.app.request("/internal/restaurantes/promover-programados", { method: "POST" })).status).toBe(401);
-    await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, {}));
+    await t.app.request(`${t.url()}/${s.id}/aceptar`, authedJson(t.ctx.staff.owner.token, { version: 1 }));
     t.agregados.envejecer(s.id, 30);
     expect((await (await llamar(t)).json()).autopiloto).toMatchObject({ agregadosAvisados: 0, agregadosVencidos: 0 });
   });

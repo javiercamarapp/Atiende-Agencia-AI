@@ -5,7 +5,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { describe, expect, it } from "vitest";
 import {
   InMemoryAgregadosRepository, SLA_AGREGADO, barrerAgregadosSla, calcularSla, cancelarAgregadoPorCliente, guionDevolverLlamada, listaProductos, registrarSolicitudAgregado, resolverAgregado,
-  textoAgregadoAceptado, textoAgregadoRechazado, textoAgregadoSeguimiento, textoAgregadoVencido,
+  textoAgregadoAceptado, textoAgregadoNoAplicable, textoAgregadoRechazado, textoAgregadoSeguimiento, textoAgregadoVencido,
 } from "../src/agregados/index.ts";
 import type { AgregadosServicioDeps, PedidoAgregableMemoria } from "../src/agregados/index.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
@@ -191,6 +191,98 @@ describe("decidir: aceptar aplica al pedido; rechazar deja tarea; doble clic = u
     const x = await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision: { tipo: "aceptar" }, actorUserId: ACTOR, propertyIds: null });
     expect(x.resultado.resultado).toBe("ya_resuelto");
     expect(t.agregados.pedidos.get(p.id)?.total).toBe(100);
+  });
+});
+
+describe("decidir: carrera con la fusion (version esperada) y vencimiento al decidir", () => {
+  it("el cliente pide mas (fusion, version 2) mientras la persona veia la version 1: aceptar con la 1 NO decide, no toca el pedido ni avisa al cliente", async () => {
+    const t = await montar();
+    const p = t.pedido();
+    const r = await registrarSolicitudAgregado(t.deps, t.nuevo(p));
+    if (r.estado !== "creado") throw new Error("esperaba creado");
+    const f = await registrarSolicitudAgregado(t.deps, t.nuevo(p, { items: [{ ...TACO, quantity: 1 }] }));
+    expect(f.estado).toBe("fusionado");
+    const x = await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision: { tipo: "aceptar" }, actorUserId: ACTOR, propertyIds: null, versionEsperada: 1 });
+    expect(x.resultado.resultado).toBe("version_cambio");
+    expect(x.efectos).toEqual([]);
+    expect(t.agregados.pedidos.get(p.id)?.total).toBe(100);
+    expect(t.outbox("agregado.aceptado")).toHaveLength(0);
+    expect((await t.agregados.obtener(p.organizationId, r.agregado.id, null)).valor).toMatchObject({ estado: "pendiente", version: 2 });
+    // Con la version vigente si se decide, y el pedido y el aviso salen con la solicitud COMPLETA (60 + 25).
+    const ok = await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision: { tipo: "aceptar" }, actorUserId: ACTOR, propertyIds: null, versionEsperada: 2 });
+    expect(ok.resultado.resultado).toBe("aplicado");
+    expect(t.agregados.pedidos.get(p.id)?.total).toBe(185);
+    expect(JSON.stringify(t.outbox("agregado.aceptado")[0])).toContain("$185");
+  });
+
+  it("rechazar con una version vieja tampoco decide: sin aviso ni tarea de devolver llamada", async () => {
+    const t = await montar();
+    const p = t.pedido();
+    const r = await registrarSolicitudAgregado(t.deps, t.nuevo(p));
+    if (r.estado !== "creado") throw new Error("esperaba creado");
+    await registrarSolicitudAgregado(t.deps, t.nuevo(p));
+    const x = await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision: { tipo: "rechazar", motivo: "otro", nota: "x" }, actorUserId: ACTOR, propertyIds: null, versionEsperada: 1 });
+    expect(x.resultado.resultado).toBe("version_cambio");
+    expect(t.outbox("agregado.rechazado")).toHaveLength(0);
+    expect(t.fixture.repo.listCallbackRequests(p.organizationId)).toHaveLength(0);
+  });
+
+  it("a los 20+ min con status todavia «pendiente» (el tick no corrio): aceptar y rechazar NO deciden; se cierra como vencido con los efectos del tick, una sola vez", async () => {
+    for (const decision of [{ tipo: "aceptar" as const }, { tipo: "rechazar" as const, motivo: "otro" as const, nota: "x" }]) {
+      const t = await montar();
+      const p = t.pedido();
+      const r = await registrarSolicitudAgregado(t.deps, t.nuevo(p));
+      if (r.estado !== "creado") throw new Error("esperaba creado");
+      t.avanzar(21);
+      const x = await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision, actorUserId: ACTOR, propertyIds: null, versionEsperada: 1 });
+      expect(x.resultado.resultado).toBe("vencido");
+      expect((await t.agregados.obtener(p.organizationId, r.agregado.id, null)).valor).toMatchObject({ estado: "vencido", decidedBy: null, escalationLevel: 2 });
+      expect(t.agregados.pedidos.get(p.id)?.total).toBe(100);
+      expect(t.outbox("agregado.aceptado")).toHaveLength(0);
+      expect(t.outbox("agregado.rechazado")).toHaveLength(0);
+      expect(JSON.stringify(t.outbox("agregado.vencido"))).toContain("pedido aparte");
+      expect(t.fixture.repo.listCallbackRequests(p.organizationId).map((c) => c.reason)).toEqual(["agregado_vencido"]);
+      expect(t.db.emisiones.map((e) => e.evento)).toContain("restaurantes.pedido.agregado_sin_respuesta");
+      // Un segundo intento y el tick posterior ya no repiten nada.
+      const otra = await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision, actorUserId: ACTOR, propertyIds: null });
+      expect(otra.resultado.resultado).toBe("ya_resuelto");
+      await barrerAgregadosSla(t.deps, t.avanzar(5));
+      expect(t.outbox("agregado.vencido")).toHaveLength(1);
+    }
+  });
+
+  it("justo antes de los 20 min todavia se puede decidir", async () => {
+    const t = await montar();
+    const p = t.pedido();
+    const r = await registrarSolicitudAgregado(t.deps, t.nuevo(p));
+    if (r.estado !== "creado") throw new Error("esperaba creado");
+    t.avanzar(19);
+    expect((await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision: { tipo: "aceptar" }, actorUserId: ACTOR, propertyIds: null, versionEsperada: 1 })).resultado.resultado).toBe("aplicado");
+  });
+
+  it("la bitacora de los efectos de una decision humana la firma quien decide (la RLS no deja a un usuario escribir como sistema)", async () => {
+    const t = await montar();
+    const p = t.pedido();
+    const r = await registrarSolicitudAgregado(t.deps, t.nuevo(p));
+    if (r.estado !== "creado") throw new Error("esperaba creado");
+    await resolverAgregado(t.deps, { organizationId: p.organizationId, id: r.agregado.id, decision: { tipo: "rechazar", motivo: "otro", nota: "x" }, actorUserId: ACTOR, propertyIds: null });
+    const deUsuario = t.agregados.eventos.filter((e) => ["cliente_avisado", "callback_creado", "rechazado"].includes(e.tipoEvento));
+    expect(deUsuario.length).toBe(3);
+    for (const e of deUsuario) expect(e.actor).toEqual({ tipo: "usuario", userId: ACTOR });
+  });
+});
+
+describe("textoAgregadoNoAplicable: el motivo sigue el estado real del pedido", () => {
+  it("cancelado no dice «ya salió»; en camino si; entregado dice entregado", async () => {
+    const t = await montar();
+    const p = t.pedido();
+    const r = await registrarSolicitudAgregado(t.deps, t.nuevo(p));
+    if (r.estado !== "creado") throw new Error("esperaba creado");
+    const base = r.agregado;
+    expect(textoAgregadoNoAplicable({ ...base, orderStatus: "cancelado" })).toContain("fue cancelado");
+    expect(textoAgregadoNoAplicable({ ...base, orderStatus: "cancelado" })).not.toContain("salió");
+    expect(textoAgregadoNoAplicable({ ...base, orderStatus: "en_camino" })).toContain("ya salió de la sucursal");
+    expect(textoAgregadoNoAplicable({ ...base, orderStatus: "entregado" })).toContain("ya fue entregado");
   });
 });
 
