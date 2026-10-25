@@ -109,7 +109,8 @@ describe("H37 / abc543a: la frase de pack usa el N real de cada producto, no sol
     expect(enforceBistecPackNotice("Entendido.", [{ role: "user", content: "no quiero bistec" }])).toBe("Entendido.");
     expect(promptGenerico()).toMatch(/cualquier producto con pack_size mayor a 1, solo acepta múltiplos exactos/);
     // El perfil PM lo dice con sus palabras: «órdenes de N» en múltiplos de N para cualquier producto, y el aviso fijo solo para el bistec.
-    expect(promptPM()).toMatch(/las "órdenes de N" solo se venden en múltiplos de N/);
+    expect(promptPM()).toMatch(/«N órdenes», multiplique por el pack_size/);
+    expect(promptPM()).toMatch(/haga UNA sola pregunta y nunca decida usted cuántas órdenes son/);
   });
 });
 
