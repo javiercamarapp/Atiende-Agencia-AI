@@ -18,7 +18,7 @@ export type Chk =
   | { readonly t: "sinItem"; readonly re: string }
   | { readonly t: "canal"; readonly v: "domicilio" | "recoger" }
   | { readonly t: "sinDomicilio" }
-  /** Suma de cantidades de los renglones cuyo nombre cumple `re`. */
+  /** Suma de cantidades de los renglones cuyo nombre cumple `re`. OJO: en los productos con pack (gringa x2, alambre x5) `quantity` guardada es el numero de ORDENES (packs), no de piezas. */
   | { readonly t: "piezas"; readonly re: string; readonly n: number };
 
 export type Evento =
@@ -126,11 +126,11 @@ export const ESCENARIOS: readonly Escenario[] = [
   { id: "P14", fuente: "#663 P14", titulo: "Gringas por ordenes de dos (3 piezas se rechaza; 3 ordenes = 6)", sucursal: "T7", reloj: "MIE_12",
     turnos: ["Quiero unas gringas de pastor para recoger", "Tres gringas", "Tres órdenes", "Sí, a nombre de Ana Prueba, en efectivo", "Sí, es correcto"], ...PIDE,
     debe: "Explica que las gringas se venden por ordenes y cada orden trae dos; rechaza 3 piezas; con '3 ordenes' cotiza 6 piezas y crea UN pedido de 6 piezas de gringa.", noDebe: "Crear 3 piezas; multiplicar mal las ordenes.",
-    checks: [{ t: "pedidos", n: 1 }, { t: "piezas", re: "gringa", n: 6 }] },
+    checks: [{ t: "pedidos", n: 1 }, { t: "piezas", re: "gringa", n: 3 }, { t: "total", en: [582] }] },
   { id: "P15", fuente: "#663 P15", titulo: "Dos ordenes de alambre = 10 piezas", sucursal: "T7", reloj: "MIE_12",
     turnos: ["Dos órdenes de alambre de pastor para recoger", "Sí, a nombre de Ana Prueba, en efectivo", "Sí, es correcto"], ...PIDE,
     debe: "Entiende que el alambre va en ordenes de 5: dos ordenes son 10 piezas; cotiza y crea UN pedido con ese total.", noDebe: "Cotizar 2 piezas; cobrar una sola orden.",
-    checks: [{ t: "pedidos", n: 1 }, { t: "piezas", re: "alambre", n: 10 }] },
+    checks: [{ t: "pedidos", n: 1 }, { t: "piezas", re: "alambre", n: 2 }, { t: "total", en: [552] }] },
   { id: "P16", fuente: "#663 P16", titulo: "Agregado a un pedido ya enviado", sucursal: "T7", reloj: "MIE_12",
     turnos: ["Tres tacos de pastor de maíz para recoger", "Sí, a nombre de Ana Prueba, en efectivo", "Sí, es correcto", "Ah, agrégueme una horchata a ese pedido"], ...PIDE,
     debe: "Con el pedido ya registrado, escala el agregado y dice la frase decidida: lo pasa a la sucursal, ellos le confirman si alcanza a salir y, si ya salio, se lo pueden enviar aparte; sin prometer minutos. No duplica el pedido.", noDebe: "Crear un segundo pedido; prometer que ya lo agrego; dar minutos.",
@@ -254,7 +254,7 @@ export const ESCENARIOS: readonly Escenario[] = [
   { id: "W05", fuente: "WhatsApp", titulo: "Mezcla de ordenes: 2 de gringas + 1 de alambre", sucursal: "T7", reloj: "MIE_12",
     turnos: ["Quiero dos órdenes de gringas de pastor y una orden de alambre de pastor para recoger", "Sí, a nombre de Ana Prueba, en efectivo", "Sí, es correcto"], ...PIDE,
     debe: "Convierte las ordenes: 2 ordenes de gringas = 4 piezas y 1 orden de alambre = 5 piezas; cotiza y crea UN pedido con ambos.", noDebe: "Cotizar 2 y 1 piezas; omitir un producto.",
-    checks: [{ t: "pedidos", n: 1 }, { t: "piezas", re: "gringa", n: 4 }, { t: "piezas", re: "alambre", n: 5 }] },
+    checks: [{ t: "pedidos", n: 1 }, { t: "piezas", re: "gringa", n: 2 }, { t: "piezas", re: "alambre", n: 1 }, { t: "total", en: [664] }] },
   { id: "W06", fuente: "WhatsApp", titulo: "Cliente indeciso: pregunta precios y luego pide", sucursal: "T7", reloj: "MARTES_13",
     turnos: ["Hola, ¿cuánto cuesta el taco de pastor y la horchata?", "Va, dos tacos de pastor de harina y una horchata para recoger", "Ana Prueba, efectivo, en media hora", "Sí, es correcto"], ...PIDE,
     debe: "Da los precios vigentes de la herramienta, luego cotiza y crea UN pedido de 2 tacos de pastor + horchata sin cambiar la cantidad.", noDebe: "Precios inventados; cotizar sin que el cliente confirme.",
