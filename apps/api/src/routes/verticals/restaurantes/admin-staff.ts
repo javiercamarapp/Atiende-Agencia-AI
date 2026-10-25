@@ -43,7 +43,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { assertAdminGeneral, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 // 7 días — misma vigencia que el portal de propietario de rentas
 // (`rentasOwnerPortalInviteRoutes::INVITE_TTL_MS`), razonable para que quien invita
@@ -441,6 +441,8 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   // (solo owner/admin con alcance de toda la organizacion); aqui el primer filtro y el mejor mensaje.
   app.put(`${miembroItemPath}/perfil-operativo`, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    // Solo el dueño o un admin con alcance de TODA la organizacion (mismo helper que el resto de escrituras globales; la funcion SQL lo repite).
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const callerUserId = c.get("userId");
     const targetUserId = c.req.param("userId");
@@ -452,24 +454,28 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const target = members.find((m) => m.userId === targetUserId);
     if (!target) throw Errors.notFound("Ese staff no pertenece a esta organización.");
     if (target.verticalRole !== "staff") throw Errors.conflict("El perfil operativo solo aplica al personal de sucursal (staff).");
+    const repo = deps.restaurantesRepo(c.get("db"));
+    let resultado;
     try {
-      const guardado = await deps.restaurantesRepo(c.get("db")).guardarPerfilOperativo(organizationId, targetUserId, raw.perfil);
-      if (!guardado) throw Errors.serviceUnavailable("Esta función requiere la migración 090 de restaurantes, aún no aplicada en esta base.");
+      resultado = await repo.guardarPerfilOperativo(organizationId, targetUserId, raw.perfil);
+      if (!resultado.disponible) throw Errors.serviceUnavailable("Esta función requiere la migración 090 de restaurantes, aún no aplicada en esta base.");
     } catch (err) {
       const code = (err as { code?: string } | null)?.code;
       if (code === "42501") throw Errors.forbidden("Solo el dueño o un administrador con acceso a todas las sucursales puede cambiar el perfil.");
       if (code === "P0404") throw Errors.notFound("Ese staff no pertenece a esta organización.");
       throw err;
     }
-    await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+    if (!resultado.antesDisponible) logEvent(c, "error", "restaurantes_perfil_operativo_antes_no_disponible", { organizationId, targetUserId });
+    // Bitacora OBLIGATORIA (no traga errores): si no se puede escribir, la transaccion del request se revierte y el cambio de permisos no queda.
+    await repo.registrarAuditoriaObligatoria({
       organizationId,
       actorUserId: callerUserId,
       action: "staff.perfil_operativo_actualizado",
       entityType: "staff",
       entityId: targetUserId,
       campo: "perfilOperativo",
-      antes: null,
-      despues: raw.perfil,
+      antes: resultado.antesDisponible ? (resultado.antes ?? "encargado") : null,
+      despues: raw.perfil ?? "encargado",
     });
     return c.json({ ok: true, perfil: raw.perfil });
   });

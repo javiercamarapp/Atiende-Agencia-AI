@@ -32,6 +32,20 @@ describe("cajero (staff marcado)", () => {
     expect((await estado(pedido(), tk, { status: "cancelado", motivo: "cliente_desistio" })).status).toBe(403);
   });
 
+  it("tampoco marca entregado ni completado (cerrar la entrega es despachar)", async () => {
+    const { ctx, pedido, estado } = await escenario(true);
+    const tk = ctx.staff.staffSucursalA.token;
+    expect((await estado(pedido(), tk, { status: "entregado" })).status).toBe(403);
+    expect((await estado(pedido(), tk, { status: "completado" })).status).toBe(403);
+  });
+
+  it("otras vias: el cajero (staff) no entra a las rutas del repartidor ni cambia estados por la ruta de repartidor", async () => {
+    const { ctx, app, pedido } = await escenario(true);
+    const o = pedido();
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/orders/${o.id}/status`, authedJson(ctx.staff.staffSucursalA.token, { status: "entregado" }, "PATCH"));
+    expect(res.status).toBe(403);
+  });
+
   it("no puede asignar repartidor", async () => {
     const { ctx, app, pedido } = await escenario(true);
     const o = pedido();
@@ -73,5 +87,29 @@ describe("PUT admin/staff/miembros/:userId/perfil-operativo", () => {
     expect((await app.request(url(ctx, ctx.staff.admin.id), authedJson(ctx.staff.owner.token, { perfil: "cajero" }, "PUT"))).status).toBe(409);
     expect((await app.request(url(ctx, id), authedJson(ctx.staff.admin.token, { perfil: "cajero" }, "PUT"))).status).toBe(200);
     expect(ctx.restaurantesRepo.auditLog.some((r) => r.action === "staff.perfil_operativo_actualizado" && r.entityId === id && r.despues === "cajero")).toBe(true);
+  });
+
+  it("admin ACOTADO (solo algunas sucursales) no cambia perfiles: 403 y el perfil no cambia; admin general y dueño si", async () => {
+    const { ctx, app } = await escenario(false);
+    const id = ctx.staff.staffSucursalA.id;
+    expect((await app.request(url(ctx, id), authedJson(ctx.staff.adminSucursalA.token, { perfil: "cajero" }, "PUT"))).status).toBe(403);
+    expect(ctx.restaurantesRepo.perfilesOperativos.get(`${ctx.organizationId}:${id}`)).toBeUndefined();
+    expect((await app.request(url(ctx, id), authedJson(ctx.staff.admin.token, { perfil: "cajero" }, "PUT"))).status).toBe(200);
+  });
+
+  it("la bitacora guarda el perfil previo (antes) y el nuevo (despues)", async () => {
+    const { ctx, app } = await escenario(false);
+    const id = ctx.staff.staffSucursalA.id;
+    await app.request(url(ctx, id), authedJson(ctx.staff.owner.token, { perfil: "cajero" }, "PUT"));
+    await app.request(url(ctx, id), authedJson(ctx.staff.owner.token, { perfil: null }, "PUT"));
+    const filas = ctx.restaurantesRepo.auditLog.filter((r) => r.action === "staff.perfil_operativo_actualizado" && r.entityId === id);
+    expect(filas.map((r) => [r.antes, r.despues])).toEqual([["encargado", "cajero"], ["cajero", "encargado"]]);
+  });
+
+  it("si la bitacora falla NO se traga el error: la ruta responde error (no 200)", async () => {
+    const { ctx, app } = await escenario(false);
+    ctx.restaurantesRepo.fallarAuditoriaObligatoria = true;
+    const res = await app.request(url(ctx, ctx.staff.staffSucursalA.id), authedJson(ctx.staff.owner.token, { perfil: "cajero" }, "PUT"));
+    expect(res.status).toBeGreaterThanOrEqual(500);
   });
 });

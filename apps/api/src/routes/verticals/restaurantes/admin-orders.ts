@@ -266,8 +266,9 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       throw Errors.validation("status: valor de estado desconocido.");
     }
     // Perfil operativo (migracion 090): el cajero no cancela ni pone en camino; el encargado y el dueño/admin si.
+    // Despachar incluye salir a reparto y cerrar la entrega: el cajero tampoco marca «entregado» ni «completado».
     if (raw.status === "cancelado") await assertOperadorPuede(deps, c, order.propertyId, "cancelar");
-    else if (raw.status === "en_camino") await assertOperadorPuede(deps, c, order.propertyId, "despachar");
+    else if (raw.status === "en_camino" || raw.status === "entregado" || raw.status === "completado") await assertOperadorPuede(deps, c, order.propertyId, "despachar");
     // Taxonomia cerrada de cancelacion (A-24/C-13): cancelar SIN motivo se rechaza antes de tocar el pedido.
     let motivoCancelacion: string | null = null;
     if (raw.status === "cancelado") {

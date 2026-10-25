@@ -830,6 +830,14 @@ export type PerfilOperativo = "encargado" | "cajero";
 /** Acciones que `restaurantes.operador_puede` (090) distingue por perfil. */
 export type AccionOperador = "capturar" | "gestionar" | "despachar" | "cancelar";
 
+export interface GuardarPerfilOperativoResultado {
+  /** `false` si la base aun no tiene la migracion 090. */
+  readonly disponible: boolean;
+  /** Perfil previo (null = sin marcar). `antesDisponible: false` si la base no tiene la migracion 100 (no se pudo leer). */
+  readonly antes: PerfilOperativo | null;
+  readonly antesDisponible: boolean;
+}
+
 export interface OperadorPuedeInput {
   readonly organizationId: string;
   readonly propertyId: string;

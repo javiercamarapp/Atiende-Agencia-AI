@@ -65,6 +65,7 @@ import type {
   Promotion,
   PromotionPatch,
   OperadorPuedeInput,
+  GuardarPerfilOperativoResultado,
   PerfilOperativo,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
@@ -584,8 +585,13 @@ export interface RestaurantesRepository {
   operadorPuede(input: OperadorPuedeInput): Promise<boolean>;
 
   /** Marca a un `staff` como cajero/encargado (o nulo = encargado) via `restaurantes.staff_perfil_operativo_guardar` (solo owner/admin con
-   *  alcance de toda la organizacion, validado en SQL). `false` si la base aun no tiene la migracion 090. */
-  guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<boolean>;
+   *  alcance de toda la organizacion, validado en SQL). Devuelve el perfil previo (migracion 100) para la bitacora. `disponible: false` si la
+   *  base aun no tiene la migracion 090. */
+  guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<GuardarPerfilOperativoResultado>;
+
+  /** Como `registrarAuditoria` pero NUNCA traga el error: si la bitacora no se puede escribir, lanza (y la transaccion del request, que incluye
+   *  el cambio de negocio, se revierte). Para cambios de permisos, donde una accion sin rastro no es aceptable. */
+  registrarAuditoriaObligatoria(input: RegistrarAuditoriaInput): Promise<void>;
 
   /** `disponible: false` (nunca lanza) cuando `restaurantes.audit_log`/
    *  `restaurantes.record_audit_log` todavía no existen en esta base (SQLSTATE

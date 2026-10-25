@@ -67,6 +67,7 @@ import type {
   Promotion,
   PromotionPatch,
   OperadorPuedeInput,
+  GuardarPerfilOperativoResultado,
   PerfilOperativo,
   RegistrarAuditoriaInput,
   RestaurantesAuditLogFiltro,
@@ -2255,9 +2256,18 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return (this.perfilesOperativos.get(`${input.organizationId}:${input.userId}`) ?? "encargado") === "encargado";
   }
 
-  async guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<boolean> {
+  async guardarPerfilOperativo(organizationId: string, userId: string, perfil: PerfilOperativo | null): Promise<GuardarPerfilOperativoResultado> {
+    const antes = this.perfilesOperativos.get(`${organizationId}:${userId}`) ?? null;
     this.perfilesOperativos.set(`${organizationId}:${userId}`, perfil);
-    return true;
+    return { disponible: true, antes, antesDisponible: true };
+  }
+
+  /** Solo pruebas: fuerza que la bitacora obligatoria falle (la ruta debe responder error y no dejar el cambio a medias). */
+  fallarAuditoriaObligatoria = false;
+
+  async registrarAuditoriaObligatoria(input: RegistrarAuditoriaInput): Promise<void> {
+    if (this.fallarAuditoriaObligatoria) throw new Error("bitacora no disponible (simulado)");
+    await this.registrarAuditoria(input);
   }
 
   async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {
