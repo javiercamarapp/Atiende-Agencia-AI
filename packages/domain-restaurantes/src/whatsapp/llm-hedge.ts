@@ -10,7 +10,7 @@
 import { LlmCallCancelledError } from "@atiende/agent-core";
 import { TopeLlamadaLlmError } from "./observabilidad-turno.ts";
 
-/** Interruptor de entorno: milisegundos tras los que se lanza el alterno en paralelo. `0`, `off`, `false` o `no` apagan el hedging (queda el respaldo secuencial de R19). */
+/** Interruptor de entorno: milisegundos tras los que se lanza el alterno en paralelo. APAGADO por omision (queda el respaldo secuencial de R19); R21 lo enciende con 5500. */
 export const HEDGE_LLM_ENV = "WHATSAPP_LLM_HEDGE_MS";
 /** Valor por omision: ~p95 de una vuelta normal medida en R20 (6.0 s) y en las sondas de R21; una vuelta con tool-calls largos tarda 4-6 s sin estar atascada. */
 export const HEDGE_LLM_DESPUES_MS_POR_OMISION = 5_500;
@@ -21,13 +21,12 @@ export const HEDGE_LLM_RETRASO_MIN_EFECTIVO_MS = 3_500;
 /** Piso del retraso configurable: menos que esto duplicaria casi todas las llamadas. */
 export const HEDGE_LLM_DESPUES_MIN_MS = 1_500;
 
-/** Retraso del hedging desde el entorno; null = apagado. Un valor invalido o menor al piso cae al valor por omision (nunca apaga por error). */
+/** Retraso del hedging desde el entorno; null = APAGADO. Apagado por omision (variable ausente o vacia): se enciende con `WHATSAPP_LLM_HEDGE_MS=5500`. Un valor invalido o menor al piso lo deja apagado. */
 export function hedgeLlmDespuesMs(env: Readonly<Record<string, string | undefined>> = process.env): number | null {
   const crudo = (env[HEDGE_LLM_ENV] ?? "").trim().toLowerCase();
-  if (crudo === "") return HEDGE_LLM_DESPUES_MS_POR_OMISION;
-  if (crudo === "0" || crudo === "off" || crudo === "false" || crudo === "no") return null;
+  if (crudo === "" || crudo === "0" || crudo === "off" || crudo === "false" || crudo === "no") return null;
   const n = Number(crudo);
-  if (!Number.isFinite(n) || n < HEDGE_LLM_DESPUES_MIN_MS) return HEDGE_LLM_DESPUES_MS_POR_OMISION;
+  if (!Number.isFinite(n) || n < HEDGE_LLM_DESPUES_MIN_MS) return null;
   return Math.round(n);
 }
 
@@ -86,7 +85,7 @@ export interface OpcionesHedge<T> {
 }
 
 /**
- * Corre `primario`; si pasa de `hedgeDespuesMs` sin contestar (o falla ANTES con un error que no sea de la peticion) corre `alterno` en paralelo. Devuelve la
+ * Corre `primario`; si pasa de `hedgeDespuesMs` sin contestar corre `alterno` en paralelo. Un error RAPIDO del primario antes de ese retraso NO lanza el alterno: se propaga (la escalera del gateway ya probo los demas modelos). Devuelve la
  * primera respuesta valida y aborta la otra pata. Si ninguna contesta antes de `limiteMs`, rechaza con `HedgeLlmFalloError` cuya causa es `TopeLlamadaLlmError`
  * (si alguna pata vencio el tope) o el ultimo error. Tambien corre con Promise.race por si un proveedor ignora la senal de aborto.
  */
@@ -170,7 +169,8 @@ export function completarConHedging<T>(op: OpcionesHedge<T>): Promise<ResultadoH
         if (controles[p] !== null && !terminadas.has(p)) {
           terminadas.add(p);
           informar(p, "tope");
-          controles[p]!.abort();
+          // El primario atascado SI cuenta como falla del proveedor (abort sin motivo); el alterno recien lanzado no tuvo oportunidad justa: se cancela sin culparlo.
+          controles[p]!.abort(p === "alterno" ? new LlmCallCancelledError() : undefined);
         }
       }
       resuelto = true;

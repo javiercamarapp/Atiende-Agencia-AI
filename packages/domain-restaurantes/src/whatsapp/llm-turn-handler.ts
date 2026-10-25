@@ -573,6 +573,8 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
+/** PM-R21: tope duro de vueltas con hedging por turno (cada una duplica la llamada al modelo; el costo del perdedor se liquida al estimado). */
+export const HEDGES_MAX_POR_TURNO = 2;
 /**
  * PM-R19: respaldo de PROVEEDOR cuando la llamada al modelo agota su tope de tiempo. El tope por llamada era TODO el presupuesto restante del turno
  * (`completarConTope(deadline)`): al vencer no quedaba tiempo para nada y el cliente recibia "problema tecnico" (`tope_llamada` fue el 100 % de los errores de
@@ -678,6 +680,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     llamadasLlm: Array<{ pata: "primario" | "alterno" | "respaldo_secuencial"; resultado: "ok" | "tope" | "error" | "cancelada"; ms: number; modelo: string; causa?: CausaErrorTurno }>;
     /** PM-R21: el hedging lanzo el alterno en paralelo en alguna vuelta del turno. */
     hedgeLlmLanzado: boolean;
+    /** PM-R21: cuantas vueltas del turno lanzaron el alterno en paralelo (tope `HEDGES_MAX_POR_TURNO`). */
+    hedgesLlm: number;
     /** PM-R21: quien contesto la ULTIMA vuelta con hedging (null si no hubo). */
     hedgeLlmGanador: "primario" | "alterno" | null;
     motivoEscalacion: string | null;
@@ -1182,7 +1186,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID) : null;
             // PM-R21 (hedging, apagable con WHATSAPP_LLM_HEDGE_MS=0): el alterno se lanza EN PARALELO cuando el primario pasa de ~5.5 s sin contestar, en vez de cortarlo a los 9-11 s y
             // dejar al alterno 7 s o menos (en R20 el respaldo secuencial tambien se quedo sin contestar en 71 de 113 turnos con error). Gana el primero que conteste; la otra se aborta.
-            const retrasoHedge = siguiente !== null && hedgeMs !== null ? hedgeLlmRetrasoEfectivoMs(deadline - Date.now(), hedgeMs) : null;
+            const retrasoHedge = siguiente !== null && hedgeMs !== null && tele.hedgesLlm < HEDGES_MAX_POR_TURNO ? hedgeLlmRetrasoEfectivoMs(deadline - Date.now(), hedgeMs) : null;
             if (siguiente !== null && retrasoHedge !== null) {
               const modeloPrimario = modeloActual ?? MODELO_PREDETERMINADO_ID;
               const anotar = (patas: readonly PataHedgeInforme[]) => {
@@ -1194,6 +1198,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 completion = r.valor;
                 if (r.alternoLanzado) {
                   tele.hedgeLlmLanzado = true;
+                  tele.hedgesLlm += 1;
                   tele.hedgeLlmGanador = r.ganador;
                   tele.reintentosLlm += 1;
                   tele.modeloRespaldoLlm = siguiente;
@@ -1209,6 +1214,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 anotar(errHedge.patas);
                 if (errHedge.alternoLanzado) {
                   tele.hedgeLlmLanzado = true;
+                  tele.hedgesLlm += 1;
                   tele.hedgeLlmGanador = null;
                   tele.reintentosLlm += 1;
                   tele.modeloRespaldoLlm = siguiente;
@@ -1586,7 +1592,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1625,6 +1631,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             modeloRespondioLlm: tele.modeloRespondioLlm,
             llamadasLlm: tele.llamadasLlm,
             hedgeLlmLanzado: tele.hedgeLlmLanzado,
+            hedgesLlm: tele.hedgesLlm,
             hedgeLlmGanador: tele.hedgeLlmGanador,
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,

@@ -150,6 +150,8 @@ export interface EventoTurnoWhatsApp {
   readonly llamadasLlm?: ReadonlyArray<{ readonly pata: "primario" | "alterno" | "respaldo_secuencial"; readonly resultado: "ok" | "tope" | "error" | "cancelada"; readonly ms: number; readonly modelo: string; readonly causa?: CausaErrorTurno }>;
   /** PM-R21: el hedging lanzo el modelo alterno EN PARALELO porque el primario paso del retraso configurado sin contestar. */
   readonly hedgeLlmLanzado?: boolean;
+  /** PM-R21: vueltas del turno que lanzaron el alterno en paralelo (0 a 2): la metrica de gasto extra del hedging por organizacion. */
+  readonly hedgesLlm?: number;
   /** PM-R21: quien contesto cuando hubo hedging ("primario" si el primario contesto aun con el alterno en vuelo; null si no hubo hedging o ninguno contesto). */
   readonly hedgeLlmGanador?: "primario" | "alterno" | null;
   /** Motivo de escalacion A HUMANO (clasificador de alto riesgo o `escalar_a_humano`); null si no hubo. */
