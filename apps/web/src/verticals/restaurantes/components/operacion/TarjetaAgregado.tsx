@@ -22,6 +22,8 @@ export interface TarjetaAgregadoProps {
 
 export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRechazar }: TarjetaAgregadoProps) {
   const abierta = t.estado === "pendiente";
+  // Pasados 20 min la solicitud YA es terminal aunque el tick de 5 min no la haya cerrado en la base (el servidor tambien la cerraria al intentar decidir): no se puede aceptar ni rechazar.
+  const vencida = abierta && (t.estadoEfectivo === "vencido" || nivelDeSegundos(segundos) === "vencido");
   const color = colorCronometro(segundos);
   const nivel = nivelDeSegundos(segundos);
   const Icono = ICONO_COLOR[color];
@@ -70,7 +72,7 @@ export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRe
           <p className="text-base font-medium text-foreground">Total ${formatMoney(t.pedido.total)}</p>
           {abierta && t.pedido.yaEnCocina && (
             <p role="note" className="rounded-md border border-warning p-2 text-sm text-warning">
-              Este pedido ya está en cocina: el agregado puede no alcanzar a salir junto con él.
+              Este pedido ya está en cocina: el agregado puede no alcanzar a salir junto con él. Aceptarlo NO reimprime la comanda; avisa a cocina.
             </p>
           )}
         </section>
@@ -117,7 +119,11 @@ export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRe
           )}
         </div>
 
-        {abierta ? (
+        {vencida ? (
+          <p role="status" data-testid="agregado-vencido" className="rounded-md border-2 border-danger p-3 text-base font-medium text-danger">
+            Esta solicitud ya venció (pasaron más de 20 minutos) y no se puede aceptar ni rechazar. Se cierra sola; ofrécele al cliente un pedido aparte.
+          </p>
+        ) : abierta ? (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button type="button" className="h-14 text-lg" loading={ocupado} disabled={ocupado} aria-label={`Aceptar agregado al pedido ${folio}`} onClick={() => alAceptar(t)}>
               Aceptar agregado

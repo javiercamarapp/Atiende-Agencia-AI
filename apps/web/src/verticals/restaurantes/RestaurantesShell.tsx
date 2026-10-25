@@ -133,7 +133,7 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
     {
       title: "Operación",
       items: [
-        // Agregados por validar (097): lo que un cliente pide agregar a un pedido ya enviado. Visible para quien tiene `pedidos.agregados` (owner/admin/staff), con o sin el panel movil.
+        // Agregados por validar (099): lo que un cliente pide agregar a un pedido ya enviado. Visible para quien tiene `pedidos.agregados` (owner/admin/staff), con o sin el panel movil.
         ...(canSeeAgregados ? [{ to: `${base}/operacion/agregados`, label: "Agregados", icon: ListPlus }] : []),
         // Panel movil del operador (cola, captura, viajes, turno): solo con el interruptor encendido y para quien el servidor deja pasar (`pedidos.capturar`).
         ...(canSeeOperacion

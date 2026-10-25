@@ -1,4 +1,4 @@
-// API simulada de «Agregados por validar» (097) para e2e. Solo existe aqui: la API real (admin-agregados.ts) la prueban apps/api/tests y scripts/verify-restaurantes-agregados.
+// API simulada de «Agregados por validar» (099) para e2e. Solo existe aqui: la API real (admin-agregados.ts) la prueban apps/api/tests y scripts/verify-restaurantes-agregados.
 // Estado en memoria por escenario: aceptar/rechazar se refleja en el GET siguiente; el segundo clic responde `ya_resuelto`. Solo datos sinteticos.
 import type { ListaAgregados, TarjetaAgregado } from "../../../../../packages/domain-restaurantes/src/operacion/agregados.ts";
 import type { Ruta } from "../tipos.ts";
@@ -69,7 +69,10 @@ export const rutasRestaurantesAgregados: readonly Ruta[] = [
     manejador: (p) => {
       const r = registros(p).find((x) => x.tarjeta.id === p.params["agregadoId"]);
       if (!r) return errorApi(404, "not_found", "No se encontró ese agregado.");
+      const version = (p.cuerpo as { version?: unknown } | null)?.version;
+      if (typeof version !== "number") return errorApi(400, "validation_error", "version: indica la versión de la solicitud que viste (entero 1..50).");
       if (r.tarjeta.estado !== "pendiente") return { resultado: "ya_resuelto", agregado: vivo(r) };
+      if (version !== r.tarjeta.agregado.version) return errorApi(409, "agregado_version_cambio", "El cliente agregó más productos mientras la veías. Revisa la solicitud actualizada y decide de nuevo.");
       r.tarjeta = { ...r.tarjeta, estado: "aceptado", estadoEfectivo: "aceptado", resueltoEn: new Date().toISOString(), resueltoPor: "Persona de prueba", cliente: { ...r.tarjeta.cliente, telefono: null } };
       return { resultado: "aplicado", agregado: r.tarjeta };
     },
@@ -81,7 +84,8 @@ export const rutasRestaurantesAgregados: readonly Ruta[] = [
     manejador: (p) => {
       const r = registros(p).find((x) => x.tarjeta.id === p.params["agregadoId"]);
       if (!r) return errorApi(404, "not_found", "No se encontró ese agregado.");
-      const cuerpo = (p.cuerpo ?? {}) as { motivo?: string; nota?: string };
+      const cuerpo = (p.cuerpo ?? {}) as { motivo?: string; nota?: string; version?: unknown };
+      if (typeof cuerpo.version !== "number") return errorApi(400, "validation_error", "version: indica la versión de la solicitud que viste (entero 1..50).");
       if (!cuerpo.motivo) return errorApi(400, "validation_error", "motivo: debe ser uno de la lista.");
       if (r.tarjeta.estado !== "pendiente") return { resultado: "ya_resuelto", agregado: vivo(r) };
       r.tarjeta = { ...r.tarjeta, estado: "rechazado", estadoEfectivo: "rechazado", motivoRechazo: cuerpo.motivo as TarjetaAgregado["motivoRechazo"], notaRechazo: cuerpo.nota ?? null, resueltoEn: new Date().toISOString(), resueltoPor: "Persona de prueba", cliente: { ...r.tarjeta.cliente, telefono: null } };

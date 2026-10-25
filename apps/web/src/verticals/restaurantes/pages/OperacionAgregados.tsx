@@ -1,4 +1,4 @@
-// «Agregados por validar» (panel movil del operador, migracion 097): el cliente ya tiene un pedido enviado a la sucursal y pide agregar algo por WhatsApp o llamada.
+// «Agregados por validar» (panel movil del operador, migracion 099): el cliente ya tiene un pedido enviado a la sucursal y pide agregar algo por WhatsApp o llamada.
 // El agente NUNCA lo confirma: crea la solicitud y aqui la sucursal la acepta o la rechaza con motivo. Pendientes con la mas antigua arriba, cronometro con color
 // (plazo de 10 min), banner persistente + sonido de dos tonos cada 60 s mientras haya pendientes, titulo de la pestana parpadeante. Sondeo cada 15 s.
 // Sin datos de ejemplo: lee `GET admin/agregados`; sin la actualizacion de base de datos lo dice con claridad y no pinta nada falso.
@@ -43,7 +43,6 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   const [rechazando, setRechazando] = useState<TarjetaAgregadoDato | null>(null);
   const [errorDialogo, setErrorDialogo] = useState<string | null>(null);
   const [parpadeo, setParpadeo] = useState(false);
-  const llaves = useRef(new Map<string, string>());
   const vistos = useRef(new Set<string>());
   /** Candado SINCRONO contra el doble toque (el estado `ocupados` se actualiza despues del render). */
   const enCurso = useRef(new Set<string>());
@@ -140,19 +139,22 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   async function ejecutar(t: TarjetaAgregadoDato, accion: "aceptar" | "rechazar", entrada?: RechazarAgregadoEntrada): Promise<boolean> {
     if (enCurso.current.has(t.id)) return false;
     enCurso.current.add(t.id);
-    const clave = `${t.id}:${accion}`;
-    const llave = llaves.current.get(clave) ?? nuevaLlave(); // se conserva si hay que reintentar: el servidor no duplica
-    llaves.current.set(clave, llave);
+    const version = t.agregado.version; // la que la persona VIO: si el cliente pidio mas entre tanto, el servidor responde 409 y no decide
     setOcupados((s) => new Set(s).add(t.id));
     setErrorDialogo(null);
     try {
-      const r = accion === "aceptar" ? await aceptarAgregado(fetchImpl, apiBaseUrl, token, propertyId, t.id, llave) : await rechazarAgregado(fetchImpl, apiBaseUrl, token, propertyId, t.id, entrada!, llave);
-      llaves.current.delete(clave);
+      const r = accion === "aceptar" ? await aceptarAgregado(fetchImpl, apiBaseUrl, token, propertyId, t.id, version, nuevaLlave()) : await rechazarAgregado(fetchImpl, apiBaseUrl, token, propertyId, t.id, version, entrada!, nuevaLlave());
       avisarResultado(r, accion);
       return true;
     } catch (e) {
+      // 409 de la carrera (la solicitud cambio o ya vencio): NO es un fallo de red. Nada se decidio; se muestra el mensaje del servidor, se cierra el dialogo y se recarga
+      // para que la persona vea la solicitud vigente (con lo nuevo que pidio el cliente) y decida de nuevo.
+      if (e instanceof ErrorOperacion && e.status === 409 && (e.code === "agregado_version_cambio" || e.code === "agregado_vencido")) {
+        (e.code === "agregado_vencido" ? notify.warning : notify.info)(e.message);
+        refrescar();
+        return true;
+      }
       const mensaje = e instanceof ErrorOperacion ? e.message : "No hay conexión. La acción no se aplicó; vuelve a intentarlo.";
-      if (e instanceof ErrorOperacion && e.status >= 400 && e.status < 500) llaves.current.delete(clave);
       notify.error(mensaje);
       setErrorDialogo(mensaje);
       return false;
@@ -171,7 +173,7 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
     if (t.pedido.yaEnCocina) {
       const ok = await confirmar({
         titulo: "El pedido ya está en preparación",
-        descripcion: "¿Confirmas que sí alcanza a agregarse? Si aceptas, el cliente recibe la confirmación con el nuevo total.",
+        descripcion: "¿Confirmas que sí alcanza a agregarse? Si aceptas, el cliente recibe la confirmación con el nuevo total. El sistema NO reimprime la comanda: avisa tú a cocina de lo que se agregó.",
         confirmar: "Sí, aceptar agregado",
         cancelar: "Volver",
       });

@@ -122,7 +122,7 @@ export interface SlaCallbackWire {
 export function textoMotivoCallback(motivo: string | null): string | null {
   if (!motivo) return null;
   if (motivo === "evento") return "Evento o catering";
-  // Agregados por validar (097): tareas de «devolver llamada» que deja la sucursal al rechazar, o el sistema al vencer, un agregado.
+  // Agregados por validar (099): tareas de «devolver llamada» que deja la sucursal al rechazar, o el sistema al vencer, un agregado.
   if (motivo === "agregado_rechazado") return "Devolver llamada: agregado rechazado";
   if (motivo === "agregado_vencido") return "Devolver llamada: agregado sin respuesta";
   return motivo.startsWith("escalada:") ? `Escalada: ${motivo.slice("escalada:".length).replace(/_/g, " ")}` : motivo;

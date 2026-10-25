@@ -63,7 +63,7 @@ for (const vista of [
       await confirmar.click();
       await expect(page.getByTestId("tarjeta-agregado-00000000-0000-4000-8000-000000000902")).toBeHidden();
       const posts = await mock.buscar({ metodo: "POST", ruta: "/rechazar" });
-      expect(posts[0]?.cuerpo).toEqual({ motivo: "otro", nota: "Cocina saturada" });
+      expect(posts[0]?.cuerpo).toEqual({ motivo: "otro", nota: "Cocina saturada", version: 1 });
       vigilante.verificar();
     });
 
