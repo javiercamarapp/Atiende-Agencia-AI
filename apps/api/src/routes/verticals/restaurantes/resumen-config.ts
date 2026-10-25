@@ -22,6 +22,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { assertAdminGeneral } from "./admin-scope.ts";
 
 const FORMULA =
   "Horas ahorradas = conversaciones de WhatsApp atendidas por el agente (acumulado historico de las sucursales que puedes ver; no cambia con el periodo) × minutos por conversacion que configuraste para toda la organizacion ÷ 60. Es una estimacion con tu supuesto, no una medicion.";
@@ -55,6 +56,8 @@ export function restaurantesResumenConfigRoutes(deps: AppDeps): Hono<CoreAuthHon
 
   app.put(path, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    // La configuracion del resumen es de toda la organizacion.
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const actorUserId = c.get("userId");
     const repo = deps.restaurantesRepo(c.get("db"));
