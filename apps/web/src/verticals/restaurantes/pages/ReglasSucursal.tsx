@@ -294,7 +294,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       <section className="flex flex-col gap-2">
         <h3 className="m-0 text-sm font-semibold text-foreground">Horario</h3>
         <p className="m-0 text-xs text-muted-foreground">
-          Sin turnos = sin límite de horario. Si la hora de cierre es menor que la de apertura, el turno termina pasada la medianoche (ej. 12:00 a 01:00). Para doble turno agregue dos.
+          Sin turnos = sin límite de horario. Si la hora de cierre es menor que la de apertura, el turno termina pasada la medianoche (ej. 12:00 a 01:00). Para doble turno agregue dos. «Último pedido» es opcional: sin hora rige 30 minutos antes del cierre; una hora menor que la apertura es de la madrugada del día siguiente (ej. 00:30).
         </p>
         {turnos.map((turno, index) => (
           <div key={index} className="flex flex-col gap-2 rounded-md border border-border p-2">
@@ -315,6 +315,18 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
                   Cierra
                 </Label>
                 <Input id={`cierra-${branchId}-${index}`} type="time" value={turno.cierra} onChange={(e) => updateTurno(index, { cierra: e.target.value })} className="w-[120px]" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor={`ultimo-domicilio-${branchId}-${index}`} className="text-xs text-muted-foreground">
+                  Último pedido a domicilio
+                </Label>
+                <Input id={`ultimo-domicilio-${branchId}-${index}`} type="time" value={turno.ultimoPedidoDomicilio ?? ""} onChange={(e) => updateTurno(index, { ultimoPedidoDomicilio: e.target.value || undefined })} className="w-[120px]" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor={`ultimo-recoger-${branchId}-${index}`} className="text-xs text-muted-foreground">
+                  Último pedido para recoger
+                </Label>
+                <Input id={`ultimo-recoger-${branchId}-${index}`} type="time" value={turno.ultimoPedidoRecoger ?? ""} onChange={(e) => updateTurno(index, { ultimoPedidoRecoger: e.target.value || undefined })} className="w-[120px]" />
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setTurnos((prev) => prev.filter((_, i) => i !== index))}>
                 Quitar turno

@@ -44,7 +44,8 @@ import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRep
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
-import { estaAbiertoAhora, evaluarUltimoPedido, horaLegible } from "../horarios.ts";
+import { aperturaConExcepciones, estaAbiertoAhora, evaluarUltimoPedido, fraseUltimoPedido, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
+import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
@@ -309,6 +310,25 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
       const estado = estaAbiertoAhora(policy.horario, ahora, zona);
       if (estado.abierto) {
         const ultimo = evaluarUltimoPedido(policy.horario, ahora, zona);
+        // Hora fija de ultimo pedido por tipo (domicilio / recoger): el agente da cierre y ultimo pedido del tipo que le interesa al cliente. Misma frase que consultar_sucursal.
+        if (tieneUltimoPedidoPorTipo(ultimo)) {
+          // Dia de NEGOCIO (no calendario): en la madrugada del turno de ayer rigen los diasDomicilio de ayer.
+          const domicilioDisponible = evaluarDomicilioSucursal(policy, aperturaConExcepciones(policy.horario, [], ahora, zona).diaNegocio).acepta;
+          const frase = fraseUltimoPedido(ultimo, horaLegible, { domicilioDisponible });
+          const dom = domicilioDisponible ? ultimo.domicilio : null;
+          const alguno = (dom?.aceptaPedidos ?? false) || ultimo.recoger.aceptaPedidos;
+          if (!alguno) {
+            return `${branch.name} sigue ABIERTA${estado.cierraA ? ` (cierra a las ${horaLegible(estado.cierraA)})` : ""}, pero YA PASARON LOS ÚLTIMOS PEDIDOS. ${frase ?? ""} Ya no se toman pedidos para hoy: dígalo en su primer mensaje y ofrezca programar para la siguiente apertura o pedir mañana; no prometa horarios fuera del horario.`;
+          }
+          const faltaDomicilio = dom !== null && !dom.aceptaPedidos;
+          return (
+            `${branch.name} está ABIERTA${estado.cierraA ? ` y cierra a las ${horaLegible(estado.cierraA)}` : ""}. ${frase ?? ""} ` +
+            (faltaDomicilio
+              ? `YA PASÓ el último pedido a domicilio: no tome domicilio ahora; ofrezca recoger en la sucursal (todavía se toma) o programar para el día siguiente. `
+              : "") +
+            `El último pedido manda sobre el momento de pedir, no sobre la hora de recogida: un pedido para recoger hecho antes de su último pedido se acepta aunque la hora de recogida sea posterior, siempre que no pase del cierre; después del cierre ofrezca una hora anterior o programar para la siguiente apertura. A "¿siguen abiertos?" responda con el cierre y el último pedido del tipo que le interesa.`
+          );
+        }
         if (!ultimo.aceptaPedidos) {
           return `${branch.name} sigue ABIERTA${estado.cierraA ? ` (cierra a las ${horaLegible(estado.cierraA)})` : ""}, pero YA PASÓ EL ÚLTIMO PEDIDO (${ultimo.margenMin} minutos antes del cierre${ultimo.ultimoPedidoA ? `, hasta las ${horaLegible(ultimo.ultimoPedidoA)}` : ""}): ya no se toman pedidos para hoy. Dígalo en su primer mensaje y ofrezca programar para la siguiente apertura o pedir mañana; no prometa horarios fuera del horario.`;
         }
