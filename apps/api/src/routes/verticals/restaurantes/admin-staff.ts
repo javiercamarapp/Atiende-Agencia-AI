@@ -187,6 +187,7 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.use(repartidoresPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(miembrosPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(miembroItemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(`${miembroItemPath}/perfil-operativo`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(collectionPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
@@ -433,6 +434,44 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);
       throw err;
     }
+  });
+
+  // Perfil operativo (migracion 090): marca a un `staff` como CAJERO (captura, acepta y prepara; no despacha ni cancela) o ENCARGADO (todo; es
+  // el valor por omision). Es una bandera de la membresia, no un rol nuevo. Autoridad real: `restaurantes.staff_perfil_operativo_guardar`
+  // (solo owner/admin con alcance de toda la organizacion); aqui el primer filtro y el mejor mensaje.
+  app.put(`${miembroItemPath}/perfil-operativo`, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const callerUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+    const raw = await readJsonCapped<{ perfil?: unknown }>(c.req.raw, 1 * 1024);
+    if (raw.perfil !== null && raw.perfil !== "encargado" && raw.perfil !== "cajero") {
+      throw Errors.validation('perfil: se esperaba "encargado", "cajero" o null.');
+    }
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw Errors.notFound("Ese staff no pertenece a esta organización.");
+    if (target.verticalRole !== "staff") throw Errors.conflict("El perfil operativo solo aplica al personal de sucursal (staff).");
+    try {
+      const guardado = await deps.restaurantesRepo(c.get("db")).guardarPerfilOperativo(organizationId, targetUserId, raw.perfil);
+      if (!guardado) throw Errors.serviceUnavailable("Esta función requiere la migración 090 de restaurantes, aún no aplicada en esta base.");
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "42501") throw Errors.forbidden("Solo el dueño o un administrador con acceso a todas las sucursales puede cambiar el perfil.");
+      if (code === "P0404") throw Errors.notFound("Ese staff no pertenece a esta organización.");
+      throw err;
+    }
+    await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: callerUserId,
+      action: "staff.perfil_operativo_actualizado",
+      entityType: "staff",
+      entityId: targetUserId,
+      campo: "perfilOperativo",
+      antes: null,
+      despues: raw.perfil,
+    });
+    return c.json({ ok: true, perfil: raw.perfil });
   });
 
   // FASE 3 (producto) — hallazgo real: hasta ahora NO existía ninguna forma de dar
