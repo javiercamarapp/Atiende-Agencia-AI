@@ -252,6 +252,7 @@ export * from "./cierres/index.ts";
 export { alertarHallazgosCfo, seleccionarAlertas, zonaDeOrganizacion, dentroDeHorarioExterno, horaLocal, UMBRAL_ALERTA_CENTAVOS_POR_DEFECTO, TOPE_ALERTAS_POR_ORG_DIA } from "./cfo/alertas.ts";
 export type { AlertaCfo, OpcionesAlertasCfo, ResultadoAlertasCfo, SucursalAlerta, EstadoAlertasCfo } from "./cfo/alertas.ts";
 export * from "./autopiloto/index.ts";
+export * from "./agregados/index.ts";
 export { descripcionSeguraDeError } from "./log-seguro.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
