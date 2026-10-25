@@ -2,7 +2,7 @@
 // (1) `pedido_grande` lo fija SOLO el servidor: si el modelo lo manda en `escalar_a_humano` con una compra normal se rechaza y NO se abre una toma de handoff.
 // (2) Con una toma `pendiente` y el pedido ya cotizado, el «sí» al resumen no recibe el acuse fijo: pasa al agente y el pedido se crea (una sola vez).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR, solicitudEsPedidoGrande, toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
+import { INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR, solicitudEsPedidoGrande, toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
 import { ACUSE_HANDOFF_REPETIDO } from "../src/whatsapp/inbound.ts";
 import { MARTES_14H, nuevoViaje, pedidosDe, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
@@ -37,7 +37,7 @@ describe("T7-061: pedido_grande solo lo fija el servidor", () => {
     expect(v.conversaciones.handoffs).toHaveLength(0);
     // La herramienta le dijo al modelo por que (error de regla) y le indico el camino.
     const vistos = JSON.stringify(v.requests.at(-1)?.messages ?? []);
-    expect(vistos).toContain(MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR.slice(0, 40));
+    expect(vistos).toContain(INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR.slice(0, 40));
   });
 
   it("pedido realmente grande (la cotizacion supera el umbral): el aviso pedido_grande sigue saliendo", async () => {

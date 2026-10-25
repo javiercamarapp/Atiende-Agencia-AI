@@ -307,7 +307,7 @@ async function servidorConfirmaPedidoGrande(repo: RestaurantesRepository, ctx: A
   );
 }
 
-export const MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR = "El motivo pedido_grande lo fija el sistema al superar el umbral; no lo use. Si el cliente quiere cerrar su pedido, siga con cotizar_pedido y crear_pedido. Si necesita una persona por otra razón, use el motivo que corresponda (por ejemplo pedido_especial u otro).";
+export const INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR = "El motivo pedido_grande lo fija el sistema al superar el umbral; no lo use. Si el cliente quiere cerrar su pedido, siga con cotizar_pedido y crear_pedido. Si necesita una persona por otra razón, use el motivo que corresponda (por ejemplo pedido_especial u otro).";
 
 export function normalizarMotivoEscalacion(raw: unknown): MotivoEscalacion {
   return typeof raw === "string" && (MOTIVOS_ESCALACION as readonly string[]).includes(raw) ? (raw as MotivoEscalacion) : "otro";
@@ -2220,7 +2220,7 @@ async function dispatchTool(
       }
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
-      if (esEscalada && input.motivo === "pedido_grande" && !(await servidorConfirmaPedidoGrande(repo, ctx))) throw new OrderValidationError(MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR);
+      if (esEscalada && input.motivo === "pedido_grande" && !(await servidorConfirmaPedidoGrande(repo, ctx))) throw new OrderValidationError(INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR);
       if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
       if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
       const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;
