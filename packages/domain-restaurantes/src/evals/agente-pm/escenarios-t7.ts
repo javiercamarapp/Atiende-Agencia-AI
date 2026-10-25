@@ -1,4 +1,4 @@
-// 71 escenarios de la muestra ANONIMIZADA de chats reales de T7 Garcia Lavin (2-oct-2026). Son datos de evaluacion: describen
+// 74 escenarios (71 de la muestra ANONIMIZADA de chats reales de T7 Garcia Lavin (2-oct-2026) y 3 de decisiones de PM). Son datos de evaluacion: describen
 // lo que el cliente escribe, lo que el agente debe hacer y lo que NO debe hacer, en texto libre para un juez (LLM o persona).
 // No se evaluan de forma determinista; lo que SI es verificable (estructura, ausencia de datos personales, cifras de catalogo
 // y que el prompt cubra cada familia de intenciones) lo prueba `tests/pm-c5-escenarios-t7.spec.ts`.
