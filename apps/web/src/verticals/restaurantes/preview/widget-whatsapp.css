@@ -122,6 +122,8 @@
 .wa-icono[aria-expanded="true"] { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .wa-icono:disabled { opacity: 0.4; cursor: not-allowed; }
 .wa-icono svg { width: 1.125rem; height: 1.125rem; }
+/* En pantallas angostas el chip cede su sitio al título (el estado ya sale en la cabecera del chat). */
+@media (max-width: 479px) { .wa-chip { display: none; } }
 /* Objetivos táctiles de 44 px en pantallas táctiles (en puntero fino bastan 32). */
 @media (pointer: coarse) {
   .wa-atras { min-height: 2.75rem; min-width: 2.75rem; }
