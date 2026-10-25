@@ -2254,7 +2254,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!this.bitacoraAccesoDisponible) return { registrado: false, intentos: 0 };
     const mismos = () => this.auditLog.filter((r) => r.organizationId === input.organizationId && r.actorUserId === input.actorUserId && r.entityType === "acceso" && r.action === input.action && r.entityId === input.entityId);
     const llave = input.llave ?? null;
-    if (llave === null || !mismos().some((r) => r.despues === llave)) {
+    // `sesion.login` no usa idempotencia ni conteo (la llave es el canal de entrada del catalogo).
+    if (input.action === "sesion.login" || llave === null || !mismos().some((r) => r.despues === llave)) {
       await this.registrarAuditoria({
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
@@ -2265,6 +2266,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         despues: llave,
       });
     }
+    if (input.action === "sesion.login") return { registrado: true, intentos: 0 };
     const desde = Date.now() - 24 * 3600 * 1000;
     return { registrado: true, intentos: mismos().filter((r) => r.createdAtMs > desde).length };
   }

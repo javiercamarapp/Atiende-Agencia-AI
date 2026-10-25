@@ -90,7 +90,7 @@ describe("POST repartidor/orders/:orderId/llamar", () => {
     const { ctx, order, app } = await conPedidoAsignado();
     const conLlave = (llave: string) => app.request(ruta(ctx, order.id), { ...authedJson(ctx.staff.repartidor.token, {}, "POST"), headers: { ...(authedJson(ctx.staff.repartidor.token, {}, "POST").headers as Record<string, string>), "Idempotency-Key": llave } });
     for (let i = 0; i < MAX_LLAMADAS_POR_PEDIDO + 3; i += 1) expect((await conLlave("llave-reintento-1")).status).toBe(200);
-    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso")).toHaveLength(1);
+    expect(ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === "pii.llamar")).toHaveLength(1);
     // Llaves distintas si cuentan: el tope sigue vigente.
     for (let i = 0; i < MAX_LLAMADAS_POR_PEDIDO - 1; i += 1) expect((await conLlave(`llave-nueva-${i}-xx`)).status).toBe(200);
     expect((await conLlave("llave-excedente-1")).status).toBe(429);

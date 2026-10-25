@@ -109,3 +109,9 @@ begin; set local role authenticated; select set_config('request.jwt.claim.sub', 
 select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-uno-abcdef') as deberia_ser_1;
 select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-uno-abcdef') as deberia_ser_1;
 select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000f1', 'pii.llamar', '00000000-0000-0000-0000-0000000000e1', 'llave-dos-abcdef') as deberia_ser_2; rollback;
+
+\echo '--- 10. (098) sesion.login: devuelve 0 sin contar; canal del catalogo; canal libre -> 22023 ---'
+begin; set local role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'sesion.login', null, 'correo') as deberia_ser_0;
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'sesion.login', null, null) as deberia_ser_0;
+select restaurantes.registrar_acceso('00000000-0000-0000-0000-0000000000d1', null, 'sesion.login', null, '/auth/login 1.2.3.4'); rollback;

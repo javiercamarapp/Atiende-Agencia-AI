@@ -1,8 +1,9 @@
 -- 098 -- La bitacora de accesos (097) tambien registra INICIOS DE SESION del personal de restaurantes ('sesion.login').
 --
--- QUE HACE: `create or replace` de restaurantes.registrar_acceso con el MISMO cuerpo y permisos de 097 y una accion mas en el catalogo cerrado
--- ('sesion.login'). El inicio de sesion se registra con el usuario ya autenticado (sesion de aplicacion, auth.uid() = la persona) en su primera
--- organizacion de restaurantes; la fila guarda actor, momento y la ruta de entrada (correo, celular...), NUNCA IP, dispositivo, correo ni telefono.
+-- QUE HACE: `create or replace` de restaurantes.registrar_acceso con el MISMO cuerpo y permisos de 097 (candado, llave de idempotencia, validacion de la
+-- entidad) y una accion mas en el catalogo cerrado ('sesion.login'). Para 'sesion.login' NO se cuenta (devuelve 0 sin recorrer la bitacora en cada
+-- inicio de sesion) y el parametro `p_llave` es el CANAL de entrada, de un catalogo cerrado (correo/google/enlace/celular/otro), nunca texto libre. El inicio de sesion se registra con el usuario ya autenticado (sesion de aplicacion, auth.uid() = la persona) en su primera
+-- organizacion de restaurantes; la fila guarda actor, momento y el canal de entrada (correo, google, enlace, celular), NUNCA IP, dispositivo, correo ni telefono.
 -- Quien la lee: owner/admin en `GET .../admin/auditoria?tipo=acceso` (RLS de 019).
 --
 -- Justificacion de seguridad: identica a 097 (definer, search_path fijo, revoke public/anon, grant authenticated, actor = auth.uid(), membresia
@@ -15,7 +16,7 @@ create or replace function restaurantes.registrar_acceso(
   p_property_id uuid,
   p_action text,
   p_entity_id uuid,
-  p_detalle text
+  p_llave text
 )
 returns integer
 language plpgsql
@@ -27,6 +28,7 @@ declare
   v_role text;
   v_props uuid[];
   v_n integer;
+  v_clave bigint;
 begin
   if v_actor is null then
     raise exception 'restaurantes.registrar_acceso: requiere un actor autenticado (auth.uid() es NULL).' using errcode = '28000';
@@ -45,8 +47,43 @@ begin
     raise exception 'restaurantes.registrar_acceso: sucursal fuera del alcance del actor.' using errcode = '42501';
   end if;
 
-  insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
-  values (p_organization_id, v_actor, p_action, 'acceso', p_entity_id, left(coalesce(p_property_id::text, ''), 200), null, left(p_detalle, 500));
+  if p_action = 'sesion.login' then
+    -- Sin texto libre: el canal de entrada es un catalogo cerrado.
+    if p_llave is not null and p_llave not in ('correo', 'google', 'enlace', 'celular', 'otro') then
+      raise exception 'restaurantes.registrar_acceso: canal de inicio de sesion invalido.' using errcode = '22023';
+    end if;
+    -- Un login no tiene tope: se inserta y se sale sin recorrer la bitacora (devuelve 0).
+    insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
+    values (p_organization_id, v_actor, p_action, 'acceso', null, left(coalesce(p_property_id::text, ''), 200), null, p_llave);
+    return 0;
+  end if;
+  if p_llave is not null and p_llave !~ '^[A-Za-z0-9_-]{8,64}$' then
+    raise exception 'restaurantes.registrar_acceso: llave de idempotencia invalida.' using errcode = '22023';
+  end if;
+  -- La entidad debe existir en ESTA organizacion (pedido para llamar/ver telefono, cliente para la ficha).
+  if p_action in ('pii.llamar', 'pii.telefono_ver') then
+    if p_entity_id is null or not exists (select 1 from restaurantes.orders o where o.id = p_entity_id and o.organization_id = p_organization_id) then
+      raise exception 'restaurantes.registrar_acceso: el pedido no pertenece a la organizacion.' using errcode = '22023';
+    end if;
+  elsif p_action = 'pii.cliente_ficha' then
+    if p_entity_id is null or not exists (select 1 from restaurantes.customers cu where cu.id = p_entity_id and cu.organization_id = p_organization_id) then
+      raise exception 'restaurantes.registrar_acceso: el cliente no pertenece a la organizacion.' using errcode = '22023';
+    end if;
+  end if;
+
+  -- Serializa insertar+contar por actor/accion/entidad: el tope no se puede rebasar con llamadas concurrentes.
+  v_clave := hashtextextended(v_actor::text || '|' || p_action || '|' || coalesce(p_entity_id::text, ''), 0);
+  perform pg_advisory_xact_lock(v_clave);
+
+  -- Idempotencia: la misma llave del mismo actor/accion/entidad no vuelve a registrar ni a consumir cupo.
+  if p_llave is null or not exists (
+    select 1 from restaurantes.audit_log a
+    where a.organization_id = p_organization_id and a.actor_user_id = v_actor and a.entity_type = 'acceso'
+      and a.action = p_action and a.entity_id is not distinct from p_entity_id and a.despues = p_llave
+  ) then
+    insert into restaurantes.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
+    values (p_organization_id, v_actor, p_action, 'acceso', p_entity_id, left(coalesce(p_property_id::text, ''), 200), null, p_llave);
+  end if;
 
   select count(*)::integer into v_n
     from restaurantes.audit_log a
@@ -54,7 +91,8 @@ begin
       and a.actor_user_id = v_actor
       and a.entity_type = 'acceso'
       and a.action = p_action
-      and a.entity_id is not distinct from p_entity_id;
+      and a.entity_id is not distinct from p_entity_id
+      and a.created_at > now() - interval '24 hours';
   return v_n;
 end;
 $$;

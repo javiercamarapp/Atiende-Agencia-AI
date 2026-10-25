@@ -138,10 +138,20 @@ export interface IssueSessionContext {
  * Registra el inicio de sesion en la bitacora de accesos (`restaurantes.registrar_acceso`, 'sesion.login'). Sesion de aplicacion con la propia
  * persona (auth.uid()) y todo dentro de try/catch: la bitacora NUNCA impide entrar. Solo guarda actor, momento y ruta de entrada.
  */
+/** Canal de entrada para la bitacora de accesos: catalogo cerrado (la migracion 098 rechaza cualquier otro valor); nunca la ruta ni texto libre. */
+function canalDeInicioSesion(path: string): "correo" | "google" | "enlace" | "celular" | "otro" {
+  const p = path.toLowerCase();
+  if (p.includes("google") || p.includes("exchange")) return "google";
+  if (p.includes("magic") || p.includes("verify")) return "enlace";
+  if (p.includes("chofer") || p.includes("whatsapp") || p.includes("celular")) return "celular";
+  if (p.includes("login") || p.includes("refresh")) return "correo";
+  return "otro";
+}
+
 async function registrarInicioSesionBestEffort(deps: AppDeps, ctx: IssueSessionContext, staffId: string, organizationId: string): Promise<void> {
   try {
     await deps.engine.withAppSession({ userId: staffId }, async (db) => {
-      await deps.restaurantesRepo(db).registrarAcceso({ organizationId, propertyId: null, actorUserId: staffId, action: "sesion.login", entityId: null, detalle: ctx.c.req.path.slice(0, 120) });
+      await deps.restaurantesRepo(db).registrarAcceso({ organizationId, propertyId: null, actorUserId: staffId, action: "sesion.login", entityId: null, llave: canalDeInicioSesion(ctx.c.req.path) });
     });
   } catch (err) {
     console.error("auth: no se pudo registrar el inicio de sesion en la bitacora de accesos (el login sigue).", err instanceof Error ? err.message : "error");

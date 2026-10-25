@@ -10,7 +10,7 @@ const entrar = (app: ReturnType<typeof buildApp>, email: string, password: strin
 const accesos = (ctx: Ctx, action: string) => ctx.restaurantesRepo.auditLog.filter((f) => f.entityType === "acceso" && f.action === action);
 
 describe("inicios de sesion", () => {
-  it("un login correcto deja una fila sesion.login con la ruta, sin correo ni IP", async () => {
+  it("un login correcto deja una fila sesion.login con el canal (catalogo), sin ruta, correo ni IP", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const antes = accesos(ctx, "sesion.login").length;
@@ -20,7 +20,7 @@ describe("inicios de sesion", () => {
     expect(filas.length).toBe(antes + 1);
     const fila = filas[filas.length - 1]!;
     expect(fila.actorUserId).toBe(ctx.staff.staffSucursalA.id);
-    expect(fila.despues).toBe("/auth/login");
+    expect(fila.despues).toBe("correo");
     expect(JSON.stringify(fila)).not.toContain(ctx.staff.staffSucursalA.email);
   });
 
