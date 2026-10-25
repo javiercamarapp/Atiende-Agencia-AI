@@ -256,7 +256,7 @@ export async function handleInboundWhatsAppMessage(
       // quedo guardado en el historial para quien atiende la conversacion.
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
-        if (handoff) {
+        if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, body, handoff))) {
           // Paquete C (G7-8-10): con la toma pendiente por OTRO motivo (cambio, cancelacion...) una queja con detalle no puede quedarse sin su aviso `queja`.
           if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body, messageId, propertyId: propertyId ?? null });
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
@@ -451,6 +451,18 @@ export const ACUSE_QUEJA_EN_TOMA = "Lamento mucho lo ocurrido, disculpe el incon
 
 /** Con la toma ya abierta el clasificador de quejas no ve el pedido reciente: basta que el cliente diga que algo NO llego / falto ("no mandaron el guacamole"). */
 const QUEJA_DE_FALTANTE_EN_TOMA = /\bno\s+(?:me\s+|nos\s+)?(?:mandaron|enviaron|trajeron|dieron|incluyeron)\s+\w+|\bno\s+(?:me|nos)\s+(?:llego|llegaron)\s+\w+|\b(?:me\s+|nos\s+)?falt(?:o|aron)\s+\w+/;
+
+/** Un «sí» corto: la respuesta del cliente al resumen del pedido («sí», «sí, es correcto», «dale»). */
+const SI_CORTO = /^(?:s[ií]|sip|simon|claro|correcto|as[ií] es|ok(?:ey)?|dale|va|listo|de acuerdo|perfecto|confirmo|est[aá] bien|todo bien)\b[\p{L}\p{N}\s,.!¡]{0,30}$/iu;
+
+/** PM R21 (T7-061): con una toma `pendiente` y el pedido ya COTIZADO o CONFIRMADO, el «sí» al resumen NO se contesta con el acuse fijo de la toma (`ACUSE_HANDOFF_REPETIDO`): pasa al agente para que cree
+ * el pedido. Solo toma `pendiente` (si una persona la tomó, el agente calla) y solo un «sí» corto; cualquier otro mensaje sigue por la toma. Sin lectura del flujo (base sin migrar) = false. */
+export async function siAlResumenConTomaPendiente(repo: RestaurantesRepository, organizationId: string, phone: string, mensaje: string, handoff: string): Promise<boolean> {
+  if (handoff !== "pendiente") return false;
+  if (!SI_CORTO.test(normalizarParaClasificar(mensaje).trim())) return false;
+  const snap = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+  return snap?.state === "cotizado" || snap?.state === "confirmado";
+}
 
 /** Pura: texto de la respuesta a un mensaje del cliente con la toma `pendiente`. `acuseDeLaBase` = la base dio el acuse "oficial" de este intervalo (texto acordado, con la
  * apertura real si la sucursal esta cerrada, `textoOficial`); si no, una queja con detalle recibe su texto fijo y lo demas el recordatorio breve. */
@@ -764,7 +776,7 @@ export async function responderTrasEspera(
         const arco = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
-          if (handoff) {
+          if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, textoPendiente, handoff))) {
             // PM R18 (G7-8-10): esta es la ruta de produccion (espera de mensajes). Con la toma pendiente por OTRO motivo una queja con detalle tambien deja su aviso `queja` (antes solo lo hacia la ruta directa).
             if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body: textoPendiente, messageId: pasada === 1 ? messageId : `${messageId}:p${pasada}`, propertyId: propertyId ?? null });
             const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;

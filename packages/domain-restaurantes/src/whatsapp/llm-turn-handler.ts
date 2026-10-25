@@ -1041,7 +1041,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               const resumenG = `${resumenPedidoGrande({ motivo: motivoGrande, total, pesoKg, items: renglones, canal: c.quotedCanal, paymentMethod: c.quotedPago })} El turno del asistente se corto antes de mostrar el resumen: contactar al cliente para confirmar el pedido.`;
               const avisoG = await executeAgentToolSafely(
                 repo,
-                { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+                { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, pedidoGrandeDelServidor: true, ...modoCtx },
                 "escalar_a_humano",
                 { customer_name: nombreG, motivo: "pedido_grande", resumen: resumenG.slice(0, 900) },
               );
@@ -1231,7 +1231,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const ultimo = [...messages].reverse().find((m) => m.role === "user");
             const aviso = await executeAgentToolSafely(
               repo,
-              { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+              { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(motivoAvisoHonesto === "pedido_grande" ? { pedidoGrandeDelServidor: true } : {}), ...modoCtx },
               "escalar_a_humano",
               {
                 customer_name: nombre,

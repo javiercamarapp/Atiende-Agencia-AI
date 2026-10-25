@@ -96,7 +96,9 @@ describe("registro unico de tools", () => {
   it("el esquema de escalar_a_humano publica los motivos de PM (queja, modificacion, transferencia y tiempos al gerente)", () => {
     const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === "escalar_a_humano")!;
     const motivo = (def.parameters.properties as Record<string, { enum: string[] }>).motivo!;
-    for (const m of ["queja", "modificacion_platillo", "transferencia", "tiempos_entrega", "pedido_grande", "falla_sistema", "producto_agotado"]) expect(motivo.enum).toContain(m);
+    for (const m of ["queja", "modificacion_platillo", "transferencia", "tiempos_entrega", "falla_sistema", "producto_agotado"]) expect(motivo.enum).toContain(m);
+    // R21 (T7-061): `pedido_grande` lo fija solo el servidor; el modelo ya no lo ve en el esquema.
+    expect(motivo.enum).not.toContain("pedido_grande");
   });
 
   it("una tool inexistente o de otro canal se rechaza", async () => {

@@ -45,7 +45,7 @@ import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
 import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { acumuladoReciente, evaluarPedidoGrande, PEDIDO_GRANDE_KG, PEDIDO_GRANDE_TOTAL_MXN, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
 import { parsearProgramadoPara } from "../pedidos-programados.ts";
@@ -187,6 +187,9 @@ export interface AgentToolContext {
   /** Solo `preview`: cliente de la organizacion que el panel eligio para «simular cliente conocido». `buscar_cliente`
    * lo resuelve con `getCustomerDetailById` (solo lectura, acotado a la organizacion). */
   readonly previewCustomerId?: string | null;
+  /** PM R21 (T7-061): SOLO el servidor lo pone en `true` cuando el mismo evalua el umbral de pedido grande y deja el aviso `pedido_grande` (turno muerto con una cotizacion grande, aviso honesto).
+   * Sin el, `escalar_a_humano` con motivo `pedido_grande` se acepta unicamente si la cotizacion vigente del flujo supera el umbral. Nunca viene del modelo ni del cliente. */
+  readonly pedidoGrandeDelServidor?: boolean;
   /** Autopiloto: con el, un pedido grande de WhatsApp/voz se CREA y queda `por_aprobar` (la sucursal lo aprueba con un clic). Sin el (o con la base sin la
    * migracion 050) `crear_pedido` sigue por el aviso `escalada:pedido_grande` de siempre. Solo lo fija el servidor. */
   readonly pedidoGrande?: PedidoGrandeHook;
@@ -258,7 +261,20 @@ export type MotivoEscalacion = (typeof MOTIVOS_ESCALACION)[number];
 
 /** Motivos que el sistema usa por su cuenta (vueltas agotadas, limites de la llamada) y que NO se ofrecen al modelo: PM Ronda 12 (T7-008 Luna r1) el modelo escalaba
  * `no_puedo_resolver` ante un producto que no existe ("chistorra") y la toma callaba al agente. Siguen siendo motivos validos (`normalizarMotivoEscalacion`). */
-export const MOTIVOS_SOLO_DEL_SISTEMA: ReadonlySet<string> = new Set(["no_puedo_resolver"]);
+export const MOTIVOS_SOLO_DEL_SISTEMA: ReadonlySet<string> = new Set(["no_puedo_resolver", "pedido_grande"]);
+
+/** PM R21 (T7-061): `pedido_grande` lo fija SOLO el servidor al superar el umbral (cotizar/crear). Si el modelo lo manda en `escalar_a_humano` se rechaza: una compra
+ * normal escalada asi abria una toma de handoff y el «sí» del resumen ya no creaba el pedido. */
+/** ¿La cotizacion vigente (mas lo ya creado en la sesion) supera el umbral de total de pedido grande? Es la unica señal que el servidor tiene a mano en la herramienta. */
+async function servidorConfirmaPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext): Promise<boolean> {
+  if (ctx.pedidoGrandeDelServidor === true) return true;
+  if (!ctx.flow) return false;
+  const contexto = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context;
+  if (!contexto) return false;
+  return (contexto.quotedTotal ?? 0) + (contexto.sessionTotal ?? 0) > PEDIDO_GRANDE_TOTAL_MXN || (contexto.sessionPesoKg ?? 0) > PEDIDO_GRANDE_KG;
+}
+
+export const MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR = "El motivo pedido_grande lo fija el sistema al superar el umbral; no lo use. Si el cliente quiere cerrar su pedido, siga con cotizar_pedido y crear_pedido. Si necesita una persona por otra razón, use el motivo que corresponda (por ejemplo pedido_especial u otro).";
 
 export function normalizarMotivoEscalacion(raw: unknown): MotivoEscalacion {
   return typeof raw === "string" && (MOTIVOS_ESCALACION as readonly string[]).includes(raw) ? (raw as MotivoEscalacion) : "otro";
@@ -474,7 +490,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
           type: "string",
           enum: MOTIVOS_ESCALACION.filter((m) => !MOTIVOS_SOLO_DEL_SISTEMA.has(m)),
           description:
-            "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande / tiempos_entrega (pedido muy grande o exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
+            "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, tiempos_entrega (exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
         },
         resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente. Si quiere CANCELAR un pedido ya registrado, diga «cancelar» en el resumen (el sistema usa la frase de cancelación); si solo agrega o cambia algo, no use esa palabra." },
       },
@@ -2150,6 +2166,7 @@ async function dispatchTool(
       }
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
+      if (esEscalada && input.motivo === "pedido_grande" && !(await servidorConfirmaPedidoGrande(repo, ctx))) throw new OrderValidationError(MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR);
       if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
       if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
       const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;
