@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- script de medicion: las dependencias del directorio de QA se importan dinamicamente y no tienen tipos */
 // Arnes de voz con MODELO REAL y cliente por TEXTO (sin audio ni telefonia). Mide el acierto del agente de voz de la taqueria PM como el arnes de WhatsApp.
 //
 // Lo que es REAL: la instruccion de la llamada (la arma el servidor: POST /internal/restaurantes/voz/llamada/contexto), el controlador de llamada con su maquina de estados,
@@ -77,10 +78,9 @@ const ttsFalso = {
   }),
 };
 
-const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const pct = (xs: number[], p: number) => { if (!xs.length) return null; const a = [...xs].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]!; };
 
-interface TurnoRegistro { quien: "cliente" | "agente" | "sistema"; dicho?: string; oido?: string; cambios?: string[]; texto?: string; msPrimeraFrase?: number | null; msTurno?: number; herramientas?: string[] }
+interface TurnoRegistro { quien: "cliente" | "agente" | "sistema"; dicho?: string; oido?: string; cambios?: readonly string[]; texto?: string; msPrimeraFrase?: number | null; msTurno?: number; herramientas?: string[] }
 
 async function correrLlamada(e: Escenario, phone: string, instruccion: string, voiceId: string, semilla: string) {
   const mundo = { organizationId: ORG_ID, propertyId: PROP[e.sucursal], callbacks: [] };
@@ -143,7 +143,7 @@ async function correrLlamada(e: Escenario, phone: string, instruccion: string, v
     registro.push({ quien: "agente", texto: agente || "(silencio del agente)", msPrimeraFrase: primeraFraseT === null ? null : Math.round(primeraFraseT - t0), msTurno: Math.round(t1 - t0), herramientas: tools.slice(nTools0).map((t: any) => t.nombre) });
     histCliente.push({ who: "cliente", text: dicho }, { who: "agente", text: agente || "(silencio del agente)" });
   };
-  const generar = async (intenciones: string[]) => {
+  const generar = async (intenciones: readonly string[]) => {
     const persona = { goal: `Llamas por telefono a una taqueria: ${e.titulo}. Hablas como en una llamada: frases cortas, sin escribir cifras ni signos raros.`, hints: intenciones, datos };
     const { msg } = await nextClientMsg(persona, histCliente as never, histCliente.length === 0, "voz");
     const limpio = (msg ?? "").replace(/\s+/g, " ").trim();
