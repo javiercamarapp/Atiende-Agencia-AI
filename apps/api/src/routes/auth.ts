@@ -260,6 +260,9 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       throw Errors.unauthorized("Refresh token inválido o expirado.");
     }
 
+    // BAJA DE EMPLEADO: NO se rechaza por "cero membresias" de forma global (eso dejaria sin sesion a usuarios legitimos que aun no tienen
+    // membresia: registro autoservicio, invitado antes de aceptar, flujos de hoteles/rentas/Google/select-org). La baja corta la reemision
+    // por el corte `sessionsRevokedAt` de arriba: restaurantes/admin-staff.ts lo fija al quedar la persona sin membresias.
     // Hallazgo de auditoría (rubro 2, severidad ALTA, "el refresh token vive 30 días
     // sin rotación"): se revoca el refresh token PRESENTADO antes de emitir uno nuevo
     // — cada uso es de un solo tiro. Un replay del mismo refresh token (robado o
