@@ -2,7 +2,7 @@
 // (1) `pedido_grande` lo fija SOLO el servidor: si el modelo lo manda en `escalar_a_humano` con una compra normal se rechaza y NO se abre una toma de handoff.
 // (2) Con una toma `pendiente` y el pedido ya cotizado, el «sí» al resumen no recibe el acuse fijo: pasa al agente y el pedido se crea (una sola vez).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR, toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
+import { MENSAJE_PEDIDO_GRANDE_SOLO_SERVIDOR, solicitudEsPedidoGrande, toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
 import { ACUSE_HANDOFF_REPETIDO } from "../src/whatsapp/inbound.ts";
 import { MARTES_14H, nuevoViaje, pedidosDe, type Viaje } from "./qa-viaje/arnes-viaje.ts";
 
@@ -88,5 +88,32 @@ describe("T7-061: el «sí» al resumen con una toma pendiente crea el pedido (s
     await v.escribe("quiero hablar con una persona");
     const r = await v.escribe("sí");
     expect(r.reply).toBe(ACUSE_HANDOFF_REPETIDO);
+  });
+});
+
+describe("T7-061: la solicitud realmente grande del cliente SI escala con pedido_grande", () => {
+  it.each(["Necesito 60 ordenes de tacos para un evento", "quiero 40 kg de pastor", "mil tacos para el sabado", "99999 tacos"])("grande: %s", (t) => {
+    expect(solicitudEsPedidoGrande(t)).toBe(true);
+  });
+  it.each(["1/4 de pechuga, 1 kilo de bistec", "2 ordenes de gringas", "5 kg de pastor", "quiero 12 tacos", "Solicitud de 1/4 kg de pechuga por $237.50"])("normal: %s", (t) => {
+    expect(solicitudEsPedidoGrande(t)).toBe(false);
+  });
+
+  it("el modelo escala con pedido_grande tras «60 ordenes» (sin cotizacion): se acepta y queda el aviso", async () => {
+    const v = await nuevoViaje();
+    v.guion([{ tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_grande", resumen: "60 ordenes de tacos" } }] }, { texto: "Ya avisé al equipo." }]);
+    await v.escribe("Necesito 60 ordenes de tacos para un evento el sabado");
+    expect(motivos(v)).toContain("escalada:pedido_grande");
+  });
+
+  it("40 kg: se acepta; un pedido normal de $237.50 con mensaje normal sigue rechazado", async () => {
+    const v = await nuevoViaje();
+    v.guion([{ tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_grande", resumen: "40 kg" } }] }, { texto: "Listo." }]);
+    await v.escribe("quiero 40 kg de pastor para recoger");
+    expect(motivos(v)).toContain("escalada:pedido_grande");
+    const w = await nuevoViaje();
+    w.guion([{ tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_grande", resumen: "1/4 kg de pechuga" } }] }, { texto: "Listo." }]);
+    await w.escribe("quiero 1/4 kg de pechuga para recoger");
+    expect(motivos(w)).not.toContain("escalada:pedido_grande");
   });
 });

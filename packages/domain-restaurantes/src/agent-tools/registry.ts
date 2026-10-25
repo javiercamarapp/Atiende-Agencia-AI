@@ -266,8 +266,23 @@ export const MOTIVOS_SOLO_DEL_SISTEMA: ReadonlySet<string> = new Set(["no_puedo_
 /** PM R21 (T7-061): `pedido_grande` lo fija SOLO el servidor al superar el umbral (cotizar/crear). Si el modelo lo manda en `escalar_a_humano` se rechaza: una compra
  * normal escalada asi abria una toma de handoff y el «sí» del resumen ya no creaba el pedido. */
 /** ¿La cotizacion vigente (mas lo ya creado en la sesion) supera el umbral de total de pedido grande? Es la unica señal que el servidor tiene a mano en la herramienta. */
+/** Piezas/ordenes a partir de las cuales una SOLICITUD ya es de pedido grande aunque aun no haya cotizacion (el prompt: «mas de 30 piezas de un producto o varios kilos»). */
+export const SOLICITUD_GRANDE_PIEZAS = 30;
+const CANTIDAD_PALABRAS: Readonly<Record<string, number>> = { mil: 1000, cien: 100, ciento: 100, doscientos: 200, quinientos: 500 };
+
+/** Pura: ¿el texto del CLIENTE pide una cantidad de pedido grande (mas de 30 piezas/ordenes, mas del umbral de kilos o «mil»...)? «1/4 kg de pechuga» o «2 ordenes» no. */
+export function solicitudEsPedidoGrande(texto: string): boolean {
+  const t = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/,(?=\d{3}\b)/g, "");
+  for (const m of t.matchAll(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|kgs)\b/g)) if (Number(m[1]!.replace(",", ".")) > PEDIDO_GRANDE_KG) return true;
+  for (const m of t.matchAll(/\b(\d+)\s*(?:ordenes|orden|piezas?|tacos?|gringas?|mestizas?|quesadillas?|tortas?|alitas|porciones|platillos?|pedidos?)\b/g)) if (Number(m[1]) > SOLICITUD_GRANDE_PIEZAS) return true;
+  for (const m of t.matchAll(/\b(mil|cien|ciento|doscientos|quinientos)\s+(?:ordenes|orden|piezas?|tacos?|gringas?|mestizas?|quesadillas?|tortas?)\b/g)) if ((CANTIDAD_PALABRAS[m[1]!] ?? 0) > SOLICITUD_GRANDE_PIEZAS) return true;
+  return false;
+}
+
 async function servidorConfirmaPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext): Promise<boolean> {
   if (ctx.pedidoGrandeDelServidor === true) return true;
+  // La solicitud del propio cliente (sus ultimos mensajes) ya pide una cantidad de pedido grande: el servidor lo reconoce sin esperar a la cotizacion.
+  if ((ctx.conversacionReciente ?? []).filter((m) => m.role === "user").slice(-3).some((m) => solicitudEsPedidoGrande(m.content))) return true;
   if (!ctx.flow) return false;
   const contexto = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context;
   if (!contexto) return false;
