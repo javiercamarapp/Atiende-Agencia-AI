@@ -494,14 +494,22 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     // fallo aqui se registra pero no deshace la baja (el control real sigue siendo la membresia). Si conserva membresia en otra organizacion
     // no se toca su sesion.
     c.get("postCommitTasks").push(async () => {
-      try {
-        const restantes = await deps.coreRepo.findMembershipsByUserId(targetUserId);
-        if (restantes.length === 0 && !(await deps.coreRepo.isPlatformSuperadmin(targetUserId))) {
-          await deps.coreRepo.revokeAllRefreshTokens(targetUserId);
+      // Hasta 3 intentos (la baja ya es visible; si TODOS fallan el refresh token seguiria vivo hasta 30 dias, asi que se deja un error con nombre
+      // propio para alertar: `restaurantes_baja_revocacion_sesiones_FALLIDA`, y el corte por sesion lo puede repetir un admin con "cerrar sesiones").
+      let ultimoError = "desconocido";
+      for (let intento = 1; intento <= 3; intento += 1) {
+        try {
+          const restantes = await deps.coreRepo.findMembershipsByUserId(targetUserId);
+          if (restantes.length === 0 && !(await deps.coreRepo.isPlatformSuperadmin(targetUserId))) {
+            await deps.coreRepo.revokeAllRefreshTokens(targetUserId);
+          }
+          return;
+        } catch (err) {
+          ultimoError = err instanceof Error ? err.message : "desconocido";
+          logEvent(c, "warn", "restaurantes_admin_staff_baja_revocar_sesiones_reintento", { organizationId, targetUserId, intento, error: ultimoError });
         }
-      } catch (err) {
-        logEvent(c, "error", "restaurantes_admin_staff_baja_revocar_sesiones_fallo", { organizationId, targetUserId, error: err instanceof Error ? err.message : "desconocido" });
       }
+      logEvent(c, "error", "restaurantes_baja_revocacion_sesiones_FALLIDA", { organizationId, targetUserId, error: ultimoError });
     });
 
     // FASE 3 (producto) — "baja ... de staff" (ver migrations/
