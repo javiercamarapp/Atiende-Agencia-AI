@@ -128,9 +128,24 @@ describe("arnés: escenarios y menú alineados con las decisiones", () => {
     expect(porId("T7-043").comportamiento_esperado).not.toMatch(/aprox\. 60 min/);
     expect(porId("T7-043").comportamiento_esperado).toMatch(/mínimo \$200 a domicilio, o recoger/);
   });
-  it("T7-074: el cliente contesta lo del alambre (con o sin queso) y el criterio distingue alambre de mestizas en la tortilla", () => {
+  it("T7-074 (R21): el cliente ya contesta lo del alambre; el criterio no exige repreguntar lo que ya dio", () => {
     expect(porId("T7-074").turnos_cliente.join(" ")).toMatch(/alambre con queso/);
-    expect(porId("T7-074").comportamiento_esperado).toMatch(/distingue los dos renglones \(alambre y mestizas\)/);
+    expect(porId("T7-074").comportamiento_esperado).toMatch(/No vuelve a preguntar lo que el cliente ya dio/);
+    expect(porId("T7-074").comportamiento_esperado).not.toMatch(/con o sin queso|distingue los dos renglones/);
+  });
+  it("T7-043 (R21): los 60 a 75 min de la confirmación original no se penalizan; solo los minutos en la respuesta al agregado", () => {
+    expect(porId("T7-043").comportamiento_esperado).toMatch(/exige el prompt y NO se penalizan/);
+    expect(porId("T7-043").que_no_debe_hacer).toMatch(/RESPUESTA AL AGREGADO/);
+  });
+  it("T7-072 vs T7-073 (R21): sin contradicción; 'le confirmo en un momento' vale, no se promete llamada, T7-073 no exige cotizar_pedido", () => {
+    expect(porId("T7-072").comportamiento_esperado).toMatch(/«le confirmo en un momento»/);
+    expect(porId("T7-072").comportamiento_esperado).not.toMatch(/No promete una llamada de vuelta/);
+    expect(porId("T7-072").que_no_debe_hacer).toMatch(/prometer que lo van a llamar/);
+    expect(porId("T7-073").comportamiento_esperado).toMatch(/No hace falta volver a cotizar con cotizar_pedido/);
+    expect(porId("T7-073").comportamiento_esperado).not.toMatch(/recotiza el total/);
+  });
+  it("T7-001 (R21): sin pin, el botón de ubicación del sistema cuenta como pedirlo", () => {
+    expect(porId("T7-001").comportamiento_esperado).toMatch(/botón de ubicación que envía el sistema cuenta como pedirlo/);
   });
   it("T7-072..T7-074 existen y están activos (rechazo, agregado aceptado, alambre/mestizas)", () => {
     expect(["T7-072", "T7-073", "T7-074"].map((id) => [porId(id).intencion, porId(id).estado])).toEqual([

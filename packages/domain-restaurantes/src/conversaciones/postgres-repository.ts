@@ -422,6 +422,24 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
     });
   }
 
+  /** Motivo de la toma abierta (PM R21). Cualquier fallo (base sin migrar, sin permiso) -> null = desconocido: el agente sigue callando. */
+  async motivoToma(organizationId: string, phone: string): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_motivo",
+      primary: async () => {
+        const { rows } = await this.db.query<{ motivo: string | null }>(
+          `select h.motivo from restaurantes.conversation_handoff h join restaurantes.whatsapp_conversations c on c.id = h.conversation_id
+            where h.organization_id = $1::uuid and c.phone = $2::text and h.estado in ('pendiente', 'tomada') order by h.solicitada_at desc limit 1;`,
+          [organizationId, phone],
+        );
+        return rows[0]?.motivo ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: async () => null,
+    });
+  }
+
   /** Acuse al cliente de una toma pendiente (migracion 045). Base sin migrar (42883/42P01/42703) -> false con SAVEPOINT: el agente sigue callando. */
   async acusePendiente(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean> {
     return runWithSavepointFallback<boolean>({
