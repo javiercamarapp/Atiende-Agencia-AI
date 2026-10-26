@@ -3,7 +3,7 @@
 // carga con `?diseno=off` (la bandera fuerza apagada, aunque otra prueba la hubiera guardado). Ademas, si `DS3_ESTILOS_REF`
 // apunta a un JSON de huellas (generado con `DS3_ESTILOS_SALIDA` sobre `origin/main`), cada huella se compara contra esa
 // referencia: asi un PR que cambie estilos con la bandera apagada se detecta contra main y no solo contra si mismo.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "../helpers/fixtures.ts";
@@ -54,6 +54,16 @@ const PANTALLAS = [
   { id: "resumen-superadmin", entrar: "superadmin" },
 ] as const;
 
+/** Lee un JSON sin "comprobar y luego usar" (carrera de sistema de archivos): intenta leer y trata la ausencia del archivo como `undefined`. */
+function leerJsonSiExiste(ruta: string): Record<string, Huella> | undefined {
+  try {
+    return JSON.parse(readFileSync(ruta, "utf8")) as Record<string, Huella>;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw e;
+  }
+}
+
 for (const pantalla of PANTALLAS) {
   test(`bandera apagada: ${pantalla.id} no cambia ningun estilo computado`, async ({ page, iniciarSesion }, info) => {
     let ruta = "/restaurantes/login";
@@ -73,12 +83,13 @@ for (const pantalla of PANTALLAS) {
     const salida = process.env["DS3_ESTILOS_SALIDA"];
     if (salida) {
       mkdirSync(dirname(salida), { recursive: true });
-      const previo = existsSync(salida) ? (JSON.parse(readFileSync(salida, "utf8")) as Record<string, Huella>) : {};
+      const previo = leerJsonSiExiste(salida) ?? {};
       writeFileSync(salida, JSON.stringify({ ...previo, [clave]: normal }));
     }
     const ref = process.env["DS3_ESTILOS_REF"];
-    if (ref && existsSync(ref)) {
-      const referencia = (JSON.parse(readFileSync(ref, "utf8")) as Record<string, Huella>)[clave];
+    const referenciaCompleta = ref ? leerJsonSiExiste(ref) : undefined;
+    if (referenciaCompleta) {
+      const referencia = referenciaCompleta[clave];
       if (referencia) {
         const contraMain = diferencias(referencia, normal);
         expect(contraMain, `estilos distintos de la referencia (origin/main) con la bandera apagada:\n${contraMain.slice(0, 10).join("\n")}`).toEqual([]);
