@@ -1,4 +1,4 @@
-// Transporte unico del Copiloto ("Pregunta a tus datos") para apps/web: conecta el `ChatDatosShell` de @atiende/ui
+// Transporte unico del Copiloto ("Pregúntale a tus datos") para apps/web: conecta el `ChatDatosShell` de @atiende/ui
 // con las rutas reales de apps/api de CUALQUIER vertical (`<baseUrl>` = `.../chat-datos`, p. ej.
 // `/v1/restaurantes/:propertyId/admin/chat-datos`). Es generico: no conoce restaurantes; cada vertical solo aporta su
 // `baseUrl`, el token y (opcional) su envoltorio de refresh de sesion.

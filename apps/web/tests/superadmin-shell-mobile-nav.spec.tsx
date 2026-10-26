@@ -2,7 +2,7 @@
 //
 // F-01 del informe de diseno-ux: SuperAdminShell no tenia MobileHeader ni
 // BottomNav, asi que en movil el back office de plataforma no ofrecia ni
-// navegacion, ni campana, ni cerrar sesion. Mismo patron que los specs de nav
+// navegacion ni cerrar sesion (la campana y el chat viven en el pie / "Mas", no en el encabezado). Mismo patron que los specs de nav
 // movil de las verticales.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -92,17 +92,18 @@ describe("SuperAdminShell — nav móvil", () => {
       expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", ...sec.items.map((i) => i.label)]);
     }
     const pie = [...root.querySelectorAll<HTMLAnchorElement>('aside[aria-label="Navegación principal"] > div a')].map((a) => [a.getAttribute("aria-label"), a.getAttribute("href")]);
-    expect(pie).toEqual(PIE_SUPERADMIN.map((p) => [p.label, p.to]));
+    // Pie: las pildoras del mapa de rutas + "Notificaciones" (la campana ya no va en el encabezado); "Pregúntale a tus datos" es un boton (abre el Copiloto).
+    expect(pie).toEqual([...PIE_SUPERADMIN.map((p) => [p.label, p.to]), ["Notificaciones", "/superadmin/notificaciones"]]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Root", rol: "Superadmin" });
   });
 
-  it('"Más" abre TODOS los destinos del mapa de rutas (SA-L-01) más las 2 píldoras del pie: sin entradas fantasma', async () => {
+  it('"Más" abre TODOS los destinos del mapa de rutas (SA-L-01) más las píldoras del pie (costos, paneles, notificaciones): sin entradas fantasma', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(TODAS_LAS_RUTAS.length + PIE_SUPERADMIN.length);
-    expect(new Set(hrefs)).toEqual(new Set([...TODAS_LAS_RUTAS.map((r) => r.to), ...PIE_SUPERADMIN.map((p) => p.to)]));
+    expect(hrefs).toHaveLength(TODAS_LAS_RUTAS.length + PIE_SUPERADMIN.length + 1);
+    expect(new Set(hrefs)).toEqual(new Set([...TODAS_LAS_RUTAS.map((r) => r.to), ...PIE_SUPERADMIN.map((p) => p.to), "/superadmin/notificaciones"]));
     expect(hrefs).toContain("/superadmin/organizaciones");
     expect(hrefs).toContain("/superadmin/privacidad");
     // SA-L-20: la gestion es la pestana "Gestion" de Organizaciones; su ruta vieja redirige y ya no es una entrada del menu.
@@ -118,12 +119,12 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(hrefs).toContain("/superadmin/integraciones");
   });
 
-  it("en la hoja de cuenta, 'Chatea con tus datos' cierra la hoja y deja el Copiloto a la vista (CHAT-17)", async () => {
+  it("en la hoja 'Más' > Cuenta, 'Pregúntale a tus datos' cierra la hoja y deja el Copiloto a la vista (CHAT-17)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200, headers: { "content-type": "application/json" } })));
     rendered = await renderShell();
-    const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
-    const boton = [...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.includes("Chatea con tus datos"))!;
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const boton = [...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.includes("Pregúntale a tus datos"))!;
     await act(async () => {
       click(boton);
       await flushMicrotasks();
@@ -132,14 +133,15 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("campana y cerrar sesión son alcanzables en móvil, y 'Chatea con tus datos' abre el Copiloto (CHAT-17)", async () => {
+  it("el encabezado móvil ya no lleva campana ni chat; cerrar sesión sigue en el menú de cuenta y Notificaciones en 'Más'", async () => {
     const onRequireLogin = vi.fn();
     rendered = await renderShell(onRequireLogin);
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
+    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]')).toBeNull();
+    expect(mobileHeader.textContent).not.toContain("Pregúntale a tus datos");
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
-    expect(hoja.textContent).toContain("Chatea con tus datos");
+    expect(hoja.textContent).not.toContain("Pregúntale a tus datos");
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
     await act(async () => {

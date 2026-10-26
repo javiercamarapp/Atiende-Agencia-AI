@@ -30,7 +30,7 @@ function ajustesSemilla(): AjustesWhatsapp {
   };
 }
 
-// CHAT-12 -- Copiloto ("Pregunta a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
+// CHAT-12 -- Copiloto ("Pregúntale a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
 // seq; conversaciones guardadas por escenario). El servidor real deja pasar a todo rol de la vertical, asi que la API simulada no
 // restringe por rol. Solo existe en la API simulada de e2e.
 interface ConversacionMock {

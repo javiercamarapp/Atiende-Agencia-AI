@@ -9,7 +9,7 @@ export interface MobileAccountMenuProps {
   onLogout: () => void;
   /** Mientras el cierre de sesión está en vuelo: deshabilita el botón y cambia su texto. */
   loggingOut?: boolean;
-  /** Controles extra de la cuenta (p. ej. el botón "Chatea con tus datos"). */
+  /** Controles extra de la cuenta (p. ej. el botón "Pregúntale a tus datos"). */
   children?: ReactNode;
 }
 

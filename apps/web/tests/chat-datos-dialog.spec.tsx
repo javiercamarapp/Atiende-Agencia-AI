@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// "Chatea con tus datos": dialogo presentacional de @atiende/ui + conexion en BotonChatDatos. Cubre que las
+// "Pregúntale a tus datos": dialogo presentacional de @atiende/ui + conexion en BotonChatDatos. Cubre que las
 // cifras salen de los bloques del servidor con formato MXN, que cada respuesta cita fuente/periodo/alcance,
 // que el texto de los datos NO se interpreta como HTML (inyeccion), accesibilidad basica y que el boton sigue
 // diciendo "Pronto" salvo que el servidor confirme que el asistente esta activo.
@@ -57,7 +57,7 @@ describe("ChatDatosDialog", () => {
   it("pinta la tabla con montos en MXN, la grafica accesible y la fuente/periodo/alcance", () => {
     rendered = renderComponent(<ChatDatosDialog open onOpenChange={() => {}} mensajes={MENSAJES} enviando={false} onEnviar={() => {}} sugerencias={[]} nombreNegocio="Los Taquitos" />);
     const d = dialogo();
-    expect(d.textContent).toContain("Chatea con tus datos");
+    expect(d.textContent).toContain("Pregúntale a tus datos");
     expect(d.textContent).toContain("Los Taquitos");
     expect(d.textContent).toContain("$1,500.50 MXN");
     expect(d.textContent).toContain("$980.25 MXN");
@@ -134,7 +134,7 @@ function conexion(over: Partial<ChatDatosConexion> = {}): ChatDatosConexion {
 }
 
 function boton(): HTMLButtonElement {
-  return [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLButtonElement;
+  return [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Pregúntale a tus datos")) as HTMLButtonElement;
 }
 
 describe("BotonChatDatos con chat conectado", () => {

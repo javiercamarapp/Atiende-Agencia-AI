@@ -15,7 +15,7 @@ export const SUGERENCIAS_COPILOTO_HOTELES: readonly string[] = [
 export const COPILOTO_HOTELES: CopilotoConfigVertical = {
   vertical: "hoteles",
   textos: {
-    titulo: "Pregunta a tus datos",
+    titulo: "Pregúntale a tus datos",
     subtitulo: "Tu ocupación, reservas y operación, con la cifra que ya calculó el sistema.",
     nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números.",
     placeholder: "Pregunta sobre tu hotel…",

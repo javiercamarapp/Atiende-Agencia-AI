@@ -1,4 +1,4 @@
-// "Chatea con tus datos" de HOTELES (solo owner/gm en el servidor): cliente generico (src/lib/data-chat-client.ts) con la
+// "Pregúntale a tus datos" de HOTELES (solo owner/gm en el servidor): cliente generico (src/lib/data-chat-client.ts) con la
 // sesion de hoteles. El shell solo llama a `crearChatConexionHoteles`.
 import { crearChatConexion, crearClienteDataChat } from "../../../lib/data-chat-client.ts";
 import { defaultBrowserStorage } from "../../../lib/authed-fetch.ts";

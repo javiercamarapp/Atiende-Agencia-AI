@@ -1,4 +1,4 @@
-// Copiloto ("Pregunta a tus datos") de citas: conecta la pagina generica `CopilotoPage` con la API real
+// Copiloto ("Pregúntale a tus datos") de citas: conecta la pagina generica `CopilotoPage` con la API real
 // `/citas/:propertyId/chat-datos` (sesion con refresh de `defaultAuthCtx`). El alcance (organizacion, sucursales, rol) lo decide
 // el servidor a partir del token (solo owner/admin, DATA_CHAT_ROLES: el catalogo lee ingresos y tasas por profesional); aqui
 // solo viaja la sucursal activa en la URL. Los roles que el servidor rechazaria NI SIQUIERA llaman al backend: ven "sin acceso".

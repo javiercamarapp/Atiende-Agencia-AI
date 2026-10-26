@@ -47,7 +47,6 @@ import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
-import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { OPERACION_PANEL_ACTIVO } from "./lib/operacion-flag.ts";
 import { puedeEn } from "./lib/permisos.ts";
@@ -122,7 +121,7 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
     {
       title: "Resumen",
       siempreAbierto: true,
-      // CHAT-08: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, como en las demás consolas (spec de diseño §203).
+      // CHAT-08: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas (spec de diseño §203).
       items: [
         { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
         ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
@@ -250,7 +249,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     return <Navigate to={`/restaurantes/${orgSlug}/repartidor`} replace />;
   }
 
-  // "Chatea con tus datos": conexión real con el backend de restaurantes (piloto del motor compartido).
+  // "Pregúntale a tus datos": conexión real con el backend de restaurantes (piloto del motor compartido).
   // El servidor decide el alcance a partir del token; aquí solo van la sucursal activa y el texto.
   const chatConexion: ChatDatosConexion = {
     clave: propertyId,
@@ -283,7 +282,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/restaurantes/${orgSlug}` }}
+      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, resumenTo: `/restaurantes/${orgSlug}` }}
       branchSelector={sucursalSelector("restaurantes-sucursal-activa")}
       mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}

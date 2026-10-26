@@ -1,28 +1,12 @@
 import { useEffect, useState } from "react";
 import { Sun, Monitor, Moon } from "lucide-react";
+import { CLAVE_TEMA, aplicarTema, leerTema, suscribirTemaSistema, type Tema } from "../lib/tema.js";
 
+// El tema (leer/aplicar/suscribir) vive en lib/tema.ts, compartido con ThemeBoot y /theme-boot.js.
 // Portado 1:1 desde atiende-restaurantes (src/components/ThemeSelector.tsx):
 // mismo localStorage key, mismo comportamiento ("sistema" solo se
 // reevalúa mientras el usuario lo tenga elegido explícito), mismo
 // role="radiogroup"/aria-checked (REQ-UX-001, ACEPTACION §5).
-const KEY = "atiende-tema";
-type Tema = "claro" | "sistema" | "oscuro";
-
-function leerTema(): Tema {
-  let v: string | null = null;
-  try {
-    v = window.localStorage.getItem(KEY);
-  } catch {
-    // Sin almacenamiento (modo privado, bloqueado): se usa el tema claro por defecto.
-  }
-  return v === "oscuro" || v === "sistema" ? v : "claro";
-}
-
-function aplicar(tema: Tema) {
-  const oscuro = tema === "oscuro" || (tema === "sistema" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.classList.toggle("dark", oscuro);
-}
-
 const OPCIONES: Array<{ valor: Tema; Icono: typeof Sun; rotulo: string }> = [
   { valor: "claro", Icono: Sun, rotulo: "Tema claro" },
   { valor: "sistema", Icono: Monitor, rotulo: "Seguir al sistema" },
@@ -36,23 +20,18 @@ export function ThemeSelector({ tamano = "normal" }: { tamano?: "normal" | "comp
   useEffect(() => {
     const t = leerTema();
     setTema(t);
-    aplicar(t);
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => {
-      if (leerTema() === "sistema") aplicar("sistema");
-    };
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    aplicarTema(t);
+    return suscribirTemaSistema();
   }, []);
 
   const elegir = (nuevo: Tema) => {
     try {
-      window.localStorage.setItem(KEY, nuevo);
+      window.localStorage.setItem(CLAVE_TEMA, nuevo);
     } catch {
       // El tema aplica igual en esta sesion aunque no se pueda recordar.
     }
     setTema(nuevo);
-    aplicar(nuevo);
+    aplicarTema(nuevo);
   };
 
   return (

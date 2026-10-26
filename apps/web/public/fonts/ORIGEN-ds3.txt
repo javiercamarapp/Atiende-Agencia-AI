@@ -1,0 +1,9 @@
+Origen de las fuentes autoalojadas (licencia SIL OFL 1.1; ver OFL-*.txt)
+
+hankengrotesk-{400,500,600}.woff2  <- paquete npm @fontsource/hanken-grotesk 5.3.0, files/hanken-grotesk-latin-{400,500,600}-normal.woff2
+  tarball sha256 d2d770507b6216cced24ff3cced1ce59dade9ae61a4ed2b940290386a2e11bc7
+ibmplexmono-{400,500}.woff2        <- paquete npm @fontsource/ibm-plex-mono 5.3.0, files/ibm-plex-mono-latin-{400,500}-normal.woff2
+  tarball sha256 60d3c0cfa549cb06fcb8867ee83f994d78e212abfac3bef3275436acb5c4d029
+
+Obtenidas con "npm pack" (sin scripts de instalacion) y extraidas del tarball; subconjunto latin. Los glifos U+2265 y U+2082 no
+vienen en ese subconjunto y caen a la fuente del sistema (ver apps/web/tests/fuentes-ds3.spec.ts).

@@ -25,4 +25,12 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    // Script de navegador en JS plano servido tal cual desde public/ (tema sin destello): globals reales del navegador.
+    files: ["apps/web/public/**/*.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: globals.browser,
+    },
+  },
 );

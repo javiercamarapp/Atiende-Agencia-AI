@@ -1,4 +1,4 @@
-// CHAT-08: Copiloto ("Pregunta a tus datos") de restaurantes de punta a punta contra la API simulada: abre la pagina desde el
+// CHAT-08: Copiloto ("Pregúntale a tus datos") de restaurantes de punta a punta contra la API simulada: abre la pagina desde el
 // Sidebar, pregunta con un chip, ve los pasos y la respuesta (NDJSON real) con su tabla/grafica y su fuente, y reabre la conversacion
 // desde el historial. La respuesta sale de la fixture NDJSON de e2e/mock-api (jamas de la SPA).
 import { expect, test } from "../helpers/fixtures.ts";
@@ -21,7 +21,7 @@ test.describe("copiloto de restaurantes @copiloto", () => {
     }
     await expect(page).toHaveURL(new RegExp(`${RUTA}$`));
     await afirmarPantallaSana(page, "copiloto");
-    await expect(page.getByRole("heading", { level: 1, name: "Pregunta a tus datos" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toBeVisible();
     await expect(page.getByRole("button", { name: PREGUNTA })).toBeVisible();
 
     await page.getByRole("button", { name: PREGUNTA }).click();
@@ -60,12 +60,15 @@ test.describe("copiloto de restaurantes @copiloto", () => {
     vigilante.verificar();
   });
 
-  test("la barra superior muestra el nombre de la pagina y el boton del header es un enlace al Copiloto", async ({ page, iniciarSesion }) => {
+  test("la barra superior muestra el nombre de la pagina y la pildora del pie del menu es un enlace al Copiloto (el header ya no lleva el boton)", async ({ page, iniciarSesion }) => {
     test.skip(esMovil(page), "la barra superior es de escritorio");
     await iniciarSesion("restaurantes", "owner");
-    const enlace = page.getByRole("link", { name: /Chatea con tus datos/ }).first();
+    const enlace = sidebar(page).getByRole("link", { name: "Pregúntale a tus datos" });
     await expect(enlace).toHaveAttribute("href", RUTA);
     await enlace.click();
-    await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Pregunta a tus datos");
+    // Decision del dueno: el nombre de la funcion NUNCA va en el encabezado; vive en el menu y en el unico h1 de la portada.
+    await expect(page.getByTestId("barra-pagina-titulo")).not.toContainText("Pregúntale a tus datos");
+    await expect(page.getByTestId("barra-pagina")).not.toContainText("Pregúntale a tus datos");
+    await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toHaveCount(1);
   });
 });

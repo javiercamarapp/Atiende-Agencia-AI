@@ -16,23 +16,23 @@ import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 interface Esperado {
   readonly categorias: readonly string[];
   readonly barra: readonly string[];
-  /** Etiquetas del pie del Sidebar que son enlaces reales (superadmin las trae siempre; las verticales llevan "Seguridad de la cuenta", PL-21, y "Pregunta a tus datos" segun el asistente; licitaciones ya trae Seguridad en el menu). */
+  /** Etiquetas del pie del Sidebar que son enlaces reales (superadmin las trae siempre; las verticales llevan "Seguridad de la cuenta", PL-21, y "Pregúntale a tus datos" segun el asistente; licitaciones ya trae Seguridad en el menu). */
   readonly pie: readonly string[];
   /** Destinos que la hoja "Más" repite a proposito (el pie lleva a una pantalla que tambien es un destino del menu). */
   readonly repetidos?: readonly string[];
 }
 
 const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
-  superadmin: { categorias: ["Agentes", "Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/costos-facturacion"] },
-  // CHAT-08: la API simulada activa el asistente de restaurantes, asi que su pie lleva la pildora "Pregunta a tus datos" (enlace al Copiloto,
+  superadmin: { categorias: ["Agentes", "Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Notificaciones", "Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/costos-facturacion"] },
+  // CHAT-08: la API simulada activa el asistente de restaurantes, asi que su pie lleva la pildora "Pregúntale a tus datos" (enlace al Copiloto,
   // que tambien es la entrada "Copiloto" del menu: por eso la hoja "Más" la repite).
-  restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: ["Pregunta a tus datos", "Seguridad de la cuenta"], repetidos: [`/restaurantes/${restaurantes.orgSlug}/copiloto`] },
-  // CHAT-09: igual que restaurantes, la API simulada activa el asistente de hoteles (owner): pildora "Pregunta a tus datos" que repite "Copiloto".
-  hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: ["Pregunta a tus datos", "Seguridad de la cuenta"], repetidos: [`/hoteles/${hoteles.orgSlug}/copiloto`] },
-  rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: ["Seguridad de la cuenta"] },
-  despachos: { categorias: ["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"], barra: ["Resumen", "Cierre", "CFDI", "Cobranza"], pie: ["Seguridad de la cuenta"] },
-  licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: ["Pregunta a tus datos"], repetidos: [`/licitaciones/${licitaciones.orgSlug}/copiloto`] },
-  citas: { categorias: ["Negocio", "Comunicación", "Administrar"], barra: ["Resumen", "Agenda", "Servicios", "Clientes"], pie: ["Pregunta a tus datos", "Seguridad de la cuenta"], repetidos: [`/citas/${citas.orgSlug}/copiloto`] },
+  restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: ["Notificaciones", "Pregúntale a tus datos", "Seguridad de la cuenta"], repetidos: [`/restaurantes/${restaurantes.orgSlug}/copiloto`] },
+  // CHAT-09: igual que restaurantes, la API simulada activa el asistente de hoteles (owner): pildora "Pregúntale a tus datos" que repite "Copiloto".
+  hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: ["Notificaciones", "Pregúntale a tus datos", "Seguridad de la cuenta"], repetidos: [`/hoteles/${hoteles.orgSlug}/copiloto`] },
+  rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: ["Notificaciones", "Seguridad de la cuenta"] },
+  despachos: { categorias: ["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"], barra: ["Resumen", "Cierre", "CFDI", "Cobranza"], pie: ["Notificaciones", "Seguridad de la cuenta"] },
+  licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: ["Notificaciones", "Pregúntale a tus datos"], repetidos: [`/licitaciones/${licitaciones.orgSlug}/copiloto`] },
+  citas: { categorias: ["Negocio", "Comunicación", "Administrar"], barra: ["Resumen", "Agenda", "Servicios", "Clientes"], pie: ["Notificaciones", "Pregúntale a tus datos", "Seguridad de la cuenta"], repetidos: [`/citas/${citas.orgSlug}/copiloto`] },
 };
 
 for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, Esperado][]) {
@@ -58,6 +58,9 @@ for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, E
       expect(((await nombre.textContent()) ?? "").trim().length).toBeGreaterThan(0);
       expect(((await nombre.locator("xpath=following-sibling::p[1]").textContent()) ?? "").trim().length).toBeGreaterThan(0);
       for (const etiqueta of esperado.pie) await expect(lateral.getByRole("link", { name: etiqueta })).toBeVisible();
+      // «Pregúntale a tus datos» y la campana viven en el pie del menu, NUNCA en el encabezado.
+      await expect(page.getByTestId("barra-pagina")).not.toContainText("Pregúntale a tus datos");
+      await expect(page.getByTestId("barra-pagina").locator('[aria-label^="Notificaciones"]')).toHaveCount(0);
       vigilante.verificar();
     });
 
@@ -81,7 +84,7 @@ for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, E
       const hrefsHoja = await hoja.getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""));
       for (const href of await barra.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) expect(hrefsHoja).toContain(href);
       // Solo los destinos declarados en `repetidos` se repiten: "Costos de IA" (superadmin, repite "Costos y facturación") y la pildora
-      // "Pregunta a tus datos" (restaurantes, repite "Copiloto"); en el resto no se repite nada.
+      // "Pregúntale a tus datos" (restaurantes, repite "Copiloto"); en el resto no se repite nada.
       const duplicados = hrefsHoja.filter((h, i) => hrefsHoja.indexOf(h) !== i);
       expect(duplicados, `${objetivo}: destinos repetidos en la hoja`).toEqual([...(esperado.repetidos ?? [])]);
       if (objetivo === "superadmin") expect(hrefsHoja).toContain("/superadmin/paneles");
