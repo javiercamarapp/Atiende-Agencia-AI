@@ -7,6 +7,7 @@ describe("esAfirmacion: afirma", () => {
     // ampliaciones de vocabulario (cada una con su pareja negativa abajo)
     "de acuerdo", "muy bien", "es correcto", "todo correcto", "hágale", "arre", "proceda", "adelante", "sí, ese es el total", "bueno, sí",
     "¿sí?", "¿ok?", "¿va?", "¿sí, sí?",
+    "sí, gracias, muy amable", "ok, gracias, muy amable",
   ])("«%s»", (t) => {
     expect(esAfirmacion(t)).toBe(true);
   });
@@ -18,6 +19,7 @@ describe("esAfirmacion: NO afirma", () => {
     // parejas negativas de cada ampliacion y de los casos que faltaban
     "muy bien, pero no", "de acuerdo, cancele", "es correcto, cancela", "todo correcto pero cambie uno", "hágale pero sin cebolla", "proceda a cancelar", "adelante, otra cosa",
     "sí, cancela", "sí no", "ok pero sin cebolla", "sí dos", "sí, a nombre de Juan", "sí, en efectivo", "bueno", "bueno, no", "¿sí o no?", "¿sí? cancela", "¿cuánto es?", "¿está bien el total?",
+    "sí, muy amable, pero cancele", "muy amable", "sí, gracias, pero no", "gracias, muy amable",
     "sí 不要", "ｓｉ", "да", "sí ٣",
   ])("«%s»", (t) => {
     expect(esAfirmacion(t)).toBe(false);

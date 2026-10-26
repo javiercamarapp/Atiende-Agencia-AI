@@ -23,7 +23,7 @@ const paso = (texto: string, ...tools: Llamada[]): TurnoLlm => async (_p, dice) 
 };
 
 /** Servidor simulado del cierre. `laxo` = confirmar_resumen NO revisa el turno (prueba que la compuerta sola sostiene la garantia). */
-function servidor(opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean } = {}) {
+function servidor(opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean; crearSiempre?: boolean } = {}) {
   const s = { turno: 0, hashActual: "", quotedTurn: -1, confirmado: false, pedidos: 0, registro: [] as string[], cambioAlCotizar: false, n: 0, total: 328, fijo: false };
   const ejecutar = async (nombre: string): Promise<unknown> => {
     s.registro.push(nombre);
@@ -47,7 +47,7 @@ function servidor(opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean 
       return { confirmado: true, quote_hash: s.hashActual };
     }
     if (nombre === "crear_pedido") {
-      if (!s.confirmado) return { error: "sin_confirmacion" };
+      if (!s.confirmado && !opts.crearSiempre) return { error: "sin_confirmacion" };
       s.pedidos += 1;
       s.confirmado = false;
       s.hashActual = "";
@@ -58,9 +58,9 @@ function servidor(opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean 
   return { s, ejecutar };
 }
 
-async function armar(guion: TurnoLlm[], opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean; regla?: typeof REGLA | { confirmar: string; crear: string } } = {}) {
+async function armar(guion: TurnoLlm[], opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean; crearSiempre?: boolean; regla?: typeof REGLA | { confirmar: string; crear: string } } = {}) {
   reloj = 1_700_000_000_000;
-  const srv = servidor({ ...(opts.laxo === undefined ? {} : { laxo: opts.laxo }), ...(opts.anidado ? { anidado: true } : {}), ...(opts.sinTotal ? { sinTotal: true } : {}) });
+  const srv = servidor({ ...(opts.laxo === undefined ? {} : { laxo: opts.laxo }), ...(opts.anidado ? { anidado: true } : {}), ...(opts.sinTotal ? { sinTotal: true } : {}), ...(opts.crearSiempre ? { crearSiempre: true } : {}) });
   const llm = llmFalso(guion);
   const stt = new SttFalso();
   const tts = new TtsFalso();
@@ -392,5 +392,69 @@ describe("compuerta confirmar -> crear: crear directo sin afirmacion se bloquea 
     await cliente("no, espera");
     expect(srv.s.pedidos).toBe(0);
     expect(logs).toContain("v2_crear_sin_afirmacion");
+  });
+});
+
+describe("compuerta confirmar -> crear: crear exige el resumen LEIDO (huellaOida) y vigente (P1 residual)", () => {
+  it("C) el agente no dijo el total, el servidor queda confirmado y el cliente dice «si, si»: crear directo NO crea un pedido con total nunca oido", async () => {
+    const { srv, cliente, logs } = await armar([
+      paso("", tc("q", "cotizar_pedido")),
+      paso("Un momento, consulto."), // sin total: el resumen NO se leyo
+      paso("", tc("c", "confirmar_resumen")), // turno A: el servidor queda `confirmado`
+      paso("Perdone, ¿me confirma?"),
+      paso("", tc("p", "crear_pedido")), // turno B: crear directo
+      paso("Le leo el resumen."),
+    ]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.confirmado).toBe(true);
+    await cliente("sí, sí");
+    expect(srv.s.pedidos).toBe(0);
+    expect(logs).toContain("v2_crear_sin_afirmacion");
+  });
+
+  it("C') el cliente INTERRUMPE la lectura del resumen y luego dice «si»: crear directo no crea", async () => {
+    const { srv, cliente } = await armar([...cotizaYLee, paso("", tc("c", "confirmar_resumen")), paso("Un momento."), paso("", tc("p", "crear_pedido")), paso("Releo.")]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí", false); // le habla ENCIMA al resumen: huellaOida = null
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(0);
+  });
+
+  it("J) cotizar + crear en el MISMO turno con un «si» (afirmacion=true) y una cotizacion nueva nunca leida: NO se crea", async () => {
+    const { srv, cliente } = await armar([paso("", tc("q", "cotizar_pedido"), tc("p", "crear_pedido")), paso("Son seis de bistec, trescientos veintiocho pesos. ¿Es correcto?")], { crearSiempre: true });
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(0);
+  });
+
+  it("I) resumen leido de OTRA huella: el cliente dice «si», el modelo re-cotiza con otro carrito y crea en el mismo turno -> NO se crea", async () => {
+    const guion = [
+      ...cotizaYLee,
+      async (_p: unknown, _d: (t: string) => void) => {
+        srv.s.cambioAlCotizar = true;
+        return { texto: "", toolCalls: [tc("q2", "cotizar_pedido"), tc("p", "crear_pedido")] };
+      },
+      paso("Con ese cambio son trescientos diez pesos. ¿Es correcto?"),
+    ] as TurnoLlm[];
+    const { srv, cliente } = await armar(guion, { crearSiempre: true });
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(0);
+  });
+
+  it("camino legitimo: resumen leido con total, «si», confirmar + crear -> 1 pedido; un segundo «si» NO duplica", async () => {
+    const { srv, cliente, logs } = await armar([
+      ...cotizaYLee,
+      paso("", tc("c", "confirmar_resumen"), tc("p", "crear_pedido")),
+      paso("Listo, quedó registrado."),
+      paso("", tc("c2", "confirmar_resumen"), tc("p2", "crear_pedido")),
+      paso("Su pedido ya quedó registrado."),
+    ], { crearSiempre: true });
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+    expect(logs).not.toContain("v2_crear_sin_afirmacion");
   });
 });
