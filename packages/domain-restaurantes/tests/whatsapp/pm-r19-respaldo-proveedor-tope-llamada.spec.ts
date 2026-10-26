@@ -34,6 +34,8 @@ const FLASH_LITE = MODELO_ALTERNO_SEGUNDO_TOPE_ID;
 beforeEach(() => {
   resetOrderFlowWarningForTests();
   vi.stubEnv(CIERRE_MAQUINA_ENV, "");
+  // PM-R21: estas pruebas fijan el respaldo SECUENCIAL de R19 (la ruta con el hedging apagado); el hedging tiene su propio archivo (pm-r21-hedging-llm.spec.ts).
+  vi.stubEnv("WHATSAPP_LLM_HEDGE_MS", "0");
   vi.useFakeTimers();
 });
 afterEach(() => {
