@@ -126,10 +126,18 @@ describe("enPalabras / contieneTotal", () => {
 });
 
 describe("esRechazo", () => {
-  it.each(["cancela", "Cancele el pedido", "ya no", "mejor no", "no lo quiero", "no gracias", "olvídalo", "déjalo así", "no, no"])("rechaza: «%s»", (t) => {
+  it.each(["cancela", "Cancele el pedido", "ya no", "mejor no", "no lo quiero", "no gracias", "olvídalo", "déjalo así", "no, no", "cancélalo", "no quiero nada", "no, déjalo así", "ya no"])("rechaza: «%s»", (t) => {
     expect(esRechazo(t)).toBe(true);
   });
   it.each(["", "sí", "no, espere", "un momento", "¿cuánto es el envío?", "ok, dale", "mejor agregue otro"])("no rechaza: «%s»", (t) => {
     expect(esRechazo(t)).toBe(false);
+  });
+});
+
+describe("esRechazo: falsos positivos mixtos documentados (decision conservadora)", () => {
+  // Un rechazo parcial con aceptacion del resto («ya no quiero la salsa, pero si el pedido») HOY cuenta como rechazo: se borra el resumen leido y el agente debe re-cotizar,
+  // releer el total y pedir un «si» nuevo. Es preferible un paso extra a crear un pedido con un resumen que el cliente acaba de cuestionar. No cambiar sin revisar esa compuerta.
+  it.each(["ya no quiero la salsa, pero sí el pedido", "no quiero cebolla"])("«%s» se trata como rechazo (cierra la compuerta)", (t) => {
+    expect(esRechazo(t)).toBe(true);
   });
 });
