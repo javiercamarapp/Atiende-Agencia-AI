@@ -292,11 +292,11 @@ describe("datos categoricos: texto sobre relleno solo si pasa 4,5 (excepciones m
     expect(Math.abs(r - documentado)).toBeLessThanOrEqual(0.1);
   });
 
-  it("oscuro: las series 1-5, 7 y 8 llevan texto >= 4,5; la 6 mide 4,36 (blanco, el mejor candidato) y NO lleva texto encima (etiqueta externa)", () => {
+  it("oscuro: las series 1-5, 7 y 8 llevan texto >= 4,5; la 6 mide 4,41 (blanco, el mejor candidato) y NO lleva texto encima (etiqueta externa)", () => {
     for (const n of [1, 2, 3, 4, 5, 7, 8]) expect(ratio(oscuro, `--on-chart-${n}`, `--chart-${n}`), `serie ${n}`).toBeGreaterThanOrEqual(4.5);
     const seis = ratio(oscuro, "--on-chart-6", "--chart-6");
     expect(seis).toBeLessThan(4.5);
-    expect(seis).toBeGreaterThan(4.3);
+    expect(seis).toBeGreaterThan(4.4);
   });
 
   it("decision (b): --on-chart-3 y --on-chart-7 en oscuro llegan a >= 4,5 (antes 4,46 con la rampa neutra del lote 1.1)", () => {
@@ -442,12 +442,31 @@ describe("escala tipografica (px / interlinea)", () => {
     expect(ds3Claro["--tracking-kpi"]).toBe("-0.03em");
     expect(ds3Claro["--tracking-display"]).toBe("-0.025em");
   });
-  it("familias: Hanken Grotesk (sans/body/display) e IBM Plex Mono DS3 (mono), con fallback ajustado", () => {
-    expect(ds3Claro["--font-sans"]).toMatch(/^"Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui/);
-    expect(ds3Claro["--font-body"]).toBe(ds3Claro["--font-sans"]);
-    expect(ds3Claro["--font-display"]).toBe(ds3Claro["--font-sans"]);
-    expect(ds3Claro["--font-mono"]).toMatch(/^"IBM Plex Mono DS3", "IBM Plex Mono DS3 Ajuste", ui-monospace/);
-    expect(ds3OscuroSolo["--font-sans"]).toBeUndefined(); // se hereda del bloque claro: una sola declaracion
+  it("familias: las 4 --font-* viven SOLO en fuentes-ds3.css, bajo la bandera; index.css de la UI no nombra familias ds3", () => {
+    const fuentes = postcss.parse(readFileSync(join(aqui, "../../../apps/web/src/fuentes-ds3.css"), "utf8"));
+    const decl: Record<string, string> = {};
+    let reglasConFont = 0;
+    fuentes.walkRules((r) => {
+      const t = r.nodes.filter((n) => n.type === "decl" && /^--font-/.test((n as { prop: string }).prop));
+      if (!t.length) return;
+      reglasConFont++;
+      expect(r.selectors, "selector de --font-*").toEqual([BANDERA]);
+      for (const n of t) decl[(n as { prop: string }).prop] = (n as { value: string }).value.trim();
+    });
+    expect(reglasConFont).toBe(1);
+    expect(Object.keys(decl).sort()).toEqual(["--font-body", "--font-display", "--font-mono", "--font-sans"]);
+    expect(decl["--font-sans"]).toMatch(/^"Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui/);
+    expect(decl["--font-body"]).toBe(decl["--font-sans"]);
+    expect(decl["--font-display"]).toBe(decl["--font-sans"]);
+    expect(decl["--font-mono"]).toMatch(/^"IBM Plex Mono DS3", "IBM Plex Mono DS3 Ajuste", ui-monospace/);
+    // Ni el bloque ds3 claro ni el oscuro de index.css las declaran, y el entrypoint importa fuentes-ds3.css DESPUES de la hoja de la UI.
+    for (const k of Object.keys(decl)) {
+      expect(ds3Claro[k], k).toBeUndefined();
+      expect(ds3OscuroSolo[k], k).toBeUndefined();
+    }
+    expect(css).not.toMatch(/Hanken Grotesk|IBM Plex Mono DS3/);
+    const entrada = readFileSync(join(aqui, "../../../apps/web/src/index.css"), "utf8");
+    expect(entrada.indexOf("./fuentes-ds3.css")).toBeGreaterThan(entrada.indexOf("@atiende/ui/styles.css"));
   });
   it("cuerpo: 13 px / 1.5, sin tracking global, cifras tabulares, sin sintesis de cursiva", () => {
     const cuerpo = tokens(BANDERA); // las propiedades normales se parsean tambien

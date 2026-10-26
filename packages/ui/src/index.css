@@ -652,11 +652,7 @@
     --sidebar-border: 240 4.2% 90.6%;
     --sidebar-ring: 240 6.7% 5.9%;
 
-    /* Tipografia: Hanken Grotesk / IBM Plex Mono (fuentes-ds3.css) con fallback de metricas ajustadas. */
-    --font-sans: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
-    --font-body: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
-    --font-display: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
-    --font-mono: "IBM Plex Mono DS3", "IBM Plex Mono DS3 Ajuste", ui-monospace, monospace;
+    /* Tipografia: las 4 --font-* de ds3 viven en apps/web/src/fuentes-ds3.css (se importa despues de esta hoja). */
     --text-eyebrow: 0.6875rem;
     --text-eyebrow-lh: 1rem;
     --text-xs: 0.75rem;
@@ -816,7 +812,7 @@
     --on-chart-3: 240 6.1% 9.6%;
     --on-chart-4: 240 6.1% 9.6%;
     --on-chart-5: 240 6.1% 9.6%;
-    --on-chart-6: 0 0% 100%; /* 4,36 (el mejor de los candidatos, <4,5): la serie 6 (oscuro) no lleva texto encima */
+    --on-chart-6: 0 0% 100%; /* 4,41 (el mejor de los candidatos, <4,5): la serie 6 (oscuro) no lleva texto encima */
     --on-chart-7: 240 6.1% 9.6%;
     --on-chart-8: 240 6.1% 9.6%;
     --chart-grid: hsl(240 4.8% 95.9% / 0.08);

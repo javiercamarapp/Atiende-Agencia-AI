@@ -60,3 +60,13 @@
   descent-override: 27.5%;
   line-gap-override: 0%;
 }
+
+/* Familias del diseno ds3, SOLO bajo la bandera. Viven aqui (y no en packages/ui/src/index.css) porque este archivo se importa
+   DESPUES de la hoja de @atiende/ui (apps/web/src/index.css) y fuentes-ds3.spec.ts exige que esa hoja no nombre familias ds3.
+   Sin capa: gana a los :root/.dark y a los bloques de ambito de la hoja compartida (todos en @layer base). */
+html[data-diseno="ds3"] {
+  --font-sans: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
+  --font-body: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
+  --font-display: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono DS3", "IBM Plex Mono DS3 Ajuste", ui-monospace, monospace;
+}
