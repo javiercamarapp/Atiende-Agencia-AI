@@ -1,4 +1,4 @@
-// Copiloto ("Pregunta a tus datos") de rentas: conecta la pagina generica `CopilotoPage` con la API real
+// Copiloto ("Pregúntale a tus datos") de rentas: conecta la pagina generica `CopilotoPage` con la API real
 // `/rentas/:propertyId/chat-datos` (sesion con refresh de `rentasAuthContext`). El alcance (organizacion, propiedades, rol
 // admin_gestora/contador) lo decide el servidor a partir del token; aqui solo viaja la propiedad activa en la URL.
 import { useMemo } from "react";

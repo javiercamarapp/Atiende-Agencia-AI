@@ -1,4 +1,4 @@
-// "Pregunta a tus datos" de CITAS (solo owner/admin en el servidor): cliente generico (src/lib/data-chat-client.ts) con la sesion
+// "Pregúntale a tus datos" de CITAS (solo owner/admin en el servidor): cliente generico (src/lib/data-chat-client.ts) con la sesion
 // de citas. El shell lo usa solo para saber si el asistente esta activo (pildora del pie y boton del header); la conversacion
 // vive en la pagina del Copiloto (pages/Copiloto.tsx), no en un dialogo.
 import { crearChatConexion, crearClienteDataChat } from "../../../lib/data-chat-client.ts";

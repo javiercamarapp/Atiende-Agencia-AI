@@ -41,7 +41,6 @@ import {
 import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
-import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
@@ -175,7 +174,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
 
   const { session, branches, activeBranch, propertyId, role } = s;
 
-  // "Chatea con tus datos": conexion real con el backend de hoteles (catalogo cerrado, solo owner/gm en el servidor).
+  // "Pregúntale a tus datos": conexion real con el backend de hoteles (catalogo cerrado, solo owner/gm en el servidor).
   // El servidor decide el alcance a partir del token; aqui solo van el hotel activo y el texto.
   const chatConexion = crearChatConexionHoteles(apiBaseUrl, session.token, propertyId);
 
@@ -188,7 +187,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     {
       title: "Resumen",
       siempreAbierto: true,
-      // CHAT-09: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, solo para owner/gm (los unicos que el servidor deja usarlo).
+      // CHAT-09: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, solo para owner/gm (los unicos que el servidor deja usarlo).
       items: [
         { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
         ...(COPILOTO_HOTELES_ROLES.has(role) ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
@@ -269,7 +268,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Hoteles · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/hoteles/${orgSlug}` }}
+      header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Hoteles · ${orgSlug}`, resumenTo: `/hoteles/${orgSlug}` }}
       branchSelector={hotelSelector("hoteles-hotel-activo")}
       mobileSelector={branches.length > 1 ? hotelSelector("hoteles-hotel-activo-movil") : null}
       contentKey={propertyId}

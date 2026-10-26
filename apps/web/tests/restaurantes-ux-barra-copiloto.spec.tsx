@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
-// UX restaurantes: (1) la barra superior del shell ("Chatea con tus datos", campana y fecha) esta en TODAS las rutas del panel,
+// UX restaurantes: (1) la barra superior del shell (delgada, solo titulo; sin "Pregúntale a tus datos", campana ni fecha) esta en TODAS las rutas del panel,
 // no solo en el Resumen: la monta el `VerticalShell` una sola vez, ninguna pagina decide su barra; (2) el Copiloto lleva su
-// nombre ("Pregunta a tus datos") en la barra como las demas paginas; (3) las categorias del Copiloto de restaurantes salen en
+// nombre ("Pregúntale a tus datos") en la barra como las demas paginas; (3) las categorias del Copiloto de restaurantes salen en
 // el orden VENTAS, OPERACION, CLIENTES, CFO. Reloj fijo (solo `Date`); no se lee `process.env.TZ`.
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -88,14 +88,17 @@ async function renderEn(ruta: string): Promise<HTMLElement> {
 }
 
 describe("restaurantes: la barra superior esta en cada ruta del panel", () => {
-  it.each(RUTAS)("/restaurantes/demo%s lleva la barra con Chatea con tus datos, campana y fecha", async (ruta) => {
+  it.each(RUTAS)("/restaurantes/demo%s lleva la barra delgada: titulo, sin boton de chat, campana ni fecha; la campana sigue en el pie del menu", async (ruta) => {
     const c = await renderEn(ruta);
     const barras = c.querySelectorAll('[data-testid="barra-pagina"]');
     expect(barras, "una sola barra por pantalla").toHaveLength(1);
     const barra = barras[0] as HTMLElement;
-    expect(barra.textContent).toContain("Chatea con tus datos");
-    expect(barra.querySelectorAll('[aria-label^="Notificaciones"]'), "campana (centro de notificaciones)").toHaveLength(1);
-    expect(barra.querySelector('[data-testid="barra-pagina-fecha"]')?.textContent?.trim()).toBe("8 oct 2026");
+    expect(barra.querySelector("a, button"), "la barra no lleva boton de chat ni enlaces").toBeNull();
+    expect(barra.querySelector('[aria-label^="Notificaciones"]'), "sin campana en la barra").toBeNull();
+    expect(barra.querySelector('[data-testid="barra-pagina-fecha"]'), "sin fecha en la barra").toBeNull();
+    // Las funciones siguen accesibles: pildora "Notificaciones" en el pie del Sidebar (con su ruta real).
+    const notif = c.querySelector<HTMLAnchorElement>('aside a[aria-label="Notificaciones"]');
+    expect(notif?.getAttribute("href"), "pildora Notificaciones del pie").toMatch(/\/notificaciones$/);
     expect((barra.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent ?? "").trim().length).toBeGreaterThan(0);
     // Mismo lugar y estilo siempre: es el primer hijo de la columna de contenido (la barra no vive dentro de la pagina).
     expect(barra.closest("main"), "la barra va fuera del <main> de la pagina").toBeNull();
@@ -103,9 +106,12 @@ describe("restaurantes: la barra superior esta en cada ruta del panel", () => {
 });
 
 describe("restaurantes: Copiloto con encabezado y tarjetas en orden", () => {
-  it("la barra lleva el nombre del Copiloto igual que las demas paginas", async () => {
+  it("la barra del Copiloto lleva el titulo de la consola, nunca el nombre de la funcion (ese vive en el menu y en el h1 de la portada)", async () => {
     const c = await renderEn("/copiloto");
-    expect(c.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent).toBe("Pregunta a tus datos");
+    // «Pregúntale a tus datos» nunca va en el encabezado: la barra lleva el titulo de la consola; el nombre es el unico h1 de la portada.
+    expect(c.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent).not.toContain("Pregúntale a tus datos");
+    expect(c.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent).toContain("Restaurantes");
+    // El h1 de la portada (carga perezosa con /estado) lo cubren los e2e copiloto-*.spec.ts.
     expect(c.querySelector('[data-testid="barra-pagina"] svg'), "icono de la pagina").not.toBeNull();
   });
 

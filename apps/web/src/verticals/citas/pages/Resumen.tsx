@@ -171,7 +171,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
               />
               <TileLink to={`${base}/avisos`} icon={Bell} titulo="Recordatorios 24 h" descripcion={descripcionRecordatorios(avisos)} />
               <TileLink to={`${base}/agenda`} icon={Mic} titulo="Voz" descripcion={descripcionPorCanal(resumen, "voice", "cita creada", "citas creadas", "por voz")} />
-              <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregunta a tus datos de citas." />
+              <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregúntale a tus datos de citas." />
             </ResumenSeccion>
             <ResumenSeccion titulo="Agentes — última corrida">
               <p data-testid="sin-datos-corrida" className="col-span-full text-xs text-faint">

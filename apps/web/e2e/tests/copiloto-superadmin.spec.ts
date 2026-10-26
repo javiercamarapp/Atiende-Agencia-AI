@@ -5,7 +5,7 @@ import { expect, test } from "../helpers/fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 import { afirmarModo, afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
-import { esMovil, irASeccion } from "../helpers/navegacion.ts";
+import { abrirMasMovil, esMovil, irASeccion } from "../helpers/navegacion.ts";
 
 const RUTA = "/superadmin/copiloto";
 const CHIP = "¿Cuántas organizaciones tengo por estado?";
@@ -16,8 +16,9 @@ const panel = (page: Page) => page.locator("#copiloto-panel");
 
 async function abrirPanel(page: Page): Promise<void> {
   if (esMovil(page)) {
-    await page.getByRole("button", { name: "Abrir menú de cuenta" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: /Chatea con tus datos/ }).click();
+    // El boton salio del encabezado: en movil vive en "Mas" > Cuenta ("Pregúntale a tus datos"); en escritorio, ademas del atajo, en el pie del menu.
+    const hoja = await abrirMasMovil(page);
+    await hoja.getByRole("button", { name: "Pregúntale a tus datos" }).click();
   } else {
     await page.keyboard.press("ControlOrMeta+j");
   }
@@ -44,7 +45,7 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await irASeccion(page, { texto: "Copiloto", href: RUTA });
     await expect(page).toHaveURL(new RegExp(`${RUTA}$`));
     await afirmarPantallaSana(page, "copiloto");
-    await expect(page.getByRole("heading", { level: 1, name: "Pregunta a tus datos" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toBeVisible();
     if (!esMovil(page)) await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Copiloto");
     await expect(page.getByText("Toda la plataforma").first()).toBeVisible();
 

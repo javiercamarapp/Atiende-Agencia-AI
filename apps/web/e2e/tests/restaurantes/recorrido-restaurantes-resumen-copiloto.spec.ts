@@ -40,7 +40,7 @@ test.describe("restaurantes: Resumen @recorrido", () => {
     ];
     for (const [texto, href] of destinos) await expect(main(page).getByRole("link", { name: texto })).toHaveAttribute("href", href);
     // El acceso al Copiloto vive en la barra y en el Sidebar, no se repite en el cuerpo del Resumen.
-    await expect(main(page).getByRole("link", { name: "Pregunta a tus datos" })).toHaveCount(0);
+    await expect(main(page).getByRole("link", { name: "Pregúntale a tus datos" })).toHaveCount(0);
     await expect(main(page).getByRole("link", { name: /WhatsApp/ }).first()).toHaveAttribute("href", `${BASE}/conversaciones`);
     await afirmarPantallaSana(page, "resumen");
     vigilante.verificar();
@@ -69,12 +69,15 @@ test.describe("restaurantes: Resumen @recorrido", () => {
     vigilante.verificar();
   });
 
-  test("staff ve el Resumen y llega al Copiloto desde la barra (sin pildora repetida en el cuerpo)", async ({ page, iniciarSesion }) => {
+  test("staff ve el Resumen y llega al Copiloto desde el pie del menu (la barra ya no lleva el chat; sin pildora repetida en el cuerpo)", async ({ page, iniciarSesion }) => {
     await iniciarSesion("restaurantes", "staff");
     await ir(page, "");
-    await expect(main(page).getByRole("link", { name: "Pregunta a tus datos" })).toHaveCount(0);
-    // La barra es de escritorio; en movil el chat vive en el menu de cuenta (lo cubre restaurantes-uni-marco.spec.ts).
-    if (!esMovil(page)) await expect(page.getByTestId("barra-pagina").getByRole("link", { name: /Chatea con tus datos/ })).toHaveAttribute("href", `${BASE}/copiloto`);
+    await expect(main(page).getByRole("link", { name: "Pregúntale a tus datos" })).toHaveCount(0);
+    // La barra es de escritorio y va sin chat; el acceso vive en la pildora del pie del menu lateral (en movil, "Mas" > "Cuenta": lo cubre restaurantes-uni-marco.spec.ts).
+    if (!esMovil(page)) {
+      await expect(page.getByTestId("barra-pagina").getByText(/Pregúntale a tus datos/)).toHaveCount(0);
+      await expect(page.locator("aside").getByRole("link", { name: "Pregúntale a tus datos" })).toHaveAttribute("href", `${BASE}/copiloto`);
+    }
   });
 });
 
@@ -108,6 +111,6 @@ test.describe("restaurantes: Copiloto @recorrido", () => {
   test("admin entra al Copiloto (el repartidor es devuelto a Mis entregas: ver recorrido por rol)", async ({ page, iniciarSesion }) => {
     await iniciarSesion("restaurantes", "admin");
     await ir(page, "/copiloto");
-    await expect(page.getByRole("heading", { level: 1, name: "Pregunta a tus datos" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toBeVisible();
   });
 });

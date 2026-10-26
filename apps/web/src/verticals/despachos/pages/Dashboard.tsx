@@ -288,7 +288,7 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
           />
           <TileLink to={`${base}/cfdi`} icon={ShieldCheck} titulo="Lista 69-B del SAT" />
           <TileLink to={`${base}/conciliacion`} icon={Landmark} titulo="Conciliación asistida" />
-          {COPILOTO_DESPACHOS_ROLES.has(role) && <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregunta a tus datos del despacho." />}
+          {COPILOTO_DESPACHOS_ROLES.has(role) && <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregúntale a tus datos del despacho." />}
         </ResumenSeccion>
         <ResumenSeccion titulo="Última corrida">
           <EstadoVacio

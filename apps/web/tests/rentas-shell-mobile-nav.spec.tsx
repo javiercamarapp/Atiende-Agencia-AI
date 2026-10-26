@@ -110,7 +110,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(18); // + Seguridad de la cuenta (PL-21)
+    expect(hrefs).toHaveLength(19); // + Notificaciones + Seguridad de la cuenta (PL-21)
     expect(hrefs).toEqual(
       expect.arrayContaining(["/rentas/demo/copiloto", "/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/plantillas", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo", "/rentas/demo/privacidad", "/rentas/demo/privacidad-organizacion"]),
     );
@@ -202,7 +202,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
   });
 
-  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
     rendered = await renderShell();
     await cerrarSesionDesdeMenuMovil(rendered.container);
     expect(window.localStorage.getItem("atiende.rentas.session")).toBeNull();
@@ -226,7 +226,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(15); // + Seguridad de la cuenta (PL-21)
+    expect(hrefs).toHaveLength(16); // + Notificaciones + Seguridad de la cuenta (PL-21)
     expect(hrefs).not.toContain("/rentas/demo/copiloto");
   });
 });

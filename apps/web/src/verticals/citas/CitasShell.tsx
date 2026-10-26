@@ -34,7 +34,6 @@ import {
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
-import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
@@ -101,7 +100,7 @@ function buildSections(orgSlug: string, puedeCopiloto: boolean): SidebarSection[
       items: [
         // C-05 -- panel Resumen (citas hoy/semana, por confirmar, no-shows, clientes nuevos).
         { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
-        // CHAT-13 -- Copiloto ("Pregunta a tus datos"): justo debajo de Resumen, solo para owner/admin (los unicos que el servidor deja usarlo).
+        // CHAT-13 -- Copiloto ("Pregúntale a tus datos"): justo debajo de Resumen, solo para owner/admin (los unicos que el servidor deja usarlo).
         ...(puedeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
         { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
         // C-16 -- centro de avisos: por confirmar, recordatorios agotados y escalaciones de crisis con seguimiento.
@@ -186,7 +185,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       user={user}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/citas/${orgSlug}/resumen` }}
+      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, resumenTo: `/citas/${orgSlug}/resumen` }}
       branchSelector={branchSelector("citas-sucursal-activa")}
       mobileSelector={branches.length > 1 ? branchSelector("citas-sucursal-activa-movil") : null}
       contentKey={propertyId}

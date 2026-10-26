@@ -1,4 +1,4 @@
-// Copiloto ("Pregunta a tus datos") de hoteles: conecta la pagina generica `CopilotoPage` con la API real
+// Copiloto ("Pregúntale a tus datos") de hoteles: conecta la pagina generica `CopilotoPage` con la API real
 // `/hoteles/:propertyId/chat-datos` (sesion con refresh de `hotelesAuthContext`). El alcance (organizacion, hoteles, rol)
 // lo decide el servidor a partir del token (solo owner/gm: los demas reciben 403); aqui solo viaja el hotel activo en la URL.
 // Los roles que el servidor rechazaria NI SIQUIERA llaman al backend: ven el estado "sin acceso" directo.

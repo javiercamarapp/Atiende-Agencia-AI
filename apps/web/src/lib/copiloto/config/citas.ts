@@ -16,7 +16,7 @@ export const SUGERENCIAS_COPILOTO_CITAS: readonly string[] = [
 export const COPILOTO_CITAS: CopilotoConfigVertical = {
   vertical: "citas",
   textos: {
-    titulo: "Pregunta a tus datos",
+    titulo: "Pregúntale a tus datos",
     subtitulo: "Tu agenda, tus ingresos y tus recordatorios, con la cifra que ya calculó el sistema.",
     nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números.",
     placeholder: "Pregunta sobre tu agenda…",

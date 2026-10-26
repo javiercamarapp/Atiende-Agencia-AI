@@ -110,6 +110,7 @@ describe("CitasShell — nav móvil", () => {
       "Staff",
       "Auditoría",
       "Privacidad",
+      "Notificaciones", // la campana salio del encabezado: vive en la seccion "Cuenta" de la hoja
       "Seguridad de la cuenta", // PL-21: destino comun del pie, seccion "Cuenta" de la hoja
     ]);
   });
@@ -150,7 +151,7 @@ describe("CitasShell — nav móvil", () => {
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
   });
 
-  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
     rendered = await renderShell();
     await cerrarSesionDesdeMenuMovil(rendered.container);
     expect(window.localStorage.getItem("atiende.citas.session")).toBeNull();

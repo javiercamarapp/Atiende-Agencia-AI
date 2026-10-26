@@ -38,6 +38,11 @@ export interface SidebarPiePildora {
   onClick?: () => void;
   /** Con icono se pinta a la izquierda (sin flecha); sin icono el texto lleva la flecha "->". */
   icon?: IconType;
+  /** Punto de aviso (p. ej. notificaciones sin leer) junto al icono. */
+  indicador?: boolean;
+  /** Solo con `onClick` que alterna un panel: relacion accesible con ese panel y su estado (`aria-pressed`, no `aria-expanded`: los grupos del acordeon usan ese). */
+  ariaControls?: string;
+  ariaPressed?: boolean;
 }
 
 export interface SidebarUser {
@@ -154,22 +159,23 @@ function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }
 }
 
 function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colapsado: boolean }) {
-  const { label, to, href, onClick, icon: Icono } = pildora;
+  const { label, to, href, onClick, icon: Icono, indicador } = pildora;
   const contenido = (
     <>
       {Icono ? <Icono className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : null}
+      {indicador ? <span data-testid="pildora-indicador" aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
       <span className={cn("min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{label}</span>
       {Icono ? null : <span aria-hidden="true">→</span>}
     </>
   );
   const comunes = {
     title: label,
-    "aria-label": label,
+    "aria-label": indicador ? `${label}, con avisos sin leer` : label,
     className: cn(CLASE_PILDORA, colapsado ? "justify-center" : cn("justify-center", Icono ? "lg:justify-start" : "lg:justify-between")),
   };
   if (to) return <Link to={to} {...comunes}>{contenido}</Link>;
   if (href) return <a href={href} {...comunes}>{contenido}</a>;
-  if (onClick) return <button type="button" onClick={onClick} {...comunes} className={cn(comunes.className, "w-full text-left")}>{contenido}</button>;
+  if (onClick) return <button type="button" onClick={onClick} aria-controls={pildora.ariaControls} aria-pressed={pildora.ariaPressed} {...comunes} className={cn(comunes.className, "w-full text-left")}>{contenido}</button>;
   return null;
 }
 

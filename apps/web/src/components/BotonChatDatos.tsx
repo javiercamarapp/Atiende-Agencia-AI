@@ -1,10 +1,7 @@
-// Boton "Chatea con tus datos" del header. Sin `chat` (hoteles, citas, rentas, despachos,
-// licitaciones: su catalogo aun no esta enchufado) dice la verdad de frente: etiqueta "Pronto" y aviso
-// honesto (ver PanelChateaConTusDatos.tsx), nunca una conversacion simulada. Con `chat` consulta al
-// servidor si el asistente esta activo: solo entonces quita "Pronto". Con `href` (restaurantes, vertical
-// piloto del Copiloto, CHAT-08) el boton disponible es un ENLACE a la pagina del Copiloto; sin `href`
-// abre el dialogo de conversacion (verticales que aun lo usan). Si el servidor no confirma la
-// disponibilidad, sigue siendo el aviso honesto con "Pronto".
+// Lanzador "Pregúntale a tus datos" (boton). YA NO se monta en los encabezados (orden del dueno); la entrada vigente es la pildora
+// "Pregúntale a tus datos" del pie del Sidebar (VerticalShellConectado). Se conserva por `useChatDatosDisponible` (que usa esa
+// pildora) y para paginas que quieran un lanzador propio. Sin `chat` dice "Pronto" con aviso honesto (nunca una conversacion
+// simulada); con `chat` consulta al servidor si el asistente esta activo; con `href` es un enlace a la pagina del Copiloto.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { MessageCircle } from "lucide-react";
@@ -15,7 +12,7 @@ import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
 /**
  * Disponibilidad REAL del asistente: solo es `true` cuando el servidor lo confirma para la sucursal activa
  * (`chat.clave`). Sin `chat`, o si la consulta falla, es `false`. Lo comparten el boton de la barra y la
- * pildora "Pregunta a tus datos" del pie del Sidebar.
+ * pildora "Pregúntale a tus datos" del pie del Sidebar.
  */
 export function useChatDatosDisponible(chat: ChatDatosConexion | undefined): boolean {
   const [disponible, setDisponible] = useState(false);
@@ -45,7 +42,7 @@ export function BotonChatDatos({ className, nombreNegocio, chat, href }: { class
       <Button asChild variant="outline" size="sm" className={`h-8 rounded-full text-sm shrink-0 ${className ?? ""}`}>
         <Link to={href}>
           <MessageCircle className="w-3.5 h-3.5" />
-          Chatea con tus datos
+          Pregúntale a tus datos
         </Link>
       </Button>
     );
@@ -61,7 +58,7 @@ export function BotonChatDatos({ className, nombreNegocio, chat, href }: { class
         className={`h-8 rounded-full text-sm shrink-0 ${className ?? ""}`}
       >
         <MessageCircle className="w-3.5 h-3.5" />
-        Chatea con tus datos
+        Pregúntale a tus datos
         {disponible ? null : <span className="font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">Pronto</span>}
       </Button>
       {abierto && <PanelChateaConTusDatos onClose={() => setAbierto(false)} nombreNegocio={nombreNegocio} chat={disponible ? chat : undefined} />}

@@ -1,4 +1,4 @@
-// Conexion generica de "Chatea con tus datos" para las verticales cuyo cliente HTTP ya trae el refresh de
+// Conexion generica de "Pregúntale a tus datos" para las verticales cuyo cliente HTTP ya trae el refresh de
 // sesion (despachos, licitaciones): arma el `ChatDatosConexion` que consumen `BotonChatDatos` y
 // `MobileHeaderActions`. SOLO manda la pregunta y el historial de texto: el alcance (organizacion,
 // clientes, rol, zona horaria) lo decide el servidor a partir del token, nunca el cliente. Cualquier error
