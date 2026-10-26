@@ -109,8 +109,16 @@ describe("T7-038 (P2): el aviso de un agregado NO se reescribe con el total de u
 
   it("estado confirmado (entre confirmar_resumen y crear_pedido) con cotizacion vigente: SI se corrige el aviso", async () => {
     const v = await nuevoViaje();
-    v.guion([{ tools: [cotizar(v), { name: "confirmar_resumen", args: {} }] }, { tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_especial", resumen: "Pidió algo; no se ha cotizado." } }] }, { texto: "Listo." }]);
+    v.guion([{ tools: [cotizar(v)] }, { texto: "Permítame repetirle su pedido. Total a pagar: $450.00 en efectivo, para recoger. ¿Es correcto?" }]);
     await v.escribe("quiero medio kilo de pastor para recoger");
+    // El arnes cierra solo tras un «si»; se siembra el estado `confirmado` (confirmar_resumen ya hecho, crear_pedido aun no) mostrandolo asi a la herramienta.
+    const leer = v.world.repo.readOrderFlow.bind(v.world.repo);
+    v.world.repo.readOrderFlow = async (org, key) => {
+      const snap = await leer(org, key);
+      return snap && snap.state === "cotizado" ? { ...snap, state: "confirmado" } : snap;
+    };
+    v.guion([{ tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_especial", resumen: "Pidió algo; no se ha cotizado." } }] }, { texto: "Listo." }]);
+    await v.escribe("tengo una duda sobre mi pedido: ¿se puede ponerle algo extra?");
     const aviso = v.callbacks.find((c) => c.reason === "escalada:pedido_especial");
     expect(aviso?.message).toContain("ya está cotizado por $450.00");
   });
