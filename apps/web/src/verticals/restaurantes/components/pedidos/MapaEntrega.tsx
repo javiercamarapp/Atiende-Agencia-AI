@@ -2,7 +2,7 @@
 // (MapaLeaflet.tsx, chunk aparte). Sucursal REAL; cliente y repartidor SIMULADOS (insignia «Simulado» que nunca se quita).
 import { lazy, Suspense } from "react";
 import { MapPinOff, Bike, Package, Radar, User } from "lucide-react";
-import { StatusBadge } from "@atiende/ui";
+import { RegionCargando, StatusBadge } from "@atiende/ui";
 import type { OrderSummary } from "../../lib/orders-client.ts";
 import "./mapa-entrega.css";
 
@@ -42,7 +42,7 @@ export function MapaEntrega({ order, sucursal, repartidorNombre }: { readonly or
           <p className="text-pill text-muted-foreground">Agrégala en Sucursales para ver aquí la entrega.</p>
         </div>
       ) : (
-        <Suspense fallback={<div role="status" aria-busy="true" aria-label="Cargando el mapa" className={`${ALTO_MAPA} animate-pulse rounded-xl border border-border bg-canvas`} />}>
+        <Suspense fallback={<RegionCargando ocupado etiqueta="Cargando el mapa" pulso className={`${ALTO_MAPA} rounded-xl border border-border bg-canvas`} claseDs3={`${ALTO_MAPA} rounded-xl border border-border`} />}>
           <MapaLeaflet
             sucursal={{ nombre: sucursal.nombre, lat: sucursal.lat as number, lng: sucursal.lng as number }}
             direccionCliente={order.customerAddress}

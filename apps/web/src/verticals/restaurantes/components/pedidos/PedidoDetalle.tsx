@@ -3,8 +3,8 @@
 // EN VEZ de la lista mientras haya un pedido abierto; «Volver» regresa a la lista. Lo propio del monorepo: el estado real, el repartidor
 // asignado, la propina, la hora de recogida / programacion y el boton «Historial» (bitacora de transiciones).
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, Banknote, Bike, Clock, CreditCard, Globe, History, Loader2, MapPin, MessageCircle, Mic, Phone, ShoppingCart, StickyNote, Store, Truck, User, Wallet } from "lucide-react";
-import { Button, DataTable, StatusBadge, cn, formatMoney, statusTone } from "@atiende/ui";
+import { AlertTriangle, ArrowLeft, Banknote, Bike, Clock, CreditCard, Globe, History, MapPin, MessageCircle, Mic, Phone, ShoppingCart, StickyNote, Store, Truck, User, Wallet } from "lucide-react";
+import { Button, DataTable, RegionCargando, StatusBadge, cn, formatMoney, statusTone } from "@atiende/ui";
 import { fechaAnioHoraEsMx, fechaCortaHoraEsMx, hora24EsMx } from "../../../../lib/formato-fecha.ts";
 import { etiquetaVenta, fetchOrder, fetchOrders, ORDER_STATUS_LABELS } from "../../lib/orders-client.ts";
 import type { OrderItem, OrderSummary } from "../../lib/orders-client.ts";
@@ -101,9 +101,7 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
       </Button>
 
       {cargando ? (
-        <div className="flex justify-center py-16" role="status" aria-busy="true" aria-label="Cargando el pedido">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        </div>
+        <RegionCargando ocupado etiqueta="Cargando el pedido" className="flex justify-center py-16" claseDs3="min-h-40" giro="h-6 w-6 text-muted-foreground" />
       ) : errorDetalle || !detalle ? (
         <div role="alert" className="w-full rounded-2xl border border-destructive/30 bg-card p-5 text-center">
           <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-destructive" aria-hidden="true" />
@@ -243,9 +241,7 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
           <div className="space-y-2">
             <p className="px-1 font-mono text-eyebrow uppercase tracking-[0.08em] text-muted-foreground">Pedidos recientes</p>
             {cargandoRecientes ? (
-              <div className="flex justify-center py-8" role="status" aria-busy="true" aria-label="Cargando pedidos recientes">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
-              </div>
+              <RegionCargando ocupado etiqueta="Cargando pedidos recientes" className="flex justify-center py-8" claseDs3="min-h-24" giro="h-5 w-5 text-muted-foreground" />
             ) : recientes.length === 0 ? (
               <p className="px-1 text-pill text-muted-foreground">No hay más pedidos recientes.</p>
             ) : (
