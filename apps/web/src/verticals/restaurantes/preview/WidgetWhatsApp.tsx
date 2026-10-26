@@ -153,8 +153,9 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       const objetivo = e.target as HTMLElement | null;
       if (objetivo?.closest?.('[role="listbox"]') || panel.current?.querySelector('[role="combobox"][aria-expanded="true"]')) return;
       // Otro diálogo/alerta encima (p. ej. una confirmación): Escape es suyo; este chat sigue abierto.
-      const otro = objetivo?.closest?.('[role="dialog"],[role="alertdialog"]');
-      if (otro && otro !== panel.current) return;
+      // Se mira el documento entero (no solo el origen del evento): el foco puede estar en <body> con la confirmación abierta.
+      const otro = Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"]')).some((d) => d !== panel.current && !panel.current?.contains(d));
+      if (otro) return;
       e.stopPropagation();
       alCerrar.current();
     };

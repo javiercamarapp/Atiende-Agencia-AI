@@ -382,4 +382,45 @@ describe("<WidgetWhatsApp />", () => {
     // todos los botones solo-icono tienen nombre accesible
     for (const b of Array.from(dialogo.querySelectorAll("button"))) expect((b.getAttribute("aria-label") ?? b.textContent ?? "").trim()).not.toBe("");
   });
+
+  it("Tab con la lista de Simular cliente abierta no atrapa el foco (no salta al primer enfocable del chat)", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }), { borrador: true });
+    await abrir();
+    click(boton("Opciones de prueba")!);
+    await esperar();
+    const select = q<HTMLButtonElement>('[role="combobox"]')!;
+    select.focus();
+    keydown(select, "Enter");
+    const lista = q<HTMLElement>('[role="listbox"]')!;
+    expect(lista).not.toBeNull();
+    const opcion = lista.querySelector<HTMLElement>('[role="option"]') ?? lista;
+    opcion.tabIndex = -1;
+    opcion.focus();
+    const primero = q('[role="dialog"]')!.querySelector<HTMLElement>("button:not([disabled])")!;
+    const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    act(() => {
+      opcion.dispatchEvent(ev);
+    });
+    expect(document.activeElement).not.toBe(primero);
+  });
+
+  it("Escape con otro dialog/alertdialog encima NO cierra el chat, tanto si nace dentro de él como en <body>", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    const otro = document.createElement("div");
+    otro.setAttribute("role", "alertdialog");
+    const interior = document.createElement("button");
+    otro.appendChild(interior);
+    document.body.appendChild(otro);
+    keydown(interior, "Escape");
+    await esperar();
+    expect(q('[data-testid="chat-whatsapp"]')).not.toBeNull();
+    keydown(document.body, "Escape");
+    await esperar();
+    expect(q('[data-testid="chat-whatsapp"]')).not.toBeNull();
+    otro.remove();
+    keydown(caja(), "Escape");
+    await esperar();
+    expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
+  });
 });
