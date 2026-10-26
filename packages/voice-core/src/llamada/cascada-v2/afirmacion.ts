@@ -30,7 +30,7 @@ const FRASES_INICIO: readonly (readonly string[])[] = [["de", "acuerdo"], ["muy"
 /** Muletillas de STT que pueden anteceder a la afirmacion. */
 const MULETILLAS = new Set(["eh", "ehh", "em", "este", "mm", "mmm", "pues", "uh", "ah", "bueno"]);
 /** Relleno de cortesia permitido (sin contenido de pedido). Cualquier palabra fuera de este vocabulario invalida el turno. */
-const RELLENO = new Set(["por", "favor", "gracias", "senor", "senora", "senorita", "joven", "muy", "bien", "asi", "es", "esta", "eso", "ese", "el", "total", "todo", "ya", "entonces", "y", "ahi", "de", "acuerdo", "que", "lo", "quiero", "mande", "tal", "cual", "buen", "dia", "tardes", "noches", "supuesto", "correcto", "perfecto"]);
+const RELLENO = new Set(["por", "favor", "gracias", "amable", "senor", "senora", "senorita", "joven", "muy", "bien", "asi", "es", "esta", "eso", "ese", "el", "total", "todo", "ya", "entonces", "y", "ahi", "de", "acuerdo", "que", "lo", "quiero", "mande", "tal", "cual", "buen", "dia", "tardes", "noches", "supuesto", "correcto", "perfecto"]);
 
 function empiezaCon(palabras: readonly string[], i: number): boolean {
   const p = palabras[i] as string;

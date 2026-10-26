@@ -160,6 +160,15 @@ export async function ejecutarHerramientas(
         resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
         continue;
       }
+      // Ademas de la afirmacion, el resumen vigente debe haberse LEIDO (con su total): `huellaOida` presente e igual a la huella vigente (ultima cotizacion del llamado). Cubre un «si»
+      // que responde a otra cosa, una lectura interrumpida, un agente que no dijo el total y una cotizacion nueva (misma respuesta o turno) que el cliente nunca oyo.
+      const huellaVigente = espera.huellaCotizada ?? espera.huellaUltima ?? null;
+      const oida = espera.huellaOida ?? null;
+      if (oida === null || (huellaVigente !== null && oida !== huellaVigente)) {
+        log?.("v2_crear_sin_afirmacion", { motivo: "resumen_no_leido", herramienta: regla.crear });
+        resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
+        continue;
+      }
       // El pedido que se crea debe ser el que el cliente oyo: un quote_hash distinto del ultimo cotizado/leido se rechaza y obliga a re-cotizar y re-leer.
       const crudo = argumentosDe(tc.argsJson)["quote_hash"];
       const pedida = typeof crudo === "string" && crudo.trim() !== "" ? crudo.trim().toLowerCase() : null;
