@@ -860,7 +860,7 @@
 }
 
 /* copiloto */
-/* Copiloto "Chatea con tus datos" (components/copiloto/*). El acento azul de
+/* Copiloto "Pregúntale a tus datos" (components/copiloto/*). El acento azul de
    atiende-restaurantes (D0 de la spec) vive SOLO dentro de .copiloto: si se decide
    pasarlo a tinta, basta cambiar estas dos lineas, sin tocar componentes. */
 .copiloto {

@@ -105,7 +105,7 @@ export function propsBase(transporte: CopilotoTransporte, extra: Partial<ChatDat
   return {
     transporte,
     textos: {
-      titulo: "Pregunta a tus datos",
+      titulo: "Pregúntale a tus datos",
       subtitulo: "Tu operación, con la cifra que ya calculó el sistema.",
       nota: "Responde con cifras ya calculadas en el servidor; si no hay dato, te lo dice. No inventa números.",
       placeholder: "Pregunta sobre tu operación…",

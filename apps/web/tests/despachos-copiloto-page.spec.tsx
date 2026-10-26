@@ -100,7 +100,7 @@ describe("DespachosCopilotoPage", () => {
     instalarFetch(estadoOk);
     const root = await montar();
     expect(llamadas[0]?.url).toBe(`${API}/despachos/prop-1/chat-datos/estado`);
-    expect(root.querySelector("h1")?.textContent).toBe("Pregunta a tus datos");
+    expect(root.querySelector("h1")?.textContent).toBe("Pregúntale a tus datos");
     for (const chip of COPILOTO_DESPACHOS.sugerencias) expect(porTexto(root, chip)).toBeDefined();
     expect(COPILOTO_DESPACHOS.sugerencias).toHaveLength(5);
     expect(root.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("12");

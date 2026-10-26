@@ -18,7 +18,6 @@ import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel
 import { VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
-import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
@@ -88,7 +87,7 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean, puedePriv
       siempreAbierto: true,
       items: [
         { to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard },
-        // CHAT-12: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, como en las demás consolas.
+        // CHAT-12: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas.
         { to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles },
       ],
     },
@@ -153,7 +152,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
   const { session, propertyId, role } = s;
   const puedeVerStaff = STAFF_NAV_ROLES.has(role);
-  // "Chatea con tus datos": conexión real con el backend de licitaciones (motor compartido, catálogo cerrado de
+  // "Pregúntale a tus datos": conexión real con el backend de licitaciones (motor compartido, catálogo cerrado de
   // solo lectura). El servidor decide el alcance (organización, rol) a partir del token; aquí solo va el texto.
   const chatConexion = conexionChatDatosLicitaciones(fetch, apiBaseUrl, session.token, propertyId);
 
@@ -180,7 +179,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/licitaciones/${orgSlug}/panel` }}
+      header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, resumenTo: `/licitaciones/${orgSlug}/panel` }}
       contentKey={propertyId}
     >
       {children(contexto)}

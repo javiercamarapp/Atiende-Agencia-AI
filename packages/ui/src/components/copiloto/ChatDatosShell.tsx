@@ -1,4 +1,4 @@
-// Copiloto "Chatea con tus datos": shell unico para las verticales. Estilo literal de atiende-restaurantes (portada,
+// Copiloto "Pregúntale a tus datos": shell unico para las verticales. Estilo literal de atiende-restaurantes (portada,
 // burbujas, compositor rounded-3xl, chips, panel de historial) con el comportamiento de Likida (fases por tiempo,
 // pasos de herramienta, historial persistido, detener). Es presentacional: no hardcodea datos ni habla con la red;
 // todo entra por el `transporte` inyectado, que cada vertical conecta a su API (nunca a un mock en produccion).

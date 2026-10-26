@@ -1,4 +1,4 @@
-// Cliente de "Chatea con tus datos" (restaurantes): POST/GET a las rutas de apps/api
+// Cliente de "Pregúntale a tus datos" (restaurantes): POST/GET a las rutas de apps/api
 // `/v1/restaurantes/:propertyId/admin/chat-datos`. Solo manda la pregunta y el historial de texto: el
 // alcance (organizacion, sucursales, rol) lo decide el servidor a partir del token, nunca el cliente.
 // Mismo refresh de sesion que el resto de clientes de restaurantes (`withAuthRefresh`).

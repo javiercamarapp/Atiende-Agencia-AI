@@ -1,4 +1,4 @@
-// "Chatea con tus datos" de despachos: rutas de apps/api `/despachos/:propertyId/chat-datos` (ver
+// "Pregúntale a tus datos" de despachos: rutas de apps/api `/despachos/:propertyId/chat-datos` (ver
 // apps/api/src/routes/verticals/despachos/chat-datos.ts). Reutiliza `fetchJson`/`postJson` de este vertical
 // (mismo refresh-y-reintento de sesion ante 401 que el resto del panel).
 import { crearConexionChatDatos } from "../../../lib/chat-datos-conexion.ts";

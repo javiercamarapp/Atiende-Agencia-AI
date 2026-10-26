@@ -105,7 +105,7 @@ describe("ResumenPage (citas)", () => {
     expect(tile("Agente de WhatsApp")).toContain("Conectado");
     expect(tile("Recordatorios 24 h")).toContain("13 enviados · 3 fallidos (7 días)");
     expect(tile("Voz")).toContain("6 citas creadas por voz (30 días)");
-    expect(tile("Copiloto")).toContain("Pregunta a tus datos");
+    expect(tile("Copiloto")).toContain("Pregúntale a tus datos");
     expect(rendered.container.querySelector('a[href="/citas/demo/copiloto"]')).not.toBeNull();
     // Última corrida: estado honesto, sin fechas ni estados inventados.
     expect(rendered.container.querySelector('[data-testid="sin-datos-corrida"]')?.textContent).toContain("registro de corridas");

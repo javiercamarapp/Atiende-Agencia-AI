@@ -4,19 +4,18 @@
 // con "Saltar al contenido" -- vive en `VerticalShell` de @atiende/ui. Lo propio de la
 // plataforma se queda aqui: la sesion del superadmin (`atiende.superadmin.session`, sin
 // organizacion ni sucursal activa: el superadmin ve TODAS a la vez), el mapa de navegacion,
-// el banner de impersonacion, el dialogo de step-up y el Copiloto de plataforma (CHAT-17): el boton
-// "Chatea con tus datos" de la barra y el panel lateral Cmd+J. El shell es un LAYOUT (App.tsx lo monta una
+// el banner de impersonacion, el dialogo de step-up y el Copiloto de plataforma (CHAT-17): el panel
+// lateral Cmd+J (el boton "Pregúntale a tus datos" y la campana ya no van en el encabezado: el panel se abre con la pildora
+// "Pregúntale a tus datos" del pie y el atajo; las notificaciones, con la pildora "Notificaciones" del pie). El shell es un LAYOUT (App.tsx lo monta una
 // sola vez para todas las rutas /superadmin/*), asi que el panel no se desmonta al navegar y conserva su
 // conversacion.
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
-import { LayoutGrid, MessageCircle } from "lucide-react";
-import { Button, SheetClose, VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import { Bell, LayoutGrid, MessageCircle } from "lucide-react";
+import { VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
-import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
-import { CampanaNotificaciones } from "../components/CampanaNotificaciones.tsx";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
@@ -39,7 +38,7 @@ const SECTIONS: SidebarSection[] = [
   ...SECCIONES.map((s) => ({ title: s.title, items: s.items.map((i) => ({ ...i })) })),
 ];
 
-const SIDEBAR_PIE: SidebarPiePildora[] = PIE_SUPERADMIN.map((p) => ({ ...p }));
+const PIE_BASE: SidebarPiePildora[] = PIE_SUPERADMIN.map((p) => ({ ...p }));
 
 /** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
 const MOBILE_ITEMS: BottomNavItem[] = MOVIL_SUPERADMIN.map((i) => ({ ...i }));
@@ -98,45 +97,24 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
   const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin", nombre: session.fullName, rolEtiqueta: loggingOut ? "Saliendo…" : "Superadmin" };
-  const campana = (className?: string) => (
-    <CampanaNotificaciones apiBaseUrl={apiBaseUrl} token={session.token} className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
-  );
-
-  /** `enHoja` = el boton vive en la hoja del menu de cuenta movil: al pulsarlo la hoja se cierra y el panel (pantalla completa) queda a la vista. */
-  const botonCopiloto = (className?: string, enHoja = false) => {
-    if (enPaginaCopiloto) return null;
-    const boton = (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-expanded={copilotoAbierto}
-        aria-controls={ID_PANEL_COPILOTO}
-        onClick={alternarCopiloto}
-        className={`h-8 rounded-full text-sm shrink-0 ${className ?? ""}`}
-      >
-        <MessageCircle className="w-3.5 h-3.5" />
-        Chatea con tus datos
-        <kbd className="hidden font-mono text-2xs text-muted-foreground md:inline">⌘J</kbd>
-      </Button>
-    );
-    return enHoja ? <SheetClose asChild>{boton}</SheetClose> : boton;
-  };
+  // La campana del encabezado se quito: la pildora "Notificaciones" del pie (escritorio y "Mas" > "Cuenta" en movil) lleva el punto de sin leer.
+  // El panel lateral del Copiloto (antes el boton "Pregúntale a tus datos" de la barra) se abre desde la pildora del pie (y con Cmd+J).
+  const pie: SidebarPiePildora[] = [
+    ...PIE_BASE,
+    { label: "Notificaciones", to: "/superadmin/notificaciones", icon: Bell, indicador: notif.hayNoLeidas },
+    ...(enPaginaCopiloto ? [] : [{ label: "Pregúntale a tus datos", onClick: alternarCopiloto, icon: MessageCircle, ariaControls: ID_PANEL_COPILOTO, ariaPressed: copilotoAbierto }]),
+  ];
 
   return (
     <VerticalShell
       vertical="superadmin"
       sections={SECTIONS}
-      sidebarPie={SIDEBAR_PIE}
+      sidebarPie={pie}
       mobileItems={MOBILE_ITEMS}
       user={user}
       onLogout={() => void handleLogout()}
       loggingOut={loggingOut}
-      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", fecha: fechaCortaEsMx(), resumenTo: "/superadmin" }}
-      notificationBell={campana()}
-      mobileNotificationBell={campana("w-10 h-10")}
-      chatButton={botonCopiloto()}
-      mobileChatButton={botonCopiloto("h-10 w-full justify-center", true)}
+      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", resumenTo: "/superadmin" }}
       panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
     >
       <div className="grid min-w-0 gap-4">

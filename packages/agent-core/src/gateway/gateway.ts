@@ -32,7 +32,7 @@ import { deriveVerticalFromRole, NoopUsageRecorder, usdToMicroUsd, type UsageRec
 import { applyResidencyGate, DEFAULT_RESIDENCY_POLICY, type ResidencyPolicy } from './residency.js';
 import { isRetryableProviderError } from './retryable.js';
 import { lookupModelPrice } from './prices.js';
-import { AllProvidersFailedError, GatewayError } from './errors.js';
+import { AllProvidersFailedError, esCancelacionDelLlamador, GatewayError } from './errors.js';
 import { KillSwitchEngagedError, type GatewayKillSwitch } from './kill-switch.js';
 import type { LlmCompletionRequest, LlmCompletionResult, LlmCostEstimator, LlmLane, LlmProvider } from './types.js';
 
@@ -317,9 +317,12 @@ export class LlmGateway {
         // libera la reserva a $0 — mismo criterio que el proyecto origen en el catch de
         // `once()`/`attempt()` (BACKEND-19C2-1): no liquidar al monto
         // reservado en un error donde no hubo uso real.
-        await settleBudget(this.budgetStore, budget, reservation, 0);
+        // Excepcion (hedging): una pata que el llamador CANCELO a proposito ya habia salido al proveedor y pudo generar tokens sin que lleguemos a verlos; se liquida
+        // al estimado (gasto conservador) en vez de liberarla a $0, para que el hedge cuente contra el tope y no sea gasto invisible.
+        const canceladaPorLlamador = esCancelacionDelLlamador(opts.request.signal);
+        await settleBudget(this.budgetStore, budget, reservation, canceladaPorLlamador ? estimate : 0);
         if (this.orgMonthlyBudgetStore && monthlyReservationId) {
-          await this.orgMonthlyBudgetStore.settle(opts.tenantId, monthlyReservationId, 0).catch(() => {});
+          await this.orgMonthlyBudgetStore.settle(opts.tenantId, monthlyReservationId, canceladaPorLlamador ? estimateMicroUsd : 0).catch(() => {});
         }
         const message = err instanceof Error ? err.message : String(err);
         attempts.push({ providerId: provider.id, error: message });
@@ -327,7 +330,8 @@ export class LlmGateway {
         const retryable = err instanceof GatewayError ? err.retryable : isRetryableProviderError(err);
         // Un 402 (sin credito / saldo insuficiente) NO es una caida del proveedor: contarlo por cada modelo de la escalera dejaba varios circuitos abiertos
         // hasta el enfriamiento aun despues de recargar el saldo. La escalera sigue probando el siguiente modelo, pero el breaker no se entera.
-        if ((err as { status?: unknown } | null)?.status !== 402) await this.breaker.reportFailure(provider.id, message);
+        // Tampoco una cancelacion deliberada del llamador (hedging: la otra pata ya contesto): el proveedor no fallo.
+        if ((err as { status?: unknown } | null)?.status !== 402 && !esCancelacionDelLlamador(opts.request.signal)) await this.breaker.reportFailure(provider.id, message);
 
         if (streamedText) {
           // Ya se emitio texto de este escalon: no se reintenta con otro modelo (duplicaria la salida).

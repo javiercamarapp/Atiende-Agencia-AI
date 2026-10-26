@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// F-18/B-06 del informe de diseno-ux: "Chatea con tus datos" abria un panel que
+// F-18/B-06 del informe de diseno-ux: "Pregúntale a tus datos" abria un panel que
 // simulaba una conversacion (caja de pregunta, "pensando...") y contestaba
 // siempre con un aviso de roadmap. No hay backend de chat-con-datos, asi que el
 // boton ahora dice la verdad: etiqueta "Pronto", aviso de no disponible, sin
@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 function boton(): HTMLButtonElement {
-  return [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLButtonElement;
+  return [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Pregúntale a tus datos")) as HTMLButtonElement;
 }
 
 describe("BotonChatDatos — honesto", () => {

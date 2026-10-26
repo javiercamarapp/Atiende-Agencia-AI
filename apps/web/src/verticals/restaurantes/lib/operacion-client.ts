@@ -57,7 +57,7 @@ async function aErrorOperacion(res: Response): Promise<ErrorOperacion> {
   return new ErrorOperacion(mensaje, res.status, e?.code ?? anidado?.code ?? null, e?.details ?? null);
 }
 
-async function enviar<T>(fetchImpl: typeof fetch, url: string, token: string, metodo: "POST" | "PATCH", cuerpo: unknown, llave: string): Promise<T> {
+export async function enviar<T>(fetchImpl: typeof fetch, url: string, token: string, metodo: "POST" | "PATCH", cuerpo: unknown, llave: string): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), defaultAuthCtx(), token, (t) =>
     fetchImpl(url, {
       method: metodo,
@@ -70,7 +70,7 @@ async function enviar<T>(fetchImpl: typeof fetch, url: string, token: string, me
 }
 
 /** Lectura que conserva status y `code` del error (el `fetchJson` generico los pierde). */
-async function leer<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
+export async function leer<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), defaultAuthCtx(), token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) throw await aErrorOperacion(res);
   return (await res.json()) as T;

@@ -190,7 +190,7 @@ describe("Sidebar Likida — pie", () => {
       pie: [
         { label: "Costos de IA", to: "/x/demo/costos" },
         { label: "Ver los otros paneles", to: "/x/paneles", icon: ArrowLeftRight },
-        { label: "Pregunta a tus datos", onClick },
+        { label: "Pregúntale a tus datos", onClick },
         { label: "Docs", href: "https://example.com/docs" },
         { label: "Sin destino" },
       ],
@@ -202,7 +202,7 @@ describe("Sidebar Likida — pie", () => {
     const paneles = q<HTMLAnchorElement>('a[aria-label="Ver los otros paneles"]')!;
     expect(paneles.querySelector("svg")!.getAttribute("class")).toContain("size-3.5");
     expect(paneles.textContent).not.toContain("→");
-    click(q('button[aria-label="Pregunta a tus datos"]')!);
+    click(q('button[aria-label="Pregúntale a tus datos"]')!);
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(q('a[aria-label="Docs"]')!.getAttribute("href")).toBe("https://example.com/docs");
     expect(rendered.container.textContent).not.toContain("Sin destino");

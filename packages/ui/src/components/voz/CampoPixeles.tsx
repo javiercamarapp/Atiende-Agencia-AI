@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * La nube de píxeles del hero de "Pregunta a tus datos" — puerto directo del
+ * La nube de píxeles del hero de "Pregúntale a tus datos" — puerto directo del
  * componente real de Likida (dashboard/pixeles.tsx: "el efecto animado de
  * píxeles como el de usehandle"). Mismo algoritmo exacto: un canvas con
  * puntitos en rejilla cuya densidad modulan 3 nubes que derivan lento (en

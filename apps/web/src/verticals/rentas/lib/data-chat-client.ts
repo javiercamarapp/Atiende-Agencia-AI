@@ -1,4 +1,4 @@
-// "Chatea con tus datos" de RENTAS (solo admin_gestora/contador en el servidor): cliente generico
+// "Pregúntale a tus datos" de RENTAS (solo admin_gestora/contador en el servidor): cliente generico
 // (src/lib/data-chat-client.ts) con la sesion de rentas. El shell solo llama a `crearChatConexionRentas`.
 import { crearChatConexion, crearClienteDataChat } from "../../../lib/data-chat-client.ts";
 import { defaultBrowserStorage } from "../../../lib/authed-fetch.ts";

@@ -1,4 +1,4 @@
-// "Chatea con tus datos". Sin `chat`: aviso honesto de "no disponible" (Dialog real de @atiende/ui) --
+// "Pregúntale a tus datos". Sin `chat`: aviso honesto de "no disponible" (Dialog real de @atiende/ui) --
 // antes este archivo FINGIA una conversacion (hallazgo F-18/B-06 del informe de diseno-ux), y no se
 // vuelve a simular nada. Con `chat` (vertical con catalogo enchufado y asistente activo): conversacion
 // real contra el backend (motor compartido, herramientas de solo lectura), con tablas, graficas y la
@@ -46,7 +46,7 @@ export function PanelChateaConTusDatos({ onClose, nombreNegocio, chat }: PanelCh
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Chatea con tus datos</DialogTitle>
+          <DialogTitle>Pregúntale a tus datos</DialogTitle>
           <DialogDescription>Esta función todavía no está disponible.</DialogDescription>
         </DialogHeader>
         <p className="text-sm text-foreground leading-relaxed">

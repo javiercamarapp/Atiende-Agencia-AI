@@ -1,7 +1,9 @@
 /**
  * Tema claro/oscuro y bandera de diseno. Una sola implementacion en TS: la usan `ThemeSelector` y `ThemeBoot`.
  * El script externo `apps/web/public/theme-boot.js` (que corre ANTES del primer pintado, porque la CSP solo permite
- * `script-src 'self'`) replica estas mismas reglas en JS plano; `packages/ui/tests/tema-boot.spec.ts` las compara.
+ * `script-src 'self'`) replica estas mismas reglas en JS plano; `packages/ui/tests/tema-boot.spec.tsx` las compara.
+ * Con la bandera apagada el script y `ThemeBoot` no hacen nada (produccion intacta); el tema global solo se aplica con
+ * `ds3` encendida, salvo en rutas que lo piden explicitamente (`useTemaGlobal`, p. ej. el panel del repartidor).
  * Mecanismo: clase `dark` en <html> (nunca `data-theme`). Por defecto, claro.
  */
 export const CLAVE_TEMA = "atiende-tema";
@@ -31,7 +33,10 @@ export function sistemaEnOscuro(): boolean {
 export function aplicarTema(tema: Tema): boolean {
   const oscuro = tema === "oscuro" || (tema === "sistema" && sistemaEnOscuro());
   document.documentElement.classList.toggle("dark", oscuro);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", oscuro ? COLOR_NAVEGADOR_OSCURO : COLOR_NAVEGADOR_CLARO);
+  // El color de la barra del navegador solo sigue al tema con la bandera ds3 (con ella apagada se conserva el de index.html).
+  if (document.documentElement.dataset.diseno === VALOR_DISENO) {
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", oscuro ? COLOR_NAVEGADOR_OSCURO : COLOR_NAVEGADOR_CLARO);
+  }
   return oscuro;
 }
 

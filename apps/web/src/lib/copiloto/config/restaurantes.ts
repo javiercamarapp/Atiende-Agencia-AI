@@ -15,7 +15,7 @@ export const SUGERENCIAS_COPILOTO_RESTAURANTES: readonly string[] = [
 export const COPILOTO_RESTAURANTES: CopilotoConfigVertical = {
   vertical: "restaurantes",
   textos: {
-    titulo: "Pregunta a tus datos",
+    titulo: "Pregúntale a tus datos",
     subtitulo: "Tus ventas, pedidos y clientes, con la cifra que ya calculó el sistema.",
     nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números. Las respuestas del CFO organizan tus datos operativos y no sustituyen a tu contador.",
     placeholder: "Pregunta sobre tu restaurante…",

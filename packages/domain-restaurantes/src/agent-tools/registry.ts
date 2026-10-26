@@ -19,7 +19,7 @@ import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAv
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
 import { getCustomerDetailById, lookupCustomerConPedidoReciente } from "../customers.ts";
-import { buscarPedidoRecienteConSucursal } from "../pedido-reciente.ts";
+import { VENTANA_PEDIDO_RECIENTE_MIN, buscarPedidoRecienteConSucursal, estadoParaCliente } from "../pedido-reciente.ts";
 import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
@@ -47,6 +47,8 @@ import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards
 import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { acumuladoReciente, evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
+import { pedidoAceptaAgregado } from "../agregados/tipos.ts";
+import type { AgregadosHook } from "../agregados/tipos.ts";
 import { RestaurantesConfigUnavailableError, type RestaurantesRepository } from "../repository.ts";
 import { parsearProgramadoPara } from "../pedidos-programados.ts";
 import {
@@ -141,7 +143,8 @@ export type AgentToolName =
   | "crear_pedido"
   | "registrar_contacto"
   | "enviar_menu"
-  | "escalar_a_humano";
+  | "escalar_a_humano"
+  | "solicitar_agregado_pedido";
 
 /** Subconjunto de JSON Schema que usan las tools (mismo shape que `LlmToolDefinition.parameters`). */
 export interface AgentToolJsonSchema {
@@ -190,6 +193,9 @@ export interface AgentToolContext {
   /** Autopiloto: con el, un pedido grande de WhatsApp/voz se CREA y queda `por_aprobar` (la sucursal lo aprueba con un clic). Sin el (o con la base sin la
    * migracion 050) `crear_pedido` sigue por el aviso `escalada:pedido_grande` de siempre. Solo lo fija el servidor. */
   readonly pedidoGrande?: PedidoGrandeHook;
+  /** Agregados por validar (migracion 099): crea la solicitud que la sucursal acepta o rechaza. Sin el (o con la base sin migrar) `solicitar_agregado_pedido` cae al aviso de siempre
+   * (`escalar_a_humano`, cancelacion_modificacion). Solo lo fija el servidor. */
+  readonly agregados?: AgregadosHook;
   /** Mide `buscar_sucursal_cercana` contra los pines propuestos de Google (`COORDENADAS_PROPUESTAS_PM`) en lugar de las coordenadas vigentes. Ausente = la bandera
    * `RESTAURANTES_USAR_COORDENADAS_PROPUESTAS`, APAGADA por omision (decision de Javier). Solo lo fija el servidor. */
   readonly usarCoordenadasPropuestas?: boolean;
@@ -482,6 +488,22 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     },
     channels: ["whatsapp", "voz"],
   },
+  {
+    name: "solicitar_agregado_pedido",
+    description:
+      "El cliente YA tiene un pedido registrado y quiere AGREGARLE productos. Crea una solicitud que la sucursal acepta o rechaza: NUNCA confirma el agregado por su cuenta. Busque cada producto con buscar_producto antes; el pedido sale del teléfono de la conversación (no mande ningún id de pedido). Devuelve ok y el mensaje_al_cliente que debe decir TAL CUAL (sin minutos, sin decir que ya quedó agregado), o ok:false con la instrucción a seguir (el pedido ya salió, no hay pedido registrado...). Para cancelar o cambiar otra cosa del pedido use escalar_a_humano; si el cliente se arrepiente de lo que pidió agregar, mande cancelar_pendiente:true. Para un pedido NUEVO use cotizar_pedido y crear_pedido.",
+    parameters: {
+      type: "object",
+      properties: {
+        items: { type: "array", description: "Productos que el cliente quiere AGREGAR (solo los nuevos, no el pedido completo).", items: ITEM_SCHEMA },
+        notas: { type: "string", description: "Ajuste del cliente sobre lo que agrega (por ejemplo «sin cebolla»). Sin teléfonos ni datos personales." },
+        adult_confirmed: { type: "boolean", description: "true únicamente si lo que agrega incluye alcohol y el cliente confirmó mayoría de edad." },
+        cancelar_pendiente: { type: "boolean", description: "true SOLO si el cliente se arrepintió de lo que había pedido agregar y la sucursal todavía no responde. No mande items." },
+        customer_name: { type: "string", description: "Opcional: nombre del cliente si ya lo dio." },
+      },
+    },
+    channels: ["whatsapp", "voz"],
+  },
 ];
 
 /** Definiciones visibles para un canal (ninguna parametro de telefono, por diseño). */
@@ -519,6 +541,7 @@ export const VOICE_TOOL_HTTP_PATHS: Readonly<Record<AgentToolName, string>> = {
   // Solo WhatsApp (no se exporta al manifiesto de voz): la ruta existe unicamente porque el Record exige todas las tools.
   enviar_menu: "/menu/send",
   escalar_a_humano: "/callbacks",
+  solicitar_agregado_pedido: "/orders/amendment",
 };
 
 /**
@@ -2139,6 +2162,10 @@ async function dispatchTool(
     }
     case "enviar_menu":
       return enviarMenuPdf(repo, ctx, input);
+    case "solicitar_agregado_pedido":
+      return solicitarAgregadoPedido(repo, ctx, input, (resumen) =>
+        dispatchTool(repo, ctx, "escalar_a_humano", { customer_name: input.customer_name, motivo: "cancelacion_modificacion", resumen }),
+      );
     case "registrar_contacto":
     case "escalar_a_humano": {
       // Preview: exito simulado, sin crear aviso (callback) ni notificacion para el equipo.
@@ -2182,6 +2209,72 @@ async function dispatchTool(
       return { result: { ok: true, ...aviso, ...horaDelRestaurante }, raw: { ok: true }, orderId: null, propertyId: null };
     }
   }
+}
+
+
+/** Cliente cuyo pedido ya salio (o se entrego): no se puede agregar al mismo viaje; se ofrece pedido aparte (decision del dueno, Q5-Q7). */
+export const MENSAJE_AGREGADO_PEDIDO_YA_SALIO = "Una disculpa, su pedido ya salió y ya no se le puede agregar. Si gusta le tomo un pedido nuevo con eso, o puede recogerlo en la sucursal. ¿Se lo tomo?";
+export const MENSAJE_AGREGADO_RETIRADO = "Listo, no se agrega nada a su pedido. Su pedido original sigue igual.";
+
+/**
+ * `solicitar_agregado_pedido`: el cliente ya tiene un pedido registrado y quiere agregarle productos. Crea (o fusiona en la abierta) una SOLICITUD que la sucursal acepta o rechaza; el
+ * agente NUNCA confirma el agregado ni da minutos y dice la frase aprobada de siempre. El pedido sale del telefono del contexto (nunca de un id del modelo) y los precios, de `quoteOrder`
+ * (canal recoger: el agregado no lleva envio ni minimo de domicilio). Sin el hook, con la base sin migrar o sin pedido encontrado en la sucursal, cae a la escalada de siempre
+ * (`escalar_a_humano`, cancelacion_modificacion) para que el aviso a la sucursal nunca se pierda.
+ */
+async function solicitarAgregadoPedido(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>, escalarComoSiempre: (resumen: string) => Promise<AgentToolOutcome>): Promise<AgentToolOutcome> {
+  const hecho = (result: Record<string, unknown>, simulated = false): AgentToolOutcome => ({ result, raw: result, orderId: null, propertyId: null, ...(simulated ? { simulated: true } : {}) });
+  const instruccionDecir = `Dígale al cliente EXACTAMENTE el mensaje_al_cliente. La sucursal acepta o rechaza el agregado y le confirma: NO diga que ya quedó agregado, NO dé minutos ni horas y no cree otro pedido.`;
+  if (ctx.modo === "preview") return hecho({ ok: true, simulado: true, estado: "pendiente_de_validar", mensaje_al_cliente: MENSAJE_CAMBIO_PEDIDO_ENVIADO, instruccion: instruccionDecir }, true);
+  if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede agregar a un pedido.");
+  if (ctx.phoneDeclared) throw new OrderValidationError("No hay un pedido de este teléfono que agregar en esta llamada: pase con una persona (escalar_a_humano).");
+  const desde = new Date(Date.now() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString();
+  const pedido = await repo.findLatestOrderByPhone(ctx.organizationId, normalizePhone(ctx.phone), desde);
+  const resumenItems = Array.isArray(input.items) ? input.items.map((i) => `${typeof (i as { requested_quantity?: unknown })?.requested_quantity === "number" ? (i as { requested_quantity: number }).requested_quantity : "?"} ${typeof (i as { product_name?: unknown })?.product_name === "string" ? sanitizeInlineText((i as { product_name: string }).product_name, 60) : "producto"}`).join(", ") : "";
+
+  if (input.cancelar_pendiente === true) {
+    if (!pedido || !ctx.agregados) return hecho({ ok: false, instruccion: "No hay una solicitud de agregado que retirar por este medio: pase con una persona (escalar_a_humano)." });
+    const retirado = await ctx.agregados.cancelarPendiente(ctx.organizationId, pedido.id);
+    return hecho(retirado ? { ok: true, estado: "cancelado_por_cliente", mensaje_al_cliente: MENSAJE_AGREGADO_RETIRADO, instruccion: "Dígale al cliente EXACTAMENTE el mensaje_al_cliente." } : { ok: false, instruccion: "No hay ninguna solicitud de agregado abierta para este pedido (quizá la sucursal ya respondió). No prometa nada; si el cliente insiste, escalar_a_humano." });
+  }
+
+  const items = toRequestedItems(input.items, ctx.channel === "whatsapp");
+  if (items.length === 0) throw new OrderValidationError("Indique los productos que el cliente quiere agregar (items), buscados antes con buscar_producto.");
+  // Sin pedido reciente que agregar: no es un agregado; se toma como pedido normal (cotizar_pedido) o se escala.
+  if (pedido === undefined || pedido === null || estadoParaCliente(pedido.status) === null) {
+    return hecho({ ok: false, motivo: "sin_pedido_registrado", instruccion: "No hay un pedido registrado reciente de este número al que agregar. Tome lo que pide como un pedido NUEVO (cotizar_pedido y crear_pedido) o, si el cliente insiste en que ya pidió, pase con una persona (escalar_a_humano)." });
+  }
+  if (!pedidoAceptaAgregado(pedido.status)) {
+    return hecho({ ok: false, motivo: "pedido_ya_salio", estado_pedido: estadoParaCliente(pedido.status), mensaje_al_cliente: MENSAJE_AGREGADO_PEDIDO_YA_SALIO, instruccion: "El pedido ya salió o ya se entregó: no se puede agregar al mismo viaje. Dígale al cliente EXACTAMENTE el mensaje_al_cliente (ofrece un pedido nuevo o recoger); si acepta, tómelo como pedido NUEVO con cotizar_pedido y crear_pedido. No escale de nuevo ni dé tiempos inventados." });
+  }
+  if (!ctx.agregados) return escalarComoSiempre(`Quiere AGREGAR a su pedido: ${resumenItems}.`);
+  const branch = await repo.findBranchById(ctx.organizationId, pedido.propertyId);
+  if (!branch) return escalarComoSiempre(`Quiere AGREGAR a su pedido: ${resumenItems}.`);
+  const quote = await quoteOrder(repo, { organizationId: ctx.organizationId, branchSlug: branch.slug, items, adultConfirmed: input.adult_confirmed === true, canal: "recoger", source: ctx.channel === "voz" ? "voice" : "whatsapp" });
+  const renglones = quote.lines.map((l) => ({ id: l.productId, name: l.name, price: l.price, quantity: l.quantity, ...(l.tortilla ? { tortilla: l.tortilla } : {}) }));
+  const nota = typeof input.notas === "string" && input.notas.trim() ? sanitizeInlineText(input.notas, 300) : null;
+  const r = await ctx.agregados.crear({
+    organizationId: ctx.organizationId,
+    propertyId: pedido.propertyId,
+    orderId: pedido.id,
+    channel: ctx.channel === "voz" ? "voice" : "whatsapp",
+    items: renglones,
+    customerNote: nota,
+    sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:agregado`.slice(0, 255) : null,
+  });
+  if (r.estado === "no_disponible" || r.estado === "pedido_no_encontrado") return escalarComoSiempre(`Quiere AGREGAR a su pedido: ${resumenItems}.`);
+  if (r.estado === "pedido_no_agregable") {
+    return hecho({ ok: false, motivo: "pedido_ya_salio", mensaje_al_cliente: MENSAJE_AGREGADO_PEDIDO_YA_SALIO, instruccion: "El pedido ya salió: no se puede agregar al mismo viaje. Dígale al cliente EXACTAMENTE el mensaje_al_cliente y, si acepta, tómelo como pedido NUEVO." });
+  }
+  return hecho({
+    ok: true,
+    estado: "pendiente_de_validar",
+    solicitud: r.estado,
+    total_del_agregado: r.agregado.totalAdded,
+    renglones_agregados: r.agregado.itemsAdded.map((i) => ({ name: i.name, quantity: i.quantity })),
+    mensaje_al_cliente: MENSAJE_CAMBIO_PEDIDO_ENVIADO,
+    instruccion: instruccionDecir,
+  });
 }
 
 /**

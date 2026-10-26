@@ -20,7 +20,8 @@ export type AccionRestaurantes =
   | "viajes.despachar"
   | "pedidos.cancelar"
   | "turno.ver"
-  | "entrega.deshacer_forzado";
+  | "entrega.deshacer_forzado"
+  | "pedidos.agregados";
 
 const DUENO_Y_ADMIN: readonly string[] = ["owner", "admin"];
 const GESTORES: readonly string[] = ["owner", "admin", "staff"];
@@ -43,6 +44,7 @@ export const ROLES_POR_ACCION: Readonly<Record<AccionRestaurantes, readonly stri
   "pedidos.cancelar": GESTORES,
   "turno.ver": GESTORES,
   "entrega.deshacer_forzado": GESTORES,
+  "pedidos.agregados": GESTORES,
 };
 
 /** `true` solo si el rol esta en la matriz para la accion (rol desconocido o ausente -> false). */

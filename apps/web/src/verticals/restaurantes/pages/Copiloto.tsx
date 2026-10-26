@@ -1,4 +1,4 @@
-// Copiloto ("Pregunta a tus datos") de restaurantes: conecta la pagina generica `CopilotoPage` con la API real
+// Copiloto ("Pregúntale a tus datos") de restaurantes: conecta la pagina generica `CopilotoPage` con la API real
 // `/v1/restaurantes/:propertyId/admin/chat-datos` (sesion con refresh de `restaurantesAuthContext`). El alcance
 // (organizacion, sucursales, rol) lo decide el servidor a partir del token; aqui solo viaja la sucursal activa en la URL.
 import { useMemo } from "react";
