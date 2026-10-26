@@ -225,3 +225,27 @@ describe("bandera ENCENDIDA (?diseno=ds3): solo el logo", () => {
     expect(simbolo.getAttribute("class")).toContain("max-height:419px");
   });
 });
+
+describe("IconoDeCarga: produccion no paga el hook de retencion", () => {
+  // La retencion de useCargaRetenida arma un timer (400 ms) al pasar de cargando a no cargando; si la bandera esta apagada
+  // el hook no debe existir en el arbol, asi que no hay estado ni efecto ni timer extra.
+  async function ciclo(ds3: boolean) {
+    m = await cargar(ds3);
+    const M = m;
+    const { root, el } = montar(createElement(M.Button, { loading: true }, "Guardar"));
+    avanzar(150); // el logo ya aparecio (>=120 ms): al terminar procede la retencion
+    act(() => root.render(createElement(M.Button, { loading: false }, "Guardar")));
+    return { el, despues: vi.getTimerCount() };
+  }
+
+  it("bandera apagada: al terminar de cargar no se arma ningun timer de retencion y el boton queda sin hijos extra", async () => {
+    const { el, despues } = await ciclo(false);
+    expect(despues).toBe(0);
+    expect(el.querySelector("button")!.children).toHaveLength(0);
+  });
+
+  it("bandera encendida (control): al terminar de cargar si se arma el timer de retencion", async () => {
+    const { despues } = await ciclo(true);
+    expect(despues).toBeGreaterThan(0);
+  });
+});

@@ -29,9 +29,17 @@ export function IconoDeCarga({
   className?: string;
   strokeWidth?: number;
 }) {
-  const retenida = useCargaRetenida(cargando, "linea");
-  if (DISENO_DS3) return retenida ? <CargandoLogo tamano="linea" decorativo /> : <>{reposo}</>;
+  // `DISENO_DS3` es constante de modulo: en una sesion este componente SIEMPRE toma la misma rama, asi que delegar en un
+  // subcomponente con hook no cambia el orden de hooks entre renders (reglas de hooks respetadas) y con la bandera apagada
+  // no se monta ningun estado ni efecto extra: produccion queda como antes.
+  if (DISENO_DS3) return <IconoDeCargaDs3 cargando={cargando} reposo={reposo} />;
   return cargando ? <Loader2 aria-hidden="true" className={cn("animate-spin", className)} strokeWidth={strokeWidth} /> : <>{reposo}</>;
+}
+
+/** Rama ds3: sigue montada al terminar, asi que respeta la permanencia minima (`useCargaRetenida`). */
+function IconoDeCargaDs3({ cargando, reposo }: { cargando: boolean; reposo: ReactNode }) {
+  const retenida = useCargaRetenida(cargando, "linea");
+  return retenida ? <CargandoLogo tamano="linea" decorativo /> : <>{reposo}</>;
 }
 
 /**
