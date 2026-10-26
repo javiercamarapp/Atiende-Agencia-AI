@@ -1,10 +1,12 @@
 // T03: traza de herramientas por turno del cliente + conteo de «crear sin confirmar». Decorador EXTERNO (el modelo lo ve primero): registra lo que el modelo INTENTO, aunque
 // la compuerta (decorador interno) lo bloquee. Definicion (BANCO-DE-PRUEBAS 2.4/3.4): un crear es «sin confirmar» si no hay un `confirmar` con exito vigente desde la ultima
-// cotizacion, o si se pide en el MISMO turno del cliente en que se cotizo (el cliente aun no pudo decir «si» a ese resumen), o si el turno del cliente no es una afirmacion pura.
+// cotizacion, o si la compuerta de produccion lo habria bloqueado (veredicto de `CompuertaPedidos.veredictoDe`: afirmacion pura del turno, TOTAL y huella oidos, huella vigente,
+// generacion no cortada). Con la compuerta conectada la traza usa EXACTAMENTE su estado, en los tres modos (en `off` tambien se evalua), asi «cero pedidos indebidos» no subestima
+// lo que la compuerta evita (p. ej. confirmar sin que el agente haya dicho el total). Sin compuerta conectada cae a la heuristica anterior (afirmacion + mismo turno).
 import { esAfirmacion } from "../../packages/voice-core/src/llamada/cascada-v2/afirmacion.ts";
 import type { ToolCallPedida } from "../../packages/voice-core/src/llamada/sesion.ts";
 import { REGLA_PEDIDOS_PM } from "./compuerta-pedidos.ts";
-import type { ReglaPedidos } from "./compuerta-pedidos.ts";
+import type { CompuertaPedidos, ReglaPedidos } from "./compuerta-pedidos.ts";
 import type { EjecutarTool, RegistroHerramienta } from "./tipos.ts";
 
 const BLOQUEOS = new Set(["espera_confirmacion_del_cliente", "resumen_distinto_al_leido", "interrumpido_por_el_cliente"]);
@@ -26,7 +28,7 @@ export class TrazaHerramientas {
   private cotizoEnTurno = false;
   private confirmadoVigente = false;
 
-  constructor(private readonly regla: ReglaPedidos = REGLA_PEDIDOS_PM) {}
+  constructor(private readonly regla: ReglaPedidos = REGLA_PEDIDOS_PM, private readonly compuerta: CompuertaPedidos | null = null) {}
 
   alTurnoCliente(texto: string): void {
     this.turno += 1;
@@ -46,7 +48,7 @@ export class TrazaHerramientas {
   decorar(ejecutar: EjecutarTool): EjecutarTool {
     return async (llamada: ToolCallPedida, ctx) => {
       const esCrear = llamada.nombre === this.regla.crear;
-      const sinConfirmar = esCrear ? !this.confirmadoVigente || this.cotizoEnTurno || !esAfirmacion(this.textoTurno) : undefined;
+      const sinConfirmarLocal = esCrear ? !this.confirmadoVigente || (this.compuerta === null && (this.cotizoEnTurno || !esAfirmacion(this.textoTurno))) : undefined;
       const orden = this.registros.length;
       let salida: unknown;
       try {
@@ -54,6 +56,9 @@ export class TrazaHerramientas {
       } catch {
         salida = { error: "herramienta_fallo" };
       }
+      // El veredicto lo fija la compuerta al evaluar (antes de ejecutar): si no hay veredicto con compuerta conectada, falla CERRADO (cuenta como sin confirmar).
+      const veredicto = esCrear && this.compuerta !== null ? this.compuerta.veredictoDe(llamada) : undefined;
+      const sinConfirmar = esCrear ? sinConfirmarLocal === true || (this.compuerta !== null && (veredicto === undefined || veredicto.bloquearia)) : undefined;
       const error = errorCorto(salida);
       const ok = error === null;
       this.registros.push({

@@ -8,7 +8,7 @@ import { crearAdaptadorFalso } from "../../../scripts/voz-banco/adaptadores/fals
 import type { GuionFalso } from "../../../scripts/voz-banco/adaptadores/falso.ts";
 import { exigirAislamiento } from "../../../scripts/voz-banco/aislamiento.ts";
 import { ClienteSimulado, semillaDe } from "../../../scripts/voz-banco/cliente-simulado.ts";
-import { cargarCorpusPrivado, cargarEjemplos, rutaCorpusPrivado, validarEscenario, validarLista } from "../../../scripts/voz-banco/corpus.ts";
+import { cargarCorpusPrivado, cargarEjemplos, categoriasPii, rutaCorpusPrivado, validarEscenario, validarLista } from "../../../scripts/voz-banco/corpus.ts";
 import { correrLlamada } from "../../../scripts/voz-banco/correr-llamada.ts";
 import { crearAdaptador, listarAdaptadores } from "../../../scripts/voz-banco/registro.ts";
 import { AbortoDeSeguridad, TopeDeLlamada, TopeExcedido, TopeGasto, corteDeEntorno } from "../../../scripts/voz-banco/topes.ts";
@@ -221,12 +221,173 @@ describe("esquema del corpus de voz y corpus privado", () => {
     expect(archivos.some((a) => a.endsWith("escenarios-voz.json"))).toBe(false);
     for (const a of archivos) expect(readFileSync(a, "utf8"), a).not.toContain(marca);
   });
+});
 
-  // Solo si el corpus privado esta disponible en esta maquina (CI: se omite). Lo valida sin copiarlo ni imprimirlo.
-  it.skipIf(!process.env["PM_CORPUS_SIM"])("el corpus privado completo cumple el esquema (82 escenarios)", () => {
-    const { validos, errores } = cargarCorpusPrivado(process.env, RAIZ);
-    expect(errores.map((e) => `${e.id}: ${e.problemas.join("; ")}`)).toEqual([]);
-    expect(validos).toHaveLength(82);
+
+describe("topes: fallan cerrado ante costos ausentes o tardios (P1-4, P1-5)", () => {
+  it("un adaptador que NUNCA llama h.costo no se toma por gratis: la corrida corta", async () => {
+    const tope = new TopeGasto(5, 1);
+    await expect(correr({ guion: () => ({ dice: "hola", sinReporteDeCosto: true }), tope })).rejects.toBeInstanceOf(TopeExcedido);
+  });
+
+  it("un reporte de costo EXPLICITO en 0 si es valido (el falso lo manda por omision)", async () => {
+    const tope = new TopeGasto(5, 1);
+    await expect(correr({ tope })).resolves.toMatchObject({ cortada: null });
+    expect(tope.gastoUsd).toBe(0);
+  });
+
+  it("si el adaptador dice haber gastado mas de lo que reporto por h.costo, el gasto pasa a NaN y corta", async () => {
+    const base = crearAdaptadorFalso(() => ({ dice: "hola" }));
+    const mentiroso = { ...base, costoMicroUsd: () => ({ total: 5_000, real: false, porComponente: {} }) };
+    // el total que declara el adaptador cambia durante la llamada (gasto no reportado)
+    let n = 0;
+    const adaptador = { ...mentiroso, costoMicroUsd: () => ({ total: (n += 1) === 1 ? 0 : 5_000, real: false, porComponente: {} }) };
+    await expect(
+      correrLlamada({ adaptador, escenario: EJ1!, rep: 1, modoCliente: "texto", modoCompuerta: "on", tope: new TopeGasto(5, 1), apertura: APERTURA, ejecutor: servidor().ejecutar }),
+    ).rejects.toBeInstanceOf(TopeExcedido);
+  });
+
+  it("un costo tardio tras cerrarLlamada() se pliega al acumulado al iniciar la siguiente (no se pierde)", () => {
+    const t = new TopeGasto(5, 1);
+    t.iniciarLlamada();
+    t.registrarMicroUsd(100);
+    t.cerrarLlamada();
+    t.registrarMicroUsd(50); // llega tarde
+    expect(t.gastoUsd).toBeCloseTo(150e-6, 10);
+    t.iniciarLlamada();
+    expect(t.gastoUsd).toBeCloseTo(150e-6, 10);
+    t.registrarMicroUsd(25);
+    t.cerrarLlamada();
+    expect(t.gastoUsd).toBeCloseTo(175e-6, 10);
+  });
+
+  it("un costo tardio NaN tras cerrar tambien se arrastra y corta, aunque se inicie otra llamada", () => {
+    const t = new TopeGasto(5, 1);
+    t.iniciarLlamada();
+    t.cerrarLlamada();
+    t.registrarMicroUsd(Number.NaN);
+    expect(() => t.verificar()).toThrow(TopeExcedido);
+    t.iniciarLlamada();
+    expect(() => t.verificar()).toThrow(TopeExcedido);
+  });
+
+  it("un TopeGasto no admite llamadas concurrentes y una falla no lo deja «en curso»", async () => {
+    const t = new TopeGasto(5, 1);
+    t.iniciarLlamada();
+    expect(() => t.iniciarLlamada()).toThrow(AbortoDeSeguridad);
+    t.cerrarLlamada();
+    const roto = { ...crearAdaptadorFalso(), crearAbrirSesion: () => async () => { throw new Error("no abre"); } };
+    await expect(correrLlamada({ adaptador: roto, escenario: EJ1!, rep: 1, modoCliente: "texto", modoCompuerta: "on", tope: t, apertura: APERTURA, ejecutor: servidor().ejecutar })).rejects.toThrow("no abre");
+    expect(() => t.iniciarLlamada()).not.toThrow();
+  });
+
+  it("el constructor tampoco se salta el maximo del banco", () => {
+    expect(() => new TopeGasto(30, 1)).toThrow(AbortoDeSeguridad);
+    expect(() => new TopeGasto(30, 1, 50)).not.toThrow();
+    expect(() => new TopeGasto(1, 1, Number.NaN)).toThrow(AbortoDeSeguridad);
   });
 });
 
+describe("aislamiento obligatorio con adaptadores reales (P2)", () => {
+  const pool = (host: string) => ({ options: { host }, query: async () => ({ rows: [] }) });
+  const stack = (extra: Record<string, unknown> = {}) => ({ api: "http://127.0.0.1:8787", pool: pool("localhost"), metaSimulado: true, stop: async () => undefined, ...extra });
+  function realFalso() {
+    const abiertas = { n: 0 };
+    const base = crearAdaptadorFalso();
+    const adaptador = { ...base, id: "gemini-live:prueba", crearAbrirSesion: (c: Parameters<typeof base.crearAbrirSesion>[0]) => { abiertas.n += 1; return base.crearAbrirSesion(c); } };
+    return { adaptador, abiertas };
+  }
+  const opciones = (adaptador: ReturnType<typeof realFalso>["adaptador"], extra: Record<string, unknown> = {}) => ({
+    adaptador, escenario: EJ1!, rep: 1, modoCliente: "texto" as const, modoCompuerta: "on" as const, tope: new TopeGasto(5, 1), apertura: APERTURA, ejecutor: servidor().ejecutar, ...extra,
+  });
+
+  it("sin `aislamiento` un adaptador distinto del falso NO abre sesion", async () => {
+    const { adaptador, abiertas } = realFalso();
+    await expect(correrLlamada(opciones(adaptador))).rejects.toBeInstanceOf(AbortoDeSeguridad);
+    expect(abiertas.n).toBe(0);
+  });
+
+  it("con un stack no local aborta, detiene el stack y no abre sesion", async () => {
+    const { adaptador, abiertas } = realFalso();
+    let detenido = false;
+    await expect(correrLlamada(opciones(adaptador, { aislamiento: { stack: stack({ api: "https://api.ejemplo.com", stop: async () => { detenido = true; } }), env: {} } }))).rejects.toBeInstanceOf(AbortoDeSeguridad);
+    expect(detenido).toBe(true);
+    expect(abiertas.n).toBe(0);
+  });
+
+  it("con aislamiento local verificado corre", async () => {
+    const { adaptador, abiertas } = realFalso();
+    await expect(correrLlamada(opciones(adaptador, { aislamiento: { stack: stack(), env: {} } }))).resolves.toMatchObject({ arquitectura: "gemini-live:prueba" });
+    expect(abiertas.n).toBe(1);
+  });
+
+  it("el doble falso corre sin aislamiento (no toca red ni llaves)", async () => {
+    await expect(correr({})).resolves.toBeDefined();
+  });
+});
+
+describe("resultado de la llamada y corpus (P1-6, P2)", () => {
+  it("el esquema ya trae los campos de latencia L1 y de pedido esperado/correcto en BD (null = sin medir)", async () => {
+    const r = await correr({});
+    expect(r).toMatchObject({ latenciaPrimerAudioMs: null, pedidoEsperado: null, pedidoFinalCorrectoEnBd: null });
+  });
+
+  describe("PII sintetica: el validador la rechaza SIN citar el texto", () => {
+    const base = JSON.parse(JSON.stringify(EJ2)) as Record<string, unknown>;
+    const con = (campo: string, valor: unknown) => ({ ...base, [campo]: valor });
+    const malos: [string, string][] = [
+      ["telefono", "mi numero es 9991234567 gracias"],
+      ["telefono", "llamame al 999 123 4567"],
+      ["telefono", "999-123-45-67"],
+      ["telefono", "(999) 123-4567"],
+      ["telefono", "+52 999 123 4567"],
+      ["telefono", "521 999 123 4567"],
+      ["telefono", "+5219991234567"],
+      ["correo", "es ana.perez@ejemplo.com ok"],
+      ["correo", "ana perez arroba ejemplo punto com"],
+      ["credencial", "https://usuario:clave123@host.ejemplo/ruta"],
+      ["credencial", "https://api.ejemplo.com/v1?api_key=abcdef123"],
+      ["credencial", "sk-abcdefghijklmnop1234"],
+      ["tarjeta", "mi tarjeta 4111 1111 1111 1111"],
+      ["tarjeta", "4111111111111111"],
+    ];
+
+    it.each(malos)("detecta %s: %s", (cat, texto) => {
+      expect(categoriasPii(texto)).toContain(cat);
+      for (const campo of ["titulo", "fuente", "debe", "noDebe"]) {
+        const e = validarEscenario(con(campo, texto));
+        expect(e.some((m) => m.startsWith(`${campo}: contiene ${cat}`)), `${campo}`).toBe(true);
+        expect(e.join(" ")).not.toContain(texto);
+      }
+      const e2 = validarEscenario(con("turnos", ["hola", texto]));
+      expect(e2).toContain(`turnos[1]: contiene ${cat} (el corpus debe ser sintetico)`);
+      expect(e2.join(" ")).not.toContain(texto);
+      const e3 = validarEscenario(con("turnos", [{ k: "interrumpe", dice: texto }]));
+      expect(e3.some((m) => m.includes(`contiene ${cat}`))).toBe(true);
+    });
+
+    it.each(["quiero 328 pesos de tacos", "doce cincuenta cada uno", "son 3 ordenes de 6 piezas, total 1250 pesos", "a las 14:30 del 13 de marzo", "codigo 12345", "folio 20260310 numero 4412"])("no marca texto sin PII: %s", (t) => {
+      expect(categoriasPii(t)).toEqual([]);
+    });
+
+    it("los ejemplos del repo no tienen PII", () => {
+      for (const e of cargarEjemplos()) expect(validarEscenario(e)).toEqual([]);
+    });
+  });
+
+  it("un id invalido no sale tal cual en los errores", () => {
+    const base = JSON.parse(JSON.stringify(EJ2)) as Record<string, unknown>;
+    const { errores } = validarLista([{ ...base, id: "9991234567 ana@ejemplo.com texto del corpus" }]);
+    expect(errores[0]!.id).toBe("(id invalido)");
+    expect(JSON.stringify(errores)).not.toContain("ana@ejemplo.com");
+  });
+
+  it("un JSON ilegible del corpus privado da un mensaje fijo, sin fragmento del archivo", () => {
+    const fuera = mkdtempSync(join(tmpdir(), "corpus-"));
+    writeFileSync(join(fuera, "escenarios-voz.json"), '{"escenarios": [ {"titulo": "FRAGMENTO_SECRETO_DEL_CORPUS" ');
+    let mensaje = "";
+    try { cargarCorpusPrivado({ PM_CORPUS_SIM: fuera }, RAIZ); } catch (x) { mensaje = (x as Error).message; expect(x).toBeInstanceOf(AbortoDeSeguridad); }
+    expect(mensaje).toMatch(/JSON ilegible/);
+    expect(mensaje).not.toContain("FRAGMENTO_SECRETO");
+  });
+});

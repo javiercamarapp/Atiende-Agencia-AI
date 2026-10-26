@@ -9,6 +9,8 @@ export interface AccionFalsa {
   /** Si se da, el agente dice esto DESPUES de ejecutar las herramientas. */
   readonly diceDespues?: string;
   readonly costoMicroUsd?: number | unknown;
+  /** El adaptador NO llama `h.costo` en este turno (pruebas: el corredor debe fallar cerrado, no tratarlo como gratis). */
+  readonly sinReporteDeCosto?: true;
 }
 
 /** `guion(indiceDeTurno, textoOido)` decide la accion; por omision el agente repite lo que oyo (eco). */
@@ -24,9 +26,11 @@ export function crearAdaptadorFalso(guion: GuionFalso = (_t, oido) => ({ dice: `
         const a = guion(turno, texto);
         turno += 1;
         void (async () => {
-          if ("costoMicroUsd" in a) {
-            if (typeof a.costoMicroUsd === "number" && Number.isFinite(a.costoMicroUsd)) costo.total += a.costoMicroUsd;
-            h.costo?.(a.costoMicroUsd as number, false, { proveedor: "falso", unidad: "unidad", cantidad: 1 });
+          if (a.sinReporteDeCosto !== true) {
+            // Sin `costoMicroUsd` en la accion se reporta 0 EXPLICITO: un 0 reportado es un dato; la ausencia de reporte no lo es.
+            const c = "costoMicroUsd" in a ? a.costoMicroUsd : 0;
+            if (typeof c === "number" && Number.isFinite(c)) costo.total += c;
+            h.costo?.(c as number, false, { proveedor: "falso", unidad: "unidad", cantidad: 1 });
           }
           if (a.dice) h.agenteDijo(a.dice);
           for (const t of a.herramientas ?? []) {

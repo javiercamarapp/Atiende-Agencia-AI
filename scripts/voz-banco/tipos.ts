@@ -65,4 +65,11 @@ export interface ResultadoLlamada {
   readonly crearIndebidosEjecutados: number;
   readonly costo: CostoAdaptador;
   readonly cortada: null | "tope_llamada";
+  // Campos del esquema BANCO §5 que M0 todavia no mide: existen desde ya (en null = «sin medir», no cero) para que el esquema no cambie despues.
+  /** L1: ms desde que el cliente termina de hablar hasta el primer audio del agente (necesita adaptador con `salidaAudio`; M1). */
+  readonly latenciaPrimerAudioMs: number | null;
+  /** El escenario espera que se cree un pedido (de sus checks `pedidos`/`totalSiCrea`); lo llena el verificador contra la BD. */
+  readonly pedidoEsperado: boolean | null;
+  /** El pedido final en la BD coincide con lo esperado (items, total, canal); lo llena el verificador contra la BD. */
+  readonly pedidoFinalCorrectoEnBd: boolean | null;
 }

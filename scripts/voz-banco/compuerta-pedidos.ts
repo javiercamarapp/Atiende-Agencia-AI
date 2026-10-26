@@ -7,9 +7,13 @@
 //
 // Modos:
 //  - "on":       la regla de produccion completa (afirmacion pura + total oido + huella vigente + espera tras confirmar).
-//  - "off":      todo pasa (mide cuanto vale la compuerta). La traza igual cuenta los crear sin confirmar.
-//  - "servidor": no bloquea localmente; entrega el numero de turno del cliente al ejecutor (`ctx.turno`) para que el transporte lo mande como `x-atiende-call-turn`
+//  - "off":      todo pasa (mide cuanto vale la compuerta). El estado de la compuerta se sigue alimentando y cada `crear` recibe un VEREDICTO («lo habria bloqueado la compuerta»)
+//                que la traza usa para contar los pedidos indebidos con la MISMA regla que el modo `on`.
+//  - "servidor": igual que `off` pero entrega ademas el numero de turno del cliente al ejecutor (`ctx.turno`) para que el transporte lo mande como `x-atiende-call-turn`
 //                y la defensa del servidor (confirmar en un turno posterior al de la cotizacion) se ejerza.
+//
+// Generacion (barge-in): como `vigente()` de la sesion v2, cada llamada a herramienta captura la generacion al LLEGAR. Si el cliente habla o interrumpe antes de que le toque
+// ejecutarse, es de una generacion cortada: en modo `on` devuelve `interrumpido_por_el_cliente` (lo hace `ejecutarHerramientas` por `continuar`) y nunca se evalua contra el estado del turno nuevo.
 import type { ToolCallLlmVoz } from "../../packages/voice-core/src/llamada/cascada-openrouter.ts";
 import { contieneTotal, esAfirmacion, esRechazo } from "../../packages/voice-core/src/llamada/cascada-v2/afirmacion.ts";
 import { ejecutarHerramientas } from "../../packages/voice-core/src/llamada/cascada-v2/herramientas.ts";
@@ -25,6 +29,24 @@ export interface ReglaPedidos {
 /** La regla que el worker activa en produccion (apps/voice-worker/src/main.ts). */
 export const REGLA_PEDIDOS_PM: ReglaPedidos = { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido" };
 
+/** Lo que la compuerta de produccion HABRIA decidido para un `crear`, calculado sobre una copia del estado ANTES de ejecutar (igual en los tres modos). */
+export interface VeredictoCrear {
+  readonly bloquearia: boolean;
+  /** Error que habria devuelto la compuerta; null si habria dejado pasar. */
+  readonly motivo: string | null;
+}
+
+const CENTINELA = { __centinela: true };
+const ERRORES_COMPUERTA = new Set(["espera_confirmacion_del_cliente", "resumen_distinto_al_leido", "interrumpido_por_el_cliente"]);
+
+/** Misma nocion de «salida con error» que `herramientas.ts` (no se exporta alla; produccion no se toca). */
+function conError(salida: unknown): boolean {
+  if (salida === null || salida === undefined) return true;
+  if (typeof salida !== "object" || Array.isArray(salida)) return false;
+  const o = salida as Record<string, unknown>;
+  return ("error" in o && o["error"] !== undefined && o["error"] !== null && o["error"] !== false) || o["ok"] === false;
+}
+
 export class CompuertaPedidos {
   readonly estado: EstadoEspera = { pendiente: false, huellaOida: null, huellaCotizada: null, cotizoEnTurno: false };
   readonly eventos: { evento: string; campos: Record<string, unknown> | undefined }[] = [];
@@ -33,6 +55,9 @@ export class CompuertaPedidos {
   private habladoTurno = "";
   /** La generacion en curso fue cortada (barge-in): su `agenteTermino` no cuenta como resumen leido (la sesion v2 retorna antes de llegar a esa rama). */
   private cortada = false;
+  /** Generacion de la respuesta del agente: sube con cada turno del cliente y con cada barge-in (equivale a `generacion` de la sesion v2). */
+  private generacion = 0;
+  private readonly veredictos = new WeakMap<object, VeredictoCrear>();
 
   constructor(readonly modo: ModoCompuerta, readonly regla: ReglaPedidos = REGLA_PEDIDOS_PM) {}
 
@@ -55,6 +80,7 @@ export class CompuertaPedidos {
     this.rechazoTurno = !e.afirmacion && esRechazo(texto);
     this.habladoTurno = "";
     this.cortada = false; // empieza una generacion nueva
+    this.generacion += 1;
   }
 
   /** Una frase que el agente dijo en voz alta (o su texto si el proveedor solo entrega transcripcion). */
@@ -68,6 +94,12 @@ export class CompuertaPedidos {
   alInterrumpir(): void {
     this.estado.huellaOida = null;
     this.cortada = true;
+    this.generacion += 1; // las herramientas pendientes de la generacion cortada ya no son vigentes
+  }
+
+  /** Veredicto del ultimo `crear` procesado para ESTA llamada (el mismo objeto que se paso a `decorar`); undefined si no fue un `crear` o aun no se evaluo. */
+  veredictoDe(llamada: ToolCallPedida): VeredictoCrear | undefined {
+    return this.veredictos.get(llamada);
   }
 
   /** El agente termino de hablar sin ser interrumpido: decide si el resumen vigente quedo LEIDO (con su total). Copia fiel de la rama de cierre de `turno()` en la sesion v2. */
@@ -104,22 +136,47 @@ export class CompuertaPedidos {
 
   /** Envuelve el ejecutor real. El resultado devuelto al proveedor es el mismo que en produccion (`{error:"espera_confirmacion_del_cliente", mensaje}` al bloquear). */
   decorar(ejecutar: EjecutarTool): EjecutarTool {
-    const una = async (llamada: ToolCallPedida): Promise<unknown> => {
-      if (this.modo === "off") return ejecutar(llamada, { turno: this.turnoCliente });
-      if (this.modo === "servidor") return ejecutar(llamada, { turno: this.turnoCliente });
+    const regla = this.regla;
+    const una = async (llamada: ToolCallPedida, gen: number): Promise<unknown> => {
+      const ctx = (): { turno: number } => ({ turno: this.turnoCliente });
       const tc: ToolCallLlmVoz = { id: llamada.id, nombre: llamada.nombre, argsJson: JSON.stringify(llamada.args ?? {}) };
-      const [r] = await ejecutarHerramientas([tc], (l) => ejecutar(l, { turno: this.turnoCliente }), {
-        confirmacionAntesDeCrear: this.regla,
-        esperandoAlCliente: this.estado,
-        log: (evento, campos) => this.registrar(evento, campos),
-      });
+      const vigente = (): boolean => this.generacion === gen;
+      const esCrear = llamada.nombre === regla.crear;
+      // Veredicto «como lo habria decidido la compuerta», sobre una COPIA del estado y sin ejecutar nada; en `on` coincide con lo que de verdad ocurre a continuacion.
+      if (esCrear) this.veredictos.set(llamada, await this.evaluarCrear(tc, vigente));
+      const real = (l: ToolCallPedida): Promise<unknown> => ejecutar(l, ctx());
+      if (this.modo === "on") {
+        const [r] = await ejecutarHerramientas([tc], real, { confirmacionAntesDeCrear: regla, esperandoAlCliente: this.estado, continuar: vigente, log: (evento, campos) => this.registrar(evento, campos) });
+        return r?.salida;
+      }
+      // off / servidor: nada se bloquea, pero el estado se sigue alimentando con las mismas funciones de produccion (cotizar/confirmar) para que los veredictos sean fieles.
+      if (esCrear) {
+        const salida = await real(llamada).catch(() => ({ error: "herramienta_fallo" }));
+        if (regla.cotizar !== undefined && !conError(salida)) {
+          this.estado.huellaOida = null;
+          this.estado.huellaUltima = null;
+          this.estado.totalUltimo = null;
+        }
+        return salida;
+      }
+      const [r] = await ejecutarHerramientas([tc], real, { confirmacionAntesDeCrear: regla, esperandoAlCliente: this.estado, log: (evento, campos) => this.registrar(evento, campos) });
       return r?.salida;
     };
     return (llamada) => {
-      const p = this.cola.then(() => una(llamada));
+      const gen = this.generacion; // se captura al LLEGAR, no al tocarle el turno en la cola
+      const p = this.cola.then(() => una(llamada, gen));
       this.cola = p.catch(() => undefined);
       return p;
     };
+  }
+
+  private async evaluarCrear(tc: ToolCallLlmVoz, vigente: () => boolean): Promise<VeredictoCrear> {
+    if (!vigente()) return { bloquearia: true, motivo: "interrumpido_por_el_cliente" };
+    const sombra: EstadoEspera = { ...this.estado };
+    const [r] = await ejecutarHerramientas([tc], async () => CENTINELA, { confirmacionAntesDeCrear: this.regla, esperandoAlCliente: sombra, continuar: vigente });
+    const salida = r?.salida;
+    const error = salida && typeof salida === "object" ? (salida as Record<string, unknown>)["error"] : undefined;
+    return typeof error === "string" && ERRORES_COMPUERTA.has(error) ? { bloquearia: true, motivo: error } : { bloquearia: false, motivo: null };
   }
 }
 

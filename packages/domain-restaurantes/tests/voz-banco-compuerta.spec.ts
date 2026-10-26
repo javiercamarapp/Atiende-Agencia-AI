@@ -6,10 +6,12 @@ import { CompuertaPedidos, conCompuerta } from "../../../scripts/voz-banco/compu
 import type { ContextoTool, EjecutarTool, ModoCompuerta } from "../../../scripts/voz-banco/tipos.ts";
 import { TrazaHerramientas } from "../../../scripts/voz-banco/traza-herramientas.ts";
 
-function servidor(opts: { hashes?: string[] } = {}) {
-  const s = { llamadas: [] as { nombre: string; turno: number | undefined }[], pedidos: 0, cotizaciones: 0 };
+function servidor(opts: { hashes?: string[]; retener?: string } = {}) {
+  const s = { llamadas: [] as { nombre: string; turno: number | undefined }[], pedidos: 0, cotizaciones: 0, soltar: (): void => undefined };
   const ejecutar: EjecutarTool = async (l, ctx?: ContextoTool) => {
     s.llamadas.push({ nombre: l.nombre, turno: ctx?.turno });
+    // `retener`: esa herramienta queda en vuelo hasta que la prueba llame `s.soltar()` (permite un barge-in con herramientas pendientes).
+    if (opts.retener === l.nombre) await new Promise<void>((r) => { s.soltar = r; });
     if (l.nombre === "cotizar_pedido") {
       const h = opts.hashes?.[s.cotizaciones] ?? "h1";
       s.cotizaciones += 1;
@@ -23,10 +25,10 @@ function servidor(opts: { hashes?: string[] } = {}) {
 }
 
 /** Banco de pruebas minimo del corredor: traza (externa) + compuerta (interna) + servidor. */
-function montar(modo: ModoCompuerta, opts: { hashes?: string[] } = {}) {
+function montar(modo: ModoCompuerta, opts: { hashes?: string[]; retener?: string } = {}) {
   const srv = servidor(opts);
   const { ejecutar, compuerta } = conCompuerta(srv.ejecutar, { modo });
-  const traza = new TrazaHerramientas();
+  const traza = new TrazaHerramientas(undefined, compuerta); // la traza consume el estado de la compuerta
   const modelo = traza.decorar(ejecutar);
   let n = 0;
   const llamar = (nombre: string, args: Record<string, unknown> = {}) => modelo({ id: `t${(n += 1)}`, nombre, args });
@@ -180,5 +182,117 @@ describe("compuerta como factor experimental", () => {
     const c = new CompuertaPedidos("on");
     c.alTurnoCliente("   ");
     expect(c.turno).toBe(0);
+  });
+});
+
+describe("la traza usa el estado de la compuerta (P1-1): «cero pedidos indebidos» no subestima", () => {
+  /** Flujo real de produccion: T1 cotiza Y confirma en la misma respuesta; T2 «si» y solo entonces crear. */
+  async function flujoReal(modo: ModoCompuerta, agenteDice: string) {
+    const m = montar(modo);
+    m.cliente("quiero tres tacos");
+    await m.llamar("cotizar_pedido");
+    await m.llamar("confirmar_resumen");
+    m.agente(agenteDice);
+    m.cliente("si");
+    const r = await m.llamar("crear_pedido");
+    return { m, r };
+  }
+
+  it.each(["off", "on", "servidor"] as const)("%s: el agente anoto sin decir el total, el cliente dijo «si» y el modelo crea -> cuenta como crear sin confirmar", async (modo) => {
+    const { m, r } = await flujoReal(modo, "Anotado, confirma?");
+    expect(m.traza.intentosCrearSinConfirmar).toBe(1);
+    if (modo === "on") {
+      expect(r).toMatchObject(BLOQUEO);
+      expect(m.traza.crearIndebidosEjecutados).toBe(0);
+    } else {
+      expect(r).toEqual({ order: { id: "o1" } });
+      expect(m.traza.crearIndebidosEjecutados).toBe(1); // lo que la compuerta evita y `off` deja pasar: se mide
+    }
+  });
+
+  it.each(["off", "on", "servidor"] as const)("%s: con el total leido en T1 y el «si» en T2, crear NO es indebido y se crea una vez", async (modo) => {
+    const { m, r } = await flujoReal(modo, "Son tres tacos, el total es 328 pesos. Confirma?");
+    expect(r).toEqual({ order: { id: "o1" } });
+    expect(m.traza.intentosCrearSinConfirmar).toBe(0);
+    expect(m.traza.crearIndebidosEjecutados).toBe(0);
+    expect(m.s.pedidos).toBe(1);
+  });
+
+  it("off y on coinciden en el veredicto de cada crear (misma regla, distinta consecuencia)", async () => {
+    const veredictos = async (modo: ModoCompuerta) => {
+      const m = montar(modo);
+      m.cliente("tres tacos");
+      await m.llamar("cotizar_pedido");
+      await m.llamar("crear_pedido"); // mismo turno
+      m.agente("El total es 328 pesos. Confirma?");
+      m.cliente("y llevan cebolla?");
+      await m.llamar("crear_pedido"); // sin afirmacion
+      return m.traza.registros.filter((x) => x.nombre === "crear_pedido").map((x) => x.sinConfirmar);
+    };
+    expect(await veredictos("off")).toEqual(await veredictos("on"));
+    expect(await veredictos("on")).toEqual([true, true]);
+  });
+});
+
+describe("generacion (P1-2): barge-in con herramientas pendientes", () => {
+  it("on: el crear pendiente de la generacion cortada devuelve interrumpido_por_el_cliente y NO se evalua contra el turno nuevo", async () => {
+    const m = montar("on", { retener: "confirmar_resumen" });
+    m.cliente("quiero tres tacos");
+    await m.llamar("cotizar_pedido");
+    m.agente("El total es 328 pesos. Confirma?");
+    m.cliente("si"); // T2: aqui el resumen ya esta leido y hay afirmacion: un crear de ESTE turno pasaria
+    const pConfirmar = m.llamar("confirmar_resumen"); // en vuelo
+    const pCrear = m.llamar("crear_pedido"); // pedido a la vez (OpenAI Realtime): espera su turno en la cola
+    await Promise.resolve();
+    m.cliente("ok"); // T3 nuevo: otra afirmacion; el estado del turno nuevo SI dejaria pasar un crear
+    m.s.soltar();
+    expect(await pConfirmar).toEqual({ ok: true });
+    expect(await pCrear).toMatchObject({ error: "interrumpido_por_el_cliente" });
+    expect(m.s.pedidos).toBe(0);
+    expect(m.traza.registros.find((x) => x.nombre === "crear_pedido")).toMatchObject({ bloqueadaPorCompuerta: true, sinConfirmar: true });
+  });
+
+  it("on: un barge-in explicito (alInterrumpir) tambien corta lo pendiente", async () => {
+    const m = montar("on", { retener: "confirmar_resumen" });
+    m.cliente("quiero tres tacos");
+    await m.llamar("cotizar_pedido");
+    m.agente("El total es 328 pesos. Confirma?");
+    m.cliente("si");
+    const pConfirmar = m.llamar("confirmar_resumen");
+    const pCrear = m.llamar("crear_pedido");
+    await Promise.resolve();
+    m.compuerta.alInterrumpir();
+    m.s.soltar();
+    await pConfirmar;
+    expect(await pCrear).toMatchObject({ error: "interrumpido_por_el_cliente" });
+    expect(m.s.pedidos).toBe(0);
+  });
+
+  it("off: la herramienta tardia se ejecuta, pero la traza la cuenta como pedido indebido", async () => {
+    const m = montar("off", { retener: "confirmar_resumen" });
+    m.cliente("quiero tres tacos");
+    await m.llamar("cotizar_pedido");
+    m.agente("El total es 328 pesos. Confirma?");
+    m.cliente("si");
+    const pConfirmar = m.llamar("confirmar_resumen");
+    const pCrear = m.llamar("crear_pedido");
+    await Promise.resolve();
+    m.cliente("ok");
+    m.s.soltar();
+    await pConfirmar;
+    await pCrear;
+    expect(m.s.pedidos).toBe(1);
+    expect(m.traza.crearIndebidosEjecutados).toBe(1);
+  });
+
+  it("sin barge-in, dos herramientas a la vez del mismo turno siguen pasando en orden (la generacion no estorba)", async () => {
+    const m = montar("on");
+    m.cliente("quiero tres tacos");
+    await m.llamar("cotizar_pedido");
+    m.agente("El total es 328 pesos. Confirma?");
+    m.cliente("si");
+    const [a, b] = await Promise.all([m.llamar("confirmar_resumen"), m.llamar("crear_pedido")]);
+    expect(a).toEqual({ ok: true });
+    expect(b).toEqual({ order: { id: "o1" } });
   });
 });

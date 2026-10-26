@@ -18,6 +18,39 @@ const CHECKS_SIMPLES = new Set(["sinPedido", "sinCallback", "sinDomicilio"]);
 const EVENTOS = new Set(["ruido", "no_entendido", "silencio", "cuelga", "interrumpe", "cortada"]);
 const SUCURSALES = new Set(["T1", "T3", "T7"]);
 
+// ---- PII: el corpus es SINTETICO; si se cuela un dato real (telefono, correo, tarjeta, credencial) el validador lo rechaza. Los mensajes dicen CATEGORIA y campo, nunca el texto. ----
+// Limite conocido: no detecta datos dictados en palabras («nueve nueve nueve...») ni nombres propios; eso sigue siendo revision humana del corpus.
+const RE_CORREO = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/;
+const RE_ARROBA = /\b[\w.+-]+\s+arroba\s+[\w.-]+/i;
+const RE_URL_CREDENCIAL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]+@|[?&](?:key|token|secret|password|apikey|api_key|access_token)=[^\s&]+|\b(?:sk|pk|rk)[-_][A-Za-z0-9_-]{16,}|\bbearer\s+[A-Za-z0-9._~+/-]{12,}/i;
+const RE_TARJETA_GRUPOS = /(?<!\d)\d{4}[\s-]\d{4}[\s-]\d{4}[\s-]\d{1,7}(?!\d)/;
+const RE_CORRIDAS_DIGITOS = /\+?\d(?:[\s().-]*\d){8,}/g;
+
+function luhn(d: string): boolean {
+  let suma = 0;
+  for (let i = 0; i < d.length; i += 1) {
+    let n = Number(d[d.length - 1 - i]);
+    if (i % 2 === 1) { n *= 2; if (n > 9) n -= 9; }
+    suma += n;
+  }
+  return suma % 10 === 0;
+}
+
+/** Categorias de PII halladas en un texto (vacio = limpio). */
+export function categoriasPii(texto: string): string[] {
+  const cats = new Set<string>();
+  if (RE_CORREO.test(texto) || RE_ARROBA.test(texto)) cats.add("correo");
+  if (RE_URL_CREDENCIAL.test(texto)) cats.add("credencial");
+  if (RE_TARJETA_GRUPOS.test(texto)) cats.add("tarjeta");
+  for (const m of texto.match(RE_CORRIDAS_DIGITOS) ?? []) {
+    const d = m.replace(/\D/g, "");
+    if (d.length === 10 || (d.length === 12 && d.startsWith("52")) || (d.length === 13 && d.startsWith("521"))) cats.add("telefono");
+    else if (d.length >= 13 && d.length <= 19 && luhn(d)) cats.add("tarjeta");
+  }
+  return [...cats];
+}
+
+const RE_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const esObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
 
 /** Errores de forma de UN escenario (lista vacia = valido). Describe el campo, nunca su contenido. */
@@ -25,16 +58,25 @@ export function validarEscenario(x: unknown): string[] {
   const err: string[] = [];
   if (!esObj(x)) return ["no es un objeto"];
   for (const k of ["id", "fuente", "titulo", "debe", "noDebe"] as const) if (typeof x[k] !== "string" || x[k] === "") err.push(`${k}: debe ser un texto no vacio`);
-  if (typeof x["id"] === "string" && !/^[A-Za-z0-9_-]{1,40}$/.test(x["id"])) err.push("id: solo letras, digitos, guion y guion bajo (max 40)");
+  if (typeof x["id"] === "string" && !RE_ID.test(x["id"])) err.push("id: solo letras, digitos, guion y guion bajo (max 40)");
   if (!SUCURSALES.has(String(x["sucursal"]))) err.push("sucursal: debe ser T1, T3 o T7");
   if (!(String(x["reloj"]) in RELOJES)) err.push("reloj: clave desconocida");
+  // PII en los campos de texto libre (id ya esta restringido por regex). Solo categoria y campo.
+  for (const k of ["titulo", "fuente", "debe", "noDebe"] as const) {
+    if (typeof x[k] === "string") for (const c of categoriasPii(x[k] as string)) err.push(`${k}: contiene ${c} (el corpus debe ser sintetico)`);
+  }
   const turnos = x["turnos"];
   if (!Array.isArray(turnos) || turnos.length === 0) err.push("turnos: debe ser una lista no vacia");
   else {
     turnos.forEach((t, i) => {
-      if (typeof t === "string") { if (t.trim() === "") err.push(`turnos[${i}]: texto vacio`); return; }
+      if (typeof t === "string") {
+        if (t.trim() === "") err.push(`turnos[${i}]: texto vacio`);
+        for (const c of categoriasPii(t)) err.push(`turnos[${i}]: contiene ${c} (el corpus debe ser sintetico)`);
+        return;
+      }
       if (!esObj(t) || !EVENTOS.has(String(t["k"]))) { err.push(`turnos[${i}]: ni texto ni evento conocido`); return; }
       if ((t["k"] === "interrumpe" || t["k"] === "cortada") && (typeof t["dice"] !== "string" || t["dice"] === "")) err.push(`turnos[${i}]: falta dice`);
+      if (typeof t["dice"] === "string") for (const c of categoriasPii(t["dice"])) err.push(`turnos[${i}]: contiene ${c} (el corpus debe ser sintetico)`);
       if (t["k"] === "silencio" && !(typeof t["ms"] === "number" && Number.isFinite(t["ms"]) && t["ms"] >= 0)) err.push(`turnos[${i}]: silencio requiere ms numerico`);
     });
   }
@@ -68,7 +110,8 @@ export function validarLista(xs: unknown): { validos: EscenarioBanco[]; errores:
   if (!Array.isArray(xs)) return { validos, errores: [{ indice: -1, id: "(raiz)", problemas: ["la lista de escenarios no es un arreglo"] }] };
   xs.forEach((x, indice) => {
     const problemas = validarEscenario(x);
-    const id = esObj(x) && typeof x["id"] === "string" ? x["id"] : "(sin id)";
+    // El id solo se muestra si cumple el regex del esquema: uno invalido podria traer texto del corpus (o PII) y acabaria impreso.
+    const id = esObj(x) && typeof x["id"] === "string" ? (RE_ID.test(x["id"]) ? x["id"] : "(id invalido)") : "(sin id)";
     if (problemas.length === 0 && vistos.has(id)) problemas.push("id repetido");
     vistos.add(id);
     if (problemas.length > 0) errores.push({ indice, id, problemas });
@@ -77,10 +120,19 @@ export function validarLista(xs: unknown): { validos: EscenarioBanco[]; errores:
   return { validos, errores };
 }
 
+/** JSON.parse con mensaje FIJO: el SyntaxError nativo cita un fragmento del archivo (texto del corpus privado). */
+function leerJson(ruta: string | URL, que: string): unknown {
+  try {
+    return JSON.parse(readFileSync(ruta, "utf8")) as unknown;
+  } catch {
+    throw new AbortoDeSeguridad(`${que}: JSON ilegible o archivo no accesible`);
+  }
+}
+
 /** Los escenarios de ejemplo del repo (inventados). */
 export function cargarEjemplos(): EscenarioBanco[] {
   const ruta = new URL("./ejemplos/escenarios-ejemplo.json", import.meta.url);
-  const { validos, errores } = validarLista((JSON.parse(readFileSync(ruta, "utf8")) as { escenarios?: unknown }).escenarios);
+  const { validos, errores } = validarLista((leerJson(ruta, "los escenarios de ejemplo del repo") as { escenarios?: unknown }).escenarios);
   if (errores.length > 0) throw new Error("los escenarios de ejemplo del repo no son validos");
   return validos;
 }
@@ -108,7 +160,7 @@ export function rutaCorpusPrivado(env: Record<string, string | undefined>, raizR
 /** Carga y valida el corpus privado. Devuelve solo cuentas de errores si algo falla (nunca texto del corpus). */
 export function cargarCorpusPrivado(env: Record<string, string | undefined>, raizRepo: string): { validos: EscenarioBanco[]; errores: { indice: number; id: string; problemas: string[] }[] } {
   const archivo = rutaCorpusPrivado(env, raizRepo);
-  const crudo = JSON.parse(readFileSync(archivo, "utf8")) as unknown;
+  const crudo = leerJson(archivo, "PM_CORPUS_SIM");
   const lista = Array.isArray(crudo) ? crudo : esObj(crudo) ? crudo["escenarios"] : undefined;
   return validarLista(lista);
 }
