@@ -124,7 +124,8 @@ export function useCargaCoordinada(tamano: CargaTamano): { visible: boolean } {
  * permanencia minima (contada desde que el logo aparecio, es decir, 120 ms despues de empezar). Si la carga acaba
  * antes de los 120 ms devuelve `false` al instante (el logo nunca se mostro). Estado derivado de marcas de tiempo:
  * el primer render con `cargando=false` ya devuelve el valor correcto (sin cuadro intermedio) y una recarga durante
- * la retencion la cancela sin dejar nada colgado.
+ * la retencion la cancela sin dejar nada colgado. Limitacion conocida: asume que el logo aparecio a los 120 ms; si el
+ * coordinador lo oculto por otro de mayor prioridad, igualmente se retiene (el hook no conoce el turno del logo).
  */
 export function useCargaRetenida(cargando: boolean, tamano: CargaTamano): boolean {
   const [estado, setEstado] = useState<{ previo: boolean; inicio: number | null; hasta: number }>(() => ({
@@ -132,7 +133,6 @@ export function useCargaRetenida(cargando: boolean, tamano: CargaTamano): boolea
     inicio: cargando ? Date.now() : null,
     hasta: 0,
   }));
-  const [, repintar] = useState(0);
   let actual = estado;
   if (cargando !== estado.previo) {
     const ahora = Date.now();
@@ -140,17 +140,20 @@ export function useCargaRetenida(cargando: boolean, tamano: CargaTamano): boolea
       actual = { previo: true, inicio: ahora, hasta: 0 };
     } else {
       const aparecio = estado.inicio === null ? null : estado.inicio + CARGA_RETARDO_MS;
-      const hasta = aparecio !== null && ahora >= aparecio ? aparecio + CARGA_PERMANENCIA_MS[tamano] : 0;
+      const limite = aparecio !== null && ahora >= aparecio ? aparecio + CARGA_PERMANENCIA_MS[tamano] : 0;
+      const hasta = limite > ahora ? limite : 0;
       actual = { previo: false, inicio: null, hasta };
     }
     setEstado(actual);
   }
   const hasta = actual.hasta;
+  // La salida se deriva SOLO de estado: el timer (siempre armado mientras dura la retencion, aunque `restante` sea
+  // <= 0 o el timer dispare unos ms antes del reloj) cierra la retencion en estado; nunca se vuelve a comparar con
+  // Date.now() en el render.
   useEffect(() => {
-    const restante = hasta - Date.now();
-    if (cargando || restante <= 0) return;
-    const t = setTimeout(() => repintar((n) => n + 1), restante);
+    if (cargando || hasta === 0) return;
+    const t = setTimeout(() => setEstado((e) => (e.hasta === hasta ? { ...e, hasta: 0 } : e)), Math.max(0, hasta - Date.now()));
     return () => clearTimeout(t);
   }, [cargando, hasta]);
-  return cargando || hasta > Date.now();
+  return cargando || hasta !== 0;
 }

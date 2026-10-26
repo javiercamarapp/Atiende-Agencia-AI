@@ -239,6 +239,33 @@ describe("permanencia minima (R15)", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("jitter: el timer dispara antes de que Date.now() alcance el limite (reloj de Date 1 ms por detras): no queda true colgado", () => {
+    const real = Date.now.bind(Date);
+    const { root } = montar(createElement(Sonda, { cargando: true, tamano: "panel" }));
+    avanzar(CARGA_RETARDO_MS + 10);
+    act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
+    expect(leer()).toBe("true");
+    vi.spyOn(Date, "now").mockImplementation(() => real() - 1);
+    avanzar(CARGA_PERMANENCIA_MS.panel + 5);
+    expect(leer()).toBe("false");
+    avanzar(5000);
+    expect(leer()).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("hueco render-efecto: Date.now() 1 ms por delante (limite ya vencido al armar el efecto): igualmente termina en false", () => {
+    const real = Date.now.bind(Date);
+    const { root } = montar(createElement(Sonda, { cargando: true, tamano: "panel" }));
+    avanzar(CARGA_RETARDO_MS + 10);
+    vi.spyOn(Date, "now").mockImplementation(() => real() + CARGA_PERMANENCIA_MS.panel + 5);
+    act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
+    avanzar(1);
+    expect(leer()).toBe("false");
+    avanzar(5000);
+    expect(leer()).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("pantalla: 600 ms estables desde la aparicion; carga larga no retiene nada", () => {
     const { root } = montar(createElement(Sonda, { cargando: true, tamano: "pantalla" }));
     avanzar(CARGA_RETARDO_MS + 200);
