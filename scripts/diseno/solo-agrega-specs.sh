@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regla de oro de los lotes 0-10 del rediseno ds3: los specs SOLO se agregan. Falla si el diff contra la base modifica, borra o
 # renombra algun archivo *.spec.* (los specs existentes siguen custodiando produccion hasta el flip) o si un spec nuevo trae
-# `.skip` / `.only` / `.fixme`-sin-nota. Corre en CI para PRs con la etiqueta `ds3` (.github/workflows/capturas-ds3.yml).
+# `.skip` / `.only` / `.fixme` / `.fail` (cualquier forma, incluidas `test["fixme"]`, `.fixme(` en linea aparte y la desestructuracion). Corre en CI para PRs con la etiqueta `ds3` (.github/workflows/capturas-ds3.yml).
 #
 # Uso: bash scripts/diseno/solo-agrega-specs.sh [base]     (base por omision: origin/main)
 set -euo pipefail
@@ -53,11 +53,14 @@ if [ -n "$malos" ]; then
   exit 1
 fi
 
-# Specs nuevos: nada de skip/only en las lineas agregadas.
-prohibidos="$(git diff --no-renames -U0 "$base"...HEAD -- '*.spec.*' \
-  | grep -E '^\+[^+]' | grep -E '\b(test|it|describe)\.(skip|only)\b|\b(xit|xdescribe|fit|fdescribe)\(' || true)"
+# Specs nuevos: nada de skip/only/fixme/fail. Se evaluan las lineas agregadas que NO son comentarios (un comentario que menciona la marca no cuenta).
+# Cubre `test.skip(`, `it.only(`, `test["fixme"]`, `test\n  .fixme(` (linea que empieza con `.marca`), `const { fixme } = test`, xit/xdescribe/fit/fdescribe y TODO `test.fail(`:
+# es una marca de «falla esperada» (con o sin expect, en una linea o en varias, incluido el estilo prettier `test.fail('t', async () => {`); un spec nuevo debe afirmar lo correcto.
+agregadas_codigo="$(git diff --no-renames -U0 "$base"...HEAD -- '*.spec.*' | grep -E '^\+[^+]' | sed 's/^+//' | grep -vE '^[[:space:]]*(//|\*|/\*)' || true)"
+marcas='(skip|only|fixme|fail)'
+prohibidos="$(printf '%s\n' "$agregadas_codigo" | grep -E "\b(test|it|describe)[[:space:]]*(\.|\[[[:space:]]*['\"\`])[[:space:]]*${marcas}\b|^[[:space:]]*\.[[:space:]]*${marcas}\b|\{[^}]*\b(skip|only|fixme|fail)\b[^}]*\}[[:space:]]*=[[:space:]]*(test|it|describe)\b|\b(xit|xdescribe|fit|fdescribe)\(" || true)"
 if [ -n "$prohibidos" ]; then
-  echo "solo-agrega-specs: los specs nuevos no pueden usar skip/only:" >&2
+  echo "solo-agrega-specs: los specs nuevos no pueden usar skip/only/fixme/fail (ni test.fail(...) con o sin expect):" >&2
   printf '%s\n' "$prohibidos" | sed 's/^/  /' >&2
   exit 1
 fi

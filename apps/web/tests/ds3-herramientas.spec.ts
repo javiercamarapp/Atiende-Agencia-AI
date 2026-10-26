@@ -175,8 +175,54 @@ describe("scripts/diseno/solo-agrega-specs.sh", () => {
     expect(correr(d, lista(d, "otro.spec.ts")).codigo).toBe(1);
   });
 
-  it("la lista real registra el spec de BUG-E2E-REST-004 y apunta a una ruta que existe en main", () => {
-    expect(entradasSpecs.some((l) => l.startsWith("apps/web/e2e/tests/restaurantes/matriz-restaurantes-visual.spec.ts"))).toBe(true);
+  it("la lista real de excepciones de specs esta vacia (la de BUG-E2E-REST-004 se retiro con #680) y el piso en el baseline es 0", () => {
+    expect(entradasSpecs, "no agregues excepciones nuevas: el trinquete llego a 0").toEqual([]);
     for (const l of entradasSpecs) expect(existsSync(path.join(raiz, l.split("|")[0]!.trim())), l).toBe(true);
+  });
+
+  it("rechaza un spec nuevo con fixme (mismo literal armado por partes)", () => {
+    const d = repo();
+    escribir(d, "b/cuatro.spec.ts", `${"test"}.${"fixme"}('cuatro', () => {});\n`);
+    confirmar(d);
+    const r = correr(d);
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain("fixme");
+  });
+
+  it("rechaza TODO test.fail agregado (con o sin expect, una o varias lineas); un comentario que lo menciona no cuenta", () => {
+    const marca = `${"test"}.${"fail"}`;
+    const casos: Array<[string, string]> = [
+      ["sin expect", `test('a', async () => {\n  ${marca}(oscuro, 'BUG-1');\n  expect(1).toBe(1);\n});\n`],
+      ["con expect en la misma linea", `${marca}('b', async () => { expect(1).toBe(2); });\n`],
+      ["estilo prettier con expect abajo", `${marca}('c', async () => {\n  expect(1).toBe(2);\n});\n`],
+    ];
+    for (const [nombre, texto] of casos) {
+      const d = repo();
+      escribir(d, "b/cinco.spec.ts", texto);
+      confirmar(d);
+      const r = correr(d);
+      expect(r.codigo, nombre).toBe(1);
+      expect(r.salida, nombre).toContain("test.fail");
+    }
+    const ok = repo();
+    escribir(ok, "b/seis.spec.ts", `// ya no se usa ${marca}(cond, 'x')\ntest('seis', async () => { expect(1).toBe(1); });\n`);
+    confirmar(ok);
+    expect(correr(ok).codigo).toBe(0);
+  });
+
+  it("rechaza las formas alternativas de fixme/skip/only: test[\"fixme\"], .fixme( en linea aparte y la desestructuracion", () => {
+    const f = "fix" + "me";
+    const casos: Array<[string, string]> = [
+      ["corchetes", `test["${f}"]('x', () => {});\n`],
+      ["linea aparte", `test\n  .${f}('x', () => {});\n`],
+      ["desestructuracion", `const { ${f} } = test;\n${f}('x', () => {});\n`],
+      ["skip por corchetes", `it['${"sk" + "ip"}']('x', () => {});\n`],
+    ];
+    for (const [nombre, texto] of casos) {
+      const d = repo();
+      escribir(d, "b/siete.spec.ts", texto);
+      confirmar(d);
+      expect(correr(d).codigo, nombre).toBe(1);
+    }
   });
 });
