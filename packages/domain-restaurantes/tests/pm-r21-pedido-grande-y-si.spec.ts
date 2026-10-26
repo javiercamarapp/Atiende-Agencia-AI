@@ -2,6 +2,7 @@
 // (1) `pedido_grande` lo fija SOLO el servidor: si el modelo lo manda en `escalar_a_humano` con una compra normal se rechaza y NO se abre una toma de handoff.
 // (2) Con una toma `pendiente` y el pedido ya cotizado, el «sí» al resumen no recibe el acuse fijo: pasa al agente y el pedido se crea (una sola vez).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cantidadEnPalabras } from "../src/pedido-grande.ts";
 import { INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR, solicitudEsPedidoGrande, toolDefinitionsForChannel } from "../src/agent-tools/registry.ts";
 import { ACUSE_HANDOFF_REPETIDO } from "../src/whatsapp/inbound.ts";
 import { MARTES_14H, nuevoViaje, pedidosDe, type Viaje } from "./qa-viaje/arnes-viaje.ts";
@@ -136,6 +137,37 @@ describe("T7-061: la solicitud realmente grande del cliente SI escala con pedido
   });
   it.each(["1/4 de pechuga, 1 kilo de bistec", "2 ordenes de gringas", "5 kg de pastor", "quiero 12 tacos", "Solicitud de 1/4 kg de pechuga por $237.50"])("normal: %s", (t) => {
     expect(solicitudEsPedidoGrande(t)).toBe(false);
+  });
+
+  it.each([
+    "necesito diez kilos de pastor",
+    "quiero cuarenta ordenes de tacos",
+    "ocupo treinta y un tacos para la fiesta",
+    "son ciento veinte tacos",
+    "dos mil tacos",
+    "Quiero SEIS KILOS de bistec",
+    "veintiuna ordenes y doscientas piezas",
+    "cincuenta gringas",
+  ])("grande en palabras: %s", (t) => {
+    expect(solicitudEsPedidoGrande(t)).toBe(true);
+  });
+  it.each([
+    "cinco kilos de pastor",
+    "un kilo de bistec",
+    "treinta ordenes de tacos",
+    "veintinueve tacos",
+    "dos ordenes de gringas",
+    "media docena de tacos",
+    "diez tacos y cinco gringas",
+    "quiero diez de pastor",
+  ])("normal en palabras: %s", (t) => {
+    expect(solicitudEsPedidoGrande(t)).toBe(false);
+  });
+  it("cantidadEnPalabras: hasta 999 y «mil»", () => {
+    const casos: Array<[string, number]> = [["cero", 0], ["uno", 1], ["quince", 15], ["veintidos", 22], ["treinta y cinco", 35], ["noventa y nueve", 99], ["cien", 100], ["ciento uno", 101], ["doscientos cuarenta y tres", 243], ["novecientos noventa y nueve", 999], ["mil", 1000], ["dos mil", 2000]];
+    for (const [f, n] of casos) expect(cantidadEnPalabras(f)).toBe(n);
+    expect(cantidadEnPalabras("perro")).toBeNull();
+    expect(cantidadEnPalabras("")).toBeNull();
   });
 
   it("el modelo escala con pedido_grande tras «60 ordenes» (sin cotizacion): se acepta y queda el aviso", async () => {

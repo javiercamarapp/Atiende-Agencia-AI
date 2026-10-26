@@ -106,3 +106,36 @@ export function resumenPedidoGrande(args: {
   const texto = `Pedido grande por confirmar (NO se mando a cocina): ${motivo}.${acumulado} Total $${args.total.toFixed(2)}${previo}; pago ${args.paymentMethod ?? "sin definir"}; canal ${args.canal ?? "domicilio"}. Renglones: ${renglones}.`;
   return texto.length > 900 ? `${texto.slice(0, 897)}...` : texto;
 }
+
+// ── Cantidades escritas en palabras («diez kilos», «cuarenta y cinco ordenes», «doscientas piezas») ──────────────────────────────────────────────
+const PALABRAS_UNIDAD: Readonly<Record<string, number>> = {
+  cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15,
+  dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19, veinte: 20, veintiun: 21, veintiuno: 21, veintiuna: 21, veintidos: 22, veintitres: 23, veinticuatro: 24,
+  veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90,
+  cien: 100, ciento: 100, doscientos: 200, doscientas: 200, trescientos: 300, trescientas: 300, cuatrocientos: 400, cuatrocientas: 400, quinientos: 500, quinientas: 500,
+  seiscientos: 600, seiscientas: 600, setecientos: 700, setecientas: 700, ochocientos: 800, ochocientas: 800, novecientos: 900, novecientas: 900,
+};
+const PALABRA_NUM = Object.keys(PALABRAS_UNIDAD).concat("mil").sort((a, b) => b.length - a.length).join("|");
+/** Una frase numerica en palabras: «cuarenta», «treinta y cinco», «ciento veinte», «dos mil», seguida de la unidad. Texto ya en minusculas y sin acentos. */
+export const FRASE_NUMERICA_EN_PALABRAS = `(?:${PALABRA_NUM})(?:\\s+(?:y\\s+)?(?:${PALABRA_NUM}))*`;
+
+/** Valor de una frase numerica en palabras en español (texto en minusculas y SIN acentos): «treinta y cinco» -> 35, «ciento veinte» -> 120, «mil» -> 1000. `null` si no es una frase valida. */
+export function cantidadEnPalabras(frase: string): number | null {
+  let total = 0;
+  let actual = 0;
+  let hubo = false;
+  for (const w of frase.trim().split(/\s+/)) {
+    if (w === "y") continue;
+    if (w === "mil") {
+      total += (actual || 1) * 1000;
+      actual = 0;
+      hubo = true;
+      continue;
+    }
+    const v = PALABRAS_UNIDAD[w];
+    if (v === undefined) return null;
+    actual += v;
+    hubo = true;
+  }
+  return hubo ? total + actual : null;
+}
