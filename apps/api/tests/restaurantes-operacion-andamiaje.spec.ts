@@ -9,7 +9,7 @@ import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restau
 const ORDER = "3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b";
 
 const ADMIN: readonly NombreRutaOperacion[] = ["capturarPedido", "cotizarPedido", "clientePorTelefono", "cola", "despachar", "marcarListo", "viajes", "hoy"];
-const CHOFER: readonly NombreRutaOperacion[] = ["entregasChofer", "entregar", "deshacerEntrega", "problema", "llamar", "hoyChofer"];
+const CHOFER: readonly NombreRutaOperacion[] = ["entregasChofer", "entregar", "deshacerEntrega", "problema", "hoyChofer"];
 
 function ruta(nombre: NombreRutaOperacion, propertyId: string): string {
   return RUTAS_OPERACION[nombre].patron.replace(":propertyId", propertyId).replace(":orderId", ORDER);

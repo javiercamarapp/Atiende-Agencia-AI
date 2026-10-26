@@ -90,6 +90,13 @@ export interface OpenRouterRouting {
   only?: readonly string[];
   /** Lista negra de proveedores. */
   ignore?: readonly string[];
+  /**
+   * PM-R21: criterio con que OpenRouter ordena los endpoints PERMITIDOS (`only`) de un modelo. Sin valor (por omision) reparte la carga priorizando el precio: en las
+   * sondas de R21 eso incluye el endpoint "flex" de OpenAI (el mas barato, p90 de latencia ~6 s, p99 ~14 s) y el "openai" estandar (p90 ~12 s, p99 ~29 s). `latency`
+   * prefiere el endpoint con menor latencia reciente y deja a los demas como respaldo (`allow_fallbacks`); `throughput` el de mayor velocidad de generacion. NO amplia
+   * la lista de proveedores permitidos ni relaja la privacidad: solo reordena entre los que ya estan en `only`.
+   */
+  sort?: 'price' | 'latency' | 'throughput';
 }
 
 export interface OpenRouterProviderOptions {
@@ -184,6 +191,7 @@ export function buildOpenRouterProviderPrefs(routing: OpenRouterRouting | undefi
     ...(r.order && r.order.length > 0 ? { order: [...r.order] } : {}),
     ...(r.only && r.only.length > 0 ? { only: [...r.only] } : {}),
     ...(r.ignore && r.ignore.length > 0 ? { ignore: [...r.ignore] } : {}),
+    ...(r.sort ? { sort: r.sort } : {}),
   };
 }
 

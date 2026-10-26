@@ -379,7 +379,7 @@ describe("ResumenLayout", () => {
     );
     const cuerpo = el.querySelector(".space-y-2\\.5")!;
     const hijos = Array.from(cuerpo.children);
-    expect(hijos[0]!.className).toBe("grid grid-cols-2 gap-2 md:grid-cols-4");
+    expect(hijos[0]!.className).toBe("grid grid-cols-2 gap-2 md:grid-cols-4 max-md:[&>:last-child:nth-child(odd)]:col-span-2 md:[&>:last-child:nth-child(4n+3)]:col-span-2");
     expect(hijos[1]!.className).toBe("flex flex-wrap justify-end gap-2");
     expect(hijos[2]!.className).toContain("p-3");
     expect(hijos[0]!.textContent).toBe("k1k2");

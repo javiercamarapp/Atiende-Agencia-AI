@@ -1,11 +1,11 @@
-// Pagina del Copiloto ("Pregunta a tus datos"), GENERICA para todas las verticales: recibe la configuracion de la vertical
+// Pagina del Copiloto ("Pregúntale a tus datos"), GENERICA para todas las verticales: recibe la configuracion de la vertical
 // (textos, chips, categorias), un transporte ya conectado a su API y un lector de /estado, y monta el `ChatDatosShell` de
 // @atiende/ui. No tiene datos propios ni respuestas simuladas: sin proveedor de IA o sin acceso muestra un estado honesto.
-// El nombre de la pagina lo pinta la barra superior del shell; el h1 visible ("Pregunta a tus datos") es el de la portada.
+// El nombre de la pagina lo pinta la barra superior del shell; el h1 visible ("Pregúntale a tus datos") es el de la portada.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Lock, Sparkles } from "lucide-react";
-import { Callout, ChatDatosShell, EstadoCargando, EstadoError, EstadoVacio, useTituloBarra } from "@atiende/ui";
+import { Callout, ChatDatosShell, EstadoCargando, EstadoError, EstadoVacio, useBarraDeConsola } from "@atiende/ui";
 import type { CopilotoTransporte } from "@atiende/ui";
 import type { CopilotoConfigVertical } from "../lib/copiloto/config/tipos.ts";
 import type { EstadoCopiloto } from "../lib/copiloto/transporte.ts";
@@ -37,8 +37,9 @@ export function rutasFuenteDe(rutas: Readonly<Record<string, string>>, orgSlug: 
 }
 
 export function CopilotoPage({ config, transporte, consultarEstado, propertyId, orgSlug, contexto, zonaHoraria }: CopilotoPageProps) {
-  // La barra superior del shell lleva el nombre y el icono de la pagina como las demas ("Pregunta a tus datos"), en TODOS los estados (cargando, sin acceso, listo).
-  useTituloBarra(config.textos.titulo, Sparkles);
+  // Decision del dueno: «Pregúntale a tus datos» NUNCA va en el encabezado. La barra lleva el titulo de la consola; el nombre vive en el
+  // menu (pildora del pie) y en el unico h1 de la portada.
+  useBarraDeConsola();
   const [carga, setCarga] = useState<Carga>({ fase: "cargando" });
   const [intento, setIntento] = useState(0);
   const [params, setParams] = useSearchParams();

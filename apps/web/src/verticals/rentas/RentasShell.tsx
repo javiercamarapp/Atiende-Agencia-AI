@@ -43,7 +43,6 @@ import {
 import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
-import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
@@ -87,7 +86,7 @@ function buildSections(orgSlug: string, canSeeCopiloto: boolean, canSeePrivacida
       siempreAbierto: true,
       items: [
         { to: ruta(""), label: "Resumen", icon: LayoutDashboard, end: true },
-        // CHAT-10: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, como en las demás consolas.
+        // CHAT-10: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas.
         ...(canSeeCopiloto ? [{ to: ruta("copiloto"), label: "Copiloto", icon: Sparkles }] : []),
         { to: ruta("calendario"), label: "Calendario", icon: CalendarDays },
       ],
@@ -193,7 +192,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
   const puedeCopiloto = org ? COPILOTO_ROLES.has(org.rol) : false;
   const puedePrivacidad = org?.rol === "admin_gestora";
 
-  // "Chatea con tus datos": conexión real con el backend de rentas (catálogo cerrado, solo admin_gestora/contador en el
+  // "Pregúntale a tus datos": conexión real con el backend de rentas (catálogo cerrado, solo admin_gestora/contador en el
   // servidor). El servidor decide el alcance a partir del token; aquí solo van la propiedad activa y el texto.
   const chatConexion = crearChatConexionRentas(apiBaseUrl, session.token, propertyId);
 
@@ -216,7 +215,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       user={{ email: session.email, rol: org?.rol, nombre: session.fullName, rolEtiqueta: etiquetaRol(org?.rol) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <Home className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `${org?.nombre ?? orgSlug} · ${activeBranch.nombre}`, fecha: fechaCortaEsMx(), resumenTo: `/rentas/${orgSlug}` }}
+      header={{ icon: <Home className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `${org?.nombre ?? orgSlug} · ${activeBranch.nombre}`, resumenTo: `/rentas/${orgSlug}` }}
       branchSelector={propiedadSelector("rentas-propiedad-activa")}
       mobileSelector={branches.length > 1 ? propiedadSelector("rentas-propiedad-activa-movil") : null}
       contentKey={propertyId}

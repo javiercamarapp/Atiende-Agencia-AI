@@ -1,4 +1,4 @@
-// Cliente de "Chatea con tus datos" para las verticales POR PROPIEDAD (hoteles, rentas): POST/GET a
+// Cliente de "Pregúntale a tus datos" para las verticales POR PROPIEDAD (hoteles, rentas): POST/GET a
 // `${apiBaseUrl}/<vertical>/<propertyId>/chat-datos[/estado]` (apps/api/src/data-chat/vertical-routes.ts). Solo manda la
 // pregunta y el historial de texto: el alcance (organizacion, propiedades, rol) lo decide el servidor a partir del
 // token, nunca el cliente. Mismo refresh de sesion que el resto de clientes de cada vertical (`withAuthRefresh`).

@@ -1,4 +1,4 @@
-// Contrato de UI del Copiloto "Chatea con tus datos" (ChatDatosShell). Duplica a proposito la forma de
+// Contrato de UI del Copiloto "Pregúntale a tus datos" (ChatDatosShell). Duplica a proposito la forma de
 // DataChatAnswer del motor (agent-core/src/data-chat/types.ts) para que packages/ui NO dependa de
 // agent-core: el transporte de cada vertical traduce la respuesta del servidor a estos tipos.
 // El shell no tiene datos propios: todo lo que muestra llega por el transporte.

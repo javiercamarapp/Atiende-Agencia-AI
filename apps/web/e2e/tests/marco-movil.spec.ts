@@ -71,7 +71,7 @@ test.describe("marco y barra movil @movil", () => {
     expect(soloHoja, "citas tiene destinos que solo estan en la hoja Más").toBeDefined();
     await irASeccion(page, soloHoja!);
     const mas = barraMovil(page).getByRole("button", { name: "Más" });
-    expect(await mas.locator("span").evaluate((e) => getComputedStyle(e).fontWeight)).toBe("600");
+    expect(await mas.locator("span:not([data-testid])").evaluate((e) => getComputedStyle(e).fontWeight)).toBe("600");
 
     const hoja = await abrirMasMovil(page);
     const cerrar = hoja.getByRole("button", { name: "Cerrar" });

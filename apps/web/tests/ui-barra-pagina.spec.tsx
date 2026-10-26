@@ -7,7 +7,7 @@ import { act, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Building2, LayoutDashboard, ListChecks } from "lucide-react";
-import { BarraPagina, VerticalShell, useTituloBarra, type SidebarSection } from "@atiende/ui";
+import { BarraPagina, VerticalShell, useBarraDeConsola, useTituloBarra, type SidebarSection } from "@atiende/ui";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -47,8 +47,7 @@ function renderShell(ruta: string, hijo: React.ReactNode = <h1>Pagina</h1>, resu
         mobileItems={[{ to: "/c/acciones", label: "Acciones", icon: ListChecks }]}
         user={null}
         onLogout={() => {}}
-        header={{ icon: <span data-testid="icono-raiz" />, title: "Consola de Demo", fecha: "1 oct 2026", resumenTo: resumenTo ?? undefined }}
-        notificationBell={<button type="button" aria-label="campana" />}
+        header={{ icon: <span data-testid="icono-raiz" />, title: "Consola de Demo", resumenTo: resumenTo ?? undefined }}
       >
         {hijo}
       </VerticalShell>
@@ -59,19 +58,25 @@ function renderShell(ruta: string, hijo: React.ReactNode = <h1>Pagina</h1>, resu
 const titulo = (r: RenderedComponent) => r.container.querySelector('[data-testid="barra-pagina-titulo"]')!.textContent;
 
 describe("BarraPagina", () => {
-  it("44 px, icono + nombre en un <p> (no h1), campana y chip de fecha con icono a la derecha", () => {
-    rendered = renderComponent(<BarraPagina icon={<span data-testid="i" />} title="Acciones" fecha="1 oct 2026" notificationBell={<button type="button" aria-label="campana" />} chatButton={<button type="button">Chat</button>} />);
+  it("44 px, icono + nombre en un <p> (no h1) y, sin acciones de pagina, nada a la derecha (sin huecos)", () => {
+    rendered = renderComponent(<BarraPagina icon={<span data-testid="i" />} title="Acciones" />);
     const barra = rendered.container.querySelector("header")!;
     expect(barra.className).toContain("h-11");
     expect(barra.querySelector("h1")).toBeNull();
     const p = barra.querySelector("p")!;
     expect(p.textContent).toBe("Acciones");
     expect(p.className).toContain("truncate");
-    const botones = [...barra.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"));
-    expect(botones).toEqual(["Chat", "campana"]);
-    const chip = [...barra.querySelectorAll("span")].find((s) => s.textContent === "1 oct 2026")!;
-    expect(chip.querySelector("svg")).not.toBeNull();
-    expect(chip.className).toContain("rounded-lg");
+    expect(barra.children).toHaveLength(1);
+    expect(barra.querySelector("button, a")).toBeNull();
+  });
+
+  it("el encabezado ya NO muestra campana, 'Pregúntale a tus datos' ni fecha; solo las acciones propias de la pagina", () => {
+    rendered = renderComponent(<BarraPagina icon={<span />} title="Agente de voz" acciones={<button type="button">Vista previa</button>} />);
+    const barra = rendered.container.querySelector("header")!;
+    expect([...barra.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Vista previa"]);
+    expect(barra.querySelector('[data-testid="barra-pagina-fecha"]')).toBeNull();
+    expect(barra.querySelector('[aria-label^="Notificaciones"]')).toBeNull();
+    expect(barra.textContent).not.toMatch(/Pregúntale a tus datos|\d{1,2} \w{3,4} \d{4}/);
   });
 });
 
@@ -148,5 +153,33 @@ describe("VerticalShell — nombre de la pagina en la barra", () => {
     expect(marco.className).toContain("md:border-border");
     expect(main.querySelector('[class*="max-w-"]')).toBeNull();
     expect(main.querySelectorAll(".motion-safe\\:animate-page-in")).toHaveLength(1);
+  });
+});
+
+describe("useBarraDeConsola: la pagina no pone su nombre en la barra", () => {
+  function SinNombre() {
+    useBarraDeConsola();
+    return <h1>Pregúntale a tus datos</h1>;
+  }
+
+  it("la barra lleva el titulo y el icono de la consola (no el item activo) y el nombre queda solo en el unico h1", () => {
+    rendered = renderShell("/c/acciones", <SinNombre />);
+    expect(titulo(rendered)).toBe("Consola de Demo");
+    expect(rendered.container.querySelector('[data-testid="barra-pagina"] [data-testid="icono-raiz"]')).not.toBeNull();
+    expect(rendered.container.querySelector('[data-testid="barra-pagina-titulo"]')!.hasAttribute("role")).toBe(false);
+    expect([...rendered.container.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Pregúntale a tus datos"]);
+    expect(rendered.container.querySelector('[data-testid="mobile-pagina-titulo"]')!.textContent).toBe("Consola de Demo");
+  });
+
+  it("al desmontar la pagina la barra vuelve a derivarse de la ruta", () => {
+    rendered = renderShell("/c/acciones", <SinNombre />);
+    rendered.rerender(
+      <MemoryRouter initialEntries={["/c/acciones"]}>
+        <VerticalShell vertical="demo" sections={SECCIONES} mobileItems={[{ to: "/c/acciones", label: "Acciones", icon: ListChecks }]} user={null} onLogout={() => {}} header={{ icon: <span data-testid="icono-raiz" />, title: "Consola de Demo", resumenTo: "/c" }}>
+          <h1>Otra</h1>
+        </VerticalShell>
+      </MemoryRouter>,
+    );
+    expect(titulo(rendered)).toBe("Acciones");
   });
 });

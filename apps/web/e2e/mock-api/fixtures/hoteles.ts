@@ -19,7 +19,7 @@ type Ticket = ReturnType<typeof ticketsSemilla>[number];
 
 const ESTADO_POR_ACCION: Record<string, string> = { iniciar: "en_progreso", cerrar: "cerrado", cancelar: "cancelado", escalar: "escalado" };
 
-// CHAT-09 -- Copiloto ("Pregunta a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
+// CHAT-09 -- Copiloto ("Pregúntale a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
 // seq; conversaciones guardadas por escenario). Solo owner/gm lo usan en el servidor real; en e2e la persona "owner" es el unico rol con acceso.
 // Solo existe en la API simulada de e2e.
 interface ConversacionMock {

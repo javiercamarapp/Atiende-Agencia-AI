@@ -259,7 +259,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
           />
           <TileLink to={`${base}/whatsapp`} icon={MessageCircle} titulo="WhatsApp" descripcion="Avisos de plazos, fallos y decisiones." />
           <TileLink to={`${base}/kyc-69b`} icon={ShieldAlert} titulo="KYC proveedores (69-B)" descripcion="Consulta del listado del SAT." />
-          <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregunta a tus datos de licitaciones." />
+          <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregúntale a tus datos de licitaciones." />
         </ResumenSeccion>
         <ResumenSeccion titulo="Agentes — última corrida">
           {corridasPorFuente === null ? (

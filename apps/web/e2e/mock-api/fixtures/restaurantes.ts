@@ -68,7 +68,7 @@ const clientesKpis = {
   tierDistribution: { metric: "frecuencia", BLACK: 2, PLATINUM: 5, GOLD: 11, BLUE: 30, withoutTier: 13 },
 };
 
-// CHAT-08 -- Copiloto ("Pregunta a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con
+// CHAT-08 -- Copiloto ("Pregúntale a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con
 // conversacionId y seq; conversaciones guardadas por escenario). Solo existe en la API simulada de e2e.
 interface ConversacionMock {
   id: string;

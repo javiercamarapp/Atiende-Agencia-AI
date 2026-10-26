@@ -85,6 +85,17 @@ describe('OpenRouterProvider: peticion', () => {
     expect(buildOpenRouterProviderPrefs(undefined).data_collection).toBe('deny');
   });
 
+  it('PM-R21 sort: solo viaja si se pide (price/latency/throughput) y no toca la politica de datos ni la lista only', () => {
+    expect(buildOpenRouterProviderPrefs({ only: ['openai', 'azure'] })).not.toHaveProperty('sort');
+    expect(buildOpenRouterProviderPrefs({ only: ['openai', 'azure'], sort: 'latency' })).toEqual({
+      data_collection: 'deny',
+      require_parameters: true,
+      allow_fallbacks: false,
+      only: ['openai', 'azure'],
+      sort: 'latency',
+    });
+  });
+
   it('parametros por modelo: temperature omitida, reasoning.effort y piso de max_tokens', async () => {
     handler = (_r, res) => json(res, 200, { choices: [{ message: { content: 'ok' } }], usage: {} });
     await provider({ params: { temperature: 'omit', reasoningEffort: 'low', minMaxTokens: 1500 } }).complete({ ...baseReq, temperature: 0, maxOutputTokens: 500 });

@@ -1,0 +1,7 @@
+# Excepciones documentadas a la regla «los specs solo se agregan» (scripts/diseno/solo-agrega-specs.sh).
+# Formato, una por linea:  ruta del spec | commit o PR | razon
+# Solo para casos estrictamente necesarios en que un PR de la serie ds3 deba MODIFICAR un spec existente SIN debilitar aserciones.
+# Para un archivo listado el script solo admite un diff que ELIMINE marcas (lineas `test.fail(` y comentarios) y como mucho AGREGUE
+# comentarios; rechaza cualquier otra modificacion y cualquier `expect` eliminado. El numero de entradas solo puede bajar
+# (apps/web/tests/ds3-excepciones-baseline.json, campo maximoSpecs).
+apps/web/e2e/tests/restaurantes/matriz-restaurantes-visual.spec.ts | PR #680 (ds3/0-1-themeboot) | quitar el test.fail de BUG-E2E-REST-004 porque ese PR lo arregla (ThemeBoot aplica el tema en /repartidor)

@@ -85,6 +85,19 @@ export function useTituloBarra(titulo: string | null | undefined, icono?: Sideba
   }, [fijar, titulo, icono]);
 }
 
+/**
+ * La pagina declara que su nombre NO va en la barra: la barra muestra el titulo y el icono de la consola (como en el Resumen). Lo usa
+ * el Copiloto de las verticales: «Pregúntale a tus datos» solo vive en el menu y en el h1 de su portada, nunca en el encabezado.
+ */
+export function useBarraDeConsola(): void {
+  const fijar = React.useContext(TituloBarraContext);
+  React.useEffect(() => {
+    if (!fijar) return undefined;
+    fijar({ titulo: "" });
+    return () => fijar(null);
+  }, [fijar]);
+}
+
 // ---- Acciones de pagina en la barra superior y marco de contenido ------------
 
 const AccionesBarraContext = React.createContext<((n: React.ReactNode) => void) | null>(null);
@@ -204,8 +217,8 @@ export interface VerticalShellProps {
   readonly mobileItems: BottomNavItem[];
   readonly user: SidebarUser | null;
   /**
-   * Pildoras del pie del Sidebar de escritorio ("Costos de IA", "Ver los otros paneles", "Pregunta a tus
-   * datos"); en movil se agregan a la hoja "Mas" como seccion "Cuenta". Cada una necesita un destino real.
+   * Pildoras del pie del Sidebar de escritorio ("Costos de IA", "Ver los otros paneles", "Pregúntale a tus
+   * datos", "Notificaciones"); en movil se agregan a la hoja "Mas" como seccion "Cuenta". Cada una necesita un destino real.
    */
   readonly sidebarPie?: SidebarPiePildora[];
   readonly onLogout: () => void;
@@ -216,13 +229,7 @@ export interface VerticalShellProps {
    * item; en las demas paginas la barra muestra la etiqueta y el icono del item activo del
    * Sidebar, y la pagina puede sobrescribirlos con `useTituloBarra`.
    */
-  readonly header: { readonly icon: React.ReactNode; readonly title: string; readonly fecha: string; readonly resumenTo?: string };
-  /** Campana ya armada; se usa en escritorio y, si no hay `mobileNotificationBell`, tambien en movil. */
-  readonly notificationBell: React.ReactNode;
-  readonly mobileNotificationBell?: React.ReactNode;
-  /** "Chatea con tus datos": barra de escritorio y menu de cuenta movil. */
-  readonly chatButton?: React.ReactNode;
-  readonly mobileChatButton?: React.ReactNode;
+  readonly header: { readonly icon: React.ReactNode; readonly title: string; readonly resumenTo?: string };
   /** Slot: selector (o nombre) de sucursal, bajo el logo del Sidebar. */
   readonly branchSelector?: React.ReactNode;
   /** Slot: selector de organizacion, sobre el de sucursal. */
@@ -244,10 +251,6 @@ export function VerticalShell({
   onLogout,
   loggingOut = false,
   header,
-  notificationBell,
-  mobileNotificationBell,
-  chatButton,
-  mobileChatButton,
   branchSelector,
   organizationSelector,
   mobileSelector,
@@ -283,8 +286,10 @@ export function VerticalShell({
   const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
   const barraDeRuta = !activo || esResumen ? null : activo.item;
-  const IconoBarra = sobrescrito?.icono ?? barraDeRuta?.icon;
-  const tituloBarra = sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title;
+  // `titulo: ""` (useBarraDeConsola) = la pagina no pone su nombre en la barra: vale el titulo y el icono de la consola.
+  const barraDeConsola = sobrescrito?.titulo === "";
+  const IconoBarra = barraDeConsola ? undefined : (sobrescrito?.icono ?? barraDeRuta?.icon);
+  const tituloBarra = barraDeConsola ? header.title : (sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title);
   const iconoBarra = IconoBarra ? <IconoBarra className="size-[15px] text-muted-foreground" strokeWidth={1.75} /> : header.icon;
   const selectores =
     organizationSelector || branchSelector ? (
@@ -313,10 +318,7 @@ export function VerticalShell({
         action={
           <div className="flex items-center gap-1 min-w-0">
             {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
-            {mobileNotificationBell ?? notificationBell}
-            <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut}>
-              {mobileChatButton ?? chatButton}
-            </MobileAccountMenu>
+            <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
           </div>
         }
       />
@@ -325,7 +327,7 @@ export function VerticalShell({
           redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
       <div ref={fijarMarco} className="relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
         <div className="hidden md:block shrink-0">
-          <BarraPagina icon={iconoBarra} title={tituloBarra} fecha={header.fecha} notificationBell={notificationBell} chatButton={chatButton} acciones={accionesBarra} comoH1={sinH1} />
+          <BarraPagina icon={iconoBarra} title={tituloBarra} acciones={accionesBarra} comoH1={sinH1} />
         </div>
         {/* `key` fuerza el remontaje de las paginas hijas cuando cambia la sucursal activa. */}
         <main
@@ -333,7 +335,7 @@ export function VerticalShell({
           id={VERTICAL_SHELL_MAIN_ID}
           tabIndex={-1}
           key={contentKey}
-          className="flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(6rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
+          className="flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
         >
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
           <div key={pathname} className="motion-safe:animate-page-in">

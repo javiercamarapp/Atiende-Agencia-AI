@@ -4,7 +4,7 @@
 // 20 preguntas por minuto, guardia de cifras, fuera de catalogo, bitacora y conversacion persistida con scope plataforma. La autorizacion REAL en SQL
 // (RLS, caller-binding, CHECK) la prueba scripts/verify-superadmin-copiloto/ contra Postgres real; las herramientas, superadmin-copiloto-herramientas.spec.ts.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { totpAt } from "@atiende/core-auth";
 import { scriptedCompletion, type DataChatAnswer, type DataChatAuditEntry, type DataChatHistoryTurn, type ScriptStep } from "@atiende/agent-core/data-chat";
 import { InMemoryCfoRepository, InMemoryCfoZoneRepository, InMemoryImpersonationRepository, InMemoryPylRepository, type InMemoryTenancyEngine } from "@atiende/db";
@@ -20,7 +20,7 @@ import { fuentesDeProduccion, type FuentesPlataforma } from "../src/superadmin-c
 import { jsonRequestInit } from "./fixtures.ts";
 import { bearer, seguridadSetup } from "./superadmin-seguridad-fixtures.ts";
 import { HERRAMIENTAS_FINANCIERAS, HERRAMIENTAS_OPERATIVAS } from "../src/superadmin-copiloto/catalogo.ts";
-import { FILA_CFO, FILA_CFO_HOTEL, fuentesFalsas } from "./superadmin-copiloto-fixtures.ts";
+import { AHORA, FILA_CFO, FILA_CFO_HOTEL, fuentesFalsas } from "./superadmin-copiloto-fixtures.ts";
 
 interface Guardada {
   id: string;
@@ -396,6 +396,16 @@ describe("turno con LLM guionado", () => {
 });
 
 describe("cada herramienta del catalogo, elegida por un LLM guionado", () => {
+  // Las fixtures (vigencias, periodos, cortes de cron) estan fechadas alrededor de AHORA (2026-10-02): con el reloj real "hoy" se aleja y las
+  // ventanas relativas (p. ej. contratos por vencer en 60 dias) quedan vacias (bomba de tiempo). Solo se simula `Date`; los timers siguen reales.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const ARGS: Record<string, Record<string, string>> = { costos_ia: { periodo: "este_mes" }, uso_por_vertical: { periodo: "ultimos_7_dias" }, uso_copiloto: { periodo: "este_mes" }, ranking_organizaciones: { periodo: "este_mes" }, ranking_actividad: { periodo: "este_mes" }, operaciones_organizacion: { periodo: "este_mes", organizacion: "Taquería Don Beto" }, agentes_organizacion: { periodo: "este_mes", organizacion: "Taquería Don Beto" } };
 
   it.each([...HERRAMIENTAS_OPERATIVAS, ...HERRAMIENTAS_FINANCIERAS])("%s: el modelo la pide, el motor la ejecuta con alcance de plataforma y la respuesta lleva su tabla y su fuente", async (nombre) => {
