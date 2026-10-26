@@ -82,6 +82,9 @@ class SesionGuionada implements VozSesionLlamada {
     const t = this.agente.turnos[this.agente.indiceTurno++];
     if (!t) return;
     this.h.usuarioDijo?.(t.cliente);
+    // La transcripcion del cliente llega ANTES que sus herramientas (como en Gemini Live y la cascada): se cede un turno al bucle de eventos para que el controlador la cuente
+    // (su cola procesa `usuarioDijo` de forma asincrona) y el turno que viaja en `x-atiende-call-turn` sea el del cliente que acaba de hablar.
+    await new Promise<void>((r) => setImmediate(r));
     for (const paso of t.agente) {
       if ("dice" in paso) {
         this.h.agenteDijo(paso.dice);
