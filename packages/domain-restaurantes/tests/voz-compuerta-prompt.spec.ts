@@ -30,3 +30,30 @@ describe("prompt de voz alineado con la compuerta confirmar -> crear", () => {
     expect(comportamiento.length).toBeLessThanOrEqual(COMPORTAMIENTO_VOZ_MAX);
   });
 });
+
+// Comportamiento (no solo texto): el prompt le dice al modelo EXACTAMENTE lo que hace la compuerta del codigo. Si el cliente no afirma, no se llama crear_pedido; si
+// la herramienta responde espera_confirmacion_del_cliente / resumen_distinto_al_leido, la salida es releer UNA vez y pedir UN «si» (nunca crear, escalar ni inventar).
+describe("prompt de voz: el contrato de la compuerta es operable", () => {
+  const bloque = bloqueReglasVozPm(base);
+
+  it("cubre los tres caminos que la compuerta distingue: sin «si», «si» valido y rechazo de la herramienta", () => {
+    // 1) sin «si» (negacion, pregunta, ruido): no se confirma ni se crea; se atiende lo que dijo el cliente.
+    expect(bloque).toMatch(/NO llame confirmar_resumen al leer el resumen/);
+    expect(bloque).toMatch(/solo después del sí/);
+    expect(bloque).toMatch(/Si el cliente NO dijo sí \(dijo no o «espere», preguntó algo o no se entendió\), NO llame confirmar_resumen ni crear_pedido/);
+    // 2) con «si»: confirmar y enseguida crear, sin pedir otro «si».
+    expect(bloque).toMatch(/llame confirmar_resumen y enseguida crear_pedido/);
+    // 3) rechazo de la herramienta: no es falla, se relee una vez y se pide un solo «si».
+    expect(bloque).toMatch(/léalo UNA vez, pida UN solo sí y calle/);
+  });
+
+  it("el orden de cierre obliga a un «si» NUEVO cuando cambia algo despues de aceptar el total (coherente con la huella de la compuerta)", () => {
+    expect(bloque).toMatch(/espere un «sí» NUEVO antes de crear_pedido/);
+  });
+
+  it("ninguna regla de voz manda a crear sin que el cliente haya contestado", () => {
+    const lineas = bloque.split("\n").filter((l) => /crear_pedido/.test(l));
+    expect(lineas.length).toBeGreaterThan(0);
+    for (const l of lineas) expect(l).not.toMatch(/sin esperar (al|el) (cliente|sí|si)/i);
+  });
+});
