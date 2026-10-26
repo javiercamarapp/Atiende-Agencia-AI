@@ -1,6 +1,7 @@
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Info, Loader2, OctagonAlert, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, OctagonAlert, X } from "lucide-react";
 import { Toaster as Sonner, toast } from "sonner";
+import { IconoDeCarga } from "../CargandoDelegado";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
@@ -49,7 +50,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         info: <Info aria-hidden="true" className="size-5" strokeWidth={1.75} />,
         warning: <AlertTriangle aria-hidden="true" className="size-5" strokeWidth={1.75} />,
         error: <OctagonAlert aria-hidden="true" className="size-5" strokeWidth={1.75} />,
-        loading: <Loader2 aria-hidden="true" className="size-5 animate-spin motion-reduce:animate-none" strokeWidth={1.75} />,
+        loading: <IconoDeCarga cargando className="size-5 motion-reduce:animate-none" strokeWidth={1.75} />,
         close: <X aria-hidden="true" className="size-3.5" strokeWidth={2} />,
       }}
       toastOptions={{

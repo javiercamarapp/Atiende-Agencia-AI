@@ -6,6 +6,7 @@ import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Skeleton } from "./ui/skeleton";
+import { RegionCargando } from "./CargandoDelegado";
 
 export type CentroSeveridad = "info" | "atencion" | "critica";
 
@@ -82,7 +83,7 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
 
         <div className="max-h-[min(24rem,60dvh)] overflow-y-auto">
           {estado === "cargando" && (
-            <div role="status" aria-label="Cargando notificaciones" className="grid gap-3 p-4">
+            <RegionCargando etiqueta="Cargando notificaciones" className="grid gap-3 p-4" claseDs3="min-h-24">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="flex items-start gap-3">
                   <Skeleton className="size-8 shrink-0 rounded-full" />
@@ -92,7 +93,7 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
                   </div>
                 </div>
               ))}
-            </div>
+            </RegionCargando>
           )}
           {estado === "error" && (
             <div role="alert" className="grid justify-items-center gap-2 px-4 py-8 text-center">
