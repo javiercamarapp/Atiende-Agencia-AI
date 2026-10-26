@@ -11,6 +11,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { assertAdminGeneral } from "./admin-scope.ts";
 
 interface Body {
   readonly silencioActivo?: unknown;
@@ -42,6 +43,7 @@ export function restaurantesAdminAlertasDuenioRoutes(deps: AppDeps): Hono<CoreAu
 
   app.put(path, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    await assertAdminGeneral(deps, c);
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<Body>(c.req.raw, 2 * 1024);
     if (typeof raw.silencioActivo !== "boolean") throw Errors.validation("silencioActivo: se esperaba un booleano.");

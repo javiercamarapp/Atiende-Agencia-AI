@@ -28,11 +28,9 @@ test.describe("restaurantes: matriz visual @oscuro @recorrido", () => {
     vigilante.verificar();
   });
 
-  // BUG-E2E-REST-004: /repartidor vive fuera del VerticalShell, que es quien aplica el tema: con el sistema en oscuro, Mis entregas se
-  // queda en claro (<html> sin la clase "dark"). test.fail solo en los proyectos oscuros; en los claros comprueba el desborde.
+  // BUG-E2E-REST-004 (resuelto por ThemeBoot): /repartidor vive fuera del VerticalShell; el tema ahora lo aplica ThemeBoot en todas las rutas.
   test("repartidor: Mis entregas sigue el tema del sistema y no desborda (BUG-E2E-REST-004 en oscuro)", async ({ page, iniciarSesion, vigilante }, info) => {
     const oscuro = info.project.name.endsWith("oscuro");
-    test.fail(oscuro, "BUG-E2E-REST-004: Mis entregas ignora el modo oscuro del sistema; aplicar el tema en la ruta /repartidor (hoy solo lo hace VerticalShell)");
     await iniciarSesion("restaurantes", "repartidor");
     await afirmarSinScrollHorizontal(page);
     await afirmarModo(page, oscuro ? "oscuro" : "claro");

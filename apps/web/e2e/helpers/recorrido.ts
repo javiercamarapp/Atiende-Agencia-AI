@@ -20,6 +20,7 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "", nombre: "Resumen", soloGestion: false },
   { sub: "/copiloto", nombre: "Copiloto", soloGestion: false },
   { sub: "/cfo", nombre: "CFO", soloGestion: true },
+  { sub: "/operacion/agregados", nombre: "Agregados", soloGestion: false },
   { sub: "/pedidos", nombre: "Pedidos", soloGestion: false },
   { sub: "/comandas-pos", nombre: "Comandas al POS", soloGestion: false },
   { sub: "/conversaciones", nombre: "Conversaciones", soloGestion: false },
@@ -42,6 +43,8 @@ export const DESTINOS: readonly Destino[] = [
   { sub: "/privacidad", nombre: "Privacidad", soloGestion: true },
   { sub: "/privacidad-organizacion", nombre: "Privacidad de la organización", soloGestion: true },
   { sub: "/seguridad", nombre: "Seguridad de la cuenta", soloGestion: false },
+  // La campana salio del encabezado: ahora es la pildora "Notificaciones" del pie del menu (un destino mas del panel).
+  { sub: "/notificaciones", nombre: "Notificaciones", soloGestion: false },
 ];
 
 /** Va a una pagina del panel por URL y espera a que el shell pinte (el <main> con foco programatico). */

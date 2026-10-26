@@ -50,7 +50,7 @@ export function ResumenLayout({ saludo, nombre, subtitulo, destacado, kpis, acci
       </div>
       {hayCuerpo && (
         <div className="space-y-2.5">
-          {hayContenido(kpis) && <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{kpis}</div>}
+          {hayContenido(kpis) && <div className="grid grid-cols-2 gap-2 md:grid-cols-4 max-md:[&>:last-child:nth-child(odd)]:col-span-2 md:[&>:last-child:nth-child(4n+3)]:col-span-2">{kpis}</div>}
           {hayContenido(acciones) && <div className="flex flex-wrap justify-end gap-2">{acciones}</div>}
           {children}
         </div>

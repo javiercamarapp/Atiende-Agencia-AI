@@ -1,4 +1,4 @@
-// Clientes de "Chatea con tus datos" de despachos y licitaciones: rutas correctas, token en el encabezado,
+// Clientes de "Pregúntale a tus datos" de despachos y licitaciones: rutas correctas, token en el encabezado,
 // refresh de sesion ante 401 (mismo mecanismo que el resto de cada panel) y sugerencias dentro del catalogo.
 // `fetch` inyectado: nada toca la red.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// UNI-6: la pildora "Pregunta a tus datos" del pie del Sidebar (gemela de la de Likida) solo existe cuando el servidor
+// UNI-6: la pildora "Pregúntale a tus datos" del pie del Sidebar (gemela de la de Likida) solo existe cuando el servidor
 // confirma que el asistente esta activo, abre el MISMO panel real que el boton de la barra y respeta las pildoras que
 // aporta cada shell (p. ej. "Costos de IA" en superadmin). Sin chat (o con el servidor diciendo no) no se pinta ninguna
 // pildora de chat: nunca un control "Pronto" en el pie.
@@ -49,7 +49,7 @@ async function montar(chat: ChatDatosConexion | undefined, sidebarPie?: { label:
         mobileItems={[{ to: "/x", label: "Resumen", icon: LayoutDashboard, end: true }]}
         user={{ email: "a@b.mx", rol: "owner", nombre: "Ana Pérez", rolEtiqueta: "Propietario" }}
         onLogout={() => {}}
-        header={{ icon: null, title: "Prueba", fecha: "1 oct" }}
+        header={{ icon: null, title: "Prueba" }}
         sidebarPie={sidebarPie}
       >
         <div>contenido</div>
@@ -62,14 +62,14 @@ async function montar(chat: ChatDatosConexion | undefined, sidebarPie?: { label:
   return r;
 }
 
-const pildoraChat = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>("aside button, aside a")].find((e) => e.getAttribute("aria-label") === "Pregunta a tus datos");
+const pildoraChat = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>("aside button, aside a")].find((e) => e.getAttribute("aria-label") === "Pregúntale a tus datos");
 
 describe("VerticalShellConectado — pie del Sidebar", () => {
-  it("con el asistente activo el pie trae 'Pregunta a tus datos' y al tocarla abre la conversacion real", async () => {
+  it("con el asistente activo el pie trae 'Pregúntale a tus datos' y al tocarla abre la conversacion real", async () => {
     rendered = await montar(conexion(true));
     const pildora = pildoraChat(rendered.container);
     expect(pildora).toBeDefined();
-    expect(pildora!.textContent).toContain("→");
+    expect(pildora!.querySelector("svg"), "icono de chat en la pildora").not.toBeNull();
     click(pildora!);
     const dialogo = document.body.querySelector('[role="dialog"]');
     expect(dialogo).not.toBeNull();
@@ -120,7 +120,7 @@ describe("VerticalShellConectado — destino 'Seguridad de la cuenta' (PL-21)", 
           mobileItems={[{ to: "/x", label: "Resumen", icon: LayoutDashboard, end: true }]}
           user={{ email: "a@b.mx", rol: "owner", nombre: "Ana Pérez", rolEtiqueta: "Propietario" }}
           onLogout={() => {}}
-          header={{ icon: null, title: "Prueba", fecha: "1 oct" }}
+          header={{ icon: null, title: "Prueba" }}
         >
           <div>contenido</div>
         </VerticalShellConectado>
@@ -132,5 +132,35 @@ describe("VerticalShellConectado — destino 'Seguridad de la cuenta' (PL-21)", 
     rendered = r;
     expect(pildoraSeguridad(r.container)).toBeUndefined();
     expect([...r.container.querySelectorAll("aside a")].filter((a) => a.getAttribute("href") === "/x/seguridad")).toHaveLength(1);
+  });
+});
+
+describe("VerticalShellConectado — encabezado delgado: campana, chat y fecha viven en el menu", () => {
+  it("el encabezado de escritorio no trae campana, 'Pregúntale a tus datos' ni fecha", async () => {
+    rendered = await montar(conexion(true));
+    const barra = rendered.container.querySelector('[data-testid="barra-pagina"]')!;
+    expect(barra.querySelector('[aria-label^="Notificaciones"]')).toBeNull();
+    expect(barra.textContent).not.toContain("Pregúntale a tus datos");
+    expect(barra.querySelector('[data-testid="barra-pagina-fecha"]')).toBeNull();
+    expect(barra.children).toHaveLength(1);
+  });
+
+  it("el pie del Sidebar da acceso a Notificaciones (enlace a la pagina real) sin punto cuando no hay avisos", async () => {
+    rendered = await montar(undefined);
+    const notif = rendered.container.querySelector<HTMLAnchorElement>('aside a[aria-label="Notificaciones"]');
+    expect(notif?.getAttribute("href")).toBe("/x/notificaciones");
+    expect(notif?.querySelector('[data-testid="pildora-indicador"]')).toBeNull();
+  });
+
+  it("en movil la hoja 'Mas' > Cuenta lista Notificaciones y Pregúntale a tus datos; el menu de cuenta conserva tema y cerrar sesion", async () => {
+    rendered = await montar(conexion(true));
+    const mas = [...rendered.container.querySelectorAll("nav[aria-label='Navegación móvil'] button")].find((b) => b.textContent?.trim() === "Más")!;
+    click(mas);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    expect(hoja.textContent).toContain("Notificaciones");
+    expect(hoja.textContent).toContain("Pregúntale a tus datos");
+    const header = rendered.container.querySelector('[data-testid="mobile-header"]')!;
+    expect(header.querySelector('[aria-label^="Notificaciones"]')).toBeNull();
+    expect(header.querySelector('button[aria-label="Abrir menú de cuenta"]')).not.toBeNull();
   });
 });

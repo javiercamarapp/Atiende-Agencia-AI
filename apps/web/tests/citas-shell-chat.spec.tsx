@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// "Chatea con tus datos" conectado en CitasShell (CHAT-13): en citas el Copiloto es una PAGINA (/citas/:org/copiloto), solo owner/admin
+// "Pregúntale a tus datos" conectado en CitasShell (CHAT-13): en citas el Copiloto es una PAGINA (/citas/:org/copiloto), solo owner/admin
 // (DATA_CHAT_ROLES). Con el asistente activo el boton del header es un ENLACE a la pagina (ya no abre un dialogo ni manda la pregunta
 // desde ahi: eso lo cubre citas-copiloto-page.spec.tsx). Los roles que el servidor rechaza (staff) no ven el boton, ni la entrada
 // "Copiloto" del menu, ni consultan /estado. Si el servidor no confirma que el asistente esta activo, sigue el aviso honesto "Pronto".
@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CitasShell } from "../src/verticals/citas/CitasShell.tsx";
 import type { BranchOption } from "../src/verticals/citas/lib/admin-client.ts";
-import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
@@ -66,11 +66,11 @@ async function renderCitas(rol = "owner"): Promise<RenderedComponent> {
   return r;
 }
 
-const botonesChat = (): HTMLElement[] => [...document.body.querySelectorAll("a, button")].filter((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLElement[];
+const botonesChat = (): HTMLElement[] => [...document.body.querySelectorAll("a, button")].filter((b) => b.textContent?.includes("Pregúntale a tus datos")) as HTMLElement[];
 const enlaceChat = (): HTMLAnchorElement | undefined => botonesChat().find((e): e is HTMLAnchorElement => e instanceof HTMLAnchorElement);
 const entradaCopiloto = (): HTMLAnchorElement | undefined => [...document.body.querySelectorAll("a")].find((a) => a.textContent?.trim() === "Copiloto");
 
-describe("CitasShell — Chatea con tus datos (CHAT-13)", () => {
+describe("CitasShell — Pregúntale a tus datos (CHAT-13)", () => {
   it.each(["owner", "admin"])("%s con el asistente activo: consulta /estado de CITAS con el Bearer, el boton es un enlace al Copiloto y no abre dialogo", async (rol) => {
     const calls = stubFetch(siEsta);
     rendered = await renderCitas(rol);
@@ -84,7 +84,7 @@ describe("CitasShell — Chatea con tus datos (CHAT-13)", () => {
     expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
   });
 
-  it("staff: no hay boton 'Chatea con tus datos', ni entrada 'Copiloto' en el menu, ni se consulta /estado", async () => {
+  it("staff: no hay boton 'Pregúntale a tus datos', ni entrada 'Copiloto' en el menu, ni se consulta /estado", async () => {
     const calls = stubFetch(() => new Response("{}", { status: 403 }));
     rendered = await renderCitas("staff");
     expect(botonesChat()).toHaveLength(0);
@@ -101,10 +101,8 @@ describe("CitasShell — Chatea con tus datos (CHAT-13)", () => {
       stubFetch(estado);
       rendered = await renderCitas("owner");
       expect(enlaceChat()).toBeUndefined();
-      expect(botonesChat()[0]!.textContent).toContain("Pronto");
-      click(botonesChat()[0]!);
-      expect(document.body.querySelector('[role="dialog"]')!.textContent).toContain("todavía no está disponible");
-      expect(document.body.querySelector('[role="dialog"] textarea, [role="dialog"] input')).toBeNull();
+      expect(botonesChat(), "sin confirmacion del servidor no hay ningun control de chat (nunca un Pronto)").toHaveLength(0);
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
       rendered.unmount();
       rendered = undefined;
       document.body.innerHTML = "";

@@ -45,7 +45,7 @@ describe("portada y clases literales de atiende-restaurantes", () => {
     const { t } = transporteFalso();
     montado = montar(<ChatDatosShell {...propsBase(t, { textos: { ...propsBase(t).textos, contexto: "Sucursal: Centro" } })} />);
     const c = montado.container;
-    expect(c.querySelector("h1")?.textContent).toBe("Pregunta a tus datos");
+    expect(c.querySelector("h1")?.textContent).toBe("Pregúntale a tus datos");
     expect(c.querySelector("h1")?.className).toBe("text-2xl font-semibold text-foreground mb-2");
     expect(c.querySelector("svg.atiende-glifo-animado")).not.toBeNull();
     expect(c.textContent).toContain("Tu operación, con la cifra que ya calculó el sistema.");

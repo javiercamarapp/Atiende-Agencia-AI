@@ -1,4 +1,4 @@
-// Cliente de "Chatea con tus datos" (restaurantes): rutas, cuerpo sin identidad, tope de historial y
+// Cliente de "Pregúntale a tus datos" (restaurantes): rutas, cuerpo sin identidad, tope de historial y
 // degradacion honesta ante errores. `fetch` inyectado: nada toca la red.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ejecutarConsultaDirecta, fetchDataChatDisponible, preguntarDatos, SUGERENCIAS_RESTAURANTES } from "../src/verticals/restaurantes/data-chat-client.ts";

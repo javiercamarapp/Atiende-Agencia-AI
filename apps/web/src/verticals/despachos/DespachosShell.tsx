@@ -46,7 +46,6 @@ import {
 import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
-import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
@@ -135,7 +134,7 @@ function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSec
       siempreAbierto: true,
       items: [
         { ...item("dashboard"), icon: LayoutDashboard },
-        // CHAT-11: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, solo para los roles que el servidor deja usar chat-datos.
+        // CHAT-11: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, solo para los roles que el servidor deja usar chat-datos.
         ...(conCopiloto ? [{ to: to("copiloto"), label: "Copiloto", icon: Sparkles }] : []),
         { ...item("cierre-mensual"), icon: CalendarCheck },
       ],
@@ -213,7 +212,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
 
   const { session, branches, activeBranch, propertyId, role } = s;
 
-  // "Chatea con tus datos": conexión real con el backend de despachos (motor compartido, catálogo cerrado de
+  // "Pregúntale a tus datos": conexión real con el backend de despachos (motor compartido, catálogo cerrado de
   // solo lectura). El servidor decide el alcance (organización, clientes, rol) a partir del token; aquí solo
   // van el cliente activo y el texto.
   const conCopiloto = COPILOTO_DESPACHOS_ROLES.has(role);
@@ -238,7 +237,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, fecha: fechaCortaEsMx(), resumenTo: `/despachos/${orgSlug}/dashboard` }}
+      header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, resumenTo: `/despachos/${orgSlug}/dashboard` }}
       branchSelector={contribuyenteSelector("despachos-contribuyente-activo")}
       mobileSelector={contribuyenteSelector("despachos-contribuyente-activo-movil")}
       contentKey={propertyId}

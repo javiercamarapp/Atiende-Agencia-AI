@@ -229,7 +229,7 @@ export function DashboardPage(ctx: HotelesShellContext) {
       {!cap.recepcion && <PillLink to={`${base}/reservas`}>Ver reservas</PillLink>}
       {cap.mantenimiento && <PillLink to={`${base}/mantenimiento`}>Ver mantenimiento</PillLink>}
       {cap.pedidosFnb && <PillLink to={`${base}/pedidos-fnb`}>Ver pedidos F&amp;B</PillLink>}
-      {COPILOTO_HOTELES_ROLES.has(role) && <PillLink to={`${base}/copiloto`}>Pregunta a tus datos</PillLink>}
+      {COPILOTO_HOTELES_ROLES.has(role) && <PillLink to={`${base}/copiloto`}>Pregúntale a tus datos</PillLink>}
     </>
   );
 

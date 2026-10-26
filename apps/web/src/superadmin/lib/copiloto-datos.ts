@@ -74,7 +74,7 @@ export const DIRECTAS_COPILOTO_SUPERADMIN: Readonly<Record<string, Directa>> = {
 export const DATOS_COPILOTO_SUPERADMIN = {
   vertical: "plataforma",
   textos: {
-    titulo: "Pregunta a tus datos",
+    titulo: "Pregúntale a tus datos",
     subtitulo: "Tu plataforma completa, con la cifra que ya calculó el sistema: clientes, actividad de cada negocio, costos de IA, agentes y salud.",
     nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números. Puede proponer acciones, pero nunca las ejecuta: tú confirmas.",
     placeholder: "Pregunta sobre la plataforma…",

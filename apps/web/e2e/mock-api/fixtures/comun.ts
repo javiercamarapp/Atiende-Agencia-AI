@@ -1,4 +1,4 @@
-// Rutas transversales a todas las verticales (campana de notificaciones, "Chatea con tus datos").
+// Rutas transversales a todas las verticales (campana de notificaciones, "Pregúntale a tus datos").
 import type { EstadoEscenario, Ruta } from "../tipos.ts";
 import { fallo } from "../respuestas.ts";
 

@@ -100,6 +100,8 @@ export const ACCIONES_RESTAURANTES = {
   "turno.ver": MANAGER_ROLES,
   /** Deshacer una entrega fuera de la ventana corta del chofer. */
   "entrega.deshacer_forzado": MANAGER_ROLES,
+  /** «Agregados por validar»: ver y aceptar/rechazar lo que un cliente pide agregar a un pedido ya enviado a la sucursal. Owner/admin/staff con alcance a la sucursal; el repartidor NO. */
+  "pedidos.agregados": MANAGER_ROLES,
   // La superficie del chofer (entregar, deshacer, problema, llamar) NO entra en esta matriz: esta tabla nunca incluye al repartidor
   // (invariante probado) y esas rutas se autorizan con REPARTIDOR_ROLES + pertenencia del pedido, disjuntas de MANAGER_ROLES.
 } as const satisfies Record<string, readonly RestaurantesRole[]>;
@@ -123,4 +125,29 @@ export function permisosEfectivos(rol: string | null | undefined): Record<Accion
   const out = {} as Record<AccionRestaurantes, boolean>;
   for (const accion of ACCIONES_RESTAURANTES_LISTA) out[accion] = puedeEjecutar(rol, accion);
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Perfil operativo del `staff` (migracion 090): segunda capa de la matriz PL-23. El rol `staff` cubre a cajero y encargado; el perfil
+// (bandera de la membresia, nulo = encargado) decide si ademas despacha y cancela. owner/admin siempre pueden todo. La fuente en SQL es
+// `restaurantes.operador_puede`; esta tabla es su espejo documentado y la prueba de matriz los compara con el comportamiento de la API.
+// ---------------------------------------------------------------------------
+export type PerfilOperativoStaff = "cajero" | "encargado";
+export const ACCIONES_PERFIL_OPERATIVO = {
+  /** Capturar pedidos (llamada, mostrador, WhatsApp manual). */
+  capturar: ["cajero", "encargado"],
+  /** Aceptar y preparar (avanzar el pedido hasta «listo»). */
+  gestionar: ["cajero", "encargado"],
+  /** Poner en camino, asignar repartidor y cerrar la entrega («entregado» / «completado»). */
+  despachar: ["encargado"],
+  /** Cancelar un pedido. */
+  cancelar: ["encargado"],
+} as const satisfies Record<string, readonly PerfilOperativoStaff[]>;
+export type AccionPerfilOperativo = keyof typeof ACCIONES_PERFIL_OPERATIVO;
+
+/** Fail-closed: accion desconocida => false. `perfil` nulo/ausente = encargado (valor por omision). */
+export function perfilPuede(perfil: string | null | undefined, accion: string): boolean {
+  if (!Object.prototype.hasOwnProperty.call(ACCIONES_PERFIL_OPERATIVO, accion)) return false;
+  const efectivo = perfil ?? "encargado";
+  return (ACCIONES_PERFIL_OPERATIVO[accion as AccionPerfilOperativo] as readonly string[]).includes(efectivo);
 }

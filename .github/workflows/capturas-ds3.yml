@@ -1,0 +1,164 @@
+name: Verificacion visual ds3 (capturas, medidor y regla de specs)
+
+# Herramientas de verificacion del rediseno ds3 (lote 0.4). NO es un check requerido y NO forma parte de `ci-checks`:
+# informativo, igual que e2e.yml. Dos jobs:
+#   - solo-agrega-specs: en PRs con la etiqueta `ds3`, falla si el PR modifica/borra/renombra un spec existente
+#     (regla de oro de los lotes 0-10) o si un spec nuevo usa skip/only.
+#   - capturas-ds3: corre apps/web/playwright.ds3.config.ts (barrido de rutas con el medidor + carga/fps) contra la API
+#     simulada, en modo INFORMATIVO (reporta defectos, no falla por ellos), y sube PNG + medidas.json + catalogo.zip.
+#     Manual (workflow_dispatch) o en PRs con la etiqueta `ds3`.
+# Seguridad: solo `pull_request` (nunca `pull_request_target`) y `workflow_dispatch`; permisos de solo lectura; sin secretos;
+# el checkout no persiste credenciales; las entradas del dispatch viajan por variables de entorno, no dentro del script.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "apps/web/**"
+      - "packages/ui/**"
+      - "scripts/diseno/**"
+      - "package-lock.json"
+      - ".github/workflows/capturas-ds3.yml"
+  workflow_dispatch:
+    inputs:
+      etapa:
+        description: "Nombre de la etapa en los archivos de evidencia"
+        type: choice
+        options: [despues, antes]
+        default: despues
+      diseno:
+        description: "Bandera de diseno (ds3 = diseno nuevo; vacio = diseno actual)"
+        type: choice
+        options: ["", ds3]
+        default: ""
+      matriz:
+        description: "Proyectos: humo (4) o completa (8, nocturno)"
+        type: choice
+        options: [humo, completa]
+        default: humo
+      barrido:
+        description: "Rutas por consola: humo (<= 6) o completo"
+        type: choice
+        options: [humo, completo]
+        default: humo
+
+concurrency:
+  group: capturas-ds3-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  solo-agrega-specs:
+    name: solo-agrega-specs (etiqueta ds3)
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ds3')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (historial completo para el diff)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Specs solo se agregan
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/diseno/solo-agrega-specs.sh "origin/${BASE_REF}"
+
+  capturas-ds3:
+    name: capturas-ds3 (barrido + medidor + carga/fps)
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ds3')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DS3_INFORMATIVO: "1"
+      DS3_CAPTURAS: "1"
+      DS3_SALIDA: ${{ github.workspace }}/evidencia-ds3
+      DS3_ETAPA: ${{ inputs.etapa || 'despues' }}
+      E2E_DISENO: ${{ inputs.diseno || '' }}
+      DS3_MATRIZ: ${{ inputs.matriz == 'completa' && 'completa' || '' }}
+      DS3_BARRIDO: ${{ inputs.barrido == 'completo' && 'completo' || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Version de Playwright
+        id: pw
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache de navegadores de Playwright
+        id: cache-pw
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-${{ steps.pw.outputs.version }}
+
+      - name: Instalar chromium (sin cache)
+        if: steps.cache-pw.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Instalar dependencias del sistema (con cache)
+        if: steps.cache-pw.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # El config base construye apps/web (vite build) y levanta la API simulada y `vite preview`.
+      - name: Barrido, medidor y carga/fps
+        run: npm run e2e:ds3 -- --workers=2
+
+      - name: Juntar el JSON del medidor en medidas.json
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, json, os
+          salida = os.environ["DS3_SALIDA"]
+          filas = []
+          for ruta in sorted(glob.glob(os.path.join(salida, "**", "*.json"), recursive=True)):
+              if os.path.basename(ruta) == "medidas.json":
+                  continue
+              with open(ruta, encoding="utf-8") as f:
+                  d = json.load(f)
+              filas.append({
+                  "archivo": os.path.relpath(ruta, salida),
+                  "ruta": d.get("ruta"), "consola": d.get("consola"), "proyecto": d.get("proyecto"), "variante": d.get("variante"),
+                  "vp": d.get("vp"), "conteos": d.get("resumen", {}).get("conteos"),
+                  "alturasBoton": d.get("resumen", {}).get("alturasBoton"), "minFuente": d.get("resumen", {}).get("minFuente"),
+                  "contrasteMin": d.get("resumen", {}).get("contrasteMin"), "defectos": d.get("defectos"),
+                  "informativo": d.get("informativo"),
+              })
+          os.makedirs(salida, exist_ok=True)
+          with open(os.path.join(salida, "medidas.json"), "w", encoding="utf-8") as f:
+              json.dump(filas, f, ensure_ascii=False, indent=1)
+          print(f"medidas.json: {len(filas)} pantalla(s)/variante(s)")
+          PY
+
+      # Galeria de componentes: VITE_CATALOGO=1 incluye /dev/catalogo en el build cuando exista (lote 3). Hoy es el build normal.
+      - name: Build del catalogo
+        if: always()
+        run: |
+          npm run build:catalogo
+          mkdir -p "$DS3_SALIDA"
+          (cd apps/web && zip -qr "$DS3_SALIDA/catalogo.zip" dist-catalogo)
+
+      - name: Subir capturas, medidas.json y catalogo.zip
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidencia-ds3-${{ inputs.etapa || 'despues' }}
+          path: |
+            evidencia-ds3/
+            apps/web/playwright-report/
+            apps/web/test-results-ds3/
+          if-no-files-found: ignore
+          retention-days: 14

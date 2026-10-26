@@ -16,7 +16,7 @@ export const SUGERENCIAS_COPILOTO_DESPACHOS: readonly string[] = [
 export const COPILOTO_DESPACHOS: CopilotoConfigVertical = {
   vertical: "despachos",
   textos: {
-    titulo: "Pregunta a tus datos",
+    titulo: "Pregúntale a tus datos",
     subtitulo: "Tu cartera, tus CFDI y tus obligaciones fiscales, con la cifra que ya calculó el sistema.",
     nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números ni calcula declaraciones.",
     placeholder: "Pregunta sobre tus clientes…",

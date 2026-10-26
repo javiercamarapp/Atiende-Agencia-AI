@@ -1,4 +1,4 @@
-// Copiloto ("Pregunta a tus datos") de despachos: conecta la pagina generica `CopilotoPage` con la API real
+// Copiloto ("Pregúntale a tus datos") de despachos: conecta la pagina generica `CopilotoPage` con la API real
 // `/despachos/:propertyId/chat-datos` (sesion con refresh de `despachosAuthContext`). El alcance (organizacion, clientes de la
 // membership, zona horaria, rol) lo decide el servidor a partir del token; aqui solo viaja el contribuyente activo en la URL
 // (al cambiarlo en el shell la pagina se remonta y el chat arranca limpio). Los roles que el servidor rechazaria NI SIQUIERA
