@@ -123,6 +123,18 @@ describe("fuentes autoalojadas ds3", () => {
     for (const c of caras) expect(c).toContain("font-display: swap");
   });
 
+  it("no redeclara ninguna familia que produccion use hoy (las caras ds3 llevan nombre propio)", () => {
+    const ds3 = readFileSync(CSS_FUENTES, "utf8");
+    const declaradas = [...ds3.matchAll(/font-family:\s*"([^"]+)"/g)].map((m) => m[1]!);
+    expect(declaradas.length).toBeGreaterThanOrEqual(7);
+    const ui = readFileSync(join(RAIZ, "packages/ui/src/index.css"), "utf8");
+    const usadas = [...ui.matchAll(/--font-(?:sans|display|mono):\s*([^;]+);/g)].flatMap((m) => [...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!));
+    expect(usadas).toContain("IBM Plex Mono");
+    for (const f of declaradas) expect(usadas, `${f} ya lo usa produccion`).not.toContain(f);
+    const google = ui.split("\n")[0] ?? "";
+    for (const f of declaradas) expect(google).not.toContain(f.replace(/ /g, "+"));
+  });
+
   it("todavia no se usan: sin precarga en index.html y el @import de Google sigue (eso es el flip)", () => {
     const html = readFileSync(join(RAIZ, "apps/web/index.html"), "utf8");
     expect(html).not.toMatch(/rel="preload"[^>]*(hankengrotesk|ibmplexmono)/);
