@@ -23,12 +23,27 @@ describe("ruido de STT del arnes de voz", () => {
     expect(ruidoStt(t, rngDesdeSemilla("a"), { nivel: 0 }).texto).toBe(t);
   });
 
-  it("no cambia el sentido de las palabras protegidas (negaciones, cantidades)", () => {
-    for (let i = 0; i < 200; i += 1) {
+  it("las negaciones y la sustitucion de cantidades son SOLO las reglas declaradas y siempre quedan registradas en `cambios`", () => {
+    let cuarto = 0;
+    let se = 0;
+    for (let i = 0; i < 400; i += 1) {
       const r = ruidoStt("no quiero cuatro tacos, mejor seis", rngDesdeSemilla(`s${i}`), { nivel: 2 });
-      expect(r.texto.toLowerCase()).toMatch(/\bno\b/);
-      expect(r.texto.toLowerCase()).toMatch(/mejor/);
+      const t = r.texto.toLowerCase();
+      expect(t).toMatch(/\bno\b/); // negacion protegida
+      expect(t).toMatch(/mejor/);
+      // cuatro: queda como palabra, como cifra o como la confusion declarada (cuarto, que se registra); nunca desaparece en silencio
+      const cuatro = /\bcuatro\b|\b4\b/.test(t);
+      if (!cuatro) { expect(t).toMatch(/\bcuarto\b/); expect(r.cambios).toContain("cuatro->cuarto"); cuarto += 1; }
+      // seis: igual, con "sé" como confusion declarada
+      const seis = /\bseis\b|\b6\b/.test(t);
+      if (!seis) { expect(t).toMatch(/(?<!\p{L})sé(?!\p{L})/u); expect(r.cambios).toContain("seis->sé"); se += 1; }
     }
+    expect(cuarto, "la regla cuatro->cuarto se ejercita").toBeGreaterThan(0);
+    expect(se, "la regla seis->sé se ejercita").toBeGreaterThan(0);
+  });
+
+  it("con nivel 0 las cantidades no cambian jamas", () => {
+    for (let i = 0; i < 50; i += 1) expect(ruidoStt("quiero cuatro tacos y seis tortas", rngDesdeSemilla(`z${i}`), { nivel: 0 }).texto).toBe("quiero cuatro tacos y seis tortas");
   });
 
   it("corta el mensaje a media frase", () => {
@@ -39,8 +54,8 @@ describe("ruido de STT del arnes de voz", () => {
 });
 
 describe("escenarios del arnes de voz", () => {
-  it("son al menos 30, con ids unicos, e incluyen P01-P16", () => {
-    expect(ESCENARIOS.length).toBeGreaterThanOrEqual(30);
+  it("son exactamente 46, con ids unicos, e incluyen P01-P16", () => {
+    expect(ESCENARIOS.length).toBe(46);
     const ids = ESCENARIOS.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (let n = 1; n <= 16; n += 1) expect(ids).toContain(`P${String(n).padStart(2, "0")}`);
