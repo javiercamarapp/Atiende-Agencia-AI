@@ -42,10 +42,10 @@ describe("aislamiento: API, base y Meta", () => {
 
   it("valida AMBOS: en pg la cadena de conexion sobrescribe a host, asi que host local + cadena remota (o al reves) aborta", () => {
     const con = (options: object) => ({ ...stackOk(), pool: { options, query: () => 0 } });
-    expect(() => validarAislamiento(con({ host: "localhost", connectionString: "postgres://u:p@db.remota.net:5432/x" }), {})).toThrow(/db\.remota\.net/);
-    expect(() => validarAislamiento(con({ host: "db.remota.net", connectionString: "postgres://u:p@127.0.0.1:5432/x" }), {})).toThrow(/db\.remota\.net/);
+    expect(() => validarAislamiento(con({ host: "localhost", connectionString: "postgres://u:p@db.remota.net:5432/x" }), {})).toThrow('host "db.remota.net"');
+    expect(() => validarAislamiento(con({ host: "db.remota.net", connectionString: "postgres://u:p@127.0.0.1:5432/x" }), {})).toThrow('host "db.remota.net"');
     expect(() => validarAislamiento(con({ host: "localhost", connectionString: "postgres://u:p@127.0.0.1:5432/x" }), {})).not.toThrow();
-    expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=db.remota.net" }), {})).toThrow(/db\.remota\.net/);
+    expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=db.remota.net" }), {})).toThrow('host "db.remota.net"');
     expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=/var/run/postgresql" }), {})).not.toThrow();
     expect(() => validarAislamiento(con({ connectionString: "esto no es una url" }), {})).toThrow(/base/);
     expect(hostsDePool(con({ host: "a", connectionString: "postgres://u:p@b/x" }).pool, {})).toEqual(["a", "b"]);
