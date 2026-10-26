@@ -11,6 +11,9 @@ const HUECO: Record<LogoMarcaTamano, string> = { xs: "size-3.5", sm: "size-4", m
 /**
  * `LogoMarca` por import dinamico, para chunks de ENTRADA (el presupuesto del lote 2.4 es <= 4 KB gz). Mientras carga
  * reserva el hueco del logo (`aria-hidden`, sin texto) para que no haya salto de layout. Mismas props que `LogoMarca`.
+ *
+ * Como importar: en chunks de entrada usa `LogoMarcaDiferido` (barrel `@atiende/ui`); `LogoMarca` NO esta en el barrel a proposito (un
+ * export estatico lo metería en el chunk de entrada). Donde el peso no importa: `import { LogoMarca } from "@atiende/ui/logo-marca"`.
  */
 export function LogoMarcaDiferido(props: ComponentProps<typeof LogoMarcaCompleto>) {
   return (

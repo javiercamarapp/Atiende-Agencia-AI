@@ -5,9 +5,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
-  contrasteConBlanco,
+  contrasteContraFondoClaro,
+  LOGO_MARCA_FONDO_CLARO_PEOR_HSL,
   LOGO_MARCA_CLAVES,
   LOGO_MARCA_CONTRASTE_MIN,
   LogoMarca,
@@ -91,8 +93,8 @@ describe("LogoMarca ds3 / 2.4", () => {
 
   it("mono usa currentColor; color usa el hex del asset solo si hay contraste >= 3:1", () => {
     expect(html("stripe", { variante: "mono" })).toContain('fill="currentColor"');
-    // Stripe #635BFF contra blanco >= 3:1 -> color permitido.
-    expect(contrasteConBlanco(LOGOS_MARCA_GENERADOS.stripe.hex)).toBeGreaterThanOrEqual(LOGO_MARCA_CONTRASTE_MIN);
+    // Stripe #635BFF contra el peor fondo claro >= 3:1 -> color permitido.
+    expect(contrasteContraFondoClaro(LOGOS_MARCA_GENERADOS.stripe.hex)).toBeGreaterThanOrEqual(LOGO_MARCA_CONTRASTE_MIN);
     const c = html("stripe", { variante: "color" });
     expect(c).toContain(`fill="${LOGOS_MARCA_GENERADOS.stripe.hex}"`);
     expect(c).toContain("dark:bg-white");
@@ -101,7 +103,7 @@ describe("LogoMarca ds3 / 2.4", () => {
   });
 
   it("si el contraste del glifo es < 3:1 se fuerza mono (WhatsApp verde sobre claro)", () => {
-    expect(contrasteConBlanco(LOGOS_MARCA_GENERADOS.whatsapp.hex)).toBeLessThan(LOGO_MARCA_CONTRASTE_MIN);
+    expect(contrasteContraFondoClaro(LOGOS_MARCA_GENERADOS.whatsapp.hex)).toBeLessThan(LOGO_MARCA_CONTRASTE_MIN);
     expect(variantePermitida(LOGOS_MARCA_GENERADOS.whatsapp, "color")).toBe("mono");
     const s = html("whatsapp", { variante: "color" });
     expect(s).toContain('data-variante="mono"');
@@ -139,7 +141,8 @@ describe("LogoMarca ds3 / 2.4", () => {
     expect(lic).toContain(FUENTE_LOGOS_MARCA.integrity);
     expect(lic).toContain("CC0");
     expect(lic).toMatch(/nominativo/i);
-    for (const p of PENDIENTES_MARCA) expect(lic, p.marca).toContain(p.nombre);
+    for (const p of PENDIENTES_MARCA) expect(lic, p.marca).toMatch(new RegExp(`\\| ${p.nombre.replace(/\./g, "\\.")} \\| ${p.tipo} \\|`));
+    expect(lic.match(/^\| [^|]+ \| (pendiente-asset|restringida|solo-texto) \|$/gm)).toHaveLength(PENDIENTES_MARCA.length);
     expect(FUENTE_LOGOS_MARCA.licencia).toBe("CC0-1.0");
   });
 
@@ -153,5 +156,50 @@ describe("LogoMarca ds3 / 2.4", () => {
     expect(src).toMatch(/import type \{[^}]*\} from "\.\/LogoMarca"/);
     expect(src).not.toMatch(/^import \{[^}]*\} from "\.\/LogoMarca"/m);
     expect(src).toContain('import("./LogoMarca")');
+  });
+
+  it("el barrel no re-exporta LogoMarca ni PENDIENTES_MARCA de forma estatica (solo tipos y LogoMarcaDiferido)", () => {
+    const src = ts.createSourceFile("index.ts", leer("packages/ui/src/index.ts"), ts.ScriptTarget.Latest, true);
+    const ofensores: string[] = [];
+    src.forEachChild((n) => {
+      if (!ts.isExportDeclaration(n) && !ts.isImportDeclaration(n)) return;
+      const mod = n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier) ? n.moduleSpecifier.text : "";
+      if (!/\/(LogoMarca|logos-marca\.generated)(\.js)?$/.test(mod)) return;
+      const soloTipos = ts.isExportDeclaration(n)
+        ? n.isTypeOnly || (!!n.exportClause && ts.isNamedExports(n.exportClause) && n.exportClause.elements.every((e) => e.isTypeOnly))
+        : !!n.importClause?.isTypeOnly;
+      if (!soloTipos) ofensores.push(n.getText());
+    });
+    expect(ofensores).toEqual([]);
+    expect(leer("packages/ui/src/index.ts")).toContain('from "./components/LogoMarcaDiferido.js"');
+    const pkg = JSON.parse(leer("packages/ui/package.json")) as { exports: Record<string, string> };
+    expect(pkg.exports["./logo-marca"]).toBe("./src/components/LogoMarca.tsx");
+    expect(pkg.exports["./logos-marca"]).toBe("./src/lib/logos-marca.generated.ts");
+  });
+
+  it("el peso propio de LogoMarca (esbuild, minificado, gzip -9, deps externas) no pasa de 4096 B", async () => {
+    // @ts-expect-error script .mjs sin tipos
+    const { medirPesoLogoMarca, PRESUPUESTO_LOGO_MARCA_GZ } = await import("../../../scripts/marcas/medir-peso.mjs");
+    const { gzip } = (await medirPesoLogoMarca()) as { gzip: number };
+    expect(PRESUPUESTO_LOGO_MARCA_GZ).toBe(4096);
+    expect(gzip).toBeLessThanOrEqual(4096);
+  });
+
+  it("los colores de marca se miden contra el peor fondo claro real: coincide con --sunken ds3 claro y Airbnb queda en mono", () => {
+    const css = leer("packages/ui/src/index.css");
+    const bloque = css.slice(css.indexOf('html[data-diseno="ds3"] {'));
+    const m = /--sunken:\s*([\d.]+) ([\d.]+)% ([\d.]+)%/.exec(bloque)!;
+    expect([Number(m[1]), Number(m[2]), Number(m[3])]).toEqual([...LOGO_MARCA_FONDO_CLARO_PEOR_HSL]);
+    expect(contrasteContraFondoClaro(LOGOS_MARCA_GENERADOS.airbnb.hex)).toBeLessThan(LOGO_MARCA_CONTRASTE_MIN);
+    expect(variantePermitida(LOGOS_MARCA_GENERADOS.airbnb, "color")).toBe("mono");
+    expect(variantePermitida(LOGOS_MARCA_GENERADOS.stripe, "color")).toBe("color");
+    expect(variantePermitida(LOGOS_MARCA_GENERADOS["google-calendar"], "color")).toBe("color");
+  });
+
+  it("el generador fija el host de redireccion y espera entre reintentos", () => {
+    const sc = leer("scripts/marcas/generar-logos.py");
+    expect(sc).toContain("registry.npmjs.org/");
+    expect(sc).toContain("HTTPRedirectHandler");
+    expect(sc).toContain("time.sleep");
   });
 });

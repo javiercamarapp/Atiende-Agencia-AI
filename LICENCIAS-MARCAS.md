@@ -26,23 +26,29 @@ Los logos se muestran únicamente para identificar la integración o fuente a la
 | Marca | Slug en simple-icons | Notas |
 |---|---|---|
 | WhatsApp | `whatsapp` | Verde de marca solo con `variante="color"` (contraste bajo sobre fondo claro: el componente la fuerza a `mono`). |
-| Google Calendar | `googlecalendar` | Es el ícono de producto, no la «G» de Google. |
+| Google Calendar | `googlecalendar` | Ícono de producto, no la «G» de Google. Uso nominativo para nombrar la integración; debe cumplir las guías de marca de Google (https://about.google/brand-resource-center/), sin alterar el glifo ni sugerir respaldo de Google. |
 | Stripe | `stripe` | |
 | Airbnb | `airbnb` | |
 | Expedia | `expedia` | |
 
 ## Pendientes (7): sin asset oficial verificado
 
-No se dibuja ni se copia ningún logo para estas marcas. `LogoMarca` muestra un ícono neutro y el nombre. La lista vive en `PENDIENTES_MARCA` (archivo generado) y la imprime `python3 scripts/marcas/generar-logos.py --pendientes`.
+No se dibuja ni se copia ningún logo para estas marcas. `LogoMarca` muestra un ícono neutro y el nombre (en estas marcas `decorativo` no tiene efecto: el nombre siempre es visible). La FUENTE ÚNICA de la lista, con el motivo de cada una, es `PENDIENTES_MARCA` en `packages/ui/src/lib/logos-marca.generated.ts` (se edita en `scripts/marcas/generar-logos.py`); aquí solo se listan marca y tipo, y un spec comprueba que coincidan. También se imprime con `python3 scripts/marcas/generar-logos.py --pendientes`.
 
-| Marca | Tipo | Qué falta o por qué |
-|---|---|---|
-| Google | pendiente-asset | La «G» multicolor oficial no existe en simple-icons. Copiar el SVG del kit de identidad de Google (https://developers.google.com/identity/branding-guidelines). Hasta entonces el login conserva `GoogleIcon`. |
-| Booking.com | restringida | Marca de uso restringido; simple-icons la trae, pero se deja en texto hasta que el dueño decida. |
-| Vrbo | pendiente-asset | No está en simple-icons 16.36.0. Falta el asset del titular. |
-| Tripadvisor | solo-texto | El «Ojo» exige licencia. |
-| Meta | solo-texto | Solo texto; sin afirmar alianza. |
-| OpenStreetMap | solo-texto | No es logo: atribución de texto con enlace obligatoria (ODbL). |
-| SoftRestaurant | pendiente-asset | El dueño aporta el SVG/PNG (claro y oscuro) con permiso de uso nominativo. |
+| Marca | Tipo |
+|---|---|
+| Google | pendiente-asset |
+| Booking.com | restringida |
+| Vrbo | pendiente-asset |
+| Tripadvisor | solo-texto |
+| Meta | solo-texto |
+| OpenStreetMap | solo-texto |
+| SoftRestaurant | pendiente-asset |
+
+Quién decide: el dueño del producto. Booking.com pasa a logo (mono) o se queda en texto con un PR que cambie su entrada en el generador; esa entrada y el PR son el registro de la decisión. Los demás pendientes salen de la lista cuando se aporta el asset oficial o el permiso del titular.
+
+## Cómo importar
+
+`LogoMarca` no está en el barrel `@atiende/ui` (un export estático impediría dividir el chunk). Usa `import { LogoMarca } from "@atiende/ui/logo-marca"` donde el peso no importe, y `LogoMarcaDiferido` (barrel) en chunks de entrada. `PENDIENTES_MARCA` y los assets: `@atiende/ui/logos-marca`. Peso propio de `LogoMarca`: `node scripts/marcas/medir-peso.mjs` (tope 4096 B gzip).
 
 No se usan logos de clientes en el repositorio: el logo de cada cliente lo sube el cliente a su almacenamiento.

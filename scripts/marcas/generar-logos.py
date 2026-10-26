@@ -27,6 +27,8 @@ import os
 import re
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.request
 
 PAQUETE = "simple-icons"
@@ -55,7 +57,7 @@ PENDIENTES = [
      "mientras tanto el login sigue con GoogleIcon (redibujo existente) y LogoMarca muestra icono neutro + nombre."),
     ("booking", "Booking.com", "restringida",
      "Marca de uso restringido (REDISENO §9-P6): aunque simple-icons trae «bookingdotcom», se deja en texto + icono neutro "
-     "hasta que el dueño confirme si se queda como logo."),
+     "hasta que el dueño del producto decida. La decision queda registrada cambiando el tipo/motivo de esta entrada y regenerando, en un PR."),
     ("vrbo", "Vrbo", "pendiente-asset",
      "simple-icons %s no incluye «vrbo». Falta el asset oficial del titular." % VERSION),
     ("tripadvisor", "Tripadvisor", "solo-texto",
@@ -82,14 +84,28 @@ def aborta(msg):
     sys.exit(2)
 
 
+class _SoloRegistro(urllib.request.HTTPRedirectHandler):
+    """Solo sigue redirecciones que se queden en registry.npmjs.org (https)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not newurl.startswith("https://registry.npmjs.org/"):
+            raise urllib.error.URLError("redireccion fuera de registry.npmjs.org: %s" % newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def descargar(url, intentos=4):
+    if not url.startswith("https://registry.npmjs.org/"):
+        aborta("host no permitido: %s" % url)
+    abridor = urllib.request.build_opener(_SoloRegistro)
     ultimo = None
-    for _ in range(intentos):
+    for n in range(intentos):
         try:
-            with urllib.request.urlopen(url, timeout=120) as r:
+            with abridor.open(url, timeout=120) as r:
                 return r.read()
-        except Exception as e:  # red inestable: reintenta
+        except Exception as e:  # red inestable: espera (2, 4, 8 s) y reintenta
             ultimo = e
+            if n < intentos - 1:
+                time.sleep(2 ** (n + 1))
     aborta("no se pudo descargar %s (%s). Sin red: usa --tarball RUTA o --pendientes." % (url, ultimo))
 
 
