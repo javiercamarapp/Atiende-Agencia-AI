@@ -2,11 +2,11 @@
 // la campana YA NO va en el encabezado (orden del dueno): es la pildora "Notificaciones" del pie del menu lateral (escritorio) y de
 // "Mas" > Cuenta (movil). Su punto rojo (SIN numero) se enciende con avisos sin leer y se APAGA al leerlos, lleva a
 // la pagina (lista, filtros, marcar leida / todas, 'Resolver' a la pantalla origen) y una notificacion que llega
-// despues enciende el punto sin recargar (el punto se verifica en escritorio: en movil la pildora vive dentro de la hoja "Mas").
+// despues enciende el punto sin recargar (en movil el punto se ve en la pestana "Mas").
 import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
-import { abrirMasMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
+import { abrirMasMovil, barraMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
 import type { Page } from "@playwright/test";
 
 const CONSOLAS: ReadonlyArray<{ objetivo: ObjetivoLogin; destino: RegExp }> = [
@@ -45,6 +45,12 @@ for (const { objetivo, destino } of CONSOLAS) {
         await expect(punto).toBeVisible();
         expect(((await pildora.textContent()) ?? "").trim()).not.toMatch(/\d/);
       }
+      // Movil: el aviso se ve en la pestana "Mas" (donde vive la pildora) y el estado va en el aria-label.
+      const puntoMas = barraMovil(page).getByRole("button", { name: /^Más/ }).locator('[data-testid="mas-indicador"]');
+      if (esMovil(page)) {
+        await expect(puntoMas).toBeVisible();
+        await expect(barraMovil(page).getByRole("button", { name: "Más, con avisos sin leer" })).toHaveCount(1);
+      }
 
       // La pildora lleva a la pagina; la barra superior dice "Notificaciones" y hay un solo <h1>.
       await irANotificaciones(page);
@@ -69,12 +75,14 @@ for (const { objetivo, destino } of CONSOLAS) {
       await expect(page.getByText("Sin novedades.")).toBeVisible();
       await expect(tarjetas).toHaveCount(0);
       if (!esMovil(page)) await expect(punto).toHaveCount(0);
+      else await expect(puntoMas).toHaveCount(0);
 
       // Llega un aviso nuevo (evento del ciclo): el sondeo lo detecta al volver el foco y el punto se enciende,
       // y la pagina abierta lo muestra sin recargar.
       await mock.emitirNotificacion({ titulo: "Llegó un aviso nuevo", severidad: "atencion", categoria: "operacion", enlace: "/superadmin/salud" });
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       if (!esMovil(page)) await expect(punto).toBeVisible();
+      else await expect(puntoMas).toBeVisible();
       await expect(tarjetas).toHaveCount(1);
       await expect(tarjetas.first()).toContainText("Llegó un aviso nuevo");
 

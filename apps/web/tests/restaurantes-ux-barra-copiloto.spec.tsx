@@ -106,9 +106,12 @@ describe("restaurantes: la barra superior esta en cada ruta del panel", () => {
 });
 
 describe("restaurantes: Copiloto con encabezado y tarjetas en orden", () => {
-  it("la barra lleva el nombre del Copiloto igual que las demas paginas", async () => {
+  it("la barra del Copiloto lleva el titulo de la consola, nunca el nombre de la funcion (ese vive en el menu y en el h1 de la portada)", async () => {
     const c = await renderEn("/copiloto");
-    expect(c.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent).toBe("Pregúntale a tus datos");
+    // «Pregúntale a tus datos» nunca va en el encabezado: la barra lleva el titulo de la consola; el nombre es el unico h1 de la portada.
+    expect(c.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent).not.toContain("Pregúntale a tus datos");
+    expect(c.querySelector('[data-testid="barra-pagina-titulo"]')?.textContent).toContain("Restaurantes");
+    // El h1 de la portada (carga perezosa con /estado) lo cubren los e2e copiloto-*.spec.ts.
     expect(c.querySelector('[data-testid="barra-pagina"] svg'), "icono de la pagina").not.toBeNull();
   });
 

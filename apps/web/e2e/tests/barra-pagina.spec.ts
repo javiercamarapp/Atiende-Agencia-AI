@@ -9,10 +9,11 @@ import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { esMovil, irASeccion, seccionesDelPanel } from "../helpers/navegacion.ts";
 
-// El Copiloto de cada consola pone en la barra el nombre de su portada ("Pregúntale a tus datos") con `useTituloBarra`, no el rotulo "Copiloto" del menu.
-const TITULO_COPILOTO = "Pregúntale a tus datos";
-// Las 6 verticales llevan el titulo nuevo; el superadmin tiene su propia pagina del Copiloto (rotulo "Copiloto").
-const nombreEsperado = (texto: string, objetivo: ObjetivoLogin): string[] => (texto === "Copiloto" ? (objetivo === "superadmin" ? [texto] : [TITULO_COPILOTO]) : [texto]);
+// «Pregúntale a tus datos» NUNCA va en el encabezado: en el Copiloto de las 6 verticales la barra lleva el titulo de la consola (como el Resumen)
+// y el nombre vive en el menu y en el unico h1 de la portada. El superadmin tiene su propia pagina del Copiloto (rotulo "Copiloto").
+const NOMBRE_FUNCION = "Pregúntale a tus datos";
+const esCopilotoDeVertical = (texto: string, objetivo: ObjetivoLogin): boolean => texto === "Copiloto" && objetivo !== "superadmin";
+const nombreEsperado = (texto: string): string[] => [texto];
 
 
 const CONSOLAS: ReadonlyArray<{ objetivo: ObjetivoLogin; titulo: RegExp }> = [
@@ -45,15 +46,20 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
         await expect
           .poll(async () => {
             const actual = ((await barra.textContent()) ?? "").trim();
-            return titulo.test(actual) || nombreEsperado(seccion.texto, objetivo).includes(actual);
+            return titulo.test(actual) || nombreEsperado(seccion.texto).includes(actual);
           }, { message: `${seccion.href}: la barra debe pasar a llevar el nombre de la pagina`, timeout: 10_000 })
           .toBe(true);
         const texto = ((await barra.textContent()) ?? "").trim();
-        if (titulo.test(texto)) {
+        if (esCopilotoDeVertical(seccion.texto, objetivo)) {
+          // El Copiloto lleva el titulo de la consola en la barra, NUNCA el nombre de la funcion; el nombre es el unico h1 de la portada.
+          expect(texto, `${objetivo}: la barra del Copiloto lleva el titulo de la consola`).toMatch(titulo);
+          expect(texto, `${objetivo}: la barra del Copiloto no lleva el nombre de la funcion`).not.toContain(NOMBRE_FUNCION);
+          await expect(page.getByRole("heading", { level: 1, name: NOMBRE_FUNCION }), `${objetivo}: el h1 de la portada del Copiloto`).toHaveCount(1);
+        } else if (titulo.test(texto)) {
           // Solo el Resumen (la raiz del panel) conserva el titulo de la consola.
           resumenes += 1;
         } else {
-          expect(nombreEsperado(seccion.texto, objetivo), `${objetivo}: la barra de ${seccion.href} debe llevar el nombre de la pagina`).toContain(texto);
+          expect(nombreEsperado(seccion.texto), `${objetivo}: la barra de ${seccion.href} debe llevar el nombre de la pagina`).toContain(texto);
         }
         // La barra va delgada en CADA pagina: sin campana, sin chat, sin fecha. Las funciones siguen en el pie del menu lateral.
         const barraCompleta = page.getByTestId("barra-pagina");

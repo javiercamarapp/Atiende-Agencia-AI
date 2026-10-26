@@ -71,6 +71,37 @@ describe("BottomNav con Más", () => {
   });
 });
 
+describe("BottomNav: aviso de pendientes en Más (notificaciones sin leer)", () => {
+  const pie = (indicador: boolean) => [{ label: "Notificaciones", to: "/h/demo/notificaciones", indicador }];
+  function render(indicador: boolean) {
+    rendered = renderComponent(
+      <MemoryRouter initialEntries={["/h/demo"]}>
+        <BottomNav items={[{ to: "/h/demo", label: "Inicio", icon: LayoutDashboard }]} moreSections={SECCIONES} pie={pie(indicador)} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("con avisos sin leer: punto en Más y el estado va en el aria-label (no en un span sin rol), tambien en el enlace de la hoja", () => {
+    render(true);
+    const mas = rendered!.container.querySelector('button[aria-haspopup="dialog"]')!;
+    expect(mas.getAttribute("aria-label")).toBe("Más, con avisos sin leer");
+    expect(mas.querySelector('[data-testid="mas-indicador"]')?.getAttribute("aria-hidden")).toBe("true");
+    click(mas);
+    const enlace = document.body.querySelector('[role="dialog"] a[href="/h/demo/notificaciones"]')!;
+    expect(enlace.getAttribute("aria-label")).toBe("Notificaciones, con avisos sin leer");
+    expect(enlace.querySelector('[data-testid="pildora-indicador"]')?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("sin avisos: ni punto ni aria-label especial", () => {
+    render(false);
+    const mas = rendered!.container.querySelector('button[aria-haspopup="dialog"]')!;
+    expect(mas.hasAttribute("aria-label")).toBe(false);
+    expect(mas.querySelector('[data-testid="mas-indicador"]')).toBeNull();
+    click(mas);
+    expect(document.body.querySelector('[role="dialog"] a[href="/h/demo/notificaciones"]')!.hasAttribute("aria-label")).toBe(false);
+  });
+});
+
 describe("BottomNav: la barra del panel del chofer de Likida (UNI-1)", () => {
   const ITEMS = [
     { to: "/h/demo", label: "Resumen", icon: LayoutDashboard, end: true },

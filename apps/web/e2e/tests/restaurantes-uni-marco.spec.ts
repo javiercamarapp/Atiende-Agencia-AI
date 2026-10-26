@@ -123,7 +123,7 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
         await page.keyboard.press("Escape");
         await expect(menu).toBeHidden();
       }
-      if (nombre === "copiloto") await expect(page.getByTestId("barra-pagina-titulo").or(page.getByTestId("mobile-pagina-titulo")).first(), "el Copiloto lleva su nombre en la barra").toHaveText("Pregúntale a tus datos");
+      if (nombre === "copiloto") await expect(page.getByTestId("barra-pagina-titulo").or(page.getByTestId("mobile-pagina-titulo")).first(), "la barra del Copiloto NO lleva el nombre de la funcion (solo menu y h1)").not.toContainText("Pregúntale a tus datos");
       if (dir) await page.screenshot({ path: join(dir, `${nombre}-${info.project.name}.png`) });
       if (nombre === "copiloto" && dir) {
         // "Consulta" con el campo vacio abre las tarjetas (VENTAS, OPERACION, CLIENTES, CFO).

@@ -7,7 +7,7 @@ import { act, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Building2, LayoutDashboard, ListChecks } from "lucide-react";
-import { BarraPagina, VerticalShell, useTituloBarra, type SidebarSection } from "@atiende/ui";
+import { BarraPagina, VerticalShell, useBarraDeConsola, useTituloBarra, type SidebarSection } from "@atiende/ui";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -153,5 +153,33 @@ describe("VerticalShell — nombre de la pagina en la barra", () => {
     expect(marco.className).toContain("md:border-border");
     expect(main.querySelector('[class*="max-w-"]')).toBeNull();
     expect(main.querySelectorAll(".motion-safe\\:animate-page-in")).toHaveLength(1);
+  });
+});
+
+describe("useBarraDeConsola: la pagina no pone su nombre en la barra", () => {
+  function SinNombre() {
+    useBarraDeConsola();
+    return <h1>Pregúntale a tus datos</h1>;
+  }
+
+  it("la barra lleva el titulo y el icono de la consola (no el item activo) y el nombre queda solo en el unico h1", () => {
+    rendered = renderShell("/c/acciones", <SinNombre />);
+    expect(titulo(rendered)).toBe("Consola de Demo");
+    expect(rendered.container.querySelector('[data-testid="barra-pagina"] [data-testid="icono-raiz"]')).not.toBeNull();
+    expect(rendered.container.querySelector('[data-testid="barra-pagina-titulo"]')!.hasAttribute("role")).toBe(false);
+    expect([...rendered.container.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Pregúntale a tus datos"]);
+    expect(rendered.container.querySelector('[data-testid="mobile-pagina-titulo"]')!.textContent).toBe("Consola de Demo");
+  });
+
+  it("al desmontar la pagina la barra vuelve a derivarse de la ruta", () => {
+    rendered = renderShell("/c/acciones", <SinNombre />);
+    rendered.rerender(
+      <MemoryRouter initialEntries={["/c/acciones"]}>
+        <VerticalShell vertical="demo" sections={SECCIONES} mobileItems={[{ to: "/c/acciones", label: "Acciones", icon: ListChecks }]} user={null} onLogout={() => {}} header={{ icon: <span data-testid="icono-raiz" />, title: "Consola de Demo", resumenTo: "/c" }}>
+          <h1>Otra</h1>
+        </VerticalShell>
+      </MemoryRouter>,
+    );
+    expect(titulo(rendered)).toBe("Acciones");
   });
 });

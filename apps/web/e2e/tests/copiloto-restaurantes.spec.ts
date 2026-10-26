@@ -66,6 +66,9 @@ test.describe("copiloto de restaurantes @copiloto", () => {
     const enlace = sidebar(page).getByRole("link", { name: "Pregúntale a tus datos" });
     await expect(enlace).toHaveAttribute("href", RUTA);
     await enlace.click();
-    await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Pregúntale a tus datos");
+    // Decision del dueno: el nombre de la funcion NUNCA va en el encabezado; vive en el menu y en el unico h1 de la portada.
+    await expect(page.getByTestId("barra-pagina-titulo")).not.toContainText("Pregúntale a tus datos");
+    await expect(page.getByTestId("barra-pagina")).not.toContainText("Pregúntale a tus datos");
+    await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toHaveCount(1);
   });
 });
