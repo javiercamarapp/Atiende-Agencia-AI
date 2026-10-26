@@ -149,8 +149,8 @@ export const CONFUSIONES: readonly Confusion[] = [
 ];
 
 const MULETILLAS = ["eh", "este", "mmm", "o sea", "pues", "eh, bueno"] as const;
-/** Palabras que NO se pueden comer sin cambiar el sentido. */
-const PROTEGIDAS = /^(no|sí|si|ni|nada|sin|con|mejor|cancela|cancelar|cuatro|tres|seis|dos|uno|una|cinco|diez|doce|\d+)$/i;
+/** Palabras que NO se pueden comer sin cambiar el sentido ("cuarto" es la confusion declarada de "cuatro": se conserva para que el cambio quede visible y registrado, no que la cantidad desaparezca). */
+const PROTEGIDAS = /^(no|sí|si|ni|nada|sin|con|mejor|cancela|cancelar|cuatro|cuarto|tres|seis|dos|uno|una|cinco|diez|doce|\d+)$/i;
 
 export interface OpcionesRuido {
   /** Probabilidad por corrida numerica de pasar a cifras (por omision 0.6). */

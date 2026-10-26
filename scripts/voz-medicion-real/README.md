@@ -21,7 +21,7 @@ Mide el acierto del agente de voz de la taquería PM con un **modelo real** pero
 
 ## Cómo correrlo
 
-Requiere un directorio de QA local (no se publica: lleva la configuración real de la cuenta) con `stack.ts` (API real + Meta simulado), `lib.ts` (cliente simulado), `llm.ts` (cuenta de gasto) e `inv-precio.ts`, y un Postgres efímero con la configuración de PM sembrada.
+Requiere un directorio de QA local (no se publica: lleva la configuración real de la cuenta; **debe estar dentro del repo/worktree** y fuera de git, p. ej. listado en `.git/info/exclude`) con `stack.ts` (API real + Meta simulado), `lib.ts` (cliente simulado), `llm.ts` (cuenta de gasto) e `inv-precio.ts`, y un Postgres efímero con la configuración de PM sembrada.
 
 ```
 VOZ_QA_DIR=<dir de QA> OPENROUTER_API_KEY=... VOZ_REP=1 \
@@ -30,8 +30,11 @@ VOZ_QA_DIR=<dir de QA> OPENROUTER_API_KEY=... VOZ_REP=1 \
 python3 scripts/voz-medicion-real/analizar.py <carpeta de resultados> [etiqueta]
 ```
 
-- Tope de gasto por corrida (`VOZ_CORTE_USD`, 1.5 por omisión): usa el mayor entre el delta de `/key` (que se actualiza con retraso) y la cuenta propia (costo real del agente + cliente + juez). Sale con código 3 si se cortó; volver a lanzar con el mismo `VOZ_REP` continúa donde se quedó.
-- `VOZ_SIN_ZDR=1` quita la retención cero solo para modelos baratos que no tienen endpoint ZDR (control de costo; no es la medición oficial).
+- **Guardas de aislamiento** (`guardas.ts`, con pruebas en `voz-medicion-real-guardas.spec.ts`): el arnés ABORTA antes de tocar nada si `VOZ_QA_DIR` no está dentro del repo, si `s.api` no es loopback, si la base (`s.pool`) no es local o si el Meta simulado no está activo (`stack.ts` debe exponer `metaSimulado: true`, o `metaUrl` loopback; además, cualquier variable `META_*`/`WHATSAPP_*`/`GRAPH_*` `*_URL|BASE|HOST` debe apuntar a loopback). Los teléfonos son siempre ficticios (`521 999 555 01xx`) y se eligen sin pedidos previos. El id de la organización se lee de la base efímera por slug (`VOZ_ORG_SLUG`, opcionalmente `VOZ_ORG_ID`).
+- Tope de gasto por corrida (`VOZ_CORTE_USD`, 1.5 por omisión; debe ser un número finito > 0 o aborta), evaluado antes de cada escenario, de cada turno y de cada intento del juez; el gasto de una llamada cuenta aunque termine en excepción. Usa el mayor entre el delta de `/key` (que se actualiza con retraso) y la cuenta propia (costo real del agente + cliente + juez). Sale con código 3 si se cortó; volver a lanzar con el mismo `VOZ_REP` continúa donde se quedó.
+- `VOZ_SIN_ZDR=1` quita la retención cero solo para modelos baratos que no tienen endpoint ZDR (control de costo). Esa corrida es **NO OFICIAL**: cada resultado lleva `modelo`, `sinZdr` y `oficial`, el resumen lo marca y `analizar.py` lo avisa. No se mezclan modelos ni enrutamientos en un mismo archivo.
+- Una llamada con caída o respuesta vacía del LLM (infra) queda **INVALIDA**: no cuenta como acierto ni como fallo, se reporta aparte y se reintenta (hasta 3 veces). Si la corrida termina con menos escenarios que los esperados (tope de gasto), el resumen y `analizar.py` avisan que la tasa es INCOMPLETA y no comparable.
+- Un JSON previo corrupto se respalda (`.corrupto-<ts>`) y la corrida aborta: nunca se sobrescribe.
 - `analizar.py` da acierto con IC (Wilson sobre llamadas y bootstrap por escenario), por escenario, latencia por turno p50/p95 y causas de fallo.
 
 ## Límites (qué NO mide)

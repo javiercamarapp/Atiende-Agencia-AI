@@ -7,16 +7,19 @@
 // Lo que es SIMULADO: el cliente (LLM barato con guion) y su STT (`ruido-stt.ts`: cifras, confusiones, muletillas), el TTS (silencio proporcional) y la telefonia.
 // Gemini Live (escalon 1 de produccion) NO se usa: ver README.md para el equivalente y sus limites.
 //
+// Seguridad: aborta si el directorio de QA esta fuera del repo, si la API/base no son locales o el Meta no es el simulado, o si VOZ_CORTE_USD es invalido (ver guardas.ts).
 // Uso (desde el directorio de QA con stack.ts / lib.ts / llm.ts y la API local):
 //   VOZ_QA_DIR=<dir de QA> OPENROUTER_API_KEY=... VOZ_REP=1 [VOZ_CORTE_USD=1.5] [VOZ_FILTRO=^P0] [VOZ_MODELO=<id>] vite-node -c vite-node.config.ts ejecutar.ts
 // Sale con codigo 3 si se corto por el tope de gasto de la corrida (quedan escenarios pendientes: volver a lanzar con el mismo VOZ_REP continua donde se quedo).
-import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { DATOS_POR_OMISION, ESCENARIOS, RELOJES } from "./escenarios.ts";
 import type { Chk, Escenario, Evento } from "./escenarios.ts";
 import { cortarMensaje, rngDesdeSemilla, ruidoStt } from "./ruido-stt.ts";
+import { TopeExcedido, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, parseCorte, redactar, validarAislamiento } from "./guardas.ts";
 
-const QA = process.env.VOZ_QA_DIR;
-if (!QA) throw new Error("Falta VOZ_QA_DIR (directorio con stack.ts, lib.ts, llm.ts).");
+// Aislamiento: el directorio de QA (de donde se CARGA codigo) debe estar dentro del repo/worktree; ver guardas.ts.
+const QA = dirQaDentroDelRepo(process.env.VOZ_QA_DIR, fileURLToPath(new URL("../../", import.meta.url)));
 const { startStack, setClock, PROP } = await import(`${QA}/stack.ts`);
 const { chat, usoRealOpenRouter, gasto } = await import(`${QA}/llm.ts`);
 const { nextClientMsg } = await import(`${QA}/lib.ts`);
@@ -35,13 +38,14 @@ const { VOICE_TOOL_HTTP_PATHS } = await import(`${P}/domain-restaurantes/src/age
 const { canonicalizeMexicanPhone } = await import(`${P}/domain-restaurantes/src/phone.ts`);
 
 const REP = process.env.VOZ_REP ?? "1";
-const CORTE = Number(process.env.VOZ_CORTE_USD ?? "1.5");
+const CORTE = parseCorte(process.env.VOZ_CORTE_USD); // finito y > 0, o aborta
 const MODELO = process.env.VOZ_MODELO || VOZ_PLATAFORMA.cascadaV2.llm.modelo;
 const ESFUERZO = (process.env.VOZ_ESFUERZO as "low" | "medium" | "high" | undefined) ?? VOZ_PLATAFORMA.cascadaV2.llm.esfuerzo;
 const NIVEL_RUIDO = Number(process.env.VOZ_RUIDO ?? "1");
 const FILTRO = process.env.VOZ_FILTRO ? new RegExp(process.env.VOZ_FILTRO) : null;
 const JUEZ = process.env.VOZ_JUEZ ?? "anthropic/claude-haiku-5.5";
 const SIN_COMPUERTA = process.env.VOZ_SIN_COMPUERTA === "1";
+const SIN_ZDR = process.env.VOZ_SIN_ZDR === "1"; // NO es medicion oficial: se registra en cada resultado
 const RES = process.env.VOZ_RES_DIR ?? `${QA}/results`;
 mkdirSync(RES, { recursive: true });
 const ARCHIVO = `${RES}/voz-real-${process.env.VOZ_ETQ ?? "main"}-rep${REP}.json`;
@@ -50,17 +54,21 @@ const key = process.env.OPENROUTER_API_KEY;
 if (!key) throw new Error("falta OPENROUTER_API_KEY en el entorno");
 
 const s = await startStack();
-const org = "los-taquitos-de-pm";
+// Aislamiento: la API y la base deben ser locales y el Meta debe ser el simulado; si no, se aborta ANTES de tocar nada.
+try { validarAislamiento(s, process.env); } catch (x) { try { await s.stop?.(); } catch { /* */ } throw x; }
+// Datos de la semilla LOCAL de la cuenta de PM (slug publico de la sucursal demo); el id de la organizacion se lee de la base efimera, no va en el codigo.
+const org = process.env.VOZ_ORG_SLUG ?? "los-taquitos-de-pm";
 const HDR_TOOL: Record<string, string> = { "content-type": "application/json", "x-atiende-tool-secret": "qa-voice-tool-secret-local" };
 const HDR_INT: Record<string, string> = { "content-type": "application/json", "x-atiende-internal-secret": "qa-internal-secret-local" };
 const SLUG = { T1: "prol-montejo", T3: "pensiones", T7: "garcia-lavin" } as const;
-const ORG_ID = "f838fd2c-967e-46fd-af8d-e0229b15748d";
+const ORG_ID: string = process.env.VOZ_ORG_ID ?? (await s.pool.query("select id from core.organization where slug = $1", [org])).rows[0]?.id;
+if (!ORG_ID) { await s.stop?.(); throw new Error(`la organizacion ${org} no existe en la base efimera (semilla local)`); }
 const priceMap = new Map<string, number>();
 for (const r of (await s.pool.query("select property_id, product_id, price::float p from restaurantes.branch_products")).rows) priceMap.set(`${r.property_id}:${r.product_id}`, r.p);
 
 // ---- LLM de la cascada: el puerto del worker, SIN tocar su enrutamiento (ZDR) ----
 // VOZ_SIN_ZDR=1: SOLO para modelos baratos sin endpoint de retencion cero (control de costo); la medicion oficial va con el enrutamiento de produccion.
-const fetchSinZdr: typeof fetch | undefined = process.env.VOZ_SIN_ZDR === "1"
+const fetchSinZdr: typeof fetch | undefined = SIN_ZDR
   ? (async (url: any, init: any) => { try { const b = JSON.parse(String(init?.body)); if (b.provider) { delete b.provider.zdr; delete b.provider.only; b.provider.data_collection = "deny"; } b.usage = { include: true }; return fetch(url, { ...init, body: JSON.stringify(b) }); } catch { return fetch(url, init); } }) as typeof fetch
   : undefined;
 const llmPuerto = crearPuertoLlmVozV2(key, fetchSinZdr, { modelo: MODELO, config: { ...VOZ_PLATAFORMA, cascadaV2: { ...VOZ_PLATAFORMA.cascadaV2, llm: { ...VOZ_PLATAFORMA.cascadaV2.llm, esfuerzo: ESFUERZO } } } });
@@ -76,6 +84,13 @@ const ttsFalso = {
     sintetizar: async function* (texto: string) { yield new Uint8Array(Math.min(48_000 * 20, texto.length * 2400)); },
     cerrar: async () => undefined,
   }),
+};
+
+// Gasto de la llamada EN CURSO (agente). Vive fuera de correrLlamada para contarse aunque la llamada termine en excepcion.
+const costoLlamada = { micro: 0, real: true };
+const verificarTope = () => {
+  const g = gastoPropioUsd({ cerradoUsd: llmAcum, llamadaEnCursoUsd: costoLlamada.micro / 1e6, clienteJuezUsd: gasto.usd });
+  if (excedeTope(g, CORTE)) throw new TopeExcedido(g, CORTE);
 };
 
 const pct = (xs: number[], p: number) => { if (!xs.length) return null; const a = [...xs].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]!; };
@@ -101,7 +116,7 @@ async function correrLlamada(e: Escenario, phone: string, instruccion: string, v
     ...(SIN_COMPUERTA ? {} : { confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido" } }),
     log: (l: any) => void v2log.push(l),
   });
-  const costo = { micro: 0, real: true, tokIn: 0, tokOut: 0 };
+  const costo = costoLlamada;
   let primeraFraseT: number | null = null;
   const abrirSesion = (ap: any, h: any) => base.abrirSesion(ap, {
     ...h,
@@ -129,6 +144,7 @@ async function correrLlamada(e: Escenario, phone: string, instruccion: string, v
   const datos = e.datos ?? DATOS_POR_OMISION;
 
   const hablar = async (dicho: string, opciones: { interrumpe?: boolean; sinRuido?: boolean } = {}) => {
+    verificarTope(); // tope por turno, no solo por escenario
     const r = opciones.sinRuido || e.sinRuido ? { texto: dicho, cambios: [] as string[] } : ruidoStt(dicho, rng, { nivel: NIVEL_RUIDO });
     if (opciones.interrumpe) eventosStt?.parcial(r.texto.split(" ").slice(0, 3).join(" "));
     const nTools0 = tools.length;
@@ -144,6 +160,7 @@ async function correrLlamada(e: Escenario, phone: string, instruccion: string, v
     histCliente.push({ who: "cliente", text: dicho }, { who: "agente", text: agente || "(silencio del agente)" });
   };
   const generar = async (intenciones: readonly string[]) => {
+    verificarTope();
     const persona = { goal: `Llamas por telefono a una taqueria: ${e.titulo}. Hablas como en una llamada: frases cortas, sin escribir cifras ni signos raros.`, hints: intenciones, datos };
     const { msg } = await nextClientMsg(persona, histCliente as never, histCliente.length === 0, "voz");
     const limpio = (msg ?? "").replace(/\s+/g, " ").trim();
@@ -210,11 +227,23 @@ Las horas deben decirse habladas («doce y media», no «12:30»). Un turno larg
 Responde SOLO JSON: {"veredicto":"PASA"|"PARCIAL"|"FALLA","motivo":"1-2 frases","causa":"modelo|prompt|herramienta|ruido_stt|arnes|ninguna","severidad":"P0|P1|P2|P3|ninguna"}
 causa: modelo = el agente razono o decidio mal pese a un prompt/herramienta correctos; prompt = falta o se contradice una regla de la instruccion; herramienta = la herramienta/servidor dio un resultado o error incorrecto; ruido_stt = el error de transcripcion bastaba para confundir a cualquier agente; arnes = el cliente simulado o el guion se comporto de forma inverosimil.`;
 
-// Lectura sin comprobar antes la existencia (evita la carrera comprobar-usar): si no esta o no es JSON valido, se empieza de cero.
-const previo: any[] = (() => { try { const j = JSON.parse(readFileSync(ARCHIVO, "utf8")); return Array.isArray(j) ? j : []; } catch { return []; } })();
+// Lectura sin comprobar antes la existencia (evita la carrera comprobar-usar). Si el archivo NO existe se empieza de cero; si existe pero esta corrupto
+// (o no es una lista) se respalda y se ABORTA: seguir sobrescribiria resultados que costaron dinero.
+const previo: any[] = (() => {
+  let txt: string;
+  try { txt = readFileSync(ARCHIVO, "utf8"); } catch (x) { if ((x as NodeJS.ErrnoException).code === "ENOENT") return []; throw x; }
+  try { const j = JSON.parse(txt); if (Array.isArray(j)) return j; } catch { /* corrupto: abajo */ }
+  const resp = `${ARCHIVO}.corrupto-${Date.now()}`;
+  copyFileSync(ARCHIVO, resp);
+  throw new Error(`el JSON previo ${ARCHIVO} esta corrupto o no es una lista; respaldado en ${resp}. Revisalo o muevelo antes de volver a correr (no se sobrescribe).`);
+})();
+// No se mezclan en un mismo archivo resultados de modelos o de enrutamientos (ZDR) distintos: usa otro VOZ_ETQ o VOZ_REP.
+for (const r of previo) {
+  if ((r.modelo !== undefined && r.modelo !== MODELO) || (r.sinZdr !== undefined && r.sinZdr !== SIN_ZDR)) throw new Error(`${ARCHIVO} tiene resultados de otro modelo/enrutamiento (${r.modelo}, sinZdr=${r.sinZdr}); usa otro VOZ_ETQ o VOZ_REP.`);
+}
 // Todo lo que viene de la red (respuestas de modelos y de la API, transcripciones) se sanea antes de escribirlo: sin caracteres de control y con tope de largo por texto.
 const sanear = (v: unknown, prof = 0): unknown => {
-  if (typeof v === "string") return Array.from(v.slice(0, 20000)).filter((c) => { const n = c.charCodeAt(0); return n === 9 || n === 10 || n === 13 || (n >= 32 && n !== 127); }).join("");
+  if (typeof v === "string") return redactar(Array.from(v.slice(0, 20000)).filter((c) => { const n = c.charCodeAt(0); return n === 9 || n === 10 || n === 13 || (n >= 32 && n !== 127); }).join(""));
   if (typeof v === "number" || typeof v === "boolean" || v === null) return v;
   if (prof > 8) return null;
   if (Array.isArray(v)) return v.slice(0, 2000).map((x) => sanear(x, prof + 1));
@@ -223,11 +252,16 @@ const sanear = (v: unknown, prof = 0): unknown => {
 };
 // Escritura atomica (archivo temporal + rename) del resultado saneado.
 const guardar = () => { const tmp = `${ARCHIVO}.tmp`; writeFileSync(tmp, JSON.stringify(sanear(results), null, 1), { mode: 0o600 }); renameSync(tmp, ARCHIVO); };
-const hechos = new Set(previo.filter((r) => !r.excepcion).map((r) => r.id));
-const results: any[] = previo.filter((r) => !r.excepcion || r.intentos >= 3);
+// Excepciones y llamadas invalidas por infraestructura se reintentan (hasta 3 intentos); despues se quedan registradas como estan.
+const reintentable = (r: any) => (r.excepcion || r.invalida) && !(r.intentos >= 3);
+const hechos = new Set(previo.filter((r) => !reintentable(r)).map((r) => r.id));
+const results: any[] = previo.filter((r) => !reintentable(r));
 const uso0 = (await usoRealOpenRouter()) ?? 0;
 let pendientes = 0; let cortado = false; let llmAcum = 0;
-console.error(`[voz-real] rep=${REP} modelo=${MODELO} esfuerzo=${ESFUERZO} ruido=${NIVEL_RUIDO} compuerta=${!SIN_COMPUERTA} corte=$${CORTE} uso0=${uso0.toFixed(4)}`);
+const esperados = ESCENARIOS.filter((e) => !FILTRO || FILTRO.test(e.id)).length;
+const config = { modelo: MODELO, sinZdr: SIN_ZDR, oficial: !SIN_ZDR, esfuerzo: ESFUERZO, ruido: NIVEL_RUIDO, compuerta: !SIN_COMPUERTA, totalEscenarios: ESCENARIOS.length, filtro: process.env.VOZ_FILTRO ?? null };
+if (SIN_ZDR) console.error("[voz-real] AVISO: VOZ_SIN_ZDR=1 -> corrida NO OFICIAL (sin retencion cero); no usar como medicion de produccion");
+console.error(`[voz-real] rep=${REP} modelo=${MODELO} esfuerzo=${ESFUERZO} ruido=${NIVEL_RUIDO} compuerta=${!SIN_COMPUERTA} sinZdr=${SIN_ZDR} corte=$${CORTE} uso0=${uso0.toFixed(4)}`);
 
 for (const e of ESCENARIOS) {
   if (FILTRO && !FILTRO.test(e.id)) continue;
@@ -236,16 +270,26 @@ for (const e of ESCENARIOS) {
   const uso = (await usoRealOpenRouter()) ?? uso0;
   if (Math.max(uso - uso0, llmAcum + gasto.usd) >= CORTE) { cortado = true; pendientes += 1; continue; }
   setClock(RELOJES[e.reloj]);
-  const phone = `521999${String(Math.floor(Math.random() * 9000000) + 1000000)}`; const phone10 = phone.slice(-10);
-  const rec: any = { id: e.id, fuente: e.fuente, titulo: e.titulo, sucursal: e.sucursal, rep: REP, intentos: (previo.find((r) => r.id === e.id)?.intentos ?? 0) + 1 };
-  const t0 = Date.now(); let llamada: any; let err: string | null = null; let instruccion = "";
+  // Telefono de ficcion (521 999 555 01xx): jamas aleatorio ni real; se elige uno sin pedidos ni escalaciones previas en la base efimera.
+  const phone = await elegirTelefonoLibre(async (p10) => Number((await s.pool.query(`select (select count(*) from restaurantes.orders where customer_phone like $1) + (select count(*) from restaurantes.callback_requests where customer_phone like $1) c`, [`%${p10}`])).rows[0].c), ESCENARIOS.indexOf(e));
+  if (!esTelefonoFicticio(phone)) throw new Error("telefono fuera del rango ficticio");
+  const phone10 = phone.slice(-10);
+  costoLlamada.micro = 0; costoLlamada.real = true;
+  const rec: any = { id: e.id, fuente: e.fuente, titulo: e.titulo, sucursal: e.sucursal, rep: REP, intentos: (previo.find((r) => r.id === e.id)?.intentos ?? 0) + 1, ...config };
+  const t0 = Date.now(); let llamada: any; let err: string | null = null; let instruccion = ""; let topeEnCurso = false;
   try {
     const ctx = (await (await fetch(`${s.api}/internal/restaurantes/voz/llamada/contexto`, { method: "POST", headers: HDR_INT, body: JSON.stringify({ organizationId: ORG_ID, propertyId: PROP[e.sucursal], callerPhone: phone }) })).json()) as any;
     if (typeof ctx.instruccion !== "string") throw new Error("contexto sin instruccion: " + JSON.stringify(ctx).slice(0, 160));
     instruccion = ctx.instruccion;
     llamada = await correrLlamada(e, phone, instruccion, ctx.voiceId ?? "aura-2-estrella-es", `${e.id}-${REP}`);
-  } catch (x) { err = ((x as Error).stack ?? (x as Error).message).replace(/(key|token|bearer)[=: ]+[^&\s]+/gi, "$1=***").slice(0, 700); }
-  llmAcum += llamada ? llamada.costoMicro / 1e6 : 0;
+  } catch (x) {
+    if (x instanceof TopeExcedido) topeEnCurso = true;
+    else err = redactar((x as Error).stack ?? (x as Error).message).slice(0, 700);
+  }
+  // El gasto de la llamada cuenta SIEMPRE (tambien si hubo excepcion o se corto por tope): vive en costoLlamada, no en el resultado.
+  llmAcum += costoLlamada.micro / 1e6;
+  if (topeEnCurso) { cortado = true; pendientes += 1; console.log("CORTE por tope en", e.id, "(sin registrar el escenario; se repite al continuar)"); break; }
+  rec.llmUsd = costoLlamada.micro / 1e6;
   rec.durS = Math.round((Date.now() - t0) / 1000);
   if (err || !llamada) {
     rec.excepcion = true; rec.veredicto = "FALLA"; rec.causa = "arnes"; rec.motivo = "EXCEPCION: " + err;
@@ -269,7 +313,9 @@ for (const e of ESCENARIOS) {
   const trTxt = llamada.registro.map((x: TurnoRegistro) => x.quien === "cliente" ? `CLIENTE [dijo]: ${x.dicho}${x.oido !== x.dicho ? `\n         [STT]: ${x.oido}` : ""}` : x.quien === "agente" ? `AGENTE: ${x.texto}${x.herramientas?.length ? `  <herramientas: ${x.herramientas.join(", ")}>` : ""}` : `SISTEMA: ${x.texto}`).join("\n").slice(0, 9000);
   const usr = `ESCENARIO ${e.id}: ${e.titulo}\nDEBE: ${e.debe}\nNO DEBE: ${e.noDebe}\nRESULTADO DE LA LLAMADA: ${llamada.resultado}\nTRANSCRIPCION:\n${trTxt}\nTOOLS: ${JSON.stringify(llamada.tools.map((t: any) => ({ n: t.nombre, r: JSON.stringify(t.resultado).slice(0, 180) }))).slice(0, 2800)}\nBD: pedidos=${JSON.stringify(orders.map((o: any) => ({ total: o.total, canal: o.canal, direccion: o.customer_address, items: o.items.map((i: any) => `${i.quantity}x ${i.name}@${i.price}`) })))}; callbacks=${JSON.stringify(callbacks.map((c: any) => c.reason))}\nFALLAS DETERMINISTAS: ${hard.join(" ; ") || "ninguna"}${caidas.length ? `\nINFRA: ${caidas.join(",")}` : ""}`;
   let jr: any = { veredicto: "PARCIAL", motivo: "juez sin respuesta tras 3 intentos", causa: "juez", severidad: "ninguna" };
+  let topeEnJuez = false;
   for (let intento = 0; intento < 3; intento += 1) {
+    try { verificarTope(); } catch { topeEnJuez = true; break; }
     try {
       const out = await chat([{ role: "system", content: JUEZ_SYS }, { role: "user", content: usr }], { max: 1500, json: true, model: JUEZ });
       const m = /\{[\s\S]*\}/.exec(out);
@@ -277,11 +323,14 @@ for (const e of ESCENARIOS) {
       if (typeof j.veredicto === "string") { jr = j; break; }
     } catch { /* reintenta */ }
   }
+  if (topeEnJuez) { cortado = true; pendientes += 1; console.log("CORTE por tope antes del juez en", e.id); break; }
   const turnosAg = llamada.registro.filter((x: TurnoRegistro) => x.quien === "agente" && x.msTurno !== undefined);
   const palabras = turnosAg.map((x: TurnoRegistro) => (x.texto ?? "").split(/\s+/).filter(Boolean).length);
   Object.assign(rec, {
     resultado: llamada.resultado, hard, juez: jr.veredicto, motivo: jr.motivo, causa: hard.length || jr.veredicto !== "PASA" ? jr.causa : "ninguna", severidad: jr.severidad,
-    veredicto: hard.length === 0 && jr.veredicto === "PASA" ? "PASA" : "FALLA", soloHard: hard.length === 0 ? "PASA" : "FALLA",
+    // Una llamada con caida o respuesta vacia del LLM (infra) NO es evidencia del agente: queda INVALIDA, fuera de la tasa de acierto, y se reintenta.
+    invalida: caidas.length > 0,
+    veredicto: caidas.length > 0 ? "INVALIDA" : hard.length === 0 && jr.veredicto === "PASA" ? "PASA" : "FALLA", soloHard: hard.length === 0 ? "PASA" : "FALLA",
     infra: caidas, pedidos: orders.map((o: any) => ({ total: o.total, canal: o.canal, items: o.items.map((i: any) => `${i.quantity}x ${i.name}@${i.price}`), direccion: o.customer_address })), callbacks: callbacks.map((c: any) => c.reason),
     turnos: llamada.registro, tools: llamada.tools.map((t: any) => ({ n: t.nombre, r: JSON.stringify(t.resultado).slice(0, 220) })), toolLatMs: llamada.toolLatMs,
     msPrimeraFrase: turnosAg.map((x: TurnoRegistro) => x.msPrimeraFrase).filter((x: any) => typeof x === "number"), msTurno: turnosAg.map((x: TurnoRegistro) => x.msTurno), palabrasAgente: palabras,
@@ -295,7 +344,10 @@ for (const e of ESCENARIOS) {
 }
 const uso1 = (await usoRealOpenRouter()) ?? uso0;
 const ran = results.filter((r) => ESCENARIOS.some((e) => e.id === r.id));
-console.log(`\nRESUMEN rep=${REP}: ${ran.filter((r) => r.veredicto === "PASA").length}/${ran.length} PASAN | gasto de esta corrida (OpenRouter /key delta) $${(uso1 - uso0).toFixed(3)}${cortado ? ` | CORTADO por tope $${CORTE}; pendientes ${pendientes}` : ""}`);
-appendFileSync(`${ARCHIVO}.gasto.jsonl`, JSON.stringify({ rep: REP, usoInicio: uso0, usoFin: uso1, deltaUsd: uso1 - uso0, cuentaPropiaUsd: llmAcum + gasto.usd, agenteUsd: llmAcum, clienteJuezUsd: gasto.usd, cortado, pendientes, ts: new Date().toISOString() }) + "\n");
+const validas = ran.filter((r) => !r.invalida);
+const incompleta = ran.length < esperados;
+if (incompleta) console.log(`\nAVISO: corrida INCOMPLETA, ${ran.length}/${esperados} escenarios con resultado${cortado ? " (cortada por tope)" : ""}; la tasa NO es comparable con una corrida completa`);
+console.log(`\nRESUMEN rep=${REP}${SIN_ZDR ? " [NO OFICIAL: sin ZDR]" : ""}: ${validas.filter((r) => r.veredicto === "PASA").length}/${validas.length} PASAN (validas; ${ran.length - validas.length} invalidas por infraestructura, aparte)${incompleta ? " | INCOMPLETA" : ""} | gasto de esta corrida (OpenRouter /key delta) $${(uso1 - uso0).toFixed(3)}${cortado ? ` | CORTADO por tope $${CORTE}; pendientes ${pendientes}` : ""}`);
+appendFileSync(`${ARCHIVO}.gasto.jsonl`, JSON.stringify({ rep: REP, usoInicio: uso0, usoFin: uso1, deltaUsd: uso1 - uso0, cuentaPropiaUsd: llmAcum + gasto.usd, agenteUsd: llmAcum, clienteJuezUsd: gasto.usd, cortado, pendientes, esperados, conResultado: ran.length, validas: validas.length, incompleta, ...config, ts: new Date().toISOString() }) + "\n");
 await s.stop();
 process.exit(cortado ? 3 : 0);
