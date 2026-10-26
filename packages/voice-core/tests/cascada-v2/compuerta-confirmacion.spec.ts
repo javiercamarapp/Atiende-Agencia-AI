@@ -21,8 +21,8 @@ const paso = (texto: string, ...tools: Llamada[]): TurnoLlm => async (_p, dice) 
 };
 
 /** Servidor simulado del cierre. `laxo` = confirmar_resumen NO revisa el turno (prueba que la compuerta sola sostiene la garantia). */
-function servidor(opts: { laxo?: boolean } = {}) {
-  const s = { turno: 0, hashActual: "", quotedTurn: -1, confirmado: false, pedidos: 0, registro: [] as string[], cambioAlCotizar: false, n: 0, total: 328 };
+function servidor(opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean } = {}) {
+  const s = { turno: 0, hashActual: "", quotedTurn: -1, confirmado: false, pedidos: 0, registro: [] as string[], cambioAlCotizar: false, n: 0, total: 328, fijo: false };
   const ejecutar = async (nombre: string): Promise<unknown> => {
     s.registro.push(nombre);
     if (nombre === "cotizar_pedido") {
@@ -32,10 +32,11 @@ function servidor(opts: { laxo?: boolean } = {}) {
         s.hashActual = `h${s.n}`.padEnd(32, "0");
         s.quotedTurn = s.turno;
         s.confirmado = false;
-        s.total = s.cambioAlCotizar ? 310 : 328;
+        if (!s.fijo) s.total = s.cambioAlCotizar ? 310 : 328;
         s.cambioAlCotizar = false;
       }
-      return { total: s.total, quote_hash: s.hashActual };
+      if (opts.sinTotal) return { quote: {}, quote_hash: s.hashActual };
+      return opts.anidado ? { quote: { total: s.total }, quote_hash: s.hashActual } : { total: s.total, quote_hash: s.hashActual };
     }
     if (nombre === "confirmar_resumen") {
       if (s.hashActual === "") return { error: "sin_cotizacion" };
@@ -55,9 +56,9 @@ function servidor(opts: { laxo?: boolean } = {}) {
   return { s, ejecutar };
 }
 
-async function armar(guion: TurnoLlm[], opts: { laxo?: boolean; regla?: typeof REGLA | { confirmar: string; crear: string } } = {}) {
+async function armar(guion: TurnoLlm[], opts: { laxo?: boolean; anidado?: boolean; sinTotal?: boolean; regla?: typeof REGLA | { confirmar: string; crear: string } } = {}) {
   reloj = 1_700_000_000_000;
-  const srv = servidor(opts.laxo === undefined ? {} : { laxo: opts.laxo });
+  const srv = servidor({ ...(opts.laxo === undefined ? {} : { laxo: opts.laxo }), ...(opts.anidado ? { anidado: true } : {}), ...(opts.sinTotal ? { sinTotal: true } : {}) });
   const llm = llmFalso(guion);
   const stt = new SttFalso();
   const tts = new TtsFalso();
@@ -232,10 +233,36 @@ describe("compuerta confirmar -> crear: el codigo exige una AFIRMACION del clien
     expect(srv.s.pedidos).toBe(1);
   });
 
-  it("negacion y luego «si» en el turno siguiente: el primero no crea, el segundo si (la compuerta se re-arma)", async () => {
-    const { srv, cliente } = await armar([...cotizaYLee, confirmaYCrea, paso("¿Quiere cambiar algo?"), confirmaYCrea, paso("Listo.")]);
+  it("negacion, el agente RELEE el resumen con el total y luego «si»: el primero no crea, el segundo si (la compuerta se re-arma)", async () => {
+    const { srv, cliente } = await armar([...cotizaYLee, confirmaYCrea, paso("Perdone. Son seis de bistec, trescientos veintiocho pesos. ¿Es correcto?"), confirmaYCrea, paso("Listo.")]);
     await cliente("seis de bistec a domicilio");
     await cliente("no, espere");
+    expect(srv.s.pedidos).toBe(0);
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+  });
+
+  it("negacion, el agente contesta SIN repetir el total («¿quiere cambiar algo?») y luego «si»: NO se crea hasta releer el resumen (P2)", async () => {
+    const { srv, cliente, logs } = await armar([...cotizaYLee, paso("Claro, ¿quiere cambiar algo?"), confirmaYCrea, paso("Le repito el resumen completo."), confirmaYCrea, paso("Listo.")]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("no, espere");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(0);
+    expect(logs).toContain("v2_resumen_olvidado");
+  });
+
+  it("pregunta intermedia («¿cuanto es el envio?») respondida sin el total y luego «si»: no crea; releyendo el total y «si», si", async () => {
+    const { srv, cliente } = await armar([
+      ...cotizaYLee,
+      paso("El envío son treinta pesos."),
+      confirmaYCrea,
+      paso("Son seis de bistec, trescientos veintiocho pesos con envío. ¿Es correcto?"),
+      confirmaYCrea,
+      paso("Listo."),
+    ]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("¿cuánto es el envío?");
+    await cliente("sí");
     expect(srv.s.pedidos).toBe(0);
     await cliente("sí");
     expect(srv.s.pedidos).toBe(1);
@@ -249,6 +276,37 @@ describe("compuerta confirmar -> crear: «resumen leido» exige el total (P1-2)"
     await cliente("sí");
     expect(srv.s.pedidos).toBe(0);
     expect(logs).toContain("v2_resumen_sin_total");
+  });
+
+  it("el total dicho con OTRA cantidad parecida («mil trescientos veintiocho») no abre la compuerta (compara cantidades, no subcadenas)", async () => {
+    const { srv, cliente } = await armar([paso("", tc("q", "cotizar_pedido")), paso("Son seis de bistec, mil trescientos veintiocho pesos. ¿Es correcto?"), paso("", tc("c", "confirmar_resumen"), tc("p", "crear_pedido")), paso("Releo.")]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(0);
+  });
+
+  it("totales terminados en 21 («veintiún»): el agente que dice «veintiún pesos» SI abre la compuerta", async () => {
+    const { srv, cliente } = await armar([paso("", tc("q", "cotizar_pedido")), paso("Son tres de bistec, ciento veintiún pesos. ¿Es correcto?"), paso("", tc("c", "confirmar_resumen"), tc("p", "crear_pedido")), paso("Listo.")]);
+    srv.s.total = 121;
+    srv.s.fijo = true;
+    await cliente("tres de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+  });
+
+  it("forma REAL de la ruta de voz: { quote: { total }, quote_hash } (total anidado)", async () => {
+    const { srv, cliente } = await armar([paso("", tc("q", "cotizar_pedido")), paso(RESUMEN), paso("", tc("c", "confirmar_resumen"), tc("p", "crear_pedido")), paso("Listo.")], { anidado: true });
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+  });
+
+  it("cotizacion SIN total conocido: la compuerta NO se abre (nunca el respaldo de palabras) y queda v2_total_desconocido", async () => {
+    const { srv, cliente, logs } = await armar([paso("", tc("q", "cotizar_pedido")), paso("Son seis de bistec, a domicilio, en efectivo, a nombre de Juan, para dentro de media hora. ¿Es correcto?"), paso("", tc("c", "confirmar_resumen"), tc("p", "crear_pedido")), paso("Releo.")], { sinTotal: true });
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(0);
+    expect(logs).toContain("v2_total_desconocido");
   });
 
   it("un resumen largo SIN el total tampoco cuenta; con el total en cifra o en palabras si", async () => {

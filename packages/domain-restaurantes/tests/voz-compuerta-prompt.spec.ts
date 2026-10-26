@@ -56,4 +56,10 @@ describe("prompt de voz: el contrato de la compuerta es operable", () => {
     expect(lineas.length).toBeGreaterThan(0);
     for (const l of lineas) expect(l).not.toMatch(/sin esperar (al|el) (cliente|sí|si)/i);
   });
+
+  it("ante una respuesta ambigua pide «sí o no»; con un dato nuevo repite el resumen completo con el total; tras una pregunta intermedia vuelve a decir el total", () => {
+    expect(bloque).toMatch(/¿Me confirma con un sí o un no\?/);
+    expect(bloque).toMatch(/si dio un dato nuevo, repita el resumen completo con el total y pida un sí limpio/);
+    expect(bloque).toMatch(/vuelva a decir el total del resumen antes de pedir el sí/);
+  });
 });
