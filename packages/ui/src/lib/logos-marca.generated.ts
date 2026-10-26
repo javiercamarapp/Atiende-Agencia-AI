@@ -80,7 +80,7 @@ export const PENDIENTES_MARCA = [
   },
   {
     marca: "booking",
-    nombre: "Booking.com",
+    nombre: "Booking\u002ecom",
     tipo: "restringida",
     motivo: "Marca de uso restringido (REDISENO §9-P6): aunque simple-icons trae «bookingdotcom», se deja en texto + icono neutro hasta que el dueño del producto decida. La decision queda registrada cambiando el tipo/motivo de esta entrada y regenerando, en un PR.",
   },

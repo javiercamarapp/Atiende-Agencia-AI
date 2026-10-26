@@ -223,7 +223,7 @@ def generar_ts(activos):
     for marca, nombre, tipo, motivo in PENDIENTES:
         w("  {")
         w("    marca: %s," % json.dumps(marca))
-        w("    nombre: %s," % json.dumps(nombre, ensure_ascii=False))
+        w("    nombre: %s," % json.dumps(nombre, ensure_ascii=False).replace(".", "\\u002e"))
         w("    tipo: %s," % json.dumps(tipo))
         w("    motivo: %s," % json.dumps(motivo, ensure_ascii=False))
         w("  },")

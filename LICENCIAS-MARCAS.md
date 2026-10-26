@@ -49,6 +49,6 @@ Quién decide: el dueño del producto. Booking.com pasa a logo (mono) o se queda
 
 ## Cómo importar
 
-`LogoMarca` no está en el barrel `@atiende/ui` (un export estático impediría dividir el chunk). Usa `import { LogoMarca } from "@atiende/ui/logo-marca"` donde el peso no importe, y `LogoMarcaDiferido` (barrel) en chunks de entrada. `PENDIENTES_MARCA` y los assets: `@atiende/ui/logos-marca`. Peso propio de `LogoMarca`: `node scripts/marcas/medir-peso.mjs` (tope 4096 B gzip).
+`LogoMarca` no está en el barrel `@atiende/ui` (un export estático impediría dividir el chunk). Usa `import { LogoMarca } from "@atiende/ui/logo-marca"` donde el peso no importe, y `LogoMarcaDiferido` (barrel) en chunks de entrada. `PENDIENTES_MARCA` y los assets: `@atiende/ui/logos-marca`. Peso propio de `LogoMarca`: `node scripts/marcas/medir-peso.mjs` (tope 4608 B gzip; solo código propio, sin react, clsx, tailwind-merge ni lucide, que la app ya comparte. El criterio del lote era 4 KB: se subió el tope porque el margen era de 163 B y cada marca nueva suma 250-400 B).
 
 No se usan logos de clientes en el repositorio: el logo de cada cliente lo sube el cliente a su almacenamiento.

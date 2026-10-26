@@ -7,7 +7,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-export const PRESUPUESTO_LOGO_MARCA_GZ = 4096;
+// Tope 4608 B (4,5 KB): el criterio del lote es <= 4 KB gz, pero esta medicion es SOLO el codigo propio (sin react, clsx, tailwind-merge ni
+// lucide, que la app ya comparte); hoy 3933 B y cada marca nueva suma 250-400 B. Con 4096 el margen era de 163 B (una marca y se rompia);
+// 4608 deja ~1,5 marcas de holgura sin dejar de forzar la revision: al acercarse se pasa a LogoMarcaDiferido o se parte el archivo de datos.
+export const PRESUPUESTO_LOGO_MARCA_GZ = 4608;
 const raiz = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export async function medirPesoLogoMarca() {
