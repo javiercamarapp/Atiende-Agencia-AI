@@ -6,9 +6,11 @@
 //    (respuesta `interrumpido_por_el_cliente`): un crear_pedido nunca se ejecuta sobre un resumen que el cliente acaba de rechazar.
 //  - `confirmacionAntesDeCrear`: Anthropic en OpenRouter no admite `parallel_tool_calls` (con require_parameters daria 404), asi que el cliente impide que el modelo
 //    confirme y cree sin que el cliente haya dicho «si»: tras `confirmar`, un `crear` posterior espera la respuesta del cliente (`espera_confirmacion_del_cliente`).
-//    Con `cotizar` configurado la regla es de MAQUINA DE ESTADOS (la que el servidor ya hace cumplir en el cierre): si el resumen de la ultima cotizacion YA se le leyo al
-//    cliente en un turno anterior (`huellaOida`) y `confirmar` tuvo exito en este turno (el servidor solo lo acepta en un turno POSTERIOR a la cotizacion, o sea, tras el «si»),
-//    `crear` corre sin pedir un segundo «si». Si el resumen no se ha leido, cambio, o `confirmar` fue rechazado, `crear` espera como antes.
+//    Con `cotizar` configurado la regla es de MAQUINA DE ESTADOS del lado del CLIENTE (este codigo): el servidor NO garantiza el turno del «si» en voz (en voz `flow.turn` es null
+//    y `assertCanConfirm` solo compara turnos cuando ambos existen), asi que la seguridad la da esto: `huellaOida` (el resumen con su TOTAL ya se le leyo al cliente, fijada solo
+//    cuando el agente termina de hablar sin ser interrumpido), `afirmacion` (el turno del cliente es una afirmacion pura) y `confirmar` con exito en este turno. Con las tres,
+//    `crear` corre sin pedir un segundo «si». Sin ellas (resumen no leido o cambiado, `confirmar` rechazado, turno sin afirmacion) `crear` NO corre, ni siquiera si el modelo
+//    la llama sin pasar por `confirmar` (p. ej. el servidor ya quedo `confirmado` en un turno anterior y el cliente ahora dice «no, espera»).
 import type { ToolCallLlmVoz } from "../cascada-openrouter.ts";
 import type { ToolCallPedida } from "../sesion.ts";
 
@@ -152,6 +154,12 @@ export async function ejecutarHerramientas(
       continue;
     }
     if (regla?.cotizar && tc.nombre === regla.crear) {
+      // Sin una afirmacion del cliente en ESTE turno (negacion, pregunta, ruido, contenido nuevo) crear nunca corre, aunque el servidor siga «confirmado» de un turno anterior.
+      if (espera.afirmacion !== true) {
+        log?.("v2_crear_sin_afirmacion", { motivo: "bloquea_crear", herramienta: regla.crear });
+        resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
+        continue;
+      }
       // El pedido que se crea debe ser el que el cliente oyo: un quote_hash distinto del ultimo cotizado/leido se rechaza y obliga a re-cotizar y re-leer.
       const crudo = argumentosDe(tc.argsJson)["quote_hash"];
       const pedida = typeof crudo === "string" && crudo.trim() !== "" ? crudo.trim().toLowerCase() : null;
@@ -162,7 +170,6 @@ export async function ejecutarHerramientas(
         resultados.push({ llamada: tc, salida: { error: "resumen_distinto_al_leido", mensaje: "El pedido cambio despues de leerle el resumen al cliente. Cotice de nuevo, lea el resumen completo UNA vez y pida UN solo «si» antes de crear_pedido." } });
         continue;
       }
-      if (espera.afirmacion !== true) log?.("v2_crear_sin_afirmacion", { motivo: "ejecuta_sin_afirmacion", herramienta: regla.crear });
     }
     const res = await una(tc);
     resultados.push(res);

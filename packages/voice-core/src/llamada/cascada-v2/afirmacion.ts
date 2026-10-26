@@ -104,7 +104,7 @@ function valorDeRacha(tokens: readonly string[]): number | null {
       // «y» solo une decena y unidad: «treinta y cinco».
       const ant = tokens[i - 1] === undefined ? undefined : VALOR.get(tokens[i - 1] as string);
       const sig = tokens[i + 1] === undefined ? undefined : VALOR.get(tokens[i + 1] as string);
-      if (ant === undefined || sig === undefined || ant < 30 || ant % 10 !== 0 || ant >= 100 || sig < 1 || sig > 9) return null;
+      if (ant === undefined || sig === undefined || ant < 20 || ant % 10 !== 0 || ant >= 100 || sig < 1 || sig > 9) return null;
       continue;
     }
     if (t === "mil") {
@@ -125,44 +125,87 @@ function valorDeRacha(tokens: readonly string[]): number | null {
   return hayPalabra ? resultado + acc : null;
 }
 
-/** Todas las cantidades (palabras y cifras) que menciona el texto. */
-function cantidadesMencionadas(hablado: string): number[] {
+const FIN_FRASE = /^(?:\s*[.,;:?!¿¡)]|\s*$)/;
+
+/** Cantidades de las cifras del texto: «328», «$328.00», «1,250», «1 328» (miles con espacio). «1.328» es 1.328 y «.328» no es cifra; «328 mil» vale 328 000; «328 con 50 centavos» vale 328.50. */
+function cantidadesEnCifras(texto: string): number[] {
   const out: number[] = [];
-  // Cifras: «328», «$328.00», «1,250». «1.328» es 1.328 (no 328) y «.328» no es una cifra independiente.
-  const reCifra = /(?<![\d.,])\$?\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?!\d)/g;
-  const crudo = hablado.toLowerCase();
-  for (const m of crudo.matchAll(reCifra)) {
-    const entero = Number((m[1] as string).replace(/,/g, ""));
-    const frac = m[2] === undefined ? 0 : Number(`0.${m[2]}`);
-    out.push(entero + frac);
-  }
-  // Palabras: rachas maximales de palabras numericas (con «y» interna).
-  const tokens = normalizar(hablado).split(" ").filter((t) => t !== "");
-  const esNum = (t: string): boolean => VALOR.has(t) || t === "mil" || CENTENAS_SING.has(t);
-  let racha: string[] = [];
-  const cerrar = (): void => {
-    while (racha[racha.length - 1] === "y") racha.pop();
-    if (racha.length > 0) {
-      const v = valorDeRacha(racha);
-      if (v !== null) out.push(v);
+  const re = /(?<![\d.,])\$?\s?(\d{1,3}(?:[, ]\d{3})+|\d+)(?:\.(\d+))?(?!\d)/g;
+  for (const m of texto.matchAll(re)) {
+    const entero = Number((m[1] as string).replace(/[, ]/g, ""));
+    let valor = entero + (m[2] === undefined ? 0 : Number(`0.${m[2]}`));
+    const resto = texto.slice((m.index ?? 0) + m[0].length);
+    if (/^\s*mil\b/i.test(resto)) valor = entero * 1000;
+    else {
+      // «328 con 50 centavos», «328 pesos con 50»: los centavos forman parte de la cantidad (no se acepta 328 a secas como 328.50).
+      const c = /^\s*(?:pesos\s*)?(?:con|y|punto)\s+(\d{1,2})(?:\s*centavos|\s*\/\s*100)?/i.exec(resto);
+      if (c) {
+        const despues = resto.slice(c[0].length);
+        if (/centavos|\/\s*100/i.test(c[0]) || FIN_FRASE.test(despues)) valor = entero + Number(c[1]) / 100;
+      }
     }
-    racha = [];
-  };
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i] as string;
-    if (esNum(t)) racha.push(t);
-    else if (t === "y" && racha.length > 0 && esNum(tokens[i + 1] ?? "")) racha.push(t);
-    else cerrar();
+    out.push(valor);
   }
-  cerrar();
   return out;
 }
 
-/** `true` si lo hablado menciona el total COMPLETO: la cifra («328», «$328.00», «1,250») o sus palabras. Compara cantidades enteras, no subcadenas: «mil trescientos veintiocho» NO es 328. */
+/** Cantidades de las palabras del texto: rachas maximales de palabras numericas. Una coma entre un digito suelto y centenas («tres, cuatrocientos veintiocho») es «mil»; «con cincuenta [centavos]» al final suma centavos. */
+function cantidadesEnPalabras(texto: string): number[] {
+  const out: number[] = [];
+  const crudo = texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const tokens = crudo.match(/[a-z]+|[.,;:?!]/g) ?? [];
+  const esNum = (t: string | undefined): boolean => t !== undefined && (VALOR.has(t) || t === "mil" || CENTENAS_SING.has(t));
+  const esCentena = (t: string | undefined): boolean => t !== undefined && (((VALOR.get(t) ?? 0) >= 100 && (VALOR.get(t) ?? 0) % 100 === 0) || t === "ciento");
+  let i = 0;
+  const leerRacha = (desde: number): { tokens: string[]; fin: number } => {
+    const r: string[] = [];
+    let j = desde;
+    while (j < tokens.length) {
+      const t = tokens[j] as string;
+      if (esNum(t)) r.push(t);
+      else if (t === "y" && r.length > 0 && esNum(tokens[j + 1])) r.push(t);
+      else if (t === "," && r.length === 1 && (VALOR.get(r[0] as string) ?? 0) >= 1 && (VALOR.get(r[0] as string) ?? 0) <= 9 && esCentena(tokens[j + 1])) r.push("mil");
+      else break;
+      j++;
+    }
+    while (r[r.length - 1] === "y") r.pop();
+    return { tokens: r, fin: j };
+  };
+  while (i < tokens.length) {
+    if (!esNum(tokens[i])) {
+      i++;
+      continue;
+    }
+    const { tokens: racha, fin } = leerRacha(i);
+    i = Math.max(fin, i + 1);
+    const v = valorDeRacha(racha);
+    if (v === null) continue;
+    // Centavos: «<total> [pesos] con <N> [centavos]» (N de 1 a 99 y fin de frase o «centavos»): la cantidad es total + N/100.
+    let j = fin;
+    if (tokens[j] === "pesos") j++;
+    if (tokens[j] === "con" || tokens[j] === "y" || tokens[j] === "punto") {
+      const c = leerRacha(j + 1);
+      const n = c.tokens.length > 0 ? valorDeRacha(c.tokens) : null;
+      if (n !== null && n >= 1 && n <= 99 && (tokens[c.fin] === "centavos" || tokens[c.fin] === undefined || /^[.,;:?!]$/.test(tokens[c.fin] as string))) {
+        out.push(v + n / 100);
+        i = c.fin;
+        continue;
+      }
+    }
+    out.push(v);
+  }
+  return out;
+}
+
+/**
+ * `true` si lo hablado menciona el total COMPLETO: la cifra («328», «$328.00», «1,250», «1 328») o sus palabras («mil doscientos cincuenta», «tres, cuatrocientos veintiocho»).
+ * Compara la CANTIDAD completa, centavos incluidos: «mil trescientos veintiocho» o «328 mil» no son 328; «328 con cincuenta» no es 328 ni 328 a secas es 328.50.
+ */
 export function contieneTotal(hablado: string, total: number | null | undefined): boolean {
   if (typeof total !== "number" || !Number.isFinite(total) || total <= 0) return false;
   const objetivo = Math.round(total * 100) / 100;
-  const entero = Math.floor(objetivo + 1e-9);
-  const hayCentavos = Math.abs(objetivo - entero) > 1e-9;
-  return cantidadesMencionadas(hablado).some((c) => Math.abs(c - objetivo) < 0.005 || (hayCentavos && Number.isInteger(c) && c === entero));
+  return [...cantidadesEnCifras(hablado), ...cantidadesEnPalabras(hablado)].some((c) => Math.abs(c - objetivo) < 0.005);
 }
