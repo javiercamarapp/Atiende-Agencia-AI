@@ -154,7 +154,14 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       if (objetivo?.closest?.('[role="listbox"]') || panel.current?.querySelector('[role="combobox"][aria-expanded="true"]')) return;
       // Otro diálogo/alerta encima (p. ej. una confirmación): Escape es suyo; este chat sigue abierto.
       // Se mira el documento entero (no solo el origen del evento): el foco puede estar en <body> con la confirmación abierta.
-      const otro = Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"]')).some((d) => d !== panel.current && !panel.current?.contains(d));
+      // No cuentan: el propio panel, los diálogos que lo CONTIENEN (el shell puede mantener uno montado alrededor), los de su interior ni los ocultos
+      // (`hidden`, `aria-hidden="true"`, display:none o visibility:hidden, propios o heredados de un ancestro): ninguno puede quedarse con el Escape.
+      const otro = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"],[role="alertdialog"]')).some((d) => {
+        if (d === panel.current || d.contains(panel.current) || panel.current?.contains(d)) return false;
+        if (d.closest('[hidden],[aria-hidden="true"]')) return false;
+        const estilo = window.getComputedStyle(d);
+        return estilo.display !== "none" && estilo.visibility !== "hidden";
+      });
       if (otro) return;
       e.stopPropagation();
       alCerrar.current();

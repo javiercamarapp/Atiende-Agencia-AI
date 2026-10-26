@@ -404,6 +404,22 @@ describe("<WidgetWhatsApp />", () => {
     expect(document.activeElement).not.toBe(primero);
   });
 
+  it("Tab con el foco en un listbox (portal ajeno al panel) no se intercepta: el chat no llama preventDefault", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    const lista = document.createElement("div");
+    lista.setAttribute("role", "listbox");
+    lista.tabIndex = -1;
+    q('[data-testid="chat-whatsapp"]')!.appendChild(lista);
+    lista.focus();
+    const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    act(() => {
+      lista.dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(false);
+    lista.remove();
+  });
+
   it("Escape con otro dialog/alertdialog encima NO cierra el chat, tanto si nace dentro de él como en <body>", async () => {
     montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
     await abrir();
@@ -422,5 +438,54 @@ describe("<WidgetWhatsApp />", () => {
     keydown(caja(), "Escape");
     await esperar();
     expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
+  });
+
+  it("un dialog OCULTO (hidden, aria-hidden, display:none o visibility:hidden) montado en el documento NO bloquea el Escape del chat", async () => {
+    const ocultadores: Array<(d: HTMLElement) => void> = [
+      (d) => d.setAttribute("hidden", ""),
+      (d) => d.setAttribute("aria-hidden", "true"),
+      (d) => void (d.style.display = "none"),
+      (d) => void (d.style.visibility = "hidden"),
+    ];
+    for (const ocultar of ocultadores) {
+      montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+      await abrir();
+      const oculto = document.createElement("div");
+      oculto.setAttribute("role", "dialog");
+      ocultar(oculto);
+      document.body.appendChild(oculto);
+      keydown(document.body, "Escape");
+      await esperar();
+      oculto.remove();
+      expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
+      rendered?.unmount();
+      rendered = undefined;
+    }
+  });
+
+  it("un dialog que CONTIENE al panel (shell que lo mantiene montado) NO bloquea el Escape del chat", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    // El panel vive en un portal bajo <body>: el ancestro que lo contiene es el propio <body> con role="dialog" (shell que se declara diálogo).
+    document.body.setAttribute("role", "dialog");
+    try {
+      keydown(caja(), "Escape");
+      await esperar();
+      expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
+    } finally {
+      document.body.removeAttribute("role");
+    }
+  });
+
+  it("un dialog ajeno VISIBLE sigue bloqueando el Escape (control del caso anterior)", async () => {
+    montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+    await abrir();
+    const ajeno = document.createElement("div");
+    ajeno.setAttribute("role", "dialog");
+    document.body.appendChild(ajeno);
+    keydown(document.body, "Escape");
+    await esperar();
+    expect(q('[data-testid="chat-whatsapp"]')).not.toBeNull();
+    ajeno.remove();
   });
 });
