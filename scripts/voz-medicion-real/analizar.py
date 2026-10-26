@@ -11,8 +11,16 @@ archivos = [a for a in archivos if not a.endswith(".jsonl") and not re.search(r"
 reps = {}
 for a in archivos:
     n = re.search(r"rep(\d+)\.json$", a).group(1)
-    reps[n] = json.load(open(a))
+    try:
+        datos = json.load(open(a))
+    except ValueError as e:
+        sys.exit(f"ERROR: {a} no es JSON valido ({e}); revisalo antes de analizar")
+    if not isinstance(datos, list):
+        sys.exit(f"ERROR: {a} no contiene una lista de resultados")
+    reps[n] = datos
 filas = [dict(r, rep=n) for n, rs in reps.items() for r in rs]
+if not filas:
+    sys.exit(f"No hay resultados en {carpeta} para la etiqueta {etq!r}")
 
 
 def wilson(k, n, z=1.96):
@@ -51,21 +59,44 @@ def bootstrap(por_esc, B=4000, seed=7):
     return vals[int(0.025 * B)], vals[int(0.975 * B)]
 
 
-ok = lambda r: r["veredicto"] == "PASA"
+# Una llamada con caida o respuesta vacia del LLM (infra) NO es evidencia del agente: no cuenta como acierto NI como fallo; se reporta aparte.
+invalida = lambda r: bool(r.get("invalida")) or r.get("veredicto") == "INVALIDA" or bool(r.get("infra"))
+ok = lambda r: r.get("veredicto") == "PASA" and not invalida(r)
+todas = filas
+inval = [r for r in todas if invalida(r)]
+filas = [r for r in todas if not invalida(r)]
+modelos = sorted(set(str(r.get("modelo", "?")) for r in todas))
+no_oficiales = [r for r in todas if r.get("sinZdr") or r.get("oficial") is False]
+print(f"Modelo(s): {', '.join(modelos)}")
+if no_oficiales:
+    print(f"- **AVISO: {len(no_oficiales)} llamadas NO OFICIALES (VOZ_SIN_ZDR=1, sin retencion cero): no usar como medicion de produccion**")
+total_esc = max([r.get("totalEscenarios", 0) for r in todas] + [0])
+hay_filtro = any(r.get("filtro") for r in todas)
+for n, rs in sorted(reps.items()):
+    ids = set(r["id"] for r in rs if not invalida(r))  # un escenario invalido no esta medido
+    if total_esc and len(ids) < total_esc and not hay_filtro:
+        print(f"- **AVISO: repeticion {n} INCOMPLETA: {len(ids)}/{total_esc} escenarios medidos (cortada por tope, interrumpida o con llamadas invalidas); su tasa no es comparable con una completa**")
+if inval:
+    print(f"- **{len(inval)} llamadas INVALIDAS por infraestructura del LLM (caida/vacia), fuera de la tasa y por reintentar**: {', '.join(sorted(set(r['id'] for r in inval)))}")
 tot, pas = len(filas), sum(ok(r) for r in filas)
-print(f"## Acierto global ({len(reps)} repeticiones, {len(set(r['id'] for r in filas))} escenarios, {tot} llamadas)\n")
+if tot == 0:
+    sys.exit("No hay llamadas validas para calcular la tasa (todas invalidas o ninguna).")
+print(f"## Acierto global ({len(reps)} repeticiones, {len(set(r['id'] for r in filas))} escenarios, {tot} llamadas validas)\n")
 lo, hi = wilson(pas, tot)
 por_esc = {}
 for r in filas:
     por_esc.setdefault(r["id"], []).append(1 if ok(r) else 0)
 blo, bhi = bootstrap(por_esc)
 print(f"- ACIERTO ESTRICTO (checks deterministas + juez PASA): **{pas}/{tot} = {100*pas/tot:.1f} %**; IC95 Wilson sobre llamadas {100*lo:.1f}-{100*hi:.1f} %; IC95 bootstrap por escenario {100*blo:.1f}-{100*bhi:.1f} %")
-hard_ok = sum(1 for r in filas if not r.get("hard"))
+con_hard = [r for r in filas if "hard" in r]  # las excepciones no traen "hard": no cuentan como si no hubieran fallado
+hard_ok = sum(1 for r in con_hard if not r["hard"])
 juez_ok = sum(1 for r in filas if r.get("juez") == "PASA")
-print(f"- Solo checks deterministas: {hard_ok}/{tot} = {100*hard_ok/tot:.1f} %  |  solo juez: {juez_ok}/{tot} = {100*juez_ok/tot:.1f} %")
+nh = len(con_hard)
+print(f"- Solo checks deterministas: {hard_ok}/{nh} = {100*hard_ok/nh if nh else 0:.1f} %  |  solo juez: {juez_ok}/{tot} = {100*juez_ok/tot:.1f} %")
 for n, rs in sorted(reps.items()):
-    k = sum(ok(r) for r in rs)
-    print(f"- Repeticion {n}: {k}/{len(rs)} = {100*k/len(rs):.1f} %")
+    vs = [r for r in rs if not invalida(r)]
+    k = sum(ok(r) for r in vs)
+    print(f"- Repeticion {n}: {k}/{len(vs)} = {100*k/len(vs) if vs else 0:.1f} %")
 estables = sum(1 for v in por_esc.values() if all(v))
 print(f"- Escenarios que pasan en TODAS las repeticiones: {estables}/{len(por_esc)}; los que fallan al menos una vez: {len(por_esc)-estables}")
 excep = [r for r in filas if r.get("excepcion")]
@@ -91,8 +122,7 @@ for r in filas:
         c[r.get("causa", "?")] = c.get(r.get("causa", "?"), 0) + 1
 for k2, v in sorted(c.items(), key=lambda x: -x[1]):
     print(f"- {k2}: {v}")
-inf = [r for r in filas if r.get("infra")]
-print(f"- Llamadas con eventos de infraestructura del LLM (caida/vacia): {len(inf)}")
+print(f"- Llamadas con eventos de infraestructura del LLM (caida/vacia), excluidas arriba: {len(inval)}")
 
 print("\n## Latencia por turno (texto del cliente -> agente; SIN STT ni TTS)\n")
 pf = [x for r in filas for x in r.get("msPrimeraFrase", [])]
@@ -112,8 +142,8 @@ pw = [x for r in filas for x in r.get("palabrasAgente", [])]
 print(f"\nPalabras por turno del agente: p50 {f(pct(pw,.5))}, p95 {f(pct(pw,.95))}; turnos de mas de 45 palabras: {sum(1 for x in pw if x>45)}/{len(pw)}")
 
 print("\n## Costo\n")
-ag = sum(r.get("llmUsd", 0) for r in filas)
-print(f"- LLM del agente (usage.cost de OpenRouter, suma de las {tot} llamadas): ${ag:.2f}  (${ag/max(tot,1):.3f} por llamada)")
+ag = sum(r.get("llmUsd", 0) for r in todas)
+print(f"- LLM del agente (usage.cost de OpenRouter, suma de las {len(todas)} llamadas, validas e invalidas): ${ag:.2f}  (${ag/max(len(todas),1):.3f} por llamada)")
 for a in sorted(glob.glob(os.path.join(carpeta, f"voz-real-{etq}-rep*.json.gasto.jsonl"))):
     for l in open(a):
         j = json.loads(l)
