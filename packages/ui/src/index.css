@@ -535,6 +535,418 @@
   }
 }
 
+/*
+ * ===========================================================================
+ * DISENO ds3 (lote 1.2): valores de referencia del sistema de diseno nuevo. TODO vive bajo la bandera
+ * html[data-diseno="ds3"] (la pone /theme-boot.js a partir de ?diseno=ds3, ver lib/diseno.ts): sin ella ningun selector de
+ * este bloque coincide y la produccion no cambia. Modo claro = html[data-diseno="ds3"]; oscuro = ...[data-diseno="ds3"].dark
+ * (la clase .dark la sigue poniendo el tema). Va DESPUES de los bloques de ambito y de :root/.dark a proposito:
+ *  - misma especificidad que html[data-ambito="restaurantes"] -> gana por orden; por eso redefine TODO lo que el ambito toca
+ *    (paleta, radios, alto de controles, movimiento, sombras) y el ambito restaurantes no deja colores mezclados;
+ *  - el sidebar ([data-ambito-base]) hereda el valor ds3 en vez de reponer el de Likida (regla `inherit` al final);
+ *  - --primary (acento unico) sigue siendo el azul de Atiende; la accion principal (--action) es la tinta.
+ * Los hex entre parentesis en los comentarios son la referencia verificada (+-1/255) por tests/tokens-ds3.spec.ts.
+ * ===========================================================================
+ */
+@layer base {
+  html[data-diseno="ds3"] {
+    /* Neutros (matiz frio 240). */
+    --background: 240 6.7% 97.1%; /* #f7f7f8 */
+    --canvas: 240 6.7% 97.1%;
+    --sunken: 240 3.7% 94.7%; /* #f1f1f2 */
+    --card: 0 0% 100%;
+    --card-foreground: 240 6.7% 5.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6.7% 5.9%;
+    --soft: 240 3.7% 94.7%;
+    --border: 240 4.2% 90.6%; /* #e6e6e8 */
+    --border-strong: 240 3.8% 84.5%; /* #d6d6d9 */
+    --line2: 240 3.8% 84.5%;
+    --input: 240 3% 52%; /* #818188 (3,87 sobre card, 3,43 sobre sunken) */
+    --control-off: 240 3% 52%;
+    --foreground: 240 6.7% 5.9%;
+    --foreground-2: 240 4.9% 23.9%; /* #3a3a40 */
+    --secondary: 240 3.7% 94.7%;
+    --secondary-foreground: 240 4.9% 23.9%;
+    --muted: 240 3.7% 94.7%;
+    --muted-foreground: 240 3.7% 36.7%; /* #5a5a61 */
+    --faint: 240 3.7% 36.7%;
+    --accent: 240 3.7% 94.7%;
+    --accent-foreground: 240 6.7% 5.9%;
+    --scrim: hsl(240 6.7% 5.9% / 0.4);
+
+    /* Accion (tinta) y foco. */
+    --action: 240 6.7% 5.9%;
+    --action-foreground: 0 0% 100%;
+    --action-hover: 240 5.6% 17.5%; /* #2a2a2f */
+    --ring: 240 6.7% 5.9%;
+
+    /* Acento unico: azul de Atiende. --primary no se usa como texto (solo --primary-ink). */
+    --primary: 224 76% 48%; /* #1d4fd7 */
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 224 76% 95%; /* #e9eefc */
+    --primary-soft-hover: 224 76% 91%; /* #d7e0f9 */
+    --primary-ink: 224 76% 36%; /* #163ba2 */
+    --solido: 224 76% 48%;
+    --solido-foreground: 0 0% 100%;
+    --menu-activo: 0 0% 100%;
+    --menu-activo-foreground: 224 76% 36%;
+    --marca-atiende: 224 76% 48%;
+
+    /* Estados: una sola API success|warning|danger|info x tint|ink; los nombres antiguos apuntan al mismo valor. */
+    --success-tint: 145 46.2% 94.9%;
+    --success-ink: 152 69% 27.8%;
+    --success: 152 69% 27.8%;
+    --warning-tint: 42 100% 94.9%;
+    --warning-ink: 37 82.3% 28.8%;
+    --warning: 37 82.3% 28.8%;
+    --danger-tint: 352 78.9% 96.3%;
+    --danger-ink: 348 65.4% 40.8%;
+    --destructive-tint: 352 78.9% 96.3%;
+    --destructive: 348 65.4% 40.8%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-solido: 348 65.4% 40.8%;
+    --destructive-solido-foreground: 0 0% 100%;
+    --info-tint: 189 39.4% 93.5%;
+    --info-ink: 190 67.2% 23.9%;
+    --info: 190 67.2% 23.9%;
+    --kind-inferred: 240 3% 52%;
+
+    /* Datos categoricos (relleno): chart-1 = acento; chart-soft-n = tinte opaco de ~9 % sobre card; on-chart-n = texto sobre el relleno
+       (el de mayor contraste entre tinta y blanco; serie sin texto encima si ninguno llega a 4,5). */
+    --chart-1: 224 76% 48%;
+    --chart-2: 17 88.9% 54.1%; /* #f25d22 */
+    --chart-3: 156 59.5% 30%; /* #1f7a55 */
+    --chart-4: 39 66.7% 55.3%; /* #d9a441 */
+    --chart-5: 193 90% 32%; /* #087b9b */
+    --chart-6: 343 62.7% 40%; /* #a6264a */
+    --chart-7: 255 59.8% 60%; /* #7b5cd6 */
+    --chart-8: 240 6.7% 5.9%;
+    --chart-soft-1: 224 70.2% 95.3%;
+    --chart-soft-2: 17 88.9% 95.9%;
+    --chart-soft-3: 156 25.5% 93.7%;
+    --chart-soft-4: 39 66.7% 96%;
+    --chart-soft-5: 193 42.4% 93.9%;
+    --chart-soft-6: 343 41.8% 94.6%;
+    --chart-soft-7: 255 59.8% 96.4%;
+    --chart-soft-8: 240 3.7% 94.7%;
+    --on-chart-1: 0 0% 100%;
+    --on-chart-2: 240 6.7% 5.9%;
+    --on-chart-3: 0 0% 100%;
+    --on-chart-4: 240 6.7% 5.9%;
+    --on-chart-5: 0 0% 100%;
+    --on-chart-6: 0 0% 100%;
+    --on-chart-7: 0 0% 100%;
+    --on-chart-8: 0 0% 100%;
+    --chart-grid: hsl(240 6.7% 5.9% / 0.08);
+    --chart-axis: hsl(240 6.7% 5.9% / 0.2);
+    --chart-tick: 240 3.7% 36.7%;
+
+    /* Sidebar: misma superficie que card. */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 6.7% 5.9%;
+    --sidebar-primary: 224 76% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 94.7%;
+    --sidebar-accent-foreground: 240 6.7% 5.9%;
+    --sidebar-border: 240 4.2% 90.6%;
+    --sidebar-ring: 240 6.7% 5.9%;
+
+    /* Tipografia: Hanken Grotesk / IBM Plex Mono (fuentes-ds3.css) con fallback de metricas ajustadas. */
+    --font-sans: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
+    --font-body: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
+    --font-display: "Hanken Grotesk", "Hanken Grotesk Ajuste", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono DS3", "IBM Plex Mono DS3 Ajuste", ui-monospace, monospace;
+    --text-eyebrow: 0.6875rem;
+    --text-eyebrow-lh: 1rem;
+    --text-xs: 0.75rem;
+    --text-xs-lh: 1rem;
+    --text-ui: 0.8125rem;
+    --text-ui-lh: 1.21875rem;
+    --text-sm: 0.875rem;
+    --text-sm-lh: 1.125rem;
+    --text-base: 0.9375rem;
+    --text-base-lh: 1.25rem;
+    --text-page: 1.25rem;
+    --text-page-lh: 1.5rem;
+    --text-kpi: 1.625rem;
+    --text-kpi-lh: 1.75rem;
+    --text-display: clamp(1.75rem, 4vw, 2.5rem);
+    --text-display-lh: 1.1;
+    --tracking-eyebrow: 0.08em;
+    --tracking-sm: -0.01em;
+    --tracking-base: -0.015em;
+    --tracking-page: -0.025em;
+    --tracking-kpi: -0.03em;
+    --tracking-display: -0.025em;
+
+    /* Radios: sm 4 (kbd) / md 8 (controles, filas) / lg 12 (tarjetas, sidebar, dialogos) / xl 16 (solo hoja inferior movil). */
+    --radius: 0.75rem;
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-full: 9999px;
+    --radius-control: 0.5rem;
+    --radius-field: 0.5rem;
+    --radius-card: 0.75rem;
+    --radius-shell: 0.75rem;
+    --radius-dialog: 0.75rem;
+    --radius-menu: 0.75rem;
+    --radius-item: 0.5rem;
+
+    /* Controles (escritorio; el bloque tactil de abajo los sube). */
+    --control-xs: 1.5rem;
+    --control-sm: 1.75rem;
+    --control-md: 2rem;
+    --control-lg: 2.25rem;
+    --target-min: 2.75rem;
+
+    /* Espaciado y layout. */
+    --gap-bloque: 0.75rem;
+    --gap-interior: 0.5rem;
+    --pad-page: 1.25rem;
+    --pad-card: 0.875rem;
+    --header-h: 2.75rem;
+    --sidebar-w: 14.5rem;
+    --sidebar-w-rail: 4.5rem;
+    --bottomnav-h: 3.5rem;
+    --nav-total: calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    --marco: 0px;
+    --carga-panel-h: 10rem;
+    --carga-tabla-h: 15rem;
+    --carga-kpi-h: 5.5rem;
+    --chart-h: 10.5rem;
+
+    /* Sombras casi nulas: --shadow-pop solo en flotantes, siempre con borde de 1 px. */
+    --shadow-rest: none;
+    --shadow-hover: none;
+    --shadow-card: none;
+    --shadow-boton: 0 0 0 0 transparent;
+    --shadow-pop: 0 12px 32px -8px hsl(228 12% 10% / 0.18), 0 2px 6px hsl(228 12% 10% / 0.06);
+    --shadow-elevated: 0 12px 32px -8px hsl(228 12% 10% / 0.18), 0 2px 6px hsl(228 12% 10% / 0.06);
+    --shadow-hoja: 0 -12px 40px -12px hsl(240 7% 6% / 0.25);
+
+    /* Movimiento: un solo easing, tope operativo 400 ms. */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 120ms;
+    --dur-base: 180ms;
+    --dur-slow: 240ms;
+    --dur-enter: 240ms;
+    --dur-salida: 120ms;
+  }
+
+  html[data-diseno="ds3"].dark {
+    --background: 240 6.7% 5.9%; /* #0e0e10 */
+    --canvas: 240 6.7% 5.9%;
+    --sunken: 240 6.7% 5.9%;
+    --card: 240 6.1% 9.6%; /* #17171a */
+    --card-foreground: 240 4.8% 95.9%;
+    --popover: 240 6.1% 9.6%;
+    --popover-foreground: 240 4.8% 95.9%;
+    --soft: 240 6.1% 12.9%; /* #1f1f23 */
+    --border: 240 6.2% 15.9%; /* #26262b */
+    --border-strong: 240 5.5% 21.6%; /* #34343a */
+    --line2: 240 5.5% 21.6%;
+    --input: 240 3.6% 56.1%; /* #8b8b93 (5,29 sobre card) */
+    --control-off: 240 3.6% 56.1%;
+    --foreground: 240 4.8% 95.9%; /* #f4f4f5 */
+    --foreground-2: 240 4.9% 83.9%; /* #d4d4d8 */
+    --secondary: 240 6.1% 12.9%;
+    --secondary-foreground: 240 4.9% 83.9%;
+    --muted: 240 6.1% 12.9%;
+    --muted-foreground: 240 4.5% 65.5%; /* #a3a3ab */
+    --faint: 240 4.5% 65.5%;
+    --accent: 240 6.1% 12.9%;
+    --accent-foreground: 240 4.8% 95.9%;
+    --scrim: hsl(0 0% 0% / 0.67);
+
+    --action: 240 4.8% 95.9%;
+    --action-foreground: 240 6.7% 5.9%;
+    --action-hover: 0 0% 100%;
+    --ring: 240 4.8% 95.9%;
+
+    --primary: 217 91% 68%; /* #639cf8 */
+    --primary-foreground: 240 6.7% 5.9%;
+    --primary-soft: 224 40% 14%; /* #151d32 */
+    --primary-soft-hover: 224 40% 18%; /* #1c2540 */
+    --primary-ink: 217 91% 80%; /* #9ec1fa */
+    --solido: 224 76% 48%;
+    --solido-foreground: 0 0% 100%;
+    --menu-activo: 0 0% 100%; /* >= 3:1 contra --solido (6,65) tambien en oscuro */
+    --menu-activo-foreground: 224 76% 36%;
+    --marca-atiende: 217 91% 68%;
+
+    --success-tint: 150 35.7% 11%;
+    --success-ink: 150 55.7% 63.7%;
+    --success: 150 55.7% 63.7%;
+    --warning-tint: 34 32.5% 15.1%;
+    --warning-ink: 38 77.8% 73.5%;
+    --warning: 38 77.8% 73.5%;
+    --danger-tint: 341 22.4% 16.7%;
+    --danger-ink: 347 100% 85.1%;
+    --destructive-tint: 341 22.4% 16.7%;
+    --destructive: 347 100% 85.1%;
+    --destructive-foreground: 240 6.7% 5.9%;
+    --destructive-solido: 347 100% 85.1%;
+    --destructive-solido-foreground: 240 6.7% 5.9%;
+    --info-tint: 192 37.5% 12.5%;
+    --info-ink: 190 48.8% 74.7%;
+    --info: 190 48.8% 74.7%;
+    --kind-inferred: 240 3% 56%;
+
+    --chart-1: 217 91% 68%;
+    --chart-2: 17 80.4% 53.9%;
+    --chart-3: 155 55.8% 37.3%;
+    --chart-4: 39 65.9% 43.7%;
+    --chart-5: 192 71.7% 40.2%;
+    --chart-6: 344 56% 54.5%;
+    --chart-7: 253 63.3% 66.9%;
+    --chart-8: 240 4.8% 95.9%;
+    --chart-soft-1: 221 21.2% 14.9%;
+    --chart-soft-2: 9 20.6% 13.6%;
+    --chart-soft-3: 172 16.2% 11.6%;
+    --chart-soft-4: 34 16.3% 12.7%;
+    --chart-soft-5: 200 25.3% 12.4%;
+    --chart-soft-6: 330 17.5% 13.1%;
+    --chart-soft-7: 250 16.4% 14.8%;
+    --chart-soft-8: 240 6.1% 12.9%;
+    --on-chart-1: 240 6.1% 9.6%;
+    --on-chart-2: 240 6.1% 9.6%;
+    --on-chart-3: 240 6.1% 9.6%;
+    --on-chart-4: 240 6.1% 9.6%;
+    --on-chart-5: 240 6.1% 9.6%;
+    --on-chart-6: 0 0% 100%; /* 4,36 (el mejor de los candidatos, <4,5): la serie 6 (oscuro) no lleva texto encima */
+    --on-chart-7: 240 6.1% 9.6%;
+    --on-chart-8: 240 6.1% 9.6%;
+    --chart-grid: hsl(240 4.8% 95.9% / 0.08);
+    --chart-axis: hsl(240 4.8% 95.9% / 0.2);
+    --chart-tick: 240 4.5% 65.5%;
+
+    --sidebar-background: 240 6.1% 9.6%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 217 91% 68%;
+    --sidebar-primary-foreground: 240 6.7% 5.9%;
+    --sidebar-accent: 240 6.1% 12.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 6.2% 15.9%;
+    --sidebar-ring: 240 4.8% 95.9%;
+
+    --shadow-pop: 0 12px 32px -8px hsl(0 0% 0% / 0.8), 0 2px 6px hsl(0 0% 0% / 0.4);
+    --shadow-elevated: 0 12px 32px -8px hsl(0 0% 0% / 0.8), 0 2px 6px hsl(0 0% 0% / 0.4);
+  }
+
+  /* Tactil (puntero grueso o <768): controles mas altos; el area de toque llega a 44. */
+  @media (pointer: coarse), (max-width: 767.98px) {
+    html[data-diseno="ds3"] {
+      --control-xs: 2rem;
+      --control-sm: 2.25rem;
+      --control-md: 44px; /* en px: tokens-likida prohibe el literal 2.75rem como alto de control de produccion */
+      --control-lg: 44px;
+    }
+  }
+  @media (max-width: 767.98px) {
+    html[data-diseno="ds3"] {
+      --pad-page: 1rem;
+      --pad-card: 0.75rem;
+      --header-h: 3.5rem;
+    }
+  }
+  @media (min-width: 768px) {
+    html[data-diseno="ds3"] { --marco: 0.75rem; }
+  }
+  @media (min-width: 1280px) {
+    html[data-diseno="ds3"] { --marco: 1rem; }
+  }
+
+  /* El sidebar ([data-ambito-base]) repone la paleta de Likida con valores literales; bajo ds3 hereda la del documento
+     (misma lista de propiedades que ese bloque). Especificidad mayor que `.dark [data-ambito-base]`. */
+  html[data-diseno="ds3"] [data-ambito-base] {
+    --accent: inherit;
+    --accent-foreground: inherit;
+    --background: inherit;
+    --border: inherit;
+    --canvas: inherit;
+    --card: inherit;
+    --card-foreground: inherit;
+    --control-lg: inherit;
+    --control-md: inherit;
+    --control-sm: inherit;
+    --destructive-foreground: inherit;
+    --dur-base: inherit;
+    --dur-fast: inherit;
+    --ease-out: inherit;
+    --faint: inherit;
+    --foreground: inherit;
+    --foreground-2: inherit;
+    --input: inherit;
+    --line2: inherit;
+    --muted: inherit;
+    --muted-foreground: inherit;
+    --popover: inherit;
+    --popover-foreground: inherit;
+    --primary-foreground: inherit;
+    --radius-dialog: inherit;
+    --radius-field: inherit;
+    --radius-item: inherit;
+    --radius-menu: inherit;
+    --scrim: inherit;
+    --secondary: inherit;
+    --secondary-foreground: inherit;
+    --shadow-boton: inherit;
+    --shadow-card: inherit;
+    --shadow-elevated: inherit;
+    --sunken: inherit;
+  }
+
+  /* Cuerpo: 13 px / 1.5, sin tracking global, cifras tabulares, sin cursivas ni negritas sinteticas. */
+  html[data-diseno="ds3"],
+  html[data-diseno="ds3"] body {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    font-synthesis: weight;
+  }
+
+  /* Foco: anillo de 2 px, offset 2, color --ring (= tinta) en todo. */
+  html[data-diseno="ds3"] :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  html[data-diseno="ds3"] label:has(> input.sr-only:focus-visible) {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  html[data-diseno="ds3"] .font-display { letter-spacing: 0; }
+}
+
+@layer utilities {
+  /* Sin tracking tampoco en el sidebar del ambito restaurantes (sus reglas de arriba viven en esta capa). */
+  html[data-diseno="ds3"][data-ambito="restaurantes"] [data-ambito-base],
+  html[data-diseno="ds3"][data-ambito="restaurantes"] [data-ambito-base] .font-display { letter-spacing: 0; }
+
+  /* Keyframes legados a las duraciones nuevas mientras existan (se borran en el retiro). */
+  html[data-diseno="ds3"] .animate-fade-up { animation-duration: var(--dur-slow); animation-timing-function: var(--ease-out); }
+  html[data-diseno="ds3"] .animate-fade-in,
+  html[data-diseno="ds3"] .animate-scale-in,
+  html[data-diseno="ds3"] .animate-slide-in-right { animation-duration: var(--dur-base); animation-timing-function: var(--ease-out); }
+  html[data-diseno="ds3"] [class*="stagger-"] { animation-delay: 0s; }
+
+  /* Reduced-motion: un solo mecanismo global bajo ds3. */
+  @media (prefers-reduced-motion: reduce) {
+    html[data-diseno="ds3"] *,
+    html[data-diseno="ds3"] *::before,
+    html[data-diseno="ds3"] *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
