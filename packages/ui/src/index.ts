@@ -57,6 +57,7 @@ export {
   VerticalShell,
   VerticalShellEstado,
   useTituloBarra,
+  useBarraDeConsola,
   useAccionesBarra,
   useMarcoShell,
   VerticalNoEncontrado,

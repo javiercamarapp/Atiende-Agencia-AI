@@ -163,14 +163,14 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
   const contenido = (
     <>
       {Icono ? <Icono className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : null}
-      {indicador ? <span data-testid="pildora-indicador" aria-label="Hay pendientes" className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
+      {indicador ? <span data-testid="pildora-indicador" aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
       <span className={cn("min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{label}</span>
       {Icono ? null : <span aria-hidden="true">→</span>}
     </>
   );
   const comunes = {
     title: label,
-    "aria-label": label,
+    "aria-label": indicador ? `${label}, con avisos sin leer` : label,
     className: cn(CLASE_PILDORA, colapsado ? "justify-center" : cn("justify-center", Icono ? "lg:justify-start" : "lg:justify-between")),
   };
   if (to) return <Link to={to} {...comunes}>{contenido}</Link>;

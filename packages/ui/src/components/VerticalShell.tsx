@@ -85,6 +85,19 @@ export function useTituloBarra(titulo: string | null | undefined, icono?: Sideba
   }, [fijar, titulo, icono]);
 }
 
+/**
+ * La pagina declara que su nombre NO va en la barra: la barra muestra el titulo y el icono de la consola (como en el Resumen). Lo usa
+ * el Copiloto de las verticales: «Pregúntale a tus datos» solo vive en el menu y en el h1 de su portada, nunca en el encabezado.
+ */
+export function useBarraDeConsola(): void {
+  const fijar = React.useContext(TituloBarraContext);
+  React.useEffect(() => {
+    if (!fijar) return undefined;
+    fijar({ titulo: "" });
+    return () => fijar(null);
+  }, [fijar]);
+}
+
 // ---- Acciones de pagina en la barra superior y marco de contenido ------------
 
 const AccionesBarraContext = React.createContext<((n: React.ReactNode) => void) | null>(null);
@@ -273,8 +286,10 @@ export function VerticalShell({
   const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
   const barraDeRuta = !activo || esResumen ? null : activo.item;
-  const IconoBarra = sobrescrito?.icono ?? barraDeRuta?.icon;
-  const tituloBarra = sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title;
+  // `titulo: ""` (useBarraDeConsola) = la pagina no pone su nombre en la barra: vale el titulo y el icono de la consola.
+  const barraDeConsola = sobrescrito?.titulo === "";
+  const IconoBarra = barraDeConsola ? undefined : (sobrescrito?.icono ?? barraDeRuta?.icon);
+  const tituloBarra = barraDeConsola ? header.title : (sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title);
   const iconoBarra = IconoBarra ? <IconoBarra className="size-[15px] text-muted-foreground" strokeWidth={1.75} /> : header.icon;
   const selectores =
     organizationSelector || branchSelector ? (

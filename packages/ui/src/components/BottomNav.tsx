@@ -63,6 +63,8 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
   const masActivo = hayMas && !enBarra && (moreSections ?? []).some((s) => s.items.some((it) => rutaCoincide(pathname, it.to, it.end)));
   const pildoras = (pie ?? []).filter((p) => p.to || p.href || p.onClick);
   const alCerrar = () => setMasAbierto(false);
+  // Avisos pendientes de las pildoras de "Cuenta" (p. ej. notificaciones sin leer): punto en "Mas", donde viven en movil.
+  const masConAvisos = pildoras.some((p) => p.indicador);
   return (
     <nav
       aria-label="Navegación móvil"
@@ -93,10 +95,12 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
               onClick={() => setMasAbierto(true)}
               aria-haspopup="dialog"
               aria-expanded={masAbierto}
+              aria-label={masConAvisos ? "Más, con avisos sin leer" : undefined}
               className={cn("w-full", claseDestino, masActivo ? "text-primary" : "text-muted-foreground")}
             >
               <Ellipsis aria-hidden="true" className="size-[22px]" strokeWidth={masActivo ? 2.25 : 1.75} />
               <span className={cn("max-w-full truncate px-1 text-xs", masActivo ? "font-semibold" : "font-medium")}>Más</span>
+              {masConAvisos && <span data-testid="mas-indicador" aria-hidden="true" className="absolute right-[calc(50%-18px)] top-2 size-1.5 rounded-full bg-destructive" />}
             </button>
           </li>
         )}
@@ -156,20 +160,21 @@ function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onN
     <>
       {Icono ? <Icono aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : null}
       <span className="truncate">{pildora.label}</span>
-      {pildora.indicador ? <span data-testid="pildora-indicador" aria-label="Hay pendientes" className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
+      {pildora.indicador ? <span data-testid="pildora-indicador" aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
     </>
   );
   const clase = cn(claseFilaHoja, "w-full text-foreground hover:bg-muted-foreground/10");
+  const etiqueta = pildora.indicador ? `${pildora.label}, con avisos sin leer` : undefined;
   if (pildora.to) {
     return (
-      <NavLink to={pildora.to} onClick={onNavegar} className={clase}>
+      <NavLink to={pildora.to} onClick={onNavegar} aria-label={etiqueta} className={clase}>
         {contenido}
       </NavLink>
     );
   }
   if (pildora.href) {
     return (
-      <a href={pildora.href} onClick={onNavegar} className={clase}>
+      <a href={pildora.href} onClick={onNavegar} aria-label={etiqueta} className={clase}>
         {contenido}
       </a>
     );
