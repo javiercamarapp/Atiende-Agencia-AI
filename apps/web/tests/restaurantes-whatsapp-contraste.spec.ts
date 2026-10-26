@@ -60,6 +60,7 @@ const PAREJAS: ReadonlyArray<readonly [string, string, number]> = [
   ["--wa-fecha-texto", "--wa-fecha-fondo", 4.5],
   ["--wa-cabecera-texto", "--wa-cabecera", 4.5],
   ["--wa-cabecera-tenue", "--wa-cabecera", 4.5],
+  ["--wa-avatar-texto", "--wa-verde", 4.5],
 ];
 
 describe("contraste AA del chat de WhatsApp (--wa-*)", () => {

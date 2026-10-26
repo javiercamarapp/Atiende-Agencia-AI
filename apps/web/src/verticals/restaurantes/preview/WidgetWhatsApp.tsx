@@ -150,7 +150,11 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       if (e.key !== "Escape" || e.defaultPrevented) return;
       // La lista de Simular cliente vive en un portal: Escape con ELLA abierta (el evento nace en su lista o su selector está expandido) cierra solo la lista.
       // Se acota a este diálogo: un listbox ajeno en el documento no debe impedir cerrar el chat.
-      if ((e.target as HTMLElement | null)?.closest?.('[role="listbox"]') || panel.current?.querySelector('[role="combobox"][aria-expanded="true"]')) return;
+      const objetivo = e.target as HTMLElement | null;
+      if (objetivo?.closest?.('[role="listbox"]') || panel.current?.querySelector('[role="combobox"][aria-expanded="true"]')) return;
+      // Otro diálogo/alerta encima (p. ej. una confirmación): Escape es suyo; este chat sigue abierto.
+      const otro = objetivo?.closest?.('[role="dialog"],[role="alertdialog"]');
+      if (otro && otro !== panel.current) return;
       e.stopPropagation();
       alCerrar.current();
     };
@@ -221,6 +225,10 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   // Tab no sale del diálogo (foco atrapado).
   function atraparTab(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "Tab" || !panel.current) return;
+    // La lista de «Simular cliente» vive en un portal (fuera del panel) pero sus eventos burbujean hasta aquí: con ella abierta o con el foco en ella,
+    // Tab es del selector (cierra la lista y sigue); no se roba el foco.
+    const activo = document.activeElement as HTMLElement | null;
+    if (activo?.closest?.('[role="listbox"]') || panel.current.querySelector('[role="combobox"][aria-expanded="true"]')) return;
     const items = Array.from(panel.current.querySelectorAll<HTMLElement>(ENFOCABLES));
     if (items.length === 0) {
       e.preventDefault();
@@ -305,7 +313,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
             <WhatsAppIcon />
           </span>
           <p className="wa-lateral__titulo">{hayMensajes ? "Conversación de prueba en curso" : "Aún no hay una conversación"}</p>
-          <p className="wa-lateral__texto">Escríbele al agente como lo haría un cliente. Puede tomar un pedido de principio a fin, pero es una prueba: no se crean pedidos ni se avisa a nadie.</p>
+          <p className="wa-lateral__texto" aria-hidden="true">Escríbele al agente como lo haría un cliente. Puede tomar un pedido de principio a fin, pero es una prueba: no se crean pedidos ni se avisa a nadie.</p>
         </aside>
 
         <section className="wa-chat" aria-label="Chat de prueba">

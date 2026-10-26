@@ -31,6 +31,7 @@
   --wa-borde: rgb(0 0 0 / 0.1);
   --wa-sombra-burbuja: 0 1px 0.5px rgb(11 20 26 / 0.13);
   --wa-boton-texto: #ffffff;
+  --wa-avatar-texto: #0b141a;
 }
 .dark .wa-widget {
   --wa-cabecera: #1f2c34;
@@ -114,7 +115,7 @@
 .wa-top__titulo { min-width: 0; }
 .wa-top__titulo p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wa-top__titulo p:first-child { font-size: 0.8125rem; font-weight: 500; line-height: 1.25; }
-.wa-top__titulo p:last-child { font-size: 0.65625rem; line-height: 1.25; color: hsl(var(--muted-foreground)); }
+.wa-top__titulo p:last-child { font-size: 0.75rem; line-height: 1.25; color: hsl(var(--muted-foreground)); }
 .wa-chip { margin-left: 0.5rem; padding: 0.25rem 0.625rem; border: 1px solid hsl(var(--border)); border-radius: 9999px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.625rem; letter-spacing: 0.025em; text-transform: uppercase; color: hsl(var(--muted-foreground)); white-space: nowrap; }
 .wa-chip[data-activo="true"] { border-color: hsl(var(--primary) / 0.3); background: hsl(var(--primary) / 0.1); color: hsl(var(--primary)); }
 .wa-icono { display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; flex-shrink: 0; border: 0; border-radius: 9999px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; transition: background-color 150ms, color 150ms; }
@@ -139,7 +140,7 @@
 .wa-lateral__logo { display: flex; align-items: center; justify-content: center; width: 7rem; height: 7rem; margin-bottom: 0.75rem; border-radius: 9999px; background: var(--wa-verde); color: var(--wa-boton-texto); box-shadow: 0 0 48px -12px var(--wa-verde); animation: globo-whatsapp-respira 4.2s ease-in-out infinite; }
 .wa-lateral__logo svg { width: 4rem; height: 4rem; }
 .wa-lateral__titulo { margin: 0; font-size: 0.8125rem; font-weight: 500; }
-.wa-lateral__texto { margin: 0; max-width: 20rem; font-size: 0.71875rem; line-height: 1.4; color: hsl(var(--muted-foreground)); }
+.wa-lateral__texto { margin: 0; max-width: 20rem; font-size: 0.75rem; line-height: 1.4; color: hsl(var(--muted-foreground)); }
 /* Columna 2/5 (todo el ancho en móvil): el chat. */
 .wa-chat { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; background: var(--wa-fondo); color: var(--wa-texto); }
 @media (min-width: 768px) {
@@ -149,7 +150,7 @@
 
 /* ---- Cabecera del chat: avatar, nombre y estado (como la de WhatsApp) ---- */
 .wa-chat__cabecera { flex-shrink: 0; display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: var(--wa-cabecera); color: var(--wa-cabecera-texto); }
-.wa-avatar { display: flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; flex-shrink: 0; border-radius: 9999px; background: var(--wa-verde); color: #0b141a; font-size: 0.9375rem; font-weight: 600; }
+.wa-avatar { display: flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; flex-shrink: 0; border-radius: 9999px; background: var(--wa-verde); color: var(--wa-avatar-texto); font-size: 0.9375rem; font-weight: 600; }
 .wa-chat__cabecera-texto { min-width: 0; }
 .wa-chat__nombre { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; font-weight: 600; line-height: 1.25; }
 .wa-chat__estado { margin: 0; font-size: 0.75rem; line-height: 1.25; color: var(--wa-cabecera-tenue); }
@@ -219,6 +220,8 @@
 /* ---- Barra de entrada ---- */
 .wa-barra { flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); background: var(--wa-barra); }
 .wa-campo { flex: 1; min-width: 0; height: 2.5rem; padding: 0 1rem; border: 0; border-radius: 9999px; background: var(--wa-campo); color: var(--wa-texto); font: inherit; font-size: 0.875rem; outline: none; }
+/* 16 px en móvil: por debajo, iOS Safari hace zoom al enfocar el campo. */
+@media (max-width: 767px) { .wa-campo { font-size: 1rem; } }
 .wa-campo::placeholder { color: var(--wa-texto-tenue); }
 .wa-campo:disabled { opacity: 0.7; }
 .wa-campo:focus-visible { box-shadow: 0 0 0 2px var(--wa-verde); }

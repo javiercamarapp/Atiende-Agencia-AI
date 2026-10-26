@@ -2,7 +2,7 @@
 // MARCA: el archivo de la ruta es CC0 (Simple Icons), pero WhatsApp y su logotipo son marcas registradas de WhatsApp LLC / Meta; aquí se usa de forma
 // nominativa (identifica el canal «WhatsApp») y conforme a sus pautas de marca: sin deformar y solo en verde de marca (#25D366, variable --wa-verde)
 // o en blanco/monocromo sobre fondo de contraste (el contenedor decide el color). No implica patrocinio ni afiliación.
-// TODO(decisión #7): mover a `LogoMarca` en packages/ui cuando se unifique el sistema de diseño con Vexa; hasta entonces vive aquí.
+// TODO(decisión #7): mover a `LogoMarca` en packages/ui cuando se unifique el sistema de diseño; hasta entonces vive aquí.
 interface Props {
   readonly className?: string;
   /** Texto accesible; sin él el icono es decorativo (aria-hidden). */
