@@ -189,18 +189,40 @@ describe("scripts/diseno/solo-agrega-specs.sh", () => {
     expect(r.salida).toContain("fixme");
   });
 
-  it("rechaza un spec nuevo con test.fail de una sola linea sin expect, pero acepta uno con expect y un comentario que lo menciona", () => {
+  it("rechaza TODO test.fail agregado (con o sin expect, una o varias lineas); un comentario que lo menciona no cuenta", () => {
     const marca = `${"test"}.${"fail"}`;
-    const d = repo();
-    escribir(d, "b/cinco.spec.ts", `test('cinco', async () => {\n  ${marca}(oscuro, 'BUG-1');\n  expect(1).toBe(1);\n});\n`);
-    confirmar(d);
-    const r = correr(d);
-    expect(r.codigo).toBe(1);
-    expect(r.salida).toContain("test.fail");
-
+    const casos: Array<[string, string]> = [
+      ["sin expect", `test('a', async () => {\n  ${marca}(oscuro, 'BUG-1');\n  expect(1).toBe(1);\n});\n`],
+      ["con expect en la misma linea", `${marca}('b', async () => { expect(1).toBe(2); });\n`],
+      ["estilo prettier con expect abajo", `${marca}('c', async () => {\n  expect(1).toBe(2);\n});\n`],
+    ];
+    for (const [nombre, texto] of casos) {
+      const d = repo();
+      escribir(d, "b/cinco.spec.ts", texto);
+      confirmar(d);
+      const r = correr(d);
+      expect(r.codigo, nombre).toBe(1);
+      expect(r.salida, nombre).toContain("test.fail");
+    }
     const ok = repo();
-    escribir(ok, "b/seis.spec.ts", `// ya no se usa ${marca}(cond, 'x')\n${marca}('seis', async () => { expect(1).toBe(2); });\n`);
+    escribir(ok, "b/seis.spec.ts", `// ya no se usa ${marca}(cond, 'x')\ntest('seis', async () => { expect(1).toBe(1); });\n`);
     confirmar(ok);
     expect(correr(ok).codigo).toBe(0);
+  });
+
+  it("rechaza las formas alternativas de fixme/skip/only: test[\"fixme\"], .fixme( en linea aparte y la desestructuracion", () => {
+    const f = "fix" + "me";
+    const casos: Array<[string, string]> = [
+      ["corchetes", `test["${f}"]('x', () => {});\n`],
+      ["linea aparte", `test\n  .${f}('x', () => {});\n`],
+      ["desestructuracion", `const { ${f} } = test;\n${f}('x', () => {});\n`],
+      ["skip por corchetes", `it['${"sk" + "ip"}']('x', () => {});\n`],
+    ];
+    for (const [nombre, texto] of casos) {
+      const d = repo();
+      escribir(d, "b/siete.spec.ts", texto);
+      confirmar(d);
+      expect(correr(d).codigo, nombre).toBe(1);
+    }
   });
 });
