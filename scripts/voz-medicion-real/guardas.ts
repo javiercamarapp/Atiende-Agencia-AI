@@ -1,5 +1,6 @@
 // Guardas de seguridad del arnes de voz con modelo real. Puras (sin red ni estado global) para poder probarlas sin gastar saldo ni llamar a proveedores.
 // Objetivo: que el arnes JAMAS toque una API, una base ni un Meta que no sean locales/simulados, y que no gaste mas del tope.
+import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 
@@ -62,16 +63,27 @@ export function hostsDePool(pool: any, env: Record<string, string | undefined> =
   anade(o.host);
   for (const cs of [o.connectionString, pool.connectionString]) {
     if (typeof cs !== "string" || cs === "") continue;
-    // WHATWG URL rechaza "postgres://u:p@/db?host=/socket" (host vacio con usuario); se cae a un analisis manual que tambien cubre ?host=.
-    const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^/?:#]*)/i.exec(cs);
-    const q = /[?&]host=([^&#]*)/i.exec(cs);
+    // 1) El mismo parser que usa pg (WHATWG): toma la userinfo hasta el ULTIMO "@", asi que "u:p@localhost:5432@evil.com" es evil.com.
+    try {
+      const u = new URL(cs);
+      if (u.hostname !== "") anade(safeDecode(u.hostname));
+      anade(u.searchParams.get("host"));
+      if (u.hostname === "" && !u.searchParams.get("host")) anade("(cadena de conexion sin host)");
+      continue;
+    } catch { /* WHATWG rechaza p. ej. "postgres://u:p@/db?host=/socket": analisis manual, abajo */ }
+    // 2) Manual, FALLANDO CERRADO ante cualquier ambiguedad: varios hosts (",") o mas de un "@" en la autoridad.
+    const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(cs);
     if (!m) { anade("(cadena de conexion invalida)"); continue; }
-    const hostUrl = m[1] ?? "";
+    const autoridad = m[1] ?? "";
+    if (autoridad.includes(",") || autoridad.split("@").length > 2) { anade("(cadena de conexion ambigua: varios hosts o varios @)"); continue; }
+    const hostUrl = autoridad.includes("@") ? autoridad.slice(autoridad.indexOf("@") + 1) : autoridad;
+    const sinPuerto = /^\[[^\]]*\]/.exec(hostUrl)?.[0] ?? hostUrl.split(":")[0] ?? "";
+    const q = /[?&]host=([^&#]*)/i.exec(cs);
     let hostQ = "";
     try { hostQ = q ? decodeURIComponent(q[1] ?? "") : ""; } catch { hostQ = "(host invalido)"; }
-    if (hostUrl !== "") anade(safeDecode(hostUrl));
+    if (sinPuerto !== "") anade(safeDecode(sinPuerto));
     if (hostQ !== "") anade(hostQ);
-    if (hostUrl === "" && hostQ === "") anade("(cadena de conexion sin host)");
+    if (sinPuerto === "" && hostQ === "") anade("(cadena de conexion sin host)");
   }
   if (hosts.length === 0 && typeof pool.query === "function") anade(env.PGHOST || "localhost"); // pg usa PGHOST o localhost si no hay nada mas
   return hosts;
@@ -125,10 +137,19 @@ export function dirQaDentroDelRepo(dir: string | undefined, raizRepo: string): s
 }
 
 /** Tope de gasto en USD: omision 1.5; si viene definido debe ser un numero finito > 0 (NaN o 0 harian que el corte nunca/siempre dispare). */
-export function parseCorte(raw: string | undefined): number {
+export const CORTE_MAXIMO_USD = 100;
+export function parseCorte(raw: string | undefined, maxRaw?: string): number {
   if (raw === undefined || raw === "") return 1.5;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) throw new AbortoDeSeguridad(`VOZ_CORTE_USD invalido (${JSON.stringify(raw.slice(0, 20))}): debe ser un numero finito mayor que 0`);
+  // Tope duro contra errores de dedo (1e308 apagaria el corte en la practica); subirlo exige declararlo con VOZ_CORTE_MAX_USD.
+  let max = CORTE_MAXIMO_USD;
+  if (maxRaw !== undefined && maxRaw !== "") {
+    const m = Number(maxRaw);
+    if (!Number.isFinite(m) || m <= 0) throw new AbortoDeSeguridad("VOZ_CORTE_MAX_USD invalido: debe ser un numero finito mayor que 0");
+    max = m;
+  }
+  if (n > max) throw new AbortoDeSeguridad(`VOZ_CORTE_USD (${n}) supera el maximo permitido (${max} USD); para subirlo declara VOZ_CORTE_MAX_USD de forma explicita`);
   return n;
 }
 
@@ -144,7 +165,7 @@ export function excedeTope(gastoUsd: number, corteUsd: number): boolean {
 
 /** Suma un costo solo si es un numero finito; si no, devuelve NaN para que el tope corte en vez de apagarse. */
 export function sumarCosto(acum: number, delta: unknown): number {
-  return typeof delta === "number" && Number.isFinite(delta) ? acum + delta : Number.NaN;
+  return typeof delta === "number" && Number.isFinite(delta) && delta >= 0 ? acum + delta : Number.NaN; // un delta negativo bajaria el gasto contado: tambien corta
 }
 
 // ---- telefonos ficticios ----
@@ -169,5 +190,20 @@ export async function elegirTelefonoLibre(contar: (phone10: string) => Promise<n
 
 // ---- redaccion de errores ----
 export function redactar(texto: string): string {
-  return texto.replace(/(key|token|bearer)[=: ]+[^&\s]+/gi, "$1=***").replace(/sk-[\w-]+/g, "sk-***");
+  return texto
+    .replace(/(key|token|bearer)[=: ]+[^&\s]+/gi, "$1=***")
+    .replace(/sk-[\w-]+/g, "sk-***")
+    .replace(/(\/\/)[^/\s@:]+:[^/\s@]*@/g, "$1***@") // usuario:clave@ dentro de una URL
+    .replace(/(\/(?:Users|home)\/)[^/\s:]+/g, "$1***") // rutas absolutas con el nombre de la persona
+    .replace(/([A-Za-z]:\\Users\\)[^\\\s]+/g, "$1***");
+}
+
+/** true si git IGNORA la ruta (gitignore, .git/info/exclude o ignore global): los resultados no deben poder subirse por accidente. false si no es un repo o no se ignora. */
+export function ignoradoPorGit(ruta: string, cwd: string): boolean {
+  try {
+    execFileSync("git", ["check-ignore", "-q", "--", ruta], { cwd, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  AbortoDeSeguridad, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, hostsDePool, hostEsLoopback, parseCorte, redactar, soloHost, sumarCosto, telefonoFicticio, validarEntorno,
+  AbortoDeSeguridad, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, hostsDePool, hostEsLoopback, CORTE_MAXIMO_USD, ignoradoPorGit, parseCorte, redactar, soloHost, sumarCosto, telefonoFicticio, validarEntorno,
   TopeExcedido, urlEsLoopback, validarAislamiento,
 } from "../../../scripts/voz-medicion-real/guardas.ts";
 
@@ -49,6 +49,16 @@ describe("aislamiento: API, base y Meta", () => {
     expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=/var/run/postgresql" }), {})).not.toThrow();
     expect(() => validarAislamiento(con({ connectionString: "esto no es una url" }), {})).toThrow(/base/);
     expect(hostsDePool(con({ host: "a", connectionString: "postgres://u:p@b/x" }).pool, {})).toEqual(["a", "b"]);
+  });
+
+  it("userinfo con varios @ (WHATWG toma el ULTIMO) y varios hosts: falla cerrado", () => {
+    const con = (cs: string) => ({ ...stackOk(), pool: { options: { connectionString: cs }, query: () => 0 } });
+    expect(hostsDePool(con("postgres://u:p@localhost:5432@evil.com/db").pool, {})).toEqual(["evil.com"]);
+    expect(() => validarAislamiento(con("postgres://u:p@localhost:5432@evil.com/db"), {})).toThrow('host "evil.com"');
+    expect(() => validarAislamiento(con("postgres://localhost:5432,evil.com:5432/db"), {})).toThrow(/base/);
+    expect(() => validarAislamiento(con("postgres://u:p@/db?host=localhost,evil.com"), {})).toThrow(/base/);
+    expect(() => validarAislamiento(con("postgres://u@a@localhost/db?host=/var/run/postgresql"), {})).not.toThrow(); // WHATWG: un solo host real (localhost)
+    expect(() => validarAislamiento(con("postgres://u:p@localhost:5432/db"), {})).not.toThrow();
   });
 
   it("un valor que empieza con // NO es un socket unix ni loopback", () => {
@@ -115,6 +125,13 @@ describe("tope de gasto", () => {
     expect(parseCorte("")).toBe(1.5);
     expect(parseCorte("0.25")).toBe(0.25);
     for (const malo of ["abc", "0", "-1", "NaN", "Infinity", "1e999"]) expect(() => parseCorte(malo), malo).toThrow(AbortoDeSeguridad);
+    // maximo duro contra errores de dedo; subirlo exige declararlo aparte
+    expect(parseCorte(String(CORTE_MAXIMO_USD))).toBe(CORTE_MAXIMO_USD);
+    expect(() => parseCorte("1e308")).toThrow(/maximo/);
+    expect(() => parseCorte("101")).toThrow(/VOZ_CORTE_MAX_USD/);
+    expect(parseCorte("250", "300")).toBe(250);
+    expect(() => parseCorte("250", "200")).toThrow(/maximo/);
+    expect(() => parseCorte("1", "abc")).toThrow(/VOZ_CORTE_MAX_USD/);
   });
   it("falla CERRADO ante un gasto NaN/Infinity/indefinido (no se apaga el tope)", () => {
     for (const malo of [Number.NaN, Number.POSITIVE_INFINITY, undefined as unknown as number]) expect(excedeTope(malo, 1), String(malo)).toBe(true);
@@ -124,6 +141,8 @@ describe("tope de gasto", () => {
     expect(sumarCosto(0.2, 0.3)).toBeCloseTo(0.5);
     expect(Number.isNaN(sumarCosto(0.2, undefined))).toBe(true);
     expect(Number.isNaN(sumarCosto(0.2, "0.3"))).toBe(true);
+    expect(Number.isNaN(sumarCosto(0.2, -0.1))).toBe(true); // un delta negativo bajaria el gasto contado
+    expect(sumarCosto(0.2, 0)).toBeCloseTo(0.2);
     expect(Number.isNaN(sumarCosto(Number.NaN, 0.3))).toBe(true);
     expect(excedeTope(sumarCosto(0.2, undefined), 1)).toBe(true);
   });
@@ -155,7 +174,26 @@ describe("telefonos ficticios", () => {
   });
 });
 
+describe("resultados fuera de git", () => {
+  it("ignoradoPorGit distingue una ruta ignorada de una que no lo esta", () => {
+    const repo = mkdtempSync(join(tmpdir(), "voz-git-"));
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    writeFileSync(join(repo, ".gitignore"), "resultados-qa/\n");
+    mkdirSync(join(repo, "resultados-qa"));
+    mkdirSync(join(repo, "otro"));
+    expect(ignoradoPorGit(join(repo, "resultados-qa"), repo)).toBe(true);
+    expect(ignoradoPorGit(join(repo, "otro"), repo)).toBe(false);
+    expect(ignoradoPorGit(join(repo, "resultados-qa"), mkdtempSync(join(tmpdir(), "voz-nogit-")))).toBe(false); // sin repo: no se asume ignorado
+  });
+});
+
 describe("redaccion de errores", () => {
+  it("oculta usuario:clave@ en URLs y rutas absolutas con nombre de persona", () => {
+    const r = redactar("fallo en postgres://admin:s3cr3to@db.interna:5432/x leyendo /Users/persona/proyecto/archivo.ts y /home/otra/x");
+    expect(r).not.toMatch(/admin|s3cr3to|persona|otra/);
+    expect(r).toContain("db.interna");
+    expect(r).toContain("/Users/***");
+  });
   it("oculta claves, tokens y sk-*", () => {
     const r = redactar("fallo key=abc123 Bearer: xyz y sk-or-v1-AbC_123 al final");
     expect(r).not.toMatch(/abc123|xyz|AbC_123/);

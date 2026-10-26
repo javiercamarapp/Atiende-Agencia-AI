@@ -11,12 +11,13 @@
 // Uso (desde el directorio de QA con stack.ts / lib.ts / llm.ts y la API local):
 //   VOZ_QA_DIR=<dir de QA> OPENROUTER_API_KEY=... VOZ_REP=1 [VOZ_CORTE_USD=1.5] [VOZ_FILTRO=^P0] [VOZ_MODELO=<id>] vite-node -c vite-node.config.ts ejecutar.ts
 // Sale con codigo 3 si se corto por el tope de gasto de la corrida (quedan escenarios pendientes: volver a lanzar con el mismo VOZ_REP continua donde se quedo).
-import { appendFileSync, copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DATOS_POR_OMISION, ESCENARIOS, RELOJES } from "./escenarios.ts";
 import type { Chk, Escenario, Evento } from "./escenarios.ts";
 import { cortarMensaje, rngDesdeSemilla, ruidoStt } from "./ruido-stt.ts";
-import { TopeExcedido, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, parseCorte, redactar, sumarCosto, validarAislamiento, validarEntorno } from "./guardas.ts";
+import { TopeExcedido, dirQaDentroDelRepo, ignoradoPorGit, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, parseCorte, redactar, sumarCosto, validarAislamiento, validarEntorno } from "./guardas.ts";
 
 // Aislamiento: el directorio de QA (de donde se CARGA codigo) debe estar dentro del repo/worktree; ver guardas.ts.
 const QA = dirQaDentroDelRepo(process.env.VOZ_QA_DIR, fileURLToPath(new URL("../../", import.meta.url)));
@@ -38,7 +39,7 @@ const { VOICE_TOOL_HTTP_PATHS } = await import(`${P}/domain-restaurantes/src/age
 const { canonicalizeMexicanPhone } = await import(`${P}/domain-restaurantes/src/phone.ts`);
 
 const REP = process.env.VOZ_REP ?? "1";
-const CORTE = parseCorte(process.env.VOZ_CORTE_USD); // finito y > 0, o aborta
+const CORTE = parseCorte(process.env.VOZ_CORTE_USD, process.env.VOZ_CORTE_MAX_USD); // finito y > 0, o aborta
 const MODELO = process.env.VOZ_MODELO || VOZ_PLATAFORMA.cascadaV2.llm.modelo;
 const ESFUERZO = (process.env.VOZ_ESFUERZO as "low" | "medium" | "high" | undefined) ?? VOZ_PLATAFORMA.cascadaV2.llm.esfuerzo;
 const NIVEL_RUIDO = Number(process.env.VOZ_RUIDO ?? "1");
@@ -48,6 +49,13 @@ const SIN_COMPUERTA = process.env.VOZ_SIN_COMPUERTA === "1";
 const SIN_ZDR = process.env.VOZ_SIN_ZDR === "1"; // NO es medicion oficial: se registra en cada resultado
 const RES = process.env.VOZ_RES_DIR ?? `${QA}/results`;
 mkdirSync(RES, { recursive: true });
+// Los resultados llevan transcripciones y texto de modelos: el directorio debe estar IGNORADO por git (gitignore o .git/info/exclude) o fuera del repo.
+{
+  const raizRepo = realpathSync(fileURLToPath(new URL("../../", import.meta.url)));
+  const resReal = realpathSync(RES);
+  const dentro = !relative(raizRepo, resReal).startsWith("..");
+  if (dentro && !ignoradoPorGit(resReal, raizRepo)) throw new Error("el directorio de resultados esta dentro del repo y NO esta ignorado por git; agregalo a .git/info/exclude o usa VOZ_RES_DIR fuera del repo");
+}
 const ARCHIVO = `${RES}/voz-real-${process.env.VOZ_ETQ ?? "main"}-rep${REP}.json`;
 
 const key = process.env.OPENROUTER_API_KEY;
