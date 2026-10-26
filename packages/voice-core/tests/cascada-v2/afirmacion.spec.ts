@@ -66,6 +66,26 @@ describe("enPalabras / contieneTotal", () => {
     expect(contieneTotal(dicho, total)).toBe(false);
   });
 
+  it("centavos, «mil» tras cifra, miles con espacio, «tres, cuatrocientos veintiocho» y «veinte y uno»", () => {
+    expect(contieneTotal("trescientos veintiocho con cincuenta", 328)).toBe(false);
+    expect(contieneTotal("son trescientos veintiocho pesos con cincuenta centavos", 328.5)).toBe(true);
+    expect(contieneTotal("son trescientos veintiocho con cincuenta.", 328.5)).toBe(true);
+    expect(contieneTotal("son 328 pesos", 328.5)).toBe(false);
+    expect(contieneTotal("son trescientos veintiocho pesos", 328.5)).toBe(false);
+    expect(contieneTotal("son 328 con 50 centavos", 328.5)).toBe(true);
+    expect(contieneTotal("son 328 con 50 centavos", 328)).toBe(false);
+    expect(contieneTotal("328 mil", 328)).toBe(false);
+    expect(contieneTotal("328 mil", 328000)).toBe(true);
+    expect(contieneTotal("1 328", 1328)).toBe(true);
+    expect(contieneTotal("1 328", 328)).toBe(false);
+    expect(contieneTotal("tres, cuatrocientos veintiocho", 3428)).toBe(true);
+    expect(contieneTotal("tres, cuatrocientos veintiocho", 328)).toBe(false);
+    expect(contieneTotal("veinte y uno", 21)).toBe(true);
+    expect(contieneTotal("veinte y uno", 20)).toBe(false);
+    // «con dos aguas» NO son centavos (no cierra la frase ni dice «centavos»): el total sigue siendo 328.
+    expect(contieneTotal("son trescientos veintiocho pesos con dos aguas de cortesia", 328)).toBe(true);
+  });
+
   it("total desconocido o no positivo nunca coincide", () => {
     expect(contieneTotal("328", null)).toBe(false);
     expect(contieneTotal("328", 0)).toBe(false);

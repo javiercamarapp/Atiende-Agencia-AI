@@ -3,6 +3,7 @@
 // el modelo llamaba confirmar_resumen (armaba la espera) y crear_pedido quedaba bloqueado: pedia otro «si» y casi nunca se creaba el pedido.
 import { describe, expect, it } from "vitest";
 import { crearProveedorCascadaV2 } from "../../src/index.ts";
+import { ejecutarHerramientas } from "../../src/llamada/cascada-v2/herramientas.ts";
 import type { AperturaLlamada } from "../../src/index.ts";
 import { SttFalso, TtsFalso, llmFalso, manejadoresFalsos } from "./dobles.ts";
 import type { TurnoLlm } from "./dobles.ts";
@@ -10,6 +11,7 @@ import type { TurnoLlm } from "./dobles.ts";
 const APERTURA: AperturaLlamada = { instruccion: "Eres el agente.", voiceId: "Kore", herramientas: [], vocabulario: [] };
 let reloj = 1_700_000_000_000;
 const AHORA = () => reloj;
+const logsUnit: string[] = [];
 const REGLA = { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido" };
 
 type Llamada = { id: string; nombre: string; argsJson: string };
@@ -349,5 +351,46 @@ describe("compuerta confirmar -> crear: crear con quote_hash distinto se rechaza
     expect(srv.s.pedidos).toBe(0);
     expect(resultadosTool(3).some((r) => r["error"] === "resumen_distinto_al_leido")).toBe(true);
     expect(logs).toContain("v2_crear_quote_hash_distinto");
+  });
+});
+
+describe("compuerta confirmar -> crear: crear directo sin afirmacion se bloquea (P1 final)", () => {
+  it("estado {pendiente:false, afirmacion:false, huellaOida:'abc'} + crear_pedido directo -> bloqueada y el ejecutor nunca corre", async () => {
+    let corridas = 0;
+    const estado = { pendiente: false, afirmacion: false, huellaOida: "abc" };
+    const r = await ejecutarHerramientas([{ id: "p", nombre: "crear_pedido", argsJson: "{}" }], async () => {
+      corridas += 1;
+      return { creado: true };
+    }, { confirmacionAntesDeCrear: REGLA, esperandoAlCliente: estado, log: (e) => logsUnit.push(e) });
+    expect(corridas).toBe(0);
+    expect((r[0]!.salida as Record<string, unknown>)["error"]).toBe("espera_confirmacion_del_cliente");
+    expect(logsUnit).toContain("v2_crear_sin_afirmacion");
+  });
+
+  it("con afirmacion=true el mismo crear directo SI corre (el camino normal no se rompe)", async () => {
+    let corridas = 0;
+    const r = await ejecutarHerramientas([{ id: "p", nombre: "crear_pedido", argsJson: "{}" }], async () => {
+      corridas += 1;
+      return { creado: true };
+    }, { confirmacionAntesDeCrear: REGLA, esperandoAlCliente: { pendiente: false, afirmacion: true, huellaOida: "abc" } });
+    expect(corridas).toBe(1);
+    expect((r[0]!.salida as Record<string, unknown>)["creado"]).toBe(true);
+  });
+
+  it("turno A deja el servidor `confirmado` (sin crear); turno B el cliente dice «no, espera» y el modelo llama crear_pedido directo -> NINGUN pedido", async () => {
+    const { srv, cliente, logs } = await armar([
+      ...cotizaYLee,
+      paso("", tc("c", "confirmar_resumen")), // turno A: confirma pero no crea
+      paso("Perfecto, un momento."),
+      paso("", tc("p", "crear_pedido")), // turno B: crea directo
+      paso("Con gusto, ¿qué desea cambiar?"),
+    ]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.confirmado).toBe(true);
+    expect(srv.s.pedidos).toBe(0);
+    await cliente("no, espera");
+    expect(srv.s.pedidos).toBe(0);
+    expect(logs).toContain("v2_crear_sin_afirmacion");
   });
 });

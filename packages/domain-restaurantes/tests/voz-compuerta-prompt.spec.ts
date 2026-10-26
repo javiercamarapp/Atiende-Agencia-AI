@@ -62,4 +62,8 @@ describe("prompt de voz: el contrato de la compuerta es operable", () => {
     expect(bloque).toMatch(/si dio un dato nuevo, repita el resumen completo con el total y pida un sí limpio/);
     expect(bloque).toMatch(/vuelva a decir el total del resumen antes de pedir el sí/);
   });
+
+  it("tras decir el total no se pregunta «¿algo mas?»: se pide solo el si o el no", () => {
+    expect(bloque).toMatch(/NO pregunte «¿algo más\?» ni ofrezca nada en el mismo turno: pida solo el sí o el no/);
+  });
 });
