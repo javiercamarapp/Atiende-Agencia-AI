@@ -36,6 +36,14 @@ export { StatCard, TrendStatCard, type StatCardVariante } from "./components/Sta
 export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
+export { CargandoLogo, type CargandoLogoTamano } from "./components/CargandoLogo.js";
+export {
+  CARGA_PERMANENCIA_MS,
+  CARGA_RETARDO_MS,
+  CARGA_TOPE_MS,
+  useCargaRetenida,
+  type CargaTamano,
+} from "./lib/carga-coordinador.js";
 export { ConfirmDialog, validarCampoConfirm, type ConfirmCampo, type ConfirmDialogProps, type ConfirmTono } from "./components/ConfirmDialog.js";
 export { useConfirm, type OpcionesConfirmar, type OpcionesPedirTexto, type UseConfirm } from "./components/useConfirm.js";
 export { FormDialog, type FormDialogPaso, type FormDialogProps } from "./components/FormDialog.js";
