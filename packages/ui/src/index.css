@@ -207,6 +207,54 @@
     --radius-menu: 1rem;
     --radius-item: 0.75rem;
     --shadow-boton: 0 0 0 0 transparent;
+
+    /* ---- Lote 1.1 (rediseno ds3): tokens PRE-DECLARADOS con el valor del diseno ACTUAL. Ningun componente los
+       consume todavia (cero cambio visual); el bloque html[data-diseno="ds3"] del lote 1.2 les pone el valor nuevo.
+       --sunken, --font-sans, --font-mono, --dur-fast/base/slow y --chart-1..5 ya existian y NO se tocan. ---- */
+    --soft: 240 4.8% 95.9%; /* = --muted */
+    --border-strong: 240 6% 90%; /* = --line2 */
+    --action: 224 76% 48%; /* hoy la accion principal es el azul de marca */
+    --action-foreground: 0 0% 100%;
+    --action-hover: 224 76% 43%;
+    --primary-soft: 224 76% 95%;
+    --primary-soft-hover: 224 76% 91%;
+    --primary-ink: 224 76% 36%;
+    --success-ink: 142 71% 25%; /* = --success */
+    --warning-ink: 28 90% 26%; /* = --warning */
+    --danger-tint: 352 80% 95%; /* = --destructive-tint */
+    --danger-ink: 352 83% 41%; /* = --destructive */
+    --info-ink: 219 65% 36%; /* = --info */
+    /* Series 6..8: sin color nuevo todavia, repiten la rampa neutra actual (4, 3 y 5). --chart-soft-n = tinte opaco
+       (--muted); --on-chart-n = el de mayor contraste entre tinta y blanco sobre --chart-n. */
+    --chart-6: 240 5.3% 26.1%;
+    --chart-7: 240 5% 64.9%;
+    --chart-8: 240 5.9% 10%;
+    --chart-soft-1: 240 4.8% 95.9%;
+    --chart-soft-2: 240 4.8% 95.9%;
+    --chart-soft-3: 240 4.8% 95.9%;
+    --chart-soft-4: 240 4.8% 95.9%;
+    --chart-soft-5: 240 4.8% 95.9%;
+    --chart-soft-6: 240 4.8% 95.9%;
+    --chart-soft-7: 240 4.8% 95.9%;
+    --chart-soft-8: 240 4.8% 95.9%;
+    --on-chart-1: 18 27.8% 7.1%;
+    --on-chart-2: 18 27.8% 7.1%;
+    --on-chart-3: 18 27.8% 7.1%;
+    --on-chart-4: 0 0% 100%;
+    --on-chart-5: 0 0% 100%;
+    --on-chart-6: 0 0% 100%;
+    --on-chart-7: 18 27.8% 7.1%;
+    --on-chart-8: 0 0% 100%;
+    --control-xs: 1.5rem;
+    --pad-card: 1rem; /* = p-4 de Card */
+    --gap-bloque: 0.75rem;
+    --header-h: 3rem;
+    --sidebar-w: 14.5rem; /* = lg:w-[232px] de Sidebar */
+    --sidebar-w-rail: 4.5rem; /* = w-[72px] */
+    --bottomnav-h: 3.5rem; /* = min-h-14 de BottomNav */
+    --nav-total: calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 32px -8px rgba(0, 0, 0, 0.18); /* = --shadow-elevated */
+    --carga-panel-h: 10rem;
   }
 
   .dark {
@@ -294,6 +342,41 @@
     /* El rojo del original en oscuro (352 75% 55%) da 4.30:1 con blanco: 50 % de luminosidad llega a 4.77:1. */
     --destructive-solido: 352 75% 50%;
     --destructive-solido-foreground: 0 0% 100%;
+
+    /* Lote 1.1: ver el comentario del bloque :root. */
+    --soft: 240 7% 11.4%; /* = --muted */
+    --border-strong: 240 6% 17.1%; /* = --line2 */
+    --action: 213 82% 62%;
+    --action-foreground: 240 7% 8%;
+    --action-hover: 213 82% 70%;
+    --primary-soft: 224 40% 14%;
+    --primary-soft-hover: 224 40% 18%;
+    --primary-ink: 217 91% 80%;
+    --success-ink: 142 60% 65%; /* = --success */
+    --warning-ink: 40 92% 65%; /* = --warning */
+    --danger-tint: 352 40% 20%; /* = --destructive-tint */
+    --danger-ink: 352 85% 70%; /* = --destructive */
+    --info-ink: 218 75% 68%; /* = --info */
+    --chart-6: 240 4.9% 83.9%;
+    --chart-7: 240 3.4% 45.5%;
+    --chart-8: 240 4.8% 95.9%;
+    --chart-soft-1: 240 7% 11.4%;
+    --chart-soft-2: 240 7% 11.4%;
+    --chart-soft-3: 240 7% 11.4%;
+    --chart-soft-4: 240 7% 11.4%;
+    --chart-soft-5: 240 7% 11.4%;
+    --chart-soft-6: 240 7% 11.4%;
+    --chart-soft-7: 240 7% 11.4%;
+    --chart-soft-8: 240 7% 11.4%;
+    --on-chart-1: 240 4.8% 95.9%;
+    --on-chart-2: 240 4.8% 95.9%;
+    --on-chart-3: 240 4.8% 95.9%;
+    --on-chart-4: 240 7% 8%;
+    --on-chart-5: 240 7% 8%;
+    --on-chart-6: 240 7% 8%;
+    --on-chart-7: 240 4.8% 95.9%;
+    --on-chart-8: 240 7% 8%;
+    --shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.03); /* = --shadow-elevated */
   }
 }
 
