@@ -37,6 +37,13 @@ export interface EstadoEspera {
   afirmacion?: boolean;
   /** Total de la ultima cotizacion del turno (para comprobar que el agente lo dijo). */
   totalCotizado?: number | null;
+  /** Lo que el agente dijo en voz alta DESDE la cotizacion vigente (la sesion lo acumula; `alCotizar` lo vacia cuando la huella cambia). */
+  habladoTrasCotizar?: string;
+  /** Total de la cotizacion cuyo resumen se dio por leido (`huellaOida`). */
+  totalOido?: number | null;
+  /** Ultima cotizacion del llamado (persiste entre turnos; la huella y el total del resumen vigente). Si tras una pregunta intermedia el agente RELEE el total, el resumen vuelve a contar como leido. */
+  huellaUltima?: string | null;
+  totalUltimo?: number | null;
   huellaOida?: string | null;
   huellaCotizada?: string | null;
   cotizoEnTurno?: boolean;
@@ -53,10 +60,15 @@ function huellaDe(salida: unknown): string | null {
 function totalDe(salida: unknown): number | null {
   if (salida && typeof salida === "object" && !Array.isArray(salida)) {
     const o = salida as Record<string, unknown>;
-    for (const k of ["total", "total_mxn", "total_a_pagar"]) {
-      const v = o[k];
-      if (typeof v === "number" && Number.isFinite(v)) return v;
-      if (typeof v === "string" && /^\s*\$?\s*[\d,]+(\.\d+)?\s*$/.test(v)) return Number(v.replace(/[$,\s]/g, ""));
+    // Forma REAL de la ruta de voz: `{ quote: OrderQuote (con total), quote_hash }`; tambien se acepta el total en el nivel superior.
+    const fuentes: Record<string, unknown>[] = [o];
+    if (o["quote"] && typeof o["quote"] === "object" && !Array.isArray(o["quote"])) fuentes.unshift(o["quote"] as Record<string, unknown>);
+    for (const f of fuentes) {
+      for (const k of ["total", "total_mxn", "total_a_pagar"]) {
+        const v = f[k];
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+        if (typeof v === "string" && /^\s*\$?\s*[\d,]+(\.\d+)?\s*$/.test(v)) return Number(v.replace(/[$,\s]/g, ""));
+      }
     }
   }
   return null;
@@ -104,8 +116,15 @@ export async function ejecutarHerramientas(
     if (!regla?.cotizar) return;
     espera.cotizoEnTurno = true;
     const h = huellaDe(salida);
+    // Cotizacion nueva (otra huella): lo dicho hasta ahora era del resumen anterior y no cuenta para este.
+    if (h !== (espera.huellaCotizada ?? null)) espera.habladoTrasCotizar = "";
     espera.huellaCotizada = h;
     espera.totalCotizado = totalDe(salida);
+    if (h !== null) {
+      espera.huellaUltima = h;
+      espera.totalUltimo = espera.totalCotizado;
+    }
+    if (h !== null && espera.totalCotizado === null) log?.("v2_total_desconocido", { motivo: "sin_total", herramienta: regla.cotizar });
     if (h === null || h !== espera.huellaOida) espera.huellaOida = null;
   };
   const una = async (tc: ToolCallLlmVoz): Promise<ResultadoHerramienta> => {
@@ -150,7 +169,11 @@ export async function ejecutarHerramientas(
     if (regla && tc.nombre === regla.cotizar) alCotizar(res.salida);
     if (regla && tc.nombre === regla.confirmar) alConfirmar(res.salida);
     // Pedido creado: ese resumen ya se uso. Un segundo «si» (o un crear repetido) debe pasar por una confirmacion nueva; la idempotencia sigue siendo del servidor.
-    if (regla?.cotizar && tc.nombre === regla.crear && !conError(res.salida)) espera.huellaOida = null;
+    if (regla?.cotizar && tc.nombre === regla.crear && !conError(res.salida)) {
+      espera.huellaOida = null;
+      espera.huellaUltima = null;
+      espera.totalUltimo = null;
+    }
   }
   return resultados;
 }

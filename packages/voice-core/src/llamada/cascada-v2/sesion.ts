@@ -99,8 +99,6 @@ interface LineaAudio {
 
 /** Con tan pocos Flush disponibles el nucleo deja de mandar frases sueltas y junta el resto del turno (Deepgram: 20 por 60 s). */
 const FLUSH_MINIMOS_PARA_FRASE_SUELTA = 3;
-/** Sin total conocido en la cotizacion, un resumen leido tiene al menos estas palabras (un «un momento, consulto» no es un resumen). */
-const MIN_PALABRAS_RESUMEN = 8;
 
 const cuentaDeCaracteres = (texto: string): number => Array.from(texto).length;
 
@@ -326,13 +324,15 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.esperandoAlCliente.cotizoEnTurno = false;
     this.esperandoAlCliente.huellaCotizada = null;
     this.esperandoAlCliente.totalCotizado = null;
+    this.esperandoAlCliente.habladoTrasCotizar = "";
     // El codigo interpreta el turno del cliente: solo una afirmacion («si», «ok», «correcto»...) cuenta como confirmacion del resumen.
     this.esperandoAlCliente.afirmacion = esAfirmacion(texto);
-    let habladoTrasCotizar = "";
+    let habladoTurno = "";
 
     const cola = new ColaAsync<FraseLlm>();
     const empujar = (f: FraseLlm): void => {
-      if (this.esperandoAlCliente.cotizoEnTurno === true && f.frase.trim() !== "") habladoTrasCotizar += ` ${f.frase}`;
+      if (f.frase.trim() !== "") habladoTurno += ` ${f.frase}`;
+      if (this.esperandoAlCliente.cotizoEnTurno === true && f.frase.trim() !== "") this.esperandoAlCliente.habladoTrasCotizar = `${this.esperandoAlCliente.habladoTrasCotizar ?? ""} ${f.frase}`;
       cola.push(f);
     };
     let fallaTts: unknown = null;
@@ -429,13 +429,27 @@ class SesionCascadaV2 implements VozSesionLlamada {
         return;
       }
       // El agente termino de hablar tras cotizar y nadie lo interrumpio: ese resumen ya se le leyo al cliente (el «si» siguiente responde a EL).
-      // «Resumen leido» exige que lo dicho tras cotizar incluya el TOTAL (cifra o palabras); sin total conocido, un minimo de palabras. Un «un momento, consulto» no cuenta.
-      const total = this.esperandoAlCliente.totalCotizado ?? null;
-      const palabras = habladoTrasCotizar.trim().split(/\s+/).filter((p) => p !== "").length;
-      const resumenLeido = total !== null ? contieneTotal(habladoTrasCotizar, total) : palabras >= MIN_PALABRAS_RESUMEN;
-      if (this.esperandoAlCliente.huellaCotizada && palabras > 0) {
-        if (resumenLeido) this.esperandoAlCliente.huellaOida = this.esperandoAlCliente.huellaCotizada;
-        else this.log("v2_resumen_sin_total", { motivo: "sin_total", ok: false });
+      // «Resumen leido» exige que lo dicho DESDE la ultima cotizacion incluya el TOTAL (cifra o palabras). Sin total conocido (la herramienta no lo trajo) la compuerta NO se abre
+      // (evento v2_total_desconocido): nunca se adivina con un minimo de palabras. Un «un momento, consulto» no cuenta.
+      const e = this.esperandoAlCliente;
+      const total = e.totalCotizado ?? null;
+      const hablado = e.habladoTrasCotizar ?? "";
+      if (e.cotizoEnTurno === true && e.huellaCotizada && hablado.trim() !== "") {
+        if (total !== null && contieneTotal(hablado, total)) {
+          e.huellaOida = e.huellaCotizada;
+          e.totalOido = total;
+        } else this.log("v2_resumen_sin_total", { motivo: "sin_total", ok: false });
+      } else if (e.cotizoEnTurno !== true && habladoTurno.trim() !== "" && (e.huellaUltima ?? null) !== null) {
+        // El agente hablo en un turno sin re-cotizar (pregunta intermedia, aclaracion): el resumen cuenta como leido SOLO si repitio el total vigente; si no, el siguiente «si»
+        // ya no responde a un resumen leido. Lo hecho al reves (releer el total tras una pregunta) lo vuelve a abrir.
+        const relee = e.totalUltimo !== null && e.totalUltimo !== undefined && contieneTotal(habladoTurno, e.totalUltimo);
+        if (relee) {
+          e.huellaOida = e.huellaUltima ?? null;
+          e.totalOido = e.totalUltimo ?? null;
+        } else if ((e.huellaOida ?? null) !== null) {
+          e.huellaOida = null;
+          this.log("v2_resumen_olvidado", { motivo: "sin_releer_total", ok: false });
+        }
       }
       this.h.agenteTermino();
     } finally {
