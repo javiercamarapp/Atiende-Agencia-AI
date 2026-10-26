@@ -1,0 +1,16 @@
+[
+  {
+    "ruta": "/login",
+    "tipo": "boton-gordo",
+    "selector": "Continuar con correo",
+    "motivo": "Alto de los controles del login: 44 px (pendiente del dueno, default recomendado; token --login-h)",
+    "vence": "lote 6.3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "boton-gordo",
+    "selector": "Continuar con Google",
+    "motivo": "Boton de Google >= 40 px por las pautas de la marca",
+    "vence": "lote 6.3"
+  }
+]

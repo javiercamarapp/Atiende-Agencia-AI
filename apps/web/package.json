@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "e2e:ds3": "playwright test -c playwright.ds3.config.ts",
+    "build:catalogo": "VITE_CATALOGO=1 vite build --outDir dist-catalogo --emptyOutDir",
     "e2e:browsers": "playwright install chromium"
   },
   "dependencies": {
