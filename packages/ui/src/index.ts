@@ -27,6 +27,17 @@ export { pedidosPorImprimir, type PedidoParaCola } from "./lib/colaImpresionCoci
 export { TicketCocinaDialog, TicketCocinaVista, type TicketCocinaDialogProps, type TicketCocinaVistaProps } from "./components/TicketCocinaDialog.js";
 
 export { GoogleIcon } from "./components/GoogleIcon.js";
+export {
+  LogoMarca,
+  LOGO_MARCA_CLAVES,
+  MARCAS_CON_ASSET,
+  MARCAS_PENDIENTES,
+  type LogoMarcaClave,
+  type LogoMarcaTamano,
+  type LogoMarcaVariante,
+} from "./components/LogoMarca.js";
+export { LogoMarcaDiferido } from "./components/LogoMarcaDiferido.js";
+export { PENDIENTES_MARCA } from "./lib/logos-marca.generated.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
