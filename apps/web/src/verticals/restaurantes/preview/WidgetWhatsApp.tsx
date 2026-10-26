@@ -77,6 +77,17 @@ function Palomitas({ leido, entregado }: { readonly leido: boolean; readonly ent
 const nuevaSesion = (): string => crypto.randomUUID();
 const inicial = (nombre: string): string => (nombre.trim().charAt(0) || "A").toLocaleUpperCase("es-MX");
 
+/** ¿El diálogo se ve? `display:none` no se hereda en getComputedStyle, así que se usa checkVisibility (con CSS) y, sin él, se recorren los ancestros. */
+function dialogoVisible(d: HTMLElement): boolean {
+  if (typeof d.checkVisibility === "function") return d.checkVisibility({ checkVisibilityCSS: true });
+  for (let el: HTMLElement | null = d; el; el = el.parentElement) {
+    const estilo = window.getComputedStyle(el);
+    if (estilo.display === "none") return false;
+    if (el === d && estilo.visibility === "hidden") return false;
+  }
+  return window.getComputedStyle(d).visibility !== "hidden";
+}
+
 export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = "Agente de WhatsApp", borrador }: Props) {
   const [abierto, setAbierto] = useState(false);
   const [opcionesAbiertas, setOpcionesAbiertas] = useState(false);
@@ -155,12 +166,11 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       // Otro diálogo/alerta encima (p. ej. una confirmación): Escape es suyo; este chat sigue abierto.
       // Se mira el documento entero (no solo el origen del evento): el foco puede estar en <body> con la confirmación abierta.
       // No cuentan: el propio panel, los diálogos que lo CONTIENEN (el shell puede mantener uno montado alrededor), los de su interior ni los ocultos
-      // (`hidden`, `aria-hidden="true"`, display:none o visibility:hidden, propios o heredados de un ancestro): ninguno puede quedarse con el Escape.
+      // (`hidden`, `aria-hidden="true"`, `inert`, display:none o visibility:hidden, propios o de un ancestro): ninguno puede quedarse con el Escape.
       const otro = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"],[role="alertdialog"]')).some((d) => {
         if (d === panel.current || d.contains(panel.current) || panel.current?.contains(d)) return false;
-        if (d.closest('[hidden],[aria-hidden="true"]')) return false;
-        const estilo = window.getComputedStyle(d);
-        return estilo.display !== "none" && estilo.visibility !== "hidden";
+        if (d.closest('[hidden],[aria-hidden="true"],[inert]')) return false;
+        return dialogoVisible(d);
       });
       if (otro) return;
       e.stopPropagation();

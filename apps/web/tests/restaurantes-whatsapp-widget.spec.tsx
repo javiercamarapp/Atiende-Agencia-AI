@@ -463,6 +463,25 @@ describe("<WidgetWhatsApp />", () => {
     }
   });
 
+  it("un dialog dentro de un ANCESTRO con display:none (o inert) tampoco bloquea el Escape", async () => {
+    for (const ocultar of [(a: HTMLElement) => void (a.style.display = "none"), (a: HTMLElement) => a.setAttribute("inert", "")]) {
+      montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
+      await abrir();
+      const abuelo = document.createElement("div");
+      ocultar(abuelo);
+      const oculto = document.createElement("div");
+      oculto.setAttribute("role", "dialog");
+      abuelo.appendChild(oculto);
+      document.body.appendChild(abuelo);
+      keydown(document.body, "Escape");
+      await esperar();
+      abuelo.remove();
+      expect(q('[data-testid="chat-whatsapp"]')).toBeNull();
+      rendered?.unmount();
+      rendered = undefined;
+    }
+  });
+
   it("un dialog que CONTIENE al panel (shell que lo mantiene montado) NO bloquea el Escape del chat", async () => {
     montar(() => json({ respuesta: "x", escalado: false, pedidoSimulado: null }));
     await abrir();

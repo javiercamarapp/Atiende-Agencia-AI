@@ -119,23 +119,45 @@ const PALABRA_NUM = Object.keys(PALABRAS_UNIDAD).concat("mil").sort((a, b) => b.
 /** Una frase numerica en palabras: «cuarenta», «treinta y cinco», «ciento veinte», «dos mil», seguida de la unidad. Texto ya en minusculas y sin acentos. */
 export const FRASE_NUMERICA_EN_PALABRAS = `(?:${PALABRA_NUM})(?:\\s+(?:y\\s+)?(?:${PALABRA_NUM}))*`;
 
-/** Valor de una frase numerica en palabras en español (texto en minusculas y SIN acentos): «treinta y cinco» -> 35, «ciento veinte» -> 120, «mil» -> 1000. `null` si no es una frase valida. */
-export function cantidadEnPalabras(frase: string): number | null {
-  let total = 0;
-  let actual = 0;
-  let hubo = false;
-  for (const w of frase.trim().split(/\s+/)) {
-    if (w === "y") continue;
-    if (w === "mil") {
-      total += (actual || 1) * 1000;
-      actual = 0;
-      hubo = true;
-      continue;
-    }
-    const v = PALABRAS_UNIDAD[w];
-    if (v === undefined) return null;
-    actual += v;
-    hubo = true;
+/** Gramatica de un numero 0-999 en palabras: [centena] [decena «y» unidad | decena | 0-29]. Devuelve `null` si las palabras no forman un numero valido («tres cuatro», «cien cien»). */
+function menorDeMil(palabras: readonly string[]): number | null {
+  let i = 0;
+  let valor = 0;
+  const v = (k: number): number | undefined => PALABRAS_UNIDAD[palabras[k] ?? ""];
+  const cen = v(i);
+  if (cen !== undefined && cen >= 100) {
+    // «cien» va solo; «ciento» y «doscientos»... admiten un resto.
+    valor = cen;
+    i++;
+    if (palabras[i - 1] === "cien") return i === palabras.length ? valor : null;
+    if (i === palabras.length) return palabras[i - 1] === "ciento" ? null : valor;
   }
-  return hubo ? total + actual : null;
+  if (i >= palabras.length) return valor === 0 && palabras.length === 0 ? null : valor;
+  const d = v(i);
+  if (d === undefined || d >= 100) return null;
+  i++;
+  if (d >= 30 && d % 10 === 0) {
+    if (i === palabras.length) return valor + d;
+    if (palabras[i] !== "y") return null;
+    const u = v(i + 1);
+    if (u === undefined || u < 1 || u > 9 || i + 2 !== palabras.length) return null;
+    return valor + d + u;
+  }
+  return i === palabras.length ? valor + d : null;
+}
+
+/** Valor de una frase numerica en palabras en español (texto en minusculas y SIN acentos): «treinta y cinco» -> 35, «ciento veinte» -> 120, «mil» -> 1000, «dos mil» -> 2000.
+ * `null` si no es una cantidad valida: palabras numericas adyacentes que no forman un numero («tres cuatro», «cien cien», «tres cuarenta») no se suman. */
+export function cantidadEnPalabras(frase: string): number | null {
+  const palabras = frase.trim().split(/\s+/).filter((w) => w !== "");
+  if (palabras.length === 0) return null;
+  const iMil = palabras.indexOf("mil");
+  if (iMil === -1) return menorDeMil(palabras);
+  if (palabras.indexOf("mil", iMil + 1) !== -1) return null;
+  const antes = palabras.slice(0, iMil);
+  const despues = palabras.slice(iMil + 1);
+  const miles = antes.length === 0 ? 1 : menorDeMil(antes);
+  if (miles === null || miles < 1) return null;
+  const resto = despues.length === 0 ? 0 : menorDeMil(despues);
+  return resto === null ? null : miles * 1000 + resto;
 }

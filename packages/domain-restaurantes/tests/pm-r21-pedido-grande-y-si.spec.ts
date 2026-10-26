@@ -160,12 +160,18 @@ describe("T7-061: la solicitud realmente grande del cliente SI escala con pedido
     "media docena de tacos",
     "diez tacos y cinco gringas",
     "quiero diez de pastor",
+    "tres cuatro kilos de pastor",
+    "cien cien tacos",
+    "tres cuarenta pedidos",
+    "veinte treinta tacos",
   ])("normal en palabras: %s", (t) => {
     expect(solicitudEsPedidoGrande(t)).toBe(false);
   });
   it("cantidadEnPalabras: hasta 999 y «mil»", () => {
     const casos: Array<[string, number]> = [["cero", 0], ["uno", 1], ["quince", 15], ["veintidos", 22], ["treinta y cinco", 35], ["noventa y nueve", 99], ["cien", 100], ["ciento uno", 101], ["doscientos cuarenta y tres", 243], ["novecientos noventa y nueve", 999], ["mil", 1000], ["dos mil", 2000]];
     for (const [f, n] of casos) expect(cantidadEnPalabras(f)).toBe(n);
+    for (const mala of ["tres cuatro", "cien cien", "tres cuarenta", "cien uno", "ciento", "treinta y", "treinta y cuarenta", "veinte y cinco", "mil mil", "dos tres mil"]) expect(cantidadEnPalabras(mala), mala).toBeNull();
+    expect(cantidadEnPalabras("mil quinientos")).toBe(1500);
     expect(cantidadEnPalabras("perro")).toBeNull();
     expect(cantidadEnPalabras("")).toBeNull();
   });

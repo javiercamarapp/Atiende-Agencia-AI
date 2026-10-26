@@ -106,4 +106,12 @@ describe("T7-038 (P2): el aviso de un agregado NO se reescribe con el total de u
     expect(aviso?.message).toContain("no se ha cotizado");
     expect(aviso?.message).not.toMatch(/ya está cotizado/i);
   });
+
+  it("estado confirmado (entre confirmar_resumen y crear_pedido) con cotizacion vigente: SI se corrige el aviso", async () => {
+    const v = await nuevoViaje();
+    v.guion([{ tools: [cotizar(v), { name: "confirmar_resumen", args: {} }] }, { tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_especial", resumen: "Pidió algo; no se ha cotizado." } }] }, { texto: "Listo." }]);
+    await v.escribe("quiero medio kilo de pastor para recoger");
+    const aviso = v.callbacks.find((c) => c.reason === "escalada:pedido_especial");
+    expect(aviso?.message).toContain("ya está cotizado por $450.00");
+  });
 });
