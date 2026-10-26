@@ -55,7 +55,7 @@ import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
-import { afirmaCambioRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
+import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -1064,7 +1064,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               const resumenG = `${resumenPedidoGrande({ motivo: motivoGrande, total, pesoKg, items: renglones, canal: c.quotedCanal, paymentMethod: c.quotedPago })} El turno del asistente se corto antes de mostrar el resumen: contactar al cliente para confirmar el pedido.`;
               const avisoG = await executeAgentToolSafely(
                 repo,
-                { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+                { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, pedidoGrandeDelServidor: true, ...modoCtx },
                 "escalar_a_humano",
                 { customer_name: nombreG, motivo: "pedido_grande", resumen: resumenG.slice(0, 900) },
               );
@@ -1301,7 +1301,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const ultimo = [...messages].reverse().find((m) => m.role === "user");
             const aviso = await executeAgentToolSafely(
               repo,
-              { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+              { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(motivoAvisoHonesto === "pedido_grande" ? { pedidoGrandeDelServidor: true } : {}), ...modoCtx },
               "escalar_a_humano",
               {
                 customer_name: nombre,
@@ -1336,7 +1336,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             // QA-PM-R16 (NU-4 / T7-026): el aviso al equipo existe (escalar_a_humano ok) pero el pedido NO. Si la respuesta era solo la afirmacion falsa, el sustituto propio dice la verdad
             // (no el generico que pide otro «sí»); si quedan otras frases, se anexa la verdad una sola vez.
             const sustitutoEscalado = escalacionOkEnTurno && !retenidoVigente && !guardiaSoloRegistro ? PM_COPY.pedidoSinRegistrarEscalado : undefined;
-            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : sustitutoEscalado, guardiaSoloRegistro ? afirmaSoloRegistroDePedido : undefined);
+            const afirmaRegistroOProgramado = guardiaSoloRegistro ? (f: string) => afirmaSoloRegistroDePedido(f) || afirmaPedidoProgramado(f) : (f: string) => afirmaPedidoRegistrado(f) || afirmaPedidoProgramado(f);
+            respuesta = quitarAfirmacionDePedidoRegistrado(respuesta, retenidoVigente ? RESPUESTA_TOQUE_RETENIDO : sustitutoEscalado, afirmaRegistroOProgramado);
             if (respuesta !== antesDeQuitar && sustitutoEscalado && !respuesta.includes(sustitutoEscalado)) respuesta = `${respuesta} ${sustitutoEscalado}`.trim();
           }
           // R21 (T7-043, P0): «quedó registrado lo que me cuenta» / «ya agregué los 3 tacos» sobre un cambio o agregado a un pedido que NO se creo en este turno. Ninguna herramienta modifica un pedido ya

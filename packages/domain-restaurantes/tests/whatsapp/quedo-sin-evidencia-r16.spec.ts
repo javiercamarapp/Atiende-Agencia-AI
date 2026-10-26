@@ -30,7 +30,8 @@ async function turno(mensaje: string, respuestas: LlmCompletionResult[]) {
   return { t, f };
 }
 
-const ESCALA = llamada("escalar_a_humano", { customer_name: "Carlos", motivo: "pedido_grande", resumen: "3 tacos al pastor, $126, efectivo, recoger en 40 minutos." });
+// R21 (T7-061): una compra de $126 ya no se escala como `pedido_grande` (lo fija el servidor); el modelo la escala por el tiempo que pide el cliente. Las aserciones de honestidad no cambian.
+const ESCALA = llamada("escalar_a_humano", { customer_name: "Carlos", motivo: "tiempos_entrega", resumen: "3 tacos al pastor, $126, efectivo, recoger en 40 minutos." });
 
 describe("afirmaPedidoRegistrado: «quedo» sin participio (NU-4)", () => {
   it.each([
