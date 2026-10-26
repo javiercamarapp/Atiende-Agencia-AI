@@ -1,4 +1,5 @@
 import { AtiendeMark } from "./AtiendeLogo";
+import { RegionCargando } from "./CargandoDelegado";
 import { Skeleton } from "./ui/skeleton";
 import { cn } from "../lib/utils";
 
@@ -11,6 +12,9 @@ export type EstadoCargandoVariante = "bloque" | "pantalla" | "tabla" | "tarjeta"
  * `bloque` (por defecto), `tabla` (cabecera + `filas`), `tarjeta` y `pantalla`
  * (glifo que respira, para el arranque de Shell/login). Nunca un texto suelto
  * "Cargando...".
+ *
+ * ds3 (`?diseno=ds3`): SOLO el logo (`CargandoLogo`), sin esqueleto ni texto visible; misma etiqueta ARIA. `pantalla`
+ * usa el logo de pantalla; el resto, el de panel con la altura minima de la region (bloque 96, tarjeta 160, tabla 240).
  */
 export function EstadoCargando({
   lineas = 3,
@@ -28,18 +32,24 @@ export function EstadoCargando({
 }) {
   if (variante === "pantalla") {
     return (
-      <div role="status" aria-busy="true" aria-label={etiqueta} className={cn("flex min-h-[60vh] flex-col items-center justify-center gap-3", className)}>
+      <RegionCargando
+        tamano="pantalla"
+        ocupado
+        etiqueta={etiqueta}
+        className={cn("flex min-h-[60vh] flex-col items-center justify-center gap-3", className)}
+        claseDs3={className}
+      >
         <span aria-hidden="true" className="atiende-respira">
           <AtiendeMark animado className="h-10 w-auto" />
         </span>
         <span className="text-ui text-muted-foreground">{etiqueta}</span>
-      </div>
+      </RegionCargando>
     );
   }
 
   if (variante === "tabla") {
     return (
-      <div role="status" aria-busy="true" aria-label={etiqueta} className={cn("space-y-2", className)}>
+      <RegionCargando ocupado etiqueta={etiqueta} className={cn("space-y-2", className)} claseDs3={cn("min-h-60", className)}>
         <span className="sr-only">{etiqueta}</span>
         <Skeleton className="h-7 w-full" />
         {Array.from({ length: filas }).map((_, i) => (
@@ -50,28 +60,33 @@ export function EstadoCargando({
             <Skeleton className="h-3.5" />
           </div>
         ))}
-      </div>
+      </RegionCargando>
     );
   }
 
   if (variante === "tarjeta") {
     return (
-      <div role="status" aria-busy="true" aria-label={etiqueta} className={cn("card space-y-2 rounded-lg border border-border bg-card p-4 shadow-card", className)}>
+      <RegionCargando
+        ocupado
+        etiqueta={etiqueta}
+        className={cn("card space-y-2 rounded-lg border border-border bg-card p-4 shadow-card", className)}
+        claseDs3={cn("min-h-40 rounded-lg border border-border bg-card", className)}
+      >
         <span className="sr-only">{etiqueta}</span>
         <Skeleton className="h-3.5 w-1/3" />
         {Array.from({ length: lineas }).map((_, i) => (
           <Skeleton key={i} className={cn("h-3.5", i === lineas - 1 ? "w-3/5" : "w-full")} />
         ))}
-      </div>
+      </RegionCargando>
     );
   }
 
   return (
-    <div role="status" aria-busy="true" aria-label={etiqueta} className={cn("space-y-2", className)}>
+    <RegionCargando ocupado etiqueta={etiqueta} className={cn("space-y-2", className)} claseDs3={cn("min-h-24", className)}>
       <span className="sr-only">{etiqueta}</span>
       {Array.from({ length: lineas }).map((_, i) => (
         <Skeleton key={i} className={cn("h-3.5", i === lineas - 1 ? "w-3/5" : "w-full")} />
       ))}
-    </div>
+    </RegionCargando>
   );
 }

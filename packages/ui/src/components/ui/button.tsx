@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Loader2 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { IconoDeCarga } from "../CargandoDelegado";
 
 // Botones identicos a Likida (UNI-3a): rounded-md (12 px), text-sm font-medium,
 // sin sombra ni elevacion al hover. El alto sale de --control-sm/md/lg (index.css):
@@ -109,7 +109,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         data-loading={loading ? "" : undefined}
         {...props}
       >
-        {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : iconLeft}
+        <IconoDeCarga cargando={!!loading} reposo={iconLeft} />
         {loading && loadingText !== undefined && loadingText !== false ? (loadingText === true ? TEXTO_GUARDANDO : loadingText) : children}
         {iconRight}
       </button>
