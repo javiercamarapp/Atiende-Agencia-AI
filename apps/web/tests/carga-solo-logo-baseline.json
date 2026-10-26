@@ -1,0 +1,16 @@
+{
+  "porArchivo": {
+    "apps/web/src/pages/CatalogoOverlays.tsx": 3,
+    "apps/web/src/superadmin/pages/Acciones.tsx": 1,
+    "apps/web/src/superadmin/pages/Facturacion.tsx": 1,
+    "apps/web/src/superadmin/pages/Integraciones.tsx": 1,
+    "apps/web/src/superadmin/pages/Resumen.tsx": 1,
+    "apps/web/src/verticals/restaurantes/components/pedidos/HerramientasPedidos.tsx": 1,
+    "apps/web/src/verticals/restaurantes/pages/ComandasPos.tsx": 1,
+    "apps/web/src/verticals/restaurantes/pages/PrimerosPasos.tsx": 1,
+    "packages/ui/src/components/CentroNotificaciones.tsx": 4,
+    "packages/ui/src/components/copiloto/CopilotoHistorial.tsx": 4,
+    "packages/ui/src/components/EstadoCargando.tsx": 9,
+    "packages/ui/src/components/ui/skeleton.tsx": 2
+  }
+}

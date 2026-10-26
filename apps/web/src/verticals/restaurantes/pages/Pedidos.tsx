@@ -9,8 +9,8 @@
 // Programado. Las funciones del monorepo que el original no tiene (sondeo, sonido, auto-impresion, vista previa, reglas del autopiloto) se
 // compactan en el boton «Herramientas».
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Package, Truck, CalendarClock } from "lucide-react";
-import { EstadoError, PageContainer, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir } from "@atiende/ui";
+import { Package, Truck, CalendarClock } from "lucide-react";
+import { EstadoError, PageContainer, RegionCargando, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
 import { fetchAdminBranches } from "../lib/branches-client.ts";
@@ -743,10 +743,15 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
             />
           ) : cargandoLista ? (
             !error && (
-              <div role="status" aria-busy="true" className="flex items-center justify-center rounded-2xl border border-border bg-card p-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
+              <RegionCargando
+                ocupado
+                etiquetaDs3={vista === "programadas" ? "Cargando pedidos programados…" : "Cargando pedidos…"}
+                className="flex items-center justify-center rounded-2xl border border-border bg-card p-12"
+                claseDs3="min-h-40 rounded-2xl border border-border bg-card"
+                giro="h-5 w-5 text-muted-foreground"
+              >
                 <span className="sr-only">{vista === "programadas" ? "Cargando pedidos programados…" : "Cargando pedidos…"}</span>
-              </div>
+              </RegionCargando>
             )
           ) : vista === "programadas" ? (
             <ProgramadosPanel

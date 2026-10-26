@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { Edit, PanelRightClose, Pencil, Search, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Skeleton } from "../ui/skeleton";
+import { RegionCargando } from "../CargandoDelegado";
 import { agruparConversaciones, ETIQUETA_GRUPO } from "./formato";
 import type { ConversacionResumen, CopilotoTransporte } from "./tipos";
 
@@ -197,11 +198,11 @@ export function CopilotoHistorial({
           </p>
         ) : null}
         {estado === "cargando" ? (
-          <div className="px-3 space-y-2" role="status" aria-label="Cargando historial">
+          <RegionCargando etiqueta="Cargando historial" className="px-3 space-y-2" claseDs3="min-h-24">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
-          </div>
+          </RegionCargando>
         ) : estado === "error" ? (
           <div className="px-4 text-sm text-muted-foreground" role="alert">
             <p>No se pudo leer el historial ahora mismo — tus conversaciones siguen guardadas; reintenta en un momento.</p>

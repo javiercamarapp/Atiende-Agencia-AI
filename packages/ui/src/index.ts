@@ -37,6 +37,7 @@ export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVac
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
 export { CargandoLogo, type CargandoLogoTamano } from "./components/CargandoLogo.js";
+export { IconoDeCarga, RegionCargando } from "./components/CargandoDelegado.js";
 export {
   CARGA_PERMANENCIA_MS,
   CARGA_RETARDO_MS,

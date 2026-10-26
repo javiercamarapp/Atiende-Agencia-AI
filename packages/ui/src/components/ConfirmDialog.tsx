@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "../lib/utils";
-import { AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
+import { AlertTriangle, HelpCircle } from "lucide-react";
 
 import {
   AlertDialog,
@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { IconoDeCarga } from "./CargandoDelegado";
 import { FormField } from "./ui/form-field";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -199,7 +200,7 @@ export function ConfirmDialog({
               {cancelar}
             </AlertDialogCancel>
             <Button type="submit" variant={tono === "danger" ? "danger" : "default"} className={cn(tono === "danger" ? "ambito-peligro-solido" : undefined, botonesGrandes ? "h-14" : undefined) || undefined} disabled={bloqueado} aria-busy={enCurso || undefined}>
-              {enCurso && <Loader2 aria-hidden="true" className="animate-spin" />}
+              <IconoDeCarga cargando={!!enCurso} />
               {confirmar}
             </Button>
           </AlertDialogFooter>

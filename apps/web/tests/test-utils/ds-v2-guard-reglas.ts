@@ -135,3 +135,40 @@ export function violacionesDelegacion(fuentes: ReadonlyArray<Fuente>, regla: Reg
   const f = fuentes.find((x) => x.ruta === regla.ruta);
   return f ? regla.evaluar(f.codigo) : [`no existe ${regla.ruta}`];
 }
+
+/**
+ * ds3 / 2.2 -- regla de CARGA con TRINQUETE (no va en `REGLAS`: esas estan en baseline 0 y todas exigen un caso de sanidad en
+ * `web-ds-v2-guard-sanidad.spec.ts`). Prohibe `animate-spin|animate-pulse|Skeleton|Loader2` fuera de la implementacion de la carga:
+ * el unico estado de carga visible es `CargandoLogo` (decisiones #1/#1b). Hoy hay infractores (los que aun no migraron); su conteo por
+ * archivo vive en `carga-solo-logo-baseline.json` y SOLO puede bajar (llega a 0 en el retiro, lote 12).
+ */
+export const REGLA_CARGA_SOLO_LOGO: ReglaGuard = {
+  nombre: "animate-spin|animate-pulse|Skeleton|Loader2 fuera de CargandoLogo (el unico estado de carga es el logo)",
+  patron: /\b(animate-spin|animate-pulse|Skeleton|Loader2)\b/,
+};
+
+/** Implementacion legitima de la carga (y su adaptador): pueden nombrar el spinner/esqueleto del diseno actual. Rutas desde la raiz del repo. */
+export const ARCHIVOS_IMPLEMENTACION_CARGA: ReadonlySet<string> = new Set([
+  "packages/ui/src/components/CargandoLogo.tsx",
+  "packages/ui/src/components/CargandoDelegado.tsx",
+  "packages/ui/src/lib/carga-coordinador.ts",
+  // Barril: reexporta Skeleton; no es un uso.
+  "packages/ui/src/index.ts",
+]);
+
+/** Ocurrencias de la regla en cada archivo (solo los que tienen alguna), excluyendo la implementacion. `fuentes` con rutas desde la raiz del repo. */
+export function conteoCargaPorArchivo(fuentes: ReadonlyArray<Fuente>, regla: ReglaGuard = REGLA_CARGA_SOLO_LOGO): Record<string, number> {
+  const global = new RegExp(regla.patron.source, "g");
+  const salida: Record<string, number> = {};
+  for (const f of fuentes) {
+    if (ARCHIVOS_IMPLEMENTACION_CARGA.has(f.ruta)) continue;
+    const n = f.codigo.match(global)?.length ?? 0;
+    if (n > 0) salida[f.ruta] = n;
+  }
+  return salida;
+}
+
+/** Fuentes de `apps/web/src` y `packages/ui/src` con rutas desde la raiz del repo. */
+export function cargarFuentesRepo(raizRepo: string): Fuente[] {
+  return ["apps/web/src", "packages/ui/src"].flatMap((raiz) => cargarFuentes(join(raizRepo, raiz)).map((f) => ({ ...f, ruta: `${raiz}/${f.ruta}` })));
+}
