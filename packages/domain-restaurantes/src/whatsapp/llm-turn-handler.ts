@@ -34,6 +34,7 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { subtipoQueja } from "../autopiloto/taxonomia.ts";
 import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from "./autopiloto-turno.ts";
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
+import type { AgregadosHook } from "../agregados/tipos.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
@@ -62,6 +63,8 @@ import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { RESPUESTA_TOQUE_RETENIDO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
 import { emitirSeguro, telefonoHashSeguro } from "./observabilidad-turno.ts";
 import { clasificarCausaError, TopeLlamadaLlmError } from "./observabilidad-turno.ts";
+import { completarConHedging, HedgeLlmFalloError, hedgeLlmDespuesMs, hedgeLlmRetrasoEfectivoMs } from "./llm-hedge.ts";
+import type { PataHedgeInforme } from "./llm-hedge.ts";
 import type { CausaErrorTurno, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -292,8 +295,8 @@ export async function bloqueConocimientoDelTurno(repo: RestaurantesRepository, o
   }
 }
 
-export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = "", estadoSucursalAhora = ""): string {
-  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque, estadoSucursalAhora)}\n\n${NOTA_DE_VOZ_RULES}`;
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = "", estadoSucursalAhora = "", agregadosActivos = false): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque, estadoSucursalAhora, agregadosActivos)}\n\n${NOTA_DE_VOZ_RULES}`;
 }
 
 /**
@@ -343,7 +346,7 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
   }
 }
 
-function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string, estadoSucursalAhora: string): string {
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string, estadoSucursalAhora: string, agregadosActivos = false): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
@@ -364,6 +367,8 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       pedidoGrandeTexto: config.largeOrderText ?? null,
       urlFacturacion: config.invoiceUrl ?? null,
       conocimientoBloque,
+      ...(prefijoEstableActivo() ? { prefijoEstable: true } : {}),
+      ...(agregadosActivos ? { agregadosActivos: true } : {}),
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
@@ -501,6 +506,8 @@ export interface WhatsAppLlmAgentOptions {
   readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
   /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
   readonly autopiloto?: AutopilotoTurnoHooks;
+  /** Agregados por validar (migracion 099): habilita `solicitar_agregado_pedido` con solicitud real y la regla del prompt que lo manda usar. Ausente = el agente escala como siempre. */
+  readonly agregados?: AgregadosHook;
   /** R-PM-15: sumidero de eventos estructurados por turno y por tool (sin texto del cliente ni telefono en
    * claro). Ausente = sin observabilidad; emitir nunca lanza ni retrasa el turno. */
   readonly observabilidad?: ObservabilidadTurno;
@@ -570,6 +577,8 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
+/** PM-R21: tope duro de vueltas con hedging por turno (cada una duplica la llamada al modelo; el costo del perdedor se liquida al estimado). */
+export const HEDGES_MAX_POR_TURNO = 2;
 /**
  * PM-R19: respaldo de PROVEEDOR cuando la llamada al modelo agota su tope de tiempo. El tope por llamada era TODO el presupuesto restante del turno
  * (`completarConTope(deadline)`): al vencer no quedaba tiempo para nada y el cliente recibia "problema tecnico" (`tope_llamada` fue el 100 % de los errores de
@@ -611,6 +620,12 @@ export function textoContradiceConfirmacion(textoModelo: string, confirmacionSer
   for (const h of horas(textoModelo)) if (!hS.has(h)) return true;
   return false;
 }
+/** PM-R21: interruptor de entorno del prompt con prefijo estable (cache de prompt del proveedor). APAGADO por omision; encendido solo con `1`, `true`, `on` o `si`. */
+export function prefijoEstableActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  const v = (env.WHATSAPP_PROMPT_PREFIJO_ESTABLE ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "on" || v === "si";
+}
+
 /** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
 export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   const v = (env.WHATSAPP_CIERRE_UNA_VUELTA ?? "").trim().toLowerCase();
@@ -665,6 +680,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     modeloRespaldoLlm: string | null;
     /** PM-R19: modelo que REALMENTE contesto la ultima llamada del turno (lista cerrada o "otro"); distingue respaldo real de caida de escalera. null si ninguna contesto. */
     modeloRespondioLlm: string | null;
+    /** PM-R21: una entrada por llamada al modelo (ver `EventoTurnoWhatsApp.llamadasLlm`); acotada a 12. */
+    llamadasLlm: Array<{ pata: "primario" | "alterno" | "respaldo_secuencial"; resultado: "ok" | "tope" | "error" | "cancelada"; ms: number; modelo: string; causa?: CausaErrorTurno }>;
+    /** PM-R21: el hedging lanzo el alterno en paralelo en alguna vuelta del turno. */
+    hedgeLlmLanzado: boolean;
+    /** PM-R21: cuantas vueltas del turno lanzaron el alterno en paralelo (tope `HEDGES_MAX_POR_TURNO`). */
+    hedgesLlm: number;
+    /** PM-R21: quien contesto la ULTIMA vuelta con hedging (null si no hubo). */
+    hedgeLlmGanador: "primario" | "alterno" | null;
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
     /** Solo con `contextoPrecargado` encendido: que llamadas hizo el servidor antes de la primera vuelta. */
@@ -699,7 +722,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Base sin migrar o sin entradas = bloque vacio (el prompt es identico al de antes); la lectura corre en SAVEPOINT dentro del repositorio.
       const conocimientoBloque = await bloqueConocimientoDelTurno(repo, organizationId, activeEntryBranch?.propertyId ?? entryPropertyId ?? null, config.timezone, now());
       const estadoSucursal = config.perfil === "taqueria_pm" ? await estadoSucursalParaPrompt(repo, activeEntryBranch, now()) : "";
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal);
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal, Boolean(options.agregados));
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
@@ -1155,17 +1178,64 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // aprobada. Seguro: la llamada al modelo no tiene efectos laterales y las herramientas corren ENTRE llamadas (abajo), nunca dentro; el respaldo no las repite
           // (`crear_pedido` corre una sola vez y sigue siendo idempotente por el estado del flujo). Solo el rol por defecto: la escalera del rol escalado es otra.
           let huboRespaldoEnVuelta = false;
+          const registrarPata = (pata: PataHedgeInforme["pata"] | "respaldo_secuencial", resultado: "ok" | "tope" | "error" | "cancelada", ms: number, modelo: string | undefined, error?: unknown) => {
+            if (tele.llamadasLlm.length >= 12) return;
+            tele.llamadasLlm.push({ pata, resultado, ms: Math.max(0, Math.round(ms)), modelo: idModeloDeListaCerrada(modelo ?? MODELO_PREDETERMINADO_ID), ...(resultado === "error" ? { causa: clasificarCausaError(error) } : {}) });
+          };
+          const hedgeMs = hedgeLlmDespuesMs();
           for (;;) {
             const modeloActual = esRolPorDefecto && modeloRespaldo !== null ? modeloRespaldo : modeloElegido;
             // Un solo respaldo por turno: con el alterno ya en uso (o un modelo no economico) la llamada lleva todo el presupuesto restante. Con 10 a 16 s restantes el segundo
             // respaldo no cabria de todos modos (el primer tope siempre deja <= 7 s al siguiente).
             const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID) : null;
+            // PM-R21 (hedging, apagable con WHATSAPP_LLM_HEDGE_MS=0): el alterno se lanza EN PARALELO cuando el primario pasa de ~5.5 s sin contestar, en vez de cortarlo a los 9-11 s y
+            // dejar al alterno 7 s o menos (en R20 el respaldo secuencial tambien se quedo sin contestar en 71 de 113 turnos con error). Gana el primero que conteste; la otra se aborta.
+            const retrasoHedge = siguiente !== null && hedgeMs !== null && tele.hedgesLlm < HEDGES_MAX_POR_TURNO ? hedgeLlmRetrasoEfectivoMs(deadline - Date.now(), hedgeMs) : null;
+            if (siguiente !== null && retrasoHedge !== null) {
+              const modeloPrimario = modeloActual ?? MODELO_PREDETERMINADO_ID;
+              const anotar = (patas: readonly PataHedgeInforme[]) => {
+                for (const pt of patas) registrarPata(pt.pata, pt.resultado, pt.ms, pt.pata === "primario" ? modeloPrimario : siguiente, pt.error);
+              };
+              try {
+                const r = await completarConHedging({ limiteMs: deadline, hedgeDespuesMs: retrasoHedge, primario: llamarAlModelo(modeloActual), alterno: llamarAlModelo(siguiente) });
+                anotar(r.patas);
+                completion = r.valor;
+                if (r.alternoLanzado) {
+                  tele.hedgeLlmLanzado = true;
+                  tele.hedgesLlm += 1;
+                  tele.hedgeLlmGanador = r.ganador;
+                  tele.reintentosLlm += 1;
+                  tele.modeloRespaldoLlm = siguiente;
+                }
+                if (r.ganador === "alterno") {
+                  // Como el respaldo de R19: el primario ya demostro estar atascado, el resto del turno sigue con el alterno.
+                  modeloRespaldo = siguiente;
+                  tele.reintentoLlmRecuperado = true;
+                }
+                break;
+              } catch (errHedge) {
+                if (!(errHedge instanceof HedgeLlmFalloError)) throw errHedge;
+                anotar(errHedge.patas);
+                if (errHedge.alternoLanzado) {
+                  tele.hedgeLlmLanzado = true;
+                  tele.hedgesLlm += 1;
+                  tele.hedgeLlmGanador = null;
+                  tele.reintentosLlm += 1;
+                  tele.modeloRespaldoLlm = siguiente;
+                }
+                throw errHedge.causa;
+              }
+            }
             const plan = siguiente !== null ? planTopeLlamadaLlm(deadline - Date.now()) : { primerTopeMs: 0, respalda: false };
+            const inicioIntento = Date.now();
+            const pataSecuencial = huboRespaldoEnVuelta ? "respaldo_secuencial" : "primario";
             try {
               completion = await completarConTope(plan.respalda ? Date.now() + plan.primerTopeMs : deadline, llamarAlModelo(modeloActual));
+              registrarPata(pataSecuencial, "ok", Date.now() - inicioIntento, modeloActual);
               if (huboRespaldoEnVuelta) tele.reintentoLlmRecuperado = true;
               break;
             } catch (errIntento) {
+              registrarPata(pataSecuencial, errIntento instanceof TopeLlamadaLlmError ? "tope" : "error", Date.now() - inicioIntento, modeloActual, errIntento);
               // Solo el tope de tiempo se respalda aqui; un error rapido del proveedor (5xx, 429...) ya lo maneja la escalera del gateway.
               if (siguiente === null || !plan.respalda || !(errIntento instanceof TopeLlamadaLlmError)) throw errIntento;
               modeloRespaldo = siguiente;
@@ -1334,7 +1404,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;
@@ -1526,7 +1596,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1563,6 +1633,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             reintentoLlmRecuperado: tele.reintentoLlmRecuperado,
             modeloRespaldoLlm: tele.modeloRespaldoLlm,
             modeloRespondioLlm: tele.modeloRespondioLlm,
+            llamadasLlm: tele.llamadasLlm,
+            hedgeLlmLanzado: tele.hedgeLlmLanzado,
+            hedgesLlm: tele.hedgesLlm,
+            hedgeLlmGanador: tele.hedgeLlmGanador,
             cierreMaquina: tele.cierreMaquina,
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,

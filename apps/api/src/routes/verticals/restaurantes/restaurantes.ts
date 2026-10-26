@@ -33,6 +33,7 @@ import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
+import { restaurantesAdminAgregadosRoutes } from "./admin-agregados.ts";
 import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesAgentePreviewRoutes } from "./agente-preview.ts";
@@ -64,6 +65,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminBranchesRoutes(deps));
   // Panel del operador (andamiaje, 501 honesto): ANTES de admin-orders/admin-customers/repartidor-orders (ver el comentario del archivo).
   app.route("/", restaurantesOperacionAndamiajeRoutes(deps));
+  // «Agregados por validar» (migración 099): listar / aceptar / rechazar lo que el cliente pide agregar a un pedido ya enviado.
+  app.route("/", restaurantesAdminAgregadosRoutes(deps));
   app.route("/", restaurantesAdminOrdersRoutes(deps));
   app.route("/", restaurantesAdminCustomersRoutes(deps));
   // Fase 8 — superficie real del rol "repartidor" (ver domain-restaurantes/src/

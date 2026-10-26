@@ -52,6 +52,13 @@ export type {
   PromotionType,
   PropinaPolitica,
   QuotedOrderLine,
+  AccionOperador,
+  OperadorPuedeInput,
+  GuardarPerfilOperativoResultado,
+  PerfilOperativo,
+  AccesoRegistrado,
+  RegistrarAccesoInput,
+  RestaurantesAccesoAccion,
   RegistrarAuditoriaInput,
   RequestedComplement,
   RequestedOrderItemInput,
@@ -96,7 +103,8 @@ export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient, maskPhon
 export { prepararImportacionClientes, IMPORTACION_MAX_FILAS } from "./clientes-importacion.ts";
 export type { ErrorRenglonImportacion, PreparacionImportacion } from "./clientes-importacion.ts";
 
-export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole, ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, rolesParaAccion, puedeEjecutar, permisosEfectivos } from "./roles.ts";
+export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole, ACCIONES_RESTAURANTES, ACCIONES_RESTAURANTES_LISTA, rolesParaAccion, puedeEjecutar, permisosEfectivos, ACCIONES_PERFIL_OPERATIVO, perfilPuede } from "./roles.ts";
+export type { PerfilOperativoStaff, AccionPerfilOperativo } from "./roles.ts";
 export type { RestaurantesRole, AccionRestaurantes } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
@@ -244,6 +252,7 @@ export * from "./cierres/index.ts";
 export { alertarHallazgosCfo, seleccionarAlertas, zonaDeOrganizacion, dentroDeHorarioExterno, horaLocal, UMBRAL_ALERTA_CENTAVOS_POR_DEFECTO, TOPE_ALERTAS_POR_ORG_DIA } from "./cfo/alertas.ts";
 export type { AlertaCfo, OpcionesAlertasCfo, ResultadoAlertasCfo, SucursalAlerta, EstadoAlertasCfo } from "./cfo/alertas.ts";
 export * from "./autopiloto/index.ts";
+export * from "./agregados/index.ts";
 export { descripcionSeguraDeError } from "./log-seguro.ts";
 export * from "./repartidor-perfil/index.ts";
 export * from "./exportar/index.ts";
