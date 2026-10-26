@@ -73,6 +73,14 @@ export async function armarBloquePedidoParaAviso(repo: RestaurantesRepository, o
   }
 }
 
+/** PM R21 (T7-038): el modelo escribia «no se ha cotizado ni confirmado» en el aviso aunque ya habia una cotizacion vigente (la que dio al cliente despues). Con el total
+ * cotizado que conoce el SERVIDOR la frase se corrige a lo cierto; sin cotizacion vigente el texto queda igual. */
+const NO_COTIZADO = /\b(?:(?:todav[ií]a|a[uú]n)\s+)?no\s+(?:se\s+ha|ha\s+sido|est[aá]|fue)\s+cotizad[oa]\b(\s+ni\s+(?:confirmad[oa]|registrad[oa]|creado))?/gi;
+export function corregirAvisoCotizado(detalle: string | undefined, totalCotizado: number | undefined): string | undefined {
+  if (!detalle || typeof totalCotizado !== "number" || !Number.isFinite(totalCotizado) || totalCotizado <= 0) return detalle;
+  return detalle.replace(NO_COTIZADO, (_m, ni: string | undefined) => `ya está cotizado por $${totalCotizado.toFixed(2)}${ni ? ", pendiente de confirmar por el cliente" : ""}`);
+}
+
 /** Une el bloque del servidor con el detalle que escribio el modelo (el bloque va primero). */
 export function componerMensajeAviso(bloque: string | null, detalle: string | undefined, motivo: string): string | undefined {
   const d = detalle?.trim();

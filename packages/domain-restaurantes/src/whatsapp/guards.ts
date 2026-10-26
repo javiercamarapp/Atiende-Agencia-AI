@@ -230,6 +230,33 @@ export function afirmaPedidoRegistrado(frase: string): boolean {
 }
 
 /**
+ * PM R21 (A19, P0): la frase AFIRMA que el pedido quedo PROGRAMADO («lo dejé programado para la apertura», «quedó programado para las 12», «ya lo agendé») sin sujeto «pedido», que no cubre
+ * `afirmaPedidoRegistrado`. Programar es CREAR el pedido: antes del «sí» del cliente (y sin pedido creado) es falso. Una pregunta, un condicional, un futuro o una negacion
+ * («¿quiere que lo deje programado?», «puedo programarlo», «si confirma lo dejo programado», «no lo dejé programado») no cuentan.
+ */
+export function afirmaPedidoProgramado(frase: string): boolean {
+  if (typeof frase !== "string" || !frase) return false;
+  const t = normalizarParaClasificar(frase);
+  if (/[?¿]/.test(frase)) return false;
+  if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
+  if (/\b(?:cuando|para\s+que|una\s+vez|antes\s+de|hasta\s+que|en\s+cuanto|no\s+(?:esta|queda|quedo|ha|he|hemos|se|puedo|podemos)|todavia\s+no|aun\s+no|quedaria|quedarian|podria|podrian|puedo|podemos|va\s+a|van\s+a|vamos\s+a|pudo|tampoco|nunca|dejare|dejaremos|programare|agendare|quede|quedara|que\s+(?:lo\s+|la\s+)?deje|que\s+(?:lo\s+|la\s+)?dejemos)\b/.test(t)) return false;
+  // «su pedido anterior quedó programado» habla de OTRO pedido ya creado, no del que se esta armando.
+  if (/\b(?:anterior|previo|pasado|de\s+ayer|otro\s+pedido|primer\s+pedido)\b/.test(t)) return false;
+  const patrones: RegExp[] = [
+    // «lo dejé programado», «la dejamos agendada», «dejé programado su pedido»
+    /(?<!\bno\s+(?:lo\s+|la\s+|le\s+)?)\b(?:deje|dejamos)\s+(?:ya\s+)?(?:programad|agendad)[oa]s?\b/,
+    // «quedó programado», «ya quedó agendado para las 12»
+    /\b(?:quedo|queda)\s+(?:ya\s+)?(?:programad|agendad)[oa]s?\b/,
+    // «ya lo programé / agendé / programamos»
+    /(?<!\bno\s+)\bya\s+(?:lo|la|le)\s+(?:programe|programamos|agende|agendamos)\b/,
+    // «lo programé para las 12», «se programó para»
+    /(?<!\bno\s+)\b(?:lo|la)\s+(?:programe|programamos|agende|agendamos)\b/,
+    /\bse\s+(?:programo|agendo)\b/,
+  ];
+  return patrones.some((r) => r.test(t));
+}
+
+/**
  * R21 (T7-043, P0): la frase AFIRMA que un CAMBIO o AGREGADO ya quedo hecho/registrado («quedó registrado lo que me cuenta», «ya agregué los 3 tacos», «se agregó a su pedido», «su agregado quedó anotado»).
  * No hay herramienta que modifique un pedido ya creado: solo existe un aviso al equipo. Sin un pedido NUEVO creado en el turno, esa frase es falsa. Una pregunta, un condicional, una negacion o un futuro
  * («le agrego», «si quiere lo agregamos», «el equipo lo agregará») no cuentan; «pedido registrado» con sujeto pedido lo cubre `afirmaPedidoRegistrado`. `soloAgregado` limita a las frases de agregado/cambio

@@ -324,6 +324,12 @@ export class InMemoryHandoffAgentGate implements HandoffAgentGate {
     return h.estado === "pendiente" ? "pendiente" : "tomada";
   }
 
+  async motivoToma(organizationId: string, phone: string): Promise<string | null> {
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono === phone);
+    const h = conv && this.repo.handoffs.find((x) => x.canal === "whatsapp" && x.conversationId === conv.id && (x.estado === "pendiente" || x.estado === "tomada"));
+    return h?.motivo ?? null;
+  }
+
   async acusePendiente(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean> {
     if (!this.repo.disponible) return false;
     const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono === phone);
