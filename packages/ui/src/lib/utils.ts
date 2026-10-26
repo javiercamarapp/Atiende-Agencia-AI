@@ -11,6 +11,9 @@ const twMerge = extendTailwindMerge({
       "font-size": [{ text: ["display", "eyebrow", "pill", "ui", "widget"] }],
       rounded: [{ rounded: ["control", "field", "card", "shell", "dialog"] }],
       duration: [{ duration: ["instant", "fast", "base", "slow", "enter"] }],
+      // `shadow-pop` (lote 1.1 de ds3): sin esto tailwind-merge lo toma por COLOR de sombra y no lo deduplica
+      // contra `shadow-md`. Los demas nombres de sombra del preset (card, elevated...) quedan como estaban.
+      shadow: [{ shadow: ["pop"] }],
       ease: [{ ease: ["brand", "brand-in-out"] }],
     },
   },

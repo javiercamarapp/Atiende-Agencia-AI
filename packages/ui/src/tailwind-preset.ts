@@ -15,6 +15,8 @@ import tailwindcssAnimate from "tailwindcss-animate";
  * bandera visual v2 y su variante `v2:` se retiraron: todo aplica
  * directo, en claro y oscuro.
  */
+const SERIES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+
 const preset: Omit<Config, "content"> = {
   darkMode: ["class"],
   theme: {
@@ -59,6 +61,10 @@ const preset: Omit<Config, "content"> = {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          // Lote 1.1 (ds3): tinte del boton `default`, su hover y tinta de texto/enlace.
+          soft: "hsl(var(--primary-soft))",
+          "soft-hover": "hsl(var(--primary-soft-hover))",
+          ink: "hsl(var(--primary-ink))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -72,6 +78,19 @@ const preset: Omit<Config, "content"> = {
           solido: "hsl(var(--destructive-solido))",
           "solido-foreground": "hsl(var(--destructive-solido-foreground))",
         },
+        // Lote 1.1 (ds3): API unica de estados `success|warning|danger|info` x `tint|ink` (aqui `danger`; el resto abajo).
+        danger: {
+          tint: "hsl(var(--danger-tint))",
+          ink: "hsl(var(--danger-ink))",
+        },
+        // Tinta de accion (boton `solid`, nav activo), fondo suave (hover, th, chips) y borde fuerte.
+        action: {
+          DEFAULT: "hsl(var(--action))",
+          foreground: "hsl(var(--action-foreground))",
+          hover: "hsl(var(--action-hover))",
+        },
+        soft: "hsl(var(--soft))",
+        "border-strong": "hsl(var(--border-strong))",
         // Azul solido del repo suelto (`terracotta`): toast y superficie del menu; menu-activo = elemento resaltado.
         solido: {
           DEFAULT: "hsl(var(--solido))",
@@ -102,14 +121,17 @@ const preset: Omit<Config, "content"> = {
         success: {
           DEFAULT: "hsl(var(--success))",
           tint: "hsl(var(--success-tint))",
+          ink: "hsl(var(--success-ink))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           tint: "hsl(var(--warning-tint))",
+          ink: "hsl(var(--warning-ink))",
         },
         info: {
           DEFAULT: "hsl(var(--info))",
           tint: "hsl(var(--info-tint))",
+          ink: "hsl(var(--info-ink))",
         },
         // Final de la franja de marca de los formularios (original: secondary; claro = azul, oscuro = cielo).
         franja: "hsl(var(--franja-fin))",
@@ -131,8 +153,14 @@ const preset: Omit<Config, "content"> = {
           3: "hsl(var(--chart-3))",
           4: "hsl(var(--chart-4))",
           5: "hsl(var(--chart-5))",
+          6: "hsl(var(--chart-6))",
+          7: "hsl(var(--chart-7))",
+          8: "hsl(var(--chart-8))",
           ventas: "hsl(var(--chart-ventas))",
         },
+        // Lote 1.1 (ds3): tinte (`bg-chart-soft-n`) y texto sobre relleno (`text-on-chart-n`) por serie.
+        "chart-soft": Object.fromEntries(SERIES.map((n) => [n, `hsl(var(--chart-soft-${n}))`])),
+        "on-chart": Object.fromEntries(SERIES.map((n) => [n, `hsl(var(--on-chart-${n}))`])),
         // Marca Atiende: solo el logo.
         "marca-atiende": "hsl(var(--marca-atiende))",
         // Trazo de controles de formulario con contraste >= 3:1 (checkbox, Switch).
@@ -176,6 +204,8 @@ const preset: Omit<Config, "content"> = {
         elevated: "var(--shadow-elevated)",
         // Elevacion del boton primario al hover (repo suelto: 0 10px 26px primary/26 %). En otras verticales = sin sombra.
         boton: "var(--shadow-boton)",
+        // Lote 1.1 (ds3): unica sombra de flotantes (popover, menu, dialogo), siempre con borde de 1 px.
+        pop: "var(--shadow-pop)",
         hundido: "var(--shadow-hundido)",
         "hundido-abierto": "var(--shadow-hundido-abierto)",
       },
