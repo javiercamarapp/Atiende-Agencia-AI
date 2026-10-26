@@ -56,6 +56,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/restaurantes-conversaciones.spec.ts",
   // Cotizacion a domicilio valida horario de la sucursal: reloj fijo (miercoles 12:00 Merida), no la hora UTC del CI.
   "packages/domain-restaurantes/tests/sucursal-mas-cercana-8km.spec.ts",
+  // Copiloto de plataforma: las fixtures estan fechadas alrededor de AHORA (2026-10-02); la tabla de herramientas fija `Date` en AHORA (contratos_por_vencer).
+  "apps/api/tests/superadmin-copiloto.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",
