@@ -3,7 +3,7 @@
  * (E23) y concentra los tiempos de R15:
  *
  *  - Retardo: un logo no se muestra hasta pasados 120 ms desde que se monta; si la carga termina antes, nunca se ve.
- *  - Prioridad: pantalla > panel > linea (a igual prioridad gana el primero que se registro). Los demas siguen
+ *  - Prioridad: pantalla > panel > linea (a igual prioridad se mantiene el que ya se ve; si no, el primero registrado). Los demas siguen
  *    montados (con su role=status y su texto sr-only) pero con el dibujo oculto.
  *  - Permanencia minima: `useCargaRetenida` mantiene el logo en pantalla 600 ms (pantalla) o 400 ms (panel/linea)
  *    contados desde que aparecio, para que no parpadee.
@@ -12,7 +12,7 @@
  *
  * Usa `setTimeout` y `Date.now`/`performance.now` globales: con timers falsos las pruebas son deterministas.
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 export type CargaTamano = "pantalla" | "panel" | "linea";
 
@@ -36,7 +36,13 @@ function recalcular(): void {
   let ganador: Entrada | null = null;
   for (const e of entradas.values()) {
     if (!e.lista) continue;
-    if (ganador === null || PRIORIDAD[e.tamano] > PRIORIDAD[ganador.tamano]) ganador = e;
+    // Gana la mayor prioridad; a igual prioridad se mantiene el que ya se ve y, si no, el primero registrado.
+    if (
+      ganador === null ||
+      PRIORIDAD[e.tamano] > PRIORIDAD[ganador.tamano] ||
+      (PRIORIDAD[e.tamano] === PRIORIDAD[ganador.tamano] && e.id === visibleId)
+    )
+      ganador = e;
   }
   const nuevo = ganador ? ganador.id : null;
   if (nuevo === visibleId) return;
@@ -116,25 +122,35 @@ export function useCargaCoordinada(tamano: CargaTamano): { visible: boolean } {
 /**
  * Para quien decide si pintar el logo: `true` mientras `cargando`, y tras terminar mantiene `true` hasta cumplir la
  * permanencia minima (contada desde que el logo aparecio, es decir, 120 ms despues de empezar). Si la carga acaba
- * antes de los 120 ms devuelve `false` al instante (el logo nunca se mostro).
+ * antes de los 120 ms devuelve `false` al instante (el logo nunca se mostro). Estado derivado de marcas de tiempo:
+ * el primer render con `cargando=false` ya devuelve el valor correcto (sin cuadro intermedio) y una recarga durante
+ * la retencion la cancela sin dejar nada colgado.
  */
 export function useCargaRetenida(cargando: boolean, tamano: CargaTamano): boolean {
-  const [retenida, setRetenida] = useState(false);
-  const inicio = useRef<number | null>(null);
-  useEffect(() => {
+  const [estado, setEstado] = useState<{ previo: boolean; inicio: number | null; hasta: number }>(() => ({
+    previo: cargando,
+    inicio: cargando ? Date.now() : null,
+    hasta: 0,
+  }));
+  const [, repintar] = useState(0);
+  let actual = estado;
+  if (cargando !== estado.previo) {
+    const ahora = Date.now();
     if (cargando) {
-      if (inicio.current === null) inicio.current = Date.now();
-      return;
+      actual = { previo: true, inicio: ahora, hasta: 0 };
+    } else {
+      const aparecio = estado.inicio === null ? null : estado.inicio + CARGA_RETARDO_MS;
+      const hasta = aparecio !== null && ahora >= aparecio ? aparecio + CARGA_PERMANENCIA_MS[tamano] : 0;
+      actual = { previo: false, inicio: null, hasta };
     }
-    const empezo = inicio.current;
-    inicio.current = null;
-    if (empezo === null) return;
-    const aparecio = empezo + CARGA_RETARDO_MS;
-    const restante = aparecio + CARGA_PERMANENCIA_MS[tamano] - Date.now();
-    if (Date.now() < aparecio || restante <= 0) return;
-    setRetenida(true);
-    const t = setTimeout(() => setRetenida(false), restante);
+    setEstado(actual);
+  }
+  const hasta = actual.hasta;
+  useEffect(() => {
+    const restante = hasta - Date.now();
+    if (cargando || restante <= 0) return;
+    const t = setTimeout(() => repintar((n) => n + 1), restante);
     return () => clearTimeout(t);
-  }, [cargando, tamano]);
-  return cargando || retenida;
+  }, [cargando, hasta]);
+  return cargando || hasta > Date.now();
 }

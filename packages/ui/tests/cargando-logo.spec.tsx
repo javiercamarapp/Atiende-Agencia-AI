@@ -13,6 +13,7 @@ import {
   CARGA_PERMANENCIA_MS,
   CARGA_RETARDO_MS,
   faseCarga,
+  obtenerCargaVisible,
   registrarCarga,
   reiniciarCoordinadorCarga,
   useCargaRetenida,
@@ -141,10 +142,31 @@ describe("coordinador: un solo dibujo visible", () => {
     const a = registrarCarga("panel");
     const b = registrarCarga("panel");
     avanzar(CARGA_RETARDO_MS);
+    expect(obtenerCargaVisible()).toBe(a.id);
     a.soltar();
     a.soltar();
+    expect(obtenerCargaVisible()).toBe(b.id);
     b.soltar();
-    expect(() => avanzar(1000)).not.toThrow();
+    b.soltar();
+    expect(obtenerCargaVisible()).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("igual prioridad: se mantiene el que ya se ve (no salta cuando otro del mismo tamano se vuelve listo)", () => {
+    const a = registrarCarga("panel");
+    avanzar(50);
+    const b = registrarCarga("panel");
+    avanzar(CARGA_RETARDO_MS - 50);
+    expect(obtenerCargaVisible()).toBe(a.id);
+    avanzar(50);
+    expect(obtenerCargaVisible()).toBe(a.id);
+    a.soltar();
+    expect(obtenerCargaVisible()).toBe(b.id);
+    const c = registrarCarga("panel");
+    avanzar(CARGA_RETARDO_MS);
+    expect(obtenerCargaVisible()).toBe(b.id);
+    b.soltar();
+    c.soltar();
   });
 });
 
@@ -170,6 +192,51 @@ describe("permanencia minima (R15)", () => {
     expect(leer()).toBe("true");
     avanzar(1);
     expect(leer()).toBe("false");
+  });
+
+  it("el primer render con cargando=false ya devuelve retenida=true (sin cuadro intermedio)", () => {
+    const vistos: boolean[] = [];
+    function Registro({ cargando }: { cargando: boolean }) {
+      const r = useCargaRetenida(cargando, "panel");
+      vistos.push(r);
+      return null;
+    }
+    const { root } = montar(createElement(Registro, { cargando: true }));
+    avanzar(CARGA_RETARDO_MS + 10);
+    vistos.length = 0;
+    act(() => root.render(createElement(Registro, { cargando: false })));
+    expect(vistos.length).toBeGreaterThan(0);
+    expect(vistos.every((v) => v === true)).toBe(true);
+  });
+
+  it("recarga durante la retencion: vuelve a true, y al terminar corta (<120 ms) no queda colgado", () => {
+    const { root } = montar(createElement(Sonda, { cargando: true, tamano: "panel" }));
+    avanzar(CARGA_RETARDO_MS + 10);
+    act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
+    expect(leer()).toBe("true");
+    avanzar(100);
+    act(() => root.render(createElement(Sonda, { cargando: true, tamano: "panel" })));
+    expect(leer()).toBe("true");
+    avanzar(50);
+    act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
+    expect(leer()).toBe("false");
+    avanzar(5000);
+    expect(leer()).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("recarga larga tras retencion: la nueva retencion se cumple completa y termina en false sin timers", () => {
+    const { root } = montar(createElement(Sonda, { cargando: true, tamano: "panel" }));
+    avanzar(CARGA_RETARDO_MS + 10);
+    act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
+    avanzar(50);
+    act(() => root.render(createElement(Sonda, { cargando: true, tamano: "panel" })));
+    avanzar(CARGA_RETARDO_MS + 10);
+    act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
+    expect(leer()).toBe("true");
+    avanzar(CARGA_PERMANENCIA_MS.panel - 10);
+    expect(leer()).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("pantalla: 600 ms estables desde la aparicion; carga larga no retiene nada", () => {
