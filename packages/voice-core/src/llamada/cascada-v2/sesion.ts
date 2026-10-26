@@ -22,6 +22,7 @@ import { eventoSinPII } from "../log-sin-pii.ts";
 import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
 import { crearSegmentadorFrases } from "./frases.ts";
+import { contieneTotal, esAfirmacion } from "./afirmacion.ts";
 import { ejecutarHerramientas, type EstadoEspera } from "./herramientas.ts";
 import { ColaAsync } from "./puertos.ts";
 import type { ContextoTurnoLlm, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts } from "./puertos.ts";
@@ -98,6 +99,8 @@ interface LineaAudio {
 
 /** Con tan pocos Flush disponibles el nucleo deja de mandar frases sueltas y junta el resto del turno (Deepgram: 20 por 60 s). */
 const FLUSH_MINIMOS_PARA_FRASE_SUELTA = 3;
+/** Sin total conocido en la cotizacion, un resumen leido tiene al menos estas palabras (un «un momento, consulto» no es un resumen). */
+const MIN_PALABRAS_RESUMEN = 8;
 
 const cuentaDeCaracteres = (texto: string): number => Array.from(texto).length;
 
@@ -322,11 +325,14 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.mensajes.push({ role: "user", content: texto });
     this.esperandoAlCliente.cotizoEnTurno = false;
     this.esperandoAlCliente.huellaCotizada = null;
-    let habloTrasCotizar = false;
+    this.esperandoAlCliente.totalCotizado = null;
+    // El codigo interpreta el turno del cliente: solo una afirmacion («si», «ok», «correcto»...) cuenta como confirmacion del resumen.
+    this.esperandoAlCliente.afirmacion = esAfirmacion(texto);
+    let habladoTrasCotizar = "";
 
     const cola = new ColaAsync<FraseLlm>();
     const empujar = (f: FraseLlm): void => {
-      if (this.esperandoAlCliente.cotizoEnTurno === true && f.frase.trim() !== "") habloTrasCotizar = true;
+      if (this.esperandoAlCliente.cotizoEnTurno === true && f.frase.trim() !== "") habladoTrasCotizar += ` ${f.frase}`;
       cola.push(f);
     };
     let fallaTts: unknown = null;
@@ -393,6 +399,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
           ...(this.o.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: this.o.confirmacionAntesDeCrear } : {}),
           continuar: vigente,
           esperandoAlCliente: this.esperandoAlCliente,
+          log: (evento, campos) => this.log(evento, campos ?? {}),
         });
         for (const res of resultados) this.mensajes.push({ role: "tool", toolCallId: res.llamada.id, content: JSON.stringify(res.salida ?? null) });
         if (!vigente()) break;
@@ -422,7 +429,14 @@ class SesionCascadaV2 implements VozSesionLlamada {
         return;
       }
       // El agente termino de hablar tras cotizar y nadie lo interrumpio: ese resumen ya se le leyo al cliente (el «si» siguiente responde a EL).
-      if (habloTrasCotizar && this.esperandoAlCliente.huellaCotizada) this.esperandoAlCliente.huellaOida = this.esperandoAlCliente.huellaCotizada;
+      // «Resumen leido» exige que lo dicho tras cotizar incluya el TOTAL (cifra o palabras); sin total conocido, un minimo de palabras. Un «un momento, consulto» no cuenta.
+      const total = this.esperandoAlCliente.totalCotizado ?? null;
+      const palabras = habladoTrasCotizar.trim().split(/\s+/).filter((p) => p !== "").length;
+      const resumenLeido = total !== null ? contieneTotal(habladoTrasCotizar, total) : palabras >= MIN_PALABRAS_RESUMEN;
+      if (this.esperandoAlCliente.huellaCotizada && palabras > 0) {
+        if (resumenLeido) this.esperandoAlCliente.huellaOida = this.esperandoAlCliente.huellaCotizada;
+        else this.log("v2_resumen_sin_total", { motivo: "sin_total", ok: false });
+      }
       this.h.agenteTermino();
     } finally {
       if (this.generacion === mia) this.ocupada = false;

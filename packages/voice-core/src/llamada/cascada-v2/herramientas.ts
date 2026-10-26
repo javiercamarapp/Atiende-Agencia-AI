@@ -25,12 +25,18 @@ export interface OpcionesHerramientas {
   /** Estado de la regla a nivel de SESION: `pendiente` = el modelo ya confirmo el resumen y espera la respuesta del cliente. Se enciende al ejecutar `confirmar` y la sesion lo apaga
    * cuando el cliente habla de nuevo; mientras este encendido ningun `crear` corre, ni en la misma respuesta ni en una vuelta posterior del MISMO turno. */
   readonly esperandoAlCliente?: EstadoEspera;
+  /** Registro de eventos de la compuerta (sin PII: solo nombres de herramienta y motivos). */
+  readonly log?: (evento: string, campos?: Record<string, unknown>) => void;
 }
 
 /** Estado de la regla a nivel de sesion. `huellaOida` = huella (`quote_hash`) de la cotizacion cuyo resumen ya se le leyo al cliente en un turno anterior; la sesion la fija al
  * terminar un turno en que el agente hablo tras cotizar. `huellaCotizada` / `cotizoEnTurno` son del turno en curso (la sesion los limpia al empezar cada turno). */
 export interface EstadoEspera {
   pendiente: boolean;
+  /** El turno del cliente en curso ES una afirmacion («si», «ok», «correcto»...; ver `esAfirmacion`). La sesion lo fija al empezar cada turno; sin `true` el resumen no cuenta como confirmado. */
+  afirmacion?: boolean;
+  /** Total de la ultima cotizacion del turno (para comprobar que el agente lo dijo). */
+  totalCotizado?: number | null;
   huellaOida?: string | null;
   huellaCotizada?: string | null;
   cotizoEnTurno?: boolean;
@@ -40,6 +46,18 @@ function huellaDe(salida: unknown): string | null {
   if (salida && typeof salida === "object" && !Array.isArray(salida)) {
     const h = (salida as Record<string, unknown>)["quote_hash"];
     if (typeof h === "string" && h.trim() !== "") return h.trim().toLowerCase();
+  }
+  return null;
+}
+
+function totalDe(salida: unknown): number | null {
+  if (salida && typeof salida === "object" && !Array.isArray(salida)) {
+    const o = salida as Record<string, unknown>;
+    for (const k of ["total", "total_mxn", "total_a_pagar"]) {
+      const v = o[k];
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && /^\s*\$?\s*[\d,]+(\.\d+)?\s*$/.test(v)) return Number(v.replace(/[$,\s]/g, ""));
+    }
   }
   return null;
 }
@@ -70,12 +88,15 @@ export async function ejecutarHerramientas(
   ejecutar: (llamada: ToolCallPedida) => Promise<unknown>,
   opciones: OpcionesHerramientas = {},
 ): Promise<ResultadoHerramienta[]> {
-  const { enParalelo, confirmacionAntesDeCrear: regla, continuar } = opciones;
+  const { enParalelo, confirmacionAntesDeCrear: regla, continuar, log } = opciones;
   const espera: EstadoEspera = opciones.esperandoAlCliente ?? { pendiente: false };
   /** Marca que `confirmar` se ejecuto (o ya se ejecuto en la racha inicial) y arma la espera salvo que el resumen ya se haya leido y la confirmacion haya tenido exito. */
   const alConfirmar = (salida: unknown): void => {
     if (!regla) return;
-    const leido = regla.cotizar !== undefined && (espera.huellaOida ?? null) !== null && !conError(salida);
+    const huellaLeida = regla.cotizar !== undefined && (espera.huellaOida ?? null) !== null && !conError(salida);
+    // El codigo no da por hecho el «si» solo porque el cliente hablo: su turno debe ser una afirmacion (sin negacion, pregunta ni ruido).
+    if (huellaLeida && espera.afirmacion !== true) log?.("v2_confirmacion_sin_afirmacion", { motivo: "bloquea_crear", herramienta: regla.confirmar });
+    const leido = huellaLeida && espera.afirmacion === true;
     if (!leido) espera.pendiente = true;
   };
   /** Anota la cotizacion: si su huella es distinta de la que el cliente oyo, el resumen nuevo aun no se ha leido. */
@@ -84,6 +105,7 @@ export async function ejecutarHerramientas(
     espera.cotizoEnTurno = true;
     const h = huellaDe(salida);
     espera.huellaCotizada = h;
+    espera.totalCotizado = totalDe(salida);
     if (h === null || h !== espera.huellaOida) espera.huellaOida = null;
   };
   const una = async (tc: ToolCallLlmVoz): Promise<ResultadoHerramienta> => {
@@ -109,6 +131,19 @@ export async function ejecutarHerramientas(
     if (regla && espera.pendiente && tc.nombre === regla.crear) {
       resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
       continue;
+    }
+    if (regla?.cotizar && tc.nombre === regla.crear) {
+      // El pedido que se crea debe ser el que el cliente oyo: un quote_hash distinto del ultimo cotizado/leido se rechaza y obliga a re-cotizar y re-leer.
+      const crudo = argumentosDe(tc.argsJson)["quote_hash"];
+      const pedida = typeof crudo === "string" && crudo.trim() !== "" ? crudo.trim().toLowerCase() : null;
+      const vigente = espera.huellaCotizada ?? espera.huellaOida ?? null;
+      if (pedida !== null && vigente !== null && pedida !== vigente) {
+        espera.huellaOida = null;
+        log?.("v2_crear_quote_hash_distinto", { motivo: "hash_distinto", herramienta: regla.crear });
+        resultados.push({ llamada: tc, salida: { error: "resumen_distinto_al_leido", mensaje: "El pedido cambio despues de leerle el resumen al cliente. Cotice de nuevo, lea el resumen completo UNA vez y pida UN solo «si» antes de crear_pedido." } });
+        continue;
+      }
+      if (espera.afirmacion !== true) log?.("v2_crear_sin_afirmacion", { motivo: "ejecuta_sin_afirmacion", herramienta: regla.crear });
     }
     const res = await una(tc);
     resultados.push(res);
