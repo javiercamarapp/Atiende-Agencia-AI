@@ -67,8 +67,12 @@ const s = await startStack();
 try { validarAislamiento(s, process.env); } catch (x) { try { await s.stop?.(); } catch { /* */ } throw x; }
 // Datos de la semilla LOCAL de la cuenta de PM (slug publico de la sucursal demo); el id de la organizacion se lee de la base efimera, no va en el codigo.
 const org = process.env.VOZ_ORG_SLUG ?? "los-taquitos-de-pm";
-const HDR_TOOL: Record<string, string> = { "content-type": "application/json", "x-atiende-tool-secret": "qa-voice-tool-secret-local" };
-const HDR_INT: Record<string, string> = { "content-type": "application/json", "x-atiende-internal-secret": "qa-internal-secret-local" };
+// Los secretos de la API LOCAL no viven en el codigo: los expone el stack de QA (s.secretos) o se leen del entorno (VOZ_TOOL_SECRET / VOZ_INTERNAL_SECRET).
+const SECRETO_TOOL = s.secretos?.herramientas ?? process.env.VOZ_TOOL_SECRET;
+const SECRETO_INTERNO = s.secretos?.interno ?? process.env.VOZ_INTERNAL_SECRET;
+if (!SECRETO_TOOL || !SECRETO_INTERNO) { await s.stop?.(); throw new Error("faltan los secretos de la API local: el stack de QA debe exponer s.secretos = { herramientas, interno } o definir VOZ_TOOL_SECRET y VOZ_INTERNAL_SECRET"); }
+const HDR_TOOL: Record<string, string> = { "content-type": "application/json", "x-atiende-tool-secret": SECRETO_TOOL };
+const HDR_INT: Record<string, string> = { "content-type": "application/json", "x-atiende-internal-secret": SECRETO_INTERNO };
 const SLUG = { T1: "prol-montejo", T3: "pensiones", T7: "garcia-lavin" } as const;
 const ORG_ID: string = process.env.VOZ_ORG_ID ?? (await s.pool.query("select id from core.organization where slug = $1", [org])).rows[0]?.id;
 if (!ORG_ID) { await s.stop?.(); throw new Error(`la organizacion ${org} no existe en la base efimera (semilla local)`); }

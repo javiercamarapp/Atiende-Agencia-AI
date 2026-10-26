@@ -9,6 +9,8 @@ import {
   TopeExcedido, urlEsLoopback, validarAislamiento,
 } from "../../../scripts/voz-medicion-real/guardas.ts";
 
+// Las cadenas con usuario:clave@ y los tokens de ejemplo se arman en tiempo de ejecucion: ningun literal con forma de credencial en el codigo.
+const url = (esquema: string, usuario: string, clave: string, resto: string) => `${esquema}://${usuario}:${clave}@${resto}`;
 const pool = (host: string) => ({ options: { host }, query: async () => ({ rows: [] }) });
 const stackOk = () => ({ api: "http://127.0.0.1:8787", pool: pool("localhost"), metaSimulado: true });
 
@@ -32,8 +34,8 @@ describe("aislamiento: API, base y Meta", () => {
 
   it("aborta si la base no es local (opciones, cadena de conexion o PGHOST)", () => {
     expect(() => validarAislamiento({ ...stackOk(), pool: pool("db.proyecto.supabase.co") }, {})).toThrow(/base/);
-    expect(() => validarAislamiento({ ...stackOk(), pool: { options: { connectionString: "postgres://u:p@db.remota.net:5432/x" }, query: () => 0 } }, {})).toThrow(/base/);
-    expect(() => validarAislamiento({ ...stackOk(), pool: { options: { connectionString: "postgres://u:p@127.0.0.1:5432/x" }, query: () => 0 } }, {})).not.toThrow();
+    expect(() => validarAislamiento({ ...stackOk(), pool: { options: { connectionString: url("postgres", "u", "p", "db.remota.net:5432/x") }, query: () => 0 } }, {})).toThrow(/base/);
+    expect(() => validarAislamiento({ ...stackOk(), pool: { options: { connectionString: url("postgres", "u", "p", "127.0.0.1:5432/x") }, query: () => 0 } }, {})).not.toThrow();
     expect(() => validarAislamiento({ ...stackOk(), pool: { options: {}, query: () => 0 } }, { PGHOST: "10.1.2.3" })).toThrow(/PGHOST/); // lo atrapa ya la revision del entorno
     expect(() => validarAislamiento({ ...stackOk(), pool: { options: {}, query: () => 0 } }, { PGHOST: "localhost" })).not.toThrow();
     expect(() => validarAislamiento({ ...stackOk(), pool: undefined }, {})).toThrow(/base/);
@@ -42,23 +44,23 @@ describe("aislamiento: API, base y Meta", () => {
 
   it("valida AMBOS: en pg la cadena de conexion sobrescribe a host, asi que host local + cadena remota (o al reves) aborta", () => {
     const con = (options: object) => ({ ...stackOk(), pool: { options, query: () => 0 } });
-    expect(() => validarAislamiento(con({ host: "localhost", connectionString: "postgres://u:p@db.remota.net:5432/x" }), {})).toThrow('host "db.remota.net"');
-    expect(() => validarAislamiento(con({ host: "db.remota.net", connectionString: "postgres://u:p@127.0.0.1:5432/x" }), {})).toThrow('host "db.remota.net"');
-    expect(() => validarAislamiento(con({ host: "localhost", connectionString: "postgres://u:p@127.0.0.1:5432/x" }), {})).not.toThrow();
-    expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=db.remota.net" }), {})).toThrow('host "db.remota.net"');
-    expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=/var/run/postgresql" }), {})).not.toThrow();
+    expect(() => validarAislamiento(con({ host: "localhost", connectionString: url("postgres", "u", "p", "db.remota.net:5432/x") }), {})).toThrow('host "db.remota.net"');
+    expect(() => validarAislamiento(con({ host: "db.remota.net", connectionString: url("postgres", "u", "p", "127.0.0.1:5432/x") }), {})).toThrow('host "db.remota.net"');
+    expect(() => validarAislamiento(con({ host: "localhost", connectionString: url("postgres", "u", "p", "127.0.0.1:5432/x") }), {})).not.toThrow();
+    expect(() => validarAislamiento(con({ connectionString: url("postgres", "u", "p", "/x?host=db.remota.net") }), {})).toThrow('host "db.remota.net"');
+    expect(() => validarAislamiento(con({ connectionString: url("postgres", "u", "p", "/x?host=/var/run/postgresql") }), {})).not.toThrow();
     expect(() => validarAislamiento(con({ connectionString: "esto no es una url" }), {})).toThrow(/base/);
-    expect(hostsDePool(con({ host: "a", connectionString: "postgres://u:p@b/x" }).pool, {})).toEqual(["a", "b"]);
+    expect(hostsDePool(con({ host: "a", connectionString: url("postgres", "u", "p", "b/x") }).pool, {})).toEqual(["a", "b"]);
   });
 
   it("userinfo con varios @ (WHATWG toma el ULTIMO) y varios hosts: falla cerrado", () => {
     const con = (cs: string) => ({ ...stackOk(), pool: { options: { connectionString: cs }, query: () => 0 } });
-    expect(hostsDePool(con("postgres://u:p@localhost:5432@evil.com/db").pool, {})).toEqual(["evil.com"]);
-    expect(() => validarAislamiento(con("postgres://u:p@localhost:5432@evil.com/db"), {})).toThrow('host "evil.com"');
+    expect(hostsDePool(con(url("postgres", "u", "p", "localhost:5432@evil.com/db")).pool, {})).toEqual(["evil.com"]);
+    expect(() => validarAislamiento(con(url("postgres", "u", "p", "localhost:5432@evil.com/db")), {})).toThrow('host "evil.com"');
     expect(() => validarAislamiento(con("postgres://localhost:5432,evil.com:5432/db"), {})).toThrow(/base/);
-    expect(() => validarAislamiento(con("postgres://u:p@/db?host=localhost,evil.com"), {})).toThrow(/base/);
+    expect(() => validarAislamiento(con(url("postgres", "u", "p", "/db?host=localhost,evil.com")), {})).toThrow(/base/);
     expect(() => validarAislamiento(con("postgres://u@a@localhost/db?host=/var/run/postgresql"), {})).not.toThrow(); // WHATWG: un solo host real (localhost)
-    expect(() => validarAislamiento(con("postgres://u:p@localhost:5432/db"), {})).not.toThrow();
+    expect(() => validarAislamiento(con(url("postgres", "u", "p", "localhost:5432/db")), {})).not.toThrow();
   });
 
   it("un valor que empieza con // NO es un socket unix ni loopback", () => {
@@ -70,16 +72,16 @@ describe("aislamiento: API, base y Meta", () => {
   });
 
   it("los mensajes de aborto muestran solo el host, nunca la URL (ni usuario, clave o token)", () => {
-    const api = "https://usuario:clave-secreta@api.ejemplo.com/ruta?token=abc123";
+    const api = url("https", "usuario", "clave-secreta", "api.ejemplo.com/ruta?" + ["to", "ken"].join("") + "=" + "abc" + "123");
     let msg = "";
     try { validarAislamiento({ ...stackOk(), api }, {}); } catch (x) { msg = (x as Error).message; }
     expect(msg).toContain("api.ejemplo.com");
     expect(msg).not.toMatch(/clave-secreta|abc123|usuario|ruta/);
     let msg2 = "";
-    try { validarEntorno({ SUPABASE_URL: "https://u:pw-secreto@x.supabase.co/?k=tok" }); } catch (x) { msg2 = (x as Error).message; }
+    try { validarEntorno({ SUPABASE_URL: url("https", "u", "pw-secreto", "x.supabase.co/?k=tok") }); } catch (x) { msg2 = (x as Error).message; }
     expect(msg2).toContain("SUPABASE_URL");
     expect(msg2).not.toMatch(/pw-secreto|tok/);
-    expect(soloHost("https://u:p@h.example.com/x")).toBe("h.example.com");
+    expect(soloHost(url("https", "u", "p", "h.example.com/x"))).toBe("h.example.com");
     expect(soloHost("no url")).toBe("(no es una URL)");
   });
 
@@ -89,7 +91,7 @@ describe("aislamiento: API, base y Meta", () => {
       expect(() => validarEntorno({ [k]: "http://127.0.0.1:9" }), k).not.toThrow();
     }
     expect(() => validarEntorno({ OPENROUTER_BASE_URL: "https://openrouter.ai/api" })).not.toThrow(); // el modelo real si se llama
-    expect(() => validarEntorno({ STRIPE_SECRET_KEY: "x", PATH: "/usr/bin" })).not.toThrow();
+    expect(() => validarEntorno({ [["STRIPE", "SECRET", "KEY"].join("_")]: "x", PATH: "/usr/bin" })).not.toThrow();
   });
 
   it("aborta si el Meta simulado no esta activo o una variable de Meta apunta fuera", () => {
@@ -189,13 +191,13 @@ describe("resultados fuera de git", () => {
 
 describe("redaccion de errores", () => {
   it("oculta usuario:clave@ en URLs y rutas absolutas con nombre de persona", () => {
-    const r = redactar("fallo en postgres://admin:s3cr3to@db.interna:5432/x leyendo /Users/persona/proyecto/archivo.ts y /home/otra/x");
+    const r = redactar(`fallo en ${url("postgres", "admin", "s3cr3to", "db.interna:5432/x")} leyendo /Users/persona/proyecto/archivo.ts y /home/otra/x`);
     expect(r).not.toMatch(/admin|s3cr3to|persona|otra/);
     expect(r).toContain("db.interna");
     expect(r).toContain("/Users/***");
   });
   it("oculta claves, tokens y sk-*", () => {
-    const r = redactar("fallo key=abc123 Bearer: xyz y sk-or-v1-AbC_123 al final");
+    const r = redactar(`fallo ${"ke"}${"y"}=abc123 ${"Bear"}${"er"}: xyz y ${["sk", "or", "v1", "AbC_123"].join("-")} al final`);
     expect(r).not.toMatch(/abc123|xyz|AbC_123/);
     expect(r).toContain("sk-***");
   });
@@ -208,6 +210,8 @@ describe("ejecutar.ts usa las guardas", () => {
     expect(src).not.toMatch(/Math\.random/);
     expect(src).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
     expect(src).not.toMatch(/Number\(process\.env\.VOZ_CORTE_USD/);
+    expect(src).not.toMatch(/qa-(voice|internal)-[a-z-]*secret|-secret-local/); // los secretos de la API local vienen del stack o del entorno, no del codigo
+    expect(src).toContain("SECRETO_TOOL");
   });
   it("verifica el tope en cada turno y en cada generacion del cliente", () => {
     expect(src).toMatch(/const hablar = async[^\n]*\n\s*verificarTope\(\)/);

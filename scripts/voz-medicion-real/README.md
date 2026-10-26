@@ -21,7 +21,7 @@ Mide el acierto del agente de voz de la taquería PM con un **modelo real** pero
 
 ## Cómo correrlo
 
-Requiere un directorio de QA local (no se publica: lleva la configuración real de la cuenta; **debe estar dentro del repo/worktree** y fuera de git, p. ej. listado en `.git/info/exclude`) con `stack.ts` (API real + Meta simulado), `lib.ts` (cliente simulado), `llm.ts` (cuenta de gasto) e `inv-precio.ts`, y un Postgres efímero con la configuración de PM sembrada.
+Requiere un directorio de QA local (no se publica: lleva la configuración real de la cuenta; **debe estar dentro del repo/worktree** y fuera de git, p. ej. listado en `.git/info/exclude`) con `stack.ts` (API real + Meta simulado; debe exponer `metaSimulado: true` y los secretos de la API local en `s.secretos = { herramientas, interno }`, o definirse `VOZ_TOOL_SECRET` y `VOZ_INTERNAL_SECRET` en el entorno: no van en el código), `lib.ts` (cliente simulado), `llm.ts` (cuenta de gasto) e `inv-precio.ts`, y un Postgres efímero con la configuración de PM sembrada.
 
 ```
 VOZ_QA_DIR=<dir de QA> OPENROUTER_API_KEY=... VOZ_REP=1 \

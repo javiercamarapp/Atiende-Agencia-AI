@@ -70,7 +70,7 @@ export function hostsDePool(pool: any, env: Record<string, string | undefined> =
       anade(u.searchParams.get("host"));
       if (u.hostname === "" && !u.searchParams.get("host")) anade("(cadena de conexion sin host)");
       continue;
-    } catch { /* WHATWG rechaza p. ej. "postgres://u:p@/db?host=/socket": analisis manual, abajo */ }
+    } catch { /* WHATWG rechaza una cadena sin host pero con usuario y ?host=/ruta-de-socket: analisis manual, abajo */ }
     // 2) Manual, FALLANDO CERRADO ante cualquier ambiguedad: varios hosts (",") o mas de un "@" en la autoridad.
     const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(cs);
     if (!m) { anade("(cadena de conexion invalida)"); continue; }
