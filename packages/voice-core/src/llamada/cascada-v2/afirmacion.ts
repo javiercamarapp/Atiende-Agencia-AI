@@ -57,6 +57,30 @@ export function esAfirmacion(texto: string): boolean {
   return true;
 }
 
+/** Frases con las que el cliente RECHAZA o CANCELA el pedido (no una simple pausa como «no, espere»). Se evalua sobre el texto normalizado (sin acentos ni signos). */
+const RECHAZOS: readonly RegExp[] = [
+  /\bcancel\w*/,
+  /\bya no\b/,
+  /\bmejor no\b/,
+  /\bno (lo |la |los |las )?(quiero|quiere|quieren|queremos|voy|va|me interesa|me lo|gracias)\b/,
+  /\bno no\b/,
+  /\bolvid\w*/,
+  /\bdej(a|e|alo|elo|ala|ela)\b/,
+  /\bdescart\w*/,
+  /\bdeshaz\w*|\bdeshac\w*/,
+  /\bni madres\b|\bnel\b/,
+];
+
+/**
+ * `true` si el turno del cliente rechaza o cancela el pedido («cancela», «ya no», «mejor no», «no lo quiero», «olvidalo», «no gracias»...). Es DISTINTO de una pausa («no, espere»,
+ * «un momento»): tras un rechazo el resumen que se leyo deja de estar vigente y solo una cotizacion nueva, su lectura y un «si» nuevo pueden abrir la compuerta.
+ */
+export function esRechazo(texto: string): boolean {
+  const n = normalizar(texto);
+  if (n === "") return false;
+  return RECHAZOS.some((r) => r.test(n));
+}
+
 // ---- Numeros en espanol -------------------------------------------------------------------------------------------------------------------------------------------
 
 const UNIDADES = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco", "veintiseis", "veintisiete", "veintiocho", "veintinueve"];

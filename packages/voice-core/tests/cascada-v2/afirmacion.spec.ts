@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contieneTotal, enPalabras, esAfirmacion } from "../../src/llamada/cascada-v2/afirmacion.ts";
+import { contieneTotal, enPalabras, esAfirmacion, esRechazo } from "../../src/llamada/cascada-v2/afirmacion.ts";
 
 describe("esAfirmacion: afirma", () => {
   it.each([
@@ -122,5 +122,14 @@ describe("enPalabras / contieneTotal", () => {
         expect(contieneTotal(enPalabras(m), n), `«${enPalabras(m)}» (${m}) no debe ser ${n}`).toBe(false);
       }
     }
+  });
+});
+
+describe("esRechazo", () => {
+  it.each(["cancela", "Cancele el pedido", "ya no", "mejor no", "no lo quiero", "no gracias", "olvídalo", "déjalo así", "no, no"])("rechaza: «%s»", (t) => {
+    expect(esRechazo(t)).toBe(true);
+  });
+  it.each(["", "sí", "no, espere", "un momento", "¿cuánto es el envío?", "ok, dale", "mejor agregue otro"])("no rechaza: «%s»", (t) => {
+    expect(esRechazo(t)).toBe(false);
   });
 });

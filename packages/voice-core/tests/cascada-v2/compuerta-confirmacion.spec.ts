@@ -458,3 +458,44 @@ describe("compuerta confirmar -> crear: crear exige el resumen LEIDO (huellaOida
     expect(logs).not.toContain("v2_crear_sin_afirmacion");
   });
 });
+
+describe("compuerta confirmar -> crear: un rechazo/cancelacion borra el resumen leido (V6)", () => {
+  const confirmaYCrea = paso("", tc("c", "confirmar_resumen"), tc("p", "crear_pedido"));
+
+  it.each(["cancela el pedido", "ya no lo quiero", "mejor no", "no gracias, olvídalo"])(
+    "«%s», el agente confirma de pasada el total («Cancelado el pedido de 328. ¿Algo más?») y un «sí» a otra pregunta con crear_pedido del modelo -> NINGUN pedido",
+    async (rechazo) => {
+      const { srv, cliente, logs } = await armar([...cotizaYLee, paso("Cancelado el pedido de 328. ¿Algo más?"), confirmaYCrea, paso("Perdone, ¿qué desea?")]);
+      await cliente("seis de bistec a domicilio");
+      await cliente(rechazo);
+      await cliente("sí");
+      expect(srv.s.pedidos).toBe(0);
+      expect(logs).toContain("v2_resumen_olvidado");
+    },
+  );
+
+  it("tras el rechazo, solo una cotizacion NUEVA + lectura con total + «si» abre la compuerta -> UN pedido", async () => {
+    const { srv, cliente } = await armar([
+      ...cotizaYLee,
+      paso("Cancelado el pedido de 328. ¿Algo más?"),
+      paso("", tc("q2", "cotizar_pedido")),
+      paso("Entonces son seis de bistec, trescientos veintiocho pesos. ¿Es correcto?"),
+      confirmaYCrea,
+      paso("Listo."),
+    ]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("cancela el pedido");
+    await cliente("mejor sí, seis de bistec otra vez");
+    expect(srv.s.pedidos).toBe(0);
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+  });
+
+  it("una pausa («no, espere») NO es rechazo: releer el total y «si» sigue creando UN pedido (camino intacto)", async () => {
+    const { srv, cliente } = await armar([...cotizaYLee, confirmaYCrea, paso("Perdone. Son seis de bistec, trescientos veintiocho pesos. ¿Es correcto?"), confirmaYCrea, paso("Listo.")]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("no, espere");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+  });
+});

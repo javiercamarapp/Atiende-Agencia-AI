@@ -22,7 +22,7 @@ import { eventoSinPII } from "../log-sin-pii.ts";
 import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
 import { crearSegmentadorFrases } from "./frases.ts";
-import { contieneTotal, esAfirmacion } from "./afirmacion.ts";
+import { contieneTotal, esAfirmacion, esRechazo } from "./afirmacion.ts";
 import { ejecutarHerramientas, type EstadoEspera } from "./herramientas.ts";
 import { ColaAsync } from "./puertos.ts";
 import type { ContextoTurnoLlm, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts } from "./puertos.ts";
@@ -327,6 +327,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.esperandoAlCliente.habladoTrasCotizar = "";
     // El codigo interpreta el turno del cliente: solo una afirmacion («si», «ok», «correcto»...) cuenta como confirmacion del resumen.
     this.esperandoAlCliente.afirmacion = esAfirmacion(texto);
+    // Un rechazo/cancelacion deja sin vigencia el resumen leido (ver el cierre del turno).
+    const rechazo = !this.esperandoAlCliente.afirmacion && esRechazo(texto);
     let habladoTurno = "";
 
     const cola = new ColaAsync<FraseLlm>();
@@ -439,6 +441,14 @@ class SesionCascadaV2 implements VozSesionLlamada {
           e.huellaOida = e.huellaCotizada;
           e.totalOido = total;
         } else this.log("v2_resumen_sin_total", { motivo: "sin_total", ok: false });
+      } else if (rechazo && e.cotizoEnTurno !== true) {
+        // El cliente rechazo o cancelo: ese resumen ya no esta vigente aunque el agente mencione el total de pasada («Cancelado el pedido de 328. ¿Algo mas?»). Se olvida la huella oida
+        // Y la ultima (la rama de «releyo» ya no puede restaurarla): solo una cotizacion nueva + su lectura + un «si» nuevo abren la compuerta.
+        if ((e.huellaOida ?? null) !== null) this.log("v2_resumen_olvidado", { motivo: "rechazo_del_cliente", ok: false });
+        e.huellaOida = null;
+        e.huellaUltima = null;
+        e.totalOido = null;
+        e.totalUltimo = null;
       } else if (e.cotizoEnTurno !== true && habladoTurno.trim() !== "" && (e.huellaUltima ?? null) !== null) {
         // El agente hablo en un turno sin re-cotizar (pregunta intermedia, aclaracion): el resumen cuenta como leido SOLO si repitio el total vigente; si no, el siguiente «si»
         // ya no responde a un resumen leido. Lo hecho al reves (releer el total tras una pregunta) lo vuelve a abrir.
