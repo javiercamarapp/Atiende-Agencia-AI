@@ -1262,6 +1262,75 @@
     html[data-ambito="restaurantes"] .ambito-boton:where(:not([data-ambito-base] *)):active:not(:disabled) { transform: scale(0.97); }
   }
 
+  /* ds3 / 3.1 Button. Las clases `ds3-btn*` las pone ui/button.tsx; sin la bandera no coinciden con nada. Doble clase para ganar al `rounded-md`/`h-*`
+     de base y a las reglas `ambito-boton*` (misma capa, despues de ellas); radio, relleno, texto y peso respetan los `ambito-ov-*` de quien llama.
+     Alto = --control-xs/sm/md/lg (24/28/32/36; tactil 32/36/44/44), fuente 12/500, gap 6, icono 14 (xs 12), radio 8. Sin escala de press ni
+     elevacion al hover (§3.1/E10). El foco lo pinta el anillo global de ds3 (:focus-visible); aqui nunca se quita el outline. */
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn {
+    gap: 0.375rem;
+    border: 1px solid transparent;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    text-transform: none;
+    letter-spacing: 0;
+    transition-duration: var(--dur-fast);
+    transition-timing-function: var(--ease-out);
+  }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn:not([class~="ambito-ov-radio"]) { border-radius: var(--radius-control); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn:not([class~="ambito-ov-peso"]) { font-weight: 500; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn:not([class~="ambito-ov-texto"]) { font-size: 0.75rem; line-height: 1rem; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn svg:not([class*="size-"]) { width: 0.875rem; height: 0.875rem; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-xs svg:not([class*="size-"]),
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon-xs svg:not([class*="size-"]) { width: 0.75rem; height: 0.75rem; }
+
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-xs { height: var(--control-xs); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-sm { height: var(--control-sm); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-md { height: var(--control-md); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-lg { height: var(--control-lg); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon { height: var(--control-md); width: var(--control-md); padding: 0; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon-sm { height: var(--control-sm); width: var(--control-sm); padding: 0; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon-xs { height: var(--control-xs); width: var(--control-xs); padding: 0; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-xs:not([class~="ambito-ov-px"]) { padding-inline: 0.5rem; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-sm:not([class~="ambito-ov-px"]) { padding-inline: 0.625rem; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-md:not([class~="ambito-ov-px"]) { padding-inline: 0.75rem; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-lg:not([class~="ambito-ov-px"]) { padding-inline: 0.875rem; }
+
+  /* Tactil: xs/sm miden 32/36 y su area de toque llega a 44 con un pseudo-elemento centrado (no cambia el layout). */
+  @media (pointer: coarse), (max-width: 767.98px) {
+    html[data-diseno="ds3"] .ds3-btn.ds3-btn:is(.ds3-btn-xs, .ds3-btn-sm, .ds3-btn-icon-xs, .ds3-btn-icon-sm):not(.absolute, .fixed, .sticky) { position: relative; }
+    html[data-diseno="ds3"] .ds3-btn.ds3-btn:is(.ds3-btn-xs, .ds3-btn-sm, .ds3-btn-icon-xs, .ds3-btn-icon-sm)::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      min-width: var(--target-min);
+      height: 100%;
+      min-height: var(--target-min);
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-default { background-color: hsl(var(--primary-soft)); color: hsl(var(--primary-ink)); border-color: hsl(var(--primary) / 0.3); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-default:hover:not(:disabled, [aria-disabled="true"]) { background-color: hsl(var(--primary-soft-hover)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-solid { background-color: hsl(var(--action)); color: hsl(var(--action-foreground)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-solid:hover:not(:disabled, [aria-disabled="true"]) { background-color: hsl(var(--action-hover)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-secondary { background-color: hsl(var(--card)); color: hsl(var(--foreground-2)); border-color: hsl(var(--border-strong)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-secondary:hover:not(:disabled, [aria-disabled="true"]) { background-color: hsl(var(--soft)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-outline { background-color: transparent; color: hsl(var(--foreground-2)); border-color: hsl(var(--border-strong)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-outline:hover:not(:disabled, [aria-disabled="true"]) { background-color: hsl(var(--soft)); border-color: hsl(var(--border-strong)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-ghost { background-color: transparent; color: hsl(var(--foreground-2)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-ghost:hover:not(:disabled, [aria-disabled="true"]) { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-danger { background-color: hsl(var(--danger-tint)); color: hsl(var(--danger-ink)); border-color: hsl(var(--danger-ink) / 0.3); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-danger:hover:not(:disabled, [aria-disabled="true"]) { background-color: hsl(var(--danger-tint)); border-color: hsl(var(--danger-ink) / 0.5); opacity: 1; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-link { background-color: transparent; color: hsl(var(--primary-ink)); text-decoration-line: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-v-link:hover:not(:disabled, [aria-disabled="true"]) { text-decoration-thickness: 2px; }
+
+  /* Sin press global ni elevacion al hover bajo ds3 (el :active del bloque de arriba y el del ambito quedan para produccion). */
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn:hover:not(:disabled),
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn:active:not(:disabled) { transform: none; box-shadow: none; }
+  html[data-diseno="ds3"] button:not(:disabled):active { transform: none; }
+
   html[data-ambito="restaurantes"] .ambito-campo:where(:not([data-ambito-base] *)) {
     border-radius: var(--radius-field);
     background-color: hsl(var(--background));

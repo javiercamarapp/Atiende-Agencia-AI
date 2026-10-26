@@ -1,6 +1,7 @@
 {
   "_comentario": "Presupuesto de JS por ruta, en bytes gzip nivel 6: entrada + imports estaticos + el chunk propio (lo que el navegador descarga ANTES de poder pintar la ruta). Medido el 4-oct-2026 tras la carga perezosa por ruta (R-37); cada tope deja ~10% de margen. Subirlo exige justificarlo en el PR.",
+  "_temporal": "26-oct-2026: el tope de la entrada sube de 165000 a 169000 B gzip (+4000) de forma TEMPORAL. #690+#692+#691 (ds3) sumados llevaron la entrada a ~165.2 KB (+0.2 KiB sobre el tope) y #693/#695/#697 anaden mas. CONDICION DE RETORNO: bajarlo a 165000 (o menos) al fusionar el flip ds3 y retirar el diseno anterior (lote 12). No subirlo de nuevo sin otro cambio revisado como este.",
   "rutas": [
-    { "clave": "index.html", "nombre": "entrada (toda ruta)", "maxGzipBytes": 165000 }
+    { "clave": "index.html", "nombre": "entrada (toda ruta)", "maxGzipBytes": 169000 }
   ]
 }
