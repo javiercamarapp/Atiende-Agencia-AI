@@ -1332,6 +1332,12 @@
 @media (prefers-reduced-motion: reduce) {
   .atiende-respira { animation: none; opacity: 0.6; }
 }
+/* CargandoLogo (ds3 / 2.1): mismos keyframes; la fase llega por --carga-fase (reloj global) para que un remonte no la reinicie.
+   Solo opacity y transform. Sin consumidores todavia. */
+.carga-logo { animation: atiende-respira 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite; animation-delay: var(--carga-fase, 0ms); }
+@media (prefers-reduced-motion: reduce) {
+  .carga-logo { animation: none; opacity: 0.6; }
+}
 
 @keyframes atiende-linea-correr {
   0%   { transform: translateX(-3px); opacity: 0.35; }
