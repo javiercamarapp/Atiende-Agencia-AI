@@ -1,7 +1,7 @@
 // Escenarios del arnes de voz con modelo real (cliente por TEXTO). Son DATOS: el ejecutor (`ejecutar.ts`) los corre contra la API local + Postgres efimero.
 // Origen: P01-P16 = los 16 guiones de paridad con WhatsApp (`src/voz/simulador/guiones-paridad.ts`, PR #663) rehechos para un modelo real con el menu/precios de la base de la
 // prueba; VZ* = los casos de llamada de las rondas de QA de voz; W* = principales de WhatsApp que faltaban (fuera de cobertura, direccion dictada, sucursal/hora, mezcla de ordenes).
-// Todo ficticio: nombres "Ana Prueba"/"Carlos Prueba", telefonos aleatorios generados por el ejecutor.
+// Todo ficticio: nombres "Ana Prueba"/"Carlos Prueba", telefonos de prueba 521 999 555 01xx elegidos por el ejecutor (ver guardas.ts; no son aleatorios).
 
 export type Chk =
   | { readonly t: "sinPedido" }

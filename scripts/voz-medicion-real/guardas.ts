@@ -18,11 +18,14 @@ export class TopeExcedido extends Error {
   }
 }
 
-/** localhost, 127.0.0.0/8 y ::1 (con o sin corchetes). Un socket unix (ruta absoluta) tambien es local. */
+/** Socket unix: ruta absoluta de UNA barra ("/var/run/postgresql"); "//evil.com" (red-path de URL) NO es un socket. */
+const esSocketUnix = (h: string): boolean => h.startsWith("/") && !h.startsWith("//");
+
+/** localhost, 127.0.0.0/8 y ::1 (con o sin corchetes). Un socket unix (ruta absoluta de una barra) tambien es local. */
 export function hostEsLoopback(host: string | null | undefined): boolean {
   if (!host) return false;
   const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  if (h.startsWith("/")) return true;
+  if (esSocketUnix(h)) return true;
   if (h === "localhost" || h === "::1") return true;
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
 }
@@ -36,42 +39,73 @@ export function urlEsLoopback(url: unknown): boolean {
   }
 }
 
-/** Host al que apunta un pool de `pg` (opciones del pool, cadena de conexion o PGHOST). null si no se puede determinar. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- el pool de pg viene del directorio de QA sin tipos
-export function hostDePool(pool: any, env: Record<string, string | undefined> = {}): string | null {
-  const o = pool?.options ?? {};
-  if (typeof o.host === "string" && o.host !== "") return o.host;
-  const cs = o.connectionString ?? pool?.connectionString;
-  if (typeof cs === "string" && cs !== "") {
-    try {
-      const h = new URL(cs).hostname;
-      if (h !== "") return decodeURIComponent(h);
-      return new URL(cs).searchParams.get("host");
-    } catch {
-      return null;
-    }
+/** Solo el host de una URL, para mensajes (nunca la URL completa: puede traer usuario, clave o tokens). */
+export function soloHost(url: unknown): string {
+  if (typeof url !== "string") return "(sin valor)";
+  try {
+    return new URL(url).hostname || "(sin host)";
+  } catch {
+    return "(no es una URL)";
   }
-  if (pool && typeof pool.query === "function") return env.PGHOST || "localhost"; // pg usa PGHOST o localhost si no hay nada mas
-  return null;
 }
 
-const RE_VAR_META = /^(META|WHATSAPP|GRAPH)[A-Z0-9_]*(URL|BASE|HOST)$/;
+/**
+ * TODOS los hosts a los que puede apuntar un pool de `pg`: `options.host` Y el de la cadena de conexion (en pg la cadena sobrescribe a `host`, asi que
+ * hay que validar ambos), incluido `?host=` y PGHOST/localhost si no hay nada mas. Lista vacia = no se pudo determinar.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- el pool de pg viene del directorio de QA sin tipos
+export function hostsDePool(pool: any, env: Record<string, string | undefined> = {}): string[] {
+  if (!pool) return [];
+  const o = pool.options ?? {};
+  const hosts: string[] = [];
+  const anade = (h: unknown) => { if (Array.isArray(h)) h.forEach(anade); else if (typeof h === "string" && h !== "") hosts.push(h); };
+  anade(o.host);
+  for (const cs of [o.connectionString, pool.connectionString]) {
+    if (typeof cs !== "string" || cs === "") continue;
+    // WHATWG URL rechaza "postgres://u:p@/db?host=/socket" (host vacio con usuario); se cae a un analisis manual que tambien cubre ?host=.
+    const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^/?:#]*)/i.exec(cs);
+    const q = /[?&]host=([^&#]*)/i.exec(cs);
+    if (!m) { anade("(cadena de conexion invalida)"); continue; }
+    const hostUrl = m[1] ?? "";
+    let hostQ = "";
+    try { hostQ = q ? decodeURIComponent(q[1] ?? "") : ""; } catch { hostQ = "(host invalido)"; }
+    if (hostUrl !== "") anade(safeDecode(hostUrl));
+    if (hostQ !== "") anade(hostQ);
+    if (hostUrl === "" && hostQ === "") anade("(cadena de conexion sin host)");
+  }
+  if (hosts.length === 0 && typeof pool.query === "function") anade(env.PGHOST || "localhost"); // pg usa PGHOST o localhost si no hay nada mas
+  return hosts;
+}
+
+const safeDecode = (x: string): string => { try { return decodeURIComponent(x); } catch { return "(host invalido)"; } };
+
+// Variables de entorno que el API/stack heredaria y que apuntan a servicios externos: todas deben ser loopback si estan definidas.
+const RE_VAR_META = /^(META|WHATSAPP|GRAPH|FACEBOOK|FB)[A-Z0-9_]*(URL|URI|BASE|HOST|ENDPOINT|ORIGIN|DOMAIN|SERVER)$/;
+const RE_VAR_HEREDADA = /^(DATABASE|DB|POSTGRES|PG|SUPABASE|STRIPE|REDIS|RESEND|TWILIO|SENDGRID|SENTRY)[A-Z0-9_]*(URL|URI|BASE|HOST|ENDPOINT|ORIGIN)$/;
+
+/** Revisa el entorno ANTES de arrancar el stack: ninguna variable de Meta ni de servicios heredados puede apuntar fuera de loopback. */
+export function validarEntorno(env: Record<string, string | undefined> = {}): void {
+  for (const [k, v] of Object.entries(env)) {
+    if (!v || !(RE_VAR_META.test(k) || RE_VAR_HEREDADA.test(k))) continue;
+    if (!urlEsLoopback(v) && !hostEsLoopback(v)) throw new AbortoDeSeguridad(`la variable ${k} apunta fuera de loopback (host ${soloHost(v)})`);
+  }
+}
 
 /**
  * Aborta si la API, la base o el Meta del stack no son locales/simulados. `s` es lo que devuelve `startStack()` del directorio de QA:
- * `s.api` (URL), `s.pool` (pg) y `s.metaSimulado === true` (o `s.metaUrl` loopback). Cualquier variable de entorno META/WHATSAPP/GRAPH *_URL|BASE|HOST
- * que este definida debe apuntar a loopback.
+ * `s.api` (URL), `s.pool` (pg) y `s.metaSimulado === true` (o `s.metaUrl` loopback). API, base y Meta solo existen una vez arrancado el stack
+ * (por eso esta parte corre despues de `startStack()` y, si falla, el stack se detiene); el entorno se valida antes con `validarEntorno`.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- el stack viene del directorio de QA sin tipos
 export function validarAislamiento(s: any, env: Record<string, string | undefined> = {}): void {
-  if (!urlEsLoopback(s?.api)) throw new AbortoDeSeguridad(`la API del stack (s.api) no es loopback: ${JSON.stringify(String(s?.api ?? "").slice(0, 80))}`);
-  const host = hostDePool(s?.pool, env);
-  if (!hostEsLoopback(host)) throw new AbortoDeSeguridad(`la base (s.pool) no es local: host ${JSON.stringify(host)}`);
+  validarEntorno(env);
+  if (!urlEsLoopback(s?.api)) throw new AbortoDeSeguridad(`la API del stack (s.api) no es loopback (host ${soloHost(s?.api)})`);
+  const hosts = hostsDePool(s?.pool, env);
+  if (hosts.length === 0) throw new AbortoDeSeguridad("no se pudo determinar el host de la base (s.pool)");
+  const fuera = hosts.find((h) => !hostEsLoopback(h));
+  if (fuera !== undefined) throw new AbortoDeSeguridad(`la base (s.pool) no es local: host ${JSON.stringify(fuera.slice(0, 80))}`);
   const metaOk = s?.metaSimulado === true || urlEsLoopback(s?.metaUrl);
   if (!metaOk) throw new AbortoDeSeguridad("el Meta simulado no esta activo (el stack debe exponer metaSimulado:true o metaUrl loopback)");
-  for (const [k, v] of Object.entries(env)) {
-    if (RE_VAR_META.test(k) && v && !urlEsLoopback(v) && !hostEsLoopback(v)) throw new AbortoDeSeguridad(`la variable ${k} apunta fuera de loopback`);
-  }
 }
 
 /** VOZ_QA_DIR debe existir y estar DENTRO del repo/worktree (tras resolver enlaces simbolicos). Devuelve la ruta real. */
@@ -103,12 +137,21 @@ export function gastoPropioUsd(p: { cerradoUsd: number; llamadaEnCursoUsd: numbe
   return p.cerradoUsd + p.llamadaEnCursoUsd + p.clienteJuezUsd;
 }
 
+/** Falla CERRADO: un gasto NaN/Infinity/indefinido (p. ej. un costo que llega sin numero) cuenta como tope excedido. */
 export function excedeTope(gastoUsd: number, corteUsd: number): boolean {
-  return gastoUsd >= corteUsd;
+  return !(Number.isFinite(gastoUsd) && gastoUsd < corteUsd);
+}
+
+/** Suma un costo solo si es un numero finito; si no, devuelve NaN para que el tope corte en vez de apagarse. */
+export function sumarCosto(acum: number, delta: unknown): number {
+  return typeof delta === "number" && Number.isFinite(delta) ? acum + delta : Number.NaN;
 }
 
 // ---- telefonos ficticios ----
-const BASE_FICTICIO = "52199955501"; // 521 999 555 01xx: patron 555-01xx, el rango que se reserva para numeros de ficcion
+// 521 999 555 01xx sigue la convencion 555-01xx de ficcion del plan NANP; en la numeracion de Mexico NO existe un rango reservado equivalente, asi que este
+// patron es solo una marca visible de "dato de prueba", NO una garantia. La garantia de que nunca se contacta a nadie son las guardas de aislamiento
+// (API y base en loopback, Meta simulado que nunca envia) y que la base es efimera.
+const BASE_FICTICIO = "52199955501";
 export const telefonoFicticio = (i: number): string => `${BASE_FICTICIO}${String(((i % 100) + 100) % 100).padStart(2, "0")}`;
 export const esTelefonoFicticio = (tel: string): boolean => /^52199955501\d{2}$/.test(tel);
 

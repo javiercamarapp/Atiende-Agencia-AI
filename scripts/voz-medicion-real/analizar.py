@@ -59,8 +59,8 @@ def bootstrap(por_esc, B=4000, seed=7):
     return vals[int(0.025 * B)], vals[int(0.975 * B)]
 
 
-# Una llamada con caida o respuesta vacia del LLM (infra) NO es evidencia del agente: no cuenta como acierto NI como fallo; se reporta aparte.
-invalida = lambda r: bool(r.get("invalida")) or r.get("veredicto") == "INVALIDA" or bool(r.get("infra"))
+# Una llamada con caida o respuesta vacia del LLM (infra), un juez sin respuesta o una excepcion del arnes NO es evidencia del agente: no cuenta como acierto NI como fallo; se reporta aparte.
+invalida = lambda r: bool(r.get("invalida")) or r.get("veredicto") == "INVALIDA" or bool(r.get("infra")) or bool(r.get("excepcion"))
 ok = lambda r: r.get("veredicto") == "PASA" and not invalida(r)
 todas = filas
 inval = [r for r in todas if invalida(r)]
@@ -77,7 +77,7 @@ for n, rs in sorted(reps.items()):
     if total_esc and len(ids) < total_esc and not hay_filtro:
         print(f"- **AVISO: repeticion {n} INCOMPLETA: {len(ids)}/{total_esc} escenarios medidos (cortada por tope, interrumpida o con llamadas invalidas); su tasa no es comparable con una completa**")
 if inval:
-    print(f"- **{len(inval)} llamadas INVALIDAS por infraestructura del LLM (caida/vacia), fuera de la tasa y por reintentar**: {', '.join(sorted(set(r['id'] for r in inval)))}")
+    print(f"- **{len(inval)} llamadas INVALIDAS por infraestructura (LLM caido/vacio, juez sin respuesta o excepcion del arnes), fuera de la tasa y por reintentar**: {', '.join(sorted(set(r['id'] for r in inval)))}")
 tot, pas = len(filas), sum(ok(r) for r in filas)
 if tot == 0:
     sys.exit("No hay llamadas validas para calcular la tasa (todas invalidas o ninguna).")
@@ -99,9 +99,9 @@ for n, rs in sorted(reps.items()):
     print(f"- Repeticion {n}: {k}/{len(vs)} = {100*k/len(vs) if vs else 0:.1f} %")
 estables = sum(1 for v in por_esc.values() if all(v))
 print(f"- Escenarios que pasan en TODAS las repeticiones: {estables}/{len(por_esc)}; los que fallan al menos una vez: {len(por_esc)-estables}")
-excep = [r for r in filas if r.get("excepcion")]
+excep = [r for r in todas if r.get("excepcion")]
 if excep:
-    print(f"- Excepciones del arnes (cuentan como fallo): {len(excep)}")
+    print(f"- Excepciones del arnes (INVALIDAS, fuera de la tasa): {len(excep)}")
 
 print("\n## Por escenario\n")
 print("| Escenario | Pasa | Causas de fallo (juez) | Motivo (ultimo fallo) |")

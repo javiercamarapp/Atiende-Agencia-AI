@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { DATOS_POR_OMISION, ESCENARIOS, RELOJES } from "./escenarios.ts";
 import type { Chk, Escenario, Evento } from "./escenarios.ts";
 import { cortarMensaje, rngDesdeSemilla, ruidoStt } from "./ruido-stt.ts";
-import { TopeExcedido, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, parseCorte, redactar, validarAislamiento } from "./guardas.ts";
+import { TopeExcedido, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, parseCorte, redactar, sumarCosto, validarAislamiento, validarEntorno } from "./guardas.ts";
 
 // Aislamiento: el directorio de QA (de donde se CARGA codigo) debe estar dentro del repo/worktree; ver guardas.ts.
 const QA = dirQaDentroDelRepo(process.env.VOZ_QA_DIR, fileURLToPath(new URL("../../", import.meta.url)));
@@ -53,6 +53,7 @@ const ARCHIVO = `${RES}/voz-real-${process.env.VOZ_ETQ ?? "main"}-rep${REP}.json
 const key = process.env.OPENROUTER_API_KEY;
 if (!key) throw new Error("falta OPENROUTER_API_KEY en el entorno");
 
+validarEntorno(process.env); // antes de arrancar nada: ninguna variable heredada puede apuntar fuera de loopback
 const s = await startStack();
 // Aislamiento: la API y la base deben ser locales y el Meta debe ser el simulado; si no, se aborta ANTES de tocar nada.
 try { validarAislamiento(s, process.env); } catch (x) { try { await s.stop?.(); } catch { /* */ } throw x; }
@@ -121,7 +122,7 @@ async function correrLlamada(e: Escenario, phone: string, instruccion: string, v
   const abrirSesion = (ap: any, h: any) => base.abrirSesion(ap, {
     ...h,
     agenteDijo: (t: string) => { if (primeraFraseT === null) primeraFraseT = performance.now(); h.agenteDijo(t); },
-    costo: (m: number, real?: boolean, comp?: any) => { if (comp?.proveedor?.startsWith("openrouter")) { costo.micro += m; if (real === false) costo.real = false; } h.costo?.(m, real, comp); },
+    costo: (m: number, real?: boolean, comp?: any) => { if (comp?.proveedor?.startsWith("openrouter")) { costo.micro = sumarCosto(costo.micro, m); if (real === false) costo.real = false; } h.costo?.(m, real, comp); },
   });
   const limites = { ...LIMITES_POR_DEFECTO };
   const tools: any[] = []; const pregrabados: any[] = []; const logs: any[] = []; const kpi: any[] = [];
@@ -255,7 +256,8 @@ const guardar = () => { const tmp = `${ARCHIVO}.tmp`; writeFileSync(tmp, JSON.st
 // Excepciones y llamadas invalidas por infraestructura se reintentan (hasta 3 intentos); despues se quedan registradas como estan.
 const reintentable = (r: any) => (r.excepcion || r.invalida) && !(r.intentos >= 3);
 const hechos = new Set(previo.filter((r) => !reintentable(r)).map((r) => r.id));
-const results: any[] = previo.filter((r) => !reintentable(r));
+// Los reintentables SE CONSERVAN en el archivo (con sus intentos y su gasto): si la corrida se corta antes de repetirlos no se pierden; al repetirlos se reemplazan.
+const results: any[] = [...previo];
 const uso0 = (await usoRealOpenRouter()) ?? 0;
 let pendientes = 0; let cortado = false; let llmAcum = 0;
 const esperados = ESCENARIOS.filter((e) => !FILTRO || FILTRO.test(e.id)).length;
@@ -268,9 +270,9 @@ for (const e of ESCENARIOS) {
   if (hechos.has(e.id)) continue;
   // El /key de OpenRouter se actualiza con retraso: el corte usa el mayor entre su delta y la cuenta propia (costo real de las llamadas del agente + cliente simulado + juez).
   const uso = (await usoRealOpenRouter()) ?? uso0;
-  if (Math.max(uso - uso0, llmAcum + gasto.usd) >= CORTE) { cortado = true; pendientes += 1; continue; }
+  if (excedeTope(Math.max(uso - uso0, llmAcum + gasto.usd), CORTE)) { cortado = true; pendientes += 1; continue; }
   setClock(RELOJES[e.reloj]);
-  // Telefono de ficcion (521 999 555 01xx): jamas aleatorio ni real; se elige uno sin pedidos ni escalaciones previas en la base efimera.
+  // Telefono de prueba (521 999 555 01xx; marca de dato de prueba, no rango reservado en Mexico: la garantia es el aislamiento): jamas aleatorio; se elige uno sin pedidos ni escalaciones previas en la base efimera.
   const phone = await elegirTelefonoLibre(async (p10) => Number((await s.pool.query(`select (select count(*) from restaurantes.orders where customer_phone like $1) + (select count(*) from restaurantes.callback_requests where customer_phone like $1) c`, [`%${p10}`])).rows[0].c), ESCENARIOS.indexOf(e));
   if (!esTelefonoFicticio(phone)) throw new Error("telefono fuera del rango ficticio");
   const phone10 = phone.slice(-10);
@@ -292,7 +294,8 @@ for (const e of ESCENARIOS) {
   rec.llmUsd = costoLlamada.micro / 1e6;
   rec.durS = Math.round((Date.now() - t0) / 1000);
   if (err || !llamada) {
-    rec.excepcion = true; rec.veredicto = "FALLA"; rec.causa = "arnes"; rec.motivo = "EXCEPCION: " + err;
+    // Una excepcion del arnes (red, base, bug) no es evidencia del agente: INVALIDA y reintentable, no FALLA.
+    rec.excepcion = true; rec.invalida = true; rec.veredicto = "INVALIDA"; rec.causa = "arnes"; rec.motivo = "EXCEPCION: " + err;
     const i = results.findIndex((r) => r.id === e.id); if (i >= 0) results[i] = rec; else results.push(rec);
     guardar(); console.log("EXCEPCION", e.id, err?.slice(0, 200)); continue;
   }
@@ -313,6 +316,7 @@ for (const e of ESCENARIOS) {
   const trTxt = llamada.registro.map((x: TurnoRegistro) => x.quien === "cliente" ? `CLIENTE [dijo]: ${x.dicho}${x.oido !== x.dicho ? `\n         [STT]: ${x.oido}` : ""}` : x.quien === "agente" ? `AGENTE: ${x.texto}${x.herramientas?.length ? `  <herramientas: ${x.herramientas.join(", ")}>` : ""}` : `SISTEMA: ${x.texto}`).join("\n").slice(0, 9000);
   const usr = `ESCENARIO ${e.id}: ${e.titulo}\nDEBE: ${e.debe}\nNO DEBE: ${e.noDebe}\nRESULTADO DE LA LLAMADA: ${llamada.resultado}\nTRANSCRIPCION:\n${trTxt}\nTOOLS: ${JSON.stringify(llamada.tools.map((t: any) => ({ n: t.nombre, r: JSON.stringify(t.resultado).slice(0, 180) }))).slice(0, 2800)}\nBD: pedidos=${JSON.stringify(orders.map((o: any) => ({ total: o.total, canal: o.canal, direccion: o.customer_address, items: o.items.map((i: any) => `${i.quantity}x ${i.name}@${i.price}`) })))}; callbacks=${JSON.stringify(callbacks.map((c: any) => c.reason))}\nFALLAS DETERMINISTAS: ${hard.join(" ; ") || "ninguna"}${caidas.length ? `\nINFRA: ${caidas.join(",")}` : ""}`;
   let jr: any = { veredicto: "PARCIAL", motivo: "juez sin respuesta tras 3 intentos", causa: "juez", severidad: "ninguna" };
+  let juezSinRespuesta = true;
   let topeEnJuez = false;
   for (let intento = 0; intento < 3; intento += 1) {
     try { verificarTope(); } catch { topeEnJuez = true; break; }
@@ -320,7 +324,7 @@ for (const e of ESCENARIOS) {
       const out = await chat([{ role: "system", content: JUEZ_SYS }, { role: "user", content: usr }], { max: 1500, json: true, model: JUEZ });
       const m = /\{[\s\S]*\}/.exec(out);
       const j = JSON.parse(m ? m[0] : out);
-      if (typeof j.veredicto === "string") { jr = j; break; }
+      if (typeof j.veredicto === "string") { jr = j; juezSinRespuesta = false; break; }
     } catch { /* reintenta */ }
   }
   if (topeEnJuez) { cortado = true; pendientes += 1; console.log("CORTE por tope antes del juez en", e.id); break; }
@@ -329,8 +333,9 @@ for (const e of ESCENARIOS) {
   Object.assign(rec, {
     resultado: llamada.resultado, hard, juez: jr.veredicto, motivo: jr.motivo, causa: hard.length || jr.veredicto !== "PASA" ? jr.causa : "ninguna", severidad: jr.severidad,
     // Una llamada con caida o respuesta vacia del LLM (infra) NO es evidencia del agente: queda INVALIDA, fuera de la tasa de acierto, y se reintenta.
-    invalida: caidas.length > 0,
-    veredicto: caidas.length > 0 ? "INVALIDA" : hard.length === 0 && jr.veredicto === "PASA" ? "PASA" : "FALLA", soloHard: hard.length === 0 ? "PASA" : "FALLA",
+    // Idem si el juez no respondio tras 3 intentos (falla de infraestructura, no del agente).
+    invalida: caidas.length > 0 || juezSinRespuesta,
+    veredicto: caidas.length > 0 || juezSinRespuesta ? "INVALIDA" : hard.length === 0 && jr.veredicto === "PASA" ? "PASA" : "FALLA", soloHard: hard.length === 0 ? "PASA" : "FALLA",
     infra: caidas, pedidos: orders.map((o: any) => ({ total: o.total, canal: o.canal, items: o.items.map((i: any) => `${i.quantity}x ${i.name}@${i.price}`), direccion: o.customer_address })), callbacks: callbacks.map((c: any) => c.reason),
     turnos: llamada.registro, tools: llamada.tools.map((t: any) => ({ n: t.nombre, r: JSON.stringify(t.resultado).slice(0, 220) })), toolLatMs: llamada.toolLatMs,
     msPrimeraFrase: turnosAg.map((x: TurnoRegistro) => x.msPrimeraFrase).filter((x: any) => typeof x === "number"), msTurno: turnosAg.map((x: TurnoRegistro) => x.msTurno), palabrasAgente: palabras,

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  AbortoDeSeguridad, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, hostDePool, hostEsLoopback, parseCorte, redactar, telefonoFicticio,
+  AbortoDeSeguridad, dirQaDentroDelRepo, elegirTelefonoLibre, esTelefonoFicticio, excedeTope, gastoPropioUsd, hostsDePool, hostEsLoopback, parseCorte, redactar, soloHost, sumarCosto, telefonoFicticio, validarEntorno,
   TopeExcedido, urlEsLoopback, validarAislamiento,
 } from "../../../scripts/voz-medicion-real/guardas.ts";
 
@@ -34,9 +34,52 @@ describe("aislamiento: API, base y Meta", () => {
     expect(() => validarAislamiento({ ...stackOk(), pool: pool("db.proyecto.supabase.co") }, {})).toThrow(/base/);
     expect(() => validarAislamiento({ ...stackOk(), pool: { options: { connectionString: "postgres://u:p@db.remota.net:5432/x" }, query: () => 0 } }, {})).toThrow(/base/);
     expect(() => validarAislamiento({ ...stackOk(), pool: { options: { connectionString: "postgres://u:p@127.0.0.1:5432/x" }, query: () => 0 } }, {})).not.toThrow();
-    expect(() => validarAislamiento({ ...stackOk(), pool: { options: {}, query: () => 0 } }, { PGHOST: "10.1.2.3" })).toThrow(/base/);
+    expect(() => validarAislamiento({ ...stackOk(), pool: { options: {}, query: () => 0 } }, { PGHOST: "10.1.2.3" })).toThrow(/PGHOST/); // lo atrapa ya la revision del entorno
+    expect(() => validarAislamiento({ ...stackOk(), pool: { options: {}, query: () => 0 } }, { PGHOST: "localhost" })).not.toThrow();
     expect(() => validarAislamiento({ ...stackOk(), pool: undefined }, {})).toThrow(/base/);
-    expect(hostDePool({ options: {}, query: () => 0 }, {})).toBe("localhost");
+    expect(hostsDePool({ options: {}, query: () => 0 }, {})).toEqual(["localhost"]);
+  });
+
+  it("valida AMBOS: en pg la cadena de conexion sobrescribe a host, asi que host local + cadena remota (o al reves) aborta", () => {
+    const con = (options: object) => ({ ...stackOk(), pool: { options, query: () => 0 } });
+    expect(() => validarAislamiento(con({ host: "localhost", connectionString: "postgres://u:p@db.remota.net:5432/x" }), {})).toThrow(/db\.remota\.net/);
+    expect(() => validarAislamiento(con({ host: "db.remota.net", connectionString: "postgres://u:p@127.0.0.1:5432/x" }), {})).toThrow(/db\.remota\.net/);
+    expect(() => validarAislamiento(con({ host: "localhost", connectionString: "postgres://u:p@127.0.0.1:5432/x" }), {})).not.toThrow();
+    expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=db.remota.net" }), {})).toThrow(/db\.remota\.net/);
+    expect(() => validarAislamiento(con({ connectionString: "postgres://u:p@/x?host=/var/run/postgresql" }), {})).not.toThrow();
+    expect(() => validarAislamiento(con({ connectionString: "esto no es una url" }), {})).toThrow(/base/);
+    expect(hostsDePool(con({ host: "a", connectionString: "postgres://u:p@b/x" }).pool, {})).toEqual(["a", "b"]);
+  });
+
+  it("un valor que empieza con // NO es un socket unix ni loopback", () => {
+    expect(hostEsLoopback("//evil.com")).toBe(false);
+    expect(hostEsLoopback("//127.0.0.1")).toBe(false);
+    expect(hostEsLoopback("/var/run/postgresql")).toBe(true);
+    expect(() => validarEntorno({ DATABASE_URL: "//evil.com/db" })).toThrow(/DATABASE_URL/);
+    expect(() => validarAislamiento({ ...stackOk(), pool: pool("//evil.com") }, {})).toThrow(/base/);
+  });
+
+  it("los mensajes de aborto muestran solo el host, nunca la URL (ni usuario, clave o token)", () => {
+    const api = "https://usuario:clave-secreta@api.ejemplo.com/ruta?token=abc123";
+    let msg = "";
+    try { validarAislamiento({ ...stackOk(), api }, {}); } catch (x) { msg = (x as Error).message; }
+    expect(msg).toContain("api.ejemplo.com");
+    expect(msg).not.toMatch(/clave-secreta|abc123|usuario|ruta/);
+    let msg2 = "";
+    try { validarEntorno({ SUPABASE_URL: "https://u:pw-secreto@x.supabase.co/?k=tok" }); } catch (x) { msg2 = (x as Error).message; }
+    expect(msg2).toContain("SUPABASE_URL");
+    expect(msg2).not.toMatch(/pw-secreto|tok/);
+    expect(soloHost("https://u:p@h.example.com/x")).toBe("h.example.com");
+    expect(soloHost("no url")).toBe("(no es una URL)");
+  });
+
+  it("revisa variables de Meta con sufijos amplios y las de servicios que el API heredaria", () => {
+    for (const k of ["META_API_ENDPOINT", "WHATSAPP_ORIGIN", "GRAPH_API_URI", "FACEBOOK_GRAPH_DOMAIN", "SUPABASE_URL", "DATABASE_URL", "STRIPE_API_BASE", "REDIS_HOST"]) {
+      expect(() => validarEntorno({ [k]: "https://externo.example.com" }), k).toThrow(k);
+      expect(() => validarEntorno({ [k]: "http://127.0.0.1:9" }), k).not.toThrow();
+    }
+    expect(() => validarEntorno({ OPENROUTER_BASE_URL: "https://openrouter.ai/api" })).not.toThrow(); // el modelo real si se llama
+    expect(() => validarEntorno({ STRIPE_SECRET_KEY: "x", PATH: "/usr/bin" })).not.toThrow();
   });
 
   it("aborta si el Meta simulado no esta activo o una variable de Meta apunta fuera", () => {
@@ -72,6 +115,17 @@ describe("tope de gasto", () => {
     expect(parseCorte("")).toBe(1.5);
     expect(parseCorte("0.25")).toBe(0.25);
     for (const malo of ["abc", "0", "-1", "NaN", "Infinity", "1e999"]) expect(() => parseCorte(malo), malo).toThrow(AbortoDeSeguridad);
+  });
+  it("falla CERRADO ante un gasto NaN/Infinity/indefinido (no se apaga el tope)", () => {
+    for (const malo of [Number.NaN, Number.POSITIVE_INFINITY, undefined as unknown as number]) expect(excedeTope(malo, 1), String(malo)).toBe(true);
+    expect(excedeTope(0.5, 1)).toBe(false);
+    expect(excedeTope(gastoPropioUsd({ cerradoUsd: 0.1, llamadaEnCursoUsd: Number.NaN, clienteJuezUsd: 0 }), 1)).toBe(true);
+    // un costo que llega sin numero (callback con m indefinido) vuelve NaN la suma y el tope corta
+    expect(sumarCosto(0.2, 0.3)).toBeCloseTo(0.5);
+    expect(Number.isNaN(sumarCosto(0.2, undefined))).toBe(true);
+    expect(Number.isNaN(sumarCosto(0.2, "0.3"))).toBe(true);
+    expect(Number.isNaN(sumarCosto(Number.NaN, 0.3))).toBe(true);
+    expect(excedeTope(sumarCosto(0.2, undefined), 1)).toBe(true);
   });
   it("cuenta propia: lo cerrado + la llamada en curso + cliente/juez; corta al alcanzarlo", () => {
     const g = gastoPropioUsd({ cerradoUsd: 0.4, llamadaEnCursoUsd: 0.3, clienteJuezUsd: 0.2 });
@@ -112,7 +166,7 @@ describe("redaccion de errores", () => {
 describe("ejecutar.ts usa las guardas", () => {
   const src = readFileSync(join(__dirname, "../../../scripts/voz-medicion-real/ejecutar.ts"), "utf8");
   it("las invoca y ya no usa telefonos aleatorios ni el id de organizacion fijo", () => {
-    for (const n of ["dirQaDentroDelRepo(", "validarAislamiento(", "parseCorte(", "elegirTelefonoLibre(", "verificarTope()", "redactar("]) expect(src, n).toContain(n);
+    for (const n of ["dirQaDentroDelRepo(", "validarAislamiento(", "validarEntorno(", "sumarCosto(", "parseCorte(", "elegirTelefonoLibre(", "verificarTope()", "redactar("]) expect(src, n).toContain(n);
     expect(src).not.toMatch(/Math\.random/);
     expect(src).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
     expect(src).not.toMatch(/Number\(process\.env\.VOZ_CORTE_USD/);
@@ -148,6 +202,11 @@ describe("analizar.py", () => {
   it("avisa cuando hay menos escenarios que los esperados", () => {
     const { out } = analizar([[registro("A"), registro("B")]]);
     expect(out).toMatch(/INCOMPLETA: 2\/3/);
+  });
+  it("las excepciones del arnes tambien son invalidas y no cuentan como fallo del agente", () => {
+    const { out } = analizar([[registro("A"), { id: "B", titulo: "t", veredicto: "INVALIDA", invalida: true, excepcion: true, causa: "arnes", motivo: "x", modelo: "m", totalEscenarios: 3 }]]);
+    expect(out).toContain("1/1 = 100.0 %");
+    expect(out).toMatch(/Excepciones del arnes \(INVALIDAS/);
   });
   it("cuenta solo registros con hard presente y no divide entre cero", () => {
     const { out } = analizar([[registro("A"), { id: "B", titulo: "t", veredicto: "FALLA", excepcion: true, causa: "arnes", motivo: "x", modelo: "m", totalEscenarios: 3 }]]);
