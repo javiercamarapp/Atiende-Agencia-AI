@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { corregirAvisoCotizado } from "../src/aviso-pedido-gerente.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
-import { MARTES_14H, nuevoViaje } from "./qa-viaje/arnes-viaje.ts";
+import { MARTES_14H, nuevoViaje, pedidosDe } from "./qa-viaje/arnes-viaje.ts";
 
 const ctx = {
   businessName: PM_CONFIG_POR_OMISION.businessName,
@@ -66,5 +66,44 @@ describe("T7-038: el aviso del turno con cotizacion vigente no dice «no se ha c
     v.guion([{ tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_especial", resumen: "Pidió algo raro; no se ha cotizado." } }] }, { texto: "Listo." }]);
     await v.escribe("quiero algo raro");
     expect(v.callbacks.find((c) => c.reason === "escalada:pedido_especial")?.message).toContain("no se ha cotizado");
+  });
+});
+
+describe("T7-038 (P2): el aviso de un agregado NO se reescribe con el total de un pedido ya creado ni de una cotizacion vencida", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(MARTES_14H));
+  });
+  afterEach(() => vi.useRealTimers());
+  const PASTOR = "Pastor — 500 g";
+  const items = (v: Awaited<ReturnType<typeof nuevoViaje>>) => [{ product_id: v.producto(PASTOR), product_name: PASTOR, requested_quantity: 1 }];
+  const cotizar = (v: Awaited<ReturnType<typeof nuevoViaje>>) => ({ name: "cotizar_pedido", args: { branch_slug: "garcia-lavin", canal: "recoger", payment_method: "efectivo", customer_name: "Ana Prueba", items: items(v) } });
+
+  it("agregado tras un pedido ya creado: «el agregado no se ha cotizado» queda tal cual (sin $450.00 del pedido original)", async () => {
+    const v = await nuevoViaje();
+    v.guion([
+      { tools: [cotizar(v)] },
+      { texto: "Permítame repetirle su pedido. Total a pagar: $450.00 en efectivo, para recoger. ¿Es correcto?" },
+    ]);
+    await v.escribe("quiero medio kilo de pastor para recoger");
+    await v.escribe("Sí, es correcto");
+    expect(await pedidosDe(v)).toHaveLength(1);
+    v.guion([{ tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_especial", resumen: "Quiere agregar una horchata; el agregado no se ha cotizado." } }] }, { texto: "Ya avisé a la sucursal." }]);
+    await v.escribe("gracias, una duda sobre mi pedido: ¿se puede ponerle algo extra?");
+    const aviso = v.callbacks.find((c) => c.reason === "escalada:pedido_especial");
+    expect(aviso?.message).toContain("el agregado no se ha cotizado");
+    expect(aviso?.message).not.toMatch(/ya está cotizado/i);
+  });
+
+  it("cotizacion vencida (mas de 20 min): el texto del modelo queda tal cual", async () => {
+    const v = await nuevoViaje();
+    v.guion([{ tools: [cotizar(v)] }, { texto: "¿Es correcto?" }]);
+    await v.escribe("quiero medio kilo de pastor para recoger");
+    vi.setSystemTime(new Date(Date.now() + 21 * 60_000));
+    v.guion([{ tools: [{ name: "escalar_a_humano", args: { motivo: "pedido_especial", resumen: "Pidió algo; no se ha cotizado." } }] }, { texto: "Listo." }]);
+    await v.escribe("hola, sigo aquí");
+    const aviso = v.callbacks.find((c) => c.reason === "escalada:pedido_especial");
+    expect(aviso?.message).toContain("no se ha cotizado");
+    expect(aviso?.message).not.toMatch(/ya está cotizado/i);
   });
 });

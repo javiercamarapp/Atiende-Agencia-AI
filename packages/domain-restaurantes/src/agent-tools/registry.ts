@@ -2229,7 +2229,13 @@ async function dispatchTool(
       const bloquePedido = motivoEscalada && MOTIVOS_AVISO_CON_PEDIDO.has(motivoEscalada) ? await armarBloquePedidoParaAviso(repo, organizationId, ctx.phone) : null;
       const detalleDelModelo = esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined;
       // T7-038: si ya hay una cotizacion vigente el aviso no puede decir «no se ha cotizado».
-      const totalCotizado = esEscalada && ctx.flow && detalleDelModelo ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.quotedTotal : undefined;
+      // Solo cuenta una cotizacion NUEVA y vigente (flujo `cotizado` dentro de QUOTE_TTL_MS): tras crear un pedido el flujo queda `creado` con el `quotedTotal` del pedido ORIGINAL,
+      // y ese total no es el de un agregado (un «el agregado no se ha cotizado» del modelo no debe reescribirse con el total del pedido viejo).
+      const snapFlow = esEscalada && ctx.flow && detalleDelModelo ? await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null) : null;
+      const totalCotizado =
+        ctx.flow && snapFlow?.state === "cotizado" && snapFlow.context && !snapFlow.context.orderId && flowNow(ctx.flow) - snapFlow.context.quotedAtMs <= QUOTE_TTL_MS && flowNow(ctx.flow) - snapFlow.context.quotedAtMs >= 0
+          ? snapFlow.context.quotedTotal
+          : undefined;
       const detalleModelo = corregirAvisoCotizado(detalleDelModelo, totalCotizado);
       await registerCallbackRequest(repo, {
         organizationId,
