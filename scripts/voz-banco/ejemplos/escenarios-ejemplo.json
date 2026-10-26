@@ -1,0 +1,39 @@
+{
+  "nota": "Tres escenarios de EJEMPLO 100 % inventados para probar el esquema. No son parte del corpus privado.",
+  "escenarios": [
+    {
+      "id": "EJ-001",
+      "fuente": "ejemplo inventado: pedido sencillo para recoger",
+      "titulo": "Recoger: tres tacos de ejemplo",
+      "sucursal": "T7",
+      "reloj": "MARTES_13",
+      "turnos": ["Buenas tardes, quiero tres tacos de pastor para recoger", "Si, correcto"],
+      "debe": "Cotiza, lee el total, espera el si y crea UN pedido para recoger.",
+      "noDebe": "Crear antes del si del cliente.",
+      "checks": [{ "t": "pedidos", "n": 1 }, { "t": "canal", "v": "recoger" }],
+      "sigue": true
+    },
+    {
+      "id": "EJ-002",
+      "fuente": "ejemplo inventado: solo pregunta el horario",
+      "titulo": "Horario: pregunta sin pedido",
+      "sucursal": "T7",
+      "reloj": "MIE_12",
+      "turnos": ["Hola, a que hora cierran hoy?"],
+      "debe": "Informa el horario sin crear pedido.",
+      "noDebe": "Crear un pedido o escalar sin motivo.",
+      "checks": [{ "t": "sinPedido" }, { "t": "sinCallback" }]
+    },
+    {
+      "id": "EJ-003",
+      "fuente": "ejemplo inventado: el cliente cancela",
+      "titulo": "Cancela despues del resumen",
+      "sucursal": "T1",
+      "reloj": "LUNES_13",
+      "turnos": ["Quiero dos tacos para recoger", "Mejor no, cancela todo"],
+      "debe": "Respeta la cancelacion y no crea pedido.",
+      "noDebe": "Crear el pedido tras el rechazo.",
+      "checks": [{ "t": "sinPedido" }]
+    }
+  ]
+}
