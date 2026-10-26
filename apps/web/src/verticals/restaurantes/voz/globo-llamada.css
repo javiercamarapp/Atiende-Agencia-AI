@@ -1,5 +1,5 @@
 /*
- * Globo flotante de llamada del Agente de voz: equivalente de voz del botón «Iniciar chat». En el panel original lo ponía el widget de
+ * Globo flotante de llamada del Agente de voz: gemelo del globo «Probar conversación» del Agente de WhatsApp (preview/widget-whatsapp.css). En el panel original lo ponía el widget de
  * ElevenLabs (<elevenlabs-convai>, globo con el orbe y el botón «Iniciar llamada» abajo a la derecha, siempre montado en la página); aquí es un
  * componente propio que abre la vista previa (Gemini Live en modo preview, sin pedidos reales). Mismas medidas y entrada que el botón de WhatsApp.
  * Colores: tokens del panel (tarjeta, borde, primario); el orbe usa los azules del original (#1d4ed8 y #0ea5e9) como variables locales.

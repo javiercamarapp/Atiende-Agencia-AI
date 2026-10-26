@@ -11,7 +11,7 @@ import { BASE } from "../../helpers/recorrido.ts";
 
 test.use({ channel: "chrome", launchOptions: { args: [...ARGUMENTOS_MICROFONO_FALSO] }, permissions: ["microphone"] });
 
-const chat = (page: Page) => page.getByRole("dialog", { name: /Chat de prueba con el agente de WhatsApp/ });
+const chat = (page: Page) => page.getByRole("dialog", { name: /Vista previa de conversación: Agente de WhatsApp/ });
 
 async function foto(page: Page, nombre: string, proyecto: string): Promise<void> {
   const destino = process.env["CAPTURAS_R4_DIR"];
@@ -26,9 +26,9 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
     await iniciarSesion("restaurantes", "owner");
   });
 
-  test("Agente de WhatsApp: boton flotante «Iniciar chat», chat con pedido simulado PRUEBA y sin escrituras", async ({ page, mock, vigilante }, info) => {
+  test("Agente de WhatsApp: globo «Probar conversación», chat con pedido simulado PRUEBA y sin escrituras", async ({ page, mock, vigilante }, info) => {
     await page.goto(`${BASE}/agente-whatsapp`);
-    const iniciar = page.getByRole("button", { name: /Iniciar chat/ });
+    const iniciar = page.getByTestId("globo-whatsapp");
     await expect(iniciar).toBeVisible();
     await afirmarModo(page, info.project.name.endsWith("oscuro") ? "oscuro" : "claro");
     await foto(page, "whatsapp-pagina", info.project.name);
@@ -69,7 +69,7 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
   test("Agente de WhatsApp: un 503 del servidor se dice tal cual dentro del chat y no se inventa respuesta", async ({ page, mock }) => {
     await page.goto(`${BASE}/agente-whatsapp`);
     await mock.inyectarFalla({ metodo: "POST", ruta: "/agente-whatsapp/preview/mensaje", status: 503, cuerpo: { code: "agente_no_disponible", message: "No disponible: requiere OPENROUTER_API_KEY. Sin un proveedor de IA configurado el agente no puede responder." } });
-    await page.getByRole("button", { name: /Iniciar chat/ }).click();
+    await page.getByTestId("globo-whatsapp").click();
     const campo = chat(page).getByLabel("Mensaje de prueba");
     await campo.fill("hola");
     await campo.press("Enter");
@@ -80,7 +80,7 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
 
   test("Configuracion: el chat de prueba ofrece Simular cliente y «Probar con los cambios sin guardar» dentro del encabezado", async ({ page }) => {
     await page.goto(`${BASE}/configuracion`);
-    await page.getByRole("button", { name: /Iniciar chat/ }).click();
+    await page.getByTestId("globo-whatsapp").click();
     await chat(page).getByRole("button", { name: "Opciones de prueba" }).click();
     await expect(chat(page).getByLabel("Simular cliente")).toBeVisible();
     await expect(chat(page).getByLabel("Probar con los cambios sin guardar")).toBeVisible();

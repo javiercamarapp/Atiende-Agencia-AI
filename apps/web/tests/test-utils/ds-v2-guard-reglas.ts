@@ -48,9 +48,9 @@ const EXCLUIDAS_DESPACHOS = ["Dashboard", ...PAGINAS_CALCULO_DESPACHOS].map((n) 
 export const ALCANCE_LISTADOS_DESPACHOS = new RegExp(`^verticals/despachos/(?!pages/(?:${EXCLUIDAS_DESPACHOS})$|portal/PortalClientePage\\.tsx$)`);
 
 /**
- * EXCEPCION ACOTADA a UN archivo: `verticals/restaurantes/preview/WidgetWhatsApp.tsx` es el chat flotante de demostracion con la forma de WhatsApp
- * (replica del widget del repo suelto): un panel NO modal (`role="dialog" aria-modal="false"`, sin overlay ni atrapado de foco, la pagina sigue
- * operable). `Dialog`/`FormDialog` son siempre modales, asi que no pueden reproducirlo. Solo se exime a ese archivo de las reglas de overlay a mano y
+ * EXCEPCION ACOTADA a UN archivo: `verticals/restaurantes/preview/WidgetWhatsApp.tsx` es la vista previa de conversacion de WhatsApp, gemela de
+ * `VistaPreviaLlamada` (voz): un dialogo modal a pantalla completa montado en el marco del shell (escritorio) o en <body> (movil), con foco atrapado,
+ * Escape y «Atras». `Dialog`/`FormDialog` son tarjetas centradas, no reproducen esa vista. Solo se exime a ese archivo de las reglas de overlay a mano y
  * de `aria-modal`; cualquier otro archivo, y las demas reglas (Select, toast, hex, paleta...), siguen aplicando.
  */
 const EXCEPTO_WIDGET_WHATSAPP = /^(?!verticals\/restaurantes\/preview\/WidgetWhatsApp\.tsx$)/;

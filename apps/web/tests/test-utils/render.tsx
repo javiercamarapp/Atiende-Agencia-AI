@@ -92,9 +92,9 @@ export async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
-export function keydown(target: EventTarget, key: string): void {
+export function keydown(target: EventTarget, key: string, init: KeyboardEventInit = {}): void {
   act(() => {
-    target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
   });
 }
 

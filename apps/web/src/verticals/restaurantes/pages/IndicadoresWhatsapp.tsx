@@ -133,7 +133,7 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
 
   return (
     <>
-    {/* pb-24: el boton flotante «Iniciar chat» (fixed, 56 px + 24 px de margen) no debe tapar el ultimo texto de la pagina. */}
+    {/* pb-24: el globo flotante «Probar conversación» (fixed, 56 px + 24 px de margen) no debe tapar el ultimo texto de la pagina. */}
     <PageContainer padding="none" className={puedeVer ? "pb-24" : undefined}>
       <header className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
@@ -196,7 +196,7 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
         </Tabs>
       )}
     </PageContainer>
-    {/* Chat de WhatsApp de demostración (botón flotante «Iniciar chat»), como en el panel original: prueba el agente real sin efectos. */}
+    {/* Chat de WhatsApp de demostración (globo flotante «Probar conversación»), como el probador de voz: prueba el agente real sin efectos. */}
     {puedeVer ? <WidgetWhatsApp apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} {...(nombreSucursal ? { nombreNegocio: nombreSucursal } : {})} /> : null}
     </>
   );
