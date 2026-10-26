@@ -51,4 +51,7 @@ export interface HandoffAgentGate {
   /** `true` UNA vez por intervalo mientras la toma sigue `pendiente` (nadie la toma): el agente manda entonces un acuse honesto al cliente. Primero a los
    * `esperaMin` minutos de espera y luego cada `repetirMin`. Base sin migrar (045) o sin toma pendiente -> `false` (el agente sigue callando). Opcional. */
   acusePendiente?(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean>;
+  /** PM R21: MOTIVO de la toma abierta (`alergia_salud`, `modificacion_platillo`...) o `null` si no hay toma o no se puede leer (base sin migrar, sin permiso). Opcional: quien no lo
+   * implementa se trata como motivo desconocido (conservador: el agente sigue callando). */
+  motivoToma?(organizationId: string, phone: string): Promise<string | null>;
 }

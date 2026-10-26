@@ -10,6 +10,7 @@ import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { executeAgentToolSafely } from "../agent-tools/registry.ts";
 import { esSoloSticker } from "./channel-config.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
+import { QUOTE_TTL_MS } from "../agent-tools/order-flow.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
 import { classifyHighRiskIntent, contextoDeCliente, matchesHighRiskOtherThan, normalizarParaClasificar, pideUnaPersona, quejaTraeDetalle, respuestaDeQuejaConDetalle, retractaPeticionDePersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
@@ -256,7 +257,7 @@ export async function handleInboundWhatsAppMessage(
       // quedo guardado en el historial para quien atiende la conversacion.
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
-        if (handoff) {
+        if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, body, handoff, handoffGate))) {
           // Paquete C (G7-8-10): con la toma pendiente por OTRO motivo (cambio, cancelacion...) una queja con detalle no puede quedarse sin su aviso `queja`.
           if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body, messageId, propertyId: propertyId ?? null });
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
@@ -451,6 +452,28 @@ export const ACUSE_QUEJA_EN_TOMA = "Lamento mucho lo ocurrido, disculpe el incon
 
 /** Con la toma ya abierta el clasificador de quejas no ve el pedido reciente: basta que el cliente diga que algo NO llego / falto ("no mandaron el guacamole"). */
 const QUEJA_DE_FALTANTE_EN_TOMA = /\bno\s+(?:me\s+|nos\s+)?(?:mandaron|enviaron|trajeron|dieron|incluyeron)\s+\w+|\bno\s+(?:me|nos)\s+(?:llego|llegaron)\s+\w+|\b(?:me\s+|nos\s+)?falt(?:o|aron)\s+\w+/;
+
+/** El «sí» COMPLETO al resumen: una palabra afirmativa y, a lo mas, una cola inocua («es correcto», «esta bien»). Cualquier negacion, cancelacion, «pero» o cambio lo descarta. */
+const SI_COMPLETO = /^(?:si|sip|simon|ok|okey|dale|va|claro|listo|perfecto|correcto|confirmo|de acuerdo)(?:[\s,.!]+(?:es\s+correcto|esta\s+(?:bien|correcto)|todo\s+(?:bien|correcto)|asi\s+es|confirmo|gracias|por\s+favor))?[\s.!]*$/;
+const SI_NO_ES_SI = /\b(?:no|nel|cancel\w*|pero|cambi\w*|transfer\w*|tarda\w*|quiero|mejor|espera\w*)\b/;
+/** Motivos de toma INOCUOS: la toma no cambia lo que el cliente va a pagar ni su seguridad, asi que el «sí» al resumen puede crear el pedido. Alergia, transferencia, cancelacion, urgencia, queja,
+ * cobro duplicado y cualquier otro (o desconocido) mantienen al agente callado. */
+export const MOTIVOS_TOMA_QUE_NO_BLOQUEAN_EL_SI: ReadonlySet<string> = new Set(["modificacion_platillo", "pedido_especial"]);
+
+/** PM R21 (T7-061): con una toma `pendiente` de motivo inocuo y el pedido COTIZADO o CONFIRMADO con una cotizacion vigente (QUOTE_TTL_MS), el «sí» completo al resumen NO se contesta con el acuse fijo
+ * de la toma: pasa al agente para que cree el pedido (el servidor sigue exigiendo el resumen mostrado y el «sí» en mensaje aparte). Solo toma `pendiente` (si una persona la tomo, el agente calla). Sin
+ * lectura del flujo o sin motivo legible (base sin migrar) = false. */
+export async function siAlResumenConTomaPendiente(repo: RestaurantesRepository, organizationId: string, phone: string, mensaje: string, handoff: string, gate?: { readonly motivoToma?: (organizationId: string, phone: string) => Promise<string | null> }): Promise<boolean> {
+  if (handoff !== "pendiente") return false;
+  const t = normalizarParaClasificar(mensaje).trim();
+  if (!SI_COMPLETO.test(t) || SI_NO_ES_SI.test(t)) return false;
+  const motivo = (await gate?.motivoToma?.(organizationId, phone).catch(() => null))?.replace(/^escalada:/, "") ?? null;
+  if (motivo === null || !MOTIVOS_TOMA_QUE_NO_BLOQUEAN_EL_SI.has(motivo)) return false;
+  const snap = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+  if (snap?.state !== "cotizado" && snap?.state !== "confirmado") return false;
+  const quotedAt = snap.context?.quotedAtMs;
+  return typeof quotedAt === "number" && typeof snap.context?.quotedTotal === "number" && Date.now() - quotedAt <= QUOTE_TTL_MS;
+}
 
 /** Pura: texto de la respuesta a un mensaje del cliente con la toma `pendiente`. `acuseDeLaBase` = la base dio el acuse "oficial" de este intervalo (texto acordado, con la
  * apertura real si la sucursal esta cerrada, `textoOficial`); si no, una queja con detalle recibe su texto fijo y lo demas el recordatorio breve. */
@@ -764,7 +787,7 @@ export async function responderTrasEspera(
         const arco = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
-          if (handoff) {
+          if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, textoPendiente, handoff, handoffGate))) {
             // PM R18 (G7-8-10): esta es la ruta de produccion (espera de mensajes). Con la toma pendiente por OTRO motivo una queja con detalle tambien deja su aviso `queja` (antes solo lo hacia la ruta directa).
             if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body: textoPendiente, messageId: pasada === 1 ? messageId : `${messageId}:p${pasada}`, propertyId: propertyId ?? null });
             const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
