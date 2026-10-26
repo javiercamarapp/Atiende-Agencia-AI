@@ -239,29 +239,32 @@ describe("permanencia minima (R15)", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("jitter: el timer dispara antes de que Date.now() alcance el limite (reloj de Date 1 ms por detras): no queda true colgado", () => {
+  it("jitter: el timer dispara con el reloj de Date 1 ms por detras del de los timers; despues el reloj vuelve a la normalidad: no queda true colgado", () => {
     const real = Date.now.bind(Date);
+    let desfase = 0;
     const { root } = montar(createElement(Sonda, { cargando: true, tamano: "panel" }));
-    avanzar(CARGA_RETARDO_MS + 10);
+    avanzar(200);
     act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
     expect(leer()).toBe("true");
-    vi.spyOn(Date, "now").mockImplementation(() => real() - 1);
-    avanzar(CARGA_PERMANENCIA_MS.panel + 5);
-    expect(leer()).toBe("false");
+    vi.spyOn(Date, "now").mockImplementation(() => real() - desfase);
+    desfase = 1;
+    // Limite = 120 + 400 desde el inicio; ya pasaron 200: el timer dispara a los 320 ms.
+    avanzar(CARGA_RETARDO_MS + CARGA_PERMANENCIA_MS.panel - 200);
+    desfase = 0;
     avanzar(5000);
     expect(leer()).toBe("false");
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("hueco render-efecto: Date.now() 1 ms por delante (limite ya vencido al armar el efecto): igualmente termina en false", () => {
-    const real = Date.now.bind(Date);
+  it("hueco render-efecto: Date.now salta hacia delante SOLO despues del render (queda 1 ms al renderizar, vencido al correr el efecto)", () => {
     const { root } = montar(createElement(Sonda, { cargando: true, tamano: "panel" }));
-    avanzar(CARGA_RETARDO_MS + 10);
-    vi.spyOn(Date, "now").mockImplementation(() => real() + CARGA_PERMANENCIA_MS.panel + 5);
+    avanzar(CARGA_RETARDO_MS + CARGA_PERMANENCIA_MS.panel - 1);
+    const base = Date.now();
+    let llamadas = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => (++llamadas <= 3 ? base : base + 50));
     act(() => root.render(createElement(Sonda, { cargando: false, tamano: "panel" })));
-    avanzar(1);
-    expect(leer()).toBe("false");
-    avanzar(5000);
+    vi.restoreAllMocks();
+    avanzar(2000);
     expect(leer()).toBe("false");
     expect(vi.getTimerCount()).toBe(0);
   });
