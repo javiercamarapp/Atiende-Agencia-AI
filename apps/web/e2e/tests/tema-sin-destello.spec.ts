@@ -5,7 +5,8 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarModo } from "../helpers/ds.ts";
 
-const RUTAS_SIN_SELECTOR = ["/restaurantes/login", "/restaurantes/restablecer-contrasena"] as const;
+// Con la bandera ds3 encendida por URL (con ella apagada el tema global no cambia: produccion intacta).
+const RUTAS_SIN_SELECTOR = ["/restaurantes/login?diseno=ds3", "/restaurantes/restablecer-contrasena?diseno=ds3"] as const;
 
 interface Captura {
   dark: boolean;
@@ -46,9 +47,16 @@ for (const ruta of RUTAS_SIN_SELECTOR) {
 
 test("@oscuro el color de la barra del navegador sigue al tema", async ({ page }, info) => {
   const oscuro = info.project.name.endsWith("oscuro");
-  await page.goto("/restaurantes/login");
+  await page.goto("/restaurantes/login?diseno=ds3");
   const color = await page.locator('meta[name="theme-color"]').getAttribute("content");
   expect(color).toBe(oscuro ? "#0e0e10" : "#ffffff");
+});
+
+test("con la bandera apagada el tema guardado no se aplica en el login ni cambia theme-color", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("atiende-tema", "oscuro"));
+  await page.goto("/restaurantes/login");
+  await expect(page.locator("html")).not.toHaveClass(/(^|\s)dark(\s|$)/);
+  expect(await page.locator('meta[name="theme-color"]').getAttribute("content")).toBe("#1D4ED8");
 });
 
 test("?diseno=ds3 enciende la bandera en <html>, se recuerda al navegar sin parametro y ?diseno=off la apaga", async ({ page }) => {

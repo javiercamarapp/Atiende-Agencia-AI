@@ -48,6 +48,7 @@ import {
   formatMoney,
   statusTone,
   useConfirm,
+  useTemaGlobal,
 } from "@atiende/ui";
 import { AlertTriangle, MapPin, Map as MapIcon, Phone } from "lucide-react";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
@@ -266,6 +267,8 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
 }
 
 export function RepartidorPedidosPage() {
+  // Esta ruta vive fuera de todo shell (el que aplica el tema): se aplica aqui, con la bandera de diseno apagada o no (BUG-E2E-REST-004).
+  useTemaGlobal();
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8787";
