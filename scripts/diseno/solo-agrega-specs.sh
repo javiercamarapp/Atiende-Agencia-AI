@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regla de oro de los lotes 0-10 del rediseno ds3: los specs SOLO se agregan. Falla si el diff contra la base modifica, borra o
 # renombra algun archivo *.spec.* (los specs existentes siguen custodiando produccion hasta el flip) o si un spec nuevo trae
-# `.skip` / `.only` / `.fixme`-sin-nota. Corre en CI para PRs con la etiqueta `ds3` (.github/workflows/capturas-ds3.yml).
+# `.skip` / `.only` / `.fixme` o un `test.fail(...)` sin `expect` en la misma linea. Corre en CI para PRs con la etiqueta `ds3` (.github/workflows/capturas-ds3.yml).
 #
 # Uso: bash scripts/diseno/solo-agrega-specs.sh [base]     (base por omision: origin/main)
 set -euo pipefail
@@ -53,12 +53,21 @@ if [ -n "$malos" ]; then
   exit 1
 fi
 
-# Specs nuevos: nada de skip/only en las lineas agregadas.
-prohibidos="$(git diff --no-renames -U0 "$base"...HEAD -- '*.spec.*' \
-  | grep -E '^\+[^+]' | grep -E '\b(test|it|describe)\.(skip|only)\b|\b(xit|xdescribe|fit|fdescribe)\(' || true)"
+# Specs nuevos: nada de skip/only/fixme (ni xit/xdescribe/fit/fdescribe).
+agregadas_todas="$(git diff --no-renames -U0 "$base"...HEAD -- '*.spec.*' | grep -E '^\+[^+]' || true)"
+prohibidos="$(printf '%s\n' "$agregadas_todas" | grep -E '\b(test|it|describe)\.(skip|only|fixme)\b|\b(xit|xdescribe|fit|fdescribe)\(' || true)"
 if [ -n "$prohibidos" ]; then
-  echo "solo-agrega-specs: los specs nuevos no pueden usar skip/only:" >&2
+  echo "solo-agrega-specs: los specs nuevos no pueden usar skip/only/fixme:" >&2
   printf '%s\n' "$prohibidos" | sed 's/^/  /' >&2
+  exit 1
+fi
+
+# `test.fail(...)` en una linea agregada sin `expect` en esa misma linea es una marca de «falla esperada» que esconde una aserción (p. ej. `test.fail(oscuro, 'BUG-1')`):
+# un spec nuevo debe afirmar lo correcto, no marcar que falla. Los comentarios que lo mencionan no cuentan.
+fail_sin_expect="$(printf '%s\n' "$agregadas_todas" | sed 's/^+//' | grep -vE '^[[:space:]]*(//|\*|/\*)' | grep -E '\btest\.fail\(' | grep -vE '\bexpect\b' || true)"
+if [ -n "$fail_sin_expect" ]; then
+  echo "solo-agrega-specs: los specs nuevos no pueden marcar test.fail(...) sin un expect en la misma linea:" >&2
+  printf '%s\n' "$fail_sin_expect" | sed 's/^/  /' >&2
   exit 1
 fi
 

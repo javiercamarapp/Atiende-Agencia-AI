@@ -175,8 +175,32 @@ describe("scripts/diseno/solo-agrega-specs.sh", () => {
     expect(correr(d, lista(d, "otro.spec.ts")).codigo).toBe(1);
   });
 
-  it("la lista real registra el spec de BUG-E2E-REST-004 y apunta a una ruta que existe en main", () => {
-    expect(entradasSpecs.some((l) => l.startsWith("apps/web/e2e/tests/restaurantes/matriz-restaurantes-visual.spec.ts"))).toBe(true);
+  it("la lista real de excepciones de specs esta vacia (la de BUG-E2E-REST-004 se retiro con #680) y el piso en el baseline es 0", () => {
+    expect(entradasSpecs, "no agregues excepciones nuevas: el trinquete llego a 0").toEqual([]);
     for (const l of entradasSpecs) expect(existsSync(path.join(raiz, l.split("|")[0]!.trim())), l).toBe(true);
+  });
+
+  it("rechaza un spec nuevo con fixme (mismo literal armado por partes)", () => {
+    const d = repo();
+    escribir(d, "b/cuatro.spec.ts", `${"test"}.${"fixme"}('cuatro', () => {});\n`);
+    confirmar(d);
+    const r = correr(d);
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain("fixme");
+  });
+
+  it("rechaza un spec nuevo con test.fail de una sola linea sin expect, pero acepta uno con expect y un comentario que lo menciona", () => {
+    const marca = `${"test"}.${"fail"}`;
+    const d = repo();
+    escribir(d, "b/cinco.spec.ts", `test('cinco', async () => {\n  ${marca}(oscuro, 'BUG-1');\n  expect(1).toBe(1);\n});\n`);
+    confirmar(d);
+    const r = correr(d);
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain("test.fail");
+
+    const ok = repo();
+    escribir(ok, "b/seis.spec.ts", `// ya no se usa ${marca}(cond, 'x')\n${marca}('seis', async () => { expect(1).toBe(2); });\n`);
+    confirmar(ok);
+    expect(correr(ok).codigo).toBe(0);
   });
 });
