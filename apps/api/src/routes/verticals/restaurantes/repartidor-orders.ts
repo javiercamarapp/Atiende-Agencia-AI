@@ -11,12 +11,17 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { emitirNotificacion } from "@atiende/db";
-import { REPARTIDOR_ROLES, changeAssignedOrderStatus, isOrderStatus, OrderStatusTransitionError } from "@atiende/domain-restaurantes";
+import { REPARTIDOR_ROLES, changeAssignedOrderStatus, isOrderStatus, maskPhone, toWhatsAppRecipient, OrderStatusTransitionError } from "@atiende/domain-restaurantes";
 import type { Order } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+/** Tope de veces que un repartidor puede pedir el telefono de UN pedido (cada una queda en la bitacora de accesos). */
+export const MAX_LLAMADAS_POR_PEDIDO = 5;
+/** Estados en los que el repartidor aun puede necesitar llamar. Terminado el pedido, el numero deja de estar disponible. */
+const ESTADOS_LLAMABLES: readonly string[] = ["pending", "preparando", "en_camino", "listo_para_recoger", "problema"];
 
 function serializeOrder(o: Order) {
   return {
@@ -24,7 +29,9 @@ function serializeOrder(o: Order) {
     propertyId: o.propertyId,
     branch: o.branch,
     customerName: o.customerName,
-    customerPhone: o.customerPhone,
+    // PRIVACIDAD: el repartidor nunca recibe el numero completo en listados ni fichas (solo los ultimos 4 digitos, para reconocerlo).
+    // El numero real sale unicamente de `POST .../orders/:orderId/llamar`, que lo registra en la bitacora de accesos.
+    customerPhone: maskPhone(o.customerPhone),
     customerAddress: o.customerAddress,
     total: o.total,
     status: o.status,
@@ -74,6 +81,32 @@ export function restaurantesRepartidorOrdersRoutes(deps: AppDeps): Hono<CoreAuth
     // findAssignedOrderById ya devuelve null en ambos casos.
     if (!order) throw Errors.notFound("Pedido no encontrado.");
     return c.json({ order: serializeOrder(order) });
+  });
+
+  // «Llamar»: UNICA vía por la que el repartidor obtiene el telefono completo de SU pedido asignado y aun no terminado. Cada
+  // pulsacion queda en la bitacora (`restaurantes.registrar_acceso`, migracion 097; la leen owner/admin) y hay un tope por pedido. El
+  // numero viaja solo en esta respuesta (E.164, para el enlace `tel:`); nunca en listados ni en la bitacora.
+  app.post("/v1/restaurantes/:propertyId/repartidor/orders/:orderId/llamar", async (c) => {
+    assertVerticalRole(c, REPARTIDOR_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const order = await repo.findAssignedOrderById(organizationId, c.get("userId"), c.req.param("orderId"));
+    if (!order) throw Errors.notFound("Pedido no encontrado.");
+    if (!ESTADOS_LLAMABLES.includes(order.status)) throw Errors.conflict("El pedido ya terminó: el teléfono del cliente ya no está disponible.");
+    const telefono = toWhatsAppRecipient(order.customerPhone);
+    if (!telefono) throw Errors.conflict("Este pedido no tiene un teléfono válido para llamar.");
+    // Llave de idempotencia del cliente web (cabecera `Idempotency-Key`, como manda `repartidor-client.ts`; el cuerpo es un respaldo): un reintento
+    // por mala red con la misma llave NO consume cupo. Sin llave valida, cada llamada cuenta.
+    const llaveValida = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null);
+    const cuerpo = (await readJsonCapped<{ llave?: unknown }>(c.req.raw, 1024).catch(() => ({}))) as { llave?: unknown };
+    const llave = llaveValida(c.req.header("Idempotency-Key")) ?? llaveValida(cuerpo.llave);
+    const acceso = await repo.registrarAcceso({ organizationId, propertyId: order.propertyId, actorUserId: c.get("userId"), action: "pii.llamar", entityId: order.id, llave });
+    // Sin bitacora no hay telefono: si la 097 no esta aplicada no se entrega el numero (ni sin auditoria ni sin tope).
+    if (!acceso.registrado) throw Errors.serviceUnavailable("El registro de accesos no está disponible: por ahora no se puede mostrar el teléfono. Avisa a tu encargado.");
+    if (acceso.intentos > MAX_LLAMADAS_POR_PEDIDO) {
+      throw Errors.tooManyRequests("Ya pediste el teléfono de este pedido varias veces. Si necesitas más, avisa a tu encargado.");
+    }
+    return c.json({ telefono });
   });
 
   // Puerto de `update_assigned_order_status()` del origen (ver
