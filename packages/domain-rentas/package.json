@@ -15,6 +15,6 @@
     "@atiende/core-authz": "*",
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",
-    "jose": "6.2.12"
+    "jose": "6.2.13"
   }
 }
