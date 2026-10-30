@@ -301,6 +301,8 @@ async function syncOneAppointmentRow(repo: CitasRepository, resolveSyncPort: Res
         attendeeEmail: row.customerEmail ?? undefined,
         attendeeName: row.customerName ?? undefined,
         attendeePhone: row.customerPhone ?? undefined,
+        // El id del evento en Google sale de la cita: si la transaccion del cron se revierte despues del alta, el reintento no duplica.
+        idempotencyKey: row.id,
       });
       await repo.markAppointmentGoogleSynced(row.id, event.eventId, attemptNum);
     } else {

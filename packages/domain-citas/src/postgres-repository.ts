@@ -83,6 +83,7 @@ import type {
   EscalacionSeguimientoEstado,
   EscalacionVista,
   MessagingOutboxRow,
+  RetentionPurgeBatch,
   NewAppointmentFromPanelInput,
   NewAppointmentInput,
   NoShowResult,
@@ -1637,6 +1638,25 @@ export class PostgresCitasRepository implements CitasRepository {
   async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {
     const { rows } = await this.db.query<{ id: string | null }>(`select (citas.claim_waitlist_notification_slot($1, $2)).id as id;`, [waitlistId, maxNotifications]);
     return rows[0]?.id != null;
+  }
+
+  async purgeRetentionBatch(limit: number, dry: boolean): Promise<RetentionPurgeBatch> {
+    // La sesion es UNA transaccion por lote: contra una base sin la migracion 033 el 42883 se recupera con SAVEPOINT (sin el, el
+    // COMMIT devolveria ROLLBACK) y se responde "no disponible aun" en vez de un 500.
+    return runWithSavepointFallback<RetentionPurgeBatch>({
+      session: this.db,
+      savepointName: "sp_citas_purga_retencion",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_conversaciones: number; out_escalaciones: number; out_notas: number; out_protegidas: number }>(
+          `select out_conversaciones, out_escalaciones, out_notas, out_protegidas from citas.system_purge_retencion($1::integer, $2::boolean);`,
+          [limit, dry],
+        );
+        const r = rows[0];
+        return { disponible: true, conversacionesVaciadas: Number(r?.out_conversaciones ?? 0), escalacionesBorradas: Number(r?.out_escalaciones ?? 0), notasBorradas: Number(r?.out_notas ?? 0), protegidas: Number(r?.out_protegidas ?? 0) };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.system_purge_retencion"),
+      fallback: () => Promise.resolve({ disponible: false, conversacionesVaciadas: 0, escalacionesBorradas: 0, notasBorradas: 0, protegidas: 0 }),
+    });
   }
 
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {

@@ -60,7 +60,7 @@ async function simular(negocio: Negocio, ticks: readonly Date[]): Promise<Map<st
     for (const o of negocio.fixture.repo.getOutbox()) {
       if (o.channel !== "whatsapp" || vistos.has(o.id)) continue;
       vistos.add(o.id);
-      const appointmentId = (o.dedupeKey as string).replace("reminder-24h:", "");
+      const appointmentId = (o.dedupeKey as string).replace("reminder-24h:", "").split(":")[0]!;
       porCita.get(appointmentId)?.push(now);
     }
   }
@@ -124,7 +124,7 @@ describe("recordatorio de 24 h: la cadencia del cron no deja citas sin aviso (C-
     const [cita] = negocio.citas;
     const s = await runConfirmacionCitaCore(negocio.fixture.repo, negocio.fixture.organizationId, new Date("2026-09-15T14:00:00.000Z")); // 7 h antes
     expect(s.sent).toBe(1);
-    expect(negocio.fixture.repo.getOutbox().filter((o) => o.dedupeKey === `reminder-24h:${cita!.id}`)).toHaveLength(1);
+    expect(negocio.fixture.repo.getOutbox().filter((o) => o.dedupeKey.startsWith(`reminder-24h:${cita!.id}:`))).toHaveLength(1);
   });
 
   it("jamas avisa de una cita que ya empezo ni de una a mas de 24 h", async () => {
@@ -197,7 +197,7 @@ describe("recordatorio de 24 h con horario de envio por zona de la sucursal, cru
     const resumen = await runConfirmacionCitaCore(negocio.fixture.repo, negocio.fixture.organizationId, new Date("2026-09-14T14:00:00.000Z")); // Cancun 09:00, Tijuana 07:00
     expect(resumen.sent).toBe(1);
     expect(resumen.skippedOutsideSendWindow).toBe(1);
-    const enviado = negocio.fixture.repo.getOutbox()[0]!.dedupeKey.replace("reminder-24h:", "");
+    const enviado = negocio.fixture.repo.getOutbox()[0]!.dedupeKey.replace("reminder-24h:", "").split(":")[0]!;
     expect(enviado).toBe(negocio.citas.find((c) => c.timeZone === "America/Cancun")!.id);
   });
 });
