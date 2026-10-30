@@ -1489,7 +1489,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const cited = typeof input.quote_hash === "string" && /^[0-9a-f]{32}$/i.test(input.quote_hash.trim()) ? input.quote_hash.trim().toLowerCase() : undefined;
       const current = assertCanConfirm(snap, { now: flowNow(flow), turn: flow.turn, quoteHashCited: cited });
       if (snap.state !== "cotizado") {
-        return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
+        return { result: { confirmado: true, quote_hash: current.quoteHash, instruccion: INSTRUCCION_TRAS_CONFIRMAR_RESUMEN }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       }
       // R11: cierre como maquina de estados. Con historial de WhatsApp el servidor exige que el ULTIMO mensaje del asistente sea el resumen vigente y que el ultimo del cliente sea un «si»
       // explicito. La negativa se devuelve como RESULTADO (no como excepcion): el SAVEPOINT revertiria la marca de «ambiguo» que habilita la salida segura del turno siguiente.
@@ -1530,7 +1530,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         confirmedAtMs: flowNow(flow),
         ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(current)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
       });
-      if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
+      if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash, instruccion: INSTRUCCION_TRAS_CONFIRMAR_RESUMEN }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };
     }
     throw new OrderValidationError(CONFLICT_MESSAGE);
@@ -2258,6 +2258,9 @@ async function dispatchTool(
   }
 }
 
+
+/** Voz (VZ01, 3 repeticiones de 46 escenarios): el modelo llamaba confirmar_resumen, releia el resumen y nunca llamaba crear_pedido. El resultado ahora le dice el paso que sigue. */
+export const INSTRUCCION_TRAS_CONFIRMAR_RESUMEN = "Resumen confirmado. Llame AHORA crear_pedido con los mismos productos cotizados; no relea el resumen ni pida otro sí.";
 
 /** Cliente cuyo pedido ya salio (o se entrego): no se puede agregar al mismo viaje; se ofrece pedido aparte (decision del dueno, Q5-Q7). */
 export const MENSAJE_AGREGADO_PEDIDO_YA_SALIO = "Una disculpa, su pedido ya salió y ya no se le puede agregar. Si gusta le tomo un pedido nuevo con eso, o puede recogerlo en la sucursal. ¿Se lo tomo?";
