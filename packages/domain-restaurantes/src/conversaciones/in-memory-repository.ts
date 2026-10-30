@@ -47,6 +47,10 @@ interface HandoffRow {
   ultimoClienteAt: string | null;
   /** Ultimo acuse al cliente de una toma pendiente (migracion 045). */
   acuseClienteAt?: string | null;
+  /** PM PR-2: la toma la abrio el eco de la app (sin persona del panel). */
+  tomadaPorApp?: boolean;
+  /** Ultimo mensaje humano desde la app (eco). */
+  ultimaHumanaAt?: string | null;
   tomadaPor: string | null;
   tomadaAt: string | null;
   createdAt: number;
@@ -162,6 +166,13 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
       if (abierta.propertyId !== propertyId) throw new ConversacionesRechazadaError();
       if (abierta.estado === "tomada") {
         if (abierta.tomadaPor === this.opts.actorUserId) return abierta.id;
+        // Toma abierta por el eco de la app: la persona del panel que la pide se la queda (como handoff_tomar de la migracion 101).
+        if (abierta.tomadaPor === null && abierta.tomadaPorApp) {
+          abierta.tomadaPor = this.opts.actorUserId;
+          abierta.tomadaPorApp = false;
+          abierta.ultimaHumanaAt = ahora;
+          return abierta.id;
+        }
         throw new HandoffYaTomadoError();
       }
       abierta.estado = "tomada";
@@ -182,7 +193,7 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
     const h = this.handoffs.find((x) => x.id === handoffId && x.organizationId === organizationId && x.propertyId === propertyId);
     if (!h) throw new ConversacionesRechazadaError();
     if (h.estado !== "pendiente" && h.estado !== "tomada") return false;
-    if (h.estado === "tomada" && h.tomadaPor !== this.opts.actorUserId && !this.opts.actorEsAdministrador) throw new ConversacionesRechazadaError();
+    if (h.estado === "tomada" && h.tomadaPor !== this.opts.actorUserId && !(h.tomadaPor === null && h.tomadaPorApp) && !this.opts.actorEsAdministrador) throw new ConversacionesRechazadaError();
     h.estado = estado;
     return true;
   }
@@ -340,6 +351,45 @@ export class InMemoryHandoffAgentGate implements HandoffAgentGate {
     if (h.acuseClienteAt && ahora - Date.parse(h.acuseClienteAt) < repetirMin * 60_000) return false;
     h.acuseClienteAt = new Date(ahora).toISOString();
     return true;
+  }
+
+  /** Avisos que `avisarClienteConTomaDeApp` habria mandado a la campana (el repositorio en memoria no emite notificaciones reales). */
+  readonly avisosClienteConTomaApp: Array<{ handoffId: string; propertyId: string }> = [];
+
+  async tomarPorEcoDeApp(input: { organizationId: string; propertyId: string | null; phone: string; atMs: number }): Promise<string | null> {
+    if (!this.repo.disponible) return null;
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === input.organizationId && c.telefono === input.phone);
+    const propertyId = input.propertyId ?? conv?.propertyId ?? null;
+    if (!conv || !propertyId) return null;
+    const ahora = new Date(input.atMs).toISOString();
+    const abierta = this.repo.handoffs.find((x) => x.canal === "whatsapp" && x.conversationId === conv.id && (x.estado === "pendiente" || x.estado === "tomada"));
+    if (abierta) {
+      if (abierta.estado === "pendiente") {
+        abierta.estado = "tomada";
+        abierta.tomadaPorApp = true;
+        abierta.tomadaAt = ahora;
+      }
+      abierta.ultimaHumanaAt = ahora;
+      return abierta.id;
+    }
+    const id = randomUUID();
+    this.repo.handoffs.push({
+      id, organizationId: input.organizationId, propertyId, canal: "whatsapp", conversationId: conv.id, estado: "tomada", solicitadoPor: "staff", motivo: "personal_app",
+      solicitadaAt: ahora, ultimoClienteAt: null, tomadaPor: null, tomadaAt: ahora, tomadaPorApp: true, ultimaHumanaAt: ahora, createdAt: this.repo.handoffs.length,
+    });
+    return id;
+  }
+
+  async tomaPorEcoDeApp(organizationId: string, phone: string): Promise<boolean> {
+    if (!this.repo.disponible) return false;
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono === phone);
+    return Boolean(conv && this.repo.handoffs.some((x) => x.canal === "whatsapp" && x.conversationId === conv.id && x.estado === "tomada" && x.tomadaPorApp));
+  }
+
+  async avisarClienteConTomaDeApp(organizationId: string, phone: string): Promise<void> {
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono === phone);
+    const h = conv && this.repo.handoffs.find((x) => x.canal === "whatsapp" && x.conversationId === conv.id && x.estado === "tomada" && x.tomadaPorApp);
+    if (h) this.avisosClienteConTomaApp.push({ handoffId: h.id, propertyId: h.propertyId });
   }
 
   async solicitarHumano(input: { organizationId: string; propertyId: string | null; phone: string; motivo: string }): Promise<string | null> {

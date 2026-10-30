@@ -440,6 +440,55 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
     });
   }
 
+  async tomarPorEcoDeApp(input: { organizationId: string; propertyId: string | null; phone: string; atMs: number }): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_eco_app",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string | null }>(`select restaurantes.handoff_eco_app($1::uuid, $2::uuid, $3::text, $4::timestamptz) as id;`, [input.organizationId, input.propertyId, input.phone, new Date(input.atMs).toISOString()]);
+        return rows[0]?.id ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: async (err) => {
+        if (esBaseSinMigrar(err)) advertirNoDisponible(err);
+        return null;
+      },
+    });
+  }
+
+  async tomaPorEcoDeApp(organizationId: string, phone: string): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_toma_app",
+      primary: async () => {
+        const { rows } = await this.db.query<{ r: boolean | null }>(`select restaurantes.handoff_whatsapp_toma_por_app($1::uuid, $2::text) as r;`, [organizationId, phone]);
+        return rows[0]?.r === true;
+      },
+      isRecoverable: () => true,
+      fallback: async () => false,
+    });
+  }
+
+  async avisarClienteConTomaDeApp(organizationId: string, phone: string): Promise<void> {
+    const toma = await runWithSavepointFallback<{ id: string; propertyId: string } | null>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_aviso_app",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; property_id: string }>(
+          `select h.id, h.property_id from restaurantes.conversation_handoff h join restaurantes.whatsapp_conversations c on c.id = h.conversation_id
+            where h.organization_id = $1::uuid and c.phone = $2::text and h.canal = 'whatsapp' and h.estado = 'tomada' and h.tomada_por_app limit 1;`,
+          [organizationId, phone],
+        );
+        return rows[0] ? { id: rows[0].id, propertyId: rows[0].property_id } : null;
+      },
+      isRecoverable: () => true,
+      fallback: async () => null,
+    });
+    if (!toma) return;
+    // Una por toma y por ventana de 15 min (mismo dedupe que el resto del catalogo: la clave lo decide). Sin PII: titulo y cuerpo salen del catalogo.
+    await emitirNotificacion(this.db, { evento: "restaurantes.handoff.cliente_con_toma_de_app", organizationId, propertyId: toma.propertyId, clave: `${toma.id}:${Math.floor(Date.now() / (15 * 60_000))}`, entidadTipo: "conversation_handoff", entidadId: toma.id });
+  }
+
   /** Acuse al cliente de una toma pendiente (migracion 045). Base sin migrar (42883/42P01/42703) -> false con SAVEPOINT: el agente sigue callando. */
   async acusePendiente(organizationId: string, phone: string, esperaMin: number, repetirMin: number): Promise<boolean> {
     return runWithSavepointFallback<boolean>({

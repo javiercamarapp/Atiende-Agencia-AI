@@ -258,6 +258,8 @@ export async function handleInboundWhatsAppMessage(
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, body, handoff, handoffGate))) {
+          // PM PR-2 (coexistencia): con la toma abierta por el eco de la app el asistente calla y el panel se entera de que el cliente escribio (el mensaje ya quedo guardado). Un fallo del aviso nunca afecta el turno.
+          if (handoff === "tomada" && handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
           // Paquete C (G7-8-10): con la toma pendiente por OTRO motivo (cambio, cancelacion...) una queja con detalle no puede quedarse sin su aviso `queja`.
           if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body, messageId, propertyId: propertyId ?? null });
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
@@ -317,6 +319,14 @@ export async function handleInboundWhatsAppMessage(
                 propertyId: propertyId ?? null,
                 messageId,
               });
+
+      // PM PR-2 (carrera): el personal pudo contestar desde la app MIENTRAS el modelo pensaba (la toma por eco se abrio en otra transaccion). Se vuelve a mirar justo antes de enviar:
+      // si la toma ya es de la app, la respuesta del asistente se descarta (el mensaje del cliente y el del personal ya estan en el hilo) y el panel se entera. Un turno que creo un pedido o escalo se entrega igual.
+      if (!arco && !apagado && limite === null && !turn.orderId && !turn.escalacion && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
+        if (handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
       // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
@@ -788,6 +798,8 @@ export async function responderTrasEspera(
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
           if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, textoPendiente, handoff, handoffGate))) {
+            // PM PR-2 (coexistencia): toma abierta por el eco de la app -> el asistente calla y el panel se entera de que el cliente escribio.
+            if (handoff === "tomada" && handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
             // PM R18 (G7-8-10): esta es la ruta de produccion (espera de mensajes). Con la toma pendiente por OTRO motivo una queja con detalle tambien deja su aviso `queja` (antes solo lo hacia la ruta directa).
             if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body: textoPendiente, messageId: pasada === 1 ? messageId : `${messageId}:p${pasada}`, propertyId: propertyId ?? null });
             const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
@@ -824,6 +836,11 @@ export async function responderTrasEspera(
                 messageId,
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
+        // PM PR-2 (carrera): el personal pudo contestar desde la app mientras el modelo pensaba; se mira otra vez justo antes de guardar/enviar (ver la ruta directa).
+        if (!arco && !apagado && !turn.orderId && !turn.escalacion && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
+          if (handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
+          return { salida: { ok: true, retryable: false }, silencio: true };
+        }
         if (turn.escalacion?.motivo === "falla_sistema") falloDelSistema = true;
         let reply = turn.reply;
         if (privacy) {

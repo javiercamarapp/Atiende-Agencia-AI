@@ -368,6 +368,15 @@ describe("regreso automatico del handoff", () => {
     expect(t.auto.mensajesRegreso).toHaveLength(0);
   });
 
+  it("PM PR-2: una toma abierta por el eco de la app regresa por inactividad humana SIN mandar la frase fija; un eco reciente la mantiene", async () => {
+    const t = await montar();
+    handoff(t, { porApp: true, ultimaHumanaAt: new Date(ahora.getTime() - 5 * 60_000) });
+    expect((await devolverHandoffsVencidos(t.deps, ahora)).devueltos).toBe(0);
+    t.auto.handoffs[0]!.ultimaHumanaAt = new Date(ahora.getTime() - 16 * 60_000);
+    expect((await devolverHandoffsVencidos(t.deps, ahora)).devueltos).toBe(1);
+    expect(t.auto.mensajesRegreso).toHaveLength(0);
+  });
+
   it("los minutos por sucursal mandan", async () => {
     const t = await montar();
     t.auto.configs.set(t.propertyId, { ...(await t.auto.leerConfig("", t.propertyId)).valor, handoffRegresoMinutos: 60, configurada: true });

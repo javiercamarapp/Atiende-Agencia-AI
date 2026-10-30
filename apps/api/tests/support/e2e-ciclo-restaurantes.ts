@@ -237,6 +237,15 @@ export async function startCicloStack(opts: { readonly now?: string; /** R-32: s
       }
       return gateBase.solicitarHumano({ ...input, propertyId: input.propertyId ?? propertyId });
     },
+    // Coexistencia (PR-2): el eco de la app abre la toma; igual que arriba, la conversacion se refleja aqui (en Postgres la crea el propio eco al guardarse).
+    tomarPorEcoDeApp: (input: { organizationId: string; propertyId: string | null; phone: string; atMs: number }) => {
+      if (!conversaciones.conversaciones.some((c) => c.telefono === input.phone)) {
+        conversaciones.conversaciones.push({ canal: "whatsapp", id: randomUUID(), organizationId: input.organizationId, propertyId: input.propertyId ?? propertyId, telefono: input.phone, mensajes: [], actividadAt: new Date().toISOString() });
+      }
+      return gateBase.tomarPorEcoDeApp({ ...input, propertyId: input.propertyId ?? propertyId });
+    },
+    tomaPorEcoDeApp: (org: string, phone: string) => gateBase.tomaPorEcoDeApp(org, phone),
+    avisarClienteConTomaDeApp: (org: string, phone: string) => gateBase.avisarClienteConTomaDeApp(org, phone),
   };
   const privacidad = new InMemoryPrivacidadRepository();
   const env = {

@@ -49,6 +49,8 @@ export interface HandoffMemoria {
   escaladaAt?: Date | null;
   ultimaHumanaAt: Date | null;
   ultimoClienteAt: Date | null;
+  /** PM PR-2: la toma la abrio el eco de la app; al regresar por inactividad NO se manda la frase fija. */
+  porApp?: boolean;
 }
 
 export interface AgotadoMemoria {
@@ -318,7 +320,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
       const conPorAprobar = this.solicitudes.some((s) => s.estado === "pendiente" && s.tipo === "pedido_grande" && s.orderId && this.pedidos.get(s.orderId)?.telefono.replace(/\D/g, "").slice(-10) === tel);
       if (conPorAprobar) continue;
       h.estado = "devuelta";
-      const avisado = h.ultimoClienteAt !== null && h.ultimoClienteAt.getTime() > ahora.getTime() - 24 * 3_600_000;
+      const avisado = !h.porApp && h.ultimoClienteAt !== null && h.ultimoClienteAt.getTime() > ahora.getTime() - 24 * 3_600_000;
       if (avisado) this.mensajesRegreso.push(h.id);
       out.push({ handoffId: h.id, organizationId: h.organizationId, propertyId: h.propertyId, conversationId: h.conversationId, minutos: mins, avisado });
     }

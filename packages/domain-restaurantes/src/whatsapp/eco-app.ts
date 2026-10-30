@@ -73,7 +73,7 @@ export type ResultadoEco = "guardado" | "duplicado" | "fallo";
 /**
  * Guarda UN eco en el hilo. Idempotente por wamid (reusa el ledger de eventos entrantes: un wamid ya procesado o en curso no se repite, y uno
  * de otra organizacion nunca coincide). La conversacion se crea si el personal le escribio primero a un cliente nuevo.
- * `gate` (opcional, PR-2): si lo implementa, el eco ademas calla al asistente en esa conversacion.
+ * `handoffGate` (PR-2): si implementa `tomarPorEcoDeApp`, el eco ademas calla al asistente en esa conversacion hasta la inactividad humana.
  */
 export async function registrarEcoDeApp(
   repo: RestaurantesRepository,
@@ -89,6 +89,11 @@ export async function registrarEcoDeApp(
     await repo.runWithRowSavepoint(async () => {
       await repo.whatsappAppendTurn(organizationId, phone, [mensaje], null, null, propertyId);
     });
+    // PM PR-2: el eco calla al asistente en esa conversacion (toma `tomada` por la app; regresa por inactividad humana). Es complementario: si no se puede (base sin migrar, sin
+    // sucursal) el mensaje ya esta guardado y el eco se da por bueno.
+    if (args.handoffGate?.tomarPorEcoDeApp) {
+      await args.handoffGate.tomarPorEcoDeApp({ organizationId, propertyId, phone, atMs }).catch(() => null);
+    }
     await repo.finishWhatsAppMessage(organizationId, eco.id, phoneHash, "processed", null);
     return "guardado";
   } catch {
