@@ -119,6 +119,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
   private readonly esperandoAlCliente: EstadoEspera = { pendiente: false, huellaOida: null, huellaCotizada: null, cotizoEnTurno: false };
   /** Vuelta (modelo -> herramienta -> modelo) en curso: solo el texto de esa vuelta se corrige al interrumpir. */
   private vueltaActual = 0;
+  /** `ejecutarHerramientas` enciende `cierreListo` sobre el mismo objeto; leerlo por un metodo evita que TS lo estreche a `false` por la asignacion de inicio de turno. */
+  private cierreListo(): boolean {
+    return this.esperandoAlCliente.cierreListo === true;
+  }
   /** El proveedor rechazo `tool_choice` forzado (400/422): no se vuelve a intentar en esta sesion. */
   private forzadoRechazado = false;
   /** Lo que ya sono al momento de interrumpir (se fija en `interrumpir`, antes de que el reloj avance). */
@@ -427,7 +431,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
         });
         for (const res of resultados) this.mensajes.push({ role: "tool", toolCallId: res.llamada.id, content: JSON.stringify(res.salida ?? null) });
         // Bucle R1: el «si» ya confirmo el resumen (compuerta abierta) y el modelo solo llamo confirmar: la vuelta siguiente DEBE llamar crear (una sola vez; la compuerta sigue valiendo).
-        if (this.esperandoAlCliente.cierreListo === true && this.o.confirmacionAntesDeCrear) {
+        if (this.cierreListo() && this.o.confirmacionAntesDeCrear) {
           forzarCrear = this.o.confirmacionAntesDeCrear.crear;
           this.esperandoAlCliente.cierreListo = false;
           this.esperandoAlCliente.forzadoEnTurno = true;
