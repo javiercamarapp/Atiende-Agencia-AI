@@ -439,6 +439,45 @@ export function etiquetaHoraEntrega(instanteMs: number, zonaHoraria: string, aho
 }
 
 /**
+ * R22 (R3): el mensaje final de un pedido para recoger debe decir la hora GUARDADA en el pedido, no la que el modelo recordo («en 20 minutos», «de 25 a 35 minutos» o «a las 2:02 pm» con el
+ * pedido guardado a otra hora). Solo se tocan las frases del mensaje que hablan de la espera / recogida (y no de horarios de la sucursal): un plazo («en N minutos», «de N a M minutos») que
+ * no alcanza la espera real (+-2 min) se sustituye por los minutos reales, y una hora de reloj («a las 2:02 pm», «para las 2») distinta de la guardada, por la guardada. Pura.
+ */
+export function corregirHoraDeRecogidaEnRespuesta(respuesta: string, hora: { readonly instanteMs: number; readonly zonaHoraria: string; readonly ahoraMs: number }): string {
+  if (!Number.isFinite(hora.instanteMs)) return respuesta;
+  const { minutos } = componentesLocales(new Date(hora.instanteMs), hora.zonaHoraria);
+  const h24 = Math.floor(minutos / 60);
+  const reloj = `${h24 % 12 === 0 ? 12 : h24 % 12}:${String(minutos % 60).padStart(2, "0")} ${h24 >= 12 ? "pm" : "am"}`;
+  const articulo = h24 % 12 === 1 ? "la" : "las";
+  const esperaReal = Math.round((hora.instanteMs - hora.ahoraMs) / 60_000);
+  const habla = /esper|recog|pas(?:a|ar|e|ara|aria)\b|list[oa]|prepar|tiempo|estimad|quedar[aá]/i;
+  const ajena = /cierr|abre\b|abrimos|horario|apertura/i;
+  return respuesta
+    .split(/(?<=[.!?\n])(\s+)/)
+    .map((frase) => {
+      if (!habla.test(frase) || ajena.test(frase)) return frase;
+      let f = frase;
+      if (esperaReal >= 1) {
+        f = f.replace(/\b(en|de)\s+(\d{1,3})(?:\s*(?:a|-|–)\s*(\d{1,3}))?\s*minutos?\b/gi, (todo, prep: string, a: string, b: string | undefined) => {
+          const lo = Number(a);
+          const hi = b === undefined ? lo : Number(b);
+          return esperaReal >= lo - 2 && esperaReal <= hi + 2 ? todo : `${prep} ${esperaReal} minutos`;
+        });
+      }
+      f = f.replace(/\b(a|para)\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)?(?![\d:])/gi, (todo, prep: string, hh: string, mm: string | undefined, mer: string | undefined) => {
+        const h = Number(hh);
+        if (h < 1 || h > 24) return todo;
+        const m = mm === undefined ? 0 : Number(mm);
+        const meridiano = mer === undefined ? null : /^a/i.test(mer) ? "am" : "pm";
+        const coincide = h % 12 === h24 % 12 && m === minutos % 60 && (meridiano === null || meridiano === (h24 >= 12 ? "pm" : "am"));
+        return coincide ? todo : `${prep} ${articulo} ${reloj}${todo.endsWith(".") ? "." : ""}`;
+      });
+      return f;
+    })
+    .join("");
+}
+
+/**
  * R21 (T7-026): la hora que el CLIENTE dijo mas recientemente en un mensaje que no es pregunta ("a las 5 pm", "mejor a las 6:30", "5pm"), como minutos del dia en reloj de 12 horas
  * (`minuto12` = (hora % 12) * 60 + minutos; `meridiano` solo si lo dijo). `null` si ningun mensaje del cliente da una hora. Sin plazos ("en 40 minutos") ni horarios preguntados.
  * Pura; el texto es no confiable (se acota el largo).

@@ -1075,6 +1075,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
     }
   }
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
+  await exigirMinimoDeRecogida(repo, ctx, name, input);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
@@ -1209,6 +1210,32 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
   // En cotizar se marca el plazo (campo interno, no lo manda el modelo) para que `runWithOrderFlow` reconozca una re-cotizacion identica con el mismo plazo.
   return { ...resto, hora_recogida: new Date(ahora + Math.round(minutos) * 60_000).toISOString(), ...(name === "cotizar_pedido" ? { plazo_minutos_servidor: Math.round(minutos) } : {}) };
+}
+
+/** R22 (R3): minutos minimos entre «ahora» y la hora de recogida de hoy: cocina no alcanza a preparar antes (SIM 114, 118, 119 aceptaban 20 min). */
+export const MINUTOS_MINIMOS_RECOGER = 25;
+
+/**
+ * R22 (R3): al COTIZAR un pedido para recoger por WhatsApp, la hora (dicha como hora exacta o como plazo en `minutos_para_recoger`) debe quedar a >= 25 minutos del reloj del flujo
+ * (`flow.now`, inyectable; no Date.now directo). Si no, se rechaza con un mensaje que manda pedir OTRA hora al cliente. No se revisa en crear_pedido (ahi la hora es el eco de la ya cotizada
+ * y el tiempo corrio) ni la hora ya cotizada en este flujo (re-cotizar el mismo carrito unos minutos despues no debe rechazarse); `programado_para` ya exige 30 minutos.
+ */
+async function exigirMinimoDeRecogida(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<void> {
+  if (name !== "cotizar_pedido" || ctx.channel !== "whatsapp" || input.canal !== "recoger" || textoOpcional(input.programado_para)) return;
+  const texto = textoOpcional(input.hora_recogida)?.trim();
+  if (!texto) return;
+  const ms = Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(texto) ? `${texto}:00.000Z` : texto);
+  if (Number.isNaN(ms)) return;
+  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
+  const minutos = (Math.floor(ms / 60_000) - Math.floor(ahora / 60_000));
+  if (minutos >= MINUTOS_MINIMOS_RECOGER) return;
+  if (ctx.flow) {
+    const cotizada = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context?.horaRecogida;
+    if (cotizada && cotizada === new Date(ms).toISOString().slice(0, 16)) return;
+  }
+  throw new OrderValidationError(
+    `La hora de recogida debe quedar a por lo menos ${MINUTOS_MINIMOS_RECOGER} minutos de ahora (cocina necesita ese tiempo) y la que se intenta registrar queda a ${Math.max(0, minutos)}. NO la registre ni diga que sí se puede: dígale al cliente que el mínimo es de ${MINUTOS_MINIMOS_RECOGER} minutos y pídale otra hora (o un plazo de ${MINUTOS_MINIMOS_RECOGER} minutos o más).`,
+  );
 }
 
 function flowNow(flow: OrderFlowRef): number {
