@@ -112,10 +112,14 @@ describe("clasificador del ultimo mensaje del cliente", () => {
     // rechazos y cambios
     ["no", "no"], ["No, así no", "no"], ["no es correcto", "no"], ["espera", "no"], ["cancela", "no"], ["Cambiar algo", "cambio"],
     ["mejor 3 cocas", "cambio"], ["sí pero quítale la cebolla", "cambio"], ["agrégame otra coca", "cambio"], ["sí, y agrega una horchata", "cambio"], ["cámbialo a tarjeta pero sin propina", "cambio"],
-    // R22: «sí» explicito + pregunta lateral que no toca el pedido => confirma (SIM-WA-140, T7-026)
-    ["sí, ¿y cuánto tarda?", "si"], ["Sí, ¿cuánto tarda?", "si"], ["sí ¿cuánto tarda?", "si"], ["ok, ¿a qué hora llega?", "si"], ["dale, ¿tienen salsa extra?", "si"], ["confirmo. ¿cuánto cuesta el envío?", "si"], ["sí y cuánto tarda?", "si"],
-    // R22: un «sí» con pregunta que cambia algo, trae dato, titubea o es condicional NO confirma (sigue ambiguo: el modelo contesta y re-pide)
-    ["sí, ¿con tarjeta?", "ambiguo"], ["sí, ¿puedo agregar una coca?", "ambiguo"], ["sí pero ¿cuánto tarda?", "ambiguo"], ["sí, ¿lo pueden mandar a otra dirección?", "ambiguo"], ["sí, ¿a las 8 pm?", "ambiguo"], ["sí, ¿no hay otra opción?", "ambiguo"], ["si hay promo?", "ambiguo"], ["sí, ¿creo que cuánto tarda?", "ambiguo"], ["¿sí o no?", "ambiguo"], ["sí, ¿es correcto?", "si"], ["no, ¿cuánto tarda?", "ambiguo"],
+    // R22 — REVERSION DE ESPECIFICACION: antes «las preguntas ni confirman ni cambian» (la fila «sí, ¿y cuánto tarda?» esperaba «ambiguo»); ahora un «sí» fuerte con una pregunta PURAMENTE
+    // INFORMATIVA (lista blanca: tiempo, hora, envio, correcto/confirmado, sucursal, tarjeta) confirma (SIM-WA-140, T7-026). Todo lo demas con pregunta sigue ambiguo.
+    ["sí, ¿y cuánto tarda?", "si"], ["Sí, ¿cuánto tarda?", "si"], ["sí ¿cuánto tarda?", "si"], ["ok, ¿a qué hora llega?", "si"], ["confirmo. ¿cuánto cuesta el envío?", "si"], ["sí y cuánto tarda?", "si"], ["sí, ¿es correcto?", "si"], ["sí, ¿aceptan tarjeta?", "si"], ["sí, ¿dónde queda la sucursal?", "si"],
+    // R22 negativas: pregunta que no es puramente informativa, frase extra, cambio, dato o condicional NO confirman
+    ["sí, ¿y si agrego una coca?", "ambiguo"], ["sí, ¿me pueden poner extra queso?", "ambiguo"], ["sí, ¿cuánto sería con una coca más?", "ambiguo"], ["sí, ¿hay de pastor?", "ambiguo"], ["sí, ¿tienen refrescos?", "ambiguo"],
+    ["ok, ¿seguro que es de pollo?", "ambiguo"], ["sí, ¿puedo cancelar después?", "ambiguo"], ["sí. ¿Cuánto tarda? Quiero papas", "ambiguo"], ["claro, ¿cómo crees?", "ambiguo"], ["perfecto, ¿y ese precio?", "ambiguo"],
+    ["dale, ¿tienen salsa extra?", "ambiguo"], ["¿sí o no?", "ambiguo"], ["no, sí", "no"], ["sí, no, ¿cuánto tarda?", "ambiguo"], ["si hay promo?", "ambiguo"],
+    ["sí, ¿con tarjeta?", "ambiguo"], ["sí, ¿puedo agregar una coca?", "ambiguo"], ["sí pero ¿cuánto tarda?", "ambiguo"], ["sí, ¿lo pueden mandar a otra dirección?", "ambiguo"], ["sí, ¿a las 8 pm?", "ambiguo"], ["sí, ¿no hay otra opción?", "ambiguo"], ["no, ¿cuánto tarda?", "ambiguo"],
     // preguntas y ruido: ambiguos
     ["¿cuánto tarda?", "ambiguo"], ["cuánto es el envío", "ambiguo"], ["mmm", "ambiguo"], ["", "ambiguo"], ["pues no sé", "ambiguo"], ["a ver", "ambiguo"],
   ];
@@ -310,7 +314,7 @@ describe("confirmar_resumen: solo con el resumen visto y un si explicito", () =>
     s.cliente("Sí confirmo, pago en efectivo");
     expect(((await s.confirm()) as { result: { confirmado?: boolean } }).result.confirmado).toBe(true);
   });
-  it("R22: «sí, ¿cuánto tarda?» al resumen vigente CONFIRMA y crea el pedido una sola vez (sin pedir otro sí)", async () => {
+  it("R22 (reversion de especificacion: sí + pregunta puramente informativa confirma): «sí, ¿cuánto tarda?» al resumen vigente CONFIRMA y crea el pedido una sola vez (sin pedir otro sí)", async () => {
     const s = setup();
     s.cliente("dos cocas para recoger, soy Nora");
     await s.quote();
@@ -320,6 +324,19 @@ describe("confirmar_resumen: solo con el resumen visto y un si explicito", () =>
     const a = await s.create();
     expect(a.orderId).not.toBeNull();
     await expect(s.create()).rejects.toMatchObject({ code: "pedido_ya_creado" }); // no duplica
+  });
+  it("fix1: confirmar_resumen devuelve `instruccion` al escribir la confirmacion, y NO en la rama ya confirmada", async () => {
+    const s = setup();
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    await s.muestraResumen();
+    s.cliente("sí");
+    const primera = (await s.confirm()) as { result: { confirmado?: boolean; instruccion?: string } };
+    expect(primera.result.confirmado).toBe(true);
+    expect(primera.result.instruccion).toContain("crear_pedido");
+    const repetida = (await s.confirm()) as { result: { confirmado?: boolean; instruccion?: string } };
+    expect(repetida.result.confirmado).toBe(true);
+    expect(repetida.result.instruccion).toBeUndefined();
   });
   it("R22: «sí, ¿puedo agregar una coca?» NO confirma ni crea (cambio de pedido)", async () => {
     const s = setup();

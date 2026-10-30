@@ -130,19 +130,29 @@ const CANTIDAD = /\b(?:un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|di
 const VISTO_BUENO_EN_NEGATIVO = /^\W*(?:no+\s*,?\s*(?:gracias|nada\s*mas|asi\s*esta(?:\s*bien)?|es\s*todo|eso\s*es\s*todo|todo\s*bien)|nada\s*mas|eso\s*es\s*todo|es\s*todo|asi\s*esta(?:\s*bien|\s*perfecto)?|ninguno|nada\s*que\s*cambiar|no\s*cambio\s*nada)\W*$/;
 
 /**
- * R22 «sí + pregunta lateral» (SIM-WA-140, T7-026): «sí, ¿cuánto tarda?» es un «sí» EXPLICITO al resumen mas una pregunta que no toca el pedido. Antes caia en PREGUNTA -> «ambiguo» y el pedido
- * no se creaba (el modelo contestaba y volvia a pedir otro «sí»). Solo cuenta cuando el mensaje EMPIEZA con una afirmacion fuerte seguida de pausa (coma, punto, «¿» o «y» + palabra
- * interrogativa) y el resto es una pregunta (lleva «?») sin NINGUN cambio, dato de pago/propina, direccion, cantidad, numero, titubeo ni negacion: «sí, ¿con tarjeta?», «sí pero ¿cuánto tarda?»,
- * «sí, ¿puedo agregar una coca?», «sí, ¿no hay otra?» o «si hay promo?» (condicional) NO confirman.
+ * R22 «sí + pregunta lateral» (SIM-WA-140, T7-026). REVERSION DE ESPECIFICACION: antes «las preguntas ni confirman ni cambian» (un «sí, ¿y cuánto tarda?» era ambiguo y el pedido no se creaba);
+ * ahora un «sí» fuerte al INICIO seguido de una pregunta PURAMENTE INFORMATIVA confirma. LISTA BLANCA: el resto del mensaje debe ser, completo, una de las preguntas informativas de abajo
+ * (tiempo de entrega, hora de llegada, costo del envio, si el pedido esta correcto/confirmado, donde esta la sucursal, si aceptan tarjeta). Cualquier otra pregunta (producto, precio, extras,
+ * «¿y si agrego...?», «¿puedo cancelar?»), cualquier frase extra («quiero papas») o negacion => «ambiguo»: el modelo contesta y vuelve a pedir el sí. En duda, ambiguo.
  */
-const AFIRMACION_FUERTE_CON_PAUSA = /^\W*(?:si+|sip|sii+|dale|ok(?:ey|ay)?|claro|correcto|confirmo|confirmado|de\s+acuerdo|adelante|perfecto|andale|listo|sale)(?:\s*[,.!;:\-]+\s*|\s+(?=\u00bf)|\s+y\s+(?=\u00bf|(?:cuanto|cuando|cual|cuales|que|como|donde|quien|por\s*que|porque|hay|tienen|incluye|aceptan|a\s+que)\b))/;
+const AFIRMACION_FUERTE_CON_PAUSA = /^\W*(?:si+|sip|sii+|dale|ok(?:ey|ay)?|claro|correcto|confirmo|confirmado|de\s+acuerdo|adelante|perfecto|andale|listo|sale)(?:\s*[,.!;:\-]+\s*|\s+(?=\u00bf)|\s+y\s+(?=\u00bf|cuanto\b|a\s+que\s+hora\b))/;
+const PREGUNTAS_INFORMATIVAS: readonly RegExp[] = [
+  /^(?:y\s+)?cuanto\s+(?:tarda|tardan|demora|demoran|se\s+tarda|se\s+tardan|se\s+demora|falta)(?:\s+en\s+llegar)?(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?cuanto\s+tiempo\s+(?:tarda|tardan|demora|demoran|falta)(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?a\s+que\s+hora\s+(?:llega|llegan|llegaria|estara\s+listo|estaria\s+listo|sale)(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?(?:cuanto\s+(?:cuesta|es|seria|sale|cobran)\s+(?:el\s+)?envio|cuanto\s+es\s+el\s+costo\s+del\s+envio|cual\s+es\s+el\s+costo\s+del\s+envio|tiene\s+costo\s+el\s+envio)$/,
+  /^(?:y\s+)?(?:es|esta|queda|ya\s+quedo)\s+(?:todo\s+)?(?:correcto|confirmado|registrado)(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?donde\s+(?:esta|queda)\s+la\s+sucursal$/,
+  /^(?:y\s+)?cual\s+es\s+la\s+direccion\s+de\s+la\s+sucursal$/,
+  /^(?:y\s+)?(?:aceptan|reciben)\s+tarjeta$/,
+];
 function esSiConPreguntaLateral(t: string): boolean {
   const m = t.match(AFIRMACION_FUERTE_CON_PAUSA);
   if (!m) return false;
   const resto = t.slice(m[0].length);
   if (!resto.includes("?")) return false;
-  if (/\d/.test(resto) || /\b(?:no|nada|nunca|ni|nel)\b/.test(resto)) return false;
-  return !(MARCADORES_DE_CAMBIO.test(resto) || DIRECCION.test(resto) || CANTIDAD.test(resto) || TITUBEO.test(resto) || PAGO_O_PROPINA.some((re) => re.test(resto)));
+  const limpio = resto.replace(/[\u00bf?!.,;:]/g, " ").replace(/\s+/g, " ").trim();
+  return PREGUNTAS_INFORMATIVAS.some((re) => re.test(limpio));
 }
 
 export interface OpcionesClasificar {
