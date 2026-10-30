@@ -58,14 +58,15 @@ export function analizarPiezasPedidas(nombreProducto: string, piezas: number): A
 }
 
 /**
- * R22 (R4): piezas que trae UNA orden de este renglon para MOSTRARSELAS al cliente: el `packSize` del catalogo si es > 1; si el menu no lo trae, la tabla del dueño (gringa 2, alambre 5...)
- * siempre que su cifra sea exacta. `null` sin dato (nunca se inventa).
+ * R22 (R4): piezas que trae UNA orden de este renglon para MOSTRARSELAS al cliente: SOLO el `packSize` del catalogo si es > 1. Sin `packSize` la cantidad del renglon puede ser PIEZAS
+ * («4 gringas» llega como 4), asi que la tabla del dueño no se usa para etiquetar (daria «4 órdenes (8 piezas)»). Tampoco se etiqueta una media orden, un cuarto, un kilo, un combo,
+ * un paquete, una salsa o un extra: el nombre dice otra unidad. `null` sin dato (nunca se inventa).
  */
+const NOMBRE_NO_ES_ORDEN_ENTERA = /(?:^|[^a-z0-9])(?:media|medio|1\/2|1\/4|cuarto|kilo|kilos|kg|combo|paquete|salsas?|extras?)(?:[^a-z0-9]|$)/;
 export function piezasPorOrdenDe(nombreProducto: string, packSize: number | null | undefined): number | null {
-  if (typeof packSize === "number" && Number.isInteger(packSize) && packSize > 1) return packSize;
-  if (typeof packSize === "number" && packSize === 1) return null;
-  const f = familiaUnidadPm(nombreProducto);
-  return f && !f.aproximado && f.piezasPorOrden > 1 ? f.piezasPorOrden : null;
+  if (typeof packSize !== "number" || !Number.isInteger(packSize) || packSize <= 1) return null;
+  if (NOMBRE_NO_ES_ORDEN_ENTERA.test(sinAcentos(nombreProducto).toLowerCase())) return null;
+  return packSize;
 }
 
 /** Piezas que suman N órdenes (3 órdenes de gringas = 6). null si la tabla no lo sabe o es aproximado. */

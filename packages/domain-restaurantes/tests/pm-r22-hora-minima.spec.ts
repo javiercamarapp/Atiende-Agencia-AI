@@ -1,5 +1,5 @@
 // PM R22 (causa 4 / R3): una hora de recogida a menos de 25 minutos se aceptaba y se guardaba (SIM 114, 118, 119). Reloj fijo: martes 2026-10-06 13:00 America/Merida.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { limpiarEntorno, prepararEntorno, setup } from "./support/cierre-r11.ts";
 
 afterEach(limpiarEntorno);
@@ -29,4 +29,28 @@ describe("R22: hora de recogida minima de 25 minutos", () => {
     const s = setup();
     await expect(s.quote({})).resolves.toBeTruthy();
   });
+
+  it("1 minuto y la hora de ahora mismo (0 min) se rechazan", async () => {
+    const s = setup();
+    await expect(s.quote({ minutos_para_recoger: 1 })).rejects.toThrow(/25 minutos/);
+    await expect(s.quote({ hora_recogida: "2026-10-06T13:00:00-06:00" })).rejects.toThrow(/25 minutos/);
+    await expect(s.quote({ hora_recogida: "2026-10-06T13:01:00-06:00" })).rejects.toThrow(/25 minutos/);
+  });
+
+  it("una hora ya pasada conserva su mensaje propio («ya pasó»)", async () => {
+    const s = setup();
+    await expect(s.quote({ hora_recogida: "2026-10-06T11:00:00-06:00" })).rejects.toThrow(/ya pasó/);
+  });
+
+  it("crear_pedido no vuelve a rechazar la hora aceptada aunque ya falten menos de 25 min", async () => {
+    const s = setup();
+    await s.quote({ minutos_para_recoger: 40 });
+    await s.muestraResumen();
+    s.cliente("sí");
+    vi.setSystemTime(new Date("2026-10-06T13:20:00-06:00"));
+    await s.confirm();
+    const r = await s.create({ minutos_para_recoger: 40 });
+    expect(r.orderId).toBeTruthy();
+  });
 });
+
