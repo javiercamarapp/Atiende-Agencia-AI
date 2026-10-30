@@ -580,7 +580,7 @@ select count(*)::int as productos_de_t2_t3_sin_precio_en_t1_deberia_ser_0
     and not exists (select 1 from restaurantes.branch_products t1 join restaurantes.branch_detail bd1 on bd1.property_id = t1.property_id where bd1.organization_id = o.id and bd1.slug = 'prol-montejo' and t1.product_id = bp.product_id);
 rollback;
 
-\echo '=== B1. Politica en las 7 sucursales: minimo a domicilio $200, propina nunca (R22) y horario propio verificado el 23-oct-2026 (T1 lun-jue 18-01 y vie-dom 12-01; T2 lun-vie 18-24 y sab-dom 12-24; T3 todos los dias 18-24; T4 12-21; T5, T7 y T8 12-01 general) ==='
+\echo '=== B1. Politica en las 7 sucursales: minimo a domicilio $200, propina nunca (R22) y horario propio verificado el 23-oct-2026 (T1 lun-vie 18-01 [viernes PENDIENTE] y sab-dom 12-01; T2 lun-vie 18-24 y sab-dom 12-24; T3 todos los dias 18-24; T4 12-21; T5 temporada 18-01; T7 y T8 12-01 general) ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as politicas_correctas_deberia_ser_7
@@ -588,18 +588,18 @@ select count(*)::int as politicas_correctas_deberia_ser_7
   join core.organization o on o.id = bp.organization_id
   join restaurantes.branch_detail bd on bd.property_id = bp.property_id
   join (values
-    ('prol-montejo',  '[{"dias":[1,2,3,4],"abre":"18:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"},{"dias":[0,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
+    ('prol-montejo',  '[{"dias":[1,2,3,4,5],"abre":"18:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"},{"dias":[0,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
     ('fco-montejo',   '[{"dias":[1,2,3,4,5],"abre":"18:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"},{"dias":[0,6],"abre":"12:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"}]'::jsonb),
     ('pensiones',     '[{"dias":[0,1,2,3,4,5,6],"abre":"18:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"}]'::jsonb),
     ('galerias',      '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"21:00","ultimoPedidoRecoger":"20:30"}]'::jsonb),
-    ('playa',         '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00"}]'::jsonb),
+    ('playa',         '[{"dias":[0,1,2,3,4,5,6],"abre":"18:00","cierra":"01:00"}]'::jsonb),
     ('garcia-lavin',  '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
     ('altabrisa',     '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb)
   ) as e(slug, horario) on e.slug = bd.slug and e.horario = bp.horario
   where o.slug = 'los-taquitos-de-pm' and bp.pedido_minimo_domicilio = 200 and bp.pedido_minimo_recoger is null and bp.propina_politica = 'nunca';
 rollback;
 
-\echo '=== B1b. Directorio y domicilio (migracion 057): Galerias visible e informativa, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='
+\echo '=== B1b. Directorio y domicilio (migracion 057): Galerias visible, informativa y sin domicilio, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as directorio_correcto_deberia_ser_7
@@ -608,7 +608,7 @@ select count(*)::int as directorio_correcto_deberia_ser_7
   join restaurantes.branch_detail bd on bd.property_id = bp.property_id
   where o.slug = 'los-taquitos-de-pm'
     and case bd.slug
-      when 'galerias' then bp.visible_en_directorio is true and bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
+      when 'galerias' then bp.visible_en_directorio is true and not bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
       when 'playa' then bp.visible_en_directorio is true and not bp.acepta_domicilio and bp.dias_domicilio is null and bp.de_temporada
       else bp.visible_en_directorio is null and bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
     end;

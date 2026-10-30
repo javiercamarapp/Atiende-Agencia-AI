@@ -136,7 +136,7 @@ const VISTO_BUENO_EN_NEGATIVO = /^\W*(?:no+\s*,?\s*(?:gracias|nada\s*mas|asi\s*e
  * (tiempo de entrega, hora de llegada, costo del envio, si el pedido esta correcto/confirmado, donde esta la sucursal, si aceptan tarjeta). Cualquier otra pregunta (producto, precio, extras,
  * «¿y si agrego...?», «¿puedo cancelar?»), cualquier frase extra («quiero papas») o negacion => «ambiguo»: el modelo contesta y vuelve a pedir el sí. En duda, ambiguo.
  */
-const AFIRMACION_FUERTE_CON_PAUSA = /^\W*(?:si+|sip|sii+|dale|ok(?:ey|ay)?|claro|correcto|confirmo|confirmado|de\s+acuerdo|adelante|perfecto|andale|listo|sale)(?:\s*[,.!;:\-]+\s*|\s+(?=\u00bf)|\s+y\s+(?=\u00bf|cuanto\b|a\s+que\s+hora\b))/;
+const AFIRMACION_FUERTE_CON_PAUSA = /^\W*(?:si+|sip|sii+|dale|ok(?:ey|ay)?|claro|correcto|confirmo|confirmado|de\s+acuerdo|adelante|perfecto|andale|listo|sale)(?:\s*[,.!;:-]+\s*|\s+(?=\u00bf)|\s+y\s+(?=\u00bf|cuanto\b|a\s+que\s+hora\b))/;
 const PREGUNTAS_INFORMATIVAS: readonly RegExp[] = [
   /^(?:y\s+)?cuanto\s+(?:tarda|tardan|demora|demoran|se\s+tarda|se\s+tardan|se\s+demora|falta)(?:\s+en\s+llegar)?(?:\s+(?:mi|el)\s+pedido)?$/,
   /^(?:y\s+)?cuanto\s+tiempo\s+(?:tarda|tardan|demora|demoran|falta)(?:\s+(?:mi|el)\s+pedido)?$/,
