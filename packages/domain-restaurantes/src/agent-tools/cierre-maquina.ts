@@ -66,7 +66,7 @@ function sinMarcadores(texto: string): string {
   return out;
 }
 
-function normalizar(texto: string): string {
+export function normalizar(texto: string): string {
   return sinMarcadores(texto)
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -202,9 +202,28 @@ function valorDeMonto(m: RegExpExecArray, desde: number): number {
 }
 
 /** Monto «con el que paga» el cliente: tras «con», «pago con», «cambio de», «billete de»... en cualquier parte del mensaje; o una cifra que cierra el mensaje. */
-export function montoDePago(t: string): number | undefined {
+/** R22: SOLO el billete dicho de forma explicita («con 500», «pago con», «billete de», «paga con»); nunca una cifra suelta al final (telefono, calle, folio, hora). Texto ya normalizado. */
+export function montoDePagoExplicito(t: string): number | undefined {
   const explicito = new RegExp(String.raw`(?:\bcon|\bcambio\s+de|\bpago\s+con|\bpagare\s+con|\bpaga(?:ria)?\s+con|\bbillete\s+de|\bmanejo|\btraigo)\s+${MONTO}\s*(?:pesos|varos|mxn)?${NO_ES_PROPINA}\b`).exec(t);
-  if (explicito) return valorDeMonto(explicito, 1);
+  return explicito ? valorDeMonto(explicito, 1) : undefined;
+}
+
+/** Lo que dice el mensaje sobre el PAGO (forma, billete, exacto, negativa): el primero (hacia atras) que lo toca fija el billete vigente. */
+export const HABLA_DE_PAGO = /\b(?:efectivo|tarjeta|terminal|exacto|justo|sin\s+cambio|no\s+(?:tengo|traigo|manejo|cuento)|mejor\s+(?:pago|con|en)|pago|pagar|pagare|paga|billete|cambio\s+de|cash)\b/;
+const NEGA_BILLETE = /\bno\s+(?:tengo|traigo|manejo|cuento)\b|\bsin\s+(?:billete|cambio)\b/;
+
+/** Billete valido del mensaje: explicito, no negado, que alcanza el total y plausible (<= 10x el total o <= 5000). `undefined` si no. */
+export function billeteExplicitoDelMensaje(mensaje: string, total: number): number | undefined {
+  const t = normalizar(mensaje);
+  if (NEGA_BILLETE.test(t)) return undefined;
+  const n = montoDePagoExplicito(t);
+  if (n === undefined || !Number.isFinite(n) || n < total) return undefined;
+  return n <= Math.max(10 * total, 5000) ? n : undefined;
+}
+
+export function montoDePago(t: string): number | undefined {
+  const explicito = montoDePagoExplicito(t);
+  if (explicito !== undefined) return explicito;
   const final = new RegExp(String.raw`(?:^|\s)${MONTO}\s*(?:pesos|varos|mxn)?\s*(?:porfa|por favor|gracias|ok)?\W*$`).exec(t);
   if (final) return valorDeMonto(final, 1);
   return undefined;
