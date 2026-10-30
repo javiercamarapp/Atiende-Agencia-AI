@@ -256,7 +256,7 @@ begin
       end if;
       if v_pnid is not null then
         update restaurantes.whatsapp_conversations
-           set messages = messages || jsonb_build_array(jsonb_build_object('role', 'assistant', 'content', v_texto, 'autor', 'agente')),
+           set messages = messages || jsonb_build_array(jsonb_build_object('role', 'assistant', 'content', v_texto, 'autor', 'agente', 'at', to_char(p_ahora at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))),
                updated_at = p_ahora
          where id = r.conv and organization_id = r.org;
         perform restaurantes.enqueue_messaging_outbox(

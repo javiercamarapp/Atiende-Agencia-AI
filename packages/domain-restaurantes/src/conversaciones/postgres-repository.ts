@@ -40,6 +40,8 @@ import type {
   TurnoPersonal,
 } from "./types.ts";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function code(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
 }
@@ -177,6 +179,22 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
     });
   }
 
+  /** Nombres de las personas del panel que contestaron (PR-4, migracion 102). Base sin migrar o sin permiso: sin nombres (el hilo igual se ve, con el autor «Persona del equipo»). */
+  private async nombresDeStaff(organizationId: string, propertyId: string, ids: readonly string[]): Promise<Map<string, string>> {
+    const unicos = [...new Set(ids)];
+    if (unicos.length === 0) return new Map();
+    return runWithSavepointFallback<Map<string, string>>({
+      session: this.db,
+      savepointName: "sp_conv_detalle_nombres",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; nombre: string | null }>(`select id, nombre from restaurantes.handoff_staff_nombres($1::uuid, $2::uuid, $3::uuid[]);`, [organizationId, propertyId, unicos]);
+        return new Map(rows.flatMap((r) => (r.nombre ? [[r.id, r.nombre] as const] : [])));
+      },
+      isRecoverable: () => true,
+      fallback: async () => new Map(),
+    });
+  }
+
   private escritura<T>(savepointName: string, primary: () => Promise<T>): Promise<T> {
     return runWithSavepointFallback<T>({ session: this.db, savepointName, primary, isRecoverable: esRechazoConocido, fallback: aError });
   }
@@ -205,11 +223,15 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
         );
         if (!rows[0]) return null;
         const arr = Array.isArray(rows[0].messages) ? (rows[0].messages as Array<Record<string, unknown>>) : [];
-        mensajes = arr.map((m) => ({
-          rol: m.role === "user" ? "cliente" : m.autor === "humano" ? "humano" : "agente",
-          texto: typeof m.content === "string" ? m.content : "",
-          createdAt: null,
-        }));
+        const nombres = await this.nombresDeStaff(organizationId, propertyId, arr.flatMap((m) => (m.role !== "user" && m.autor === "humano" && typeof m.staff_id === "string" && UUID_RE.test(m.staff_id) ? [m.staff_id] : [])));
+        mensajes = arr.map((m): MensajeConversacion => {
+          const rol: MensajeConversacion["rol"] = m.role === "user" ? "cliente" : m.autor === "humano_app" ? "humano_app" : m.autor === "humano" ? "humano" : "agente";
+          const at = typeof m.at === "string" && Number.isFinite(Date.parse(m.at)) ? new Date(m.at).toISOString() : null;
+          const base = { rol, texto: typeof m.content === "string" ? m.content : "", createdAt: at };
+          if (rol !== "humano") return base;
+          const autorId = typeof m.staff_id === "string" && UUID_RE.test(m.staff_id) ? m.staff_id : null;
+          return { ...base, autorId, autorNombre: autorId ? (nombres.get(autorId) ?? null) : null };
+        });
       } else {
         const conv = await this.db.query<{ id: string }>(
           `select id from restaurantes.voice_conversation where id = $1 and organization_id = $2 and property_id = $3;`,

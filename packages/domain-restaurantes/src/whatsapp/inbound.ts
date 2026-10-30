@@ -179,6 +179,9 @@ async function agenteApagadoEnSucursal(repo: RestaurantesRepository, propertyId:
   }
 }
 
+/** Hora real con la que se guarda cada mensaje del hilo (PR-4): el panel la muestra por mensaje. */
+const ahoraIso = (): string => new Date().toISOString();
+
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
@@ -241,7 +244,7 @@ export async function handleInboundWhatsAppMessage(
     // sí pueda registrar el fallo.
     return await repo.runWithRowSavepoint(async () => {
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
-      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) };
+      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId), at: ahoraIso() };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
       // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
@@ -269,7 +272,7 @@ export async function handleInboundWhatsAppMessage(
           const acuse = permitido && (textoEstado !== null || acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId)));
           const textoAcuse = textoEstado !== null ? textoEstado : acuse ? textoParaTomaPendiente(body, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE) : ACUSE_HANDOFF_PENDIENTE;
           if (acuse) {
-            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse, at: ahoraIso() }], null, null, null);
             if (deliverReply) {
               await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
                 to: phone,
@@ -340,7 +343,7 @@ export async function handleInboundWhatsAppMessage(
         if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
       }
 
-      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply };
+      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true, at: ahoraIso() } : { role: "assistant", content: reply, at: ahoraIso() };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
@@ -729,7 +732,7 @@ export async function recibirMensajeConEspera(
   try {
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
-      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) });
+      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId), at: ahoraIso() });
       const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -807,7 +810,7 @@ export async function responderTrasEspera(
             const permitido = textoEstado !== null || (handoff === "pendiente" && handoffGate.acusePendiente ? await recordatorioPermitido(repo, organizationId, phone) : false);
             if (!permitido || (textoEstado === null && !acuseBase && (await agenteApagadoEnSucursal(repo, propertyId)))) return { salida: { ok: true, retryable: false }, silencio: true };
             const textoAcuse = textoEstado ?? textoParaTomaPendiente(textoPendiente, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE);
-            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse, at: ahoraIso() }], null, null, null);
             if (deliverReply) {
               await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
                 to: phone,
@@ -850,7 +853,7 @@ export async function responderTrasEspera(
           const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
-        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true, at: ahoraIso() } : { role: "assistant", content: reply, at: ahoraIso() }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
         const abreToma = Boolean(turn.escalacion && handoffGate && (await escalacionAbreToma(repo, organizationId, phone, turn, historial)));
         if (turn.escalacion && handoffGate && abreToma) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
