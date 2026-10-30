@@ -257,8 +257,9 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/Playa, Chicxulub \(969 688 4195\): de temporada/);
   });
 
-  it("H2 conserva la prohibicion de alcohol para recoger y H8 las alergias (sin cambios hasta P17)", () => {
-    expect(p).toContain("adquirirlo directamente en la sucursal al recoger");
+  it("H2 ya no prohibe el alcohol para recoger (sin respaldo del dueno; solo a domicilio) y H8 conserva las alergias", () => {
+    expect(p).not.toContain("adquirirlo directamente en la sucursal al recoger");
+    expect(p).toMatch(/H2\. Nada de alcohol a domicilio/);
     expect(p).toMatch(/H8\. No decida usted:.*alergias\. Todo eso se escala/);
     expect(p).toContain("alergia_salud");
   });
@@ -291,7 +292,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
 
   it("nunca inventar folio, lluvia, repartidor, precio viejo, presentaciones y alias", () => {
     expect(p).toMatch(/Nunca invente un folio/);
-    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia puede tardar un poco más que lo normal: el tiempo de la sucursal \(paso 8\) más unos 20 minutos/);
+    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia la entrega tarda de 1 hora a 1 hora 20 minutos/);
     expect(p).toMatch(/no la mencione por su cuenta/);
     expect(p).toMatch(/El cliente no elige repartidor/);
     expect(p).toContain("El precio vigente es de $X");
@@ -327,7 +328,7 @@ describe("QA-PM-R4: reglas de prompt de WhatsApp que no entran a la voz (limite 
     const p = promptPm();
     expect(p).toContain("propina_porcentaje");
     expect(p).toMatch(/NO conteste "sí" ni garantice ese plazo/);
-    expect(p).toMatch(/NUNCA diga "a partir de las 12 del día"/);
+    expect(p).not.toMatch(/a partir de las 12 del día/);
     expect(p).toMatch(/YA SALIÓ a reparto \(o está entregado\), no dé minutos/);
     expect(p).toMatch(/3 o 4 platillos con su precio REAL/);
     expect(p).toMatch(/dígalo usted antes de que el cliente lo deduzca/);

@@ -594,8 +594,9 @@ describe("PM concurrencia e idempotencia (X08, X09, X19)", () => {
 describe("PM-C3 -- el prompt conserva las reglas duras vigentes", () => {
   const prompt = buildSystemPrompt(PM_CONFIG_POR_OMISION, [{ propertyId: "p1", slug: "t1", name: "Prolongación Montejo", address: null }], { isNew: true }, new Date("2026-10-06T20:00:00Z"));
 
-  it("T-PC04 [P17] H2 sigue prohibiendo el alcohol para recoger (se adquiere en la sucursal) y H8 sigue escalando las alergias", () => {
-    expect(prompt).toContain("adquirirlo directamente en la sucursal al recoger");
+  it("T-PC04 H2 prohibe el alcohol solo a domicilio (ya no para recoger: sin respaldo) y H8 sigue escalando las alergias", () => {
+    expect(prompt).not.toContain("adquirirlo directamente en la sucursal al recoger");
+    expect(prompt).toMatch(/H2\. Nada de alcohol a domicilio/);
     expect(prompt).toMatch(/H8\..*alergias/);
   });
 
