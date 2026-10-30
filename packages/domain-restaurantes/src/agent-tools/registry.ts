@@ -30,7 +30,7 @@ import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-recie
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
-import { avisoUnidadPorTabla } from "../unidades-pm.ts";
+import { avisoUnidadPorTabla, piezasPorOrdenDe } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { componentesLocales, estaAbiertoAhora, aperturaConExcepciones, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
@@ -82,6 +82,7 @@ import {
   clasificarRespuestaCierre,
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
+  datosDelMensaje,
   decidirConfirmacion,
   etiquetaHoraEntrega,
   firmaDeCierre,
@@ -1074,6 +1075,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
     }
   }
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
+  await exigirMinimoDeRecogida(repo, ctx, name, input);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
@@ -1210,6 +1212,33 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
   return { ...resto, hora_recogida: new Date(ahora + Math.round(minutos) * 60_000).toISOString(), ...(name === "cotizar_pedido" ? { plazo_minutos_servidor: Math.round(minutos) } : {}) };
 }
 
+/** R22 (R3): minutos minimos entre «ahora» y la hora de recogida de hoy: cocina no alcanza a preparar antes (SIM 114, 118, 119 aceptaban 20 min). */
+export const MINUTOS_MINIMOS_RECOGER = 25;
+
+/**
+ * R22 (R3): al COTIZAR un pedido para recoger por WhatsApp, la hora (dicha como hora exacta o como plazo en `minutos_para_recoger`) debe quedar a >= 25 minutos del reloj del flujo
+ * (`flow.now`, inyectable; no Date.now directo). Si no, se rechaza con un mensaje que manda pedir OTRA hora al cliente. No se revisa en crear_pedido (ahi la hora es el eco de la ya cotizada
+ * y el tiempo corrio) ni la hora ya cotizada en este flujo (re-cotizar el mismo carrito unos minutos despues no debe rechazarse); `programado_para` ya exige 30 minutos.
+ */
+async function exigirMinimoDeRecogida(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<void> {
+  if (name !== "cotizar_pedido" || ctx.channel !== "whatsapp" || input.canal !== "recoger" || textoOpcional(input.programado_para)) return;
+  const texto = textoOpcional(input.hora_recogida)?.trim();
+  if (!texto) return;
+  const ms = Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(texto) ? `${texto}:00.000Z` : texto);
+  if (Number.isNaN(ms)) return;
+  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
+  const minutos = (Math.floor(ms / 60_000) - Math.floor(ahora / 60_000));
+  // Una hora YA pasada (mas alla de la gracia de 10 min) la rechaza `validarHoraRecogida` con su mensaje propio («ya pasó» + hora local actual).
+  if (minutos >= MINUTOS_MINIMOS_RECOGER || minutos < -10) return;
+  if (ctx.flow) {
+    const cotizada = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context?.horaRecogida;
+    if (cotizada && cotizada === new Date(ms).toISOString().slice(0, 16)) return;
+  }
+  throw new OrderValidationError(
+    `La hora de recogida debe quedar a por lo menos ${MINUTOS_MINIMOS_RECOGER} minutos de ahora (cocina necesita ese tiempo) y la que se intenta registrar queda a ${Math.max(0, minutos)}. NO la registre ni diga que sí se puede: dígale al cliente que el mínimo es de ${MINUTOS_MINIMOS_RECOGER} minutos y pídale otra hora (o un plazo de ${MINUTOS_MINIMOS_RECOGER} minutos o más).`,
+  );
+}
+
 function flowNow(flow: OrderFlowRef): number {
   return (flow.now ?? Date.now)();
 }
@@ -1240,6 +1269,20 @@ function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowConte
   const efDado = typeof input.efectivo_con === "number" && input.efectivo_con > 0 ? input.efectivo_con : undefined;
   const quotedEfectivoCon = quotedPago === "tarjeta" ? undefined : (efDado ?? previo?.quotedEfectivoCon);
   return { ...(quotedPago ? { quotedPago } : {}), ...(quotedEfectivoCon !== undefined ? { quotedEfectivoCon } : {}) };
+}
+
+/**
+ * R22 (R2): el billete con el que paga el cliente manda sobre el `efectivo_con` del modelo (que a veces manda el total: «paga con $388» cuando el cliente dijo «Pagaré con $500»).
+ * Se toma del mensaje MAS RECIENTE del cliente que dio un monto de pago que alcanza el total. Con tarjeta, o si el cliente no dio ninguno, no se toca nada (no se inventa).
+ */
+function billeteDelCliente(pago: { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number }, ctx: AgentToolContext, total: number): { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number } {
+  if (pago.quotedPago !== "efectivo" || ctx.channel !== "whatsapp" || !ctx.conversacionReciente) return pago;
+  for (const m of [...ctx.conversacionReciente].reverse()) {
+    if (m.role !== "user") continue;
+    const billete = datosDelMensaje(m.content, total).efectivoCon;
+    if (billete !== undefined) return { ...pago, quotedEfectivoCon: billete };
+  }
+  return pago;
 }
 
 /** R11: propina de una cotizacion (pesos o porcentaje). Lo que manda el modelo; si no la menciona se conserva la de la cotizacion vigente; 0 / "sin propina" la quita. */
@@ -1380,7 +1423,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // Pago y efectivo_con NO entran a la huella, pero son parte de lo que el cliente debe ver y aceptar: cotizar temprano (sin pago) y re-cotizar con pago en el turno del "confirmo" ya no
       // hereda el turno de la cotizacion anterior (si no, confirmar_resumen y crear_pedido pasaban sin que el cliente viera nunca el resumen con su pago). Omitirlos conserva los previos.
       const previoVigente = previo && (snap.state === "cotizado" || snap.state === "confirmado") && flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS ? previo : undefined;
-      const pagoCotizado = pagoDeCotizacion(input, previoVigente);
+      const pagoCotizado = billeteDelCliente(pagoDeCotizacion(input, previoVigente), ctx, quotedQuote.total);
       const propinaCotizada = propinaDeCotizacion(input, previoVigente);
       // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
       const datosVigentes = ctx.channel === "whatsapp" ? datosDeCierreSiWhatsapp(ctx, input, previoVigente?.datosCierre) : undefined;
@@ -1389,7 +1432,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
           ? {
               // R15/T7-001: la tortilla de un KILO no vive en el renglon cotizado (`tortilla` es null): sale de lo que el cliente eligio (`quotedItems[idx].tortillaKilo`, por indice: dos renglones del mismo producto con tortillas distintas no se mezclan).
-              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
+              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, piezasPorOrden: piezasPorOrdenDe(l.name, l.packSize), lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
               ...detallesDeResumen(input, previoVigente?.resumenBase),
               total: quotedQuote.total,
               descuento: quotedQuote.descuento,

@@ -42,6 +42,15 @@ const COMPLEMENT_LABELS: Record<DefaultComplement | RequestedComplement, string>
 };
 
 /** Nombre corto de una salsa/complemento para el resumen que ve el cliente (sin el parentesis de la comanda: «salsa habanero», no «salsa habanero (soasada o picada con limón)»). `null` si no es un complemento conocido. */
+/**
+ * R22 (R4): «1 orden (2 piezas)» / «2 órdenes (4 piezas)» para un renglon que se vende por ORDENES de `packSize` piezas (fuente de verdad: el catalogo, `packSize`). `null` si el producto no
+ * tiene dato de piezas por orden (packSize ausente o <= 1): no se inventan piezas.
+ */
+export function etiquetaOrdenConPiezas(ordenes: number, packSize: number | null | undefined): string | null {
+  if (typeof packSize !== "number" || !Number.isInteger(packSize) || packSize <= 1 || !Number.isInteger(ordenes) || ordenes < 1) return null;
+  return `${ordenes} ${ordenes === 1 ? "orden" : "órdenes"} (${ordenes * packSize} piezas)`;
+}
+
 export function etiquetaComplementoResumen(valor: unknown): string | null {
   if (typeof valor !== "string" || !Object.hasOwn(COMPLEMENT_LABELS, valor)) return null;
   return COMPLEMENT_LABELS[valor as keyof typeof COMPLEMENT_LABELS].replace(/\s*\([^)]*\)\s*$/, "");

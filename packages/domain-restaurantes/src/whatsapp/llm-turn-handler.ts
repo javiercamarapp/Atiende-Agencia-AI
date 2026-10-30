@@ -36,7 +36,7 @@ import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from ".
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
-import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
+import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
@@ -1360,6 +1360,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // R11: si el modelo cerro pidiendo la confirmacion SIN el total de la cotizacion, el servidor pone su resumen canonico (no toca mensajes que preguntan otra cosa).
           if (perfil === "taqueria_pm" && !orderId && !escalarMotivo && resumenCanonicoDelTurno && cierreMaquinaActiva()) {
             respuesta = componerRespuestaConResumen(respuesta, resumenCanonicoDelTurno.texto, resumenCanonicoDelTurno.total);
+          }
+          // R22 (R3): con un pedido para recoger creado en este turno, la hora que el cliente lee (plazo o reloj) es la GUARDADA en el pedido, no la que recordo el modelo.
+          if (perfil === "taqueria_pm" && !retenidoEnTurno) {
+            for (const p of pedidosCreadosDelTurno) {
+              const raw = p.raw as { horaRecogida?: unknown; hora_recogida?: unknown; programadoPara?: unknown; programado_para?: unknown; simulado?: unknown } | null;
+              const guardada = raw?.programadoPara ?? raw?.programado_para ? undefined : (raw?.horaRecogida ?? raw?.hora_recogida);
+              const instanteMs = typeof guardada === "string" ? Date.parse(guardada) : NaN;
+              if (!Number.isNaN(instanteMs)) respuesta = corregirHoraDeRecogidaEnRespuesta(respuesta, { instanteMs, zonaHoraria: p.timezone, ahoraMs: now().getTime() });
+            }
           }
           const replyFinal = safeReply(respuesta);
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
