@@ -5,6 +5,7 @@
 // no tiene Resumen: se le lleva a "Mis tareas", su panel real. El selector de propiedad vive en el Shell.
 import { useEffect, useState } from "react";
 import { RentasFijadosCopiloto } from "./Copiloto.tsx";
+import { OnboardingChecklist } from "../components/OnboardingChecklist.tsx";
 import { Navigate, Link } from "react-router-dom";
 import { AlertTriangle, BedDouble, ClipboardList, Inbox, LogIn, LogOut, RefreshCcw } from "lucide-react";
 import { AgentRunCard, EstadoCargando, EstadoError, PageContainer, PillLink, ResumenLayout, ResumenSeccion, StatCard } from "@atiende/ui";
@@ -176,6 +177,7 @@ export function RentasDashboardPage({ apiBaseUrl, token, propertyId, properties,
           </>
         }
       >
+        {org?.rol === "admin_gestora" && <OnboardingChecklist apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />}
         <ResumenSeccion titulo="Orquestación de agentes">
           {resumen.agentes.length === 0 ? (
             <p className="col-span-full text-xs text-faint">Todavía no hay corridas registradas de los agentes de esta propiedad.</p>
