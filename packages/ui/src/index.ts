@@ -27,6 +27,10 @@ export { pedidosPorImprimir, type PedidoParaCola } from "./lib/colaImpresionCoci
 export { TicketCocinaDialog, TicketCocinaVista, type TicketCocinaDialogProps, type TicketCocinaVistaProps } from "./components/TicketCocinaDialog.js";
 
 export { GoogleIcon } from "./components/GoogleIcon.js";
+// LogoMarca y PENDIENTES_MARCA NO se reexportan aqui (un export estatico anularia el import dinamico de LogoMarcaDiferido):
+// usa `@atiende/ui/logo-marca` y `@atiende/ui/logos-marca`. Solo tipos (se borran al compilar).
+export type { LogoMarcaClave, LogoMarcaTamano, LogoMarcaVariante } from "./components/LogoMarca.js";
+export { LogoMarcaDiferido } from "./components/LogoMarcaDiferido.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";

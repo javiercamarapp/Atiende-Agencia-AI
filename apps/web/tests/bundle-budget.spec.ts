@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { chunksDeRuta, evaluarPresupuesto, type Manifest } from "../../../scripts/verify-bundle-budget/check-bundle-budget.ts";
 
@@ -33,5 +34,13 @@ describe("presupuesto de bundle (R-37)", () => {
 
   it("un import que falta en el manifiesto es error explicito", () => {
     expect(() => chunksDeRuta({ a: { file: "a.js", imports: ["b"] } }, "a")).toThrow(/no existe/);
+  });
+
+  it("el tope de la entrada es el revisado (169000 B, temporal) y el archivo documenta el motivo y la condicion de retorno", () => {
+    const b = JSON.parse(readFileSync(new URL("../../../scripts/verify-bundle-budget/budget.json", import.meta.url), "utf8")) as { _temporal?: string; rutas: { clave: string; maxGzipBytes: number }[] };
+    const entrada = b.rutas.find((r) => r.clave === "index.html");
+    // Trinquete: subir este numero exige editar este test en el mismo PR (cambio revisado); el objetivo es volver a 165000 con el lote 12.
+    expect(entrada?.maxGzipBytes).toBeLessThanOrEqual(169000);
+    expect(b._temporal).toMatch(/CONDICION DE RETORNO/);
   });
 });
