@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createOrder } from "../src/orders.ts";
 import { etiquetaOrdenConPiezas } from "../src/order-quote.ts";
+import { piezasPorOrdenDe } from "../src/unidades-pm.ts";
 import { resumenCanonico } from "../src/agent-tools/cierre-maquina.ts";
 import { limpiarEntorno, prepararEntorno, setup } from "./support/cierre-r11.ts";
 
@@ -49,10 +50,21 @@ describe("R22: piezas visibles", () => {
     return { s, id };
   }
 
-  it("cotizar_pedido: 1 orden de gringa (sin pack_size en el menú; tabla del dueño) y el resumen del servidor dice las 2 piezas", async () => {
+  it("sin pack_size en el menú no se etiqueta (la cantidad puede ser piezas: «4 gringas» no es «4 órdenes (8 piezas)»)", async () => {
     const { s, id } = await conGringas();
-    await s.quote({ payment_method: "tarjeta", efectivo_con: undefined, items: [{ product_id: id, product_name: "Gringa de Pastor", requested_quantity: 1 }] });
-    expect(await s.canonico()).toContain("• 1 orden (2 piezas) de Gringa de Pastor — $194");
+    await s.quote({ payment_method: "tarjeta", efectivo_con: undefined, items: [{ product_id: id, product_name: "Gringa de Pastor", requested_quantity: 4 }] });
+    const c = await s.canonico();
+    expect(c).toContain("• 4 × Gringa de Pastor");
+    expect(c).not.toMatch(/piezas/);
+  });
+
+  it.each(["Mestiza (media orden)", "Tacos de Chorizo (1/2 orden)", "Combo alitas + chela", "Salsa para alitas", "Gringa de Pastor kilo", "Extra de gringa"])("«%s» con pack_size no se etiqueta como orden entera", (nombre) => {
+    expect(piezasPorOrdenDe(nombre, 2)).toBeNull();
+  });
+  it("con pack_size y nombre de orden entera sí", () => {
+    expect(piezasPorOrdenDe("Gringa de Pastor", 2)).toBe(2);
+    expect(piezasPorOrdenDe("Gringa de Pastor", null)).toBeNull();
+    expect(piezasPorOrdenDe("Gringa de Pastor", 1)).toBeNull();
   });
 
   it("con pack_size del catálogo (descripción «orden de 2»): 4 piezas = 2 órdenes (4 piezas)", async () => {
@@ -66,14 +78,17 @@ describe("R22: piezas visibles", () => {
   });
 
   it("la comanda (notas del pedido) dice cuántas piezas son; un producto sin dato no lleva línea", async () => {
-    const { s, id } = await conGringas();
+    const s = setup();
+    const id = randomUUID();
+    s.f.repo.seedProduct({ id, organizationId: s.f.organizationId, categoryId: s.f.categories.tacos, name: "Gringa de Pastor", description: "Orden de 2 piezas", searchKeywords: [] });
+    s.f.repo.seedBranchProduct({ propertyId: s.f.propertyId, productId: id, price: 194, isAvailable: true });
     const f = s.f;
     const order = await createOrder(f.repo, {
       organizationId: f.organizationId,
       branchSlug: "fco-montejo",
       customerName: "Cliente Sintético",
       customerPhone: "9991234567",
-      items: [{ productId: id, requestedQuantity: 2 }, { productId: f.products.cocaCola, requestedQuantity: 2 }],
+      items: [{ productId: id, requestedQuantity: 4 }, { productId: f.products.cocaCola, requestedQuantity: 2 }],
       source: "whatsapp",
       paymentMethod: "tarjeta",
       canal: "recoger",

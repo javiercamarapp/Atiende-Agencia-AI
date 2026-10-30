@@ -82,7 +82,9 @@ import {
   clasificarRespuestaCierre,
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
-  datosDelMensaje,
+  billeteExplicitoDelMensaje,
+  HABLA_DE_PAGO,
+  normalizar,
   decidirConfirmacion,
   etiquetaHoraEntrega,
   firmaDeCierre,
@@ -1273,14 +1275,21 @@ function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowConte
 
 /**
  * R22 (R2): el billete con el que paga el cliente manda sobre el `efectivo_con` del modelo (que a veces manda el total: «paga con $388» cuando el cliente dijo «Pagaré con $500»).
- * Se toma del mensaje MAS RECIENTE del cliente que dio un monto de pago que alcanza el total. Con tarjeta, o si el cliente no dio ninguno, no se toca nada (no se inventa).
+ * Solo cuenta un billete EXPLICITO («con 500», «billete de 500»): nunca una cifra suelta (telefono, calle, folio, hora). Se recorre hacia atras y se DETIENE en el primer mensaje del cliente
+ * que habla de pago: si ese no da un billete valido (lo niega, es menor al total, es implausible) se conserva el del modelo. Tambien se detiene en un resumen mostrado con OTRO total
+ * (el carrito cambio y el billete anterior ya no vale). Con tarjeta, o sin billete, no se toca nada (no se inventa).
  */
 function billeteDelCliente(pago: { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number }, ctx: AgentToolContext, total: number): { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number } {
   if (pago.quotedPago !== "efectivo" || ctx.channel !== "whatsapp" || !ctx.conversacionReciente) return pago;
   for (const m of [...ctx.conversacionReciente].reverse()) {
-    if (m.role !== "user") continue;
-    const billete = datosDelMensaje(m.content, total).efectivoCon;
+    if (m.role === "assistant") {
+      const visto = /total a pagar:\s*\$\s*(\d+(?:[.,]\d+)?)/i.exec(m.content);
+      if (visto && Math.abs(Number(visto[1]!.replace(",", ".")) - total) > 0.005) break;
+      continue;
+    }
+    const billete = billeteExplicitoDelMensaje(m.content, total);
     if (billete !== undefined) return { ...pago, quotedEfectivoCon: billete };
+    if (HABLA_DE_PAGO.test(normalizar(m.content))) break;
   }
   return pago;
 }

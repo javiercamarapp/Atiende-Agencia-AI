@@ -66,7 +66,7 @@ function sinMarcadores(texto: string): string {
   return out;
 }
 
-function normalizar(texto: string): string {
+export function normalizar(texto: string): string {
   return sinMarcadores(texto)
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -202,9 +202,28 @@ function valorDeMonto(m: RegExpExecArray, desde: number): number {
 }
 
 /** Monto «con el que paga» el cliente: tras «con», «pago con», «cambio de», «billete de»... en cualquier parte del mensaje; o una cifra que cierra el mensaje. */
-export function montoDePago(t: string): number | undefined {
+/** R22: SOLO el billete dicho de forma explicita («con 500», «pago con», «billete de», «paga con»); nunca una cifra suelta al final (telefono, calle, folio, hora). Texto ya normalizado. */
+export function montoDePagoExplicito(t: string): number | undefined {
   const explicito = new RegExp(String.raw`(?:\bcon|\bcambio\s+de|\bpago\s+con|\bpagare\s+con|\bpaga(?:ria)?\s+con|\bbillete\s+de|\bmanejo|\btraigo)\s+${MONTO}\s*(?:pesos|varos|mxn)?${NO_ES_PROPINA}\b`).exec(t);
-  if (explicito) return valorDeMonto(explicito, 1);
+  return explicito ? valorDeMonto(explicito, 1) : undefined;
+}
+
+/** Lo que dice el mensaje sobre el PAGO (forma, billete, exacto, negativa): el primero (hacia atras) que lo toca fija el billete vigente. */
+export const HABLA_DE_PAGO = /\b(?:efectivo|tarjeta|terminal|exacto|justo|sin\s+cambio|no\s+(?:tengo|traigo|manejo|cuento)|mejor\s+(?:pago|con|en)|pago|pagar|pagare|paga|billete|cambio\s+de|cash)\b/;
+const NEGA_BILLETE = /\bno\s+(?:tengo|traigo|manejo|cuento)\b|\bsin\s+(?:billete|cambio)\b/;
+
+/** Billete valido del mensaje: explicito, no negado, que alcanza el total y plausible (<= 10x el total o <= 5000). `undefined` si no. */
+export function billeteExplicitoDelMensaje(mensaje: string, total: number): number | undefined {
+  const t = normalizar(mensaje);
+  if (NEGA_BILLETE.test(t)) return undefined;
+  const n = montoDePagoExplicito(t);
+  if (n === undefined || !Number.isFinite(n) || n < total) return undefined;
+  return n <= Math.max(10 * total, 5000) ? n : undefined;
+}
+
+export function montoDePago(t: string): number | undefined {
+  const explicito = montoDePagoExplicito(t);
+  if (explicito !== undefined) return explicito;
   const final = new RegExp(String.raw`(?:^|\s)${MONTO}\s*(?:pesos|varos|mxn)?\s*(?:porfa|por favor|gracias|ok)?\W*$`).exec(t);
   if (final) return valorDeMonto(final, 1);
   return undefined;
@@ -453,28 +472,33 @@ export function corregirHoraDeRecogidaEnRespuesta(respuesta: string, hora: { rea
   const reloj = `${h24 % 12 === 0 ? 12 : h24 % 12}:${String(minutos % 60).padStart(2, "0")} ${h24 >= 12 ? "pm" : "am"}`;
   const articulo = h24 % 12 === 1 ? "la" : "las";
   const esperaReal = Math.round((hora.instanteMs - hora.ahoraMs) / 60_000);
-  const habla = /esper|recog|pas(?:a|ar|e|ara|aria)\b|list[oa]|prepar|tiempo|estimad|quedar[aá]/i;
-  const ajena = /cierr|abre\b|abrimos|horario|apertura/i;
+  // Solo frases que hablan de la espera / recogida; cualquier mencion de horario de la sucursal o cierre deja la frase intacta (ante la duda NO se reescribe).
+  const habla = /\b(?:list[oa]s?|esperamos|esperarlo|recoger(?:lo|la)?|recog(?:e|a)|pasa\s+por|pase\s+por|pasar\s+por)\b/i;
+  const ajena = /cerr(?:a|amos|ar|ado|ada)|cierre|horario|sucursal|abr(?:e|en|imos|ir)\b|apertura/i;
+  const MER = String.raw`[ap]\.?\s?m\b\.?`;
   return respuesta
-    .split(/(?<=[.!?\n])(\s+)/)
+    .split(/(?<=[.!?\n])(?<!\b[ap]\.)(?<!\b[ap]\.\s?m\.)(\s+)/i)
     .map((frase) => {
       if (!habla.test(frase) || ajena.test(frase)) return frase;
       let f = frase;
       if (esperaReal >= 1) {
-        f = f.replace(/\b(en|de)\s+(\d{1,3})(?:\s*(?:a|-|–)\s*(\d{1,3}))?\s*minutos?\b/gi, (todo, prep: string, a: string, b: string | undefined) => {
+        f = f.replace(/\b(en|de)\s+(\d{1,3})(?:\s*(?:a|-|–)\s*(\d{1,3}))?\s*minutos?\b(?!\s*(?:aprox|m[aá]s|menos|o\s+menos))/gi, (todo, prep: string, a: string, b: string | undefined) => {
           const lo = Number(a);
           const hi = b === undefined ? lo : Number(b);
           return esperaReal >= lo - 2 && esperaReal <= hi + 2 ? todo : `${prep} ${esperaReal} minutos`;
         });
       }
-      f = f.replace(/\b(a|para)\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)?(?![\d:])/gi, (todo, prep: string, hh: string, mm: string | undefined, mer: string | undefined) => {
+      // Hora de reloj: con minutos (HH:MM) o con meridiano; «a las 9 personas» o «a las 12 en punto» NO son una hora y no se tocan. Los espacios vecinos se conservan.
+      const reemplazar = (todo: string, prep: string, hh: string, mm: string | undefined, mer: string | undefined): string => {
         const h = Number(hh);
         if (h < 1 || h > 24) return todo;
         const m = mm === undefined ? 0 : Number(mm);
         const meridiano = mer === undefined ? null : /^a/i.test(mer) ? "am" : "pm";
         const coincide = h % 12 === h24 % 12 && m === minutos % 60 && (meridiano === null || meridiano === (h24 >= 12 ? "pm" : "am"));
-        return coincide ? todo : `${prep} ${articulo} ${reloj}${todo.endsWith(".") ? "." : ""}`;
-      });
+        return coincide ? todo : `${prep} ${articulo} ${reloj}${mer !== undefined && /^[ap]m\.$/i.test(mer) ? "." : ""}`;
+      };
+      f = f.replace(new RegExp(String.raw`\b(a|para)\s+las?\s+(\d{1,2}):(\d{2})(?:\s?(${MER}))?(?![\d:])`, "gi"), (t: string, p: string, hh: string, mm: string, mer: string | undefined) => reemplazar(t, p, hh, mm, mer));
+      f = f.replace(new RegExp(String.raw`\b(a|para)\s+las?\s+(\d{1,2})\s?(${MER})(?![\w])`, "gi"), (t: string, p: string, hh: string, mer: string) => reemplazar(t, p, hh, undefined, mer));
       return f;
     })
     .join("");
