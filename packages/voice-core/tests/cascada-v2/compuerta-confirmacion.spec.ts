@@ -499,3 +499,53 @@ describe("compuerta confirmar -> crear: un rechazo/cancelacion borra el resumen 
     expect(srv.s.pedidos).toBe(1);
   });
 });
+
+describe("bucle R1: tras el «si» y confirmar_resumen exitoso, la vuelta siguiente FUERZA crear_pedido (tool_choice)", () => {
+  it("el modelo solo llama confirmar_resumen y luego releeria el resumen: la peticion siguiente lleva herramientaForzada=crear_pedido y se crea UN pedido", async () => {
+    // El guion del modelo ignora la instruccion: tras confirmar solo "relee" (texto) salvo que se le fuerce la herramienta.
+    const trasConfirmar: TurnoLlm = async (p, dice) => {
+      if (p.herramientaForzada === "crear_pedido") return { texto: "", toolCalls: [tc("p", "crear_pedido")] };
+      dice(RESUMEN);
+      return { texto: RESUMEN, toolCalls: [] };
+    };
+    const { srv, cliente, llm } = await armar([...cotizaYLee, paso("", tc("c", "confirmar_resumen")), trasConfirmar, paso("Listo, quedó registrado.")]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(srv.s.pedidos).toBe(1);
+    expect(llm.peticiones.filter((p) => p.herramientaForzada === "crear_pedido")).toHaveLength(1);
+    expect(llm.peticiones.slice(0, 3).every((p) => p.herramientaForzada === undefined)).toBe(true);
+  });
+
+  it("sin «si» (el turno de la cotizacion) NUNCA se fuerza crear_pedido", async () => {
+    const { srv, cliente, llm } = await armar([paso("", tc("q", "cotizar_pedido"), tc("c", "confirmar_resumen")), paso(RESUMEN)]);
+    await cliente("seis de bistec a domicilio");
+    expect(srv.s.pedidos).toBe(0);
+    expect(llm.peticiones.some((p) => p.herramientaForzada !== undefined)).toBe(false);
+  });
+
+  it("con una afirmacion que lleva contenido nuevo («si, a nombre de Juan») no se fuerza", async () => {
+    const { srv, cliente, llm } = await armar([...cotizaYLee, paso("", tc("c", "confirmar_resumen")), paso(RESUMEN)]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí, a nombre de Juan");
+    expect(srv.s.pedidos).toBe(0);
+    expect(llm.peticiones.some((p) => p.herramientaForzada !== undefined)).toBe(false);
+  });
+
+  it("si el proveedor rechaza el tool_choice forzado, se reintenta sin forzar (camino de siempre) y la llamada no cae", async () => {
+    let forzadas = 0;
+    const tras: TurnoLlm = async (p, dice) => {
+      if (p.herramientaForzada) {
+        forzadas += 1;
+        throw Object.assign(new Error("tool_choice no admitido"), { status: 400 });
+      }
+      dice("Listo.");
+      return { texto: "Listo.", toolCalls: [] };
+    };
+    const { cliente, logs } = await armar([...cotizaYLee, paso("", tc("c", "confirmar_resumen")), tras]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("sí");
+    expect(forzadas).toBe(1);
+    expect(logs).toContain("v2_crear_forzado_rechazado");
+    expect(logs).not.toContain("v2_llm_falla");
+  });
+});

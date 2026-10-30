@@ -284,9 +284,9 @@ class SesionCascadaV2 implements VozSesionLlamada {
     return typeof elegido === "string" && elegido.trim() !== "" ? elegido : porDefecto;
   }
 
-  private async completar(modelo: string, senal: AbortSignal, alTexto: (delta: string) => void): Promise<RespuestaLlmVoz> {
-    try {
-      return await this.o.llm.completar({
+  private async completar(modelo: string, senal: AbortSignal, alTexto: (delta: string) => void, forzar?: string): Promise<RespuestaLlmVoz> {
+    const pedir = (herramientaForzada?: string): Promise<RespuestaLlmVoz> =>
+      this.o.llm.completar({
         system: this.apertura.instruccion,
         mensajes: this.mensajes,
         herramientas: this.apertura.herramientas,
@@ -294,7 +294,19 @@ class SesionCascadaV2 implements VozSesionLlamada {
         esfuerzo: this.o.config.cascadaV2.llm.esfuerzo,
         onTextDelta: alTexto,
         senal,
+        ...(herramientaForzada ? { herramientaForzada } : {}),
       });
+    try {
+      if (forzar) {
+        try {
+          return await pedir(forzar);
+        } catch (err) {
+          // Algunos modelos/rutas rechazan `tool_choice` forzado (p. ej. con razonamiento): se vuelve al camino de siempre, sin forzar.
+          if (senal.aborted) throw err;
+          this.log("v2_crear_forzado_rechazado", { herramienta: forzar });
+        }
+      }
+      return await pedir();
     } catch (err) {
       if (senal.aborted) throw err;
       const status = (err as { status?: unknown } | null)?.status;
@@ -327,6 +339,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.esperandoAlCliente.habladoTrasCotizar = "";
     // El codigo interpreta el turno del cliente: solo una afirmacion («si», «ok», «correcto»...) cuenta como confirmacion del resumen.
     this.esperandoAlCliente.afirmacion = esAfirmacion(texto);
+    this.esperandoAlCliente.cierreListo = false;
     // Un rechazo/cancelacion deja sin vigencia el resumen leido (ver el cierre del turno).
     const rechazo = !this.esperandoAlCliente.afirmacion && esRechazo(texto);
     let habladoTurno = "";
@@ -348,6 +361,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     try {
       let vuelta = 0;
       let vacios = 0;
+      let forzarCrear: string | undefined;
       while (vuelta <= this.o.vueltasToolMax) {
         this.vueltaActual = vuelta;
         const segmentador = crearSegmentadorFrases(cfg.frase);
@@ -361,7 +375,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
             frasesRonda.push(f);
             empujar({ frase: f, vuelta });
           }
-        });
+        }, forzarCrear);
+        forzarCrear = undefined;
         // El costo se registra SIEMPRE que el proveedor lo reporto, aunque el cliente haya interrumpido mientras tanto (una llamada abortada antes de terminar no trae uso).
         this.registrarLlm(r, modelo, ttft, this.ahora() - t0);
         if (!vigente()) break;
@@ -404,6 +419,12 @@ class SesionCascadaV2 implements VozSesionLlamada {
           log: (evento, campos) => this.log(evento, campos ?? {}),
         });
         for (const res of resultados) this.mensajes.push({ role: "tool", toolCallId: res.llamada.id, content: JSON.stringify(res.salida ?? null) });
+        // Bucle R1: el «si» ya confirmo el resumen (compuerta abierta) y el modelo solo llamo confirmar: la vuelta siguiente DEBE llamar crear (una sola vez; la compuerta sigue valiendo).
+        if (this.esperandoAlCliente.cierreListo === true && this.o.confirmacionAntesDeCrear) {
+          forzarCrear = this.o.confirmacionAntesDeCrear.crear;
+          this.esperandoAlCliente.cierreListo = false;
+          this.log("v2_crear_forzado", { herramienta: forzarCrear });
+        }
         if (!vigente()) break;
         vuelta += 1;
       }

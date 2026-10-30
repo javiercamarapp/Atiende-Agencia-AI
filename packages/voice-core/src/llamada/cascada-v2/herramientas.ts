@@ -49,6 +49,8 @@ export interface EstadoEspera {
   huellaOida?: string | null;
   huellaCotizada?: string | null;
   cotizoEnTurno?: boolean;
+  /** `confirmar` tuvo exito con la compuerta ABIERTA (resumen leido + afirmacion pura) en este turno y `crear` aun no corrio: la sesion fuerza `crear` en la vuelta siguiente (bucle R1). */
+  cierreListo?: boolean;
 }
 
 function huellaDe(salida: unknown): string | null {
@@ -112,6 +114,7 @@ export async function ejecutarHerramientas(
     if (huellaLeida && espera.afirmacion !== true) log?.("v2_confirmacion_sin_afirmacion", { motivo: "bloquea_crear", herramienta: regla.confirmar });
     const leido = huellaLeida && espera.afirmacion === true;
     if (!leido) espera.pendiente = true;
+    else espera.cierreListo = true;
   };
   /** Anota la cotizacion: si su huella es distinta de la que el cliente oyo, el resumen nuevo aun no se ha leido. */
   const alCotizar = (salida: unknown): void => {
@@ -180,6 +183,7 @@ export async function ejecutarHerramientas(
         continue;
       }
     }
+    if (regla && tc.nombre === regla.crear) espera.cierreListo = false;
     const res = await una(tc);
     resultados.push(res);
     if (regla && tc.nombre === regla.cotizar) alCotizar(res.salida);

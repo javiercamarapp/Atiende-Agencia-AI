@@ -120,6 +120,7 @@ export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, op
         messages: mensajes,
         tools: p.herramientas.map((h) => ({ name: h.name, description: h.description, parameters: h.parameters as unknown as Record<string, unknown> })),
         maxOutputTokens: cfg.topeSalidaTokens,
+        ...(p.herramientaForzada ? { toolChoice: { name: p.herramientaForzada } } : {}),
         ...(p.onTextDelta ? { onTextDelta: p.onTextDelta } : {}),
         ...(p.senal ? { signal: p.senal } : {}),
         });
