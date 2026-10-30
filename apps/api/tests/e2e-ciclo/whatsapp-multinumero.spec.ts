@@ -3,7 +3,7 @@
 // Un lote firmado con dos numeros rutea cada `change`; un numero desconocido se acusa con 200 sin procesar nada.
 //
 // Todo es simulado (MetaCloudSimulator + repos en memoria + LLM guionado): jamas se llama a Meta ni se usa una credencial real.
-// Debe pasar sin los paquetes 02 y 03. El describe «hoy: ecos ignorados» documenta el comportamiento ACTUAL ante ecos de la app,
+// Debe pasar sin los paquetes 02 y 03. El describe de coexistencia cubre los ecos de la app,
 // `history` y `smb_app_state_sync`. Los ecos (`smb_message_echoes`) ya se guardan en el hilo (PR-1); history y sync siguen sin escribir (PR-14).
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -160,7 +160,7 @@ describe("e2e WhatsApp multinumero: ruteo actual por sucursal", () => {
   });
 });
 
-describe("e2e WhatsApp multinumero — hoy: ecos ignorados (lo reemplazara el paquete 02)", () => {
+describe("e2e WhatsApp multinumero — coexistencia: ecos guardados, history y sync acusados", () => {
   let stack: CicloStack;
   let turnos = 0;
 
