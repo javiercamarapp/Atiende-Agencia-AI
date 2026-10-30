@@ -44,7 +44,6 @@ describe("clasificador de alto riesgo: lo real SI escala, con o sin acento", () 
     ["soy alérgico al cacahuate", "alergia_salud"],
     ["soy alergico al cacahuate", "alergia_salud"],
     ["me cobraron dos veces", "cobro_duplicado"],
-    ["pagaré por depósito", "transferencia"],
     ["quiero hablar con una persona", "cliente_lo_pide"],
   ];
   for (const [frase, motivo] of casos) it(`'${frase}' -> ${motivo}`, () => expect(classifyHighRiskIntent(frase)?.motivo, frase).toBe(motivo));

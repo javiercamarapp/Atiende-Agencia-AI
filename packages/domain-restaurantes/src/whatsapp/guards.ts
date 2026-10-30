@@ -1019,12 +1019,7 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     reply:
       "Entendido, desea cambiar su pedido. Eso solo lo puede confirmar alguien del restaurante directamente, porque depende de si ya se empezó a preparar. Ya avisé al equipo para que lo contacte lo antes posible.",
   },
-  {
-    intent: "transferencia",
-    pattern: /\btransferencia\b|\bdeposito\b|\bspei\b|\bpagar\s+por\s+transfer/,
-    reply:
-      "Por este medio no puedo registrar pagos por transferencia. Ya avisé al equipo para que lo contacte y vea con usted esa forma de pago; si prefiere, puede pagar en efectivo o con tarjeta.",
-  },
+  // R22 #2: la transferencia YA NO escala (decision del dueno): no se acepta y el agente lo dice y sigue con el pedido (efectivo o tarjeta con terminal). Sin regla fija aqui.
   {
     // R11-06: pedir DINERO de vuelta. Decision vigente: no hay devoluciones de dinero, solo cambio de producto. No se deja a la improvisacion del modelo: respuesta fija con la
     // politica, aviso al gerente (motivo `queja`) y la pregunta que el agente necesita para seguir. Una PREGUNTA por la politica o una negacion («no quiero reembolso») va al agente.

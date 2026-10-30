@@ -20,8 +20,9 @@ const MAIN_TABLA: Record<string, (string | null)[]> = {
   "quiero cancelar mi pedido": ["cancelacion_modificacion", null, "cancelacion_modificacion", "cancelacion_modificacion", "cancelacion_modificacion", "cancelacion_modificacion"],
   "cancela mi pedido por favor": ["cancelacion_modificacion", null, "cancelacion_modificacion", "cancelacion_modificacion", "cancelacion_modificacion", "cancelacion_modificacion"],
   "ya no quiero el pedido": [null, null, null, null, null, null],
-  "quiero pagar por transferencia": ["transferencia", "transferencia", "transferencia", "transferencia", "transferencia", "transferencia"],
-  "¿aceptan transferencia?": ["transferencia", "transferencia", "transferencia", "transferencia", "transferencia", "transferencia"],
+  // R22 #2: la transferencia ya no escala (decision del dueno): el clasificador devuelve null en todos los contextos.
+  "quiero pagar por transferencia": [null, null, null, null, null, null],
+  "¿aceptan transferencia?": [null, null, null, null, null, null],
   "mi pedido llegó frío": ["queja", "queja", "queja", "queja", "queja", "queja"],
   "pésimo servicio, llegó incompleto": ["queja", "queja", "queja", "queja", "queja", "queja"],
   "quiero poner una queja": ["queja", "queja", "queja", "queja", "queja", "queja"],
