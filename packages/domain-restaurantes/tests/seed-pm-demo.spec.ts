@@ -70,8 +70,8 @@ describe("buildPmSeedPlan", () => {
   it("horario por sucursal (verificado 23-oct-2026 con sitio oficial y ficha de Google): T1 (lun-jue) y T2 (lun-vie) desde las 18:00, T3 desde las 18:00, T4 12:00-21:00; T7 y T8 usan el general", () => {
     const porId = Object.fromEntries(plan.branches.map((b) => [b.id, b.horario]));
     expect(porId.T1).toEqual([
-      { dias: [1, 2, 3, 4], abre: "18:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" },
-      { dias: [0, 5, 6], abre: "12:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" }, // viernes del sitio oficial (Google dice 18:00): pendiente de confirmar con T1
+      { dias: [1, 2, 3, 4, 5], abre: "18:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" }, // viernes de Google (el sitio dice 12:00): PENDIENTE de confirmar con T1 (R22 #5)
+      { dias: [0, 6], abre: "12:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" },
     ]);
     expect(porId.T2).toEqual([
       { dias: [1, 2, 3, 4, 5], abre: "18:00", cierra: "00:00", ultimoPedidoDomicilio: "22:15", ultimoPedidoRecoger: "23:30" },
@@ -79,17 +79,18 @@ describe("buildPmSeedPlan", () => {
     ]);
     expect(porId.T3).toEqual([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "18:00", cierra: "00:00", ultimoPedidoDomicilio: "22:15", ultimoPedidoRecoger: "23:30" }]);
     expect(porId.T4).toEqual([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "21:00", ultimoPedidoRecoger: "20:30" }]); // T4 no reparte: solo recoger
-    // T5 (de temporada, inactiva, solo recoger): horario PROPIO provisional SIN horas de ultimo pedido, a proposito, para no heredar las del general (23:15 / 00:30).
-    expect(porId.T5).toEqual([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }]);
+    // T5 (de temporada, inactiva, solo recoger): horario PROPIO de temporada (18:00-01:00, R22 #5) SIN horas de ultimo pedido, a proposito, para no heredar las del general (23:15 / 00:30).
+    expect(porId.T5).toEqual([{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "18:00", cierra: "01:00" }]);
     // T7/T8 (ya coinciden con el general): sin horario propio, heredan el general con sus horas de ultimo pedido.
     for (const id of ["T7", "T8"]) expect(porId[id]).toBeUndefined();
   });
 
-  it("T1: viernes 14:00 abierta (12:00 del sitio oficial), lunes 14:00 cerrada, lunes 19:00 abierta y el turno del domingo cruza a lunes 00:30", () => {
+  it("T1: viernes 14:00 cerrada (R22 #5: 18:00 de Google), sabado 14:00 abierta, lunes 14:00 cerrada, lunes 19:00 abierta y el turno del domingo cruza a lunes 00:30", () => {
     const zona = "America/Merida"; // UTC-6
     const t1 = plan.branches.find((b) => b.id === "T1")!.horario!;
     const abierto = (utc: string) => estaAbiertoAhora(t1, new Date(utc), zona).abierto;
-    expect(abierto("2026-10-23T20:00:00Z")).toBe(true); // viernes 23-oct 14:00
+    expect(abierto("2026-10-23T20:00:00Z")).toBe(false); // viernes 23-oct 14:00 (antes abierta con el 12:00 del sitio)
+    expect(abierto("2026-10-24T20:00:00Z")).toBe(true); // sabado 24-oct 14:00
     expect(abierto("2026-10-26T20:00:00Z")).toBe(false); // lunes 26-oct 14:00
     expect(abierto("2026-10-27T01:00:00Z")).toBe(true); // lunes 19:00
     expect(abierto("2026-10-26T06:30:00Z")).toBe(true); // domingo 25 -> lunes 00:30
