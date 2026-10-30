@@ -112,8 +112,12 @@ describe("clasificador del ultimo mensaje del cliente", () => {
     // rechazos y cambios
     ["no", "no"], ["No, así no", "no"], ["no es correcto", "no"], ["espera", "no"], ["cancela", "no"], ["Cambiar algo", "cambio"],
     ["mejor 3 cocas", "cambio"], ["sí pero quítale la cebolla", "cambio"], ["agrégame otra coca", "cambio"], ["sí, y agrega una horchata", "cambio"], ["cámbialo a tarjeta pero sin propina", "cambio"],
+    // R22: «sí» explicito + pregunta lateral que no toca el pedido => confirma (SIM-WA-140, T7-026)
+    ["sí, ¿y cuánto tarda?", "si"], ["Sí, ¿cuánto tarda?", "si"], ["sí ¿cuánto tarda?", "si"], ["ok, ¿a qué hora llega?", "si"], ["dale, ¿tienen salsa extra?", "si"], ["confirmo. ¿cuánto cuesta el envío?", "si"], ["sí y cuánto tarda?", "si"],
+    // R22: un «sí» con pregunta que cambia algo, trae dato, titubea o es condicional NO confirma (sigue ambiguo: el modelo contesta y re-pide)
+    ["sí, ¿con tarjeta?", "ambiguo"], ["sí, ¿puedo agregar una coca?", "ambiguo"], ["sí pero ¿cuánto tarda?", "ambiguo"], ["sí, ¿lo pueden mandar a otra dirección?", "ambiguo"], ["sí, ¿a las 8 pm?", "ambiguo"], ["sí, ¿no hay otra opción?", "ambiguo"], ["si hay promo?", "ambiguo"], ["sí, ¿creo que cuánto tarda?", "ambiguo"], ["¿sí o no?", "ambiguo"], ["sí, ¿es correcto?", "si"], ["no, ¿cuánto tarda?", "ambiguo"],
     // preguntas y ruido: ambiguos
-    ["¿cuánto tarda?", "ambiguo"], ["sí, ¿y cuánto tarda?", "ambiguo"], ["cuánto es el envío", "ambiguo"], ["mmm", "ambiguo"], ["", "ambiguo"], ["pues no sé", "ambiguo"], ["a ver", "ambiguo"],
+    ["¿cuánto tarda?", "ambiguo"], ["cuánto es el envío", "ambiguo"], ["mmm", "ambiguo"], ["", "ambiguo"], ["pues no sé", "ambiguo"], ["a ver", "ambiguo"],
   ];
   for (const [msg, esperado, despues] of tabla) {
     it(`«${msg}» ${despues === undefined ? "" : despues ? "(tras el resumen) " : "(fuera del resumen) "}=> ${esperado}`, () => {
@@ -305,6 +309,26 @@ describe("confirmar_resumen: solo con el resumen visto y un si explicito", () =>
     await s.muestraResumen();
     s.cliente("Sí confirmo, pago en efectivo");
     expect(((await s.confirm()) as { result: { confirmado?: boolean } }).result.confirmado).toBe(true);
+  });
+  it("R22: «sí, ¿cuánto tarda?» al resumen vigente CONFIRMA y crea el pedido una sola vez (sin pedir otro sí)", async () => {
+    const s = setup();
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    await s.muestraResumen();
+    s.cliente("sí, ¿cuánto tarda?");
+    expect(((await s.confirm()) as { result: { confirmado?: boolean } }).result.confirmado).toBe(true);
+    const a = await s.create();
+    expect(a.orderId).not.toBeNull();
+    await expect(s.create()).rejects.toMatchObject({ code: "pedido_ya_creado" }); // no duplica
+  });
+  it("R22: «sí, ¿puedo agregar una coca?» NO confirma ni crea (cambio de pedido)", async () => {
+    const s = setup();
+    s.cliente("dos cocas para recoger, soy Nora");
+    await s.quote();
+    await s.muestraResumen();
+    s.cliente("sí, ¿puedo agregar una coca?");
+    expect(((await s.confirm()) as { rechazoDelFlujo?: string }).rechazoDelFlujo).toBe("cierre_sin_si_explicito");
+    await expect(s.create()).rejects.toMatchObject({ code: "sin_confirmacion" });
   });
   it("«sí, mejor con tarjeta» a un resumen en efectivo => cambio de dato: no confirma y el resumen ya dice tarjeta", async () => {
     const s = setup();

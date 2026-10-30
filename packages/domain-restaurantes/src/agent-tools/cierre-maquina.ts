@@ -129,6 +129,22 @@ const CANTIDAD = /\b(?:un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|di
 /** Visto bueno al resumen expresado en negativo («no gracias», «nada mas»): SOLO cuenta cuando se contesta a un resumen que pregunta si esta correcto o si desea cambiar algo. */
 const VISTO_BUENO_EN_NEGATIVO = /^\W*(?:no+\s*,?\s*(?:gracias|nada\s*mas|asi\s*esta(?:\s*bien)?|es\s*todo|eso\s*es\s*todo|todo\s*bien)|nada\s*mas|eso\s*es\s*todo|es\s*todo|asi\s*esta(?:\s*bien|\s*perfecto)?|ninguno|nada\s*que\s*cambiar|no\s*cambio\s*nada)\W*$/;
 
+/**
+ * R22 «sí + pregunta lateral» (SIM-WA-140, T7-026): «sí, ¿cuánto tarda?» es un «sí» EXPLICITO al resumen mas una pregunta que no toca el pedido. Antes caia en PREGUNTA -> «ambiguo» y el pedido
+ * no se creaba (el modelo contestaba y volvia a pedir otro «sí»). Solo cuenta cuando el mensaje EMPIEZA con una afirmacion fuerte seguida de pausa (coma, punto, «¿» o «y» + palabra
+ * interrogativa) y el resto es una pregunta (lleva «?») sin NINGUN cambio, dato de pago/propina, direccion, cantidad, numero, titubeo ni negacion: «sí, ¿con tarjeta?», «sí pero ¿cuánto tarda?»,
+ * «sí, ¿puedo agregar una coca?», «sí, ¿no hay otra?» o «si hay promo?» (condicional) NO confirman.
+ */
+const AFIRMACION_FUERTE_CON_PAUSA = /^\W*(?:si+|sip|sii+|dale|ok(?:ey|ay)?|claro|correcto|confirmo|confirmado|de\s+acuerdo|adelante|perfecto|andale|listo|sale)(?:\s*[,.!;:\-]+\s*|\s+(?=\u00bf)|\s+y\s+(?=\u00bf|(?:cuanto|cuando|cual|cuales|que|como|donde|quien|por\s*que|porque|hay|tienen|incluye|aceptan|a\s+que)\b))/;
+function esSiConPreguntaLateral(t: string): boolean {
+  const m = t.match(AFIRMACION_FUERTE_CON_PAUSA);
+  if (!m) return false;
+  const resto = t.slice(m[0].length);
+  if (!resto.includes("?")) return false;
+  if (/\d/.test(resto) || /\b(?:no|nada|nunca|ni|nel)\b/.test(resto)) return false;
+  return !(MARCADORES_DE_CAMBIO.test(resto) || DIRECCION.test(resto) || CANTIDAD.test(resto) || TITUBEO.test(resto) || PAGO_O_PROPINA.some((re) => re.test(resto)));
+}
+
 export interface OpcionesClasificar {
   /** El ultimo mensaje del asistente fue el resumen y su ultima pregunta es de confirmacion / «desea cambiar algo». */
   readonly despuesDelResumen: boolean;
@@ -256,6 +272,7 @@ export function clasificarRespuestaCierre(mensaje: unknown, opciones: OpcionesCl
   const conAfirmacion = AFIRMACION.test(t);
   // Preguntas: ni confirman ni cambian; el modelo debe contestarlas y volver a pedir el si.
   if (CANTIDAD.test(t)) return "cambio";
+  if (opciones.despuesDelResumen && esSiConPreguntaLateral(t)) return "si";
   if (PREGUNTA.test(t)) return "ambiguo";
   if (TITUBEO.test(t)) return "ambiguo";
   if (MARCADORES_DE_CAMBIO.test(t) || DIRECCION.test(t) || CANTIDAD.test(t)) return "cambio";
