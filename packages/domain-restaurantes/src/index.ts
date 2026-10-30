@@ -211,6 +211,8 @@ export {
 } from "./whatsapp/nota-de-voz.ts";
 export type { AudioDescargado, MotivoSinTranscripcion, NotaDeVozEntrante, PuertoNotasDeVoz, ResultadoNotaDeVoz, TranscripcionDeEntrada } from "./whatsapp/nota-de-voz.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
+export { extractMetaEchoes, registrarEcoDeApp } from "./whatsapp/eco-app.ts";
+export type { EcoDeApp, ExtraccionDeEcos, ResultadoEco } from "./whatsapp/eco-app.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
 export type { RecepcionConEspera } from "./whatsapp/inbound.ts";

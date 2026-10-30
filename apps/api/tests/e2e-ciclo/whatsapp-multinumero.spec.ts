@@ -4,7 +4,7 @@
 //
 // Todo es simulado (MetaCloudSimulator + repos en memoria + LLM guionado): jamas se llama a Meta ni se usa una credencial real.
 // Debe pasar sin los paquetes 02 y 03. El describe «hoy: ecos ignorados» documenta el comportamiento ACTUAL ante ecos de la app,
-// `history` y `smb_app_state_sync`; el paquete 02 (coexistencia) lo reemplazara.
+// `history` y `smb_app_state_sync`. Los ecos (`smb_message_echoes`) ya se guardan en el hilo (PR-1); history y sync siguen sin escribir (PR-14).
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LlmCompletionRequest } from "@atiende/agent-core";
@@ -191,10 +191,28 @@ describe("e2e WhatsApp multinumero — hoy: ecos ignorados (lo reemplazara el pa
     expect(stack.conversaciones.handoffs).toHaveLength(0);
   };
 
-  it("un eco de la app (smb_message_echoes) se acusa con 200 y NO escribe nada", async () => {
-    const d = await stack.sim.ecoDeApp({ phoneNumberId: numeroDe("T1"), to: clienteDe(600), text: "Hola, soy el dueno desde la app" });
+  // Coexistencia PR-1: el eco SI se guarda en el hilo (ya no se ignora); lo demas (history, sync) sigue acusado sin escribir.
+  const hilo = (cliente: string) => stack.ctx.restaurantesRepo.whatsappAppendTurn(stack.ctx.organizationId, `+${cliente}`, [], null, null, null);
+
+  it("un eco de la app (smb_message_echoes) se guarda en el hilo como personal (app), con hora y wamid, sin llamar al LLM ni enviar nada", async () => {
+    const d = await stack.sim.ecoDeApp({ phoneNumberId: numeroDe("T1"), to: clienteDe(600), text: "Hola, soy el dueno desde la app", id: "wamid.ECOE2E1", timestampSeconds: 1790000000 });
     expect(d.status).toBe(200);
-    await sinEfectos();
+    await stack.dispatchWhatsApp();
+    expect(turnos).toBe(0);
+    expect(stack.sim.accepted).toHaveLength(0);
+    expect(await hilo(clienteDe(600))).toEqual([{ role: "assistant", content: "Hola, soy el dueno desde la app", autor: "humano_app", wamid: "wamid.ECOE2E1", at: new Date(1790000000_000).toISOString() }]);
+  });
+
+  it("el mismo eco reenviado por Meta no se duplica", async () => {
+    for (let i = 0; i < 3; i++) expect((await stack.sim.ecoDeApp({ phoneNumberId: numeroDe("T1"), to: clienteDe(603), text: "Un momento", id: "wamid.ECOREP" })).status).toBe(200);
+    expect(await hilo(clienteDe(603))).toHaveLength(1);
+  });
+
+  it("un eco con firma valida pero de un numero desconocido se acusa con 200 y no escribe en ningun hilo", async () => {
+    stack.sim.addPhoneNumberId("799999999");
+    const d = await stack.sim.ecoDeApp({ phoneNumberId: "799999999", to: clienteDe(604), text: "no es de ningun tenant" });
+    expect(d.status).toBe(200);
+    expect(await hilo(clienteDe(604))).toHaveLength(0);
   });
 
   it("un history se acusa con 200 y NO escribe nada", async () => {

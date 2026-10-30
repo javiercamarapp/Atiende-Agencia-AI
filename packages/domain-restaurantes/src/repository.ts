@@ -129,6 +129,14 @@ export interface ConversationMessage {
   /** Solo en el mensaje del asistente de un turno que dejo un pedido creado: marca el limite entre un pedido y el siguiente
    * (el pin o link de Maps de antes de esa marca ya no pertenece al pedido en curso). Es metadato del historial: no se manda al modelo. */
   readonly pedidoCreado?: true;
+  /** Quien escribio un mensaje del asistente: `agente` (el asistente), `humano` (una persona desde el panel, con `staffId`) o `humano_app` (el personal desde la app de WhatsApp Business: eco de coexistencia). Ausente = mensaje viejo o de cliente. */
+  readonly autor?: "agente" | "humano" | "humano_app";
+  /** wamid de Meta (solo `humano_app`): llave de idempotencia del eco. */
+  readonly wamid?: string;
+  /** Hora real del mensaje (ISO 8601). Ausente en mensajes anteriores a esta version. */
+  readonly at?: string;
+  /** Persona del panel que contesto (`autor: "humano"`). */
+  readonly staffId?: string;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----
