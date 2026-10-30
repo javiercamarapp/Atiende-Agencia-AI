@@ -71,7 +71,7 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     const prompt = buildSystemPrompt(config, [{ id: "p1", name: "Victory Altabrisa", slug: "altabrisa", address: null }] as never, { isNew: true }, new Date("2026-10-05T15:00:00Z"), null);
     expect(prompt).toMatch(/Nada de alcohol a domicilio/);
     expect(prompt).toMatch(/\$200/);
-    expect(prompt).toMatch(/Propina solo con tarjeta/i);
+    expect(prompt).toMatch(/Propina: nunca la pregunte/i);
     expect(prompt).toMatch(/órdenes de 3/);
     expect(prompt).toMatch(/usted/i);
     expect(prompt).toContain("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
