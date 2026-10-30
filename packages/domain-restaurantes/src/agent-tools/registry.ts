@@ -1226,7 +1226,9 @@ async function exigirMinimoDeRecogida(repo: RestaurantesRepository, ctx: AgentTo
   if (name !== "cotizar_pedido" || ctx.channel !== "whatsapp" || input.canal !== "recoger" || textoOpcional(input.programado_para)) return;
   const texto = textoOpcional(input.hora_recogida)?.trim();
   if (!texto) return;
-  const ms = Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(texto) ? `${texto}:00.000Z` : texto);
+  // Sin zona explicita (Z / offset) la hora es ambigua: otras reglas la rechazan pidiendo la zona y este minimo no debe enmascararlas.
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(texto)) return;
+  const ms = Date.parse(texto);
   if (Number.isNaN(ms)) return;
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
   const minutos = (Math.floor(ms / 60_000) - Math.floor(ahora / 60_000));
