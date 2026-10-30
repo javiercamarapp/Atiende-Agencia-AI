@@ -42,6 +42,43 @@ export function redactarDatosDePago(texto: string): string {
     .replace(PATRON_VENCIMIENTO, "[vencimiento oculto]");
 }
 
+// ---- identificadores personales de Mexico (hoteles: el huesped los escribe al hacer check-in por chat) ----
+//
+// Deliberadamente SEPARADOS de `redactarDatosDePago`: esa funcion la comparten citas y restaurantes con etiquetas que
+// sus pruebas afirman. Un vertical que necesite ocultar identificadores compone ambas (`redactarDatosDePagoEIdentidad`).
+// El anclaje a "fecha valida + homoclave" y las exclusiones evitan comerse folios, telefonos y montos.
+
+const MES = "(?:0[1-9]|1[0-2])";
+const DIA = "(?:0[1-9]|[12]\\d|3[01])";
+const FECHA_AAMMDD = `\\d{2}${MES}${DIA}`;
+
+/** CURP (18 caracteres): 4 letras + fecha AAMMDD + sexo + entidad (2 letras) + 3 consonantes internas + homoclave + digito. */
+export const PATRON_CURP = new RegExp(`(?<![A-Za-z0-9])[A-Za-z]{4}${FECHA_AAMMDD}[HhMm][A-Za-z]{2}[B-DF-HJ-NP-TV-Zb-df-hj-np-tv-z]{3}[A-Za-z0-9]\\d(?![A-Za-z0-9])`, "g");
+/** RFC de persona fisica (13: 4 letras + fecha + homoclave) o moral (12: 3 letras + fecha + homoclave). */
+export const PATRON_RFC = new RegExp(`(?<![A-Za-z0-9])[A-Za-z\u00d1\u00f1&]{3,4}${FECHA_AAMMDD}[A-Za-z0-9]{3}(?![A-Za-z0-9])`, "g");
+/** RFC genericos del SAT (publico en general / extranjero): no identifican a nadie, se conservan. */
+const RFC_GENERICOS: ReadonlySet<string> = new Set(["XAXX010101000", "XEXX010101000"]);
+/**
+ * Pasaporte: solo con su etiqueta ("pasaporte", "passport"), porque el numero (6-9 caracteres alfanumericos) sin
+ * contexto es indistinguible de un folio. Exige al menos un digito en el numero para no comerse palabras.
+ */
+export const PATRON_PASAPORTE = /\b(pasaporte|passport)(\s*(?:n(?:u|\u00fa)mero|num\.?|no\.?|n\u00ba|#))?(\s*(?:es|is|:|-)?\s*)([A-Za-z0-9]{6,9})(?![A-Za-z0-9])/gi;
+
+/** Oculta CURP, RFC y pasaporte de un texto libre. Idempotente. */
+export function redactarIdentificadoresMx(texto: string): string {
+  return texto
+    .replace(PATRON_CURP, "[curp oculta]")
+    .replace(PATRON_RFC, (m) => (RFC_GENERICOS.has(m.toUpperCase()) ? m : "[rfc oculto]"))
+    .replace(PATRON_PASAPORTE, (m, etiqueta: string, numeroTxt: string | undefined, sep: string, numero: string) =>
+      /\d/.test(numero) ? `${etiqueta}${numeroTxt ?? ""}${sep}[pasaporte oculto]` : m,
+    );
+}
+
+/** Datos de pago + identificadores personales: lo que hoteles oculta ANTES de persistir un mensaje entrante. */
+export function redactarDatosDePagoEIdentidad(texto: string): string {
+  return redactarIdentificadoresMx(redactarDatosDePago(texto));
+}
+
 // ---- scrub general de texto libre (logs, errores, alertas) ----
 
 export type Reemplazo = string | ((coincidencia: string) => string);

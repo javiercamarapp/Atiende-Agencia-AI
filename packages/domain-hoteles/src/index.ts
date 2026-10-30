@@ -212,6 +212,7 @@ export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export type { HotelesWhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export { handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
+export { anteponerPrimerContacto, encabezadoPrimerContacto, LINEA_IA_PRIMER_CONTACTO } from "./whatsapp/primer-contacto.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createHotelesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export {
@@ -547,6 +548,7 @@ export * from "./fechas/index.ts";
 export * from "./lista-espera/index.ts";
 export * from "./huespedes/index.ts";
 export * from "./conversaciones/index.ts";
+export * from "./mensajes-huesped/index.ts";
 export * from "./privacy/index.ts";
 
 // "Chatea con tus datos" -- catalogo de hoteles (ver docs/DATA-CHAT.md). Nombres explicitos: el index NO reexporta el resto del modulo.

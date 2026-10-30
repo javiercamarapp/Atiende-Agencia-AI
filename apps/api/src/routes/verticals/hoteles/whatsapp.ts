@@ -15,7 +15,7 @@
 // `c.req.raw.arrayBuffer()`, NUNCA `.text()`/`.json()` de Hono — por eso app.ts monta
 // este sub-Hono sin heredar ningún middleware global de body-parsing.
 import { Hono } from "hono";
-import { PostgresConversacionesSistema, extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, resolvePropertyByPhoneNumberId, verifyMetaSignature } from "@atiende/domain-hoteles";
+import { PostgresConversacionesSistema, PostgresMensajesHuespedSistemaRepository, urlAvisoPrivacidad, extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, resolvePropertyByPhoneNumberId, verifyMetaSignature } from "@atiende/domain-hoteles";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerHotelesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -120,7 +120,15 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
           phone: `+${message.from}`,
           body: message.text.body,
           phoneNumberId,
-        }, conversaciones);
+        }, conversaciones, {
+          // H-P3-03: el primer mensaje de una conversacion nueva lleva la linea de IA y el enlace del aviso de privacidad publico del hotel
+          // (/hoteles/:orgSlug/aviso). El slug sale de la base (funcion de sistema de la migracion 046; sin ella, el encabezado sale sin enlace).
+          resolverAvisoUrl: async () => {
+            const sistema = deps.hotelesMensajesHuespedRepo ? deps.hotelesMensajesHuespedRepo(db) : new PostgresMensajesHuespedSistemaRepository(db);
+            const slug = await sistema.slugAviso(route.propertyId);
+            return slug ? urlAvisoPrivacidad(deps.env.appBaseUrl, slug) : null;
+          },
+        });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `hoteles.messaging_outbox`
         // (ver whatsapp/inbound.ts) y `POST /internal/whatsapp/dispatch`
