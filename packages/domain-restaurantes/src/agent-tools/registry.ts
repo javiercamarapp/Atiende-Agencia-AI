@@ -82,6 +82,7 @@ import {
   clasificarRespuestaCierre,
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
+  datosDelMensaje,
   decidirConfirmacion,
   etiquetaHoraEntrega,
   firmaDeCierre,
@@ -1242,6 +1243,20 @@ function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowConte
   return { ...(quotedPago ? { quotedPago } : {}), ...(quotedEfectivoCon !== undefined ? { quotedEfectivoCon } : {}) };
 }
 
+/**
+ * R22 (R2): el billete con el que paga el cliente manda sobre el `efectivo_con` del modelo (que a veces manda el total: «paga con $388» cuando el cliente dijo «Pagaré con $500»).
+ * Se toma del mensaje MAS RECIENTE del cliente que dio un monto de pago que alcanza el total. Con tarjeta, o si el cliente no dio ninguno, no se toca nada (no se inventa).
+ */
+function billeteDelCliente(pago: { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number }, ctx: AgentToolContext, total: number): { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number } {
+  if (pago.quotedPago !== "efectivo" || ctx.channel !== "whatsapp" || !ctx.conversacionReciente) return pago;
+  for (const m of [...ctx.conversacionReciente].reverse()) {
+    if (m.role !== "user") continue;
+    const billete = datosDelMensaje(m.content, total).efectivoCon;
+    if (billete !== undefined) return { ...pago, quotedEfectivoCon: billete };
+  }
+  return pago;
+}
+
 /** R11: propina de una cotizacion (pesos o porcentaje). Lo que manda el modelo; si no la menciona se conserva la de la cotizacion vigente; 0 / "sin propina" la quita. */
 function propinaDeCotizacion(input: Record<string, unknown>, previo: OrderFlowContext | undefined): { quotedPropinaMxn?: number; quotedPropinaPct?: number } {
   const hayMonto = input.propina !== undefined && input.propina !== null;
@@ -1380,7 +1395,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // Pago y efectivo_con NO entran a la huella, pero son parte de lo que el cliente debe ver y aceptar: cotizar temprano (sin pago) y re-cotizar con pago en el turno del "confirmo" ya no
       // hereda el turno de la cotizacion anterior (si no, confirmar_resumen y crear_pedido pasaban sin que el cliente viera nunca el resumen con su pago). Omitirlos conserva los previos.
       const previoVigente = previo && (snap.state === "cotizado" || snap.state === "confirmado") && flowNow(flow) - previo.quotedAtMs <= QUOTE_TTL_MS ? previo : undefined;
-      const pagoCotizado = pagoDeCotizacion(input, previoVigente);
+      const pagoCotizado = billeteDelCliente(pagoDeCotizacion(input, previoVigente), ctx, quotedQuote.total);
       const propinaCotizada = propinaDeCotizacion(input, previoVigente);
       // R11: con la maquina de cierre activa el SERVIDOR arma el texto del resumen (renglones, entrega, pago, propina y total) y se lo entrega al modelo para que lo pegue tal cual.
       const datosVigentes = ctx.channel === "whatsapp" ? datosDeCierreSiWhatsapp(ctx, input, previoVigente?.datosCierre) : undefined;
