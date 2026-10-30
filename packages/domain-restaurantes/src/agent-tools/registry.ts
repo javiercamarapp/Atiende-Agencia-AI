@@ -45,7 +45,7 @@ import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
 import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { acumuladoReciente, evaluarPedidoGrande, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { acumuladoReciente, cantidadEnPalabras, evaluarPedidoGrande, FRASE_NUMERICA_EN_PALABRAS, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { pedidoAceptaAgregado } from "../agregados/tipos.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
@@ -269,22 +269,24 @@ export type MotivoEscalacion = (typeof MOTIVOS_ESCALACION)[number];
  * `no_puedo_resolver` ante un producto que no existe ("chistorra") y la toma callaba al agente. Siguen siendo motivos validos (`normalizarMotivoEscalacion`). */
 export const MOTIVOS_SOLO_DEL_SISTEMA: ReadonlySet<string> = new Set(["no_puedo_resolver"]);
 
-/** PM R21 (T7-061): `pedido_grande` lo fija SOLO el servidor al superar el umbral (cotizar/crear). Si el modelo lo manda en `escalar_a_humano` se rechaza: una compra
- * normal escalada asi abria una toma de handoff y el «sí» del resumen ya no creaba el pedido. */
-/** ¿La cotizacion vigente (mas lo ya creado en la sesion) supera el umbral de total de pedido grande? Es la unica señal que el servidor tiene a mano en la herramienta. */
 /** Piezas/ordenes a partir de las cuales una SOLICITUD ya es de pedido grande aunque aun no haya cotizacion (el prompt: «mas de 30 piezas de un producto o varios kilos»). */
 export const SOLICITUD_GRANDE_PIEZAS = 30;
-const CANTIDAD_PALABRAS: Readonly<Record<string, number>> = { mil: 1000, cien: 100, ciento: 100, doscientos: 200, quinientos: 500 };
+const UNIDADES_PIEZAS = "ordenes|orden|piezas?|tacos?|gringas?|mestizas?|quesadillas?|tortas?|alitas|porciones|platillos?|pedidos?";
+const KG_EN_PALABRAS = new RegExp(`\\b(${FRASE_NUMERICA_EN_PALABRAS})\\s+(?:kg|kilos?|kgs)\\b`, "g");
+const PIEZAS_EN_PALABRAS = new RegExp(`\\b(${FRASE_NUMERICA_EN_PALABRAS})\\s+(?:${UNIDADES_PIEZAS})\\b`, "g");
 
 /** Pura: ¿el texto del CLIENTE pide una cantidad de pedido grande (mas de 30 piezas/ordenes, mas del umbral de kilos o «mil»...)? «1/4 kg de pechuga» o «2 ordenes» no. */
 export function solicitudEsPedidoGrande(texto: string): boolean {
   const t = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/,(?=\d{3}\b)/g, "");
   for (const m of t.matchAll(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|kgs)\b/g)) if (Number(m[1]!.replace(",", ".")) > PEDIDO_GRANDE_KG) return true;
   for (const m of t.matchAll(/\b(\d+)\s*(?:ordenes|orden|piezas?|tacos?|gringas?|mestizas?|quesadillas?|tortas?|alitas|porciones|platillos?|pedidos?)\b/g)) if (Number(m[1]) > SOLICITUD_GRANDE_PIEZAS) return true;
-  for (const m of t.matchAll(/\b(mil|cien|ciento|doscientos|quinientos)\s+(?:ordenes|orden|piezas?|tacos?|gringas?|mestizas?|quesadillas?|tortas?)\b/g)) if ((CANTIDAD_PALABRAS[m[1]!] ?? 0) > SOLICITUD_GRANDE_PIEZAS) return true;
+  // Cantidades en palabras («diez kilos», «cuarenta ordenes»): mismas unidades y umbrales que con digitos.
+  for (const m of t.matchAll(KG_EN_PALABRAS)) if ((cantidadEnPalabras(m[1]!) ?? 0) > PEDIDO_GRANDE_KG) return true;
+  for (const m of t.matchAll(PIEZAS_EN_PALABRAS)) if ((cantidadEnPalabras(m[1]!) ?? 0) > SOLICITUD_GRANDE_PIEZAS) return true;
   return false;
 }
 
+/** ¿La cotizacion vigente (mas lo ya creado en la sesion) supera el umbral de total de pedido grande? Es la unica señal que el servidor tiene a mano en la herramienta. */
 async function servidorConfirmaPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolContext): Promise<boolean> {
   if (ctx.pedidoGrandeDelServidor === true) return true;
   // Sin flujo de pedido (voz, otros llamadores): no hay con que contrastar y NO se rechaza a ciegas (el servidor de `crear_pedido` retiene el pedido grande por su cuenta).
@@ -307,6 +309,8 @@ async function servidorConfirmaPedidoGrande(repo: RestaurantesRepository, ctx: A
   );
 }
 
+/** PM R21 (T7-061): `pedido_grande` lo fija SOLO el servidor al superar el umbral (cotizar/crear). Si el modelo lo manda en `escalar_a_humano` se rechaza: una compra
+ * normal escalada asi abria una toma de handoff y el «sí» del resumen ya no creaba el pedido. */
 export const INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR = "El motivo pedido_grande lo fija el sistema al superar el umbral; no lo use. Si el cliente quiere cerrar su pedido, siga con cotizar_pedido y crear_pedido. Si necesita una persona por otra razón, use el motivo que corresponda (por ejemplo pedido_especial u otro).";
 
 export function normalizarMotivoEscalacion(raw: unknown): MotivoEscalacion {
@@ -2229,7 +2233,13 @@ async function dispatchTool(
       const bloquePedido = motivoEscalada && MOTIVOS_AVISO_CON_PEDIDO.has(motivoEscalada) ? await armarBloquePedidoParaAviso(repo, organizationId, ctx.phone) : null;
       const detalleDelModelo = esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined;
       // T7-038: si ya hay una cotizacion vigente el aviso no puede decir «no se ha cotizado».
-      const totalCotizado = esEscalada && ctx.flow && detalleDelModelo ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.quotedTotal : undefined;
+      // Solo cuenta una cotizacion NUEVA y vigente (flujo `cotizado` o `confirmado` -entre confirmar y crear-, dentro de QUOTE_TTL_MS): tras crear un pedido el flujo queda `creado` con el `quotedTotal` del pedido ORIGINAL,
+      // y ese total no es el de un agregado (un «el agregado no se ha cotizado» del modelo no debe reescribirse con el total del pedido viejo).
+      const snapFlow = esEscalada && ctx.flow && detalleDelModelo ? await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null) : null;
+      const totalCotizado =
+        ctx.flow && (snapFlow?.state === "cotizado" || snapFlow?.state === "confirmado") && snapFlow.context && !snapFlow.context.orderId && flowNow(ctx.flow) - snapFlow.context.quotedAtMs <= QUOTE_TTL_MS && flowNow(ctx.flow) - snapFlow.context.quotedAtMs >= 0
+          ? snapFlow.context.quotedTotal
+          : undefined;
       const detalleModelo = corregirAvisoCotizado(detalleDelModelo, totalCotizado);
       await registerCallbackRequest(repo, {
         organizationId,

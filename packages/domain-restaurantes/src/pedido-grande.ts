@@ -106,3 +106,58 @@ export function resumenPedidoGrande(args: {
   const texto = `Pedido grande por confirmar (NO se mando a cocina): ${motivo}.${acumulado} Total $${args.total.toFixed(2)}${previo}; pago ${args.paymentMethod ?? "sin definir"}; canal ${args.canal ?? "domicilio"}. Renglones: ${renglones}.`;
   return texto.length > 900 ? `${texto.slice(0, 897)}...` : texto;
 }
+
+// ── Cantidades escritas en palabras («diez kilos», «cuarenta y cinco ordenes», «doscientas piezas») ──────────────────────────────────────────────
+const PALABRAS_UNIDAD: Readonly<Record<string, number>> = {
+  cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15,
+  dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19, veinte: 20, veintiun: 21, veintiuno: 21, veintiuna: 21, veintidos: 22, veintitres: 23, veinticuatro: 24,
+  veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90,
+  cien: 100, ciento: 100, doscientos: 200, doscientas: 200, trescientos: 300, trescientas: 300, cuatrocientos: 400, cuatrocientas: 400, quinientos: 500, quinientas: 500,
+  seiscientos: 600, seiscientas: 600, setecientos: 700, setecientas: 700, ochocientos: 800, ochocientas: 800, novecientos: 900, novecientas: 900,
+};
+const PALABRA_NUM = Object.keys(PALABRAS_UNIDAD).concat("mil").sort((a, b) => b.length - a.length).join("|");
+/** Una frase numerica en palabras: «cuarenta», «treinta y cinco», «ciento veinte», «dos mil», seguida de la unidad. Texto ya en minusculas y sin acentos. */
+export const FRASE_NUMERICA_EN_PALABRAS = `(?:${PALABRA_NUM})(?:\\s+(?:y\\s+)?(?:${PALABRA_NUM}))*`;
+
+/** Gramatica de un numero 0-999 en palabras: [centena] [decena «y» unidad | decena | 0-29]. Devuelve `null` si las palabras no forman un numero valido («tres cuatro», «cien cien»). */
+function menorDeMil(palabras: readonly string[]): number | null {
+  let i = 0;
+  let valor = 0;
+  const v = (k: number): number | undefined => PALABRAS_UNIDAD[palabras[k] ?? ""];
+  const cen = v(i);
+  if (cen !== undefined && cen >= 100) {
+    // «cien» va solo; «ciento» y «doscientos»... admiten un resto.
+    valor = cen;
+    i++;
+    if (palabras[i - 1] === "cien") return i === palabras.length ? valor : null;
+    if (i === palabras.length) return palabras[i - 1] === "ciento" ? null : valor;
+  }
+  if (i >= palabras.length) return valor === 0 && palabras.length === 0 ? null : valor;
+  const d = v(i);
+  if (d === undefined || d >= 100) return null;
+  i++;
+  if (d >= 30 && d % 10 === 0) {
+    if (i === palabras.length) return valor + d;
+    if (palabras[i] !== "y") return null;
+    const u = v(i + 1);
+    if (u === undefined || u < 1 || u > 9 || i + 2 !== palabras.length) return null;
+    return valor + d + u;
+  }
+  return i === palabras.length ? valor + d : null;
+}
+
+/** Valor de una frase numerica en palabras en español (texto en minusculas y SIN acentos): «treinta y cinco» -> 35, «ciento veinte» -> 120, «mil» -> 1000, «dos mil» -> 2000.
+ * `null` si no es una cantidad valida: palabras numericas adyacentes que no forman un numero («tres cuatro», «cien cien», «tres cuarenta») no se suman. */
+export function cantidadEnPalabras(frase: string): number | null {
+  const palabras = frase.trim().split(/\s+/).filter((w) => w !== "");
+  if (palabras.length === 0) return null;
+  const iMil = palabras.indexOf("mil");
+  if (iMil === -1) return menorDeMil(palabras);
+  if (palabras.indexOf("mil", iMil + 1) !== -1) return null;
+  const antes = palabras.slice(0, iMil);
+  const despues = palabras.slice(iMil + 1);
+  const miles = antes.length === 0 ? 1 : menorDeMil(antes);
+  if (miles === null || miles < 1) return null;
+  const resto = despues.length === 0 ? 0 : menorDeMil(despues);
+  return resto === null ? null : miles * 1000 + resto;
+}
