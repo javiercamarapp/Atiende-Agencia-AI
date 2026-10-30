@@ -12,6 +12,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify, errors as joseErrors } from "jose";
 import type { Vertical } from "@atiende/core-tenancy";
 
+/** Claim de una SESIÓN DE SOPORTE (superadmin "entrando" a un cliente). Su sola presencia hace que la guarda central de la API
+ *  (apps/api/src/soporte/guard.ts) trate el token como de soporte: solo lectura (`ro`), ligado a la sesión `sid` de la
+ *  bitácora y verificado en SQL en cada petición. El `exp` del token es el fin de la sesión; nunca hay refresh token. */
+export interface SoporteClaim {
+  readonly sid: string;
+  readonly ro: boolean;
+}
+
 export interface AccessTokenClaims {
   readonly sub: string; // userId
   /** UNA sola organización activa por token — un usuario con varias organizaciones
@@ -22,6 +30,7 @@ export interface AccessTokenClaims {
   /** generaliza "hotel_ids"; null = todas las properties de la organización. */
   readonly property_ids: string[] | null;
   readonly email: string;
+  readonly soporte?: SoporteClaim;
   readonly type: "access";
 }
 

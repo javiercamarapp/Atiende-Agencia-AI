@@ -10,6 +10,7 @@ import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { useChatDatosDisponible } from "./BotonChatDatos.tsx";
 import { BannerPlan } from "./BannerPlan.tsx";
+import { BannerSoporte } from "./BannerSoporte.tsx";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
 
@@ -59,6 +60,8 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
         {...shell}
         sidebarPie={pie}
       >
+        {/* Sesión de soporte del superadmin dentro de este cliente: banner permanente (solo si el token trae el claim `soporte`). */}
+        <BannerSoporte apiBaseUrl={apiBaseUrl} token={token} />
         {/* PL-16: aviso de fin de prueba / tope de mensajes del plan, comun a las 6 verticales. */}
         <BannerPlan apiBaseUrl={apiBaseUrl} token={token} planHref={planHrefDe(notificacionesHref)} />
         {children}

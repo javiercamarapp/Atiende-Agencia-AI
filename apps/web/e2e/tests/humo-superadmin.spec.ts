@@ -88,7 +88,7 @@ test.describe("superadmin @humo", () => {
     await entrar.click();
     const dialogo = page.getByRole("alertdialog", { name: /Entrar a / });
     await dialogo.getByLabel(/Motivo/).fill("corto");
-    await expect(dialogo.getByRole("button", { name: "Abrir sesión" })).toBeDisabled();
+    await expect(dialogo.getByRole("button", { name: "Entrar al panel" })).toBeDisabled();
     expect(await mock.escrituras()).toEqual([]);
     await dialogo.getByRole("button", { name: "Cancelar" }).click();
 
