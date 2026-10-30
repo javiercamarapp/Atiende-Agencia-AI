@@ -598,7 +598,10 @@ export async function* generarVolumenDemo(repoBase: RestaurantesRepository, opti
           });
           alcohol = [...elegidos.values()].some((c) => c.requiresAdult);
         }
-        propina = paymentMethod === "tarjeta" && rng.chance(0.45) ? rng.pick([10, 15, 20, 30, 40]) : null;
+        // R22 #1: la politica de PM es propina «nunca» (el agente no la pregunta ni la registra; con tarjeta la maneja la terminal): se conservan las mismas tiradas del
+        // generador para que el resto de la muestra siga siendo determinista, pero el pedido ya no lleva propina.
+        void (paymentMethod === "tarjeta" && rng.chance(0.45) ? rng.pick([10, 15, 20, 30, 40]) : null);
+        propina = null;
         try {
           prepared = await prepareCreateOrder(
             repo,

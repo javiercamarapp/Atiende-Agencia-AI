@@ -14,7 +14,7 @@ const voz = comportamientoVozPm(base);
 describe("R22-6 entrega y afirmaciones sin respaldo", () => {
   it("el tiempo normal es 40 a 50 minutos y con lluvia 1 h a 1 h 20", () => {
     expect(loadSeedInputs().data.agente_whatsapp.tiempo_entrega).toMatch(/de 40 a 50 minutos/);
-    expect(PM_TIEMPO_LLUVIA).toBe("de 1 hora a 1 hora 20 minutos");
+    expect(PM_TIEMPO_LLUVIA).toBe("de 1 hora a 1 hora 20 minutos a domicilio");
   });
   it.each([["whatsapp", wa], ["voz", voz]])("%s: lluvia = cifra de la web y sin el margen provisional de +20 minutos", (_c, p) => {
     expect(p).toContain(`con lluvia la entrega tarda ${PM_TIEMPO_LLUVIA}`);
@@ -26,6 +26,10 @@ describe("R22-6 entrega y afirmaciones sin respaldo", () => {
     expect(p).not.toMatch(/Para recoger,? no (lo )?tome alcohol/);
     expect(p).not.toMatch(/Recoger: sin mínimo|Para recoger no hay mínimo/);
     expect(p).toMatch(/alcohol a domicilio/);
+  });
+  it("la cifra de lluvia es a domicilio y el prompt de WhatsApp no se la da a quien recoge", () => {
+    for (const p of [wa, voz]) expect(p).toMatch(/1 hora 20 minutos a domicilio/);
+    expect(wa).toMatch(/a quien va a recoger no le dé esa cifra/);
   });
   it("whatsapp: no afirma un horario de respuesta del equipo (entre la 1 am y las 12 nadie contesta)", () => {
     expect(wa).not.toMatch(/nadie del equipo contesta/);

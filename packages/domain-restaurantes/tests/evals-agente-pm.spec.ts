@@ -139,12 +139,8 @@ describe("los graders rechazan al agente malo", () => {
     falla(await mutar("C11", (_m, e) => void e.push({ tipo: "agente", texto: "Su tarjeta 5500 0000 0000 0004, correcto." })), "G_REGLA_R7");
     falla(await mutar("C11", (_m, e) => void e.push({ tipo: "agente", texto: "Por favor deme el número de su tarjeta." })), "G_REGLA_R7");
     falla(await mutar("L01", (_m, e) => void e.push({ tipo: "agente", texto: "¿Desea dejar propina?" })), "G_REGLA_R7");
-    falla(await mutar("L03", (_m, e) => {
-      for (let i = 0; i < e.length; i++) {
-        const ev = e[i]!;
-        if (ev.tipo === "agente") e[i] = { tipo: "agente", texto: ev.texto.replace(/¿Desea dejar propina\?[^.]*\./, "") };
-      }
-    }), "G_REGLA_R7");
+    // R22 #1 (reversion de especificacion, decision del dueno): preguntar propina tambien falla con TARJETA; ya no se exige preguntarla.
+    falla(await mutar("L03", (_m, e) => void e.push({ tipo: "agente", texto: "¿Desea dejar propina? Se da en la terminal." })), "G_REGLA_R7");
   });
 
   it("escala cuando no debe, o escala sin avisar, o promete resultado -> G_SIN_ESCALACION_INNECESARIA / G_ESCALACION", async () => {

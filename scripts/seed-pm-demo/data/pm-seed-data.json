@@ -202,7 +202,7 @@
   "reglas": {
     "pedido_minimo_domicilio": 200,
     "pedido_minimo_recoger": null,
-    "propina_politica": "solo_tarjeta"
+    "propina_politica": "nunca"
   },
   "categorias": [
     "Tacos",

@@ -1,4 +1,4 @@
-// R22 decision 3: un pedido grande (>= $4,000) se toma como cualquier pedido con el total de cotizar_pedido; el aviso al gerente lo da el
+// R22 decision 3: un pedido grande (MAS de $4,000, o mas de 5 kg; el umbral del servidor es > 4000) se toma como cualquier pedido con el total de cotizar_pedido; el aviso al gerente lo da el
 // SERVIDOR al crear el pedido (`avisarPedidoGrandeASucursal`, aviso `escalada:pedido_grande`; cubierto en tests/qa/r1-pedido-grande.spec.ts).
 // El agente ya NO escala antes de cotizar ni llama escalar_a_humano con ese motivo (WhatsApp y voz).
 import { describe, expect, it } from "vitest";

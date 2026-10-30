@@ -58,12 +58,12 @@ describe("buildPmSeedPlan", () => {
     expect(plan.summary.branchProducts).toBe(278 + 265 + 265 + 264 + 278 + 278);
   });
 
-  it("politica PM: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina solo con tarjeta", () => {
+  it("politica PM: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina nunca (R22 #1)", () => {
     expect(plan.policy).toEqual({
       horario: [{ dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00", ultimoPedidoDomicilio: "23:15", ultimoPedidoRecoger: "00:30" }], // ultimo pedido fijo por tipo (Javier, 24-oct-2026)
       pedidoMinimoDomicilio: 200,
       pedidoMinimoRecoger: null,
-      propinaPolitica: "solo_tarjeta",
+      propinaPolitica: "nunca",
     });
   });
 
@@ -363,7 +363,7 @@ function seedRepoDesdePlan(datos: PmSeedData = data) {
       const price = p.branchPrices[b.id];
       if (price !== undefined) repo.seedBranchProduct({ propertyId, productId: productIds.get(p.name)!, price, isAvailable: true });
     }
-    repo.seedBranchPolicy(propertyId, { pedidoMinimoDomicilio: plan.policy.pedidoMinimoDomicilio, propinaPolitica: "solo_tarjeta" });
+    repo.seedBranchPolicy(propertyId, { pedidoMinimoDomicilio: plan.policy.pedidoMinimoDomicilio, propinaPolitica: "nunca" });
   }
   return { plan, repo, organizationId, propertyBySlug, productIds };
 }

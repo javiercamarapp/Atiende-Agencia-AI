@@ -6,7 +6,7 @@
 --      con el suyo), 279 productos (237 + 40 fracciones de kilo + Extra Salsa y Extra Pina), 42 de alcohol no_domicilio,
 --      1628 precios por sucursal (T1 278 + T2 265 + T3 265 + T5 264 + T7 278 + T8 278), TODAS con la lista T1-2026 (T5 con el
 --      precio de su menu impreso), fracciones de kilo a precio proporcional (redondeo $0.50).
---   B. Reglas del modelo: politica (horario 12:00-01:00, minimo $200, propina solo tarjeta), promocion
+--   B. Reglas del modelo: politica (horario 12:00-01:00, minimo $200, propina nunca), promocion
 --      2x1 del lunes y combo de cortesia del martes (nachos de pastor + 2 aguas), ambos solo recoger y solo en Francisco de Montejo, Pensiones y Galerias, voz deshabilitada, zonas de sucursales con coordenadas, asignacion
 --      por colonia con la funcion SQL real.
 --   C. Idempotencia: ejecutar dos veces no duplica nada; no reactiva la voz ni reinicia usos de la
@@ -145,7 +145,7 @@ select count(*)::int as productos_de_t2_t3_sin_precio_en_t1_deberia_ser_0
     and not exists (select 1 from restaurantes.branch_products t1 join restaurantes.branch_detail bd1 on bd1.property_id = t1.property_id where bd1.organization_id = o.id and bd1.slug = 'prol-montejo' and t1.product_id = bp.product_id);
 rollback;
 
-\echo '=== B1. Politica en las 7 sucursales: minimo a domicilio $200, propina solo con tarjeta y horario propio verificado el 23-oct-2026 (T1 lun-jue 18-01 y vie-dom 12-01; T2 lun-vie 18-24 y sab-dom 12-24; T3 todos los dias 18-24; T4 12-21; T5, T7 y T8 12-01 general) ==='
+\echo '=== B1. Politica en las 7 sucursales: minimo a domicilio $200, propina nunca (R22) y horario propio verificado el 23-oct-2026 (T1 lun-jue 18-01 y vie-dom 12-01; T2 lun-vie 18-24 y sab-dom 12-24; T3 todos los dias 18-24; T4 12-21; T5, T7 y T8 12-01 general) ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as politicas_correctas_deberia_ser_7
@@ -161,7 +161,7 @@ select count(*)::int as politicas_correctas_deberia_ser_7
     ('garcia-lavin',  '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
     ('altabrisa',     '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb)
   ) as e(slug, horario) on e.slug = bd.slug and e.horario = bp.horario
-  where o.slug = 'los-taquitos-de-pm' and bp.pedido_minimo_domicilio = 200 and bp.pedido_minimo_recoger is null and bp.propina_politica = 'solo_tarjeta';
+  where o.slug = 'los-taquitos-de-pm' and bp.pedido_minimo_domicilio = 200 and bp.pedido_minimo_recoger is null and bp.propina_politica = 'nunca';
 rollback;
 
 \echo '=== B1b. Directorio y domicilio (migracion 057): Galerias visible e informativa, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='

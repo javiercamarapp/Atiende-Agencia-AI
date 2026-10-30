@@ -48,6 +48,14 @@ describe("clasificador de alto riesgo: lo real SI escala, con o sin acento", () 
   ];
   for (const [frase, motivo] of casos) it(`'${frase}' -> ${motivo}`, () => expect(classifyHighRiskIntent(frase)?.motivo, frase).toBe(motivo));
 
+  // R22 #2: transferencia YA REALIZADA escala (hay dinero movido); la peticion en futuro NO escala (el agente dice que no se acepta).
+  for (const frase of ["ya te transferí", "ya les deposité el pago", "ya pagué por transferencia", "ya hice el spei", "ya hice el depósito", "ya hice la transferencia", "aquí está el comprobante", "te mando el comprobante"]) {
+    it(`transferencia ya realizada: '${frase}' -> transferencia`, () => expect(classifyHighRiskIntent(frase)?.motivo, frase).toBe("transferencia"));
+  }
+  for (const frase of ["¿aceptan transferencia?", "pagaré por transferencia", "pagaré por depósito", "quiero pagar por transferencia", "les hago una transferencia", "puedo pagar con spei?"]) {
+    it(`transferencia en futuro: '${frase}' NO escala (va al agente)`, () => expect(classifyHighRiskIntent(frase), frase).toBeNull());
+  }
+
   it("'me faltó la bebida' sin decir de que pedido solo es queja si el ultimo pedido ya salio o se entrego", () => {
     const frase = "me faltó la bebida";
     expect(classifyHighRiskIntent(frase)).toBeNull();

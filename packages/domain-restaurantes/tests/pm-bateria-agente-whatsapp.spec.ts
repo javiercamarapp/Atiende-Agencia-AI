@@ -172,6 +172,20 @@ describe("E.7 / E.4 motivos de alto riesgo: se avisan al equipo ANTES del modelo
     });
   }
 
+  it("R22 #2: una transferencia YA REALIZADA escala 'transferencia' sin llamar al modelo y el agente NO confirma el pago ni crea pedido", async () => {
+    const f = dosSucursales();
+    const spy = vi.spyOn(f.repo, "createCallbackRequest");
+    const { handler, provider } = handlerGuionado(f.repo, () => texto("NO DEBERIA LLAMARSE"));
+    const turn = await handler.handleInboundMessage(entrada(f.organizationId, "ya hice el spei, aquí está el comprobante"));
+    expect(provider.callCount).toBe(0);
+    expect(turn.orderId).toBeNull();
+    expect(turn.reply).toMatch(/no registramos pagos por transferencia/);
+    expect(turn.reply).toMatch(/efectivo o tarjeta/);
+    expect(turn.reply).not.toMatch(/recibimos su pago|pago registrado|quedó pagado|confirmamos su pago/i);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toMatchObject({ reason: "escalada:transferencia" });
+  });
+
   it("R22 #2: la transferencia ya no se intercepta ni escala: pasa al agente (que dice que no se acepta) y no registra ningun cobro", async () => {
     const f = dosSucursales();
     const spy = vi.spyOn(f.repo, "createCallbackRequest");

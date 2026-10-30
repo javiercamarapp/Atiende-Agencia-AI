@@ -20,6 +20,9 @@ describe("R22-2 transferencia: no se acepta y no escala", () => {
     const motivos = /con estos motivos: ([^\n]+)\./.exec(p) ?? /Motivos: ([^\n]+?)\. /.exec(p);
     expect(motivos?.[1]?.split(", ").map((m) => m.split(" ")[0])).not.toContain("transferencia");
   });
+  it("voz paso 7: solo efectivo o tarjeta (terminal)", () => {
+    expect(voz).toMatch(/Transferencia: no se acepta, solo efectivo o tarjeta \(terminal\)/);
+  });
   it("H8 (no decida usted) ya no incluye el pago por transferencia", () => {
     expect(wa).not.toMatch(/H8\.[^\n]*transferencia/);
     expect(voz).not.toMatch(/H8\.[^\n]*transferencia/);
