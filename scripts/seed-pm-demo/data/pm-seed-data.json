@@ -67,11 +67,11 @@
       "id": "T3",
       "nombre": "Pensiones",
       "slug": "pensiones",
-      "direccion": "Calle 11 No. 371 x Av. 32, San Damián, Mérida",
+      "direccion": "Calle 52 No 37 por Av. 7, Residencial Pensiones, CP 97217, Mérida",
       "telefono": "999 987 5410",
       "lat": null,
       "lng": null,
-      "coordenadas_pendientes_de_verificar": "Calle 11 No. 371 x Av. 32, San Damián, Mérida (direccion del dueño; tel. 999 987 5410). Sin ficha de Google Maps ni otra fuente citable verificada: lat/lng quedan en null.",
+      "coordenadas_pendientes_de_verificar": "Calle 52 No 37 por Av. 7, Residencial Pensiones, CP 97217 (sitio oficial y ficha de Google Maps coinciden; R22, 30-oct-2026; la direccion anterior del dueño, Calle 11 No. 371 x Av. 32, no aparece en ninguna fuente publica). El pin de Google (coordenadas_propuestas) sigue PENDIENTE de confirmar por el dueño: lat/lng quedan en null.",
       "activa": true,
       "zona_cliente": "poniente",
       "horario": [
