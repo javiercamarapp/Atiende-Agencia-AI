@@ -26,7 +26,7 @@ describe("ConsultaCfdiSatSoap", () => {
   it("vigente: parsea Estado, EsCancelable y EstatusCancelacion y envia la expresion impresa validada", async () => {
     const { adaptador, llamadas } = adaptadorConRespuesta(sobre("Vigente", "<a:EsCancelable>Cancelable sin aceptación</a:EsCancelable><a:EstatusCancelacion/>"));
     const r = await adaptador.consultar(ENTRADA);
-    expect(r).toEqual({ consultado: true, estado: "vigente", esCancelable: "Cancelable sin aceptación", estatusCancelacion: null });
+    expect(r).toEqual({ consultado: true, estado: "vigente", esCancelable: "Cancelable sin aceptación", estatusCancelacion: null, codigoEstatus: "S - Comprobante obtenido satisfactoriamente.", validacionEfos: "200" });
     expect(llamadas).toHaveLength(1);
     expect(String(llamadas[0]!.init.body)).toContain("<![CDATA[?re=AAA010101AA1&rr=RRR010101RR1&tt=116.000000&id=6129984C-4F5E-4A0F-9B7E-0D4D8A1B2C3D]]>");
     expect((llamadas[0]!.init.headers as Record<string, string>).SOAPAction).toBe("http://tempuri.org/IConsultaCFDIService/Consulta");
@@ -35,6 +35,18 @@ describe("ConsultaCfdiSatSoap", () => {
   it("cancelado con estatus de cancelacion", async () => {
     const { adaptador } = adaptadorConRespuesta(sobre("Cancelado", "<a:EsCancelable>No cancelable</a:EsCancelable><a:EstatusCancelacion>Cancelado sin aceptación</a:EstatusCancelacion>"));
     expect(await adaptador.consultar(ENTRADA)).toMatchObject({ consultado: true, estado: "cancelado", esCancelable: "No cancelable", estatusCancelacion: "Cancelado sin aceptación" });
+  });
+
+  it("parsea CodigoEstatus y ValidacionEFOS (antes se descartaban) y la cancelacion «En proceso»", async () => {
+    const { adaptador } = adaptadorConRespuesta(sobre("Vigente", "<a:EsCancelable>Cancelable con aceptación</a:EsCancelable><a:EstatusCancelacion>En proceso</a:EstatusCancelacion>"));
+    expect(await adaptador.consultar(ENTRADA)).toEqual({
+      consultado: true,
+      estado: "vigente",
+      esCancelable: "Cancelable con aceptación",
+      estatusCancelacion: "En proceso",
+      codigoEstatus: "S - Comprobante obtenido satisfactoriamente.",
+      validacionEfos: "200",
+    });
   });
 
   it("no encontrado", async () => {

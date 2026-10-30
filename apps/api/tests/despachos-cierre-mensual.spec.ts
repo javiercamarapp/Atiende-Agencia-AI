@@ -9,11 +9,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import { getTemplate } from "@atiende/domain-despachos";
+import type { EstadoModulosCierre } from "@atiende/domain-despachos";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
 let ctx: DespachosTestContext;
+
+const ESTADO_SANO_MODULOS_CON = (parcial: Partial<EstadoModulosCierre>): EstadoModulosCierre => ({
+  debeCentavos: 0, haberCentavos: 0, polizas: 0, polizasDescuadradas: 0, cfdiTotal: 0, cfdiSinPoliza: 0, cfdiInvalidos: 0, conciliacionSesiones: 0, conciliacionAbiertas: 0,
+  movimientos: 0, movimientosConciliados: 0, pagosProvisionales: 1, solicitudEstado: null, solicitudPendientes: 0, periodicidad: "mensual", ...parcial,
+});
 
 beforeEach(async () => {
   ctx = await buildDespachosTestContext(buildApp);
@@ -241,13 +247,12 @@ describe("POST /despachos/:propertyId/cierre-mensual/periodos/:periodoId/auto-ch
     const app = buildApp(ctx.deps);
     const { periodo } = await abrirPeriodo();
 
-    // `cfdi_pending_count: 5` hace que el predicado de "cfdi_verificado" (única
-    // tarea sin dependencias, ver templates.ts) falle a propósito -- a diferencia de
-    // un body vacío, donde `Number(undefined ?? 0) === 0` SÍ pasaría (mismo
-    // predicado que arriba) y auto-completaría esa tarea igual.
+    // paridad3: el estado de los modulos lo calcula el SERVIDOR. 5 CFDI sin poliza hacen que el predicado de "cfdi_verificado" (unica tarea sin
+    // dependencias, ver templates.ts) falle a proposito.
+    ctx.pilotoRepo.sembrarEstadoModulos(ctx.propertyId, 2026, 3, ESTADO_SANO_MODULOS_CON({ cfdiSinPoliza: 5 }));
     const res = await app.request(
       `/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/auto-check`,
-      authedJson(ctx.staff.contador.token, { moduleState: { cfdi_pending_count: 5 } }),
+      authedJson(ctx.staff.contador.token, { moduleState: { cfdi_pending_count: 0 } }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { completadas: unknown[] };

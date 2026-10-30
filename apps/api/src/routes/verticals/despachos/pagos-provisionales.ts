@@ -64,7 +64,7 @@ export function traducirPagos(err: unknown): never {
   throw err;
 }
 
-interface ParametrosCapturados {
+export interface ParametrosCapturados {
   coeficienteUtilidad?: string | null;
   perdidasPendientesCentavos?: number | null;
   ajustePagosPreviosCentavos?: number | null;
@@ -174,10 +174,85 @@ export async function registrarRepDespachos(deps: AppDeps, db: TenantDbSession, 
   return { folioFiscalRep: analisis.folioFiscalRep, flujo: analisis.flujo, registrados, yaExistian, omitidos, rechazados, advertencias: analisis.advertencias };
 }
 
+export interface ContextoPapelProvisional {
+  readonly ficha: ClienteFichaRecord;
+  readonly regimen: string;
+  readonly papel: PapelProvisional;
+  readonly guardados: readonly PapelGuardado[];
+  readonly papelesDisponibles: boolean;
+  readonly parametros: ParametrosCapturados;
+}
+
+/**
+ * Calcula el papel de un periodo (ISR e IVA) con los parametros guardados + los capturados. UNA sola implementacion para las rutas de pagos
+ * provisionales y para la pre-generacion al cerrar el periodo (cierre-mensual.ts). Lanza `ApiError` (conflicto/validacion/503) igual que la ruta.
+ */
+export async function calcularPapelPeriodo(deps: AppDeps, db: TenantDbSession, propertyId: string, ejercicio: number, mes: number, capturados: ParametrosCapturados, regimenSolicitado: string | undefined): Promise<ContextoPapelProvisional> {
+  const ficha = await carteraDe(deps, db).obtenerFicha(propertyId);
+  if (!ficha) throw Errors.conflict("Captura la ficha del cliente (RFC y régimen fiscal) en Cartera antes de calcular pagos provisionales.");
+  let regimen = regimenSolicitado;
+  if (regimen !== undefined && !ficha.regimenesFiscales.includes(regimen)) throw Errors.validation(`regimen: el cliente no tiene el régimen ${regimen} en su ficha (${ficha.regimenesFiscales.join(", ")}).`);
+  regimen ??= ficha.regimenesFiscales.find((r) => (REGIMENES_ISR_SOPORTADOS as readonly string[]).includes(r)) ?? ficha.regimenesFiscales[0]!;
+
+  const repo = repoDe(deps, db);
+  // Secuencial a propósito: una sola transacción compartida por request (nunca Promise.all sobre la sesión).
+  const base = await repo.leerBase(propertyId, ejercicio, mes);
+  if (!base.facturasDisponibles) throw Errors.serviceUnavailable("Los pagos provisionales aún no están disponibles en esta base: falta aplicar la migración 018 (CFDI completo, emitido/recibido).");
+  if (base.truncado) throw Errors.conflict("El ejercicio tiene más de 20,000 CFDI: no se calcula un papel incompleto. Divide el trabajo por cliente o contacta a soporte.");
+  const lectura = await repo.listarPapeles(propertyId, ejercicio);
+  const guardados = lectura.papeles;
+
+  const pagosPrevios = guardados.filter((p) => p.impuesto === "ISR" && p.estado === "presentado" && p.mes < mes).reduce((s, p) => s + (p.montoPagadoCentavos ?? 0), 0);
+  const ivaAnterior = guardados.find((p) => p.impuesto === "IVA" && p.estado === "presentado" && p.mes === mes - 1);
+  const parametros: ParametrosCapturados = { ...parametrosGuardados(guardados, mes), ...capturados };
+  const papel = calcularPapelProvisional({
+    ejercicio,
+    mes,
+    regimen,
+    rfc: ficha.rfc,
+    facturas: base.facturas,
+    pagos: base.pagos,
+    pagosDisponibles: base.pagosDisponibles,
+    isr: { coeficienteUtilidad: parametros.coeficienteUtilidad ?? null, perdidasPendientesCentavos: parametros.perdidasPendientesCentavos ?? null, ajustePagosPreviosCentavos: parametros.ajustePagosPreviosCentavos ?? null },
+    iva: { saldoFavorAnteriorCentavos: parametros.saldoFavorAnteriorCentavos ?? null },
+    pagosPreviosIsrPresentadosCentavos: pagosPrevios,
+    saldoFavorIvaMesAnteriorCentavos: ivaAnterior ? ivaAnterior.aFavorCentavos : null,
+  });
+  return { ficha, regimen, papel, guardados, papelesDisponibles: lectura.estado === "disponible", parametros };
+}
+
+/** Guarda el borrador (ISR si se pudo calcular, e IVA) del papel ya calculado. Mismo cuerpo que `PUT .../pagos-provisionales/:periodo`; no presenta nada. */
+export async function guardarBorradorPapel(deps: AppDeps, db: TenantDbSession, propertyId: string, x: ContextoPapelProvisional, ejercicio: number, mes: number): Promise<{ isr: boolean; iva: boolean }> {
+  const repo = repoDe(deps, db);
+  const guardado: { isr: boolean; iva: boolean } = { isr: false, iva: false };
+  try {
+    if (x.papel.isr.estado === "calculado") {
+      await repo.guardarPapel(propertyId, {
+        ejercicio, mes, impuesto: "ISR", regimen: x.regimen,
+        baseCentavos: x.papel.isr.baseCentavos, determinadoCentavos: x.papel.isr.determinadoCentavos, acreditableCentavos: x.papel.isr.acreditableCentavos,
+        aCargoCentavos: x.papel.isr.aCargoCentavos, aFavorCentavos: x.papel.isr.aFavorCentavos,
+        parametros: { regimen: x.regimen, coeficienteUtilidad: x.parametros.coeficienteUtilidad ?? null, perdidasPendientesCentavos: x.parametros.perdidasPendientesCentavos ?? 0, ajustePagosPreviosCentavos: x.parametros.ajustePagosPreviosCentavos ?? 0 },
+        advertencias: x.papel.advertencias.length,
+      });
+      guardado.isr = true;
+    }
+    await repo.guardarPapel(propertyId, {
+      ejercicio, mes, impuesto: "IVA", regimen: x.regimen,
+      baseCentavos: x.papel.iva.baseCentavos, determinadoCentavos: x.papel.iva.determinadoCentavos, acreditableCentavos: x.papel.iva.acreditableCentavos,
+      aCargoCentavos: x.papel.iva.aCargoCentavos, aFavorCentavos: x.papel.iva.aFavorCentavos,
+      parametros: { saldoFavorAnteriorCentavos: x.parametros.saldoFavorAnteriorCentavos ?? 0 },
+      advertencias: x.papel.advertencias.length,
+    });
+    guardado.iva = true;
+  } catch (err) {
+    return traducirPagos(err);
+  }
+  return guardado;
+}
+
 export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const repoDeApp = (db: TenantDbSession): PagosProvisionalesRepository => repoDe(deps, db);
-  const carteraDeApp = (db: TenantDbSession): CarteraRepository => carteraDe(deps, db);
 
   app.use("/despachos/:propertyId/pagos-provisionales/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -202,50 +277,11 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
     return { ejercicio: Number(m[1]), mes: Number(m[2]), periodo };
   }
 
-  interface Contexto {
-    readonly ficha: ClienteFichaRecord;
-    readonly regimen: string;
-    readonly papel: PapelProvisional;
-    readonly guardados: readonly PapelGuardado[];
-    readonly papelesDisponibles: boolean;
-    readonly parametros: ParametrosCapturados;
-  }
+  type Contexto = ContextoPapelProvisional;
 
   /** Calcula el papel de un periodo. `parametros` = lo capturado en esta petición (si hay) sobre lo guardado. */
-  async function calcular(c: Context<CoreAuthHonoEnv>, ejercicio: number, mes: number, capturados: ParametrosCapturados, regimenSolicitado: string | undefined): Promise<Contexto> {
-    const db = c.get("db");
-    const propertyId = c.req.param("propertyId") ?? "";
-    const ficha = await carteraDeApp(db).obtenerFicha(propertyId);
-    if (!ficha) throw Errors.conflict("Captura la ficha del cliente (RFC y régimen fiscal) en Cartera antes de calcular pagos provisionales.");
-    let regimen = regimenSolicitado;
-    if (regimen !== undefined && !ficha.regimenesFiscales.includes(regimen)) throw Errors.validation(`regimen: el cliente no tiene el régimen ${regimen} en su ficha (${ficha.regimenesFiscales.join(", ")}).`);
-    regimen ??= ficha.regimenesFiscales.find((r) => (REGIMENES_ISR_SOPORTADOS as readonly string[]).includes(r)) ?? ficha.regimenesFiscales[0]!;
-
-    const repo = repoDeApp(db);
-    // Secuencial a propósito: una sola transacción compartida por request (nunca Promise.all sobre la sesión).
-    const base = await repo.leerBase(propertyId, ejercicio, mes);
-    if (!base.facturasDisponibles) throw Errors.serviceUnavailable("Los pagos provisionales aún no están disponibles en esta base: falta aplicar la migración 018 (CFDI completo, emitido/recibido).");
-    if (base.truncado) throw Errors.conflict("El ejercicio tiene más de 20,000 CFDI: no se calcula un papel incompleto. Divide el trabajo por cliente o contacta a soporte.");
-    const lectura = await repo.listarPapeles(propertyId, ejercicio);
-    const guardados = lectura.papeles;
-
-    const pagosPrevios = guardados.filter((p) => p.impuesto === "ISR" && p.estado === "presentado" && p.mes < mes).reduce((s, p) => s + (p.montoPagadoCentavos ?? 0), 0);
-    const ivaAnterior = guardados.find((p) => p.impuesto === "IVA" && p.estado === "presentado" && p.mes === mes - 1);
-    const parametros: ParametrosCapturados = { ...parametrosGuardados(guardados, mes), ...capturados };
-    const papel = calcularPapelProvisional({
-      ejercicio,
-      mes,
-      regimen,
-      rfc: ficha.rfc,
-      facturas: base.facturas,
-      pagos: base.pagos,
-      pagosDisponibles: base.pagosDisponibles,
-      isr: { coeficienteUtilidad: parametros.coeficienteUtilidad ?? null, perdidasPendientesCentavos: parametros.perdidasPendientesCentavos ?? null, ajustePagosPreviosCentavos: parametros.ajustePagosPreviosCentavos ?? null },
-      iva: { saldoFavorAnteriorCentavos: parametros.saldoFavorAnteriorCentavos ?? null },
-      pagosPreviosIsrPresentadosCentavos: pagosPrevios,
-      saldoFavorIvaMesAnteriorCentavos: ivaAnterior ? ivaAnterior.aFavorCentavos : null,
-    });
-    return { ficha, regimen, papel, guardados, papelesDisponibles: lectura.estado === "disponible", parametros };
+  function calcular(c: Context<CoreAuthHonoEnv>, ejercicio: number, mes: number, capturados: ParametrosCapturados, regimenSolicitado: string | undefined): Promise<Contexto> {
+    return calcularPapelPeriodo(deps, c.get("db"), c.req.param("propertyId") ?? "", ejercicio, mes, capturados, regimenSolicitado);
   }
 
   const respuesta = (x: Contexto, extra: Record<string, unknown> = {}) => ({
@@ -283,29 +319,7 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
     const x = await calcular(c, ejercicio, mes, capturados, regimen);
     const propertyId = c.req.param("propertyId");
     const repo = repoDeApp(c.get("db"));
-    const guardado: { isr: boolean; iva: boolean } = { isr: false, iva: false };
-    try {
-      if (x.papel.isr.estado === "calculado") {
-        await repo.guardarPapel(propertyId, {
-          ejercicio, mes, impuesto: "ISR", regimen: x.regimen,
-          baseCentavos: x.papel.isr.baseCentavos, determinadoCentavos: x.papel.isr.determinadoCentavos, acreditableCentavos: x.papel.isr.acreditableCentavos,
-          aCargoCentavos: x.papel.isr.aCargoCentavos, aFavorCentavos: x.papel.isr.aFavorCentavos,
-          parametros: { regimen: x.regimen, coeficienteUtilidad: x.parametros.coeficienteUtilidad ?? null, perdidasPendientesCentavos: x.parametros.perdidasPendientesCentavos ?? 0, ajustePagosPreviosCentavos: x.parametros.ajustePagosPreviosCentavos ?? 0 },
-          advertencias: x.papel.advertencias.length,
-        });
-        guardado.isr = true;
-      }
-      await repo.guardarPapel(propertyId, {
-        ejercicio, mes, impuesto: "IVA", regimen: x.regimen,
-        baseCentavos: x.papel.iva.baseCentavos, determinadoCentavos: x.papel.iva.determinadoCentavos, acreditableCentavos: x.papel.iva.acreditableCentavos,
-        aCargoCentavos: x.papel.iva.aCargoCentavos, aFavorCentavos: x.papel.iva.aFavorCentavos,
-        parametros: { saldoFavorAnteriorCentavos: x.parametros.saldoFavorAnteriorCentavos ?? 0 },
-        advertencias: x.papel.advertencias.length,
-      });
-      guardado.iva = true;
-    } catch (err) {
-      return traducirPagos(err);
-    }
+    const guardado = await guardarBorradorPapel(deps, c.get("db"), propertyId, x, ejercicio, mes);
     await auditar(c, "despachos.pagos-provisionales:guardar", { propertyId, periodo, regimen: x.regimen, isr: guardado.isr, iva: guardado.iva });
     const lectura = await repo.listarPapeles(propertyId, ejercicio);
     return c.json(respuesta({ ...x, guardados: lectura.papeles, papelesDisponibles: lectura.estado === "disponible" }, { guardado }));
