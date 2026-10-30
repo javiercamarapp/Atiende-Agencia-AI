@@ -1,12 +1,21 @@
 // Tests reales del recordatorio 24h (fix de timezone real preservado) y del aviso
 // best-effort a lista de espera tras reagendar.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { MAX_LISTA_ESPERA_LIMIT, notifyWaitlistAfterReschedule, previewListaEspera, runConfirmacionCitaCore, runListaEsperaCore } from "../src/reminders.ts";
 import { buildCitasFixture } from "./fixtures.ts";
 import { ThrowsOnStaffWhatsAppRepo } from "./support/throws-on-staff-whatsapp-repo.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("runConfirmacionCitaCore", () => {
   it("encola un recordatorio real para una cita dentro de la ventana de 24h, con la hora en el timezone del NEGOCIO, nunca UTC/host", async () => {

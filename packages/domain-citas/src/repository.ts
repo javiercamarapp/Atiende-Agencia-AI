@@ -11,6 +11,7 @@
 // fielmente el mapeo real AT423->conflict / AT404->not_found / AT409->conflict del
 // origen sin acoplar el puerto a códigos de error de Postgres.
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
+import type { InsertWaitlistResult, NewWaitlistEntryInput } from "./waitlist-enrollment.ts";
 import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
 import type { PlantillaWhatsappInput, PlantillaWhatsappRecord } from "./whatsapp/plantillas.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
@@ -566,10 +567,14 @@ export interface CitasRepository {
    * calcula", nunca decide nada nuevo sobre el cliente. */
   /** C-05 -- conteo de citas por estado con `starts_at` en [fromIso, toIso) (agregado SQL,
    * nunca una lista truncada por `limit`). Todos los estados vienen presentes (0 si no hay). */
-  countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>>;
+  /** `propertyId`: solo las citas de esa sucursal (`property_id = propertyId`) mas las del proveedor sin sucursal asignada (`property_id` nulo = toda la
+   * organizacion); sin `propertyId`, toda la organizacion (avisos, onboarding). */
+  countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentStatus, number>>>;
   /** UNI-RES-citas -- citas NO canceladas dadas de alta (`created_at`) desde `sinceIso` (inclusive), por canal de origen (`source`).
    * Agregado SQL de solo lectura sobre columnas existentes desde 001; todos los canales vienen presentes (0 si no hay). */
-  countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>>;
+  /** `propertyId`: solo las citas de esa sucursal (`property_id = propertyId`) mas las del proveedor sin sucursal asignada (`property_id` nulo = toda la
+   * organizacion); sin `propertyId`, toda la organizacion (avisos, onboarding). */
+  countAppointmentsCreatedBySource(organizationId: string, sinceIso: string, propertyId?: string | null): Promise<Readonly<Record<AppointmentSource, number>>>;
   /** C-05 -- clientes dados de alta (`created_at`) desde `sinceIso` (inclusive). */
   countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number>;
   listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage>;
@@ -608,7 +613,9 @@ export interface CitasRepository {
    * calcula", nunca decidir algo nuevo sobre la cita). `limit` acota el peor caso
    * (una organización con un volumen anómalo de citas en el rango pedido) sin
    * cursor — un rango de fechas ya acota naturalmente el tamaño esperado. */
-  listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]>;
+  /** `propertyId`: solo las citas de esa sucursal (`property_id = propertyId`) mas las del proveedor sin sucursal asignada (`property_id` nulo = toda la
+   * organizacion); sin `propertyId`, toda la organizacion (avisos, onboarding). */
+  listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number, propertyId?: string | null): Promise<readonly AppointmentRecord[]>;
   cancelAppointmentIdempotent(organizationId: string, appointmentId: string): Promise<CancelResult>;
   cancelAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<CancelResult>;
   /** Fase 7 -- confirmar/completar/marcar no-show desde el panel de staff (única
@@ -738,6 +745,14 @@ export interface CitasRepository {
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
+  /** QA R1 features-12 -- anota a un cliente en `citas.appointment_waitlist` (existe desde 003, sin migracion nueva). Idempotente: una anotacion ACTIVA identica
+   * (mismo telefono, proveedor, servicio, fechas y franja) se devuelve tal cual (`already_waiting`); mas de `maxActivePerPhone` activas por telefono -> `too_many`. */
+  insertWaitlistEntry(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult>;
+  /** Igual que `insertWaitlistEntry`, pero para la sesion de SISTEMA (agente de WhatsApp/voz: rol `authenticated` con `auth.uid()` NULL, sujeto a RLS). La
+   * unica politica de `citas.appointment_waitlist` es la de staff, asi que el SELECT/INSERT directo no funciona ahi: se hace con la funcion `security definer`
+   * de solo-sistema `citas.system_enroll_waitlist` (migracion 034), que ademas serializa por (organizacion, telefono). Si la migracion 034 aun no esta aplicada
+   * (42883/42P01/42703) devuelve `{ outcome: "unavailable" }` bajo SAVEPOINT (nunca un 500 ni una transaccion abortada). */
+  insertWaitlistEntryAsSystem(input: NewWaitlistEntryInput, maxActivePerPhone: number): Promise<InsertWaitlistResult | { readonly outcome: "unavailable" }>;
   /** f2-citas-lista-de-espera — igual que `loadLiveWaitlistCandidates`, pero para
    * sesión de SISTEMA (`auth.uid()` null): `citas.appointment_waitlist` solo tiene
    * policy de RLS de staff (membership), así que el SELECT plano de

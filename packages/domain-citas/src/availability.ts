@@ -128,14 +128,27 @@ export function computeAvailableSlots(input: ComputeAvailableSlotsInput): Slot[]
   const durationMs = durationMinutes * 60_000;
   const bufferBeforeMs = bufferBeforeMinutes * 60_000;
 
-  const slots: Slot[] = [];
+  // Reglas del mismo dia que se traslapan (el panel acepta 09:00-17:00 mas 12:15-14:00) se UNEN antes de generar la grilla: sin esto salian horarios
+  // encimados (12:00 y 12:15) o repetidos.
+  const merged: { start: number; end: number }[] = [];
   for (const window of windows) {
-    const windowStart = zonedTimeToUtc(dateStr, window.start, timeZone);
-    const windowEnd = zonedTimeToUtc(dateStr, window.end, timeZone);
-    if (!(windowEnd > windowStart)) continue;
+    const start = zonedTimeToUtc(dateStr, window.start, timeZone).getTime();
+    const end = zonedTimeToUtc(dateStr, window.end, timeZone).getTime();
+    if (!(end > start)) continue;
+    merged.push({ start, end });
+  }
+  merged.sort((x, y) => x.start - y.start);
+  const unidas: { start: number; end: number }[] = [];
+  for (const w of merged) {
+    const ultima = unidas[unidas.length - 1];
+    if (ultima && w.start <= ultima.end) ultima.end = Math.max(ultima.end, w.end);
+    else unidas.push({ ...w });
+  }
 
-    let blockStart = windowStart.getTime();
-    while (blockStart + blockMs <= windowEnd.getTime()) {
+  const slots: Slot[] = [];
+  for (const window of unidas) {
+    let blockStart = window.start;
+    while (blockStart + blockMs <= window.end) {
       const slotStart = blockStart + bufferBeforeMs;
       const slotEnd = slotStart + durationMs;
       const blockEnd = blockStart + blockMs;

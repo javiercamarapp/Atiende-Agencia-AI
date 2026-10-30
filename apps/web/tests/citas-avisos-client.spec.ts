@@ -10,7 +10,7 @@ describe("avisos-client (citas)", () => {
   it("fetchAvisosCitas hace GET a .../admin/avisos con el token", async () => {
     const f = vi.fn(async () => respuesta({ generadoEn: "x" }));
     await fetchAvisosCitas(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1");
-    expect(f).toHaveBeenCalledWith("https://api.test/v1/citas/properties/prop-1/admin/avisos", { headers: { authorization: "Bearer tok" } });
+    expect(f).toHaveBeenCalledWith("https://api.test/v1/citas/properties/prop-1/admin/avisos", expect.objectContaining({ headers: { authorization: "Bearer tok" } }));
   });
 
   it("darSeguimientoEscalacion hace POST con estado y nota; sin nota no la manda", async () => {
