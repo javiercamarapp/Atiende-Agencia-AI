@@ -360,7 +360,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         pedido_numero: { type: "integer", description: "Numero del pedido a repetir (el que devolvio historial_pedidos). Opcional: sin el, el mas reciente." },
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Opcional: por defecto el mismo canal de la vez pasada." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
-        payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
+        payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida (efectivo o tarjeta). La propina nunca se pregunta: con tarjeta la maneja la terminal." },
         adult_confirmed: { type: "boolean", description: "true únicamente si el pedido incluye alcohol y el cliente confirmó mayoría de edad." },
       },
       required: ["branch_slug"],
@@ -419,15 +419,15 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         adult_confirmed: { type: "boolean", description: "true únicamente si el pedido incluye alcohol y el cliente confirmó mayoría de edad." },
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Si el pedido es a domicilio o para recoger en sucursal. Por defecto 'domicilio'." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
-        payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
+        payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida (efectivo o tarjeta). La propina nunca se pregunta: con tarjeta la maneja la terminal." },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
         requested_complements: { type: "array", items: { type: "string", enum: [...COMPLEMENTOS_PEDIBLES] }, description: "Mismos complementos que mandará en crear_pedido (salsas pedidas, sin costo): mándelos AQUÍ para que el resumen los muestre al cliente antes de su sí. No cambia el total." },
         omit_default_complements: { type: "array", items: { type: "string", enum: [...DEFAULT_COMPLEMENTS, "cebolla"] }, description: "Mismas salsas que el cliente quitó y que mandará en crear_pedido; mándelas AQUÍ para que el resumen las muestre." },
         notes: { type: "string", description: "Mismos ajustes que mandará en crear_pedido (por ejemplo «sin cebolla»); mándelos AQUÍ para que el resumen se los muestre al cliente. Sin teléfonos ni datos personales." },
         otro_pedido: { type: "boolean", description: "true SOLO si el cliente pidió expresamente OTRO pedido igual al que ya quedó registrado. Un 'sí' de más o repetir el resumen NO es otro pedido: no lo mande." },
         efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Mándelo AQUÍ en cuanto lo dé para que el resumen lo muestre." },
-        propina: { type: "number", description: "Propina en pesos que dio el cliente (solo si preguntar_propina fue true). No suma al total. Mándela aquí en cuanto la dé para que el resumen la muestre." },
-        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta. Mándela aquí en cuanto la dé para que el resumen la muestre." },
+        propina: { type: "number", description: "Propina en pesos, SOLO si el cliente la dio por su cuenta y la política de la sucursal la registra (preguntar_propina true; en PM nunca: la terminal o el repartidor la manejan). Nunca pregunte por ella. No suma al total." },
+        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta y solo si la política de la sucursal la registra (preguntar_propina true). Nunca pregunte por ella." },
         programado_para: { type: "string", description: "Solo si el cliente quiere dejar el pedido para después (otro día o dentro de MÁS de 30 minutos con hora exacta): fecha y hora ISO 8601 con el offset de la SUCURSAL (por ejemplo 2026-10-03T14:00:00-06:00 en Mérida; nunca Z ni UTC: un offset distinto se rechaza), con al menos 30 minutos de anticipación y máximo 7 días. La sucursal debe estar abierta a esa hora. Debe ser la MISMA que usaste al cotizar. Si el cliente pasa 'en cuanto esté', 'ahorita' o 'en 20 minutos', NO mandes este campo (omítelo; no mandes texto vacío)." },
         minutos_para_recoger: { type: "integer", description: "Solo canal 'recoger': si el cliente dijo un PLAZO (\"en 40 minutos\", \"en media hora\" = 30, \"dentro de una hora\" = 60), mande ESOS minutos en vez de calcular hora_recogida: el servidor calcula la hora con su reloj. Mande el mismo valor en cotizar_pedido y en crear_pedido. Para una hora exacta (\"a las 8:30\") use hora_recogida; con \"en cuanto esté\" no mande ninguno." },
         hora_recogida: { type: "string", description: "Solo canal 'recoger' y SIN programado_para: la hora a la que pasará el cliente (por ejemplo 'en 40 minutos'), en ISO 8601 con el offset de la SUCURSAL (Mérida -06:00; un offset distinto, Z o UTC se rechaza), calculada con la HORA LOCAL de la sucursal. El servidor la valida (no pasada, de hoy, dentro del horario). Omítela si pasa 'en cuanto esté'." },
@@ -471,8 +471,8 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         adult_confirmed: { type: "boolean" },
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
-        propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
-        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta y si cotizar_pedido indicó preguntar_propina: true. El servidor calcula los pesos; no haga la cuenta ni mande propina junto con este campo." },
+        propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio por su cuenta (nunca la pregunte). No suma al total." },
+        propina_porcentaje: { type: "number", description: "Propina como PORCENTAJE del total ('de propina 10%' = 10), solo con tarjeta, si cotizar_pedido indicó preguntar_propina: true y el cliente la dio por su cuenta (nunca la pregunte). El servidor calcula los pesos; no haga la cuenta ni mande propina junto con este campo." },
         efectivo_con: { type: "number", description: "Solo pago en efectivo: monto con el que paga el cliente ('cambio de 500' = 500). Debe ser mayor o igual al total de cotizar_pedido." },
         llevar_terminal: { type: "boolean", description: "true si el cliente pide que lleven terminal (pago con tarjeta a domicilio)." },
         indicaciones_acceso: { type: "string", description: "Solo domicilio, una línea corta (máx. 200 caracteres): cómo llegar o avisar ('timbre del depto 6', 'avísenme al llegar'). No pongas aquí la ubicación: el pin ya se guarda solo." },
@@ -523,7 +523,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
           type: "string",
           enum: MOTIVOS_ESCALACION.filter((m) => !MOTIVOS_SOLO_DEL_SISTEMA.has(m)),
           description:
-            "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande (SOLO si pide mas de 30 piezas, mas de 5 kg o la cotizacion pasa de $4,000; el servidor lo valida y rechaza una compra normal) / tiempos_entrega (exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
+            "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande (lo fija el sistema al crear el pedido; NO lo use: un pedido grande se cotiza y se toma normal) / tiempos_entrega (exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
         },
         resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente. No escriba «no se ha cotizado» si ya cotizó: ponga lo cotizado. Si quiere CANCELAR un pedido ya registrado, diga «cancelar» en el resumen (el sistema usa la frase de cancelación); si solo agrega o cambia algo, no use esa palabra." },
       },
@@ -906,7 +906,7 @@ function assertEntradasReconocidas(input: Record<string, unknown>): void {
   const propina = input.propina;
   if (typeof propina === "string" && porcentajeDePropina(propina) !== null) return;
   if (!esSinPropina(propina) && (typeof propina !== "number" || !Number.isFinite(propina))) {
-    throw new OrderValidationError("La propina debe ser un monto numérico en pesos (por ejemplo 20). Pregúntele al cliente cuánto desea dejar y vuelva a mandarla como número.");
+    throw new OrderValidationError("La propina debe ser un monto numérico en pesos (por ejemplo 20). Si el cliente la mencionó, tome el monto como número (nunca pregunte por la propina).");
   }
 }
 
@@ -1256,7 +1256,7 @@ function propinaDeCotizacion(input: Record<string, unknown>, previo: OrderFlowCo
 
 /** Texto que acompana a `resumen_canonico` (solo con la maquina de cierre activa). */
 const INSTRUCCION_RESUMEN_CANONICO =
-  "Cuando ya tenga todos los datos (producto, entrega, pago y, si aplica, propina), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. El resumen solo muestra las salsas pedidas (requested_complements), las quitadas (omit_default_complements) y las notas (notes) que usted mandó en cotizar_pedido: mándelos ahí con los mismos valores que mandará en crear_pedido. Si el cliente quita o cambia una salsa o una nota, mande la lista completa (incluso vacía) en cotizar_pedido; omitir el campo conserva lo anterior. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
+  "Cuando ya tenga todos los datos (producto, entrega y pago), muéstrele al cliente el RESUMEN COPIANDO `resumen_canonico` TAL CUAL (puede anteponer una frase corta y amable; no cambie renglones, cifras ni la pregunta final). No llame confirmar_resumen en este turno: espere el «sí» del cliente en su mensaje siguiente. El resumen solo muestra las salsas pedidas (requested_complements), las quitadas (omit_default_complements) y las notas (notes) que usted mandó en cotizar_pedido: mándelos ahí con los mismos valores que mandará en crear_pedido. Si el cliente quita o cambia una salsa o una nota, mande la lista completa (incluso vacía) en cotizar_pedido; omitir el campo conserva lo anterior. Un dato de pago o propina NO es el «sí»: guárdelo, vuelva a llamar cotizar_pedido con ese dato (payment_method, efectivo_con, propina o propina_porcentaje) y muestre el resumen nuevo.";
 
 const CONFLICT_MESSAGE ="La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
 
@@ -1530,7 +1530,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         confirmedAtMs: flowNow(flow),
         ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(current)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
       });
-      if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
+      if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash, instruccion: INSTRUCCION_TRAS_CONFIRMAR_RESUMEN }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };
     }
     throw new OrderValidationError(CONFLICT_MESSAGE);
@@ -2258,6 +2258,9 @@ async function dispatchTool(
   }
 }
 
+
+/** Voz (VZ01, 3 repeticiones de 46 escenarios): el modelo llamaba confirmar_resumen, releia el resumen y nunca llamaba crear_pedido. El resultado ahora le dice el paso que sigue. */
+export const INSTRUCCION_TRAS_CONFIRMAR_RESUMEN = "Resumen confirmado. Llame AHORA crear_pedido con los mismos productos cotizados; no relea el resumen ni pida otro sí.";
 
 /** Cliente cuyo pedido ya salio (o se entrego): no se puede agregar al mismo viaje; se ofrece pedido aparte (decision del dueno, Q5-Q7). */
 export const MENSAJE_AGREGADO_PEDIDO_YA_SALIO = "Una disculpa, su pedido ya salió y ya no se le puede agregar. Si gusta le tomo un pedido nuevo con eso, o puede recogerlo en la sucursal. ¿Se lo tomo?";

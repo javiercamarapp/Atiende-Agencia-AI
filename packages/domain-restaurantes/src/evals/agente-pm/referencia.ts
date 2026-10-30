@@ -199,7 +199,7 @@ async function flujoComanda(mundo: Mundo, opts: OpcionesFlujo): Promise<void> {
   if (opts.canal === "recoger") mundo.agente(`¿A qué hora pasa a recoger?`);
   else mundo.agente("Gracias.");
   if (opts.canal === "recoger") mundo.cliente(datos.hora ?? `en ${opts.hora ?? 30} minutos`);
-  const propina = opts.pago === "tarjeta" ? " ¿Desea dejar propina? Se da en la terminal." : "";
+  const propina = ""; // R22 #1: el agente nunca pregunta propina
   const resumen = opts.items.map((i) => `${i.piezas} ${sinParentesis(i.producto)}`).join(", ");
   const extras = [...opts.ajustes.map((a) => a.replace(/_/g, " ")), opts.tortilla ? `tortilla ${opts.tortilla}` : ""].filter(Boolean).join(", ");
   mundo.agente(

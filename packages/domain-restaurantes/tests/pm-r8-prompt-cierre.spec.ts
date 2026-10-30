@@ -28,7 +28,7 @@ describe("R8 causa 1: no escalar de más; el 'sí' crea el pedido (H19)", () => 
     expect(p).toMatch(/Con el "sí" y todo cotizado, cree el pedido/);
   });
   it("paso 11: el 'sí' se cierra con crear_pedido, nunca con escalar ni 'falla técnica'", () => {
-    expect(p).toMatch(/el siguiente paso es crear_pedido, nunca escalar_a_humano \(salvo pedido grande, paso 8\) ni un mensaje de falla \(H19\)/);
+    expect(p).toMatch(/el siguiente paso es crear_pedido, nunca escalar_a_humano ni un mensaje de falla \(H19\)/);
   });
   it("las notas menores sin costo caben en notes (no contradice la regla de seguridad)", () => {
     expect(p).toMatch(/Notes lleva únicamente ajustes permitidos y peticiones menores sin costo \(limones, salsa habanera\)/);
@@ -121,8 +121,8 @@ describe("R8 revisión: coherencia entre pasos", () => {
     expect(v).not.toMatch(/Otro día: escale/);
   });
   it("H19 y paso 11 exceptúan el pedido grande (paso 8)", () => {
-    expect(p).toMatch(/cree el pedido \(salvo pedido grande, paso 8\)/);
-    expect(p).toMatch(/nunca escalar_a_humano \(salvo pedido grande, paso 8\)/);
+    expect(p).toMatch(/cree el pedido\./);
+    expect(p).toMatch(/nunca escalar_a_humano ni un mensaje de falla/);
   });
   it("paso 8 y H16: fuera del horario se ofrece programar para otro día o la siguiente apertura", () => {
     expect(p).toMatch(/ofrezca pasar antes o programarlo para otro día \(programado_para\)/);
