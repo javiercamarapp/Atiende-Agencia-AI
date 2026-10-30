@@ -8,7 +8,21 @@ export const VOCABULARIO_VOZ_MAX = 50;
 
 type ProductoVocab = Pick<SearchableProduct, "name" | "searchKeywords"> & { readonly isPopular?: boolean; readonly displayOrder?: number };
 
-const limpiar = (t: string): string => t.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+// Sin regex con backtracking: se acota la longitud y los parentesis se quitan recorriendo la cadena una sola vez (lineal).
+const LARGO_ENTRADA_MAX = 200;
+function limpiar(t: string): string {
+  let fuera = "";
+  let prof = 0;
+  for (const ch of t.slice(0, LARGO_ENTRADA_MAX)) {
+    if (ch === "(") prof += 1;
+    else if (ch === ")") {
+      if (prof > 0) prof -= 1;
+      else fuera += ch;
+    } else if (prof === 0) fuera += ch;
+    else continue;
+  }
+  return fuera.split(/\s/).filter((x) => x !== "").join(" ");
+}
 
 export function vocabularioMenuVoz(productos: readonly ProductoVocab[], max: number = VOCABULARIO_VOZ_MAX): string[] {
   const orden = [...productos].sort(

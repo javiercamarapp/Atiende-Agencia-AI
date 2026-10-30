@@ -30,6 +30,14 @@ describe("vocabularioMenuVoz: orden y mezcla con 80 productos", () => {
   });
 });
 
+describe("vocabularioMenuVoz: entrada hostil", () => {
+  it("miles de '(' no se cuelgan (tiempo lineal) y siguen quitando los parentesis normales", () => {
+    const t0 = Date.now();
+    expect(vocabularioMenuVoz([{ name: "(".repeat(50_000), searchKeywords: [] }, { name: "Gringas (orden de 3)", searchKeywords: [] }])).toEqual(["Gringas"]);
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+});
+
 describe("armarInstruccionLlamada: vocabulario", () => {
   it("trae los productos disponibles de la sucursal y no los de otra ni los agotados", async () => {
     const repo = new InMemoryRestaurantesRepository();
