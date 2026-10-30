@@ -119,6 +119,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
   private readonly esperandoAlCliente: EstadoEspera = { pendiente: false, huellaOida: null, huellaCotizada: null, cotizoEnTurno: false };
   /** Vuelta (modelo -> herramienta -> modelo) en curso: solo el texto de esa vuelta se corrige al interrumpir. */
   private vueltaActual = 0;
+  /** El proveedor rechazo `tool_choice` forzado (400/422): no se vuelve a intentar en esta sesion. */
+  private forzadoRechazado = false;
   /** Lo que ya sono al momento de interrumpir (se fija en `interrumpir`, antes de que el reloj avance). */
   private oidasAlInterrumpir: string[] | null = null;
   /** Posicion en `mensajes` del mensaje de texto final del turno en curso (para corregirlo si se interrumpe). */
@@ -297,12 +299,16 @@ class SesionCascadaV2 implements VozSesionLlamada {
         ...(herramientaForzada ? { herramientaForzada } : {}),
       });
     try {
-      if (forzar) {
+      if (forzar && !this.forzadoRechazado) {
         try {
           return await pedir(forzar);
         } catch (err) {
-          // Algunos modelos/rutas rechazan `tool_choice` forzado (p. ej. con razonamiento): se vuelve al camino de siempre, sin forzar.
           if (senal.aborted) throw err;
+          // Solo un 400/422 (parametro no admitido) cuenta como rechazo del `tool_choice`: se recuerda por sesion y se sigue sin forzar. 429, 5xx, timeout o sin status son fallas
+          // del proveedor y siguen el camino normal de error (no se repite la peticion como si fuera un rechazo).
+          const status = (err as { status?: unknown } | null)?.status;
+          if (status !== 400 && status !== 422) throw err;
+          this.forzadoRechazado = true;
           this.log("v2_crear_forzado_rechazado", { herramienta: forzar });
         }
       }
@@ -340,6 +346,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     // El codigo interpreta el turno del cliente: solo una afirmacion («si», «ok», «correcto»...) cuenta como confirmacion del resumen.
     this.esperandoAlCliente.afirmacion = esAfirmacion(texto);
     this.esperandoAlCliente.cierreListo = false;
+    this.esperandoAlCliente.forzadoEnTurno = false;
     // Un rechazo/cancelacion deja sin vigencia el resumen leido (ver el cierre del turno).
     const rechazo = !this.esperandoAlCliente.afirmacion && esRechazo(texto);
     let habladoTurno = "";
@@ -423,6 +430,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
         if (this.esperandoAlCliente.cierreListo === true && this.o.confirmacionAntesDeCrear) {
           forzarCrear = this.o.confirmacionAntesDeCrear.crear;
           this.esperandoAlCliente.cierreListo = false;
+          this.esperandoAlCliente.forzadoEnTurno = true;
           this.log("v2_crear_forzado", { herramienta: forzarCrear });
         }
         if (!vigente()) break;

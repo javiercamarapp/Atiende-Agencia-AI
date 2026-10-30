@@ -9,9 +9,24 @@ const CONFIG: VozConfig = { habilitado: true, proveedor: "gemini-3.8-live", voic
 
 describe("vocabularioMenuVoz", () => {
   it("nombres sin parentesis de presentacion, unicos, y luego apodos; tope 50", () => {
-    expect(vocabularioMenuVoz([{ name: "Gringas (orden de 3)", searchKeywords: ["mestizas"] }, { name: "Gringas (individual)", searchKeywords: ["alambre", "ab"] }])).toEqual(["Gringas", "mestizas", "alambre"]);
+    expect(vocabularioMenuVoz([{ name: "Gringas (orden de 3)", searchKeywords: ["mestizas"] }, { name: "Gringas (individual)", searchKeywords: ["alambre", "ab"] }])).toEqual(["Gringas", "alambre", "mestizas"]);
     const muchos = Array.from({ length: 80 }, (_, i) => ({ name: `Platillo ${i}`, searchKeywords: [] as string[] }));
     expect(vocabularioMenuVoz(muchos)).toHaveLength(50);
+  });
+});
+
+describe("vocabularioMenuVoz: orden y mezcla con 80 productos", () => {
+  const productos = Array.from({ length: 80 }, (_, i) => ({ name: `Platillo ${String(i).padStart(2, "0")}`, searchKeywords: [`apodo${String(i).padStart(2, "0")}`] }));
+  it("tope 50, deterministico (mismo resultado barajando la entrada) y los apodos entran aunque haya mas de 50 productos", () => {
+    const v = vocabularioMenuVoz(productos);
+    expect(v).toHaveLength(50);
+    expect(v.filter((t) => t.startsWith("apodo")).length).toBeGreaterThanOrEqual(20);
+    expect(vocabularioMenuVoz([...productos].reverse())).toEqual(v);
+  });
+  it("los populares y el displayOrder van primero", () => {
+    const v = vocabularioMenuVoz([{ name: "Zeta", searchKeywords: [] }, { name: "Alfa", searchKeywords: [] }, { name: "Gringas", searchKeywords: ["mestizas"], isPopular: true }], 2);
+    expect(v).toEqual(["Gringas", "mestizas"]);
+    expect(vocabularioMenuVoz([{ name: "Beta", searchKeywords: [], displayOrder: 2 }, { name: "Alfa", searchKeywords: [], displayOrder: 5 }, { name: "Cero", searchKeywords: [], displayOrder: 1 }], 2)).toEqual(["Cero", "Beta"]);
   });
 });
 
