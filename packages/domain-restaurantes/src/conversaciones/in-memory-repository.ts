@@ -3,6 +3,7 @@
 // quien tomo (o un administrador) devuelve/cierra, solo quien tomo responde. NO modela RLS (eso lo verifica
 // scripts/verify-restaurantes-conversaciones-handoff/ contra Postgres real).
 import { randomUUID } from "node:crypto";
+import { normalizePhone } from "../phone.ts";
 import type { ConversacionesRepository, HandoffAgentGate } from "./repository.ts";
 import { ConversacionesConflictoError, ConversacionesNoDisponibleError, ConversacionesRechazadaError, HandoffYaTomadoError, SinNumeroWhatsappError, VENTANA_WHATSAPP_HORAS, VentanaWhatsappCerradaError } from "./types.ts";
 import type {
@@ -358,7 +359,7 @@ export class InMemoryHandoffAgentGate implements HandoffAgentGate {
 
   async tomarPorEcoDeApp(input: { organizationId: string; propertyId: string | null; phone: string; atMs: number }): Promise<string | null> {
     if (!this.repo.disponible) return null;
-    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === input.organizationId && c.telefono === input.phone);
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === input.organizationId && c.telefono !== null && normalizePhone(c.telefono) === normalizePhone(input.phone));
     const propertyId = input.propertyId ?? conv?.propertyId ?? null;
     if (!conv || !propertyId) return null;
     const ahora = new Date(input.atMs).toISOString();
@@ -382,12 +383,12 @@ export class InMemoryHandoffAgentGate implements HandoffAgentGate {
 
   async tomaPorEcoDeApp(organizationId: string, phone: string): Promise<boolean> {
     if (!this.repo.disponible) return false;
-    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono === phone);
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono !== null && normalizePhone(c.telefono) === normalizePhone(phone));
     return Boolean(conv && this.repo.handoffs.some((x) => x.canal === "whatsapp" && x.conversationId === conv.id && x.estado === "tomada" && x.tomadaPorApp));
   }
 
   async avisarClienteConTomaDeApp(organizationId: string, phone: string): Promise<void> {
-    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono === phone);
+    const conv = this.repo.conversaciones.find((c) => c.canal === "whatsapp" && c.organizationId === organizationId && c.telefono !== null && normalizePhone(c.telefono) === normalizePhone(phone));
     const h = conv && this.repo.handoffs.find((x) => x.canal === "whatsapp" && x.conversationId === conv.id && x.estado === "tomada" && x.tomadaPorApp);
     if (h) this.avisosClienteConTomaApp.push({ handoffId: h.id, propertyId: h.propertyId });
   }

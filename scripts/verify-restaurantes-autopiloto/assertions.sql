@@ -798,6 +798,32 @@ set local role authenticated;
 select count(*) as excluido_deberia_ser_0 from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f4';
 rollback;
 
+-- Coexistencia (migracion 101, NO verificada contra Postgres real al escribirla): la toma de la APP silencia 5 min (default), regresa sin la frase fija y avisa si el cliente quedo sin respuesta.
+\echo '=== G10. toma de la APP con 6 min sin eco: regresa (ventana de 5 min, no de 15), SIN la frase fija, y avisa cliente_sin_responder si el ultimo mensaje es del cliente ==='
+begin;
+update restaurantes.conversation_handoff set tomada_por_app = true, tomada_at = now() - interval '6 minutes', ultima_humana_at = now() - interval '6 minutes', ultimo_cliente_at = now() - interval '1 minute' where id = '00000000-0000-0000-0000-0000000e50f2';
+update restaurantes.whatsapp_conversations set messages = '[{"role":"assistant","content":"x","autor":"humano_app"},{"role":"user","content":"gracias, y la salsa?"}]'::jsonb where id = '00000000-0000-0000-0000-0000000e50f1';
+set local role authenticated;
+select count(*) as devuelta_deberia_ser_1, bool_and(cliente_sin_responder) as cliente_esperando_deberia_ser_t from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f2';
+reset role;
+select count(*) as sin_frase_fija_deberia_ser_0 from restaurantes.messaging_outbox where dedupe_key = 'handoff-regreso:00000000-0000-0000-0000-0000000e50f2';
+rollback;
+
+\echo '=== G11. toma de la APP con eco hace 3 min: NO regresa; un eco (ultima_humana_at) la mantiene ==='
+begin;
+update restaurantes.conversation_handoff set tomada_por_app = true, tomada_at = now() - interval '2 hours', ultima_humana_at = now() - interval '3 minutes' where id = '00000000-0000-0000-0000-0000000e50f2';
+set local role authenticated;
+select count(*) as con_eco_reciente_deberia_ser_0 from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f2';
+rollback;
+
+\echo '=== G12. toma del PANEL: sigue con 15 min y cliente_sin_responder es false (solo aplica a tomas de la app) ==='
+begin;
+update restaurantes.whatsapp_conversations set messages = '[{"role":"user","content":"hola"}]'::jsonb where id = '00000000-0000-0000-0000-0000000e50f1';
+set local role authenticated;
+select count(*) as devuelta_deberia_ser_1, bool_or(cliente_sin_responder) as no_aplica_deberia_ser_f from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f2';
+rollback;
+
+
 \echo '=== G7. con una respuesta humana reciente NO se devuelve ==='
 begin;
 set local role authenticated;

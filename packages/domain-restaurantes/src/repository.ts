@@ -295,6 +295,11 @@ export interface RestaurantesRepository {
     orderId: string | null,
     propertyId: string | null,
   ): Promise<readonly ConversationMessage[]>;
+  /** PM PR-1/P1-3 (coexistencia): guarda el ECO de la app en el hilo SIN crear la conversacion, SIN tocar `updated_at` (ancla de la ventana de 24 h) ni `property_id`, idempotente por `message.wamid`.
+   *  El telefono se compara por sus ultimos 10 digitos (521... vs 52...). `no_disponible` = base sin la migracion 101. */
+  appendEcoWhatsApp(organizationId: string, phone: string, message: ConversationMessage): Promise<"guardado" | "duplicado" | "sin_conversacion" | "no_disponible">;
+  /** `true` si el wamid ya esta en el outbox ENVIADO de la organizacion (lo mando la plataforma: asistente, acuse, plantilla o panel) y el descarte de ecos propios esta activo (default). Base sin migrar -> `false`. */
+  wamidSalienteConocido(organizationId: string, wamid: string): Promise<boolean>;
   finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void>;
   markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void>;
   /** Re-revisión de PR #158 (r3, blocker) — `executeToolCall` (whatsapp/llm-turn-

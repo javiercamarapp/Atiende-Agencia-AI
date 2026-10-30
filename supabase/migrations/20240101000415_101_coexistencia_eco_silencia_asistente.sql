@@ -8,11 +8,21 @@
 --  * handoff_tomar: una toma de la app la puede tomar una persona del panel (antes: 55006 «ya la tiene otra persona»).
 --  * handoff_liberar (devolver/cerrar): cualquier staff de la sucursal puede liberar una toma de la app (antes solo quien la tomo o un admin).
 --  * handoffs_devolver_vencidos: cuenta ultima_humana_at como actividad humana y NO manda la frase fija si la toma era de la app.
+--  * GRANT: el webhook corre con withAppSession({userId:null}) = rol `authenticated` SIN usuario (auth.uid() nulo), igual que 013/045/048: las funciones de sistema se conceden a
+--    `authenticated, service_role` y el guard `auth.uid() is not null` las limita a la sesion de sistema (un staff con JWT recibe 42501).
+--  * whatsapp_eco_append: guarda el eco en el hilo SIN tocar updated_at (ancla de la ventana de 24 h de handoff_responder_whatsapp), SIN reescribir property_id, sin crear la
+--    conversacion (sin conversacion devuelve 'sin_conversacion') e idempotente por wamid. El telefono se compara por sus ultimos 10 digitos (521... vs 52...).
+--  * wamid_saliente_conocido: true si el wamid ya esta en el outbox ENVIADO de la organizacion (066): es un eco de lo que mando la propia plataforma (asistente, acuse,
+--    plantilla o respuesta del panel), no del personal. Interruptor por organizacion: whatsapp_channel_config.descartar_ecos_propios (default true = descartar).
+--  * autopiloto_config.handoff_regreso_app_minutos (default 5 si es null): ventana de silencio de una toma de la app, menor que la de una toma del panel.
+--  * handoffs_devolver_vencidos: agrega la columna cliente_sin_responder (el ultimo mensaje del hilo es del cliente y la toma era de la app) para avisar a la campana.
 -- Compatibilidad: base sin esta migracion (42703/42883) -> el TypeScript degrada a «sin eco»: el mensaje del personal sigue guardandose en el hilo (PR-1), el asistente no calla.
 -- REVERSA: drop function if exists restaurantes.handoff_eco_app(uuid, uuid, text, timestamptz); drop function if exists restaurantes.handoff_whatsapp_toma_por_app(uuid, text);
 --          alter table restaurantes.conversation_handoff drop column if exists tomada_por_app, drop column if exists ultima_humana_at; (y restaurar handoff_tomar y handoff_liberar de la 028 y handoffs_devolver_vencidos de la 076)
 alter table restaurantes.conversation_handoff add column if not exists tomada_por_app boolean not null default false;
 alter table restaurantes.conversation_handoff add column if not exists ultima_humana_at timestamptz;
+alter table restaurantes.whatsapp_channel_config add column if not exists descartar_ecos_propios boolean not null default true;
+alter table restaurantes.autopiloto_config add column if not exists handoff_regreso_app_minutos smallint check (handoff_regreso_app_minutos is null or handoff_regreso_app_minutos between 1 and 240);
 
 create or replace function restaurantes.handoff_eco_app(p_organization_id uuid, p_property_id uuid, p_phone text, p_ahora timestamptz default now())
 returns uuid
@@ -31,9 +41,15 @@ begin
     raise exception 'handoff_eco_app es solo de sistema' using errcode = '42501';
   end if;
   select c.id, c.property_id into v_conv_id, v_conv_prop from restaurantes.whatsapp_conversations c
-    where c.organization_id = p_organization_id and c.phone = p_phone;
+    where c.organization_id = p_organization_id
+      and right(regexp_replace(c.phone, '\D', '', 'g'), 10) = right(regexp_replace(p_phone, '\D', '', 'g'), 10)
+    order by c.updated_at desc limit 1;
   v_prop := coalesce(p_property_id, v_conv_prop);
   if v_conv_id is null or v_prop is null then
+    return null;
+  end if;
+  -- La sucursal tiene que ser de la organizacion (el numero firmado la resolvio, pero no se confia): sin esto un property_id ajeno abriria la toma.
+  if not exists (select 1 from core.property pr where pr.id = v_prop and pr.organization_id = p_organization_id) then
     return null;
   end if;
   if not restaurantes.handoff_conversacion_valida(p_organization_id, v_prop, 'whatsapp', v_conv_id) then
@@ -65,8 +81,66 @@ begin
   return null;
 end;
 $$;
-revoke all on function restaurantes.handoff_eco_app(uuid, uuid, text, timestamptz) from public, anon, authenticated;
-grant execute on function restaurantes.handoff_eco_app(uuid, uuid, text, timestamptz) to service_role;
+revoke all on function restaurantes.handoff_eco_app(uuid, uuid, text, timestamptz) from public, anon;
+grant execute on function restaurantes.handoff_eco_app(uuid, uuid, text, timestamptz) to authenticated, service_role;
+
+create or replace function restaurantes.whatsapp_eco_append(p_organization_id uuid, p_phone text, p_message jsonb)
+returns text
+language plpgsql
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+declare
+  v_id uuid;
+  v_wamid text := p_message ->> 'wamid';
+begin
+  if auth.uid() is not null then
+    raise exception 'whatsapp_eco_append es solo de sistema' using errcode = '42501';
+  end if;
+  if p_phone is null or btrim(p_phone) = '' or jsonb_typeof(p_message) <> 'object' or v_wamid is null or v_wamid = '' then
+    raise exception 'whatsapp_eco_append: eco invalido' using errcode = '22023';
+  end if;
+  select c.id into v_id from restaurantes.whatsapp_conversations c
+    where c.organization_id = p_organization_id
+      and right(regexp_replace(c.phone, '\D', '', 'g'), 10) = right(regexp_replace(p_phone, '\D', '', 'g'), 10)
+    order by c.updated_at desc limit 1
+    for update;
+  if v_id is null then
+    return 'sin_conversacion'; -- un eco NUNCA crea la conversacion (contaria en los KPIs y fijaria el ancla de la ventana de 24 h)
+  end if;
+  if exists (select 1 from restaurantes.whatsapp_conversations c, jsonb_array_elements(c.messages) m where c.id = v_id and m ->> 'wamid' = v_wamid) then
+    return 'duplicado';
+  end if;
+  -- Sin tocar updated_at (ancla de la ventana de 24 h) ni property_id.
+  update restaurantes.whatsapp_conversations set messages = messages || jsonb_build_array(p_message) where id = v_id;
+  return 'guardado';
+end;
+$$;
+revoke all on function restaurantes.whatsapp_eco_append(uuid, text, jsonb) from public, anon;
+grant execute on function restaurantes.whatsapp_eco_append(uuid, text, jsonb) to authenticated, service_role;
+
+create or replace function restaurantes.wamid_saliente_conocido(p_organization_id uuid, p_wamid text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'wamid_saliente_conocido es solo de sistema' using errcode = '42501';
+  end if;
+  if coalesce((select cfg.descartar_ecos_propios from restaurantes.whatsapp_channel_config cfg where cfg.organization_id = p_organization_id), true) is not true then
+    return false;
+  end if;
+  return exists (
+    select 1 from restaurantes.messaging_outbox m
+     where m.organization_id = p_organization_id and m.provider_message_id = left(p_wamid, 255)
+  );
+end;
+$$;
+revoke all on function restaurantes.wamid_saliente_conocido(uuid, text) from public, anon;
+grant execute on function restaurantes.wamid_saliente_conocido(uuid, text) to authenticated, service_role;
 
 create or replace function restaurantes.handoff_whatsapp_toma_por_app(p_organization_id uuid, p_phone text)
 returns boolean
@@ -82,12 +156,13 @@ begin
   return exists (
     select 1 from restaurantes.conversation_handoff h
       join restaurantes.whatsapp_conversations c on c.id = h.conversation_id and c.organization_id = h.organization_id
-     where h.organization_id = p_organization_id and c.phone = p_phone and h.canal = 'whatsapp' and h.estado = 'tomada' and h.tomada_por_app
+     where h.organization_id = p_organization_id and h.canal = 'whatsapp'
+       and right(regexp_replace(c.phone, '\D', '', 'g'), 10) = right(regexp_replace(p_phone, '\D', '', 'g'), 10) and h.estado = 'tomada' and h.tomada_por_app
   );
 end;
 $$;
-revoke all on function restaurantes.handoff_whatsapp_toma_por_app(uuid, text) from public, anon, authenticated;
-grant execute on function restaurantes.handoff_whatsapp_toma_por_app(uuid, text) to service_role;
+revoke all on function restaurantes.handoff_whatsapp_toma_por_app(uuid, text) from public, anon;
+grant execute on function restaurantes.handoff_whatsapp_toma_por_app(uuid, text) to authenticated, service_role;
 
 create or replace function restaurantes.handoff_tomar(
   p_organization_id uuid,
@@ -196,8 +271,10 @@ $$;
 revoke all on function restaurantes.handoff_liberar(uuid, uuid, uuid, text) from public, anon;
 grant execute on function restaurantes.handoff_liberar(uuid, uuid, uuid, text) to authenticated, service_role;
 
+-- El tipo de retorno cambia (columna nueva): hay que soltar la funcion anterior.
+drop function if exists restaurantes.handoffs_devolver_vencidos(timestamptz, integer);
 create or replace function restaurantes.handoffs_devolver_vencidos(p_ahora timestamptz, p_limite integer default 50)
-returns table (handoff_id uuid, organization_id uuid, property_id uuid, conversation_id uuid, minutos integer, avisado boolean)
+returns table (handoff_id uuid, organization_id uuid, property_id uuid, conversation_id uuid, minutos integer, avisado boolean, cliente_sin_responder boolean)
 language plpgsql
 security definer
 set search_path = restaurantes, core, pg_temp
@@ -214,7 +291,8 @@ begin
   end if;
   for r in
     select h.id as hid, h.organization_id as org, h.property_id as prop, h.conversation_id as conv, h.ultimo_cliente_at,
-           c.phone, coalesce(cfg.handoff_regreso_minutos, 15) as mins,
+           c.phone, case when h.tomada_por_app then coalesce(cfg.handoff_regreso_app_minutos, 5) else coalesce(cfg.handoff_regreso_minutos, 15) end as mins,
+           (c.messages -> -1 ->> 'role') = 'user' as sin_resp,
            h.tomada_por_app,
            greatest(h.tomada_at, coalesce(h.ultima_humana_at, h.tomada_at), coalesce((
              select max(m.created_at) from restaurantes.messaging_outbox m
@@ -266,7 +344,7 @@ begin
         v_avisado := true;
       end if;
     end if;
-    return query select r.hid, r.org, r.prop, r.conv, r.mins, v_avisado;
+    return query select r.hid, r.org, r.prop, r.conv, r.mins, v_avisado, (r.tomada_por_app and coalesce(r.sin_resp, false));
   end loop;
 end;
 $$;

@@ -44,7 +44,7 @@ describe("detalle del hilo de WhatsApp: hora y autor", () => {
     const s = new AbortAwareFakeSession(lecturas({ match: /handoff_staff_nombres/i, respond: () => sinFuncion }));
     const r = await new PostgresConversacionesRepository(s).detalle(ORG, PROP, "whatsapp", CONV);
     expect(r.disponible).toBe(true);
-    expect(r.valor!.mensajes[2]).toMatchObject({ rol: "humano", createdAt: "2026-10-30T18:05:00.000Z", autorId: ANA, autorNombre: null });
+    expect(r.valor!.mensajes[2]).toEqual(expect.objectContaining({ rol: "humano", createdAt: "2026-10-30T18:05:00.000Z", autorId: ANA, autorNombre: null }));
     await expect(s.query("select 1 as siguiente_query_del_request;")).resolves.toEqual({ rows: [{ ok: true }] });
   });
 

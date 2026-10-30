@@ -1,7 +1,8 @@
 -- 102 (PM PR-4): hora real y autor visibles en el hilo de WhatsApp de Conversaciones.
 --  * handoff_responder_whatsapp: igual que la 045, pero el mensaje de la persona del panel guarda ademas `at` (ISO 8601 UTC). Ya guardaba `autor: 'humano'` y `staff_id`.
 --  * handoff_staff_nombres: nombre (core.staff_user.full_name) de las personas que contestaron en el hilo, para mostrarlo. Solo staff con acceso a la sucursal pide nombres, y solo de
---    personas con membresia en la MISMA organizacion; no devuelve ningun otro dato.
+--    personas con membresia en la MISMA organizacion (limita por ORGANIZACION, no por sucursal: un staff de otra sucursal de la misma organizacion si aparece, y es el mismo alcance
+--    que ya tiene el nombre de quien tomo la conversacion); no devuelve ningun otro dato.
 -- Compatibilidad: base sin esta migracion -> el TypeScript muestra la hora de los mensajes nuevos del asistente/cliente (la guarda el codigo) y el autor «Persona del equipo» sin nombre.
 -- REVERSA: drop function if exists restaurantes.handoff_staff_nombres(uuid, uuid, uuid[]); y restaurar handoff_responder_whatsapp de la 045.
 create or replace function restaurantes.handoff_responder_whatsapp(

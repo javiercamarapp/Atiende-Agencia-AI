@@ -9,6 +9,7 @@ import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { executeAgentToolSafely } from "../agent-tools/registry.ts";
 import { esSoloSticker } from "./channel-config.ts";
+import { sanearTexto } from "./eco-app.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { QUOTE_TTL_MS } from "../agent-tools/order-flow.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
@@ -244,7 +245,7 @@ export async function handleInboundWhatsAppMessage(
     // sí pueda registrar el fallo.
     return await repo.runWithRowSavepoint(async () => {
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
-      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId), at: ahoraIso() };
+      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(sanearTexto(body)), args.botonId), at: ahoraIso() };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
       // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
@@ -325,7 +326,7 @@ export async function handleInboundWhatsAppMessage(
 
       // PM PR-2 (carrera): el personal pudo contestar desde la app MIENTRAS el modelo pensaba (la toma por eco se abrio en otra transaccion). Se vuelve a mirar justo antes de enviar:
       // si la toma ya es de la app, la respuesta del asistente se descarta (el mensaje del cliente y el del personal ya estan en el hilo) y el panel se entera. Un turno que creo un pedido o escalo se entrega igual.
-      if (!arco && !apagado && limite === null && !turn.orderId && !turn.escalacion && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
+      if (!arco && !apagado && limite === null && !turn.orderId && !turn.escalacion && !turn.accionMutante && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
         if (handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
         return { ok: true, retryable: false };
@@ -339,7 +340,8 @@ export async function handleInboundWhatsAppMessage(
       if (privacy) {
         const config = await privacy.getPrivacyConfig(organizationId);
         const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
-        const isFirstContact = claimed ?? messagesAfterUser.length === 1;
+        // Lo que el personal escribio desde la app (eco) no es una respuesta del asistente: no cuenta como «ya hubo contacto» para el aviso de privacidad.
+        const isFirstContact = claimed ?? messagesAfterUser.filter((m) => m.autor !== "humano_app").length === 1;
         if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
       }
 
@@ -680,6 +682,8 @@ export type RecepcionConEspera =
   | { readonly estado: "fallo"; readonly retryable: true };
 
 /** Mensajes del cliente despues de la ultima respuesta del agente (todos, si el agente aun no ha contestado). */
+// Nota PR-2: un mensaje del personal desde la app (eco, role assistant) CUENTA como respuesta: lo que el cliente escribio antes de el ya tuvo contestacion humana; lo que escriba
+// despues, mientras el asistente callaba, vuelve a ser «sin responder» para el asistente cuando la toma regresa (y la campana avisa si quedo uno pendiente).
 export function mensajesSinResponder(messages: readonly ConversationMessage[]): readonly ConversationMessage[] {
   let ultimaRespuesta = -1;
   messages.forEach((m, i) => {
@@ -732,7 +736,7 @@ export async function recibirMensajeConEspera(
   try {
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
-      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId), at: ahoraIso() });
+      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(sanearTexto(body)), args.botonId), at: ahoraIso() });
       const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -840,7 +844,7 @@ export async function responderTrasEspera(
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
         // PM PR-2 (carrera): el personal pudo contestar desde la app mientras el modelo pensaba; se mira otra vez justo antes de guardar/enviar (ver la ruta directa).
-        if (!arco && !apagado && !turn.orderId && !turn.escalacion && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
+        if (!arco && !apagado && !turn.orderId && !turn.escalacion && !turn.accionMutante && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
           if (handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
           return { salida: { ok: true, retryable: false }, silencio: true };
         }
@@ -850,7 +854,7 @@ export async function responderTrasEspera(
           const config = await privacy.getPrivacyConfig(organizationId);
           const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
           // Con varios mensajes antes de la primera respuesta el historial ya no tiene 1 solo: "primer contacto" = el agente nunca ha contestado.
-          const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
+          const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant" && m.autor !== "humano_app");
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
         await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true, at: ahoraIso() } : { role: "assistant", content: reply, at: ahoraIso() }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);

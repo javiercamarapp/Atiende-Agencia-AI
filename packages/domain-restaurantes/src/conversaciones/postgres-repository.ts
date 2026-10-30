@@ -471,9 +471,15 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
         return rows[0]?.id ?? null;
       },
       isRecoverable: () => true,
+      // «No aplica» (base sin la 101: 42P01/42703/42883) -> null y el eco igual queda guardado. Cualquier otro error (42501 = GRANT/rol mal puesto, caida de red) se LOGUEA con su
+      // SQLSTATE (sin PII) y se REPROPAGA: el eco falla y Meta reintenta; si lo tragara el asistente nunca callaria y nadie se enteraria.
       fallback: async (err) => {
-        if (esBaseSinMigrar(err)) advertirNoDisponible(err);
-        return null;
+        if (esBaseSinMigrar(err)) {
+          advertirNoDisponible(err);
+          return null;
+        }
+        console.error("PostgresHandoffAgentGate.tomarPorEcoDeApp: error real", code(err) ?? "sin_codigo");
+        throw err;
       },
     });
   }
@@ -487,7 +493,10 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
         return rows[0]?.r === true;
       },
       isRecoverable: () => true,
-      fallback: async () => false,
+      fallback: async (err) => {
+        if (!esBaseSinMigrar(err)) console.error("PostgresHandoffAgentGate.tomaPorEcoDeApp: degrada a «sin toma de la app»", code(err) ?? "sin_codigo");
+        return false;
+      },
     });
   }
 
@@ -498,13 +507,16 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
       primary: async () => {
         const { rows } = await this.db.query<{ id: string; property_id: string }>(
           `select h.id, h.property_id from restaurantes.conversation_handoff h join restaurantes.whatsapp_conversations c on c.id = h.conversation_id
-            where h.organization_id = $1::uuid and c.phone = $2::text and h.canal = 'whatsapp' and h.estado = 'tomada' and h.tomada_por_app limit 1;`,
+            where h.organization_id = $1::uuid and right(regexp_replace(c.phone, '\\D', '', 'g'), 10) = right(regexp_replace($2::text, '\\D', '', 'g'), 10) and h.canal = 'whatsapp' and h.estado = 'tomada' and h.tomada_por_app limit 1;`,
           [organizationId, phone],
         );
         return rows[0] ? { id: rows[0].id, propertyId: rows[0].property_id } : null;
       },
       isRecoverable: () => true,
-      fallback: async () => null,
+      fallback: async (err) => {
+        if (!esBaseSinMigrar(err)) console.error("PostgresHandoffAgentGate.avisarClienteConTomaDeApp: sin aviso", code(err) ?? "sin_codigo");
+        return null;
+      },
     });
     if (!toma) return;
     // Una por toma y por ventana de 15 min (mismo dedupe que el resto del catalogo: la clave lo decide). Sin PII: titulo y cuerpo salen del catalogo.

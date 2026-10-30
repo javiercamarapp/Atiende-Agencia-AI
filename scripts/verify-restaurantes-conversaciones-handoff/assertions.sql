@@ -1438,4 +1438,173 @@ release savepoint sp_verify_handoff;
 select count(*)::int as whatsapp_sigue_leyendo_deberia_ser_1 from restaurantes.whatsapp_conversations where id = '00000000-0000-0000-0000-0000000e00c1';
 rollback;
 
+-- =====================================================================================================================================================
+-- M. COEXISTENCIA (migraciones 101 y 102, NO verificadas contra Postgres real al escribirlas: este bloque es el que lo hace al correr run.sh)
+--    El webhook corre con withAppSession({userId:null}) = rol `authenticated` SIN usuario (auth.uid() nulo): por eso las funciones de sistema se conceden a
+--    `authenticated, service_role` y el guard `auth.uid() is not null` las limita a la sesion de sistema. Si el GRANT fuera solo a service_role, M1 daria 42501.
+-- =====================================================================================================================================================
+\echo '=== M1. GRANT: la sesion de SISTEMA (rol authenticated sin usuario) abre la toma por eco (handoff_eco_app) -> tomada_por_app ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now()) is not null as toma_abierta_deberia_ser_t;
+reset role;
+select count(*)::int as tomas_de_la_app_deberia_ser_1 from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada' and tomada_por_app and tomada_por is null and ultima_humana_at is not null and motivo = 'personal_app';
+rollback;
+
+\echo '=== M2. RECHAZADO: un staff con JWT no usa handoff_eco_app (solo sistema, 42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now());
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== M3. ANON: sin EXECUTE sobre handoff_eco_app, whatsapp_eco_append, wamid_saliente_conocido, handoff_whatsapp_toma_por_app ==='
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now());
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+do $$ begin
+  perform restaurantes.whatsapp_eco_append('00000000-0000-0000-0000-0000000e0001', '5551000001', '{"wamid":"w"}'::jsonb);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+do $$ begin
+  perform restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'w');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+do $$ begin
+  perform restaurantes.handoff_whatsapp_toma_por_app('00000000-0000-0000-0000-0000000e0001', '5551000001');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== M4. IDEMPOTENTE Y TELEFONO: el mismo eco con otro formato (+52 / 521) cae en la misma toma; una segunda vez no abre otra ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now()) = restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '+525551000001', now()))::int as misma_toma_deberia_ser_1;
+select (restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '+5215551000001', now()) is not null)::int as formato_521_deberia_ser_1;
+reset role;
+select count(*)::int as una_sola_toma_abierta_deberia_ser_1 from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente', 'tomada');
+rollback;
+
+\echo '=== M5. CROSS-TENANT: una sucursal de OTRA organizacion no abre la toma (null) y un telefono sin conversacion tampoco ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00b1', '5551000001', now()) is null)::int as sucursal_ajena_deberia_ser_1;
+select (restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5559999999', now()) is null)::int as sin_conversacion_deberia_ser_1;
+rollback;
+
+\echo '=== M6. whatsapp_eco_append: guarda el eco SIN tocar updated_at ni property_id, sin crear conversacion, idempotente por wamid ==='
+begin;
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '3 days' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.whatsapp_eco_append('00000000-0000-0000-0000-0000000e0001', '+525551000001', '{"role":"assistant","content":"Ya le atiendo","autor":"humano_app","wamid":"wamid.M6","at":"2026-10-30T18:00:00.000Z"}'::jsonb) as primero_deberia_ser_guardado;
+select restaurantes.whatsapp_eco_append('00000000-0000-0000-0000-0000000e0001', '5551000001', '{"role":"assistant","content":"Ya le atiendo","autor":"humano_app","wamid":"wamid.M6"}'::jsonb) as segundo_deberia_ser_duplicado;
+select restaurantes.whatsapp_eco_append('00000000-0000-0000-0000-0000000e0001', '5559999999', '{"role":"assistant","content":"x","wamid":"wamid.M6b"}'::jsonb) as sin_hilo_deberia_ser_sin_conversacion;
+reset role;
+select count(*)::int as ecos_en_el_hilo_deberia_ser_1 from restaurantes.whatsapp_conversations c, jsonb_array_elements(c.messages) m where c.id = '00000000-0000-0000-0000-0000000e00c1' and m ->> 'wamid' = 'wamid.M6';
+select (updated_at < now() - interval '2 days')::int as updated_at_intacto_deberia_ser_1 from restaurantes.whatsapp_conversations where id = '00000000-0000-0000-0000-0000000e00c1';
+select (property_id = '00000000-0000-0000-0000-0000000e00a1')::int as property_id_intacto_deberia_ser_1 from restaurantes.whatsapp_conversations where id = '00000000-0000-0000-0000-0000000e00c1';
+select count(*)::int as conversaciones_nuevas_deberia_ser_0 from restaurantes.whatsapp_conversations where phone like '%5559999999';
+rollback;
+
+\echo '=== M7. RECHAZADO: un staff con JWT no usa whatsapp_eco_append ni wamid_saliente_conocido (42501) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.whatsapp_eco_append('00000000-0000-0000-0000-0000000e0001', '5551000001', '{"wamid":"w"}'::jsonb);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+do $$ begin
+  perform restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'w');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== M8. wamid_saliente_conocido: true con el wamid en el outbox de la organizacion; false en otra organizacion; false con el interruptor apagado ==='
+begin;
+insert into restaurantes.messaging_outbox (organization_id, channel, event_type, dedupe_key, payload, status, provider_message_id) values
+  ('00000000-0000-0000-0000-0000000e0001', 'whatsapp', 'whatsapp.inbound_reply', 'm8-a', '{"to":"+5215551000001","body":"x"}'::jsonb, 'sent', 'wamid.M8')
+on conflict do nothing;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.M8') as propio_deberia_ser_t;
+select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0002', 'wamid.M8') as otra_org_deberia_ser_f;
+select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.NO_EXISTE') as desconocido_deberia_ser_f;
+reset role;
+insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id, descartar_ecos_propios) values ('00000000-0000-0000-0000-0000000e0001', 'pnid-m8', false)
+  on conflict (organization_id) do update set descartar_ecos_propios = false;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.M8') as interruptor_apagado_deberia_ser_f;
+rollback;
+
+\echo '=== M9. EXCEPCION tomada_por_app: un staff de la sucursal TOMA la conversacion abierta por el eco (sin 55006) y deja de ser de la app ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now()) as toma;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1') is not null)::int as tomada_por_staff_deberia_ser_1;
+reset role;
+select count(*)::int as ya_no_es_de_la_app_deberia_ser_1 from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada' and not tomada_por_app and tomada_por = '00000000-0000-0000-0000-0000000e0013';
+rollback;
+
+\echo '=== M10. EXCEPCION tomada_por_app: una toma de OTRA persona del panel sigue dando 55006 (la excepcion es solo para la toma de la app) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0012', true);
+do $$ begin
+  perform restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+  raise exception 'DEBIO FALLAR con 55006';
+exception when sqlstate '55006' then null; end $$;
+rollback;
+
+\echo '=== M11. handoff_liberar: cualquier staff de la sucursal devuelve una toma de la app (sin ser admin ni haberla tomado) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now()) as toma;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_devolver('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada')) as devuelta_deberia_ser_t;
+rollback;
+
+\echo '=== M12. handoff_staff_nombres (102): devuelve el nombre de personas de la MISMA organizacion (limita por organizacion, no por sucursal); anon rechazado ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as mismo_org_deberia_ser_1 from restaurantes.handoff_staff_nombres('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', array['00000000-0000-0000-0000-0000000e0011']::uuid[]);
+select nombre as nombre_deberia_ser_Owner_A from restaurantes.handoff_staff_nombres('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', array['00000000-0000-0000-0000-0000000e0011']::uuid[]);
+set local role anon;
+do $$ begin
+  perform restaurantes.handoff_staff_nombres('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', array['00000000-0000-0000-0000-0000000e0011']::uuid[]);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== M13. handoff_responder_whatsapp (102) guarda la hora `at` y el staff_id del mensaje humano ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+select restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada'), 'Hola desde el panel') is not null as encolada_deberia_ser_t;
+reset role;
+select count(*)::int as mensaje_humano_con_at_y_staff_deberia_ser_1 from restaurantes.whatsapp_conversations c, jsonb_array_elements(c.messages) m where c.id = '00000000-0000-0000-0000-0000000e00c1' and m ->> 'autor' = 'humano' and m ->> 'at' is not null and m ->> 'staff_id' = '00000000-0000-0000-0000-0000000e0013';
+rollback;
+
 \echo 'Fin: cada escenario con "deberia_ser_N" debe devolver N; los que usan bloque DO afirman el SQLSTATE exacto (si el escenario falla, el gate lo marca).'

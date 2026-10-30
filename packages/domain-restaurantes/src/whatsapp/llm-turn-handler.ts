@@ -781,6 +781,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       };
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
+      // PM PR-2: el turno cambio algo en el sistema (pedido, contacto, agregado, cancelacion): su respuesta NUNCA se descarta por la carrera con el eco de la app.
+      let mutoEnTurno = false;
       // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)
       // y solo si el cliente aun no compartio su ubicacion y el turno no termino en una escalacion.
       let pedirUbicacionEnTurno = false;
@@ -790,10 +792,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let cotizacionDelTurno: string | null = null;
       // R11 (cierre como maquina de estados): resumen armado por el servidor para la cotizacion de este turno (solo con la maquina activa).
       let resumenCanonicoDelTurno: { texto: string; total: number } | null = null;
-      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown } => ({
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown; readonly accionMutante?: true } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
         ...(pedidoSimulado !== undefined ? { pedidoSimulado } : {}),
+        ...(mutoEnTurno ? { accionMutante: true as const } : {}),
         ...(pedirUbicacionEnTurno && !escalarMotivo ? { pedirUbicacion: true as const } : {}),
         ...(pedirConfirmacionEnTurno && !escalarMotivo ? { pedirConfirmacion: pedirConfirmacionEnTurno } : {}),
       });
@@ -886,7 +889,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // `modificacion_pedido` (cambiar el pedido) tiene motivo `cancelacion_modificacion` para el equipo, pero NO es una cancelacion: no pasa por el autopiloto.
         if (riesgo.intent === "cancelacion_modificacion" && options.autopiloto) {
           const resuelta = await intentarCancelacionConAutopiloto(repo, options.autopiloto, { organizationId, phone, ahora: now(), texto: riesgo.text });
-          if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
+          if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId, accionMutante: true as const };
         }
         // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).
         const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle ? subtipoQueja(riesgo.text) : null;
@@ -909,6 +912,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // Autopiloto: la queja queda ligada al ultimo pedido del telefono (solicitud de compensacion, decide una persona); no cambia la respuesta.
         if (riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle) {
           await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: riesgo.text, ahora: now() });
+          mutoEnTurno = true;
         }
         tele.resultado = "escalado_alto_riesgo";
         tele.motivoEscalacion = riesgo.motivo;
@@ -1419,6 +1423,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;
             anyToolCalled = true;
+            if ((call.name === "crear_pedido" || call.name === "registrar_contacto" || call.name === "solicitar_agregado_pedido" || call.name === "escalar_a_humano") && !isToolErrorResult(result)) mutoEnTurno = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
             {
               // Lo entrega cotizar_pedido y, cuando el servidor rechaza el cierre (resumen no mostrado, pago/propina distintos), el propio rechazo.

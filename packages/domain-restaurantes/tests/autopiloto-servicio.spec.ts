@@ -368,13 +368,27 @@ describe("regreso automatico del handoff", () => {
     expect(t.auto.mensajesRegreso).toHaveLength(0);
   });
 
-  it("PM PR-2: una toma abierta por el eco de la app regresa por inactividad humana SIN mandar la frase fija; un eco reciente la mantiene", async () => {
+  it("PM PR-2/P2-6: una toma de la app silencia solo 5 min (no los 15 del panel), regresa SIN la frase fija y un eco reciente la mantiene", async () => {
     const t = await montar();
-    handoff(t, { porApp: true, ultimaHumanaAt: new Date(ahora.getTime() - 5 * 60_000) });
+    handoff(t, { porApp: true, ultimaHumanaAt: new Date(ahora.getTime() - 3 * 60_000), ultimoClienteAt: null });
     expect((await devolverHandoffsVencidos(t.deps, ahora)).devueltos).toBe(0);
-    t.auto.handoffs[0]!.ultimaHumanaAt = new Date(ahora.getTime() - 16 * 60_000);
+    t.auto.handoffs[0]!.ultimaHumanaAt = new Date(ahora.getTime() - 6 * 60_000);
     expect((await devolverHandoffsVencidos(t.deps, ahora)).devueltos).toBe(1);
     expect(t.auto.mensajesRegreso).toHaveLength(0);
+    // (una toma del PANEL con la misma actividad de hace 6 min NO regresa: usa los 15 min de la sucursal)
+    handoff(t, { ultimaHumanaAt: new Date(ahora.getTime() - 6 * 60_000) });
+    expect((await devolverHandoffsVencidos(t.deps, ahora)).devueltos).toBe(0);
+  });
+
+  it("PM PR-2/P2-6: si regresa una toma de la app y el cliente escribio sin respuesta, la campana avisa (una vez); sin mensaje pendiente no avisa", async () => {
+    const t = await montar();
+    handoff(t, { porApp: true, ultimaHumanaAt: new Date(ahora.getTime() - 10 * 60_000), ultimoClienteAt: new Date(ahora.getTime() - 2 * 60_000) });
+    handoff(t, { porApp: true, telefono: "9995550002", ultimaHumanaAt: new Date(ahora.getTime() - 10 * 60_000), ultimoClienteAt: null });
+    expect((await devolverHandoffsVencidos(t.deps, ahora)).devueltos).toBe(2);
+    expect((await devolverHandoffsVencidos(t.deps, ahora)).devueltos).toBe(0);
+    const avisos = t.db.emisiones.filter((e) => e.evento === "restaurantes.handoff.devuelto_con_cliente_esperando");
+    expect(avisos).toHaveLength(1);
+    expect(JSON.stringify(avisos[0])).toContain("h-1");
   });
 
   it("los minutos por sucursal mandan", async () => {
