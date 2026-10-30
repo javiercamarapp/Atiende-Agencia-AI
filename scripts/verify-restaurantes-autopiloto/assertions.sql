@@ -804,7 +804,7 @@ begin;
 update restaurantes.conversation_handoff set tomada_por_app = true, tomada_at = now() - interval '6 minutes', ultima_humana_at = now() - interval '6 minutes', ultimo_cliente_at = now() - interval '1 minute' where id = '00000000-0000-0000-0000-0000000e50f2';
 update restaurantes.whatsapp_conversations set messages = '[{"role":"assistant","content":"x","autor":"humano_app"},{"role":"user","content":"gracias, y la salsa?"}]'::jsonb where id = '00000000-0000-0000-0000-0000000e50f1';
 set local role authenticated;
-select count(*) as devuelta_deberia_ser_1, bool_and(cliente_sin_responder) as cliente_esperando_deberia_ser_t from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f2';
+select count(*) as devuelta_y_cliente_esperando_deberia_ser_1 from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f2' and cliente_sin_responder;
 reset role;
 select count(*) as sin_frase_fija_deberia_ser_0 from restaurantes.messaging_outbox where dedupe_key = 'handoff-regreso:00000000-0000-0000-0000-0000000e50f2';
 rollback;
@@ -820,7 +820,7 @@ rollback;
 begin;
 update restaurantes.whatsapp_conversations set messages = '[{"role":"user","content":"hola"}]'::jsonb where id = '00000000-0000-0000-0000-0000000e50f1';
 set local role authenticated;
-select count(*) as devuelta_deberia_ser_1, bool_or(cliente_sin_responder) as no_aplica_deberia_ser_f from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f2';
+select count(*) as devuelta_sin_aviso_de_cliente_deberia_ser_1 from restaurantes.handoffs_devolver_vencidos(now(), 50) where handoff_id = '00000000-0000-0000-0000-0000000e50f2' and not cliente_sin_responder;
 rollback;
 
 
