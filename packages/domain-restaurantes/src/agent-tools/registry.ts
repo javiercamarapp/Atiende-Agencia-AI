@@ -30,7 +30,7 @@ import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-recie
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
-import { avisoUnidadPorTabla } from "../unidades-pm.ts";
+import { avisoUnidadPorTabla, piezasPorOrdenDe } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { componentesLocales, estaAbiertoAhora, aperturaConExcepciones, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
@@ -1432,7 +1432,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
           ? {
               // R15/T7-001: la tortilla de un KILO no vive en el renglon cotizado (`tortilla` es null): sale de lo que el cliente eligio (`quotedItems[idx].tortillaKilo`, por indice: dos renglones del mismo producto con tortillas distintas no se mezclan).
-              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
+              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, piezasPorOrden: piezasPorOrdenDe(l.name, l.packSize), lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
               ...detallesDeResumen(input, previoVigente?.resumenBase),
               total: quotedQuote.total,
               descuento: quotedQuote.descuento,

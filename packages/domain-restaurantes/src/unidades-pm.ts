@@ -57,6 +57,17 @@ export function analizarPiezasPedidas(nombreProducto: string, piezas: number): A
   return { tipo: "no_multiplo", piezasPorOrden: n, opciones: lower >= n ? [lower, upper] : [upper] };
 }
 
+/**
+ * R22 (R4): piezas que trae UNA orden de este renglon para MOSTRARSELAS al cliente: el `packSize` del catalogo si es > 1; si el menu no lo trae, la tabla del dueño (gringa 2, alambre 5...)
+ * siempre que su cifra sea exacta. `null` sin dato (nunca se inventa).
+ */
+export function piezasPorOrdenDe(nombreProducto: string, packSize: number | null | undefined): number | null {
+  if (typeof packSize === "number" && Number.isInteger(packSize) && packSize > 1) return packSize;
+  if (typeof packSize === "number" && packSize === 1) return null;
+  const f = familiaUnidadPm(nombreProducto);
+  return f && !f.aproximado && f.piezasPorOrden > 1 ? f.piezasPorOrden : null;
+}
+
 /** Piezas que suman N órdenes (3 órdenes de gringas = 6). null si la tabla no lo sabe o es aproximado. */
 export function piezasDeOrdenes(nombreProducto: string, ordenes: number): number | null {
   const f = familiaUnidadPm(nombreProducto);

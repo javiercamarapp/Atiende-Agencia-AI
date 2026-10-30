@@ -21,6 +21,7 @@
 //
 // Limite honesto: el servidor no puede oir al cliente; clasifica TEXTO. La clasificacion es conservadora (ante la duda NO confirma y pide un «si»).
 import { componentesLocales, fechaLocal } from "../horarios.ts";
+import { etiquetaOrdenConPiezas } from "../order-quote.ts";
 import { afirmaPedidoRegistrado } from "../whatsapp/guards.ts";
 import { rechazaElResumen, resumenMostradoEnHistorial, type OrderFlowContext, type OrderFlowSnapshot } from "./order-flow.ts";
 
@@ -396,6 +397,8 @@ export interface LineaResumen {
   readonly quantity: number;
   readonly lineTotal?: number;
   readonly tortilla?: string | null;
+  /** R22 (R4): piezas por orden del catalogo (`packSize`) cuando el renglon se vende por ordenes; el resumen muestra «1 orden (2 piezas)». Ausente = sin dato: se muestra «N × nombre». */
+  readonly piezasPorOrden?: number | null;
 }
 
 export interface EntradaResumen {
@@ -608,7 +611,10 @@ function acotarLista(items: readonly string[]): string {
  * Un pedido enorme se acota a `LIMITE_RESUMEN_CANONICO`: se recortan renglones (con un aviso «y N renglones más»), nunca el total, el pago ni la pregunta de confirmacion.
  */
 export function resumenCanonico(e: EntradaResumen): string {
-  const renglones = e.lineas.map((l) => `• ${l.quantity} × ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
+  // Un nombre que ya dice sus piezas («Tacos de Bistec (orden de 3)») no se repite: sale «1 × nombre» como siempre.
+  const piezasEnElNombre = (l: LineaResumen): boolean => new RegExp(String.raw`\(orden de ${l.piezasPorOrden ?? 0}\)`, "i").test(l.name);
+  const etiquetaDe = (l: LineaResumen): string | null => (piezasEnElNombre(l) ? null : etiquetaOrdenConPiezas(l.quantity, l.piezasPorOrden));
+  const renglones = e.lineas.map((l) => `• ${etiquetaDe(l) ? `${etiquetaDe(l)} de` : `${l.quantity} ×`} ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
   const detalles: string[] = [];
   if (e.basicas && e.basicas.length > 0) detalles.push(`Salsas básicas incluidas: ${acotarLista(e.basicas)}`);
   if (e.salsas && e.salsas.length > 0) detalles.push(`Salsas pedidas (sin costo): ${acotarLista(e.salsas)}`);
