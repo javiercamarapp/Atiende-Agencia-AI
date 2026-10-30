@@ -1228,7 +1228,8 @@ async function exigirMinimoDeRecogida(repo: RestaurantesRepository, ctx: AgentTo
   if (Number.isNaN(ms)) return;
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
   const minutos = (Math.floor(ms / 60_000) - Math.floor(ahora / 60_000));
-  if (minutos >= MINUTOS_MINIMOS_RECOGER) return;
+  // Una hora YA pasada (mas alla de la gracia de 10 min) la rechaza `validarHoraRecogida` con su mensaje propio («ya pasó» + hora local actual).
+  if (minutos >= MINUTOS_MINIMOS_RECOGER || minutos < -10) return;
   if (ctx.flow) {
     const cotizada = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context?.horaRecogida;
     if (cotizada && cotizada === new Date(ms).toISOString().slice(0, 16)) return;

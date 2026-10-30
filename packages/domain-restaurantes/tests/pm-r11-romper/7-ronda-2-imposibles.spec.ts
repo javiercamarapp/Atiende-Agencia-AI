@@ -108,7 +108,7 @@ describe("R12-A2 hora pasada, fuera de horario y sucursal cerrada", () => {
     expect(err(out)).toMatch(/mi[eé]rcoles/i);
   });
 
-  it("hora_recogida ya pasada (hace 2 h), a mas de 12 h y para otro dia: se rechazan; 5 minutos atras (gracia) pasa", async () => {
+  it("hora_recogida ya pasada (hace 2 h), a mas de 12 h y para otro dia: se rechazan; 5 minutos atras ya no pasa (minimo de 25 min, R22)", async () => {
     const f = buildRestaurantFixture();
     await conHorario(f);
     const s = flujo(f);
@@ -116,7 +116,7 @@ describe("R12-A2 hora pasada, fuera de horario y sucursal cerrada", () => {
       const out = await s.seguro("cotizar_pedido", s.base(2, { hora_recogida: iso }));
       expect(err(out), iso).toBeTruthy();
     }
-    expect(err(await s.seguro("cotizar_pedido", s.base(2, { hora_recogida: "2026-10-06T12:55:00-06:00" })))).toBeUndefined();
+    expect(err(await s.seguro("cotizar_pedido", s.base(2, { hora_recogida: "2026-10-06T12:55:00-06:00" })))).toBeTruthy();
   });
 
   it("hora_recogida despues del cierre del dia de negocio (01:30 con cierre 01:00) se rechaza", async () => {
