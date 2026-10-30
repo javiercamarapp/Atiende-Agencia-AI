@@ -1447,7 +1447,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now()) is not null as toma_abierta_deberia_ser_t;
+select (restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now()) is not null)::int as toma_abierta_deberia_ser_1;
 reset role;
 select count(*)::int as tomas_de_la_app_deberia_ser_1 from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada' and tomada_por_app and tomada_por is null and ultima_humana_at is not null and motivo = 'personal_app';
 rollback;
@@ -1538,15 +1538,15 @@ insert into restaurantes.messaging_outbox (organization_id, channel, event_type,
 on conflict do nothing;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.M8') as propio_deberia_ser_t;
-select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0002', 'wamid.M8') as otra_org_deberia_ser_f;
-select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.NO_EXISTE') as desconocido_deberia_ser_f;
+select (restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.M8'))::int as propio_deberia_ser_1;
+select (restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0002', 'wamid.M8'))::int as otra_org_deberia_ser_0;
+select (restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.NO_EXISTE'))::int as desconocido_deberia_ser_0;
 reset role;
 insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id, descartar_ecos_propios) values ('00000000-0000-0000-0000-0000000e0001', 'pnid-m8', false)
   on conflict (organization_id) do update set descartar_ecos_propios = false;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.M8') as interruptor_apagado_deberia_ser_f;
+select (restaurantes.wamid_saliente_conocido('00000000-0000-0000-0000-0000000e0001', 'wamid.M8'))::int as interruptor_apagado_deberia_ser_0;
 rollback;
 
 \echo '=== M9. EXCEPCION tomada_por_app: un staff de la sucursal TOMA la conversacion abierta por el eco (sin 55006) y deja de ser de la app ==='
@@ -1581,7 +1581,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select restaurantes.handoff_eco_app('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', now()) as toma;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
-select restaurantes.handoff_devolver('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada')) as devuelta_deberia_ser_t;
+select (restaurantes.handoff_devolver('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada')))::int as devuelta_deberia_ser_1;
 rollback;
 
 \echo '=== M12. handoff_staff_nombres (102): devuelve el nombre de personas de la MISMA organizacion (limita por organizacion, no por sucursal); anon rechazado ==='
@@ -1602,7 +1602,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
 select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
-select restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada'), 'Hola desde el panel') is not null as encolada_deberia_ser_t;
+select (restaurantes.handoff_responder_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada'), 'Hola desde el panel') is not null)::int as encolada_deberia_ser_1;
 reset role;
 select count(*)::int as mensaje_humano_con_at_y_staff_deberia_ser_1 from restaurantes.whatsapp_conversations c, jsonb_array_elements(c.messages) m where c.id = '00000000-0000-0000-0000-0000000e00c1' and m ->> 'autor' = 'humano' and m ->> 'at' is not null and m ->> 'staff_id' = '00000000-0000-0000-0000-0000000e0013';
 rollback;
