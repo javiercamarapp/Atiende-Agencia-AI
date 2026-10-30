@@ -222,11 +222,11 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     transporteBase = transporteHttp({ baseUrl: deps.config.apiBaseUrl, orgSlug: entrada.orgSlug, callToken: callToken!, ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}) });
   };
   if (callToken !== null) armarTransporte();
-  // OJO (hueco conocido, comportamiento heredado): el contexto de turno (`x-atiende-call-turn`) NO se reenvia a la API. Activarlo exige validar con una llamada
-  // real que la transcripcion de entrada de Gemini llega ANTES de la herramienta; si llega despues, `confirmar_resumen` se rechazaria por "mismo turno".
-  const transporte: TransporteTools = async (nombre, args, sig) => {
+  // El turno del cliente (`x-atiende-call-turn`) lo lleva el controlador en `contexto.turno` (contador monotono de hablas inteligibles del cliente; el modelo no lo elige ni lo ve)
+  // y `transporteHttp` lo pone en la cabecera. El servidor lo usa para no confirmar en el mismo turno que se cotiza. Aqui solo se reenvia, sin tocarlo.
+  const transporte: TransporteTools = async (nombre, args, sig, contexto) => {
     if (!transporteBase) return { resultado: { error: "telefono_pendiente", mensaje: "Pida y confirme el teléfono del cliente y regístrelo con confirmar_telefono_llamante antes de usar otras herramientas." }, orderId: null };
-    const salida = await transporteBase(nombre, args, sig);
+    const salida = await transporteBase(nombre, args, sig, contexto);
     if (nombre === "crear_pedido" && salida.orderId) orderId = salida.orderId;
     return salida;
   };
