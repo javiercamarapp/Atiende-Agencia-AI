@@ -279,7 +279,15 @@ export { isSourceHealthState, classifySourceFailure, computeStaleForMs, evaluate
 export type { SourceRunInput, SourceRunRecord, SourceRunEvidence, SourceFreshnessRecord } from "./source-run.ts";
 
 // ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
-export { TenderVersionRegistry, computeTenderSnapshotHash, requirementNaturalKey, toRequirementSnapshot } from "./tender-version-registry.ts";
+export { TenderVersionRegistry, computeTenderSnapshotHash, requirementNaturalKey, toRequirementSnapshot, canonicalDocumentLine } from "./tender-version-registry.ts";
+export { planIngestTenderVersion } from "./tender-ingest-versioning.ts";
+export { evaluateNewMatch } from "./new-match.ts";
+export { clasificarExpediente, transicionDeExpediente } from "./expediente-auditoria.ts";
+export type { ExpedienteAuditoriaEstado, ExpedienteAuditoriaRecord, ExpedienteAuditoriaEstadoCalculado, ExpedienteTransicion } from "./expediente-auditoria.ts";
+export { correoBasesModificadas, correoNuevoMatch, correoExpedienteListo, correoAprobacionInvalidada, correoResumenSemanal, etiquetaCampoBases } from "./emails/autopiloto-templates.ts";
+export type { BasesModificadasCorreoDatos, NuevoMatchItem, NuevoMatchCorreoDatos, ResumenSemanalCorreoDatos } from "./emails/autopiloto-templates.ts";
+export type { NewMatchContext, NewMatchEvaluation, NewMatchNoticeRecord } from "./new-match.ts";
+export type { IngestVersionPlan, IngestVersionCascade } from "./tender-ingest-versioning.ts";
 export type {
   TenderDiffStatus,
   TenderFieldSnapshot,
@@ -396,11 +404,11 @@ export { createComprasMxHistoricoConnector, mapComprasMxHistoricoRow, COMPRAS_MX
 export { streamCsvRows, parseCsv } from "./connectors/csv.ts";
 export type { CsvRowEvent, CsvDataRow, CsvRowError, CsvParseResult } from "./connectors/csv.ts";
 export { assertLegitimateCsvBody, assertLegitimateJsonBody } from "./connectors/response-classifier.ts";
-export type { LicitacionesSourceConnector, TenderSourceIngestCandidate, DiscoverParams, ConnectorContext, ConnectorLogger, DroppedRowInfo } from "./connectors/types.ts";
-export type { TenderSourceIngestResult, TenderDeadlineReminderRecord, ScanDeadlineRemindersInput, ScanDeadlineRemindersResult } from "./repository.ts";
+export type { LicitacionesSourceConnector, TenderSourceDocument, TenderSourceIngestCandidate, DiscoverParams, ConnectorContext, ConnectorLogger, DroppedRowInfo } from "./connectors/types.ts";
+export type { TenderSourceIngestResult, TenderBasesChange, TenderDeadlineReminderRecord, ScanDeadlineRemindersInput, ScanDeadlineRemindersResult } from "./repository.ts";
 
 // ---- Fase 9: conectores OCDS de licitaciones VIGENTES (Nuevo León / CDMX) + agregador comercial ----
-export { mapOcdsReleaseToCandidate, isVigenteTender, isDroppedResult } from "./connectors/ocds/map-ocds-release.ts";
+export { mapOcdsReleaseToCandidate, mapOcdsDocuments, MAX_TENDER_DOCUMENTS, isVigenteTender, isDroppedResult } from "./connectors/ocds/map-ocds-release.ts";
 export type { MapOcdsReleaseResult, MapOcdsReleaseOptions } from "./connectors/ocds/map-ocds-release.ts";
 export type { OcdsRelease, OcdsRecord, OcdsReleasePackage, OcdsRecordPackage, OcdsTender, OcdsItem, OcdsClassification, OcdsAmount, OcdsPeriod, OcdsOrganizationReference } from "./connectors/ocds/types.ts";
 export { createNlOcdsConnector, NL_OCDS_ID } from "./connectors/ocds/nl-ocds-connector.ts";

@@ -20,7 +20,7 @@ const CAMPOS: Readonly<Record<AuditEntity, readonly string[]>> = {
   capacidad: ["name", "description", "evidenceDocId", "approvalStatus"],
   experiencia: ["description", "evidenceDocId", "approvalStatus"],
   firmante: ["name", "role", "authorized", "approvalStatus"],
-  configuracion: ["timezone"],
+  configuracion: ["timezone", "newMatchMinScore"],
   perfil_matching: ["keywords", "excludedKeywords", "classifierCodes", "entities", "states", "budgetMin", "budgetMax"],
   staff_invitacion: ["verticalRole", "platformRole", "status"],
   staff_miembro: ["verticalRole", "platformRole"],

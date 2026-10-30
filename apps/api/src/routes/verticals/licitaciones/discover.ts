@@ -31,6 +31,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { avisarAutopilotoDeIngesta } from "./autopiloto-ingesta.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 type SweepResult = Awaited<ReturnType<typeof runDiscoverTendersSweep>>;
@@ -90,6 +91,13 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
           )
           .catch(() => undefined);
       }
+      // L-P3-08/09 (paridad3): avisos del vigilante de cambios de bases y del "nuevo match" (campana + correo + WhatsApp con opt-in).
+      // La version y la invalidacion ya estan persistidas; cada aviso corre en su propia transaccion y un canal que falla se
+      // cuenta, nunca cambia el barrido ni la respuesta.
+      const autopiloto = await avisarAutopilotoDeIngesta(deps, sweep).catch((err) => {
+        console.error("discover-tenders: los avisos del autopiloto fallaron (best-effort):", err instanceof Error ? err.message : err);
+        return null;
+      });
       const failures: { organization_id: string; source: string | null; error: string; no_disponible?: true }[] = [];
       // r4-fix-crons-transaccion-por-unidad (re-revisión, bloqueante único): `failures[]`
       // de arriba sigue reportando CUALQUIER fuente con `state !== "ok"` (incluida
@@ -133,6 +141,8 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
             error: orgResult.error ?? null,
             fuentes: orgResult.results.map((r) => ({ source: r.source, estado: r.state, descubiertos: r.discovered, creados: r.created, actualizados: r.updated, filas_descartadas: r.droppedRows, mensaje: r.message, no_disponible: r.unavailable === true })),
           })),
+          autopiloto,
+          vigilante_no_disponible: sweep.some((o) => o.results.some((r) => r.vigilanteNoDisponible !== undefined)),
           failures,
         },
         200,
