@@ -140,9 +140,9 @@ describe("buildPmSeedPlan", () => {
     expect(() => buildPmSeedPlan(d as unknown as PmSeedData, agent)).toThrow(/Pensiones: horario invalido.*no pueden ser iguales/);
   });
 
-  it("se cargan el 2x1 del lunes y el combo de cortesia del martes: solo recoger y SIN restriccion de sucursal (todas)", () => {
+  it("se cargan el 2x1 del lunes y el combo de cortesia del martes: solo recoger y solo en T2, T3 y T4 (R22 #4)", () => {
     expect(plan.promotions).toEqual([
-      expect.objectContaining({ code: "LUNES2X1PM", type: "bogo", daysOfWeek: [1], channels: ["recoger"], productNames: ["Taco Al Pastor (individual)"], branchIds: null, courtesyProductNames: null, courtesyQuantity: null }),
+      expect.objectContaining({ code: "LUNES2X1PM", type: "bogo", daysOfWeek: [1], channels: ["recoger"], productNames: ["Taco Al Pastor (individual)"], branchIds: ["T2", "T3", "T4"], courtesyProductNames: null, courtesyQuantity: null }),
       expect.objectContaining({
         code: "MARTESNACHOSPM",
         type: "cortesia",
@@ -151,7 +151,7 @@ describe("buildPmSeedPlan", () => {
         productNames: ["Nachos de Pastor"],
         courtesyProductNames: ["Agua de Jamaica", "Horchata", "Té"],
         courtesyQuantity: 2,
-        branchIds: null,
+        branchIds: ["T2", "T3", "T4"],
         autoApply: true,
       }),
     ]);
