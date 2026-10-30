@@ -1,7 +1,7 @@
 // Productor `citas.whatsapp.sin_plantilla` (PL-31): el cron del recordatorio de 24 h avisa (una por organizacion, evento y dia, solo el
 // conteo) cuando un WhatsApp no salio por falta de plantilla aprobada fuera de la ventana de 24 h; con plantilla o dentro de la ventana no emite.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildCitasTestContext, type CitasTestContext } from "./citas-fixtures.ts";
 import { conEmisiones } from "./support/emisiones.ts";
@@ -36,6 +36,19 @@ async function seedCita(ctx: CitasTestContext, phone: string): Promise<void> {
 const cron = (app: ReturnType<typeof buildApp>, secret: string) => app.request("/internal/citas/confirmacion-cita", { method: "POST", headers: { "x-atiende-internal-secret": secret } });
 const sinPlantilla = (emisiones: readonly { evento: string; organizationId?: string | null; dedupeKey?: string }[], org: string) => emisiones.filter((e) => e.organizationId === org && e.evento === "citas.whatsapp.sin_plantilla");
 
+// Reloj fijo a las 23:30 de Merida: la clave de dedupe usa el dia LOCAL del negocio (zonedDateStr), no el dia UTC; de noche difieren
+// y un `new Date().toISOString().slice(0, 10)` falla segun la hora a la que corra la prueba.
+const MERIDA_2330 = new Date("2026-10-17T05:30:00.000Z"); // 23:30 del 16-oct en Merida (UTC-6): el dia local (16) y el UTC (17) difieren
+const HOY_LOCAL = "2026-10-16";
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(MERIDA_2330);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("citas.whatsapp.sin_plantilla", () => {
   it("sin plantilla aprobada y fuera de la ventana: emite UNA por organizacion y dia con el conteo, sin datos del cliente, y no encola WhatsApp", async () => {
     const ctx = await buildCitasTestContext(buildApp);
@@ -50,7 +63,7 @@ describe("citas.whatsapp.sin_plantilla", () => {
     expect(mias).toHaveLength(1);
     expect(mias[0]).toMatchObject({ evento: "citas.whatsapp.sin_plantilla", categoria: "salud", severidad: "atencion", enlace: "/citas/{orgSlug}/mensajes-whatsapp", roles: null });
     expect(String((mias[0] as { cuerpo?: string }).cuerpo)).toContain("2");
-    expect(mias[0]!.dedupeKey).toBe(`citas.whatsapp.sin_plantilla:${ctx.organizationId}:appointment.reminder_24h:${new Date().toISOString().slice(0, 10)}`);
+    expect(mias[0]!.dedupeKey).toBe(`citas.whatsapp.sin_plantilla:${ctx.organizationId}:appointment.reminder_24h:${HOY_LOCAL}`);
     expect(JSON.stringify(mias[0])).not.toContain("99900000");
     expect(ctx.citasRepo.getOutbox().filter((o) => o.channel === "whatsapp")).toHaveLength(0);
   });

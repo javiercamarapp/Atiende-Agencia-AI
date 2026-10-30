@@ -7,6 +7,7 @@
 // nada (reutiliza `findAppointmentsForCustomerPhone`, mismo contrato de silencio).
 import { findAppointmentsForCustomerPhone, normalizePhone } from "./appointments.ts";
 import { AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
+import { toIsoInstant } from "./local-time.ts";
 import type { CitasRepository } from "./repository.ts";
 import type { CustomerRecord } from "./types.ts";
 
@@ -14,7 +15,10 @@ export interface UpcomingAppointmentContext {
   readonly appointmentId: string;
   readonly providerName: string;
   readonly serviceName: string;
+  /** Instante ISO UTC exacto de la cita. */
   readonly startsAt: string;
+  /** Zona IANA del negocio (sucursal del proveedor) para decir la hora local; sin ella el prompt usa la del tenant. */
+  readonly timeZone?: string;
 }
 
 export interface CitasCustomerContext {
@@ -37,7 +41,9 @@ export async function lookupCitasCustomer(repo: CitasRepository, organizationId:
   const upcomingAppointments = await Promise.all(
     appointments.map(async (a) => {
       const [provider, service] = await Promise.all([repo.findProvider(organizationId, a.providerId), repo.findService(organizationId, a.serviceId)]);
-      return { appointmentId: a.appointmentId, providerName: provider?.displayName ?? "proveedor", serviceName: service?.name ?? "servicio", startsAt: a.startsAt };
+      const timeZone = await repo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+      // Con Postgres el driver puede entregar `Date`: se normaliza a ISO para no interpolar `Date.toString()` (zona del servidor).
+      return { appointmentId: a.appointmentId, providerName: provider?.displayName ?? "proveedor", serviceName: service?.name ?? "servicio", startsAt: toIsoInstant(a.startsAt), timeZone };
     }),
   );
 
