@@ -40,6 +40,7 @@ import type {
   TareaOperativaRecord,
   UnidadRecord,
 } from "./types.ts";
+import { instanteDeParedLocal } from "./zona-horaria.ts";
 import type { ChecklistItemTarea, EstadoIncidencia, EstadoTareaOperativa, PrioridadTareaOperativa, SeveridadIncidencia, TipoTareaOperativa } from "./limpieza/tipos.ts";
 
 export interface StoredOcupacion {
@@ -62,6 +63,9 @@ export interface StoredOcupacion {
   /** Fase 9 -- espejo de `rentas.ocupacion.recordatorio_checkin_enviado_en` (belt-
    *  and-suspenders sobre el dedupe_key real del outbox, ver migrations/011). */
   recordatorioCheckinEnviadoEn: string | null;
+  /** Rn-P3-05 -- espejo de `rentas.ocupacion.codigo_confirmacion` / `telefono_ultimos4` (opcionales: ausente = null). */
+  codigoConfirmacion?: string | null;
+  telefonoUltimos4?: string | null;
 }
 
 /** Todo lo que `InMemoryRentasRepository.findOcupacionParaCorreo` necesita, MENOS el
@@ -484,11 +488,26 @@ export class InMemoryRentasCalendarStore {
     return { id };
   }
 
+  /** Equivalente en memoria de los triggers AFTER UPDATE de `rentas.ocupacion` (p. ej. el que marca `requiere_revision` en el movimiento
+   *  financiero al cambiar fechas o cancelar, migracion 035): quien lo necesite se suscribe aqui. */
+  // Campo de tipo funcion (no arreglo) a proposito: los tests que sacan snapshots del store clonan solo Map/Array.
+  private notificarCambioOcupacion: (ocupacionId: string, cambio: "rango" | "cancelacion") => void = () => {};
+
+  suscribirCambioOcupacion(oyente: (ocupacionId: string, cambio: "rango" | "cancelacion") => void): void {
+    const anterior = this.notificarCambioOcupacion;
+    this.notificarCambioOcupacion = (id, cambio) => {
+      anterior(id, cambio);
+      oyente(id, cambio);
+    };
+  }
+
   marcarCancelada(ocupacionId: string): void {
     const fila = this.ocupaciones.get(ocupacionId);
     if (!fila) throw new Error(`rentas.ocupacion ${ocupacionId} no existe`);
+    const yaCancelada = fila.estado === "cancelado";
     fila.estado = "cancelado";
     fila.updatedAt = new Date().toISOString();
+    if (!yaCancelada) this.notificarCambioOcupacion(ocupacionId, "cancelacion");
   }
 
   /** Actualiza el rango verificando el EXCLUDE antes de mutar, igual que
@@ -501,10 +520,12 @@ export class InMemoryRentasCalendarStore {
       const violacion = this.findOverlappingReservaBloqueante(fila.unidadId, ocupacionId, inicio, fin) !== null;
       if (violacion) throw new ExclusionViolationError();
     }
+    const cambioRango = fila.inicio !== inicio || fila.fin !== fin;
     fila.inicio = inicio;
     fila.fin = fin;
     fila.version += 1;
     fila.updatedAt = new Date().toISOString();
+    if (cambioRango) this.notificarCambioOcupacion(ocupacionId, "rango");
   }
 
   // ---- Fase 9 -- correo transaccional al huésped (ver reserva-email-notifications.ts/
@@ -537,6 +558,23 @@ export class InMemoryRentasCalendarStore {
   listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): { id: string; organizationId: string }[] {
     return [...this.ocupaciones.values()]
       .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.recordatorioCheckinEnviadoEn === null && o.inicio >= desdeFecha && o.inicio <= hastaFecha)
+      .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
+      .map((o) => ({ id: o.id, organizationId: o.organizationId }));
+  }
+
+  /** Rn-P3-10 -- reservas confirmadas con correo valido del huesped cuyo check-in (a `horaCheckIn`, en la zona de SU property) cae entre `ahora + desdeHoras`
+   *  y `ahora + hastaHoras` (ambos inclusivos) y que todavia no recibieron el recordatorio. Mismo filtro que `PostgresRentasRepository.listReservasProximasACheckInVentana`. */
+  listReservasProximasACheckInVentana(ahora: Date, desdeHoras: number, hastaHoras: number, horaCheckIn: string, zonaPorDefecto: string): { id: string; organizationId: string }[] {
+    const desde = ahora.getTime() + desdeHoras * 3_600_000;
+    const hasta = ahora.getTime() + hastaHoras * 3_600_000;
+    return [...this.ocupaciones.values()]
+      .filter((o) => {
+        if (o.capa !== "reserva" || o.estado !== "confirmado" || o.recordatorioCheckinEnviadoEn !== null) return false;
+        const contacto = o.huespedMinimoId ? (this.huespedes.get(o.huespedMinimoId)?.contacto ?? null) : null;
+        if (!contacto || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contacto)) return false;
+        const t = instanteDeParedLocal(o.inicio, horaCheckIn, this.zonasHorarias.get(o.propertyId) ?? zonaPorDefecto);
+        return t >= desde && t <= hasta;
+      })
       .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
       .map((o) => ({ id: o.id, organizationId: o.organizationId }));
   }

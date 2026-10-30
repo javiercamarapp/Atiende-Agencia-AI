@@ -3,21 +3,30 @@
 // las instrucciones de acceso (código de cerradura, dirección exacta): política por property,
 // instrucciones por unidad, confirmación de pago de reservas directas y bitácora de envíos.
 // Contra una base sin la migración 025 muestra "aún no disponible" en lugar de romperse.
+//
+// Rn-P3-08/09: además, el enlace público de pre-check-in de la propiedad (con el texto sugerido para pegarlo UNA vez en los «mensajes programados» de
+// Airbnb o Booking) y su reglamento de la casa; y la lista «Pendientes de entregar» (reservas de OTA sin correo del huésped, cuyo acceso la liberación
+// automática no pudo enviar) con «Copiar mensaje para la OTA» (instrucciones descifradas, lectura en bitácora) y «Marcar como entregado» (con confirmación).
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { KeyRound } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, useConfirm } from "@atiende/ui";
 import {
   confirmarPagoReserva,
   ETIQUETA_EVENTO_ACCESO,
   fetchBitacoraAcceso,
+  fetchConfigPrecheckin,
   fetchInstruccionAcceso,
+  fetchMensajeOta,
+  fetchPendientesEntrega,
   fetchPoliticaAcceso,
   fetchReservasAcceso,
   guardarInstruccionAcceso,
   guardarPoliticaAcceso,
+  guardarReglamentoPrecheckin,
+  marcarEntregadaManual,
 } from "../lib/acceso-client.ts";
-import type { EventoBitacoraAcceso, PoliticaAcceso, ReservaAcceso } from "../lib/acceso-client.ts";
+import type { ConfigPrecheckin, EventoBitacoraAcceso, PendienteEntrega, PoliticaAcceso, ReservaAcceso } from "../lib/acceso-client.ts";
 import { fetchUnidades } from "../lib/calendario-client.ts";
 import type { UnidadOption } from "../lib/calendario-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
@@ -25,6 +34,15 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 // Espejo web de ACCESO_HUESPED_ROLES (packages/domain-rentas/src/roles.ts).
 const ACCESO_HUESPED_ROLES = new Set(["admin_gestora", "operador:acceso_total"]);
 const POLITICA_VACIA: PoliticaAcceso = { activo: false, horasAntesCheckin: 24, horaCheckin: "15:00", exigirPago: true, otaCuentaComoPagada: true };
+
+async function copiarAlPortapapeles(texto: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
@@ -43,6 +61,13 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
   const [bitacora, setBitacora] = useState<readonly EventoBitacoraAcceso[]>([]);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
+  const [pendientes, setPendientes] = useState<readonly PendienteEntrega[]>([]);
+  const [pendientesDisponible, setPendientesDisponible] = useState(true);
+  const [config, setConfig] = useState<ConfigPrecheckin | null>(null);
+  const [reglamento, setReglamento] = useState("");
+  /** Solo si el navegador no deja copiar: el mensaje se muestra para copiarlo a mano y se descarta al cerrarlo (contiene el codigo de acceso). */
+  const [mensajeManual, setMensajeManual] = useState<{ readonly reservaId: string; readonly texto: string } | null>(null);
+  const { confirmar, dialogo } = useConfirm();
 
   useEffect(() => {
     if (!puede) return;
@@ -50,11 +75,13 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
     setError(null);
     (async () => {
       try {
-        const [p, u, r, b] = await Promise.all([
+        const [p, u, r, b, pend, cfg] = await Promise.all([
           fetchPoliticaAcceso(fetch, apiBaseUrl, token, propertyId),
           fetchUnidades(fetch, apiBaseUrl, token, propertyId),
           fetchReservasAcceso(fetch, apiBaseUrl, token, propertyId),
           fetchBitacoraAcceso(fetch, apiBaseUrl, token, propertyId),
+          fetchPendientesEntrega(fetch, apiBaseUrl, token, propertyId),
+          fetchConfigPrecheckin(fetch, apiBaseUrl, token, propertyId),
         ]);
         if (cancelado) return;
         setDisponible(p.disponible);
@@ -62,6 +89,10 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
         setUnidades(u);
         setReservas(r.reservas);
         setBitacora(b.eventos);
+        setPendientes(pend.pendientes);
+        setPendientesDisponible(pend.disponible);
+        setConfig(cfg);
+        setReglamento(cfg.reglamento ?? "");
       } catch (err) {
         if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar el acceso al huésped.");
       }
@@ -106,6 +137,42 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
     }
   }
 
+  async function copiarMensaje(p: PendienteEntrega) {
+    setOcupado(`mensaje-${p.reservaId}`);
+    setError(null);
+    setAviso(null);
+    setMensajeManual(null);
+    try {
+      const texto = await fetchMensajeOta(fetch, apiBaseUrl, token, propertyId, p.reservaId);
+      if (texto === null) {
+        setError("Aún no disponible: la base todavía no tiene las instrucciones de acceso cifradas.");
+      } else if (await copiarAlPortapapeles(texto)) {
+        setAviso("Mensaje copiado. Pégalo en la conversación de la reserva en la plataforma (Airbnb, Booking o Vrbo).");
+      } else {
+        setMensajeManual({ reservaId: p.reservaId, texto });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo preparar el mensaje.");
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  async function marcarEntregado(p: PendienteEntrega) {
+    const ok = await confirmar({
+      titulo: "Marcar como entregado por la plataforma",
+      descripcion: `Confirmas que ya enviaste el acceso de ${p.unidadNombre} (llegada ${p.checkIn}) por la plataforma de la reserva. Queda registrado en la bitácora y la liberación automática ya no lo enviará.`,
+      confirmar: "Marcar como entregado",
+      cancelar: "Cancelar",
+    });
+    if (!ok) return;
+    setMensajeManual(null);
+    await accion(`entrega-${p.reservaId}`, async () => {
+      await marcarEntregadaManual(fetch, apiBaseUrl, token, propertyId, p.reservaId);
+      return "Acceso marcado como entregado.";
+    });
+  }
+
   const encabezado = (
     <header>
       <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Acceso al huésped</h1>
@@ -140,6 +207,124 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
 
       {disponible === true && (
         <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Pendientes de entregar ({pendientes.length})</CardTitle>
+            </CardHeader>
+            <CardContent className={pendientes.length > 0 ? "p-0" : undefined}>
+              {!pendientesDisponible ? (
+                <EstadoVacio titulo="Aún no disponible" mensaje="Requiere aplicar la migración 036 de rentas en esta base de datos." />
+              ) : pendientes.length === 0 ? (
+                <EstadoVacio titulo="Nada pendiente" mensaje="Ninguna reserva próxima se quedó sin recibir sus instrucciones por falta de correo del huésped." />
+              ) : (
+                <>
+                  <p className="m-0 px-4 pt-3 text-xs text-muted-foreground">
+                    Estas reservas llegaron sin correo del huésped (Airbnb, Booking y Vrbo no lo comparten), así que la liberación automática no pudo enviarles el acceso. Copia el mensaje y envíalo por la plataforma de la
+                    reserva, o comparte el enlace de pre-check-in para que el huésped deje su correo.
+                  </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Unidad / huésped</TableHead>
+                        <TableHead>Estancia</TableHead>
+                        <TableHead>Canal</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendientes.map((p) => (
+                        <TableRow key={p.reservaId}>
+                          <TableCell className="text-xs">
+                            <div>{p.unidadNombre}</div>
+                            <div className="text-muted-foreground">{p.huespedNombre ?? "—"}</div>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {p.checkIn} → {p.checkOut}
+                          </TableCell>
+                          <TableCell className="text-xs">{p.canal}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button type="button" size="sm" variant="outline" disabled={ocupado !== null} onClick={() => void copiarMensaje(p)}>
+                                {ocupado === `mensaje-${p.reservaId}` ? "Preparando…" : "Copiar mensaje para la OTA"}
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" disabled={ocupado !== null} onClick={() => void marcarEntregado(p)}>
+                                Marcar como entregado por la OTA
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </>
+              )}
+              {mensajeManual && (
+                <div className="flex flex-col gap-2 p-4">
+                  <Label className="flex flex-col gap-1.5 text-sm text-foreground">
+                    Tu navegador no permitió copiar automáticamente. Selecciona y copia el mensaje:
+                    <Textarea readOnly rows={8} value={mensajeManual.texto} onFocus={(e) => e.currentTarget.select()} />
+                  </Label>
+                  <Button type="button" size="sm" variant="outline" className="self-start" onClick={() => setMensajeManual(null)}>
+                    Cerrar
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Pre-check-in del huésped</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {config === null || !config.disponible ? (
+                <EstadoVacio titulo="Aún no disponible" mensaje="El pre-check-in requiere aplicar la migración 036 de rentas en esta base de datos." />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <p className="m-0 text-xs text-muted-foreground">
+                    Un enlace fijo para esta propiedad. Pégalo <strong className="text-foreground">una sola vez</strong> en los mensajes programados de Airbnb o Booking: el huésped escribe el código de su reserva y
+                    los últimos 4 dígitos de su teléfono, deja su correo y la siguiente corrida le envía el acceso. No se pide identificación oficial.
+                  </p>
+                  <Label className="flex flex-col gap-1.5 text-sm text-foreground">
+                    Enlace público
+                    <div className="flex gap-2">
+                      <Input type="text" readOnly value={config.enlacePublico ?? ""} onFocus={(e) => e.currentTarget.select()} />
+                      <Button type="button" size="sm" variant="outline" onClick={() => void accion("copiar-enlace", async () => ((await copiarAlPortapapeles(config.enlacePublico ?? "")) ? "Enlace copiado." : "No se pudo copiar: selecciona el enlace y cópialo."))}>
+                        Copiar enlace
+                      </Button>
+                    </div>
+                  </Label>
+                  <Label className="flex flex-col gap-1.5 text-sm text-foreground">
+                    Texto sugerido para el mensaje programado
+                    <Textarea readOnly rows={5} value={config.textoSugerido ?? ""} onFocus={(e) => e.currentTarget.select()} />
+                  </Label>
+                  <Button type="button" size="sm" variant="outline" className="self-start" onClick={() => void accion("copiar-texto", async () => ((await copiarAlPortapapeles(config.textoSugerido ?? "")) ? "Texto copiado." : "No se pudo copiar: selecciona el texto y cópialo."))}>
+                    Copiar texto sugerido
+                  </Button>
+                  <form
+                    className="flex flex-col gap-3 border-t border-border pt-3"
+                    onSubmit={(e: FormEvent) => {
+                      e.preventDefault();
+                      void accion("reglamento", async () => {
+                        await guardarReglamentoPrecheckin(fetch, apiBaseUrl, token, propertyId, reglamento.trim() === "" ? null : reglamento);
+                        return "Reglamento guardado.";
+                      });
+                    }}
+                  >
+                    <Label className="flex flex-col gap-1.5 text-sm text-foreground">
+                      Reglamento de la casa (opcional)
+                      <Textarea value={reglamento} maxLength={4000} rows={5} onChange={(e) => setReglamento(e.target.value)} />
+                    </Label>
+                    <p className="m-0 text-xs text-muted-foreground">Si lo escribes, el huésped debe aceptarlo para terminar su pre-check-in (versión actual: {config.reglamentoVersion}). Déjalo vacío para no pedirlo.</p>
+                    <Button type="submit" size="sm" disabled={ocupado !== null} className="self-start">
+                      {ocupado === "reglamento" ? "Guardando…" : "Guardar reglamento"}
+                    </Button>
+                  </form>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Política de liberación</CardTitle>
@@ -317,6 +502,7 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
           </Card>
         </>
       )}
+      {dialogo}
     </PageContainer>
   );
 }

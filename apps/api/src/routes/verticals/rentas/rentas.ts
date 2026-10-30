@@ -11,10 +11,12 @@ import { rentasFinanzasRoutes } from "./finanzas.ts";
 import { rentasPricingConfigRoutes } from "./pricing-config.ts";
 import { rentasFinanzasStatementsRoutes } from "./finanzas-statements.ts";
 import { rentasFinanzasPayoutsRoutes } from "./finanzas-payouts.ts";
+import { rentasFinanzasImportacionRoutes } from "./finanzas-importacion.ts";
 import { rentasOwnerPortalInviteRoutes } from "./owner-portal-invite.ts";
 import { rentasOwnerPortalRoutes } from "./owner-portal.ts";
 import { rentasIcalSyncRoutes } from "./ical-sync.ts";
 import { rentasIcalFeedPublicoRoutes } from "./ical-feed-publico.ts";
+import { rentasPrecheckinPublicoRoutes } from "./precheckin-publico.ts";
 import { rentasIcalSyncCronRoutes } from "./ical-sync-cron.ts";
 import { rentasIcalMonitorRoutes } from "./ical-monitor.ts";
 import { rentasReportesRoutes } from "./reportes.ts";
@@ -67,6 +69,10 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de forma con el patrón wildcard de las rutas de staff de abajo.
   app.route("/", rentasIcalFeedPublicoRoutes(deps));
 
+  // Rn-P3-08 -- pre-check-in publico del huesped (sin sesion de staff). Mismo criterio de orden: `/rentas/precheckin/:propertyId/...` tambien calza por
+  // forma contra `/rentas/:propertyId/...` de staff con propertyId="precheckin"; montarla temprano hace que su handler exacto la resuelva primero.
+  app.route("/", rentasPrecheckinPublicoRoutes(deps));
+
   // Fase 11 -- onboarding self-serve del tenant (POST /rentas/onboarding/registro,
   // sin sesión, ver onboarding.ts) -- ruta literal, mismo criterio de orden que las
   // dos de arriba: montarla antes de las rutas de staff evita cualquier ambigüedad
@@ -85,6 +91,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasPricingConfigRoutes(deps));
   app.route("/", rentasFinanzasStatementsRoutes(deps));
   app.route("/", rentasFinanzasPayoutsRoutes(deps));
+  // Rn-P3-06/07 -- importar el reporte de pagos de la OTA, cola de pendientes, reservas sin movimiento y movimientos en revision.
+  app.route("/", rentasFinanzasImportacionRoutes(deps));
   app.route("/", rentasIcalSyncRoutes(deps));
   app.route("/", rentasIcalMonitorRoutes(deps));
   // Rn-03 -- reporte de ocupación e ingresos (solo lectura, roles de finanzas).
