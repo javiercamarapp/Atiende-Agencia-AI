@@ -54,3 +54,64 @@ describe("PostgresCronSatRepository -- base sin la migracion 022", () => {
     expect(await repo.escalarVencimientoSistema("d1", "nivel_2", "x")).toBe(true);
   });
 });
+
+// D-P3-33 (migracion 024): los tipos nuevos, el nombre del cliente, los periodos y el outbox degradan sin tumbar la transaccion del cliente.
+describe("PostgresCronSatRepository -- base sin la migracion 024 (AbortAwareFakeSession)", () => {
+  const checkViolation = Object.assign(new Error('new row for relation "fiscal_deadline" violates check constraint "fiscal_deadline_tipo_check"'), { code: "23514" });
+
+  it("upsert de un tipo NUEVO (ISN) con el CHECK viejo: 23514 -> omitido, SAVEPOINT recuperado, la transaccion sigue (el resto de las obligaciones del cliente se crea)", async () => {
+    const session = new AbortAwareFakeSession([{ match: /system_vencimiento_upsert/, respond: () => checkViolation }, SIGUIENTE]);
+    const r = await new PostgresCronSatRepository(session).upsertVencimientoSistema("p1", { tipo: "ISN", periodo: "2026-10", fechaLimite: "2026-11-17", prioridad: "baja" });
+    expect(r).toMatchObject({ creado: false, omitido: true });
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_cron_vencimiento_tipo_nuevo"))).toBe(true);
+    await usable(session);
+  });
+
+  it("un 23514 en un tipo BASE (ISR) NO se traga: es un error real y se propaga", async () => {
+    const session = new AbortAwareFakeSession([{ match: /system_vencimiento_upsert/, respond: () => checkViolation }, SIGUIENTE]);
+    await expect(new PostgresCronSatRepository(session).upsertVencimientoSistema("p1", { tipo: "ISR", periodo: "2026-10", fechaLimite: "2026-11-17", prioridad: "baja" })).rejects.toMatchObject({ code: "23514" });
+    await usable(session);
+  });
+
+  it("listarPeriodosVencimientosSistema y nombreClienteSistema -> vacio honesto (null) y la transaccion sigue utilizable", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /system_vencimientos_periodos/, respond: () => undefinedFunction("system_vencimientos_periodos") },
+      { match: /system_cliente_nombre/, respond: () => undefinedFunction("system_cliente_nombre") },
+      SIGUIENTE,
+    ]);
+    const repo = new PostgresCronSatRepository(session);
+    expect(await repo.listarPeriodosVencimientosSistema("p1")).toBeNull();
+    await usable(session);
+    expect(await repo.nombreClienteSistema("p1")).toBeNull();
+    await usable(session);
+  });
+
+  it("destinatarios y encolado de correo sin las funciones del outbox -> [] / false, sin 25P02", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /organization_notification_recipients/, respond: () => undefinedFunction("organization_notification_recipients") },
+      { match: /enqueue_messaging_outbox/, respond: () => undefinedFunction("enqueue_messaging_outbox") },
+      SIGUIENTE,
+    ]);
+    const repo = new PostgresCronSatRepository(session);
+    expect(await repo.listarDestinatariosAvisoSistema("o1")).toEqual([]);
+    await usable(session);
+    expect(await repo.encolarCorreoSistema("o1", "vencimiento.escalado", "k", { to: "a@b.test", subject: "s", html: "h", text: "t" })).toBe(false);
+    await usable(session);
+  });
+
+  it("base migrada: mapea periodos, nombre y destinatarios, y encola con la clave de dedupe", async () => {
+    const encolados: unknown[][] = [];
+    const session = new AbortAwareFakeSession([
+      { match: /system_vencimientos_periodos/, respond: () => [{ out_periodo: "2026-09" }, { out_periodo: "2026-08" }] },
+      { match: /system_cliente_nombre/, respond: () => [{ nombre: "Cliente Uno SA de CV" }] },
+      { match: /organization_notification_recipients/, respond: () => [{ email: "owner@despacho.test" }] },
+      { match: /enqueue_messaging_outbox/, respond: () => { encolados.push([]); return [{ id: "x" }]; } },
+    ]);
+    const repo = new PostgresCronSatRepository(session);
+    expect(await repo.listarPeriodosVencimientosSistema("p1")).toEqual(["2026-09", "2026-08"]);
+    expect(await repo.nombreClienteSistema("p1")).toBe("Cliente Uno SA de CV");
+    expect(await repo.listarDestinatariosAvisoSistema("o1")).toEqual([{ email: "owner@despacho.test" }]);
+    expect(await repo.encolarCorreoSistema("o1", "vencimiento.escalado", "k", { to: "a@b.test", subject: "s", html: "h", text: "t" })).toBe(true);
+    expect(encolados).toHaveLength(1);
+  });
+});

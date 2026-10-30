@@ -168,19 +168,19 @@ describe("cola de revisión humana — flujo 2, gateado por requiresHumanReview"
 });
 
 describe("vencimientos fiscales — flujo 3", () => {
-  it("calcula los vencimientos del período (régimen 601: ISR/IVA/DIOT/Nómina/Balanza) en día hábil y calcularlos dos veces no duplica filas", async () => {
+  it("calcula los vencimientos del período (régimen 601: ISR/IVA/DIOT/Nómina/Retenciones/IMSS/IMSS-bimestral/ISN/Balanza) en día hábil y calcularlos dos veces no duplica filas", async () => {
     const app = buildApp(ctx.deps);
     const primero = await app.request(`/despachos/${ctx.propertyId}/vencimientos/calcular`, authedJson(ctx.staff.contador.token, { year: 2026, month: 6 }));
     expect(primero.status).toBe(201);
     const creados = (await primero.json()) as { tipo: string; fechaLimite: string }[];
-    expect(creados.map((d) => `${d.tipo}:${d.fechaLimite}`)).toEqual(["ISR:2026-07-17", "IVA:2026-07-17", "DIOT:2026-07-31", "Nómina:2026-07-17", "Balanza:2026-08-03"]);
+    expect(creados.map((d) => `${d.tipo}:${d.fechaLimite}`)).toEqual(["ISR:2026-07-17", "IVA:2026-07-17", "DIOT:2026-07-31", "Nómina:2026-07-17", "Retenciones:2026-07-17", "IMSS:2026-07-17", "IMSS-bimestral:2026-07-17", "ISN:2026-07-17", "Balanza:2026-08-03"]);
 
     const segundo = await app.request(`/despachos/${ctx.propertyId}/vencimientos/calcular`, authedJson(ctx.staff.contador.token, { year: 2026, month: 6 }));
     expect(segundo.status).toBe(201);
 
     const listado = await app.request(`/despachos/${ctx.propertyId}/vencimientos`, authedJson(ctx.staff.contador.token));
     const todos = (await listado.json()) as unknown[];
-    expect(todos).toHaveLength(5); // no 10: la segunda llamada reutiliza las filas existentes
+    expect(todos).toHaveLength(9); // no 18: la segunda llamada reutiliza las filas existentes
   });
 
   it("escala un vencimiento vencido a nivel_4, exige revisión humana (CFF art. 89) y notifica por correo real al staff owner/admin", async () => {

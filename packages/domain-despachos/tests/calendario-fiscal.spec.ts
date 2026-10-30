@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   calcularCalendarioFiscal,
   diaDeLaSemana,
+  diasHabilesHasta,
   feriadosDelAnio,
   infoDiaInhabil,
+  metadatosVencimiento,
   regimenSoportado,
   siguienteDiaHabil,
   sumarDias,
@@ -69,7 +71,7 @@ describe("calcularCalendarioFiscal", () => {
   const por = (rows: ReturnType<typeof calcularCalendarioFiscal>) => rows.map((r) => `${r.tipo}:${r.fechaLimite}`);
 
   it("PM general, enero 2026", () => {
-    expect(por(calcularCalendarioFiscal(2026, 1, { regimenFiscal: "601" }))).toEqual(["ISR:2026-02-17", "IVA:2026-02-17", "DIOT:2026-03-02", "Nómina:2026-02-17", "Balanza:2026-03-03"]);
+    expect(por(calcularCalendarioFiscal(2026, 1, { regimenFiscal: "601" }))).toEqual(["ISR:2026-02-17", "IVA:2026-02-17", "DIOT:2026-03-02", "Nómina:2026-02-17", "Retenciones:2026-02-17", "IMSS:2026-02-17", "ISN:2026-02-17", "Balanza:2026-03-03"]);
   });
   it("DIOT: último día del mes siguiente, ajustado a hábil", () => {
     const d = (m: number) => calcularCalendarioFiscal(2026, m, { regimenFiscal: "601" }).find((r) => r.tipo === "DIOT")!;
@@ -81,7 +83,7 @@ describe("calcularCalendarioFiscal", () => {
   });
   it("diciembre cruza de año y agrega la anual PM el 31 de marzo", () => {
     const r = calcularCalendarioFiscal(2026, 12, { regimenFiscal: "601" });
-    expect(por(r)).toEqual(["ISR:2027-01-18", "IVA:2027-01-18", "DIOT:2027-02-02", "Nómina:2027-01-18", "Balanza:2027-02-03", "Anual:2027-03-31"]);
+    expect(por(r)).toEqual(["ISR:2027-01-18", "IVA:2027-01-18", "DIOT:2027-02-02", "Nómina:2027-01-18", "Retenciones:2027-01-18", "IMSS:2027-01-18", "IMSS-bimestral:2027-01-18", "ISN:2027-01-18", "Balanza:2027-02-03", "Informativa:2027-02-15", "Anual:2027-03-31"]);
     expect(r.find((x) => x.tipo === "Anual")!.periodo).toBe("2026-12");
   });
   it("balanza PM día 3 y PF día 5 del segundo mes", () => {
@@ -92,7 +94,7 @@ describe("calcularCalendarioFiscal", () => {
     expect(calcularCalendarioFiscal(2025, 12, { regimenFiscal: "612" }).find((r) => r.tipo === "Anual")!.fechaLimite).toBe("2026-04-30");
   });
   it("RESICO PF (626): mensuales sin balanza; anual abril", () => {
-    expect(calcularCalendarioFiscal(2026, 3, { regimenFiscal: "626" }).map((r) => r.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina"]);
+    expect(calcularCalendarioFiscal(2026, 3, { regimenFiscal: "626" }).map((r) => r.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina", "Retenciones", "IMSS", "ISN"]);
     expect(calcularCalendarioFiscal(2026, 12, { regimenFiscal: "626" }).at(-1)).toMatchObject({ tipo: "Anual", fechaLimite: "2027-04-30" });
   });
   it("sueldos (605): solo anual, en el periodo de diciembre", () => {
@@ -100,7 +102,41 @@ describe("calcularCalendarioFiscal", () => {
     expect(por(calcularCalendarioFiscal(2026, 12, { regimenFiscal: "605" }))).toEqual(["Anual:2027-04-30"]);
   });
   it("603 (no lucrativas) no genera pago provisional de ISR ni balanza", () => {
-    expect(calcularCalendarioFiscal(2026, 6, { regimenFiscal: "603" }).map((r) => r.tipo)).toEqual(["IVA", "DIOT", "Nómina"]);
+    expect(calcularCalendarioFiscal(2026, 6, { regimenFiscal: "603" }).map((r) => r.tipo)).toEqual(["IVA", "DIOT", "Nómina", "Retenciones", "IMSS", "IMSS-bimestral", "ISN"]);
+  });
+  // D-P3-33 (brief paridad3-despachos-fiscal-correcciones): retenciones, IMSS mensual y bimestral, ISN e informativa anual.
+  it("D-P3-33: retenciones de ISR/IVA el 17 hábil del mes siguiente, sin marca de validar", () => {
+    expect(calcularCalendarioFiscal(2026, 7, { regimenFiscal: "612" }).find((r) => r.tipo === "Retenciones")).toMatchObject({ fechaNominal: "2026-08-17", fechaLimite: "2026-08-17", validarConFiscalista: false });
+    // 17 de enero de 2027 es domingo -> lunes 18 (art. 12 CFF)
+    expect(calcularCalendarioFiscal(2026, 12, { regimenFiscal: "601" }).find((r) => r.tipo === "Retenciones")).toMatchObject({ fechaNominal: "2027-01-17", fechaLimite: "2027-01-18", ajustadaPorDiaInhabil: true });
+  });
+  it("D-P3-33: IMSS mensual cada mes; IMSS-bimestral solo en los meses que cierran bimestre (feb, abr, jun, ago, oct, dic)", () => {
+    for (let m = 1; m <= 12; m += 1) {
+      const tipos = calcularCalendarioFiscal(2026, m, { regimenFiscal: "601" }).map((r) => r.tipo);
+      expect(tipos.includes("IMSS"), `IMSS mes ${m}`).toBe(true);
+      expect(tipos.includes("IMSS-bimestral"), `bimestral mes ${m}`).toBe(m % 2 === 0);
+    }
+    // bimestre ene-feb (periodo 2026-02) vence el 17 de marzo; bimestre nov-dic (2026-12) el 17 de enero -> 18 por ser domingo
+    expect(calcularCalendarioFiscal(2026, 2, { regimenFiscal: "601" }).find((r) => r.tipo === "IMSS-bimestral")).toMatchObject({ periodo: "2026-02", fechaLimite: "2026-03-17" });
+    expect(calcularCalendarioFiscal(2026, 12, { regimenFiscal: "601" }).find((r) => r.tipo === "IMSS-bimestral")).toMatchObject({ fechaLimite: "2027-01-18" });
+  });
+  it("D-P3-33: ISN estatal y la informativa anual quedan marcadas 'validar con fiscalista'", () => {
+    const isn = calcularCalendarioFiscal(2026, 5, { regimenFiscal: "601" }).find((r) => r.tipo === "ISN")!;
+    expect(isn).toMatchObject({ fechaLimite: "2026-06-17", validarConFiscalista: true });
+    expect(isn.nota).toContain("entidad federativa");
+    const inf = calcularCalendarioFiscal(2026, 12, { regimenFiscal: "601" }).find((r) => r.tipo === "Informativa")!;
+    expect(inf).toMatchObject({ periodo: "2026-12", fechaNominal: "2027-02-15", fechaLimite: "2027-02-15", validarConFiscalista: true });
+  });
+  it("D-P3-33: la informativa solo sale en diciembre; las PF de solo-anual (605) y 616 no reciben las obligaciones nuevas", () => {
+    expect(calcularCalendarioFiscal(2026, 6, { regimenFiscal: "601" }).some((r) => r.tipo === "Informativa")).toBe(false);
+    expect(por(calcularCalendarioFiscal(2026, 12, { regimenFiscal: "605" }))).toEqual(["Anual:2027-04-30"]);
+    expect(calcularCalendarioFiscal(2026, 12, { regimenFiscal: "616" })).toEqual([]);
+  });
+  it("D-P3-33: metadatosVencimiento marca ISN e Informativa por validar y da fundamento a los 5 tipos nuevos", () => {
+    for (const t of ["Retenciones", "IMSS", "IMSS-bimestral", "ISN", "Informativa"] as const) expect(metadatosVencimiento(t, "2026-08-17").fundamento.length).toBeGreaterThan(10);
+    expect(metadatosVencimiento("ISN", "2026-08-17").validarConFiscalista).toBe(true);
+    expect(metadatosVencimiento("Informativa", "2027-02-15").validarConFiscalista).toBe(true);
+    expect(metadatosVencimiento("IMSS", "2026-08-17").validarConFiscalista).toBe(false);
   });
   it("616 (sin obligaciones) no genera nada; un régimen desconocido lanza", () => {
     expect(calcularCalendarioFiscal(2026, 12, { regimenFiscal: "616" })).toEqual([]);
@@ -114,5 +150,21 @@ describe("calcularCalendarioFiscal", () => {
     expect(tipoPersonaDeRegimen("612")).toBe("fisica");
     expect(tipoPersonaDeRegimen("999")).toBeNull();
     expect(regimenSoportado("616")).toBe(true);
+  });
+});
+
+describe("diasHabilesHasta (D-P3-33)", () => {
+  it("cuenta dias habiles posteriores a hoy hasta la fecha limite inclusive; 0 = hoy; -1 = vencido", () => {
+    expect(diasHabilesHasta("2026-06-10", "2026-06-19")).toBe(7);
+    expect(diasHabilesHasta("2026-06-19", "2026-06-19")).toBe(0);
+    expect(diasHabilesHasta("2026-06-20", "2026-06-19")).toBe(-1);
+  });
+  it("los fines de semana no cuentan: del viernes al lunes siguiente es 1 dia habil", () => {
+    expect(diasHabilesHasta("2026-06-12", "2026-06-15")).toBe(1);
+    expect(diasHabilesHasta("2026-06-13", "2026-06-15")).toBe(1); // desde sabado
+  });
+  it("los feriados no cuentan: 16 de septiembre y Jueves/Viernes Santo", () => {
+    expect(diasHabilesHasta("2026-09-15", "2026-09-17")).toBe(1);
+    expect(diasHabilesHasta("2026-04-01", "2026-04-06")).toBe(1); // 2 y 3 de abril (Jueves y Viernes Santo) y fin de semana: solo el lunes 6
   });
 });

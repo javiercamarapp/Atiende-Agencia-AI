@@ -341,3 +341,48 @@ describe("IVA: saldo a favor y retenciones", () => {
     expect(p.iva).toMatchObject({ determinadoCentavos: 0, aCargoCentavos: 0, aFavorCentavos: 0 });
   });
 });
+
+// D-P3-06 (brief paridad3-despachos-fiscal-correcciones): IVA acreditable proporcional (LIVA 5-V) y alerta "acreditable > 3x trasladado".
+describe("IVA proporcional con actos exentos (LIVA 5-V)", () => {
+  const emitido = factura({ base: 1_000_000 }); // IVA trasladado 160,000
+  const recibido = factura({ base: 500_000, direccion: "recibido" }); // IVA acreditable 80,000
+  it("sin actos exentos registrados: acredita al 100 % y lo dice con la bandera visible", () => {
+    const p = calcularPapelProvisional(entrada({ facturas: [emitido, recibido] }));
+    expect(p.iva.acreditableCentavos).toBe(80_000);
+    expect(p.iva.aCargoCentavos).toBe(80_000);
+    expect(p.advertencias).toContain("Proporción no aplicada: sin actos exentos registrados. El IVA acreditable se tomó al 100 %; si el cliente realiza actos exentos captura actosExentosCentavos (LIVA 5-V).");
+  });
+  it("con exentos: gravados de los CFDI emitidos (1,000,000) y exentos 250,000 -> proporcion 80 % y acreditable 64,000", () => {
+    const p = calcularPapelProvisional(entrada({ facturas: [emitido, recibido], iva: { actosExentosCentavos: 250_000 } }));
+    expect(p.iva.acreditableCentavos).toBe(64_000);
+    expect(p.iva.aCargoCentavos).toBe(96_000);
+    expect(p.iva.lineas.find((l) => l.clave === "acreditable")).toMatchObject({ centavos: 64_000 });
+    expect(p.iva.lineas.find((l) => l.clave === "acreditable")!.detalle).toContain("80.00 %");
+    expect(p.advertencias.some((a) => a.startsWith("Proporción no aplicada"))).toBe(false);
+    expect(p.advertencias.some((a) => a.includes("los actos gravados se tomaron de la base de los CFDI emitidos"))).toBe(true);
+  });
+  it("con gravados capturados la proporcion usa lo capturado (750,000 / 1,000,000 = 75 %)", () => {
+    const p = calcularPapelProvisional(entrada({ facturas: [emitido, recibido], iva: { actosGravadosCentavos: 750_000, actosExentosCentavos: 250_000 } }));
+    expect(p.iva.acreditableCentavos).toBe(60_000);
+    expect(p.advertencias.some((a) => a.includes("los actos gravados se tomaron"))).toBe(false);
+  });
+  it("todo exento y sin gravados: acreditable 0 (proporcion 0 %), nunca un NaN", () => {
+    const p = calcularPapelProvisional(entrada({ facturas: [recibido], iva: { actosExentosCentavos: 100_000 } }));
+    expect(p.iva.acreditableCentavos).toBe(0);
+    expect(p.iva.aFavorCentavos).toBe(0);
+  });
+});
+
+describe("alerta: IVA acreditable mayor a 3 veces el trasladado", () => {
+  it("496,000 acreditable contra 160,000 trasladado (3.1x) avisa; 3.0x exacto no", () => {
+    const emitido = factura({ base: 1_000_000 });
+    const avisa = calcularPapelProvisional(entrada({ facturas: [emitido, factura({ base: 3_100_000, direccion: "recibido" })] }));
+    expect(avisa.advertencias.some((a) => a.includes("mayor a 3 veces el IVA trasladado"))).toBe(true);
+    const noAvisa = calcularPapelProvisional(entrada({ facturas: [emitido, factura({ base: 3_000_000, direccion: "recibido" })] }));
+    expect(noAvisa.advertencias.some((a) => a.includes("mayor a 3 veces"))).toBe(false);
+  });
+  it("sin IVA trasladado no se dispara (no hay base de comparacion)", () => {
+    const p = calcularPapelProvisional(entrada({ facturas: [factura({ base: 3_100_000, direccion: "recibido" })] }));
+    expect(p.advertencias.some((a) => a.includes("mayor a 3 veces"))).toBe(false);
+  });
+});
