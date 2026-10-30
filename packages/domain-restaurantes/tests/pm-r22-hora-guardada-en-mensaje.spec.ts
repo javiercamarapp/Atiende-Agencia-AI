@@ -10,7 +10,8 @@ const corrige = (t: string) => corregirHoraDeRecogidaEnRespuesta(t, hora);
 describe("R22: el mensaje final usa la hora guardada", () => {
   it("sustituye un plazo que no alcanza la espera real", () => {
     expect(corrige("Listo, lo esperamos en 20 minutos.")).toBe("Listo, lo esperamos en 40 minutos.");
-    expect(corrige("El tiempo estimado es de 25 a 35 minutos.")).toBe("El tiempo estimado es de 40 minutos.");
+    // Una frase de «tiempo estimado» que no habla de esperar / recoger / estar listo no se reescribe (revision R22): ante la duda se deja.
+    expect(corrige("El tiempo estimado es de 25 a 35 minutos.")).toBe("El tiempo estimado es de 25 a 35 minutos.");
   });
   it("sustituye una hora de reloj distinta de la guardada", () => {
     expect(corrige("Su pedido estará listo a las 2:02 pm.")).toBe("Su pedido estará listo a la 1:40 pm.");
@@ -49,5 +50,24 @@ describe("R22: en el turno de WhatsApp el cierre usa la hora guardada", () => {
     expect(await pedidosDe(v)).toHaveLength(1);
     expect(r.reply).toContain("Lo esperamos en 40 minutos.");
     expect(r.reply).not.toContain("20 minutos");
+  });
+});
+
+describe("R22 (revisión): la corrección no rompe frases ni cifras ajenas", () => {
+  it.each([
+    "Pasa por él a las 3 pm, cerramos a las 12.",
+    "Listo para las 9 personas.",
+    "Lo esperamos a las 12 en punto.",
+    "El tiempo estimado es de 25 a 35 minutos aprox.",
+    "Está listo de 25 a 35 minutos aprox.",
+    "Abrimos a las 12:00 pm y lo esperamos.",
+    "Su total es $90 y son 3 pedidos.",
+  ])("queda intacta: %s", (t) => {
+    expect(corrige(t)).toBe(t);
+  });
+  it("conserva los espacios y la puntuación al sustituir", () => {
+    expect(corrige("Lo esperamos a las 3 pm, gracias.")).toBe("Lo esperamos a la 1:40 pm, gracias.");
+    expect(corrige("Lo esperamos a las 3 p. m. por favor")).toBe("Lo esperamos a la 1:40 pm por favor");
+    expect(corrige("Estará listo en 25 a 35 minutos.")).toBe("Estará listo en 40 minutos.");
   });
 });

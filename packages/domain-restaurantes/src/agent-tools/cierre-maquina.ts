@@ -472,28 +472,33 @@ export function corregirHoraDeRecogidaEnRespuesta(respuesta: string, hora: { rea
   const reloj = `${h24 % 12 === 0 ? 12 : h24 % 12}:${String(minutos % 60).padStart(2, "0")} ${h24 >= 12 ? "pm" : "am"}`;
   const articulo = h24 % 12 === 1 ? "la" : "las";
   const esperaReal = Math.round((hora.instanteMs - hora.ahoraMs) / 60_000);
-  const habla = /esper|recog|pas(?:a|ar|e|ara|aria)\b|list[oa]|prepar|tiempo|estimad|quedar[aá]/i;
-  const ajena = /cierr|abre\b|abrimos|horario|apertura/i;
+  // Solo frases que hablan de la espera / recogida; cualquier mencion de horario de la sucursal o cierre deja la frase intacta (ante la duda NO se reescribe).
+  const habla = /\b(?:list[oa]s?|esperamos|esperarlo|recoger(?:lo|la)?|recog(?:e|a)|pasa\s+por|pase\s+por|pasar\s+por)\b/i;
+  const ajena = /cerr(?:a|amos|ar|ado|ada)|cierre|horario|sucursal|abr(?:e|en|imos|ir)\b|apertura/i;
+  const MER = String.raw`[ap]\.?\s?m\b\.?`;
   return respuesta
-    .split(/(?<=[.!?\n])(\s+)/)
+    .split(/(?<=[.!?\n])(?<!\b[ap]\.)(?<!\b[ap]\.\s?m\.)(\s+)/i)
     .map((frase) => {
       if (!habla.test(frase) || ajena.test(frase)) return frase;
       let f = frase;
       if (esperaReal >= 1) {
-        f = f.replace(/\b(en|de)\s+(\d{1,3})(?:\s*(?:a|-|–)\s*(\d{1,3}))?\s*minutos?\b/gi, (todo, prep: string, a: string, b: string | undefined) => {
+        f = f.replace(/\b(en|de)\s+(\d{1,3})(?:\s*(?:a|-|–)\s*(\d{1,3}))?\s*minutos?\b(?!\s*(?:aprox|m[aá]s|menos|o\s+menos))/gi, (todo, prep: string, a: string, b: string | undefined) => {
           const lo = Number(a);
           const hi = b === undefined ? lo : Number(b);
           return esperaReal >= lo - 2 && esperaReal <= hi + 2 ? todo : `${prep} ${esperaReal} minutos`;
         });
       }
-      f = f.replace(/\b(a|para)\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)?(?![\d:])/gi, (todo, prep: string, hh: string, mm: string | undefined, mer: string | undefined) => {
+      // Hora de reloj: con minutos (HH:MM) o con meridiano; «a las 9 personas» o «a las 12 en punto» NO son una hora y no se tocan. Los espacios vecinos se conservan.
+      const reemplazar = (todo: string, prep: string, hh: string, mm: string | undefined, mer: string | undefined): string => {
         const h = Number(hh);
         if (h < 1 || h > 24) return todo;
         const m = mm === undefined ? 0 : Number(mm);
         const meridiano = mer === undefined ? null : /^a/i.test(mer) ? "am" : "pm";
         const coincide = h % 12 === h24 % 12 && m === minutos % 60 && (meridiano === null || meridiano === (h24 >= 12 ? "pm" : "am"));
-        return coincide ? todo : `${prep} ${articulo} ${reloj}${todo.endsWith(".") ? "." : ""}`;
-      });
+        return coincide ? todo : `${prep} ${articulo} ${reloj}${mer !== undefined && /^[ap]m\.$/i.test(mer) ? "." : ""}`;
+      };
+      f = f.replace(new RegExp(String.raw`\b(a|para)\s+las?\s+(\d{1,2}):(\d{2})(?:\s?(${MER}))?(?![\d:])`, "gi"), (t: string, p: string, hh: string, mm: string, mer: string | undefined) => reemplazar(t, p, hh, mm, mer));
+      f = f.replace(new RegExp(String.raw`\b(a|para)\s+las?\s+(\d{1,2})\s?(${MER})(?![\w])`, "gi"), (t: string, p: string, hh: string, mer: string) => reemplazar(t, p, hh, undefined, mer));
       return f;
     })
     .join("");
