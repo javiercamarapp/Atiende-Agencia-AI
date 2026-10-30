@@ -1,51 +1,66 @@
-// Golden-set numérico: IMSS/INFONAVIT (Fase 3 despachos) — compara contra
-// `_sbc_diario_topado`/`_calcular_imss_obrero`/`_calcular_imss_patronal`/
-// `_calcular_infonavit` (nomina_completa/service.py), capturado en
-// tests/fixtures/golden-nomina-output.json. 21 casos: 7 escenarios de SBC
-// (mínimo, UMA exacta, tope exacto, tope-0.01, tope+1000, cero, negativo) ×
-// 3 valores de dias_pagados (15/30/31).
+// IMSS por rama 2026 (tasas por validar con fiscalista). Valores esperados calculados a mano:
+// base = SBC × 30 días; cuota fija patronal = 20.40 % × UMA diaria (117.31 desde feb-2026) × 30.
 import { describe, expect, it } from "vitest";
-import golden from "./fixtures/golden-nomina-output.json" with { type: "json" };
-import { sbcDiarioTopado, calcularImssObrero, calcularImssPatronal, calcularInfonavit, UMA_DIARIA_2026, SBC_MAX_UMA } from "../src/nomina/imss-engine.ts";
+import { ImssInvalidoError, calcularImssPorRama } from "../src/nomina/imss-engine.ts";
+import { CEAV_PATRONAL_2026, tasaCeavPatronal } from "../src/nomina/parametros.ts";
 
-type GoldenImss = {
-  entrada: { salarioDiario: number; diasPagados: number };
-  resultado: { sbcDiarioTopado: number; imssObrero: number; imssPatronal: number; infonavit: number };
-};
+const F = "2026-02-28";
+const imss = (sbcDiario: number, extra: Partial<Parameters<typeof calcularImssPorRama>[0]> = {}) => calcularImssPorRama({ sbcDiario, diasPagados: 30, fechaPago: F, ...extra });
 
-const entries = Object.entries(golden).filter(([name]) => name.startsWith("imss_")) as [string, unknown][];
-
-describe("golden-set numérico: IMSS/INFONAVIT (TS) vs nomina_completa/service.py (Python real)", () => {
-  for (const [name, raw] of entries) {
-    const { entrada, resultado } = raw as GoldenImss;
-    it(`${name}: salarioDiario=${entrada.salarioDiario} dias=${entrada.diasPagados}`, () => {
-      expect(sbcDiarioTopado(entrada.salarioDiario)).toBe(resultado.sbcDiarioTopado);
-      expect(calcularImssObrero(entrada.salarioDiario, entrada.diasPagados)).toBeCloseTo(resultado.imssObrero, 9);
-      expect(calcularImssPatronal(entrada.salarioDiario, entrada.diasPagados)).toBeCloseTo(resultado.imssPatronal, 9);
-      expect(calcularInfonavit(entrada.salarioDiario, entrada.diasPagados)).toBeCloseTo(resultado.infonavit, 9);
-    });
-  }
-
-  it("UMA diaria 2026 = round(UMA_MENSUAL_2026/30.4, 2) = 117.31 (LSS art. 28)", () => {
-    expect(UMA_DIARIA_2026).toBe(117.31);
+describe("IMSS por rama", () => {
+  it("SBC bajo (140): sin excedente de 3 UMA", () => {
+    const r = imss(140);
+    expect(r.obrero).toEqual({ eymExcedente: 0, prestacionesDinero: 10.5, gmp: 15.75, invalidezVida: 26.25, ceav: 47.25, total: 99.75 });
+    expect(r.patronal.cuotaFija).toBe(717.94);
+    expect(r.patronal.eymExcedente).toBe(0);
+    expect(r.patronal.retiro).toBe(84);
+    expect(r.patronal.guarderias).toBe(42);
+    expect(r.infonavit).toBe(210);
   });
 
-  it("tope SBC = 25 × UMA diaria = 2932.75", () => {
-    expect(UMA_DIARIA_2026 * SBC_MAX_UMA).toBe(2932.75);
+  it("SBC medio (500): excedente sobre 3 UMA y CEAV progresiva 7.513 % (4.26 UMA)", () => {
+    const r = imss(500);
+    expect(r.obrero.eymExcedente).toBe(17.77); // (500 − 351.93) × 30 × 0.4 %
+    expect(r.obrero.total).toBe(374.02);
+    expect(r.patronal.eymExcedente).toBe(48.86); // × 1.10 %
+    expect(r.patronal.ceav).toBe(1126.95); // 15,000 × 7.513 %
+    expect(r.infonavit).toBe(750);
   });
 
-  it("sbcDiarioTopado topa un salario diario por encima del tope a 2932.75", () => {
-    expect(sbcDiarioTopado(10000)).toBe(2932.75);
+  it("SBC en el tope (25 UMA = 2,932.75): se topa y se avisa", () => {
+    const r = imss(3000);
+    expect(r.sbcDiario).toBe(2932.75);
+    expect(r.sbcTopado).toBe(true);
+    expect(r.obrero.total).toBe(2399.28);
+    expect(r.patronal.total).toBe(14376.84);
   });
 
-  it("sbcDiarioTopado NO valida negativos (fidelidad: sin ValueError, a diferencia de services/payroll.py)", () => {
-    expect(sbcDiarioTopado(-100)).toBe(-100);
-    expect(calcularImssObrero(-100, 30)).toBeCloseTo(-37.5, 9);
+  it("SBC exactamente en el tope no se marca como topado", () => {
+    expect(imss(2932.75).sbcTopado).toBe(false);
   });
 
-  it("infonavit es 5% del SBC×días, independiente del obrero/patronal", () => {
-    const salarioDiario = 500;
-    const dias = 30;
-    expect(calcularInfonavit(salarioDiario, dias)).toBeCloseTo(500 * 30 * 0.05, 9);
+  it("la UMA de enero (113.14) cambia la cuota fija y el tope", () => {
+    const ene = imss(140, { fechaPago: "2026-01-31" });
+    expect(ene.umaDiaria).toBe(113.14);
+    expect(ene.patronal.cuotaFija).toBe(692.42);
+  });
+
+  it("la prima RT es parámetro de la empresa: clase I por omisión y 2.5 % si se indica", () => {
+    expect(imss(500).patronal.riesgoTrabajo).toBe(81.53);
+    expect(imss(500, { primaRt: 0.025 }).patronal.riesgoTrabajo).toBe(375);
+  });
+
+  it("rechaza SBC <= 0, días <= 0 y prima RT fuera de rango (antes daba IMSS 0 o negativo sin aviso)", () => {
+    expect(() => imss(0)).toThrow(ImssInvalidoError);
+    expect(() => imss(-100)).toThrow(ImssInvalidoError);
+    expect(() => imss(500, { diasPagados: 0 })).toThrow(ImssInvalidoError);
+    expect(() => imss(500, { primaRt: 0.5 })).toThrow(ImssInvalidoError);
+  });
+
+  it("la tabla CEAV es monótona creciente y asigna el tramo por UMA", () => {
+    for (let i = 1; i < CEAV_PATRONAL_2026.length; i++) expect(CEAV_PATRONAL_2026[i]!.tasa).toBeGreaterThan(CEAV_PATRONAL_2026[i - 1]!.tasa);
+    expect(tasaCeavPatronal(1.2)).toBe(0.03676);
+    expect(tasaCeavPatronal(4.0)).toBe(0.06613);
+    expect(tasaCeavPatronal(4.01)).toBe(0.07513);
   });
 });

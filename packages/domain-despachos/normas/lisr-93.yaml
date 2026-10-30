@@ -1,0 +1,14 @@
+id: lisr-93
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "93 fr. I, XIV y XIV bis"
+resumen: "Exentos de nómina: aguinaldo 30 UMA, prima vacacional 15 UMA, PTU 15 UMA y tiempo extra al 50 % sin exceder 5 UMA por semana."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "VALIDAR CON FISCALISTA: topes en UMA diaria y regla de tiempo extra; el gravado se suma al ingreso del periodo (no se usa la tasa efectiva del art. 174 RLISR)."
+usado_en_codigo:
+  - "src/nomina/parametros.ts:114"
+  - "src/nomina/prestaciones.ts:55"
