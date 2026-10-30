@@ -280,7 +280,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
 
   it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {
     expect(p).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo/);
-    expect(p).toMatch(/no lo rechace; tome todos los datos y escale \(pedido_grande\) para que la sucursal lo confirme/);
+    expect(p).toMatch(/se toma como CUALQUIER pedido: no lo rechace ni escale antes de cotizar/);
   });
 
   it("hora de recogida con el parametro estructurado hora_recogida, no en notes", () => {
@@ -332,7 +332,7 @@ describe("QA-PM-R4: reglas de prompt de WhatsApp que no entran a la voz (limite 
     expect(p).toMatch(/YA SALIÓ a reparto \(o está entregado\), no dé minutos/);
     expect(p).toMatch(/3 o 4 platillos con su precio REAL/);
     expect(p).toMatch(/dígalo usted antes de que el cliente lo deduzca/);
-    expect(p).toMatch(/Antes de escalar, cotice con cotizar_pedido/);
+    expect(p).toMatch(/cotice con cotizar_pedido, dígale el total exacto de la cotización/);
     expect(p).toMatch(/no repita el rechazo ni el teléfono de la otra/);
   });
   it("la voz NO recibe esas reglas (tope de 8000 caracteres)", () => {
