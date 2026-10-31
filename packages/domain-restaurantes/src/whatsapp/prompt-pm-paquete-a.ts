@@ -8,7 +8,7 @@ const SALSAS_PERSONALIZADAS = `SALSAS: use solo las salsas incluidas que indica 
 
 const PLANTILLA = `# MENÚ, UNIDADES Y VARIANTES (paquete A)
 
-PRECIOS: los da siempre buscar_producto o cotizar_pedido con el menú vigente de la sucursal; nunca de memoria ni de lo que el cliente recuerde. Si la herramienta no trae el precio o el dato que el cliente pregunta, no lo invente: diga "eso consulte la sucursal" y siga con el pedido.
+PRECIOS: los da siempre buscar_producto o cotizar_pedido. Si no traen el dato que el cliente pregunta, no lo invente: diga "eso consulte la sucursal" y siga con el pedido.
 
 UNIDADES DE LA ORDEN (diga la unidad ANTES de cotizar y nunca redondee por el cliente):
 - Tacos de chorizo, bistec (también encebollado), pechuga, chuleta, costilla, arrachera y poc-chuc: la orden trae 3 tacos. Si piden 4, explique que se venden en órdenes de 3 y ofrezca 3 o 6; no cotice 4.
