@@ -1607,4 +1607,304 @@ reset role;
 select count(*)::int as mensaje_humano_con_at_y_staff_deberia_ser_1 from restaurantes.whatsapp_conversations c, jsonb_array_elements(c.messages) m where c.id = '00000000-0000-0000-0000-0000000e00c1' and m ->> 'autor' = 'humano' and m ->> 'at' is not null and m ->> 'staff_id' = '00000000-0000-0000-0000-0000000e0013';
 rollback;
 
+-- ===== N. Migracion 103: alertas de WhatsApp al gerente e interruptor de emergencia unificado =====
+\echo '=== N1. POSITIVO: el owner crea la config de alertas de su sucursal (103) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, phone_number_id_aviso, plantilla_nombre, plantilla_aprobada, destinatarios, actualizado_por) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, '123456789', 'aviso_gerente', true, '[{"telefono":"5219991234567"}]'::jsonb, '00000000-0000-0000-0000-0000000e0011');
+reset role;
+select count(*)::int as config_creada_deberia_ser_1 from restaurantes.alerta_sucursal_config where property_id = '00000000-0000-0000-0000-0000000e00a1';
+rollback;
+
+\echo '=== N2. RECHAZADO: staff (rol staff) no crea la config de alertas ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, phone_number_id_aviso, plantilla_nombre, plantilla_aprobada, destinatarios, actualizado_por) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, '123456789', 'aviso_gerente', true, '[{"telefono":"5219991234567"}]'::jsonb, '00000000-0000-0000-0000-0000000e0011');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N3. CROSS-TENANT: el owner de B no crea la config de una sucursal de A ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0017', true);
+do $$ begin
+  insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, phone_number_id_aviso, plantilla_nombre, plantilla_aprobada, destinatarios, actualizado_por) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, '123456789', 'aviso_gerente', true, '[{"telefono":"5219991234567"}]'::jsonb, '00000000-0000-0000-0000-0000000e0017');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N4. GRANT por columna: ni el owner mueve organization_id de la config ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, phone_number_id_aviso, plantilla_nombre, plantilla_aprobada, destinatarios, actualizado_por) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, '123456789', 'aviso_gerente', true, '[{"telefono":"5219991234567"}]'::jsonb, '00000000-0000-0000-0000-0000000e0011');
+do $$ begin
+  update restaurantes.alerta_sucursal_config set organization_id = '00000000-0000-0000-0000-0000000e0002' where property_id = '00000000-0000-0000-0000-0000000e00a1';
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N5. LECTURA: staff no lee la config (telefonos del gerente); el owner si ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, destinatarios) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, '[{"telefono":"5219991234567"}]'::jsonb);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as staff_ve_deberia_ser_0 from restaurantes.alerta_sucursal_config;
+rollback;
+
+\echo '=== N5b. LECTURA: el owner de A ve la config de su sucursal ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, destinatarios) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, '[{"telefono":"5219991234567"}]'::jsonb);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select count(*)::int as owner_ve_deberia_ser_1 from restaurantes.alerta_sucursal_config;
+rollback;
+
+\echo '=== N6. ANON: sin privilegio sobre la config de alertas ==='
+begin;
+set local role anon;
+do $$ begin
+  perform count(*) from restaurantes.alerta_sucursal_config;
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N7. CANDIDATAS: una toma pendiente de una sucursal con alertas activas es candidata de escalada inmediata (y aun no de sin_respuesta) ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, minutos_sin_respuesta) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, 10);
+insert into restaurantes.conversation_handoff (organization_id, property_id, canal, conversation_id, estado, solicitado_por, solicitada_at) values ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'pendiente', 'agente', now() - interval '1 minute');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as escalada_deberia_ser_1 from restaurantes.alertas_candidatas(now(), 50) where tipo = 'escalada';
+rollback;
+
+\echo '=== N7b. CANDIDATAS: pasados 11 minutos la toma pendiente tambien es candidata de sin_respuesta; antes no ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, minutos_sin_respuesta) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, 10);
+insert into restaurantes.conversation_handoff (organization_id, property_id, canal, conversation_id, estado, solicitado_por, solicitada_at) values ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'pendiente', 'agente', now() - interval '1 minute');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as sin_respuesta_a_los_11_deberia_ser_1 from restaurantes.alertas_candidatas(now() + interval '11 minutes', 50) where tipo = 'sin_respuesta';
+rollback;
+
+\echo '=== N7c. CANDIDATAS: antes de N minutos no hay sin_respuesta ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, minutos_sin_respuesta) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, 10);
+insert into restaurantes.conversation_handoff (organization_id, property_id, canal, conversation_id, estado, solicitado_por, solicitada_at) values ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'pendiente', 'agente', now() - interval '1 minute');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as sin_respuesta_antes_deberia_ser_0 from restaurantes.alertas_candidatas(now(), 50) where tipo = 'sin_respuesta';
+rollback;
+
+\echo '=== N8. CANDIDATAS: conversacion cuyo ultimo mensaje es del cliente y lleva 30 min sin respuesta ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, minutos_sin_respuesta) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, 10);
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '30 minutes' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as cliente_sin_respuesta_deberia_ser_1 from restaurantes.alertas_candidatas(now(), 50) where clave like 'c:%';
+rollback;
+
+\echo '=== N8b. CANDIDATAS: con alertas apagadas en la sucursal no hay candidatas ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', false);
+insert into restaurantes.conversation_handoff (organization_id, property_id, canal, conversation_id, estado, solicitado_por, solicitada_at) values ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'pendiente', 'agente', now() - interval '1 minute');
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '30 minutes' where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as apagadas_deberia_ser_0 from restaurantes.alertas_candidatas(now() + interval '1 hour', 50);
+rollback;
+
+\echo '=== N8c. CANDIDATAS: la ultima respuesta fue del asistente (no es cliente sin respuesta) ==='
+begin;
+insert into restaurantes.alerta_sucursal_config (property_id, organization_id, activa, minutos_sin_respuesta) values ('00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', true, 10);
+update restaurantes.whatsapp_conversations set updated_at = now() - interval '30 minutes', messages = messages || '[{"role":"assistant","content":"Listo"}]'::jsonb where id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as ya_contestado_deberia_ser_0 from restaurantes.alertas_candidatas(now(), 50);
+rollback;
+
+\echo '=== N9. RECHAZADO: un staff autenticado no usa alertas_candidatas (solo sistema) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform * from restaurantes.alertas_candidatas(now(), 50);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N10. DEDUPE: registrar dos veces la misma alerta y destino deja UNA fila; la segunda devuelve false ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.alerta_registrar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'escalada', 'h-1', 'abc', 'encolada', null);
+select (not restaurantes.alerta_registrar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'escalada', 'h-1', 'abc', 'encolada', null))::int as segunda_es_duplicado_deberia_ser_1;
+reset role;
+select count(*)::int as una_fila_deberia_ser_1 from restaurantes.alerta_whatsapp_registro;
+rollback;
+
+\echo '=== N11. RECHAZADO: un staff autenticado no usa alerta_registrar ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.alerta_registrar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'escalada', 'h-1', 'abc', 'encolada', null);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N11b. CROSS-TENANT: alerta_registrar rechaza una sucursal de otra organizacion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform restaurantes.alerta_registrar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00b1', 'escalada', 'h-1', 'abc', 'encolada', null);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N11c. CHECK: un estado fuera de la lista se rechaza ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform restaurantes.alerta_registrar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'escalada', 'h-2', '', 'inventado', null);
+  raise exception 'DEBIO FALLAR con 23514';
+exception when sqlstate '23514' then null; end $$;
+rollback;
+
+\echo '=== N12. INTERRUPTOR: el owner apaga UNA sucursal; el sistema ve apagada esa y no otra ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select (not restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba'))::int as valor_anterior_era_encendido_deberia_ser_1;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.interruptor_apagado('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1'))::int as a1_apagada_deberia_ser_1;
+rollback;
+
+\echo '=== N12b. INTERRUPTOR: apagar A1 no apaga A2 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba') as previo;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.interruptor_apagado('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a2'))::int as a2_deberia_ser_0;
+rollback;
+
+\echo '=== N13. INTERRUPTOR GLOBAL: el owner apaga TODA la organizacion; cualquier sucursal queda apagada ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', null, true, 'prueba') as previo;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.interruptor_apagado('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a2'))::int as a2_por_global_deberia_ser_1;
+rollback;
+
+\echo '=== N13b. AISLAMIENTO: apagar la organizacion A no apaga la organizacion B ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', null, true, 'prueba') as previo;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.interruptor_apagado('00000000-0000-0000-0000-0000000e0002', '00000000-0000-0000-0000-0000000e00b1'))::int as org_b_deberia_ser_0;
+rollback;
+
+\echo '=== N14. RECHAZADO: staff (rol staff) no fija el interruptor de su sucursal ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N14b. RECHAZADO: staff no fija el interruptor de toda la organizacion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', null, true, 'prueba');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N14c. CROSS-TENANT: el owner de B no fija el interruptor de A ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0017', true);
+do $$ begin
+  perform restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N14d. ANON: sin EXECUTE sobre interruptor_fijar ni interruptor_apagado ==='
+begin;
+set local role anon;
+do $$ begin
+  perform restaurantes.interruptor_apagado('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N15. DML DIRECTO: authenticated no inserta en interruptor_emergencia (solo la funcion) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+do $$ begin
+  insert into restaurantes.interruptor_emergencia (organization_id, property_id, apagado) values ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== N16. HISTORIAL: dos cambios dejan dos filas con actor; el owner las lee ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba') as p1;
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', false, 'prueba') as p2;
+select count(*)::int as historial_deberia_ser_2 from restaurantes.interruptor_emergencia_historial where actor_id = '00000000-0000-0000-0000-0000000e0011';
+rollback;
+
+\echo '=== N16b. VUELTA: apagar y encender deja la sucursal encendida ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba') as p1;
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', false, 'prueba') as p2;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.interruptor_apagado('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1'))::int as encendida_deberia_ser_0;
+rollback;
+
+\echo '=== N17. LECTURA: el staff de la organizacion ve el interruptor (para el panel); el owner de B no ve nada de A ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba') as p1;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0017', true);
+select count(*)::int as ajeno_deberia_ser_0 from restaurantes.interruptor_emergencia;
+rollback;
+
+\echo '=== N17b. LECTURA: staff A1 ve el interruptor de su organizacion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select restaurantes.interruptor_fijar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 'prueba') as p1;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as staff_ve_deberia_ser_1 from restaurantes.interruptor_emergencia;
+rollback;
+
 \echo 'Fin: cada escenario con "deberia_ser_N" debe devolver N; los que usan bloque DO afirman el SQLSTATE exacto (si el escenario falla, el gate lo marca).'
