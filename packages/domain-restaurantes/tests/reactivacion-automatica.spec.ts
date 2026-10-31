@@ -51,7 +51,7 @@ function memoria(contexto: ContextoReactivacion | null, candidatos: readonly Can
 }
 const deps = (m: Memoria, extra: Partial<DependenciasReactivacion> = {}): DependenciasReactivacion & { enviador: EnviadorFalso } => {
   const enviador = new EnviadorFalso();
-  return { repo: m.repo, enviador, suprimidos: { estaSuprimido: async () => false }, ...extra };
+  return { repo: m.repo, enviador, suprimidos: { estaSuprimido: async () => false }, ...extra, ...{} } as DependenciasReactivacion & { enviador: EnviadorFalso };
 };
 
 describe("evaluarCandidato (reglas puras)", () => {
