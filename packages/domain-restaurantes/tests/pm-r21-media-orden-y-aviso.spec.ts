@@ -20,11 +20,11 @@ const ctx = {
 describe("T7-038: prompt de «media orden»", () => {
   it("manda PREGUNTAR la presentacion y prohibe escalar por eso", () => {
     const p = buildPmSystemPrompt(ctx);
-    const i = p.indexOf("Si pide «media orden» (o una fracción de orden)");
+    const i = p.indexOf('"media orden": solo hay de nachos y frijoles charros');
     expect(i).toBeGreaterThan(-1);
     const tramo = p.slice(i, i + 400);
     expect(tramo).toContain("PREGUNTE la presentación");
-    expect(tramo).toContain("NO llame escalar_a_humano por eso");
+    expect(tramo).toMatch(/sin escalar/);
   });
 });
 

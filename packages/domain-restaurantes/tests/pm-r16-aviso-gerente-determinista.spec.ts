@@ -109,6 +109,6 @@ describe("PM R16: aviso al gerente armado por el servidor", () => {
   it("el prompt manda decir «le confirmo en un momento» y no dar horas al agregar a un pedido enviado", () => {
     const p = buildPmSystemPrompt({ businessName: PM_CONFIG_POR_OMISION.businessName, agentName: "el asistente virtual", deliveryTimeText: PM_CONFIG_POR_OMISION.deliveryTimeText, saludo: "Buenas", branches: [], entryBranch: null, customer: { isNew: true }, fechaHoraLocal: "lunes 14:00", diaSemana: "lunes" });
     expect(p).toContain("La HORA la confirma la sucursal");
-    expect(p).toContain("le confirmo en un momento");
+    expect(p).toMatch(/le confirmo en un momento/i);
   });
 });

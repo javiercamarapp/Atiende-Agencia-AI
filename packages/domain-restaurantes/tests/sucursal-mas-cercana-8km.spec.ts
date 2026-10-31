@@ -547,7 +547,7 @@ describe("prompt del perfil PM: solo `no_reconocida` pide otra referencia; fuera
   const base = { businessName: "Los Taquitos de PM", agentName: "el asistente virtual", deliveryTimeText: "de 40 a 50 minutos", saludo: "Buenas noches", branches: [], entryBranch: null, customer: { isNew: true as const } };
   it("WhatsApp: la regla 4 distingue los estados; voz: `no_reconocida` (fuera de zona ya lo cubre H5 y el mensaje de la herramienta)", () => {
     const wa = buildPmSystemPrompt({ ...base });
-    expect(wa).toMatch(/Si responde no_reconocida, pida otra referencia; tras dos intentos sin éxito, escale \(zona_no_reconocida\)\. Con fuera_de_zona o sugerida diga lo que indica su mensaje/);
+    expect(wa).toMatch(/no_reconocida: pida otra referencia; tras dos intentos escale \(zona_no_reconocida\)\. Con fuera_de_zona o sugerida, diga lo que indica su mensaje/);
     expect(wa).not.toMatch(/Si responde encontrada:false, pida otra referencia/);
     const voz = buildPmSystemPrompt({ ...base, canal: "voz" });
     expect(voz).toMatch(/no_reconocida: otra referencia y, tras dos intentos, escale \(zona_no_reconocida\)/);

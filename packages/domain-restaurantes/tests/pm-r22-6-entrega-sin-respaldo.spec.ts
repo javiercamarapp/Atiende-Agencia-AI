@@ -34,6 +34,6 @@ describe("R22-6 entrega y afirmaciones sin respaldo", () => {
   it("whatsapp: no afirma un horario de respuesta del equipo (entre la 1 am y las 12 nadie contesta)", () => {
     expect(wa).not.toMatch(/nadie del equipo contesta/);
     expect(wa).not.toMatch(/a partir de las 12 del día/);
-    expect(wa).toMatch(/le contestan en cuanto puedan/);
+    expect(wa).toMatch(/le responden en cuanto puedan/);
   });
 });

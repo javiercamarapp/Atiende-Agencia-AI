@@ -113,7 +113,7 @@ describe("perfil PM: piezas del original que faltaban", () => {
 
   it("WhatsApp: el prompt ofrece el pin (opcional) por texto y no asegura que el boton ya se envio (sin contador en base sin migrar no sale)", () => {
     const wa = buildPmSystemPrompt(ctx({ isNew: true }));
-    expect(wa).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ/);
+    expect(wa).toMatch(/PIN[^\n]{0,40}ofrézcalo UNA (?:SOLA|sola) vez/);
     expect(wa).toMatch(/NUNCA condicione el pedido al pin/);
     expect(wa).toMatch(/no siempre lo envía/);
     expect(wa).not.toMatch(/ya le envía aparte el botón|no repita esa petición/);

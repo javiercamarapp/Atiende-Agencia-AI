@@ -40,9 +40,9 @@ describe("P2: producto o cambio inexistente = 'no lo manejamos', alternativa y s
     expect(p6).toMatch(/buscar_producto sin resultado/);
     expect(p6).toMatch(/no lo manejamos/);
     expect(p6).toMatch(/alternativa más cercana/);
-    expect(p6).toMatch(/siga con el resto del pedido, sin escalar/);
+    expect(p6).toMatch(/y siga con el resto del pedido sin escalar/);
     expect(p6).toMatch(/Escale solo si el cliente insiste/);
-    expect(p6).toMatch(/modificacion_platillo, según H4/);
+    expect(p6).toMatch(/modificacion_platillo si es una receta, H4/);
   });
   it("voz: el paso 6 tampoco manda a escalar 'otro cambio' y cabe en el tope", () => {
     expect(voz).not.toMatch(/otro cambio: escale/);
@@ -63,15 +63,15 @@ describe("P2: producto o cambio inexistente = 'no lo manejamos', alternativa y s
 
 describe("P3: cotizar temprano y el 'confirmo' sin resumen no ofrece promociones", () => {
   it("5b y el paso 9 piden cotizar con canal, producto y tortilla aunque falten nombre, pago y hora", () => {
-    expect(paso(wa, "5b", "6")).toMatch(/llame cotizar_pedido en cuanto tenga canal, producto y tortilla, aunque falten nombre, pago y hora; no espere a juntar todos los datos/);
-    expect(paso(wa, "9", "10")).toMatch(/en cuanto tenga canal, producto y tortilla \(5b\), sin esperar nombre, pago ni hora/);
+    expect(paso(wa, "5b", "6")).toMatch(/llame cotizar_pedido en cuanto tenga canal, producto y tortilla, aunque falten nombre, pago y hora/);
+    expect(paso(wa, "9", "10")).toMatch(/en cuanto tenga canal, producto y tortilla \(5b\)/);
     expect(voz).toMatch(/9\. cotizar_pedido[^\n]*ya con canal, producto y tortilla\./);
   });
   it("el paso 10 cotiza y muestra el resumen ante 'confirmo/sí' sin resumen, sin promociones ni crear_pedido", () => {
     const p10 = paso(wa, "10", "11");
-    expect(p10).toMatch(/dice "confirmo" o "sí" y aún no hay resumen con total/);
-    expect(p10).toMatch(/cotice y muestre el resumen en ese mismo turno, SIN ofrecer promociones/);
-    expect(p10).toMatch(/sin llamar confirmar_resumen ni crear_pedido/);
+    expect(p10).toMatch(/Un "confirmo" o "sí" sin resumen con total mostrado/);
+    expect(p10).toMatch(/cotice y muestre el resumen en ese turno, sin promociones/);
+    expect(p10).toMatch(/ni confirmar_resumen ni crear_pedido/);
     expect(voz).toMatch(/"Confirmo" sin resumen: cotice y resuma, sin promos/);
   });
   it("sigue en pie: promo UNA vez ANTES del resumen y el 'sí' se cierra solo si ya hubo resumen (paso 11)", () => {
@@ -85,9 +85,9 @@ describe("P3: cotizar temprano y el 'confirmo' sin resumen no ofrece promociones
   });
   it("la cotizacion temprana es PRELIMINAR (no es resumen mostrado) y el 'confirmo' de mas tras crear lo atiende H12", () => {
     const p10 = paso(wa, "10", "11");
-    expect(p10).toMatch(/cotización hecha temprano \(5b\) es PRELIMINAR: no cuenta como resumen mostrado/);
-    expect(p10).toMatch(/un "sí" a otra pregunta \(número, propina, "¿algo más\?"\) no es el sí al resumen/);
-    expect(p10).toMatch(/tras "Su pedido ya quedó registrado", un "confirmo" o "sí" de más lo atiende H12 \(nunca cotice ni cree otro\)/);
+    expect(p10).toMatch(/Una cotización temprana \(5b\) es PRELIMINAR/);
+    expect(p10).toMatch(/un "sí" a otra pregunta \(número, "¿algo más\?"\) no es el sí al resumen/);
+    expect(p10).toMatch(/tras "Su pedido ya quedó registrado", un "confirmo" o "sí" de más lo atiende H12/);
   });
 });
 

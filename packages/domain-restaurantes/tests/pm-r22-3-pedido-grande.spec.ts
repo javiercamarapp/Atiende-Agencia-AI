@@ -28,7 +28,7 @@ describe("R22-3 pedido grande: se toma normal y no escala antes de cotizar", () 
   it("cantidad enorme: se cotiza y sigue el flujo normal, ya no se escala", () => {
     expect(PM_REGLA_CANTIDAD_ENORME).not.toMatch(/escale con escalar_a_humano/);
     expect(PM_REGLA_CANTIDAD_ENORME).toMatch(/no escale antes de cotizar/);
-    expect(wa).toMatch(/si la ratifica, cotice y siga el flujo normal/);
+    expect(wa).toMatch(/cotice para conocer el total y tómelo como cualquier pedido/);
   });
   it("si crear_pedido devuelve pedido_grande/por_aprobar se dice solo el mensaje al cliente (el aviso al gerente ya lo dejo el servidor)", () => {
     expect(wa).toMatch(/Si crear_pedido responde pedido_grande o por_aprobar, diga solo su mensaje_al_cliente/);

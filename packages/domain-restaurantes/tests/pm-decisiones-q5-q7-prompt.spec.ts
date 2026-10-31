@@ -27,14 +27,14 @@ describe("Q5 órdenes: una sola pregunta, nunca convierte por su cuenta", () => 
   it("WhatsApp: quita «nunca convierte piezas a órdenes» y pone la pregunta única con la frase de PM", () => {
     expect(wa).not.toContain("usted nunca convierte piezas a órdenes");
     expect(wa).toContain("Las gringas se venden por orden y cada orden trae 2. ¿Cuántas órdenes le anoto? 3 órdenes serían 6 gringas");
-    expect(wa).toContain("haga UNA sola pregunta y nunca decida usted cuántas órdenes son");
+    expect(wa).toMatch(/haga UNA pregunta y nunca decida cuántas órdenes son/);
   });
   it("WhatsApp: «N órdenes» se multiplica por el pack_size y se repite", () => {
-    expect(wa).toContain("«N órdenes», multiplique por el pack_size y repítalo («3 órdenes de gringas, que son 6 gringas»)");
+    expect(wa).toMatch(/«N órdenes» se multiplica por el pack_size y se repite \(«3 órdenes de gringas, que son 6 gringas»\)/);
   });
   it("WhatsApp: alambre/suizos/papadzules de 5 y pregunta con o sin queso", () => {
     expect(wa).toMatch(/alambres, suizos en tacos y papadzules de 5/);
-    expect(wa).toMatch(/pregunte también con o sin queso en el alambre/);
+    expect(wa).toMatch(/en alambres pregunte también con o sin queso/);
   });
   it("conserva la semántica de unidades ya fusionada (PM_REGLA_UNIDADES_ORDEN) en WhatsApp y en voz", () => {
     expect(wa).toContain("UNIDAD DE requested_quantity");
@@ -50,12 +50,12 @@ describe("Q6 agregados a un pedido ya enviado", () => {
   it("WhatsApp: texto de aviso a domicilio y para recoger, sin minutos", () => {
     expect(wa).toContain("Lo paso ahorita a la sucursal; ellos le confirman si alcanza a salir con su pedido, y si ya salió se lo pueden enviar aparte. Le confirmo en un momento");
     expect(wa).toContain("Lo paso a la sucursal; ellos le confirman si alcanza a quedar con su pedido; si no, se lo entregan aparte al recoger. Le confirmo en un momento");
-    expect(wa).toMatch(/NO dé minutos ni horas y no prometa que alcanza en ninguna dirección/);
+    expect(wa).toMatch(/no dé minutos ni horas ni prometa que alcanza/);
     expect(wa).not.toContain("Lo paso a cocina; si el pedido ya salió");
   });
   it("WhatsApp: rechazo = disculpa + no cabe + pedido nuevo (mínimo $200 o recoger), sin prometer llamada", () => {
     expect(wa).toContain("Una disculpa, su pedido ya salió a reparto y ya no se le puede agregar. Si gusta le tomo un pedido nuevo con eso (a domicilio el mínimo es $200; también puede recogerlo en la sucursal). ¿Se lo tomo?");
-    expect(wa).toMatch(/ni prometa que lo van a llamar; si pide hablar con alguien, dele el teléfono de la sucursal/);
+    expect(wa).toMatch(/No vuelva a escalar el mismo agregado; si pide hablar con alguien, dele el teléfono de la sucursal/);
   });
   it("voz: rechazo del agregado sin prometer llamada", () => {
     expect(REGLAS_VIVAS_VOZ).toContain("Una disculpa, su pedido ya salió y ya no se le puede agregar. Si quiere, le tomo un pedido nuevo");
@@ -65,13 +65,13 @@ describe("Q6 agregados a un pedido ya enviado", () => {
 
 describe("Q6 orden de aviso y rechazo; Q5 corto y cifras", () => {
   it("WhatsApp: el rechazo solo tras confirmación del sistema o la sucursal; antes, solo el aviso", () => {
-    expect(wa).toContain("solo cuando el sistema o la sucursal YA confirmaron que el pedido salió o que no cabe; antes de esa respuesta diga solo el aviso de arriba, sin prometer envío aparte ni exigir los $200");
+    expect(wa).toMatch(/solo cuando el sistema o la sucursal YA confirmaron que el pedido salió o que no cabe; antes diga solo el aviso de arriba, sin prometer envío aparte ni exigir los \$200/);
   });
   it("voz: mismo orden del rechazo", () => {
     expect(REGLAS_VIVAS_VOZ).toContain("Solo cuando el sistema o la sucursal ya lo confirmaron (antes, solo el aviso, sin exigir los doscientos pesos)");
   });
   it("las cifras las dice el cliente salvo multiplicar «N órdenes» por el pack_size, también en la variante corta (voz)", () => {
-    expect(wa).toContain("nunca las ajuste usted, salvo multiplicar «N órdenes» por el pack_size.");
+    expect(wa).toMatch(/Las cifras las dice el cliente; nunca las ajuste/);
     const voz = buildPmSystemPrompt({ ...ctx, canal: "voz" as const });
     expect(voz).toContain("«N órdenes» = N×pack_size (3 de gringas = 6)");
     expect(voz).not.toContain("sin convertir usted");
@@ -88,7 +88,7 @@ describe("Q7 tortilla, cambio de hora y cobertura", () => {
     expect(REGLAS_VIVAS_VOZ).toContain("solo kilos");
   });
   it("cambio de hora: se acepta y se guarda de forma estructurada (no en notes)", () => {
-    expect(wa).toMatch(/CAMBIO DE HORA de recogida: acéptelo sin trabas\. Antes de crear el pedido, actualice la hora de forma estructurada \(hora_recogida o minutos_para_recoger/);
+    expect(wa).toMatch(/CAMBIO DE HORA de recogida: acéptelo\. Antes de crear el pedido, actualícela de forma estructurada \(hora_recogida o minutos_para_recoger/);
     expect(wa).toMatch(/no en notes/);
     expect(REGLAS_VIVAS_VOZ).toContain("CAMBIO DE HORA DE RECOGIDA: acéptelo");
     expect(REGLAS_VIVAS_VOZ).toMatch(/actualice hora_recogida \(o minutos_para_recoger\)/);

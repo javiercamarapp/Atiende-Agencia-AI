@@ -173,7 +173,7 @@ const CHECKS: Record<string, () => Promise<void> | void> = {
     expect(borrado).toMatch(/pregúntele qué quería antes de aplicarlo/);
   },
   K15() {
-    expect(prompt()).toMatch(/MÁS TARDE EL MISMO DÍA[^\n]*programado_para[^\n]*MISMA en cotizar_pedido y en crear_pedido/);
+    expect(prompt()).toMatch(/más tarde el mismo día[^\n]*programado_para[^\n]*MISMA en cotizar_pedido y crear_pedido/);
     const out = mapCreateOrderToolInput({ organizationId: "o", phone: PHONE, channel: "whatsapp" }, { programado_para: "2026-10-04T20:30:00-06:00" }, true);
     expect(out.programadoPara).toBe("2026-10-04T20:30:00-06:00");
   },
@@ -182,7 +182,7 @@ const CHECKS: Record<string, () => Promise<void> | void> = {
     expect(prompt()).not.toMatch(/más unos \d+ minutos/);
   },
   K17() {
-    expect(prompt()).toMatch(/sí, el sistema le manda un mensaje de "va en camino"/);
+    expect(prompt()).toMatch(/sí, el sistema manda un mensaje de "va en camino"/);
     expect(prompt()).toMatch(/Un aviso de LLEGADA del repartidor no existe/);
   },
   async K18() {

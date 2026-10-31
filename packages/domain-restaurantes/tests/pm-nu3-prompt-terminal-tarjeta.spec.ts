@@ -24,7 +24,7 @@ const prompt = (canal?: "voz"): string =>
 describe("NU-3: el prompt exige avisar que llevan terminal al pagar con tarjeta", () => {
   it("la regla de pago de WhatsApp pide avisar la terminal con tarjeta, a domicilio y al recoger, y no con efectivo", () => {
     const p = prompt();
-    expect(p).toMatch(/Si paga con tarjeta, avise SIEMPRE que llevan terminal[^.]*a domicilio[^.]*al recoger/);
+    expect(p).toMatch(/avise SIEMPRE[^.]*llevan terminal[^.]*a domicilio[^.]*al recoger/);
     expect(p).toMatch(/con efectivo no mencione terminal/i);
   });
 

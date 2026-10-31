@@ -65,6 +65,6 @@ describe("R22-4 agente: la regla H3/H13 dice donde aplica y que ahi no aplica do
   it("whatsapp: H3 y H13 no prometen la promo a domicilio ni en una sucursal fuera de la lista", () => {
     expect(wa).toMatch(/Nunca las prometa a domicilio ni en una sucursal que no esté en esa lista/);
     expect(wa).toMatch(/H13\. Combo del martes \([^)]*solo para recoger y solo en las sucursales de H3/);
-    expect(wa).toMatch(/una sucursal sin la promo/);
+    expect(wa).toMatch(/sucursal sin la promo/);
   });
 });

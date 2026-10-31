@@ -26,17 +26,17 @@ const prompt = buildPmSystemPrompt({
 
 describe("PM R13 Q5: la piña es siempre sin costo; solo la DOBLE porción de una salsa se cobra, por doble_salsas", () => {
   it("dice que las salsas pedidas como complemento, incluida la piña, son SIEMPRE sin costo (requested_complements)", () => {
-    expect(prompt).toContain("Todas las salsas, incluida la piña, pedidas como complemento son SIEMPRE sin costo");
-    expect(prompt).toMatch(/también cuando el cliente diga «sin costo»/);
+    expect(prompt).toMatch(/salsas pedidas como complemento son SIEMPRE sin costo \(requested_complements/);
+    expect(prompt).toMatch(/aunque el cliente diga «sin costo»/);
   });
 
   it("dice que lo ÚNICO cobrado es la doble porción de CUALQUIER salsa, incluida la piña, siempre por doble_salsas", () => {
-    expect(prompt).toMatch(/Lo ÚNICO cobrado es la DOBLE porción de cualquier salsa, incluida la piña, y siempre por doble_salsas/);
+    expect(prompt).toMatch(/DOBLE porción de una salsa \(incluida la piña\)[^.]*extra cobrado[^.]*doble_salsas/);
     expect(prompt).toMatch(/solo cuando el cliente dice explícitamente doble o extra/);
   });
 
   it("no manda buscar «Extra Piña» con buscar_producto ni abre un segundo camino", () => {
-    expect(prompt).toMatch(/NUNCA busque «Extra Piña» con buscar_producto/);
+    expect(prompt).toMatch(/nunca busque «Extra Piña»/);
     expect(prompt).not.toMatch(/"extra piña" y los demás extras se buscan con buscar_producto/);
     expect(prompt).not.toMatch(/la doble es el extra piña/);
     expect(prompt).not.toMatch(/y extra piña cuestan/);

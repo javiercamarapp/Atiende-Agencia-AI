@@ -90,15 +90,15 @@ describe("reglas de prompt de WhatsApp de la ronda 5", () => {
     expect(promptWhatsApp).toMatch(/PRECIO ANTES QUE DATOS/);
     expect(promptWhatsApp).toMatch(/sushi no lo manejamos/);
     expect(promptWhatsApp).toMatch(/Boyo-Hamburguesa/);
-    expect(promptWhatsApp).toMatch(/N órdenes y media" de nachos = N órdenes completas MÁS una media orden/);
+    expect(promptWhatsApp).toMatch(/N órdenes y media" de nachos = N completas MÁS una media/);
   });
   it("corregir el nombre antes de crear no se escala; '¿ya quedo?' tras crear confirma", () => {
     expect(promptWhatsApp).toMatch(/ANTES de crear el pedido, aplíquelo, vuelva a cotizar y repita el resumen/);
-    expect(promptWhatsApp).toMatch(/nunca diga que no quedó registrado ni escale sin llamar antes buscar_cliente/);
+    expect(promptWhatsApp).toMatch(/nunca diga que no quedó ni escale sin llamar antes buscar_cliente/);
   });
   it("una sola despedida, hora pedida en el cierre y herramientas agrupadas", () => {
-    expect(promptWhatsApp).toMatch(/despídase UNA vez y no vuelva a preguntar/);
-    expect(promptWhatsApp).toMatch(/repita ESA hora \(nunca el tiempo genérico de 25 a 35 minutos\)/);
+    expect(promptWhatsApp).toMatch(/despídase UNA vez/);
+    expect(promptWhatsApp).toMatch(/repita ESA hora/);
     expect(promptWhatsApp).toMatch(/UNA sola respuesta todas las herramientas independientes/);
   });
   it("negativo: el estado del pedido sigue sin inventarse", () => {

@@ -24,42 +24,42 @@ const p = prompt();
 
 describe("R8 causa 1: no escalar de más; el 'sí' crea el pedido (H19)", () => {
   it("H19: notas menores van en notes y no motivan escalar", () => {
-    expect(p).toMatch(/H19\. NO ESCALE DE MÁS:.*limones, salsa habanera, "frijol extra".*no es motivo para escalar ni para no crear el pedido/);
+    expect(p).toMatch(/H19\. NO ESCALE DE MÁS:.*limones, salsa habanera, "frijol extra".*va en notes/);
     expect(p).toMatch(/Con el "sí" y todo cotizado, cree el pedido/);
   });
   it("paso 11: el 'sí' se cierra con crear_pedido, nunca con escalar ni 'falla técnica'", () => {
-    expect(p).toMatch(/el siguiente paso es crear_pedido, nunca escalar_a_humano ni un mensaje de falla \(H19\)/);
+    expect(p).toMatch(/nunca escalar_a_humano ni mensaje de falla \(H19\)/);
   });
   it("las notas menores sin costo caben en notes (no contradice la regla de seguridad)", () => {
-    expect(p).toMatch(/Notes lleva únicamente ajustes permitidos y peticiones menores sin costo \(limones, salsa habanera\)/);
+    expect(p).toMatch(/Notes lleva únicamente ajustes permitidos y peticiones menores sin costo/);
   });
 });
 
 describe("R8 causa 6: responder SIEMPRE tras escalar", () => {
   it("cierra el turno con texto y siguiente paso; postventa (queja, cambio, estado) cubierta", () => {
-    expect(p).toMatch(/DESPUÉS de escalar responda SIEMPRE: cierre ese turno con texto para el cliente y su siguiente paso; nunca lo deje en silencio/);
+    expect(p).toMatch(/DESPUÉS de escalar responda SIEMPRE: cierre ese turno con texto para el cliente y su siguiente paso; nunca en silencio/);
     expect(p).toMatch(/Queja o faltante:.*Cancelación o cambio:.*Estado del pedido:/s);
     // PM Ronda 12 (Q2): el codigo ya no entrega al agente los mensajes de una toma abierta (manda un acuse fijo), asi que el prompt dejo de pedir "conteste".
-    expect(p).toMatch(/Si el cliente vuelve a escribir, hay dos casos que decide el sistema, no usted/);
+    expect(p).toMatch(/Si el cliente vuelve a escribir decide el sistema, no usted/);
   });
 });
 
 describe("R8 causa 8: pasos de cierre", () => {
   it("con cuánto paga se pregunta SIEMPRE en efectivo, antes de repetir el pedido; ya no se dice que no se exige", () => {
     expect(p).not.toMatch(/no exija pin de ubicación, casa o depto, referencias, con cuánto paga/);
-    expect(p).toMatch(/Con cuánto paga SÍ se pregunta siempre que el pago sea en efectivo/);
+    expect(p).toMatch(/Con cuánto paga SÍ se pregunta siempre en efectivo/);
     expect(p).toMatch(/Efectivo: pregunte SIEMPRE con cuánto paga, antes de repetir el pedido/);
     expect(p).not.toMatch(/solo diga con cuánto paga si el cliente ya lo dijo/);
   });
   it("repite el pedido en lista con total antes de crear (G_REPETICION_ANTES_DE_CREAR) y el pin se ofrece una sola vez", () => {
-    expect(p).toMatch(/Nunca llame crear_pedido si su mensaje anterior al "sí" no fue esa lista completa con el total\./);
-    expect(p).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ y ANTES de confirmar/);
+    expect(p).toMatch(/ni crear_pedido si su mensaje anterior al "sí" no fue esa lista con el total/);
+    expect(p).toMatch(/PIN \(opcional\): ofrézcalo UNA sola vez antes de confirmar/);
   });
 });
 
 describe("R8 G1: primer mensaje sin aviso de privacidad largo", () => {
   it("el saludo es una sola frase y el modelo no escribe ni resume el aviso (lo antepone el sistema)", () => {
-    expect(p).toMatch(/Saludo CORTO y de usted \(una sola frase; el aviso de privacidad lo antepone el sistema, no lo escriba ni lo resuma/);
+    expect(p).toMatch(/Saludo CORTO y de usted \(una frase; el aviso de privacidad lo antepone el sistema: no lo escriba ni lo resuma/);
     expect(p).toMatch(/lo antepone el sistema una sola vez en el primer mensaje: no lo repita ni lo parafrasee/);
   });
   it("la regla ARCO sigue en el prompt", () => {
@@ -71,13 +71,13 @@ describe("R8 decisión de Javier 1: sucursal cerrada = tomar y PROGRAMAR", () =>
   it("H16 programa con programado_para y avisa que la sucursal confirma al abrir; sin 'no lo deje programado' ni escalar (otro)", () => {
     expect(p).not.toMatch(/no tome el pedido ni lo deje programado/);
     expect(p).not.toMatch(/si insiste, escale \(otro\)/);
-    expect(p).toMatch(/TOME el pedido y PROGRÁMELO:.*programado_para, la MISMA en cotizar_pedido y crear_pedido/s);
-    expect(p).toMatch(/queda PROGRAMADO y que la sucursal lo confirma al abrir; nunca que ya está en cocina/);
-    expect(p).toMatch(/No le pida que vuelva a escribir ni escale por eso/);
+    expect(p).toMatch(/TOME el pedido y PROGRÁMELO.*programado_para, la MISMA en ambas herramientas/s);
+    expect(p).toMatch(/queda PROGRAMADO y que la sucursal lo confirma al abrir, nunca que ya está en cocina/);
+    expect(p).toMatch(/no le pida volver a escribir ni escale/i);
   });
   it("paso 8: otro día o antes de abrir se programa, no se escala", () => {
     expect(p).not.toMatch(/Pedido para otro día o para antes de que abra la sucursal: escale/);
-    expect(p).toMatch(/Pedido para otro día o para antes de que abra la sucursal: prográmelo con programado_para \(hasta 7 días/);
+    expect(p).toMatch(/PROGRAMADO \(otro día, antes de que abra[^)]*hasta 7 días/);
   });
   it("paso 11: un pedido programado se confirma como PROGRAMADO, no como en cocina", () => {
     expect(p).toMatch(/quedó registrado y PROGRAMADO para \[hora\]; la sucursal lo confirma al abrir/);
@@ -110,7 +110,7 @@ describe("R8 decisión de Javier 2: el menú va como PDF de la sucursal, no pega
 
 describe("R8 causa 9: precios por kilo completos", () => {
   it("al listar kilos incluye TODAS las carnes (arrachera) con el precio de buscar_producto", () => {
-    expect(p).toMatch(/liste TODAS esas carnes \(con arrachera\) con el precio de buscar_producto/);
+    expect(p).toMatch(/liste TODAS las carnes por peso[^\n]*arrachera[^\n]*buscar_producto/);
   });
 });
 
@@ -122,27 +122,27 @@ describe("R8 revisión: coherencia entre pasos", () => {
   });
   it("H19 y paso 11 exceptúan el pedido grande (paso 8)", () => {
     expect(p).toMatch(/cree el pedido\./);
-    expect(p).toMatch(/nunca escalar_a_humano ni un mensaje de falla/);
+    expect(p).toMatch(/nunca escalar_a_humano ni mensaje de falla/);
   });
   it("paso 8 y H16: fuera del horario se ofrece programar para otro día o la siguiente apertura", () => {
-    expect(p).toMatch(/ofrezca pasar antes o programarlo para otro día \(programado_para\)/);
-    expect(p).toMatch(/prográmelo para la siguiente apertura \(programado_para\)/);
+    expect(p).toMatch(/ofrezca pasar antes o programarlo \(programado_para\)/);
+    expect(p).toMatch(/prográmelo para la siguiente apertura/);
   });
   it("menú: el respaldo (sin_menu o error) no garantiza el envío, usa registrar_contacto como los pasos 17 y 18 y da categorías", () => {
     expect(p).toMatch(/la sucursal se lo puede enviar en PDF y que le dejó el aviso \(sin garantizar cuándo\)/);
     expect(p).not.toMatch(/única excepción a escalar|hará llegar el menú/);
     expect(p).toMatch(/registrar_contacto con reason "menu_pdf" \(branch_slug en message; no es escalar\)/);
     expect(p).toMatch(/dé las categorías y 3 o 4 platillos con su precio de buscar_producto/);
-    expect(p).toMatch(/Si piden "el menú" \(vea la regla MENÚ\)/);
+    expect(p).toMatch(/Si piden "el menú" \(vea MENÚ\)/);
   });
   it("sin coincidencia exacta se pregunta con opciones; el OBJETIVO exige la lista con el total; la pregunta final ya no menciona el menú", () => {
-    expect(p).toMatch(/Un producto sin coincidencia exacta se pregunta con opciones \(paso 5\), no se escala/);
+    expect(p).toMatch(/un producto sin coincidencia exacta se pregunta con opciones \(paso 5\), no se escala/);
     expect(p).toMatch(/cotice, repita el pedido en lista con el total y pida el sí/);
     expect(p).toMatch(/Si el cliente solo pregunta \(horario, envío, promociones, salsas\), responda/);
     expect(p).not.toMatch(/Si el cliente solo pregunta \([^)]*menú\)/);
   });
   it("tras escalar: el mismo turno cierra con texto; los mensajes siguientes los decide el sistema (acuse), no 'no se quede callado' (R12 Q2)", () => {
-    expect(p).toMatch(/nunca lo deje en silencio/);
+    expect(p).toMatch(/nunca en silencio/);
     expect(p).not.toMatch(/no se quede callado/);
   });
 });

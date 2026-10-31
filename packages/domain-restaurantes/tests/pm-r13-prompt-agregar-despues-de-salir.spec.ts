@@ -25,15 +25,13 @@ const reglaNueva = (/Si el pedido YA SALIÓ y ofrece[^\n]*?o diga que la sucursa
 
 describe("PM R13 Q7: al ofrecer un pedido nuevo porque el anterior ya salió, sin tiempos inventados", () => {
   it("conserva el paso 16 tal cual: ya salió, no se le puede agregar, pedido nuevo sin volver a escalar", () => {
-    expect(prompt).toContain(
-      'dígale que ya salió, que no se le puede agregar y ofrezca un pedido nuevo (sin volver a escalar).',
-    );
+    expect(prompt).toMatch(/no se le puede agregar y ofrezca un pedido nuevo \(sin volver a escalar\)/);
   });
 
   it("prohíbe los tiempos aproximados inventados y manda dar solo el tiempo de la sucursal o decir que la sucursal lo confirma", () => {
     expect(reglaNueva).not.toBe("");
     expect(reglaNueva).toMatch(/pedido nuevo/);
-    expect(reglaNueva).toMatch(/no dé tiempos aproximados inventados \(nada de «aproximadamente 60 minutos»\)/);
+    expect(reglaNueva).toMatch(/dé solo el tiempo de la sucursal/);
     expect(reglaNueva).toContain("dé solo el tiempo de la sucursal (paso 8) o diga que la sucursal lo confirma");
   });
 

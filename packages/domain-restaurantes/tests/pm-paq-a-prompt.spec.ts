@@ -47,7 +47,7 @@ describe("prompt PM paquete A", () => {
   });
   it("recurrente: solo con dato real, sin inventar historial", () => {
     expect(t).toMatch(/lo de siempre/i);
-    expect(t).toMatch(/nunca invente historial/i);
+    expect(t).toMatch(/Sin historial, nunca lo invente/i);
   });
   it("recurrente: nunca lee la dirección completa (regla existente de perfil-pm)", () => {
     expect(t).toMatch(/nunca la lea completa/i);

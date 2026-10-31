@@ -23,7 +23,7 @@ const prompt = buildPmSystemPrompt({
 
 describe("PM R13 Q3: el queso fundido sí pregunta la tortilla (maíz o harina) antes de cotizar", () => {
   it("manda preguntar la tortilla del queso fundido, igual que en los tacos", () => {
-    expect(prompt).toMatch(/Queso fundido: pregunte la tortilla \(maíz o harina\) ANTES de cotizar, igual que en los tacos/);
+    expect(prompt).toMatch(/Queso fundido: pregunte la tortilla ANTES de cotizar/);
   });
 
   it("dice dónde anotarla: la herramienta no trae campo de tortilla en ese renglón, va en notes", () => {

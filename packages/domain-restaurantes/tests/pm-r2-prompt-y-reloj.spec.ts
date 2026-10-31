@@ -23,28 +23,28 @@ const prompt = () =>
 describe("prompt de WhatsApp: reglas nuevas de la ronda 2", () => {
   const p = prompt();
   it("whatsapp-07: 'en cuanto este' es recogida inmediata (sin hora) y programado_para nunca va vacio ni para 'en 20 minutos'", () => {
-    expect(p).toMatch(/"en cuanto esté", "ahorita", "lo antes posible" o "ya", es recogida inmediata: NO mande hora_recogida ni programado_para/);
-    expect(p).toMatch(/Nunca mande programado_para vacío ni para "en 20 minutos"/);
-    expect(p).toMatch(/tanto en cotizar_pedido como en crear_pedido \(la MISMA\)/);
+    expect(p).toMatch(/"en cuanto esté", "ahorita", "ya": recogida inmediata; no mande hora_recogida ni programado_para/i);
+    expect(p).toMatch(/nunca vacío ni para "en 20 minutos"/i);
+    expect(p).toMatch(/hora_recogida \(ISO[^)]*\), la MISMA en ambos/);
   });
   it("whatsapp-10: la promo sugerida se ofrece una vez ANTES del resumen, nunca en el turno del si", () => {
     expect(p).toMatch(/promociones_sugeridas, ofrézcalas UNA sola vez, ANTES del resumen; nunca después del "no, es todo" ni en el turno del "sí"/);
   });
   it("whatsapp-16: no repite el numero ya dado y pide como maximo dos datos por mensaje", () => {
-    expect(p).toMatch(/"es este mismo" o "mi número es este", no vuelva a preguntarlo/);
+    expect(p).toMatch(/"es este mismo", no vuelva a preguntar/);
     expect(p).toMatch(/como máximo DOS datos por mensaje/);
   });
   it("R2W28: si a la pregunta del numero del chat contesta otra cosa, se da por bueno el numero y no se repregunta", () => {
-    expect(p).toMatch(/contesta otra cosa, como "no, es todo" o "sí" sin referirse al número, dé por bueno el número de este chat/);
+    expect(p).toMatch(/si contesta otra cosa o "sí" sin referirse al número, dé por bueno el de este chat/);
   });
   it("VX13: tras una llamada cortada, un pedido_reciente con lo mismo ya esta registrado y no se crea otro (bloque de voz)", () => {
     expect(bloqueReglasVozPm()).toMatch(/LLAMADA CORTADA: .*pedido_reciente .*YA está registrado: dígaselo y NO cree otro/);
   });
   it("reglas-07: 2 kilos es UN renglon de 2 kg con requested_quantity 1", () => {
-    expect(p).toMatch(/"2 kilos" es UN renglón del producto de 2 kg con requested_quantity 1/);
+    expect(p).toMatch(/"2 kilos" es UN renglón de 2 kg con requested_quantity 1/);
   });
   it("reglas-06: con media orden de nachos no hay aguas de cortesia", () => {
-    expect(p).toMatch(/con MEDIA orden de nachos NO hay aguas de cortesía/);
+    expect(p).toMatch(/con MEDIA orden NO hay aguas de cortesía/);
   });
   it("voz-10: un insulto no es queja de pedido", () => {
     expect(p).toMatch(/Un insulto contra usted .* no es queja de pedido ni pide persona/);

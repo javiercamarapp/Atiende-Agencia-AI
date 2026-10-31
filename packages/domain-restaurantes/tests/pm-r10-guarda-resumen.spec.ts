@@ -351,20 +351,20 @@ describe("prompt de WhatsApp: pasos 6 y 11", () => {
   };
   it("paso 6: la 2a y 3a cosa no manejada del mismo pedido tampoco se escala; solo insistir en la MISMA cosa", () => {
     const p6 = paso("6", "7");
-    expect(p6).toMatch(/segunda o tercera cosa no manejada del MISMO pedido/);
-    expect(p6).toMatch(/longaniza/);
-    expect(p6).toMatch(/NO es insistir/);
-    expect(p6).toMatch(/insistir es pedir la MISMA cosa otra vez/);
+    expect(p6).toMatch(/Varias cosas no manejadas en el mismo pedido se tratan igual/);
+    expect(p6).toMatch(/salchichas/);
+    expect(p6).toMatch(/no es insistir/);
+    expect(p6).toMatch(/Escale solo si el cliente insiste en LA MISMA cosa tras la alternativa/);
   });
   it("paso 11: pago/propina NO es el si, no crear en ese turno, y que hacer con resumen_no_mostrado", () => {
     const p11 = paso("11", "12");
-    expect(p11).toMatch(/respuesta de pago o de propina/);
+    expect(p11).toMatch(/Una respuesta de pago o propina/);
     expect(p11).toMatch(/NO es el sí/);
-    expect(p11).toMatch(/nunca llame crear_pedido en el turno en que recibe el pago o la propina/);
+    expect(p11).toMatch(/vuelva a cotizar si cambió el total, muestre el resumen completo en lista y espere el sí en el mensaje SIGUIENTE/);
     expect(p11).toMatch(/resumen_no_mostrado/);
   });
   it("coherente con H4 y 5b", () => {
-    expect(wa).toMatch(/Varios productos no manejados en el mismo pedido se atienden igual/);
+    expect(wa).toMatch(/Varias cosas no manejadas en el mismo pedido se tratan igual/);
     expect(paso("5b", "6")).toMatch(/cuánto/i);
   });
 });

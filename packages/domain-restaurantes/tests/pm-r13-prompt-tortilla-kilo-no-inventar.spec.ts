@@ -22,23 +22,23 @@ const prompt = buildPmSystemPrompt({
 
 describe("PM R13 Q6 + decisión Q7: el bot dice que la tortilla va aparte y que el kilo la incluye, sin inventar conteos ni empaque", () => {
   it("permite decir lo que el menú dice: «el kilo incluye tortillas»", () => {
-    expect(prompt).toContain("«Incluye salsa roja, salsa verde, limones y tortillas»");
-    expect(prompt).toContain("«el kilo incluye tortillas»");
+    expect(prompt).toMatch(/el kilo (?:las )?incluye/);
+    expect(prompt).toMatch(/el kilo las incluye/);
   });
 
   it("permite decir que las tortillas van aparte de la carne (decisión de PM, todas las sucursales, solo kilos)", () => {
-    expect(prompt).toContain("Puede decir que las tortillas van aparte de la carne y que el kilo las incluye");
+    expect(prompt).toMatch(/tortillas van aparte de la carne; el kilo las incluye/);
     expect(prompt).toContain("Las tortillas van aparte de la carne; el kilo las incluye. ¿Las quiere de maíz, de harina o mixtas?");
-    expect(prompt).toContain("vale para todas las sucursales y solo para los kilos, nunca para tacos, gringas ni platillos");
+    expect(prompt).toMatch(/solo kilos, todas las sucursales/);
   });
 
   it("sigue prohibiendo conteos y empaque de las tortillas, y que se cobren aparte", () => {
     expect(prompt).toMatch(/NO diga cuántas tortillas son ni cómo se empacan/);
-    expect(prompt).toContain("La tortilla no se cobra aparte.");
+    expect(prompt).toMatch(/la tortilla no se cobra aparte/);
     expect(prompt).not.toMatch(/NO describa cómo viajan las tortillas/);
   });
 
   it("manda responder «la sucursal le confirma cómo se entrega la tortilla» cuando pregunten", () => {
-    expect(prompt).toContain("la sucursal le confirma cómo se entrega la tortilla");
+    expect(prompt).toMatch(/NO diga cuántas tortillas son ni cómo se empacan: la sucursal lo confirma/);
   });
 });

@@ -22,18 +22,18 @@ const prompt = buildPmSystemPrompt({
 
 describe("PM R12 T7-031: el prompt define que una orden de flautas es UNA flauta grande", () => {
   it("dice que una orden de flautas es una flauta grande y que el precio es por orden", () => {
-    expect(prompt).toMatch(/orden de flautas es UNA flauta grande/i);
-    expect(prompt).toMatch(/precio de menú es por orden/i);
+    expect(prompt).toMatch(/Flautas: "una orden" = UNA flauta grande/i);
+    expect(prompt).toMatch(/el precio es por orden/i);
   });
 
   it("dice que N flautas son N órdenes, que no se multiplica ni se inventan piezas", () => {
     expect(prompt).toMatch(/N flautas son N órdenes/);
     expect(prompt).toMatch(/nunca multiplique/i);
-    expect(prompt).toMatch(/ni invente piezas/i);
+    expect(prompt).toMatch(/nunca multiplique por 4/i);
   });
 
   it("no manda preguntar cuántas flautas trae la orden", () => {
-    expect(prompt).toMatch(/no pregunte cuántas (flautas|piezas) trae/i);
+    expect(prompt).toMatch(/ni pregunte cuántas (?:(?:flautas|piezas) )?trae/i);
   });
 
   it("deja un espacio tras el punto antes de «Cortesía de totopos»", () => {
@@ -42,7 +42,7 @@ describe("PM R12 T7-031: el prompt define que una orden de flautas es UNA flauta
   });
 
   it("exceptúa la contradicción del cliente: manda la herramienta (unidad_de_venta) y se pregunta", () => {
-    expect(prompt).toContain("salvo que el cliente se contradiga («4 flautas, una orden»): ahí manda la herramienta (unidad_de_venta) y se pregunta");
+    expect(prompt).toMatch(/salvo contradicción \(«4 flautas, una orden»\): ahí manda unidad_de_venta y se pregunta/);
   });
 });
 

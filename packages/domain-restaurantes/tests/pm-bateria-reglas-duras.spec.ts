@@ -607,6 +607,6 @@ describe("PM-C3 -- el prompt conserva las reglas duras vigentes", () => {
   });
 
   it("T-PC06 [P12] la doble porcion de salsa sigue siendo un extra cobrado en doble_salsas, nunca un producto", () => {
-    expect(prompt).toMatch(/DOBLE porción de una salsa, es un extra cobrado: mándelo en doble_salsas/);
+    expect(prompt).toMatch(/DOBLE porción de una salsa[^.]*extra cobrado[^.]*doble_salsas/);
   });
 });
