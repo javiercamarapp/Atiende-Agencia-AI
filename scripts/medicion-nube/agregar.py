@@ -59,7 +59,9 @@ def analiza(c):
 def main():
     base = sys.argv[1]; out = sys.argv[2] if len(sys.argv) > 2 else None
     reps = sorted((analiza(c) for c in glob.glob(f"{base}/*") if os.path.isdir(c)), key=lambda x: x["rep"])
-    L = ["## Medicion del agente: resumen por repeticion", ""]
+    corpus = sorted({(re.search(r"corpus=(\S+)", r["flag"]) or [None, "original (corrida sin etiqueta de corpus)"])[1] for r in reps})
+    L = ["## Medicion del agente: resumen por repeticion", "", f"**Corpus: {' / '.join(corpus).upper() if reps else 'n/d'}**" + (" - ALINEADO A POLITICA (copia versionada, ver scripts/medicion-nube/corpus-alineado/CAMBIOS.md); reportar siempre junto al resultado con corpus ORIGINAL" if "alineado" in corpus else ""), ""]
+    if len(corpus) > 1: L += ["**ADVERTENCIA: las repeticiones mezclan corpus distintos; no promediar.**", ""]
     if not reps: L.append("Sin artefactos de repeticiones."); 
     else:
         L += ["| rep | pasan | sin invalidas | p95 turno (ms) | p95 telemetria (ms) | turnos | fetch_failed | error_proveedor (tel.) | esc. inv. fetch | esc. inv. proveedor | USD | estado |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]

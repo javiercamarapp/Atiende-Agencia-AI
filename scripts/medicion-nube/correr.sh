@@ -11,6 +11,8 @@
 #   CONC=<n>             conversaciones en paralelo dentro del job (por omision 2, como en la Mac)
 #   NUCLEO=<regex>       ids de escenario (solo r21); por omision los 42 del NUCLEO de R21
 #   EVIDENCIA_AGREGADOS=1  opt-in: medicion alineada (order_amendments) del juez
+#   CORPUS=original|alineado  original (por omision) = escenarios/jueces/fixtures tal cual, byte a byte. alineado = copia versionada alineada a
+#                        politica adoptada (ver corpus-alineado/CAMBIOS.md); fuerza EVIDENCIA_AGREGADOS=1. Es un cambio de MEDICION, no del agente.
 #   QA_SIM_FILTRO, QA_CORPUS_SIM   (solo sim) filtro y ruta del corpus PRIVADO (nunca vive en el repo)
 #   TOPE_JOB_USD         corta el job si el uso de la llave sube mas que esto desde que arranco (r21: 2.0 ; sim: 5.0)
 #   USO_BASE + TOPE_TOTAL_USD   corte global opcional: uso absoluto de la llave >= USO_BASE + TOPE_TOTAL_USD
@@ -27,6 +29,7 @@ SUITE="${SUITE:-r21}"; ETQ="${ETQ:-local}"; REP="${REP:-1}"; MODELO="${MODELO:-d
 [[ "$SUITE" == r21 || "$SUITE" == sim ]] || { echo "SUITE invalida: $SUITE"; exit 8; }
 [[ "$ETQ" =~ ^[A-Za-z0-9._-]{1,60}$ ]] || { echo "ETQ invalida"; exit 8; }
 [[ "$CONC" =~ ^[0-9]+$ ]] || { echo "CONC invalido"; exit 8; }
+CORPUS="${CORPUS:-original}"; [[ "$CORPUS" == original || "$CORPUS" == alineado ]] || { echo "CORPUS invalido: $CORPUS (original|alineado)"; exit 8; }
 [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "falta OPENROUTER_API_KEY"; exit 8; }
 KEY="$(printf '%s' "$OPENROUTER_API_KEY" | tr -d '[:space:]')"
 if [ "$SUITE" = sim ]; then TOPE_JOB_USD="${TOPE_JOB_USD:-5.0}"; else TOPE_JOB_USD="${TOPE_JOB_USD:-2.0}"; fi
@@ -39,7 +42,7 @@ NUCLEO="${NUCLEO:-$NUCLEO_DEF}"
 # Lectura del uso de la llave (GET /api/v1/key; no gasta). Reintenta como el arnes local. Nunca imprime la llave.
 uso(){ local i r; for i in 1 2 3 4 5; do r=$(curl -s -m 20 -H "Authorization: Bearer $KEY" https://openrouter.ai/api/v1/key | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["usage"])' 2>/dev/null); [ -n "$r" ] && { echo "$r"; return; }; sleep 5; done; }
 U0=$(uso); [ -z "$U0" ] && { echo "no pude leer el uso de la llave"; exit 4; }
-echo "[$SUITE $ETQ rep$REP] uso llave=$U0 ; tope job=$TOPE_JOB_USD ; tope total=${TOPE_TOTAL_USD:-<sin>} base=${USO_BASE:-<sin>}"
+echo "[$SUITE $ETQ rep$REP corpus=$CORPUS] uso llave=$U0 ; tope job=$TOPE_JOB_USD ; tope total=${TOPE_TOTAL_USD:-<sin>} base=${USO_BASE:-<sin>}"
 if [ -n "$USO_BASE" ] && [ -n "$TOPE_TOTAL_USD" ]; then
   python3 -c "import sys; sys.exit(0 if $U0-$USO_BASE < $TOPE_TOTAL_USD-0.6 else 1)" || { echo "TOPE TOTAL: no se corre (uso $U0, base $USO_BASE, tope $TOPE_TOTAL_USD)"; echo "TOPE-PREVIO" > "$OUT/NO-CORRIO"; exit 3; }
 fi
@@ -50,9 +53,7 @@ if [ "$SUITE" = sim ]; then
 fi
 
 # Layout identico al local: <W>/qa (arnes) y <W>/repo (enlace al checkout), porque el arnes importa ../repo/...
-for f in "$AQUI"/arnes/*.ts.txt; do cp "$f" "$W/qa/$(basename "${f%.txt}")"; done
-cp "$AQUI"/arnes/*.sql "$AQUI"/arnes/cargar-config.py "$W/qa/"; cp -R "$AQUI/arnes/real-dump" "$W/qa/real-dump"
-echo '{"type":"module","private":true}' > "$W/qa/package.json"
+bash "$AQUI/preparar-qa.sh" "$W/qa" "$CORPUS" || { echo "no pude preparar el arnes (CORPUS=$CORPUS)"; exit 8; }
 ln -s "$REPO" "$W/repo"
 
 # Postgres fresco por corrida (cada job del workflow corre en su propio runner)
@@ -67,8 +68,9 @@ unset QA_WA_MODEL QA_WA_EFFORT RESTAURANTES_CIERRE_MAQUINA_ESTADOS WHATSAPP_CIER
 [ "$MODELO" != default ] && { export QA_WA_MODEL="$MODELO"; [ -n "$EFF" ] && export QA_WA_EFFORT="$EFF"; }
 [ "$MODO" = on ] && export RESTAURANTES_CIERRE_MAQUINA_ESTADOS=1
 [ "$MODO" = off ] && export WHATSAPP_CIERRE_UNA_VUELTA=0
+[ "$CORPUS" = alineado ] && EVIDENCIA_AGREGADOS=1   # el corpus alineado supone la evidencia de solicitudes de agregado
 [ "${EVIDENCIA_AGREGADOS:-}" = 1 ] && export EVIDENCIA_AGREGADOS=1
-echo "suite=$SUITE rep=$REP etq=$ETQ modo=$MODO flag='${RESTAURANTES_CIERRE_MAQUINA_ESTADOS-<sin definir>}' una_vuelta='${WHATSAPP_CIERRE_UNA_VUELTA-<default ON>}' modelo='${QA_WA_MODEL-<default>}' esfuerzo='${QA_WA_EFFORT-}' evidencia_agregados='${EVIDENCIA_AGREGADOS-0}' conc=$CONC sha=$(git -C "$REPO" rev-parse HEAD)" > "$OUT/flag.txt"
+echo "suite=$SUITE rep=$REP etq=$ETQ modo=$MODO flag='${RESTAURANTES_CIERRE_MAQUINA_ESTADOS-<sin definir>}' una_vuelta='${WHATSAPP_CIERRE_UNA_VUELTA-<default ON>}' modelo='${QA_WA_MODEL-<default>}' esfuerzo='${QA_WA_EFFORT-}' evidencia_agregados='${EVIDENCIA_AGREGADOS-0}' corpus=$CORPUS conc=$CONC sha=$(git -C "$REPO" rev-parse HEAD)" > "$OUT/flag.txt"
 TEL="$OUT/telemetria-turnos.jsonl"; : > "$TEL"; echo "$U0" > "$OUT/uso-inicial.txt"; date +%s > "$OUT/t0"
 
 # Vigilante de gasto: corta el job al pasar el tope (el uso de la llave es GLOBAL: en matriz paralela el delta incluye a los hermanos;

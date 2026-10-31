@@ -3,7 +3,7 @@ name: Medicion del agente (R21 / sim) en la nube
 # SOLO manual (workflow_dispatch). NUNCA pull_request / push / schedule: cada corrida GASTA saldo real de OpenRouter.
 # Corre la medicion R21 (42 escenarios NUCLEO) o el simulador (piloto ~108) en paralelo: una repeticion por job de una matriz,
 # cada job con su propio runner y su propio Postgres efimero. Detalle, costos y como lanzarlo: scripts/medicion-nube/README.md
-#   gh workflow run medicion-agente.yml --ref <rama> -f etiqueta=m34 -f repeticiones=5 -f suite=r21
+#   gh workflow run medicion-agente.yml --ref <rama> -f etiqueta=m34 -f repeticiones=5 -f suite=r21 [-f corpus=alineado]
 #
 # Seguridad: permissions solo de lectura; el secreto OPENROUTER_API_KEY entra unicamente como env del paso que lo usa;
 # los inputs se pasan por env (nunca interpolados dentro de los scripts); el checkout no persiste credenciales.
@@ -27,6 +27,12 @@ on:
         default: r21
         type: choice
         options: [r21, sim]
+      corpus:
+        description: "Corpus: original (tal cual) | alineado (copia versionada alineada a politica adoptada; ver scripts/medicion-nube/corpus-alineado/CAMBIOS.md). Reportar siempre lado a lado."
+        required: false
+        default: original
+        type: choice
+        options: [original, alineado]
       evidencia_alineada:
         description: "EVIDENCIA_AGREGADOS=1 (medicion alineada con order_amendments)"
         required: false
@@ -152,6 +158,7 @@ jobs:
           ETQ: ${{ inputs.etiqueta }}
           REP: ${{ matrix.rep }}
           MODO: ${{ inputs.modo }}
+          CORPUS: ${{ inputs.corpus }}
           CONC: ${{ inputs.conc }}
           EVIDENCIA_AGREGADOS: ${{ inputs.evidencia_alineada && '1' || '0' }}
           TOPE_JOB_USD: ${{ inputs.tope_job_usd }}
