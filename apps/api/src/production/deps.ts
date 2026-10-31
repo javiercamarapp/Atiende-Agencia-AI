@@ -59,6 +59,7 @@ import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cf
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { GeminiLiveProvider, contextoPrecargadoDeEntorno, PostgresAgregadosRepository, crearHookAgregados, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
 import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
+import { PostgresAnaliticaRepository } from "@atiende/domain-restaurantes/analitica/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -409,6 +410,7 @@ export function buildProductionDeps(): AppDeps {
     cierreRepo: (db) => new PostgresCierreRepository(db),
     // CFO de restaurantes (081/082/083): SAVEPOINT por llamada; contra la base sin migrar responde `disponible: false`.
     cfoRestaurantesRepo: (db) => new PostgresCfoRestaurantesRepository(db),
+    analiticaRestaurantesRepo: (db) => new PostgresAnaliticaRepository(db),
     // Autopiloto (migración 050): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
     autopilotoRepo: (db) => new PostgresAutopilotoRepository(db),
     // Agregados por validar (migración 099): cada operación degrada con SAVEPOINT a "no disponible" contra la base sin migrar.
