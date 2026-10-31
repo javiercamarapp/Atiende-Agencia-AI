@@ -16,6 +16,15 @@ export const ESTADO_LABEL: Readonly<Record<HandoffEstado, string>> = {
   cerrada: "Resuelta",
 };
 
+/** Estado de trabajo para el staff (R23): nuevo = nadie la atiende; en atencion = una persona o la app; resuelto. `devuelta`/`agente` = la atiende el agente. */
+export const ESTADO_TRABAJO_LABEL: Readonly<Record<HandoffEstado, string>> = {
+  agente: "Con el agente",
+  pendiente: "Nuevo",
+  tomada: "En atención",
+  devuelta: "Con el agente",
+  cerrada: "Resuelto",
+};
+
 export const CANAL_LABEL: Readonly<Record<ConversacionCanal, string>> = { whatsapp: "WhatsApp", voz: "Llamada" };
 
 export const CALLBACK_RESULTADO_LABEL: Readonly<Record<CallbackResultado, string>> = {
@@ -78,6 +87,12 @@ export interface DetalleWire {
     readonly solicitadaEn: string;
     readonly tomadaPor: string | null;
     readonly tomadaPorNombre: string | null;
+    /** Migracion 120; ausentes en una base sin migrar. Voz: resumen del callback y telefono para devolver la llamada. */
+    readonly resumen?: string | null;
+    readonly telefonoDevolucion?: string | null;
+    readonly asignadaPorNombre?: string | null;
+    readonly asignadaEn?: string | null;
+    readonly tomadaPorApp?: boolean;
   } | null;
   readonly notas: readonly { readonly id: string; readonly autor: string | null; readonly texto: string; readonly creadoEn: string }[];
 }
@@ -182,6 +197,47 @@ export function liberarHandoff(fetchImpl: typeof fetch, apiBaseUrl: string, toke
 
 export function agregarNota(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, handoffId: string, texto: string): Promise<{ id: string }> {
   return sendJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/handoffs/${encodeURIComponent(handoffId)}/notas`, token, "POST", { texto });
+}
+
+export function asignarHandoff(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, handoffId: string, userId: string): Promise<{ estado: string; cambio: boolean }> {
+  return sendJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/handoffs/${encodeURIComponent(handoffId)}/asignar`, token, "POST", { userId });
+}
+
+export type PanelAlertaTipo = "sin_tomar" | "sin_respuesta_humana" | "llamada_por_devolver" | "pedido_por_aprobar";
+export interface PanelAlertaWire {
+  readonly tipo: PanelAlertaTipo;
+  readonly canal: ConversacionCanal | null;
+  readonly conversationId: string | null;
+  readonly handoffId: string | null;
+  readonly orderId: string | null;
+  readonly referencia: string;
+  readonly minutos: number;
+  readonly monto: number | null;
+  readonly resumen: string | null;
+  readonly telefono: string | null;
+}
+export interface AlertasPanelWire {
+  readonly disponible: boolean;
+  readonly sinRespuestaMin: number;
+  readonly montoMin: number;
+  readonly total: number;
+  readonly items: readonly PanelAlertaWire[];
+}
+const ALERTA_TIPOS: readonly string[] = ["sin_tomar", "sin_respuesta_humana", "llamada_por_devolver", "pedido_por_aprobar"];
+
+/** Defensivo: ignora cualquier renglon que no sea una alerta conocida (una respuesta rara nunca rompe la bandeja). */
+export async function fetchAlertasPanel(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<AlertasPanelWire> {
+  const r = await fetchJson<Partial<AlertasPanelWire>>(fetchImpl, `${base(apiBaseUrl, propertyId)}/alertas-panel`, token);
+  const items = Array.isArray(r.items) ? r.items.filter((i): i is PanelAlertaWire => !!i && typeof i === "object" && ALERTA_TIPOS.includes((i as { tipo?: string }).tipo ?? "")) : [];
+  return { disponible: r.disponible === true, sinRespuestaMin: r.sinRespuestaMin ?? 10, montoMin: r.montoMin ?? 4000, total: items.length, items };
+}
+
+export function textoAlerta(a: PanelAlertaWire): string {
+  const hace = `hace ${a.minutos} min`;
+  if (a.tipo === "sin_tomar") return `Nadie ha tomado el chat ${a.referencia} (${hace}).`;
+  if (a.tipo === "sin_respuesta_humana") return `El cliente ${a.referencia} escribió y nadie le ha contestado (${hace}).`;
+  if (a.tipo === "llamada_por_devolver") return `Devolver la llamada a ${a.telefono ?? "un número sin registrar"} (${hace}).`;
+  return `Pedido ${a.referencia} por aprobar${a.monto !== null ? ` por $${a.monto.toLocaleString("es-MX")}` : ""} (${hace}).`;
 }
 
 export function responderWhatsapp(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, handoffId: string, texto: string): Promise<{ encolado: boolean }> {

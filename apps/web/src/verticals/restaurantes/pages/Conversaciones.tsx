@@ -8,16 +8,21 @@ import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, Estad
 import {
   CANAL_LABEL,
   ESTADO_LABEL,
+  ESTADO_TRABAJO_LABEL,
   agregarNota,
+  asignarHandoff,
+  fetchAlertasPanel,
   fetchBandeja,
   fetchDetalle,
   liberarHandoff,
   responderWhatsapp,
+  textoAlerta,
   textoEscalacion,
   tomarConversacion,
 } from "../lib/conversaciones-client.ts";
-import type { BandejaWire, BandejaItemWire, ConversacionCanal, DetalleWire, HandoffEstado } from "../lib/conversaciones-client.ts";
+import type { AlertasPanelWire, BandejaWire, BandejaItemWire, ConversacionCanal, DetalleWire, HandoffEstado } from "../lib/conversaciones-client.ts";
 import { HANDOFF_ESTADO_TONES } from "../lib/status-tones.ts";
+import { fetchOrgMembers } from "../lib/staff-client.ts";
 import { CallbacksPanel } from "./CallbacksPanel.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
@@ -30,6 +35,8 @@ function etiquetaAutor(m: { readonly rol: string; readonly autor?: string | null
   if (m.rol === "humano_app") return "Personal (app)";
   return "Herramienta";
 }
+
+const REFRESCO_MS = 30_000;
 
 function hora(iso: string | null): string {
   if (!iso) return "";
@@ -54,6 +61,14 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
   const [seleccion, setSeleccion] = useState<{ canal: ConversacionCanal; id: string } | null>(null);
 
   const recargar = useCallback(() => setReintento((n) => n + 1), []);
+
+  // R23: la bandeja y las alertas se refrescan solas cada 30 s (en pausa con la pestaña oculta) para que quien deja la pantalla abierta vea lo nuevo sin recargar.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (typeof document === "undefined" || !document.hidden) setReintento((n) => n + 1);
+    }, REFRESCO_MS);
+    return () => clearInterval(id);
+  }, []);
 
   // Al cambiar un filtro se muestra el esqueleto; al RECARGAR tras una accion (tomar/devolver...) se conserva la lista
   // para no desmontar el detalle abierto (perderia su aviso y el texto en curso).
@@ -94,6 +109,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
         </TabsList>
 
         <TabsContent value="bandeja" className="flex flex-col gap-4">
+          <AlertasPanel ctx={ctx} version={reintento} onElegir={(canal, id) => setSeleccion({ canal, id })} />
           {data && (
             <Card>
               <CardHeader>
@@ -145,7 +161,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
                   <FilaConversacion key={`${i.canal}:${i.conversationId}`} item={i} activa={seleccion?.id === i.conversationId} onElegir={() => setSeleccion({ canal: i.canal, id: i.conversationId })} />
                 ))}
               </ul>
-              {seleccion ? <DetalleConversacion key={`${seleccion.canal}:${seleccion.id}`} ctx={ctx} canal={seleccion.canal} conversationId={seleccion.id} onCambio={recargar} /> : <p className="m-0 text-sm text-muted-foreground">Elige una conversación para verla.</p>}
+              {seleccion ? <DetalleConversacion key={`${seleccion.canal}:${seleccion.id}`} ctx={ctx} guardia={data.cobertura.guardia.map((g) => ({ id: g.userId, nombre: g.nombre ?? "Sin nombre" }))} canal={seleccion.canal} conversationId={seleccion.id} onCambio={recargar} /> : <p className="m-0 text-sm text-muted-foreground">Elige una conversación para verla.</p>}
             </div>
           )}
         </TabsContent>
@@ -155,6 +171,53 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
         </TabsContent>
       </Tabs>
     </PageContainer>
+  );
+}
+
+function AlertasPanel({ ctx, version, onElegir }: { ctx: RestaurantesShellContext; version: number; onElegir: (canal: ConversacionCanal, id: string) => void }) {
+  const { apiBaseUrl, token, propertyId, orgSlug } = ctx;
+  const [alertas, setAlertas] = useState<AlertasPanelWire | null>(null);
+  useEffect(() => {
+    let cancelado = false;
+    fetchAlertasPanel(fetch, apiBaseUrl, token, propertyId)
+      .then((a) => {
+        if (!cancelado) setAlertas(a);
+      })
+      // Las alertas nunca bloquean la bandeja: si fallan (o la base no esta migrada) simplemente no se muestran.
+      .catch(() => {
+        if (!cancelado) setAlertas(null);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, version]);
+  if (!alertas || !alertas.disponible || alertas.items.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Alertas ({alertas.items.length})</CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm">
+        <ul aria-label="Alertas" className="m-0 p-0 list-none flex flex-col gap-2">
+          {alertas.items.map((a) => (
+            <li key={`${a.tipo}:${a.handoffId ?? a.orderId ?? a.referencia}`} className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone={a.tipo === "pedido_por_aprobar" || a.tipo === "sin_respuesta_humana" ? "danger" : "warning"}>
+                {a.tipo === "pedido_por_aprobar" ? "Por aprobar" : a.tipo === "llamada_por_devolver" ? "Devolver llamada" : "Sin respuesta"}
+              </StatusBadge>
+              <span>{textoAlerta(a)}</span>
+              {a.resumen && a.tipo === "llamada_por_devolver" && <span className="text-muted-foreground">Resumen: {a.resumen}</span>}
+              {a.tipo === "llamada_por_devolver" && a.telefono && <a href={`tel:${a.telefono}`}>Llamar</a>}
+              {a.tipo === "pedido_por_aprobar" && <a href={`/restaurantes/${orgSlug}/pedidos`}>Ver pedidos</a>}
+              {a.canal && a.conversationId && (
+                <Button size="sm" variant="outline" onClick={() => onElegir(a.canal!, a.conversationId!)}>
+                  Abrir
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -171,6 +234,7 @@ function FilaConversacion({ item, activa, onElegir }: { item: BandejaItemWire; a
         </div>
         <p className="m-0 mt-1 text-xs text-muted-foreground truncate">{item.vistaPrevia || "Sin mensajes"}</p>
         <p className="m-0 mt-1 text-xs text-muted-foreground">
+          {item.handoffId ? `${ESTADO_TRABAJO_LABEL[item.estado]} · ` : ""}
           {hora(item.actividadEn)}
           {item.tomadaPorNombre ? ` · la tiene ${item.tomadaPorNombre}` : ""}
           {item.motivo ? ` · motivo: ${item.motivo}` : ""}
@@ -181,7 +245,7 @@ function FilaConversacion({ item, activa, onElegir }: { item: BandejaItemWire; a
   );
 }
 
-function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: RestaurantesShellContext; canal: ConversacionCanal; conversationId: string; onCambio: () => void }) {
+function DetalleConversacion({ ctx, guardia, canal, conversationId, onCambio }: { ctx: RestaurantesShellContext; guardia: readonly { readonly id: string; readonly nombre: string }[]; canal: ConversacionCanal; conversationId: string; onCambio: () => void }) {
   const { apiBaseUrl, token, propertyId, staffEmail } = ctx;
   const [d, setD] = useState<DetalleWire | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -191,6 +255,26 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
   const [respuesta, setRespuesta] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [version, setVersion] = useState(0);
+  const [personas, setPersonas] = useState<readonly { readonly id: string; readonly nombre: string }[]>([]);
+  const [asignarA, setAsignarA] = useState("");
+
+  // Quienes pueden recibir una asignacion: owner/admin ven a todo el personal de la sucursal; el staff, a quienes estan de guardia. Su falta nunca bloquea el detalle.
+  useEffect(() => {
+    let cancelado = false;
+    const gestor = ctx.role === "owner" || ctx.role === "admin";
+    if (!gestor) return; // El staff reparte entre quienes estan de guardia (no puede listar a todo el personal).
+    fetchOrgMembers(fetch, apiBaseUrl, token, propertyId)
+      .then((m) => {
+        if (!cancelado) setPersonas(m.filter((x) => x.verticalRole !== "repartidor" && (x.propertyIds === null || x.propertyIds.includes(propertyId))).map((x) => ({ id: x.id, nombre: x.fullName })));
+      })
+      .catch(() => {
+        if (!cancelado) setPersonas([]);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, ctx.role]);
+  const opcionesAsignar = ctx.role === "owner" || ctx.role === "admin" ? personas : guardia;
 
   useEffect(() => {
     let cancelado = false;
@@ -266,7 +350,38 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
             </>
           )}
         </div>
-        {h?.tomadaPorNombre && <p className="m-0 text-muted-foreground">La tiene: {h.tomadaPorNombre}</p>}
+        {h && <p className="m-0 text-muted-foreground">Estado: {ESTADO_TRABAJO_LABEL[h.estado]}</p>}
+        {h?.tomadaPorNombre && (
+          <p className="m-0 text-muted-foreground">
+            La tiene: {h.tomadaPorNombre}
+            {h.asignadaPorNombre ? ` (asignada por ${h.asignadaPorNombre})` : ""}
+          </p>
+        )}
+        {h && abierta && opcionesAsignar.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Selector aria-label="Asignar a" size="sm" wrapperClassName="w-auto" value={asignarA} onChange={(e) => setAsignarA(e.target.value)}>
+              <option value="">Asignar a…</option>
+              {opcionesAsignar.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}
+                </option>
+              ))}
+            </Selector>
+            <Button size="sm" variant="outline" disabled={ocupado || asignarA === ""} onClick={() => ejecutar(() => asignarHandoff(fetch, apiBaseUrl, token, propertyId, h.handoffId, asignarA), "Conversación asignada.")}>
+              Asignar
+            </Button>
+          </div>
+        )}
+        {canal === "voz" && h && (h.resumen || h.telefonoDevolucion) && (
+          <div className="flex flex-col gap-1" aria-label="Devolver la llamada">
+            {h.resumen && <p className="m-0">Resumen de la llamada: {h.resumen}</p>}
+            {h.telefonoDevolucion && (
+              <p className="m-0">
+                Devolver la llamada a: <a href={`tel:${h.telefonoDevolucion}`}>{h.telefonoDevolucion}</a>
+              </p>
+            )}
+          </div>
+        )}
         {h?.motivo === "personal_app" ? (
           <p className="m-0 text-muted-foreground">El personal está atendiendo desde la app de WhatsApp Business: el asistente está callado en esta conversación.</p>
         ) : (
