@@ -1,0 +1,201 @@
+name: Medicion del agente (R21 / sim) en la nube
+
+# SOLO manual (workflow_dispatch). NUNCA pull_request / push / schedule: cada corrida GASTA saldo real de OpenRouter.
+# Corre la medicion R21 (42 escenarios NUCLEO) o el simulador (piloto ~108) en paralelo: una repeticion por job de una matriz,
+# cada job con su propio runner y su propio Postgres efimero. Detalle, costos y como lanzarlo: scripts/medicion-nube/README.md
+#   gh workflow run medicion-agente.yml --ref <rama> -f etiqueta=m34 -f repeticiones=5 -f suite=r21
+#
+# Seguridad: permissions solo de lectura; el secreto OPENROUTER_API_KEY entra unicamente como env del paso que lo usa;
+# los inputs se pasan por env (nunca interpolados dentro de los scripts); el checkout no persiste credenciales.
+
+on:
+  workflow_dispatch:
+    inputs:
+      etiqueta:
+        description: "Etiqueta de la corrida (letras, numeros, . _ -; max 40)"
+        required: true
+        type: string
+      repeticiones:
+        description: "Repeticiones en paralelo (1 a 5)"
+        required: true
+        default: "5"
+        type: choice
+        options: ["1", "2", "3", "4", "5"]
+      suite:
+        description: "Suite a medir"
+        required: true
+        default: r21
+        type: choice
+        options: [r21, sim]
+      evidencia_alineada:
+        description: "EVIDENCIA_AGREGADOS=1 (medicion alineada con order_amendments)"
+        required: false
+        default: false
+        type: boolean
+      modo:
+        description: "Cierre por maquina de estados: on | off | default (sin banderas)"
+        required: false
+        default: "on"
+        type: choice
+        options: ["on", "off", "default"]
+      max_paralelo:
+        description: "Maximo de jobs simultaneos de la matriz"
+        required: false
+        default: 5
+        type: number
+      conc:
+        description: "Conversaciones en paralelo dentro de cada job (la Mac uso 2)"
+        required: false
+        default: 2
+        type: number
+      tope_job_usd:
+        description: "Corte por job en USD (vacio = 2 en r21, 5 en sim)"
+        required: false
+        default: ""
+        type: string
+      tope_total_usd:
+        description: "Corte global en USD sobre el uso de la llave al lanzar"
+        required: true
+        default: "8"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: medicion-agente-${{ inputs.etiqueta }}
+  cancel-in-progress: false
+
+jobs:
+  preparar:
+    name: Validar entradas y leer uso de la llave
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      reps: ${{ steps.p.outputs.reps }}
+      uso_base: ${{ steps.p.outputs.uso_base }}
+    steps:
+      - name: Validar y leer /api/v1/key
+        id: p
+        env:
+          ETIQUETA: ${{ inputs.etiqueta }}
+          REPS: ${{ inputs.repeticiones }}
+          TOPE_TOTAL: ${{ inputs.tope_total_usd }}
+          TOPE_JOB: ${{ inputs.tope_job_usd }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$ETIQUETA" =~ ^[A-Za-z0-9._-]{1,40}$ ]] || { echo "etiqueta invalida"; exit 1; }
+          [[ "$REPS" =~ ^[1-5]$ ]] || { echo "repeticiones invalidas"; exit 1; }
+          [[ "$TOPE_TOTAL" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "tope_total_usd invalido"; exit 1; }
+          [[ -z "$TOPE_JOB" || "$TOPE_JOB" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "tope_job_usd invalido"; exit 1; }
+          [ -n "$OPENROUTER_API_KEY" ] || { echo "falta el secreto OPENROUTER_API_KEY"; exit 1; }
+          RESP="$(curl -s -m 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/key)"
+          # Solo se imprimen numeros (uso y limite restante), nunca la llave.
+          export RESP
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, sys
+          try:
+              d = json.loads(os.environ["RESP"])["data"]
+              uso = float(d["usage"])
+          except Exception:
+              print("no pude leer el uso de la llave", file=sys.stderr); sys.exit(1)
+          rest = d.get("limit_remaining")
+          tope = float(os.environ["TOPE_TOTAL"])
+          print(f"uso de la llave={uso} ; limite restante={rest} ; tope total={tope}", file=sys.stderr)
+          if isinstance(rest, (int, float)) and rest < tope:
+              print("el limite restante de la llave es menor que el tope total: no se lanza", file=sys.stderr); sys.exit(1)
+          n = int(os.environ["REPS"])
+          print("reps=" + json.dumps(list(range(1, n + 1))))
+          print(f"uso_base={uso}")
+          PY
+
+  medir:
+    name: Rep ${{ matrix.rep }} (${{ inputs.suite }})
+    needs: preparar
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.suite == 'sim' && 180 || 75 }}
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ inputs.max_paralelo }}
+      matrix:
+        rep: ${{ fromJSON(needs.preparar.outputs.reps) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Corpus privado del simulador (solo suite sim)
+        if: inputs.suite == 'sim'
+        env:
+          CORPUS_SIM_GZ_B64: ${{ secrets.CORPUS_SIM_GZ_B64 }}
+        run: |
+          set -euo pipefail
+          [ -n "$CORPUS_SIM_GZ_B64" ] || { echo "falta el secreto CORPUS_SIM_GZ_B64 (ver scripts/medicion-nube/README.md)"; exit 1; }
+          printf '%s' "$CORPUS_SIM_GZ_B64" | base64 -d | gunzip > "$RUNNER_TEMP/corpus-sim.json"
+          echo "QA_CORPUS_SIM=$RUNNER_TEMP/corpus-sim.json" >> "$GITHUB_ENV"
+
+      - name: Correr la medicion (rep ${{ matrix.rep }})
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUITE: ${{ inputs.suite }}
+          ETQ: ${{ inputs.etiqueta }}
+          REP: ${{ matrix.rep }}
+          MODO: ${{ inputs.modo }}
+          CONC: ${{ inputs.conc }}
+          EVIDENCIA_AGREGADOS: ${{ inputs.evidencia_alineada && '1' || '0' }}
+          TOPE_JOB_USD: ${{ inputs.tope_job_usd }}
+          TOPE_TOTAL_USD: ${{ inputs.tope_total_usd }}
+          USO_BASE: ${{ needs.preparar.outputs.uso_base }}
+          OUT_DIR: ${{ runner.temp }}/salida
+        run: bash scripts/medicion-nube/correr.sh
+
+      - name: Subir log, RESUMEN y telemetria
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: medicion-${{ inputs.etiqueta }}-rep${{ matrix.rep }}
+          path: ${{ runner.temp }}/salida
+          if-no-files-found: warn
+          retention-days: 14
+
+  agregar:
+    name: Agregar resultados
+    needs: [preparar, medir]
+    if: ${{ always() && needs.preparar.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (solo scripts/medicion-nube)
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/medicion-nube
+
+      - name: Descargar artefactos de las repeticiones
+        uses: actions/download-artifact@v7
+        with:
+          pattern: medicion-${{ inputs.etiqueta }}-rep*
+          path: ${{ runner.temp }}/reps
+
+      - name: Agregar y pegar en el summary
+        run: |
+          python3 -I scripts/medicion-nube/agregar.py "$RUNNER_TEMP/reps" "$RUNNER_TEMP/agregado.md" >/dev/null
+          cat "$RUNNER_TEMP/agregado.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir agregado
+        uses: actions/upload-artifact@v7
+        with:
+          name: medicion-${{ inputs.etiqueta }}-agregado
+          path: ${{ runner.temp }}/agregado.md
+          retention-days: 14
