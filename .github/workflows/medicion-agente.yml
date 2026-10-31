@@ -27,6 +27,16 @@ on:
         default: r21
         type: choice
         options: [r21, sim]
+      modelo:
+        description: "Modelo del agente (id de OpenRouter, p. ej. anthropic/claude-opus-5-5) o default"
+        required: false
+        default: default
+        type: string
+      esfuerzo:
+        description: "Esfuerzo de razonamiento (low|medium|high) o vacio"
+        required: false
+        default: ""
+        type: string
       corpus:
         description: "Corpus: original (tal cual) | alineado (copia versionada alineada a politica adoptada; ver scripts/medicion-nube/corpus-alineado/CAMBIOS.md). Reportar siempre lado a lado."
         required: false
@@ -159,6 +169,8 @@ jobs:
           REP: ${{ matrix.rep }}
           MODO: ${{ inputs.modo }}
           CORPUS: ${{ inputs.corpus }}
+          MODELO: ${{ inputs.modelo }}
+          EFF: ${{ inputs.esfuerzo }}
           CONC: ${{ inputs.conc }}
           EVIDENCIA_AGREGADOS: ${{ inputs.evidencia_alineada && '1' || '0' }}
           TOPE_JOB_USD: ${{ inputs.tope_job_usd }}
