@@ -8,6 +8,7 @@ import type {
   ConversacionCanal,
   ConversacionDetalle,
   ConversacionesLectura,
+  PanelAlerta,
   TurnoEntrada,
   TurnoPersonal,
 } from "./types.ts";
@@ -25,6 +26,10 @@ export interface ConversacionesRepository {
   devolver(organizationId: string, propertyId: string, handoffId: string): Promise<boolean>;
   cerrar(organizationId: string, propertyId: string, handoffId: string): Promise<boolean>;
   agregarNota(organizationId: string, propertyId: string, handoffId: string, texto: string): Promise<string>;
+  /** Reparte una escalada abierta a otra persona con acceso a la sucursal (migracion 120). `false` si ya estaba cerrada/devuelta o ya era de esa persona. Base sin migrar -> `ConversacionesNoDisponibleError`. */
+  asignar(organizationId: string, propertyId: string, handoffId: string, userId: string): Promise<boolean>;
+  /** Alertas del panel (migracion 120): chats sin tomar o sin respuesta humana tras `sinRespuestaMin`, llamadas por devolver y pedidos por aprobar de mas de `montoMin`. Base sin migrar -> `disponible: false`. */
+  listarAlertas(organizationId: string, propertyId: string, opciones: { readonly sinRespuestaMin: number; readonly montoMin: number }): Promise<ConversacionesLectura<readonly PanelAlerta[]>>;
   /** Responde por WhatsApp como la persona que tiene la toma; devuelve el id del outbox. */
   responderWhatsapp(organizationId: string, propertyId: string, handoffId: string, texto: string): Promise<string>;
 
