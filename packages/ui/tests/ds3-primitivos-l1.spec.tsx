@@ -73,7 +73,7 @@ describe("ds3 L1: CSS de los primitivos", () => {
     for (const r of reglasDs3) {
       r.walkDecls((d) => {
         if (d.prop === "box-shadow") expect(d.value, r.selector).toMatch(/^(none|0 0 0 2px hsl\(var\(--(ring|danger-ink)\)\)|inset 0 -2px 0 hsl\(var\(--action\)\))$/);
-        expect(d.important, `${r.selector} ${d.prop}`).toBe(false);
+        expect(Boolean(d.important), `${r.selector} ${d.prop}`).toBe(false);
         if (d.prop === "transition-property") expect(d.value).not.toMatch(/width|height|margin|padding|top|left/);
       });
     }
