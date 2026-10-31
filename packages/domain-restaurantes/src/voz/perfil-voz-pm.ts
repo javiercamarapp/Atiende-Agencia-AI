@@ -5,6 +5,7 @@
 // La columna `restaurantes.branch_voice_config.comportamiento` tiene tope de 8000 caracteres (migracion 025), por eso el perfil
 // de voz es la version COMPACTA del mismo contenido y este modulo falla en voz alta si se pasa del tope.
 import type { BranchSummary } from "../types.ts";
+import type { PerfilPmContexto } from "../whatsapp/perfil-pm.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_REGLA_CANTIDAD_ENORME, PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_RESERVACIONES, PM_REGLA_REINTENTO_PEDIDO, PM_REGLA_SIN_GENERO, PM_REGLA_UNIDADES_ORDEN, buildPmSystemPrompt } from "../whatsapp/perfil-pm.ts";
 import { PM_CONFIG_POR_OMISION } from "../whatsapp/llm-turn-handler.ts";
 
@@ -24,6 +25,8 @@ export interface EntradaComportamientoVoz {
   readonly salsasTexto?: string | null;
   readonly promosTexto?: string | null;
   readonly motivosDesactivados?: readonly string[];
+  /** Plantilla de restaurantes: datos del negocio (giro, ciudad, zona horaria, minimo, pedido grande). Sin valor = los de PM. */
+  readonly negocio?: Pick<PerfilPmContexto, "giroTexto" | "articuloGiro" | "ubicacionTexto" | "zonaHorariaTexto" | "pedidoMinimo" | "pedidoGrandeTexto" | "propinaPolitica" | "transferencia">;
 }
 
 /** Texto FIJO que se siembra en `branch_voice_config.comportamiento`. No sabe la hora ni la sucursal de entrada (es el mismo
@@ -43,6 +46,7 @@ export function comportamientoVozPm(e: EntradaComportamientoVoz): string {
       salsasTexto: e.salsasTexto ?? null,
       promosTexto: e.promosTexto ?? null,
       motivosDesactivados: e.motivosDesactivados ?? [],
+      ...e.negocio,
     }) + APENDICE_VOZ;
   if (texto.length > COMPORTAMIENTO_VOZ_MAX) {
     throw new RangeError(`El comportamiento de voz mide ${texto.length} caracteres; el maximo de branch_voice_config.comportamiento es ${COMPORTAMIENTO_VOZ_MAX} (migracion 025).`);
