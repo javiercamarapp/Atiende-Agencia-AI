@@ -24,7 +24,7 @@ describe("T7-038: prompt de «media orden»", () => {
     expect(i).toBeGreaterThan(-1);
     const tramo = p.slice(i, i + 400);
     expect(tramo).toContain("PREGUNTE la presentación");
-    expect(tramo).toMatch(/sin escalar/);
+    expect(tramo).toMatch(/PREGUNTE la presentación[^.]*sin escalar/);
   });
 });
 

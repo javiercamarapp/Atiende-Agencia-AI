@@ -31,7 +31,7 @@ describe("PM R13 Q7: al ofrecer un pedido nuevo porque el anterior ya salió, si
   it("prohíbe los tiempos aproximados inventados y manda dar solo el tiempo de la sucursal o decir que la sucursal lo confirma", () => {
     expect(reglaNueva).not.toBe("");
     expect(reglaNueva).toMatch(/pedido nuevo/);
-    expect(reglaNueva).toMatch(/dé solo el tiempo de la sucursal/);
+    expect(reglaNueva).toMatch(/ofrece un pedido nuevo \(paso 16\), dé solo el tiempo de la sucursal \(paso 8\) o diga que la sucursal lo confirma/);
     expect(reglaNueva).toContain("dé solo el tiempo de la sucursal (paso 8) o diga que la sucursal lo confirma");
   });
 

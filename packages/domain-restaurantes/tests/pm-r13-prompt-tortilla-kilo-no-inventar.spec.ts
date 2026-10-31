@@ -29,7 +29,7 @@ describe("PM R13 Q6 + decisión Q7: el bot dice que la tortilla va aparte y que 
   it("permite decir que las tortillas van aparte de la carne (decisión de PM, todas las sucursales, solo kilos)", () => {
     expect(prompt).toMatch(/tortillas van aparte de la carne; el kilo las incluye/);
     expect(prompt).toContain("Las tortillas van aparte de la carne; el kilo las incluye. ¿Las quiere de maíz, de harina o mixtas?");
-    expect(prompt).toMatch(/solo kilos, todas las sucursales/);
+    expect(prompt).toMatch(/tortillas van aparte de la carne; el kilo las incluye\. ¿Las quiere de maíz, de harina o mixtas\?»? \(solo kilos, todas las sucursales/);
   });
 
   it("sigue prohibiendo conteos y empaque de las tortillas, y que se cobren aparte", () => {

@@ -329,9 +329,9 @@ describe("QA-PM-R4: reglas de prompt de WhatsApp que no entran a la voz (limite 
     expect(p).toContain("propina_porcentaje");
     expect(p).toMatch(/NO conteste "sí" ni garantice/);
     expect(p).not.toMatch(/a partir de las 12 del día/);
-    expect(p).toMatch(/Si ya salió a reparto \(o está entregado\)/);
+    expect(p).toMatch(/Si ya salió a reparto \(o está entregado\), no diga "lo paso a cocina"[^.]*ni dé minutos/);
     expect(p).toMatch(/3 o 4 platillos con su precio REAL/);
-    expect(p).toMatch(/dígalo usted antes/);
+    expect(p).toMatch(/a domicilio bajo \$200 dígalo usted antes/);
     expect(p).toMatch(/cotice, dé el total exacto/);
     expect(p).toMatch(/sin repetir el rechazo ni el teléfono/);
   });

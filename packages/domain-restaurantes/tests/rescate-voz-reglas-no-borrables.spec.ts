@@ -107,6 +107,7 @@ describe("perfil PM: piezas del original que faltaban", () => {
     const wa = buildPmSystemPrompt(ctx({ isNew: true }));
     for (const regla of [PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_REINTENTO_PEDIDO, PM_REGLA_RESERVACIONES]) expect(wa).toContain(regla);
     expect(PM_REGLA_REINTENTO_PEDIDO).toMatch(/vuelva a buscar_producto/);
+    expect(PM_REGLA_REINTENTO_PEDIDO).toMatch(/Mientras crear_pedido no lo confirme, nunca diga que quedó registrado/);
     expect(PM_REGLA_RESERVACIONES).toMatch(/No tomamos reservaciones/);
     expect(PM_REGLA_RESERVACIONES).toMatch(/No dé celulares personales/);
   });

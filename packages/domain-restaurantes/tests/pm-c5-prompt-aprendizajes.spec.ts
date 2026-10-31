@@ -95,6 +95,7 @@ describe("5. pin a reparto: ayuda opcional, nunca requisito", () => {
     expect(p).toMatch(/NUNCA condicione el pedido al pin/);
     expect(p).toMatch(/El pin o link se guarda solo: no lo repita ni lo anote en notes/);
     expect(p).toMatch(/va en indicaciones_acceso \(una línea\)/);
+    expect(p).toMatch(/no los pregunte por rutina/);
     expect(p).toMatch(/"timbre del depto 6", "avisar al llegar"/);
   });
   it("regresion del eval real (12/68): ya no exige pin, casa o depto, referencia ni con cuanto paga para cerrar", () => {
@@ -241,7 +242,7 @@ describe("7. nunca sustituir ni elegir por el cliente (eval real: C04, C11, L05,
 describe("8. P2 del eval real: escalacion, hora de recogida, nombre y promociones", () => {
   it("el aviso al cliente va antes y en el mismo turno de escalar_a_humano; las llamadas pendientes tambien se escalan", () => {
     expect(p).toMatch(/el aviso va ANTES y en el MISMO turno de la llamada/);
-    expect(p).toMatch(/el aviso va ANTES y en el MISMO turno de la llamada/);
+    expect(p).toMatch(/nunca llame escalar_a_humano sin haber escrito ese aviso en ese turno/);
     expect(p).toMatch(/va por escalar_a_humano; no use registrar_contacto para eso/);
     expect(prompt({ canal: "voz" })).toMatch(/Avise primero al cliente que consulta al gerente y, en ese mismo turno, llame escalar_a_humano/);
   });

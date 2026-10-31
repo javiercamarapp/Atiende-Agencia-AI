@@ -361,6 +361,7 @@ describe("prompt de WhatsApp: pasos 6 y 11", () => {
     expect(p11).toMatch(/Una respuesta de pago o propina/);
     expect(p11).toMatch(/NO es el sí/);
     expect(p11).toMatch(/vuelva a cotizar si cambió el total, muestre el resumen completo en lista y espere el sí en el mensaje SIGUIENTE/);
+    expect(p11).toMatch(/nunca llame crear_pedido en el turno en que recibe el pago o la propina/);
     expect(p11).toMatch(/resumen_no_mostrado/);
   });
   it("coherente con H4 y 5b", () => {

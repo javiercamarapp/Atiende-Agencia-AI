@@ -122,7 +122,7 @@ describe("R8 revisión: coherencia entre pasos", () => {
   });
   it("H19 y paso 11 exceptúan el pedido grande (paso 8)", () => {
     expect(p).toMatch(/cree el pedido\./);
-    expect(p).toMatch(/nunca escalar_a_humano ni mensaje de falla/);
+    expect(p).toMatch(/El "sí" siempre se cierra creando el pedido: nunca escalar_a_humano ni mensaje de falla/);
   });
   it("paso 8 y H16: fuera del horario se ofrece programar para otro día o la siguiente apertura", () => {
     expect(p).toMatch(/ofrezca pasar antes o programarlo \(programado_para\)/);
@@ -142,7 +142,7 @@ describe("R8 revisión: coherencia entre pasos", () => {
     expect(p).not.toMatch(/Si el cliente solo pregunta \([^)]*menú\)/);
   });
   it("tras escalar: el mismo turno cierra con texto; los mensajes siguientes los decide el sistema (acuse), no 'no se quede callado' (R12 Q2)", () => {
-    expect(p).toMatch(/nunca en silencio/);
+    expect(p).toMatch(/DESPUÉS de escalar responda SIEMPRE[^.]*nunca en silencio/);
     expect(p).not.toMatch(/no se quede callado/);
   });
 });

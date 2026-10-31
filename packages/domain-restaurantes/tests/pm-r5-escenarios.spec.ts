@@ -97,8 +97,8 @@ describe("reglas de prompt de WhatsApp de la ronda 5", () => {
     expect(promptWhatsApp).toMatch(/nunca diga que no quedó ni escale sin llamar antes buscar_cliente/);
   });
   it("una sola despedida, hora pedida en el cierre y herramientas agrupadas", () => {
-    expect(promptWhatsApp).toMatch(/despídase UNA vez/);
-    expect(promptWhatsApp).toMatch(/repita ESA hora/);
+    expect(promptWhatsApp).toMatch(/despídase UNA vez y no vuelva a preguntar "¿qué le gustaría pedir\?"/);
+    expect(promptWhatsApp).toMatch(/repita ESA hora; el tiempo de la sucursal solo si no dio hora/);
     expect(promptWhatsApp).toMatch(/UNA sola respuesta todas las herramientas independientes/);
   });
   it("negativo: el estado del pedido sigue sin inventarse", () => {
