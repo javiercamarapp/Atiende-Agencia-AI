@@ -71,7 +71,6 @@ describe("e2e coexistencia: el eco de la app silencia al asistente", () => {
 
   it("P1-2: el eco de lo que mando la PLATAFORMA (respuesta del asistente) se descarta: no se duplica ni silencia al asistente (la respuesta del panel usa el mismo outbox/wamid; el stack e2e la encola en un outbox aparte)", async () => {
     stack = await startCicloStack();
-    const owner = stack.ctx.staff.owner.token;
     stack.setScript([say("Hola, le atiende el asistente de la taqueria.")]);
     await stack.sim.deliverText(PHONE, "Hola, tienen servicio hoy?");
     const wamidAsistente = stack.sim.sentTo(PHONE)[0]!.id;
