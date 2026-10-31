@@ -31,6 +31,7 @@ import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
+import { restaurantesAdminInterruptorRoutes } from "./admin-interruptor.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
 import { restaurantesAdminAgregadosRoutes } from "./admin-agregados.ts";
@@ -103,6 +104,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
   app.route("/", restaurantesAdminConocimientoRoutes(deps));
+  // Interruptor de emergencia unificado WhatsApp + voz (migracion 103).
+  app.route("/", restaurantesAdminInterruptorRoutes(deps));
   // R-33: checklist de onboarding calculado con datos reales (solo lectura, owner/admin).
   app.route("/", restaurantesAdminOnboardingRoutes(deps));
   // Voz propia (migración 025): config por sucursal, preview, conversaciones (panel) y registrador
