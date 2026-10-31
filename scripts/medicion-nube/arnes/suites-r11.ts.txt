@@ -1,0 +1,52 @@
+// R11: 4 escenarios NUEVOS (solo del arnes; el repo no se toca) para cubrir en LLM real lo que hasta hoy solo tenia pruebas deterministas o ningun escenario:
+// nachos sin pastor (R8), pesos coloquiales (L2b, #558) y propina/pago con tarjeta. Suite "r11" de run.ts. Mismo reloj/sucursal T7 que los demas.
+import { T } from "./stack.ts";
+import { runPersona } from "./lib.ts";
+import type { Convo, Persona } from "./lib.ts";
+import type { Job } from "./suites.ts";
+
+const DATOS = "Nombre: Carlos Prueba. Pago y hora de recogida: lo que digan tus mensajes (si no dicen, efectivo, paso en 40 minutos). Si no tienes un dato, inventa uno coherente de Merida.";
+const job = (id: string, fuente: string, p: Persona, expected: string, mustNot: string, hard?: Job["hard"]): Job => ({
+  id, fuente: "R11 " + fuente, branch: "T7", clock: T.MARTES_13, expected, mustNot, hard, maxOrders: 1,
+  run: (s) => runPersona(s, { id, fuente: "R11 " + fuente, branch: "T7", clock: T.MARTES_13, persona: p }),
+});
+const sinPastor = (c: Convo): string[] => (c.orders.some((o) => JSON.stringify(o.items).match(/pastor/i) && JSON.stringify(o.items).match(/nachos/i)) ? ["cobro/creo Nachos de Pastor cuando el cliente pidio nachos SIN pastor"] : []);
+
+/** NU-3 (Javier, 21-oct): con tarjeta el agente SIEMPRE avisa que llevan terminal. Falla si ningun mensaje del agente la menciona. */
+const avisoTerminal = (c: Convo): string[] => (c.turns.some((t) => t.who === "agente" && /terminal/i.test(t.text)) ? [] : ["el agente no aviso que llevan terminal al pagar con tarjeta (decision NU-3)"]);
+
+export function suiteR11(): Job[] {
+  return [
+    job("NU-1", "nachos sin pastor", { goal: "Quieres una orden de nachos SIN pastor (la carne del pastor no te gusta) para recoger. Si el agente te propone otra carne, aceptas la de bistec. Efectivo.", hints: ["quiero unos nachos sin pastor para recoger", "sí, de bistec está bien", "efectivo, a nombre de Ana Prueba, paso en 40 minutos", "sí, correcto"], datos: DATOS, maxTurns: 9 },
+      "Entiende 'sin pastor' como SIN esa carne: no cotiza ni cobra Nachos de Pastor; confirma la suposicion (ofrece otra carne o quitarla) y cotiza con la herramienta lo que el cliente acepte.", "Cobrar o crear Nachos de Pastor; inventar un producto o un precio.", sinPastor),
+    job("NU-2", "peso coloquial: kilo y cuarto / tres cuartos", { goal: "Pides para recoger 'kilo y cuarto de bistec' y 'tres cuartos de pastor', tortilla de maiz, efectivo.", hints: ["quiero kilo y cuarto de bistec y tres cuartos de pastor para recoger", "tortilla de maíz, efectivo, a nombre de Ana Prueba, paso en 1 hora", "sí, correcto"], datos: DATOS, maxTurns: 9 },
+      "Interpreta 'kilo y cuarto' como 1 kg + 250 g de bistec y 'tres cuartos' como 750 g de pastor (fracciones validas de la lista), cotiza SIEMPRE con la herramienta (sin inventar el precio), repite el pedido con total antes de crear y lo crea tras el 'si'.", "Cotizar 1 kg o 1.25 piezas; preguntar 'cuantos gramos' sin proponer la lectura obvia; inventar precios.",
+      (c) => (c.orders.length && !c.orders.some((o) => /bistec/i.test(JSON.stringify(o.items)) && /pastor/i.test(JSON.stringify(o.items))) ? ["el pedido creado no trae bistec y pastor"] : [])),
+    job("NU-3", "pago con tarjeta y propina en porcentaje", { goal: "Pides 6 tacos de pastor para recoger, tortilla de maiz, pagas con tarjeta y de propina quieres el 10%.", hints: ["quiero 6 tacos de pastor para recoger, pago con tarjeta", "propina del 10%", "tortilla de maíz, a nombre de Ana Prueba, paso en 40 minutos", "sí, correcto"], datos: DATOS, maxTurns: 9 },
+      "Total $252; pregunta/acepta la propina solo porque paga con tarjeta, la guarda como porcentaje (el servidor calcula los pesos sobre el total, $25.20) y AVISA que llevan terminal para cobrar con tarjeta (aviso obligatorio, decision NU-3 de Javier, tambien al recoger; lo dice el resumen o el agente antes del si); crea UN pedido tras el si.", "Pedir la propina en pesos al cliente; guardar propina 0; escalar por 'problema tecnico'; crear mas de un pedido.",
+      (c) => [...(c.orders.length && !c.orders.some((o) => Number(o.propina) > 0) ? ["pedido creado sin propina guardada (el cliente pidio 10% con tarjeta)"] : []), ...avisoTerminal(c)]),
+    job("NU-4", "pago en efectivo con cambio y sin propina", { goal: "Pides 3 tacos de pastor para recoger, pagas en efectivo con un billete de $200 (necesitas cambio) y NO dejas propina.", hints: ["quiero 3 tacos de pastor para recoger, pago en efectivo", "pago con 200", "tortilla de maíz, a nombre de Ana Prueba, paso en 40 minutos", "sí, correcto"], datos: DATOS, maxTurns: 9 },
+      "Total $126; no pregunta propina (es efectivo); anota que paga con $200 (cambio $74) sin prometer nada raro; crea UN pedido tras el si.", "Preguntar o cobrar propina en efectivo; terminal; cobrar distinto de $126.",
+      (c) => (c.orders.length && !c.orders.some((o) => o.total === 126) ? [`pedido ${c.orders.map((o) => o.total)} != 126`] : [])),
+  ];
+}
+
+// PAQUETE B (ubicacion y cobertura): escenarios SINTETICOS (colonias, tablajes y pines inventados; ningun dato real). Suite "paqb" de run.ts.
+const sinDomicilioFuera = (c: Convo): string[] => (c.orders.some((o) => o.canal === "domicilio") ? ["creo pedido a domicilio donde no habia cobertura confirmada"] : []);
+const noRepideDireccion = (c: Convo): string[] => (c.turns.filter((t) => t.who === "agente" && /calle y n[uú]mero|direcci[oó]n completa|me da su direcci[oó]n/i.test(t.text)).length > 0 ? ["volvio a pedir calle y numero / la direccion pese al pin o tablaje"] : []);
+
+export function suitePaqueteB(): Job[] {
+  const D = (id: string, fuente: string, p0: Omit<Persona, "datos">, expected: string, mustNot: string, extra?: Job["hard"]): Job => job(id, fuente, { ...p0, datos: DATOS }, expected, mustNot, extra);
+  return [
+    D("PB-S09", "S09 pin + tablaje sin calle", { goal: "Estas en una zona sin calles (Residencial Ficticia, tablaje 12345, privada con portón negro). Mandas tu ubicacion y dices 'ya te mande todo, hasta la ubicacion'. Pides 3 tacos de pastor a domicilio, maiz, efectivo, a nombre de Luis Prueba.", hints: ["quiero 3 tacos de pastor a domicilio, tablaje 12345 Residencial Ficticia, privada con portón negro", "[Ubicación compartida por WhatsApp] lat=21.033000 lng=-89.602000", "ya te mandé todo, hasta la ubicación. maíz, efectivo, Luis Prueba"] },
+      "Acepta pin + tablaje; pide en UN mensaje solo lo que falte; no vuelve a pedir calle y numero.", "Pedir calle y numero; rechazar el pin; pedir la direccion dos veces.", noRepideDireccion),
+    D("PB-S10", "S10 zona de otra sucursal", { goal: "Vives en la Residencial Altamira (zona ficticia que corresponde a otra sucursal) y mandas tu pin. Quieres 6 tacos de pastor a domicilio.", hints: ["quiero 6 tacos de pastor a domicilio, ¿llegan a Residencial Altamira?", "[Ubicación compartida por WhatsApp] lat=21.027000 lng=-89.573000", "aunque sea pedido grande, ¿no me lo pueden llevar?"] },
+      "Usa la herramienta de zona; no toma el domicilio; da el telefono de la otra sucursal tal como lo trae la herramienta/datos (no inventado) y ofrece recoger; sin excepcion por monto.", "Tomar el domicilio; inventar un telefono; afirmar cobertura sin la herramienta.", sinDomicilioFuera),
+    D("PB-S12", "S12 minimo y sin cargo de envio", { goal: "Pides 1 taco de pastor a domicilio y preguntas cuanto cobran de envio y que te recomiendan para llegar al minimo.", hints: ["un taco de pastor a domicilio, ¿cuánto cobran de envío?", "¿qué me recomiendas para llegar al mínimo?"] },
+      "Sin cargo de envio; minimo $200 en productos; sugiere 2 a 3 productos con precio del menu o recoger; propina voluntaria al repartidor si sale.", "Cobrar envio; decir que la propina es obligatoria; inventar precios."),
+    D("PB-S14", "S14 colonia sin dato de cobertura", { goal: "Pides 4 tacos de pastor a domicilio en 'Colonia Ficticia Centro' (no esta en ninguna lista) con pin lejano a toda sucursal: lat=21.400000 lng=-89.900000.", hints: ["4 tacos de pastor a domicilio en Colonia Ficticia Centro", "[Ubicación compartida por WhatsApp] lat=21.400000 lng=-89.900000"] },
+      "No afirma cobertura; dice con honestidad que no puede confirmarla, ofrece recoger y pasa con personal una vez.", "Prometer el envio; crear pedido a domicilio.", sinDomicilioFuera),
+    D("PB-S15", "S15 rafaga con pin y depto", { goal: "Mandas en rafaga: 'Hola', tu pin, 'Depa 26', '1/4 de bistec maiz todas las salsas' y 'tarjeta'. Nombre Ana Prueba.", hints: ["Hola", "[Ubicación compartida por WhatsApp] lat=21.033000 lng=-89.602000", "Depa 26", "1/4 de bistec, maíz, todas las salsas", "tarjeta, Ana Prueba"] },
+      "Consolida la rafaga; no repregunta la direccion ni el telefono; avisa que llevan terminal.", "Pedir calle y numero de nuevo.", noRepideDireccion),
+  ];
+}
