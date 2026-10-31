@@ -30,7 +30,7 @@ import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-recie
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
-import { avisoUnidadPorTabla, piezasPorOrdenDe } from "../unidades-pm.ts";
+import { avisoUnidadPorTabla, ordenesInterpretadasSinPreguntar, piezasPorOrdenDe } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { componentesLocales, estaAbiertoAhora, aperturaConExcepciones, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
@@ -44,7 +44,7 @@ import { kmAproxTexto } from "../nearest-branch.ts";
 import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
-import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, resolveBranchOrderItems, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { acumuladoReciente, evaluarPedidoGrande, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { pedidoAceptaAgregado } from "../agregados/tipos.ts";
@@ -1078,6 +1078,7 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   }
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   await exigirMinimoDeRecogida(repo, ctx, name, input);
+  await exigirAclararOrdenesOPiezas(repo, ctx, name, input);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
@@ -1241,6 +1242,41 @@ async function exigirMinimoDeRecogida(repo: RestaurantesRepository, ctx: AgentTo
   throw new OrderValidationError(
     `La hora de recogida debe quedar a por lo menos ${MINUTOS_MINIMOS_RECOGER} minutos de ahora (cocina necesita ese tiempo) y la que se intenta registrar queda a ${Math.max(0, minutos)}. NO la registre ni diga que sí se puede: dígale al cliente que el mínimo es de ${MINUTOS_MINIMOS_RECOGER} minutos y pídale otra hora (o un plazo de ${MINUTOS_MINIMOS_RECOGER} minutos o más).`,
   );
+}
+
+/**
+ * R22 (T7-074): «2 mestizas» se cotizaba como «2 órdenes (4 piezas)» sin preguntar (la regla del prompt la incumple el modelo). Si el producto se vende por orden con pack_size > 1, la cantidad
+ * cotizada equivale a N órdenes y el ÚLTIMO mensaje del cliente da ese N pegado al producto sin decir «orden(es)» ni «pieza(s)», no se cotiza: se le devuelve al modelo qué preguntar.
+ * Solo WhatsApp con historial; si el producto no se resuelve o no tiene pack_size (el servidor cobra una orden por unidad), no interviene y mandan las demás reglas.
+ */
+async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<void> {
+  if (name !== "cotizar_pedido" || ctx.channel !== "whatsapp" || !Array.isArray(input.items) || typeof input.branch_slug !== "string") return;
+  const ultimo = [...(ctx.conversacionReciente ?? [])].reverse().find((m) => m.role === "user")?.content;
+  if (!ultimo) return;
+  const items = (input.items as Record<string, unknown>[]).filter((i) => i && typeof i === "object" && Number.isInteger(i.requested_quantity));
+  if (items.length === 0) return;
+  try {
+    const branch = await repo.findBranch(ctx.organizationId, { slug: input.branch_slug });
+    if (!branch) return;
+    const { items: resueltos, products } = await resolveBranchOrderItems(
+      repo,
+      branch.propertyId,
+      items.map((i) => ({ productId: typeof i.product_id === "string" ? i.product_id : undefined, productName: typeof i.product_name === "string" ? i.product_name : undefined, requestedQuantity: i.requested_quantity as number })),
+    );
+    for (const [idx, r] of resueltos.entries()) {
+      const p = products.find((x) => x.id === r.productId);
+      if (!p) continue;
+      const porOrden = piezasPorOrdenDe(p.name, p.packSize);
+      const n = ordenesInterpretadasSinPreguntar(ultimo, p.name, porOrden, items[idx]!.requested_quantity as number);
+      if (n !== null && porOrden !== null) {
+        throw new OrderValidationError(
+          `El cliente dijo «${n}» ${p.name} sin decir si son órdenes o piezas, y ${p.name} se vende por orden (cada orden trae ${porOrden} piezas): NO decida usted que son ${n} órdenes (${n * porOrden} piezas). NO cotice todavía; pregunte UNA vez: «¿${n} ${n === 1 ? "orden" : "órdenes"} (${n * porOrden} piezas) o ${n} ${n === 1 ? "pieza" : "piezas"}?». Cuando conteste, cotice con requested_quantity en PIEZAS.`,
+        );
+      }
+    }
+  } catch (e) {
+    if (e instanceof OrderValidationError && e.message.startsWith("El cliente dijo «")) throw e;
+  }
 }
 
 function flowNow(flow: OrderFlowRef): number {

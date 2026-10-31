@@ -227,6 +227,29 @@ export function bloqueCantidadNoMultiplo(mensajes: readonly string[]): string {
   ].join("\n");
 }
 
+// ── R22 (T7-074): «2 mestizas» (sin decir «ordenes» ni «piezas») no puede cotizarse como 2 ORDENES (4 piezas) ──────────────────────────────────────────────────────
+/**
+ * Pura. El cliente dijo un numero N pegado al producto («2 mestizas», «dos gringas de pastor») SIN «orden(es)» ni «pieza(s)» delante, y la cotizacion trae `piezasCotizadas` = N * piezasPorOrden
+ * (el modelo leyo N como ordenes). Devuelve N en ese caso, para que el servidor obligue a preguntar «¿N ordenes (X piezas) o N piezas?». `null` si no aplica: la cantidad es la dicha tal cual
+ * (N = piezas cotizadas), el cliente dijo la unidad, o el producto no aparece con un numero en el mensaje. Solo mira el ULTIMO mensaje del cliente.
+ */
+export function ordenesInterpretadasSinPreguntar(ultimoMensaje: string, nombreProducto: string, piezasPorOrden: number | null, piezasCotizadas: number): number | null {
+  if (piezasPorOrden === null || piezasPorOrden <= 1 || !Number.isInteger(piezasCotizadas) || piezasCotizadas < 1) return null;
+  const palabra = sinAcentos(nombreProducto).toLowerCase().match(/[a-z]+/)?.[0];
+  if (!palabra || palabra.length < 4) return null;
+  const raiz = palabra.replace(/e?s$/, "");
+  const t = sinAcentos(ultimoMensaje).toLowerCase();
+  // Con la unidad explicita («2 ordenes de mestizas», «4 piezas de mestiza») no hay nada que preguntar.
+  const conUnidad = new RegExp(`\\b(?:${NUM})\\s+(?:ordenes|orden|piezas?)\\s+(?:de\\s+)?(?:${raiz})`);
+  const sinUnidad = new RegExp(`\\b(${NUM})\\s+(?:de\\s+)?${raiz}\\w*`, "g");
+  if (conUnidad.test(t)) return null;
+  for (const m of t.matchAll(sinUnidad)) {
+    const n = /^\d+$/.test(m[1]!) ? parseInt(m[1]!, 10) : NUMEROS[m[1]!];
+    if (n && n !== piezasCotizadas && n * piezasPorOrden === piezasCotizadas) return n;
+  }
+  return null;
+}
+
 // ── R21 (T7-008): productos que el menu NO tiene ──────────────────────────────────────────────────────────────────────────────────────────────
 // El modelo rechazaba bien chistorra o salchichas pero ofrecia «tacos de chorizo» (un platillo que el cliente no pidio y que el menu no tiene) en vez de lo parecido que SI hay
 // (los crujientes de pollo). El servidor detecta la palabra en el mensaje del cliente y le fija al modelo, SOLO para ese turno, que decir. No lista precios: los da buscar_producto.
