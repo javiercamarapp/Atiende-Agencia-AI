@@ -210,7 +210,20 @@ export function montoDePagoExplicito(t: string): number | undefined {
 
 /** Lo que dice el mensaje sobre el PAGO (forma, billete, exacto, negativa): el primero (hacia atras) que lo toca fija el billete vigente. */
 export const HABLA_DE_PAGO = /\b(?:efectivo|tarjeta|terminal|exacto|justo|sin\s+cambio|no\s+(?:tengo|traigo|manejo|cuento)|mejor\s+(?:pago|con|en)|pago|pagar|pagare|paga|billete|cambio\s+de|cash)\b/;
-const NEGA_BILLETE = /\bno\s+(?:tengo|traigo|manejo|cuento)\b|\bsin\s+(?:billete|cambio)\b/;
+/**
+ * R24 (T7-026 / T7-074): ¿ya se habló de CÓMO PAGA el cliente? Cuenta lo que dijo el cliente (efectivo, tarjeta, terminal, un billete) o una PREGUNTA del asistente sobre la forma de pago.
+ * El resumen canónico NO cuenta (lleva «Pago: …» y «Total a pagar» y se validaría a sí mismo). Si nadie habló del pago, el `payment_method` del modelo es inventado.
+ */
+export function clienteDijoComoPaga(historial: readonly MensajeHistorial[]): boolean {
+  return historial.some((m) => {
+    if (typeof m.content !== "string") return false;
+    const t = normalizar(m.content);
+    if (m.role === "user") return /\b(?:efectivo|tarjeta|terminal|debito|credito|cash)\b/.test(t) || montoDePagoExplicito(t) !== undefined || datosDelMensaje(m.content).pago !== undefined;
+    if (m.role === "assistant") return !/total a pagar/.test(t) && /\b(?:efectivo|tarjeta|terminal)\b/.test(t) && /[?¿]/.test(t);
+    return false;
+  });
+}
+const NEGA_BILLETE =/\bno\s+(?:tengo|traigo|manejo|cuento)\b|\bsin\s+(?:billete|cambio)\b/;
 
 /** Billete valido del mensaje: explicito, no negado, que alcanza el total y plausible (<= 10x el total o <= 5000). `undefined` si no. */
 export function billeteExplicitoDelMensaje(mensaje: string, total: number): number | undefined {

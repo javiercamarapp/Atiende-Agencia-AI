@@ -88,6 +88,7 @@ import {
   decidirConfirmacion,
   etiquetaHoraEntrega,
   firmaDeCierre,
+  clienteDijoComoPaga,
   horaCotizadaContradiceAlCliente,
   mensajeDatosCambiaron,
   resumenCanonico,
@@ -1311,6 +1312,12 @@ async function writeFlow(
   return res;
 }
 
+/** R24: WhatsApp con historial, el cliente ya escribio algo y nadie hablo de como paga. Sin historial (voz, pruebas sin mensajes) no se opina. */
+function pagoInventadoPorElModelo(ctx: AgentToolContext): boolean {
+  const h = ctx.channel === "whatsapp" ? ctx.conversacionReciente : undefined;
+  return h !== undefined && h.some((m) => m.role === "user") && !clienteDijoComoPaga(h);
+}
+
 /** Forma de pago y efectivo_con de una cotizacion: lo que manda el modelo; si lo omite se conserva el de la cotizacion vigente. Tarjeta descarta el efectivo_con (es relleno). */
 function pagoDeCotizacion(input: Record<string, unknown>, previo: OrderFlowContext | undefined): { quotedPago?: "efectivo" | "tarjeta"; quotedEfectivoCon?: number } {
   const dado = input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined;
@@ -1691,6 +1698,15 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     // cambio el pedido, se vuelve a cotizado. Resultados (no excepciones) por el SAVEPOINT. Un reclamo viejo (`creando`) que se retoma NO se vuelve a revisar: ya paso por aqui.
     if (cierreMaquinaActiva() && ctx.channel === "whatsapp" && snap.state === "confirmado" && current.confirmedFirma !== undefined) {
       const datos = datosDeCierreDeEntrada(input, current);
+      // R24: el pago del modelo no se adopta si nadie habló de cómo paga el cliente: se le pregunta (el pedido no se crea ni se toca el flujo).
+      if (datos.pago !== undefined && current.quotedPago === undefined && pagoInventadoPorElModelo(ctx)) {
+        return {
+          result: { error: "NO se creó el pedido: el cliente todavía no ha dicho cómo va a pagar (la forma de pago que intenta registrar la puso usted, no el cliente). Pregúntele «¿Pagará en efectivo o con tarjeta?» (y con cuánto paga si es efectivo), espere su respuesta y vuelva a cotizar con ese dato para que vea el resumen con su pago." },
+          orderId: null,
+          propertyId: null,
+          rechazoDelFlujo: "cierre_datos_cambiaron",
+        };
+      }
       if (firmaDeCierre(datos) !== current.confirmedFirma) {
         // El servidor adopta el dato nuevo, vuelve a `cotizado` y rearma el resumen: el modelo solo tiene que mostrarlo y esperar el sí (no depende de que re-cotice bien).
         const nuevoCanonico = current.resumenBase ? resumenCanonico({ ...current.resumenBase, datos }) : undefined;
