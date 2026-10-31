@@ -1619,6 +1619,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const efectiva = horaUnificadaRecoger(input);
       if (efectiva === undefined || efectiva === horaCotizada) input = { ...input, programado_para: programadoCotizado };
     }
+    // R22 / T7-031: a DOMICILIO programado el modelo cotiza con programado_para (el resumen que el cliente confirmo dice «para las 8:30 pm») y al crear lo omite: la huella cambiaba y el
+    // «sí, confirmo» terminaba en «problema tecnico». Si crear no trae hora, es la cotizada. Una hora DISTINTA sigue obligando a re-cotizar.
+    if (input.canal !== "recoger" && programadoCotizado && toProgramadoPara(input.programado_para) === undefined) input = { ...input, programado_para: programadoCotizado };
     const cotizados = snap.context?.quotedItems && snap.context.quotedItems.length > 0 ? snap.context.quotedItems : undefined;
     // Revision de #528: la tortilla de un KILO no entra a la huella; si el cliente la cambia al crear (cotizo harina, crea maiz) la comanda llevaria la cotizada sin avisar.
     // Se rechaza ANTES de reclamar el pedido y se pide re-cotizar con la tortilla que el cliente quiere.
