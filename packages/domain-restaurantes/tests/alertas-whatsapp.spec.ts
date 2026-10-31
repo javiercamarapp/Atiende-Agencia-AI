@@ -87,7 +87,7 @@ describe("barrerAlertas", () => {
     expect(item?.organizationId).toBe(ORG);
     expect(item?.payload).toMatchObject({ phone_number_id: "100200300400", solo_plantilla: true, critico: true, template: { name: "aviso_gerente", language: "es_MX" } });
     expect((item?.payload.template as { params: string[] }).params[1]).toBe("Tizon Centro");
-    expect(item?.payload.to).toBe("5219991234567");
+    expect(item?.payload.to).toBe("+529991234567");
   });
 
   it("es idempotente: dos barridos de la misma escalacion no avisan dos veces", async () => {
@@ -126,8 +126,8 @@ describe("barrerAlertas", () => {
     t.repo.lista.push(cand({ clave: "h1" }), cand({ clave: "h2", propertyId: OTRA }));
     await t.correr();
     const pagos = [...t.outbox.enviados.values()].map((e) => [e.payload.phone_number_id, e.payload.to]);
-    expect(pagos).toContainEqual(["100200300400", "5219991234567"]);
-    expect(pagos).toContainEqual(["999888777666", "529990000001"]);
+    expect(pagos).toContainEqual(["100200300400", "+529991234567"]);
+    expect(pagos).toContainEqual(["999888777666", "+529990000001"]);
     expect(t.outbox.enviados.size).toBe(2);
   });
 
