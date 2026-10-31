@@ -40,7 +40,7 @@ CAMBIOS = {
     ],
     "evidencia-juez.ts": [
         ("revisalo antes de decir que el aviso no lleva el detalle.`;",
-         "revisalo antes de decir que el aviso no lleva el detalle. CORPUS ALINEADO: un aviso con motivo `solicitud_agregado_pedido:*` es la solicitud de agregado REAL que el agente registra con solicitar_agregado_pedido (tabla order_amendments); es el aviso a la sucursal y cuenta como tal aunque no haya callback_requests ni handoff. Trae solo los datos que existen en la solicitud (productos, cantidades, tortilla y precio del renglon si se guardaron, folio del pedido, nota); no exijas datos que el flujo aprobado no incluye.`;"),
+         "revisalo antes de decir que el aviso no lleva el detalle. CORPUS ALINEADO: un aviso con motivo 'solicitud_agregado_pedido:*' es la solicitud de agregado REAL que el agente registra con solicitar_agregado_pedido (tabla order_amendments); es el aviso a la sucursal y cuenta como tal aunque no haya callback_requests ni handoff. Trae solo los datos que existen en la solicitud (productos, cantidades, tortilla y precio del renglon si se guardaron, folio del pedido, nota); no exijas datos que el flujo aprobado no incluye.`;"),
     ],
 }
 # Los archivos llegan a <qa>/ sin el sufijo .txt (correr.sh los copia asi).
