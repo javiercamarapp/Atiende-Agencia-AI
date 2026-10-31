@@ -37,7 +37,7 @@ export const ECO_SILENCIO_MAX_ADELANTO_MS = 60_000;
 const NOTA_ARCHIVO = (tipo: string): string => `[El personal envió un mensaje de tipo «${tipo}» desde la app de WhatsApp Business; su contenido no se guarda aquí.]`;
 
 /** Un NUL (\u0000) hace fallar jsonb de Postgres (500 hasta agotar reintentos): se quita antes de guardar. */
-export const sanearTexto = (t: string): string => t.replace(/\u0000/g, "");
+export const sanearTexto = (t: string): string => t.split("\u0000").join("");
 
 function ms(raw: unknown): number | null {
   const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
