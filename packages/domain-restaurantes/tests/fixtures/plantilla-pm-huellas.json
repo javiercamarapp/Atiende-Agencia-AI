@@ -1,0 +1,30 @@
+{
+  "wa-sin-sucursal": {
+    "sha256": "86820e430d7ff65858a3d0025fd0603025195943a9e78299e7f8c86b39f8c19a",
+    "largo": 59041
+  },
+  "wa-con-sucursal-y-estado": {
+    "sha256": "203a0d77124689d1fe993e97f27dc1c4197f6b67237fc473fdd1de394977873e",
+    "largo": 60112
+  },
+  "wa-prefijo-estable": {
+    "sha256": "2197d65fa2a21c7635285bce176c54514c6a3e74f44f20d018eb86e55330aa6b",
+    "largo": 59211
+  },
+  "wa-textos-propios": {
+    "sha256": "fe768cf29a0d7ff6693ff9a751142e1f662ad26436fb2bdc889dac730525a72c",
+    "largo": 57955
+  },
+  "voz-llamada": {
+    "sha256": "941b6fc126d9c20191b974c5ab78de378ce7be12ba4a1e75118e3211c857ddd8",
+    "largo": 7612
+  },
+  "voz-sembrado-pm": {
+    "sha256": "2d70c8250fc28a6b36e0f90ecbe52be51ab30697f63b623c541e3d55adac3d2d",
+    "largo": 7860
+  },
+  "voz-sembrado-textos-propios": {
+    "sha256": "b3db0a0454f9fe878032b2c9cffbaeddac80b9b3dfa78a52def3dfab743e9d5d",
+    "largo": 7737
+  }
+}
