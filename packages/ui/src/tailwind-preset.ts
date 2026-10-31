@@ -51,6 +51,9 @@ const preset: Omit<Config, "content"> = {
         xl: ["var(--text-xl)", { lineHeight: "var(--text-xl-lh)" }],
         "2xl": ["var(--text-2xl)", { lineHeight: "var(--text-2xl-lh)" }],
         display: ["var(--text-display)", { lineHeight: "var(--text-display-lh)" }],
+        // ds3 (L1): titulo de pagina 20/24 y cifra de KPI 26/28. Los tokens solo existen bajo la bandera; el respaldo es el tamano actual.
+        page: ["var(--text-page, 1.25rem)", { lineHeight: "var(--text-page-lh, 1.5rem)" }],
+        kpi: ["var(--text-kpi, 1.25rem)", { lineHeight: "var(--text-kpi-lh, 1.75rem)" }],
       },
       colors: {
         border: "hsl(var(--border))",
