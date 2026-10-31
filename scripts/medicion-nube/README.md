@@ -12,7 +12,7 @@ gh workflow run medicion-agente.yml --ref <rama> \
 gh run watch   # o la pestana Actions; el resultado agregado queda en el Summary del run
 ```
 
-Inputs: `etiqueta`, `repeticiones` (1-5), `suite` (`r21`|`sim`), `evidencia_alineada` (EVIDENCIA_AGREGADOS=1), `modo` (on|off|default),
+Inputs: `corpus` (`original` por omision | `alineado`), `etiqueta`, `repeticiones` (1-5), `suite` (`r21`|`sim`), `evidencia_alineada` (EVIDENCIA_AGREGADOS=1), `modo` (on|off|default),
 `max_paralelo`, `conc` (conversaciones simultaneas por job, 2 como en la Mac), `tope_job_usd` (vacio = 2 en r21 / 5 en sim),
 `tope_total_usd` (corte global sobre el uso de la llave al lanzar; por omision 8).
 **El workflow debe existir en la rama por defecto para poder lanzarse** (limite de GitHub para `workflow_dispatch`); `--ref` elige
@@ -57,3 +57,18 @@ El job `preparar` tambien aborta si `limit_remaining` de la llave es menor que `
 
 `analiza-r21.py` (comparacion ON/OFF con Fisher/bootstrap) no se copio: depende de `analiza-cierre.py` y de la estructura de carpetas local. Descargar los
 artefactos (`gh run download`) y usarlo localmente si hace falta.
+
+## Corpus original vs alineado (R24)
+
+`CORPUS=original` (default) mide con escenarios, jueces y fixtures tal cual (`arnes/`, byte a byte). `CORPUS=alineado` aplica sobre una
+COPIA de trabajo los cambios documentados en `corpus-alineado/CAMBIOS.md` (G1, A36, G7-8-10 esc. 7, T7-026, T7-043, T7-073, evidencia de
+agregados y `promotions.json` con `property_ids`) y fuerza `EVIDENCIA_AGREGADOS=1`. Es un cambio de MEDICION, no del agente: reportar
+SIEMPRE lado a lado (mismo sha, misma matriz, dos etiquetas):
+
+```bash
+gh workflow run medicion-agente.yml --ref <rama> -f etiqueta=m40-orig -f repeticiones=5 -f suite=r21 -f corpus=original
+gh workflow run medicion-agente.yml --ref <rama> -f etiqueta=m40-ali  -f repeticiones=5 -f suite=r21 -f corpus=alineado
+```
+
+`agregar.py` imprime `Corpus: ORIGINAL|ALINEADO` (lee `corpus=` de `flag.txt`) y avisa si un agregado mezcla corpus.
+`preparar-qa.sh <dest> [original|alineado]` arma el directorio de trabajo (lo usa `correr.sh`; sirve para `cmp`/`diff` locales sin red).
