@@ -2,6 +2,7 @@
 // Nunca incluye calle ni numero: la direccion completa solo la devuelve la herramienta `buscar_cliente`.
 import { sanitizeInlineText } from "../text-sanitize.ts";
 import type { CustomerLookupResult } from "../types.ts";
+import { lineasPerfilHistorico } from "../historico/perfil.ts";
 import { describirGusto } from "./gustos.ts";
 
 type Conocido = Extract<CustomerLookupResult, { isNew: false }>;
@@ -40,5 +41,6 @@ export function lineasCliente360(customer: Conocido): string[] {
       `Tiene ${anteriores.length} ${anteriores.length === 1 ? "pedido anterior" : "pedidos anteriores"} registrados: si pide "lo mismo" o "lo de siempre", usa historial_pedidos y repetir_pedido (re-cotiza con los precios de HOY y te dice qué cambió; avísaselo antes de confirmar). Nunca uses el precio de la vez pasada.`,
     );
   }
+  lines.push(...lineasPerfilHistorico(customer.perfilHistorico));
   return lines;
 }
