@@ -216,11 +216,12 @@ begin
    where h.organization_id = p_organization_id and h.property_id = p_property_id and h.canal = 'whatsapp'
      and h.estado = 'tomada' and h.ultimo_cliente_at is not null
      and h.ultimo_cliente_at <= now() - make_interval(mins => v_min)
+     -- «Respuesta humana» = la toma misma, el ultimo mensaje humano de la app o la ultima respuesta del panel (outbox); los mensajes del cliente ANTERIORES a eso ya los vio la persona.
      and h.ultimo_cliente_at > greatest(
-           coalesce(h.tomada_at, h.solicitada_at), coalesce(h.ultima_humana_at, h.solicitada_at),
+           coalesce(h.tomada_at, h.solicitada_at), coalesce(h.ultima_humana_at, h.tomada_at, h.solicitada_at),
            coalesce((select max(m.created_at) from restaurantes.messaging_outbox m
                       where m.organization_id = h.organization_id and m.event_type = 'whatsapp.handoff_reply'
-                        and m.dedupe_key like 'handoff-reply:' || h.id::text || ':%'), h.solicitada_at))
+                        and m.dedupe_key like 'handoff-reply:' || h.id::text || ':%'), coalesce(h.tomada_at, h.solicitada_at)))
   union all
   select 'llamada_por_devolver'::text, h.canal, h.conversation_id, h.id, null::uuid,
          coalesce(h.telefono_devolucion, 'sin telefono'), greatest(0, floor(extract(epoch from (now() - h.solicitada_at)) / 60))::integer, null::numeric, h.resumen, h.telefono_devolucion
