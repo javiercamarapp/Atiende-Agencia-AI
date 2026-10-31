@@ -1,0 +1,112 @@
+// R12b / V1: evidencia COMPLETA para el juez. Funciones puras (sin LLM, sin red, sin Postgres) para poder probarlas en test-arnes.ts.
+// Mueve la MEDICION, no el producto ni los criterios: el juez recibe lo mismo que antes mas lo que el recorte de run.ts le ocultaba
+// (notas completas con tortilla/indicaciones/hora, hora_recogida, direccion, pago, propina, hora real de cada turno) y los turnos que
+// fueron un error del proveedor segun la telemetria `whatsapp_turno`.
+import type { Turn } from "./lib.ts";
+
+export const NOTAS_MAX = 4000; // tope alto (antes 200). El producto limita cada campo libre a 200, asi que las notas reales son < 1500.
+export const TRANSCRIPCION_MAX = 16000; // antes 9000; con la hora por turno el texto crece
+export const TOPE_TURNO_MS = 17900; // el presupuesto de turno del producto es 18 s: un turno que llega ahi es error_proveedor/presupuesto_agotado
+export const RESULTADOS_PROVEEDOR = new Set(["error_proveedor", "presupuesto_agotado"]);
+export const RE_AVISO_FALLA = /problema t[eé]cnico/i; // PM_COPY.sinAsistenteAvisoEquipo y copia generica de fallaDelSistema
+
+export interface TeleTurno { ts: string; resultado: string; latenciaTotalMs: number; vueltas?: number }
+
+/** Hora local de Merida del instante del reloj del arnes (ya desplazado: mismo dia de la semana y misma hora local que el guion). */
+export function fmtMerida(ms: number, conSegundos = true): string {
+  return new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", weekday: "short", hour: "2-digit", minute: "2-digit", ...(conSegundos ? { second: "2-digit" } : {}), hourCycle: "h23" }).format(new Date(ms));
+}
+// NOTA: orders.created_at es el now() REAL de Postgres (no el reloj del arnes), por eso NO se le da al juez; la hora de cada turno viene del reloj del arnes.
+const fmtFechaHora = (v: unknown): string | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const ms = new Date(v as any).getTime();
+  return Number.isFinite(ms) ? new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ms)) + " (hora de Merida)" : String(v);
+};
+
+/** Marca `t.proveedor` en los turnos del agente. Con telemetria: coincide por ventana de tiempo real (ts dentro del turno) y latencia <= ms del turno.
+ *  Sin telemetria (o corridas viejas sin `tr`): heuristica por el aviso de falla tecnica del producto + turno al tope de 18 s. Devuelve cuantos marco. */
+export function marcarErroresProveedor(turns: Turn[], tele: TeleTurno[] = []): number {
+  const malas = tele.filter((x) => RESULTADOS_PROVEEDOR.has(x.resultado)).map((x) => ({ ...x, t: Date.parse(x.ts) }));
+  let n = 0;
+  for (const t of turns) {
+    if (t.who !== "agente") continue;
+    let causa: string | null = null;
+    if (t.tr !== undefined && t.ms !== undefined && malas.length) {
+      const m = malas.find((x) => x.t >= t.tr! - t.ms! - 1500 && x.t <= t.tr! + 1500 && x.latenciaTotalMs <= t.ms! + 400);
+      if (m) causa = m.resultado;
+    }
+    if (!causa && (t.ms ?? 0) >= TOPE_TURNO_MS && RE_AVISO_FALLA.test(t.text)) causa = "error_proveedor (inferido: turno al tope de 18 s con aviso de falla tecnica)";
+    if (causa) { t.proveedor = causa; n++; }
+  }
+  return n;
+}
+
+export function transcripcionJuez(turns: Turn[]): string {
+  const lin = turns.map((t) => {
+    const h = t.at !== undefined ? `[${fmtMerida(t.at)}] ` : "";
+    const base = `${h}${t.who === "cliente" ? "CLIENTE" : "AGENTE"}: ${t.text}`;
+    return t.proveedor ? `${base}\n   <<TELEMETRIA: este turno fue ${t.proveedor}: el PROVEEDOR del modelo no respondio a tiempo. El aviso de "problema tecnico" lo genera el sistema, NO es una falla inventada por el agente>>` : base;
+  });
+  return lin.join("\n").slice(0, TRANSCRIPCION_MAX);
+}
+
+/** R21 (A07): hora local (Merida) de creacion del pedido en el reloj del arnes, o null si no se puede dar con certeza. */
+export function creadoA(o: { source?: unknown; created_at?: unknown }, offsetRelojMs?: number): string | null {
+  if (o.created_at === undefined || o.created_at === null || o.created_at === "") return null;
+  const ms = new Date(o.created_at as any).getTime();
+  if (!Number.isFinite(ms)) return null;
+  if (o.source !== "whatsapp") return fmtFechaHora(ms);
+  return typeof offsetRelojMs === "number" && Number.isFinite(offsetRelojMs) ? fmtFechaHora(ms + offsetRelojMs) : null;
+}
+
+/** Estado de BD para el juez: notas completas (con tortilla, indicaciones, hora de recogida), hora_recogida, direccion, pago, propina, renglones. */
+export function bdJuez(c: { orders: any[]; handoffs: any[]; callbacks: any[] }, props: Record<string, string>, offsetRelojMs?: number): string {
+  const pedidos = c.orders.map((o) => {
+    const notas = String(o.notes ?? "");
+    const tortilla = notas.split("\n").filter((l) => /tortilla/i.test(l)).join(" | ");
+    const extra = (i: any) => ["tortilla", "notes", "nota", "complementos", "modificadores"].map((k) => (i[k] !== undefined && i[k] !== null && i[k] !== "" ? `${k}=${typeof i[k] === "string" ? i[k] : JSON.stringify(i[k])}` : "")).filter(Boolean);
+    return {
+      origen: o.source === "whatsapp" ? "creado en este chat" : "PREVIO sembrado por el escenario (no lo creo el agente)",
+      // R21 (A07): hora de CREACION del pedido, en la hora local del arnes (la misma que ven los turnos). Los PREVIOS sembrados se alinean con el reloj del arnes en setup-orders.ts (created_at = Date.now() - minAgo);
+      // los creados en el chat guardan el now() REAL de Postgres, asi que se desplazan con `offsetRelojMs` (reloj del arnes - reloj real). Sin offset, de estos ultimos no se da hora (no se induce al juez a error).
+      creado_a: creadoA(o, offsetRelojMs),
+      numero: o.order_number ?? null, total: o.total, canal: o.canal, status: o.status, sucursal: props[o.property_id],
+      hora_recogida: fmtFechaHora(o.hora_recogida), programado_para: fmtFechaHora(o.programado_para),
+      pago: o.payment_method ?? null, propina: o.propina ?? null, cliente: o.customer_name ?? null, direccion: o.customer_address ?? null,
+      tortilla_en_notas: tortilla || null,
+      renglones: (o.items as any[]).map((i) => `${i.quantity}x ${i.name} @${i.price}${extra(i).length ? " [" + extra(i).join("; ") + "]" : ""}`),
+      renglones_suma: (o.items as any[]).reduce((s, i) => s + i.price * i.quantity, 0),
+      notas: notas.length > NOTAS_MAX ? notas.slice(0, NOTAS_MAX) + `...[recortado, ${notas.length} caracteres]` : notas,
+    };
+  });
+  return `pedidos=${JSON.stringify(pedidos)}; tomas_handoff=${c.handoffs.length}; avisos_callback=${JSON.stringify(c.callbacks.map((x: any) => x.reason))}; avisos_callback_mensajes=${JSON.stringify(mensajesAviso(c.callbacks))}`;
+}
+
+export const AVISO_MAX = 2000; // tope por aviso (el producto limita callback_requests.message; constraint callback_message_largo en la migracion 089)
+export const AVISOS_TOTAL_MAX = 8000;
+/** R15 / V3: cuerpo del aviso al gerente (callback_requests.message). Antes el juez solo veia la etiqueta del motivo y no podia verificar que el aviso llevara el detalle de la queja, el folio y la direccion
+ *  (T7-017 / T7-021: 16 de 20 motivos de R15). Solo `reason` + `message` de la tabla del escenario sintetico: NO se pasan customer_phone, customer_name ni otros campos. */
+export function mensajesAviso(callbacks: any[]): { motivo: string | null; mensaje: string | null }[] {
+  let resto = AVISOS_TOTAL_MAX;
+  return callbacks.map((x: any) => {
+    const m = x?.message === undefined || x?.message === null ? null : String(x.message);
+    if (m === null) return { motivo: x?.reason ?? null, mensaje: null };
+    const tope = Math.max(0, Math.min(AVISO_MAX, resto)); resto -= Math.min(m.length, tope);
+    return { motivo: x?.reason ?? null, mensaje: m.length > tope ? m.slice(0, tope) + `...[recortado, ${m.length} caracteres]` : m };
+  });
+}
+
+/** Reloj para el juez: el reloj del arnes CORRE en tiempo real durante la corrida; se da hora de inicio, de fin y la hora de cada turno. */
+export function relojJuez(c: { turns: Turn[]; clock: string }, fallbackMs: number): string {
+  const ats = c.turns.map((t) => t.at).filter((x): x is number => typeof x === "number");
+  if (!ats.length) return `HORA LOCAL DEL ARNES (Merida): el reloj NO es fijo, avanza en tiempo real durante la corrida (hasta ~25 min). La hora de cada turno no se registro en esta conversacion: la hora de arranque del grupo fue ${fmtMerida(fallbackMs, false)}, pero esta conversacion pudo empezar bastante despues. NO evalues una hora de recogida "en N minutos" contra esa hora; la hora de recogida guardada en la BD es la referencia de cuando se confirmo el pedido.`;
+  return `HORA LOCAL DEL ARNES (Merida): el reloj NO es fijo, avanza en tiempo real; la conversacion empezo a las ${fmtMerida(Math.min(...ats), false)} y termino a las ${fmtMerida(Math.max(...ats), false)}. Cada turno de la transcripcion lleva su hora; una hora de recogida "en N minutos" se calcula desde la hora del turno en que el cliente la pidio, NO desde el inicio del escenario.`;
+}
+
+export interface JobEv { id: string; fuente: string; expected: string; mustNot: string }
+export function armarUsuarioJuez(j: JobEv, c: { branch: string; clock: string; turns: Turn[]; orders: any[]; handoffs: any[]; callbacks: any[] }, hard: string[], props: Record<string, string>, clockMs: number, offsetRelojMs?: number): string {
+  return `ESCENARIO ${j.id} (${j.fuente}), sucursal del chat ${c.branch}. ${relojJuez(c, clockMs)} Regla: NO penalices horario/saludo/abierto-cerrado salvo que el escenario defina una hora; si la define, evalua contra la hora del arnes.\nDEBE: ${j.expected}\nNO DEBE: ${j.mustNot}\n\nTRANSCRIPCION:\n${transcripcionJuez(c.turns)}\n\nBD: ${bdJuez(c, props, offsetRelojMs)}\nFALLAS DETERMINISTAS: ${hard.join(" ; ") || "ninguna"}`;
+}
+
+/** Texto que se AGREGA al sistema del juez (no cambia criterios de aprobacion): como leer la evidencia. */
+export const JUEZ_SYS_EXTRA = `\nNOTAS DE EVIDENCIA: la BD trae las notas COMPLETAS del pedido (tortilla, indicaciones de acceso, hora de recogida), hora_recogida, direccion, pago, propina y renglones; no declares que algo "no esta registrado" sin revisarlos. La transcripcion lleva la hora de cada turno (el reloj corre en tiempo real). Los turnos marcados <<TELEMETRIA ... PROVEEDOR>> fueron timeouts del proveedor del modelo: descríbelos como tales y no como invencion del agente; el resto de los criterios se aplica igual. R15/V3: avisos_callback_mensajes trae el CUERPO del aviso al gerente (callback_requests.message: detalle de la queja, folio, direccion); revisalo antes de decir que el aviso no lleva el detalle.`;
