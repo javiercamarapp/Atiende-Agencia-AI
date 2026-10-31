@@ -40,14 +40,14 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
             onCheckedChange?.(siguiente);
           }}
           className={cn(
-            "peer relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-control transition-colors duration-fast ease-brand disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary",
+            "ds3-switch peer relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-control transition-colors duration-fast ease-brand disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary",
             className,
           )}
           {...props}
         >
           <span
             aria-hidden="true"
-            className="pointer-events-none block size-5 translate-x-px rounded-full bg-white shadow-card transition-transform duration-fast ease-brand data-[state=checked]:translate-x-[17px]"
+            className="ds3-switch-perilla pointer-events-none block size-5 translate-x-px rounded-full bg-white shadow-card transition-transform duration-fast ease-brand data-[state=checked]:translate-x-[17px]"
             data-state={activo ? "checked" : "unchecked"}
           />
         </button>

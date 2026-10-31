@@ -8,7 +8,7 @@ import { extendTailwindMerge } from "tailwind-merge";
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      "font-size": [{ text: ["display", "eyebrow", "pill", "ui", "widget"] }],
+      "font-size": [{ text: ["2xs", "display", "eyebrow", "page", "kpi", "pill", "ui", "widget"] }],
       rounded: [{ rounded: ["control", "field", "card", "shell", "dialog"] }],
       duration: [{ duration: ["instant", "fast", "base", "slow", "enter"] }],
       // `shadow-pop` (lote 1.1 de ds3): sin esto tailwind-merge lo toma por COLOR de sombra y no lo deduplica

@@ -63,7 +63,7 @@ export function FormField({ label, hint, error, required, id, className, childre
   }
 
   return (
-    <div className={cn("grid gap-1.5", className)}>
+    <div className={cn("ds3-field grid gap-1.5", className)}>
       <Label htmlFor={controlId}>
         {label}
         {required && (
@@ -77,12 +77,12 @@ export function FormField({ label, hint, error, required, id, className, childre
       </Label>
       {control}
       {hint && (
-        <p id={hintId} className="text-xs text-muted-foreground">
+        <p id={hintId} className="ds3-field-hint text-xs text-muted-foreground">
           {hint}
         </p>
       )}
       {error && (
-        <p id={errorId} role="alert" className="text-xs font-medium text-destructive">
+        <p id={errorId} role="alert" className="ds3-field-error text-xs font-medium text-destructive">
           {error}
         </p>
       )}

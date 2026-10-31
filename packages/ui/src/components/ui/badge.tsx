@@ -8,17 +8,17 @@ import { cn } from "../../lib/utils";
 // reemplazan los pares bg-green-100 text-green-800 dark:... escritos a mano.
 // Para un estado de negocio (pendiente, pagado, vencido) prefiere <StatusBadge>.
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-colors rest:px-2.5 rest:font-semibold",
+  "ds3-badge inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-colors rest:px-2.5 rest:font-semibold",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "border-border text-foreground",
-        success: "bg-success-tint text-success",
-        warning: "bg-warning-tint text-warning",
-        info: "bg-info-tint text-info",
+        default: "ds3-badge-v-default bg-primary text-primary-foreground hover:bg-primary/80",
+        secondary: "ds3-badge-v-secondary bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        destructive: "ds3-badge-v-destructive bg-destructive text-destructive-foreground hover:bg-destructive/80",
+        outline: "ds3-badge-v-outline border-border text-foreground",
+        success: "ds3-badge-v-success bg-success-tint text-success",
+        warning: "ds3-badge-v-warning bg-warning-tint text-warning",
+        info: "ds3-badge-v-info bg-info-tint text-info",
       },
     },
     defaultVariants: {

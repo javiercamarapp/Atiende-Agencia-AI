@@ -1367,6 +1367,245 @@
       scroll-behavior: auto !important;
     }
   }
+
+  /* ======================================================================================================================
+     ds3 / L1 (§3.2-§3.5): Card, StatCard, KpiTile, campos, Checkbox, Switch, FormField, Badge, StatusBadge, Tabs.
+     Igual que Button: las clases `ds3-*` las ponen los componentes y sin la bandera no coinciden con ninguna regla.
+     Doble clase para ganar a las utilidades de base (misma capa) sin !important. Sombras nulas; bordes de 1 px;
+     alturas por --control-*; areas de toque a 44 con pseudo-elemento (no cambia el layout).
+     ====================================================================================================================== */
+
+  /* ---- Card / Panel (§3.2): radio 12, borde 1 px, sin sombra, padding --pad-card (14; 12 movil). ---- */
+  html[data-diseno="ds3"] .ds3-card.ds3-card {
+    border-radius: var(--radius-card);
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--card));
+    box-shadow: none;
+  }
+  html[data-diseno="ds3"] .ds3-card.ds3-card-panel-md { padding: var(--pad-card); }
+  html[data-diseno="ds3"] .ds3-card.ds3-card-panel-sm { padding: var(--pad-card); }
+  html[data-diseno="ds3"] .ds3-card.ds3-card-flush { overflow: hidden; }
+  html[data-diseno="ds3"] .ds3-card.ds3-card-bare { border-color: transparent; background-color: transparent; }
+  html[data-diseno="ds3"] .ds3-card.ds3-card-interactive {
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+  }
+  html[data-diseno="ds3"] .ds3-card.ds3-card-interactive:hover { border-color: hsl(var(--border-strong)); transform: translateY(-1px); }
+  html[data-diseno="ds3"] .ds3-card.ds3-card-highlight { border-top-width: 3px; }
+  html[data-diseno="ds3"] .ds3-card-header { padding: var(--pad-card) var(--pad-card) 0.625rem; gap: 0.125rem; }
+  html[data-diseno="ds3"] .ds3-card-title { font-size: var(--text-sm); line-height: var(--text-sm-lh); font-weight: 600; letter-spacing: var(--tracking-sm); text-wrap: balance; }
+  html[data-diseno="ds3"] .ds3-card-desc { font-size: var(--text-xs); line-height: var(--text-xs-lh); }
+  html[data-diseno="ds3"] .ds3-card-content { padding: 0 var(--pad-card) var(--pad-card); }
+  html[data-diseno="ds3"] .ds3-card-footer { padding: 0.625rem var(--pad-card); border-top: 1px solid hsl(var(--border)); }
+
+  /* ---- StatCard / KpiTile (§3.2): una capa, pad 14, etiqueta 12/500, cifra --text-kpi tabular, circulo de 24, pie solido. ---- */
+  html[data-diseno="ds3"] .ds3-stat.ds3-stat { padding: var(--pad-card); }
+  html[data-diseno="ds3"] .ds3-stat-inner.ds3-stat-inner {
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    padding: 0;
+  }
+  html[data-diseno="ds3"] .ds3-stat-chip.ds3-stat-chip,
+  html[data-diseno="ds3"] .ds3-kpi-chip.ds3-kpi-chip {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 0;
+    background-color: hsl(var(--soft));
+    color: hsl(var(--foreground-2));
+  }
+  html[data-diseno="ds3"] .ds3-stat-chip.ds3-stat-chip { border-radius: 9999px; }
+  html[data-diseno="ds3"] .ds3-kpi-chip.ds3-kpi-chip { border-radius: 9999px; }
+  html[data-diseno="ds3"] .ds3-stat-chip svg,
+  html[data-diseno="ds3"] .ds3-kpi-chip svg { width: 0.875rem; height: 0.875rem; }
+  html[data-diseno="ds3"] .ds3-stat-label,
+  html[data-diseno="ds3"] .ds3-kpi-label { font-size: var(--text-xs); line-height: var(--text-xs-lh); font-weight: 500; }
+  html[data-diseno="ds3"] .ds3-stat-valor.ds3-stat-valor,
+  html[data-diseno="ds3"] .ds3-kpi-valor.ds3-kpi-valor {
+    font-family: var(--font-sans);
+    font-size: var(--text-kpi);
+    line-height: var(--text-kpi-lh);
+    font-weight: 600;
+    letter-spacing: var(--tracking-kpi);
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-diseno="ds3"] .ds3-stat-pie.ds3-stat-pie {
+    margin-inline: 0;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top-style: solid;
+    border-top-color: hsl(var(--border));
+    min-height: 1.25rem;
+    line-height: 1.25rem;
+  }
+  @media (max-width: 767.98px) {
+    html[data-diseno="ds3"] .ds3-kpi-spark { display: none; }
+  }
+
+  /* ---- Campos (§3.3): alto --control-md, radio 8, borde --input (>=3:1), pad-x 10, 13 px (16 tactil), foco = anillo 2 px + borde --ring. ---- */
+  html[data-diseno="ds3"] .ds3-campo.ds3-campo {
+    border-radius: var(--radius-field);
+    border-color: hsl(var(--input));
+    background-color: hsl(var(--card));
+    padding-inline: 0.625rem;
+    font-size: var(--text-ui);
+    line-height: var(--text-ui-lh);
+    transition-duration: var(--dur-fast);
+    transition-timing-function: var(--ease-out);
+  }
+  html[data-diseno="ds3"] .ds3-campo.ds3-campo:focus-visible {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 2px hsl(var(--ring));
+    outline: none;
+  }
+  html[data-diseno="ds3"] .ds3-campo.ds3-campo[aria-invalid="true"] { border-color: hsl(var(--danger-ink)); }
+  html[data-diseno="ds3"] .ds3-campo.ds3-campo[aria-invalid="true"]:focus-visible { border-color: hsl(var(--danger-ink)); box-shadow: 0 0 0 2px hsl(var(--danger-ink)); }
+  html[data-diseno="ds3"] .ds3-campo.ds3-campo:disabled { background-color: hsl(var(--soft)); cursor: not-allowed; }
+  html[data-diseno="ds3"] .ds3-campo.ds3-campo::file-selector-button {
+    margin-right: 0.5rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background-color: hsl(var(--soft));
+    padding: 0.125rem 0.5rem;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: hsl(var(--foreground));
+  }
+  html[data-diseno="ds3"] .ds3-campo.ds3-textarea { min-height: 4rem; padding-block: 0.5rem; }
+  html[data-diseno="ds3"] .ds3-native-select.ds3-native-select { padding-right: 2rem; }
+  html[data-diseno="ds3"] .ds3-native-chevron { right: 0.625rem; width: 0.875rem; height: 0.875rem; }
+  @media (pointer: coarse), (max-width: 767.98px) {
+    html[data-diseno="ds3"] .ds3-campo.ds3-campo { font-size: 1rem; line-height: 1.5rem; scroll-margin-bottom: var(--nav-total); }
+  }
+
+  /* ---- Checkbox (§2.3): caja de 16, radio 4, borde --input; area de toque 44 en tactil. ---- */
+  html[data-diseno="ds3"] .ds3-check.ds3-check { width: 1rem; height: 1rem; }
+  html[data-diseno="ds3"] .ds3-check-input.ds3-check-input {
+    border-radius: var(--radius-sm);
+    border-color: hsl(var(--input));
+    accent-color: hsl(var(--primary));
+  }
+  html[data-diseno="ds3"] .ds3-check-input.ds3-check-input:checked,
+  html[data-diseno="ds3"] .ds3-check-input.ds3-check-input:indeterminate { border-color: hsl(var(--primary)); }
+  html[data-diseno="ds3"] .ds3-check-input.ds3-check-input[aria-invalid="true"] { border-color: hsl(var(--danger-ink)); }
+  html[data-diseno="ds3"] .ds3-check svg { width: 0.625rem; height: 0.625rem; }
+  @media (pointer: coarse), (max-width: 767.98px) {
+    html[data-diseno="ds3"] .ds3-check-input.ds3-check-input { position: relative; }
+    html[data-diseno="ds3"] .ds3-check-input.ds3-check-input::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: var(--target-min);
+      height: var(--target-min);
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  /* ---- Switch (§2.3): 32x18 con perilla de 14; area de toque 44 en tactil. ---- */
+  html[data-diseno="ds3"] .ds3-switch.ds3-switch { width: 2rem; height: 1.125rem; background-color: hsl(var(--control-off)); }
+  html[data-diseno="ds3"] .ds3-switch.ds3-switch[data-state="checked"] { background-color: hsl(var(--primary)); }
+  html[data-diseno="ds3"] .ds3-switch-perilla.ds3-switch-perilla {
+    width: 0.875rem;
+    height: 0.875rem;
+    box-shadow: none;
+    transform: translateX(1px);
+  }
+  html[data-diseno="ds3"] .ds3-switch-perilla.ds3-switch-perilla[data-state="checked"] { transform: translateX(15px); }
+  @media (pointer: coarse), (max-width: 767.98px) {
+    html[data-diseno="ds3"] .ds3-switch.ds3-switch::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, var(--target-min));
+      height: var(--target-min);
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  /* ---- FormField (§3.3): etiqueta 12/500 siempre visible, ayuda 12 muted, error 12 en --danger-ink con icono (mascara CSS, sin tocar el DOM). ---- */
+  html[data-diseno="ds3"] .ds3-label { font-size: var(--text-xs); line-height: var(--text-xs-lh); font-weight: 500; }
+  html[data-diseno="ds3"] .ds3-field { gap: 0.375rem; }
+  html[data-diseno="ds3"] .ds3-field-hint { font-size: var(--text-xs); line-height: var(--text-xs-lh); }
+  html[data-diseno="ds3"] .ds3-field-error.ds3-field-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs-lh);
+    color: hsl(var(--danger-ink));
+  }
+  html[data-diseno="ds3"] .ds3-field-error::before {
+    content: "";
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-top: 0.125rem;
+    background-color: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' x2='12' y1='8' y2='12'/%3E%3Cline x1='12' x2='12.01' y1='16' y2='16'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' x2='12' y1='8' y2='12'/%3E%3Cline x1='12' x2='12.01' y1='16' y2='16'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+
+  /* ---- Badge / StatusBadge (§3.4): alto 20, pad-x 8, 12/500, borde ink/22, mismos tonos 1:1 con STATUS_TONES. ---- */
+  html[data-diseno="ds3"] .ds3-badge.ds3-badge,
+  html[data-diseno="ds3"] .ds3-status.ds3-status {
+    height: 1.25rem;
+    padding: 0 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    font-size: var(--text-xs);
+    line-height: 1rem;
+    font-weight: 500;
+  }
+  html[data-diseno="ds3"] .ds3-badge-v-default { background-color: hsl(var(--primary-soft)); color: hsl(var(--primary-ink)); border-color: hsl(var(--primary) / 0.3); }
+  html[data-diseno="ds3"] .ds3-badge-v-secondary,
+  html[data-diseno="ds3"] .ds3-status-neutral { background-color: hsl(var(--soft)); color: hsl(var(--muted-foreground)); border-color: hsl(var(--border)); }
+  html[data-diseno="ds3"] .ds3-badge-v-outline { background-color: transparent; color: hsl(var(--foreground-2)); border-color: hsl(var(--border-strong)); }
+  html[data-diseno="ds3"] .ds3-badge-v-destructive,
+  html[data-diseno="ds3"] .ds3-status-danger { background-color: hsl(var(--danger-tint)); color: hsl(var(--danger-ink)); border-color: hsl(var(--danger-ink) / 0.22); }
+  html[data-diseno="ds3"] .ds3-badge-v-success,
+  html[data-diseno="ds3"] .ds3-status-success { background-color: hsl(var(--success-tint)); color: hsl(var(--success-ink)); border-color: hsl(var(--success-ink) / 0.22); }
+  html[data-diseno="ds3"] .ds3-badge-v-warning,
+  html[data-diseno="ds3"] .ds3-status-warning { background-color: hsl(var(--warning-tint)); color: hsl(var(--warning-ink)); border-color: hsl(var(--warning-ink) / 0.22); }
+  html[data-diseno="ds3"] .ds3-badge-v-info,
+  html[data-diseno="ds3"] .ds3-status-info { background-color: hsl(var(--info-tint)); color: hsl(var(--info-ink)); border-color: hsl(var(--info-ink) / 0.22); }
+  html[data-diseno="ds3"] .ds3-status-punto { width: 0.375rem; height: 0.375rem; }
+  /* KindBadge (§3.4): el patron (punto solido / discontinuo / punteado / signo ?) acompana SIEMPRE al texto. */
+  html[data-diseno="ds3"] .ds3-kind.ds3-kind { background-color: transparent; color: hsl(var(--muted-foreground)); border-color: hsl(var(--border-strong)); }
+  html[data-diseno="ds3"] .ds3-kind-estimado.ds3-kind-estimado { border-style: dashed; }
+  html[data-diseno="ds3"] .ds3-kind-inferido.ds3-kind-inferido { border-style: dotted; border-color: hsl(var(--kind-inferred)); }
+
+  /* ---- Tabs (§3.5): cambia de VISTA; subrayado de 2 px en tinta, alto 36 (44 tactil), borde inferior de 1 px. ---- */
+  html[data-diseno="ds3"] .ds3-tabs-list.ds3-tabs-list {
+    gap: 0.25rem;
+    border-radius: 0;
+    background-color: transparent;
+    padding: 0;
+    border-bottom: 1px solid hsl(var(--border));
+    scroll-snap-type: x proximity;
+  }
+  html[data-diseno="ds3"] .ds3-tabs-list.ds3-tabs-list:not(.flex-wrap) { height: max(2.25rem, var(--control-md)); }
+  html[data-diseno="ds3"] .ds3-tabs-trigger.ds3-tabs-trigger {
+    height: 100%;
+    border-radius: var(--radius-md);
+    padding-inline: 0.75rem;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs-lh);
+    color: hsl(var(--muted-foreground));
+    scroll-snap-align: center;
+    transition-duration: var(--dur-fast);
+    transition-timing-function: var(--ease-out);
+  }
+  html[data-diseno="ds3"] .ds3-tabs-trigger.ds3-tabs-trigger:hover:not(:disabled) { color: hsl(var(--foreground)); background-color: hsl(var(--soft)); }
+  html[data-diseno="ds3"] .ds3-tabs-trigger.ds3-tabs-trigger[data-state="active"] {
+    background-color: transparent;
+    color: hsl(var(--foreground));
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    box-shadow: inset 0 -2px 0 hsl(var(--action));
+  }
+  html[data-diseno="ds3"] .ds3-tabs-trigger.ds3-tabs-trigger:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+  html[data-diseno="ds3"] .ds3-tabs-content { margin-top: var(--gap-bloque); }
 }
 
 /* Odometro (contador retro de Likida, admin/contador-retro.tsx): tablero oscuro con los tokens
