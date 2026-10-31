@@ -3,10 +3,11 @@
 // R23: el staff atiende lo escalado desde el panel. Estado nuevo/en atencion/resuelto, alertas (sin tomar, sin respuesta humana, llamada por devolver
 // con resumen y telefono, pedido por aprobar), asignar a una persona y refresco automatico. Contrato: lib/conversaciones-client.ts.
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversacionesPage } from "../src/verticals/restaurantes/pages/Conversaciones.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { elegirOpcion, etiquetasDeOpciones, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -30,6 +31,7 @@ function api(extra: { alertas?: unknown; detalle?: unknown; items?: unknown[] } 
   });
 }
 
+beforeAll(() => prepararJsdomParaRadix());
 beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
@@ -97,15 +99,12 @@ describe("ConversacionesPage: flujo del staff (R23)", () => {
     await esperar();
     click(rendered.container.querySelector("ul[aria-label='Conversaciones'] button")!);
     await esperar();
-    const sel = rendered.container.querySelector("select[aria-label='Asignar a']") as HTMLSelectElement;
+    const sel = rendered.container.querySelector("[role='combobox'][aria-label='Asignar a']") as HTMLElement | null;
     expect(sel).not.toBeNull();
-    expect(Array.from(sel.options).map((o) => o.textContent)).toEqual(["Asignar a…", "Ana", "Beto"]);
+    expect(await etiquetasDeOpciones(sel!)).toEqual(["Asignar a…", "Ana", "Beto"]);
     const boton = Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent === "Asignar")!;
     expect((boton as HTMLButtonElement).disabled).toBe(true);
-    await act(async () => {
-      sel.value = "u2";
-      sel.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await elegirOpcion(sel!, "Beto");
     click(Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent === "Asignar")!);
     await esperar();
     const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/handoffs/h-1/asignar"));
