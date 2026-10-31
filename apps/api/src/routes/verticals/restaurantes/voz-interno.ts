@@ -162,6 +162,16 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
         // el agente paso a una persona es "algo nuevo que atender". Una sola vez por llamada (la clave es la conversacion).
         if (cerrada && body.resultado === "escalado") {
           await emitirNotificacion(db, { evento: "restaurantes.voz.llamada_escalada", organizationId, clave: conversationId, entidadTipo: "voz_conversacion", entidadId: conversationId });
+          // R23: la llamada escalada abre un handoff con resumen y telefono para devolver la llamada desde el panel (migracion 120). Best-effort con SAVEPOINT: base sin migrar = sin handoff, el cierre sigue.
+          await runWithSavepointFallback<void>({
+            session: db,
+            savepointName: "sp_voz_handoff_escalado",
+            primary: async () => {
+              await db.query(`select restaurantes.handoff_solicitar_voz($1::uuid, $2::uuid, $3::text);`, [organizationId, conversationId, "llamada_escalada"]);
+            },
+            isRecoverable: () => true,
+            fallback: async () => undefined,
+          });
         }
         return c.json({ cerrada });
       } catch (err) {

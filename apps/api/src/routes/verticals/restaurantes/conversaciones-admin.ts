@@ -4,6 +4,8 @@
 //   GET  .../admin/conversaciones/:canal/:conversationId       detalle (mensajes/transcripcion, toma, notas)
 //   POST .../admin/conversaciones/:canal/:conversationId/tomar el humano toma la conversacion (el agente calla)
 //   POST .../admin/handoffs/:handoffId/devolver | cerrar       devolver al agente / resolver
+//   POST .../admin/handoffs/:handoffId/asignar                 repartir una escalada a otra persona de la sucursal (migracion 120)
+//   GET  .../admin/alertas-panel                               chats sin respuesta humana, llamadas por devolver y pedidos por aprobar (migracion 120)
 //   POST .../admin/handoffs/:handoffId/notas                   nota interna
 //   POST .../admin/handoffs/:handoffId/responder               respuesta humana por WhatsApp (outbox)
 //   GET  .../admin/turnos   PUT .../admin/turnos               turnos de personal y quien esta de guardia
@@ -19,6 +21,8 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
+  ALERTA_PEDIDO_MONTO_DEFECTO,
+  ALERTA_SIN_RESPUESTA_MIN_DEFECTO,
   CALLBACK_ACCIONES,
   CALLBACK_ESTADOS,
   CALLBACK_RESULTADOS,
@@ -92,6 +96,8 @@ export function restaurantesConversacionesAdminRoutes(deps: AppDeps): Hono<CoreA
     tomar: `${base}/conversaciones/:canal/:conversationId/tomar`,
     devolver: `${base}/handoffs/:handoffId/devolver`,
     cerrar: `${base}/handoffs/:handoffId/cerrar`,
+    asignar: `${base}/handoffs/:handoffId/asignar`,
+    alertas: `${base}/alertas-panel`,
     notas: `${base}/handoffs/:handoffId/notas`,
     responder: `${base}/handoffs/:handoffId/responder`,
     turnos: `${base}/turnos`,
@@ -194,7 +200,7 @@ export function restaurantesConversacionesAdminRoutes(deps: AppDeps): Hono<CoreA
         transcripcionDisponible: d.transcripcionDisponible,
         mensajes: d.mensajes.map((m) => ({ rol: m.rol, texto: m.texto, creadoEn: m.createdAt, ...(m.rol === "humano" ? { autorId: m.autorId ?? null, autor: m.autorNombre ?? null } : {}) })),
         handoff: d.handoff
-          ? { handoffId: d.handoff.handoffId, estado: d.handoff.estado, solicitadoPor: d.handoff.solicitadoPor, motivo: d.handoff.motivo, solicitadaEn: d.handoff.solicitadaAt, ultimoClienteEn: d.handoff.ultimoClienteAt, tomadaPor: d.handoff.tomadaPor, tomadaPorNombre: d.handoff.tomadaPorNombre, tomadaEn: d.handoff.tomadaAt }
+          ? { handoffId: d.handoff.handoffId, estado: d.handoff.estado, solicitadoPor: d.handoff.solicitadoPor, motivo: d.handoff.motivo, solicitadaEn: d.handoff.solicitadaAt, ultimoClienteEn: d.handoff.ultimoClienteAt, tomadaPor: d.handoff.tomadaPor, tomadaPorNombre: d.handoff.tomadaPorNombre, tomadaEn: d.handoff.tomadaAt, resumen: d.handoff.resumen ?? null, telefonoDevolucion: d.handoff.telefonoDevolucion ?? null, asignadaPorNombre: d.handoff.asignadaPorNombre ?? null, asignadaEn: d.handoff.asignadaAt ?? null, tomadaPorApp: d.handoff.tomadaPorApp === true }
           : null,
         notas: d.notas.map((n) => ({ id: n.id, autor: n.autorNombre, autorId: n.autorId, texto: n.texto, creadoEn: n.createdAt })),
       });
@@ -230,6 +236,38 @@ export function restaurantesConversacionesAdminRoutes(deps: AppDeps): Hono<CoreA
       }
     });
   }
+
+  app.post(paths.asignar, async (c) => {
+    const { organizationId, propertyId } = await resolverSucursal(c);
+    const handoffId = parseUuid(c.req.param("handoffId"), "Handoff");
+    const body = await readJsonCapped<{ userId?: unknown }>(c.req.raw, 4 * 1024);
+    if (typeof body.userId !== "string" || !UUID_RE.test(body.userId)) throw Errors.validation("userId: se esperaba el id de una persona de la sucursal.");
+    try {
+      const cambio = await repo(c).asignar(organizationId, propertyId, handoffId, body.userId);
+      logEvent(c, "info", "restaurantes_handoff_asignado", { actorUserId: c.get("userId"), organizationId, propertyId, handoffId, asignadoA: body.userId, cambio });
+      return c.json({ handoffId, estado: "tomada", cambio });
+    } catch (err) {
+      return aHttp(err);
+    }
+  });
+
+  app.get(paths.alertas, async (c) => {
+    const { organizationId, propertyId } = await resolverSucursal(c);
+    const sinRespuestaMin = parseEntero(c.req.query("sinRespuestaMin"), "sinRespuestaMin", 1, 1440, ALERTA_SIN_RESPUESTA_MIN_DEFECTO);
+    const montoMin = parseEntero(c.req.query("montoMin"), "montoMin", 0, 10_000_000, ALERTA_PEDIDO_MONTO_DEFECTO);
+    try {
+      const lectura = await repo(c).listarAlertas(organizationId, propertyId, { sinRespuestaMin, montoMin });
+      return c.json({
+        disponible: lectura.disponible,
+        sinRespuestaMin,
+        montoMin,
+        total: lectura.valor.length,
+        items: lectura.valor.map((a) => ({ tipo: a.tipo, canal: a.canal, conversationId: a.conversationId, handoffId: a.handoffId, orderId: a.orderId, referencia: a.referencia, minutos: a.minutos, monto: a.monto, resumen: a.resumen, telefono: a.telefono })),
+      });
+    } catch (err) {
+      return aHttp(err);
+    }
+  });
 
   app.post(paths.notas, async (c) => {
     const { organizationId, propertyId } = await resolverSucursal(c);
