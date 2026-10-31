@@ -1,0 +1,101 @@
+// Corre una(s) suite(s) de conversaciones contra la API real + LLM real. Uso: vite-node run.ts <suite[,suite]> [concurrencia] [filtroId]
+import { writeFileSync, existsSync, readFileSync } from "node:fs";
+import { startStack, setClock, relojArnes, PROP, trace, telemetriaTurnos } from "./stack.ts";
+import { armarUsuarioJuez, bdJuez, marcarErroresProveedor, JUEZ_SYS_EXTRA } from "./evidencia-juez.ts"; // R12b/V1
+import { chat, gasto, usoRealOpenRouter, resumenGasto } from "./llm.ts";
+import { stats, relojReal } from "./lib.ts";
+import { motivoPrecioInvalido } from "./inv-precio.ts";
+import type { Convo } from "./lib.ts";
+import type { Job } from "./suites.ts";
+import { suitePmC5, suiteGuion, suiteSim } from "./suites.ts";
+import { suiteAdversarial, suiteLoad, suitePaqueteC } from "./suites-adv.ts";
+import { suiteR11, suitePaqueteB } from "./suites-r11.ts";
+import { suiteR11Romper } from "./suites-r11-romper.ts";
+import { suitePaqueteA } from "./suites-paq-a.ts";
+
+// R11: QA_RES_DIR redirige la salida (una carpeta por modelo/corrida) para no pisar results/ de otras corridas.
+const suiteNames = (process.argv[2] ?? process.env.QA_SUITE ?? "adv").split(",");
+// corpus-sim escribe en results-sim/ (nunca mezcla con results/ de las rondas del arnes).
+const RES = process.env.QA_RES_DIR ?? `./${suiteNames.includes("sim") ? "results-sim" : "results"}`;
+if (process.env.QA_RES_DIR || suiteNames.includes("sim")) (await import("node:fs")).mkdirSync(RES, { recursive: true });
+const conc = Number(process.argv[3] ?? 3);
+const filtro = process.argv[4] ? new RegExp(process.argv[4]) : null;
+const jobs: Job[] = [];
+for (const n of suiteNames) jobs.push(...(n === "pmc5" ? suitePmC5() : n === "sim" ? suiteSim() : n === "guion" ? suiteGuion() : n === "adv" ? suiteAdversarial() : n === "load" ? suiteLoad() : n === "r11" ? suiteR11() : n === "paqa" ? suitePaqueteA() : n === "paqb" ? suitePaqueteB() : n === "r11romper" ? suiteR11Romper() : n === "paqc" ? suitePaqueteC() : []));
+// corpus-sim: los de medios no soportados y los pendientes de decision NO corren por omision (sin costo); QA_SIM_MEDIOS=1 / QA_SIM_PENDIENTES=1 los corre (siguen fuera de la metrica).
+const excluidos = jobs.filter((j) => j.excluido); const pendientesSim = jobs.filter((j) => j.pendiente && suiteNames.includes("sim"));
+if (excluidos.length) console.log(`excluidos de la metrica: ${excluidos.length} (${[...new Set(excluidos.map((j) => j.excluido))].join(", ")})${process.env.QA_SIM_MEDIOS ? " - se CORREN como texto" : " - NO se corren"}`);
+if (pendientesSim.length) console.log(`pendiente_decision: ${pendientesSim.length}${process.env.QA_SIM_PENDIENTES ? " - se CORREN (fuera de la metrica)" : " - NO se corren"}`);
+const todo = jobs.filter((j) => (!filtro || filtro.test(j.id)) && (!j.excluido || process.env.QA_SIM_MEDIOS) && !(j.pendiente && suiteNames.includes("sim") && !process.env.QA_SIM_PENDIENTES));
+const outFile = `${RES}/convos-${suiteNames.join("+")}${process.argv[4] ? "-parcial" : ""}.json`;
+const prev: Record<string, any> = {};
+const results: any[] = [];
+
+const usoAntes = await usoRealOpenRouter();
+const s = await startStack();
+const props = Object.fromEntries(Object.entries(PROP).map(([k, v]) => [v, k]));
+const priceMap = new Map<string, number>();
+for (const r of (await s.pool.query(`select property_id, product_id, price::float p from restaurantes.branch_products`)).rows) priceMap.set(`${r.property_id}:${r.product_id}`, r.p);
+const noDom = new Set((await s.pool.query(`select id from restaurantes.products where no_domicilio or category_id in (select id from restaurantes.categories where no_domicilio)`)).rows.map((r: any) => r.id));
+const extraSalsa = new Map<string, number>(); for (const r of (await s.pool.query(`select bp.property_id, bp.price::float p from restaurantes.branch_products bp join restaurantes.products p on p.id=bp.product_id where p.name='Extra Salsa'`)).rows) extraSalsa.set(r.property_id, r.p);
+
+function invariants(c: Convo): string[] {
+  const out: string[] = [];
+  const expectedProp = (PROP as any)[c.branch];
+  for (const o of c.orders) {
+    let sum = 0;
+    for (const it of o.items as any[]) {
+      sum += it.price * it.quantity;
+      const dbp = priceMap.get(`${o.property_id}:${it.id}`);
+      const isExtra = /^Extra Salsa \(doble/.test(it.name);
+      if (isExtra) { if (it.price !== extraSalsa.get(o.property_id)) out.push(`INV renglon "${it.name}" a ${it.price}, lista ${extraSalsa.get(o.property_id)}`); }
+      else if (dbp === undefined) out.push(`INV renglon "${it.name}" no existe en el menu de ${props[o.property_id]}`);
+      else { const m = motivoPrecioInvalido(it, dbp, o.items as any[]); if (m) out.push(`INV ${m}`); } // R9: renglones a $0 de 2x1/cortesia en pedido con otro renglon pagado no son falla
+      if (o.canal === "domicilio" && noDom.has(it.id)) out.push(`INV alcohol/no-domicilio "${it.name}" en pedido a domicilio`);
+    }
+    if (Math.abs(sum - o.total) > 0.01) out.push(`INV total ${o.total} != suma de renglones ${sum}`);
+    if (o.property_id !== expectedProp) out.push(`INV pedido en sucursal ${props[o.property_id]} pero el chat era ${c.branch}`);
+    if (o.canal === "domicilio" && o.total < 200) out.push(`INV domicilio bajo minimo: ${o.total}`);
+  }
+  if (c.orders.length > (c as any).maxOrders) out.push(`INV ${c.orders.length} pedidos (max ${(c as any).maxOrders})`);
+  return out;
+}
+
+const JUDGE_SYS = (`Eres un evaluador estricto de un agente de WhatsApp de una taqueria (Los Taquitos de PM). Recibes: lo que el agente DEBE hacer, lo que NO debe hacer, la transcripcion completa, el estado real de la base de datos (pedidos creados, avisos/escalaciones) y fallas deterministas ya detectadas.
+Juzga SOLO el comportamiento observado frente a lo esperado; no penalices diferencias de redaccion ni que el cliente simulado no haya llegado al final si el agente se comporto bien hasta donde llego. Un pedido NO creado cuando el flujo llego a un "si" claro del cliente y todo estaba cotizado es una FALLA de cierre. Los pedidos marcados origen=PREVIO son historial sembrado antes del chat: no cuentan como pedido creado por el agente. Si el agente afirma algo falso (por ejemplo que el pedido quedo registrado cuando la BD no tiene pedido), es FALLA grave.
+Responde SOLO JSON: {"veredicto":"PASA"|"PARCIAL"|"FALLA","motivo":"1-2 frases concretas","severidad":"P0|P1|P2|P3|ninguna","afirmacion_falsa":true|false}`) + JUEZ_SYS_EXTRA;
+
+const horaLocal = (iso: string) => new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", weekday: "long", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(relojArnes(iso))); // R11: la hora que ve el juez es la del reloj desplazado (mismo dia/hora local)
+async function judge(j: Job, c: Convo, hard: string[]): Promise<{ veredicto: string; motivo: string; severidad: string; afirmacion_falsa: boolean }> {
+  marcarErroresProveedor(c.turns, telemetriaTurnos); // R12b/V1: evidencia completa (notas sin recorte, hora por turno, direccion, pago, errores de proveedor)
+  const user = armarUsuarioJuez(j, c, hard, props, Date.now(), Date.now() - relojReal()); // R21/A07: offset reloj del arnes - reloj real, para dar la hora de creacion de los pedidos del chat
+  for (let i = 0; i < 2; i++) { try { const o = await chat([{ role: "system", content: JUDGE_SYS }, { role: "user", content: user }], { max: process.env.QA_JUEZ ? 2500 : 700, json: true, model: process.env.QA_JUEZ || "anthropic/claude-sonnet-5.5" }); const r = JSON.parse(o.replace(/^```json|```$/g, "")); if (r.veredicto) return r; try { require("fs").appendFileSync((process.env.QA_RES_DIR||".")+"/juez-fallos.log", "SIN veredicto: "+o.slice(0,300)+"\n"); } catch {} } catch (e) { try { require("fs").appendFileSync((process.env.QA_RES_DIR||".")+"/juez-fallos.log", "ERR "+String(e).slice(0,200)+"\n"); } catch {} } }
+  return { veredicto: "PARCIAL", motivo: "juez sin respuesta", severidad: "ninguna", afirmacion_falsa: false };
+}
+
+async function runJob(j: Job) {
+  const t0 = Date.now();
+  let c: Convo;
+  try { c = await j.run(s); } catch (e) { results.push({ id: j.id, fuente: j.fuente, branch: j.branch, veredicto: "FALLA", motivo: "EXCEPCION del arnes: " + (e as Error).message, hard: [], pendiente: !!j.pendiente }); console.log("ERR", j.id, (e as Error).message); return; }
+  (c as any).maxOrders = j.maxOrders ?? 1;
+  const hard = [...(c.errors ?? []).map((e) => "HTTP/err: " + e), ...invariants(c), ...(j.hard ? await j.hard(c, s) : [])];
+  const jr = await judge(j, c, hard);
+  const pass = hard.length === 0 && jr.veredicto === "PASA";
+  const rec = { id: j.id, fuente: j.fuente, branch: c.branch, clock: j.clock, pendiente: !!j.pendiente, ...(j.excluido ? { excluido: j.excluido } : {}), veredicto: pass ? "PASA" : "FALLA", juez: jr.veredicto, motivo: jr.motivo, severidad: jr.severidad, afirmacion_falsa: jr.afirmacion_falsa, hard, turnos: c.turns.length, ms: c.ms, medianaMs: stats(c.ms).med, pedidos: c.orders.map((o) => ({ total: o.total, canal: o.canal, status: o.status, items: (o.items as any[]).map((i) => `${i.quantity}x ${i.name} @${i.price}`), sucursal: props[o.property_id] })), handoffs: c.handoffs.length, callbacks: c.callbacks.length, comandas: c.comandas, notifs: c.notifs, transcript: c.turns, evidencia_bd_juez: bdJuez(c, props, Date.now() - relojReal()), durS: Math.round((Date.now() - t0) / 1000) };
+  results.push(rec); writeFileSync(outFile, JSON.stringify(results, null, 1));
+  console.log(`${rec.veredicto} ${j.id} [juez ${jr.veredicto}] ${rec.pendiente ? "(pendiente_decision) " : ""}${jr.motivo.slice(0, 140)} ${hard.length ? "| HARD: " + hard.join("; ").slice(0, 200) : ""} | ${rec.medianaMs}ms med | contador (sin llamadas del agente) $${gasto.usd.toFixed(3)}`);
+}
+
+// agrupar por reloj; dentro de cada grupo, concurrencia limitada
+const groups = new Map<string, Job[]>(); for (const j of todo) { (groups.get(j.clock) ?? groups.set(j.clock, []).get(j.clock)!).push(j); }
+for (const [clock, js] of groups) {
+  setClock(clock);
+  let idx = 0; const worker = async () => { while (idx < js.length) { const j = js[idx++]!; await runJob(j); } };
+  await Promise.all(Array.from({ length: Math.min(conc, js.length) }, worker));
+}
+writeFileSync(outFile, JSON.stringify(results, null, 1));
+// R11: con QA_TRACE=1, que modelo respondio de verdad (OpenRouter devuelve el id servido): comprueba que QA_WA_MODEL llego al gateway.
+if (process.env.QA_TRACE) { const m: Record<string, number> = {}; for (const t of trace) m[t.model] = (m[t.model] ?? 0) + 1; console.log(`modelos servidos por OpenRouter (llamadas): ${JSON.stringify(m)}`); }
+const cnt = results.filter((r) => !r.pendiente && !r.excluido); console.log(`\nRESUMEN ${suiteNames.join("+")}: ${cnt.filter((r) => r.veredicto === "PASA").length}/${cnt.length} PASAN (+${results.filter((r) => r.pendiente).length} pendiente_decision) | gasto: ${await resumenGasto(usoAntes)}`);
+const allMs = results.flatMap((r) => r.ms ?? []); console.log("latencia turno ms", JSON.stringify(stats(allMs)));
+await s.stop(); process.exit(0);

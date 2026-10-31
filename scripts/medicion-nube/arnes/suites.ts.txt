@@ -1,0 +1,280 @@
+import { readFileSync } from "node:fs";
+import type { Stack } from "./stack.ts";
+import { PNID, PROP, T, setClock } from "./stack.ts";
+import { runPersona, runScript, snapshot, newPhone, sleep } from "./lib.ts";
+import type { Branch, Convo, Persona } from "./lib.ts";
+import { motivosPedidoBajoMinimo } from "./inv-precio.ts";
+
+export interface Job {
+  id: string; fuente: string; branch: Branch; clock: string; expected: string; mustNot: string;
+  run: (s: Stack) => Promise<Convo>;
+  hard?: (c: Convo, s: Stack) => Promise<string[]> | string[]; // chequeos deterministas adicionales (devuelven motivos de falla)
+  pendiente?: boolean; // depende de decision abierta (no cuenta)
+  excluido?: string; // fuera de la metrica y (por omision) sin correr: p. ej. "medios_no_soportado" (el arnes solo manda texto)
+  maxOrders?: number;
+}
+
+// R12b/V6: pin a ~0.137 km de la sucursal T7 (21.0325451,-89.6026621), como el centroide de Xaman Tan en el seed (0.1367 km, colonias-8km-carga.sql:189); antes 21.0211,-89.6141 caia a ~1.74 km y daba "menos de 1 km" vs "unos 2 km".
+const LOC_T7 = "[Ubicación compartida por WhatsApp] lat=21.033777 lng=-89.602662";
+const DATOS_BASE = `Nombre: Carlos Prueba. Direccion de entrega: Calle 32 #345 x 20 y 22, Privada Los Almendros casa 13, Fracc. Xaman Tan. Si te piden el pin/ubicacion, manda exactamente: "${LOC_T7}". Forma de pago: la que digan tus mensajes (si no dicen, efectivo). Da la hora a la que pasas a recoger si te la piden (en 40 minutos). Si no tienes un dato, inventa uno coherente de Merida.`;
+
+// R6: escenarios de FUERA DE ZONA de T7: la direccion y el pin del cliente simulado deben caer en la zona AJENA (Xaman Tan es la propia direccion de T7: asignar T7 es correcto).
+const ZONA_AJENA: Record<string, { dir: string; loc: string }> = {
+  "T7-049": { dir: "Calle 21 #100 x 10 y 12, casa 13, colonia Los Pinos", loc: "[Ubicación compartida por WhatsApp] lat=21.012000 lng=-89.595000" },
+  "T7-050": { dir: "Calle 60 #500 x 45 y 47, casa 13, colonia México", loc: "[Ubicación compartida por WhatsApp] lat=21.028200 lng=-89.609800" },
+  "T7-051": { dir: "Calle 21 #100 x 10 y 12, privada, colonia Los Pinos", loc: "[Ubicación compartida por WhatsApp] lat=21.012000 lng=-89.595000" },
+  // R21 (arreglo 3 de R20-FALLOS.md / G-1 de RONDA-13-CAUSAS.md): T7-026 es "fuera de cobertura, pasa a recoger"; con el pin fijo de Xaman Tan (0.14 km) "si entregan" era verdadero. ROMPE LA COMPARABILIDAD de T7-026 con R13-R20.
+  "T7-026": { dir: "Calle 21 #100 x 10 y 12, casa 13, colonia Los Pinos", loc: "[Ubicación compartida por WhatsApp] lat=21.012000 lng=-89.595000" },
+};
+// R21: orden de turnos corregido (el cambio de hora ocurre ANTES de la confirmacion final, como en el chat real; antes el simulador confirmaba con las 7 pm y el pedido ya existia). Rompe comparabilidad R13-R20 en T7-026.
+const REORDEN_TURNOS: Record<string, (t: string[]) => string[]> = {
+  "T7-026": (t) => { const i = t.findIndex((x) => /cambiar la hora/i.test(x)); const j = t.findIndex((x) => /^A las 7/i.test(x)); if (i < 0 || j < 0 || i < j) return t; const r = t.slice(); const [m] = r.splice(i, 1); r.splice(j + 1, 0, m); return r; },
+};
+const turnosDe = (e: any): string[] => (REORDEN_TURNOS[e.id] ? REORDEN_TURNOS[e.id](e.turnos_cliente) : e.turnos_cliente);
+/** Pin de una zona SIN cobertura de ninguna sucursal (corpus-sim `sin_cobertura`): Progreso (~28 km de T7). NO verificado contra la herramienta de zona del stack (se verifica al primer piloto). */
+const ZONA_SIN_COBERTURA = { dir: "Calle 20 #100 x 15 y 17, casa 13, Progreso centro", loc: "[Ubicación compartida por WhatsApp] lat=21.282200 lng=-89.665200" };
+/** Medios que el arnes NO soporta (solo manda texto): se dejan como marcador y el escenario se excluye de la metrica. */
+const RE_MEDIO = /\[(?:FOTO|AUDIO|STICKER|VIDEO|DOCUMENTO|LLAMADA|MENSAJE ELIMINADO|MENSAJE EDITADO|UBICACI[ÓO]N EN TIEMPO REAL)[^\]]*\]/i;
+/** [PLANTILLA DE BIENVENIDA PEGADA CON DATOS LLENOS: tel, nombre, direccion, <pedido...>, pago]: el cliente pega la plantilla de la sucursal con sus datos (mismo mecanismo que G1). */
+function plantillaPegada(m: string): string {
+  const cuerpo = (/:\s*([^\]]*)\]?$/.exec(m)?.[1] ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const esDato = (x: string) => /^(tel[eé]fono|nombre|direcci[oó]n)$/i.test(x);
+  const pago = cuerpo.find((x) => /tarjeta|efectivo/i.test(x)) ?? "efectivo";
+  const pedido = cuerpo.filter((x) => !esDato(x) && x !== pago).join(", ") || "una orden de tacos de pastor";
+  return `Hola, buenas noches! Para tomar su pedido:\nTeléfono: 9991234567\nNombre: Carlos Prueba\nDirección: Calle 32 #345 x 20 y 22, casa 13, Xaman Tan\nPedido: ${pedido}\nForma de pago: ${pago.replace(/^pago (con )?/i, "")}`;
+}
+export function limpia(t: string, zona?: { dir: string; loc: string }, proteger = false): string {
+  // proteger (solo corpus-sim): los marcadores de medios y el pin ya resuelto "[Ubicación compartida por WhatsApp] lat= lng=" sobreviven al "(dato)" generico (en las suites existentes se conserva el comportamiento anterior).
+  const guardados: string[] = [];
+  const guardar = (x: string): string => `\u0001${guardados.push(x) - 1}\u0002`;
+  if (proteger) t = t.replace(new RegExp(RE_MEDIO.source, "gi"), guardar);
+  // corpus-sim (solo con `proteger`, para no cambiar pmc5/G*): marcadores nuevos ANTES de los genericos (antes cualquier [..] desconocido se volvia "(dato)")
+  if (proteger) t = t.replace(/\[PLANTILLA DE BIENVENIDA PEGADA[^\]]*\]/gi, plantillaPegada)
+    .replace(/\[ENLACE\]/gi, "https://ejemplo.invalid/promo").replace(/\[N[ÚU]MERO DE TARJETA\]/gi, "4111 1111 1111 1111").replace(/\[FECHA\]/gi, "12/29").replace(/\[CVV\]/gi, "123").replace(/\[N\]/g, "12");
+  if (proteger && !zona) t = t.replace(/\[UBICACI[ÓO]N FUERA DE ZONA\]/gi, ZONA_AJENA["T7-049"]!.loc);
+  if (zona) { const m = /lat=(-?[\d.]+) lng=(-?[\d.]+)/.exec(zona.loc); t = t.replace(/\[UBICACI[ÓO]N[^\]]*\]/gi, zona.loc).replace(/\[DIRECCI[ÓO]N[^\]]*\]/gi, zona.dir); if (m) t = t.replace(/\[LINK DE MAPS\]/gi, `https://maps.google.com/?q=${m[1]},${m[2]}`); }
+  return t
+    .replace(/\[UBICACI[ÓO]N[^\]]*\]/gi, LOC_T7).replace(/\[LINK DE MAPS\]/gi, "https://maps.google.com/?q=21.033777,-89.602662")
+    .replace(/\[NOMBRE DEL DESARROLLO\]/gi, "Privada Los Almendros").replace(/\[NOMBRE[^\]]*\]/gi, "Carlos Prueba").replace(/\[TEL[^\]]*\]/gi, "9991234567")
+    .replace(/\[DIRECCI[ÓO]N[^\]]*\]/gi, "Calle 32 #345 x 20 y 22, casa 13, Xaman Tan").replace(/\[[^\]]{1,60}\]/g, (m) => (proteger && /^\[Ubicaci[oó]n compartida/i.test(m) ? guardar(m) : RE_MEDIO.test(m) ? m : "(dato)"))
+    .replace(/\u0001(\d+)\u0002/g, (_m, i) => guardados[Number(i)] ?? "");
+}
+
+// escenarios que presuponen un pedido previo del mismo telefono (los marca el propio texto del escenario: "pedido ya confirmado", estado, queja, recurrente...)
+const SEMILLA: Record<string, { canal: "recoger" | "domicilio"; status?: string; minAgo?: number }> = {
+  "T7-009": { canal: "domicilio", status: "entregado", minAgo: 3000 }, "T7-015": { canal: "domicilio", status: "entregado", minAgo: 3000 }, "T7-020": { canal: "domicilio", status: "entregado", minAgo: 3000 },
+  "T7-016": { canal: "domicilio", status: "preparando", minAgo: 25 }, "T7-046": { canal: "domicilio", status: "en_camino", minAgo: 80 }, "T7-071": { canal: "domicilio", status: "preparando", minAgo: 30 },
+  "T7-017": { canal: "domicilio", status: "entregado", minAgo: 60 }, "T7-021": { canal: "domicilio", status: "entregado", minAgo: 60 }, "T7-063": { canal: "domicilio", status: "entregado", minAgo: 60 },
+  "T7-072": { canal: "domicilio", status: "en_camino", minAgo: 50 }, "T7-073": { canal: "recoger", minAgo: 10 }, "T7-019": { canal: "domicilio", minAgo: 10 }, "T7-043": { canal: "domicilio", minAgo: 8 }, "T7-055": { canal: "domicilio", minAgo: 8 }, "T7-067": { canal: "domicilio", minAgo: 8 }, "T7-037": { canal: "recoger", minAgo: 10 }, "T7-044": { canal: "domicilio", minAgo: 8 }, "T7-032": { canal: "recoger", minAgo: 5 },
+};
+// R6: el reloj del arnes coincide con la hora que define el escenario (R5: T7-010 corria a las 13:00 y el juez evaluaba 2:16 am)
+const RELOJ_ESC: Record<string, string> = { "T7-004": T.MARTES_0110, "T7-010": "2026-10-07T08:16:00Z", "T7-027": T.MARTES_08, "T7-036": T.MARTES_08 };
+// R6: T7-011 y T7-014 traian un pin invalido: se agrega el pin valido (formato real de Meta -> marcador) como ultimo mensaje por si el agente lo pide
+// R21: T7-001 tambien (el LLM-cliente reescribia el 3.er mensaje y nunca mandaba el pin, y el juez pedia validarlo con el pin)
+const PIN_VALIDO = new Set(["T7-001", "T7-011", "T7-014"]);
+// R9 (falsos positivos de la expectativa, no del producto): correcciones a escenarios-t7.json, que vive en repo/ y no se toca.
+// T7-013: el seed/volcado real (branch_policy de Francisco de Montejo) abre 12:00 a 01:00 TODOS los dias; el escenario esperaba "6 pm entre semana".
+export const OVERRIDE_ESC: Record<string, { expected?: string; mustNot?: string }> = {
+  "T7-013": { expected: "Da el horario de esa sucursal tal como lo devuelve la herramienta (en el seed: abre 12:00 y cierra 01:00 todos los dias; no se exige ningun otro horario) y ofrece tomar el pedido en la sucursal del chat si la direccion esta en su cobertura, o para recoger." },
+  // R12c/V5 (RONDA-12-ARNES-V2.md): ajustes de expectativa por decisiones ya dadas por Javier; los escenarios en repo/ NO se tocan.
+  // Queja con detalle (decision R10-P4 / Q1(a)): se ESCALA sin preguntar mas, con texto fijo, y el agente sigue atendiendo lo demas; el aviso lleva folio y direccion del Pedido reciente. Nada de pedir direccion/pin ni ofrecer reposicion antes.
+  "T7-017": { expected: "Se disculpa breve y escala la queja DE INMEDIATO (motivo queja) con texto fijo, sin preguntar mas, sin pedir direccion ni pin y sin ofrecer reposicion (decision de Javier R10-P4 / Q1(a)): el mensaje ya trae el detalle (pastor en lugar de bistec; peso 200 g en vez de 250 g). El aviso al equipo lleva ese detalle, el folio y la direccion del Pedido reciente. No promete reposicion, cambio ni descuento (lo decide el gerente, H8 y paso 14); el agente sigue atendiendo lo demas.", mustNot: "Prometer la reposicion o una cortesia por su cuenta; culpar al cliente; pedirle que vuelva a la sucursal; pedir direccion/pin o hacer mas preguntas antes de escalar." },
+  "T7-021": { expected: "Se disculpa breve y escala la queja DE INMEDIATO (motivo queja) con texto fijo, sin preguntar mas ni ofrecer por su cuenta el envio o la reposicion (decision de Javier R10-P4 / Q1(a)): el detalle (no mandaron el guacamole) ya viene en el mensaje. El aviso al equipo lleva el folio y la direccion del Pedido reciente. Sin prometer descuento ni reposicion; el agente sigue atendiendo lo demas.", mustNot: "Negar el error sin revisar; prometer descuento; prometer o agendar la reposicion antes de que el gerente decida; volver a preguntar que falto." },
+  // T7-049 (Q8 sin respuesta): el WhatsApp publico por sucursal NO existe (perfil-pm.ts:164, P2); solo hay telefonos. NO se inventa el dato: se exige no inventarlo y ofrecer el canal que si existe.
+  "T7-049": { expected: "Con la herramienta de zona detecta que corresponde a Altabrisa (T8): lo explica con calidez, NO toma el pedido a domicilio y ofrece recoger en la sucursal del chat si le queda bien. No inventa un WhatsApp de sucursal (aun no existe): ofrece el canal que si existe (el telefono publico de T8 que trae el prompt, 999 518 2857) o escala.", mustNot: "Tomar el pedido a domicilio fuera de zona; contestar seco o en mayusculas; inventar o dar un numero de WhatsApp de sucursal que no este en los datos." },
+  // Decision de Javier (b): «flautas es una flauta grande»: una orden = una flauta grande, precio por orden ($283); el total $1,833 no cambia.
+  "T7-031": { expected: "Confirma que hay flautas de pechuga (en una sucursal de menu grande; una orden = una flauta grande, precio por orden), pregunta la tortilla de los kilos, programa la entrega a las 8:30 pm y cotiza ($1,100 + $450 + $283 = $1,833) con terminal. No pregunta cuantas piezas trae la orden ni multiplica el precio.", mustNot: "Negar las flautas sin consultar el catalogo de la sucursal; ignorar la hora pedida; cobrar la orden de flautas por pieza o por cantidad distinta de 1 (4 x $283)." },
+  // DECISIONES-Q5-Q7 / DECISIONES-2 (24-oct): criterios del juez alineados con las decisiones de PM (el escenario del repo ya dice lo mismo; aqui se agrega QUE se comprueba y DONDE).
+  // T7-026: la hora final se comprueba en la BD (hora de recogida del pedido = 17:00 Merida), no en el texto del agente; la tortilla solo "va aparte"/"el kilo la incluye"; sin minutos.
+  "T7-026": { expected: "Consulta la cobertura con la herramienta; si no cubre lo dice (con la sucursal que llega y su telefono) y ofrece recoger; no acepta domicilio. Toma 1 kg de bistec + 1 kg de pastor con tortilla mixta, y a la pregunta de la tortilla dice que las tortillas van aparte de la carne y que el kilo las incluye (sin decir cuantas son ni como se empacan, sin cobrarlas aparte). La hora de recogida se registra de forma estructurada: SE COMPRUEBA EN LA BD, no en el texto; el pedido debe quedar con hora de recogida 5 pm (17:00 de Merida) tras el cambio de las 7 pm, y la nota libre no cuenta. No da minutos nuevos y no escala por el monto de $2,000.", mustNot: "Aceptar domicilio fuera de zona; escalar solo por el monto de $2,000; registrar la hora solo como nota libre o dejar 19:00 en la BD; decir que el agente cambio la hora si la BD no la trae; describir conteo o empaque de tortillas; cobrar la tortilla aparte." },
+  // R21 (PR fix/pm-r21-hallazgos): criterios reescritos; el arnes lee el JSON de ../repo/ (checkout compartido) que no los trae hasta fusionar, asi que se espejan aqui. Al fusionar y actualizar repo/ se pueden borrar.
+  "T7-001": { expected: "Reconoce 1/4 kg de bistec como fracción vendible a precio proporcional ($275 con la lista 2026). Confirma salsas: las básicas (roja, verde, cebolla con cilantro, limones) más crema de ajo y guacamolera a petición sin costo. Anota 'llevar terminal'. Valida la zona: con el pin si el cliente lo manda; si no lo manda, el botón de ubicación que envía el sistema cuenta como pedirlo y la sucursal asignada por colonia es válida. Da el tiempo real de la sucursal, repite el pedido completo con total y pide un 'sí'.", mustNot: "Decir que solo se vende el kilo completo; cobrar las salsas pedidas como extra; mandar la plantilla larga de bienvenida cuando el cliente ya dio todo; prometer 40-50 min fijos." },
+  "T7-072": { expected: "Pasa el agregado a la sucursal con UN solo aviso. (1) Sin confirmación de la sucursal ni estado «en ruta» en el sistema: dice que no tiene el estado actualizado del pedido, que la sucursal confirma si el agregado alcanza o si ya salió, y cierra con «le confirmo en un momento», sin minutos y sin ofrecer aún el pedido nuevo. (2) Solo si el sistema o la sucursal ya indican que el pedido salió a reparto: se disculpa, dice que ya no se le puede agregar al mismo viaje y ofrece un pedido nuevo con eso (mínimo $200 a domicilio, o recoger en la sucursal) preguntando si se lo toma. En ambos casos no promete que lo van a llamar; si el cliente pide hablar con alguien, da el teléfono de la sucursal.", mustNot: "Decir que ya quedó agregado; dar minutos inventados; volver a escalar el mismo agregado; prometer que lo van a llamar; contestar seco sin alternativa." },
+  "T7-073": { expected: "Con el pedido ya registrado, avisa de inmediato a la sucursal con el producto y la cantidad que agrega (sin crear otro pedido), le dice el precio del agregado según el menú (buscar_producto) y que la sucursal confirma el total y si alcanza a quedar con su pedido y que, si no, se lo entregan aparte al recoger. No hace falta volver a cotizar con cotizar_pedido. Cierra con «le confirmo en un momento», sin minutos ni horas nuevas.", mustNot: "Dar minutos o una hora nuevos; prometer que alcanza; crear otro pedido por su cuenta; hablar de envío en un pedido para recoger." },
+  "T7-074": { expected: "Aclara que los alambres se venden por orden y cada orden trae 5 tacos; en las mestizas aclara que cada orden trae 2 y pregunta cuántas órdenes. Toma «1 alambre» como 1 orden de 5 piezas, y cuando el cliente dice «2 órdenes de mestizas» lo multiplica (4 mestizas) y lo repite sin volver a preguntar. No vuelve a preguntar lo que el cliente ya dio (con queso, tortilla mixta); si falta una tortilla, la pregunta una sola vez por renglón.", mustNot: "Cotizar «1 alambre» como una pieza; suponer que 2 mestizas son 2 órdenes o 1 orden sin preguntar; preguntar dos veces lo mismo o preguntar algo que el cliente ya contestó." },
+  // T7-043: se revisa el MENSAJE DEL AVISO a la sucursal (callback_requests.message / aviso de escalar_a_humano), no solo el texto al cliente.
+  "T7-043": { expected: "Los minutos del turno de CONFIRMACION del pedido original ('aproximadamente 60 a 75 minutos') los exige el prompt y NO se penalizan; el criterio de minutos aplica solo a la RESPUESTA AL AGREGADO (el turno posterior a '(16 min despues)'). En esa respuesta: avisa de inmediato a la sucursal (escalar_a_humano, motivo cancelacion_modificacion) y SE REVISA EL MENSAJE DEL AVISO (callback_requests.message): debe nombrar el producto y la cantidad del agregado (3 tacos de pastor, tortilla de maiz, naturales) y apuntar al pedido recien creado (no a otro folio). Al cliente le dice que la sucursal le confirma si alcanza a salir con su pedido y que, si ya salio, se lo pueden enviar aparte, con 'le confirmo en un momento'; SIN minutos ni cifras de tiempo y sin prometer que alcanza. Si el sistema indica que ya salio: se disculpa, explica que no se puede agregar al mismo viaje y ofrece un pedido nuevo (minimo $200 a domicilio, o recoger) sin inventar tiempos ni prometer una llamada de vuelta.", mustNot: "Prometer que va en el mismo envio; en la RESPUESTA AL AGREGADO (turno posterior a '(16 min despues)') dar minutos o 'aproximadamente 60 minutos' (el tiempo dado al confirmar el pedido original no cuenta); decir que ya quedo agregado o registrado sin que el aviso a la sucursal lleve el agregado; avisar con el folio equivocado; crear un pedido nuevo debajo del minimo sin la sucursal." },
+};
+// R12c/V5 (CAUSAS T7-043): en 3 de 4 corridas el cliente simulado IMPROVISO un agregado de Coca de 600 ml que no esta en el guion; abrio una toma y el agregado real del guion cayo en silencio. Se le prohibe salirse del guion (solo agrega lo que dicen sus mensajes).
+export const GUION_ESTRICTO: Record<string, string> = {
+  "T7-043": " REGLA ESTRICTA: escribe SOLO lo que dicen tus mensajes; NO agregues, cambies ni preguntes por productos, bebidas ni extras que no esten en tu guia (por ejemplo, NO pidas una Coca). El unico agregado posterior es el que trae el guion.",
+  "T7-072": " REGLA ESTRICTA: escribe SOLO lo que dicen tus mensajes; NO agregues, cambies ni preguntes por productos, bebidas ni extras que no esten en tu guia. El unico agregado posterior es el que trae el guion.",
+  "T7-073": " REGLA ESTRICTA: escribe SOLO lo que dicen tus mensajes; NO agregues, cambies ni preguntes por productos, bebidas ni extras que no esten en tu guia. El unico agregado posterior es el que trae el guion.",
+};
+/** R9: mensajes "(N min despues) ..." que llegan MUCHO despues de cerrar el pedido; el cliente simulado daba fin=true al quedar registrado y nunca los escribia (T7-006/035). */
+export function partirCola(turnos: string[]): { cabeza: string[]; cola: string[] } {
+  const i = turnos.findIndex((t, k) => k > 0 && /^\(\d+ min despu[eé]s\)/i.test(t));
+  if (i < 0) return { cabeza: turnos, cola: [] };
+  return { cabeza: turnos.slice(0, i), cola: turnos.slice(i).map((t) => t.replace(/^\(\d+ min despu[eé]s\)\s*/i, "")) };
+}
+export function suitePmC5(): Job[] {
+  const d = JSON.parse(readFileSync(new URL("../repo/packages/domain-restaurantes/src/evals/agente-pm/escenarios-t7.json", import.meta.url), "utf8"));
+  return d.escenarios.map((e: any): Job => ({
+    id: e.id, fuente: `PM-C5 ${e.intencion}`, branch: "T7", clock: RELOJ_ESC[e.id] ?? T.MARTES_13, pendiente: e.estado === "pendiente_decision",
+    expected: OVERRIDE_ESC[e.id]?.expected ?? e.comportamiento_esperado, mustNot: OVERRIDE_ESC[e.id]?.mustNot ?? e.que_no_debe_hacer,
+    run: async (s) => { const phone = newPhone(); const sem = SEMILLA[e.id]; if (sem) { const { createOrderViaTools } = await import("./setup-orders.ts"); await createOrderViaTools(s, phone, "T7", { canal: sem.canal, status: sem.status, minAgo: sem.minAgo }); } return runPersona(s, { id: e.id, fuente: `PM-C5 ${e.intencion}`, branch: "T7", clock: RELOJ_ESC[e.id], phone, persona: { goal: `Eres el cliente de un chat real (intencion: ${e.intencion}). Quieres lograr lo mismo que muestran tus mensajes, en esa secuencia.${GUION_ESTRICTO[e.id] ?? ""}`, hints: [...partirCola(turnosDe(e)).cabeza.map((t: string) => limpia(t, ZONA_AJENA[e.id])), ...(PIN_VALIDO.has(e.id) ? [LOC_T7] : [])], guionPosterior: partirCola(turnosDe(e)).cola.map((t: string) => limpia(t, ZONA_AJENA[e.id])), datos: ZONA_AJENA[e.id] ? DATOS_BASE.replace("Calle 32 #345 x 20 y 22, Privada Los Almendros casa 13, Fracc. Xaman Tan", ZONA_AJENA[e.id].dir).replace(LOC_T7, ZONA_AJENA[e.id].loc) : DATOS_BASE, maxTurns: Math.max(10, partirCola(turnosDe(e)).cabeza.length + 6) } }); }, // R9: T7-041 trae 8 mensajes y se cortaba en 10 turnos del cliente
+    maxOrders: SEMILLA[e.id] ? 2 : 1,
+  }));
+}
+
+// ====================================================================================================================================================================
+// corpus-sim (PRIVADO): 477 escenarios sinteticos de WhatsApp de «Los Taquitos de PM» (T7). El JSON NUNCA vive en el repo: se lee de QA_CORPUS_SIM
+// (sin ruta por omision en el repo). Selector: QA_SUITE=sim; QA_SIM_FILTRO="dificultad=3,4;categoria=pagos,pedido_kilos;n=3;piloto".
+// ====================================================================================================================================================================
+const RELOJ_SIM: Record<string, string> = {
+  MARTES_13: T.MARTES_13, MARTES_08: T.MARTES_08, MIE_0040: "2026-10-07T06:40:00Z", MIE_0010: "2026-10-07T06:10:00Z", MIE_12: "2026-10-07T18:00:00Z",
+};
+const GUION_ESTRICTO_SIM = " REGLA ESTRICTA: escribe SOLO lo que dicen tus mensajes; NO agregues, cambies ni preguntes por productos, bebidas ni extras que no esten en tu guia. El unico agregado posterior es el que trae el guion.";
+const rutaCorpusSim = (): string => (process.env.QA_CORPUS_SIM ?? "corpus-sim-no-configurado.json").replace(/^~(?=\/)/, process.env.HOME ?? "~");
+export interface FiltroSim { dificultad?: number[]; categoria?: string[]; n?: number; piloto?: boolean }
+/** "dificultad=3,4;categoria=pagos,pedido_kilos;n=3;piloto" -> filtro. */
+export function parseFiltroSim(txt: string | undefined): FiltroSim {
+  const f: FiltroSim = {};
+  for (const par of (txt ?? "").split(";").map((x) => x.trim()).filter(Boolean)) {
+    const [k, v = ""] = par.split("=");
+    if (k === "dificultad") f.dificultad = v.split(",").map(Number).filter((x) => x >= 1 && x <= 4);
+    else if (k === "categoria") f.categoria = v.split(",").map((x) => x.trim()).filter(Boolean);
+    else if (k === "n") f.n = Math.max(1, Number(v) || 1);
+    else if (k === "piloto") f.piloto = v === "" || v === "1" || v === "true";
+  }
+  return f;
+}
+const hashId = (id: string): number => { let h = 2166136261; for (const ch of id) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+/** Piloto estratificado (~`objetivo` escenarios): por categoria, al menos min(3, tamano) y el resto proporcional; dentro de la categoria, alterna dificultades (de la mas dificil a la mas facil) con orden determinista por hash del id. */
+export function seleccionPiloto(es: any[], objetivo = 100): any[] {
+  const porCat = new Map<string, any[]>(); for (const e of es) (porCat.get(e.categoria) ?? porCat.set(e.categoria, []).get(e.categoria)!).push(e);
+  const total = es.length; const out: any[] = [];
+  for (const [, xs] of [...porCat].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const cupo = Math.min(xs.length, Math.max(3, Math.round((objetivo * xs.length) / total)));
+    const porDif = new Map<number, any[]>(); for (const e of [...xs].sort((a, b) => hashId(a.id) - hashId(b.id))) (porDif.get(e.dificultad) ?? porDif.set(e.dificultad, []).get(e.dificultad)!).push(e);
+    const niveles = [...porDif.keys()].sort((a, b) => b - a); const elegidos: any[] = [];
+    for (let r = 0; elegidos.length < cupo && r < xs.length; r++) for (const d of niveles) { const e = porDif.get(d)![r]; if (e && elegidos.length < cupo) elegidos.push(e); }
+    out.push(...elegidos);
+  }
+  return out;
+}
+export interface ResumenSim { total: number; activos: number; pendientes: number; medios: number; seleccionados: number }
+/** Carga y valida la FORMA del corpus (sin LLM ni stack). Lanza si el JSON no cumple el contrato minimo. */
+export function cargarCorpusSim(ruta = rutaCorpusSim()): any[] {
+  const d = JSON.parse(readFileSync(ruta, "utf8")); const es: any[] = d.escenarios;
+  if (!Array.isArray(es) || es.length === 0) throw new Error("corpus-sim: sin escenarios");
+  const ids = new Set<string>();
+  for (const e of es) {
+    for (const k of ["id", "turnos_cliente", "comportamiento_esperado", "que_no_debe_hacer", "estado", "categoria", "dificultad", "resultado_esperado", "reloj"]) if (e[k] === undefined) throw new Error(`corpus-sim ${e.id ?? "?"}: falta ${k}`);
+    if (ids.has(e.id)) throw new Error(`corpus-sim: id repetido ${e.id}`); ids.add(e.id);
+    if (!Array.isArray(e.turnos_cliente) || e.turnos_cliente.length === 0 || e.turnos_cliente.some((t: unknown) => typeof t !== "string")) throw new Error(`corpus-sim ${e.id}: turnos_cliente invalido`);
+    if (!RELOJ_SIM[e.reloj]) throw new Error(`corpus-sim ${e.id}: reloj desconocido ${e.reloj}`);
+    if (!["comanda", "escalar", "sin_comanda"].includes(e.resultado_esperado?.resultado)) throw new Error(`corpus-sim ${e.id}: resultado_esperado invalido`);
+    if (e.rafagas?.some((r: number[]) => r.length !== 2 || r[0]! < 0 || r[1]! >= e.turnos_cliente.length || r[0]! > r[1]!)) throw new Error(`corpus-sim ${e.id}: rafagas fuera de rango`);
+  }
+  return es;
+}
+const esMedio = (e: any): boolean => e.turnos_cliente.some((t: string) => RE_MEDIO.test(t));
+export function resumenSim(es: any[], filtro: FiltroSim = {}): ResumenSim & { porCategoria: Record<string, number> } {
+  const sel = filtrarSim(es, filtro); const porCategoria: Record<string, number> = {}; for (const e of sel) porCategoria[e.categoria] = (porCategoria[e.categoria] ?? 0) + 1;
+  return { total: es.length, activos: es.filter((e) => e.estado !== "pendiente_decision").length, pendientes: es.filter((e) => e.estado === "pendiente_decision").length, medios: es.filter(esMedio).length, seleccionados: sel.length, porCategoria };
+}
+/** Aplica el filtro. Los pendientes_decision y los de medios se CONSERVAN en la lista (para listarlos); la seleccion de piloto/n solo reparte entre los medibles. */
+export function filtrarSim(es: any[], f: FiltroSim): any[] {
+  let xs = es.filter((e) => (!f.dificultad?.length || f.dificultad.includes(e.dificultad)) && (!f.categoria?.length || f.categoria.includes(e.categoria)));
+  const medible = (e: any) => e.estado !== "pendiente_decision" && !esMedio(e);
+  if (f.piloto) { const base = seleccionPiloto(xs.filter(medible)); xs = base; }
+  if (f.n) { const cuenta = new Map<string, number>(); xs = [...xs].sort((a, b) => hashId(a.id) - hashId(b.id)).filter((e) => { const c = cuenta.get(e.categoria) ?? 0; if (c >= f.n!) return false; cuenta.set(e.categoria, c + 1); return true; }); }
+  return xs.sort((a, b) => a.id.localeCompare(b.id));
+}
+/** Comprobaciones duras (deterministas) a partir de `resultado_esperado`. */
+/** Pedidos creados POR EL AGENTE en este chat (los PREVIOS sembrados por el escenario no cuentan). */
+const nuevos = (c: Convo): any[] => c.orders.filter((o: any) => o.source === "whatsapp");
+function hardSim(e: any): Job["hard"] | undefined {
+  const r = e.resultado_esperado ?? {}; const pasos: NonNullable<Job["hard"]>[] = [];
+  if (r.pedidos === 0 || r.resultado !== "comanda") pasos.push((c) => (nuevos(c).length ? [`no debia crear pedido y creo ${nuevos(c).length} (total ${nuevos(c)[0].total})`] : []));
+  if (r.resultado === "comanda") {
+    pasos.push((c) => (nuevos(c).length ? [] : ["debia crear el pedido y no creo ninguno"]));
+    if (typeof r.total_mxn === "number") pasos.push((c) => (nuevos(c).length === 0 || nuevos(c).some((o: any) => o.total === r.total_mxn) ? [] : [`pedido con total ${nuevos(c).map((o: any) => o.total)} != ${r.total_mxn} esperado`]));
+    if (r.canal) pasos.push((c) => (nuevos(c).length === 0 || nuevos(c).some((o: any) => o.canal === r.canal) ? [] : [`pedido con canal ${nuevos(c).map((o: any) => o.canal)} != ${r.canal} esperado`]));
+  }
+  if (r.resultado === "escalar" && (r.escalar?.veces ?? 1) >= 1) pasos.push(mustEscalate!);
+  return pasos.length ? async (c, s) => { const out: string[] = []; for (const p of pasos) out.push(...(await p(c, s))); return out; } : undefined;
+}
+/** Suite del corpus sintetico. Medios no soportados -> `excluido: "medios_no_soportado"` (fuera de la metrica y, por omision, sin correr; QA_SIM_MEDIOS=1 los corre como texto igualmente excluidos). */
+export function suiteSim(): Job[] {
+  const filtro = parseFiltroSim(process.env.QA_SIM_FILTRO);
+  const es = filtrarSim(cargarCorpusSim(), filtro);
+  return es.map((e: any): Job => {
+    const zona = e.pin === "ajena_altabrisa" ? ZONA_AJENA["T7-049"] : e.pin === "sin_cobertura" ? ZONA_SIN_COBERTURA : undefined;
+    const turnos: string[] = e.turnos_cliente.map((t: string) => limpia(t, zona, true));
+    const fuente = `SIM ${e.categoria} d${e.dificultad}`;
+    const clock = RELOJ_SIM[e.reloj]!;
+    const sem = e.semilla as { canal: "recoger" | "domicilio"; status?: string; minAgo?: number } | null;
+    const expected = [e.comportamiento_esperado, `CRITERIO DE APROBACION: ${e.criterio_aprobacion ?? ""}`, e.p0?.length ? `P0 (comprobaciones concretas): ${e.p0.join("; ")}` : ""].filter(Boolean).join("\n");
+    const sembrar = async (s: Stack, phone: string) => { if (sem) { const { createOrderViaTools } = await import("./setup-orders.ts"); await createOrderViaTools(s, phone, "T7", { canal: sem.canal, status: sem.status, minAgo: sem.minAgo }); } };
+    const run: Job["run"] = async (s) => {
+      const phone = newPhone(); await sembrar(s, phone);
+      if (e.rafagas?.length) {
+        // ráfaga: los turnos de los rangos llegan SIN esperar respuesta (Promise.all); el resto en orden. Si el simulador debe confirmar, se agrega un «Sí» al final.
+        const msgs: string[] = [...turnos]; if (e.confirma_al_final) msgs.push("Sí, correcto");
+        return runScript(s, { id: e.id, fuente, branch: "T7", clock, phone, msgs, bursts: e.rafagas as [number, number][] });
+      }
+      const goal = `Eres el cliente de un chat sintetico (intencion: ${e.intencion}; perfil: ${e.persona?.descripcion ?? "cliente"}). Quieres lograr lo mismo que muestran tus mensajes, en esa secuencia.${sem ? GUION_ESTRICTO_SIM : ""}`;
+      const datos = zona ? DATOS_BASE.replace("Calle 32 #345 x 20 y 22, Privada Los Almendros casa 13, Fracc. Xaman Tan", zona.dir).replace(LOC_T7, zona.loc) : DATOS_BASE;
+      return runPersona(s, { id: e.id, fuente, branch: "T7", clock, phone, persona: { goal, hints: turnos, datos, maxTurns: Math.max(10, turnos.length + 6), agotarGuion: true, ...(e.confirma_al_final === false ? { confirma: false } : {}) } });
+    };
+    const medio = esMedio(e);
+    return { id: e.id, fuente, branch: "T7", clock, expected, mustNot: e.que_no_debe_hacer, run, hard: hardSim(e), maxOrders: sem ? 2 : 1, pendiente: e.estado === "pendiente_decision", ...(medio ? { excluido: "medios_no_soportado" } : {}) };
+  });
+}
+
+const P = (g: string, hints: string[], extra = "", maxTurns = 10): Persona => ({ goal: g, hints, datos: DATOS_BASE + " " + extra, maxTurns });
+const persona = (id: string, fuente: string, branch: Branch, clock: string, p: Persona, expected: string, mustNot: string, hard?: Job["hard"]): Job => ({ id, fuente, branch, clock, expected, mustNot, hard, run: (s) => runPersona(s, { id, fuente, branch, clock, persona: p }) });
+const script = (id: string, fuente: string, branch: Branch, clock: string, msgs: any[], expected: string, mustNot: string, hard?: Job["hard"], opts: { burst?: boolean } = {}): Job => ({ id, fuente, branch, clock, expected, mustNot, hard, run: (s) => runScript(s, { id, fuente, branch, clock, msgs, burst: opts.burst }) });
+
+const noOrder: Job["hard"] = (c) => (c.orders.length ? [`no debia crear pedido y creo ${c.orders.length} (total ${c.orders[0].total})`] : []);
+const maybeEscalated = (c: Convo) => c.handoffs.length + c.callbacks.length > 0;
+const mustEscalate: Job["hard"] = (c) => (maybeEscalated(c) ? [] : ["no escalo (ni toma de handoff ni aviso de callback registrado en BD)"]);
+
+export function suiteGuion(): Job[] {
+  const g = "docs/demo-pm/guion.md";
+  const jobs: Job[] = [];
+  const tot = (n: number): Job["hard"] => (c) => (c.orders.length === 0 ? [] : c.orders.some((o) => o.total === n) ? [] : [`pedido con total ${c.orders.map((o) => o.total)} != ${n} esperado por el guion`]);
+  // R12c/V5 (Q4): se quita «sin saludo ni bienvenida larga» del DEBE de G1: el aviso de privacidad/IA es obligatorio y lo antepone el sistema (perfil-pm.ts:256), no el agente. El resto del DEBE y el HARD tot(530) quedan igual.
+  jobs.push(persona("G1", g + " esc.1 recurrente mensaje guardado", "T7", T.MARTES_13, P("Eres cliente recurrente que pega su mensaje guardado, a domicilio, paga con tarjeta; si piden el pin lo mandas; confirmas el pedido.", ["Hola!!! Buenas noches. Un pedido a domicilio porfi. 9990000001 Ana Prueba, Privada Los Almendros casa 13, Santa Gertrudis Copó. Orden: 2 orden de tacos de bistec tortilla de maíz. 1 guacamole. Pago con tarjeta", LOC_T7, "No, es todo", "Sí, es correcto"], "Total esperado $530 (2 ordenes de bistec $194 + guacamole $142)."), "No re-pregunta datos; pide el pin una sola vez (el boton de ubicacion que manda el sistema, \"Para ubicar su domicilio con exactitud, toque el boton y comparta su ubicacion\", cuenta como pedirlo; no se exige que el texto del modelo lo repita); asigna T7; pregunta algo mas una vez; repite en lista; pregunta propina por pagar con tarjeta; promete 60 a 75 min; total 530; crea el pedido tras el si.", "Repetir preguntas YA CONTESTADAS por el cliente (repetir una pregunta que el cliente NO contesto, p. ej. la propina tras mandar solo el pin, es legitimo); cobrar mal; crear dos pedidos.", tot(530)));
+  // R12c/V5 (CAUSAS G2): Luna FALLA y Gem PASA con la BD identica: el renglon Extra Salsa (doble porcion...) @19 lo genera el servidor para doble_salsas (run.ts lo trata como valido). Se le dice al juez que lo acepte. HARD tot(347) intacto.
+  jobs.push(persona("G2", g + " esc.2 todas las salsas", "T7", T.MARTES_13, P("Quieres pasar a recoger una orden de nachos de pastor con todas las salsas, pago en efectivo; aclaras que si quieres tambien ajo, guacamolera, mexicana y habanero; y pides una extra de ajo. Confirmas.", ["Quiero pasar a recoger una orden de nachos de pastor con todas las salsas, pago en efectivo", "Sí, también ajo, guacamolera, mexicana y habanero", "Y una extra de ajo"]), "Aclara que roja, verde, cebolla con cilantro y limones van siempre; las demas sin costo a peticion; extra de ajo como doble porcion: el renglon \"Extra Salsa (doble porcion: crema de ajo)\" a $19 que genera el propio servidor ES lo correcto y debe aceptarse; total $347; no pregunta propina (efectivo); pregunta hora de recogida.", "Cobrar salsas incluidas; mandar la extra como un producto de menu aparte (el renglon \"Extra Salsa (doble porcion...)\" a $19 que arma el servidor para la doble salsa cobrada NO cuenta como falla).", tot(347)));
+  jobs.push(persona("G3", g + " esc.3 cuarto y medio kilo", "T7", T.MARTES_13, P("Quieres 1/4 de bistec y medio kilo de pastor para recoger, tortilla de maiz, todas las salsas, ajo y guacamole; pagas efectivo; confirmas.", ["Me puedes mandar 1/4 de bistec y medio kilo de pastor para recoger, tortilla de maíz, todas las salsas, ajo y guacamole", "Efectivo"]), "Renglones Bistec 250 g ($275) y Pastor 500 g ($450), total $725, sin propina; ajo y guacamole como salsas a peticion sin costo; repite en lista antes de crear.", "Decir que solo se vende el kilo; hacer cuentas propias; cobrar salsas.", tot(725)));
+  jobs.push(persona("G4", g + " esc.4 4 tacos de bistec", "T7", T.MARTES_13, P("Quieres 4 tacos de bistec para recoger, tortilla de maiz. Cuando te expliquen que se venden en ordenes de 3 aceptas una orden (3 tacos).", ["Hola, para recoger 4 tacos de bistec, tortilla de maíz", "Sí, una orden"]), "La herramienta rechaza el multiplo; el agente explica con calidez y propone una orden (3 tacos) por $194 o dos ordenes ($388); repite resumen.", "Convertir piezas en ordenes por su cuenta; crear pedido de 4 tacos.", (c) => c.orders.some((o) => ![194, 388].includes(o.total)) ? [`total de pedido ${c.orders.map((o) => o.total)} no es 194/388`] : []));
+  jobs.push(persona("G5", g + " esc.5 fuera de zona", "T7", T.MARTES_13, P("Pides a domicilio 4 tacos de pastor, efectivo, mandas tu ubicacion (lat 21.0282 lng -89.6098, que cae en la zona de Prolongacion Montejo) y preguntas cuanto sera y en cuanto tiempo. Si te dan el telefono de otra sucursal, agradeces y preguntas si puedes recoger en esta. TU DIRECCION REAL es Calle 60 #500 x 45 y 47, casa 13, colonia México (zona de Prolongacion Montejo), NO Xaman Tan; tu pin es lat=21.028200 lng=-89.609800.", ["Buenas noches, quisiera 4 tacos de pastor a domicilio, efectivo. Mi ubicación: [Ubicación compartida por WhatsApp] lat=21.028200 lng=-89.609800 ¿Cuánto sería y en cuánto tiempo?"]), "No toma el pedido para T7; da el telefono de Prolongacion Montejo (999 944 0342); contesta lo que pregunto (4 tacos de pastor = $168) y ofrece recoger en T7.", "Tomar el pedido a domicilio en T7; mayusculas; 'por politicas de la empresa'.", (c) => c.orders.some((o) => o.canal === "domicilio" && o.property_id === PROP.T7) ? ["creo pedido a domicilio en T7 para una zona de T1"] : []));
+  jobs.push(persona("G6", g + " esc.6 minimo", "T7", T.MARTES_13, P("Quieres una orden de frijoles con tostadas a domicilio, efectivo; das nombre y pin cuando te los piden.", ["Hola, una orden de frijoles con tostadas a domicilio, pago en efectivo", LOC_T7]), "El servidor responde que el minimo es $200 y el pedido suma $93, faltan $107; no se crea pedido por $93; invita a agregar algo o recoger. Si el cliente agrega productos y el total llega a $200 o mas, crear ese pedido es correcto (R9: el cliente simulado agrego 3 tacos y el pedido de $219 fue legitimo).", "Crear el pedido bajo el minimo ($200) a domicilio.", (c) => motivosPedidoBajoMinimo(c.orders)));
+  jobs.push(persona("G9", g + " esc.9 factura", "T7", T.MARTES_13, P("Preguntas si te ayudan a facturar.", ["Buenas noches, ¿me ayuda a facturar?"], "", 3), "No pide ni guarda RFC; explica QR del ticket para facturar en linea hasta 24 h; no escala salvo que insista.", "Pedir RFC; escalar sin motivo.", (c) => c.callbacks.length + c.handoffs.length > 0 ? ["escalo una consulta de factura sin que el cliente insistiera"] : []));
+  // G7, G8, G10: una conversacion continua (pestana A) con pedido previo creado por script de servidor
+  jobs.push({
+    id: "G7-8-10", fuente: g + " esc.7,8,10 cambio tras confirmar, queja, estado", branch: "T7", clock: T.MARTES_13, maxOrders: 1,
+    expected: "7) pedir agregar guacamole despues de confirmar: NO crea otro pedido, dice 'Lo paso a cocina; si ya salio se lo pueden enviar aparte' y escala (cancelacion_modificacion). 8) queja por guacamole faltante: el mensaje ya trae el detalle, asi que disculpa breve y escala DE INMEDIATO con motivo queja y texto fijo, sin preguntar nada mas (decision de Javier R10-P4 / Q1(a)); el aviso al equipo lleva el detalle, el folio y la direccion del Pedido reciente (si la evidencia de BD lo muestra); no promete reposicion. 10) estado: 'va en preparacion/ya salio' segun lo marcado por la sucursal, sin inventar.",
+    mustNot: "Crear otro pedido; prometer reposicion/descuento; inventar estado; volver a preguntar que falto o pedir direccion/pin antes de escalar la queja.",
+    run: async (s) => {
+      const phone = newPhone();
+      // pedido previo creado por la ruta del servidor (equivale al escenario 1 ya confirmado)
+      const { createOrderViaTools } = await import("./setup-orders.ts");
+      await createOrderViaTools(s, phone, "T7");
+      const c = await runScript(s, { id: "G7-8-10", fuente: "guion 7,8,10", branch: "T7", clock: T.MARTES_13, phone, msgs: ["Disculpe, ¿le pudiera agregar un guacamole a mi pedido?", "Recibí el pedido pero no mandaron el guacamole", { text: "¿Ya salió mi pedido?", wait: 0 }] });
+      return c;
+    },
+    hard: (c) => (c.orders.length > 1 ? [`creo un segundo pedido (${c.orders.length}) ante un cambio post-confirmacion`] : c.callbacks.length + c.handoffs.length === 0 ? ["no escalo el cambio ni la queja"] : []),
+  });
+  // R6: hallazgo de Javier/produccion (B: mensaje de falla con pedido OK; A: **negritas** dobles)
+  jobs.push({
+    id: "S1", fuente: "R6 hallazgos Javier B+A", branch: "T7", clock: T.MARTES_13, maxOrders: 1,
+    expected: "Crea el pedido (3 tacos pastor maiz = $126, efectivo, recoger) y el mensaje final CONFIRMA el pedido; sin 'Se me complico' ni 'ya avise al equipo'; sin doble asterisco (WhatsApp usa *uno*).",
+    mustNot: "Mensaje de falla con pedido creado; **doble asterisco**; total distinto de 126.",
+    run: async (s) => runScript(s, { id: "S1", fuente: "R6 S1", branch: "T7", clock: T.MARTES_13, msgs: ["Hola buenas, quiero 3 tacos al pastor para recoger", "Soy Javier, de maiz porfa", "Nada mas, ¿cuanto es y a que hora puedo pasar?", "Paso en 30 minutos, pago en efectivo con $200", "Si, confirmo"] }),
+    hard: (c) => {
+      const out: string[] = []; const ag = c.turns.filter((t: any) => t.who === "agente"); const last = String((ag[ag.length - 1] as any)?.text ?? "");
+      if (!c.orders.length) out.push("S1: no se creo pedido");
+      else if (!c.orders.some((o: any) => o.total === 126)) out.push(`S1: total ${c.orders.map((o: any) => o.total)} != 126`);
+      if (/se me complic|ya avis|problema t[eé]cnico/i.test(last)) out.push("S1(B): mensaje final de falla: " + last.slice(0, 120));
+      if (c.orders.length && !/pedido|orden|confirm|listo|qued/i.test(last)) out.push("S1: el mensaje final no confirma el pedido: " + last.slice(0, 120));
+      if (ag.some((t: any) => /\*\*/.test(String(t.text)))) out.push("S1(A): doble asterisco en respuesta");
+      return out;
+    },
+  });
+  return jobs;
+}
