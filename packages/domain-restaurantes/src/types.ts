@@ -1,4 +1,5 @@
 import type { CustomerAddressDetail, TasteProposal } from "./cliente-360/types.ts";
+import type { PerfilParaAgente } from "./historico/perfil.ts";
 // Tipos de dominio de restaurantes — port de las formas de
 // restaurantes/supabase/functions/_shared/create-order-core.ts, renombrando
 // restaurant_id -> organizationId y branch_id -> propertyId para integrar con el
@@ -173,6 +174,8 @@ export type CustomerLookupResult =
       readonly pedidosAnteriores?: readonly PedidoAnteriorResumen[];
       /** true = en los ultimos pedidos hubo "no recogido"/pedido falso por encima del umbral: la sucursal confirma el siguiente. */
       readonly requiereConfirmacionSucursal?: boolean;
+      /** Perfil 360 con historial importado (migracion 140). Solo presente si el cliente lo tiene; sin calle, numero, montos ni quejas. */
+      readonly perfilHistorico?: PerfilParaAgente;
     };
 
 /** Resumen de un pedido anterior para el agente: sin telefono ni direccion completa. */
