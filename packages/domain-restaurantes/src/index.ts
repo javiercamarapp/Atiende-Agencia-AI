@@ -447,3 +447,4 @@ export { avisarPresupuestoIaAlDuenio } from "./alertas-duenio/presupuesto.ts";
 export type { ResultadoAvisoPresupuesto, UmbralPresupuestoIa } from "./alertas-duenio/presupuesto.ts";
 export * from "./interruptor-emergencia.ts";
 export * from "./alertas-whatsapp/index.ts";
+export * from "./envio-ventana/index.ts";
