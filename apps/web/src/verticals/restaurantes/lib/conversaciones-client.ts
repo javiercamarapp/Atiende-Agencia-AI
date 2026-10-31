@@ -68,7 +68,8 @@ export interface DetalleWire {
   readonly canal: ConversacionCanal;
   readonly conversationId: string;
   readonly transcripcionDisponible: boolean;
-  readonly mensajes: readonly { readonly rol: "cliente" | "agente" | "humano" | "herramienta"; readonly texto: string; readonly creadoEn: string | null }[];
+  /** `humano` = persona del panel (con `autor` = su nombre si se pudo resolver); `humano_app` = el personal desde la app de WhatsApp Business. `creadoEn` es la hora real del mensaje (null en los anteriores a PR-4). */
+  readonly mensajes: readonly { readonly rol: "cliente" | "agente" | "humano" | "humano_app" | "herramienta"; readonly texto: string; readonly creadoEn: string | null; readonly autor?: string | null; readonly autorId?: string | null }[];
   readonly handoff: {
     readonly handoffId: string;
     readonly estado: Exclude<HandoffEstado, "agente">;

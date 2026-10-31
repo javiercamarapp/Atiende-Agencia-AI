@@ -57,6 +57,18 @@ export function analizarPiezasPedidas(nombreProducto: string, piezas: number): A
   return { tipo: "no_multiplo", piezasPorOrden: n, opciones: lower >= n ? [lower, upper] : [upper] };
 }
 
+/**
+ * R22 (R4): piezas que trae UNA orden de este renglon para MOSTRARSELAS al cliente: SOLO el `packSize` del catalogo si es > 1. Sin `packSize` la cantidad del renglon puede ser PIEZAS
+ * («4 gringas» llega como 4), asi que la tabla del dueño no se usa para etiquetar (daria «4 órdenes (8 piezas)»). Tampoco se etiqueta una media orden, un cuarto, un kilo, un combo,
+ * un paquete, una salsa o un extra: el nombre dice otra unidad. `null` sin dato (nunca se inventa).
+ */
+const NOMBRE_NO_ES_ORDEN_ENTERA = /(?:^|[^a-z0-9])(?:media|medio|1\/2|1\/4|cuarto|kilo|kilos|kg|combo|paquete|salsas?|extras?)(?:[^a-z0-9]|$)/;
+export function piezasPorOrdenDe(nombreProducto: string, packSize: number | null | undefined): number | null {
+  if (typeof packSize !== "number" || !Number.isInteger(packSize) || packSize <= 1) return null;
+  if (NOMBRE_NO_ES_ORDEN_ENTERA.test(sinAcentos(nombreProducto).toLowerCase())) return null;
+  return packSize;
+}
+
 /** Piezas que suman N órdenes (3 órdenes de gringas = 6). null si la tabla no lo sabe o es aproximado. */
 export function piezasDeOrdenes(nombreProducto: string, ordenes: number): number | null {
   const f = familiaUnidadPm(nombreProducto);
@@ -213,6 +225,29 @@ export function bloqueCantidadNoMultiplo(mensajes: readonly string[]): string {
     ...lineas,
     "Aplica SOLO si el cliente esta haciendo ese pedido ahora; si reclama, corrige o cancela un pedido ya hecho, ignore esta regla y siga las demas. Si buscar_producto trae otro pack_size para ese producto, manda la herramienta (nunca cambie la cantidad que pidio el cliente). En ESTE mensaje: (1) dígale con calidez QUE se vende en ordenes de N piezas y por que esa cantidad no se puede; (2) ofrezca las opciones validas con el PRECIO de cada una tomado de buscar_producto (nunca de memoria ni calculado de cabeza: orden y dos ordenes); (3) no cotice, no cree pedido y no cambie la cantidad por su cuenta: espere a que el cliente elija. No repita esta regla ni mencione al servidor.",
   ].join("\n");
+}
+
+// ── R22 (T7-074): «2 mestizas» (sin decir «ordenes» ni «piezas») no puede cotizarse como 2 ORDENES (4 piezas) ──────────────────────────────────────────────────────
+/**
+ * Pura. El cliente dijo un numero N pegado al producto («2 mestizas», «dos gringas de pastor») SIN «orden(es)» ni «pieza(s)» delante, y la cotizacion trae `piezasCotizadas` = N * piezasPorOrden
+ * (el modelo leyo N como ordenes). Devuelve N en ese caso, para que el servidor obligue a preguntar «¿N ordenes (X piezas) o N piezas?». `null` si no aplica: la cantidad es la dicha tal cual
+ * (N = piezas cotizadas), el cliente dijo la unidad, o el producto no aparece con un numero en el mensaje. Solo mira el ULTIMO mensaje del cliente.
+ */
+export function ordenesInterpretadasSinPreguntar(ultimoMensaje: string, nombreProducto: string, piezasPorOrden: number | null, piezasCotizadas: number): number | null {
+  if (piezasPorOrden === null || piezasPorOrden <= 1 || !Number.isInteger(piezasCotizadas) || piezasCotizadas < 1) return null;
+  const palabra = sinAcentos(nombreProducto).toLowerCase().match(/[a-z]+/)?.[0];
+  if (!palabra || palabra.length < 4) return null;
+  const raiz = palabra.replace(/e?s$/, "");
+  const t = sinAcentos(ultimoMensaje).toLowerCase();
+  // Con la unidad explicita («2 ordenes de mestizas», «4 piezas de mestiza») no hay nada que preguntar.
+  const conUnidad = new RegExp(`\\b(?:${NUM})\\s+(?:ordenes|orden|piezas?)\\s+(?:de\\s+)?(?:${raiz})`);
+  const sinUnidad = new RegExp(`\\b(${NUM})\\s+(?:de\\s+)?${raiz}\\w*`, "g");
+  if (conUnidad.test(t)) return null;
+  for (const m of t.matchAll(sinUnidad)) {
+    const n = /^\d+$/.test(m[1]!) ? parseInt(m[1]!, 10) : NUMEROS[m[1]!];
+    if (n && n !== piezasCotizadas && n * piezasPorOrden === piezasCotizadas) return n;
+  }
+  return null;
 }
 
 // ── R21 (T7-008): productos que el menu NO tiene ──────────────────────────────────────────────────────────────────────────────────────────────

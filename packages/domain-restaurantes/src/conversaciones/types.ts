@@ -66,9 +66,14 @@ export interface NotaInterna {
 }
 
 export interface MensajeConversacion {
-  readonly rol: "cliente" | "agente" | "humano" | "herramienta";
+  /** `agente` = el asistente; `humano` = una persona del panel (con `autorId`/`autorNombre`); `humano_app` = el personal desde la app de WhatsApp Business (eco). */
+  readonly rol: "cliente" | "agente" | "humano" | "humano_app" | "herramienta";
   readonly texto: string;
+  /** Hora real del mensaje (ISO 8601); `null` en mensajes anteriores a esta version, que no la guardaban. */
   readonly createdAt: string | null;
+  /** Solo `humano` (PR-4): la persona del panel que contesto, por su `staff_id`. El nombre es `null` si no se pudo resolver. */
+  readonly autorId?: string | null;
+  readonly autorNombre?: string | null;
 }
 
 export interface ConversacionDetalle {

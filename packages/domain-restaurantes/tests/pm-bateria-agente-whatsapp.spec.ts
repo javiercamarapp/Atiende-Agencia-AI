@@ -117,7 +117,7 @@ describe("E.3 post-guards del texto del LLM (el modelo se equivoca a proposito)"
   it("T-PG06 / P26 [P1] ninguna cadena fija que lee el cliente tutea (verificador de 'usted')", async () => {
     const f = dosSucursales();
     const respuestas: string[] = [providerFailureReply(null), providerFailureReply("orden-1"), FALLBACK_CONFIG.deliveryTimeText];
-    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente, necesito mi pedido", "quiero borrar mis datos", "soy alérgico al cacahuate", "pagaré por transferencia", "llegó frío mi pedido", "quiero hablar con una persona"]) {
+    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente, necesito mi pedido", "quiero borrar mis datos", "soy alérgico al cacahuate", "llegó frío mi pedido", "quiero hablar con una persona"]) {
       respuestas.push(classifyHighRiskIntent(frase)!.reply);
     }
     respuestas.push(enforcePendingQuestion("Hola", false, null), enforcePendingQuestion("Hola", true, null));
@@ -154,7 +154,6 @@ describe("E.7 / E.4 motivos de alto riesgo: se avisan al equipo ANTES del modelo
     ["T-HO05 / X37 [P0] ARCO", "Quiero que borren mis datos", "privacidad_arco", "ARCO"],
     ["T-HO06 [P0] persona", "Quiero hablar con una persona", "cliente_lo_pide", "una persona lo contacte"],
     ["T-HO08 / P36 [P0] alergia", "Soy alérgico al cacahuate, ¿lleva?", "alergia_salud", "no puedo asegurarle los ingredientes"],
-    ["T-PA03 / P19 [P0] transferencia", "Le hago una transferencia", "transferencia", "no puedo registrar pagos por transferencia"],
   ];
   for (const [nombre, mensaje, motivo, fragmento] of casos) {
     it(`${nombre}: '${mensaje}' escala '${motivo}' sin llamar al modelo, sin crear pedido`, async () => {
@@ -173,12 +172,29 @@ describe("E.7 / E.4 motivos de alto riesgo: se avisan al equipo ANTES del modelo
     });
   }
 
-  it("la transferencia no registra ningun cobro: el cliente sigue sin pedido y el aviso lleva el motivo para el equipo", async () => {
+  it("R22 #2: una transferencia YA REALIZADA escala 'transferencia' sin llamar al modelo y el agente NO confirma el pago ni crea pedido", async () => {
     const f = dosSucursales();
-    const { handler } = handlerGuionado(f.repo, () => texto("x"));
-    const turn = await handler.handleInboundMessage(entrada(f.organizationId, "pago por transferencia"));
+    const spy = vi.spyOn(f.repo, "createCallbackRequest");
+    const { handler, provider } = handlerGuionado(f.repo, () => texto("NO DEBERIA LLAMARSE"));
+    const turn = await handler.handleInboundMessage(entrada(f.organizationId, "ya hice el spei, aquí está el comprobante"));
+    expect(provider.callCount).toBe(0);
     expect(turn.orderId).toBeNull();
-    expect(turn.reply).toContain("efectivo o con tarjeta");
+    expect(turn.reply).toMatch(/no registramos pagos por transferencia/);
+    expect(turn.reply).toMatch(/efectivo o tarjeta/);
+    expect(turn.reply).not.toMatch(/recibimos su pago|pago registrado|quedó pagado|confirmamos su pago/i);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toMatchObject({ reason: "escalada:transferencia" });
+  });
+
+  it("R22 #2: la transferencia ya no se intercepta ni escala: pasa al agente (que dice que no se acepta) y no registra ningun cobro", async () => {
+    const f = dosSucursales();
+    const spy = vi.spyOn(f.repo, "createCallbackRequest");
+    const { handler, provider } = handlerGuionado(f.repo, () => texto("No aceptamos transferencia; solo efectivo o tarjeta."));
+    const turn = await handler.handleInboundMessage(entrada(f.organizationId, "pago por transferencia"));
+    expect(provider.callCount).toBeGreaterThan(0);
+    expect(spy).not.toHaveBeenCalled();
+    expect(turn.orderId).toBeNull();
+    expect(turn.reply).toContain("solo efectivo o tarjeta");
   });
 
   it("un pedido normal NO se intercepta (el clasificador no da falsos positivos con lenguaje de pedido)", () => {

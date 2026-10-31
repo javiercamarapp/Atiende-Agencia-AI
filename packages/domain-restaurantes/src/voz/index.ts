@@ -38,6 +38,7 @@ export type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, ToolCallPe
 export { InMemoryVozLlamadaRepository, PostgresVozLlamadaRepository, FRANJAS_VOZ, MODOS_ENTRADA_VOZ, LATENCIA_VOZ_OBJETIVO_P95_MS } from "./llamada-repositorio.ts";
 export type { FranjaVoz, ModoEntradaVoz, ResultadoRegistroCosto, VozLlamadaRepository, VozModoEntradaKpiDia } from "./llamada-repositorio.ts";
 export { armarInstruccionLlamada } from "./llamada/instruccion.ts";
+export { vocabularioMenuVoz, VOCABULARIO_VOZ_MAX } from "./llamada/vocabulario.ts";
 export type { EntradaInstruccionLlamada, InstruccionLlamada } from "./llamada/instruccion.ts";
 export { APENDICE_VOZ, COMPORTAMIENTO_VOZ_MAX, REGLAS_VIVAS_VOZ, bloqueReglasVozPm, comportamientoVozPm, instruccionVozConReglas } from "./perfil-voz-pm.ts";
 export type { EntradaBloqueReglasVoz, EntradaComportamientoVoz, EntradaInstruccionVoz } from "./perfil-voz-pm.ts";

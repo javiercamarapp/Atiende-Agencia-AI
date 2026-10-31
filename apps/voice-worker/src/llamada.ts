@@ -371,6 +371,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     ejecutor,
     instruccion: telefonoPendiente ? `${contexto.instruccion}\n\n${INSTRUCCION_TELEFONO_NO_CONFIABLE}` : contexto.instruccion,
     voiceId: contexto.voiceId,
+    vocabulario: contexto.vocabulario,
     limites,
     vigilarSilencioAgenteMs: deps.vigilarSilencioAgenteMs ?? VIGILAR_SILENCIO_AGENTE_MS,
     reproducir: async (id) => {

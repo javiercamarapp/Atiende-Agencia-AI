@@ -36,7 +36,7 @@ import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from ".
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
-import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
+import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
@@ -423,7 +423,7 @@ export function branchChannelRules(branch: Pick<Branch, "name" | "slug">): strin
   return `SUCURSAL DE ESTE CHAT: el cliente escribió al WhatsApp de la sucursal "${branch.name}" (branch_slug: "${branch.slug}"). Úsala como sucursal del pedido por defecto: no le pidas elegir sucursal ni llames a buscar_sucursal_cercana, salvo que pida otra sucursal o que una herramienta diga que su dirección está fuera de la zona de reparto de esta sucursal.
 CANAL: pregunta desde el inicio si el pedido es "a domicilio" o "para recoger en sucursal" y manda canal ("domicilio" o "recoger") en cotizar_pedido y en crear_pedido. Para recoger no pidas dirección. A domicilio pide dirección completa con referencias y manda colonia_entrega (la colonia o zona que dio el cliente).
 REGLAS QUE APLICAN LAS HERRAMIENTAS (no las decidas ni las recalcules tú): pedido mínimo por canal, horario de la sucursal, productos que no se venden a domicilio y zona de reparto. Si cotizar_pedido o crear_pedido responden con un error por alguno de estos motivos, explícaselo al cliente con tus palabras y ofrece la alternativa del mensaje (agregar productos, pasar a recoger, dar otra referencia). Nunca registres un pedido que la herramienta rechazó.
-PROPINA: cotizar_pedido devuelve propina_politica y preguntar_propina. Si la política es "solo_tarjeta", pregunta por la propina únicamente cuando el cliente paga con tarjeta (llama cotizar_pedido otra vez con payment_method para confirmar que corresponde) y mándala en pesos en propina de crear_pedido. Nunca preguntes propina si paga en efectivo.`;
+PROPINA: nunca preguntes por la propina (ni con tarjeta ni con efectivo; ignora preguntar_propina). Solo si el cliente la menciona, responde que se da en la terminal (tarjeta) o en efectivo al repartidor; no la registres en el pedido.`;
 }
 
 /** Bug real confirmado el 3-sep-2026: para tacos de bistec, refuerza el aviso
@@ -781,6 +781,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       };
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
+      // PM PR-2: el turno cambio algo en el sistema (pedido, contacto, agregado, cancelacion): su respuesta NUNCA se descarta por la carrera con el eco de la app.
+      let mutoEnTurno = false;
       // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)
       // y solo si el cliente aun no compartio su ubicacion y el turno no termino en una escalacion.
       let pedirUbicacionEnTurno = false;
@@ -790,10 +792,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let cotizacionDelTurno: string | null = null;
       // R11 (cierre como maquina de estados): resumen armado por el servidor para la cotizacion de este turno (solo con la maquina activa).
       let resumenCanonicoDelTurno: { texto: string; total: number } | null = null;
-      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown } => ({
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown; readonly accionMutante?: true } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
         ...(pedidoSimulado !== undefined ? { pedidoSimulado } : {}),
+        ...(mutoEnTurno ? { accionMutante: true as const } : {}),
         ...(pedirUbicacionEnTurno && !escalarMotivo ? { pedirUbicacion: true as const } : {}),
         ...(pedirConfirmacionEnTurno && !escalarMotivo ? { pedirConfirmacion: pedirConfirmacionEnTurno } : {}),
       });
@@ -886,7 +889,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // `modificacion_pedido` (cambiar el pedido) tiene motivo `cancelacion_modificacion` para el equipo, pero NO es una cancelacion: no pasa por el autopiloto.
         if (riesgo.intent === "cancelacion_modificacion" && options.autopiloto) {
           const resuelta = await intentarCancelacionConAutopiloto(repo, options.autopiloto, { organizationId, phone, ahora: now(), texto: riesgo.text });
-          if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId };
+          if (resuelta) return { reply: resuelta.reply, orderId: null, propertyId, accionMutante: true as const };
         }
         // El subtipo de la queja viaja en el resumen del aviso al equipo (lista cerrada).
         const subtipoDeQueja = riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle ? subtipoQueja(riesgo.text) : null;
@@ -909,6 +912,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // Autopiloto: la queja queda ligada al ultimo pedido del telefono (solicitud de compensacion, decide una persona); no cambia la respuesta.
         if (riesgo.motivo === "queja" && options.autopiloto && !quejaSinDetalle) {
           await registrarQuejaConAutopiloto(repo, options.autopiloto, { organizationId, phone, texto: riesgo.text, ahora: now() });
+          mutoEnTurno = true;
         }
         tele.resultado = "escalado_alto_riesgo";
         tele.motivoEscalacion = riesgo.motivo;
@@ -1361,6 +1365,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (perfil === "taqueria_pm" && !orderId && !escalarMotivo && resumenCanonicoDelTurno && cierreMaquinaActiva()) {
             respuesta = componerRespuestaConResumen(respuesta, resumenCanonicoDelTurno.texto, resumenCanonicoDelTurno.total);
           }
+          // R22 (R3): con un pedido para recoger creado en este turno, la hora que el cliente lee (plazo o reloj) es la GUARDADA en el pedido, no la que recordo el modelo.
+          if (perfil === "taqueria_pm" && !retenidoEnTurno) {
+            for (const p of pedidosCreadosDelTurno) {
+              const raw = p.raw as { horaRecogida?: unknown; hora_recogida?: unknown; programadoPara?: unknown; programado_para?: unknown; simulado?: unknown } | null;
+              const guardada = raw?.programadoPara ?? raw?.programado_para ? undefined : (raw?.horaRecogida ?? raw?.hora_recogida);
+              const instanteMs = typeof guardada === "string" ? Date.parse(guardada) : NaN;
+              if (!Number.isNaN(instanteMs)) respuesta = corregirHoraDeRecogidaEnRespuesta(respuesta, { instanteMs, zonaHoraria: p.timezone, ahoraMs: now().getTime() });
+            }
+          }
           const replyFinal = safeReply(respuesta);
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
           // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».
@@ -1410,6 +1423,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;
             anyToolCalled = true;
+            if ((call.name === "crear_pedido" || call.name === "registrar_contacto" || call.name === "solicitar_agregado_pedido" || call.name === "escalar_a_humano") && !isToolErrorResult(result)) mutoEnTurno = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
             {
               // Lo entrega cotizar_pedido y, cuando el servidor rechaza el cierre (resumen no mostrado, pago/propina distintos), el propio rechazo.

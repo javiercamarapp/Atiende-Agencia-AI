@@ -1223,6 +1223,45 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows[0]?.whatsapp_append_turn ?? [];
   }
 
+  async appendEcoWhatsApp(organizationId: string, phone: string, message: ConversationMessage): Promise<"guardado" | "duplicado" | "sin_conversacion" | "no_disponible"> {
+    return runWithSavepointFallback<"guardado" | "duplicado" | "sin_conversacion" | "no_disponible">({
+      session: this.db,
+      savepointName: "sp_eco_append",
+      primary: async () => {
+        const { rows } = await this.db.query<{ r: string | null }>(`select restaurantes.whatsapp_eco_append($1::uuid, $2::text, $3::jsonb) as r;`, [organizationId, phone, JSON.stringify(message)]);
+        const r = rows[0]?.r;
+        return r === "guardado" || r === "duplicado" || r === "sin_conversacion" ? r : "no_disponible";
+      },
+      isRecoverable: () => true,
+      // Base sin la 101 (42883): no aplica. Cualquier otro error (incluido 42501 = GRANT/rol mal puesto) se LOGUEA (sin PII) y se repropaga: el eco falla y Meta reintenta.
+      fallback: async (err) => {
+        if (isMigrationPendingError(err)) {
+          console.warn("appendEcoWhatsApp: falta la migracion 101 (whatsapp_eco_append); el eco no se guarda.");
+          return "no_disponible";
+        }
+        console.error("appendEcoWhatsApp: error real", (err as { code?: string } | null)?.code ?? "sin_codigo");
+        throw err;
+      },
+    });
+  }
+
+  async wamidSalienteConocido(organizationId: string, wamid: string): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_wamid_saliente",
+      primary: async () => {
+        const { rows } = await this.db.query<{ r: boolean | null }>(`select restaurantes.wamid_saliente_conocido($1::uuid, $2::text) as r;`, [organizationId, wamid]);
+        return rows[0]?.r === true;
+      },
+      isRecoverable: () => true,
+      fallback: async (err) => {
+        if (isMigrationPendingError(err)) return false;
+        console.error("wamidSalienteConocido: error real", (err as { code?: string } | null)?.code ?? "sin_codigo");
+        throw err;
+      },
+    });
+  }
+
   async finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void> {
     await this.db.query(`select restaurantes.finish_whatsapp_message($1, $2, $3, $4, $5);`, [organizationId, messageId, phoneHash, status, errorClass]);
   }

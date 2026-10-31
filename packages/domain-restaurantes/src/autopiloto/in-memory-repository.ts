@@ -35,6 +35,9 @@ export interface PedidoMemoria {
   comanda?: { estado: "pendiente" | "enviada" | "confirmada" | "capturada_manual"; folio: string | null } | null;
 }
 
+/** Minutos de silencio de una toma abierta por el eco de la app (espejo de `coalesce(autopiloto_config.handoff_regreso_app_minutos, 5)` de la migracion 101). */
+export const HANDOFF_REGRESO_APP_MINUTOS_OMISION = 5;
+
 export interface HandoffMemoria {
   id: string;
   organizationId: string;
@@ -49,6 +52,8 @@ export interface HandoffMemoria {
   escaladaAt?: Date | null;
   ultimaHumanaAt: Date | null;
   ultimoClienteAt: Date | null;
+  /** PM PR-2: la toma la abrio el eco de la app; al regresar por inactividad NO se manda la frase fija. */
+  porApp?: boolean;
 }
 
 export interface AgotadoMemoria {
@@ -311,16 +316,18 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
       if (out.length >= limite || h.estado !== "tomada") continue;
       // Con el agente de WhatsApp apagado la toma NO regresa al agente: nadie contestaria (QA R2 caos-01).
       if (this.agentesApagados.has(h.propertyId)) continue;
-      const mins = (this.configs.get(h.propertyId) ?? AUTOPILOTO_CONFIG_POR_OMISION).handoffRegresoMinutos;
+      // Una toma de la app (eco) silencia menos tiempo que una del panel: es cortesia («buen provecho»), no un caso en manos de una persona.
+      const mins = h.porApp ? HANDOFF_REGRESO_APP_MINUTOS_OMISION : (this.configs.get(h.propertyId) ?? AUTOPILOTO_CONFIG_POR_OMISION).handoffRegresoMinutos;
       const ultima = Math.max(h.tomadaAt.getTime(), h.ultimaHumanaAt?.getTime() ?? 0);
       if (ultima > ahora.getTime() - mins * 60_000) continue;
       const tel = h.telefono.replace(/\D/g, "").slice(-10);
       const conPorAprobar = this.solicitudes.some((s) => s.estado === "pendiente" && s.tipo === "pedido_grande" && s.orderId && this.pedidos.get(s.orderId)?.telefono.replace(/\D/g, "").slice(-10) === tel);
       if (conPorAprobar) continue;
       h.estado = "devuelta";
-      const avisado = h.ultimoClienteAt !== null && h.ultimoClienteAt.getTime() > ahora.getTime() - 24 * 3_600_000;
+      const avisado = !h.porApp && h.ultimoClienteAt !== null && h.ultimoClienteAt.getTime() > ahora.getTime() - 24 * 3_600_000;
       if (avisado) this.mensajesRegreso.push(h.id);
-      out.push({ handoffId: h.id, organizationId: h.organizationId, propertyId: h.propertyId, conversationId: h.conversationId, minutos: mins, avisado });
+      const clienteSinResponder = Boolean(h.porApp && h.ultimoClienteAt && h.ultimoClienteAt.getTime() > Math.max(h.tomadaAt.getTime(), h.ultimaHumanaAt?.getTime() ?? 0));
+      out.push({ handoffId: h.id, organizationId: h.organizationId, propertyId: h.propertyId, conversationId: h.conversationId, minutos: mins, avisado, clienteSinResponder });
     }
     return this.lec(out);
   }

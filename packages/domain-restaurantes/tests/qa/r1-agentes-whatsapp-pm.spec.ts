@@ -493,11 +493,11 @@ describe("escenarios de la bateria E sin prueba con id (T-RD23, T-RD24, T-PA01, 
     expect(JSON.stringify(mismoTurno.result)).toMatch(/no contest|espera/i);
   });
 
-  it("T-PA01 / T-PA02 propina: con tarjeta cotizar dice preguntar_propina=true; con efectivo false (politica solo_tarjeta de PM)", async () => {
+  it("T-PA01 / T-PA02 propina (R22 #1): ni con tarjeta ni con efectivo cotizar dice preguntar_propina (politica nunca de PM)", async () => {
     const b = await banco();
     const tarjeta = await executeAgentToolSafely(b.w.repo, ctx(b, "1"), "cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", payment_method: "tarjeta", items: pastor3(b) });
     const efectivo = await executeAgentToolSafely(b.w.repo, ctx(b, "1"), "cotizar_pedido", { branch_slug: "garcia-lavin", canal: "recoger", payment_method: "efectivo", items: pastor3(b) });
-    expect((tarjeta.result as { quote: { preguntar_propina: boolean } }).quote.preguntar_propina).toBe(true);
+    expect((tarjeta.result as { quote: { preguntar_propina: boolean } }).quote.preguntar_propina).toBe(false);
     expect((efectivo.result as { quote: { preguntar_propina: boolean } }).quote.preguntar_propina).toBe(false);
   });
 

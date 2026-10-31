@@ -329,7 +329,8 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       expect(message).toHaveProperty("content");
       expect(typeof message.content).toBe("string");
       // nunca toolCalls/toolCallId aquí; solo el mensaje del asistente que cierra un pedido lleva ademas el metadato `pedidoCreado`.
-      expect(Object.keys(message)).toEqual(message.role === "assistant" && "pedidoCreado" in message ? ["role", "content", "pedidoCreado"] : ["role", "content"]);
+      // PR-4: los mensajes que guarda el webhook llevan ademas su hora real (`at`); la "probe" del propio test no.
+      expect(Object.keys(message).filter((k) => k !== "at").sort()).toEqual(message.role === "assistant" && "pedidoCreado" in message ? ["content", "pedidoCreado", "role"] : ["content", "role"]);
     }
 
     void propertyId;

@@ -50,6 +50,22 @@ describe("bandeja y detalle", () => {
     expect((await app.request(`${base}/conversaciones`)).status).toBe(401);
   });
 
+  it("PR-4: el detalle devuelve la hora real de cada mensaje y el autor (persona del panel con nombre, personal de la app)", async () => {
+    const { ctx, app, base, store, conv } = await construir();
+    store.conversaciones[0]!.mensajes.push(
+      { rol: "agente", texto: "Le atiende el asistente", createdAt: "2026-10-30T18:00:05.000Z" },
+      { rol: "humano", texto: "Soy Ana", createdAt: "2026-10-30T18:05:00.000Z", autorId: ctx.staff.owner.id, autorNombre: "Ana Pérez" },
+      { rol: "humano_app", texto: "Ya va su pedido", createdAt: "2026-10-30T18:09:00.000Z" },
+    );
+    const d = await (await app.request(`${base}/conversaciones/whatsapp/${conv}`, authedGet(ctx.staff.owner.token))).json();
+    expect(d.mensajes).toEqual([
+      { rol: "cliente", texto: "Hola, quiero hablar con alguien", creadoEn: null },
+      { rol: "agente", texto: "Le atiende el asistente", creadoEn: "2026-10-30T18:00:05.000Z" },
+      { rol: "humano", texto: "Soy Ana", creadoEn: "2026-10-30T18:05:00.000Z", autorId: ctx.staff.owner.id, autor: "Ana Pérez" },
+      { rol: "humano_app", texto: "Ya va su pedido", creadoEn: "2026-10-30T18:09:00.000Z" },
+    ]);
+  });
+
   it("filtros invalidos -> 400", async () => {
     const { ctx, app, base } = await construir();
     for (const q of ["estado=inventado", "canal=sms", "limit=0", "offset=-1"]) {

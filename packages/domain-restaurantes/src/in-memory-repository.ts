@@ -5,6 +5,7 @@
 // conversación). Sirve como fixture de seed para tests determinísticos y como
 // fallback dev/CI sin Postgres real — mismo rol que InMemoryStateStore en
 // @atiende/core-conversation.
+import { normalizePhone } from "./phone.ts";
 import { avanzarEstadoEntrega } from "@atiende/whatsapp-gateway";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
@@ -1376,6 +1377,30 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       this.whatsappConversations.set(key, updated);
       return updated.messages;
     });
+  }
+
+  /** false simula la base sin la migracion 101: el eco no se guarda. */
+  ecosDisponibles = true;
+  /** Interruptor por organizacion (default true = se descartan los ecos de lo que mando la propia plataforma). */
+  descartarEcosPropios = true;
+
+  async appendEcoWhatsApp(organizationId: string, phone: string, message: ConversationMessage): Promise<"guardado" | "duplicado" | "sin_conversacion" | "no_disponible"> {
+    if (!this.ecosDisponibles) return "no_disponible";
+    const claveFinal = normalizePhone(phone);
+    return this.whatsappLock.run(`eco:${organizationId}:${claveFinal}`, async () => {
+      const llave = [...this.whatsappConversations.keys()].find((k) => k.startsWith(`${organizationId}:`) && normalizePhone(k.slice(organizationId.length + 1)) === claveFinal);
+      if (!llave) return "sin_conversacion" as const;
+      const conv = this.whatsappConversations.get(llave)!;
+      if (message.wamid && conv.messages.some((m) => m.wamid === message.wamid)) return "duplicado" as const;
+      // Sin tocar status/orderId/propertyId (ni, en Postgres, updated_at): un eco no reabre la ventana de 24 h ni re-apunta la sucursal.
+      conv.messages = [...conv.messages, message];
+      return "guardado" as const;
+    });
+  }
+
+  async wamidSalienteConocido(organizationId: string, wamid: string): Promise<boolean> {
+    if (!this.ecosDisponibles || !this.descartarEcosPropios) return false;
+    return [...this.outbox.values()].some((o) => o.organizationId === organizationId && o.providerMessageId === wamid);
   }
 
   async finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void> {

@@ -21,6 +21,7 @@
 //
 // Limite honesto: el servidor no puede oir al cliente; clasifica TEXTO. La clasificacion es conservadora (ante la duda NO confirma y pide un «si»).
 import { componentesLocales, fechaLocal } from "../horarios.ts";
+import { etiquetaOrdenConPiezas } from "../order-quote.ts";
 import { afirmaPedidoRegistrado } from "../whatsapp/guards.ts";
 import { rechazaElResumen, resumenMostradoEnHistorial, type OrderFlowContext, type OrderFlowSnapshot } from "./order-flow.ts";
 
@@ -65,7 +66,7 @@ function sinMarcadores(texto: string): string {
   return out;
 }
 
-function normalizar(texto: string): string {
+export function normalizar(texto: string): string {
   return sinMarcadores(texto)
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -129,6 +130,32 @@ const CANTIDAD = /\b(?:un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|di
 /** Visto bueno al resumen expresado en negativo («no gracias», «nada mas»): SOLO cuenta cuando se contesta a un resumen que pregunta si esta correcto o si desea cambiar algo. */
 const VISTO_BUENO_EN_NEGATIVO = /^\W*(?:no+\s*,?\s*(?:gracias|nada\s*mas|asi\s*esta(?:\s*bien)?|es\s*todo|eso\s*es\s*todo|todo\s*bien)|nada\s*mas|eso\s*es\s*todo|es\s*todo|asi\s*esta(?:\s*bien|\s*perfecto)?|ninguno|nada\s*que\s*cambiar|no\s*cambio\s*nada)\W*$/;
 
+/**
+ * R22 «sí + pregunta lateral» (SIM-WA-140, T7-026). REVERSION DE ESPECIFICACION: antes «las preguntas ni confirman ni cambian» (un «sí, ¿y cuánto tarda?» era ambiguo y el pedido no se creaba);
+ * ahora un «sí» fuerte al INICIO seguido de una pregunta PURAMENTE INFORMATIVA confirma. LISTA BLANCA: el resto del mensaje debe ser, completo, una de las preguntas informativas de abajo
+ * (tiempo de entrega, hora de llegada, costo del envio, si el pedido esta correcto/confirmado, donde esta la sucursal, si aceptan tarjeta). Cualquier otra pregunta (producto, precio, extras,
+ * «¿y si agrego...?», «¿puedo cancelar?»), cualquier frase extra («quiero papas») o negacion => «ambiguo»: el modelo contesta y vuelve a pedir el sí. En duda, ambiguo.
+ */
+const AFIRMACION_FUERTE_CON_PAUSA = /^\W*(?:si+|sip|sii+|dale|ok(?:ey|ay)?|claro|correcto|confirmo|confirmado|de\s+acuerdo|adelante|perfecto|andale|listo|sale)(?:\s*[,.!;:-]+\s*|\s+(?=\u00bf)|\s+y\s+(?=\u00bf|cuanto\b|a\s+que\s+hora\b))/;
+const PREGUNTAS_INFORMATIVAS: readonly RegExp[] = [
+  /^(?:y\s+)?cuanto\s+(?:tarda|tardan|demora|demoran|se\s+tarda|se\s+tardan|se\s+demora|falta)(?:\s+en\s+llegar)?(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?cuanto\s+tiempo\s+(?:tarda|tardan|demora|demoran|falta)(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?a\s+que\s+hora\s+(?:llega|llegan|llegaria|estara\s+listo|estaria\s+listo|sale)(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?(?:cuanto\s+(?:cuesta|es|seria|sale|cobran)\s+(?:el\s+)?envio|cuanto\s+es\s+el\s+costo\s+del\s+envio|cual\s+es\s+el\s+costo\s+del\s+envio|tiene\s+costo\s+el\s+envio)$/,
+  /^(?:y\s+)?(?:es|esta|queda|ya\s+quedo)\s+(?:todo\s+)?(?:correcto|confirmado|registrado)(?:\s+(?:mi|el)\s+pedido)?$/,
+  /^(?:y\s+)?donde\s+(?:esta|queda)\s+la\s+sucursal$/,
+  /^(?:y\s+)?cual\s+es\s+la\s+direccion\s+de\s+la\s+sucursal$/,
+  /^(?:y\s+)?(?:aceptan|reciben)\s+tarjeta$/,
+];
+function esSiConPreguntaLateral(t: string): boolean {
+  const m = t.match(AFIRMACION_FUERTE_CON_PAUSA);
+  if (!m) return false;
+  const resto = t.slice(m[0].length);
+  if (!resto.includes("?")) return false;
+  const limpio = resto.replace(/[\u00bf?!.,;:]/g, " ").replace(/\s+/g, " ").trim();
+  return PREGUNTAS_INFORMATIVAS.some((re) => re.test(limpio));
+}
+
 export interface OpcionesClasificar {
   /** El ultimo mensaje del asistente fue el resumen y su ultima pregunta es de confirmacion / «desea cambiar algo». */
   readonly despuesDelResumen: boolean;
@@ -175,9 +202,28 @@ function valorDeMonto(m: RegExpExecArray, desde: number): number {
 }
 
 /** Monto «con el que paga» el cliente: tras «con», «pago con», «cambio de», «billete de»... en cualquier parte del mensaje; o una cifra que cierra el mensaje. */
-export function montoDePago(t: string): number | undefined {
+/** R22: SOLO el billete dicho de forma explicita («con 500», «pago con», «billete de», «paga con»); nunca una cifra suelta al final (telefono, calle, folio, hora). Texto ya normalizado. */
+export function montoDePagoExplicito(t: string): number | undefined {
   const explicito = new RegExp(String.raw`(?:\bcon|\bcambio\s+de|\bpago\s+con|\bpagare\s+con|\bpaga(?:ria)?\s+con|\bbillete\s+de|\bmanejo|\btraigo)\s+${MONTO}\s*(?:pesos|varos|mxn)?${NO_ES_PROPINA}\b`).exec(t);
-  if (explicito) return valorDeMonto(explicito, 1);
+  return explicito ? valorDeMonto(explicito, 1) : undefined;
+}
+
+/** Lo que dice el mensaje sobre el PAGO (forma, billete, exacto, negativa): el primero (hacia atras) que lo toca fija el billete vigente. */
+export const HABLA_DE_PAGO = /\b(?:efectivo|tarjeta|terminal|exacto|justo|sin\s+cambio|no\s+(?:tengo|traigo|manejo|cuento)|mejor\s+(?:pago|con|en)|pago|pagar|pagare|paga|billete|cambio\s+de|cash)\b/;
+const NEGA_BILLETE = /\bno\s+(?:tengo|traigo|manejo|cuento)\b|\bsin\s+(?:billete|cambio)\b/;
+
+/** Billete valido del mensaje: explicito, no negado, que alcanza el total y plausible (<= 10x el total o <= 5000). `undefined` si no. */
+export function billeteExplicitoDelMensaje(mensaje: string, total: number): number | undefined {
+  const t = normalizar(mensaje);
+  if (NEGA_BILLETE.test(t)) return undefined;
+  const n = montoDePagoExplicito(t);
+  if (n === undefined || !Number.isFinite(n) || n < total) return undefined;
+  return n <= Math.max(10 * total, 5000) ? n : undefined;
+}
+
+export function montoDePago(t: string): number | undefined {
+  const explicito = montoDePagoExplicito(t);
+  if (explicito !== undefined) return explicito;
   const final = new RegExp(String.raw`(?:^|\s)${MONTO}\s*(?:pesos|varos|mxn)?\s*(?:porfa|por favor|gracias|ok)?\W*$`).exec(t);
   if (final) return valorDeMonto(final, 1);
   return undefined;
@@ -256,6 +302,7 @@ export function clasificarRespuestaCierre(mensaje: unknown, opciones: OpcionesCl
   const conAfirmacion = AFIRMACION.test(t);
   // Preguntas: ni confirman ni cambian; el modelo debe contestarlas y volver a pedir el si.
   if (CANTIDAD.test(t)) return "cambio";
+  if (opciones.despuesDelResumen && esSiConPreguntaLateral(t)) return "si";
   if (PREGUNTA.test(t)) return "ambiguo";
   if (TITUBEO.test(t)) return "ambiguo";
   if (MARCADORES_DE_CAMBIO.test(t) || DIRECCION.test(t) || CANTIDAD.test(t)) return "cambio";
@@ -369,6 +416,8 @@ export interface LineaResumen {
   readonly quantity: number;
   readonly lineTotal?: number;
   readonly tortilla?: string | null;
+  /** R22 (R4): piezas por orden del catalogo (`packSize`) cuando el renglon se vende por ordenes; el resumen muestra «1 orden (2 piezas)». Ausente = sin dato: se muestra «N × nombre». */
+  readonly piezasPorOrden?: number | null;
 }
 
 export interface EntradaResumen {
@@ -409,6 +458,50 @@ export function etiquetaHoraEntrega(instanteMs: number, zonaHoraria: string, aho
   if (diasDeDiferencia === 0) return `para ${articulo} ${reloj}`;
   if (diasDeDiferencia === 1) return `para mañana a ${articulo} ${reloj}`;
   return `para el ${DIAS_CORTOS[dia]} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} a ${articulo} ${reloj}`;
+}
+
+/**
+ * R22 (R3): el mensaje final de un pedido para recoger debe decir la hora GUARDADA en el pedido, no la que el modelo recordo («en 20 minutos», «de 25 a 35 minutos» o «a las 2:02 pm» con el
+ * pedido guardado a otra hora). Solo se tocan las frases del mensaje que hablan de la espera / recogida (y no de horarios de la sucursal): un plazo («en N minutos», «de N a M minutos») que
+ * no alcanza la espera real (+-2 min) se sustituye por los minutos reales, y una hora de reloj («a las 2:02 pm», «para las 2») distinta de la guardada, por la guardada. Pura.
+ */
+export function corregirHoraDeRecogidaEnRespuesta(respuesta: string, hora: { readonly instanteMs: number; readonly zonaHoraria: string; readonly ahoraMs: number }): string {
+  if (!Number.isFinite(hora.instanteMs)) return respuesta;
+  const { minutos } = componentesLocales(new Date(hora.instanteMs), hora.zonaHoraria);
+  const h24 = Math.floor(minutos / 60);
+  const reloj = `${h24 % 12 === 0 ? 12 : h24 % 12}:${String(minutos % 60).padStart(2, "0")} ${h24 >= 12 ? "pm" : "am"}`;
+  const articulo = h24 % 12 === 1 ? "la" : "las";
+  const esperaReal = Math.round((hora.instanteMs - hora.ahoraMs) / 60_000);
+  // Solo frases que hablan de la espera / recogida; cualquier mencion de horario de la sucursal o cierre deja la frase intacta (ante la duda NO se reescribe).
+  const habla = /\b(?:list[oa]s?|esperamos|esperarlo|recoger(?:lo|la)?|recog(?:e|a)|pasa\s+por|pase\s+por|pasar\s+por)\b/i;
+  const ajena = /cerr(?:a|amos|ar|ado|ada)|cierre|horario|sucursal|abr(?:e|en|imos|ir)\b|apertura/i;
+  const MER = String.raw`[ap]\.?\s?m\b\.?`;
+  return respuesta
+    .split(/(?<=[.!?\n])(?<!\b[ap]\.)(?<!\b[ap]\.\s?m\.)(\s+)/i)
+    .map((frase) => {
+      if (!habla.test(frase) || ajena.test(frase)) return frase;
+      let f = frase;
+      if (esperaReal >= 1) {
+        f = f.replace(/\b(en|de)\s+(\d{1,3})(?:\s*(?:a|-|–)\s*(\d{1,3}))?\s*minutos?\b(?!\s*(?:aprox|m[aá]s|menos|o\s+menos))/gi, (todo, prep: string, a: string, b: string | undefined) => {
+          const lo = Number(a);
+          const hi = b === undefined ? lo : Number(b);
+          return esperaReal >= lo - 2 && esperaReal <= hi + 2 ? todo : `${prep} ${esperaReal} minutos`;
+        });
+      }
+      // Hora de reloj: con minutos (HH:MM) o con meridiano; «a las 9 personas» o «a las 12 en punto» NO son una hora y no se tocan. Los espacios vecinos se conservan.
+      const reemplazar = (todo: string, prep: string, hh: string, mm: string | undefined, mer: string | undefined): string => {
+        const h = Number(hh);
+        if (h < 1 || h > 24) return todo;
+        const m = mm === undefined ? 0 : Number(mm);
+        const meridiano = mer === undefined ? null : /^a/i.test(mer) ? "am" : "pm";
+        const coincide = h % 12 === h24 % 12 && m === minutos % 60 && (meridiano === null || meridiano === (h24 >= 12 ? "pm" : "am"));
+        return coincide ? todo : `${prep} ${articulo} ${reloj}${mer !== undefined && /^[ap]m\.$/i.test(mer) ? "." : ""}`;
+      };
+      f = f.replace(new RegExp(String.raw`\b(a|para)\s+las?\s+(\d{1,2}):(\d{2})(?:\s?(${MER}))?(?![\d:])`, "gi"), (t: string, p: string, hh: string, mm: string, mer: string | undefined) => reemplazar(t, p, hh, mm, mer));
+      f = f.replace(new RegExp(String.raw`\b(a|para)\s+las?\s+(\d{1,2})\s?(${MER})(?![\w])`, "gi"), (t: string, p: string, hh: string, mer: string) => reemplazar(t, p, hh, undefined, mer));
+      return f;
+    })
+    .join("");
 }
 
 /**
@@ -542,7 +635,10 @@ function acotarLista(items: readonly string[]): string {
  * Un pedido enorme se acota a `LIMITE_RESUMEN_CANONICO`: se recortan renglones (con un aviso «y N renglones más»), nunca el total, el pago ni la pregunta de confirmacion.
  */
 export function resumenCanonico(e: EntradaResumen): string {
-  const renglones = e.lineas.map((l) => `• ${l.quantity} × ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
+  // Un nombre que ya dice sus piezas («Tacos de Bistec (orden de 3)») no se repite: sale «1 × nombre» como siempre.
+  const piezasEnElNombre = (l: LineaResumen): boolean => new RegExp(String.raw`\(orden de ${l.piezasPorOrden ?? 0}\)`, "i").test(l.name);
+  const etiquetaDe = (l: LineaResumen): string | null => (piezasEnElNombre(l) ? null : etiquetaOrdenConPiezas(l.quantity, l.piezasPorOrden));
+  const renglones = e.lineas.map((l) => `• ${etiquetaDe(l) ? `${etiquetaDe(l)} de` : `${l.quantity} ×`} ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
   const detalles: string[] = [];
   if (e.basicas && e.basicas.length > 0) detalles.push(`Salsas básicas incluidas: ${acotarLista(e.basicas)}`);
   if (e.salsas && e.salsas.length > 0) detalles.push(`Salsas pedidas (sin costo): ${acotarLista(e.salsas)}`);
