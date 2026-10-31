@@ -1200,6 +1200,15 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
     throw new OrderValidationError(`minutos_para_recoger debe ser un número entero de minutos entre 1 y ${MINUTOS_PARA_RECOGER_MAX} (por ejemplo 40). Si el cliente no dio un plazo ("en cuanto esté"), no mande el campo; si dio una hora exacta, mande hora_recogida.`);
   }
   const { minutos_para_recoger: _omitido, ...resto } = input;
+  // R22 (G3): al RE-cotizar (p. ej. el cliente corrige con cuanto paga) sin hora ni plazo, la hora ya cotizada y todavia futura se conserva; antes se perdia y el pedido salia sin hora de recogida.
+  if (name === "cotizar_pedido" && ctx.flow && sinDato && ctx.channel === "whatsapp") {
+    const contexto = (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key))?.context;
+    const previa = contexto?.horaRecogida;
+    const ms = previa ? Date.parse(`${previa}:00.000Z`) : NaN;
+    if (previa && !Number.isNaN(ms) && ms > (ctx.flow.now ? ctx.flow.now() : Date.now())) {
+      return { ...resto, hora_recogida: `${previa}:00.000Z`, ...(contexto?.minutosPlazo !== undefined ? { plazo_minutos_servidor: contexto.minutosPlazo } : {}) };
+    }
+  }
   // Al crear, la hora de recogida COTIZADA gana: no cambia por el paso del tiempo entre cotizar y crear y, si el modelo la omite (o manda ""), el pedido igual la lleva.
   // `horaRecogida` del contexto es la hora normalizada al minuto ("2026-10-06T19:40"): solo se reutiliza si es una fecha valida.
   if (name === "crear_pedido" && ctx.flow) {
