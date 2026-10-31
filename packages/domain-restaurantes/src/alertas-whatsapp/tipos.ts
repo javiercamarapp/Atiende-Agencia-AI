@@ -1,4 +1,5 @@
 // Alertas de WhatsApp al gerente/encargado por sucursal (PM PR-3). Tipos y puertos; la decision es pura (`decision.ts`) y el barrido vive en `servicio.ts`.
+import type { Lectura } from "../autopiloto/tipos.ts";
 export type TipoAlerta = "escalada" | "sin_respuesta";
 
 export interface DestinatarioAlerta {
@@ -64,10 +65,6 @@ export interface RegistroAlerta {
   readonly motivo: string | null;
 }
 
-export interface Lectura<T> {
-  readonly disponible: boolean;
-  readonly valor: T;
-}
 
 export interface AlertasRepositorio {
   candidatas(ahora: Date, limite: number): Promise<Lectura<readonly AlertaCandidata[]>>;

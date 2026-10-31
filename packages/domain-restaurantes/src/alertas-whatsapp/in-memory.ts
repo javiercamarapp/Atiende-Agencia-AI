@@ -1,5 +1,6 @@
 // Dobles en memoria de los puertos de alertas (adaptador FALSO: nunca toca WhatsApp, Meta ni la base). Mismo contrato que `postgres.ts`.
-import type { AlertaCandidata, AlertaSucursalConfig, AlertasOutboxPort, AlertasPanelPort, AlertasRepositorio, Lectura, MotivoDegradacion, RegistroAlerta } from "./tipos.ts";
+import type { Lectura } from "../autopiloto/tipos.ts";
+import type { AlertaCandidata, AlertaSucursalConfig, AlertasOutboxPort, AlertasPanelPort, AlertasRepositorio, MotivoDegradacion, RegistroAlerta } from "./tipos.ts";
 
 export class InMemoryAlertasRepositorio implements AlertasRepositorio {
   readonly lista: AlertaCandidata[] = [];

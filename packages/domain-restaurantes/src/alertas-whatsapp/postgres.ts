@@ -1,9 +1,10 @@
 // Adaptadores reales (Postgres + outbox + campana) de las alertas de WhatsApp, migracion 103. Base sin migrar: el barrido devuelve `disponible: false`
 // (SAVEPOINT + 42883/42P01/42703), nunca un 500. Las notificaciones de la campana son best-effort (`emitirNotificacion` nunca lanza).
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
+import type { Lectura } from "../autopiloto/tipos.ts";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { RestaurantesRepository } from "../repository.ts";
-import type { AlertaCandidata, AlertaSucursalConfig, AlertasOutboxPort, AlertasPanelPort, AlertasRepositorio, DestinatarioAlerta, Lectura, MotivoDegradacion, RegistroAlerta, TipoAlerta, VentanaHorario } from "./tipos.ts";
+import type { AlertaCandidata, AlertaSucursalConfig, AlertasOutboxPort, AlertasPanelPort, AlertasRepositorio, DestinatarioAlerta, MotivoDegradacion, RegistroAlerta, TipoAlerta, VentanaHorario } from "./tipos.ts";
 
 function esBaseSinMigrar(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;

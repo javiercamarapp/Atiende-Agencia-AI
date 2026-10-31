@@ -113,7 +113,7 @@ export async function pgFijarInterruptor(db: TenantDbSession, input: { readonly 
 
 /** Estado de todas las filas de la organizacion para el panel (sucursal null = toda la organizacion). */
 export async function pgListarInterruptores(db: TenantDbSession, organizationId: string): Promise<{ readonly disponible: boolean; readonly filas: readonly { readonly propertyId: string | null; readonly apagado: boolean; readonly motivo: string | null; readonly actualizadoEn: string }[] }> {
-  return runWithSavepointFallback({
+  return runWithSavepointFallback<{ readonly disponible: boolean; readonly filas: readonly { readonly propertyId: string | null; readonly apagado: boolean; readonly motivo: string | null; readonly actualizadoEn: string }[] }>({
     session: db,
     savepointName: "sp_restaurantes_interruptor_lista",
     primary: async () => {
