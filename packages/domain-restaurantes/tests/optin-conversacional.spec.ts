@@ -74,7 +74,7 @@ describe("responderOptInDeterminista", () => {
 
 describe("base sin migrar", () => {
   it("el puerto Postgres degrada sin abortar la transaccion", async () => {
-    const falta = Object.assign(new Error("function does not exist"), { code: "42883" });
+    const falta = Object.assign(new Error("function restaurantes.reactivacion_optin_contexto(uuid, text, timestamp with time zone) does not exist"), { code: "42883" });
     const s = new AbortAwareFakeSession([
       { match: /reactivacion_optin_contexto/, respond: () => falta },
       { match: /reactivacion_optin_marcar/, respond: () => falta },
