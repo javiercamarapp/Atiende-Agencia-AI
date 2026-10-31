@@ -16,3 +16,13 @@ describe("cotizar_pedido: la hora cotizada sobrevive a re-cotizar sin plazo", ()
     expect((await s.snap())?.context?.horaRecogida).toBe(hora1);
   });
 });
+
+describe("solicitar_agregado_pedido: pedido ya salido ofrece el minimo a domicilio (T7-072)", () => {
+  it("con minimo configurado el mensaje lo dice", async () => {
+    const { mensajeAgregadoYaSalio, MENSAJE_AGREGADO_PEDIDO_YA_SALIO } = await import("../src/agent-tools/registry.ts");
+    const s = setup();
+    s.f.repo.seedBranchPolicy(s.f.propertyId, { pedidoMinimoDomicilio: 200 });
+    expect(await mensajeAgregadoYaSalio(s.f.repo, s.f.propertyId)).toContain("a domicilio el mínimo es de $200");
+    expect(await mensajeAgregadoYaSalio(s.f.repo, null)).toBe(MENSAJE_AGREGADO_PEDIDO_YA_SALIO);
+  });
+});

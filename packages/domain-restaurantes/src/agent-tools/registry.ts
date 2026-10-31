@@ -2366,6 +2366,12 @@ export const INSTRUCCION_TRAS_CONFIRMAR_RESUMEN = "Resumen confirmado. Llame AHO
 
 /** Cliente cuyo pedido ya salio (o se entrego): no se puede agregar al mismo viaje; se ofrece pedido aparte (decision del dueno, Q5-Q7). */
 export const MENSAJE_AGREGADO_PEDIDO_YA_SALIO = "Una disculpa, su pedido ya salió y ya no se le puede agregar. Si gusta le tomo un pedido nuevo con eso, o puede recogerlo en la sucursal. ¿Se lo tomo?";
+/** R22 (T7-072): con pedido a domicilio ya salido, el pedido nuevo lleva el minimo a domicilio de la sucursal (si lo tiene configurado); sin dato, la frase de siempre. */
+export async function mensajeAgregadoYaSalio(repo: RestaurantesRepository, propertyId: string | null | undefined): Promise<string> {
+  const minimo = propertyId ? (await repo.findBranchPolicy(propertyId).catch(() => null))?.pedidoMinimoDomicilio : null;
+  if (typeof minimo !== "number" || !(minimo > 0)) return MENSAJE_AGREGADO_PEDIDO_YA_SALIO;
+  return MENSAJE_AGREGADO_PEDIDO_YA_SALIO.replace("con eso, o puede recogerlo", `con eso (a domicilio el mínimo es de $${minimo}), o puede recogerlo`);
+}
 export const MENSAJE_AGREGADO_RETIRADO = "Listo, no se agrega nada a su pedido. Su pedido original sigue igual.";
 
 /**
@@ -2396,8 +2402,9 @@ async function solicitarAgregadoPedido(repo: RestaurantesRepository, ctx: AgentT
   if (pedido === undefined || pedido === null || estadoParaCliente(pedido.status) === null) {
     return hecho({ ok: false, motivo: "sin_pedido_registrado", instruccion: "No hay un pedido registrado reciente de este número al que agregar. Tome lo que pide como un pedido NUEVO (cotizar_pedido y crear_pedido) o, si el cliente insiste en que ya pidió, pase con una persona (escalar_a_humano)." });
   }
+  const fijo = await mensajeAgregadoYaSalio(repo, pedido.propertyId);
   if (!pedidoAceptaAgregado(pedido.status)) {
-    return hecho({ ok: false, motivo: "pedido_ya_salio", estado_pedido: estadoParaCliente(pedido.status), mensaje_al_cliente: MENSAJE_AGREGADO_PEDIDO_YA_SALIO, instruccion: "El pedido ya salió o ya se entregó: no se puede agregar al mismo viaje. Dígale al cliente EXACTAMENTE el mensaje_al_cliente (ofrece un pedido nuevo o recoger); si acepta, tómelo como pedido NUEVO con cotizar_pedido y crear_pedido. No escale de nuevo ni dé tiempos inventados." });
+    return hecho({ ok: false, motivo: "pedido_ya_salio", estado_pedido: estadoParaCliente(pedido.status), mensaje_al_cliente: fijo, instruccion: "El pedido ya salió o ya se entregó: no se puede agregar al mismo viaje. Dígale al cliente EXACTAMENTE el mensaje_al_cliente (ofrece un pedido nuevo o recoger); si acepta, tómelo como pedido NUEVO con cotizar_pedido y crear_pedido. No escale de nuevo ni dé tiempos inventados." });
   }
   if (!ctx.agregados) return escalarComoSiempre(`Quiere AGREGAR a su pedido: ${resumenItems}.`);
   const branch = await repo.findBranchById(ctx.organizationId, pedido.propertyId);
@@ -2416,7 +2423,7 @@ async function solicitarAgregadoPedido(repo: RestaurantesRepository, ctx: AgentT
   });
   if (r.estado === "no_disponible" || r.estado === "pedido_no_encontrado") return escalarComoSiempre(`Quiere AGREGAR a su pedido: ${resumenItems}.`);
   if (r.estado === "pedido_no_agregable") {
-    return hecho({ ok: false, motivo: "pedido_ya_salio", mensaje_al_cliente: MENSAJE_AGREGADO_PEDIDO_YA_SALIO, instruccion: "El pedido ya salió: no se puede agregar al mismo viaje. Dígale al cliente EXACTAMENTE el mensaje_al_cliente y, si acepta, tómelo como pedido NUEVO." });
+    return hecho({ ok: false, motivo: "pedido_ya_salio", mensaje_al_cliente: fijo, instruccion: "El pedido ya salió: no se puede agregar al mismo viaje. Dígale al cliente EXACTAMENTE el mensaje_al_cliente y, si acepta, tómelo como pedido NUEVO." });
   }
   return hecho({
     ok: true,
