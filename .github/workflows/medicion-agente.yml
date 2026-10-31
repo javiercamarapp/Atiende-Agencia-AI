@@ -114,10 +114,10 @@ jobs:
     name: Rep ${{ matrix.rep }} (${{ inputs.suite }})
     needs: preparar
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.suite == 'sim' && 180 || 75 }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
-      max-parallel: ${{ inputs.max_paralelo }}
+      max-parallel: 5
       matrix:
         rep: ${{ fromJSON(needs.preparar.outputs.reps) }}
     steps:
