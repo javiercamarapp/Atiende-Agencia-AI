@@ -13,6 +13,8 @@ import { sanearTexto } from "./eco-app.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { QUOTE_TTL_MS } from "../agent-tools/order-flow.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
+import { anexarPreguntaOptIn, responderOptInDeterminista } from "../marketing/optin.ts";
+import type { OptInPuerto } from "../marketing/optin.ts";
 import { classifyHighRiskIntent, contextoDeCliente, matchesHighRiskOtherThan, normalizarParaClasificar, pideUnaPersona, quejaTraeDetalle, respuestaDeQuejaConDetalle, retractaPeticionDePersona } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
@@ -200,6 +202,9 @@ export async function handleInboundWhatsAppMessage(
     /** PM PR-9: privacidad (aviso simplificado + asistente virtual en el primer mensaje, fast-path
      * ARCO determinista). Ausente = comportamiento anterior, sin aviso ni fast-path. */
     readonly privacy?: PrivacidadRepository;
+    /** PM R23: captura de opt-in de marketing en la conversacion (pregunta UNA vez tras un pedido creado; un SI/NO explicito a esa pregunta se responde en fijo).
+     * Ausente = comportamiento anterior. Detras de la bandera `optin_conversacional` de la migracion 150 (apagada por omision). */
+    readonly optin?: OptInPuerto;
     /** `false` = NO encola la respuesta en el outbox de WhatsApp (nada sale hacia Meta): la respuesta solo se guarda en
      * la conversacion y se devuelve en `outcome.reply`. Lo usa el widget demo (R-19); por omision `true` (webhook real). */
     readonly deliverReply?: boolean;
@@ -255,7 +260,10 @@ export async function handleInboundWhatsAppMessage(
       // de handoff abierta: es una obligacion legal y solo responde a frases explicitas de ARCO.
       // Un mensaje que mezcla ARCO con otro motivo de alto riesgo (alergia, cobro, queja...) NO toma el
       // fast-path: pasa al agente, cuyo clasificador de #226 escala al equipo con el texto completo.
-      const arco = privacy && !matchesHighRiskOtherThan(body, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
+      const arcoRapido = privacy && !matchesHighRiskOtherThan(body, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
+      // PM R23: un SI/NO explicito a la pregunta de opt-in (abierta <= 3 dias) se responde en fijo, sin LLM. Sin pregunta abierta devuelve null y el turno sigue normal.
+      const optinFijo = !arcoRapido && args.optin ? await responderOptInDeterminista(args.optin, organizationId, phone, body) : null;
+      const arco = arcoRapido ?? optinFijo;
 
       // R-21: con una toma de handoff abierta (pendiente o tomada) el agente calla; el mensaje del cliente ya
       // quedo guardado en el historial para quien atiende la conversacion.
@@ -337,6 +345,8 @@ export async function handleInboundWhatsAppMessage(
       // en la misma transaccion; si el turno falla, el registro se revierte con el savepoint y el
       // reintento vuelve a anteponerlo. Base sin migrar: se usa "primer mensaje de la conversacion".
       let reply = turn.reply;
+      // PM R23: tras un pedido CREADO (nunca a mitad de uno, ni en un turno escalado) se pregunta el opt-in una sola vez. Best-effort: nunca lanza.
+      if (args.optin && turn.orderId && !turn.escalacion && !arco) reply = await anexarPreguntaOptIn(args.optin, organizationId, phone, reply);
       if (privacy) {
         const config = await privacy.getPrivacyConfig(organizationId);
         const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
@@ -762,6 +772,8 @@ export async function responderTrasEspera(
     readonly propertyId?: string | null;
     readonly handoffGate?: HandoffAgentGate;
     readonly privacy?: PrivacidadRepository;
+    /** PM R23: opt-in conversacional (ver `handleInboundWhatsAppMessage`). */
+    readonly optin?: OptInPuerto;
     readonly deliverReply?: boolean;
     /** Instante (ms, mismo reloj que `reloj`) en que muere la funcion. Las pasadas 2 y 3 no empiezan si no caben antes; la pasada 1 siempre corre
      * (la reserva de la fase B la garantiza). Sin esto no hay limite de tiempo. */
@@ -801,7 +813,9 @@ export async function responderTrasEspera(
       }
       const textoPendiente = pendientes.map((m) => m.content).join("\n");
       const turnoDePasada = await repo.runWithRowSavepoint(async (): Promise<{ readonly salida: InboundMessageOutcome; readonly silencio: boolean }> => {
-        const arco = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
+        const arcoRapido = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
+        const optinFijo = !arcoRapido && args.optin ? await responderOptInDeterminista(args.optin, organizationId, phone, textoPendiente) : null; // PM R23 (ver la ruta directa)
+        const arco = arcoRapido ?? optinFijo;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
           if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, textoPendiente, handoff, handoffGate))) {
@@ -850,6 +864,7 @@ export async function responderTrasEspera(
         }
         if (turn.escalacion?.motivo === "falla_sistema") falloDelSistema = true;
         let reply = turn.reply;
+        if (args.optin && turn.orderId && !turn.escalacion && !arco) reply = await anexarPreguntaOptIn(args.optin, organizationId, phone, reply); // PM R23
         if (privacy) {
           const config = await privacy.getPrivacyConfig(organizationId);
           const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
