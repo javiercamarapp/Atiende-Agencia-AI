@@ -1,6 +1,7 @@
 // Cliente HTTP tipado de la bandeja de conversaciones, handoff, turnos y callbacks (R-21, migracion 028).
 // Contrato real: apps/api/src/routes/verticals/restaurantes/conversaciones-admin.ts. Mismo criterio que el resto de
 // lib/*.ts: `fetchImpl` inyectado y renovacion de sesion via `fetchJson`/`sendJson` (withAuthRefresh).
+import { formatMoney } from "@atiende/ui";
 import { fetchJson, sendJson } from "./admin-client.ts";
 
 export type ConversacionCanal = "whatsapp" | "voz";
@@ -237,7 +238,7 @@ export function textoAlerta(a: PanelAlertaWire): string {
   if (a.tipo === "sin_tomar") return `Nadie ha tomado el chat ${a.referencia} (${hace}).`;
   if (a.tipo === "sin_respuesta_humana") return `El cliente ${a.referencia} escribió y nadie le ha contestado (${hace}).`;
   if (a.tipo === "llamada_por_devolver") return `Devolver la llamada a ${a.telefono ?? "un número sin registrar"} (${hace}).`;
-  return `Pedido ${a.referencia} por aprobar${a.monto !== null ? ` por $${a.monto.toLocaleString("es-MX")}` : ""} (${hace}).`;
+  return `Pedido ${a.referencia} por aprobar${a.monto !== null ? ` por $${formatMoney(a.monto, 0)}` : ""} (${hace}).`;
 }
 
 export function responderWhatsapp(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, handoffId: string, texto: string): Promise<{ encolado: boolean }> {
