@@ -30,7 +30,7 @@ describe("prompt PM: lo que enseñan los chats de T7", () => {
 
   it("pin: se guarda solo en el pedido, no se anota en notes; los campos de pago y acceso tienen su propio parámetro", () => {
     const p = prompt();
-    expect(p).toMatch(/no los repita ni los anote en notes/);
+    expect(p).toMatch(/no lo repita ni lo anote en notes/);
     expect(p).toContain("indicaciones_acceso");
     expect(p).toContain("telefono_alterno");
     expect(p).toContain("efectivo_con");
@@ -40,7 +40,7 @@ describe("prompt PM: lo que enseñan los chats de T7", () => {
 
   it("«¿me avisan cuando salga?»: sí se promete el aviso de salida; el de llegada no", () => {
     const p = prompt();
-    expect(p).toMatch(/sí, el sistema le manda un mensaje de "va en camino"/);
+    expect(p).toMatch(/sí, el sistema manda un mensaje de "va en camino"/);
     expect(p).toMatch(/Un aviso de LLEGADA del repartidor no existe/);
     expect(p).not.toMatch(/no prometa un aviso que no existe/);
   });

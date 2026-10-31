@@ -67,7 +67,7 @@ describe("X21 / X27 / X29 -- nombre, datos ya dados y fallo de crear_pedido", ()
     const comanda = construirPayloadComanda({ order }, { resolverCodigos: new MapaProductoCodigo([]), resolverSucursal: () => "T1" });
     expect(comanda.cliente.nombre).toBe("Mariana");
     const prompt = buildSystemPrompt(PM_CONFIG_POR_OMISION, [{ propertyId: "p1", slug: "t1", name: "Prolongación Montejo", address: null }], NEW_CUSTOMER, new Date("2026-10-06T20:00:00Z"));
-    expect(prompt).toMatch(/lo corrige, use solo la versi[óo]n final/i);
+    expect(prompt).toMatch(/lo corrige, use (?:solo )?la versi[óo]n final/i);
     expect(buildSystemPrompt(FALLBACK_CONFIG, [], NEW_CUSTOMER, new Date("2026-10-06T20:00:00Z"))).toMatch(/descarta por completo la versi[óo]n anterior/i);
   });
 

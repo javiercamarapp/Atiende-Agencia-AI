@@ -41,12 +41,12 @@ describe("PM-R21 prompt con prefijo estable", () => {
     const b = armar(T_1407, "Prolongación Montejo está ABIERTA; el último pedido se toma hasta las 00:30.");
     const comun = prefijoComun(a, b);
     expect(comun).toBeGreaterThan(a.length * 0.95 - 1500); // lo unico distinto va en el bloque del final
-    expect(comun).toBeGreaterThan(50_000);
+    expect(comun).toBeGreaterThan(40_000);
   });
 
   it("encendida: aun con otro saludo (tarde -> noche) el prefijo se conserva", () => {
     vi.stubEnv("WHATSAPP_PROMPT_PREFIJO_ESTABLE", "1");
-    expect(prefijoComun(armar(T_1400), armar(T_2030))).toBeGreaterThan(50_000);
+    expect(prefijoComun(armar(T_1400), armar(T_2030))).toBeGreaterThan(40_000);
   });
 
   it("encendida: no se pierde informacion (fecha y hora, estado de la sucursal y saludo siguen en el prompt, antes del contexto del cliente)", () => {

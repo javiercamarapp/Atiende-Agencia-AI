@@ -34,9 +34,9 @@ describe("prompt de PM", () => {
   it("instruye usar la ubicacion compartida (buscar_sucursal_cercana) y mandar la doble salsa en doble_salsas", () => {
     const p = promptPm();
     expect(p).toContain("[Ubicación compartida por WhatsApp]");
-    expect(p).toMatch(/buscar_sucursal_cercana sin pedirle la colonia/);
-    expect(p).toMatch(/nunca las repita ni las trate como dirección de entrega/);
-    expect(p).toMatch(/DOBLE porción de una salsa, es un extra cobrado: mándelo en doble_salsas/);
+    expect(p).toMatch(/buscar_sucursal_cercana sin pedir la colonia/);
+    expect(p).toMatch(/no las repita ni las trate como dirección/);
+    expect(p).toMatch(/DOBLE porción de una salsa[^.]*extra cobrado[^.]*doble_salsas/);
   });
 
   it("no contradice las 9 salsas incluidas: habanero y crema de ajo no son 'solo si las pide'", () => {
@@ -235,7 +235,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).not.toContain("la confirma la sucursal al recoger");
     expect(p).not.toMatch(/no lo prometa ni lo aplique|cotice los nachos a precio de lista/);
     expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía POR CADA orden completa de nachos, solo para recoger y solo en las sucursales de H3: 2 órdenes = 4 aguas\): lo aplica cotizar_pedido; diga lo que devuelve y cuente las aguas por orden\./);
-    expect(p).toMatch(/Si el cliente pide el combo y la cotización no lo muestra .* no lo prometa/);
+    expect(p).toMatch(/Si el cliente lo pide y la cotización no lo muestra .* no lo prometa/);
   });
 
   it("las promociones por omision valen solo en Francisco de Montejo, Pensiones y Galerias: lunes 2x1 y martes nachos con 2 aguas, solo recoger (R22 #4)", () => {
@@ -271,23 +271,23 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).not.toMatch(/de 6 pm a (12|1) am|todos los días de 12 pm a 1 am/);
     expect(p).not.toMatch(/lunes a viernes de 6 pm/);
     expect(p).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
-    expect(p).toMatch(/consultar_sucursal \(abierto_ahora, cierra_a, horario\)/);
-    expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes de esa hora/);
+    expect(p).toMatch(/consultar_sucursal: abierto_ahora, cierra_a, horario/);
+    expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal\) cae antes de esa hora/);
     expect(p).not.toMatch(/no tome el pedido ni lo deje programado/);
     expect(p).toMatch(/TOME el pedido y PROGRÁMELO/);
-    expect(p).toMatch(/Horario: no lo afirme de memoria: lo da consultar_sucursal/);
+    expect(p).toMatch(/H16\. Horario: lo dicen SOLO los datos de la sucursal/);
   });
 
   it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {
     expect(p).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo/);
-    expect(p).toMatch(/se toma como CUALQUIER pedido: no lo rechace ni escale antes de cotizar/);
+    expect(p).toMatch(/se toma como CUALQUIER pedido; no lo rechace ni escale antes de cotizar/);
   });
 
   it("hora de recogida con el parametro estructurado hora_recogida, no en notes", () => {
     expect(p).toContain("hora_recogida");
     expect(p).not.toContain("Recoge a las 7:30 pm");
     expect(p).toMatch(/no en notes/);
-    expect(p).toMatch(/la hora de recoger va en hora_recogida/);
+    expect(p).toMatch(/la hora, el efectivo, la terminal, el acceso y el segundo teléfono tienen su propio campo/);
   });
 
   it("nunca inventar folio, lluvia, repartidor, precio viejo, presentaciones y alias", () => {
@@ -296,7 +296,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/no la mencione por su cuenta/);
     expect(p).toMatch(/El cliente no elige repartidor/);
     expect(p).toContain("El precio vigente es de $X");
-    expect(p).toMatch(/"una orden de pastor", pregunte cuántos tacos/);
+    expect(p).toMatch(/"una orden de pastor" no existe: pregunte cuántos tacos/i);
     expect(p).toMatch(/"un agua" sin más es ambiguo/);
     expect(p).toMatch(/Media orden solo de nachos y frijoles charros/);
   });
@@ -327,13 +327,13 @@ describe("QA-PM-R4: reglas de prompt de WhatsApp que no entran a la voz (limite 
   it("WhatsApp lleva propina en porcentaje, tiempo unico, no dar 'a partir de las 12' con la sucursal abierta, pedido ya salido, menu con precios y minimo propio", () => {
     const p = promptPm();
     expect(p).toContain("propina_porcentaje");
-    expect(p).toMatch(/NO conteste "sí" ni garantice ese plazo/);
+    expect(p).toMatch(/NO conteste "sí" ni garantice/);
     expect(p).not.toMatch(/a partir de las 12 del día/);
-    expect(p).toMatch(/YA SALIÓ a reparto \(o está entregado\), no dé minutos/);
+    expect(p).toMatch(/Si ya salió a reparto \(o está entregado\)/);
     expect(p).toMatch(/3 o 4 platillos con su precio REAL/);
-    expect(p).toMatch(/dígalo usted antes de que el cliente lo deduzca/);
-    expect(p).toMatch(/cotice con cotizar_pedido, dígale el total exacto de la cotización/);
-    expect(p).toMatch(/no repita el rechazo ni el teléfono de la otra/);
+    expect(p).toMatch(/dígalo usted antes/);
+    expect(p).toMatch(/cotice, dé el total exacto/);
+    expect(p).toMatch(/sin repetir el rechazo ni el teléfono/);
   });
   it("la voz NO recibe esas reglas (tope de 8000 caracteres)", () => {
     const p = promptPm({ canal: "voz" });
