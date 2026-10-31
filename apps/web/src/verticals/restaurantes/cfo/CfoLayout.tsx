@@ -12,7 +12,7 @@ import { CfoExportarNoDisponibleError, descargarExportacionCfo, fetchAlcance, gu
 import { aplicarDrill, filtroDeParams, pedidosAbiertos, quitarDrill, type CfoPaginaProps } from "./contexto.ts";
 import { escribirFiltros, hoyLocal, leerFiltros, type FiltrosCfo } from "./filtros-url.ts";
 import { FiltrosCfoBarra } from "./FiltrosCfo.tsx";
-import { PAGINAS_CFO, SLUG_INICIAL_CFO } from "./paginas.ts";
+import { PAGINAS_CFO, SLUG_INICIAL_CFO, type PaginaCfo } from "./paginas.ts";
 import { PedidosDrill } from "./PedidosDrill.tsx";
 import { AvisoNoSustitucion, CargaCfoVista, SinAccesoCfo } from "./piezas.tsx";
 import { useCargaCfo } from "./use-carga-cfo.ts";
@@ -21,6 +21,27 @@ export type CfoLayoutProps = RestaurantesShellContext & {
   readonly fetchImpl?: typeof fetch;
   /** Solo para pruebas: fija «hoy» (`YYYY-MM-DD`). */
   readonly hoy?: string;
+  /** Marco reutilizable (Analítica del dueño): otro registro de pestañas, otra ruta y otro encabezado. Por omisión es el CFO de siempre. */
+  readonly marco?: MarcoLayout;
+};
+
+export interface MarcoLayout {
+  readonly paginas: readonly PaginaCfo[];
+  readonly slugInicial: string;
+  /** Segmento de la URL tras `/restaurantes/:orgSlug/` (p. ej. `cfo`, `analitica`). */
+  readonly ruta: string;
+  readonly titulo: string;
+  readonly descripcion: string;
+  readonly etiquetaNav: string;
+}
+
+const MARCO_CFO: MarcoLayout = {
+  paginas: PAGINAS_CFO,
+  slugInicial: SLUG_INICIAL_CFO,
+  ruta: "cfo",
+  titulo: "CFO",
+  descripcion: "Tus ventas, sucursales y estado de resultados en un solo lugar, con la procedencia de cada cifra.",
+  etiquetaNav: "Secciones del CFO",
 };
 
 export function CfoLayout(props: CfoLayoutProps) {
@@ -29,9 +50,9 @@ export function CfoLayout(props: CfoLayoutProps) {
   return <CfoLayoutConAcceso {...props} />;
 }
 
-function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetchImpl, hoy }: CfoLayoutProps) {
+function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetchImpl, hoy, marco = MARCO_CFO }: CfoLayoutProps) {
   const [sp, setSp] = useSearchParams();
-  const slugActual = (useParams()["*"] ?? "").split("/")[0] || SLUG_INICIAL_CFO;
+  const slugActual = (useParams()["*"] ?? "").split("/")[0] || marco.slugInicial;
   const hoyStr = useMemo(() => hoy ?? hoyLocal(), [hoy]);
   const filtros = useMemo(() => leerFiltros(sp, hoyStr), [sp, hoyStr]);
   const base = `/restaurantes/${orgSlug}`;
@@ -62,12 +83,12 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
   );
   const abrirPedidos = useCallback((f: FiltroPedidosDetalle) => setSp(aplicarDrill(escribirFiltros(sp, filtrosEf), f)), [sp, filtrosEf, setSp]);
 
-  const pagina = PAGINAS_CFO.find((p) => p.slug === slugActual) ?? null;
+  const pagina = marco.paginas.find((p) => p.slug === slugActual) ?? null;
   // Con nueve pestañas la barra se desplaza: la activa siempre queda a la vista (también al entrar por un enlace).
   useEffect(() => {
-    document.querySelector("nav[aria-label='Secciones del CFO'] [aria-current=page]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [slugActual, carga.estado]);
-  const disponibles = useMemo(() => new Set(PAGINAS_CFO.map((p) => p.slug)), []);
+    document.querySelector(`nav[aria-label='${marco.etiquetaNav}'] [aria-current=page]`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [slugActual, carga.estado, marco.etiquetaNav]);
+  const disponibles = useMemo(() => new Set(marco.paginas.map((p) => p.slug)), [marco]);
 
   const [exportando, setExportando] = useState<FormatoExportacionCfo | null>(null);
   const [exportarOculto, setExportarOculto] = useState(false);
@@ -92,8 +113,8 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
   return (
     <PageContainer padding="none" data-testid="cfo-layout">
       <PageHeader
-        titulo="CFO"
-        descripcion="Tus ventas, sucursales y estado de resultados en un solo lugar, con la procedencia de cada cifra."
+        titulo={marco.titulo}
+        descripcion={marco.descripcion}
         meta={carga.estado === "listo" ? <span className="text-xs text-muted-foreground">{carga.datos.alcance.organizacionCompleta ? "Todas las sucursales de tu organización" : `Tus ${carga.datos.sucursales.length} sucursales`}</span> : undefined}
       />
       <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el CFO…">
@@ -115,15 +136,15 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
                   El enlace traía sucursales que no existen o que no puedes ver; se ignoraron y se muestra {validas && validas.length > 0 ? "solo lo que sí puedes ver" : "«Todas»"}.
                 </Callout>
               )}
-              <nav aria-label="Secciones del CFO" className="-mx-1 overflow-x-auto px-1">
+              <nav aria-label={marco.etiquetaNav} className="-mx-1 overflow-x-auto px-1">
                 <ul className="flex min-w-max gap-1 border-b border-border">
-                  {PAGINAS_CFO.map((p) => {
+                  {marco.paginas.map((p) => {
                     const activa = p.slug === slugActual;
                     const Icono = p.icono;
                     return (
                       <li key={p.slug}>
                         <Link
-                          to={`${base}/cfo/${p.slug}?${tabParams.toString()}`}
+                          to={`${base}/${marco.ruta}/${p.slug}?${tabParams.toString()}`}
                           aria-current={activa ? "page" : undefined}
                           data-testid={`pestana-${p.slug}`}
                           className={cn(
@@ -147,13 +168,22 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
                 <EstadoVacio
                   icon={SearchX}
                   titulo="Esta sección no existe"
-                  mensaje="La dirección no corresponde a ninguna sección del CFO."
+                  mensaje={`La dirección no corresponde a ninguna sección de ${marco.titulo}.`}
                   accion={
-                    <Link to={`${base}/cfo/${SLUG_INICIAL_CFO}`} className="text-ui font-medium text-primary underline-offset-4 hover:underline">
-                      Ir al resumen del CFO
+                    <Link to={`${base}/${marco.ruta}/${marco.slugInicial}`} className="text-ui font-medium text-primary underline-offset-4 hover:underline">
+                      {marco.ruta === "cfo" ? "Ir al resumen del CFO" : `Ir a ${marco.titulo}`}
                     </Link>
                   }
                 />
+              )}
+              {marco.ruta === "cfo" && (
+                <p className="text-xs text-muted-foreground" data-testid="cfo-enlace-analitica">
+                  ¿Cuándo y dónde vendes?{" "}
+                  <Link to={`${base}/analitica/demanda?${tabParams.toString()}`} className="font-medium text-primary underline-offset-4 hover:underline">
+                    Abre la analítica: demanda, zonas, combos y ratios
+                  </Link>
+                  .
+                </p>
               )}
               <AvisoNoSustitucion texto={alcance.avisoLegal} />
               <PedidosDrill abierto={pedidosAbiertos(sp)} onCerrar={() => setSp(quitarDrill(sp))} api={api} base={base} filtros={filtrosEf} filtroPedidos={filtroDeParams(sp)} />

@@ -69,7 +69,7 @@ export class CfoExportarNoDisponibleError extends Error {
 
 export const baseCfo = (apiBaseUrl: string, propertyId: string): string => `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/cfo`;
 
-async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, init: { method: "GET" | "PUT" | "POST"; body?: unknown }): Promise<T> {
+export async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, init: { method: "GET" | "PUT" | "POST"; body?: unknown }): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), defaultAuthCtx(), token, (t) =>
     fetchImpl(url, {
       method: init.method,
@@ -91,7 +91,7 @@ async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, 
 }
 
 /** Lectura con la convención `disponible: false` = base sin migrar. */
-async function leer<T extends { readonly disponible?: boolean }>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
+export async function leer<T extends { readonly disponible?: boolean }>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
   const w = await pedirCfo<T>(fetchImpl, url, token, { method: "GET" });
   if (w.disponible === false) throw new CfoNoDisponibleError(503);
   return w;

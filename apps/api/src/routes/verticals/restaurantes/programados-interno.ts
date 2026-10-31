@@ -18,6 +18,7 @@
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
+import { barrerAlertasAnalitica } from "@atiende/domain-restaurantes/analitica/servidor";
 import { avisarProgramadosPromovidos, descripcionSeguraDeError, barrerAvisosOperativos, barrerSilencioWhatsapp, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
 import type { ResultadoBarridoAvisos, ResultadoBorradores, ResultadoSilencio } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
@@ -113,6 +114,14 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         logEvent(c, "error", "restaurantes_whatsapp_silencio_fallido", { error: descripcionSeguraDeError(err) });
       }
       logEvent(c, "info", "restaurantes_whatsapp_silencio", { ...silencio });
+      // Analitica del dueño (F7, migracion 163): ETA prometido alto y «¿ya salio?» sin contestar. Otra unidad independiente del tick (su propia sesion de
+      // sistema, sin tocar la promocion ni los demas avisos). Solo se registra en el log: no cambia el cuerpo de la respuesta del cron.
+      try {
+        const analitica = await deps.engine.withAppSession({ userId: null }, (db) => barrerAlertasAnalitica(db, { now: new Date() }));
+        logEvent(c, "info", "restaurantes_alertas_analitica", { ...analitica });
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_alertas_analitica_fallidas", { error: descripcionSeguraDeError(err) });
+      }
       // Autopiloto (migracion 050): escalado de aprobaciones sin respuesta, estados sin clic, avance desde el POS, regreso de handoffs y agotados
       // por hoy. Cada paso en su propia sesion de sistema; sin la migracion cada uno responde `disponible: false` (sin error).
       let autopiloto: ResumenTickAutopiloto | null = null;
