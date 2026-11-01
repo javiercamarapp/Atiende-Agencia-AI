@@ -26,7 +26,7 @@ describe("R24: la forma de pago debe salir del cliente", () => {
     const r = await s.create({ payment_method: "tarjeta", efectivo_con: undefined });
     expect(JSON.stringify(r.result)).toMatch(/cómo va a pagar/i);
     expect(r.orderId ?? null).toBeNull();
-    const lista: any = await s.f.repo.listOrders(s.f.organizationId, {} as never);
-    expect((lista.orders ?? lista.items ?? lista).length).toBe(0);
+    const lista = (await s.f.repo.listOrders(s.f.organizationId, {} as never)) as unknown as { orders?: unknown[]; items?: unknown[] };
+    expect(((lista.orders ?? lista.items ?? lista) as unknown[]).length).toBe(0);
   });
 });
