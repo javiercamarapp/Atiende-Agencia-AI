@@ -360,6 +360,148 @@ reset role;
 select count(*) as deberia_ser_1 from restaurantes.historial_config where id = 1 and length(pepper) >= 32;
 rollback;
 
+\echo '--- A33. (P-1) cliente_exportar_arco incluye el resumen historico ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+select count(*) as deberia_ser_1 from (select restaurantes.cliente_exportar_arco('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01') as r) x where (x.r->'historial_importado'->'resumen'->>'pedidos') = '5';
+rollback;
+
+\echo '--- A34. (P-1) cliente_exportar_arco incluye el consentimiento de marketing ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select count(*) as deberia_ser_1 from (select restaurantes.cliente_exportar_arco('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c02') as r) x where jsonb_array_length(x.r->'historial_importado'->'consentimiento_marketing'->'actual') = 1;
+rollback;
+
+\echo '--- A35. (P-1) cliente_exportar_arco conserva lo que ya exportaba (nombre y telefono) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select count(*) as deberia_ser_1 from (select restaurantes.cliente_exportar_arco('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01') as r) x where (x.r->>'nombre') = 'Existente Uno' and (x.r->>'telefono') = '9990064001';
+rollback;
+
+\echo '--- A36. (P-1) cliente_borrar_memoria borra el resumen historico ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01');
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.customer_historial_resumen where customer_id = '00000000-0000-0000-0000-0000000f6c01';
+rollback;
+
+\echo '--- A37. (P-1) cliente_borrar_memoria borra las quejas historicas ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01');
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.customer_quejas_historicas where customer_id = '00000000-0000-0000-0000-0000000f6c01';
+rollback;
+
+\echo '--- A38. (P-1) cliente_borrar_memoria REVOCA el consentimiento de marketing ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c02');
+reset role;
+select count(*) as deberia_ser_1 from restaurantes.marketing_consentimiento where customer_id = '00000000-0000-0000-0000-0000000f6c02' and estado = 'revocado';
+rollback;
+
+\echo '--- A39. (P-1) la revocacion deja un evento de evidencia ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c02');
+reset role;
+select count(*) as deberia_ser_1 from (select 1 from restaurantes.marketing_consentimiento_evento where customer_id = '00000000-0000-0000-0000-0000000f6c02' and estado = 'revocado' limit 1) e;
+rollback;
+
+\echo '--- A40. (P-2) cliente_borrar_memoria escribe la supresion: reimportar el archivo no revive al titular ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01');
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.customer_historial_resumen where customer_id = '00000000-0000-0000-0000-0000000f6c01';
+rollback;
+
+\echo '--- A41. (P-2) el cliente que existe solo por la importacion se ELIMINA (nombre y telefono) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select set_config('app.nuevo', (select id::text from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000f6a00' and phone = '9990064010'), true);
+set local role authenticated;
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', current_setting('app.nuevo')::uuid);
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000f6a00' and phone = '9990064010';
+rollback;
+
+\echo '--- A42. (P-2) historial_borrar tambien elimina al cliente solo-importado ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select set_config('app.nuevo', (select id::text from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000f6a00' and phone = '9990064010'), true);
+set local role authenticated;
+select restaurantes.historial_borrar('00000000-0000-0000-0000-0000000f6a00', current_setting('app.nuevo')::uuid);
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000f6a00' and phone = '9990064010';
+rollback;
+
+\echo '--- A43. (P-2) un cliente con pedidos NO se elimina pero queda sin nombre ---'
+begin;
+update restaurantes.customers set name = 'Nombre Sintetico', staff_notes = 'nota' where id = '00000000-0000-0000-0000-0000000f6c03';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.historial_borrar('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c03');
+reset role;
+select count(*) as deberia_ser_1 from restaurantes.customers where id = '00000000-0000-0000-0000-0000000f6c03' and name is null and staff_notes is null;
+rollback;
+
+\echo '--- A44. (P-2) el cliente solo-importado borrado no se recrea al reimportar (queda suprimido) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select set_config('app.nuevo', (select id::text from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000f6a00' and phone = '9990064010'), true);
+set local role authenticated;
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', current_setting('app.nuevo')::uuid);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000f6a00' and phone = '9990064010';
+rollback;
+
+\echo '--- A45. (P-1) staff (no admin) no puede borrar la memoria ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e03', true);
+select restaurantes.cliente_borrar_memoria('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01') as should_fail;
+rollback;
+
+\echo '--- A46. (P-1) CROSS-TENANT: el owner de B no puede exportar ni borrar a un titular de A ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e05', true);
+select restaurantes.cliente_exportar_arco('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01') as should_fail;
+rollback;
+
+\echo '--- A47. (P-1) las funciones base renombradas no son ejecutables por authenticated ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.cliente_borrar_memoria_base('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01') as should_fail;
+rollback;
+
 \echo ''
 \echo '=== B) cliente_perfil_historico (solo sistema) ==='
 

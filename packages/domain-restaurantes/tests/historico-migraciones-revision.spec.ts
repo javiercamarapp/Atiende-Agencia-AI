@@ -41,3 +41,31 @@ describe("144 (P-3): supresion con HMAC y pimienta", () => {
     expect(asserts().match(/\(P-3\)/g)?.length).toBeGreaterThanOrEqual(7);
   });
 });
+
+describe("145 (P-1, P-2): ARCO completo y borrado real", () => {
+  const f = "145_historial_arco_completo.sql";
+  const m = () => mig(f);
+  it("envuelve las funciones ARCO de 049/075 sin copiarlas: renombra a *_base de forma idempotente", () => {
+    expect(m()).toContain("alter function restaurantes.cliente_exportar_arco(uuid, uuid) rename to cliente_exportar_arco_base");
+    expect(m()).toContain("alter function restaurantes.cliente_borrar_memoria(uuid, uuid) rename to cliente_borrar_memoria_base");
+    expect(m().match(/to_regprocedure\('restaurantes\.cliente_(exportar_arco|borrar_memoria)_base/g)?.length).toBe(2);
+    expect(m()).toMatch(/revoke all on function restaurantes\.cliente_borrar_memoria_base\(uuid, uuid\) from public, anon, authenticated/);
+    expect(espejo(f, "492")).toBe(m());
+  });
+  it("la exportacion publica agrega historial y consentimiento; el borrado publico llama al borrado del historial", () => {
+    expect(m()).toContain("v_base || jsonb_build_object('historial_importado', restaurantes.historial_exportar_interno");
+    expect(m()).toContain("restaurantes.historial_borrar_interno(p_organization_id, p_customer_id)");
+    expect(m()).toContain("restaurantes.marketing_consentimiento_evento");
+  });
+  it("el borrado suprime primero, revoca el consentimiento y elimina o anonimiza la fila de customers", () => {
+    const b = m().slice(m().indexOf("function restaurantes.historial_borrar_interno"));
+    expect(b.indexOf("historial_suprimir")).toBeGreaterThan(-1);
+    expect(b.indexOf("historial_suprimir")).toBeLessThan(b.indexOf("delete from restaurantes.customer_historial_resumen"));
+    expect(b).toContain("set estado = 'revocado'");
+    expect(b).toContain("delete from restaurantes.customers where id = p_customer_id");
+    expect(b).toMatch(/set name = null, notes = null, staff_notes = null, import_nombre = null, import_notas = null/);
+  });
+  it("hay escenarios SQL", () => {
+    expect(asserts().match(/\((P-1|P-2)\)/g)?.length).toBeGreaterThanOrEqual(14);
+  });
+});
