@@ -29,25 +29,42 @@ const cand = (n: number, o: Partial<CandidatoReactivacion> = {}): CandidatoReact
 interface Memoria {
   readonly repo: RepoReactivacion;
   readonly envios: { customerId: string; dia: string; estado: string }[];
+  readonly ligas: string[];
   readonly corridas: { modo: string; enviados: number; simulados: number; controles: number; bloqueos: Record<string, number>; aviso: AvisoReactivacion | null }[];
 }
 function memoria(contexto: ContextoReactivacion | null, candidatos: readonly CandidatoReactivacion[]): Memoria {
   const envios: Memoria["envios"] = [];
   const corridas: Memoria["corridas"] = [];
+  const ligas: string[] = [];
   const repo: RepoReactivacion = {
     organizaciones: async () => (contexto && contexto.modo !== "apagado" ? [ORG] : []),
     contexto: async () => contexto,
     candidatos: async () => candidatos,
     registrarEnvio: async (a) => {
-      if (envios.some((e) => e.customerId === a.customerId && e.dia === a.dia)) return false;
+      const previo = envios.find((e) => e.customerId === a.customerId && e.dia === a.dia);
+      // Espejo del SQL: solo lo SIMULADO se promueve a 'encolado'; cualquier otra fila existente rechaza.
+      if (previo) {
+        if (previo.estado === "simulado" && a.estado === "encolado") {
+          previo.estado = "encolado";
+          return true;
+        }
+        return false;
+      }
       envios.push({ customerId: a.customerId, dia: a.dia, estado: a.estado });
       return true;
+    },
+    liberarEnvio: async (_o, customerId, dia) => {
+      const i = envios.findIndex((e) => e.customerId === customerId && e.dia === dia && e.estado === "encolado");
+      if (i >= 0) envios.splice(i, 1);
+    },
+    ligarOutbox: async (_o, customerId, _dia, llave) => {
+      ligas.push(`${customerId}|${llave}`);
     },
     registrarCorrida: async (a) => {
       corridas.push({ modo: a.modo, enviados: a.enviados, simulados: a.simulados, controles: a.controles, bloqueos: { ...a.bloqueos }, aviso: a.aviso });
     },
   };
-  return { repo, envios, corridas };
+  return { repo, envios, corridas, ligas };
 }
 const deps = (m: Memoria, extra: Partial<DependenciasReactivacion> = {}): DependenciasReactivacion & { enviador: EnviadorFalso } => {
   const enviador = new EnviadorFalso();
@@ -202,6 +219,51 @@ describe("ejecutarReactivacionOrg", () => {
     expect(r.enviados).toBe(2);
     expect(r.bloqueos).toEqual({ error: 1 });
     expect(base.enviados.map((x) => x.telefono)).toEqual(["+525550000001", "+525550000003"]);
+  });
+});
+
+describe("R-4: simulado y real el mismo dia; reserva antes de enviar", () => {
+  it("al pasar de simulado a real el mismo dia el envio promueve la fila simulada a encolado (queda registro y cuenta en el tope)", async () => {
+    const sim = memoria(ctx({ modo: "simulado" }), [cand(1)]);
+    await ejecutarReactivacionOrg(deps(sim), ORG, AHORA);
+    expect(sim.envios.map((e) => e.estado)).toEqual(["simulado"]);
+    // Mismo almacen, ahora en real: reutiliza las filas.
+    const real = memoria(ctx(), [cand(1)]);
+    real.envios.push(...sim.envios);
+    const d = deps(real);
+    const r = await ejecutarReactivacionOrg(d, ORG, new Date(AHORA.getTime() + 3_600_000));
+    expect(r.enviados).toBe(1);
+    expect(d.enviador.enviados).toHaveLength(1);
+    expect(real.envios.map((e) => e.estado)).toEqual(["encolado"]);
+  });
+  it("si ya hay fila 'encolado' o 'control' de hoy NO se envia otra vez", async () => {
+    const m = memoria(ctx(), [cand(1)]);
+    m.envios.push({ customerId: cand(1).customerId, dia: "2026-11-04", estado: "encolado" });
+    const d = deps(m);
+    const r = await ejecutarReactivacionOrg(d, ORG, AHORA);
+    expect(r.enviados).toBe(0);
+    expect(r.bloqueos).toEqual({ ya_registrado: 1 });
+    expect(d.enviador.enviados).toHaveLength(0);
+  });
+  it("si el envio falla se libera la reserva (no queda fila que cuente en el tope sin mensaje) y el siguiente tick reintenta", async () => {
+    const m = memoria(ctx(), [cand(1)]);
+    const roto: DependenciasReactivacion = { ...deps(m), enviador: { enviar: async () => Promise.reject(new Error("boom")) } };
+    const r = await ejecutarReactivacionOrg(roto, ORG, AHORA);
+    expect(r.enviados).toBe(0);
+    expect(r.bloqueos).toEqual({ error: 1 });
+    expect(m.envios).toHaveLength(0);
+    const d = deps(m);
+    expect((await ejecutarReactivacionOrg(d, ORG, AHORA)).enviados).toBe(1);
+  });
+});
+
+describe("R-5: liga el outbox para poder cancelar por baja", () => {
+  it("tras enviar liga la fila con la llave determinista del outbox", async () => {
+    const m = memoria(ctx(), [cand(1)]);
+    const d = deps(m);
+    await ejecutarReactivacionOrg(d, ORG, AHORA);
+    expect(m.ligas).toEqual([`${cand(1).customerId}|react:${ORG}:${cand(1).customerId}:2026-11-04`]);
+    expect(d.enviador.enviados[0]?.dedupeKey).toBe(`react:${ORG}:${cand(1).customerId}:2026-11-04`);
   });
 });
 

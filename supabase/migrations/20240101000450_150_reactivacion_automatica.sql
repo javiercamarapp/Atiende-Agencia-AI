@@ -84,7 +84,7 @@ create table restaurantes.reactivacion_envio (
   customer_id uuid not null references restaurantes.customers(id) on delete cascade,
   property_id uuid references core.property(id) on delete set null,
   dia date not null,
-  estado text not null check (estado in ('encolado', 'simulado', 'control')),
+  estado text not null check (estado in ('encolado', 'simulado', 'control', 'cancelado_baja')),
   plantilla_nombre text,
   favorito_texto text check (favorito_texto is null or char_length(favorito_texto) <= 80),
   outbox_id uuid references restaurantes.messaging_outbox(id) on delete set null,
@@ -286,6 +286,8 @@ $$;
 revoke all on function restaurantes.reactivacion_optin_contexto(uuid, text, timestamptz) from public, anon;
 grant execute on function restaurantes.reactivacion_optin_contexto(uuid, text, timestamptz) to authenticated;
 
+-- R-5: ademas cancela los mensajes de reactivacion AUN no enviados (outbox pending/failed) de ese cliente y marca su envio 'cancelado_baja'; se busca por la llave
+-- determinista del outbox (no depende de que outbox_id ya este ligado). Los `processing` ya van en vuelo: los frena la lista de supresion de plataforma en el despachador.
 -- R-2: toda revocacion (BAJA por telefono, panel, fusion) cierra la pregunta de opt-in abierta del cliente. Va como trigger del historial inmutable de la 052 para cubrir
 -- TODAS las rutas de revocacion sin redefinir sus funciones. Interna: sin EXECUTE para nadie (solo la dispara el INSERT, que hace una funcion definer).
 create or replace function restaurantes.marketing_optin_al_revocar()
@@ -294,6 +296,13 @@ begin
   if new.estado = 'revocado' then
     update restaurantes.marketing_optin_pregunta q set respondida_at = now(), respuesta = 'baja'
      where q.organization_id = new.organization_id and q.customer_id = new.customer_id and q.respondida_at is null;
+    update restaurantes.messaging_outbox o set status = 'dead', last_error_class = 'baja_marketing'
+     where o.organization_id = new.organization_id and o.channel = 'whatsapp' and o.event_type = 'marketing_reactivacion_automatica' and o.status in ('pending', 'failed')
+       and o.dedupe_key like 'react:' || new.organization_id::text || ':' || new.customer_id::text || ':%';
+    update restaurantes.reactivacion_envio e set estado = 'cancelado_baja'
+     where e.organization_id = new.organization_id and e.customer_id = new.customer_id and e.estado = 'encolado'
+       and exists (select 1 from restaurantes.messaging_outbox o where o.organization_id = e.organization_id and o.channel = 'whatsapp' and o.event_type = 'marketing_reactivacion_automatica'
+                    and o.dedupe_key like 'react:' || e.organization_id::text || ':' || e.customer_id::text || ':%' and o.status = 'dead' and o.last_error_class = 'baja_marketing');
   end if;
   return new;
 end;
@@ -487,12 +496,49 @@ begin
   end if;
   insert into restaurantes.reactivacion_envio (organization_id, customer_id, property_id, dia, estado, plantilla_nombre, favorito_texto, outbox_id)
   values (p_organization_id, p_customer_id, p_property_id, p_dia, p_estado, p_plantilla, left(p_favorito, 80), p_outbox_id)
-  on conflict (organization_id, customer_id, dia) do nothing;
+  -- R-4: lo SIMULADO de hoy se PROMUEVE a 'encolado' (pasar de simulado a real el mismo dia deja la fila real y el tope de 14 dias la cuenta); cualquier otra fila
+  -- existente de ese cliente y dia (encolado, control, cancelado) no se toca y devuelve false: quien llama NO debe enviar.
+  on conflict (organization_id, customer_id, dia) do update
+    set estado = excluded.estado, property_id = excluded.property_id, plantilla_nombre = excluded.plantilla_nombre, favorito_texto = excluded.favorito_texto,
+        outbox_id = excluded.outbox_id, created_at = now()
+    where restaurantes.reactivacion_envio.estado = 'simulado' and excluded.estado = 'encolado';
   return found;
 end;
 $$;
 revoke all on function restaurantes.reactivacion_registrar_envio(uuid, uuid, uuid, date, text, text, text, uuid) from public, anon;
 grant execute on function restaurantes.reactivacion_registrar_envio(uuid, uuid, uuid, date, text, text, text, uuid) to authenticated;
+
+-- R-4: el orquestador RESERVA la fila 'encolado' ANTES de enviar. Si el envio falla, libera la reserva (solo si aun no tiene outbox): el siguiente tick reintenta sin
+-- duplicar y sin dejar una fila que cuente en el tope sin mensaje. Devuelve true si borro algo.
+create or replace function restaurantes.reactivacion_liberar_envio(p_organization_id uuid, p_customer_id uuid, p_dia date)
+returns boolean language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'reactivacion_liberar_envio: solo alcanzable desde sesion de sistema' using errcode = '42501';
+  end if;
+  delete from restaurantes.reactivacion_envio e
+   where e.organization_id = p_organization_id and e.customer_id = p_customer_id and e.dia = p_dia and e.estado = 'encolado' and e.outbox_id is null;
+  return found;
+end;
+$$;
+revoke all on function restaurantes.reactivacion_liberar_envio(uuid, uuid, date) from public, anon;
+grant execute on function restaurantes.reactivacion_liberar_envio(uuid, uuid, date) to authenticated;
+
+-- R-5: liga el envio con la fila del outbox por su llave determinista (react:<org>:<cliente>:<dia>); asi la auditoria y la cancelacion por revocacion saben cual es.
+create or replace function restaurantes.reactivacion_ligar_outbox(p_organization_id uuid, p_customer_id uuid, p_dia date, p_dedupe_key text)
+returns boolean language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'reactivacion_ligar_outbox: solo alcanzable desde sesion de sistema' using errcode = '42501';
+  end if;
+  update restaurantes.reactivacion_envio e
+     set outbox_id = (select o.id from restaurantes.messaging_outbox o where o.organization_id = p_organization_id and o.channel = 'whatsapp' and o.dedupe_key = p_dedupe_key)
+   where e.organization_id = p_organization_id and e.customer_id = p_customer_id and e.dia = p_dia and e.estado = 'encolado' and e.outbox_id is null;
+  return found;
+end;
+$$;
+revoke all on function restaurantes.reactivacion_ligar_outbox(uuid, uuid, date, text) from public, anon;
+grant execute on function restaurantes.reactivacion_ligar_outbox(uuid, uuid, date, text) to authenticated;
 
 create or replace function restaurantes.reactivacion_registrar_corrida(
   p_organization_id uuid, p_modo text, p_evaluados integer, p_enviados integer, p_simulados integer, p_controles integer, p_bloqueos jsonb, p_aviso text

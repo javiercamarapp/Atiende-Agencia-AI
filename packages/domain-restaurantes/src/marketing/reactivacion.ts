@@ -173,6 +173,10 @@ export interface RepoReactivacion {
   candidatos(organizationId: string, now: Date): Promise<readonly CandidatoReactivacion[]>;
   /** true = nuevo; false = ya existia ese cliente ese dia. */
   registrarEnvio(a: { organizationId: string; customerId: string; propertyId: string | null; dia: string; estado: "encolado" | "simulado" | "control"; plantilla: string | null; favorito: string | null; outboxId: string | null }): Promise<boolean>;
+  /** R-4: borra la reserva 'encolado' (sin outbox) de ese cliente y dia cuando el envio fallo. */
+  liberarEnvio(organizationId: string, customerId: string, dia: string): Promise<void>;
+  /** R-5: liga el envio con su fila del outbox por la llave determinista, para auditar y cancelar por baja. */
+  ligarOutbox(organizationId: string, customerId: string, dia: string, dedupeKey: string): Promise<void>;
   registrarCorrida(a: { organizationId: string; modo: "simulado" | "real"; evaluados: number; enviados: number; simulados: number; controles: number; bloqueos: Readonly<Record<string, number>>; aviso: AvisoReactivacion | null }): Promise<void>;
 }
 
@@ -252,21 +256,33 @@ export async function ejecutarReactivacionOrg(deps: DependenciasReactivacion, or
         } else bloquear("ya_registrado");
         continue;
       }
-      const { outboxId } = await deps.enviador.enviar({
-        organizationId,
-        customerId: c.customerId,
-        telefono: c.telefono as string,
-        phoneNumberId: ctx.phoneNumberId as string,
-        plantilla: ctx.plantillaNombre as string,
-        idioma: ctx.plantillaIdioma,
-        params,
-        body: renderPlantilla(params),
-        dedupeKey: claveEnvio(organizationId, c.customerId, dia),
-      });
-      if (await deps.repo.registrarEnvio({ organizationId, customerId: c.customerId, propertyId: c.propertyId, dia, estado: "encolado", plantilla: ctx.plantillaNombre, favorito: params[1], outboxId })) {
-        enviados += 1;
-        hoy += 1;
-      } else bloquear("ya_registrado");
+      // R-4: primero se RESERVA la fila 'encolado' (promueve la simulada de hoy y cuenta en el tope de 14 dias) y SOLO si se reservo se envia. Si el envio
+      // falla se libera la reserva; si la reserva no se obtuvo (ya habia fila de hoy) no se envia nada.
+      const dedupeKey = claveEnvio(organizationId, c.customerId, dia);
+      if (!(await deps.repo.registrarEnvio({ organizationId, customerId: c.customerId, propertyId: c.propertyId, dia, estado: "encolado", plantilla: ctx.plantillaNombre, favorito: params[1], outboxId: null }))) {
+        bloquear("ya_registrado");
+        continue;
+      }
+      let enviado = false;
+      try {
+        await deps.enviador.enviar({
+          organizationId,
+          customerId: c.customerId,
+          telefono: c.telefono as string,
+          phoneNumberId: ctx.phoneNumberId as string,
+          plantilla: ctx.plantillaNombre as string,
+          idioma: ctx.plantillaIdioma,
+          params,
+          body: renderPlantilla(params),
+          dedupeKey,
+        });
+        enviado = true;
+      } finally {
+        if (!enviado) await deps.repo.liberarEnvio(organizationId, c.customerId, dia).catch(() => undefined);
+      }
+      await deps.repo.ligarOutbox(organizationId, c.customerId, dia, dedupeKey).catch(() => undefined); // best-effort: la cancelacion por baja busca por la llave
+      enviados += 1;
+      hoy += 1;
     } catch {
       bloquear("error");
     }
@@ -401,6 +417,26 @@ export function crearRepoReactivacionPostgres(session: TenantDbSession): RepoRea
           (await session.query<{ nuevo: boolean }>(`select restaurantes.reactivacion_registrar_envio($1::uuid, $2::uuid, $3::uuid, $4::date, $5::text, $6::text, $7::text, $8::uuid) as nuevo;`, [a.organizationId, a.customerId, a.propertyId, a.dia, a.estado, a.plantilla, a.favorito, a.outboxId])).rows[0]?.nuevo === true,
         isRecoverable: pendiente,
         fallback: async () => false,
+      }),
+    liberarEnvio: (org, cliente, dia) =>
+      runWithSavepointFallback<void>({
+        session,
+        savepointName: "sp_react_liberar",
+        primary: async () => {
+          await session.query(`select restaurantes.reactivacion_liberar_envio($1::uuid, $2::uuid, $3::date);`, [org, cliente, dia]);
+        },
+        isRecoverable: pendiente,
+        fallback: async () => undefined,
+      }),
+    ligarOutbox: (org, cliente, dia, llave) =>
+      runWithSavepointFallback<void>({
+        session,
+        savepointName: "sp_react_ligar",
+        primary: async () => {
+          await session.query(`select restaurantes.reactivacion_ligar_outbox($1::uuid, $2::uuid, $3::date, $4::text);`, [org, cliente, dia, llave]);
+        },
+        isRecoverable: pendiente,
+        fallback: async () => undefined,
       }),
     registrarCorrida: (a) =>
       runWithSavepointFallback<void>({

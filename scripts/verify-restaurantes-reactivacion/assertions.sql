@@ -328,6 +328,65 @@ reset role;
 select count(*) as sigue_revocado_deberia_ser_1 from restaurantes.marketing_consentimiento where customer_id = '00000000-0000-0000-0000-00000c460001' and estado = 'revocado';
 rollback;
 
+\echo '=== G1. R-4: simulado y real el mismo dia -> la fila simulada se promueve a encolado y registrar devuelve true ==='
+begin;
+set local role authenticated;
+select restaurantes.reactivacion_registrar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-0000000e46a1', current_date, 'simulado', 'reactivacion_favorito', 'Tacos de cochinita', null);
+select restaurantes.reactivacion_registrar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-0000000e46a1', current_date, 'encolado', 'reactivacion_favorito', 'Tacos de cochinita', null);
+reset role;
+select count(*) as promovida_deberia_ser_1 from restaurantes.reactivacion_envio where customer_id = '00000000-0000-0000-0000-00000c460001' and estado = 'encolado';
+rollback;
+
+\echo '=== G2. R-4: con una fila encolado de hoy, un segundo registro devuelve false (no se envia) y no la pisa ==='
+begin;
+set local role authenticated;
+select restaurantes.reactivacion_registrar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-0000000e46a1', current_date, 'encolado', 'reactivacion_favorito', 'Tacos de cochinita', null);
+reset role;
+set local role authenticated;
+select count(*) as segundo_deberia_ser_0 from (select restaurantes.reactivacion_registrar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-0000000e46a1', current_date, 'encolado', 'x', 'y', null) as nuevo) r where r.nuevo;
+rollback;
+
+\echo '=== G3. R-4: liberar_envio borra la reserva sin outbox (envio fallido) ==='
+begin;
+set local role authenticated;
+select restaurantes.reactivacion_registrar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-0000000e46a1', current_date, 'encolado', 'reactivacion_favorito', 'Tacos de cochinita', null);
+select restaurantes.reactivacion_liberar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', current_date);
+reset role;
+select count(*) as liberada_deberia_ser_0 from restaurantes.reactivacion_envio where customer_id = '00000000-0000-0000-0000-00000c460001';
+rollback;
+
+\echo '=== G4. R-5: ligar_outbox liga el envio con la fila del outbox por su llave ==='
+begin;
+insert into restaurantes.messaging_outbox (organization_id, channel, event_type, dedupe_key, payload) values ('00000000-0000-0000-0000-0000000e4601', 'whatsapp', 'marketing_reactivacion_automatica', 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:' || current_date::text, '{}'::jsonb);
+set local role authenticated;
+select restaurantes.reactivacion_registrar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-0000000e46a1', current_date, 'encolado', 'reactivacion_favorito', 'Tacos de cochinita', null);
+select restaurantes.reactivacion_ligar_outbox('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', current_date, 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:' || current_date::text);
+reset role;
+select count(*) as ligado_deberia_ser_1 from restaurantes.reactivacion_envio where customer_id = '00000000-0000-0000-0000-00000c460001' and outbox_id is not null;
+rollback;
+
+\echo '=== G5. R-5: una BAJA mata el mensaje de reactivacion pendiente y marca el envio cancelado_baja ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) values ('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', 'whatsapp', 'otorgado', 'agente_whatsapp', 'v1', now());
+insert into restaurantes.messaging_outbox (organization_id, channel, event_type, dedupe_key, payload) values ('00000000-0000-0000-0000-0000000e4601', 'whatsapp', 'marketing_reactivacion_automatica', 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:' || current_date::text, '{}'::jsonb);
+set local role authenticated;
+select restaurantes.reactivacion_registrar_envio('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-0000000e46a1', current_date, 'encolado', 'reactivacion_favorito', 'Tacos de cochinita', null);
+select restaurantes.reactivacion_ligar_outbox('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', current_date, 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:' || current_date::text);
+select restaurantes.marketing_revocar_por_telefono('00000000-0000-0000-0000-0000000e4601', '+525554600001');
+reset role;
+select (select count(*) from restaurantes.messaging_outbox where dedupe_key like 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:%' and status = 'dead' and last_error_class = 'baja_marketing') + (select count(*) from restaurantes.reactivacion_envio where customer_id = '00000000-0000-0000-0000-00000c460001' and estado = 'cancelado_baja') as baja_outbox_deberia_ser_2;
+rollback;
+
+\echo '=== G6. R-5: la baja de OTRO cliente no toca el mensaje pendiente de este ==='
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) select '00000000-0000-0000-0000-0000000e4601', id, 'whatsapp', 'otorgado', 'agente_whatsapp', 'v1', now() from restaurantes.customers where id in ('00000000-0000-0000-0000-00000c460001', '00000000-0000-0000-0000-00000c460002');
+insert into restaurantes.messaging_outbox (organization_id, channel, event_type, dedupe_key, payload) values ('00000000-0000-0000-0000-0000000e4601', 'whatsapp', 'marketing_reactivacion_automatica', 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:' || current_date::text, '{}'::jsonb);
+set local role authenticated;
+select restaurantes.marketing_revocar_por_telefono('00000000-0000-0000-0000-0000000e4601', '+525554600002');
+reset role;
+select count(*) as intacto_deberia_ser_1 from restaurantes.messaging_outbox where dedupe_key like 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:%' and status = 'pending';
+rollback;
+
 \echo '=== E1. RLS: el owner de A lee las corridas de A; el de B no ve ninguna de A ==='
 begin;
 insert into restaurantes.reactivacion_corrida (organization_id, modo) values ('00000000-0000-0000-0000-0000000e4601', 'simulado');
