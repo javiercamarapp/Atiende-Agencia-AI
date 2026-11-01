@@ -211,6 +211,9 @@ export async function handleInboundWhatsAppMessage(
     readonly botonId?: string;
     /** Instante (ms) en que el cliente envio el mensaje: con mas de ~23 h ya no se encolan botones (ventana de 24 h de WhatsApp). Ausente = acaba de escribir. */
     readonly recibidoEnMs?: number;
+    /** F4b (migracion 171): respuesta a la encuesta post-entrega. Devuelve el texto fijo a contestar si el mensaje es la calificacion (1 a 5), el comentario opcional o la BAJA de una
+     * encuesta abierta de ese telefono; `null` = no es de la encuesta y el turno sigue como siempre. Ausente = sin encuestas. Nunca se consulta con un toque de boton ni con un texto de alto riesgo. */
+    readonly encuesta?: (organizationId: string, phone: string, body: string) => Promise<string | null>;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -247,6 +250,20 @@ export async function handleInboundWhatsAppMessage(
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
       const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(sanearTexto(body)), args.botonId), at: ahoraIso() };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
+
+      // F4b -- encuesta post-entrega: la calificacion "4", el comentario que sigue o la BAJA se contestan con texto fijo, sin modelo. Un mensaje de alto riesgo (queja, alergia, ARCO...) nunca se
+      // toma como respuesta de encuesta: sigue al agente, que escala. Un fallo de la encuesta jamas tumba el turno (se ignora y el mensaje pasa al agente).
+      if (args.encuesta && args.botonId === undefined && classifyHighRiskIntent(body) === null) {
+        const respuestaEncuesta = await repo.runWithRowSavepoint(() => args.encuesta!(organizationId, phone, body)).catch(() => null);
+        if (respuestaEncuesta) {
+          await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: respuestaEncuesta, at: ahoraIso() }], null, null, null);
+          if (deliverReply) {
+            await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, { to: phone, phone_number_id: phoneNumberId, body: respuestaEncuesta, transaccional: true });
+          }
+          await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+          return { ok: true, retryable: false, reply: respuestaEncuesta, orderId: null, escalated: false };
+        }
+      }
 
       // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
       // una respuesta legal ni depende de "acordarse" de registrar la solicitud). La identidad es
