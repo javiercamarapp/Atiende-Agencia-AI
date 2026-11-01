@@ -232,11 +232,10 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
   }
 
   async leerConfigEncuesta(organizationId: string, propertyId: string): Promise<LecturaCiclo<ConfigEncuesta>> {
-    return this.lectura({ habilitada: false, linkResena: null }, () => this.configEncuesta.get(`${organizationId}:${propertyId}`) ?? { habilitada: false, linkResena: null });
+    return this.lectura({ habilitada: false }, () => this.configEncuesta.get(`${organizationId}:${propertyId}`) ?? { habilitada: false });
   }
   async guardarConfigEncuesta(organizationId: string, propertyId: string, config: ConfigEncuesta): Promise<void> {
     await this.escritura(async () => {
-      if (config.linkResena != null && !/^https:\/\//.test(config.linkResena)) throw new CicloValidacionError("link invalido");
       this.configEncuesta.set(`${organizationId}:${propertyId}`, config);
     });
   }
@@ -265,7 +264,6 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
             ultimaEncuestaAt: ultima ? ultima.toISOString() : null,
             optOut: this.optouts.has(`${e.organizationId}:${e.phoneHash}`),
             consentimiento: e.consentimiento === true,
-            linkResena: this.configEncuesta.get(`${e.organizationId}:${e.propertyId}`)?.linkResena ?? null,
           };
         }),
     );
@@ -325,7 +323,7 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
       f.estado = "respondida";
       f.calificacion = calificacion;
       f.respondidaEn = ahora;
-      return { resultado: "respondida", encuestaId: f.id, orderId: f.orderId, propertyId: f.propertyId, orderNumber: null, linkResena: this.configEncuesta.get(`${organizationId}:${f.propertyId}`)?.linkResena ?? null };
+      return { resultado: "respondida", encuestaId: f.id, orderId: f.orderId, propertyId: f.propertyId, orderNumber: null };
     });
   }
 

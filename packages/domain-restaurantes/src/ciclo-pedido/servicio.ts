@@ -322,7 +322,7 @@ export async function procesarMensajeDeEncuesta(deps: CicloServicioDeps, args: {
     if (r.resultado !== "respondida" || !r.orderId || !r.propertyId) return null;
     const order = await deps.repo.findOrderById(args.organizationId, r.orderId);
     const sucursal = order?.branch ?? "la sucursal";
-    const textos = textosTrasCalificar(interpretado.valor, sucursal, r.linkResena ?? null);
+    const textos = textosTrasCalificar(interpretado.valor, sucursal);
     if (textos.esBaja) await abrirRecuperacionPrivada(deps, order, interpretado.valor, r.propertyId, r.orderNumber ?? null);
     return { reply: textos.cliente, tipo: "calificacion" };
   }

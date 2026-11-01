@@ -294,16 +294,15 @@ select public.t_como('00000000-0000-0000-0000-0000000e7012');
 select count(*) as apagada_deberia_ser_0 from restaurantes.encuesta_config_leer('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1') where habilitada;
 rollback;
 
-\echo '=== S2. solo owner/admin encienden la encuesta; el staff no (42501); el link debe ser https (23514) ==='
+\echo '=== S2. solo owner/admin encienden la encuesta; el staff no (42501); no existe ningun enlace de resena ==='
 begin;
 set local role authenticated;
 select public.t_como('00000000-0000-0000-0000-0000000e7012');
-select public.t_esperar_error($$select restaurantes.encuesta_config_guardar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', true, null)$$, '42501');
+select public.t_esperar_error($$select restaurantes.encuesta_config_guardar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', true)$$, '42501');
 set local role authenticated;
 select public.t_como('00000000-0000-0000-0000-0000000e7011');
-select public.t_esperar_error($$select restaurantes.encuesta_config_guardar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', true, 'http://inseguro.example')$$, '23514');
-select restaurantes.encuesta_config_guardar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', true, 'https://g.page/r/ejemplo/review');
-select count(*) as encendida_deberia_ser_1 from restaurantes.encuesta_config_leer('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1') where habilitada and link_resena = 'https://g.page/r/ejemplo/review';
+select restaurantes.encuesta_config_guardar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', true);
+select count(*) as encendida_deberia_ser_1 from restaurantes.encuesta_config_leer('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1') where habilitada;
 rollback;
 
 \echo '=== S3. las candidatas son solo de sistema: pedido entregado hace 3 h con la encuesta encendida; el staff no las ve (42501) ==='

@@ -141,7 +141,7 @@ describe("PostgresCicloPedidoRepository contra la base sin migrar y errores de r
         respond: () => [
           {
             order_id: ORD, organization_id: ORG, property_id: PROP, customer_phone: "9991230001", delivered_at: "2026-10-20T15:00:00.000Z", zona_horaria: "America/Merida",
-            phone_hash: "b".repeat(64), ultimo_entrante_at: null, ultima_encuesta_at: null, opt_out: false, consentimiento: true, link_resena: null,
+            phone_hash: "b".repeat(64), ultimo_entrante_at: null, ultima_encuesta_at: null, opt_out: false, consentimiento: true,
           },
         ],
       },

@@ -148,17 +148,17 @@ describe("salida con repartidor y entrega con hora real", () => {
 });
 
 describe("configuracion de encuesta y de recordatorios", () => {
-  it("la encuesta viene APAGADA por omision; solo el dueno/admin la enciende; el link debe ser https", async () => {
+  it("la encuesta viene APAGADA por omision; solo el dueno/admin la enciende; no acepta enlace de resena", async () => {
     const { ctx, app, ruta } = await montar();
     const antes = await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedGet(ctx.staff.owner.token));
-    expect(await antes.json()).toEqual({ disponible: true, habilitada: false, linkResena: null });
+    expect(await antes.json()).toEqual({ disponible: true, habilitada: false });
     expect((await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedJson(ctx.staff.staffSucursalA.token, { habilitada: true }, "PUT"))).status).toBe(403);
-    expect((await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedJson(ctx.staff.owner.token, { habilitada: true, linkResena: "http://inseguro.example" }, "PUT"))).status).toBe(400);
+    expect((await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedJson(ctx.staff.owner.token, { habilitada: true, linkResena: "https://g.page/r/ejemplo/review" }, "PUT"))).status).toBe(400); // ya no hay enlace de resena
     expect((await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedJson(ctx.staff.owner.token, { habilitada: "si" }, "PUT"))).status).toBe(400);
-    const ok = await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedJson(ctx.staff.owner.token, { habilitada: true, linkResena: "https://g.page/r/ejemplo/review" }, "PUT"));
+    const ok = await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedJson(ctx.staff.owner.token, { habilitada: true }, "PUT"));
     expect(ok.status).toBe(200);
     const despues = await app.request(ruta(ctx.propertyIdA, "encuesta/config"), authedGet(ctx.staff.staffSucursalA.token));
-    expect(await despues.json()).toEqual({ disponible: true, habilitada: true, linkResena: "https://g.page/r/ejemplo/review" });
+    expect(await despues.json()).toEqual({ disponible: true, habilitada: true });
   });
 
   it("recordatorios: valores por omision 10/10/3; PUT valida rangos y solo owner/admin", async () => {

@@ -86,17 +86,12 @@ describe("encuesta: textos", () => {
     expect(t).toContain("BAJA");
     expect(textoEncuestaSeguro(t)).toBe(true);
   });
-  it(">= 4 invita a resenar solo si hay link y sin incentivo; <= 3 es privado y NUNCA menciona Google", () => {
-    const alta = textosTrasCalificar(5, "Sucursal", "https://g.page/r/ejemplo/review");
-    expect(alta.esBaja).toBe(false);
-    expect(alta.cliente).toContain("https://g.page/r/ejemplo/review");
-    expect(textoEncuestaSeguro(alta.cliente)).toBe(true);
-    expect(textosTrasCalificar(5, "Sucursal", null).cliente).not.toContain("http");
-    for (const n of [1, 2, 3]) {
-      const baja = textosTrasCalificar(n, "Sucursal", "https://g.page/r/ejemplo/review");
-      expect(baja.esBaja).toBe(true);
-      expect(baja.cliente.toLowerCase()).not.toContain("google");
-      expect(baja.cliente).not.toContain("http");
+  it("ninguna calificacion recibe enlace de resena; <= 3 es seguimiento privado y NUNCA menciona Google", () => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      const t = textosTrasCalificar(n, "Sucursal");
+      expect(t.cliente.toLowerCase()).not.toContain("google");
+      expect(t.cliente).not.toContain("http");
+      expect(textoEncuestaSeguro(t.cliente)).toBe(true);
     }
   });
   it("detecta un texto con incentivo (la guarda que usa el servicio antes de enviar)", () => {

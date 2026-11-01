@@ -184,15 +184,12 @@ export function restaurantesAdminCicloPedidoRoutes(deps: AppDeps): Hono<CoreAuth
   });
   app.put(`${base}/encuesta/config`, async (c) => {
     if (!esDuenoOAdmin(c.get("verticalRole"))) throw Errors.forbidden("Solo el dueño o un administrador configura la encuesta.");
+    // Sin enlace de resena (P1-2 de la revision de #713): la encuesta no ofrece resenas a nadie, asi que ya no hay campo `linkResena`.
     const raw = await readJsonCapped<{ habilitada?: unknown; linkResena?: unknown }>(c.req.raw, 2 * 1024);
+    if (raw.linkResena !== undefined) throw Errors.validation("linkResena: la encuesta ya no ofrece enlaces de reseña.");
     const habilitada = booleano(raw.habilitada, "habilitada");
-    let linkResena: string | null = null;
-    if (raw.linkResena !== undefined && raw.linkResena !== null && raw.linkResena !== "") {
-      if (typeof raw.linkResena !== "string" || !/^https:\/\/\S+$/.test(raw.linkResena) || raw.linkResena.length > 300) throw Errors.validation("linkResena: se esperaba una URL https de hasta 300 caracteres.");
-      linkResena = raw.linkResena;
-    }
     try {
-      await repoCiclo(c).guardarConfigEncuesta(c.get("organizationId"), c.req.param("propertyId"), { habilitada, linkResena });
+      await repoCiclo(c).guardarConfigEncuesta(c.get("organizationId"), c.req.param("propertyId"), { habilitada });
     } catch (err) {
       return traducir(err);
     }

@@ -2,6 +2,9 @@
 -- solo dentro de la ventana de 24 h de WhatsApp o con plantilla aprobada (y consentimiento), con baja (opt-out), registro y metricas.
 -- Prefijo de supabase/migrations: 20240101000471. Requiere: 091 (consentimiento_aviso_vigente), 090/170 (orders), 001 (whatsapp_conversations).
 --
+-- Revision de #713 (P1-2): SIN filtrado de resenas. La encuesta no ofrece enlace de resena a nadie (politicas de Google y FTC 16 CFR 465 prohiben condicionarlo a la calificacion), por eso
+-- la configuracion ya no guarda ningun enlace.
+--
 -- Que agrega:
 --   1. restaurantes.encuesta_config (por sucursal; APAGADA por omision) y restaurantes.encuesta_optout (huella del telefono, sin telefono).
 --   2. restaurantes.encuesta_entrega: un renglon por pedido (UNIQUE) con estado enviada | respondida | omitida (+ motivo), canal de envio,
@@ -25,7 +28,6 @@ create table if not exists restaurantes.encuesta_config (
   property_id uuid primary key references core.property(id) on delete cascade,
   organization_id uuid not null references core.organization(id) on delete cascade,
   habilitada boolean not null default false,
-  link_resena text check (link_resena is null or (link_resena ~ '^https://' and length(link_resena) <= 300)),
   actualizado_en timestamptz not null default now()
 );
 
@@ -76,7 +78,7 @@ create policy "staff lee las encuestas de su organizacion" on restaurantes.encue
 -- Panel: configuracion
 -- ---------------------------------------------------------------------------
 create or replace function restaurantes.encuesta_config_leer(p_organization_id uuid, p_property_id uuid)
-returns table (habilitada boolean, link_resena text)
+returns table (habilitada boolean)
 language plpgsql
 stable
 security definer
@@ -94,11 +96,11 @@ begin
   ) then
     raise exception 'sin permiso para esta sucursal' using errcode = '42501';
   end if;
-  return query select coalesce(c.habilitada, false), c.link_resena from (select 1) u left join restaurantes.encuesta_config c on c.property_id = p_property_id and c.organization_id = p_organization_id;
+  return query select coalesce(c.habilitada, false) from (select 1) u left join restaurantes.encuesta_config c on c.property_id = p_property_id and c.organization_id = p_organization_id;
 end;
 $$;
 
-create or replace function restaurantes.encuesta_config_guardar(p_organization_id uuid, p_property_id uuid, p_habilitada boolean, p_link_resena text default null)
+create or replace function restaurantes.encuesta_config_guardar(p_organization_id uuid, p_property_id uuid, p_habilitada boolean)
 returns void
 language plpgsql
 security definer
@@ -118,9 +120,9 @@ begin
   ) then
     raise exception 'solo owner/admin de la sucursal configuran la encuesta' using errcode = '42501';
   end if;
-  insert into restaurantes.encuesta_config (property_id, organization_id, habilitada, link_resena, actualizado_en)
-  values (p_property_id, p_organization_id, p_habilitada, nullif(btrim(coalesce(p_link_resena, '')), ''), now())
-  on conflict (property_id) do update set habilitada = excluded.habilitada, link_resena = excluded.link_resena, actualizado_en = now();
+  insert into restaurantes.encuesta_config (property_id, organization_id, habilitada, actualizado_en)
+  values (p_property_id, p_organization_id, p_habilitada, now())
+  on conflict (property_id) do update set habilitada = excluded.habilitada, actualizado_en = now();
 end;
 $$;
 
@@ -130,7 +132,7 @@ $$;
 -- Pedidos entregados hace >= 2 h (y <= 36 h, para poder diferir el silencio nocturno) de sucursales con la encuesta encendida y SIN renglon de encuesta.
 create or replace function restaurantes.encuesta_candidatas(p_ahora timestamptz, p_limite integer default 50)
 returns table (order_id uuid, organization_id uuid, property_id uuid, customer_phone text, delivered_at timestamptz, zona_horaria text, phone_hash text,
-               ultimo_entrante_at timestamptz, ultima_encuesta_at timestamptz, opt_out boolean, consentimiento boolean, link_resena text)
+               ultimo_entrante_at timestamptz, ultima_encuesta_at timestamptz, opt_out boolean, consentimiento boolean)
 language plpgsql
 stable
 security definer
@@ -149,10 +151,9 @@ begin
              and right(regexp_replace(w.phone, '\D', '', 'g'), 10) = x.digitos),
          (select max(e.enviada_en) from restaurantes.encuesta_entrega e where e.organization_id = x.organization_id and e.phone_hash = x.phone_hash and e.estado in ('enviada', 'respondida')),
          exists (select 1 from restaurantes.encuesta_optout o where o.organization_id = x.organization_id and o.phone_hash = x.phone_hash),
-         restaurantes.consentimiento_aviso_vigente(x.organization_id, '+52' || x.digitos),
-         x.link_resena
+         restaurantes.consentimiento_aviso_vigente(x.organization_id, '+52' || x.digitos)
   from (
-    select o.id as order_id, o.organization_id, o.property_id, o.customer_phone, o.delivered_at, bd.zona_horaria, c.link_resena,
+    select o.id as order_id, o.organization_id, o.property_id, o.customer_phone, o.delivered_at, bd.zona_horaria,
            right(regexp_replace(o.customer_phone, '\D', '', 'g'), 10) as digitos,
            encode(sha256(convert_to(right(regexp_replace(o.customer_phone, '\D', '', 'g'), 10), 'UTF8')), 'hex') as phone_hash
     from restaurantes.orders o
@@ -281,8 +282,7 @@ begin
   end if;
   update restaurantes.encuesta_entrega set estado = 'respondida', calificacion = p_calificacion, respondida_en = p_ahora where id = v_e.id;
   select order_number into v_num from restaurantes.orders where id = v_e.order_id;
-  return jsonb_build_object('resultado', 'respondida', 'encuesta_id', v_e.id, 'order_id', v_e.order_id, 'property_id', v_e.property_id, 'order_number', v_num,
-                            'link_resena', (select c.link_resena from restaurantes.encuesta_config c where c.property_id = v_e.property_id));
+  return jsonb_build_object('resultado', 'respondida', 'encuesta_id', v_e.id, 'order_id', v_e.order_id, 'property_id', v_e.property_id, 'order_number', v_num);
 end;
 $$;
 
@@ -386,7 +386,7 @@ declare
   f text;
 begin
   foreach f in array array[
-    'encuesta_config_leer(uuid, uuid)', 'encuesta_config_guardar(uuid, uuid, boolean, text)', 'encuesta_candidatas(timestamptz, integer)',
+    'encuesta_config_leer(uuid, uuid)', 'encuesta_config_guardar(uuid, uuid, boolean)', 'encuesta_candidatas(timestamptz, integer)',
     'encuesta_reservar(uuid, uuid, text, text, text, text)', 'encuesta_estado_para(uuid, text, timestamptz)', 'encuesta_responder(uuid, text, integer, timestamptz)',
     'encuesta_comentar(uuid, text, text, timestamptz)', 'encuesta_optout_registrar(uuid, text)', 'encuesta_metricas(uuid, uuid, timestamptz, timestamptz)'
   ] loop

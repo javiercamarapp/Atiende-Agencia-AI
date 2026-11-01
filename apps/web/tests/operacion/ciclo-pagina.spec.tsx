@@ -41,7 +41,7 @@ function servidor(opciones: { pedidos?: unknown[]; estado?: number; ratios?: unk
     if (u.includes("/admin/orders")) return opciones.estado ? json(opciones.estado, { code: "service_unavailable", message: "503 base sin migrar" }) : json(200, { orders: opciones.pedidos ?? [], nextCursor: null });
     if (u.includes("/admin/staff/repartidores")) return json(200, { repartidores: [{ id: CHOFER, email: "chofer@example.com", fullName: "Chofer Uno", propertyIds: null }] });
     if (u.includes("/admin/ciclo/ratios")) return json(200, opciones.ratios ?? RATIOS);
-    if (u.includes("/encuesta/config")) return json(200, { disponible: true, habilitada: false, linkResena: null });
+    if (u.includes("/encuesta/config")) return json(200, { disponible: true, habilitada: false });
     if (u.includes("/recordatorios/config")) return json(200, { disponible: true, habilitado: true, primeroMin: 10, repetirMin: 10, maximo: 3 });
     return json(404, { code: "not_found", message: "no" });
   });

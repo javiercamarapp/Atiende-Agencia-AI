@@ -203,7 +203,7 @@ export function OperacionCicloPage({ apiBaseUrl, token, propertyId, role }: Rest
                     checked={encuesta.habilitada}
                     aria-label="Encuesta de satisfacción después de entregar"
                     onCheckedChange={(v) => {
-                      void guardarConfigEncuesta(fetchImpl, apiBaseUrl, token, propertyId, v, encuesta.linkResena)
+                      void guardarConfigEncuesta(fetchImpl, apiBaseUrl, token, propertyId, v)
                         .then(() => {
                           setEncuesta({ ...encuesta, habilitada: v });
                           notify.success(v ? "Encuesta encendida." : "Encuesta apagada.");

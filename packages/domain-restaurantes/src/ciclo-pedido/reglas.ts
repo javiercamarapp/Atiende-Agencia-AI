@@ -2,7 +2,7 @@
 // encuesta post-entrega (envio, respuesta, baja), recordatorios sin aceptar y ratios de operacion. Sin red, sin base, sin reloj propio
 // (todo recibe el instante): lo prueban los tests deterministas y lo reutilizan el servicio y las rutas. Los criterios de la encuesta
 // (2 a 3 h, silencio 23:00-9:00, una cada 14 dias, 1 a 5, sin incentivo de resena) viven en `../encuesta-reglas.ts` y NO se reescriben aqui.
-import { ENCUESTA_ESCALA_MAX, ENCUESTA_ESCALA_MIN, accionSegunCalificacion, contieneIncentivoDeResena, decidirEnvioEncuesta, textoInvitacionResenaGoogle, textoRecuperacionPrivada } from "../encuesta-reglas.ts";
+import { ENCUESTA_ESCALA_MAX, ENCUESTA_ESCALA_MIN, accionSegunCalificacion, contieneIncentivoDeResena, decidirEnvioEncuesta, textoRecuperacionPrivada } from "../encuesta-reglas.ts";
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
 // 1. Aceptar / rechazar
@@ -176,16 +176,15 @@ export interface TextosRespuestaEncuesta {
   readonly esBaja: boolean;
 }
 
-/** Mensaje de cierre segun la nota: >= 4 invita a resenar solo si hay link (sin incentivo); <= 3 abre recuperacion privada y NUNCA menciona Google. */
-export function textosTrasCalificar(calificacion: number, nombreSucursal: string, linkResena: string | null): TextosRespuestaEncuesta {
+/**
+ * Mensaje de cierre segun la nota. SIN filtrado de resenas (P1-2 de la revision de #713; politicas de Google y FTC 16 CFR 465): el enlace de resena NO depende de la calificacion y
+ * esta encuesta no ofrece ninguno (a nadie). <= 3 abre un seguimiento INTERNO (devolver llamada) como paso adicional, sin mencionar Google ni resenas.
+ */
+export function textosTrasCalificar(calificacion: number, nombreSucursal: string): TextosRespuestaEncuesta {
   const accion = accionSegunCalificacion(calificacion);
   const pedirComentario = "Si quiere agregar un comentario, escríbalo ahora en un solo mensaje.";
-  if (accion.tipo === "invitar_resena_google") {
-    const invitacion = textoInvitacionResenaGoogle({ nombreSucursal, urlResenaGoogle: linkResena });
-    const base = invitacion ?? "¡Gracias por su calificación!";
-    return { cliente: `${base} ${pedirComentario}`, esBaja: false };
-  }
-  return { cliente: `${textoRecuperacionPrivada(nombreSucursal)}`, esBaja: true };
+  if (accion.tipo === "invitar_resena_google") return { cliente: `¡Gracias por su calificación! ${pedirComentario}`, esBaja: false };
+  return { cliente: textoRecuperacionPrivada(nombreSucursal), esBaja: true };
 }
 export const TEXTO_GRACIAS_COMENTARIO = "Gracias, su comentario quedó registrado.";
 export const TEXTO_BAJA_ENCUESTA = "Listo, no le enviaremos más encuestas. Gracias.";

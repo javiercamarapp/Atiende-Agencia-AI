@@ -74,7 +74,6 @@ export interface RespuestaRatios {
 export interface ConfigEncuesta {
   readonly disponible: boolean;
   readonly habilitada: boolean;
-  readonly linkResena: string | null;
 }
 export interface ConfigRecordatorios {
   readonly disponible: boolean;
@@ -110,8 +109,8 @@ export function fetchRatios(fetchImpl: typeof fetch, apiBaseUrl: string, token: 
 export function fetchConfigEncuesta(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<ConfigEncuesta> {
   return leer<ConfigEncuesta>(fetchImpl, `${base(apiBaseUrl, propertyId)}/encuesta/config`, token);
 }
-export function guardarConfigEncuesta(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, habilitada: boolean, linkResena: string | null): Promise<{ readonly ok: boolean }> {
-  return sendJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/encuesta/config`, token, "PUT", { habilitada, linkResena });
+export function guardarConfigEncuesta(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, habilitada: boolean): Promise<{ readonly ok: boolean }> {
+  return sendJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/encuesta/config`, token, "PUT", { habilitada });
 }
 export function fetchConfigRecordatorios(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<ConfigRecordatorios> {
   return leer<ConfigRecordatorios>(fetchImpl, `${base(apiBaseUrl, propertyId)}/recordatorios/config`, token);

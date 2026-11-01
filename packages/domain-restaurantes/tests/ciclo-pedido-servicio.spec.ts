@@ -251,7 +251,7 @@ describe("encuesta post-entrega", () => {
     const m = montar();
     const ahora = extra.ahora ?? min(0);
     m.ciclo.ahora = () => ahora;
-    void m.ciclo.guardarConfigEncuesta(m.org, "prop", { habilitada: extra.habilitada ?? true, linkResena: "https://g.page/r/ejemplo/review" });
+    void m.ciclo.guardarConfigEncuesta(m.org, "prop", { habilitada: extra.habilitada ?? true });
     const orderId = randomUUID();
     m.ciclo.sembrarEntrega({
       orderId,
@@ -341,12 +341,12 @@ describe("encuesta post-entrega", () => {
     return e;
   }
 
-  it("calificacion alta: se registra, agradece, invita a resenar con el link (sin incentivo) y pide comentario opcional", async () => {
+  it("calificacion alta: se registra, agradece SIN enlace de resena y pide comentario opcional", async () => {
     const e = await enviada();
     expect(e.ciclo.filasEncuesta()[0]?.estado).toBe("enviada");
     const r = await procesarMensajeDeEncuesta(e.deps, { organizationId: e.org, phone: "+5219991230001", body: "5", ahora: min(1) });
     expect(r?.tipo).toBe("calificacion");
-    expect(r?.reply).toContain("https://g.page/r/ejemplo/review");
+    expect(r?.reply).not.toContain("http");
     expect(r?.reply).toContain("comentario");
     expect(e.ciclo.filasEncuesta()[0]).toMatchObject({ estado: "respondida", calificacion: 5 });
     expect(e.fixture.repo.peekCallbackRequests()).toHaveLength(0);

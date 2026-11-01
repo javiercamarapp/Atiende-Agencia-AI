@@ -39,7 +39,6 @@ export interface ResultadoDespachar {
 
 export interface ConfigEncuesta {
   readonly habilitada: boolean;
-  readonly linkResena: string | null;
 }
 
 export interface CandidatoEncuesta {
@@ -54,7 +53,6 @@ export interface CandidatoEncuesta {
   readonly ultimaEncuestaAt: string | null;
   readonly optOut: boolean;
   readonly consentimiento: boolean;
-  readonly linkResena: string | null;
 }
 
 export type EstadoEsperadoEncuesta = "calificacion" | "comentario" | "ninguna";
@@ -65,7 +63,6 @@ export interface ResultadoResponderEncuesta {
   readonly orderId?: string;
   readonly propertyId?: string;
   readonly orderNumber?: number | null;
-  readonly linkResena?: string | null;
 }
 export interface ResultadoComentarEncuesta {
   readonly resultado: "comentada" | "sin_encuesta";

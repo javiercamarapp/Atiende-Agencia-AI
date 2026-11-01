@@ -155,17 +155,17 @@ export class PostgresCicloPedidoRepository implements CicloPedidoRepository {
 
   // ---- 171 ----
   async leerConfigEncuesta(organizationId: string, propertyId: string): Promise<LecturaCiclo<ConfigEncuesta>> {
-    return this.lectura<ConfigEncuesta>("encuesta_config_leer", { habilitada: false, linkResena: null }, async () => {
+    return this.lectura<ConfigEncuesta>("encuesta_config_leer", { habilitada: false }, async () => {
       const { rows } = await this.db
-        .query<{ habilitada: boolean; link_resena: string | null }>("select habilitada, link_resena from restaurantes.encuesta_config_leer($1::uuid, $2::uuid);", [organizationId, propertyId])
+        .query<{ habilitada: boolean }>("select habilitada from restaurantes.encuesta_config_leer($1::uuid, $2::uuid);", [organizationId, propertyId])
         .catch((e) => (isMigrationPendingError(e) ? Promise.reject(e) : traducir(e)));
-      return { habilitada: rows[0]?.habilitada === true, linkResena: rows[0]?.link_resena ?? null };
+      return { habilitada: rows[0]?.habilitada === true };
     });
   }
 
   async guardarConfigEncuesta(organizationId: string, propertyId: string, config: ConfigEncuesta): Promise<void> {
     await this.escritura("encuesta_config_guardar", async () => {
-      await this.db.query("select restaurantes.encuesta_config_guardar($1::uuid, $2::uuid, $3::boolean, $4::text);", [organizationId, propertyId, config.habilitada, config.linkResena]);
+      await this.db.query("select restaurantes.encuesta_config_guardar($1::uuid, $2::uuid, $3::boolean);", [organizationId, propertyId, config.habilitada]);
     });
   }
 
@@ -183,8 +183,7 @@ export class PostgresCicloPedidoRepository implements CicloPedidoRepository {
         ultimoEntranteAt: isoONulo(r.ultimo_entrante_at),
         ultimaEncuestaAt: isoONulo(r.ultima_encuesta_at),
         optOut: r.opt_out === true,
-        consentimiento: r.consentimiento === true,
-        linkResena: r.link_resena === null || r.link_resena === undefined ? null : String(r.link_resena),
+        consentimiento: r.consentimiento === true
       }));
     });
   }
@@ -221,8 +220,7 @@ export class PostgresCicloPedidoRepository implements CicloPedidoRepository {
         encuestaId: String(r.encuesta_id),
         orderId: String(r.order_id),
         propertyId: String(r.property_id),
-        orderNumber: numONulo(r.order_number),
-        linkResena: r.link_resena === null || r.link_resena === undefined ? null : String(r.link_resena),
+        orderNumber: numONulo(r.order_number)
       };
     });
   }

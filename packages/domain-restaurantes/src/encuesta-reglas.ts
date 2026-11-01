@@ -4,8 +4,8 @@
 //  * Se manda de 2 a 3 h despues de `delivered_at`, nunca entre 23:00 y 9:00 (hora de la organizacion), una vez por
 //    pedido y como maximo una cada 14 dias por cliente.
 //  * Pregunta de 1 a 5.
-//  * Con >= 4 se invita a resenar en Google (link de la sucursal, si existe). Con <= 3 se abre una recuperacion
-//    privada: callback con motivo `encuesta_baja` y aviso al gerente; NUNCA se envia a Google.
+//  * Con <= 3 se abre una recuperacion privada: callback con motivo `encuesta_baja` y aviso al gerente. NOTA (revision de #713, P1-2): el enlace de resena NO puede depender de la
+//    calificacion (politicas de Google y FTC 16 CFR 465), asi que el flujo de `ciclo-pedido` no ofrece enlace de resena a nadie; `accionSegunCalificacion` solo decide el seguimiento interno.
 //  * PROHIBIDO condicionar o incentivar la resena ("le damos X si deja 5 estrellas"): `contieneIncentivoDeResena`
 //    lo detecta y es lo que verifica la bateria de textos del test.
 import { componentesLocales } from "./horarios.ts";
