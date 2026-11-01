@@ -69,3 +69,12 @@ describe("145 (P-1, P-2): ARCO completo y borrado real", () => {
     expect(asserts().match(/\((P-1|P-2)\)/g)?.length).toBeGreaterThanOrEqual(14);
   });
 });
+
+describe("146 (P-4): historial_existentes", () => {
+  const f = "146_historial_existentes.sql";
+  it("funcion definer solo owner/admin y espejo identico", () => {
+    expect(mig(f)).toMatch(/historial_existentes[\s\S]*security definer[\s\S]*cliente_es_admin\(p_organization_id\)/);
+    expect(espejo(f, "493")).toBe(mig(f));
+    expect(asserts().match(/\(P-4\)/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+});

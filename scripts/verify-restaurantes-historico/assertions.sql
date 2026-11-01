@@ -502,6 +502,42 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01
 select restaurantes.cliente_borrar_memoria_base('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01') as should_fail;
 rollback;
 
+\echo '--- A48. (P-4) historial_existentes: el admin ve al cliente existente sin huella previa ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select count(*) as deberia_ser_1 from restaurantes.historial_existentes('00000000-0000-0000-0000-0000000f6a00', array['9990064001', '9990064999']) e where e.customer_id is not null and e.huella is null and not e.suprimido;
+rollback;
+
+\echo '--- A49. (P-4) historial_existentes: un telefono desconocido no tiene cliente ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select count(*) as deberia_ser_1 from restaurantes.historial_existentes('00000000-0000-0000-0000-0000000f6a00', array['9990064999']) e where e.customer_id is null;
+rollback;
+
+\echo '--- A50. (P-4) historial_existentes: tras importar trae la huella y marca al suprimido ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+select count(*) as deberia_ser_1 from restaurantes.historial_existentes('00000000-0000-0000-0000-0000000f6a00', array['9990064001']) e where e.huella = repeat('a', 64) and not e.suprimido;
+rollback;
+
+\echo '--- A51. (P-4) historial_existentes: CROSS-TENANT ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e05', true);
+select restaurantes.historial_existentes('00000000-0000-0000-0000-0000000f6a00', array['9990064001']) as should_fail;
+rollback;
+
+\echo '--- A52. (P-4) historial_existentes: staff y admin acotado rechazados ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e03', true);
+select restaurantes.historial_existentes('00000000-0000-0000-0000-0000000f6a00', array['9990064001']) as should_fail;
+rollback;
+
 \echo ''
 \echo '=== B) cliente_perfil_historico (solo sistema) ==='
 

@@ -75,8 +75,8 @@ function filaParaSql(c: PlanImportacion["acciones"][number]["cliente"]): Json {
 }
 
 /**
- * Puerto Postgres del importador. Corre con una sesion de un owner/admin (la funcion lo exige). `existentes` hace una vista previa en base
- * (p_aplicar=false) para que el plan local y el de la base coincidan; `aplicar` ejecuta la misma funcion con p_aplicar=true.
+ * Puerto Postgres del importador. Corre con una sesion de un owner/admin con alcance de organizacion (las funciones lo exigen). `existentes` usa
+ * `historial_existentes`; `aplicar` ejecuta `importar_historial` con p_aplicar=true.
  * Lanza si la base no tiene la migracion 140 (el importador no puede degradar en silencio).
  */
 export class PuertoHistoricoPostgres implements PuertoHistorico {
@@ -85,25 +85,12 @@ export class PuertoHistoricoPostgres implements PuertoHistorico {
   async existentes(organizationId: string, telefonos: readonly string[]): Promise<ReadonlyMap<string, ExistenteHistorico>> {
     const m = new Map<string, ExistenteHistorico>();
     if (telefonos.length === 0) return m;
-    const { rows } = await this.db.query<{ phone: string; id: string; huella: string | null; suprimido: boolean }>(
-      `select c.phone, c.id, h.huella,
-              exists (select 1 from restaurantes.import_historico_supresion s
-                       where s.organization_id = c.organization_id
-                         and s.phone_hash = encode(sha256(convert_to(c.organization_id::text || ':' || c.phone, 'utf8')), 'hex')) as suprimido
-         from restaurantes.customers c
-         left join restaurantes.customer_historial_resumen h on h.customer_id = c.id
-        where c.organization_id = $1 and c.phone = any($2::text[])`,
+    // Solo por la funcion definer (migracion 146): las tablas del historial estan revocadas para authenticated y el hash de supresion lleva pimienta.
+    const { rows } = await this.db.query<{ phone: string; customer_id: string | null; huella: string | null; suprimido: boolean }>(
+      `select phone, customer_id, huella, suprimido from restaurantes.historial_existentes($1, $2::text[]);`,
       [organizationId, [...telefonos]],
     );
-    for (const r of rows) m.set(r.phone, { customerId: r.id, huella: r.huella, suprimido: r.suprimido });
-    // Suprimidos que ya no tienen cliente: se detectan por hash.
-    const { rows: sup } = await this.db.query<{ phone: string }>(
-      `select t.phone from unnest($2::text[]) as t(phone)
-        where exists (select 1 from restaurantes.import_historico_supresion s
-                       where s.organization_id = $1::uuid and s.phone_hash = encode(sha256(convert_to($1::text || ':' || t.phone, 'utf8')), 'hex'))`,
-      [organizationId, [...telefonos]],
-    );
-    for (const s of sup) if (!m.has(s.phone)) m.set(s.phone, { customerId: null, huella: null, suprimido: true });
+    for (const r of rows) m.set(r.phone, { customerId: r.customer_id, huella: r.huella, suprimido: r.suprimido });
     return m;
   }
 
