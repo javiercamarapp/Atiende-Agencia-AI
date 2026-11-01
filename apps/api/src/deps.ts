@@ -28,7 +28,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository, ProductoBajaRepository, IdiomasVozRepository, PersonalizacionAgenteRepository, ArchivosConocimientoRepository, ExtractorTexto, EscanerArchivo } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
@@ -176,6 +176,15 @@ export interface AppDeps {
   /** Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo). OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresAjustesAgenteRepository(db)` (degrada con SAVEPOINT a los valores de siempre contra la base sin migrar). */
   readonly ajustesAgenteRepo?: (db: TenantDbSession) => AjustesAgenteRepository;
+  /** F4c (paridad menor), todos opcionales: ausentes => la ruta responde 503 honesto. En produccion van con `Postgres*` (degradan con SAVEPOINT contra la base sin las migraciones 180-183). */
+  readonly productoBajaRepo?: (db: TenantDbSession) => ProductoBajaRepository;
+  readonly idiomasVozRepo?: (db: TenantDbSession) => IdiomasVozRepository;
+  readonly personalizacionAgenteRepo?: (db: TenantDbSession) => PersonalizacionAgenteRepository;
+  readonly archivosConocimientoRepo?: (db: TenantDbSession) => ArchivosConocimientoRepository;
+  /** Extraccion de texto de PDF/imagenes (interfaz). Ausente = `ExtractorTextoNoConfigurado`: la carga responde "no disponible aun". La extraccion REAL no esta construida. */
+  readonly extractorTextoConocimiento?: ExtractorTexto;
+  /** Escaner de archivos subidos. Ausente = `EscanerHeuristico` (barrera barata, NO un antivirus). */
+  readonly escanerArchivos?: EscanerArchivo;
   /** R-13 (migración 035): KPI de voz, costo y alertas. OPCIONAL: sin él las rutas de KPI responden 503 honesto. En producción es
    * `(db) => new PostgresVozKpiRepository(db)` (cada consulta degrada con SAVEPOINT contra la base sin migrar). */
   readonly vozKpiRepo?: (db: TenantDbSession) => VozKpiRepository;

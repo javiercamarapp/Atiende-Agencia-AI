@@ -146,7 +146,12 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (!sucursal) throw Errors.notFound("La sucursal no existe para esa organización.");
       const lectura = await deps.vozRepo!(db).getConfig(propertyId);
       const ahora = new Date();
-      const { instruccion: instruccionBase, horaLocal, vocabulario } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora });
+      // F4c: idiomas de la sucursal (migracion 181). Con SAVEPOINT (un error SQL no debe abortar la transaccion unica); cualquier fallo = espanol por omision, la instruccion no cambia.
+      const repoIdiomas = deps.idiomasVozRepo;
+      const idiomas = repoIdiomas
+        ? await runWithSavepointFallback({ session: db, primary: async () => (await repoIdiomas(db).leer(propertyId)).valor, isRecoverable: () => true, fallback: async () => null })
+        : null;
+      const { instruccion: instruccionBase, horaLocal, vocabulario } = await armarInstruccionLlamada(restaurantes, { organizationId, propertyId, telefono, config: lectura.valor, ahora, idiomas });
       // Ajustes del agente de la organización (ritmo, estilo, naturalidad, ambiente, tecleo; migraciones 055/087). Base sin migrar o despliegue sin el repositorio: valores de siempre.
       // Si la lectura falla por cualquier motivo (no solo la base sin migrar, que el repositorio ya recupera) la llamada NO se cae: se atiende con los valores de siempre.
       // Va con SAVEPOINT (regla de la casa): dentro de la transaccion unica del request un error SQL deja la transaccion abortada (25P02) y la consulta siguiente (gasto del mes) tambien fallaria.

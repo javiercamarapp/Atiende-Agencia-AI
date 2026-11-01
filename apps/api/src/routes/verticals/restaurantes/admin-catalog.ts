@@ -219,7 +219,9 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     assertAccion(c, "catalogo.ver");
     const repo = deps.restaurantesRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
-    const products = await repo.listProducts(c.get("organizationId"));
+    // F4c: los productos archivados (borrados con historial, migracion 180) ya no se listan. Sin la migracion o sin el repositorio no se oculta nada.
+    const archivados = deps.productoBajaRepo ? await deps.productoBajaRepo(c.get("db")).listarArchivados(c.get("organizationId")) : new Set<string>();
+    const products = (await repo.listProducts(c.get("organizationId"))).filter((p) => !archivados.has(p.id));
     // Se anexa el estado real EN ESTA sucursal (precio/disponibilidad de
     // branch_products) a cada producto del catálogo — `null` cuando el producto
     // nunca se dio de alta ahí, nunca se asume un precio/disponibilidad implícitos.
