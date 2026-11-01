@@ -150,15 +150,34 @@ export function reporteMarkdown(r: ReporteImportacion): string {
   ].join("\n");
 }
 
+export const BASES_LEGALES = ["aviso_privacidad_vigente", "consentimiento_titular", "relacion_comercial_previa", "otra_documentada"] as const;
+export type BaseLegal = (typeof BASES_LEGALES)[number];
+
+/** Declaracion obligatoria al APLICAR: base legal y origen del archivo (queda en el lote, auditable). El origen no debe llevar datos personales. */
+export interface DeclaracionImportacion {
+  readonly baseLegal: BaseLegal;
+  readonly origenDeclarado: string;
+}
+
+export class ImportacionSinBaseLegalError extends Error {
+  constructor() {
+    super("Para aplicar la importacion declara la base legal (aviso_privacidad_vigente, consentimiento_titular, relacion_comercial_previa u otra_documentada) y el origen del archivo (5 a 300 caracteres, sin datos personales).");
+    this.name = "ImportacionSinBaseLegalError";
+  }
+}
+
 /** Puerto de persistencia: el adaptador Postgres llama a `restaurantes.importar_historial` (migracion 140); las pruebas usan el de memoria. */
 export interface PuertoHistorico {
   existentes(organizationId: string, telefonos: readonly string[]): Promise<ReadonlyMap<string, ExistenteHistorico>>;
-  aplicar(organizationId: string, plan: PlanImportacion): Promise<void>;
+  aplicar(organizationId: string, plan: PlanImportacion, declaracion: DeclaracionImportacion): Promise<void>;
 }
 
 export interface OpcionesImportacion extends OpcionesLimpieza {
   /** false (por omision) = vista previa: NO escribe. */
   readonly aplicar?: boolean;
+  /** Obligatorios con `aplicar: true` (P-10). */
+  readonly baseLegal?: BaseLegal;
+  readonly origenDeclarado?: string;
 }
 
 /** Orquesta: parsea -> limpia -> compara contra lo existente -> (opcional) aplica -> reporte. */
@@ -168,13 +187,15 @@ export async function importarHistorial(
   puerto: PuertoHistorico,
   opciones: OpcionesImportacion = {},
 ): Promise<{ plan: PlanImportacion; reporte: ReporteImportacion }> {
+  const aplicar = opciones.aplicar === true;
+  const origen = opciones.origenDeclarado?.trim() ?? "";
+  if (aplicar && (!opciones.baseLegal || !(BASES_LEGALES as readonly string[]).includes(opciones.baseLegal) || origen.length < 5 || origen.length > 300)) throw new ImportacionSinBaseLegalError();
   const crudas = typeof contenido === "string" ? parsearArchivoHistorico(contenido) : contenido;
   const sha = sha256Texto(typeof contenido === "string" ? contenido : JSON.stringify(contenido));
   const { clientes, rechazos } = limpiarArchivoHistorico(crudas, opciones);
   const existentes = await puerto.existentes(organizationId, clientes.map((c) => c.telefono));
   const plan = planificarImportacion(clientes, rechazos, existentes, sha);
-  const aplicar = opciones.aplicar === true;
-  if (aplicar) await puerto.aplicar(organizationId, plan);
+  if (aplicar) await puerto.aplicar(organizationId, plan, { baseLegal: opciones.baseLegal!, origenDeclarado: origen });
   return { plan, reporte: construirReporte(plan, crudas.length, aplicar ? "aplicado" : "vista_previa") };
 }
 
@@ -232,6 +253,7 @@ export class PuertoHistoricoMemoria implements PuertoHistorico {
   readonly clientes = new Map<string, { customerId: string; huella: string | null; cliente: ClienteHistorico | null }>();
   readonly suprimidos = new Set<string>();
   escrituras = 0;
+  readonly declaraciones: DeclaracionImportacion[] = [];
   private seq = 0;
 
   async existentes(_org: string, telefonos: readonly string[]): Promise<ReadonlyMap<string, ExistenteHistorico>> {
@@ -243,7 +265,8 @@ export class PuertoHistoricoMemoria implements PuertoHistorico {
     return m;
   }
 
-  async aplicar(_org: string, plan: PlanImportacion): Promise<void> {
+  async aplicar(_org: string, plan: PlanImportacion, declaracion: DeclaracionImportacion): Promise<void> {
+    this.declaraciones.push(declaracion);
     for (const { cliente, accion } of plan.acciones) {
       if (accion === "sin_cambio") continue;
       this.escrituras++;

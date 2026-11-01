@@ -2,7 +2,7 @@
 // la migracion devuelven `undefined` ("no disponible aun") y el agente se comporta como antes. Sin PII en logs ni en errores.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "@atiende/db";
-import type { ExistenteHistorico, PlanImportacion, PuertoHistorico } from "./importador.ts";
+import type { DeclaracionImportacion, ExistenteHistorico, PlanImportacion, PuertoHistorico } from "./importador.ts";
 import type { EntradaPerfil } from "./perfil.ts";
 
 type Json = Record<string, unknown>;
@@ -94,9 +94,9 @@ export class PuertoHistoricoPostgres implements PuertoHistorico {
     return m;
   }
 
-  async aplicar(organizationId: string, plan: PlanImportacion): Promise<void> {
+  async aplicar(organizationId: string, plan: PlanImportacion, declaracion: DeclaracionImportacion): Promise<void> {
     const filas = plan.acciones.map((a) => filaParaSql(a.cliente));
     if (filas.length === 0) return;
-    await this.db.query(`select restaurantes.importar_historial($1, $2, true, $3::jsonb);`, [organizationId, plan.archivoSha256, JSON.stringify(filas)]);
+    await this.db.query(`select restaurantes.importar_historial($1, $2, true, $3::jsonb, $4, $5);`, [organizationId, plan.archivoSha256, JSON.stringify(filas), declaracion.baseLegal, declaracion.origenDeclarado]);
   }
 }

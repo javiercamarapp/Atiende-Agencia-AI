@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { ArchivoHistoricoInvalidoError, parsearArchivoHistorico, parsearCsvHistorico } from "../src/historico/csv.ts";
 import { crearCatalogoColonias, inferirColoniaDeDireccion, normalizarColonia } from "../src/historico/colonias.ts";
 import { categoriaQueja, fechaDia, limpiarArchivoHistorico, limpiarFilaHistorica, numero } from "../src/historico/limpieza.ts";
-import { PuertoHistoricoMemoria, agregarPedidosACliente, construirReporte, importarHistorial, planificarImportacion, reporteMarkdown } from "../src/historico/importador.ts";
+import { ImportacionSinBaseLegalError, PuertoHistoricoMemoria, agregarPedidosACliente, construirReporte, importarHistorial, planificarImportacion, reporteMarkdown } from "../src/historico/importador.ts";
 
 const ORG = "00000000-0000-0000-0000-00000000aa01";
+const DECLARACION = { baseLegal: "aviso_privacidad_vigente", origenDeclarado: "Export propio del restaurante, capturado bajo su aviso de privacidad" } as const;
 const CSV = [
   "celular,nombre,direccion,colonia,entrega_habitual,pago,preferencias,favoritos,pedidos,gasto_piso_mxn,ticket_mxn,primer_pedido,ultimo_pedido,estado,quejas,duplicado_con,calidad_dato",
   '+5219990000001,Cliente Ejemplo A,"Calle 10 x 11, Col. Montebello",,domicilio,efectivo,tortilla:maiz;salsa:verde;omision:cebolla,"bistec;pastor",8,1600,200,2026-01-05,2026-10-20,activo,demora;salsas,,',
@@ -99,19 +100,19 @@ describe("importador", () => {
     const previa = await importarHistorial(ORG, CSV, puerto);
     expect(previa.reporte).toMatchObject({ modo: "vista_previa", filasLeidas: 5, validas: 3, rechazadas: 2, creadas: 3, conConsentimientoMarketing: 0, pedidosCreados: 0 });
     expect(puerto.escrituras).toBe(0);
-    const aplicado = await importarHistorial(ORG, CSV, puerto, { aplicar: true });
+    const aplicado = await importarHistorial(ORG, CSV, puerto, { aplicar: true, ...DECLARACION });
     expect(aplicado.reporte).toMatchObject({ modo: "aplicado", creadas: 3, actualizadas: 0 });
     expect(puerto.escrituras).toBe(3);
-    const otra = await importarHistorial(ORG, CSV, puerto, { aplicar: true });
+    const otra = await importarHistorial(ORG, CSV, puerto, { aplicar: true, ...DECLARACION });
     expect(otra.reporte).toMatchObject({ creadas: 0, actualizadas: 0, sinCambios: 3 });
     expect(puerto.escrituras).toBe(3);
   });
   it("un cambio en una fila la marca actualizar; un telefono suprimido (ARCO) no se reimporta", async () => {
     const puerto = new PuertoHistoricoMemoria();
-    await importarHistorial(ORG, CSV, puerto, { aplicar: true });
+    await importarHistorial(ORG, CSV, puerto, { aplicar: true, ...DECLARACION });
     puerto.suprimidos.add("9990000002");
     const cambiado = CSV.replace(",8,1600,200,", ",9,1800,200,");
-    const r = await importarHistorial(ORG, cambiado, puerto, { aplicar: true });
+    const r = await importarHistorial(ORG, cambiado, puerto, { aplicar: true, ...DECLARACION });
     expect(r.reporte).toMatchObject({ creadas: 0, actualizadas: 1, sinCambios: 1, suprimidas: 1 });
   });
   it("el reporte no contiene telefonos completos, nombres ni direcciones", async () => {
@@ -137,5 +138,21 @@ describe("importador", () => {
     ]);
     expect(descartados).toBe(2);
     expect(filas).toEqual([{ celular: "9990000001", pedidos: 2, gasto_piso_mxn: 400, ticket_mxn: 200, primer_pedido: "2026-01-02", ultimo_pedido: "2026-03-02", favoritos: "pastor;bistec" }]);
+  });
+});
+
+describe("base legal del archivo (P-10)", () => {
+  it("aplicar sin base legal u origen declarado falla ANTES de escribir; la vista previa no lo exige", async () => {
+    const puerto = new PuertoHistoricoMemoria();
+    await expect(importarHistorial(ORG, CSV, puerto, { aplicar: true })).rejects.toBeInstanceOf(ImportacionSinBaseLegalError);
+    await expect(importarHistorial(ORG, CSV, puerto, { aplicar: true, baseLegal: "aviso_privacidad_vigente", origenDeclarado: "x" })).rejects.toBeInstanceOf(ImportacionSinBaseLegalError);
+    await expect(importarHistorial(ORG, CSV, puerto, { aplicar: true, baseLegal: "inventada" as never, origenDeclarado: "Origen suficientemente descrito" })).rejects.toBeInstanceOf(ImportacionSinBaseLegalError);
+    expect(puerto.escrituras).toBe(0);
+    await expect(importarHistorial(ORG, CSV, puerto)).resolves.toBeDefined();
+  });
+  it("la declaracion llega al puerto al aplicar", async () => {
+    const puerto = new PuertoHistoricoMemoria();
+    await importarHistorial(ORG, CSV, puerto, { aplicar: true, ...DECLARACION });
+    expect(puerto.declaraciones).toEqual([DECLARACION]);
   });
 });

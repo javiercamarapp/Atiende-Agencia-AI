@@ -109,3 +109,22 @@ describe("148 (P-9): recuperable no es contactable", () => {
     expect(asserts().match(/\(P-9\)/g)?.length).toBeGreaterThanOrEqual(5);
   });
 });
+
+describe("149 (P-10): base legal del archivo importado", () => {
+  const f = "149_historial_base_legal_importacion.sql";
+  it("aplicar exige base legal y origen, que se guardan en el lote; se retira la firma anterior", () => {
+    const m = mig(f);
+    expect(m).toContain("drop function if exists restaurantes.importar_historial(uuid, text, boolean, jsonb);");
+    expect(m).toContain("p_base_legal text default null, p_origen_declarado text default null");
+    expect(m).toMatch(/if p_base_legal is null or p_base_legal not in \('aviso_privacidad_vigente'/);
+    expect(m).toContain("base_legal, origen_declarado)");
+    expect(espejo(f, "496")).toBe(m);
+    expect(asserts().match(/\(P-10\)/g)?.length).toBeGreaterThanOrEqual(6);
+  });
+  it("las llamadas que aplican en los escenarios SQL llevan la declaracion", () => {
+    const llamadasTrue = asserts().match(/importar_historial\('[^']+', '[^']+', true, [^;]*;/g) ?? [];
+    const sinDeclarar = llamadasTrue.filter((l) => !l.includes("'aviso_privacidad_vigente'") && !l.includes("'consentimiento_titular'") && !l.includes("'porque si'"));
+    // solo las deliberadamente sin declaracion (A57) quedan sin ella
+    expect(sinDeclarar.length).toBe(1);
+  });
+});

@@ -29,9 +29,10 @@ describe("PuertoHistoricoPostgres (P-4)", () => {
     const { clientes, rechazos } = limpiarArchivoHistorico([{ celular: "9990000001", nombre: "Cliente Ejemplo" }]);
     const plan = planificarImportacion(clientes, rechazos, new Map(), "a".repeat(64));
     const { db, llamadas } = sesion();
-    await new PuertoHistoricoPostgres(db).aplicar("org", plan);
+    await new PuertoHistoricoPostgres(db).aplicar("org", plan, { baseLegal: "consentimiento_titular", origenDeclarado: "Formulario propio del restaurante" });
     expect(llamadas[0]!.sql).toContain("restaurantes.importar_historial(");
     expect(llamadas[0]!.sql).not.toMatch(TABLAS_REVOCADAS);
+    expect(llamadas[0]!.params).toEqual(["org", "a".repeat(64), expect.any(String), "consentimiento_titular", "Formulario propio del restaurante"]);
     const vacio = sesion();
     await new PuertoHistoricoPostgres(vacio.db).existentes("org", []);
     expect(vacio.llamadas).toHaveLength(0);
