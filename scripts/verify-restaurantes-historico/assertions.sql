@@ -553,6 +553,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
 select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas(), 'aviso_privacidad_vigente', 'Archivo sintetico de prueba del restaurante');
 reset role;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as deberia_ser_1 from (select restaurantes.cliente_perfil_historico('00000000-0000-0000-0000-0000000f6a00', '9990064001')::text as r) x where x.r not like '%Calle Sintetica%' and x.r like '%Montebello%';
 rollback;
 
@@ -562,6 +563,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
 select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas(), 'aviso_privacidad_vigente', 'Archivo sintetico de prueba del restaurante');
 reset role;
+select set_config('request.jwt.claim.sub', '', true);
 select count(*) as deberia_ser_1 from (select restaurantes.cliente_memoria('00000000-0000-0000-0000-0000000f6a00', '9990064001')::text as r) x where x.r not like '%Calle Sintetica%';
 rollback;
 
