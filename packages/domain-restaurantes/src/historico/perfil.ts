@@ -195,7 +195,7 @@ export function lineasPerfilHistorico(p: PerfilParaAgente | undefined | null): s
   const out: string[] = [];
   out.push("Este cliente tiene historial importado de pedidos anteriores (dato VIEJO y no verificado hoy): confirma SIEMPRE antes de usarlo, no lo des por hecho y acepta de inmediato si lo cambia; si no está aquí, pregúntalo, nunca lo completes por probabilidad.");
   const ofrecibles = p.domicilios.filter((d) => !d.requierePin && d.frescura !== "caducado");
-  if (ofrecibles.length > 0) out.push(`Domicilio que puedes confirmar (por etiqueta o colonia, nunca calle ni número): «${nombreDomicilio(ofrecibles[0]!)}», ${ETIQUETA_FRESCURA[ofrecibles[0]!.frescura]}.`);
+  if (ofrecibles.length > 0) out.push(`Domicilio que puedes confirmar (por etiqueta o colonia, nunca calle ni número): «${nombreDomicilio(ofrecibles[0]!)}», ${ETIQUETA_FRESCURA[ofrecibles[0]!.frescura]}. Del domicilio importado solo conoces la colonia: pide calle y número al cliente, nunca los supongas.`);
   else if (p.domicilios.length > 0) out.push("Su domicilio guardado es incierto (colonia inferida, faltante o muy viejo): NO lo ofrezcas; pide la colonia o el pin de ubicación.");
   const gustos = p.gustos.filter((g) => g.frescura !== "caducado");
   const tortilla = gustos.find((g) => g.kind === "tortilla");

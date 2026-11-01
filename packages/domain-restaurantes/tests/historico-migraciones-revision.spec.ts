@@ -78,3 +78,21 @@ describe("146 (P-4): historial_existentes", () => {
     expect(asserts().match(/\(P-4\)/g)?.length).toBeGreaterThanOrEqual(4);
   });
 });
+
+describe("147 (P-5): la calle importada no es legible por el agente", () => {
+  const f = "147_historial_direccion_no_legible_por_agente.sql";
+  it("importar_historial ya no inserta en customer_addresses y guarda la calle en el resumen", () => {
+    const m = mig(f);
+    const imp = m.slice(m.indexOf("function restaurantes.importar_historial"), m.indexOf("function restaurantes.cliente_perfil_historico"));
+    expect(imp).not.toContain("customer_addresses");
+    expect(imp).toContain("direccion_importada");
+    expect(espejo(f, "494")).toBe(m);
+  });
+  it("el perfil de sistema expone etiqueta y colonia, nunca direccion_importada", () => {
+    const m = mig(f);
+    const perfil = m.slice(m.indexOf("function restaurantes.cliente_perfil_historico"));
+    expect(perfil).toContain("colonia_importada");
+    expect(perfil).not.toMatch(/'direccion'|direccion_importada\)/);
+    expect(asserts().match(/\(P-5\)/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+});

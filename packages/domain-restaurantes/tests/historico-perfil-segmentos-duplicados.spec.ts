@@ -68,6 +68,12 @@ describe("uso por el agente", () => {
     expect(texto).not.toMatch(/1600|200|cobro|gasto|ticket/i);
     expect(JSON.stringify(agente())).not.toMatch(/gasto|ticket|quejas|calle|telefono/i);
   });
+  it("(P-5) del domicilio importado solo se conoce la colonia: el agente debe pedir calle y numero", () => {
+    const t = lineasPerfilHistorico(agente()).join("\n");
+    expect(t).toContain("Domicilio que puedes confirmar");
+    expect(t).toContain("solo conoces la colonia");
+    expect(t).toContain("pide calle y número");
+  });
   it("sin historial importado no agrega ninguna linea (el prompt actual no cambia)", () => {
     expect(lineasPerfilHistorico(undefined)).toEqual([]);
     expect(lineasPerfilHistorico(perfilParaAgente(construirPerfil360({ nombre: "X" }, HOY)))).toEqual([]);

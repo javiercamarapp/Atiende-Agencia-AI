@@ -186,13 +186,13 @@ reset role;
 select count(*) as deberia_ser_1 from restaurantes.customer_historial_resumen where organization_id = '00000000-0000-0000-0000-0000000f6a00' and revision_humana;
 rollback;
 
-\echo '--- A12. domicilio historico con colonia, predeterminado solo si no habia otro ---'
+\echo '--- A12. (P-5) la calle importada NO se inserta en customer_addresses (lo que lee buscar_cliente) ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
 select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
 reset role;
-select count(*) as deberia_ser_1 from restaurantes.customer_addresses where customer_id = '00000000-0000-0000-0000-0000000f6c01' and label = 'Histórico' and colonia = 'Montebello' and is_default;
+select count(*) as deberia_ser_0 from restaurantes.customer_addresses where customer_id = '00000000-0000-0000-0000-0000000f6c01';
 rollback;
 
 \echo '--- A13. todo cliente importado tiene telefono de 10 digitos ---'
@@ -536,6 +536,42 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e03', true);
 select restaurantes.historial_existentes('00000000-0000-0000-0000-0000000f6a00', array['9990064001']) as should_fail;
+rollback;
+
+\echo '--- A53. (P-5) la calle y la colonia importadas viven en el resumen (solo ARCO/staff) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_1 from restaurantes.customer_historial_resumen where customer_id = '00000000-0000-0000-0000-0000000f6c01' and direccion_importada = 'Calle Sintetica 1' and colonia_importada = 'Montebello';
+rollback;
+
+\echo '--- A54. (P-5) el perfil que lee el agente no contiene la calle pero si la colonia ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_1 from (select restaurantes.cliente_perfil_historico('00000000-0000-0000-0000-0000000f6a00', '9990064001')::text as r) x where x.r not like '%Calle Sintetica%' and x.r like '%Montebello%';
+rollback;
+
+\echo '--- A55. (P-5) cliente_memoria (buscar_cliente) no devuelve la calle importada ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_1 from (select restaurantes.cliente_memoria('00000000-0000-0000-0000-0000000f6a00', '9990064001')::text as r) x where x.r not like '%Calle Sintetica%';
+rollback;
+
+\echo '--- A56. (P-5) cliente_exportar_arco SI entrega la calle importada al titular ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_1 from (select restaurantes.cliente_exportar_arco('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01')::text as r) x where x.r like '%Calle Sintetica 1%';
 rollback;
 
 \echo ''
