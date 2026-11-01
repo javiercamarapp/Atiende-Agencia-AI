@@ -137,6 +137,7 @@ set local role authenticated;
 select public.t_como('00000000-0000-0000-0000-0000000e7011');
 select public.t_esperar_error($$select restaurantes.pedido_aceptar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70c6', 30)$$, 'P0404');
 select public.t_esperar_error($$select restaurantes.pedido_aceptar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-000000000001', 30)$$, 'P0404');
+reset role;
 select count(*) as ajeno_intacto_deberia_ser_1 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000e70c6' and status = 'pending';
 rollback;
 
