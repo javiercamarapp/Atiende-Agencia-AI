@@ -15,12 +15,14 @@ on conflict do nothing;
 insert into core.staff_user (id, email, full_name, created_via) values
   ('00000000-0000-0000-0000-0000000f6e01', 'owner-a-hist@example.com', 'Owner A', 'seed'),
   ('00000000-0000-0000-0000-0000000f6e03', 'staff-a-hist@example.com', 'Staff A', 'seed'),
+  ('00000000-0000-0000-0000-0000000f6e07', 'admin-sucursal-a-hist@example.com', 'Admin acotado A', 'seed'),
   ('00000000-0000-0000-0000-0000000f6e05', 'owner-b-hist@example.com', 'Owner B', 'seed'),
   ('00000000-0000-0000-0000-0000000f6e06', 'owner-c-hist@example.com', 'Owner C', 'seed')
 on conflict do nothing;
 insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
   ('00000000-0000-0000-0000-0000000f6e01', '00000000-0000-0000-0000-0000000f6a00', null, 'owner', 'owner'),
   ('00000000-0000-0000-0000-0000000f6e03', '00000000-0000-0000-0000-0000000f6a00', null, 'member', 'staff'),
+  ('00000000-0000-0000-0000-0000000f6e07', '00000000-0000-0000-0000-0000000f6a00', array['00000000-0000-0000-0000-0000000f6a01']::uuid[], 'admin', 'admin'),
   ('00000000-0000-0000-0000-0000000f6e05', '00000000-0000-0000-0000-0000000f6b00', null, 'owner', 'owner'),
   ('00000000-0000-0000-0000-0000000f6e06', '00000000-0000-0000-0000-0000000f6c00', null, 'owner', 'owner')
 on conflict do nothing;
@@ -273,6 +275,27 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
 select count(*) as should_fail from restaurantes.customer_historial_resumen;
+rollback;
+
+\echo '--- A23. (P-8) un admin acotado a UNA sucursal no puede importar a nivel organizacion ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e07', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', false, public.t_hist_filas()) as should_fail;
+rollback;
+
+\echo '--- A24. (P-8) ni exportar el historial de un cliente ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e07', true);
+select restaurantes.historial_exportar('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01') as should_fail;
+rollback;
+
+\echo '--- A25. (P-8) ni ver segmentos ni fusionar duplicados ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e07', true);
+select restaurantes.historial_fusionar_duplicados('00000000-0000-0000-0000-0000000f6a00', false) as should_fail;
 rollback;
 
 \echo ''
