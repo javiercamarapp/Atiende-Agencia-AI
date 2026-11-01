@@ -311,12 +311,14 @@ export async function procesarMensajeDeEncuesta(deps: CicloServicioDeps, args: {
   const ahora = args.ahora ?? new Date();
   const hash = actorHash(normalizePhone(args.phone));
   const estado = await deps.ciclo.estadoEsperadoEncuesta(args.organizationId, hash, ahora);
-  if (!estado.disponible || estado.valor === "ninguna") return null;
-  const interpretado = interpretarRespuestaEncuesta(args.body);
+  if (!estado.disponible) return null;
+  const interpretado = interpretarRespuestaEncuesta(args.body, { encuestaAbierta: estado.valor !== "ninguna" });
+  // La BAJA se reconoce aunque no haya encuesta abierta (la gente la manda dias despues): queda registrada y la proxima encuesta no sale.
   if (interpretado.tipo === "baja") {
     await deps.ciclo.registrarBajaEncuesta(args.organizationId, hash);
     return { reply: TEXTO_BAJA_ENCUESTA, tipo: "baja" };
   }
+  if (estado.valor === "ninguna") return null;
   if (estado.valor === "calificacion") {
     if (interpretado.tipo !== "calificacion") return null;
     const r = await deps.ciclo.responderEncuesta(args.organizationId, hash, interpretado.valor, ahora);

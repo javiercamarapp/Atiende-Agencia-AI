@@ -161,10 +161,15 @@ export const ENCUESTA_VENTANA_RESPUESTA_MIN = 30;
 /** Minutos, tras calificar, en que el siguiente mensaje se guarda como comentario opcional. */
 export const ENCUESTA_VENTANA_COMENTARIO_MIN = 30;
 
-/** Interpreta la respuesta a la pregunta de 1 a 5: "4", "4.", "cuatro", "5 estrellas", "un 3"; "BAJA"/"STOP" es la baja; cualquier otra cosa es `otro` (no se adivina). */
-export function interpretarRespuestaEncuesta(texto: string): RespuestaEncuesta {
+/**
+ * Interpreta la respuesta a la pregunta de 1 a 5: "4", "4.", "cuatro", "5 estrellas", "un 3"; "BAJA"/"STOP" es la baja; cualquier otra cosa es `otro` (no se adivina).
+ * Sin encuesta abierta (`encuestaAbierta: false`) SOLO se reconoce una baja inequivoca ("baja", "no quiero mas encuestas"): ni "stop" ni un numero (P2 de la revision de #713).
+ */
+export function interpretarRespuestaEncuesta(texto: string, opciones: { readonly encuestaAbierta?: boolean } = {}): RespuestaEncuesta {
+  const abierta = opciones.encuestaAbierta !== false;
   const t = SIN_ACENTOS(texto);
-  if (BAJA.test(t)) return { tipo: "baja" };
+  if (BAJA.test(t)) return !abierta && /^stop\W*$/.test(t) ? { tipo: "otro" } : { tipo: "baja" };
+  if (!abierta) return { tipo: "otro" };
   const m = /^(?:un |una |le doy |doy |un )?([1-5]|uno|dos|tres|cuatro|cinco)(?:\s*(?:\/\s*5|de 5|estrellas?|puntos?|\.|!|,))?\W*$/.exec(t);
   if (!m) return { tipo: "otro" };
   const v = m[1]!;

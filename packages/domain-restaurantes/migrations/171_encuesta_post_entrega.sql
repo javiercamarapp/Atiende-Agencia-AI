@@ -59,6 +59,14 @@ create table if not exists restaurantes.encuesta_entrega (
 create index if not exists encuesta_entrega_org_prop_idx on restaurantes.encuesta_entrega (organization_id, property_id, creada_en desc);
 create index if not exists encuesta_entrega_hash_idx on restaurantes.encuesta_entrega (organization_id, phone_hash, creada_en desc);
 
+-- Revision de #713 (P2): indices de expresion para que encuesta_candidatas y encuesta_estado_para no recorran todas las conversaciones y pedidos de la organizacion por cada telefono.
+create index if not exists whatsapp_conversations_org_digitos_idx
+  on restaurantes.whatsapp_conversations (organization_id, (right(regexp_replace(phone, '\D', '', 'g'), 10)));
+create index if not exists orders_org_digitos_idx
+  on restaurantes.orders (organization_id, (right(regexp_replace(customer_phone, '\D', '', 'g'), 10)));
+create index if not exists orders_entregados_encuesta_idx
+  on restaurantes.orders (delivered_at) where status in ('entregado', 'completado') and delivered_at is not null;
+
 alter table restaurantes.encuesta_config enable row level security;
 alter table restaurantes.encuesta_optout enable row level security;
 alter table restaurantes.encuesta_entrega enable row level security;
@@ -151,10 +159,11 @@ begin
              and right(regexp_replace(w.phone, '\D', '', 'g'), 10) = x.digitos),
          (select max(e.enviada_en) from restaurantes.encuesta_entrega e where e.organization_id = x.organization_id and e.phone_hash = x.phone_hash and e.estado in ('enviada', 'respondida')),
          exists (select 1 from restaurantes.encuesta_optout o where o.organization_id = x.organization_id and o.phone_hash = x.phone_hash),
-         restaurantes.consentimiento_aviso_vigente(x.organization_id, '+52' || x.digitos)
+         restaurantes.consentimiento_aviso_vigente(x.organization_id, case when length(x.todos) = 10 then '+52' || x.todos else '+' || x.todos end)
   from (
     select o.id as order_id, o.organization_id, o.property_id, o.customer_phone, o.delivered_at, bd.zona_horaria,
            right(regexp_replace(o.customer_phone, '\D', '', 'g'), 10) as digitos,
+           regexp_replace(o.customer_phone, '\D', '', 'g') as todos,
            encode(sha256(convert_to(right(regexp_replace(o.customer_phone, '\D', '', 'g'), 10), 'UTF8')), 'hex') as phone_hash
     from restaurantes.orders o
     join restaurantes.encuesta_config c on c.property_id = o.property_id and c.organization_id = o.organization_id and c.habilitada

@@ -523,6 +523,20 @@ select restaurantes.encuesta_responder('00000000-0000-0000-0000-0000000e7001', '
 select count(*) as dos_mensajes_deberia_ser_1 from (select restaurantes.encuesta_estado_para('00000000-0000-0000-0000-0000000e7001', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', now() + interval '5 minutes') as e) x where x.e = 'ninguna';
 rollback;
 
+\echo '=== U1. P2: indices de expresion de la encuesta (conversaciones, pedidos por telefono y entregados) ==='
+begin;
+select count(*) as indices_deberia_ser_3 from pg_indexes where schemaname = 'restaurantes' and indexname in ('whatsapp_conversations_org_digitos_idx', 'orders_org_digitos_idx', 'orders_entregados_encuesta_idx');
+rollback;
+
+\echo '=== U2. P2: la huella y el consentimiento usan el telefono completo, no un +52 fijo (extranjero de 11 digitos tambien es candidato) ==='
+begin;
+insert into restaurantes.encuesta_config (property_id, organization_id, habilitada) values ('00000000-0000-0000-0000-0000000e70a1', '00000000-0000-0000-0000-0000000e7001', true);
+insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items, source, canal, created_at, delivered_at) values
+  ('00000000-0000-0000-0000-0000000e70e2', '00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', 'Cliente Ext', '+1 202 555 0123', 100, 'entregado', '[]', 'admin', 'domicilio', now() - interval '4 hours', now() - interval '3 hours');
+select public.t_como('');
+select count(*) as extranjero_candidato_deberia_ser_1 from restaurantes.encuesta_candidatas(now(), 50) where order_id = '00000000-0000-0000-0000-0000000e70e2' and consentimiento = false;
+rollback;
+
 \echo '=== Q1. el pedido pendiente hace 25 min es candidato con el recordatorio 2 (10/10/3 por omision); los recien creados no ==='
 begin;
 select public.t_como('');
