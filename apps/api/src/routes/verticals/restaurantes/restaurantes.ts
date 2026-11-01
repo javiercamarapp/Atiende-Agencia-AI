@@ -22,6 +22,7 @@ import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
 import { restaurantesVozHuerfanasRoutes } from "./voz-huerfanas.ts";
 import { restaurantesCierresRoutes } from "./cierres.ts";
 import { restaurantesAutopilotoRoutes } from "./autopiloto.ts";
+import { restaurantesAdminCicloPedidoRoutes } from "./admin-ciclo-pedido.ts";
 import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
 import { restaurantesRepartidorPerfilRoutes } from "./repartidor-perfil.ts";
 import { restaurantesRepartidorHistorialRoutes } from "./repartidor-historial.ts";
@@ -88,6 +89,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesCierresInternoRoutes(deps));
   app.route("/", restaurantesCierresRoutes(deps));
   app.route("/", restaurantesAutopilotoRoutes(deps));
+  // F4b (migraciones 170 a 172): aceptar/rechazar, salida y entrega con hora real, encuesta y recordatorios; rutas bajo admin/ciclo.
+  app.route("/", restaurantesAdminCicloPedidoRoutes(deps));
   // R-15 (migración 044): perfil operativo del repartidor + barrido interno de licencias por vencer.
   app.route("/", restaurantesRepartidorPerfilRoutes(deps));
   app.route("/", restaurantesRepartidorHistorialRoutes(deps));

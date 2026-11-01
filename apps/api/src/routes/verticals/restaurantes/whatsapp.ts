@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, extractMetaEchoes, registrarEcoDeApp, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
+import { procesarMensajeDeEncuesta, FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, extractMetaEchoes, registrarEcoDeApp, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { extractMetaStatuses } from "@atiende/whatsapp-gateway";
 import type { EventoEntregaFallida } from "@atiende/domain-restaurantes";
@@ -217,6 +217,11 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
             // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.
             handoffGate: deps.handoffGate?.(db),
+            // F4b (migración 171): calificacion / comentario / BAJA de la encuesta post-entrega, con texto fijo y sin modelo. Sin la migracion o sin encuesta abierta devuelve null.
+            // Limitacion declarada: la ruta con espera de rafagas (replyDebounceSeconds > 0) todavia no intercepta encuestas.
+            ...(deps.cicloPedidoRepo
+              ? { encuesta: async (organizationId: string, phone: string, body: string) => (await procesarMensajeDeEncuesta({ repo, ciclo: deps.cicloPedidoRepo!(db), db }, { organizationId, phone, body }))?.reply ?? null }
+              : {}),
           });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `restaurantes.messaging_outbox`

@@ -48,6 +48,12 @@ Restaurantes (aviso de estado de pedido, ya existente): `pedido_confirmado`, `pe
 `pedido_cancelado`, con `{{1}}` nombre, `{{2}}` sucursal y `{{3}}` total (ver `PLANTILLAS_ESTADO_PEDIDO`). Se declaran en `WHATSAPP_APPROVED_TEMPLATES`;
 este PR no agrega pantalla para ellas.
 
+Restaurantes, ciclo operativo del pedido (F4b, `packages/domain-restaurantes/src/ciclo-pedido/reglas.ts`), 3 plantillas NUEVAS por aprobar en Meta (idioma `es_MX`, categoria
+UTILITY las dos primeras y UTILITY/MARKETING segun decida Meta la tercera): `pedido_aceptado_con_tiempo` (`{{1}}` nombre, `{{2}}` sucursal, `{{3}}` total, `{{4}}` tiempo
+prometido, p. ej. "45 minutos"), `pedido_rechazado` (`{{1}}` nombre, `{{2}}` sucursal, `{{3}}` motivo en una frase) y `encuesta_entrega` (`{{1}}` nombre, `{{2}}` sucursal; el
+cuerpo debe pedir una calificacion del 1 al 5 y ofrecer responder BAJA para no recibir mas encuestas). Sin la plantilla declarada, aceptar y rechazar salen como texto
+libre (solo llega dentro de la ventana de 24 h) y la encuesta NO se envia fuera de la ventana (queda registrada como omitida `sin_ventana_ni_plantilla`).
+
 Restaurantes, autopiloto del ciclo del pedido (`PLANTILLAS_AUTOPILOTO`, `packages/domain-restaurantes/src/autopiloto/servicio.ts`): todas con `{{1}}` nombre del
 cliente, `{{2}}` sucursal y `{{3}}` detalle. `pedido_aprobado` (detalle = total), `pedido_no_confirmado` (rechazo de un pedido grande), `cancelacion_no_posible`
 (el pedido ya esta en proceso), `compensacion_sin_costo_extra`, `compensacion_reposicion`, `compensacion_descuento` (detalle = codigo de un solo uso) y
