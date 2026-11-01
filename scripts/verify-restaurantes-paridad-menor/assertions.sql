@@ -133,6 +133,8 @@ rollback;
 
 \echo '--- 9. base SIN la 180: 42703 se recupera con SAVEPOINT (como runWithSavepointFallback) y la transaccion sigue usable ---'
 begin;
+-- Una base sin la 180 tampoco tiene la 184: su trigger depende de la columna y se quita primero.
+drop trigger products_archivar_limpia_promos on restaurantes.products;
 alter table restaurantes.products drop column archived_at;
 savepoint sp_verify_archivado;
 do $$

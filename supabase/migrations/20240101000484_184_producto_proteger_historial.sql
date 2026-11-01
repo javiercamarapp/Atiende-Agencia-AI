@@ -49,10 +49,16 @@ create or replace function restaurantes.producto_proteger_historial()
 returns trigger
 language plpgsql
 security definer
-set search_path = restaurantes, pg_temp
+set search_path = restaurantes, core, pg_temp
 as $$
 begin
   if tg_op = 'DELETE' then
+    -- Borrado en CASCADA de la organizacion (demo_limpiar, baja de cuenta): la fila de core.organization ya no existe cuando se dispara este trigger por fila. No hay
+    -- historial que proteger (los pedidos se van con la organizacion) y actualizar promotions violaria su FK a la organizacion borrada. Un DELETE directo de un producto
+    -- SIEMPRE ve su organizacion, asi que esta salida no abre el hueco que cierra el trigger.
+    if not exists (select 1 from core.organization g where g.id = old.organization_id) then
+      return old;
+    end if;
     if exists (
       select 1 from restaurantes.orders o
        where o.organization_id = old.organization_id

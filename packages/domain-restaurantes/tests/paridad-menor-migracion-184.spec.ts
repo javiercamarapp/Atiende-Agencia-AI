@@ -17,13 +17,23 @@ describe("migracion 184: historial protege el borrado", () => {
     expect(sql).toMatch(/errcode = '23503'/);
     expect(sql).toMatch(/o\.items @> jsonb_build_array\(jsonb_build_object\('id', old\.id\)\)/);
   });
+  it("el borrado en cascada de la organizacion (demo_limpiar) no se bloquea: sin organizacion el trigger sale antes de revisar pedidos o tocar promotions", () => {
+    const i = sql.indexOf("if tg_op = 'DELETE' then");
+    const salida = sql.indexOf("from core.organization g where g.id = old.organization_id", i);
+    const revision = sql.indexOf("from restaurantes.orders o", i);
+    const limpieza = sql.indexOf("perform restaurantes.promos_quitar_producto(old.organization_id", i);
+    expect(salida).toBeGreaterThan(i);
+    expect(salida).toBeLessThan(revision);
+    expect(salida).toBeLessThan(limpieza);
+    expect(sql).toMatch(/set search_path = restaurantes, core, pg_temp/);
+  });
   it("DELETE exige alcance de toda la organizacion (property_ids null)", () => {
     expect(sql).toMatch(/drop policy if exists "duenos y admins borran productos"/);
     expect(sql).toMatch(/actor_tiene_rol_en_alcance\(organization_id, null, array\['owner', 'admin'\]\)/);
   });
   it("las funciones son security definer con search_path fijo y sin EXECUTE para anon/authenticated", () => {
     expect(sql.match(/^security definer$/gm)?.length).toBe(2);
-    expect(sql.match(/^set search_path = restaurantes, pg_temp$/gm)?.length).toBe(2);
+    expect(sql.match(/^set search_path = restaurantes(?:, core)?, pg_temp$/gm)?.length).toBe(2);
     expect(sql).toMatch(/revoke all on function restaurantes\.producto_proteger_historial\(\) from public, anon, authenticated/);
   });
   it("limpia product_ids y courtesy_product_ids al archivar y al borrar, y desactiva la cortesia que quedaria sin producto", () => {
