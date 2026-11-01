@@ -43,7 +43,7 @@ insert into core.membership (user_id, organization_id, property_ids, platform_ro
   ('00000000-0000-0000-0000-0000000e4614', '00000000-0000-0000-0000-0000000e4602', null, 'owner', 'owner')
 on conflict do nothing;
 insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id) values ('00000000-0000-0000-0000-0000000e4601', 'pnid-react-a') on conflict do nothing;
-insert into core.whatsapp_plantilla (organization_id, vertical, evento, nombre, estado) values ('00000000-0000-0000-0000-0000000e4601', 'restaurantes', 'marketing.reactivacion_favorito', 'reactivacion_favorito', 'aprobada') on conflict do nothing;
+insert into core.whatsapp_plantilla (organization_id, vertical, evento, nombre, variables, estado) values ('00000000-0000-0000-0000-0000000e4601', 'restaurantes', 'marketing.reactivacion_favorito', 'reactivacion_favorito', array['nombre','favorito'], 'aprobada') on conflict do nothing;
 
 -- 6 clientes de A: 1,2,3 y 6 dormidos 15 dias; 4 dormido 30 dias (fuera de la ventana); 5 activo (10 dias). Cada uno con UN pedido (tacos de cochinita) en su ultimo_pedido.
 insert into restaurantes.customers (id, organization_id, phone, name, order_count, last_order_at) values
@@ -385,6 +385,21 @@ set local role authenticated;
 select restaurantes.marketing_revocar_por_telefono('00000000-0000-0000-0000-0000000e4601', '+525554600002');
 reset role;
 select count(*) as intacto_deberia_ser_1 from restaurantes.messaging_outbox where dedupe_key like 'react:00000000-0000-0000-0000-0000000e4601:00000000-0000-0000-0000-00000c460001:%' and status = 'pending';
+rollback;
+
+\echo '=== H1. plantilla valida (aprobada y con 2 variables) -> plantilla_aprobada ==='
+begin;
+insert into restaurantes.reactivacion_config (organization_id, modo, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4601', 'simulado', 'reactivacion_favorito');
+set local role authenticated;
+select count(*) as plantilla_deberia_ser_1 from restaurantes.reactivacion_contexto('00000000-0000-0000-0000-0000000e4601') where plantilla_aprobada;
+rollback;
+
+\echo '=== H2. plantilla aprobada pero con otro numero de variables -> NO se considera aprobada ==='
+begin;
+insert into restaurantes.reactivacion_config (organization_id, modo, plantilla_nombre) values ('00000000-0000-0000-0000-0000000e4601', 'simulado', 'reactivacion_favorito');
+update core.whatsapp_plantilla set variables = array['nombre'] where organization_id = '00000000-0000-0000-0000-0000000e4601' and nombre = 'reactivacion_favorito';
+set local role authenticated;
+select count(*) as variables_deberia_ser_0 from restaurantes.reactivacion_contexto('00000000-0000-0000-0000-0000000e4601') where plantilla_aprobada;
 rollback;
 
 \echo '=== E1. RLS: el owner de A lee las corridas de A; el de B no ve ninguna de A ==='

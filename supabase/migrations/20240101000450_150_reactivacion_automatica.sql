@@ -1,5 +1,5 @@
 -- 150 (PM R23, F3 de SPEC-FUNCIONES-HISTORICO): REACTIVACION AUTOMATICA de clientes dormidos (ventana 14-21 dias) + captura conversacional de opt-in.
--- Interno 150, prefijo de supabase/migrations 20240101000417. Requiere: 052 (marketing_consentimiento, marketing_registrar_consentimiento, marketing_en_control,
+-- Interno 150, prefijo de supabase/migrations 20240101000450. Requiere: 052 (marketing_consentimiento, marketing_registrar_consentimiento, marketing_en_control,
 -- marketing_es_gestor), 081 (cfo_renglones), 035 (voz_zona_horaria), 019 (audit_log), core 0050 (whatsapp_plantilla).
 --
 -- Principios (decisiones del brief, no de este archivo):
@@ -231,7 +231,7 @@ begin
   plantilla_nombre := v_cfg.plantilla_nombre;
   plantilla_idioma := coalesce(v_cfg.plantilla_idioma, 'es_MX');
   plantilla_aprobada := v_cfg.plantilla_nombre is not null and exists (
-    select 1 from core.whatsapp_plantilla w where w.organization_id = p_organization_id and w.nombre = v_cfg.plantilla_nombre and w.estado = 'aprobada');
+    select 1 from core.whatsapp_plantilla w where w.organization_id = p_organization_id and w.nombre = v_cfg.plantilla_nombre and w.estado = 'aprobada' and cardinality(w.variables) = 2);
   whatsapp_conectado := exists (select 1 from restaurantes.whatsapp_channel_config w where w.organization_id = p_organization_id);
   optins_vigentes := (select count(*) from restaurantes.marketing_consentimiento mc where mc.organization_id = p_organization_id and mc.canal = 'whatsapp' and mc.estado = 'otorgado');
   sucursales_activas := (select count(*) from restaurantes.reactivacion_sucursal s where s.organization_id = p_organization_id and s.activa);
@@ -415,7 +415,7 @@ begin
   hora_desde := v_cfg.hora_desde; hora_hasta := v_cfg.hora_hasta; tope_diario := v_cfg.tope_diario;
   plantilla_nombre := v_cfg.plantilla_nombre; plantilla_idioma := v_cfg.plantilla_idioma;
   plantilla_aprobada := v_cfg.plantilla_nombre is not null and exists (
-    select 1 from core.whatsapp_plantilla w where w.organization_id = p_organization_id and w.nombre = v_cfg.plantilla_nombre and w.estado = 'aprobada');
+    select 1 from core.whatsapp_plantilla w where w.organization_id = p_organization_id and w.nombre = v_cfg.plantilla_nombre and w.estado = 'aprobada' and cardinality(w.variables) = 2);
   phone_number_id := (select w.phone_number_id from restaurantes.whatsapp_channel_config w where w.organization_id = p_organization_id);
   zona_horaria := v_zona;
   enviados_hoy := (select count(*) from restaurantes.reactivacion_envio e
