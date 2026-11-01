@@ -74,12 +74,15 @@ export async function responderOptInDeterminista(
   telefono: string,
   texto: string,
   historial: readonly MensajeHistorialOptIn[],
+  /** R-3: `true` si hay una toma de handoff humano abierta (el agente debe callar). Se consulta solo si lo demas ya coincide; si falla se asume abierta. */
+  handoffAbierto?: () => Promise<boolean>,
   now: Date = new Date(),
 ): Promise<{ readonly reply: string } | null> {
   const clase = clasificarRespuestaOptIn(texto);
   if (clase === null) return null;
   // El «si» cuenta solo si el ultimo mensaje del agente fue la pregunta de consentimiento (no una confirmacion de pedido ni otra pregunta).
   if (!ultimaRespuestaFueLaPregunta(historial)) return null;
+  if (handoffAbierto && (await handoffAbierto().catch(() => true))) return null;
   try {
     const r = await puerto.responder(organizationId, telefono, clase === "si", now);
     if (r === "otorgado") return { reply: OPTIN_ACEPTADO_TEXTO };

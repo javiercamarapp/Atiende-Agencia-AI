@@ -105,6 +105,18 @@ describe("R-1: el «sí» solo responde a ESA pregunta", () => {
   });
 });
 
+describe("R-3: handoff humano abierto", () => {
+  it("con una toma abierta el «sí» NO se intercepta (es para la persona) y no se consulta al puerto", async () => {
+    const { p, llamadas } = puerto(ok, "otorgado");
+    expect(await responderOptInDeterminista(p, ORG, TEL, "sí", PREGUNTADO, async () => true)).toBeNull();
+    expect(llamadas.responder).toEqual([]);
+  });
+  it("sin toma abierta se intercepta; si la consulta del handoff falla se asume abierta", async () => {
+    expect(await responderOptInDeterminista(puerto(ok, "otorgado").p, ORG, TEL, "sí", PREGUNTADO, async () => false)).toEqual({ reply: OPTIN_ACEPTADO_TEXTO });
+    expect(await responderOptInDeterminista(puerto(ok, "otorgado").p, ORG, TEL, "sí", PREGUNTADO, async () => Promise.reject(new Error("x")))).toBeNull();
+  });
+});
+
 describe("base sin migrar", () => {
   it("el puerto Postgres degrada sin abortar la transaccion", async () => {
     const falta = Object.assign(new Error("function restaurantes.reactivacion_optin_contexto(uuid, text, timestamp with time zone) does not exist"), { code: "42883" });
