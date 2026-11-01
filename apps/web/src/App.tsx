@@ -29,6 +29,7 @@ const OperacionColaPage = cargaPerezosa(() => import("./verticals/restaurantes/p
 const OperacionNuevoPedidoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionNuevoPedido.tsx"), "OperacionNuevoPedidoPage");
 const OperacionViajesPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionViajes.tsx"), "OperacionViajesPage");
 const OperacionAgregadosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionAgregados.tsx"), "OperacionAgregadosPage");
+const OperacionCicloPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionCiclo.tsx"), "OperacionCicloPage");
 const OperacionTurnoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/OperacionTurno.tsx"), "OperacionTurnoPage");
 const RepartidorPedidosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Repartidor.tsx"), "RepartidorPedidosPage");
 const StaffPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Staff.tsx"), "StaffPage");
@@ -288,6 +289,7 @@ const OperacionColaRoute = shellRoute(RestaurantesShell, "/restaurantes/login", 
 const OperacionNuevoPedidoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionNuevoPedidoPage {...ctx} />);
 const OperacionViajesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionViajesPage {...ctx} />);
 const OperacionAgregadosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionAgregadosPage {...ctx} />);
+const OperacionCicloRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionCicloPage {...ctx} />);
 const OperacionTurnoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <OperacionTurnoPage {...ctx} />);
 const RestaurantesComandasPosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesComandasPosPage {...ctx} />);
 const RestaurantesHistorialRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <HistorialPage {...ctx} />);
@@ -1073,6 +1075,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/operacion/nuevo" element={<OperacionNuevoPedidoRoute />} />
         <Route path="/restaurantes/:orgSlug/operacion/viajes" element={<OperacionViajesRoute />} />
         <Route path="/restaurantes/:orgSlug/operacion/agregados" element={<OperacionAgregadosRoute />} />
+        <Route path="/restaurantes/:orgSlug/operacion/atencion" element={<OperacionCicloRoute />} />
         <Route path="/restaurantes/:orgSlug/operacion/turno" element={<OperacionTurnoRoute />} />
         <Route path="/restaurantes/:orgSlug/comandas-pos" element={<RestaurantesComandasPosRoute />} />
         <Route path="/restaurantes/:orgSlug/historial" element={<RestaurantesHistorialRoute />} />
