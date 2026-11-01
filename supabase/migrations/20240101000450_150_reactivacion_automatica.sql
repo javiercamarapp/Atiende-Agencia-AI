@@ -68,6 +68,9 @@ create table restaurantes.marketing_optin_pregunta (
   organization_id uuid not null references core.organization(id) on delete cascade,
   customer_id uuid not null references restaurantes.customers(id) on delete cascade,
   preguntado_at timestamptz not null default now(),
+  -- Evidencia (LFPDPPP: consentimiento expreso y verificable): el TEXTO EXACTO y la version de la pregunta que se le hizo a la persona.
+  pregunta_texto text check (pregunta_texto is null or char_length(pregunta_texto) <= 500),
+  pregunta_version text check (pregunta_version is null or pregunta_version ~ '^[A-Za-z0-9._-]{1,32}$'),
   respondida_at timestamptz,
   respuesta text check (respuesta is null or respuesta in ('si', 'no')),
   primary key (organization_id, customer_id)
@@ -127,7 +130,7 @@ revoke all on restaurantes.reactivacion_config, restaurantes.reactivacion_sucurs
 grant select (organization_id, modo, optin_conversacional, dias_min, dias_max, min_dias_entre_envios, max_por_mes, hora_desde, hora_hasta, tope_diario, atribucion_dias, plantilla_nombre, plantilla_idioma, updated_by, updated_at)
   on restaurantes.reactivacion_config to authenticated;
 grant select (property_id, organization_id, activa, updated_by, updated_at) on restaurantes.reactivacion_sucursal to authenticated;
-grant select (organization_id, customer_id, preguntado_at, respondida_at, respuesta) on restaurantes.marketing_optin_pregunta to authenticated;
+grant select (organization_id, customer_id, preguntado_at, pregunta_texto, pregunta_version, respondida_at, respuesta) on restaurantes.marketing_optin_pregunta to authenticated;
 grant select (id, organization_id, customer_id, property_id, dia, estado, plantilla_nombre, favorito_texto, outbox_id, created_at) on restaurantes.reactivacion_envio to authenticated;
 grant select (id, organization_id, corrida_at, modo, evaluados, enviados, simulados, controles, bloqueos, aviso) on restaurantes.reactivacion_corrida to authenticated;
 
@@ -273,7 +276,7 @@ begin
   v_queja := exists (select 1 from restaurantes.orders o where o.customer_id = v_cli and o.status = 'problema' and o.created_at > p_now - interval '30 days');
   customer_id := v_cli;
   habilitado := v_hab;
-  pregunta_abierta := v_hab and v_preg.customer_id is not null and v_preg.respondida_at is null and v_preg.preguntado_at > p_now - interval '3 days';
+  pregunta_abierta := v_hab and v_preg.customer_id is not null and v_preg.respondida_at is null and v_preg.preguntado_at > p_now - interval '24 hours';
   puede_preguntar := v_hab and v_cons is null and not v_queja
     and (v_preg.customer_id is null or (coalesce(v_preg.respuesta, '') <> 'si' and v_preg.preguntado_at < p_now - interval '90 days'));
   return next;
@@ -283,7 +286,7 @@ revoke all on function restaurantes.reactivacion_optin_contexto(uuid, text, time
 grant execute on function restaurantes.reactivacion_optin_contexto(uuid, text, timestamptz) to authenticated;
 
 -- Marca que la pregunta SE HIZO (se llama en el mismo turno que la agrega a la respuesta). Reabre (respuesta nula) solo si ya pasaron 90 dias.
-create or replace function restaurantes.reactivacion_optin_marcar(p_organization_id uuid, p_customer_id uuid, p_now timestamptz default now())
+create or replace function restaurantes.reactivacion_optin_marcar(p_organization_id uuid, p_customer_id uuid, p_now timestamptz default now(), p_texto text default null, p_version text default null)
 returns boolean language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
 begin
   if auth.uid() is not null then
@@ -292,17 +295,20 @@ begin
   if not exists (select 1 from restaurantes.customers c where c.id = p_customer_id and c.organization_id = p_organization_id) then
     raise exception 'reactivacion_optin_marcar: el cliente no pertenece a la organizacion' using errcode = '42501';
   end if;
-  insert into restaurantes.marketing_optin_pregunta (organization_id, customer_id, preguntado_at, respondida_at, respuesta)
-  values (p_organization_id, p_customer_id, p_now, null, null)
-  on conflict (organization_id, customer_id) do update set preguntado_at = excluded.preguntado_at, respondida_at = null, respuesta = null
+  if (p_texto is not null and char_length(p_texto) > 500) or (p_version is not null and p_version !~ '^[A-Za-z0-9._-]{1,32}$') then
+    raise exception 'reactivacion_optin_marcar: parametros invalidos' using errcode = '22023';
+  end if;
+  insert into restaurantes.marketing_optin_pregunta (organization_id, customer_id, preguntado_at, pregunta_texto, pregunta_version, respondida_at, respuesta)
+  values (p_organization_id, p_customer_id, p_now, p_texto, p_version, null, null)
+  on conflict (organization_id, customer_id) do update set preguntado_at = excluded.preguntado_at, pregunta_texto = excluded.pregunta_texto, pregunta_version = excluded.pregunta_version, respondida_at = null, respuesta = null
     where restaurantes.marketing_optin_pregunta.preguntado_at < p_now - interval '90 days';
   return found;
 end;
 $$;
-revoke all on function restaurantes.reactivacion_optin_marcar(uuid, uuid, timestamptz) from public, anon;
-grant execute on function restaurantes.reactivacion_optin_marcar(uuid, uuid, timestamptz) to authenticated;
+revoke all on function restaurantes.reactivacion_optin_marcar(uuid, uuid, timestamptz, text, text) from public, anon;
+grant execute on function restaurantes.reactivacion_optin_marcar(uuid, uuid, timestamptz, text, text) to authenticated;
 
--- Registra la respuesta SI/NO a una pregunta ABIERTA (<= 3 dias). Solo un SI explicito otorga consentimiento (fuente agente_whatsapp). Devuelve
+-- Registra la respuesta SI/NO a una pregunta ABIERTA (<= 24 horas, la ventana de servicio de WhatsApp; el TypeScript ademas exige que el ultimo mensaje del agente haya sido ESA pregunta). Solo un SI explicito otorga consentimiento (fuente agente_whatsapp). Devuelve
 -- 'otorgado' | 'rechazado' | 'sin_pregunta' (no hay pregunta abierta: el mensaje sigue su camino normal con el agente).
 create or replace function restaurantes.reactivacion_optin_responder(p_organization_id uuid, p_telefono text, p_si boolean, p_now timestamptz default now())
 returns text language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
@@ -319,7 +325,7 @@ begin
   end if;
   select c.id into v_cli from restaurantes.customers c
     where c.organization_id = p_organization_id and regexp_replace(c.phone, '[^0-9]', '', 'g') = v_digitos
-      and exists (select 1 from restaurantes.marketing_optin_pregunta q where q.organization_id = p_organization_id and q.customer_id = c.id and q.respondida_at is null and q.preguntado_at > p_now - interval '3 days')
+      and exists (select 1 from restaurantes.marketing_optin_pregunta q where q.organization_id = p_organization_id and q.customer_id = c.id and q.respondida_at is null and q.preguntado_at > p_now - interval '24 hours')
     order by c.created_at, c.id limit 1;
   v_hab := coalesce((select rc.optin_conversacional from restaurantes.reactivacion_config rc where rc.organization_id = p_organization_id), false);
   if v_cli is null or not v_hab then

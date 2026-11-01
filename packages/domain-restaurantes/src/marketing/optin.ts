@@ -11,8 +11,34 @@ export const PREGUNTA_OPTIN = "¿Quiere que le avisemos de promociones y de su f
 export const OPTIN_ACEPTADO_TEXTO = "Listo, le avisaremos por aquí. Cuando quiera dejar de recibir avisos, escriba BAJA.";
 export const OPTIN_RECHAZADO_TEXTO = "Sin problema, no le enviaremos promociones. Seguimos a sus órdenes.";
 
-const SI = new Set(["si", "claro", "claro que si", "si quiero", "si por favor", "si gracias", "si acepto", "acepto", "dale", "va", "simon"]);
-const NO = new Set(["no", "no gracias", "no por favor", "nel", "no quiero", "ahorita no", "no acepto"]);
+// Solo frases inequivocas (sin «claro», «va», «dale», «simon», «acepto» sueltos: se usan como acuse a cualquier otra cosa).
+const SI = new Set(["si", "si quiero", "si por favor", "si gracias", "si acepto"]);
+const NO = new Set(["no", "no gracias", "no por favor", "no quiero", "ahorita no", "no acepto"]);
+/** Version del texto de la pregunta: se guarda junto al texto exacto como evidencia del consentimiento. Subirla al cambiar PREGUNTA_OPTIN. */
+export const PREGUNTA_OPTIN_VERSION = "optin.v1";
+
+/** Mensaje de un historial (forma minima de `ConversationMessage`). */
+export interface MensajeHistorialOptIn {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  readonly autor?: "agente" | "humano" | "humano_app";
+}
+
+/**
+ * El «si/no» solo responde al opt-in si el ULTIMO mensaje del agente fue ESA pregunta y el cliente no ha dicho nada mas desde entonces
+ * (el mensaje que se evalua es el unico del cliente despues de la pregunta). Un «si» a «¿confirmo su pedido?» u otra pregunta jamas cuenta.
+ */
+export function ultimaRespuestaFueLaPregunta(historial: readonly MensajeHistorialOptIn[]): boolean {
+  let i = historial.length - 1;
+  let usuarios = 0;
+  while (i >= 0 && historial[i]!.role === "user") {
+    usuarios += 1;
+    i -= 1;
+  }
+  if (usuarios !== 1 || i < 0) return false;
+  const m = historial[i]!;
+  return m.role === "assistant" && m.autor !== "humano" && m.autor !== "humano_app" && m.content.includes(PREGUNTA_OPTIN);
+}
 
 /** Solo el mensaje COMPLETO cuenta: «sí, pero a qué hora abren» no es una respuesta al opt-in. */
 export function clasificarRespuestaOptIn(texto: string): "si" | "no" | null {
@@ -41,10 +67,19 @@ export interface OptInPuerto {
   responder(organizationId: string, telefono: string, si: boolean, now: Date): Promise<"otorgado" | "rechazado" | "sin_pregunta">;
 }
 
-/** Antes del LLM: si el mensaje es un SI/NO explicito Y hay una pregunta abierta, responde en fijo. `null` = el turno sigue su camino normal. */
-export async function responderOptInDeterminista(puerto: OptInPuerto, organizationId: string, telefono: string, texto: string, now: Date = new Date()): Promise<{ readonly reply: string } | null> {
+/** Antes del LLM: si el mensaje es un SI/NO explicito, el ultimo mensaje del agente fue la pregunta de opt-in Y hay una pregunta abierta, responde en fijo. `null` = el turno sigue su camino normal. */
+export async function responderOptInDeterminista(
+  puerto: OptInPuerto,
+  organizationId: string,
+  telefono: string,
+  texto: string,
+  historial: readonly MensajeHistorialOptIn[],
+  now: Date = new Date(),
+): Promise<{ readonly reply: string } | null> {
   const clase = clasificarRespuestaOptIn(texto);
   if (clase === null) return null;
+  // El «si» cuenta solo si el ultimo mensaje del agente fue la pregunta de consentimiento (no una confirmacion de pedido ni otra pregunta).
+  if (!ultimaRespuestaFueLaPregunta(historial)) return null;
   try {
     const r = await puerto.responder(organizationId, telefono, clase === "si", now);
     if (r === "otorgado") return { reply: OPTIN_ACEPTADO_TEXTO };
@@ -84,7 +119,7 @@ export function crearOptInPostgres(session: TenantDbSession): OptInPuerto {
       runWithSavepointFallback<boolean>({
         session,
         savepointName: "sp_optin_marcar",
-        primary: async () => (await session.query<{ ok: boolean }>(`select restaurantes.reactivacion_optin_marcar($1::uuid, $2::uuid, $3::timestamptz) as ok;`, [org, cliente, now.toISOString()])).rows[0]?.ok === true,
+        primary: async () => (await session.query<{ ok: boolean }>(`select restaurantes.reactivacion_optin_marcar($1::uuid, $2::uuid, $3::timestamptz, $4::text, $5::text) as ok;`, [org, cliente, now.toISOString(), PREGUNTA_OPTIN, PREGUNTA_OPTIN_VERSION])).rows[0]?.ok === true,
         isRecoverable: isMigrationPendingError,
         fallback: async () => false,
       }),

@@ -261,8 +261,8 @@ export async function handleInboundWhatsAppMessage(
       // Un mensaje que mezcla ARCO con otro motivo de alto riesgo (alergia, cobro, queja...) NO toma el
       // fast-path: pasa al agente, cuyo clasificador de #226 escala al equipo con el texto completo.
       const arcoRapido = privacy && !matchesHighRiskOtherThan(body, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
-      // PM R23: un SI/NO explicito a la pregunta de opt-in (abierta <= 3 dias) se responde en fijo, sin LLM. Sin pregunta abierta devuelve null y el turno sigue normal.
-      const optinFijo = !arcoRapido && args.optin ? await responderOptInDeterminista(args.optin, organizationId, phone, body) : null;
+      // PM R23: un SI/NO explicito se toma como respuesta al opt-in SOLO si el ultimo mensaje del agente fue esa pregunta (y sigue abierta, <= 24 h). Si no, devuelve null y el turno sigue normal (p. ej. «si» a una confirmacion de pedido).
+      const optinFijo = !arcoRapido && args.optin && !args.botonId ? await responderOptInDeterminista(args.optin, organizationId, phone, body, messagesAfterUser) : null;
       const arco = arcoRapido ?? optinFijo;
 
       // R-21: con una toma de handoff abierta (pendiente o tomada) el agente calla; el mensaje del cliente ya
@@ -814,7 +814,7 @@ export async function responderTrasEspera(
       const textoPendiente = pendientes.map((m) => m.content).join("\n");
       const turnoDePasada = await repo.runWithRowSavepoint(async (): Promise<{ readonly salida: InboundMessageOutcome; readonly silencio: boolean }> => {
         const arcoRapido = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
-        const optinFijo = !arcoRapido && args.optin ? await responderOptInDeterminista(args.optin, organizationId, phone, textoPendiente) : null; // PM R23 (ver la ruta directa)
+        const optinFijo = !arcoRapido && args.optin ? await responderOptInDeterminista(args.optin, organizationId, phone, textoPendiente, historialCrudo) : null; // PM R23 (ver la ruta directa)
         const arco = arcoRapido ?? optinFijo;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
