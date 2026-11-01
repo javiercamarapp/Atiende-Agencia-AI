@@ -12,6 +12,16 @@ export function limpiarTexto(raw: string): string {
     .trim();
 }
 
+/** Como `limpiarTexto` pero conserva los saltos de linea (texto de documentos): NFKC y sin invisibles/controles/bidi. */
+export function limpiarTextoMultilinea(raw: string): string {
+  return raw
+    .normalize("NFKC")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\p{Cf}\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => (c === "\n" || c === "\t" ? c : ""))
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
 /** Lista de PERMITIDOS: letras latinas (con acentos), digitos y puntuacion basica. Se aplica al texto ya limpio. */
 const PERMITIDOS = /^[\p{Script=Latin}0-9 .,;:!?¡¿()'"\-/]*$/u;
 export function soloCaracteresPermitidos(limpio: string): boolean {

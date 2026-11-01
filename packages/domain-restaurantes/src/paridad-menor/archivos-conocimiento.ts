@@ -9,6 +9,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { validarEntradaConocimiento } from "../conocimiento/dominio.ts";
 import type { ConocimientoEntrada, NuevaConocimientoEntrada } from "../conocimiento/types.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
+import { detectarInyeccion, limpiarTextoMultilinea, tituloSeguroDeNombre } from "./texto-seguro.ts";
 import { ParidadNoDisponibleError, ParidadRechazadaError, codigoPg, esBaseSinMigrar, esErrorEscrituraConocido, iso } from "./comun.ts";
 
 export const ARCHIVO_TIPOS = Object.freeze({ "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as const);
@@ -337,13 +338,21 @@ export async function procesarCargaArchivo(
   const { trozos, truncado } = trocearTexto(extraccion.texto);
   const aceptados: { titulo: string; texto: string }[] = [];
   const omitidos: { parte: number; motivo: string }[] = [];
-  trozos.forEach((trozo, i) => {
-    const titulo = `${v.nombre.replace(/\.[^.]+$/, "")} (parte ${i + 1})`.slice(0, 120);
+  // El nombre del archivo es dato no confiable: se sanea (y si trae una orden cae a "Documento") antes de usarse como titulo.
+  const base = tituloSeguroDeNombre(v.nombre);
+  trozos.forEach((crudo, i) => {
+    const trozo = limpiarTextoMultilinea(crudo);
+    // El texto del documento tambien es no confiable: un trozo que parece una instruccion al asistente NO llega ni como borrador.
+    if (detectarInyeccion(trozo) !== null) {
+      omitidos.push({ parte: i + 1, motivo: "inyeccion" });
+      return;
+    }
+    const titulo = `${base} (parte ${i + 1})`.slice(0, 120);
     const r = validarEntradaConocimiento({ titulo, texto: trozo }, deps.nombresCatalogo);
     if (r.ok) aceptados.push({ titulo: r.titulo, texto: r.texto });
     else omitidos.push({ parte: i + 1, motivo: r.motivo });
   });
-  if (aceptados.length === 0) return { estado: "rechazado", motivo: "sin_contenido_utilizable", mensaje: "El archivo no dejo ningun trozo utilizable (precios, nombres del menu o texto vacio)." };
+  if (aceptados.length === 0) return { estado: "rechazado", motivo: "sin_contenido_utilizable", mensaje: "El archivo no dejo ningun trozo utilizable (precios, nombres del menu, instrucciones al asistente o texto vacio)." };
 
   const creadas: ConocimientoEntrada[] = [];
   for (const a of aceptados) {
