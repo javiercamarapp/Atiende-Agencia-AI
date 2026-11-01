@@ -23,7 +23,21 @@ export const TROZO_MAX_CARACTERES = 1800;
 export const TROZOS_MAX_POR_ARCHIVO = 20;
 export const TEXTO_EXTRAIDO_MAX = 40_000;
 
-export type MotivoArchivoInvalido = "vacio" | "demasiado_grande" | "tipo_no_permitido" | "tipo_no_coincide" | "nombre_invalido" | "contenido_sospechoso";
+/**
+ * TOPES que cualquier extractor REAL (parser de PDF / OCR) debe respetar y declarar. Un extractor que no los declare, que declare topes mayores o que no corra aislado
+ * (worker/sandbox sin red ni secretos) NO se usa: `extractorEsSeguro` lo rechaza y la carga responde "no disponible aun" (503). Los valores son techos, no metas.
+ */
+export const EXTRACTOR_LIMITES_MAX = Object.freeze({ paginas: 20, pixeles: 25_000_000, bytesDescomprimidos: 50 * 1024 * 1024, milisegundos: 20_000 });
+export interface LimitesExtractor {
+  readonly paginas: number;
+  readonly pixeles: number;
+  readonly bytesDescomprimidos: number;
+  readonly milisegundos: number;
+}
+/** Lado maximo de una imagen aceptada (ademas del tope de pixeles). */
+export const IMAGEN_LADO_MAX = 12_000;
+
+export type MotivoArchivoInvalido = "dimensiones" | "vacio" | "demasiado_grande" | "tipo_no_permitido" | "tipo_no_coincide" | "nombre_invalido" | "contenido_sospechoso";
 
 export type ResultadoValidacionArchivo =
   | { readonly ok: true; readonly mime: MimeArchivo; readonly nombre: string; readonly sha256: string; readonly tamanoBytes: number }
@@ -42,6 +56,42 @@ export function detectarMimeReal(b: Uint8Array): MimeArchivo | null {
 
 const EXTENSIONES: Readonly<Record<MimeArchivo, readonly string[]>> = { "application/pdf": ["pdf"], "image/png": ["png"], "image/jpeg": ["jpg", "jpeg"], "image/webp": ["webp"] };
 
+
+/** Ancho y alto declarados en la cabecera (sin decodificar nada). `null` si no se pueden leer. */
+export function dimensionesDeImagen(b: Uint8Array, mime: MimeArchivo): { readonly ancho: number; readonly alto: number } | null {
+  const u32 = (o: number) => (b[o]! * 2 ** 24) + (b[o + 1]! << 16) + (b[o + 2]! << 8) + b[o + 3]!;
+  if (mime === "image/png") {
+    if (b.length < 24 || String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!) !== "IHDR") return null;
+    return { ancho: u32(16), alto: u32(20) };
+  }
+  if (mime === "image/jpeg") {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xff) {
+        i += 1;
+        continue;
+      }
+      const m = b[i + 1]!;
+      if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7) || m === 0xff) {
+        i += m === 0xff ? 1 : 2;
+        continue;
+      }
+      const len = (b[i + 2]! << 8) | b[i + 3]!;
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { alto: (b[i + 5]! << 8) | b[i + 6]!, ancho: (b[i + 7]! << 8) | b[i + 8]! };
+      if (len < 2) return null;
+      i += 2 + len;
+    }
+    return null;
+  }
+  if (mime === "image/webp" && b.length >= 30) {
+    const tipo = String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!);
+    if (tipo === "VP8X") return { ancho: 1 + (b[24]! | (b[25]! << 8) | (b[26]! << 16)), alto: 1 + (b[27]! | (b[28]! << 8) | (b[29]! << 16)) };
+    if (tipo === "VP8 ") return { ancho: (b[26]! | (b[27]! << 8)) & 0x3fff, alto: (b[28]! | (b[29]! << 8)) & 0x3fff };
+    if (tipo === "VP8L" && b[20] === 0x2f) return { ancho: 1 + (b[21]! | ((b[22]! & 0x3f) << 8)), alto: 1 + ((b[22]! >> 6) | (b[23]! << 2) | ((b[24]! & 0x0f) << 10)) };
+  }
+  return null;
+}
+
 /** Nombre mostrable: sin ruta, sin controles, acotado. `null` si queda vacio. */
 export function nombreArchivoSeguro(nombre: string): string | null {
   const base = nombre.replace(/\\/g, "/").split("/").pop() ?? "";
@@ -56,6 +106,13 @@ export function validarArchivoEntrante(e: { readonly nombre: string; readonly mi
   const mime = detectarMimeReal(e.bytes);
   if (!mime) return { ok: false, motivo: "tipo_no_permitido", mensaje: "Solo se aceptan PDF e imagenes PNG, JPG o WebP (el contenido real del archivo no coincide con ninguno)." };
   if (e.bytes.length > ARCHIVO_MAX_BYTES[mime]) return { ok: false, motivo: "demasiado_grande", mensaje: `El archivo pesa ${(e.bytes.length / 1048576).toFixed(1)} MB; el maximo para este tipo es ${ARCHIVO_MAX_BYTES[mime] / 1048576} MB.` };
+  if (mime !== "application/pdf") {
+    // Bomba de pixeles: un PNG de pocos KB puede declarar decenas de miles de pixeles por lado. Se lee de la cabecera ANTES de que nadie lo decodifique.
+    const d = dimensionesDeImagen(e.bytes, mime);
+    if (!d || d.ancho < 1 || d.alto < 1 || d.ancho > IMAGEN_LADO_MAX || d.alto > IMAGEN_LADO_MAX || d.ancho * d.alto > EXTRACTOR_LIMITES_MAX.pixeles) {
+      return { ok: false, motivo: "dimensiones", mensaje: "No se pudieron leer las dimensiones de la imagen o son demasiado grandes (maximo 25 megapixeles)." };
+    }
+  }
   if (e.mimeDeclarado.split(";")[0]!.trim().toLowerCase() !== mime) return { ok: false, motivo: "tipo_no_coincide", mensaje: "El tipo declarado no coincide con el contenido real del archivo." };
   const ext = (nombre.includes(".") ? nombre.split(".").pop()! : "").toLowerCase();
   if (!EXTENSIONES[mime].includes(ext)) return { ok: false, motivo: "tipo_no_coincide", mensaje: "La extension del archivo no coincide con su contenido real." };
@@ -71,7 +128,8 @@ export interface EscanerArchivo {
 
 const EICAR = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
 /** Claves de PDF con contenido activo; se buscan DESPUES de deshacer los escapes `#xx` de los nombres (`/J#61vaScript`). */
-const PDF_ACTIVO = /\/(JavaScript|JS|Launch|EmbeddedFile|EmbeddedFiles|OpenAction|AA|RichMedia|XFA|SubmitForm|ImportData|GoToR|GoToE)(?![A-Za-z0-9])/;
+/** `/ObjStm` y `/Encrypt`: contenido comprimido o cifrado que este escaner NO puede inspeccionar; se rechaza en vez de dejarlo pasar a ciegas (puede dar falsos positivos con PDF legitimos de Word/Acrobat). */
+const PDF_ACTIVO = /\/(JavaScript|JS|Launch|EmbeddedFile|EmbeddedFiles|OpenAction|AA|ObjStm|Encrypt|RichMedia|XFA|SubmitForm|ImportData|GoToR|GoToE)(?![A-Za-z0-9])/;
 const POLIGLOTA = /<\?php|<script|<%@|<%=|#!\/bin\/|#!\/usr\/bin\/|powershell|cmd\.exe/i;
 
 export class EscanerHeuristico implements EscanerArchivo {
@@ -107,11 +165,24 @@ export type ResultadoExtraccion = { readonly ok: true; readonly texto: string } 
 export interface ExtractorTexto {
   /** `false` = no hay extractor real: las rutas responden "no disponible aun" en vez de aceptar el archivo y no hacer nada. */
   readonly disponible: boolean;
+  /** true = corre en un worker/sandbox aislado (sin red, sin secretos). Obligatorio para un extractor real. */
+  readonly aislado: boolean;
+  /** Topes que el extractor se compromete a respetar (nunca mayores que `EXTRACTOR_LIMITES_MAX`). */
+  readonly limites: LimitesExtractor | undefined;
   extraer(entrada: { readonly bytes: Uint8Array; readonly mime: MimeArchivo; readonly nombre: string }): Promise<ResultadoExtraccion>;
+}
+
+/** Un extractor solo se usa si declara aislamiento y limites > 0 y no mayores que los techos. Todo lo demas = "no disponible aun". */
+export function extractorEsSeguro(x: ExtractorTexto): boolean {
+  const l = x.limites;
+  if (!x.disponible || !x.aislado || !l) return false;
+  return (["paginas", "pixeles", "bytesDescomprimidos", "milisegundos"] as const).every((k) => Number.isFinite(l[k]) && l[k] > 0 && l[k] <= EXTRACTOR_LIMITES_MAX[k]);
 }
 
 export class ExtractorTextoNoConfigurado implements ExtractorTexto {
   readonly disponible = false;
+  readonly aislado = false;
+  readonly limites = undefined;
   async extraer(): Promise<ResultadoExtraccion> {
     return { ok: false, motivo: "extractor_no_configurado" };
   }
@@ -120,6 +191,8 @@ export class ExtractorTextoNoConfigurado implements ExtractorTexto {
 /** Extractor FALSO para pruebas y desarrollo: devuelve el texto que se le dio (por huella del archivo) o uno fijo. Nunca lee los bytes. */
 export class ExtractorTextoFalso implements ExtractorTexto {
   readonly disponible = true;
+  readonly aislado = true;
+  readonly limites: LimitesExtractor = EXTRACTOR_LIMITES_MAX;
   readonly llamadas: string[] = [];
   constructor(private readonly textoPorDefecto: string | null = null, private readonly porHuella: ReadonlyMap<string, string> = new Map()) {}
   async extraer(e: { readonly bytes: Uint8Array; readonly mime: MimeArchivo; readonly nombre: string }): Promise<ResultadoExtraccion> {
@@ -319,8 +392,8 @@ export async function procesarCargaArchivo(
 ): Promise<ResultadoCarga> {
   const v = validarArchivoEntrante(e);
   if (!v.ok) return { estado: "rechazado", motivo: v.motivo, mensaje: v.mensaje };
-  if (!deps.extractor.disponible) {
-    return { estado: "no_disponible", mensaje: "No disponible aun: falta configurar la extraccion de texto de PDF e imagenes (OCR). Mientras tanto, escribe el conocimiento a mano en Conocimiento del negocio." };
+  if (!extractorEsSeguro(deps.extractor)) {
+    return { estado: "no_disponible", mensaje: "No disponible aun: falta configurar la extraccion de texto de PDF e imagenes (OCR) con aislamiento y limites de paginas, pixeles, bytes descomprimidos y tiempo. Mientras tanto, escribe el conocimiento a mano en Conocimiento del negocio." };
   }
   const lectura = await deps.archivos.listar(e.organizationId);
   if (!lectura.disponible) return { estado: "no_disponible", mensaje: "No disponible aun: la base de datos requiere la migracion 182 (archivos de conocimiento)." };

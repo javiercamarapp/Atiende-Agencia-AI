@@ -21,6 +21,8 @@ import {
   ETIQUETA_TONO,
   EscanerHeuristico,
   ExtractorTextoNoConfigurado,
+  EXTRACTOR_LIMITES_MAX,
+  extractorEsSeguro,
   IDIOMAS_ADICIONALES_MAX,
   IDIOMAS_VOZ,
   IdiomasVozInvalidosError,
@@ -252,8 +254,9 @@ export function restaurantesParidadMenorRoutes(deps: AppDeps): Hono<CoreAuthHono
     tipos: Object.keys(ARCHIVO_TIPOS),
     maxBytes: ARCHIVO_MAX_BYTES,
     maxArchivos: ARCHIVOS_MAX_POR_ORGANIZACION,
-    extraccionDisponible: extractor.disponible,
-    nota: extractor.disponible
+    extraccionDisponible: extractorEsSeguro(extractor),
+    limitesExtractor: EXTRACTOR_LIMITES_MAX,
+    nota: extractorEsSeguro(extractor)
       ? "El texto del archivo se convierte en borradores de Conocimiento del negocio: revisalos y publicalos. Sirven igual al agente de WhatsApp y al de voz."
       : "No disponible aun: falta configurar la extraccion de texto de PDF e imagenes. Mientras tanto, escribe el conocimiento a mano en Conocimiento del negocio.",
   });
@@ -270,7 +273,7 @@ export function restaurantesParidadMenorRoutes(deps: AppDeps): Hono<CoreAuthHono
     const organizationId = c.get("organizationId");
     const actorUserId = c.get("userId");
     // Sin extractor real no se acepta el archivo (ni se lee el cuerpo): no se finge una carga que no hara nada.
-    if (!extractor.disponible) throw Errors.serviceUnavailable(opcionesArchivos().nota);
+    if (!extractorEsSeguro(extractor)) throw Errors.serviceUnavailable(opcionesArchivos().nota);
     const raw = await readJsonCapped<{ nombre?: unknown; tipo?: unknown; contenidoBase64?: unknown }>(c.req.raw, ARCHIVO_CUERPO_MAX_BYTES);
     if (typeof raw.nombre !== "string" || typeof raw.tipo !== "string") throw Errors.validation("nombre y tipo: se esperaban textos.");
     const bytes = decodificarBase64(raw.contenidoBase64);

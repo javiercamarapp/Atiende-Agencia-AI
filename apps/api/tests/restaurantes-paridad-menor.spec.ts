@@ -273,6 +273,18 @@ describe("(3) archivos de conocimiento", () => {
     expect(lista.nota).toMatch(/No disponible aun/);
   });
 
+  it("un extractor 'disponible' sin aislamiento ni limites NO se acepta: 503, la lista dice extraccionDisponible:false y el extractor no se llama", async () => {
+    const t = await construir({ extractor: false });
+    let llamadas = 0;
+    const inseguro = { disponible: true, aislado: false, limites: undefined, extraer: async () => { llamadas += 1; return { ok: true as const, texto: "x" }; } };
+    const app = envolver(buildApp({ ...t.deps, extractorTextoConocimiento: inseguro }));
+    const r = await app.request(`${t.raiz}/agente/conocimiento-archivos`, authedJson(t.ctx.staff.owner.token, { nombre: "a.pdf", tipo: "application/pdf", contenidoBase64: pdfB64() }, "POST"));
+    expect(r.status).toBe(503);
+    expect(llamadas).toBe(0);
+    const lista = await (await app.request(`${t.raiz}/agente/conocimiento-archivos`, authedGet(t.ctx.staff.owner.token))).json();
+    expect(lista).toMatchObject({ extraccionDisponible: false, limitesExtractor: { paginas: 20 } });
+  });
+
   it("base sin la migracion 182: la lista es honesta (disponible: false) y subir responde 503", async () => {
     const t = await construir();
     t.archivos.migrada = false;
