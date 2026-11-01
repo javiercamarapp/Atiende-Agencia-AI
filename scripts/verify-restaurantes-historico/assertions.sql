@@ -298,6 +298,68 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e07
 select restaurantes.historial_fusionar_duplicados('00000000-0000-0000-0000-0000000f6a00', false) as should_fail;
 rollback;
 
+\echo '--- A26. (P-3) la supresion se guarda como HMAC (v2), no como sha256(org:telefono) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+select restaurantes.historial_borrar('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01');
+reset role;
+select count(*) as deberia_ser_1 from restaurantes.import_historico_supresion where organization_id = '00000000-0000-0000-0000-0000000f6a00' and hash_version = 2 and phone_hash <> encode(sha256(convert_to('00000000-0000-0000-0000-0000000f6a00:9990064001', 'utf8')), 'hex');
+rollback;
+
+\echo '--- A27. (P-3) nunca queda un hash v1 nuevo ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+select restaurantes.historial_borrar('00000000-0000-0000-0000-0000000f6a00', '00000000-0000-0000-0000-0000000f6c01');
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.import_historico_supresion where organization_id = '00000000-0000-0000-0000-0000000f6a00' and hash_version = 1;
+rollback;
+
+\echo '--- A28. (P-3) transicion: un hash heredado (v1) sigue suprimiendo y no se crea el cliente ---'
+begin;
+insert into restaurantes.import_historico_supresion (organization_id, phone_hash, hash_version) values ('00000000-0000-0000-0000-0000000f6a00', encode(sha256(convert_to('00000000-0000-0000-0000-0000000f6a00:9990064010', 'utf8')), 'hex'), 1);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_0 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-0000000f6a00' and phone = '9990064010';
+rollback;
+
+\echo '--- A29. (P-3) transicion: al volver a ver ese telefono el v1 se migra a v2 ---'
+begin;
+insert into restaurantes.import_historico_supresion (organization_id, phone_hash, hash_version) values ('00000000-0000-0000-0000-0000000f6a00', encode(sha256(convert_to('00000000-0000-0000-0000-0000000f6a00:9990064010', 'utf8')), 'hex'), 1);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas());
+reset role;
+select count(*) as deberia_ser_1 from restaurantes.import_historico_supresion where organization_id = '00000000-0000-0000-0000-0000000f6a00' and hash_version = 2;
+rollback;
+
+\echo '--- A30. (P-3) sin pimienta falla cerrado (no escribe hashes debiles) ---'
+begin;
+insert into restaurantes.import_historico_supresion (organization_id, phone_hash, hash_version) values ('00000000-0000-0000-0000-0000000f6a00', repeat('0', 64), 2);
+delete from restaurantes.historial_config;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select restaurantes.importar_historial('00000000-0000-0000-0000-0000000f6a00', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', true, public.t_hist_filas()) as should_fail;
+rollback;
+
+\echo '--- A31. (P-3) la pimienta no es legible por authenticated ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e01', true);
+select count(*) as should_fail from restaurantes.historial_config;
+rollback;
+
+\echo '--- A32. (P-3) existe exactamente una pimienta de al menos 32 caracteres ---'
+begin;
+reset role;
+select count(*) as deberia_ser_1 from restaurantes.historial_config where id = 1 and length(pepper) >= 32;
+rollback;
+
 \echo ''
 \echo '=== B) cliente_perfil_historico (solo sistema) ==='
 
