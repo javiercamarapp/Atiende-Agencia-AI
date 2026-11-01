@@ -17,11 +17,11 @@ create table restaurantes.branch_voice_languages (
   property_id uuid primary key references core.property(id) on delete cascade,
   organization_id uuid not null references core.organization(id) on delete cascade,
   idioma_principal text not null default 'es-MX' check (idioma_principal ~ '^[a-z]{2,3}(-[A-Z]{2})?$'),
-  idiomas_adicionales text[] not null default '{}'
-    check (cardinality(idiomas_adicionales) <= 4 and array_to_string(idiomas_adicionales, ',') ~ '^([a-z]{2,3}(-[A-Z]{2})?(,|$))*$' and not (idioma_principal = any (idiomas_adicionales))),
+  idiomas_adicionales text[] not null default '{}',
   deteccion_automatica boolean not null default false,
   updated_by uuid references core.staff_user(id) on delete set null,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  check (cardinality(idiomas_adicionales) <= 4 and array_to_string(idiomas_adicionales, ',') ~ '^([a-z]{2,3}(-[A-Z]{2})?(,|$))*$' and not (idioma_principal = any (idiomas_adicionales)))
 );
 
 alter table restaurantes.branch_voice_languages enable row level security;

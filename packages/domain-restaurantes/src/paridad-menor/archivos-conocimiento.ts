@@ -13,8 +13,10 @@ import { ParidadNoDisponibleError, ParidadRechazadaError, codigoPg, esBaseSinMig
 
 export const ARCHIVO_TIPOS = Object.freeze({ "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as const);
 export type MimeArchivo = keyof typeof ARCHIVO_TIPOS;
-/** Topes por tipo (el CHECK de la base acepta hasta 5 MiB en general). */
-export const ARCHIVO_MAX_BYTES: Readonly<Record<MimeArchivo, number>> = Object.freeze({ "application/pdf": 5 * 1024 * 1024, "image/png": 3 * 1024 * 1024, "image/jpeg": 3 * 1024 * 1024, "image/webp": 3 * 1024 * 1024 });
+/** Topes por tipo. El archivo viaja en base64 dentro de un JSON y la funcion de Vercel acepta ~4.5 MB por peticion: 3 MiB de PDF (4 MiB en base64) es lo que cabe. El CHECK de la base acepta hasta 5 MiB. */
+export const ARCHIVO_MAX_BYTES: Readonly<Record<MimeArchivo, number>> = Object.freeze({ "application/pdf": 3 * 1024 * 1024, "image/png": 2 * 1024 * 1024, "image/jpeg": 2 * 1024 * 1024, "image/webp": 2 * 1024 * 1024 });
+/** Tope del cuerpo JSON de la carga (el mayor archivo en base64 + sobre). */
+export const ARCHIVO_CUERPO_MAX_BYTES = Math.ceil((3 * 1024 * 1024 * 4) / 3) + 8 * 1024;
 export const ARCHIVOS_MAX_POR_ORGANIZACION = 20;
 export const TROZO_MAX_CARACTERES = 1800;
 export const TROZOS_MAX_POR_ARCHIVO = 20;
