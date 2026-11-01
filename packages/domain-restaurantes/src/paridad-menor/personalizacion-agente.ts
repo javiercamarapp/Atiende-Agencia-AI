@@ -5,6 +5,7 @@
 import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { sanitizeNotes } from "../text-sanitize.ts";
+import { detectarTemaProtegido, limpiarTexto, soloCaracteresPermitidos } from "./texto-seguro.ts";
 import { TONOS_AGENTE_WHATSAPP } from "../types.ts";
 import type { TonoAgenteWhatsApp } from "../types.ts";
 import { ParidadNoDisponibleError, ParidadRechazadaError, codigoPg, esBaseSinMigrar, esErrorEscrituraConocido, iso } from "./comun.ts";
@@ -38,37 +39,20 @@ export class PersonalizacionInvalidaError extends Error {
   }
 }
 
-const sinAcentos = (s: string): string => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-
-/** [expresion sobre el texto SIN acentos y en minusculas, motivo mostrado al dueno]. */
-const PROHIBIDOS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\b(ignor\w*|olvid\w*|descart\w*|anul\w*|sustituy\w*|reemplaz\w*|desobedec\w*|omit\w*|salt\w*)\b.{0,40}\b(regla\w*|instruccion\w*|indicacion\w*|lo anterior|lo de arriba|prompt)\b/, "intenta anular las reglas del agente"],
-  [/\b(a partir de ahora|de ahora en adelante|ahora eres|actua como|haste pasar|finge|pretende|ignore previous|disregard|system prompt|prompt del sistema|modo desarrollador|jailbreak)\b/, "intenta cambiar la identidad o las reglas del agente"],
-  [/\b(system|assistant|developer|sistema|asistente)\s*:/, "imita un mensaje del sistema"],
-  [/propin/, "la propina es una regla del sistema"],
-  [/\b(transferenc\w*|spei|clabe|deposit\w*|cuenta bancaria|numero de cuenta|forma\w* de pago|metodo\w* de pago|tarjeta|cvv|efectivo)\b/, "las formas de pago son una regla del sistema"],
-  [/\b(escal\w*|gerente\w*|supervisor\w*|humano\w*|persona real|encargado|queja\w*|reclam\w*)\b/, "la escalacion a una persona es una regla del sistema"],
-  [/\b(seguridad|privacidad|datos personales|contrasena\w*|password|token|api ?key|llave\w*|secreto\w*|credencial\w*|arco)\b/, "la seguridad y la privacidad son reglas del sistema"],
-  [/\b(precio\w*|descuento\w*|gratis|regalo\w*|cortesia\w*|reembolso\w*|devoluc\w*|promocion\w*|2x1|cupon\w*|cobrar\w*|cobr[oa]\w*|costo\w*)\b/, "los precios y las promociones salen siempre del menu y las herramientas"],
-  [/\$\s*\d|\d\s*\$|\b\d+(?:[.,]\d+)?\s*(?:pesos|mxn|mn|usd)\b/, "no escribas importes: los precios salen siempre del menu"],
-  [/\b(minimo\w*|horario\w*|zona\w*|cobertura|sucursal(?:es)? cerrada\w*|abierto\w*|cerrado\w*|alcohol|cerveza\w*|menor\w* de edad)\b/, "las reglas del pedido (minimos, horarios, zonas, alcohol) las aplica el sistema"],
-  [/https?:|www\.|\b[\w-]+\.(?:com|mx|net|org|io|app|me|ly)\b|@[\w-]+\.|\b(?:\d[\s().-]*){10,}/, "no se permiten enlaces, correos ni telefonos"],
-  [/[`<>{}[\]#|]|---|\*\*|~~/, "no uses marcas de formato o codigo"],
-];
-
 export type ResultadoMensajeDueno = { readonly ok: true; readonly valor: string | null } | { readonly ok: false; readonly motivo: "largo" | "regla_protegida" | "formato"; readonly mensaje: string };
 
 /** Valida y sanea el mensaje del dueno. `null`/vacio = sin mensaje. Una sola linea de texto corrido (los saltos se vuelven espacios). */
 export function validarMensajeDueno(raw: unknown): ResultadoMensajeDueno {
   if (raw === undefined || raw === null) return { ok: true, valor: null };
   if (typeof raw !== "string") return { ok: false, motivo: "formato", mensaje: "mensajeDueno: se esperaba un texto o null." };
-  const texto = sanitizeNotes(raw).replace(/\s+/g, " ").trim();
+  // NFKC + sin invisibles ni controles ANTES de medir y de validar: lo que se guarda es el texto limpio, no el original.
+  const texto = limpiarTexto(sanitizeNotes(raw));
   if (texto === "") return { ok: true, valor: null };
   if (texto.length > MENSAJE_DUENO_MAX) return { ok: false, motivo: "largo", mensaje: `El mensaje admite hasta ${MENSAJE_DUENO_MAX} caracteres (tiene ${texto.length}).` };
-  const plano = sinAcentos(texto);
-  for (const [re, motivo] of PROHIBIDOS) {
-    if (re.test(plano)) return { ok: false, motivo: "regla_protegida", mensaje: `Ese mensaje no se puede guardar: ${motivo}. El mensaje del dueño es solo de estilo y bienvenida; las reglas las pone el sistema.` };
-  }
+  // Lista de PERMITIDOS: letras latinas (con acentos), digitos y puntuacion basica. Cualquier otro caracter (cirilico, emoji, simbolos, marcas) se rechaza.
+  if (!soloCaracteresPermitidos(texto)) return { ok: false, motivo: "formato", mensaje: "El mensaje solo admite letras latinas (con acentos), numeros y puntuacion basica (. , ; : ! ? ¡ ¿ ( ) ' \" - /)." };
+  const motivo = detectarTemaProtegido(texto);
+  if (motivo) return { ok: false, motivo: "regla_protegida", mensaje: `Ese mensaje no se puede guardar: ${motivo}. El mensaje del dueño es solo de estilo y bienvenida; las reglas las pone el sistema.` };
   return { ok: true, valor: texto };
 }
 
