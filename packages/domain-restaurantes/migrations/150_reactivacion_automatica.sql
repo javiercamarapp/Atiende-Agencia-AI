@@ -72,7 +72,8 @@ create table restaurantes.marketing_optin_pregunta (
   pregunta_texto text check (pregunta_texto is null or char_length(pregunta_texto) <= 500),
   pregunta_version text check (pregunta_version is null or pregunta_version ~ '^[A-Za-z0-9._-]{1,32}$'),
   respondida_at timestamptz,
-  respuesta text check (respuesta is null or respuesta in ('si', 'no')),
+  -- 'baja' = la persona escribio BAJA/STOP (o se revoco por otra via) con la pregunta abierta: la pregunta se cierra y NUNCA se reabre ni se contesta despues.
+  respuesta text check (respuesta is null or respuesta in ('si', 'no', 'baja')),
   primary key (organization_id, customer_id)
 );
 
@@ -285,6 +286,22 @@ $$;
 revoke all on function restaurantes.reactivacion_optin_contexto(uuid, text, timestamptz) from public, anon;
 grant execute on function restaurantes.reactivacion_optin_contexto(uuid, text, timestamptz) to authenticated;
 
+-- R-2: toda revocacion (BAJA por telefono, panel, fusion) cierra la pregunta de opt-in abierta del cliente. Va como trigger del historial inmutable de la 052 para cubrir
+-- TODAS las rutas de revocacion sin redefinir sus funciones. Interna: sin EXECUTE para nadie (solo la dispara el INSERT, que hace una funcion definer).
+create or replace function restaurantes.marketing_optin_al_revocar()
+returns trigger language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
+begin
+  if new.estado = 'revocado' then
+    update restaurantes.marketing_optin_pregunta q set respondida_at = now(), respuesta = 'baja'
+     where q.organization_id = new.organization_id and q.customer_id = new.customer_id and q.respondida_at is null;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function restaurantes.marketing_optin_al_revocar() from public, anon, authenticated, service_role;
+create trigger marketing_optin_al_revocar_trg after insert on restaurantes.marketing_consentimiento_evento
+  for each row execute function restaurantes.marketing_optin_al_revocar();
+
 -- Marca que la pregunta SE HIZO (se llama en el mismo turno que la agrega a la respuesta). Reabre (respuesta nula) solo si ya pasaron 90 dias.
 create or replace function restaurantes.reactivacion_optin_marcar(p_organization_id uuid, p_customer_id uuid, p_now timestamptz default now(), p_texto text default null, p_version text default null)
 returns boolean language plpgsql security definer set search_path = restaurantes, core, pg_temp as $$
@@ -329,6 +346,12 @@ begin
     order by c.created_at, c.id limit 1;
   v_hab := coalesce((select rc.optin_conversacional from restaurantes.reactivacion_config rc where rc.organization_id = p_organization_id), false);
   if v_cli is null or not v_hab then
+    return 'sin_pregunta';
+  end if;
+  -- R-2: un consentimiento REVOCADO (BAJA/STOP, panel, fusion) jamas se revierte con un «si» conversacional; solo un acto explicito nuevo (ALTA + pregunta nueva
+  -- con texto de re-opt-in, fuera de este alcance). La pregunta pendiente se cierra como 'baja'.
+  if exists (select 1 from restaurantes.marketing_consentimiento mc where mc.organization_id = p_organization_id and mc.customer_id = v_cli and mc.canal = 'whatsapp' and mc.estado = 'revocado') then
+    update restaurantes.marketing_optin_pregunta q set respondida_at = p_now, respuesta = 'baja' where q.organization_id = p_organization_id and q.customer_id = v_cli and q.respondida_at is null;
     return 'sin_pregunta';
   end if;
   update restaurantes.marketing_optin_pregunta q set respondida_at = p_now, respuesta = case when p_si then 'si' else 'no' end

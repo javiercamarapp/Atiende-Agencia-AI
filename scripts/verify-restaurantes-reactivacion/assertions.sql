@@ -306,6 +306,28 @@ reset role;
 select count(*) as evidencia_deberia_ser_1 from restaurantes.marketing_optin_pregunta where customer_id = '00000000-0000-0000-0000-00000c460001' and pregunta_texto = 'Texto exacto de la pregunta' and pregunta_version = 'optin.v1';
 rollback;
 
+\echo '=== D11. R-2: BAJA con la pregunta abierta la cierra como baja y un SI posterior NO otorga ==='
+begin;
+insert into restaurantes.reactivacion_config (organization_id, modo, optin_conversacional) values ('00000000-0000-0000-0000-0000000e4601', 'simulado', true);
+set local role authenticated;
+select restaurantes.reactivacion_optin_marcar('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', now(), 'Texto', 'optin.v1');
+select restaurantes.marketing_revocar_por_telefono('00000000-0000-0000-0000-0000000e4601', '+525554600001');
+select restaurantes.reactivacion_optin_responder('00000000-0000-0000-0000-0000000e4601', '+525554600001', true, now());
+reset role;
+select (select count(*) from restaurantes.marketing_consentimiento where customer_id = '00000000-0000-0000-0000-00000c460001' and estado = 'otorgado') + (select count(*) from restaurantes.marketing_optin_pregunta where customer_id = '00000000-0000-0000-0000-00000c460001' and respuesta = 'baja' and respondida_at is not null) as baja_deberia_ser_1;
+rollback;
+
+\echo '=== D12. R-2: con el consentimiento REVOCADO y una pregunta abierta, el SI no lo revierte ==='
+begin;
+insert into restaurantes.reactivacion_config (organization_id, modo, optin_conversacional) values ('00000000-0000-0000-0000-0000000e4601', 'simulado', true);
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, revocado_at) values ('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', 'whatsapp', 'revocado', 'baja_whatsapp', 'v1', now());
+insert into restaurantes.marketing_optin_pregunta (organization_id, customer_id, preguntado_at) values ('00000000-0000-0000-0000-0000000e4601', '00000000-0000-0000-0000-00000c460001', now());
+set local role authenticated;
+select restaurantes.reactivacion_optin_responder('00000000-0000-0000-0000-0000000e4601', '+525554600001', true, now());
+reset role;
+select count(*) as sigue_revocado_deberia_ser_1 from restaurantes.marketing_consentimiento where customer_id = '00000000-0000-0000-0000-00000c460001' and estado = 'revocado';
+rollback;
+
 \echo '=== E1. RLS: el owner de A lee las corridas de A; el de B no ve ninguna de A ==='
 begin;
 insert into restaurantes.reactivacion_corrida (organization_id, modo) values ('00000000-0000-0000-0000-0000000e4601', 'simulado');
