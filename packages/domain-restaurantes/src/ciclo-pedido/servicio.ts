@@ -32,6 +32,7 @@ import {
   parametrosEncuesta,
   parametrosPedidoAceptado,
   parametrosPedidoRechazado,
+  redactarComentarioEncuesta,
   textoEncuesta,
   textoEncuestaSeguro,
   textoPedidoAceptado,
@@ -328,7 +329,10 @@ export async function procesarMensajeDeEncuesta(deps: CicloServicioDeps, args: {
   }
   // estado "comentario"
   if (interpretado.tipo === "calificacion" || parecePedidoNuevo(args.body)) return null;
-  const c = await deps.ciclo.comentarEncuesta(args.organizationId, hash, args.body, ahora);
+  // P1-3: el comentario se guarda ya redactado (tarjetas, telefonos, correos y direcciones), como la conversacion.
+  const comentario = redactarComentarioEncuesta(args.body).trim();
+  if (comentario === "") return null;
+  const c = await deps.ciclo.comentarEncuesta(args.organizationId, hash, comentario, ahora);
   if (c.resultado !== "comentada") return null;
   return { reply: TEXTO_GRACIAS_COMENTARIO, tipo: "comentario" };
 }

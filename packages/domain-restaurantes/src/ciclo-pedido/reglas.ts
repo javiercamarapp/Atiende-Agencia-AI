@@ -2,6 +2,7 @@
 // encuesta post-entrega (envio, respuesta, baja), recordatorios sin aceptar y ratios de operacion. Sin red, sin base, sin reloj propio
 // (todo recibe el instante): lo prueban los tests deterministas y lo reutilizan el servicio y las rutas. Los criterios de la encuesta
 // (2 a 3 h, silencio 23:00-9:00, una cada 14 dias, 1 a 5, sin incentivo de resena) viven en `../encuesta-reglas.ts` y NO se reescriben aqui.
+import { redactSensitiveInfo } from "../whatsapp/inbound.ts";
 import { ENCUESTA_ESCALA_MAX, ENCUESTA_ESCALA_MIN, accionSegunCalificacion, contieneIncentivoDeResena, decidirEnvioEncuesta, textoRecuperacionPrivada } from "../encuesta-reglas.ts";
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -186,6 +187,20 @@ export function textosTrasCalificar(calificacion: number, nombreSucursal: string
   if (accion.tipo === "invitar_resena_google") return { cliente: `¡Gracias por su calificación! ${pedirComentario}`, esBaja: false };
   return { cliente: textoRecuperacionPrivada(nombreSucursal), esBaja: true };
 }
+/**
+ * Redaccion del comentario libre ANTES de guardarlo (P1-3 de la revision de #713). Primero la MISMA redaccion que la conversacion (`redactSensitiveInfo`: tarjetas, vencimientos, CVV) y
+ * ademas lo que la conversacion conserva pero un comentario de encuesta no necesita: telefonos, correos y direcciones (calle/avenida/colonia con numero, "#123", cruzamientos "por 21 y 23").
+ * Es deliberadamente agresiva: prefiere perder un dato inofensivo a guardar PII.
+ */
+export function redactarComentarioEncuesta(texto: string): string {
+  return redactSensitiveInfo(texto)
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[correo]")
+    .replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, "[número]")
+    .replace(/\b(?:calle|c\.|avenida|av\.?|colonia|col\.|fracc(?:ionamiento)?\.?|andador|privada|priv\.|carretera|km|manzana|mza\.?|lote)\s+[^,;\n]{0,60}/gi, "[dirección]")
+    .replace(/#\s*\d+[\w-]*(?:\s*(?:por|x|entre)\s*\d+[\w]*(?:\s*(?:y|e)\s*\d+[\w]*)?)?/gi, "[dirección]")
+    .slice(0, 500);
+}
+
 export const TEXTO_GRACIAS_COMENTARIO = "Gracias, su comentario quedó registrado.";
 export const TEXTO_BAJA_ENCUESTA = "Listo, no le enviaremos más encuestas. Gracias.";
 
