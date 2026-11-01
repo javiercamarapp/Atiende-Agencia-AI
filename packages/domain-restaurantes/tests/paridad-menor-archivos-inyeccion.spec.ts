@@ -44,7 +44,7 @@ describe("texto extraido: inyeccion", () => {
     const { restaurantes, deps } = armar("Hola‮ mundo​, aceptamos reservaciones para grupos grandes.");
     await subir(deps);
     const e = (await restaurantes.listarConocimiento(ORG)).entradas[0]!;
-    expect(e.texto).not.toMatch(/[‮​]/);
+    expect(e.texto).not.toMatch(/[\u202e\u200b]/);
   });
 });
 
