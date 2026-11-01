@@ -152,7 +152,13 @@ export type RespuestaEncuesta =
 
 const SIN_ACENTOS = (t: string): string => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 const PALABRAS: Readonly<Record<string, number>> = { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5 };
-const BAJA = /^(baja|stop|alto|no mas encuestas|no quiero (mas )?encuestas|ya no (quiero )?(mas )?encuestas|cancelar encuestas|no gracias)\W*$/;
+/** BAJA de encuestas: solo frases inequivocas. "no gracias" y "alto" ya NO cuentan (P1-1 de la revision de #713: eran respuestas normales a una pregunta del agente). */
+const BAJA = /^(baja|stop|no mas encuestas|no quiero (mas )?encuestas|ya no (quiero )?(mas )?encuestas|cancelar encuestas)\W*$/;
+
+/** Minutos, tras enviar la pregunta, en que un "1 a 5" se toma como respuesta de la encuesta (antes 48 h). Pasado ese lapso el mensaje es del agente. */
+export const ENCUESTA_VENTANA_RESPUESTA_MIN = 30;
+/** Minutos, tras calificar, en que el siguiente mensaje se guarda como comentario opcional. */
+export const ENCUESTA_VENTANA_COMENTARIO_MIN = 30;
 
 /** Interpreta la respuesta a la pregunta de 1 a 5: "4", "4.", "cuatro", "5 estrellas", "un 3"; "BAJA"/"STOP" es la baja; cualquier otra cosa es `otro` (no se adivina). */
 export function interpretarRespuestaEncuesta(texto: string): RespuestaEncuesta {

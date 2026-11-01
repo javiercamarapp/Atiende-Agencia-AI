@@ -3,7 +3,7 @@
 // Los pedidos viven en el `InMemoryRestaurantesRepository` del dominio (se mueven con `updateOrderStatus`); aqui solo se guardan los campos nuevos.
 // Las funciones SQL en si (permisos, RLS, SQLSTATE) las cubre la verificacion contra Postgres real (`scripts/verify-restaurantes-ciclo-pedido`).
 import type { InMemoryRestaurantesRepository } from "../in-memory-repository.ts";
-import { RECORDATORIO_POR_OMISION } from "./reglas.ts";
+import { ENCUESTA_VENTANA_COMENTARIO_MIN, ENCUESTA_VENTANA_RESPUESTA_MIN, RECORDATORIO_POR_OMISION } from "./reglas.ts";
 import type { ConfigRecordatorio, EncuestaCruda, MotivoOmision, MotivoRechazo, TiemposCrudos } from "./reglas.ts";
 import { CicloConflictoError, CicloNoDisponibleError, CicloNoEncontradoError, CicloValidacionError } from "./tipos.ts";
 import type {
@@ -54,6 +54,13 @@ interface FilaEncuesta {
   readonly creadaEn: Date;
 }
 
+/** Actividad del telefono posterior a la encuesta: mensajes (de cualquiera) en la conversacion, si hay un pedido nuevo y cuantos mensajes del CLIENTE hubo tras calificar. */
+export interface ActividadPosterior {
+  readonly mensajesDespuesDeLaEncuesta: number;
+  readonly pedidoPosterior: boolean;
+  readonly mensajesDelClienteDespuesDeCalificar?: number;
+}
+
 /** Entrega sembrada por la prueba (en Postgres la deducen los pedidos `entregado` con `delivered_at`). */
 export interface EntregaMemoria {
   readonly orderId: string;
@@ -74,6 +81,7 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
   private readonly configEncuesta = new Map<string, ConfigEncuesta>();
   private readonly configRecordatorio = new Map<string, ConfigRecordatorio>();
   private readonly entregas: EntregaMemoria[] = [];
+  private readonly actividad = new Map<string, ActividadPosterior>();
   private readonly pendientes = new Map<string, PendienteMemoria>();
   /** `false` simula la base sin migrar: lecturas `disponible: false` y escrituras `CicloNoDisponibleError`. */
   migrado = true;
@@ -93,6 +101,10 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
   }
   filasEncuesta(): readonly Readonly<FilaEncuesta>[] {
     return this.encuestas;
+  }
+  /** Seam de prueba (en Postgres lo deducen la conversacion de WhatsApp y los pedidos): actividad del telefono DESPUES de enviar la encuesta. */
+  registrarActividadPosterior(organizationId: string, phoneHash: string, a: ActividadPosterior): void {
+    this.actividad.set(`${organizationId}:${phoneHash}`, a);
   }
   hayBaja(organizationId: string, phoneHash: string): boolean {
     return this.optouts.has(`${organizationId}:${phoneHash}`);
@@ -224,7 +236,7 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
   }
   async guardarConfigEncuesta(organizationId: string, propertyId: string, config: ConfigEncuesta): Promise<void> {
     await this.escritura(async () => {
-      if (config.linkResena !== null && !/^https:\/\//.test(config.linkResena)) throw new CicloValidacionError("link invalido");
+      if (config.linkResena != null && !/^https:\/\//.test(config.linkResena)) throw new CicloValidacionError("link invalido");
       this.configEncuesta.set(`${organizationId}:${propertyId}`, config);
     });
   }
@@ -291,8 +303,16 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
     return this.lectura<EstadoEsperadoEncuesta>("ninguna", () => {
       const f = this.ultimaDelTelefono(organizationId, phoneHash);
       if (!f) return "ninguna";
-      if (f.estado === "enviada" && ahora.getTime() - f.enviadaEn!.getTime() < 48 * 3_600_000) return "calificacion";
-      if (f.estado === "respondida" && f.comentario === null && ahora.getTime() - f.respondidaEn!.getTime() < 30 * 60_000) return "comentario";
+      const a = this.actividad.get(`${organizationId}:${phoneHash}`);
+      // Mismas reglas que encuesta_estado_para (171): ventana corta y SIN otra actividad del cliente o del agente tras la encuesta.
+      if (f.estado === "enviada") {
+        if (a?.pedidoPosterior || (a?.mensajesDespuesDeLaEncuesta ?? 1) > 1) return "ninguna";
+        return ahora.getTime() - f.enviadaEn!.getTime() < ENCUESTA_VENTANA_RESPUESTA_MIN * 60_000 ? "calificacion" : "ninguna";
+      }
+      if (f.estado === "respondida" && f.comentario === null) {
+        if (a?.pedidoPosterior || (a?.mensajesDelClienteDespuesDeCalificar ?? 1) > 1) return "ninguna";
+        return ahora.getTime() - f.respondidaEn!.getTime() < ENCUESTA_VENTANA_COMENTARIO_MIN * 60_000 ? "comentario" : "ninguna";
+      }
       return "ninguna";
     });
   }
@@ -301,7 +321,7 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
     return this.escritura(async () => {
       if (!Number.isInteger(calificacion) || calificacion < 1 || calificacion > 5) throw new CicloValidacionError("calificacion fuera de 1 a 5");
       const f = this.ultimaDelTelefono(organizationId, phoneHash);
-      if (!f || f.estado !== "enviada" || ahora.getTime() - f.enviadaEn!.getTime() >= 48 * 3_600_000) return { resultado: "sin_encuesta" };
+      if (!f || f.estado !== "enviada" || ahora.getTime() - f.enviadaEn!.getTime() >= ENCUESTA_VENTANA_RESPUESTA_MIN * 60_000) return { resultado: "sin_encuesta" };
       f.estado = "respondida";
       f.calificacion = calificacion;
       f.respondidaEn = ahora;
@@ -314,7 +334,7 @@ export class InMemoryCicloPedidoRepository implements CicloPedidoRepository {
       const texto = comentario.trim().slice(0, 500);
       if (texto === "") throw new CicloValidacionError("comentario vacio");
       const f = this.ultimaDelTelefono(organizationId, phoneHash);
-      if (!f || f.estado !== "respondida" || f.comentario !== null || ahora.getTime() - f.respondidaEn!.getTime() >= 30 * 60_000) return { resultado: "sin_encuesta" };
+      if (!f || f.estado !== "respondida" || f.comentario !== null || ahora.getTime() - f.respondidaEn!.getTime() >= ENCUESTA_VENTANA_COMENTARIO_MIN * 60_000) return { resultado: "sin_encuesta" };
       f.comentario = texto;
       return { resultado: "comentada", encuestaId: f.id, orderId: f.orderId, propertyId: f.propertyId, calificacion: f.calificacion! };
     });

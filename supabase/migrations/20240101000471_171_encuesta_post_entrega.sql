@@ -204,7 +204,11 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Sistema: respuestas entrantes
 -- ---------------------------------------------------------------------------
--- Que espera el telefono: 'calificacion' (hay una encuesta enviada hace <= 48 h sin responder), 'comentario' (respondio hace <= 30 min y aun sin comentario) o 'ninguna'.
+-- Que espera el telefono: 'calificacion' (hay una encuesta enviada hace <= 30 min sin responder), 'comentario' (respondio hace <= 30 min y aun sin comentario) o 'ninguna'.
+-- Revision de #713 (P1-1): el mensaje solo se toma como respuesta si el telefono NO tiene otra actividad despues de la pregunta. En la conversacion, el unico mensaje posterior a
+-- la encuesta debe ser el que se esta evaluando (la encuesta sale por el outbox y no se agrega al hilo): si hay mas (el agente pregunto algo, el cliente ya escribia) o hay un
+-- pedido nuevo del telefono posterior a la encuesta, el mensaje es del agente y NO se intercepta. Para el comentario, el unico mensaje del cliente posterior a la calificacion
+-- debe ser el actual (el hilo ya trae la respuesta fija de la calificacion).
 create or replace function restaurantes.encuesta_estado_para(p_organization_id uuid, p_phone_hash text, p_ahora timestamptz)
 returns text
 language plpgsql
@@ -214,6 +218,10 @@ set search_path = restaurantes, core, pg_temp
 as $$
 declare
   v_e restaurantes.encuesta_entrega;
+  v_digitos text;
+  v_desde timestamptz;
+  v_total integer;
+  v_cliente integer;
 begin
   if auth.uid() is not null then
     raise exception 'encuesta_estado_para es solo para la sesion de sistema' using errcode = '42501';
@@ -222,9 +230,30 @@ begin
   where e.organization_id = p_organization_id and e.phone_hash = p_phone_hash and e.estado in ('enviada', 'respondida')
   order by e.enviada_en desc limit 1;
   if not found then return 'ninguna'; end if;
-  if v_e.estado = 'enviada' and v_e.enviada_en > p_ahora - interval '48 hours' then return 'calificacion'; end if;
-  if v_e.estado = 'respondida' and v_e.comentario is null and v_e.respondida_en > p_ahora - interval '30 minutes' then return 'comentario'; end if;
-  return 'ninguna';
+  if v_e.estado = 'enviada' then
+    if v_e.enviada_en <= p_ahora - interval '30 minutes' then return 'ninguna'; end if;
+    v_desde := v_e.enviada_en;
+  elsif v_e.estado = 'respondida' and v_e.comentario is null then
+    if v_e.respondida_en <= p_ahora - interval '30 minutes' then return 'ninguna'; end if;
+    v_desde := v_e.respondida_en;
+  else
+    return 'ninguna';
+  end if;
+  select right(regexp_replace(o.customer_phone, '\D', '', 'g'), 10) into v_digitos from restaurantes.orders o where o.id = v_e.order_id and o.organization_id = p_organization_id;
+  if v_digitos is null then return 'ninguna'; end if;
+  if exists (
+    select 1 from restaurantes.orders o
+    where o.organization_id = p_organization_id and o.id <> v_e.order_id and o.created_at > v_e.enviada_en
+      and right(regexp_replace(o.customer_phone, '\D', '', 'g'), 10) = v_digitos
+  ) then return 'ninguna'; end if;
+  select count(*), count(*) filter (where m ->> 'role' = 'user') into v_total, v_cliente
+  from restaurantes.whatsapp_conversations w, jsonb_array_elements(w.messages) m
+  where w.organization_id = p_organization_id and right(regexp_replace(w.phone, '\D', '', 'g'), 10) = v_digitos
+    and m ->> 'at' ~ '^\d{4}-\d{2}-\d{2}T' and (case when m ->> 'at' ~ '^\d{4}-\d{2}-\d{2}T' then (m ->> 'at')::timestamptz end) > v_desde;
+  if v_e.estado = 'enviada' then
+    return case when v_total <= 1 then 'calificacion' else 'ninguna' end;
+  end if;
+  return case when v_cliente <= 1 and v_total <= 2 then 'comentario' else 'ninguna' end;
 end;
 $$;
 
@@ -245,7 +274,7 @@ begin
     raise exception 'encuesta_responder: calificacion fuera de 1 a 5' using errcode = '22023';
   end if;
   select * into v_e from restaurantes.encuesta_entrega e
-  where e.organization_id = p_organization_id and e.phone_hash = p_phone_hash and e.estado = 'enviada' and e.enviada_en > p_ahora - interval '48 hours'
+  where e.organization_id = p_organization_id and e.phone_hash = p_phone_hash and e.estado = 'enviada' and e.enviada_en > p_ahora - interval '30 minutes'
   order by e.enviada_en desc limit 1 for update;
   if not found then
     return jsonb_build_object('resultado', 'sin_encuesta');

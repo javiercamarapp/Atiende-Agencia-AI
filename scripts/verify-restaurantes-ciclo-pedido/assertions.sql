@@ -475,6 +475,55 @@ begin;
 select count(*) as columnas_pii_deberia_ser_0 from information_schema.columns where table_schema = 'restaurantes' and table_name in ('encuesta_entrega', 'encuesta_optout', 'encuesta_config') and column_name ~ '(phone$|telefono|name|nombre|address|direccion|email)';
 rollback;
 
+\echo '=== T1. P1-1: pasados 30 min de la pregunta un 1 a 5 ya no se toma como respuesta (ninguna) ==='
+begin;
+insert into restaurantes.encuesta_config (property_id, organization_id, habilitada) values ('00000000-0000-0000-0000-0000000e70a1', '00000000-0000-0000-0000-0000000e7001', true);
+select public.t_como('');
+select restaurantes.encuesta_reservar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70c8', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'enviada', null, 'texto');
+select count(*) as fuera_de_ventana_deberia_ser_1 from (select restaurantes.encuesta_estado_para('00000000-0000-0000-0000-0000000e7001', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', now() + interval '31 minutes') as e) x where x.e = 'ninguna';
+rollback;
+
+\echo '=== T2. P1-1: con conversacion posterior a la encuesta (mas de un mensaje) no se intercepta ==='
+begin;
+insert into restaurantes.encuesta_config (property_id, organization_id, habilitada) values ('00000000-0000-0000-0000-0000000e70a1', '00000000-0000-0000-0000-0000000e7001', true);
+insert into restaurantes.whatsapp_conversations (organization_id, phone, property_id, messages) values ('00000000-0000-0000-0000-0000000e7001', '+5219991230001', '00000000-0000-0000-0000-0000000e70a1',
+  jsonb_build_array(jsonb_build_object('role', 'assistant', 'content', 'cuantas ordenes?', 'at', to_char((now() at time zone 'utc') + interval '1 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')), jsonb_build_object('role', 'user', 'content', '3', 'at', to_char((now() at time zone 'utc') + interval '2 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))));
+select public.t_como('');
+select restaurantes.encuesta_reservar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70c8', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'enviada', null, 'texto');
+select count(*) as con_conversacion_deberia_ser_1 from (select restaurantes.encuesta_estado_para('00000000-0000-0000-0000-0000000e7001', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', now() + interval '5 minutes') as e) x where x.e = 'ninguna';
+rollback;
+
+\echo '=== T3. P1-1: con un unico mensaje posterior (el actual) si es la calificacion ==='
+begin;
+insert into restaurantes.encuesta_config (property_id, organization_id, habilitada) values ('00000000-0000-0000-0000-0000000e70a1', '00000000-0000-0000-0000-0000000e7001', true);
+insert into restaurantes.whatsapp_conversations (organization_id, phone, property_id, messages) values ('00000000-0000-0000-0000-0000000e7001', '+5219991230001', '00000000-0000-0000-0000-0000000e70a1',
+  jsonb_build_array(jsonb_build_object('role', 'user', 'content', '4', 'at', to_char((now() at time zone 'utc') + interval '1 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))));
+select public.t_como('');
+select restaurantes.encuesta_reservar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70c8', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'enviada', null, 'texto');
+select count(*) as unico_mensaje_deberia_ser_1 from (select restaurantes.encuesta_estado_para('00000000-0000-0000-0000-0000000e7001', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', now() + interval '5 minutes') as e) x where x.e = 'calificacion';
+rollback;
+
+\echo '=== T4. P1-1: un pedido nuevo del telefono posterior a la encuesta impide interceptar ==='
+begin;
+insert into restaurantes.encuesta_config (property_id, organization_id, habilitada) values ('00000000-0000-0000-0000-0000000e70a1', '00000000-0000-0000-0000-0000000e7001', true);
+insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items, source, canal, created_at) values
+  ('00000000-0000-0000-0000-0000000e70e1', '00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', 'Cliente Ocho', '+52 9991230001', 100, 'pending', '[]', 'admin', 'domicilio', now() + interval '1 minute');
+select public.t_como('');
+select restaurantes.encuesta_reservar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70c8', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'enviada', null, 'texto');
+select count(*) as con_pedido_nuevo_deberia_ser_1 from (select restaurantes.encuesta_estado_para('00000000-0000-0000-0000-0000000e7001', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', now() + interval '5 minutes') as e) x where x.e = 'ninguna';
+rollback;
+
+\echo '=== T5. P1-1: el comentario solo si el cliente no escribio otra cosa tras calificar ==='
+begin;
+insert into restaurantes.encuesta_config (property_id, organization_id, habilitada) values ('00000000-0000-0000-0000-0000000e70a1', '00000000-0000-0000-0000-0000000e7001', true);
+insert into restaurantes.whatsapp_conversations (organization_id, phone, property_id, messages) values ('00000000-0000-0000-0000-0000000e7001', '+5219991230001', '00000000-0000-0000-0000-0000000e70a1',
+  jsonb_build_array(jsonb_build_object('role', 'user', 'content', 'hola', 'at', to_char((now() at time zone 'utc') + interval '3 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')), jsonb_build_object('role', 'user', 'content', 'otra cosa', 'at', to_char((now() at time zone 'utc') + interval '4 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))));
+select public.t_como('');
+select restaurantes.encuesta_reservar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70c8', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'enviada', null, 'texto');
+select restaurantes.encuesta_responder('00000000-0000-0000-0000-0000000e7001', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 5, now() + interval '2 minutes');
+select count(*) as dos_mensajes_deberia_ser_1 from (select restaurantes.encuesta_estado_para('00000000-0000-0000-0000-0000000e7001', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', now() + interval '5 minutes') as e) x where x.e = 'ninguna';
+rollback;
+
 \echo '=== Q1. el pedido pendiente hace 25 min es candidato con el recordatorio 2 (10/10/3 por omision); los recien creados no ==='
 begin;
 select public.t_como('');
