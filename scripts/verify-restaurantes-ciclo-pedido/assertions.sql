@@ -72,7 +72,7 @@ insert into restaurantes.orders (id, organization_id, property_id, customer_name
   ('00000000-0000-0000-0000-0000000e70c7', '00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a2', 'Cliente Siete', '+52 5500000007', 100, 'pending', '[]', 'admin', 'domicilio', now()),
   ('00000000-0000-0000-0000-0000000e70c8', '00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', 'Cliente Ocho', '+52 9991230001', 100, 'entregado', '[]', 'admin', 'domicilio', now() - interval '4 hours'),
   ('00000000-0000-0000-0000-0000000e70c9', '00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', 'Cliente Nueve', '+52 5500000009', 100, 'pending', '[]', 'admin', 'domicilio', now() - interval '25 minutes'),
-  ('00000000-0000-0000-0000-0000000e70c10', '00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', 'Cliente Diez', '+52 5500000010', 100, 'pending', '[]', 'admin', 'domicilio', now());
+  ('00000000-0000-0000-0000-0000000e70d0', '00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', 'Cliente Diez', '+52 5500000010', 100, 'pending', '[]', 'admin', 'domicilio', now());
 update restaurantes.orders set salio_at = now() - interval '40 minutes', assigned_repartidor_id = '00000000-0000-0000-0000-0000000e7014', aceptado_at = now() - interval '45 minutes', tiempo_prometido_min = 45 where id = '00000000-0000-0000-0000-0000000e70c5';
 update restaurantes.orders set delivered_at = now() - interval '3 hours' where id = '00000000-0000-0000-0000-0000000e70c8';
 
@@ -483,7 +483,7 @@ rollback;
 \echo '=== Q2. los pedidos recien creados no son candidatos ==='
 begin;
 select public.t_como('');
-select count(*) as recien_creados_deberia_ser_0 from restaurantes.recordatorios_pedido_candidatos(now()) where order_id in ('00000000-0000-0000-0000-0000000e70c1', '00000000-0000-0000-0000-0000000e70c2', '00000000-0000-0000-0000-0000000e70c3', '00000000-0000-0000-0000-0000000e70c10');
+select count(*) as recien_creados_deberia_ser_0 from restaurantes.recordatorios_pedido_candidatos(now()) where order_id in ('00000000-0000-0000-0000-0000000e70c1', '00000000-0000-0000-0000-0000000e70c2', '00000000-0000-0000-0000-0000000e70c3', '00000000-0000-0000-0000-0000000e70d0');
 rollback;
 
 \echo '=== Q3. un pedido ya aceptado deja de ser candidato ==='
@@ -514,13 +514,13 @@ rollback;
 
 \echo '=== Q6. con N = 5 minutos entra tambien un pedido de hace 7 min ==='
 begin;
-update restaurantes.orders set created_at = now() - interval '7 minutes' where id = '00000000-0000-0000-0000-0000000e70c10';
+update restaurantes.orders set created_at = now() - interval '7 minutes' where id = '00000000-0000-0000-0000-0000000e70d0';
 set local role authenticated;
 select public.t_como('00000000-0000-0000-0000-0000000e7011');
 select restaurantes.recordatorio_pedido_config_guardar('00000000-0000-0000-0000-0000000e7001', '00000000-0000-0000-0000-0000000e70a1', true, 5, 5, 2);
 select public.t_como('');
 reset role;
-select count(*) as n5_deberia_ser_1 from restaurantes.recordatorios_pedido_candidatos(now()) where order_id = '00000000-0000-0000-0000-0000000e70c10' and numero_recordatorio = 1 and maximo = 2;
+select count(*) as n5_deberia_ser_1 from restaurantes.recordatorios_pedido_candidatos(now()) where order_id = '00000000-0000-0000-0000-0000000e70d0' and numero_recordatorio = 1 and maximo = 2;
 rollback;
 
 \echo '=== Q7. la configuracion de recordatorios solo la guarda owner/admin y valida rangos ==='
