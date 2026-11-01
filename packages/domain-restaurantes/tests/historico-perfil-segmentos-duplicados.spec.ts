@@ -184,14 +184,22 @@ describe("segmentos RFM y cuentas", () => {
   it("asigna cada segmento con los umbrales por omision", () => {
     const m = new Map(segmentarRfm(clientes, HOY).map((s) => [s.id, s]));
     expect(m.get("campeon")?.segmento).toBe("campeon");
-    expect(m.get("riesgo")).toMatchObject({ segmento: "en_riesgo_alto_valor", altoValor: true, reactivable: true });
-    expect(m.get("dormido")).toMatchObject({ segmento: "dormido", reactivable: true });
+    expect(m.get("riesgo")).toMatchObject({ segmento: "en_riesgo_alto_valor", altoValor: true, recuperableHistorico: true, contactable: false });
+    expect(m.get("dormido")).toMatchObject({ segmento: "dormido", recuperableHistorico: true, contactable: false });
     expect(m.get("nuevo")?.segmento).toBe("nuevo");
     expect(m.get("regular")?.segmento).toBe("regular");
-    expect(m.get("campeon")?.reactivable).toBe(false);
+    expect(m.get("campeon")?.recuperableHistorico).toBe(false);
   });
-  it("la queja abierta (revision humana) jamas es reactivable", () => {
-    expect(segmentarRfm(clientes, HOY).find((s) => s.id === "queja")).toMatchObject({ segmento: "dormido", reactivable: false });
+  it("(P-9) recuperable NO es permiso de contacto: contactable exige opt-in explicito y nunca viene de importar", () => {
+    const con = segmentarRfm(clientes.map((c) => (c.id === "riesgo" || c.id === "dormido" ? { ...c, conOptin: true } : c)), HOY);
+    expect(con.find((s) => s.id === "riesgo")).toMatchObject({ recuperableHistorico: true, conOptin: true, contactable: true });
+    expect(con.find((s) => s.id === "dormido")?.contactable).toBe(true);
+    expect(segmentarRfm(clientes, HOY).filter((s) => s.contactable)).toEqual([]);
+    expect(segmentarRfm(clientes, HOY).every((s) => typeof s.recuperableHistorico === "boolean" && typeof s.contactable === "boolean")).toBe(true);
+    expect(resumirSegmentos(clientes, HOY)).toMatchObject({ recuperablesHistoricos: 2, contactablesConOptin: 0 });
+  });
+  it("la queja abierta (revision humana) jamas es recuperable ni contactable", () => {
+    expect(segmentarRfm(clientes, HOY).find((s) => s.id === "queja")).toMatchObject({ segmento: "dormido", recuperableHistorico: false, contactable: false });
   });
   it("cuentas: kilo por volumen, evento solo con ticket ESTRICTAMENTE mayor a $2,000 y siempre «sugerida»", () => {
     const c = etiquetarCuentas(clientes);

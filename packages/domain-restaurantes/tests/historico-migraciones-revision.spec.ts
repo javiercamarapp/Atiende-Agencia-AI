@@ -96,3 +96,16 @@ describe("147 (P-5): la calle importada no es legible por el agente", () => {
     expect(asserts().match(/\(P-5\)/g)?.length).toBeGreaterThanOrEqual(5);
   });
 });
+
+describe("148 (P-9): recuperable no es contactable", () => {
+  const f = "148_historial_segmentos_optin.sql";
+  it("renombra, cruza con marketing_consentimiento y no deja columnas NULL", () => {
+    const m = mig(f);
+    expect(m.replace(/--.*/g, "")).not.toMatch(/reactivable/);
+    expect(m).toContain("recuperable_historico boolean, con_optin boolean, contactable boolean");
+    expect(m).toContain("restaurantes.marketing_consentimiento m");
+    expect(m.match(/coalesce\(\(not x\.revision_humana\)/g)?.length).toBe(2);
+    expect(espejo(f, "495")).toBe(m);
+    expect(asserts().match(/\(P-9\)/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+});

@@ -15,6 +15,8 @@ export interface ClienteParaSegmento {
   readonly kilosTotales?: number | null;
   /** true = hay queja abierta: se EXCLUYE de cualquier lista de reactivacion. */
   readonly revisionHumana?: boolean;
+  /** Opt-in de marketing OTORGADO (lo trae la base, nunca el historico importado). Sin el, el cliente NO es contactable. */
+  readonly conOptin?: boolean;
 }
 
 export interface UmbralesSegmento {
@@ -64,8 +66,11 @@ export interface ResultadoSegmento {
   readonly segmento: SegmentoRfm;
   readonly diasSinComprar: number | null;
   readonly altoValor: boolean;
-  /** Elegible para entrar a una lista de reactivacion (todavia falta el opt-in de marketing, que NUNCA viene del historico). */
-  readonly reactivable: boolean;
+  /** Categoria ANALITICA (dormido o en riesgo, sin queja abierta). NO es permiso de contacto. */
+  readonly recuperableHistorico: boolean;
+  readonly conOptin: boolean;
+  /** recuperableHistorico Y opt-in otorgado. Importar nunca otorga consentimiento, asi que sin opt-in real esto es siempre false. */
+  readonly contactable: boolean;
 }
 
 /**
@@ -90,7 +95,9 @@ export function segmentarRfm(clientes: readonly ClienteParaSegmento[], hoy: Date
       else if (altoValor && sin !== null && sin >= u.diasEnRiesgo) segmento = "en_riesgo_alto_valor";
       else if (sin !== null && sin >= u.diasDormido) segmento = "dormido";
       else if (diasPrimero !== null && diasPrimero <= u.diasNuevo && c.pedidos > 0) segmento = "nuevo";
-      return { id: c.id, segmento, diasSinComprar: sin, altoValor, reactivable: c.revisionHumana !== true && (segmento === "en_riesgo_alto_valor" || segmento === "dormido") };
+      const recuperableHistorico = c.revisionHumana !== true && (segmento === "en_riesgo_alto_valor" || segmento === "dormido");
+      const conOptin = c.conOptin === true;
+      return { id: c.id, segmento, diasSinComprar: sin, altoValor, recuperableHistorico, conOptin, contactable: recuperableHistorico && conOptin };
     });
 }
 
@@ -116,7 +123,8 @@ export function etiquetarCuentas(clientes: readonly ClienteParaSegmento[], u: Um
 
 export interface ResumenSegmentos {
   readonly porSegmento: Readonly<Record<SegmentoRfm, number>>;
-  readonly reactivables: number;
+  readonly recuperablesHistoricos: number;
+  readonly contactablesConOptin: number;
   readonly cuentasKilo: number;
   readonly candidatasEvento: number;
 }
@@ -126,5 +134,5 @@ export function resumirSegmentos(clientes: readonly ClienteParaSegmento[], hoy: 
   const porSegmento: Record<SegmentoRfm, number> = { campeon: 0, en_riesgo_alto_valor: 0, dormido: 0, nuevo: 0, regular: 0 };
   for (const s of seg) porSegmento[s.segmento]++;
   const cuentas = etiquetarCuentas(clientes, u);
-  return { porSegmento, reactivables: seg.filter((s) => s.reactivable).length, cuentasKilo: cuentas.filter((c) => c.tipos.includes("kilo")).length, candidatasEvento: cuentas.filter((c) => c.tipos.includes("evento")).length };
+  return { porSegmento, recuperablesHistoricos: seg.filter((s) => s.recuperableHistorico).length, contactablesConOptin: seg.filter((s) => s.contactable).length, cuentasKilo: cuentas.filter((c) => c.tipos.includes("kilo")).length, candidatasEvento: cuentas.filter((c) => c.tipos.includes("evento")).length };
 }

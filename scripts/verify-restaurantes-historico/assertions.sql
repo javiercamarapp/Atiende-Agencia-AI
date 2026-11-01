@@ -810,11 +810,11 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06
 select count(*) as deberia_ser_4 from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') s where s.segmento = 'regular';
 rollback;
 
-\echo '--- E. reactivables (la queja abierta NO lo es): 2 ---'
+\echo '--- E. recuperables historicos (la queja abierta NO lo es): 2 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06', true);
-select count(*) as deberia_ser_2 from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') s where s.reactivable;
+select count(*) as deberia_ser_2 from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') s where s.recuperable_historico;
 rollback;
 
 \echo '--- E. cuentas de kilo: 1 ---'
@@ -849,7 +849,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06', true);
-select count(*) as deberia_ser_1 from (select restaurantes.historial_segmentos_resumen('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') as r) x where (x.r->>'total') = '9' and (x.r->>'campeon') = '1' and (x.r->>'reactivables') = '2';
+select count(*) as deberia_ser_1 from (select restaurantes.historial_segmentos_resumen('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') as r) x where (x.r->>'total') = '9' and (x.r->>'campeon') = '1' and (x.r->>'recuperables_historicos') = '2' and (x.r->>'contactables_con_optin') = '0';
 rollback;
 
 \echo '--- E12. percentil fuera de rango ---'
@@ -877,6 +877,43 @@ rollback;
 begin;
 set local role anon;
 select count(*) as should_fail from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31');
+rollback;
+
+\echo '--- E16. (P-9) sin opt-in nadie es contactable aunque sea recuperable ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06', true);
+select count(*) as deberia_ser_0 from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') s where s.contactable or s.con_optin;
+rollback;
+
+\echo '--- E17. (P-9) con opt-in otorgado el recuperable pasa a contactable (cruce real con marketing_consentimiento) ---'
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, otorgado_at) values ('00000000-0000-0000-0000-0000000f6c00', '00000000-0000-0000-0000-0000000f6f02', 'whatsapp', 'otorgado', 'panel', 'v1', now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06', true);
+select count(*) as deberia_ser_1 from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') s where s.contactable and s.con_optin and s.recuperable_historico;
+rollback;
+
+\echo '--- E18. (P-9) un opt-in REVOCADO no cuenta ---'
+begin;
+insert into restaurantes.marketing_consentimiento (organization_id, customer_id, canal, estado, fuente, version_aviso, revocado_at) values ('00000000-0000-0000-0000-0000000f6c00', '00000000-0000-0000-0000-0000000f6f02', 'whatsapp', 'revocado', 'baja_whatsapp', 'v1', now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06', true);
+select count(*) as deberia_ser_0 from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') s where s.contactable;
+rollback;
+
+\echo '--- E19. (P-9) ninguna columna booleana sale NULL ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06', true);
+select count(*) as deberia_ser_0 from restaurantes.historial_segmentos('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') s where s.recuperable_historico is null or s.con_optin is null or s.contactable is null or s.alto_valor is null or s.cuenta_kilo is null or s.candidata_evento is null;
+rollback;
+
+\echo '--- E20. (P-9) el resumen ya no ofrece la llave 'reactivables' ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6e06', true);
+select count(*) as deberia_ser_0 from (select restaurantes.historial_segmentos_resumen('00000000-0000-0000-0000-0000000f6c00', date '2026-10-31') as r) x where x.r ? 'reactivables';
 rollback;
 
 \echo ''
