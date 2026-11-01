@@ -470,3 +470,67 @@ begin;
 set local role anon;
 select tono as should_fail from restaurantes.agente_whatsapp_personalizacion;
 rollback;
+
+\echo ''
+\echo '=== E) 184: el historial protege el borrado y las promociones no quedan con ids huerfanos ==='
+\echo ''
+
+insert into core.staff_user (id, email, full_name, created_via) values
+  ('00000000-0000-0000-0000-0000000f4e04', 'paridad-admin-acotado-a@example.com', 'Admin acotado A', 'seed')
+on conflict do nothing;
+insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
+  ('00000000-0000-0000-0000-0000000f4e04', '00000000-0000-0000-0000-0000000f4a01', array['00000000-0000-0000-0000-0000000f4b01']::uuid[], 'admin', 'admin')
+on conflict do nothing;
+
+\echo '--- 32. DELETE de un producto CON pedidos: RECHAZADO por la base (owner) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f4e01', true);
+delete from restaurantes.products where id = '00000000-0000-0000-0000-0000000f4c01' returning 1 as should_fail;
+rollback;
+
+\echo '--- 33. tampoco con SQL directo de superusuario/servicio (el trigger aplica a todos): RECHAZADO ---'
+begin;
+delete from restaurantes.products where id = '00000000-0000-0000-0000-0000000f4c01' returning 1 as should_fail;
+rollback;
+
+\echo '--- 34. un admin ACOTADO a una sucursal NO puede borrar productos de la organizacion: 0 filas ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f4e04', true);
+with d as (delete from restaurantes.products where id = '00000000-0000-0000-0000-0000000f4c02' returning 1)
+select count(*) as borrar_admin_acotado_deberia_ser_0 from d;
+rollback;
+
+\echo '--- 35. archivar quita el id de promotions.product_ids y deja los demas ---'
+begin;
+insert into restaurantes.promotions (organization_id, code, name, type, value, product_ids)
+  values ('00000000-0000-0000-0000-0000000f4a01', 'DOSPROD', 'Dos productos', 'percentage', 10, array['00000000-0000-0000-0000-0000000f4c01', '00000000-0000-0000-0000-0000000f4c02']::uuid[]);
+update restaurantes.products set archived_at = now() where id = '00000000-0000-0000-0000-0000000f4c01';
+select count(*) as promo_sin_id_archivado_deberia_ser_1 from restaurantes.promotions
+  where code = 'DOSPROD' and product_ids = array['00000000-0000-0000-0000-0000000f4c02']::uuid[];
+rollback;
+
+\echo '--- 36. si el arreglo se quedaria vacio, pasa a null (CHECK de 027) ---'
+begin;
+insert into restaurantes.promotions (organization_id, code, name, type, value, product_ids)
+  values ('00000000-0000-0000-0000-0000000f4a01', 'SOLOUNO', 'Un producto', 'percentage', 10, array['00000000-0000-0000-0000-0000000f4c01']::uuid[]);
+update restaurantes.products set archived_at = now() where id = '00000000-0000-0000-0000-0000000f4c01';
+select count(*) as promo_arreglo_nulo_deberia_ser_1 from restaurantes.promotions where code = 'SOLOUNO' and product_ids is null;
+rollback;
+
+\echo '--- 37. una promocion de CORTESIA que quedaria sin producto se DESACTIVA (no viola el CHECK) ---'
+begin;
+insert into restaurantes.promotions (organization_id, code, name, type, value, product_ids, courtesy_product_ids, courtesy_quantity)
+  values ('00000000-0000-0000-0000-0000000f4a01', 'CORTESIA1', 'Cortesia', 'cortesia', 1, array['00000000-0000-0000-0000-0000000f4c01']::uuid[], array['00000000-0000-0000-0000-0000000f4c02']::uuid[], 1);
+update restaurantes.products set archived_at = now() where id = '00000000-0000-0000-0000-0000000f4c01';
+select count(*) as cortesia_desactivada_deberia_ser_1 from restaurantes.promotions where code = 'CORTESIA1' and is_active = false;
+rollback;
+
+\echo '--- 38. borrar un producto SIN historial tambien lo quita de las promociones ---'
+begin;
+insert into restaurantes.promotions (organization_id, code, name, type, value, product_ids)
+  values ('00000000-0000-0000-0000-0000000f4a01', 'BORRADO1', 'Borrado', 'percentage', 10, array['00000000-0000-0000-0000-0000000f4c02', '00000000-0000-0000-0000-0000000f4c01']::uuid[]);
+delete from restaurantes.products where id = '00000000-0000-0000-0000-0000000f4c02';
+select count(*) as promo_tras_borrar_deberia_ser_1 from restaurantes.promotions where code = 'BORRADO1' and product_ids = array['00000000-0000-0000-0000-0000000f4c01']::uuid[];
+rollback;

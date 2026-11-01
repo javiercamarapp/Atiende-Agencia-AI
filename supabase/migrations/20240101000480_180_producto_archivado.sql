@@ -6,8 +6,9 @@
 -- Una base sin esta migracion sigue funcionando: el TypeScript que la usa captura 42703 y trata el menu como "sin archivados" (nada se oculta, nada se rompe).
 --
 -- Justificacion de seguridad:
---  * Ningun GRANT, policy ni funcion nuevos: `products` ya tiene `grant insert, update, delete ... to authenticated` (007) con la policy "staff gestiona productos de su organizacion"
---    (membership de la organizacion); la API ademas exige owner/admin con alcance a toda la organizacion antes de borrar o archivar. Sin cambio para `anon`.
+--  * Ningun GRANT, policy ni funcion nuevos: `products` ya tiene `grant insert, update, delete ... to authenticated` (007) y, desde la 065, sus policies de escritura son
+--    "duenos y admins ..." (`actor_tiene_rol(org, owner/admin)`); la API ademas exige owner/admin con alcance a toda la organizacion antes de borrar o archivar. La 184 cierra lo que
+--    la 065 deja abierto (un admin acotado a algunas sucursales y el DELETE duro de un producto con historial). Sin cambio para `anon`.
 --  * `anon` ya tiene `select` de `products` (catalogo publico, 001). La columna nueva es solo una marca de tiempo: no guarda PII ni al actor. QUIEN archivo queda en la bitacora de auditoria
 --    (`restaurantes.audit_log`), nunca en esta tabla, justo para no exponer un id de staff a una lectura publica.
 --  * El indice parcial solo acelera el filtro "archivados de una organizacion"; no cambia ninguna restriccion existente, asi que las filas actuales siguen validas (archived_at = null).
