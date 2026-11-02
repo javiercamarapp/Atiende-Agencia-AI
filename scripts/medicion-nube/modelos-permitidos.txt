@@ -19,3 +19,12 @@ xiaomi/mimo-v2.6-flash            # 0.14 / 0.28
 nvidia/nemotron-3.5-lightning     # 0.07 / 0.20
 mistralai/mistral-large-4-0       # 0.70 / 2.10
 google/gemini-3.8-flash           # 0.75 / 3.75 (sube al doble el 1-ene-2027)
+# Agregados el 2-nov-2026 (pedido de Omar: revisar Grok, Meta, OpenAI, Anthropic, DeepSeek, Kimi y Qwen; solo baratos)
+x-ai/grok-4.3                     # 1.25 / 2.50
+moonshotai/kimi-k2.5              # 0.50 / 2.50
+moonshotai/kimi-k2.6              # 0.65 / 3.41
+meta-llama/llama-4-maverick       # 0.19 / 0.65
+openai/gpt-oss-120b               # 0.15 / 0.60
+deepseek/deepseek-v3.2            # 0.26 / 0.38
+qwen/qwen3-235b-a22b-2507         # 0.09 / 0.55
+# NO usar: moonshotai/kimi-k3 (salida 15 USD/MTok), anthropic/claude-opus-*, google/gemini-4-argon, *-pro.
