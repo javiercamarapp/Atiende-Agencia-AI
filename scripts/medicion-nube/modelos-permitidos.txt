@@ -1,0 +1,11 @@
+# Modelos permitidos para medir el agente (regla de Omar, 2-nov-2026: NADA de modelos caros; solo baratos que escalen).
+# Formato: id_openrouter  # USD por millon de tokens (entrada/salida), verificado en /api/v1/models el 2-nov-2026
+openai/gpt-6-luna             # 0.10 / 0.50
+anthropic/claude-haiku-5.5    # 0.10 / 0.50
+deepseek/deepseek-v4-flash    # 0.09 / 0.18
+deepseek/deepseek-v4.1-flash  # 0.04 / 0.50
+qwen/qwen3.7-flash            # 0.03 / 0.13
+openai/gpt-6.1-terra          # 1 / 5
+openai/gpt-6.1-sol            # 2 / 10
+anthropic/claude-sonnet-5.5   # 2 / 10 (modelo base actual)
+# PROHIBIDOS salvo override explicito de Omar: anthropic/claude-opus-*, google/gemini-4-argon, openai/gpt-6-astra*, cualquier *-pro, cualquier modelo de mas de 12 USD/MTok combinado.

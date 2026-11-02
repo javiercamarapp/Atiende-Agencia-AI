@@ -91,6 +91,8 @@ jobs:
       reps: ${{ steps.p.outputs.reps }}
       uso_base: ${{ steps.p.outputs.uso_base }}
     steps:
+      - name: Checkout (para leer la lista de modelos permitidos)
+        uses: actions/checkout@v7
       - name: Validar y leer /api/v1/key
         id: p
         env:
@@ -98,6 +100,7 @@ jobs:
           REPS: ${{ inputs.repeticiones }}
           TOPE_TOTAL: ${{ inputs.tope_total_usd }}
           TOPE_JOB: ${{ inputs.tope_job_usd }}
+          MODELO: ${{ inputs.modelo }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           set -euo pipefail
@@ -106,6 +109,10 @@ jobs:
           [[ "$TOPE_TOTAL" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "tope_total_usd invalido"; exit 1; }
           [[ -z "$TOPE_JOB" || "$TOPE_JOB" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "tope_job_usd invalido"; exit 1; }
           [ -n "$OPENROUTER_API_KEY" ] || { echo "falta el secreto OPENROUTER_API_KEY"; exit 1; }
+          # Regla de costo: solo modelos de la lista permitida (scripts/medicion-nube/modelos-permitidos.txt).
+          if [ "${MODELO:-default}" != "default" ]; then
+            grep -vE '^\s*#|^\s*$' scripts/medicion-nube/modelos-permitidos.txt | awk '{print $1}' | grep -qxF "$MODELO" || { echo "modelo no permitido por la regla de costo: $MODELO"; exit 1; }
+          fi
           RESP="$(curl -s -m 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/key)"
           # Solo se imprimen numeros (uso y limite restante), nunca la llave.
           export RESP
