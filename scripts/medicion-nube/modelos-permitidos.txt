@@ -28,3 +28,11 @@ openai/gpt-oss-120b               # 0.15 / 0.60
 deepseek/deepseek-v3.2            # 0.26 / 0.38
 qwen/qwen3-235b-a22b-2507         # 0.09 / 0.55
 # NO usar: moonshotai/kimi-k3 (salida 15 USD/MTok), anthropic/claude-opus-*, google/gemini-4-argon, *-pro.
+# Agregados por INVESTIGACION-J (2-nov-2026, tau2-bench de OpenRouter como filtro grueso)
+z-ai/glm-5.3                      # 0.07 / 1.40
+inclusionai/ling-3.1-flash        # 0.075 / 0.225
+google/gemini-3.5-flash-lite      # 0.30 / 2.50
+google/gemma-4-31b-it             # 0.20 / 0.40
+qwen/qwen3.8-27b                  # 0.15 / 1.875 (reserva)
+nvidia/nemotron-3.5-super-vl      # 0.15 / 0.50 (reserva)
+# Datos REALES de clientes de PM: solo con provider.zdr=true, allow_fallbacks=false y proveedor fijo (ver INVESTIGACION-J); Qwen 3.7/3.8 y Muse Spark NO.
