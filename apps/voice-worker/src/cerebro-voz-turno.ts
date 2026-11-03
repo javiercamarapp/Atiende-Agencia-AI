@@ -434,8 +434,11 @@ export class CerebroVozTurno {
     const lista = [...this.pendientePorHablar];
     const partes: string[] = [];
     this.hablarPendientes(lista, { ...opciones, alRespuestaPrevia: (t) => partes.push(t) });
-    this.pendientePorHablar.splice(0, lista.length);
-    for (const h of lista) this.yaDichas.delete(h);
+    // Solo se consume si la senal sigue viva al terminar (igual que `turno`): si se aborto, nadie lo oyo y sigue en la cola (ya marcado como empezado a decir).
+    if (opciones.senal?.aborted !== true) {
+      this.pendientePorHablar.splice(0, lista.length);
+      for (const h of lista) this.yaDichas.delete(h);
+    }
     return { texto: partes.join(" "), colgar: false, motivo: null, pedidoId: this.pedido, turno: null };
   }
 

@@ -23,3 +23,26 @@ describe("versionCortaDePendiente (P1, P2-a)", () => {
   });
 });
 
+describe("hablarPendiente (P2-b)", () => {
+  it("no consume el pendiente si la senal murio al terminar de hablarlo (sigue en la cola para el siguiente turno)", async () => {
+    const fetchFn = (async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body)) as Peticion;
+      await dormir(10);
+      return new Response(JSON.stringify({ texto: "Su total es 80 pesos.", pedido_id: null, turno: b.seq }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const c = new CerebroVozTurno({ url: "https://x.invalid/voz-turno", secreto: "s", callId: "llamada-123", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined });
+    const ctl = new AbortController();
+    const p = c.turno("dos tacos", { senal: ctl.signal }).catch(() => "abort");
+    await dormir(2);
+    ctl.abort();
+    await p;
+    await dormir(20);
+    // Senal que "muere" a la tercera lectura: viva al empezar a hablar, muerta al terminar.
+    let lecturas = 0;
+    const senal = { get aborted() { lecturas += 1; return lecturas >= 3; } } as unknown as AbortSignal;
+    await c.hablarPendiente({ senal });
+    const otra = await c.hablarPendiente();
+    expect(otra?.texto).toBe("Como le decía, su total es 80 pesos.");
+  });
+});
+
