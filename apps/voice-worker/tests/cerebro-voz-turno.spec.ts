@@ -34,7 +34,7 @@ function crear(guion: Parameters<typeof servidor>[0], extra: Partial<Constructor
     ahora: () => reloj.t,
     ...extra,
   });
-  return { cerebro, ...s, esperas };
+  return { cerebro, ...s, esperas, reloj };
 }
 
 describe("cerebro suelto: voz-turno", () => {
@@ -66,12 +66,14 @@ describe("cerebro suelto: voz-turno", () => {
     expect(r.texto).toBe("Aquí estoy.");
     expect(dichas).toEqual([FRASE_ESPERA]);
     expect(peticiones.map((p) => p.cuerpo.seq)).toEqual([1, 1, 1, 1]);
-    expect(esperas).toEqual([2000, 2000, 2000]);
+    expect(esperas).toEqual([700, 2000, 2000]); // el 1.o espera 0.7 s sin decir nada
   });
 
-  it("409 en proceso que no termina: a los 60 s dice que una persona devolvera la llamada y cuelga", async () => {
-    const { cerebro, peticiones } = crear(() => ({ estado: 409, cuerpo: { error: "turno en proceso" } }));
+  it("409 en proceso que no termina: a los 65 s REALES (reloj) dice que una persona devolvera la llamada y cuelga", async () => {
+    const { cerebro, peticiones, reloj } = crear(() => ({ estado: 409, cuerpo: { error: "turno en proceso" } }));
     const r = await cerebro.turno("hola");
+    expect(reloj.t).toBeGreaterThanOrEqual(65_000);
+    expect(reloj.t).toBeLessThan(65_000 + 2000 + 700);
     expect(r).toMatchObject({ texto: FRASE_DEVOLVER_LLAMADA, colgar: true, motivo: "en_proceso_agotado" });
     expect(peticiones.length).toBeGreaterThanOrEqual(30);
     expect(new Set(peticiones.map((p) => p.cuerpo.seq))).toEqual(new Set([1]));
@@ -184,15 +186,54 @@ describe("cerebro suelto: voz-turno", () => {
     expect(vistas).toEqual([1]);
   });
 
-  it("relleno: a los ~3 s sin respuesta se dice la frase de espera (una sola vez)", async () => {
-    let disparar: (() => void) | null = null;
+  it("relleno temporizado: 1.a frase a los 4 s, repite cada ~15 s hasta 3 frases distintas y se cancela al responder", async () => {
+    const programados: { fn: () => void; ms: number; cancelado: boolean }[] = [];
     const dichas: string[] = [];
-    const { cerebro } = crear(() => ok("Listo."), { temporizador: (fn) => { disparar = fn; return () => undefined; } });
+    let liberar: (() => void) | null = null;
+    const fetchFn = (async () => { await new Promise<void>((r) => { liberar = r; }); return new Response(JSON.stringify({ texto: "Listo.", pedido_id: null, fin: false, turno: 1 }), { status: 200 }); }) as unknown as typeof fetch;
+    const { cerebro } = crear(() => ok("x"), { fetchFn, temporizador: (fn, ms) => { const t = { fn, ms, cancelado: false }; programados.push(t); return () => { t.cancelado = true; }; } });
     const p = cerebro.turno("hola", { alEspera: (f) => dichas.push(f) });
-    disparar!();
-    disparar!();
+    expect(programados.map((t) => t.ms)).toEqual([4000]);
+    programados[0]!.fn();
+    programados[1]!.fn();
+    programados[2]!.fn();
+    expect(programados.map((t) => t.ms)).toEqual([4000, 15_000, 15_000]); // la 3.a frase ya no programa otra
+    expect(dichas).toHaveLength(3);
+    expect(new Set(dichas).size).toBe(3);
+    expect(dichas[0]).toBe(FRASE_ESPERA);
+    liberar!();
     await p;
-    expect(dichas).toEqual([FRASE_ESPERA]);
+    expect(programados[2]!.cancelado).toBe(true);
+  });
+
+  it("relleno cancelado: si el servidor responde antes de los 4 s no se dice nada", async () => {
+    const programados: { cancelado: boolean }[] = [];
+    const dichas: string[] = [];
+    const { cerebro } = crear(() => ok("Listo."), { temporizador: () => { const t = { cancelado: false }; programados.push(t); return () => { t.cancelado = true; }; } });
+    await cerebro.turno("hola", { alEspera: (f) => dichas.push(f) });
+    expect(dichas).toEqual([]);
+    expect(programados.every((t) => t.cancelado)).toBe(true);
+  });
+
+  it("tiempo agotado REAL (fetch que nunca contesta, reloj simulado): aborta a los 35 s, el 2.o intento del mismo seq espera solo 20 s y luego cuelga con error tecnico", async () => {
+    vi.useFakeTimers();
+    try {
+      const limites: number[] = [];
+      let pedidas = 0;
+      const fetchFn = ((_u: string, init?: RequestInit) => new Promise<Response>((_r, rechazar) => {
+        pedidas += 1;
+        const inicio = Date.now();
+        init?.signal?.addEventListener("abort", () => { limites.push(Date.now() - inicio); rechazar(new DOMException("abortado", "AbortError")); });
+      })) as unknown as typeof fetch;
+      const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_timeout_001", telefono: "9991234567", fetchFn, temporizador: () => () => undefined });
+      const p = cerebro.turno("hola");
+      await vi.advanceTimersByTimeAsync(35_000 + 500 + 20_000 + 10);
+      expect(await p).toMatchObject({ colgar: true, motivo: "error_tecnico" });
+      expect(pedidas).toBe(2);
+      expect(limites).toEqual([35_000, 20_000]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("exige telefono antes de abrir y no admite cambiarlo despues de la apertura", async () => {
