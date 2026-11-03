@@ -77,3 +77,13 @@ La línea no nos dio el teléfono del cliente. Después del saludo y del aviso, 
 2. Repítaselo en grupos de 3-3-4 y pídale que lo confirme.
 3. Con su confirmación, llame ${TOOL_CONFIRMAR_TELEFONO} con ese número.
 Ese número solo sirve para el pedido y el aviso: no identifica al cliente, así que no ofrezca "lo de siempre" ni mencione direcciones o pedidos anteriores. Mientras no lo registre, ninguna otra herramienta funciona. Si el cliente no quiere dar su teléfono, dígale con amabilidad que sin él no puede tomar el pedido por teléfono y despídase.`;
+
+/**
+ * Un telefono dictado de 10 digitos que NO puede ser real: empieza con 0 o 1 (las claves lada mexicanas empiezan en 2-9) o es un solo digito repetido (0000000000, 5555555555).
+ * Se rechaza al dictarlo, antes de repetirlo al cliente o registrarlo.
+ */
+export function telefonoDictadoPlausible(telefono: string): boolean {
+  if (!/^\d{10}$/.test(telefono)) return false;
+  if (telefono[0] === "0" || telefono[0] === "1") return false;
+  return !/^(\d)\1{9}$/.test(telefono);
+}

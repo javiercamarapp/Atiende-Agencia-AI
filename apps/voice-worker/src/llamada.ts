@@ -22,7 +22,7 @@ import type { MotivoCierre } from "./cerebro-voz-turno.ts";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
 import { franjaDeHora, modoEntradaDeLlamada, normalizarNumero, resolverTopeMensualMicroUsd } from "./config.ts";
-import { DEFINICION_CONFIRMAR_TELEFONO, INSTRUCCION_TELEFONO_NO_CONFIABLE, TOOL_CONFIRMAR_TELEFONO, resolverTelefonoLlamante } from "./telefono-llamante.ts";
+import { DEFINICION_CONFIRMAR_TELEFONO, INSTRUCCION_TELEFONO_NO_CONFIABLE, TOOL_CONFIRMAR_TELEFONO, resolverTelefonoLlamante, telefonoDictadoPlausible } from "./telefono-llamante.ts";
 import type { ConfigWorker, EntradaDnis } from "./config.ts";
 import { PuenteAudio } from "./puente-audio.ts";
 import type { AudioWav } from "./audio/pcm.ts";
@@ -172,7 +172,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   const [convR, avisoR, tokenR] = await Promise.allSettled([
     deps.api.iniciarConversacion({ organizationId, propertyId, externalId: callId, voiceId: contexto.voiceId, callerPhone: telefono, startedAt: new Date(iniciadaEn).toISOString() }),
     deps.cerebroSuelto ? Promise.reject(new Error("suelto")) : deps.api.privacidadApertura({ organizationId, callerPhone: telefono }),
-    !telefonoPendiente && telefono !== null ? emitirToken(telefono) : Promise.resolve(),
+    // El cerebro suelto no usa el token de llamada del monorrepo: no depende de la API para atender.
+    !telefonoPendiente && telefono !== null && !deps.cerebroSuelto ? emitirToken(telefono) : Promise.resolve(),
   ]);
   let conversationId: string | null = null;
   if (convR.status === "fulfilled") conversationId = convR.value;
@@ -387,13 +388,19 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   };
   // Telefono dictado por el cliente cuando el caller ID no sirve. UNA sola vez por llamada (cambiarlo despues dejaria enumerar clientes ajenos con
   // `buscar_cliente`), nunca un numero puente o de la sucursal, y la ultima palabra la tiene la API: el token se emite con ESE telefono canonico y marcado `telefono_declarado`: nadie verifico que sea del llamante, asi que la API no le devuelve nombre, direcciones ni pedidos de ese numero (Cliente 360 lo trata como cliente nuevo).
+  /** Validacion LOCAL del telefono dictado (sin API ni token): 10 digitos canonicos, plausible y que no sea un numero de la sucursal/puente. */
+  const validarTelefonoDictado = (crudo: string): { readonly ok: true; readonly numero: string } | { readonly ok: false; readonly error: "telefono_invalido" | "telefono_no_valido"; readonly mensaje: string } => {
+    const numero = crudo.length > 0 && crudo.length <= 40 ? canonicalizeMexicanPhone(crudo) : null;
+    if (numero === null || !telefonoDictadoPlausible(numero)) return { ok: false, error: "telefono_invalido", mensaje: "No son 10 dígitos válidos. Pídale al cliente que se lo repita completo." };
+    const clave = normalizarNumero(numero);
+    if (clave !== null && (numerosPuente.has(clave) || entrada.numerosSucursal.includes(clave))) return { ok: false, error: "telefono_no_valido", mensaje: "Ese es un número del restaurante. Pídale al cliente su teléfono personal." };
+    return { ok: true, numero };
+  };
   const confirmarTelefono = async (args: Readonly<Record<string, unknown>>): Promise<unknown> => {
     if (callToken !== null) return { ok: true, ya_registrado: true, mensaje: "El teléfono ya quedó registrado; continúe con el pedido." };
-    const crudo = typeof args.numero === "string" ? args.numero : "";
-    const numero = crudo.length > 0 && crudo.length <= 40 ? canonicalizeMexicanPhone(crudo) : null;
-    if (numero === null) return { error: "telefono_invalido", mensaje: "No son 10 dígitos válidos. Pídale al cliente que se lo repita completo." };
-    const clave = normalizarNumero(numero);
-    if (clave !== null && (numerosPuente.has(clave) || entrada.numerosSucursal.includes(clave))) return { error: "telefono_no_valido", mensaje: "Ese es un número del restaurante. Pídale al cliente su teléfono personal." };
+    const v = validarTelefonoDictado(typeof args.numero === "string" ? args.numero : "");
+    if (!v.ok) return { error: v.error, mensaje: v.mensaje };
+    const numero = v.numero;
     try {
       await emitirToken(numero, true);
     } catch (err) {
@@ -405,9 +412,11 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     return { ok: true, mensaje: "Teléfono registrado." };
   };
   if (cerebro) {
+    // Cerebro suelto: el telefono solo se valida aqui (voz-turno no usa el token de llamada de este monorrepo): sin viaje a la API ni dependencia de ella.
     confirmarTelefonoSuelto = async (numero) => {
-      const r = await confirmarTelefono({ numero });
-      return { ok: typeof r === "object" && r !== null && !("error" in r) };
+      const v = validarTelefonoDictado(numero);
+      if (v.ok) log("telefono_confirmado_por_cliente", { motivo: origen.motivo });
+      return { ok: v.ok };
     };
   }
   const ejecutorBase = crearEjecutorTools({ transporte, timeoutMs: limites.toolTimeoutMs });

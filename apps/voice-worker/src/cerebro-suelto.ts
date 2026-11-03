@@ -6,6 +6,7 @@
 import { esAfirmacion } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
 import { CerebroVozTurno, FRASE_DEVOLVER_LLAMADA, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
+import { telefonoDictadoPlausible } from "./telefono-llamante.ts";
 import type { MotivoCierre, OpcionesCerebroVozTurno, ResultadoTurno } from "./cerebro-voz-turno.ts";
 
 export const AVISO_GRABACION_POR_OMISION = "Esta llamada se graba para mejorar el servicio. Su aviso de privacidad completo está en nuestro sitio web y puede pedírmelo cuando guste.";
@@ -162,6 +163,7 @@ export class CerebroSuelto {
       return this.fallarTelefono("Disculpe. ¿Me repite su número de teléfono a diez dígitos?");
     }
     if (dictado === null) return this.fallarTelefono("No alcancé a entender el número. ¿Me lo repite completo, a diez dígitos?");
+    if (!telefonoDictadoPlausible(dictado)) return this.fallarTelefono("Ese número no parece válido. ¿Me lo repite completo, a diez dígitos?");
     this.candidato = dictado;
     this.fase = "confirmando_telefono";
     return sigue(`Le repito su número: ${telefonoEnGrupos(dictado)}. ¿Es correcto?`);

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { crearEscaleraLlamada } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
 import { Worker } from "../src/worker.ts";
+import { DISPARADOR_SALUDO } from "../src/llamada.ts";
 import { TelefoniaFalsa } from "../src/telefonia/falsa.ts";
 import { NUMERO_SUCURSAL, crearMundoApi } from "./support/mundo-api.ts";
 
@@ -147,5 +148,45 @@ describe("cerebro suelto dentro de atenderLlamada", () => {
     const antes = worker.salud().llamadasAtendidas;
     telefonia.llamar({ id: "llamada-rara-1", dnis: NUMERO_SUCURSAL, desde: "+5219991234567" });
     await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+  });
+
+  it("numero oculto de punta a punta: rechaza el numero de la sucursal y numeros imposibles, acepta la correccion real del cliente y abre con el numero corregido, sin token de la API", async () => {
+    const LINEA = "+52 999 222 0002";
+    const api = await crearMundoApi({ numerosSucursal: [LINEA] });
+    const telefonia = new TelefoniaFalsa();
+    const cuerpos: { telefono: string; seq: number; aviso_dado?: boolean }[] = [];
+    const fetchSuelto = (async (_u: string, init?: RequestInit) => {
+      const c = JSON.parse(String(init?.body));
+      cuerpos.push(c);
+      return new Response(JSON.stringify({ texto: "Buen día, ¿qué se le ofrece?", pedido_id: null, fin: false, turno: c.seq }), { status: 200 });
+    }) as unknown as typeof fetch;
+    let llm: PuertoLlmVoz | null = null;
+    const escalon = { id: "cascada-v2" as const, abrirSesion: async () => ({ enviarTexto: () => undefined, interrumpir: () => undefined, cerrar: async () => undefined }) };
+    const worker = new Worker({
+      config: api.config,
+      telefonia,
+      log: () => undefined,
+      deps: api.depsAtencion({
+        crearEscalera: (ctx) => { llm = ctx?.llmVoz ?? null; return crearEscaleraLlamada([escalon as never], { ahora: api.reloj.ahora }); },
+        cerebroSuelto: { url: "https://x.invalid/functions/v1/voz-turno", secreto: "s", aviso: null, fetchFn: fetchSuelto, esperar: async () => undefined },
+      }),
+    });
+    expect(await worker.iniciar()).toBe(true);
+    telefonia.llamar({ id: "llamada-oculta-1", dnis: NUMERO_SUCURSAL, desde: "anonymous" });
+    await vi.waitFor(() => expect(llm).not.toBeNull(), { timeout: 5_000, interval: 5 });
+    const di = async (t: string): Promise<string> => (await llm!.completar({ system: "", mensajes: [{ role: "user", content: t }], herramientas: [] })).texto;
+    await di(DISPARADOR_SALUDO);
+    // 1) el cliente dicta la linea de la sucursal: se repite, al confirmar se rechaza y NO se llama al servidor
+    expect(await di("nueve nueve nueve dos dos dos cero cero cero dos")).toContain("9 9 9, 2 2 2, 0 0 0 2");
+    expect(await di("sí")).toContain("otro número");
+    // 2) numero imposible (empieza con 1): ni se repite
+    expect(await di("1 2 3 4 5 6 7 8 9 0")).toContain("no parece válido");
+    expect(cuerpos).toHaveLength(0);
+    // 3) dicta uno bueno, se equivoca y lo corrige: manda el corregido
+    expect(await di("9991234567")).toContain("9 9 9, 1 2 3, 4 5 6 7");
+    expect(await di("no, es el 999 765 4321")).toContain("9 9 9, 7 6 5, 4 3 2 1");
+    expect(await di("sí, correcto")).toContain("Buen día");
+    expect(cuerpos).toHaveLength(1);
+    expect(cuerpos[0]).toMatchObject({ seq: 0, telefono: "9997654321", aviso_dado: true });
   });
 });
