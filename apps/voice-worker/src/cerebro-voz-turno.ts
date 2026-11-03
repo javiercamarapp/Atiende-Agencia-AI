@@ -241,6 +241,8 @@ export class CerebroVozTurno {
   private readonly enCola: TurnoEnVuelo[] = [];
   private cancelado = false;
   private cierreEntregado = false;
+  /** Lo ultimo que `hablarPendiente` entrego a la sesion y aun puede interrumpirse (ver `pendienteInterrumpido`); cualquier turno nuevo lo da por oido. */
+  private pendienteEnVoz: readonly string[] | null = null;
   private readonly fetchFn: typeof fetch;
   private readonly esperar: NonNullable<OpcionesCerebroVozTurno["esperar"]>;
   private readonly temporizador: NonNullable<OpcionesCerebroVozTurno["temporizador"]>;
@@ -316,6 +318,7 @@ export class CerebroVozTurno {
    * La cola de espera tiene tope (`MAX_COLA_TURNOS`); `cancelarPendientes()` (al colgar) suelta lo que no se envio.
    */
   private lanzar(seq: number | null, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
+    this.pendienteEnVoz = null;
     if (this.cierre && !this.reabrirSiBlando(seq, texto)) return this.devolverCierre(opciones);
     if (this.cancelado) return Promise.reject(new ErrorTurnoAbortado());
     if (this.telefono === null) return Promise.reject(new Error("voz-turno: falta el telefono confirmado"));
@@ -426,7 +429,20 @@ export class CerebroVozTurno {
     return (v !== null && v !== undefined && !v.entregado) || this.cierre !== null || this.pendientePorHablar.length > 0;
   }
 
+  /**
+   * La sesion interrumpio al agente (el cliente hablo encima). Si lo ultimo que sono fue un pendiente (`hablarPendiente`) y aun no hubo otro turno, el cliente no lo oyo completo:
+   * vuelve al frente de la cola (ya marcado como dicho, asi se repite en version corta).
+   */
+  pendienteInterrumpido(): void {
+    const lista = this.pendienteEnVoz;
+    this.pendienteEnVoz = null;
+    if (lista === null || this.cancelado) return;
+    this.pendientePorHablar.unshift(...lista);
+    for (const h of lista) this.yaDichas.add(h);
+  }
+
   async hablarPendiente(opciones: OpcionesTurno = {}): Promise<ResultadoTurno | null> {
+    this.pendienteEnVoz = null;
     const v = this.vuelo;
     if (v && !v.entregado) {
       const r = await v.promesa.catch(() => null);
@@ -440,12 +456,10 @@ export class CerebroVozTurno {
     const lista = [...this.pendientePorHablar];
     const partes: string[] = [];
     this.hablarPendientes(lista, { ...opciones, alRespuestaPrevia: (t) => partes.push(t) });
-    // Solo se consume si la senal sigue viva al terminar (igual que `turno`): si se aborto, nadie lo oyo y sigue en la cola (ya marcado como empezado a decir).
-    const sigueViva = (): boolean => opciones.senal?.aborted !== true;
-    if (sigueViva()) {
-      this.pendientePorHablar.splice(0, lista.length);
-      for (const h of lista) this.yaDichas.delete(h);
-    }
+    // Se da por oido al instante, pero se recuerda en `pendienteEnVoz`: si la sesion avisa de una interrupcion antes del siguiente turno (`interrumpido`), vuelve a la cola.
+    this.pendientePorHablar.splice(0, lista.length);
+    for (const h of lista) this.yaDichas.delete(h);
+    this.pendienteEnVoz = lista;
     return { texto: partes.join(" "), colgar: false, motivo: null, pedidoId: this.pedido, turno: null };
   }
 
@@ -479,6 +493,7 @@ export class CerebroVozTurno {
   /** El worker cuelga: lo que esta en cola y no se envio ya no se manda (el turno ya enviado puede terminar). */
   cancelarPendientes(): void {
     this.cancelado = true;
+    this.pendienteEnVoz = null;
     this.textoDiferido = "";
     this.pendientePorHablar.length = 0;
     for (const t of this.enCola) t.descartar = true;

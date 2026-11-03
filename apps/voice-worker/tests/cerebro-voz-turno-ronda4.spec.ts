@@ -23,8 +23,8 @@ describe("versionCortaDePendiente (P1, P2-a)", () => {
   });
 });
 
-describe("hablarPendiente (P2-b)", () => {
-  it("no consume el pendiente si la senal murio al terminar de hablarlo (sigue en la cola para el siguiente turno)", async () => {
+describe("hablarPendiente (P2-b / ronda 5 P2-2)", () => {
+  async function conPendiente() {
     const fetchFn = (async (_u: string, init?: RequestInit) => {
       const b = JSON.parse(String(init?.body)) as Peticion;
       await dormir(10);
@@ -37,12 +37,29 @@ describe("hablarPendiente (P2-b)", () => {
     ctl.abort();
     await p;
     await dormir(20);
-    // Senal que "muere" a la tercera lectura: viva al empezar a hablar, muerta al terminar.
-    let lecturas = 0;
-    const senal = { get aborted() { lecturas += 1; return lecturas >= 3; } } as unknown as AbortSignal;
-    await c.hablarPendiente({ senal });
-    const otra = await c.hablarPendiente();
-    expect(otra?.texto).toBe("Como le decía, su total es 80 pesos.");
+    return c;
+  }
+  it("con la senal ya muerta no habla ni consume el pendiente", async () => {
+    const c = await conPendiente();
+    const ctl = new AbortController();
+    ctl.abort();
+    expect(await c.hablarPendiente({ senal: ctl.signal })).toBeNull();
+    expect((await c.hablarPendiente())?.texto).toBe("Su total es 80 pesos.");
+  });
+  it("interrumpido despues de hablarlo lo devuelve a la cola: la siguiente vez va en version corta", async () => {
+    const c = await conPendiente();
+    expect((await c.hablarPendiente())?.texto).toBe("Su total es 80 pesos.");
+    expect(c.hayPendiente).toBe(false);
+    c.pendienteInterrumpido();
+    expect(c.hayPendiente).toBe(true);
+    expect((await c.hablarPendiente())?.texto).toBe("Como le decía, su total es 80 pesos.");
+  });
+  it("sin interrupcion se da por oido, y un turno nuevo tambien cierra la ventana de interrupcion", async () => {
+    const c = await conPendiente();
+    await c.hablarPendiente();
+    await c.turno("y una coca").catch(() => undefined);
+    c.pendienteInterrumpido(); // ya no es de ese pendiente
+    expect(await c.hablarPendiente()).toBeNull();
   });
 });
 

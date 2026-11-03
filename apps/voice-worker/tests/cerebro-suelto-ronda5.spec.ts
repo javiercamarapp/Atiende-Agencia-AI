@@ -1,4 +1,4 @@
-// Ronda 5 (P2-1): integracion con la SesionCascadaV2 REAL. Mismo montaje que cerebro-suelto-sesion-real.spec.ts. Original: el cerebro suelto (puerto LLM de `CerebroSuelto`) dentro de la SesionCascadaV2 REAL (voice-core) con dobles de STT y TTS y un `voz-turno` falso.
+// Ronda 5 (P2-1, P2-2): integracion con la SesionCascadaV2 REAL. Mismo montaje que cerebro-suelto-sesion-real.spec.ts. Original: el cerebro suelto (puerto LLM de `CerebroSuelto`) dentro de la SesionCascadaV2 REAL (voice-core) con dobles de STT y TTS y un `voz-turno` falso.
 // Usa el patron real de aborto/cadena de la sesion (parcial no vacio -> interrumpir -> aborta el LLM; final -> turno encadenado) en vez de imitarlo a mano.
 import { describe, expect, it } from "vitest";
 import { crearProveedorCascadaV2 } from "@atiende/voice-core";
@@ -39,7 +39,7 @@ async function montar(servidor: (p: Peticion) => Promise<Record<string, unknown>
   const h: ManejadoresSesion = {
     agenteDijo: () => undefined,
     agenteTermino: () => eventos.push("fin"),
-    interrumpido: () => eventos.push("interrumpido"),
+    interrumpido: () => { eventos.push("interrumpido"); cerebro.interrumpido(); },
     ejecutarTool: async () => ({}),
     caido: (r) => eventos.push(`caido:${r}`),
   };
@@ -70,5 +70,40 @@ describe("ronda 5 con la sesion real", () => {
     await prov.inactivo();
     expect(hablado.join(" ")).toContain("80 pesos");
     expect(cerebro.hayPendiente).toBe(false);
+  });
+
+  it("P2-2: barge-in DESPUES de que hablarPendiente devolvio: el pendiente vuelve a la cola y se repite en version corta antes de la respuesta nueva", async () => {
+    const { stt, prov, peticiones, hablado } = await montar(async (p) => {
+      if (p.seq === 1) { await dormir(60); return { texto: "Su total es 80 pesos.", pedido_id: null, turno: 1 }; }
+      return { texto: "Claro, son 80.", pedido_id: null, turno: p.seq };
+    }, { huerfanoMs: 20, ttsLentoMs: 150 });
+    stt.turnoFinal("dos tacos");
+    await dormir(10);
+    stt.parcial("mm"); // aborta; el servidor responde a los ~60 ms y el aviso de huerfano sale ~20 ms despues
+    await dormir(110);
+    await dormir(20); // el aviso de huerfano del montaje ya mando TEXTO_PENDIENTE y su TTS sigue sonando
+    expect(hablado.join(" ")).toContain("Su total es 80 pesos.");
+    stt.parcial("espera"); // barge-in con el pendiente a medio decir
+    stt.turnoFinal("cuanto fue");
+    await dormir(400);
+    await prov.inactivo();
+    expect(peticiones.map((p) => p.seq)).toEqual([1, 2]);
+    expect(hablado.join(" ")).toContain("Como le decía, su total es 80 pesos.");
+  });
+
+  it("P2-2: sin barge-in el pendiente se da por oido y no se repite en el turno siguiente", async () => {
+    const { stt, prov, hablado } = await montar(async (p) => {
+      if (p.seq === 1) { await dormir(60); return { texto: "Su total es 80 pesos.", pedido_id: null, turno: 1 }; }
+      return { texto: "Claro, son 80.", pedido_id: null, turno: p.seq };
+    }, { huerfanoMs: 20 });
+    stt.turnoFinal("dos tacos");
+    await dormir(10);
+    stt.parcial("mm");
+    await dormir(110);
+    await prov.inactivo();
+    stt.turnoFinal("cuanto fue");
+    await dormir(100);
+    await prov.inactivo();
+    expect(hablado.join(" ")).not.toContain("Como le decía");
   });
 });

@@ -122,6 +122,10 @@ export class CerebroSuelto {
   get hayPendiente(): boolean {
     return this.core.hayPendiente;
   }
+  /** La sesion interrumpio al agente: si sonaba un pendiente, vuelve a la cola para repetirse. */
+  interrumpido(): void {
+    this.core.pendienteInterrumpido();
+  }
   /** El worker cuelga: los turnos en cola que no se enviaron ya no se mandan al servidor. */
   cancelarPendientes(): void {
     this.core.cancelarPendientes();

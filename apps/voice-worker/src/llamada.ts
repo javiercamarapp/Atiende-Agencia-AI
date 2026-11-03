@@ -433,6 +433,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         void procesarConsentimiento(texto);
       },
       interrumpido: () => {
+        cerebro?.interrumpido();
         puente.cortarAudio();
         h.interrumpido();
       },
