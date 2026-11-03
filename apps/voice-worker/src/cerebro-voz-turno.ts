@@ -105,6 +105,8 @@ export interface OpcionesCerebroVozTurno {
   readonly reintentosRafaga?: number;
   /** Se llama (sin esperar el resultado) cuando se cierra con error tecnico o presupuesto 409 agotado: que alguien registre el aviso de devolver la llamada. */
   readonly alAvisoPerdido?: (aviso: AvisoPerdido) => void;
+  /** Se llama cuando un cierre blando (`despedida_con_pedido`) se retira porque el cliente siguio hablando: el worker debe cancelar el colgado programado. */
+  readonly alReabrir?: () => void;
 }
 
 export class ErrorTurnoAbortado extends Error {
@@ -280,7 +282,7 @@ export class CerebroVozTurno {
    * La cola de espera tiene tope (`MAX_COLA_TURNOS`); `cancelarPendientes()` (al colgar) suelta lo que no se envio.
    */
   private lanzar(seq: number | null, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
-    if (this.cierre) return this.devolverCierre(opciones);
+    if (this.cierre && !this.reabrirSiBlando(seq, texto)) return this.devolverCierre(opciones);
     if (this.cancelado) return Promise.reject(new ErrorTurnoAbortado());
     if (this.telefono === null) return Promise.reject(new Error("voz-turno: falta el telefono confirmado"));
     const previo = this.vuelo;
@@ -301,7 +303,7 @@ export class CerebroVozTurno {
           this.pendientePorHablar.push(anterior.texto);
         }
         this.enCola.splice(this.enCola.indexOf(mio) >>> 0, 1);
-        if (this.cierre) return this.devolverCierre(opciones);
+        if (this.cierre && !this.reabrirSiBlando(seq, texto)) return this.devolverCierre(opciones);
         if (this.cancelado) throw new ErrorTurnoAbortado();
         const obsoleto = opciones.senal?.aborted === true && this.vuelo !== mio;
         if (mio.descartar || obsoleto) {
@@ -334,6 +336,30 @@ export class CerebroVozTurno {
     const seq = this.proximoSeq;
     this.proximoSeq += 1;
     return seq;
+  }
+
+  /**
+   * Solo `fin_servidor`, `error_tecnico`, `tope`, `apagado` (y los demas cierres por falla) son pegajosos. `despedida_con_pedido` es una HEURISTICA del worker (el servidor nunca manda
+   * `fin` en una respuesta del modelo): si el cliente dice algo que no es cierre («ah, y agrega una coca», «espera, falta algo») mientras el servidor creaba el pedido o mientras
+   * sonaba la despedida, el cierre se retira, se habla lo que el cliente no oyo y el texto se envia como el seq siguiente.
+   */
+  private reabrirSiBlando(seq: number | null, texto: string): boolean {
+    const c = this.cierre;
+    if (c === null || c.motivo !== "despedida_con_pedido" || seq !== null) return false;
+    const total = this.textoDiferido !== "" && texto === TEXTO_SILENCIO ? this.textoDiferido : unirTextos(this.textoDiferido, texto);
+    if (esCierreCliente(total)) return false;
+    this.cierre = null;
+    this.cancelado = false;
+    // Si nadie oyo la despedida (turno abortado), su texto (que puede traer el total) se habla antes de la respuesta nueva.
+    if (!this.cierreEntregado) this.pendientePorHablar.push(c.texto);
+    this.cierreEntregado = false;
+    this.log("voz_turno_cierre_retirado", { motivo: c.motivo });
+    try {
+      this.o.alReabrir?.();
+    } catch {
+      // el aviso al worker nunca debe impedir seguir la llamada
+    }
+    return true;
   }
 
   /** Hay un cierre: se habla (si nadie lo oyo) y no se manda nada mas. Antes se hablan las respuestas pendientes. */

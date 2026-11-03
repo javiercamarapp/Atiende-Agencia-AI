@@ -82,7 +82,16 @@ export class CerebroSuelto {
   private fin = 0;
 
   constructor(private readonly o: OpcionesCerebroSuelto) {
-    this.core = new CerebroVozTurno({ ...o, telefono: o.telefono });
+    this.core = new CerebroVozTurno({
+      ...o,
+      telefono: o.telefono,
+      // El cierre blando (`despedida_con_pedido`) se retira si el cliente sigue hablando: este cerebro y el worker (temporizador de colgado) deben olvidarlo.
+      alReabrir: () => {
+        this.colgado = null;
+        this.cierreDicho = false;
+        o.alReabrir?.();
+      },
+    });
     this.fase = o.telefono === null ? "pidiendo_telefono" : "activa";
     this.puerto = {
       completar: async (p) => {
@@ -126,7 +135,9 @@ export class CerebroSuelto {
     const alRespuestaPrevia = (previa: string): void => alTexto?.(`${previa} `);
     const opciones = { ...(senal ? { senal } : {}), alEspera, alRespuestaPrevia };
     let r: ResultadoTurno;
-    if (this.colgado) r = this.cierreDicho ? { ...this.colgado, texto: FRASE_CIERRE_CORTA } : this.colgado;
+    // Un cierre blando (heuristica del worker) no se contesta aqui: lo decide el nucleo segun lo que diga el cliente (puede retirarlo).
+    const blando = this.colgado?.motivo === "despedida_con_pedido" && this.fase === "activa" && texto !== this.o.disparadorApertura;
+    if (this.colgado && !blando) r = this.cierreDicho ? { ...this.colgado, texto: FRASE_CIERRE_CORTA } : this.colgado;
     else if (this.fase === "activa") {
       r = texto === this.o.disparadorApertura ? await this.core.apertura(opciones) : await this.core.turno(texto, opciones);
     } else r = await this.faseTelefono(texto, opciones);

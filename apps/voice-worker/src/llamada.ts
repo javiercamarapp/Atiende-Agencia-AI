@@ -254,6 +254,12 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         ahora,
         log: (evento, campos) => log(evento, campos),
         confirmarTelefono: (n) => confirmarTelefonoSuelto?.(n) ?? Promise.resolve({ ok: false }),
+        alReabrir: () => {
+          // El cliente siguio hablando tras una despedida con pedido: ya no se cuelga (ni por `agenteTermino` ni por el temporizador).
+          cierreSuelto = null;
+          cancelarColgadoSuelto();
+          cancelarColgadoSuelto = () => undefined;
+        },
         alColgar: (motivo) => {
           cierreSuelto = motivo;
           // Red de seguridad: normalmente se cuelga cuando la despedida termina de sonar (`agenteTermino`), pero si la sintesis falla o ese evento nunca llega la linea quedaria
