@@ -273,6 +273,7 @@ export class CerebroVozTurno {
     const mio: TurnoEnVuelo = { id: (this.idTurno += 1), promesa: Promise.resolve(null as never), entregado: false, descartar: false };
     this.vuelo = mio;
     this.turnosActivos += 1;
+    const espera = this.iniciarEspera(opciones);
     if (previo) {
       this.enCola.push(mio);
       while (this.enCola.length > MAX_COLA_TURNOS) this.enCola.shift()!.descartar = true;
@@ -300,7 +301,7 @@ export class CerebroVozTurno {
       const diferido = this.textoDiferido;
       this.textoDiferido = "";
       const total = diferido !== "" && texto === TEXTO_SILENCIO ? diferido : unirTextos(diferido, texto);
-      const r = await this.pedir(seq ?? this.asignarSeq(), total, opciones);
+      const r = await this.pedir(seq ?? this.asignarSeq(), total, opciones, espera.alEnProceso);
       if (vivo()) {
         this.pendientePorHablar.splice(0, hablar.length);
         mio.entregado = true;
@@ -308,6 +309,7 @@ export class CerebroVozTurno {
       }
       return r;
     })().finally(() => {
+      espera.cancelar();
       this.turnosActivos -= 1;
     });
     mio.promesa = trabajo;
@@ -353,14 +355,18 @@ export class CerebroVozTurno {
     });
   }
 
-  private async pedir(seq: number, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
+  /**
+   * Frases de espera de un turno. El reloj arranca cuando el cliente TERMINO de hablar (al lanzar el turno), no cuando el turno por fin se envia: si antes hay que esperar la
+   * respuesta de un turno anterior (barge-in), el cliente oye el «un momento» a los ~4 s igual. Primer relleno a los 4 s y repeticiones cada ~15 s (maximo 3 frases); un 409
+   * «en proceso» tambien dice la frase pero solo si aun no se dijo ninguna.
+   */
+  private iniciarEspera(opciones: OpcionesTurno): { readonly alEnProceso: () => void; readonly cancelar: () => void } {
     let dichas = 0;
     const decirEspera = (): void => {
       if (dichas >= FRASES_ESPERA.length || opciones.senal?.aborted) return;
       opciones.alEspera?.(FRASES_ESPERA[dichas]!);
       dichas += 1;
     };
-    // Primer relleno a los 4 s y repeticiones cada ~15 s (maximo 3 frases). Un 409 «en proceso» tambien dice la frase pero solo si aun no se dijo ninguna.
     let cancelar: () => void = () => undefined;
     const programar = (ms: number): void => {
       cancelar = this.temporizador(() => {
@@ -369,11 +375,11 @@ export class CerebroVozTurno {
       }, ms);
     };
     programar(this.o.rellenoMs ?? 4000);
-    try {
-      return await this.reintentar(seq, texto, seq === 0 && opciones.avisoDado === true, () => (dichas === 0 ? decirEspera() : undefined));
-    } finally {
-      cancelar();
-    }
+    return { alEnProceso: () => (dichas === 0 ? decirEspera() : undefined), cancelar: () => cancelar() };
+  }
+
+  private async pedir(seq: number, texto: string, opciones: OpcionesTurno, alEnProceso: () => void): Promise<ResultadoTurno> {
+    return this.reintentar(seq, texto, seq === 0 && opciones.avisoDado === true, alEnProceso);
   }
 
   /** UNA peticion. Solo la corta su propio tiempo maximo: un barge-in del cliente NO la aborta (el servidor la procesa igual). */

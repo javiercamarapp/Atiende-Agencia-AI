@@ -375,3 +375,25 @@ describe("cola de respuestas sin oir (P1) y turnos obsoletos (P2-1)", () => {
   });
 });
 
+
+describe("frases de espera desde que el cliente termino de hablar (P2-2)", () => {
+  it("durante la espera de k tras un barge-in, el relleno de 4 s corre desde el turno nuevo y se oye 'un momento' sin esperar a que k termine", async () => {
+    const { fetchFn, vistas, puertas } = servidorConPuertas({ 1: { texto: "ok", pedido_id: null, fin: false, turno: 1 } });
+    const programados: { fn: () => void; ms: number }[] = [];
+    const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_espera_001", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: (fn, ms) => { programados.push({ fn, ms }); return () => undefined; } });
+    const hablado: string[] = [];
+    const t1 = turnoDeSesion(hablado);
+    const k = cerebro.turno("a", t1.opciones);
+    await vi.waitFor(() => expect(vistas).toHaveLength(1));
+    t1.control.abort();
+    await expect(k).rejects.toThrow();
+    const t2 = turnoDeSesion(hablado);
+    const k1 = cerebro.turno("b", t2.opciones);
+    expect(programados.filter((p) => p.ms === 4000)).toHaveLength(2); // el de k+1 ya corre aunque k siga en vuelo
+    programados[programados.length - 1]!.fn();
+    expect(hablado).toEqual([FRASE_ESPERA]);
+    puertas.get(1)!.liberar();
+    await k1;
+  });
+});
+
