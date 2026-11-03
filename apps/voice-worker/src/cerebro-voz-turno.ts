@@ -399,7 +399,7 @@ export class CerebroVozTurno {
   private vigilarHuerfano(mio: TurnoEnVuelo): void {
     this.temporizador(() => {
       void (async () => {
-        if (this.vuelo !== mio || this.cancelado || mio.huerfanoAvisado === true) return;
+        if (this.vuelo !== mio || this.cancelado) return;
         const r = await mio.promesa.catch(() => null);
         if (r === null || this.vuelo !== mio || this.cancelado || this.turnosActivos > 0 || mio.entregado || mio.huerfanoAvisado === true) return;
         mio.huerfanoAvisado = true;
