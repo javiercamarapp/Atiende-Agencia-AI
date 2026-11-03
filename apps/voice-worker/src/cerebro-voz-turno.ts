@@ -203,13 +203,19 @@ function unirTextos(antes: string, ahora: string): string {
   return t.length > MAX_TEXTO_CLIENTE ? t.slice(t.length - MAX_TEXTO_CLIENTE) : t;
 }
 
-/** Repeticion breve de algo que el cliente ya empezo a oir: las oraciones con cifras o total («como le decia, su total es 100 pesos»); si no hay, la primera. */
+/** Oracion con datos que el cliente no debe perder: cifras, total, pesos, folio, pedido o numero. */
+const DATO_CLAVE = /\d|\$|total|pesos?\b|folio|pedido|n[uú]mero/i;
+
+/**
+ * Repeticion breve de algo que el cliente ya empezo a oir («como le decia, su total es 100 pesos»). Conserva las oraciones con datos (cifras, total, pesos, folio, pedido, numero);
+ * si el pendiente tiene tres oraciones o menos sin pregunta las conserva todas; si solo habia una pregunta, devuelve el pendiente completo (nunca una despedida a media llamada).
+ */
 export function versionCortaDePendiente(texto: string): string {
   const oraciones = texto.split(/(?<=[.!?])\s+/).map((o) => o.trim()).filter((o) => o !== "" && !/[?¿]/.test(o));
-  const clave = oraciones.filter((o) => /\d|total|\$/i.test(o));
-  const elegidas = clave.length > 0 ? clave : oraciones.slice(0, 1);
+  const clave = oraciones.filter((o) => DATO_CLAVE.test(o));
+  const elegidas = oraciones.length <= 3 ? oraciones : clave.length > 0 ? clave : oraciones.slice(0, 1);
   const cuerpo = elegidas.join(" ");
-  if (cuerpo === "") return FRASE_CIERRE_CORTA;
+  if (cuerpo === "") return texto.trim();
   return `Como le decía, ${cuerpo.charAt(0).toLowerCase()}${cuerpo.slice(1)}`;
 }
 

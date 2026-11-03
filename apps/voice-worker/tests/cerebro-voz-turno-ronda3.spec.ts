@@ -155,10 +155,10 @@ describe("pendiente hablado y luego abortado no se repite completo (P2-3)", () =
     const habladoC: string[] = [];
     const rC = await cerebro.turno("tres", { alRespuestaPrevia: (t) => habladoC.push(t) });
     expect(rC.texto).toBe("Perfecto.");
-    expect(habladoC).toEqual(["Como le decía, su total es 100 pesos.", "Listo, anotado."]);
+    expect(habladoC).toEqual(["Como le decía, su total es 100 pesos. Le anoto dos tacos de bistec con todo.", "Listo, anotado."]);
   });
-  it("versionCortaDePendiente conserva las oraciones con cifras y descarta las preguntas", () => {
-    expect(versionCortaDePendiente("Anotado. Su total es 85 pesos. ¿Algo más?")).toBe("Como le decía, su total es 85 pesos.");
+  it("versionCortaDePendiente descarta las preguntas y conserva las oraciones (ronda 4: hasta tres sin pregunta, todas)", () => {
+    expect(versionCortaDePendiente("Anotado. Su total es 85 pesos. ¿Algo más?")).toBe("Como le decía, anotado. Su total es 85 pesos.");
     expect(versionCortaDePendiente("Claro que sí. ¿Algo más?")).toBe("Como le decía, claro que sí.");
   });
 });
