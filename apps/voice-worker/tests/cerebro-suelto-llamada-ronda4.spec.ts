@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { crearEscaleraLlamada } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
 import { Worker } from "../src/worker.ts";
-import { GRACIA_DESPEDIDA_MS, RUIDO_SIN_TEXTO_MS } from "../src/llamada.ts";
+import { COLGAR_TRAS_CIERRE_MS, GRACIA_DESPEDIDA_MS, PRORROGA_COLGAR_HABLANDO_MS, RUIDO_SIN_TEXTO_MS } from "../src/llamada.ts";
 import { TelefoniaFalsa } from "../src/telefonia/falsa.ts";
 import { NUMERO_SUCURSAL, crearMundoApi } from "./support/mundo-api.ts";
 
@@ -25,6 +25,7 @@ async function montar(respuesta: (seq: number) => Record<string, unknown>) {
   }) as unknown as typeof fetch;
   let llm: PuertoLlmVoz | null = null;
   let decir: ((t: string) => Promise<void>) | null = null;
+  let decirMudo: ((t: string) => Promise<void>) | null = null;
   const escalon = {
     id: "cascada-v2" as const,
     abrirSesion: async (_a: unknown, h: { agenteDijo(t: string): void; agenteTermino(): void }) => {
@@ -32,6 +33,10 @@ async function montar(respuesta: (seq: number) => Record<string, unknown>) {
         const r = await llm!.completar({ system: "", mensajes: [{ role: "user", content: texto }], herramientas: [] });
         h.agenteDijo(r.texto);
         h.agenteTermino();
+      };
+      decirMudo = async (texto: string) => {
+        const r = await llm!.completar({ system: "", mensajes: [{ role: "user", content: texto }], herramientas: [] });
+        h.agenteDijo(r.texto); // sin agenteTermino: la sintesis nunca termina
       };
       return { enviarTexto: (t: string) => void decir!(t), interrumpir: () => undefined, cerrar: async () => undefined };
     },
@@ -51,7 +56,7 @@ async function montar(respuesta: (seq: number) => Record<string, unknown>) {
   const antes = worker.salud().llamadasAtendidas;
   const llamada = telefonia.llamar({ id: "llamada-gracia-1", dnis: NUMERO_SUCURSAL, desde: "+5219991234567" });
   await vi.waitFor(() => expect(cuerpos).toHaveLength(1), { timeout: 5_000, interval: 5 });
-  return { worker, antes, llamada, cuerpos, tareas, decir: (t: string) => decir!(t) };
+  return { worker, antes, llamada, cuerpos, tareas, decir: (t: string) => decir!(t), decirMudo: (t: string) => decirMudo!(t) };
 }
 
 const DESPEDIDA = { texto: "Listo, su pedido quedó registrado. Gracias, buen provecho.", pedido_id: "ped_7" };
@@ -165,5 +170,46 @@ describe("ruido sobre la gracia sin texto final (ronda 5, P2-3)", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(gracia(tareas).filter((t) => !t.cancelada)).toHaveLength(0);
     expect(worker.salud().llamadasAtendidas).toBe(antes);
+  });
+});
+
+describe("ronda 7: temporizador de seguridad y bandera de cierre blando", () => {
+  const seguridad = (tareas: { fn: () => void; ms: number; cancelada: boolean }[]) => tareas.filter((t) => t.ms === COLGAR_TRAS_CIERRE_MS);
+  const prorroga = (tareas: { fn: () => void; ms: number; cancelada: boolean }[]) => tareas.filter((t) => t.ms === PRORROGA_COLGAR_HABLANDO_MS);
+
+  it("P2-1: al vencer los 20 s con el cliente hablando, prorroga una vez (~10 s) y despues cuelga aunque siga hablando", async () => {
+    const { worker, antes, tareas, llamada, decirMudo } = await montar((seq) => (seq === 0 ? { texto: "Buen día.", pedido_id: null } : { texto: "Hasta luego.", pedido_id: null, fin: true }));
+    await decirMudo("adios"); // cierre duro, pero la despedida no termina de sonar: queda solo el temporizador de seguridad
+    await vi.waitFor(() => expect(seguridad(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    llamada.hablar(VOZ(200), 8000); // el cliente habla de corrido, sin texto final
+    await new Promise((r) => setTimeout(r, 20));
+    seguridad(tareas)[0]!.fn();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(worker.salud().llamadasAtendidas).toBe(antes); // no se corto a media frase
+    expect(prorroga(tareas)).toHaveLength(1);
+    prorroga(tareas)[0]!.fn(); // tope duro
+    await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+    expect(prorroga(tareas)).toHaveLength(1); // una sola prorroga
+  });
+
+  it("P2-1: si al vencer los 20 s el cliente ya callo, cuelga sin prorroga", async () => {
+    const { worker, antes, tareas, decirMudo } = await montar((seq) => (seq === 0 ? { texto: "Buen día.", pedido_id: null } : { texto: "Hasta luego.", pedido_id: null, fin: true }));
+    await decirMudo("adios");
+    await vi.waitFor(() => expect(seguridad(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    seguridad(tareas)[0]!.fn();
+    await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+    expect(prorroga(tareas)).toHaveLength(0);
+  });
+
+  it("P2-2: tras reabrir, un cierre blando nuevo cuya sintesis no termina no hereda la bandera: el ruido no programa colgado por ruido", async () => {
+    const { tareas, llamada, decir, decirMudo } = await montar((seq) => (seq === 0 ? { texto: "Buen día.", pedido_id: null } : seq === 1 || seq === 3 ? DESPEDIDA : { texto: "Agregué la coca.", pedido_id: "ped_7" }));
+    await decir("confirmo"); // cierre blando + agenteTermino: bandera en true
+    await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    await decirMudo("ah, y agrega una coca"); // reabre (la bandera debe volver a false)
+    await decirMudo("eso es todo"); // otra despedida con pedido, y su sintesis nunca termina
+    llamada.hablar(VOZ(200), 8000);
+    llamada.hablar(SILENCIO(600), 8000);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS)).toHaveLength(0);
   });
 });

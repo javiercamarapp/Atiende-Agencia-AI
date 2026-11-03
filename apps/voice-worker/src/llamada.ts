@@ -31,6 +31,8 @@ import type { LlamadaTelefonica } from "./telefonia/puerto.ts";
 /** Texto que dispara el saludo: el agente habla primero (la instruccion le dice como saludar). No es una frase del cliente y no se registra como turno. */
 /** Cerebro suelto: tiempo maximo tras el cierre (fin del servidor, error, tope...) antes de colgar aunque la sintesis de la despedida no avise que termino. */
 export const COLGAR_TRAS_CIERRE_MS = 20_000;
+/** Prorroga UNICA del temporizador de seguridad si al vencer el cliente sigue hablando (tope duro total: COLGAR_TRAS_CIERRE_MS + esto). */
+export const PRORROGA_COLGAR_HABLANDO_MS = 10_000;
 /** Cerebro suelto: gracia (ms) tras vaciar la despedida con pedido antes de colgar; si el cliente habla en ella («ah, y agrega una coca») la llamada se reabre. */
 export const GRACIA_DESPEDIDA_MS = 1800;
 /** Cerebro suelto: tras la despedida con pedido, desde que el cliente DEJA de hablar (silencio real del puente) sin que llegue texto final, se reprograma el colgado (otra gracia). Nunca corre mientras hay voz. */
@@ -55,7 +57,7 @@ export interface DepsAtencion {
   /** Escalera NUEVA por llamada (lleva estado: quien ya fallo y los tramos para el costo). */
   readonly crearEscalera: (ctx?: { readonly llmVoz?: PuertoLlmVoz }) => EscaleraLlamada;
   /** `VOZ_CEREBRO=suelto`: el cerebro de la llamada es `voz-turno` (ver `cerebro-suelto.ts`). Sin esto, el cerebro actual (LLM y herramientas propias). */
-  readonly cerebroSuelto?: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs?: number; readonly timeoutMs?: number; readonly colgarTrasMs?: number; readonly graciaDespedidaMs?: number; readonly ruidoSinTextoMs?: number; readonly registrarContacto?: { readonly url: string; readonly secreto: string } | null; readonly fetchFn?: typeof fetch; readonly esperar?: (ms: number, senal?: AbortSignal) => Promise<void> };
+  readonly cerebroSuelto?: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs?: number; readonly timeoutMs?: number; readonly colgarTrasMs?: number; readonly prorrogaColgarMs?: number; readonly graciaDespedidaMs?: number; readonly ruidoSinTextoMs?: number; readonly registrarContacto?: { readonly url: string; readonly secreto: string } | null; readonly fetchFn?: typeof fetch; readonly esperar?: (ms: number, senal?: AbortSignal) => Promise<void> };
   readonly log: SumideroLog;
   /** `fetch` de las herramientas del agente (por omision el global; las pruebas lo apuntan a la API en proceso). */
   readonly fetchFn?: typeof fetch;
@@ -286,20 +288,34 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         alReabrir: () => {
           // El cliente siguio hablando tras una despedida con pedido: ya no se cuelga (ni por `agenteTermino` ni por el temporizador).
           cierreSuelto = null;
+          cierreBlandoEsperando = false;
           cancelarGracia();
           cancelarColgadoSuelto();
           cancelarColgadoSuelto = () => undefined;
         },
         alColgar: (motivo) => {
           cierreSuelto = motivo;
+          cierreBlandoEsperando = false; // cierre nuevo: el aviso de «despedida dicha» se vuelve a marcar en `agenteTermino`
           cancelarGracia();
           // Red de seguridad: normalmente se cuelga cuando la despedida termina de sonar (`agenteTermino`), pero si la sintesis falla o ese evento nunca llega la linea quedaria
           // abierta. Pase lo que pase, ~20 s despues del cierre se cuelga.
           cancelarColgadoSuelto();
-          const cancelar = programar(() => {
-            cancelar();
+          const colgarFinal = (): void => {
             log("colgado_por_temporizador", { motivo, ms: COLGAR_TRAS_CIERRE_MS });
             void controladorRef?.clienteCuelga();
+          };
+          const cancelar = programar(() => {
+            cancelar();
+            // Si el cliente habla de corrido sin texto final, no se le corta a media frase: una sola prorroga y luego se cuelga pase lo que pase.
+            if (puente.clienteHablandoAhora && !llamadaTerminada) {
+              const cancelarProrroga = programar(() => {
+                cancelarProrroga();
+                colgarFinal();
+              }, deps.cerebroSuelto?.prorrogaColgarMs ?? PRORROGA_COLGAR_HABLANDO_MS);
+              cancelarColgadoSuelto = cancelarProrroga;
+              return;
+            }
+            colgarFinal();
           }, deps.cerebroSuelto?.colgarTrasMs ?? COLGAR_TRAS_CIERRE_MS);
           cancelarColgadoSuelto = cancelar;
         },
