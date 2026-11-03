@@ -33,8 +33,8 @@ import type { LlamadaTelefonica } from "./telefonia/puerto.ts";
 export const COLGAR_TRAS_CIERRE_MS = 20_000;
 /** Cerebro suelto: gracia (ms) tras vaciar la despedida con pedido antes de colgar; si el cliente habla en ella («ah, y agrega una coca») la llamada se reabre. */
 export const GRACIA_DESPEDIDA_MS = 1800;
-/** Cerebro suelto: si el cliente hizo ruido en la gracia y en este tiempo no llega texto final, se reprograma el colgado (otra gracia). */
-export const RUIDO_SIN_TEXTO_MS = 3000;
+/** Cerebro suelto: tras la despedida con pedido, desde que el cliente DEJA de hablar (silencio real del puente) sin que llegue texto final, se reprograma el colgado (otra gracia). Nunca corre mientras hay voz. */
+export const RUIDO_SIN_TEXTO_MS = 1500;
 
 export const DISPARADOR_SALUDO = "(La llamada acaba de conectarse. Salude al cliente siguiendo sus instrucciones.)";
 
@@ -247,7 +247,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     const previo = cancelarColgadoSuelto;
     const cancelarEspera = programar(() => {
       cancelarEspera();
-      if (generacionGracia === miGeneracion && !llamadaTerminada && cierreSuelto === "despedida_con_pedido") void controladorRef?.clienteCuelga();
+      if (generacionGracia === miGeneracion && !llamadaTerminada && cierreSuelto === "despedida_con_pedido" && !puente.clienteHablandoAhora) void controladorRef?.clienteCuelga();
     }, deps.cerebroSuelto?.graciaDespedidaMs ?? GRACIA_DESPEDIDA_MS);
     cancelarColgadoSuelto = () => {
       cancelarEspera();
@@ -374,23 +374,25 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     ...(salidaMezclada ? { mezclador: salidaMezclada } : {}),
     eventos: {
       usuarioHabla: () => {
-        // El cliente habla sobre la despedida o en su gracia: no se cuelga hasta ver que dice (el cerebro reabre o confirma el cierre).
-        const reprogramar = cierreBlandoEsperando && cierreSuelto === "despedida_con_pedido";
+        // El cliente habla sobre la despedida o en su gracia: no se cuelga mientras hable ni hasta ver que dice (el cerebro reabre o confirma el cierre).
         cancelarGracia();
-        // Si fue solo ruido no llegara texto final (y el cerebro no reabre ni confirma el cierre): sin esto la linea quedaria abierta hasta el colgado de seguridad (~20 s).
-        if (reprogramar) {
-          const gen = generacionGracia;
-          const previo = cancelarColgadoSuelto;
-          const cancelarRuido = programar(() => {
-            cancelarRuido();
-            if (gen === generacionGracia && !llamadaTerminada && cierreSuelto === "despedida_con_pedido") iniciarGracia(gen);
-          }, deps.cerebroSuelto?.ruidoSinTextoMs ?? RUIDO_SIN_TEXTO_MS);
-          cancelarColgadoSuelto = () => {
-            cancelarRuido();
-            previo();
-          };
-        }
         return controlador.usuarioHabla();
+      },
+      usuarioCalla: () => {
+        // Si fue solo ruido no llegara texto final (y el cerebro no reabre ni confirma el cierre): sin esto la linea quedaria abierta hasta el colgado de seguridad (~20 s).
+        // El plazo corre desde el silencio REAL del cliente, no desde que empezo a hablar: una frase larga nunca se corta a media voz.
+        if (!(cierreBlandoEsperando && cierreSuelto === "despedida_con_pedido")) return;
+        cancelarGracia();
+        const gen = generacionGracia;
+        const previo = cancelarColgadoSuelto;
+        const cancelarRuido = programar(() => {
+          cancelarRuido();
+          if (gen === generacionGracia && !llamadaTerminada && cierreSuelto === "despedida_con_pedido" && !puente.clienteHablandoAhora) iniciarGracia(gen);
+        }, deps.cerebroSuelto?.ruidoSinTextoMs ?? RUIDO_SIN_TEXTO_MS);
+        cancelarColgadoSuelto = () => {
+          cancelarRuido();
+          previo();
+        };
       },
       // Cerebro suelto: el servidor decide que hacer con el silencio (`[silencio]`); la maquina local no manda su "¿sigue ahi?" ni se despide por su cuenta.
       silencio: (ms) => (vigiaSilencio ? Promise.resolve(vigiaSilencio.registrar(ms)) : controlador.silencio(ms)),

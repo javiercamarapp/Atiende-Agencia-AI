@@ -17,6 +17,8 @@ export const HZ_SALIDA_ESCALON = 24_000;
 /** Lo que el puente le pide al controlador (los metodos de `ControladorLlamada`). */
 export interface DestinoEventosLlamada {
   usuarioHabla(): Promise<void>;
+  /** El cliente dejo de hablar (tras `finVozMs` de silencio). Opcional: quien no lo necesita lo omite. */
+  usuarioCalla?(): void;
   silencio(ms: number): Promise<void>;
   dtmf(digito: string): Promise<void>;
   tick(segundos: number): Promise<void>;
@@ -79,6 +81,11 @@ export class PuenteAudio {
     o.tel.alDtmf((d) => void o.eventos.dtmf(d));
   }
 
+  /** Hay voz del cliente ahora mismo (cae a false tras `finVozMs` sin voz). */
+  get clienteHablandoAhora(): boolean {
+    return this.clienteHablando;
+  }
+
   /** Audio del llamante. */
   entrada(pcm: Int16Array, hz: number): void {
     if (this.cerrado || pcm.length === 0) return;
@@ -104,6 +111,7 @@ export class PuenteAudio {
         this.vozAcumuladaMs = 0;
         this.esperandoRespuesta = true;
         this.finVozEn = this.ultimaVozEn;
+        this.o.eventos.usuarioCalla?.();
       }
     }
     if (this.hzEntradaActual !== hz || !this.remuestreoEntrada) {

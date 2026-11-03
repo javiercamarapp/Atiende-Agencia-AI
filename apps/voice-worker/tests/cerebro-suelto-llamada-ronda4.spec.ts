@@ -55,6 +55,8 @@ async function montar(respuesta: (seq: number) => Record<string, unknown>) {
 }
 
 const DESPEDIDA = { texto: "Listo, su pedido quedó registrado. Gracias, buen provecho.", pedido_id: "ped_7" };
+const VOZ = (ms: number) => new Int16Array((8000 * ms) / 1000).fill(20000);
+const SILENCIO = (ms: number) => new Int16Array((8000 * ms) / 1000);
 const gracia = (tareas: { fn: () => void; ms: number; cancelada: boolean }[]) => tareas.filter((t) => t.ms === GRACIA_DESPEDIDA_MS);
 const respuestas = (seq: number): Record<string, unknown> => (seq === 0 ? { texto: "Buen día.", pedido_id: null } : seq === 1 ? DESPEDIDA : { texto: "Agregué la coca.", pedido_id: "ped_7" });
 
@@ -104,7 +106,9 @@ describe("ruido sobre la gracia sin texto final (ronda 5, P2-3)", () => {
     const { worker, antes, tareas, llamada, decir } = await montar(respuestas);
     await decir("confirmo");
     await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
-    llamada.hablar(new Int16Array(1600).fill(20000), 8000); // ruido: voz en el puente pero nunca llega texto final
+    llamada.hablar(VOZ(200), 8000); // ruido: voz en el puente pero nunca llega texto final
+    expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS)).toHaveLength(0); // mientras hay voz no corre ningun plazo
+    llamada.hablar(SILENCIO(600), 8000); // el cliente calla de verdad
     await vi.waitFor(() => expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS && !t.cancelada)).toHaveLength(1), { timeout: 5_000, interval: 5 });
     gracia(tareas)[0]!.fn(); // la gracia vieja ya no cuelga (la anulo el ruido)
     await new Promise((r) => setTimeout(r, 30));
@@ -120,12 +124,46 @@ describe("ruido sobre la gracia sin texto final (ronda 5, P2-3)", () => {
     const { worker, antes, tareas, llamada, decir } = await montar(respuestas);
     await decir("confirmo");
     await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
-    llamada.hablar(new Int16Array(1600).fill(20000), 8000);
+    llamada.hablar(VOZ(200), 8000);
+    llamada.hablar(SILENCIO(600), 8000);
     await vi.waitFor(() => expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS)).toHaveLength(1), { timeout: 5_000, interval: 5 });
     await decir("ah, y agrega una coca"); // el cerebro reabre
     tareas.find((t) => t.ms === RUIDO_SIN_TEXTO_MS)!.fn();
     await new Promise((r) => setTimeout(r, 50));
     expect(gracia(tareas)).toHaveLength(1);
+    expect(worker.salud().llamadasAtendidas).toBe(antes);
+  });
+
+  it("P1 ronda 6: una frase continua de 6 s sobre la gracia sin texto final NO cuelga mientras dura la voz; solo tras el silencio real", async () => {
+    const { worker, antes, tareas, llamada, decir } = await montar(respuestas);
+    await decir("confirmo");
+    await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    for (let i = 0; i < 30; i++) llamada.hablar(VOZ(200), 8000); // 6 s seguidos de voz
+    // Ningun plazo de ruido ni gracia nueva mientras el cliente sigue hablando, y aunque venza todo lo viejo, no cuelga.
+    expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS && !t.cancelada)).toHaveLength(0);
+    for (const t of tareas.filter((x) => x.ms === GRACIA_DESPEDIDA_MS || x.ms === RUIDO_SIN_TEXTO_MS)) t.fn();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(gracia(tareas).filter((t) => !t.cancelada)).toHaveLength(0);
+    expect(worker.salud().llamadasAtendidas).toBe(antes);
+    llamada.hablar(SILENCIO(600), 8000); // termina de hablar
+    await vi.waitFor(() => expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS && !t.cancelada)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    tareas.find((t) => t.ms === RUIDO_SIN_TEXTO_MS && !t.cancelada)!.fn();
+    await vi.waitFor(() => expect(gracia(tareas).filter((t) => !t.cancelada)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    gracia(tareas).find((t) => !t.cancelada)!.fn();
+    await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+  });
+
+  it("P1 ronda 6: si el cliente vuelve a hablar tras el silencio, el plazo en curso no cuelga", async () => {
+    const { worker, antes, tareas, llamada, decir } = await montar(respuestas);
+    await decir("confirmo");
+    await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    llamada.hablar(VOZ(200), 8000);
+    llamada.hablar(SILENCIO(600), 8000);
+    await vi.waitFor(() => expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    llamada.hablar(VOZ(200), 8000); // retoma la frase
+    for (const t of tareas.filter((x) => x.ms === GRACIA_DESPEDIDA_MS || x.ms === RUIDO_SIN_TEXTO_MS)) t.fn();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(gracia(tareas).filter((t) => !t.cancelada)).toHaveLength(0);
     expect(worker.salud().llamadasAtendidas).toBe(antes);
   });
 });
