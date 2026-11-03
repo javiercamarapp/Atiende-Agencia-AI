@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { crearEscaleraLlamada } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
 import { Worker } from "../src/worker.ts";
-import { DISPARADOR_SALUDO } from "../src/llamada.ts";
+import { DISPARADOR_SALUDO, GRACIA_DESPEDIDA_MS } from "../src/llamada.ts";
 import { TelefoniaFalsa } from "../src/telefonia/falsa.ts";
 import { NUMERO_SUCURSAL, crearMundoApi } from "./support/mundo-api.ts";
 
@@ -26,6 +26,7 @@ describe("cerebro suelto dentro de atenderLlamada", () => {
       return new Response(JSON.stringify({ ...r, fin: false, turno: c.seq }), { status: 200 });
     }) as unknown as typeof fetch;
     let llm: PuertoLlmVoz | null = null;
+    const tareas: { fn: () => void; ms: number }[] = [];
     let decir: ((t: string) => Promise<void>) | null = null;
     const dicho: string[] = [];
     const escalon = {
@@ -44,6 +45,8 @@ describe("cerebro suelto dentro de atenderLlamada", () => {
       telefonia,
       log: () => undefined,
       deps: api.depsAtencion({
+        // La despedida con pedido es un cierre blando: se cuelga al vencer su gracia (aqui disparada a mano).
+        programar: (fn, ms) => { tareas.push({ fn, ms }); return () => undefined; },
         crearEscalera: (ctx) => {
           llm = ctx?.llmVoz ?? null;
           return crearEscaleraLlamada([escalon as never], { ahora: api.reloj.ahora });
@@ -59,7 +62,9 @@ describe("cerebro suelto dentro de atenderLlamada", () => {
     await decir!("quiero tacos");
     await decir!("de bistec");
     expect(cuerpos.map((c) => [c.seq, c.texto])).toEqual([[0, ""], [1, "quiero tacos"], [2, "de bistec"]]);
-    // Sin que el cliente cuelgue: el worker cuelga por su cuenta tras la despedida con pedido.
+    // Sin que el cliente cuelgue: el worker cuelga por su cuenta tras la despedida con pedido (al vencer la gracia).
+    await vi.waitFor(() => expect(tareas.some((t) => t.ms === GRACIA_DESPEDIDA_MS)).toBe(true), { timeout: 5_000, interval: 5 });
+    tareas.find((t) => t.ms === GRACIA_DESPEDIDA_MS)!.fn();
     await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
   });
 

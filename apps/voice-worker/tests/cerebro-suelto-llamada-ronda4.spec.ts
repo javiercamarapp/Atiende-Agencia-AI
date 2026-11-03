@@ -55,7 +55,7 @@ async function montar(respuesta: (seq: number) => Record<string, unknown>) {
 }
 
 const DESPEDIDA = { texto: "Listo, su pedido quedó registrado. Gracias, buen provecho.", pedido_id: "ped_7" };
-const gracia = (tareas: { ms: number }[]) => tareas.filter((t) => t.ms === GRACIA_DESPEDIDA_MS);
+const gracia = (tareas: { fn: () => void; ms: number; cancelada: boolean }[]) => tareas.filter((t) => t.ms === GRACIA_DESPEDIDA_MS);
 const respuestas = (seq: number): Record<string, unknown> => (seq === 0 ? { texto: "Buen día.", pedido_id: null } : seq === 1 ? DESPEDIDA : { texto: "Agregué la coca.", pedido_id: "ped_7" });
 
 describe("despedida con pedido: gracia antes de colgar (P2-d)", () => {
