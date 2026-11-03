@@ -46,3 +46,16 @@ describe("hablarPendiente (P2-b)", () => {
   });
 });
 
+describe("TEXTO_PENDIENTE sin nada retenido (P2-c)", () => {
+  it("no manda un [silencio] al servidor: resultado vacio", async () => {
+    const cuerpos: Peticion[] = [];
+    const fetchFn = (async (_u: string, init?: RequestInit) => {
+      cuerpos.push(JSON.parse(String(init?.body)) as Peticion);
+      return new Response(JSON.stringify({ texto: "¿Sigue ahí?", pedido_id: null, fin: false, turno: 1 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const c = new CerebroSuelto({ url: "https://x.invalid/voz-turno", secreto: "s", callId: "llamada-123", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined, disparadorApertura: "(saludo)" });
+    const r = await c.puerto.completar({ system: "", mensajes: [{ role: "user", content: TEXTO_PENDIENTE }], herramientas: [] });
+    expect(r.texto).toBe("");
+    expect(cuerpos).toHaveLength(0);
+  });
+});

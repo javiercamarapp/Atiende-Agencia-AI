@@ -98,7 +98,7 @@ export class CerebroSuelto {
         const ultimo = [...p.mensajes].reverse().find((m) => m.role === "user");
         const texto = ultimo?.content ?? "";
         const r = await this.procesar(texto, p.senal, p.onTextDelta);
-        p.onTextDelta?.(`${r.texto} `);
+        if (r.texto !== "") p.onTextDelta?.(`${r.texto} `);
         return { texto: r.texto, toolCalls: [], costoMicroUsd: 0, finishReason: "stop" };
       },
     };
@@ -140,8 +140,8 @@ export class CerebroSuelto {
     if (this.colgado && !blando) r = this.cierreDicho ? { ...this.colgado, texto: FRASE_CIERRE_CORTA } : this.colgado;
     else if (this.fase === "activa") {
       if (texto === this.o.disparadorApertura) r = await this.core.apertura(opciones);
-      // Turno interno: habla la respuesta que quedo retenida tras un aborto por ruido (sin texto final). Si ya no queda nada, cae a un silencio normal.
-      else if (texto === TEXTO_PENDIENTE) r = (await this.core.hablarPendiente(opciones)) ?? (await this.core.turno(TEXTO_SILENCIO, opciones));
+      // Turno interno: habla la respuesta retenida. Si ya no queda nada NO se manda nada al servidor (un `[silencio]` real le haria hablar sin que el cliente haya callado).
+      else if (texto === TEXTO_PENDIENTE) r = (await this.core.hablarPendiente(opciones)) ?? { texto: "", colgar: false, motivo: null, pedidoId: this.core.pedidoId, turno: null };
       else r = await this.core.turno(texto, opciones);
     } else r = await this.faseTelefono(texto, opciones);
     this.fin = ahora();
