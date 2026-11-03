@@ -189,4 +189,30 @@ describe("cerebro suelto dentro de atenderLlamada", () => {
     expect(cuerpos).toHaveLength(1);
     expect(cuerpos[0]).toMatchObject({ seq: 0, telefono: "9997654321", aviso_dado: true });
   });
+
+  it("fin del servidor con la sintesis rota (agenteTermino nunca llega): ~20 s despues del cierre el worker cuelga por temporizador", async () => {
+    const api = await crearMundoApi();
+    const telefonia = new TelefoniaFalsa();
+    const fetchSuelto = (async () => new Response(JSON.stringify({ texto: "Hasta luego.", pedido_id: null, fin: true, turno: 0 }), { status: 200 })) as unknown as typeof fetch;
+    let llm: PuertoLlmVoz | null = null;
+    const escalon = { id: "cascada-v2" as const, abrirSesion: async () => ({ enviarTexto: (t: string) => void llm!.completar({ system: "", mensajes: [{ role: "user", content: t }], herramientas: [] }), interrumpir: () => undefined, cerrar: async () => undefined }) };
+    const tareas: { fn: () => void; ms: number; cancelada: boolean }[] = [];
+    const worker = new Worker({
+      config: api.config,
+      telefonia,
+      log: () => undefined,
+      deps: api.depsAtencion({
+        programar: (fn, ms) => { const t = { fn, ms, cancelada: false }; tareas.push(t); return () => { t.cancelada = true; }; },
+        crearEscalera: (ctx) => { llm = ctx?.llmVoz ?? null; return crearEscaleraLlamada([escalon as never], { ahora: api.reloj.ahora }); },
+        cerebroSuelto: { url: "https://x.invalid/functions/v1/voz-turno", secreto: "s", aviso: null, fetchFn: fetchSuelto, esperar: async () => undefined },
+      }),
+    });
+    expect(await worker.iniciar()).toBe(true);
+    const antes = worker.salud().llamadasAtendidas;
+    telefonia.llamar({ id: "llamada-sin-tts-1", dnis: NUMERO_SUCURSAL, desde: "+5219991234567" });
+    await vi.waitFor(() => expect(tareas.some((t) => t.ms === 20_000)).toBe(true), { timeout: 5_000, interval: 5 });
+    expect(worker.salud().llamadasAtendidas).toBe(antes); // sigue en curso: nadie ha colgado
+    tareas.find((t) => t.ms === 20_000)!.fn();
+    await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+  });
 });
