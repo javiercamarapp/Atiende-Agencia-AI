@@ -1,6 +1,6 @@
 // Cliente de `voz-turno` (cerebro suelto) contra un fetch FALSO que imita al servidor segun CONTRATO-HERRAMIENTAS.md. Sin red, sin tiempo real, sin proveedores.
 import { describe, expect, it, vi } from "vitest";
-import { CerebroVozTurno, FRASE_DEVOLVER_LLAMADA, FRASE_ESPERA, FRASE_PROBLEMA_TECNICO, FRASE_TOPE, TEXTO_SILENCIO, esDespedida, normalizarCallId } from "../src/cerebro-voz-turno.ts";
+import { CerebroVozTurno, FRASE_CIERRE_CORTA, FRASE_DEVOLVER_LLAMADA, FRASE_ESPERA, FRASE_PROBLEMA_TECNICO, FRASE_TOPE, TEXTO_SILENCIO, esDespedida, normalizarCallId } from "../src/cerebro-voz-turno.ts";
 
 interface Peticion { readonly url: string; readonly secreto: string | null; readonly cuerpo: { call_id: string; telefono: string; seq: number; texto: string } }
 type Respuesta = { estado: number; cuerpo?: unknown; retryAfter?: string } | "red";
@@ -421,3 +421,23 @@ describe("despedida con pedido (P2-4)", () => {
   });
 });
 
+
+describe("despedida repetida al interrumpir un cierre (P3)", () => {
+  it("el cierre se dice completo una vez; si el cliente lo interrumpe, la segunda vez solo una version corta", async () => {
+    const { cerebro } = crear(() => ({ estado: 400 }));
+    const primero = await cerebro.turno("hola");
+    expect(primero.texto).toBe(FRASE_PROBLEMA_TECNICO);
+    const segundo = await cerebro.turno("¿bueno?");
+    expect(segundo).toMatchObject({ colgar: true });
+    expect(segundo.texto).toBe(FRASE_CIERRE_CORTA);
+    expect(segundo.texto.length).toBeLessThan(FRASE_PROBLEMA_TECNICO.length);
+  });
+  it("si el primer cierre nunca se oyo (turno abortado), el siguiente turno lo dice completo", async () => {
+    const { cerebro } = crear(() => ({ estado: 400 }));
+    const t = turnoDeSesion([]);
+    const p = cerebro.turno("hola", t.opciones);
+    t.control.abort();
+    await expect(p).rejects.toThrow();
+    expect((await cerebro.turno("¿bueno?")).texto).toBe(FRASE_PROBLEMA_TECNICO);
+  });
+});

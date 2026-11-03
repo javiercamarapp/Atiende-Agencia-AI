@@ -5,7 +5,7 @@
 //  - la vigilancia de SILENCIO (`VigiaSilencio`): tras ~8 s sin voz se manda `[silencio]` como un turno mas.
 import { esAfirmacion } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
-import { CerebroVozTurno, FRASE_DEVOLVER_LLAMADA, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
+import { CerebroVozTurno, FRASE_CIERRE_CORTA, FRASE_DEVOLVER_LLAMADA, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
 import { telefonoDictadoPlausible } from "./telefono-llamante.ts";
 import type { MotivoCierre, OpcionesCerebroVozTurno, ResultadoTurno } from "./cerebro-voz-turno.ts";
 
@@ -77,6 +77,8 @@ export class CerebroSuelto {
   private intentosTelefono = 0;
   private silenciosLocales = 0;
   private colgado: ResultadoTurno | null = null;
+  /** La despedida de `colgado` ya se hablo a un turno vivo: la repeticion (el cliente la interrumpio) va en version corta. */
+  private cierreDicho = false;
   private fin = 0;
 
   constructor(private readonly o: OpcionesCerebroSuelto) {
@@ -124,11 +126,12 @@ export class CerebroSuelto {
     const alRespuestaPrevia = (previa: string): void => alTexto?.(`${previa} `);
     const opciones = { ...(senal ? { senal } : {}), alEspera, alRespuestaPrevia };
     let r: ResultadoTurno;
-    if (this.colgado) r = this.colgado;
+    if (this.colgado) r = this.cierreDicho ? { ...this.colgado, texto: FRASE_CIERRE_CORTA } : this.colgado;
     else if (this.fase === "activa") {
       r = texto === this.o.disparadorApertura ? await this.core.apertura(opciones) : await this.core.turno(texto, opciones);
     } else r = await this.faseTelefono(texto, opciones);
     this.fin = ahora();
+    if (r.colgar && senal?.aborted !== true) this.cierreDicho = true;
     if (r.colgar) {
       this.colgado = r;
       this.core.cancelarPendientes();

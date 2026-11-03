@@ -160,3 +160,18 @@ describe("config: VOZ_CEREBRO", () => {
     expect(cargarConfig({ ...e, VOICE_TOOL_SECRET: "t" }).vozTurno?.registrarContacto).toEqual({ url: "https://x.supabase.co/functions/v1/registrar-contacto", secreto: "t" });
   });
 });
+
+describe("cerebro suelto: despedida repetida al interrumpir un cierre", () => {
+  it("el cierre se dice completo la 1.a vez y, si el cliente lo interrumpe, la 2.a solo una version corta", async () => {
+    const { c } = montar(null);
+    await c.puerto.completar(peticion(DISPARO));
+    const a = await c.puerto.completar(peticion("no sé"));
+    const b = await c.puerto.completar(peticion("ni idea"));
+    const c3 = await c.puerto.completar(peticion("nada"));
+    expect(c3.texto).toContain("No logré registrar su número");
+    expect(a.texto).not.toContain("No logré");
+    expect(b.texto).not.toContain("No logré");
+    const repetido = await c.puerto.completar(peticion("¿bueno?"));
+    expect(repetido.texto).toBe("Hasta luego.");
+  });
+});

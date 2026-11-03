@@ -26,6 +26,8 @@ export const FRASES_ESPERA: readonly string[] = [FRASE_ESPERA, "Sigo con eso, gr
 export const FRASE_DEVOLVER_LLAMADA = "Una persona le devolverá la llamada. Hasta luego.";
 export const FRASE_PROBLEMA_TECNICO = "Tuvimos un problema técnico. Una persona le devolverá la llamada. Hasta luego.";
 export const FRASE_TOPE = "Por ahora no puedo atenderle; una persona le devolverá la llamada. Hasta luego.";
+/** Segunda vez que se dice un cierre (el cliente interrumpio la despedida): basta lo corto. */
+export const FRASE_CIERRE_CORTA = "Hasta luego.";
 export const FRASE_APAGADO = "Por ahora no podemos atenderle por teléfono. Intente más tarde, por favor. Hasta luego.";
 
 export const MAX_TEXTO_CLIENTE = 2000;
@@ -342,7 +344,10 @@ export class CerebroVozTurno {
       for (const previa of this.pendientePorHablar) opciones.alRespuestaPrevia?.(previa);
       this.pendientePorHablar.length = 0;
     }
-    return Promise.resolve({ ...cierre, turno: null });
+    // La despedida completa se dice una sola vez; si el cliente la interrumpio, la segunda vez solo la version corta. Si nadie la oyo (turno abortado), aun va completa.
+    const texto = this.cierreEntregado ? FRASE_CIERRE_CORTA : cierre.texto;
+    if (vivo) this.cierreEntregado = true;
+    return Promise.resolve({ ...cierre, texto, turno: null });
   }
 
   /** El worker cuelga: lo que esta en cola y no se envio ya no se manda (el turno ya enviado puede terminar). */
