@@ -33,6 +33,8 @@ import type { LlamadaTelefonica } from "./telefonia/puerto.ts";
 export const COLGAR_TRAS_CIERRE_MS = 20_000;
 /** Cerebro suelto: gracia (ms) tras vaciar la despedida con pedido antes de colgar; si el cliente habla en ella («ah, y agrega una coca») la llamada se reabre. */
 export const GRACIA_DESPEDIDA_MS = 1800;
+/** Cerebro suelto: si el cliente hizo ruido en la gracia y en este tiempo no llega texto final, se reprograma el colgado (otra gracia). */
+export const RUIDO_SIN_TEXTO_MS = 3000;
 
 export const DISPARADOR_SALUDO = "(La llamada acaba de conectarse. Salude al cliente siguiendo sus instrucciones.)";
 
@@ -53,7 +55,7 @@ export interface DepsAtencion {
   /** Escalera NUEVA por llamada (lleva estado: quien ya fallo y los tramos para el costo). */
   readonly crearEscalera: (ctx?: { readonly llmVoz?: PuertoLlmVoz }) => EscaleraLlamada;
   /** `VOZ_CEREBRO=suelto`: el cerebro de la llamada es `voz-turno` (ver `cerebro-suelto.ts`). Sin esto, el cerebro actual (LLM y herramientas propias). */
-  readonly cerebroSuelto?: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs?: number; readonly timeoutMs?: number; readonly colgarTrasMs?: number; readonly graciaDespedidaMs?: number; readonly registrarContacto?: { readonly url: string; readonly secreto: string } | null; readonly fetchFn?: typeof fetch; readonly esperar?: (ms: number, senal?: AbortSignal) => Promise<void> };
+  readonly cerebroSuelto?: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs?: number; readonly timeoutMs?: number; readonly colgarTrasMs?: number; readonly graciaDespedidaMs?: number; readonly ruidoSinTextoMs?: number; readonly registrarContacto?: { readonly url: string; readonly secreto: string } | null; readonly fetchFn?: typeof fetch; readonly esperar?: (ms: number, senal?: AbortSignal) => Promise<void> };
   readonly log: SumideroLog;
   /** `fetch` de las herramientas del agente (por omision el global; las pruebas lo apuntan a la API en proceso). */
   readonly fetchFn?: typeof fetch;
@@ -239,6 +241,19 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   const cancelarGracia = (): void => {
     generacionGracia += 1;
   };
+  // Cierre blando (despedida con pedido) ya dicho, esperando colgar: lo usa `usuarioHabla` para reprogramar la gracia si fue solo ruido.
+  let cierreBlandoEsperando = false;
+  const iniciarGracia = (miGeneracion: number): void => {
+    const previo = cancelarColgadoSuelto;
+    const cancelarEspera = programar(() => {
+      cancelarEspera();
+      if (generacionGracia === miGeneracion && !llamadaTerminada && cierreSuelto === "despedida_con_pedido") void controladorRef?.clienteCuelga();
+    }, deps.cerebroSuelto?.graciaDespedidaMs ?? GRACIA_DESPEDIDA_MS);
+    cancelarColgadoSuelto = () => {
+      cancelarEspera();
+      previo();
+    };
+  };
   if (deps.cerebroSuelto) {
     const cfg = deps.cerebroSuelto;
     // Aviso de «devolver la llamada» cuando el worker cuelga por una falla (sin esto nadie queda avisado). Se espera al final de la llamada, nunca antes del colgado.
@@ -360,7 +375,21 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     eventos: {
       usuarioHabla: () => {
         // El cliente habla sobre la despedida o en su gracia: no se cuelga hasta ver que dice (el cerebro reabre o confirma el cierre).
+        const reprogramar = cierreBlandoEsperando && cierreSuelto === "despedida_con_pedido";
         cancelarGracia();
+        // Si fue solo ruido no llegara texto final (y el cerebro no reabre ni confirma el cierre): sin esto la linea quedaria abierta hasta el colgado de seguridad (~20 s).
+        if (reprogramar) {
+          const gen = generacionGracia;
+          const previo = cancelarColgadoSuelto;
+          const cancelarRuido = programar(() => {
+            cancelarRuido();
+            if (gen === generacionGracia && !llamadaTerminada && cierreSuelto === "despedida_con_pedido") iniciarGracia(gen);
+          }, deps.cerebroSuelto?.ruidoSinTextoMs ?? RUIDO_SIN_TEXTO_MS);
+          cancelarColgadoSuelto = () => {
+            cancelarRuido();
+            previo();
+          };
+        }
         return controlador.usuarioHabla();
       },
       // Cerebro suelto: el servidor decide que hacer con el silencio (`[silencio]`); la maquina local no manda su "¿sigue ahi?" ni se despide por su cuenta.
@@ -413,17 +442,10 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         if (cierreSuelto === "despedida_con_pedido") {
           // Cierre blando: la despedida suena completa y, tras una breve gracia, se cuelga. Si el cliente habla (o el cerebro reabre) antes, no se cuelga.
           const miGeneracion = (cancelarGracia(), generacionGracia);
+          cierreBlandoEsperando = true;
           void puente.vaciar(topeVaciarMs).then(() => {
             if (generacionGracia !== miGeneracion || llamadaTerminada || cierreSuelto !== "despedida_con_pedido") return;
-            const previo = cancelarColgadoSuelto;
-            const cancelarEspera = programar(() => {
-              cancelarEspera();
-              if (generacionGracia === miGeneracion && !llamadaTerminada && cierreSuelto === "despedida_con_pedido") void controladorRef?.clienteCuelga();
-            }, deps.cerebroSuelto?.graciaDespedidaMs ?? GRACIA_DESPEDIDA_MS);
-            cancelarColgadoSuelto = () => {
-              cancelarEspera();
-              previo();
-            };
+            iniciarGracia(miGeneracion);
           });
         } else if (cierreSuelto !== null) void controladorRef?.clienteCuelga();
         h.agenteTermino();

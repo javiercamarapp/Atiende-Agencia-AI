@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { crearEscaleraLlamada } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
 import { Worker } from "../src/worker.ts";
-import { GRACIA_DESPEDIDA_MS } from "../src/llamada.ts";
+import { GRACIA_DESPEDIDA_MS, RUIDO_SIN_TEXTO_MS } from "../src/llamada.ts";
 import { TelefoniaFalsa } from "../src/telefonia/falsa.ts";
 import { NUMERO_SUCURSAL, crearMundoApi } from "./support/mundo-api.ts";
 
@@ -96,5 +96,36 @@ describe("despedida con pedido: gracia antes de colgar (P2-d)", () => {
     await decir("adios");
     await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
     expect(gracia(tareas)).toHaveLength(0);
+  });
+});
+
+describe("ruido sobre la gracia sin texto final (ronda 5, P2-3)", () => {
+  it("el ruido cancela la gracia pero, si en ~3 s no llega texto final, se reprograma el colgado y la llamada termina (no espera los 20 s)", async () => {
+    const { worker, antes, tareas, llamada, decir } = await montar(respuestas);
+    await decir("confirmo");
+    await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    llamada.hablar(new Int16Array(1600).fill(20000), 8000); // ruido: voz en el puente pero nunca llega texto final
+    await vi.waitFor(() => expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS && !t.cancelada)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    gracia(tareas)[0]!.fn(); // la gracia vieja ya no cuelga (la anulo el ruido)
+    await new Promise((r) => setTimeout(r, 30));
+    expect(worker.salud().llamadasAtendidas).toBe(antes);
+    tareas.find((t) => t.ms === RUIDO_SIN_TEXTO_MS)!.fn(); // vencen los ~3 s sin texto
+    await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(2), { timeout: 5_000, interval: 5 });
+    expect(worker.salud().llamadasAtendidas).toBe(antes); // sigue la gracia nueva
+    gracia(tareas)[1]!.fn();
+    await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+  });
+
+  it("si tras el ruido llega texto final que reabre la llamada, el reintento de colgado no cuelga", async () => {
+    const { worker, antes, tareas, llamada, decir } = await montar(respuestas);
+    await decir("confirmo");
+    await vi.waitFor(() => expect(gracia(tareas)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    llamada.hablar(new Int16Array(1600).fill(20000), 8000);
+    await vi.waitFor(() => expect(tareas.filter((t) => t.ms === RUIDO_SIN_TEXTO_MS)).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    await decir("ah, y agrega una coca"); // el cerebro reabre
+    tareas.find((t) => t.ms === RUIDO_SIN_TEXTO_MS)!.fn();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(gracia(tareas)).toHaveLength(1);
+    expect(worker.salud().llamadasAtendidas).toBe(antes);
   });
 });
