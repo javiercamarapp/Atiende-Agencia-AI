@@ -94,12 +94,19 @@ describe("CerebroVozTurno avisa cuando dice «una persona le devolvera la llamad
     await cerebro(409, avisos, { error: "turno en proceso" }).turno("hola");
     expect(avisos).toEqual([{ motivo: "en_proceso_agotado", causa: "en_proceso", telefono: "9991234567" }]);
   });
-  it("tope 429 y apagado 503 no avisan (el servidor ya lo hizo o es anti-abuso) y un fallo del aviso no impide colgar", async () => {
+  it("tope 429 (Retry-After largo) avisa con causa tope: el cupo por telefono no lo registra el servidor", async () => {
+    const avisos: AvisoPerdido[] = [];
+    const fetchFn = (async () => new Response("{}", { status: 429, headers: { "retry-after": "30" } })) as unknown as typeof fetch;
+    const c = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_aviso_0013", telefono: "9991234567", fetchFn, temporizador: () => () => undefined, alAvisoPerdido: (a) => avisos.push(a) });
+    expect((await c.turno("hola")).motivo).toBe("tope");
+    expect(avisos).toEqual([{ motivo: "tope", causa: "tope", telefono: "9991234567" }]);
+  });
+  it("un fallo del aviso no impide colgar", async () => {
     const avisos: AvisoPerdido[] = [];
     const fetchFn = (async () => new Response("{}", { status: 429, headers: { "retry-after": "30" } })) as unknown as typeof fetch;
     const c = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_aviso_0011", telefono: "9991234567", fetchFn, temporizador: () => () => undefined, alAvisoPerdido: (a) => avisos.push(a) });
     expect((await c.turno("hola")).motivo).toBe("tope");
-    expect(avisos).toEqual([]);
+    expect(avisos).toEqual([{ motivo: "tope", causa: "tope", telefono: "9991234567" }]);
     const c2 = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_aviso_0012", telefono: "9991234567", fetchFn: (async () => new Response("{}", { status: 400 })) as unknown as typeof fetch, temporizador: () => () => undefined, alAvisoPerdido: () => { throw new Error("boom"); } });
     expect((await c2.turno("hola")).colgar).toBe(true);
   });

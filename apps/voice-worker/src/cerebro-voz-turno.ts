@@ -107,7 +107,7 @@ export interface OpcionesCerebroVozTurno {
   readonly reintentosTecnicos?: number;
   /** Reintentos del mismo seq ante 429 (<= 5 s) o 503 sin `fin`. Por omision 3. */
   readonly reintentosRafaga?: number;
-  /** Se llama (sin esperar el resultado) cuando se cierra con error tecnico o presupuesto 409 agotado: que alguien registre el aviso de devolver la llamada. */
+  /** Se llama (sin esperar el resultado) cuando se cierra con error tecnico, presupuesto 409 agotado o tope (429 con Retry-After largo): que alguien registre el aviso de devolver la llamada. */
   readonly alAvisoPerdido?: (aviso: AvisoPerdido) => void;
   /** Se llama cuando un cierre blando (`despedida_con_pedido`) se retira porque el cliente siguio hablando: el worker debe cancelar el colgado programado. */
   readonly alReabrir?: () => void;
@@ -287,7 +287,7 @@ export class CerebroVozTurno {
     const r: ResultadoTurno = { texto, colgar: true, motivo, pedidoId: this.pedido, turno };
     this.cierre = r;
     this.log("voz_turno_cierre", { motivo });
-    if (causa !== null && (motivo === "error_tecnico" || motivo === "en_proceso_agotado")) {
+    if (causa !== null && (motivo === "error_tecnico" || motivo === "en_proceso_agotado" || motivo === "tope")) {
       try {
         this.o.alAvisoPerdido?.({ motivo, causa, telefono: this.telefono });
       } catch {
@@ -597,7 +597,7 @@ export class CerebroVozTurno {
       this.log("voz_turno_http", { codigo: String(estado), intento });
       if (estado === 429) {
         const espera = retryAfterS ?? 3;
-        if (espera > 5) return this.cerrarConFrase(FRASE_TOPE, "tope");
+        if (espera > 5) return this.cerrarConFrase(FRASE_TOPE, "tope", null, "tope");
         if (rafagas >= reintentosRafaga) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico", null, `http_${estado}`);
         rafagas += 1;
         await this.esperar(Math.max(espera, 1) * 1000);
