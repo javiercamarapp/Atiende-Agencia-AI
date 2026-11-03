@@ -183,7 +183,10 @@ interface TurnoEnVuelo {
 
 /** Junta lo que dijo el cliente en turnos abortados con lo del siguiente (en orden); conserva lo ultimo si pasa del tope. */
 function unirTextos(antes: string, ahora: string): string {
-  const t = [antes, ahora].filter((x) => x.trim() !== "").join(" ");
+  const a = antes.trim();
+  const b = ahora.trim();
+  // Sin puntuacion final los dos pedazos se leerian como una sola frase corrida («dos tacos de bistec»): se separan con «. ».
+  const t = a === "" || b === "" ? `${a}${b}` : `${a}${/[.!?…;:,]$/.test(a) ? " " : ". "}${b}`;
   return t.length > MAX_TEXTO_CLIENTE ? t.slice(t.length - MAX_TEXTO_CLIENTE) : t;
 }
 

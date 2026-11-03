@@ -108,3 +108,26 @@ describe("cierre blando a traves del puerto del cerebro suelto (P1)", () => {
     expect(eventos).toEqual(["colgar:despedida_con_pedido", "reabrir", "colgar:despedida_con_pedido"]);
   });
 });
+
+describe("union de textos de turnos abortados (P3)", () => {
+  it("une con «. » cuando el anterior no termina en puntuacion y con espacio cuando si", async () => {
+    const { cerebro, peticiones } = crear(async (p) => { if (p.seq === 1) await dormir(30); return { texto: `R${p.seq}`, turno: p.seq }; });
+    const s = sesion(cerebro);
+    s.final("uno");
+    await dormir(2);
+    s.final("dos tacos");
+    await dormir(2);
+    s.final("de bistec");
+    await s.fin();
+    expect(peticiones.map((p) => p.texto)).toEqual(["uno", "dos tacos. de bistec"]);
+    const otro = crear(async (p) => { if (p.seq === 1) await dormir(30); return { texto: `R${p.seq}`, turno: p.seq }; });
+    const s2 = sesion(otro.cerebro);
+    s2.final("uno");
+    await dormir(2);
+    s2.final("dos tacos.");
+    await dormir(2);
+    s2.final("de bistec");
+    await s2.fin();
+    expect(otro.peticiones.map((p) => p.texto)).toEqual(["uno", "dos tacos. de bistec"]);
+  });
+});
