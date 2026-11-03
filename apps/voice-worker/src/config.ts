@@ -1,6 +1,7 @@
 // Configuracion del worker, leida SOLO de variables de entorno. Si falta algo imprescindible el worker arranca en modo NO CONFIGURADO: registra
 // el motivo, responde 503 en /salud y NO contesta llamadas (nunca atiende a medias). Ningun valor secreto se registra ni se devuelve.
 import type { MensajeId } from "@atiende/voice-core";
+import { urlRegistrarContactoDe } from "./registrar-contacto.ts";
 
 export type ModoEntrada = "desborde" | "total" | "prueba";
 export const MODOS_ENTRADA: readonly ModoEntrada[] = ["desborde", "total", "prueba"];
@@ -54,8 +55,8 @@ export interface ConfigWorker {
   readonly zonaHoraria: string;
   /** `VOZ_CEREBRO`: `actual` (LLM y herramientas propias; por omision) o `suelto` (el cerebro es la Edge Function `voz-turno` del repo suelto). */
   readonly cerebro: "actual" | "suelto";
-  /** Solo con `cerebro = suelto`: URL de `voz-turno`, su secreto (`VOZ_TURNO_SECRET`, nunca se registra), aviso de grabacion del worker y silencio (ms) antes de mandar `[silencio]`. */
-  readonly vozTurno: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs: number; readonly timeoutMs: number } | null;
+  /** Solo con `cerebro = suelto`: URL de `voz-turno`, su secreto (`VOZ_TURNO_SECRET`, nunca se registra), aviso de grabacion del worker y silencio (ms) antes de mandar `[silencio]`. `registrarContacto` (opcional: `VOICE_TOOL_SECRET` + URL derivada o `VOZ_REGISTRAR_CONTACTO_URL`) deja el aviso de devolver la llamada cuando el worker cuelga por una falla. */
+  readonly vozTurno: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs: number; readonly timeoutMs: number; readonly registrarContacto: { readonly url: string; readonly secreto: string } | null } | null;
 }
 
 /** Numero marcado en una forma canonica comparable: solo digitos, ultimos 10 (el plan de numeracion mexicano: 52 + 10 digitos). */
@@ -208,7 +209,10 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
       if (!Number.isInteger(ms) || ms < 30000 || ms > 60000) motivos.push("VOZ_TURNO_TIMEOUT_MS debe ser un entero entre 30000 y 60000 (el contrato pide >= 30 s).");
       else timeoutMs = ms;
     }
-    if (url && secretoTurno) vozTurno = { url, secreto: secretoTurno, aviso: lleno(env.VOZ_AVISO_GRABACION) ? env.VOZ_AVISO_GRABACION.trim() : null, silencioMs, timeoutMs };
+    const secretoHerramientas = (env.VOICE_TOOL_SECRET ?? "").trim();
+    const urlRegistrar = lleno(env.VOZ_REGISTRAR_CONTACTO_URL) ? env.VOZ_REGISTRAR_CONTACTO_URL.trim() : urlRegistrarContactoDe(url);
+    const registrarContacto = secretoHerramientas && urlRegistrar ? { url: urlRegistrar, secreto: secretoHerramientas } : null;
+    if (url && secretoTurno) vozTurno = { url, secreto: secretoTurno, aviso: lleno(env.VOZ_AVISO_GRABACION) ? env.VOZ_AVISO_GRABACION.trim() : null, silencioMs, timeoutMs, registrarContacto };
   } else if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
   const vad: { silencioFinMs?: number; sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null } = {};
   if (lleno(env.VOICE_VAD_SILENCIO_MS)) {

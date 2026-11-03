@@ -41,7 +41,7 @@ async function main(): Promise<void> {
         pregrabados: pregrabados.audios,
         api,
         log: sumidero,
-        ...(config.cerebro === "suelto" && config.vozTurno ? { cerebroSuelto: { url: config.vozTurno.url, secreto: config.vozTurno.secreto, aviso: config.vozTurno.aviso, silencioMs: config.vozTurno.silencioMs, timeoutMs: config.vozTurno.timeoutMs } } : {}),
+        ...(config.cerebro === "suelto" && config.vozTurno ? { cerebroSuelto: { url: config.vozTurno.url, secreto: config.vozTurno.secreto, aviso: config.vozTurno.aviso, silencioMs: config.vozTurno.silencioMs, timeoutMs: config.vozTurno.timeoutMs, registrarContacto: config.vozTurno.registrarContacto } } : {}),
         crearEscalera: (ctx) => ctx?.llmVoz
           // Cerebro suelto: SOLO la cascada propia (Deepgram STT/TTS) con el puerto de `voz-turno`; sin Gemini Live ni OpenRouter.
           ? crearEscaleraPlataforma({ geminiApiKey: null, openrouterApiKey: null, deepgramApiKey: config.deepgramApiKey, cascadaV2Habilitada: true, llm: null, llmV2: ctx.llmVoz, log: sumidero }, OPCIONES_ESCALERA_PM)

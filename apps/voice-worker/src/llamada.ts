@@ -15,6 +15,7 @@ import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crear
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, PuertoLlmVoz, VozSesionLlamada } from "@atiende/voice-core";
+import { crearRegistroAviso } from "./registrar-contacto.ts";
 import { CerebroSuelto, SILENCIO_POR_OMISION_MS, VigiaSilencio } from "./cerebro-suelto.ts";
 import { TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
 import type { MotivoCierre } from "./cerebro-voz-turno.ts";
@@ -47,7 +48,7 @@ export interface DepsAtencion {
   /** Escalera NUEVA por llamada (lleva estado: quien ya fallo y los tramos para el costo). */
   readonly crearEscalera: (ctx?: { readonly llmVoz?: PuertoLlmVoz }) => EscaleraLlamada;
   /** `VOZ_CEREBRO=suelto`: el cerebro de la llamada es `voz-turno` (ver `cerebro-suelto.ts`). Sin esto, el cerebro actual (LLM y herramientas propias). */
-  readonly cerebroSuelto?: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs?: number; readonly timeoutMs?: number; readonly fetchFn?: typeof fetch; readonly esperar?: (ms: number, senal?: AbortSignal) => Promise<void> };
+  readonly cerebroSuelto?: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs?: number; readonly timeoutMs?: number; readonly registrarContacto?: { readonly url: string; readonly secreto: string } | null; readonly fetchFn?: typeof fetch; readonly esperar?: (ms: number, senal?: AbortSignal) => Promise<void> };
   readonly log: SumideroLog;
   /** `fetch` de las herramientas del agente (por omision el global; las pruebas lo apuntan a la API en proceso). */
   readonly fetchFn?: typeof fetch;
@@ -227,7 +228,14 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   let controladorRef: { clienteCuelga(): Promise<void> } | null = null;
   if (deps.cerebroSuelto) {
     const cfg = deps.cerebroSuelto;
+    // Aviso de «devolver la llamada» cuando el worker cuelga por una falla (sin esto nadie queda avisado). Se espera al final de la llamada, nunca antes del colgado.
+    const registro = cfg.registrarContacto ? crearRegistroAviso({ url: cfg.registrarContacto.url, secreto: cfg.registrarContacto.secreto, callId, ...(cfg.fetchFn ? { fetchFn: cfg.fetchFn } : {}), log: (e, c) => log(e, c) }) : null;
     cerebro = new CerebroSuelto({
+      alAvisoPerdido: (aviso) => {
+        if (aviso.causa === "http_401") log("voz_turno_config_rota", { codigo: "401", mensaje: "VOZ_TURNO_SECRET incorrecto" });
+        if (registro) segundoPlano.push(registro.registrar(aviso));
+        else log("aviso_devolver_llamada_no_configurado", { motivo: aviso.motivo, razon: aviso.causa });
+      },
       url: cfg.url,
       secreto: cfg.secreto,
       callId,

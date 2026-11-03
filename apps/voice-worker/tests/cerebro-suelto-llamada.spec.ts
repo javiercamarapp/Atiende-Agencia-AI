@@ -61,4 +61,49 @@ describe("cerebro suelto dentro de atenderLlamada", () => {
     // Sin que el cliente cuelgue: el worker cuelga por su cuenta tras la despedida con pedido.
     await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
   });
+
+  it("si voz-turno falla y el worker cuelga con «una persona le devolvera la llamada», registra el aviso en registrar-contacto con call_id y sin bloquear el colgado", async () => {
+    const api = await crearMundoApi();
+    const telefonia = new TelefoniaFalsa();
+    const registros: { url: string; secreto: string | null; cuerpo: Record<string, unknown> }[] = [];
+    const fetchSuelto = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/registrar-contacto")) {
+        registros.push({ url, secreto: new Headers(init?.headers).get("x-atiende-tool-secret"), cuerpo: JSON.parse(String(init?.body)) });
+        return new Response("{}", { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "interno" }), { status: 502 });
+    }) as unknown as typeof fetch;
+    let llm: PuertoLlmVoz | null = null;
+    let decir: ((t: string) => Promise<void>) | null = null;
+    const escalon = {
+      id: "cascada-v2" as const,
+      abrirSesion: async (_a: unknown, h: { agenteDijo(t: string): void; agenteTermino(): void }) => {
+        decir = async (texto: string) => {
+          const r = await llm!.completar({ system: "", mensajes: [{ role: "user", content: texto }], herramientas: [] });
+          h.agenteDijo(r.texto);
+          h.agenteTermino();
+        };
+        return { enviarTexto: (t: string) => void decir!(t), interrumpir: () => undefined, cerrar: async () => undefined };
+      },
+    };
+    const worker = new Worker({
+      config: api.config,
+      telefonia,
+      log: () => undefined,
+      deps: api.depsAtencion({
+        crearEscalera: (ctx) => {
+          llm = ctx?.llmVoz ?? null;
+          return crearEscaleraLlamada([escalon as never], { ahora: api.reloj.ahora });
+        },
+        cerebroSuelto: { url: "https://x.invalid/functions/v1/voz-turno", secreto: "s", aviso: null, fetchFn: fetchSuelto, esperar: async () => undefined, registrarContacto: { url: "https://x.invalid/functions/v1/registrar-contacto", secreto: "tool-s" } },
+      }),
+    });
+    expect(await worker.iniciar()).toBe(true);
+    const antes = worker.salud().llamadasAtendidas;
+    telefonia.llamar({ id: "llamada-fallida-1", dnis: NUMERO_SUCURSAL, desde: "+5219991234567" });
+    await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+    expect(registros).toHaveLength(1);
+    expect(registros[0]!.secreto).toBe("tool-s");
+    expect(registros[0]!.cuerpo).toMatchObject({ conversation_id: "llamada-fallida-1", customer_phone: "9991234567", motivo: "otro" });
+  });
 });

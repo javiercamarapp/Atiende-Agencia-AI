@@ -44,6 +44,14 @@ export interface ResultadoTurno {
   readonly turno: number | null;
 }
 
+/** Una falla dejo al cliente con «una persona le devolvera la llamada»: nadie esta avisado salvo que el worker lo registre. */
+export interface AvisoPerdido {
+  readonly motivo: MotivoCierre;
+  /** Codigo corto de la causa (`http_401`, `http_400`, `http_409`, `http_502`, `red`, `tiempo_agotado`, `en_proceso`...). Nunca texto del cliente. */
+  readonly causa: string;
+  readonly telefono: string | null;
+}
+
 export interface OpcionesTurno {
   readonly senal?: AbortSignal;
   /** Frase que hay que decir YA mientras se espera al servidor (relleno a los ~3 s o 409 "en proceso"). Una vez por turno. */
@@ -83,6 +91,8 @@ export interface OpcionesCerebroVozTurno {
   readonly reintentosTecnicos?: number;
   /** Reintentos del mismo seq ante 429 (<= 5 s) o 503 sin `fin`. Por omision 3. */
   readonly reintentosRafaga?: number;
+  /** Se llama (sin esperar el resultado) cuando se cierra con error tecnico o presupuesto 409 agotado: que alguien registre el aviso de devolver la llamada. */
+  readonly alAvisoPerdido?: (aviso: AvisoPerdido) => void;
 }
 
 export class ErrorTurnoAbortado extends Error {
@@ -183,10 +193,17 @@ export class CerebroVozTurno {
     this.o.log?.(evento, campos);
   }
 
-  private cerrarConFrase(texto: string, motivo: MotivoCierre, turno: number | null = null): ResultadoTurno {
+  private cerrarConFrase(texto: string, motivo: MotivoCierre, turno: number | null = null, causa: string | null = null): ResultadoTurno {
     const r: ResultadoTurno = { texto, colgar: true, motivo, pedidoId: this.pedido, turno };
     this.cierre = r;
     this.log("voz_turno_cierre", { motivo });
+    if (causa !== null && (motivo === "error_tecnico" || motivo === "en_proceso_agotado")) {
+      try {
+        this.o.alAvisoPerdido?.({ motivo, causa, telefono: this.telefono });
+      } catch {
+        // el aviso nunca debe impedir el colgado
+      }
+    }
     return r;
   }
 
@@ -317,7 +334,7 @@ export class CerebroVozTurno {
 
       if (r.tipo === "red") {
         this.log("voz_turno_fallo", { codigo: r.codigo, intento });
-        if (tecnicos >= reintentosTecnicos) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
+        if (tecnicos >= reintentosTecnicos) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico", null, r.codigo);
         tecnicos += 1;
         // Tras un tiempo agotado el servidor puede haber terminado el turno: el 2.o intento (mismo seq) recupera la respuesta guardada, pero ya no se esperan 35 s mas.
         if (r.codigo === "tiempo_agotado") timeoutProximo = this.o.timeoutReintentoMs ?? 20_000;
@@ -330,7 +347,7 @@ export class CerebroVozTurno {
       if (estado === 429) {
         const espera = retryAfterS ?? 3;
         if (espera > 5) return this.cerrarConFrase(FRASE_TOPE, "tope");
-        if (rafagas >= reintentosRafaga) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
+        if (rafagas >= reintentosRafaga) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico", null, `http_${estado}`);
         rafagas += 1;
         await this.esperar(Math.max(espera, 1) * 1000);
         continue;
@@ -338,7 +355,7 @@ export class CerebroVozTurno {
       if (estado === 503) {
         if (cuerpo.fin === true && typeof cuerpo.texto === "string" && cuerpo.texto.trim() !== "") return this.cerrarConFrase(cuerpo.texto, "apagado");
         if (cuerpo.fin === true) return this.cerrarConFrase(FRASE_APAGADO, "apagado");
-        if (rafagas >= reintentosRafaga) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
+        if (rafagas >= reintentosRafaga) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico", null, `http_${estado}`);
         rafagas += 1;
         await this.esperar(Math.max(retryAfterS ?? 3, 1) * 1000);
         continue;
@@ -347,7 +364,7 @@ export class CerebroVozTurno {
         const mensaje = typeof cuerpo.error === "string" ? cuerpo.error : "";
         if (!/en proceso|se adelant/i.test(mensaje)) {
           // otro telefono o seq fuera de orden: bug del worker, no se reintenta a ciegas
-          return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
+          return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico", null, "http_409");
         }
         if (inicioEnProceso === null) {
           // Primer 409: casi siempre es el turno anterior terminando; se espera un instante y se reintenta SIN decir nada.
@@ -357,18 +374,18 @@ export class CerebroVozTurno {
         }
         decirEspera();
         // Presupuesto REAL: se cierra cuando ya transcurrio (reloj) el presupuesto completo, no antes.
-        if (this.ahora() - inicioEnProceso >= presupuesto) return this.cerrarConFrase(FRASE_DEVOLVER_LLAMADA, "en_proceso_agotado");
+        if (this.ahora() - inicioEnProceso >= presupuesto) return this.cerrarConFrase(FRASE_DEVOLVER_LLAMADA, "en_proceso_agotado", null, "en_proceso");
         await this.esperar(intervalo);
         continue;
       }
       if (estado >= 500) {
-        if (tecnicos >= reintentosTecnicos) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
+        if (tecnicos >= reintentosTecnicos) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico", null, `http_${estado}`);
         tecnicos += 1;
         await this.esperar(500);
         continue;
       }
       // 400, 401 y cualquier otro: entrada invalida o secreto incorrecto. No se reintenta.
-      return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
+      return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico", null, `http_${estado}`);
     }
   }
 
