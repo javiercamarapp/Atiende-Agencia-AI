@@ -1,6 +1,7 @@
 // Ronda 3 del ataque al cerebro suelto: cierre blando (`despedida_con_pedido`), respuesta retenida tras un aborto por ruido, pendiente repetido y union de textos.
 // La `sesion` imita el patron real de SesionCascadaV2: un final nuevo aborta el turno anterior y los turnos corren encadenados.
 import { describe, expect, it } from "vitest";
+import { advertenciasConfig, cargarConfig } from "../src/config.ts";
 import { CerebroSuelto } from "../src/cerebro-suelto.ts";
 import { CerebroVozTurno, TEXTO_PENDIENTE, versionCortaDePendiente } from "../src/cerebro-voz-turno.ts";
 
@@ -218,5 +219,17 @@ describe("respuesta retenida tras un aborto por ruido sin texto final (P2-2)", (
     const r = await c.puerto.completar({ system: "", mensajes: [{ role: "user", content: TEXTO_PENDIENTE }], herramientas: [] });
     expect(r.texto).toBe("Su total es 80 pesos.");
     expect(cuerpos).toHaveLength(1);
+  });
+});
+
+describe("VOICE_TOOL_SECRET ausente con el cerebro suelto (P2-1)", () => {
+  const base = { VOZ_CEREBRO: "suelto", VOZ_TURNO_URL: "https://p.supabase.invalid/functions/v1/voz-turno", VOZ_TURNO_SECRET: "x", DEEPGRAM_API_KEY: "d" };
+  it("advierte al arrancar sin imprimir secretos; con el secreto o con el cerebro actual no hay advertencia", () => {
+    const sin = advertenciasConfig(cargarConfig(base));
+    expect(sin.map((a) => a.codigo)).toEqual(["voice_tool_secret_ausente"]);
+    expect(JSON.stringify(sin)).not.toContain("\"x\"");
+    expect(advertenciasConfig(cargarConfig({ ...base, VOICE_TOOL_SECRET: "t" }))).toEqual([]);
+    expect(advertenciasConfig(cargarConfig({ VOZ_CEREBRO: "actual" }))).toEqual([]);
+    expect(advertenciasConfig(cargarConfig({}))).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import { OPCIONES_ESCALERA_PM } from "./llamada.ts";
 import { HERRAMIENTAS_VOZ_SOLO_LECTURA, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { SumideroLog } from "@atiende/domain-restaurantes";
 import { ClienteApi } from "./api-cliente.ts";
-import { cargarConfig } from "./config.ts";
+import { advertenciasConfig, cargarConfig } from "./config.ts";
 import { crearPuertoLlmOpenRouter, crearPuertoLlmVozV2 } from "./llm-openrouter.ts";
 import { cargarPregrabados } from "./pregrabados.ts";
 import { crearProveedorTokenVertex } from "./vertex-token.ts";
@@ -19,6 +19,8 @@ async function main(): Promise<void> {
   const base = cargarConfig(process.env);
   const pregrabados = await cargarPregrabados(base.assetsDir);
   const config = cargarConfig(process.env, { pregrabadosFaltantes: pregrabados.faltantes });
+
+  for (const a of advertenciasConfig(config)) logPlano("config_advertencia", { codigo: a.codigo, mensaje: a.mensaje });
 
   let worker: Worker;
   if (config.estado === "configurado" && config.livekit) {

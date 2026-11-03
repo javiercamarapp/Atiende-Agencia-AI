@@ -77,7 +77,8 @@ describe("cerebro suelto: puerto y telefono oculto", () => {
     expect(x.texto).toContain("otro número");
     await c.puerto.completar(peticion("no sé"));
     const ult = await c.puerto.completar(peticion("no sé"));
-    expect(ult.texto).toContain("Una persona le devolverá la llamada");
+    expect(ult.texto).toContain("vuelva a llamar");
+    expect(ult.texto).not.toContain("devolverá");
     expect(cierres).toEqual(["telefono_no_obtenido"]);
     expect(cuerpos).toHaveLength(0);
   });
@@ -86,7 +87,9 @@ describe("cerebro suelto: puerto y telefono oculto", () => {
     const { c, cuerpos, cierres } = montar(null);
     await c.puerto.completar(peticion(DISPARO));
     expect((await c.puerto.completar(peticion("[silencio]"))).texto).toContain("Sigue ahí");
-    await c.puerto.completar(peticion("[silencio]"));
+    const ultimo = await c.puerto.completar(peticion("[silencio]"));
+    expect(ultimo.texto).toContain("vuelva a llamar");
+    expect(ultimo.texto).not.toContain("devolverá");
     expect(cierres).toEqual(["silencio"]);
     expect(cuerpos).toHaveLength(0);
   });

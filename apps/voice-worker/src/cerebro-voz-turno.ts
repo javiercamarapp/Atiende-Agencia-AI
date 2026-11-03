@@ -26,6 +26,8 @@ export const FRASE_ESPERA = "Un momento, por favor.";
 /** Frases de espera sucesivas en esperas largas (la 1.a es FRASE_ESPERA; maximo 3 por turno). */
 export const FRASES_ESPERA: readonly string[] = [FRASE_ESPERA, "Sigo con eso, gracias por esperar.", "Ya casi, un momento más, por favor."];
 export const FRASE_DEVOLVER_LLAMADA = "Una persona le devolverá la llamada. Hasta luego.";
+/** Cierre cuando aun NO hay telefono confirmado (numero oculto): no hay a donde devolver la llamada, asi que no se promete. */
+export const FRASE_VUELVA_A_LLAMAR = "No logré registrar su número. Por favor vuelva a llamar o escríbanos por WhatsApp. Hasta luego.";
 export const FRASE_PROBLEMA_TECNICO = "Tuvimos un problema técnico. Una persona le devolverá la llamada. Hasta luego.";
 export const FRASE_TOPE = "Por ahora no puedo atenderle; una persona le devolverá la llamada. Hasta luego.";
 /** Segunda vez que se dice un cierre (el cliente interrumpio la despedida): basta lo corto. */

@@ -296,3 +296,15 @@ export function franjaDeHora(hora: number): "manana" | "tarde" | "noche" {
   if (hora >= 12 && hora < 19) return "tarde";
   return "noche";
 }
+
+/** Advertencias que NO impiden arrancar (la config es valida) pero dejan un hueco operativo. Solo con `VOZ_CEREBRO=suelto`; con `actual` no hay ninguna. Sin valores de secretos. */
+export function advertenciasConfig(config: Pick<ConfigWorker, "cerebro" | "vozTurno">): { readonly codigo: string; readonly mensaje: string }[] {
+  const avisos: { codigo: string; mensaje: string }[] = [];
+  if (config.cerebro === "suelto" && config.vozTurno && config.vozTurno.registrarContacto === null) {
+    avisos.push({
+      codigo: "voice_tool_secret_ausente",
+      mensaje: "VOZ_CEREBRO=suelto sin VOICE_TOOL_SECRET: cuando una falla deje al cliente con «una persona le devolvera la llamada» NO se registrara el aviso y nadie devolvera la llamada. Es obligatoria para operar.",
+    });
+  }
+  return avisos;
+}

@@ -5,7 +5,7 @@
 //  - la vigilancia de SILENCIO (`VigiaSilencio`): tras ~8 s sin voz se manda `[silencio]` como un turno mas.
 import { esAfirmacion } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
-import { CerebroVozTurno, FRASE_CIERRE_CORTA, FRASE_DEVOLVER_LLAMADA, TEXTO_PENDIENTE, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
+import { CerebroVozTurno, FRASE_CIERRE_CORTA, FRASE_VUELVA_A_LLAMAR, TEXTO_PENDIENTE, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
 import { telefonoDictadoPlausible } from "./telefono-llamante.ts";
 import type { MotivoCierre, OpcionesCerebroVozTurno, ResultadoTurno } from "./cerebro-voz-turno.ts";
 
@@ -161,7 +161,7 @@ export class CerebroSuelto {
     if (texto === this.o.disparadorApertura) return sigue(`${pre} ${aviso} ¿Me da su número de teléfono a diez dígitos, por favor?`);
     if (texto === TEXTO_SILENCIO) {
       this.silenciosLocales += 1;
-      if (this.silenciosLocales >= 2) return this.colgarCon(FRASE_DEVOLVER_LLAMADA, "silencio");
+      if (this.silenciosLocales >= 2) return this.colgarCon(FRASE_VUELVA_A_LLAMAR, "silencio");
       return sigue("¿Sigue ahí? Necesito su número de teléfono a diez dígitos.");
     }
     this.silenciosLocales = 0;
@@ -193,7 +193,7 @@ export class CerebroSuelto {
 
   private fallarTelefono(frase: string): ResultadoTurno {
     this.intentosTelefono += 1;
-    if (this.intentosTelefono >= 3) return this.colgarCon("No logré registrar su número. Una persona le devolverá la llamada. Hasta luego.", "telefono_no_obtenido");
+    if (this.intentosTelefono >= 3) return this.colgarCon(FRASE_VUELVA_A_LLAMAR, "telefono_no_obtenido");
     return { texto: frase, colgar: false, motivo: null, pedidoId: null, turno: null };
   }
 }

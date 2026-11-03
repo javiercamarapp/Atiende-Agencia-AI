@@ -57,7 +57,7 @@ Solo corre la cascada propia (escalón `cascada-v2`); Gemini Live y OpenRouter n
 | `DEEPGRAM_API_KEY` | sí | STT y TTS de la cascada propia |
 | `VOZ_TURNO_SILENCIO_MS` | no | Silencio antes de mandar `[silencio]` (3000-30000; por omisión 8000) |
 | `VOZ_TURNO_TIMEOUT_MS` | no | Tiempo máximo de una petición (30000-60000; por omisión 35000; el contrato pide >= 30 s) |
-| `VOICE_TOOL_SECRET` | no (recomendada) | Secreto de las herramientas sueltas (header `x-atiende-tool-secret`) para `registrar-contacto`: con él, cuando el worker dice «una persona le devolverá la llamada» por una falla (error técnico, 409 agotado, 400/401/409 de bug) deja el aviso en el servidor. Sin él solo queda el log `aviso_devolver_llamada_no_configurado` y nadie devuelve la llamada |
+| `VOICE_TOOL_SECRET` | **sí para operar** (el worker arranca sin él, pero registra la advertencia `config_advertencia` / `voice_tool_secret_ausente`) | Secreto de las herramientas sueltas (header `x-atiende-tool-secret`) para `registrar-contacto`: con él, cuando el worker dice «una persona le devolverá la llamada» por una falla (error técnico, 409 agotado, 400/401/409 de bug) deja el aviso en el servidor. Sin él solo queda el log `aviso_devolver_llamada_no_configurado` y nadie devuelve la llamada. Con número oculto y sin teléfono confirmado no hay a dónde devolver la llamada: el worker dice «por favor vuelva a llamar o escríbanos por WhatsApp» y no registra aviso |
 | `VOZ_REGISTRAR_CONTACTO_URL` | no | URL de `registrar-contacto`; por omisión se deriva de `VOZ_TURNO_URL` (`.../voz-turno` → `.../registrar-contacto`) |
 | `VOZ_AVISO_GRABACION` | no | Aviso de grabación que dice el worker MISMO con número oculto; debe coincidir con `AVISO_VOZ_INICIAL` del servidor |
 
