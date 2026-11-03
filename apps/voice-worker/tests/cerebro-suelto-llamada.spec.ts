@@ -106,4 +106,46 @@ describe("cerebro suelto dentro de atenderLlamada", () => {
     expect(registros[0]!.secreto).toBe("tool-s");
     expect(registros[0]!.cuerpo).toMatchObject({ conversation_id: "llamada-fallida-1", customer_phone: "9991234567", motivo: "otro" });
   });
+
+  it("id de llamada corto (< 6 caracteres): la llamada se atiende con un call_id rellenado, no se cae", async () => {
+    const api = await crearMundoApi();
+    const telefonia = new TelefoniaFalsa();
+    const cuerpos: { call_id: string; seq: number }[] = [];
+    const fetchSuelto = (async (_u: string, init?: RequestInit) => {
+      const c = JSON.parse(String(init?.body));
+      cuerpos.push(c);
+      return new Response(JSON.stringify({ texto: "Buen día.", pedido_id: null, fin: false, turno: 0 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    let llm: PuertoLlmVoz | null = null;
+    const escalon = { id: "cascada-v2" as const, abrirSesion: async (_a: unknown, h: { agenteDijo(t: string): void; agenteTermino(): void }) => ({ enviarTexto: (t: string) => void llm!.completar({ system: "", mensajes: [{ role: "user", content: t }], herramientas: [] }).then((r) => { h.agenteDijo(r.texto); h.agenteTermino(); }), interrumpir: () => undefined, cerrar: async () => undefined }) };
+    const worker = new Worker({
+      config: api.config,
+      telefonia,
+      log: () => undefined,
+      deps: api.depsAtencion({
+        crearEscalera: (ctx) => { llm = ctx?.llmVoz ?? null; return crearEscaleraLlamada([escalon as never], { ahora: api.reloj.ahora }); },
+        cerebroSuelto: { url: "https://x.invalid/functions/v1/voz-turno", secreto: "s", aviso: null, fetchFn: fetchSuelto, esperar: async () => undefined },
+      }),
+    });
+    expect(await worker.iniciar()).toBe(true);
+    telefonia.llamar({ id: "ab1", dnis: NUMERO_SUCURSAL, desde: "+5219991234567" });
+    await vi.waitFor(() => expect(cuerpos).toHaveLength(1), { timeout: 5_000, interval: 5 });
+    expect(cuerpos[0]!.call_id).toBe("llamada_ab1");
+  });
+
+  it("si armar el cerebro suelto lanza, la llamada se cierra con pregrabado y la telefonia cuelga (no queda muda ni tumba el worker)", async () => {
+    const api = await crearMundoApi();
+    const telefonia = new TelefoniaFalsa();
+    const cfg = { url: "https://x.invalid/functions/v1/voz-turno", secreto: "s", aviso: null, esperar: async () => undefined, get timeoutMs(): number { throw new Error("config rara"); } };
+    const worker = new Worker({
+      config: api.config,
+      telefonia,
+      log: () => undefined,
+      deps: api.depsAtencion({ crearEscalera: () => crearEscaleraLlamada([], { ahora: api.reloj.ahora }), cerebroSuelto: cfg }),
+    });
+    expect(await worker.iniciar()).toBe(true);
+    const antes = worker.salud().llamadasAtendidas;
+    telefonia.llamar({ id: "llamada-rara-1", dnis: NUMERO_SUCURSAL, desde: "+5219991234567" });
+    await vi.waitFor(() => expect(worker.salud().llamadasAtendidas).toBe(antes + 1), { timeout: 5_000, interval: 5 });
+  });
 });

@@ -230,28 +230,38 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     const cfg = deps.cerebroSuelto;
     // Aviso de «devolver la llamada» cuando el worker cuelga por una falla (sin esto nadie queda avisado). Se espera al final de la llamada, nunca antes del colgado.
     const registro = cfg.registrarContacto ? crearRegistroAviso({ url: cfg.registrarContacto.url, secreto: cfg.registrarContacto.secreto, callId, ...(cfg.fetchFn ? { fetchFn: cfg.fetchFn } : {}), log: (e, c) => log(e, c) }) : null;
-    cerebro = new CerebroSuelto({
-      alAvisoPerdido: (aviso) => {
-        if (aviso.causa === "http_401") log("voz_turno_config_rota", { codigo: "401", mensaje: "VOZ_TURNO_SECRET incorrecto" });
-        if (registro) segundoPlano.push(registro.registrar(aviso));
-        else log("aviso_devolver_llamada_no_configurado", { motivo: aviso.motivo, razon: aviso.causa });
-      },
-      url: cfg.url,
-      secreto: cfg.secreto,
-      callId,
-      telefono,
-      disparadorApertura: DISPARADOR_SALUDO,
-      ...(cfg.aviso ? { aviso: cfg.aviso } : {}),
-      ...(cfg.timeoutMs ? { timeoutMs: cfg.timeoutMs } : {}),
-      ...(cfg.fetchFn ? { fetchFn: cfg.fetchFn } : {}),
-      ...(cfg.esperar ? { esperar: cfg.esperar } : {}),
-      ahora,
-      log: (evento, campos) => log(evento, campos),
-      confirmarTelefono: (n) => confirmarTelefonoSuelto?.(n) ?? Promise.resolve({ ok: false }),
-      alColgar: (motivo) => {
-        cierreSuelto = motivo;
-      },
-    });
+    try {
+      cerebro = new CerebroSuelto({
+        alAvisoPerdido: (aviso) => {
+          if (aviso.causa === "http_401") log("voz_turno_config_rota", { codigo: "401", mensaje: "VOZ_TURNO_SECRET incorrecto" });
+          if (registro) segundoPlano.push(registro.registrar(aviso));
+          else log("aviso_devolver_llamada_no_configurado", { motivo: aviso.motivo, razon: aviso.causa });
+        },
+        url: cfg.url,
+        secreto: cfg.secreto,
+        callId,
+        telefono,
+        disparadorApertura: DISPARADOR_SALUDO,
+        ...(cfg.aviso ? { aviso: cfg.aviso } : {}),
+        ...(cfg.timeoutMs ? { timeoutMs: cfg.timeoutMs } : {}),
+        ...(cfg.fetchFn ? { fetchFn: cfg.fetchFn } : {}),
+        ...(cfg.esperar ? { esperar: cfg.esperar } : {}),
+        ahora,
+        log: (evento, campos) => log(evento, campos),
+        confirmarTelefono: (n) => confirmarTelefonoSuelto?.(n) ?? Promise.resolve({ ok: false }),
+        alColgar: (motivo) => {
+          cierreSuelto = motivo;
+        },
+      });
+    } catch (err) {
+      // Un fallo al armar el cerebro (config rara) no debe tumbar el worker ni dejar la linea muda: pregrabado y colgar.
+      log("cerebro_suelto_no_creado", { codigo: err instanceof Error ? err.name : "error" });
+      await reproducirSolo("proveedor_caido");
+      await tel.colgar();
+      await cerrarConversacion("escalado", null);
+      await Promise.allSettled(segundoPlano);
+      return { resultado: "api_no_disponible", costoMicroUsd: 0, conversationId, orderId: null, latenciasMs: [], modoEntrada: modo };
+    }
   }
   const escalera = cerebro ? deps.crearEscalera({ llmVoz: cerebro.puerto }) : deps.crearEscalera();
   // El transporte se arma cuando hay token (de inmediato con caller ID confiable; tras `confirmarTelefono` si no).

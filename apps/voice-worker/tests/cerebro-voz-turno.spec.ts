@@ -1,6 +1,6 @@
 // Cliente de `voz-turno` (cerebro suelto) contra un fetch FALSO que imita al servidor segun CONTRATO-HERRAMIENTAS.md. Sin red, sin tiempo real, sin proveedores.
 import { describe, expect, it, vi } from "vitest";
-import { CerebroVozTurno, FRASE_DEVOLVER_LLAMADA, FRASE_ESPERA, FRASE_PROBLEMA_TECNICO, FRASE_TOPE, TEXTO_SILENCIO, esDespedida } from "../src/cerebro-voz-turno.ts";
+import { CerebroVozTurno, FRASE_DEVOLVER_LLAMADA, FRASE_ESPERA, FRASE_PROBLEMA_TECNICO, FRASE_TOPE, TEXTO_SILENCIO, esDespedida, normalizarCallId } from "../src/cerebro-voz-turno.ts";
 
 interface Peticion { readonly url: string; readonly secreto: string | null; readonly cuerpo: { call_id: string; telefono: string; seq: number; texto: string } }
 type Respuesta = { estado: number; cuerpo?: unknown; retryAfter?: string } | "red";
@@ -258,5 +258,15 @@ describe("cerebro suelto: voz-turno", () => {
     expect(esDespedida("Listo. Gracias por llamar, buen provecho.")).toBe(true);
     expect(esDespedida("Gracias. ¿Algo más?")).toBe(false);
     expect(esDespedida("Son 328 pesos.")).toBe(false);
+  });
+
+  it("call_id corto o con caracteres raros se normaliza en vez de lanzar (mismo id => mismo resultado, siempre valido)", async () => {
+    expect(normalizarCallId("ab1")).toBe("llamada_ab1");
+    expect(normalizarCallId("sala/1 x")).toBe("sala_1_x");
+    expect(normalizarCallId("x".repeat(300))).toHaveLength(128);
+    expect(normalizarCallId("ab1")).toBe(normalizarCallId("ab1"));
+    const { cerebro, peticiones } = crear(() => ok("Hola."), { callId: "ab1" });
+    await cerebro.turno("hola");
+    expect(peticiones[0]!.cuerpo.call_id).toBe("llamada_ab1");
   });
 });

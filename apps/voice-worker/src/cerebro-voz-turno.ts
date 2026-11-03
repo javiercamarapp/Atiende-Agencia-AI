@@ -30,6 +30,12 @@ export const MAX_TEXTO_CLIENTE = 2000;
 const TELEFONO_RE = /^\d{10}$/;
 const CALL_ID_RE = /^[A-Za-z0-9_.:-]{6,128}$/;
 
+/** Id valido para `voz-turno` (`[A-Za-z0-9_.:-]{6,128}`) a partir de cualquier id de llamada: sustituye caracteres raros, rellena los cortos y recorta los largos. Mismo id => mismo resultado. */
+export function normalizarCallId(id: string): string {
+  const limpio = id.replace(/[^A-Za-z0-9_.:-]/g, "_");
+  return (limpio.length < 6 ? `llamada_${limpio}` : limpio).slice(0, 128);
+}
+
 export type MotivoCierre = "fin_servidor" | "despedida_con_pedido" | "error_tecnico" | "tope" | "apagado" | "en_proceso_agotado" | "telefono_no_obtenido" | "silencio";
 
 export interface ResultadoTurno {
@@ -147,6 +153,7 @@ function parsearRetryAfter(valor: string | null): number | null {
 
 export class CerebroVozTurno {
   private telefono: string | null;
+  private readonly callId: string;
   private proximoSeq = 1;
   private abierta = false;
   private cierre: ResultadoTurno | null = null;
@@ -162,7 +169,8 @@ export class CerebroVozTurno {
   private readonly ahora: () => number;
 
   constructor(private readonly o: OpcionesCerebroVozTurno) {
-    if (!CALL_ID_RE.test(o.callId)) throw new Error("call_id invalido para voz-turno");
+    // Un id de proveedor corto o con caracteres raros se rellena/sustituye (siempre igual para la misma llamada) en vez de tumbar la llamada.
+    this.callId = CALL_ID_RE.test(o.callId) ? o.callId : normalizarCallId(o.callId);
     this.telefono = o.telefono;
     this.fetchFn = o.fetchFn ?? fetch;
     this.esperar = o.esperar ?? esperarPorOmision;
@@ -299,7 +307,7 @@ export class CerebroVozTurno {
       const res = await this.fetchFn(this.o.url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-voz-turno-secret": this.o.secreto },
-        body: JSON.stringify({ call_id: this.o.callId, telefono: this.telefono, seq, texto, ...(avisoDado ? { aviso_dado: true } : {}) }),
+        body: JSON.stringify({ call_id: this.callId, telefono: this.telefono, seq, texto, ...(avisoDado ? { aviso_dado: true } : {}) }),
         signal: limite.signal,
       });
       let cuerpo: Record<string, unknown> = {};
