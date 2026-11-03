@@ -8,6 +8,8 @@
 //  - `seq` por llamada: se asigna al EMPEZAR cada turno y se mantiene en todos sus reintentos. Un barge-in NO aborta la peticion HTTP en vuelo (el servidor la sigue procesando
 //    y puede haber creado el pedido): solo se deja de ESPERARLA. El texto nuevo espera la respuesta del turno k, la habla (`alRespuestaPrevia`) y recien despues se manda como
 //    k + 1; asi no hay un 409 por turno en proceso ni se pierde el total/la confirmacion. Una apertura repetida (`seq_ultimo`) reanuda desde seq_ultimo + 1.
+//    Con varios barge-ins seguidos las respuestas sin oir se acumulan en una cola y las habla, en orden, el primer turno NO abortado; los turnos abortados que no llegaron a
+//    enviarse se fusionan con el siguiente (tope de 3 en cola) y al colgar lo no enviado se cancela. `seq` se asigna al enviar.
 //  - 5xx / red / tiempo agotado: UN reintento del MISMO seq (idempotente en el servidor; tras un tiempo agotado el 2.o intento espera solo 20 s); si falla otra vez, frase tecnica y colgar.
 //  - 409 "en proceso" / "se adelanto": el primero espera 0.7 s y reintenta SIN frase (suele ser el turno anterior terminando); despues frase de espera y reintento del MISMO seq cada 2 s
 //    hasta 65 s REALES; agotado: "una persona le devolvera la llamada" y colgar.
@@ -151,6 +153,24 @@ function parsearRetryAfter(valor: string | null): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** Turnos que pueden esperar detras de uno en vuelo; los mas viejos se fusionan en el siguiente. */
+export const MAX_COLA_TURNOS = 3;
+
+interface TurnoEnVuelo {
+  readonly id: number;
+  promesa: Promise<ResultadoTurno>;
+  /** La respuesta ya llego a un turno vivo (se hablo) o quedo en la cola de pendientes. */
+  entregado: boolean;
+  /** Se paso del tope de la cola: no se envia aparte. */
+  descartar: boolean;
+}
+
+/** Junta lo que dijo el cliente en turnos abortados con lo del siguiente (en orden); conserva lo ultimo si pasa del tope. */
+function unirTextos(antes: string, ahora: string): string {
+  const t = [antes, ahora].filter((x) => x.trim() !== "").join(" ");
+  return t.length > MAX_TEXTO_CLIENTE ? t.slice(t.length - MAX_TEXTO_CLIENTE) : t;
+}
+
 export class CerebroVozTurno {
   private telefono: string | null;
   private readonly callId: string;
@@ -162,7 +182,15 @@ export class CerebroVozTurno {
   private turnosActivos = 0;
   private idTurno = 0;
   /** Ultimo turno lanzado: su peticion sigue aunque el cliente se haya interrumpido. */
-  private vuelo: { readonly id: number; readonly promesa: Promise<ResultadoTurno>; entregado: boolean } | null = null;
+  private vuelo: TurnoEnVuelo | null = null;
+  /** Respuestas de turnos anteriores que el cliente no alcanzo a oir: las habla, en orden, el primer turno no abortado. */
+  private readonly pendientePorHablar: string[] = [];
+  /** Texto de turnos abortados que no llegaron a enviarse: viaja junto con el del siguiente. */
+  private textoDiferido = "";
+  /** Turnos esperando detras de uno en vuelo y aun sin enviar (maximo `MAX_COLA_TURNOS`). */
+  private readonly enCola: TurnoEnVuelo[] = [];
+  private cancelado = false;
+  private cierreEntregado = false;
   private readonly fetchFn: typeof fetch;
   private readonly esperar: NonNullable<OpcionesCerebroVozTurno["esperar"]>;
   private readonly temporizador: NonNullable<OpcionesCerebroVozTurno["temporizador"]>;
@@ -224,42 +252,91 @@ export class CerebroVozTurno {
 
   /** Un turno con lo que dijo el cliente (o `[silencio]`). */
   turno(texto: string, opciones: OpcionesTurno = {}): Promise<ResultadoTurno> {
-    const seq = this.proximoSeq;
-    this.proximoSeq += 1;
-    return this.lanzar(seq, texto.slice(0, MAX_TEXTO_CLIENTE), opciones);
+    return this.lanzar(null, texto.slice(0, MAX_TEXTO_CLIENTE), opciones);
   }
 
   /**
-   * Lanza el turno `seq` y devuelve su resultado. La peticion corre DESACOPLADA de `opciones.senal`: si el cliente interrumpe, esta promesa rechaza con AbortError pero la
-   * peticion sigue y su respuesta queda guardada; el siguiente turno la espera, la habla (`alRespuestaPrevia`) y solo entonces manda su propio texto.
+   * Lanza el turno y devuelve su resultado. La peticion corre DESACOPLADA de `opciones.senal`: si el cliente interrumpe, esta promesa rechaza con AbortError pero la
+   * peticion sigue y su respuesta queda guardada.
+   *
+   * Respuestas que el cliente no oyo: la de un turno abortado o ya sin dueno vive en `pendientePorHablar`. Solo el primer turno NO abortado que llega a enviar las habla (todas,
+   * en orden, `alRespuestaPrevia`) antes de la suya, y las da por habladas cuando el mismo termina sin abortarse; un turno abortado no las consume (la sesion descarta su texto).
+   *
+   * Turnos obsoletos: `seq` se asigna al ENVIAR. Un turno en cola abortado antes de enviarse, con otro mas reciente detras, no viaja aparte: su texto se junta con el del siguiente.
+   * La cola de espera tiene tope (`MAX_COLA_TURNOS`); `cancelarPendientes()` (al colgar) suelta lo que no se envio.
    */
-  private lanzar(seq: number, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
-    if (this.cierre) return Promise.resolve({ ...this.cierre, turno: null });
+  private lanzar(seq: number | null, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
+    if (this.cierre) return this.devolverCierre(opciones);
+    if (this.cancelado) return Promise.reject(new ErrorTurnoAbortado());
     if (this.telefono === null) return Promise.reject(new Error("voz-turno: falta el telefono confirmado"));
     const previo = this.vuelo;
-    const mio: { id: number; promesa: Promise<ResultadoTurno>; entregado: boolean } = { id: (this.idTurno += 1), promesa: Promise.resolve(null as never), entregado: false };
+    const mio: TurnoEnVuelo = { id: (this.idTurno += 1), promesa: Promise.resolve(null as never), entregado: false, descartar: false };
+    this.vuelo = mio;
     this.turnosActivos += 1;
+    if (previo) {
+      this.enCola.push(mio);
+      while (this.enCola.length > MAX_COLA_TURNOS) this.enCola.shift()!.descartar = true;
+    }
     const trabajo = (async (): Promise<ResultadoTurno> => {
       if (previo) {
         const anterior = await previo.promesa.catch(() => null);
-        if (anterior && !previo.entregado) {
-          // El cliente no alcanzo a oir la respuesta del turno anterior (p. ej. el total o la confirmacion del pedido): se habla ahora.
+        // El cierre del servidor no se encola: vive en `this.cierre`. Lo demas que el cliente no alcanzo a oir (p. ej. el total o la confirmacion del pedido) queda en la cola.
+        if (anterior && !anterior.colgar && !previo.entregado) {
           previo.entregado = true;
-          if (anterior.colgar) return anterior;
-          opciones.alRespuestaPrevia?.(anterior.texto);
+          this.pendientePorHablar.push(anterior.texto);
         }
-        if (this.cierre) return { ...this.cierre, turno: null };
+        this.enCola.splice(this.enCola.indexOf(mio) >>> 0, 1);
+        if (this.cierre) return this.devolverCierre(opciones);
+        if (this.cancelado) throw new ErrorTurnoAbortado();
+        const obsoleto = opciones.senal?.aborted === true && this.vuelo !== mio;
+        if (mio.descartar || obsoleto) {
+          if (texto !== TEXTO_SILENCIO) this.textoDiferido = unirTextos(this.textoDiferido, texto);
+          throw new ErrorTurnoAbortado();
+        }
       }
-      return this.pedir(seq, texto, opciones);
+      const vivo = (): boolean => opciones.senal?.aborted !== true;
+      const hablar = vivo() ? [...this.pendientePorHablar] : [];
+      for (const previa of hablar) opciones.alRespuestaPrevia?.(previa);
+      const diferido = this.textoDiferido;
+      this.textoDiferido = "";
+      const total = diferido !== "" && texto === TEXTO_SILENCIO ? diferido : unirTextos(diferido, texto);
+      const r = await this.pedir(seq ?? this.asignarSeq(), total, opciones);
+      if (vivo()) {
+        this.pendientePorHablar.splice(0, hablar.length);
+        mio.entregado = true;
+        if (r.colgar) this.cierreEntregado = true;
+      }
+      return r;
     })().finally(() => {
       this.turnosActivos -= 1;
     });
     mio.promesa = trabajo;
-    this.vuelo = mio;
-    return this.esperarConSenal(trabajo, opciones.senal).then((r) => {
-      mio.entregado = true;
-      return r;
-    });
+    return this.esperarConSenal(trabajo, opciones.senal);
+  }
+
+  private asignarSeq(): number {
+    const seq = this.proximoSeq;
+    this.proximoSeq += 1;
+    return seq;
+  }
+
+  /** Hay un cierre: se habla (si nadie lo oyo) y no se manda nada mas. Antes se hablan las respuestas pendientes. */
+  private devolverCierre(opciones: OpcionesTurno): Promise<ResultadoTurno> {
+    const cierre = this.cierre!;
+    const vivo = opciones.senal?.aborted !== true;
+    if (vivo) {
+      for (const previa of this.pendientePorHablar) opciones.alRespuestaPrevia?.(previa);
+      this.pendientePorHablar.length = 0;
+    }
+    return Promise.resolve({ ...cierre, turno: null });
+  }
+
+  /** El worker cuelga: lo que esta en cola y no se envio ya no se manda (el turno ya enviado puede terminar). */
+  cancelarPendientes(): void {
+    this.cancelado = true;
+    this.textoDiferido = "";
+    this.pendientePorHablar.length = 0;
+    for (const t of this.enCola) t.descartar = true;
   }
 
   /** Espera `p` pero se suelta (AbortError) si `senal` se aborta; `p` NO se cancela. */

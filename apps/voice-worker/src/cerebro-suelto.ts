@@ -106,6 +106,10 @@ export class CerebroSuelto {
   get cierre(): ResultadoTurno | null {
     return this.colgado;
   }
+  /** El worker cuelga: los turnos en cola que no se enviaron ya no se mandan al servidor. */
+  cancelarPendientes(): void {
+    this.core.cancelarPendientes();
+  }
 
   private colgarCon(texto: string, motivo: MotivoCierre): ResultadoTurno {
     const r: ResultadoTurno = { texto, colgar: true, motivo, pedidoId: this.core.pedidoId, turno: null };
@@ -127,6 +131,7 @@ export class CerebroSuelto {
     this.fin = ahora();
     if (r.colgar) {
       this.colgado = r;
+      this.core.cancelarPendientes();
       this.o.alColgar?.(r.motivo ?? "fin_servidor", r.pedidoId);
     }
     return r;

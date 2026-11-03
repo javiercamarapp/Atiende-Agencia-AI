@@ -270,3 +270,108 @@ describe("cerebro suelto: voz-turno", () => {
     expect(peticiones[0]!.cuerpo.call_id).toBe("llamada_ab1");
   });
 });
+
+
+// --- Ronda de ataque 2: cola de respuestas sin oir, turnos obsoletos, esperas, despedida con pedido ---
+interface Gate { seq: number; texto: string; liberar: (r?: Record<string, unknown>) => void }
+/** Servidor falso con cada peticion detenida hasta que el test la libera (responde por seq). */
+function servidorConPuertas(respuestas: Record<number, Record<string, unknown>>) {
+  const vistas: { seq: number; texto: string }[] = [];
+  const puertas = new Map<number, Gate>();
+  const fetchFn = (async (_u: string, init?: RequestInit) => {
+    const c = JSON.parse(String(init?.body));
+    vistas.push({ seq: c.seq, texto: c.texto });
+    if (c.seq !== 0 && respuestas[c.seq] === undefined) return new Response(JSON.stringify({ texto: `resp${c.seq}`, pedido_id: null, fin: false, turno: c.seq }), { status: 200 });
+    const cuerpo = await new Promise<Record<string, unknown>>((resolver) => { puertas.set(c.seq, { seq: c.seq, texto: c.texto, liberar: (r) => resolver(r ?? respuestas[c.seq]!) }); });
+    return new Response(JSON.stringify(cuerpo), { status: 200 });
+  }) as unknown as typeof fetch;
+  return { fetchFn, vistas, puertas };
+}
+/** Opciones de un turno que imitan a la sesion real: lo que se habla con la senal ya abortada se DESCARTA (vigente() falso). */
+function turnoDeSesion(habladoVivo: string[]) {
+  const control = new AbortController();
+  return { control, opciones: { senal: control.signal, alRespuestaPrevia: (t: string) => { if (!control.signal.aborted) habladoVivo.push(t); }, alEspera: (t: string) => { if (!control.signal.aborted) habladoVivo.push(t); } } };
+}
+
+describe("cola de respuestas sin oir (P1) y turnos obsoletos (P2-1)", () => {
+  const lento = { 1: { texto: "Su pedido quedó. El total es 250 pesos.", pedido_id: "ped_7", fin: false, turno: 1 } };
+
+  it("dos barge-ins seguidos: k+3 habla la respuesta de k (el total) y luego la suya; los turnos abortados sin enviar se fusionan en uno", async () => {
+    const { fetchFn, vistas, puertas } = servidorConPuertas(lento);
+    const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_cola_00001", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined });
+    const hablado: string[] = [];
+    const t1 = turnoDeSesion(hablado);
+    const k = cerebro.turno("confirmo", t1.opciones);
+    await vi.waitFor(() => expect(vistas).toHaveLength(1));
+    t1.control.abort();
+    await expect(k).rejects.toThrow();
+    const t2 = turnoDeSesion(hablado);
+    const k1 = cerebro.turno("¿bueno?", t2.opciones);
+    t2.control.abort();
+    await expect(k1).rejects.toThrow();
+    const t3 = turnoDeSesion(hablado);
+    const k2 = cerebro.turno("espere", t3.opciones);
+    t3.control.abort();
+    await expect(k2).rejects.toThrow();
+    const t4 = turnoDeSesion(hablado);
+    const k3 = cerebro.turno("sí, gracias", t4.opciones);
+    puertas.get(1)!.liberar();
+    const r = await k3;
+    expect(hablado).toEqual(["Su pedido quedó. El total es 250 pesos."]);
+    expect(r.texto).toBe("resp2");
+    // Los dos turnos abortados que no alcanzaron a enviarse viajan juntos con el sano: UN solo turno, no tres.
+    expect(vistas).toEqual([{ seq: 1, texto: "confirmo" }, { seq: 2, texto: "¿bueno? espere sí, gracias" }]);
+  });
+
+  it("un turno abortado que SI se envio (era el mas reciente): su respuesta no se pierde, la habla el siguiente turno sano en orden", async () => {
+    const { fetchFn, vistas, puertas } = servidorConPuertas(lento);
+    const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_cola_00002", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined });
+    const hablado: string[] = [];
+    const t1 = turnoDeSesion(hablado);
+    const k = cerebro.turno("confirmo", t1.opciones);
+    await vi.waitFor(() => expect(vistas).toHaveLength(1));
+    t1.control.abort();
+    await expect(k).rejects.toThrow();
+    const t2 = turnoDeSesion(hablado);
+    const k1 = cerebro.turno("¿bueno?", t2.opciones);
+    k1.catch(() => undefined);
+    t2.control.abort(); // se aborta ya con k en vuelo; es el mas reciente, asi que se enviara
+    puertas.get(1)!.liberar();
+    await vi.waitFor(() => expect(vistas).toHaveLength(2));
+    const t3 = turnoDeSesion(hablado);
+    const k2 = cerebro.turno("hola", t3.opciones);
+    const r = await k2;
+    expect(hablado).toEqual(["Su pedido quedó. El total es 250 pesos.", "resp2"]);
+    expect(r.texto).toBe("resp3");
+    expect(r.pedidoId).toBe("ped_7");
+  });
+
+  it("tope de cola: con mas de 3 turnos esperando, los mas viejos no se mandan aparte (se fusionan en el siguiente)", async () => {
+    const { fetchFn, vistas, puertas } = servidorConPuertas(lento);
+    const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_cola_00003", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined });
+    const k = cerebro.turno("uno");
+    await vi.waitFor(() => expect(vistas).toHaveLength(1));
+    const espera = ["dos", "tres", "cuatro", "cinco", "seis"].map((t) => { const p = cerebro.turno(t); p.catch(() => undefined); return p; });
+    puertas.get(1)!.liberar();
+    await k;
+    const ultimo = await espera[4]!;
+    expect(ultimo.texto).toBe("resp4");
+    // Solo 3 turnos pueden esperar (cuatro, cinco, seis): "dos" y "tres", los mas viejos, no viajan aparte; se juntan con el siguiente.
+    expect(vistas).toEqual([{ seq: 1, texto: "uno" }, { seq: 2, texto: "dos tres cuatro" }, { seq: 3, texto: "cinco" }, { seq: 4, texto: "seis" }]);
+  });
+
+  it("al colgar (cancelarPendientes) el turno en cola no se envia; el ya enviado termina", async () => {
+    const { fetchFn, vistas, puertas } = servidorConPuertas(lento);
+    const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_cola_00004", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined });
+    const k = cerebro.turno("uno");
+    await vi.waitFor(() => expect(vistas).toHaveLength(1));
+    const k1 = cerebro.turno("dos");
+    const rechazo = expect(k1).rejects.toThrow();
+    cerebro.cancelarPendientes();
+    puertas.get(1)!.liberar();
+    expect((await k).texto).toContain("250");
+    await rechazo;
+    expect(vistas).toHaveLength(1);
+  });
+});
+

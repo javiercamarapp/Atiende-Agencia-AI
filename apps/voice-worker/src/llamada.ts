@@ -546,6 +546,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     cancelarReloj();
     cancelarVolcado();
     cancelarColgadoSuelto();
+    cerebro?.cancelarPendientes();
     senal?.removeEventListener("abort", alAbortar);
     puente.cerrar();
     await tel.colgar().catch(() => undefined);
