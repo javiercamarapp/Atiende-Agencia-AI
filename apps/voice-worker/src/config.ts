@@ -52,6 +52,10 @@ export interface ConfigWorker {
   readonly assetsDir: string;
   readonly puertoSalud: number;
   readonly zonaHoraria: string;
+  /** `VOZ_CEREBRO`: `actual` (LLM y herramientas propias; por omision) o `suelto` (el cerebro es la Edge Function `voz-turno` del repo suelto). */
+  readonly cerebro: "actual" | "suelto";
+  /** Solo con `cerebro = suelto`: URL de `voz-turno`, su secreto (`VOZ_TURNO_SECRET`, nunca se registra), aviso de grabacion del worker y silencio (ms) antes de mandar `[silencio]`. */
+  readonly vozTurno: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs: number; readonly timeoutMs: number } | null;
 }
 
 /** Numero marcado en una forma canonica comparable: solo digitos, ultimos 10 (el plan de numeracion mexicano: 52 + 10 digitos). */
@@ -180,7 +184,32 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   } else if (backendCrudo !== "api") {
     motivos.push("GEMINI_BACKEND debe ser api o vertex.");
   }
-  if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
+  const cerebroCrudo = lleno(env.VOZ_CEREBRO) ? env.VOZ_CEREBRO.trim().toLowerCase() : "actual";
+  if (cerebroCrudo !== "actual" && cerebroCrudo !== "suelto") motivos.push("VOZ_CEREBRO debe ser actual o suelto.");
+  const cerebro: "actual" | "suelto" = cerebroCrudo === "suelto" ? "suelto" : "actual";
+  let vozTurno: ConfigWorker["vozTurno"] = null;
+  if (cerebro === "suelto") {
+    const base = sinDiagonalFinal((env.SUPABASE_URL ?? "").trim());
+    const url = lleno(env.VOZ_TURNO_URL) ? env.VOZ_TURNO_URL.trim() : base ? `${base}/functions/v1/voz-turno` : "";
+    if (!url) motivos.push("VOZ_CEREBRO=suelto: falta VOZ_TURNO_URL (o SUPABASE_URL).");
+    else if (!/^https?:\/\//.test(url)) motivos.push("VOZ_TURNO_URL debe empezar con http:// o https://.");
+    const secretoTurno = (env.VOZ_TURNO_SECRET ?? "").trim();
+    if (!secretoTurno) motivos.push("VOZ_CEREBRO=suelto: falta VOZ_TURNO_SECRET.");
+    if (!deepgram) motivos.push("VOZ_CEREBRO=suelto: falta DEEPGRAM_API_KEY (la cascada propia es el unico escalon).");
+    let silencioMs = 8000;
+    if (lleno(env.VOZ_TURNO_SILENCIO_MS)) {
+      const ms = Number(env.VOZ_TURNO_SILENCIO_MS);
+      if (!Number.isInteger(ms) || ms < 3000 || ms > 30000) motivos.push("VOZ_TURNO_SILENCIO_MS debe ser un entero entre 3000 y 30000.");
+      else silencioMs = ms;
+    }
+    let timeoutMs = 35000;
+    if (lleno(env.VOZ_TURNO_TIMEOUT_MS)) {
+      const ms = Number(env.VOZ_TURNO_TIMEOUT_MS);
+      if (!Number.isInteger(ms) || ms < 30000 || ms > 60000) motivos.push("VOZ_TURNO_TIMEOUT_MS debe ser un entero entre 30000 y 60000 (el contrato pide >= 30 s).");
+      else timeoutMs = ms;
+    }
+    if (url && secretoTurno) vozTurno = { url, secreto: secretoTurno, aviso: lleno(env.VOZ_AVISO_GRABACION) ? env.VOZ_AVISO_GRABACION.trim() : null, silencioMs, timeoutMs };
+  } else if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
   const vad: { silencioFinMs?: number; sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null } = {};
   if (lleno(env.VOICE_VAD_SILENCIO_MS)) {
     const ms = Number(env.VOICE_VAD_SILENCIO_MS);
@@ -229,6 +258,8 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     topeMensualPlataformaMicroUsd: tope,
     assetsDir: lleno(env.VOICE_ASSETS_DIR) ? env.VOICE_ASSETS_DIR.trim() : "assets",
     puertoSalud: Number.isInteger(puerto) && puerto > 0 && puerto < 65536 ? puerto : 8080,
+    cerebro,
+    vozTurno,
     zonaHoraria: lleno(env.VOICE_TIMEZONE) ? env.VOICE_TIMEZONE.trim() : "America/Merida",
   };
 }

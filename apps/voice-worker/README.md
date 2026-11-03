@@ -42,6 +42,37 @@ contesta llamadas**: nunca atiende a medias.
 
 Logs solo con `eventoSinPII` (lista cerrada de campos; la llamada se correlaciona por un hash opaco). Nunca se registra texto del cliente, teléfono, nombre ni dirección.
 
+## Cerebro «suelto» (`VOZ_CEREBRO=suelto`)
+
+Por omisión (`VOZ_CEREBRO` ausente o `actual`) nada cambia: Gemini Live / cascada con el LLM y las herramientas de este monorrepo. Con `VOZ_CEREBRO=suelto` el
+CEREBRO es la Edge Function `voz-turno` del repo suelto (atiende-restaurantes): el worker conserva telefonía (LiveKit/Twilio), Deepgram STT/TTS y el puente de audio, pero **no usa
+LLM ni herramientas propias**; manda lo que dijo el cliente y habla lo que regresa el servidor. Contrato: `docs/agente-voz/CONTRATO-HERRAMIENTAS.md` y `RUNBOOK-VOZ.md` del repo suelto.
+Solo corre la cascada propia (escalón `cascada-v2`); Gemini Live y OpenRouter no se usan en este modo.
+
+| Variable | Obligatoria con `suelto` | Qué es |
+|---|---|---|
+| `VOZ_CEREBRO` | no | `actual` (por omisión) o `suelto` |
+| `VOZ_TURNO_URL` | sí (o `SUPABASE_URL`) | URL completa de la función, `${SUPABASE_URL}/functions/v1/voz-turno`. Con solo `SUPABASE_URL` se arma sola |
+| `VOZ_TURNO_SECRET` | sí | Secreto de `voz-turno` (header `x-voz-turno-secret`). Mismo valor que en las variables de la Edge Function; nunca en el repo ni en logs |
+| `DEEPGRAM_API_KEY` | sí | STT y TTS de la cascada propia |
+| `VOZ_TURNO_SILENCIO_MS` | no | Silencio antes de mandar `[silencio]` (3000-30000; por omisión 8000) |
+| `VOZ_TURNO_TIMEOUT_MS` | no | Tiempo máximo de una petición (30000-60000; por omisión 35000; el contrato pide >= 30 s) |
+| `VOZ_AVISO_GRABACION` | no | Aviso de grabación que dice el worker MISMO con número oculto; debe coincidir con `AVISO_VOZ_INICIAL` del servidor |
+
+Qué hace el worker en este modo (`src/cerebro-voz-turno.ts`, `src/cerebro-suelto.ts`):
+
+- `seq` por llamada: apertura `seq 0` con texto vacío (el disparador del saludo se traduce a ella), turnos `1..n`; el mismo `seq` en todos los reintentos de un turno; apertura repetida con `seq_ultimo` continúa desde `seq_ultimo + 1`.
+- 5xx / red / tiempo agotado: un reintento del mismo `seq`; si falla otra vez, «problema técnico, una persona le devolverá la llamada» y cuelga.
+- 409 «en proceso»: «Un momento, por favor» y reintento del mismo `seq` cada 2 s hasta 60 s (luego «una persona le devolverá la llamada» y cuelga). Otros 409 y 400/401 son bugs: no se reintentan.
+- 429: `Retry-After` <= 5 s espera y repite; > 5 s dice «Por ahora no puedo atenderle; una persona le devolverá la llamada» y cuelga. 503 con `fin:true` habla y cuelga; 503 sin `fin` reintenta.
+- Relleno «Un momento, por favor» si el servidor tarda ~3 s. `[silencio]` tras ~8 s sin voz (una vez por episodio; no mientras hay un turno en curso); el servidor decide el «¿sigue ahí?» y el cierre.
+- `fin:true` => hablar y colgar. Con `pedido_id` y una despedida del modelo (sin pregunta), el worker cuelga él mismo. Resultado de la conversación: `pedido_creado` con el `pedido_id`.
+- Número oculto o de la sucursal: el worker dice el aviso de grabación, pide el teléfono, lo repite en grupos y, con el «sí», lo valida (nunca un número puente/sucursal), emite el token y **recién entonces** abre (`seq 0`). Tres fallos o dos silencios: devolver la llamada y colgar.
+- Este modo no guarda la transcripción en la base del worker (vive en `voz_hilos` del servidor, con su retención) ni pide el consentimiento de grabación por su cuenta (lo cubre el aviso). La guardia de «quiero una persona» del worker sigue activa.
+- Logs solo con códigos, conteos y ms (`eventoSinPII`); nunca texto, teléfono ni secreto.
+
+Pendiente para una llamada real: cuenta/proyecto de LiveKit y número (Twilio), `DEEPGRAM_API_KEY`, desplegar `voz-turno` y aplicar la migración `voz_hilos` en el Supabase vivo, crear `VOZ_TURNO_SECRET`, desplegar el worker en Fly con estas variables, y probar con llamadas supervisadas. Nada de esto se ha probado contra proveedores reales (solo dobles).
+
 ## Variables de entorno
 
 | Variable | Obligatoria | Qué es |

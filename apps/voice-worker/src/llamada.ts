@@ -14,7 +14,10 @@
 import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
-import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
+import type { EscaleraLlamada, LimitesLlamada, PuertoLlmVoz, VozSesionLlamada } from "@atiende/voice-core";
+import { CerebroSuelto, SILENCIO_POR_OMISION_MS, VigiaSilencio } from "./cerebro-suelto.ts";
+import { TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
+import type { MotivoCierre } from "./cerebro-voz-turno.ts";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
 import { franjaDeHora, modoEntradaDeLlamada, normalizarNumero, resolverTopeMensualMicroUsd } from "./config.ts";
@@ -42,7 +45,9 @@ export interface DepsAtencion {
   readonly pregrabados: ReadonlyMap<MensajeId, AudioWav>;
   readonly api: ClienteApi;
   /** Escalera NUEVA por llamada (lleva estado: quien ya fallo y los tramos para el costo). */
-  readonly crearEscalera: () => EscaleraLlamada;
+  readonly crearEscalera: (ctx?: { readonly llmVoz?: PuertoLlmVoz }) => EscaleraLlamada;
+  /** `VOZ_CEREBRO=suelto`: el cerebro de la llamada es `voz-turno` (ver `cerebro-suelto.ts`). Sin esto, el cerebro actual (LLM y herramientas propias). */
+  readonly cerebroSuelto?: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs?: number; readonly timeoutMs?: number; readonly fetchFn?: typeof fetch; readonly esperar?: (ms: number, senal?: AbortSignal) => Promise<void> };
   readonly log: SumideroLog;
   /** `fetch` de las herramientas del agente (por omision el global; las pruebas lo apuntan a la API en proceso). */
   readonly fetchFn?: typeof fetch;
@@ -165,7 +170,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   const codigoDe = (err: unknown): string => (err instanceof ErrorApi ? String(err.estado ?? "red") : "error");
   const [convR, avisoR, tokenR] = await Promise.allSettled([
     deps.api.iniciarConversacion({ organizationId, propertyId, externalId: callId, voiceId: contexto.voiceId, callerPhone: telefono, startedAt: new Date(iniciadaEn).toISOString() }),
-    deps.api.privacidadApertura({ organizationId, callerPhone: telefono }),
+    deps.cerebroSuelto ? Promise.reject(new Error("suelto")) : deps.api.privacidadApertura({ organizationId, callerPhone: telefono }),
     !telefonoPendiente && telefono !== null ? emitirToken(telefono) : Promise.resolve(),
   ]);
   let conversationId: string | null = null;
@@ -173,7 +178,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   else log("conversacion_no_registrada", { codigo: codigoDe(convR.reason) });
   let aviso: AperturaPrivacidad | null = null;
   if (avisoR.status === "fulfilled") aviso = avisoR.value;
-  else log("apertura_privacidad_fallo", { codigo: codigoDe(avisoR.reason) });
+  else if (!deps.cerebroSuelto) log("apertura_privacidad_fallo", { codigo: codigoDe(avisoR.reason) });
   const modo = modoEntradaDeLlamada(entrada.modoEntrada, tel.desviadaDesde);
 
   const cerrarConversacion = async (resultado: VozResultado, orderId: string | null): Promise<void> => {
@@ -214,8 +219,33 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
 
   // 5) Controlador + escalera + puente.
   const limites = deps.limites ?? LIMITES_VOZ_PM;
-  const escalera = deps.crearEscalera();
   let orderId: string | null = null;
+  // Cerebro suelto: se crea ANTES de la escalera (su puerto LLM es el cerebro de la cascada). Los avisos de privacidad/grabacion y el telefono oculto los lleva el propio cerebro.
+  let cerebro: CerebroSuelto | null = null;
+  let cierreSuelto: MotivoCierre | null = null;
+  let confirmarTelefonoSuelto: ((numero: string) => Promise<{ ok: boolean }>) | null = null;
+  let controladorRef: { clienteCuelga(): Promise<void> } | null = null;
+  if (deps.cerebroSuelto) {
+    const cfg = deps.cerebroSuelto;
+    cerebro = new CerebroSuelto({
+      url: cfg.url,
+      secreto: cfg.secreto,
+      callId,
+      telefono,
+      disparadorApertura: DISPARADOR_SALUDO,
+      ...(cfg.aviso ? { aviso: cfg.aviso } : {}),
+      ...(cfg.timeoutMs ? { timeoutMs: cfg.timeoutMs } : {}),
+      ...(cfg.fetchFn ? { fetchFn: cfg.fetchFn } : {}),
+      ...(cfg.esperar ? { esperar: cfg.esperar } : {}),
+      ahora,
+      log: (evento, campos) => log(evento, campos),
+      confirmarTelefono: (n) => confirmarTelefonoSuelto?.(n) ?? Promise.resolve({ ok: false }),
+      alColgar: (motivo) => {
+        cierreSuelto = motivo;
+      },
+    });
+  }
+  const escalera = cerebro ? deps.crearEscalera({ llmVoz: cerebro.puerto }) : deps.crearEscalera();
   // El transporte se arma cuando hay token (de inmediato con caller ID confiable; tras `confirmarTelefono` si no).
   let transporteBase: TransporteTools | null = null;
   const armarTransporte = (): void => {
@@ -257,13 +287,26 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     });
     log("sonido_ambiente", { mensaje: salidaMezclada.ambiente !== null && salidaMezclada.tecleo !== null ? "fondo+tecleo" : salidaMezclada.ambiente !== null ? "fondo" : "tecleo" });
   }
+  const vigiaSilencio = cerebro
+    ? new VigiaSilencio({
+        umbralMs: deps.cerebroSuelto?.silencioMs ?? SILENCIO_POR_OMISION_MS,
+        ocupado: () => cerebro!.ocupado || cerebro!.cierre !== null,
+        ultimaActividad: () => cerebro!.ultimaActividad,
+        ahora,
+        disparar: () => {
+          log("silencio_enviado");
+          (sesionActual as VozSesionLlamada | null)?.enviarTexto(TEXTO_SILENCIO);
+        },
+      })
+    : null;
   const puente = new PuenteAudio({
     tel,
     ahora,
     ...(salidaMezclada ? { mezclador: salidaMezclada } : {}),
     eventos: {
       usuarioHabla: () => controlador.usuarioHabla(),
-      silencio: (ms) => controlador.silencio(ms),
+      // Cerebro suelto: el servidor decide que hacer con el silencio (`[silencio]`); la maquina local no manda su "¿sigue ahi?" ni se despide por su cuenta.
+      silencio: (ms) => (vigiaSilencio ? Promise.resolve(vigiaSilencio.registrar(ms)) : controlador.silencio(ms)),
       dtmf: (d) => controlador.dtmf(d),
       tick: (s) => controlador.tick(s),
     },
@@ -308,6 +351,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       audioAgente: (pcm) => puente.audioAgente(pcm),
       agenteTermino: () => {
         avisoDicho = true;
+        // Cerebro suelto: `fin: true`, despedida con pedido, tope o falla tecnica = se cuelga cuando la despedida ya se genero (el cierre espera a que suene).
+        if (cierreSuelto !== null) void controladorRef?.clienteCuelga();
         h.agenteTermino();
       },
       usuarioDijo: (texto) => {
@@ -341,6 +386,12 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     log("telefono_confirmado_por_cliente", { motivo: origen.motivo });
     return { ok: true, mensaje: "Teléfono registrado." };
   };
+  if (cerebro) {
+    confirmarTelefonoSuelto = async (numero) => {
+      const r = await confirmarTelefono({ numero });
+      return { ok: typeof r === "object" && r !== null && !("error" in r) };
+    };
+  }
   const ejecutorBase = crearEjecutorTools({ transporte, timeoutMs: limites.toolTimeoutMs });
   const ejecutorSinSonido: EjecutorTools = telefonoPendiente
     ? {
@@ -399,6 +450,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       }
     },
   });
+  controladorRef = controlador;
   alColgarCliente = () => void controlador.clienteCuelga();
   if (clienteColgo) void controlador.clienteCuelga();
   const alAbortar = (): void => void controlador.clienteCuelga();
@@ -409,7 +461,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   let previoRol: TurnoRegistro["rol"] | null = null;
   let latenciasUsadas = 0;
   const volcarTurnos = async (final: boolean, costoFinalMicroUsd = 0): Promise<void> => {
-    if (!conversationId) return;
+    // Cerebro suelto: la transcripcion vive en `voz_hilos` del servidor (con su retencion y su aviso); este worker no la duplica.
+    if (!conversationId || cerebro) return;
     // Sin consentimiento claro la base no guarda turnos (migracion 030): no se intenta, para no marcarlos como enviados y perderlos.
     if (pideConsentimiento && consentimiento !== "otorgado") return;
     const turnos = controlador.transcripcion;
@@ -437,9 +490,15 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   let costoMicroUsd = 0;
   try {
     const { iniciada } = await controlador.iniciar({ habilitado: contexto.habilitado, gastoMesMicroUsd: contexto.gastoMesMicroUsd, topeMensualMicroUsd: tope, horaLocal: contexto.horaLocal });
-    if (iniciada) (sesionActual as VozSesionLlamada | null)?.enviarTexto(disparadorDeApertura(aviso));
+    if (iniciada) (sesionActual as VozSesionLlamada | null)?.enviarTexto(cerebro ? DISPARADOR_SALUDO : disparadorDeApertura(aviso));
     const fin = await controlador.terminada;
     resultado = fin.resultado;
+    if (cerebro) {
+      if (cerebro.pedidoId) {
+        orderId = cerebro.pedidoId;
+        resultado = "pedido_creado";
+      } else if (cierreSuelto !== null && cierreSuelto !== "fin_servidor" && cierreSuelto !== "silencio") resultado = "escalado";
+    }
     // La despedida o el pregrabado terminal tienen que sonar antes de colgar (con tope). Si el cliente ya colgo, nadie la oye y la voz en cola no se va a consumir: se descarta.
     if (clienteColgo || senal?.aborted === true) puente.cortarAudio();
     else if (!(await puente.vaciar(topeVaciarMs))) log("salida_no_vacio", { ms: topeVaciarMs });
