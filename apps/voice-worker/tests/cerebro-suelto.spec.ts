@@ -1,17 +1,17 @@
 // Puerto LLM del cerebro suelto: numero oculto (aviso + pedir y confirmar telefono antes de la apertura), traduccion de la apertura, silencio y config.
 import { describe, expect, it } from "vitest";
-import { CerebroSuelto, VigiaSilencio, extraerTelefonoDictado, telefonoEnGrupos } from "../src/cerebro-suelto.ts";
+import { AVISO_GRABACION_POR_OMISION, CerebroSuelto, PREAMBULO_POR_OMISION, SALUDO_SIN_AVISO, VigiaSilencio, extraerTelefonoDictado, quitarFrasesDichas, telefonoEnGrupos } from "../src/cerebro-suelto.ts";
 import { cargarConfig } from "../src/config.ts";
 
 const DISPARO = "(disparador de saludo)";
 const peticion = (texto: string, onTextDelta?: (d: string) => void) => ({ system: "", mensajes: [{ role: "user" as const, content: "viejo" }, { role: "assistant" as const, content: "x" }, { role: "user" as const, content: texto }], herramientas: [], ...(onTextDelta ? { onTextDelta } : {}) });
 
-function montar(telefono: string | null, confirmar?: (t: string) => Promise<{ ok: boolean }>) {
-  const cuerpos: { telefono: string; seq: number; texto: string }[] = [];
+function montar(telefono: string | null, confirmar?: (t: string) => Promise<{ ok: boolean }>, aperturaServidor = "Buen día.") {
+  const cuerpos: { telefono: string; seq: number; texto: string; aviso_dado?: boolean }[] = [];
   const fetchFn = (async (_u: string, init?: RequestInit) => {
     const c = JSON.parse(String(init?.body));
     cuerpos.push(c);
-    return new Response(JSON.stringify({ texto: c.seq === 0 ? "Buen día." : "Ok.", pedido_id: null, fin: false, turno: c.seq }), { status: 200 });
+    return new Response(JSON.stringify({ texto: c.seq === 0 ? aperturaServidor : "Ok.", pedido_id: null, fin: false, turno: c.seq }), { status: 200 });
   }) as unknown as typeof fetch;
   const cierres: string[] = [];
   const c = new CerebroSuelto({ url: "https://x.invalid/voz-turno", secreto: "s", callId: "CA_oculto_01", telefono, fetchFn, temporizador: () => () => undefined, disparadorApertura: DISPARO, ...(confirmar ? { confirmarTelefono: confirmar } : {}), alColgar: (m) => cierres.push(m) });
@@ -42,9 +42,31 @@ describe("cerebro suelto: puerto y telefono oculto", () => {
     const f = await c.puerto.completar(peticion("sí, es correcto"));
     expect(f.texto).toBe("Buen día.");
     expect(registrados).toEqual(["9991234567"]);
-    expect(cuerpos).toEqual([{ call_id: "CA_oculto_01", telefono: "9991234567", seq: 0, texto: "" }]);
+    expect(cuerpos).toEqual([{ call_id: "CA_oculto_01", telefono: "9991234567", seq: 0, texto: "", aviso_dado: true }]);
     await c.puerto.completar(peticion("hola"));
     expect(cuerpos[1]).toMatchObject({ seq: 1, telefono: "9991234567" });
+  });
+
+  it("numero oculto + servidor viejo (ignora aviso_dado y repite preambulo y aviso): el aviso se detecta y se quita, el cliente no lo oye dos veces", async () => {
+    const repetido = `${PREAMBULO_POR_OMISION} ${AVISO_GRABACION_POR_OMISION} Buen día, ¿qué se le ofrece?`;
+    const { c, cuerpos } = montar(null, async () => ({ ok: true }), repetido);
+    const inicial = await c.puerto.completar(peticion(DISPARO));
+    await c.puerto.completar(peticion("9991234567"));
+    const f = await c.puerto.completar(peticion("sí"));
+    expect(cuerpos[0]).toMatchObject({ seq: 0, aviso_dado: true });
+    expect(f.texto).toBe("Buen día, ¿qué se le ofrece?");
+    expect(`${inicial.texto} ${f.texto}`.split("se graba")).toHaveLength(2); // el aviso suena UNA vez en toda la llamada
+  });
+
+  it("numero oculto + servidor viejo que solo repite el aviso: queda un saludo corto, no un texto vacio", () => {
+    expect(quitarFrasesDichas(`${AVISO_GRABACION_POR_OMISION}`, [AVISO_GRABACION_POR_OMISION])).toBe(SALUDO_SIN_AVISO);
+    expect(quitarFrasesDichas("Un AVISO   propio. Hola.", ["un aviso propio."])).toBe("Hola.");
+  });
+
+  it("con telefono confiable la apertura NO manda aviso_dado (el servidor si debe dar el aviso)", async () => {
+    const { c, cuerpos } = montar("9991234567");
+    await c.puerto.completar(peticion(DISPARO));
+    expect(cuerpos[0]).not.toHaveProperty("aviso_dado");
   });
 
   it("numero oculto: si el cliente corrige, lo vuelve a pedir; numero de la sucursal rechazado; tres fallos = cuelga", async () => {

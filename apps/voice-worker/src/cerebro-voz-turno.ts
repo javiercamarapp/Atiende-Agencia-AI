@@ -1,7 +1,7 @@
 // Cliente del endpoint `voz-turno` (Edge Function del repo suelto atiende-restaurantes): el CEREBRO de la llamada cuando `VOZ_CEREBRO=suelto`.
 // El worker NO piensa ni corre herramientas: manda lo que dijo el cliente y habla lo que regresa el servidor. Contrato: CONTRATO-HERRAMIENTAS.md y RUNBOOK-VOZ.md del repo suelto.
 //
-//   POST {call_id, telefono, texto, seq}  +  header x-voz-turno-secret
+//   POST {call_id, telefono, texto, seq, aviso_dado?}  +  header x-voz-turno-secret   (`aviso_dado: true` solo en la apertura con numero oculto: el worker ya dijo el aviso)
 //   apertura = seq 0 con texto vacio; turnos = seq 1..n; `[silencio]` cuando el cliente no habla; respuesta {texto, pedido_id, fin, turno, seq_ultimo?}
 //
 // Reglas que implementa este modulo (todo con fetch, reloj y esperas INYECTADOS para probarlo sin red ni tiempo real):
@@ -58,6 +58,8 @@ export interface OpcionesTurno {
   readonly alEspera?: (frase: string) => void;
   /** Respuesta de un turno anterior que el cliente no alcanzo a oir (se interrumpio mientras el servidor aun procesaba): hay que hablarla ANTES de la respuesta de este turno. */
   readonly alRespuestaPrevia?: (texto: string) => void;
+  /** Solo en la apertura: el worker YA dijo el aviso de grabacion (numero oculto). Manda `aviso_dado: true` y el servidor responde un saludo corto sin preambulo ni aviso. */
+  readonly avisoDado?: boolean;
 }
 
 export interface OpcionesCerebroVozTurno {
@@ -283,21 +285,21 @@ export class CerebroVozTurno {
     };
     programar(this.o.rellenoMs ?? 4000);
     try {
-      return await this.reintentar(seq, texto, () => (dichas === 0 ? decirEspera() : undefined));
+      return await this.reintentar(seq, texto, seq === 0 && opciones.avisoDado === true, () => (dichas === 0 ? decirEspera() : undefined));
     } finally {
       cancelar();
     }
   }
 
   /** UNA peticion. Solo la corta su propio tiempo maximo: un barge-in del cliente NO la aborta (el servidor la procesa igual). */
-  private async intentar(seq: number, texto: string, timeoutMs: number): Promise<Intento> {
+  private async intentar(seq: number, texto: string, timeoutMs: number, avisoDado: boolean): Promise<Intento> {
     const limite = new AbortController();
     const id = setTimeout(() => limite.abort(), timeoutMs);
     try {
       const res = await this.fetchFn(this.o.url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-voz-turno-secret": this.o.secreto },
-        body: JSON.stringify({ call_id: this.o.callId, telefono: this.telefono, seq, texto }),
+        body: JSON.stringify({ call_id: this.o.callId, telefono: this.telefono, seq, texto, ...(avisoDado ? { aviso_dado: true } : {}) }),
         signal: limite.signal,
       });
       let cuerpo: Record<string, unknown> = {};
@@ -319,7 +321,7 @@ export class CerebroVozTurno {
     }
   }
 
-  private async reintentar(seq: number, texto: string, decirEspera: () => void): Promise<ResultadoTurno> {
+  private async reintentar(seq: number, texto: string, avisoDado: boolean, decirEspera: () => void): Promise<ResultadoTurno> {
     const reintentosTecnicos = this.o.reintentosTecnicos ?? 1;
     const reintentosRafaga = this.o.reintentosRafaga ?? 3;
     const presupuesto = this.o.presupuestoEnProcesoMs ?? 65_000;
@@ -329,7 +331,7 @@ export class CerebroVozTurno {
     let inicioEnProceso: number | null = null;
     let timeoutProximo = this.o.timeoutMs ?? 35_000;
     for (let intento = 1; ; intento += 1) {
-      const r = await this.intentar(seq, texto, timeoutProximo);
+      const r = await this.intentar(seq, texto, timeoutProximo, avisoDado);
       if (r.tipo === "ok") return this.aceptar(seq, r.cuerpo);
 
       if (r.tipo === "red") {

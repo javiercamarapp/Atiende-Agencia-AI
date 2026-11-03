@@ -11,6 +11,24 @@ import type { MotivoCierre, OpcionesCerebroVozTurno, ResultadoTurno } from "./ce
 export const AVISO_GRABACION_POR_OMISION = "Esta llamada se graba para mejorar el servicio. Su aviso de privacidad completo está en nuestro sitio web y puede pedírmelo cuando guste.";
 export const PREAMBULO_POR_OMISION = "Le atiende el asistente virtual de Los Taquitos de PM.";
 export const SILENCIO_POR_OMISION_MS = 8000;
+export const SALUDO_SIN_AVISO = "¿En qué le puedo ayudar?";
+
+const escaparRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Quita de la respuesta de la apertura las frases que el worker YA dijo (aviso de grabacion y preambulo). Un servidor que aun no soporta `aviso_dado` las repite y el
+ * cliente oiria el aviso dos veces. Compara sin importar mayusculas ni espacios; si no queda nada, un saludo corto.
+ */
+export function quitarFrasesDichas(texto: string, frases: readonly string[]): string {
+  let t = texto;
+  for (const f of frases) {
+    const limpia = f.trim();
+    if (limpia === "") continue;
+    t = t.replace(new RegExp(escaparRe(limpia).replace(/\s+/g, "\\s+"), "gi"), " ");
+  }
+  t = t.replace(/\s+/g, " ").replace(/^[\s.,;:-]+/, "").trim();
+  return t === "" ? SALUDO_SIN_AVISO : t;
+}
 
 const DIGITOS: Readonly<Record<string, string>> = { cero: "0", uno: "1", una: "1", dos: "2", tres: "3", cuatro: "4", cinco: "5", seis: "6", siete: "7", ocho: "8", nueve: "9" };
 
@@ -131,7 +149,9 @@ export class CerebroSuelto {
         const res = this.o.confirmarTelefono ? await this.o.confirmarTelefono(confirmado) : { ok: true as const };
         if (res.ok && this.core.fijarTelefono(confirmado)) {
           this.fase = "activa";
-          return this.core.apertura(opciones);
+          // El worker ya dijo el aviso: el servidor debe saludar corto (`aviso_dado`); si es un servidor viejo y lo repite, se le quita.
+          const apertura = await this.core.apertura({ ...opciones, avisoDado: true });
+          return apertura.colgar ? apertura : { ...apertura, texto: quitarFrasesDichas(apertura.texto, [aviso, AVISO_GRABACION_POR_OMISION, pre, PREAMBULO_POR_OMISION]) };
         }
         this.fase = "pidiendo_telefono";
         this.candidato = null;
