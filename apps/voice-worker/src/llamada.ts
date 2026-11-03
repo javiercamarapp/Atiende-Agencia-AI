@@ -263,6 +263,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         log: (evento, campos) => log(evento, campos),
         confirmarTelefono: (n) => confirmarTelefonoSuelto?.(n) ?? Promise.resolve({ ok: false }),
         alPendienteHuerfano: () => {
+          // Se comprueba JUSTO antes de encolar: si en el aire alguien ya lo hablo, el turno interno saldria vacio.
+          if (cerebro?.hayPendiente === false) return;
           log("pendiente_huerfano");
           (sesionActual as VozSesionLlamada | null)?.enviarTexto(TEXTO_PENDIENTE);
         },

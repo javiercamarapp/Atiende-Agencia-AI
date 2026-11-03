@@ -99,7 +99,8 @@ export class CerebroSuelto {
         const texto = ultimo?.content ?? "";
         const r = await this.procesar(texto, p.senal, p.onTextDelta);
         if (r.texto !== "") p.onTextDelta?.(`${r.texto} `);
-        return { texto: r.texto, toolCalls: [], costoMicroUsd: 0, finishReason: "stop" };
+        // Turno interno sin nada que decir (el pendiente ya se hablo): la sesion no debe reintentar ni decir la frase de respaldo.
+        return { texto: r.texto, toolCalls: [], costoMicroUsd: 0, finishReason: "stop", ...(texto === TEXTO_PENDIENTE && r.texto === "" ? { sinHabla: true } : {}) };
       },
     };
   }
@@ -116,6 +117,10 @@ export class CerebroSuelto {
   }
   get cierre(): ResultadoTurno | null {
     return this.colgado;
+  }
+  /** Hay una respuesta retenida que un turno interno `TEXTO_PENDIENTE` hablaria. */
+  get hayPendiente(): boolean {
+    return this.core.hayPendiente;
   }
   /** El worker cuelga: los turnos en cola que no se enviaron ya no se mandan al servidor. */
   cancelarPendientes(): void {

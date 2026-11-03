@@ -377,6 +377,12 @@ class SesionCascadaV2 implements VozSesionLlamada {
           break;
         }
         const sinTexto = r.texto.trim() === "" && resto === null;
+        if (sinTexto && r.toolCalls.length === 0 && r.sinHabla === true) {
+          // Turno interno que el puerto declaro sin habla: no es una respuesta vacia del modelo (ni reintento ni frase de respaldo). Se retira el mensaje interno del historial.
+          const ultimo = this.mensajes[this.mensajes.length - 1];
+          if (ultimo?.role === "user" && ultimo.content === texto) this.mensajes.pop();
+          break;
+        }
         if (sinTexto && r.toolCalls.length === 0) {
           // Respuesta vacia (p. ej. el razonamiento agoto el tope: finish_reason "length"): un reintento; si vuelve vacia, una frase de respaldo. Nunca silencio.
           this.log("v2_respuesta_vacia", { proveedor: modelo, motivo: r.finishReason ?? "desconocido" });

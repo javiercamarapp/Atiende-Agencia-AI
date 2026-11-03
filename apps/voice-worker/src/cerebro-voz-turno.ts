@@ -420,6 +420,12 @@ export class CerebroVozTurno {
   }
 
   /** Habla lo retenido (respuesta de un turno abortado sin reemplazo) o el cierre. `null` si ya no hay nada. No manda nada al servidor. */
+  /** Hay algo retenido que `hablarPendiente` diria (respuesta sin oir, cierre o turno en vuelo sin entregar). */
+  get hayPendiente(): boolean {
+    const v = this.vuelo;
+    return (v !== null && v !== undefined && !v.entregado) || this.cierre !== null || this.pendientePorHablar.length > 0;
+  }
+
   async hablarPendiente(opciones: OpcionesTurno = {}): Promise<ResultadoTurno | null> {
     const v = this.vuelo;
     if (v && !v.entregado) {
