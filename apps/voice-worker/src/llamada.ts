@@ -404,7 +404,8 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
   /** Validacion LOCAL del telefono dictado (sin API ni token): 10 digitos canonicos, plausible y que no sea un numero de la sucursal/puente. */
   const validarTelefonoDictado = (crudo: string): { readonly ok: true; readonly numero: string } | { readonly ok: false; readonly error: "telefono_invalido" | "telefono_no_valido"; readonly mensaje: string } => {
     const numero = crudo.length > 0 && crudo.length <= 40 ? canonicalizeMexicanPhone(crudo) : null;
-    if (numero === null || !telefonoDictadoPlausible(numero)) return { ok: false, error: "telefono_invalido", mensaje: "No son 10 dígitos válidos. Pídale al cliente que se lo repita completo." };
+    // El rechazo de numeros imposibles (0/1 inicial, un solo digito repetido) es del cerebro suelto; el cerebro actual valida como siempre.
+    if (numero === null || (deps.cerebroSuelto && !telefonoDictadoPlausible(numero))) return { ok: false, error: "telefono_invalido", mensaje: "No son 10 dígitos válidos. Pídale al cliente que se lo repita completo." };
     const clave = normalizarNumero(numero);
     if (clave !== null && (numerosPuente.has(clave) || entrada.numerosSucursal.includes(clave))) return { ok: false, error: "telefono_no_valido", mensaje: "Ese es un número del restaurante. Pídale al cliente su teléfono personal." };
     return { ok: true, numero };
