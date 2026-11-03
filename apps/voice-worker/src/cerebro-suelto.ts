@@ -5,7 +5,7 @@
 //  - la vigilancia de SILENCIO (`VigiaSilencio`): tras ~8 s sin voz se manda `[silencio]` como un turno mas.
 import { esAfirmacion } from "@atiende/voice-core";
 import type { PuertoLlmVoz } from "@atiende/voice-core";
-import { CerebroVozTurno, FRASE_CIERRE_CORTA, FRASE_DEVOLVER_LLAMADA, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
+import { CerebroVozTurno, FRASE_CIERRE_CORTA, FRASE_DEVOLVER_LLAMADA, TEXTO_PENDIENTE, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
 import { telefonoDictadoPlausible } from "./telefono-llamante.ts";
 import type { MotivoCierre, OpcionesCerebroVozTurno, ResultadoTurno } from "./cerebro-voz-turno.ts";
 
@@ -139,7 +139,10 @@ export class CerebroSuelto {
     const blando = this.colgado?.motivo === "despedida_con_pedido" && this.fase === "activa" && texto !== this.o.disparadorApertura;
     if (this.colgado && !blando) r = this.cierreDicho ? { ...this.colgado, texto: FRASE_CIERRE_CORTA } : this.colgado;
     else if (this.fase === "activa") {
-      r = texto === this.o.disparadorApertura ? await this.core.apertura(opciones) : await this.core.turno(texto, opciones);
+      if (texto === this.o.disparadorApertura) r = await this.core.apertura(opciones);
+      // Turno interno: habla la respuesta que quedo retenida tras un aborto por ruido (sin texto final). Si ya no queda nada, cae a un silencio normal.
+      else if (texto === TEXTO_PENDIENTE) r = (await this.core.hablarPendiente(opciones)) ?? (await this.core.turno(TEXTO_SILENCIO, opciones));
+      else r = await this.core.turno(texto, opciones);
     } else r = await this.faseTelefono(texto, opciones);
     this.fin = ahora();
     if (r.colgar && senal?.aborted !== true) this.cierreDicho = true;

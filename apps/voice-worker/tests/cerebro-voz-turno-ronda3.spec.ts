@@ -2,7 +2,7 @@
 // La `sesion` imita el patron real de SesionCascadaV2: un final nuevo aborta el turno anterior y los turnos corren encadenados.
 import { describe, expect, it } from "vitest";
 import { CerebroSuelto } from "../src/cerebro-suelto.ts";
-import { CerebroVozTurno, versionCortaDePendiente } from "../src/cerebro-voz-turno.ts";
+import { CerebroVozTurno, TEXTO_PENDIENTE, versionCortaDePendiente } from "../src/cerebro-voz-turno.ts";
 
 const dormir = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -159,5 +159,64 @@ describe("pendiente hablado y luego abortado no se repite completo (P2-3)", () =
   it("versionCortaDePendiente conserva las oraciones con cifras y descarta las preguntas", () => {
     expect(versionCortaDePendiente("Anotado. Su total es 85 pesos. ¿Algo más?")).toBe("Como le decía, su total es 85 pesos.");
     expect(versionCortaDePendiente("Claro que sí. ¿Algo más?")).toBe("Como le decía, claro que sí.");
+  });
+});
+
+describe("respuesta retenida tras un aborto por ruido sin texto final (P2-2)", () => {
+  function conReloj() {
+    const timers: { fn: () => void; ms: number }[] = [];
+    return { timers, temporizador: (fn: () => void, ms: number) => { timers.push({ fn, ms }); return () => undefined; } };
+  }
+  it("pasados ~1.5 s del aborto, sin turno nuevo, avisa al worker y hablarPendiente entrega el total retenido", async () => {
+    const r = conReloj();
+    let avisos = 0;
+    const { cerebro, peticiones } = crear(async () => { await dormir(10); return { texto: "Son dos tacos, su total es 80 pesos.", turno: 1 }; }, { temporizador: r.temporizador, rellenoMs: 99_999, alPendienteHuerfano: () => { avisos += 1; } });
+    const ctl = new AbortController();
+    const p = cerebro.turno("dos tacos", { senal: ctl.signal }).catch(() => "abort");
+    await dormir(2);
+    ctl.abort();
+    await p;
+    const t = r.timers.find((x) => x.ms === 1500)!;
+    expect(t).toBeDefined();
+    t.fn();
+    await dormir(30);
+    expect(avisos).toBe(1);
+    expect(await cerebro.hablarPendiente()).toMatchObject({ texto: "Son dos tacos, su total es 80 pesos.", colgar: false });
+    expect(await cerebro.hablarPendiente()).toBeNull();
+    expect(peticiones).toHaveLength(1);
+  });
+  it("si llega un turno nuevo antes, no avisa", async () => {
+    const r = conReloj();
+    let avisos = 0;
+    const { cerebro } = crear(async (p) => { await dormir(10); return { texto: `R${p.seq}`, turno: p.seq }; }, { temporizador: r.temporizador, rellenoMs: 99_999, alPendienteHuerfano: () => { avisos += 1; } });
+    const ctl = new AbortController();
+    const p = cerebro.turno("dos", { senal: ctl.signal }).catch(() => "abort");
+    await dormir(2);
+    ctl.abort();
+    await p;
+    const siguiente = cerebro.turno("tres");
+    r.timers.find((x) => x.ms === 1500)!.fn();
+    await siguiente;
+    await dormir(20);
+    expect(avisos).toBe(0);
+  });
+  it("por el puerto: el turno interno TEXTO_PENDIENTE habla lo retenido sin mandar nada al servidor", async () => {
+    const cuerpos: Peticion[] = [];
+    const fetchFn = (async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body)) as Peticion;
+      cuerpos.push(b);
+      await dormir(10);
+      return new Response(JSON.stringify({ texto: "Su total es 80 pesos.", pedido_id: null, fin: false, turno: b.seq }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const c = new CerebroSuelto({ url: "https://x.invalid/voz-turno", secreto: "s", callId: "llamada-123", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined, disparadorApertura: "(saludo)" });
+    const ctl = new AbortController();
+    const p = c.puerto.completar({ system: "", mensajes: [{ role: "user", content: "dos tacos" }], herramientas: [], senal: ctl.signal }).catch(() => "abort");
+    await dormir(2);
+    ctl.abort();
+    await p;
+    await dormir(20);
+    const r = await c.puerto.completar({ system: "", mensajes: [{ role: "user", content: TEXTO_PENDIENTE }], herramientas: [] });
+    expect(r.texto).toBe("Su total es 80 pesos.");
+    expect(cuerpos).toHaveLength(1);
   });
 });

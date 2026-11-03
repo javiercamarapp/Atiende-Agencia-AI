@@ -20,6 +20,8 @@
 //  - Logs solo con codigos, conteos y ms: nunca texto del cliente, telefono ni respuesta del servidor.
 
 export const TEXTO_SILENCIO = "[silencio]";
+/** Texto interno (nunca viaja al servidor) con el que el worker pide hablar una respuesta retenida tras un aborto sin texto final. */
+export const TEXTO_PENDIENTE = "[pendiente]";
 export const FRASE_ESPERA = "Un momento, por favor.";
 /** Frases de espera sucesivas en esperas largas (la 1.a es FRASE_ESPERA; maximo 3 por turno). */
 export const FRASES_ESPERA: readonly string[] = [FRASE_ESPERA, "Sigo con eso, gracias por esperar.", "Ya casi, un momento más, por favor."];
@@ -107,6 +109,13 @@ export interface OpcionesCerebroVozTurno {
   readonly alAvisoPerdido?: (aviso: AvisoPerdido) => void;
   /** Se llama cuando un cierre blando (`despedida_con_pedido`) se retira porque el cliente siguio hablando: el worker debe cancelar el colgado programado. */
   readonly alReabrir?: () => void;
+  /**
+   * Un turno se aborto (p. ej. por ruido: parcial sin texto final) y pasado `huerfanoMs` nadie lo reemplazo, pero el servidor SI respondio: esa respuesta (total, confirmacion) esta
+   * retenida y nadie la hablaria hasta el siguiente turno. El worker debe disparar un turno interno (`TEXTO_PENDIENTE`) para hablarla.
+   */
+  readonly alPendienteHuerfano?: () => void;
+  /** Espera tras un aborto antes de hablar lo retenido (ms). Por omision 1500. */
+  readonly huerfanoMs?: number;
 }
 
 export class ErrorTurnoAbortado extends Error {
@@ -179,6 +188,8 @@ interface TurnoEnVuelo {
   entregado: boolean;
   /** Se paso del tope de la cola: no se envia aparte. */
   descartar: boolean;
+  /** Ya se aviso (`alPendienteHuerfano`) de que su respuesta quedo retenida. */
+  huerfanoAvisado?: boolean;
 }
 
 /** Junta lo que dijo el cliente en turnos abortados con lo del siguiente (en orden); conserva lo ultimo si pasa del tope. */
@@ -345,6 +356,10 @@ export class CerebroVozTurno {
       this.turnosActivos -= 1;
     });
     mio.promesa = trabajo;
+    if (opciones.senal && this.o.alPendienteHuerfano) {
+      if (opciones.senal.aborted) this.vigilarHuerfano(mio);
+      else opciones.senal.addEventListener("abort", () => this.vigilarHuerfano(mio), { once: true });
+    }
     return this.esperarConSenal(trabajo, opciones.senal);
   }
 
@@ -376,6 +391,44 @@ export class CerebroVozTurno {
       // el aviso al worker nunca debe impedir seguir la llamada
     }
     return true;
+  }
+
+  /** Tras un aborto, si en `huerfanoMs` no llego un turno nuevo y la respuesta del abortado quedo sin oir, se avisa al worker para que la hable. */
+  private vigilarHuerfano(mio: TurnoEnVuelo): void {
+    this.temporizador(() => {
+      void (async () => {
+        if (this.vuelo !== mio || this.cancelado || mio.huerfanoAvisado === true) return;
+        const r = await mio.promesa.catch(() => null);
+        if (r === null || this.vuelo !== mio || this.cancelado || this.turnosActivos > 0 || mio.entregado || mio.huerfanoAvisado === true) return;
+        mio.huerfanoAvisado = true;
+        this.log("voz_turno_pendiente_huerfano");
+        try {
+          this.o.alPendienteHuerfano?.();
+        } catch {
+          // el aviso al worker nunca debe tumbar la llamada
+        }
+      })();
+    }, this.o.huerfanoMs ?? 1500);
+  }
+
+  /** Habla lo retenido (respuesta de un turno abortado sin reemplazo) o el cierre. `null` si ya no hay nada. No manda nada al servidor. */
+  async hablarPendiente(opciones: OpcionesTurno = {}): Promise<ResultadoTurno | null> {
+    const v = this.vuelo;
+    if (v && !v.entregado) {
+      const r = await v.promesa.catch(() => null);
+      if (r && !v.entregado) {
+        v.entregado = true;
+        if (!r.colgar) this.pendientePorHablar.push(r.texto);
+      }
+    }
+    if (this.cierre) return this.devolverCierre(opciones);
+    if (this.pendientePorHablar.length === 0 || opciones.senal?.aborted === true) return null;
+    const lista = [...this.pendientePorHablar];
+    const partes: string[] = [];
+    this.hablarPendientes(lista, { ...opciones, alRespuestaPrevia: (t) => partes.push(t) });
+    this.pendientePorHablar.splice(0, lista.length);
+    for (const h of lista) this.yaDichas.delete(h);
+    return { texto: partes.join(" "), colgar: false, motivo: null, pedidoId: this.pedido, turno: null };
   }
 
   /** Habla las respuestas pendientes (si el turno sigue vivo). Una que ya se empezo a hablar en un turno abortado se repite solo como «como le decia, su total es ...». */

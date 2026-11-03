@@ -17,7 +17,7 @@ import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinP
 import type { EscaleraLlamada, LimitesLlamada, PuertoLlmVoz, VozSesionLlamada } from "@atiende/voice-core";
 import { crearRegistroAviso } from "./registrar-contacto.ts";
 import { CerebroSuelto, SILENCIO_POR_OMISION_MS, VigiaSilencio } from "./cerebro-suelto.ts";
-import { TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
+import { TEXTO_PENDIENTE, TEXTO_SILENCIO } from "./cerebro-voz-turno.ts";
 import type { MotivoCierre } from "./cerebro-voz-turno.ts";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
@@ -254,6 +254,10 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         ahora,
         log: (evento, campos) => log(evento, campos),
         confirmarTelefono: (n) => confirmarTelefonoSuelto?.(n) ?? Promise.resolve({ ok: false }),
+        alPendienteHuerfano: () => {
+          log("pendiente_huerfano");
+          (sesionActual as VozSesionLlamada | null)?.enviarTexto(TEXTO_PENDIENTE);
+        },
         alReabrir: () => {
           // El cliente siguio hablando tras una despedida con pedido: ya no se cuelga (ni por `agenteTermino` ni por el temporizador).
           cierreSuelto = null;
