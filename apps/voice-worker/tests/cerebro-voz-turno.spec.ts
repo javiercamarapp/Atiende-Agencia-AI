@@ -397,3 +397,27 @@ describe("frases de espera desde que el cliente termino de hablar (P2-2)", () =>
   });
 });
 
+
+describe("despedida con pedido (P2-4)", () => {
+  const pedido = (texto: string, id: string | null = "ped_1") => ok(texto, { pedido_id: id });
+  it("el cliente agrego o corrigio algo despues de la confirmacion: NO se cuelga aunque el modelo se despida", async () => {
+    const { cerebro } = crear((p) => (p.cuerpo.seq === 1 ? pedido("Su pedido quedó. ¿Algo más?") : pedido("Claro, agregué una coca. Gracias, buen provecho.")));
+    expect((await cerebro.turno("eso es todo el pedido")).colgar).toBe(false);
+    expect(await cerebro.turno("espera, agrégame una coca")).toMatchObject({ colgar: false, motivo: null });
+  });
+  it("el cliente tambien se despide o agradece: se cuelga", async () => {
+    const { cerebro } = crear((p) => (p.cuerpo.seq === 1 ? pedido("Su pedido quedó. ¿Algo más?") : pedido("Con gusto. Hasta luego.")));
+    await cerebro.turno("sí, eso es todo");
+    expect(await cerebro.turno("no, es todo, muchas gracias")).toMatchObject({ colgar: true, motivo: "despedida_con_pedido" });
+  });
+  it("la respuesta que confirma el pedido y se despide en el mismo turno (sin texto nuevo del cliente despues) sigue colgando", async () => {
+    const { cerebro } = crear(() => pedido("Listo, su pedido quedó. Gracias, buen provecho."));
+    expect(await cerebro.turno("a domicilio")).toMatchObject({ colgar: true, motivo: "despedida_con_pedido" });
+  });
+  it("tras silencio del cliente el modelo puede despedirse y se cuelga", async () => {
+    const { cerebro } = crear((p) => (p.cuerpo.seq === 1 ? pedido("Su pedido quedó. ¿Algo más?") : pedido("Gracias por llamar, hasta luego.")));
+    await cerebro.turno("sí");
+    expect(await cerebro.turno(TEXTO_SILENCIO)).toMatchObject({ colgar: true });
+  });
+});
+

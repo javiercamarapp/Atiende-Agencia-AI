@@ -16,7 +16,7 @@
 //    Cualquier otro 409 (otro telefono, seq fuera de orden) es bug del worker: no se reintenta a ciegas.
 //  - 429: Retry-After <= 5 s = rafaga, se espera y se repite el mismo seq; > 5 s = tope: frase y colgar, SIN reintentar.
 //  - 503: con `fin: true` es el interruptor de emergencia (hablar y colgar); sin el, contador caido: reintento del mismo seq tras Retry-After.
-//  - Frase de relleno si pasan ~4 s sin respuesta y, en esperas largas, otra cada ~15 s (maximo 3 en total). `fin: true` = hablar y colgar. Con `pedido_id` y una despedida del modelo, el worker cuelga el mismo.
+//  - Frase de relleno si pasan ~4 s sin respuesta y, en esperas largas, otra cada ~15 s (maximo 3 en total). `fin: true` = hablar y colgar. Con `pedido_id` y una despedida del modelo, el worker cuelga el mismo, salvo que el cliente haya agregado o corregido algo tras la confirmacion (solo si el cliente tambien se despide).
 //  - Logs solo con codigos, conteos y ms: nunca texto del cliente, telefono ni respuesta del servidor.
 
 export const TEXTO_SILENCIO = "[silencio]";
@@ -136,6 +136,18 @@ const DESPEDIDA_RE = /\b(hasta luego|hasta pronto|buen(?:a|as|os)?\s+(?:d[ií]a|
 
 export function esDespedida(texto: string): boolean {
   return !/[?¿]/.test(texto) && DESPEDIDA_RE.test(texto);
+}
+
+const PALABRAS_CIERRE_CLIENTE = new Set(
+  ("gracias muchas muchisimas mil no si ok okey okay vale listo perfecto excelente genial muy bien es eso todo nada mas ya hasta luego pronto adios bye chao bueno buenas buenos dias tardes noches buen dia tarde noche " +
+    "igualmente igual de por favor gusto amable entonces correcto asi esta estamos sale claro entendido que le vaya tenga provecho su atencion servicio gran").split(" "),
+);
+
+/** El ultimo mensaje del cliente es solo cierre o agradecimiento («no, es todo, gracias»), o ni siquiera hablo (`[silencio]`): ninguna palabra pide, agrega ni corrige algo. */
+export function esCierreCliente(texto: string): boolean {
+  if (texto.trim() === TEXTO_SILENCIO) return true;
+  const palabras = texto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((p) => p !== "");
+  return palabras.length > 0 && palabras.length <= 10 && palabras.every((p) => PALABRAS_CIERRE_CLIENTE.has(p));
 }
 
 type Intento =
@@ -423,7 +435,7 @@ export class CerebroVozTurno {
     let timeoutProximo = this.o.timeoutMs ?? 35_000;
     for (let intento = 1; ; intento += 1) {
       const r = await this.intentar(seq, texto, timeoutProximo, avisoDado);
-      if (r.tipo === "ok") return this.aceptar(seq, r.cuerpo);
+      if (r.tipo === "ok") return this.aceptar(seq, r.cuerpo, texto);
 
       if (r.tipo === "red") {
         this.log("voz_turno_fallo", { codigo: r.codigo, intento });
@@ -482,7 +494,7 @@ export class CerebroVozTurno {
     }
   }
 
-  private aceptar(seq: number, cuerpo: Record<string, unknown>): ResultadoTurno {
+  private aceptar(seq: number, cuerpo: Record<string, unknown>, textoCliente: string): ResultadoTurno {
     if (seq === 0) {
       this.abierta = true;
       // Apertura repetida (reconexion del worker): se continua desde el ultimo seq que proceso el servidor.
@@ -491,10 +503,13 @@ export class CerebroVozTurno {
     this.abierta = true;
     const texto = typeof cuerpo.texto === "string" && cuerpo.texto.trim() !== "" ? cuerpo.texto : "Disculpe, ¿me lo puede repetir?";
     const pedidoId = typeof cuerpo.pedido_id === "string" && cuerpo.pedido_id !== "" ? cuerpo.pedido_id : null;
+    // Este turno acaba de crear (o cambiar) el pedido: la despedida es de la confirmacion misma, no una respuesta a algo nuevo que dijo el cliente.
+    const confirmaAhora = pedidoId !== null && pedidoId !== this.pedido;
     if (pedidoId !== null) this.pedido = pedidoId;
     const turno = typeof cuerpo.turno === "number" && Number.isFinite(cuerpo.turno) ? cuerpo.turno : null;
     if (cuerpo.fin === true) return this.cerrarConFrase(texto, "fin_servidor", turno);
-    if (this.pedido !== null && esDespedida(texto)) return this.cerrarConFrase(texto, "despedida_con_pedido", turno);
+    // Con pedido y despedida del modelo se cuelga, pero solo si el cliente tambien se despide (o no dijo nada nuevo tras la confirmacion): si agrego o corrigio algo, la llamada sigue.
+    if (this.pedido !== null && esDespedida(texto) && (confirmaAhora || esCierreCliente(textoCliente))) return this.cerrarConFrase(texto, "despedida_con_pedido", turno);
     return { texto, colgar: false, motivo: null, pedidoId: this.pedido, turno };
   }
 }
