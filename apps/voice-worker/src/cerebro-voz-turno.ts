@@ -190,6 +190,16 @@ function unirTextos(antes: string, ahora: string): string {
   return t.length > MAX_TEXTO_CLIENTE ? t.slice(t.length - MAX_TEXTO_CLIENTE) : t;
 }
 
+/** Repeticion breve de algo que el cliente ya empezo a oir: las oraciones con cifras o total («como le decia, su total es 100 pesos»); si no hay, la primera. */
+export function versionCortaDePendiente(texto: string): string {
+  const oraciones = texto.split(/(?<=[.!?])\s+/).map((o) => o.trim()).filter((o) => o !== "" && !/[?¿]/.test(o));
+  const clave = oraciones.filter((o) => /\d|total|\$/i.test(o));
+  const elegidas = clave.length > 0 ? clave : oraciones.slice(0, 1);
+  const cuerpo = elegidas.join(" ");
+  if (cuerpo === "") return FRASE_CIERRE_CORTA;
+  return `Como le decía, ${cuerpo.charAt(0).toLowerCase()}${cuerpo.slice(1)}`;
+}
+
 export class CerebroVozTurno {
   private telefono: string | null;
   private readonly callId: string;
@@ -204,6 +214,8 @@ export class CerebroVozTurno {
   private vuelo: TurnoEnVuelo | null = null;
   /** Respuestas de turnos anteriores que el cliente no alcanzo a oir: las habla, en orden, el primer turno no abortado. */
   private readonly pendientePorHablar: string[] = [];
+  /** Pendientes que ya se hablaron (o se empezaron a hablar) en un turno que luego se aborto: la segunda vez van en version corta, no completos. */
+  private readonly yaDichas = new Set<string>();
   /** Texto de turnos abortados que no llegaron a enviarse: viaja junto con el del siguiente. */
   private textoDiferido = "";
   /** Turnos esperando detras de uno en vuelo y aun sin enviar (maximo `MAX_COLA_TURNOS`). */
@@ -316,13 +328,14 @@ export class CerebroVozTurno {
       }
       const vivo = (): boolean => opciones.senal?.aborted !== true;
       const hablar = vivo() ? [...this.pendientePorHablar] : [];
-      for (const previa of hablar) opciones.alRespuestaPrevia?.(previa);
+      this.hablarPendientes(hablar, opciones);
       const diferido = this.textoDiferido;
       this.textoDiferido = "";
       const total = diferido !== "" && texto === TEXTO_SILENCIO ? diferido : unirTextos(diferido, texto);
       const r = await this.pedir(seq ?? this.asignarSeq(), total, opciones, espera.alEnProceso);
       if (vivo()) {
         this.pendientePorHablar.splice(0, hablar.length);
+        for (const h of hablar) this.yaDichas.delete(h);
         mio.entregado = true;
         if (r.colgar) this.cierreEntregado = true;
       }
@@ -365,13 +378,26 @@ export class CerebroVozTurno {
     return true;
   }
 
+  /** Habla las respuestas pendientes (si el turno sigue vivo). Una que ya se empezo a hablar en un turno abortado se repite solo como «como le decia, su total es ...». */
+  private hablarPendientes(lista: readonly string[], opciones: OpcionesTurno): void {
+    if (opciones.senal?.aborted === true) return;
+    for (const previa of lista) {
+      if (this.yaDichas.has(previa)) opciones.alRespuestaPrevia?.(versionCortaDePendiente(previa));
+      else {
+        this.yaDichas.add(previa);
+        opciones.alRespuestaPrevia?.(previa);
+      }
+    }
+  }
+
   /** Hay un cierre: se habla (si nadie lo oyo) y no se manda nada mas. Antes se hablan las respuestas pendientes. */
   private devolverCierre(opciones: OpcionesTurno): Promise<ResultadoTurno> {
     const cierre = this.cierre!;
     const vivo = opciones.senal?.aborted !== true;
     if (vivo) {
-      for (const previa of this.pendientePorHablar) opciones.alRespuestaPrevia?.(previa);
+      this.hablarPendientes([...this.pendientePorHablar], opciones);
       this.pendientePorHablar.length = 0;
+      this.yaDichas.clear();
     }
     // La despedida completa se dice una sola vez; si el cliente la interrumpio, la segunda vez solo la version corta. Si nadie la oyo (turno abortado), aun va completa.
     const texto = this.cierreEntregado ? FRASE_CIERRE_CORTA : cierre.texto;

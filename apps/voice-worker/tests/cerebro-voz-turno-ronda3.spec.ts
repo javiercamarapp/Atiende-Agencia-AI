@@ -2,7 +2,7 @@
 // La `sesion` imita el patron real de SesionCascadaV2: un final nuevo aborta el turno anterior y los turnos corren encadenados.
 import { describe, expect, it } from "vitest";
 import { CerebroSuelto } from "../src/cerebro-suelto.ts";
-import { CerebroVozTurno } from "../src/cerebro-voz-turno.ts";
+import { CerebroVozTurno, versionCortaDePendiente } from "../src/cerebro-voz-turno.ts";
 
 const dormir = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -129,5 +129,35 @@ describe("union de textos de turnos abortados (P3)", () => {
     s2.final("de bistec");
     await s2.fin();
     expect(otro.peticiones.map((p) => p.texto)).toEqual(["uno", "dos tacos. de bistec"]);
+  });
+});
+
+describe("pendiente hablado y luego abortado no se repite completo (P2-3)", () => {
+  it("la segunda vez que se habla el mismo pendiente va en version corta («como le decia, su total es ...»)", async () => {
+    const { cerebro } = crear(async (p) => {
+      if (p.seq === 1) { await dormir(25); return { texto: "Su total es 100 pesos. Le anoto dos tacos de bistec con todo. ¿Algo más?", turno: 1 }; }
+      if (p.seq === 2) { await dormir(80); return { texto: "Listo, anotado.", turno: 2 }; }
+      return { texto: "Perfecto.", turno: 3 };
+    });
+    const ctlA = new AbortController();
+    const pA = cerebro.turno("uno", { senal: ctlA.signal }).catch(() => "abort");
+    await dormir(2);
+    ctlA.abort();
+    await pA;
+    const habladoB: string[] = [];
+    const ctlB = new AbortController();
+    const pB = cerebro.turno("dos", { senal: ctlB.signal, alRespuestaPrevia: (t) => habladoB.push(t) }).catch(() => "abort");
+    await dormir(50);
+    expect(habladoB).toEqual(["Su total es 100 pesos. Le anoto dos tacos de bistec con todo. ¿Algo más?"]);
+    ctlB.abort();
+    await pB;
+    const habladoC: string[] = [];
+    const rC = await cerebro.turno("tres", { alRespuestaPrevia: (t) => habladoC.push(t) });
+    expect(rC.texto).toBe("Perfecto.");
+    expect(habladoC).toEqual(["Como le decía, su total es 100 pesos.", "Listo, anotado."]);
+  });
+  it("versionCortaDePendiente conserva las oraciones con cifras y descarta las preguntas", () => {
+    expect(versionCortaDePendiente("Anotado. Su total es 85 pesos. ¿Algo más?")).toBe("Como le decía, su total es 85 pesos.");
+    expect(versionCortaDePendiente("Claro que sí. ¿Algo más?")).toBe("Como le decía, claro que sí.");
   });
 });
