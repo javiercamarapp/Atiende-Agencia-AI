@@ -320,7 +320,7 @@ describe("cola de respuestas sin oir (P1) y turnos obsoletos (P2-1)", () => {
     expect(hablado).toEqual(["Su pedido quedó. El total es 250 pesos."]);
     expect(r.texto).toBe("resp2");
     // Los dos turnos abortados que no alcanzaron a enviarse viajan juntos con el sano: UN solo turno, no tres.
-    expect(vistas).toEqual([{ seq: 1, texto: "confirmo" }, { seq: 2, texto: "¿bueno? espere sí, gracias" }]);
+    expect(vistas).toEqual([{ seq: 1, texto: "confirmo" }, { seq: 2, texto: "¿bueno? espere. sí, gracias" }]);
   });
 
   it("un turno abortado que SI se envio (era el mas reciente): su respuesta no se pierde, la habla el siguiente turno sano en orden", async () => {
@@ -357,7 +357,7 @@ describe("cola de respuestas sin oir (P1) y turnos obsoletos (P2-1)", () => {
     const ultimo = await espera[4]!;
     expect(ultimo.texto).toBe("resp4");
     // Solo 3 turnos pueden esperar (cuatro, cinco, seis): "dos" y "tres", los mas viejos, no viajan aparte; se juntan con el siguiente.
-    expect(vistas).toEqual([{ seq: 1, texto: "uno" }, { seq: 2, texto: "dos tres cuatro" }, { seq: 3, texto: "cinco" }, { seq: 4, texto: "seis" }]);
+    expect(vistas).toEqual([{ seq: 1, texto: "uno" }, { seq: 2, texto: "dos. tres. cuatro" }, { seq: 3, texto: "cinco" }, { seq: 4, texto: "seis" }]);
   });
 
   it("al colgar (cancelarPendientes) el turno en cola no se envia; el ya enviado termina", async () => {
