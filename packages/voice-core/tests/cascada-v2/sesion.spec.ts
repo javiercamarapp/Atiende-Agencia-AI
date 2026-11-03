@@ -593,6 +593,37 @@ describe("respuesta vacia (el razonamiento agoto el tope: finish_reason length)"
   });
 });
 
+describe("turno interno sin habla (sinHabla)", () => {
+  const sinHabla = async () => ({ texto: "", sinHabla: true });
+
+  it("el puerto declara sinHabla: no reintenta, no dice la frase de respaldo y retira el mensaje interno del historial", async () => {
+    const llm = llmFalso([sinHabla, escribe(["Claro, digame."])]);
+    const { stt, tts, sesion, eventos, inactivo } = await armar(llm);
+    sesion.enviarTexto("(aviso interno)");
+    await inactivo();
+    expect(llm.peticiones).toHaveLength(1);
+    expect(tts.frases).toEqual([]);
+    expect(dice(eventos)).toEqual([]);
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(llm.peticiones[1]!.mensajes).toEqual([{ role: "user", content: "hola" }]);
+  });
+
+  it("si el turno fue interrumpido antes de procesar sinHabla, el mensaje interno tambien se retira (nunca dos user seguidos)", async () => {
+    const c = compuerta();
+    const llm = llmFalso([async () => { await c.promesa; return { texto: "", sinHabla: true }; }, escribe(["Claro, digame."])]);
+    const { stt, sesion, inactivo } = await armar(llm);
+    sesion.enviarTexto("(aviso interno)");
+    await turnoMicrotareas(40);
+    sesion.interrumpir();
+    c.abrir();
+    await inactivo();
+    stt.eventos!.turnoFinal("hola");
+    await inactivo();
+    expect(llm.peticiones[1]!.mensajes).toEqual([{ role: "user", content: "hola" }]);
+  });
+});
+
 describe("herramientas e interrupciones", () => {
   const dos = async (_p: unknown, texto: (d: string) => void) => {
     texto("Le leo el resumen. ");
