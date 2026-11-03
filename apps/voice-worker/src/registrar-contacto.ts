@@ -1,9 +1,10 @@
 // Aviso de «devolver la llamada» cuando el CEREBRO SUELTO falla y el worker le dice al cliente que una persona le devolvera la llamada (error tecnico, presupuesto 409 agotado,
 // 400/401/409 de bug). Sin esto nadie queda avisado: el servidor solo registra el aviso en sus propios cierres (tope, dos fallos del modelo). Usa el endpoint suelto
-// `registrar-contacto` del repo atiende-restaurantes (CONTRATO-HERRAMIENTAS.md): POST con `x-atiende-tool-secret`, motivo de lista cerrada (`otro`), `conversation_id` = call_id
+// `registrar-contacto` del repo atiende-restaurantes (CONTRATO-HERRAMIENTAS.md): POST con `x-atiende-tool-secret`, motivo de lista cerrada (`otro`), `conversation_id` = call_id normalizado (el mismo que viaja a voz-turno)
 // (idempotente por conversacion + motivo + hash del mensaje) y el telefono confirmado de la llamada.
 //
 // Nunca bloquea el colgado (se llama sin await y tiene su propio tiempo maximo), nunca lanza, y los logs llevan solo codigos: ni telefono, ni secreto, ni texto.
+import { normalizarCallId } from "./cerebro-voz-turno.ts";
 import type { AvisoPerdido } from "./cerebro-voz-turno.ts";
 
 export interface OpcionesRegistroAviso {
@@ -44,7 +45,7 @@ export function crearRegistroAviso(o: OpcionesRegistroAviso): RegistroAviso {
           customer_name: "Cliente de llamada",
           customer_phone: aviso.telefono,
           motivo: "otro",
-          conversation_id: o.callId,
+          conversation_id: normalizarCallId(o.callId),
           message: `Llamada no atendida por falla del asistente de voz (${aviso.causa}). Devolver la llamada.`,
         }),
         signal: limite.signal,

@@ -1,6 +1,6 @@
 // Aviso de «devolver la llamada» cuando el cerebro suelto cuelga por una falla: cliente de `registrar-contacto` y su cableado con CerebroVozTurno (fetch falso, sin red).
 import { describe, expect, it } from "vitest";
-import { CerebroVozTurno } from "../src/cerebro-voz-turno.ts";
+import { CerebroVozTurno, normalizarCallId } from "../src/cerebro-voz-turno.ts";
 import type { AvisoPerdido } from "../src/cerebro-voz-turno.ts";
 import { crearRegistroAviso, urlRegistrarContactoDe } from "../src/registrar-contacto.ts";
 
@@ -30,6 +30,15 @@ describe("registrar-contacto: aviso de devolver la llamada", () => {
     expect(llamadas[0]!.secreto).toBe("tool-secreto");
     expect(llamadas[0]!.cuerpo).toMatchObject({ customer_phone: "9991234567", motivo: "otro", conversation_id: "CA_aviso_0001" });
     expect(typeof llamadas[0]!.cuerpo.customer_name).toBe("string");
+  });
+
+  it("conversation_id usa el call_id NORMALIZADO, el mismo que viaja a voz-turno (id corto o con caracteres raros)", async () => {
+    for (const crudo of ["ab1", "sala/1 x"]) {
+      const { fetchFn, llamadas } = fetchRegistro([200]);
+      await crearRegistroAviso({ url: "https://x.invalid/functions/v1/registrar-contacto", secreto: "s", callId: crudo, fetchFn }).registrar(aviso);
+      expect(llamadas[0]!.cuerpo.conversation_id).toBe(normalizarCallId(crudo));
+      expect(llamadas[0]!.cuerpo.conversation_id).toMatch(/^[A-Za-z0-9_.:-]{6,128}$/);
+    }
   });
 
   it("401: no reintenta y deja un evento propio de configuracion rota (sin secretos en el log)", async () => {
