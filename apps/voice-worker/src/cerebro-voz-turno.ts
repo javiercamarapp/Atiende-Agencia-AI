@@ -5,8 +5,9 @@
 //   apertura = seq 0 con texto vacio; turnos = seq 1..n; `[silencio]` cuando el cliente no habla; respuesta {texto, pedido_id, fin, turno, seq_ultimo?}
 //
 // Reglas que implementa este modulo (todo con fetch, reloj y esperas INYECTADOS para probarlo sin red ni tiempo real):
-//  - `seq` por llamada: se asigna al EMPEZAR cada turno y se mantiene en todos sus reintentos. Un turno que se aborta (el cliente interrumpe) ya gasto su seq: el siguiente
-//    usa seq + 1 (el servidor acepta saltos; si el turno viejo sigue "en proceso" responde 409 y se espera). Una apertura repetida (`seq_ultimo`) reanuda desde seq_ultimo + 1.
+//  - `seq` por llamada: se asigna al EMPEZAR cada turno y se mantiene en todos sus reintentos. Un barge-in NO aborta la peticion HTTP en vuelo (el servidor la sigue procesando
+//    y puede haber creado el pedido): solo se deja de ESPERARLA. El texto nuevo espera la respuesta del turno k, la habla (`alRespuestaPrevia`) y recien despues se manda como
+//    k + 1; asi no hay un 409 por turno en proceso ni se pierde el total/la confirmacion. Una apertura repetida (`seq_ultimo`) reanuda desde seq_ultimo + 1.
 //  - 5xx / red / tiempo agotado: UN reintento del MISMO seq (idempotente en el servidor); si falla otra vez, frase tecnica y colgar.
 //  - 409 "en proceso" / "se adelanto": frase de espera una sola vez y reintento del MISMO seq cada 2 s hasta 60 s; agotado: "una persona le devolvera la llamada" y colgar.
 //    Cualquier otro 409 (otro telefono, seq fuera de orden) es bug del worker: no se reintenta a ciegas.
@@ -44,6 +45,8 @@ export interface OpcionesTurno {
   readonly senal?: AbortSignal;
   /** Frase que hay que decir YA mientras se espera al servidor (relleno a los ~3 s o 409 "en proceso"). Una vez por turno. */
   readonly alEspera?: (frase: string) => void;
+  /** Respuesta de un turno anterior que el cliente no alcanzo a oir (se interrumpio mientras el servidor aun procesaba): hay que hablarla ANTES de la respuesta de este turno. */
+  readonly alRespuestaPrevia?: (texto: string) => void;
 }
 
 export interface OpcionesCerebroVozTurno {
@@ -129,7 +132,11 @@ export class CerebroVozTurno {
   private abierta = false;
   private cierre: ResultadoTurno | null = null;
   private pedido: string | null = null;
-  private enCurso = false;
+  /** Turnos que esperan al servidor (propios o encolados detras de uno en vuelo); `ocupado` = hay alguno. */
+  private turnosActivos = 0;
+  private idTurno = 0;
+  /** Ultimo turno lanzado: su peticion sigue aunque el cliente se haya interrumpido. */
+  private vuelo: { readonly id: number; readonly promesa: Promise<ResultadoTurno>; entregado: boolean } | null = null;
   private readonly fetchFn: typeof fetch;
   private readonly esperar: NonNullable<OpcionesCerebroVozTurno["esperar"]>;
   private readonly temporizador: NonNullable<OpcionesCerebroVozTurno["temporizador"]>;
@@ -149,7 +156,7 @@ export class CerebroVozTurno {
   }
   /** Hay un turno esperando al servidor (la vigilancia de silencio no debe mandar `[silencio]` mientras tanto). */
   get ocupado(): boolean {
-    return this.enCurso;
+    return this.turnosActivos > 0;
   }
   get cerrada(): boolean {
     return this.cierre !== null;
@@ -178,40 +185,81 @@ export class CerebroVozTurno {
 
   /** Apertura (seq 0, texto vacio): saludo con el aviso de privacidad. Si la llamada ya empezo (reconexion) el servidor trae `seq_ultimo` y se continua desde ahi. */
   apertura(opciones: OpcionesTurno = {}): Promise<ResultadoTurno> {
-    return this.ejecutar(0, "", opciones);
+    return this.lanzar(0, "", opciones);
   }
 
   /** Un turno con lo que dijo el cliente (o `[silencio]`). */
   turno(texto: string, opciones: OpcionesTurno = {}): Promise<ResultadoTurno> {
     const seq = this.proximoSeq;
     this.proximoSeq += 1;
-    return this.ejecutar(seq, texto.slice(0, MAX_TEXTO_CLIENTE), opciones);
+    return this.lanzar(seq, texto.slice(0, MAX_TEXTO_CLIENTE), opciones);
   }
 
-  private async ejecutar(seq: number, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
-    if (this.cierre) return { ...this.cierre, turno: null };
-    if (this.telefono === null) throw new Error("voz-turno: falta el telefono confirmado");
-    this.enCurso = true;
+  /**
+   * Lanza el turno `seq` y devuelve su resultado. La peticion corre DESACOPLADA de `opciones.senal`: si el cliente interrumpe, esta promesa rechaza con AbortError pero la
+   * peticion sigue y su respuesta queda guardada; el siguiente turno la espera, la habla (`alRespuestaPrevia`) y solo entonces manda su propio texto.
+   */
+  private lanzar(seq: number, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
+    if (this.cierre) return Promise.resolve({ ...this.cierre, turno: null });
+    if (this.telefono === null) return Promise.reject(new Error("voz-turno: falta el telefono confirmado"));
+    const previo = this.vuelo;
+    const mio: { id: number; promesa: Promise<ResultadoTurno>; entregado: boolean } = { id: (this.idTurno += 1), promesa: Promise.resolve(null as never), entregado: false };
+    this.turnosActivos += 1;
+    const trabajo = (async (): Promise<ResultadoTurno> => {
+      if (previo) {
+        const anterior = await previo.promesa.catch(() => null);
+        if (anterior && !previo.entregado) {
+          // El cliente no alcanzo a oir la respuesta del turno anterior (p. ej. el total o la confirmacion del pedido): se habla ahora.
+          previo.entregado = true;
+          if (anterior.colgar) return anterior;
+          opciones.alRespuestaPrevia?.(anterior.texto);
+        }
+        if (this.cierre) return { ...this.cierre, turno: null };
+      }
+      return this.pedir(seq, texto, opciones);
+    })().finally(() => {
+      this.turnosActivos -= 1;
+    });
+    mio.promesa = trabajo;
+    this.vuelo = mio;
+    return this.esperarConSenal(trabajo, opciones.senal).then((r) => {
+      mio.entregado = true;
+      return r;
+    });
+  }
+
+  /** Espera `p` pero se suelta (AbortError) si `senal` se aborta; `p` NO se cancela. */
+  private esperarConSenal(p: Promise<ResultadoTurno>, senal: AbortSignal | undefined): Promise<ResultadoTurno> {
+    if (!senal) return p;
+    if (senal.aborted) {
+      p.catch(() => undefined);
+      return Promise.reject(new ErrorTurnoAbortado());
+    }
+    return new Promise<ResultadoTurno>((resolver, rechazar) => {
+      const alAbortar = (): void => rechazar(new ErrorTurnoAbortado());
+      senal.addEventListener("abort", alAbortar, { once: true });
+      p.then(resolver, rechazar).finally(() => senal.removeEventListener("abort", alAbortar));
+    });
+  }
+
+  private async pedir(seq: number, texto: string, opciones: OpcionesTurno): Promise<ResultadoTurno> {
     let dichaEspera = false;
     const decirEspera = (): void => {
-      if (dichaEspera) return;
+      if (dichaEspera || opciones.senal?.aborted) return;
       dichaEspera = true;
       opciones.alEspera?.(FRASE_ESPERA);
     };
     const cancelarRelleno = this.temporizador(decirEspera, this.o.rellenoMs ?? 3000);
     try {
-      return await this.pedir(seq, texto, opciones.senal, decirEspera);
+      return await this.reintentar(seq, texto, decirEspera);
     } finally {
       cancelarRelleno();
-      this.enCurso = false;
     }
   }
 
-  private async intentar(seq: number, texto: string, senal: AbortSignal | undefined): Promise<Intento> {
+  /** UNA peticion. Solo la corta su propio tiempo maximo: un barge-in del cliente NO la aborta (el servidor la procesa igual). */
+  private async intentar(seq: number, texto: string): Promise<Intento> {
     const limite = new AbortController();
-    const alAbortar = (): void => limite.abort();
-    senal?.addEventListener("abort", alAbortar, { once: true });
-    if (senal?.aborted) limite.abort();
     const id = setTimeout(() => limite.abort(), this.o.timeoutMs ?? 35_000);
     try {
       const res = await this.fetchFn(this.o.url, {
@@ -233,15 +281,13 @@ export class CerebroVozTurno {
       }
       return { tipo: "http", estado: res.status, cuerpo, retryAfterS: parsearRetryAfter(res.headers.get("retry-after")) };
     } catch {
-      if (senal?.aborted) throw new ErrorTurnoAbortado();
       return { tipo: "red", codigo: limite.signal.aborted ? "tiempo_agotado" : "red" };
     } finally {
       clearTimeout(id);
-      senal?.removeEventListener("abort", alAbortar);
     }
   }
 
-  private async pedir(seq: number, texto: string, senal: AbortSignal | undefined, decirEspera: () => void): Promise<ResultadoTurno> {
+  private async reintentar(seq: number, texto: string, decirEspera: () => void): Promise<ResultadoTurno> {
     const reintentosTecnicos = this.o.reintentosTecnicos ?? 1;
     const reintentosRafaga = this.o.reintentosRafaga ?? 3;
     const presupuesto = this.o.presupuestoEnProcesoMs ?? 60_000;
@@ -250,15 +296,14 @@ export class CerebroVozTurno {
     let rafagas = 0;
     let inicioEnProceso: number | null = null;
     for (let intento = 1; ; intento += 1) {
-      if (senal?.aborted) throw new ErrorTurnoAbortado();
-      const r = await this.intentar(seq, texto, senal);
+      const r = await this.intentar(seq, texto);
       if (r.tipo === "ok") return this.aceptar(seq, r.cuerpo);
 
       if (r.tipo === "red") {
         this.log("voz_turno_fallo", { codigo: r.codigo, intento });
         if (tecnicos >= reintentosTecnicos) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
         tecnicos += 1;
-        await this.esperar(500, senal);
+        await this.esperar(500);
         continue;
       }
 
@@ -269,7 +314,7 @@ export class CerebroVozTurno {
         if (espera > 5) return this.cerrarConFrase(FRASE_TOPE, "tope");
         if (rafagas >= reintentosRafaga) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
         rafagas += 1;
-        await this.esperar(Math.max(espera, 1) * 1000, senal);
+        await this.esperar(Math.max(espera, 1) * 1000);
         continue;
       }
       if (estado === 503) {
@@ -277,7 +322,7 @@ export class CerebroVozTurno {
         if (cuerpo.fin === true) return this.cerrarConFrase(FRASE_APAGADO, "apagado");
         if (rafagas >= reintentosRafaga) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
         rafagas += 1;
-        await this.esperar(Math.max(retryAfterS ?? 3, 1) * 1000, senal);
+        await this.esperar(Math.max(retryAfterS ?? 3, 1) * 1000);
         continue;
       }
       if (estado === 409) {
@@ -289,13 +334,13 @@ export class CerebroVozTurno {
         decirEspera();
         inicioEnProceso ??= this.ahora();
         if (this.ahora() - inicioEnProceso + intervalo > presupuesto) return this.cerrarConFrase(FRASE_DEVOLVER_LLAMADA, "en_proceso_agotado");
-        await this.esperar(intervalo, senal);
+        await this.esperar(intervalo);
         continue;
       }
       if (estado >= 500) {
         if (tecnicos >= reintentosTecnicos) return this.cerrarConFrase(FRASE_PROBLEMA_TECNICO, "error_tecnico");
         tecnicos += 1;
-        await this.esperar(500, senal);
+        await this.esperar(500);
         continue;
       }
       // 400, 401 y cualquier otro: entrada invalida o secreto incorrecto. No se reintenta.

@@ -97,7 +97,9 @@ export class CerebroSuelto {
   private async procesar(texto: string, senal: AbortSignal | undefined, alTexto: ((d: string) => void) | undefined): Promise<ResultadoTurno> {
     const ahora = this.o.ahora ?? (() => Date.now());
     const alEspera = (frase: string): void => alTexto?.(`${frase} `);
-    const opciones = { ...(senal ? { senal } : {}), alEspera };
+    // Barge-in con la peticion anterior aun en vuelo: su respuesta (total, confirmacion del pedido) se habla antes de la de este turno.
+    const alRespuestaPrevia = (previa: string): void => alTexto?.(`${previa} `);
+    const opciones = { ...(senal ? { senal } : {}), alEspera, alRespuestaPrevia };
     let r: ResultadoTurno;
     if (this.colgado) r = this.colgado;
     else if (this.fase === "activa") {
@@ -111,7 +113,7 @@ export class CerebroSuelto {
     return r;
   }
 
-  private async faseTelefono(texto: string, opciones: { senal?: AbortSignal; alEspera: (f: string) => void }): Promise<ResultadoTurno> {
+  private async faseTelefono(texto: string, opciones: { senal?: AbortSignal; alEspera: (f: string) => void; alRespuestaPrevia: (t: string) => void }): Promise<ResultadoTurno> {
     const aviso = this.o.aviso ?? AVISO_GRABACION_POR_OMISION;
     const pre = this.o.preambulo ?? PREAMBULO_POR_OMISION;
     const sigue = (t: string): ResultadoTurno => ({ texto: t, colgar: false, motivo: null, pedidoId: null, turno: null });

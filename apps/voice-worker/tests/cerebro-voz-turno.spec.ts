@@ -1,5 +1,5 @@
 // Cliente de `voz-turno` (cerebro suelto) contra un fetch FALSO que imita al servidor segun CONTRATO-HERRAMIENTAS.md. Sin red, sin tiempo real, sin proveedores.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CerebroVozTurno, FRASE_DEVOLVER_LLAMADA, FRASE_ESPERA, FRASE_PROBLEMA_TECNICO, FRASE_TOPE, TEXTO_SILENCIO, esDespedida } from "../src/cerebro-voz-turno.ts";
 
 interface Peticion { readonly url: string; readonly secreto: string | null; readonly cuerpo: { call_id: string; telefono: string; seq: number; texto: string } }
@@ -126,12 +126,62 @@ describe("cerebro suelto: voz-turno", () => {
     expect(peticiones.map((p) => p.cuerpo.seq)).toEqual([0, 5]);
   });
 
-  it("un turno abortado ya gasto su seq: el siguiente usa seq + 1", async () => {
+  it("barge-in durante un turno lento: NO aborta la peticion; se habla la respuesta de k (pedido) y el texto nuevo va como k+1 sin 409", async () => {
+    // Servidor que imita el contrato: mientras k esta "en proceso", cualquier seq mayor recibe 409.
+    let liberar: (() => void) | null = null;
+    const peticiones: { seq: number; texto: string; abortada: boolean }[] = [];
+    let kTerminado = false;
+    const fetchFn = (async (_u: string, init?: RequestInit) => {
+      const c = JSON.parse(String(init?.body));
+      const reg = { seq: c.seq as number, texto: c.texto as string, abortada: false };
+      peticiones.push(reg);
+      init?.signal?.addEventListener("abort", () => { reg.abortada = true; });
+      if (c.seq === 1) {
+        await new Promise<void>((r) => { liberar = r; });
+        kTerminado = true;
+        return new Response(JSON.stringify({ texto: "Su pedido quedó. El total es 250 pesos.", pedido_id: "ped_9", fin: false, turno: 1 }), { status: 200 });
+      }
+      if (!kTerminado) return new Response(JSON.stringify({ error: "turno en proceso" }), { status: 409 });
+      return new Response(JSON.stringify({ texto: "Sí, aquí estoy.", pedido_id: "ped_9", fin: false, turno: 2 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_barge_0001", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined });
     const control = new AbortController();
-    const { cerebro, peticiones } = crear((_p, n) => { if (n === 1) control.abort(); return n === 1 ? "red" : ok("Ok."); });
-    await expect(cerebro.turno("uno", { senal: control.signal })).rejects.toThrow();
-    await cerebro.turno("dos");
-    expect(peticiones.map((p) => p.cuerpo.seq)).toEqual([1, 2]);
+    const k = cerebro.turno("confirmo el pedido", { senal: control.signal });
+    await vi.waitFor(() => expect(peticiones).toHaveLength(1));
+    control.abort(); // el cliente dice «¿bueno?» y la cascada aborta el turno
+    await expect(k).rejects.toThrow();
+    expect(cerebro.ocupado).toBe(true);
+    const previas: string[] = [];
+    const k1 = cerebro.turno("¿bueno?", { alRespuestaPrevia: (t) => previas.push(t) });
+    await Promise.resolve();
+    expect(peticiones).toHaveLength(1); // k+1 NO sale mientras k esta en vuelo
+    liberar!();
+    const r = await k1;
+    expect(previas).toEqual(["Su pedido quedó. El total es 250 pesos."]);
+    expect(r.texto).toBe("Sí, aquí estoy.");
+    expect(r.pedidoId).toBe("ped_9");
+    expect(peticiones.map((p) => [p.seq, p.texto, p.abortada])).toEqual([[1, "confirmo el pedido", false], [2, "¿bueno?", false]]);
+    expect(cerebro.ocupado).toBe(false);
+  });
+
+  it("barge-in cuando k termina en cierre (fin): se habla el cierre y no se manda k+1", async () => {
+    let liberar: (() => void) | null = null;
+    const vistas: number[] = [];
+    const fetchFn = (async (_u: string, init?: RequestInit) => {
+      vistas.push(JSON.parse(String(init?.body)).seq);
+      await new Promise<void>((r) => { liberar = r; });
+      return new Response(JSON.stringify({ texto: "Hasta luego.", pedido_id: "ped_1", fin: true, turno: 1 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const cerebro = new CerebroVozTurno({ url: "https://e.invalid/voz-turno", secreto: "s", callId: "CA_barge_0002", telefono: "9991234567", fetchFn, esperar: async () => undefined, temporizador: () => () => undefined });
+    const control = new AbortController();
+    const k = cerebro.turno("adiós", { senal: control.signal });
+    await vi.waitFor(() => expect(vistas).toHaveLength(1));
+    control.abort();
+    await expect(k).rejects.toThrow();
+    const k1 = cerebro.turno("¿bueno?");
+    liberar!();
+    expect(await k1).toMatchObject({ texto: "Hasta luego.", colgar: true, motivo: "fin_servidor" });
+    expect(vistas).toEqual([1]);
   });
 
   it("relleno: a los ~3 s sin respuesta se dice la frase de espera (una sola vez)", async () => {
