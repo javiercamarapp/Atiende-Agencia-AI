@@ -144,4 +144,19 @@ describe("config: VOZ_CEREBRO", () => {
   it("valor invalido de VOZ_CEREBRO se reporta", () => {
     expect(cargarConfig({ ...base, VOZ_CEREBRO: "otro" }).motivos.join(" ")).toContain("VOZ_CEREBRO debe ser");
   });
+
+  it("VOZ_TURNO_URL exige https salvo localhost", () => {
+    const con = (url: string) => cargarConfig({ ...base, VOZ_CEREBRO: "suelto", VOZ_TURNO_URL: url, VOZ_TURNO_SECRET: "x", DEEPGRAM_API_KEY: "d" }).motivos.join(" ");
+    expect(con("http://ejemplo.com/functions/v1/voz-turno")).toContain("https");
+    expect(con("http://localhost.evil.com/voz-turno")).toContain("https");
+    expect(con("https://ejemplo.com/functions/v1/voz-turno")).not.toContain("VOZ_TURNO_URL");
+    expect(con("http://localhost:54321/functions/v1/voz-turno")).not.toContain("VOZ_TURNO_URL");
+    expect(con("http://127.0.0.1:54321/functions/v1/voz-turno")).not.toContain("VOZ_TURNO_URL");
+  });
+
+  it("registrar-contacto: se arma solo con VOICE_TOOL_SECRET y la URL se deriva de voz-turno", () => {
+    const e = { ...base, VOZ_CEREBRO: "suelto", VOZ_TURNO_URL: "https://x.supabase.co/functions/v1/voz-turno", VOZ_TURNO_SECRET: "x", DEEPGRAM_API_KEY: "d" };
+    expect(cargarConfig(e).vozTurno?.registrarContacto).toBeNull();
+    expect(cargarConfig({ ...e, VOICE_TOOL_SECRET: "t" }).vozTurno?.registrarContacto).toEqual({ url: "https://x.supabase.co/functions/v1/registrar-contacto", secreto: "t" });
+  });
 });

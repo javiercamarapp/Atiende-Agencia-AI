@@ -193,7 +193,9 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     const base = sinDiagonalFinal((env.SUPABASE_URL ?? "").trim());
     const url = lleno(env.VOZ_TURNO_URL) ? env.VOZ_TURNO_URL.trim() : base ? `${base}/functions/v1/voz-turno` : "";
     if (!url) motivos.push("VOZ_CEREBRO=suelto: falta VOZ_TURNO_URL (o SUPABASE_URL).");
-    else if (!/^https?:\/\//.test(url)) motivos.push("VOZ_TURNO_URL debe empezar con http:// o https://.");
+    else if (!/^https?:\/\//.test(url)) motivos.push("VOZ_TURNO_URL debe empezar con https:// (http:// solo para localhost).");
+    // El secreto y lo que dice el cliente viajan en esta peticion: https obligatorio, salvo un servidor local de pruebas.
+    else if (/^http:\/\//.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(url)) motivos.push("VOZ_TURNO_URL debe usar https:// (http:// solo para localhost).");
     const secretoTurno = (env.VOZ_TURNO_SECRET ?? "").trim();
     if (!secretoTurno) motivos.push("VOZ_CEREBRO=suelto: falta VOZ_TURNO_SECRET.");
     if (!deepgram) motivos.push("VOZ_CEREBRO=suelto: falta DEEPGRAM_API_KEY (la cascada propia es el unico escalon).");
