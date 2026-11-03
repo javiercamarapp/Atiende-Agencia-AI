@@ -42,6 +42,43 @@ contesta llamadas**: nunca atiende a medias.
 
 Logs solo con `eventoSinPII` (lista cerrada de campos; la llamada se correlaciona por un hash opaco). Nunca se registra texto del cliente, teléfono, nombre ni dirección.
 
+## Cerebro «suelto» (`VOZ_CEREBRO=suelto`)
+
+Por omisión (`VOZ_CEREBRO` ausente o `actual`) nada cambia: Gemini Live / cascada con el LLM y las herramientas de este monorrepo. Con `VOZ_CEREBRO=suelto` el
+CEREBRO es la Edge Function `voz-turno` del repo suelto (atiende-restaurantes): el worker conserva telefonía (LiveKit/Twilio), Deepgram STT/TTS y el puente de audio, pero **no usa
+LLM ni herramientas propias**; manda lo que dijo el cliente y habla lo que regresa el servidor. Contrato: `docs/agente-voz/CONTRATO-HERRAMIENTAS.md` y `RUNBOOK-VOZ.md` del repo suelto.
+Solo corre la cascada propia (escalón `cascada-v2`); Gemini Live y OpenRouter no se usan en este modo.
+
+| Variable | Obligatoria con `suelto` | Qué es |
+|---|---|---|
+| `VOZ_CEREBRO` | no | `actual` (por omisión) o `suelto` |
+| `VOZ_TURNO_URL` | sí (o `SUPABASE_URL`) | URL completa de la función, `${SUPABASE_URL}/functions/v1/voz-turno`. Con solo `SUPABASE_URL` se arma sola |
+| `VOZ_TURNO_SECRET` | sí | Secreto de `voz-turno` (header `x-voz-turno-secret`). Mismo valor que en las variables de la Edge Function; nunca en el repo ni en logs |
+| `DEEPGRAM_API_KEY` | sí | STT y TTS de la cascada propia |
+| `VOZ_TURNO_SILENCIO_MS` | no | Silencio antes de mandar `[silencio]` (3000-30000; por omisión 8000) |
+| `VOZ_TURNO_TIMEOUT_MS` | no | Tiempo máximo de una petición (30000-60000; por omisión 35000; el contrato pide >= 30 s) |
+| `VOICE_TOOL_SECRET` | **sí para operar** (el worker arranca sin él, pero registra la advertencia `config_advertencia` / `voice_tool_secret_ausente`) | Secreto de las herramientas sueltas (header `x-atiende-tool-secret`) para `registrar-contacto`: con él, cuando el worker dice «una persona le devolverá la llamada» por una falla (error técnico, 409 agotado, 400/401/409 de bug, tope por 429 con Retry-After largo) deja el aviso en el servidor. Sin él solo queda el log `aviso_devolver_llamada_no_configurado` y nadie devuelve la llamada. Con número oculto y sin teléfono confirmado no hay a dónde devolver la llamada: el worker dice «por favor vuelva a llamar o escríbanos por WhatsApp» y no registra aviso |
+| `VOZ_REGISTRAR_CONTACTO_URL` | no | URL de `registrar-contacto`; por omisión se deriva de `VOZ_TURNO_URL` (`.../voz-turno` → `.../registrar-contacto`) |
+| `VOZ_AVISO_GRABACION` | no | Aviso de grabación que dice el worker MISMO con número oculto; debe coincidir con `AVISO_VOZ_INICIAL` del servidor |
+
+Qué hace el worker en este modo (`src/cerebro-voz-turno.ts`, `src/cerebro-suelto.ts`):
+
+- `seq` por llamada: apertura `seq 0` con texto vacío (el disparador del saludo se traduce a ella), turnos `1..n`; el mismo `seq` en todos los reintentos de un turno; apertura repetida con `seq_ultimo` continúa desde `seq_ultimo + 1`.
+- 5xx / red / tiempo agotado: un reintento del mismo `seq`; si falla otra vez, «problema técnico, una persona le devolverá la llamada» y cuelga.
+- Barge-in: interrumpir al agente solo corta el audio; la petición HTTP en vuelo **no se aborta** (el servidor la sigue procesando y puede haber creado el pedido). El texto nuevo espera la respuesta del turno anterior, la habla y recién entonces se manda como `seq + 1` (así no hay 409 y el cliente oye el total/la confirmación).
+- 409 «en proceso»: el primero espera 0.7 s y reintenta sin decir nada; luego «Un momento, por favor» y reintento del mismo `seq` cada 2 s hasta 65 s reales (luego «una persona le devolverá la llamada» y cuelga). Otros 409 y 400/401 son bugs: no se reintentan.
+- Cuando se cuelga con «una persona le devolverá la llamada» por una falla, el worker registra el aviso en `registrar-contacto` (motivo `otro`, `conversation_id` = call_id; idempotente y una sola vez por llamada, también en el cierre `tope`, porque el cupo por teléfono no lo registra el servidor; sin bloquear el colgado). Es un aviso `otro` sin sucursal ni alerta inmediata: llega a la bandeja y al cron de avisos. Un 401 de ese endpoint deja el evento `aviso_devolver_llamada_config_rota` (secreto mal configurado). Tras cualquier cierre se cuelga a más tardar 20 s después aunque la síntesis no avise que terminó.
+- 429: `Retry-After` <= 5 s espera y repite; > 5 s dice «Por ahora no puedo atenderle; una persona le devolverá la llamada» y cuelga. 503 con `fin:true` habla y cuelga; 503 sin `fin` reintenta.
+- Relleno «Un momento, por favor» si el servidor tarda ~4 s y, en esperas largas, otra frase cada ~15 s (máximo 3). Tras un tiempo agotado el segundo intento del mismo `seq` espera 20 s. `[silencio]` tras ~8 s sin voz (una vez por episodio; no mientras hay un turno en curso); el servidor decide el «¿sigue ahí?» y el cierre.
+- `fin:true` => hablar y colgar. Con `pedido_id` y una despedida del modelo (sin pregunta), el worker cuelga él mismo. Resultado de la conversación: `pedido_creado` con el `pedido_id`.
+- Número oculto o de la sucursal: el worker dice el aviso de grabación, pide el teléfono, lo repite en grupos y, con el «sí», lo valida (nunca un número puente/sucursal; tampoco uno que empiece con 0 o 1 ni de un solo dígito repetido; la validación es local, no emite token) y **recién entonces** abre (`seq 0`) con `aviso_dado: true` para que el servidor salude corto sin repetir el aviso (si el servidor aún no lo soporta y lo repite, el worker quita el aviso y el preámbulo conocidos). Un `call_id` de menos de 6 caracteres se rellena (`llamada_<id>`) en vez de fallar. Tres fallos o dos silencios: devolver la llamada y colgar.
+- Este modo no guarda la transcripción en la base del worker (vive en `voz_hilos` del servidor, con su retención) ni pide el consentimiento de grabación por su cuenta (lo cubre el aviso). La guardia de «quiero una persona» del worker sigue activa.
+- Logs solo con códigos, conteos y ms (`eventoSinPII`); nunca texto, teléfono ni secreto.
+
+**Costo:** el costo por llamada que calcula el worker (STT/TTS/telefonía) **no incluye el costo del modelo** de `voz-turno`: ese gasto ocurre en el servidor (repo suelto, `voz_hilos` / sus propios contadores y topes de turnos) y no se suma a `costoMicroUsd` del worker ni cuenta contra su tope mensual ni `VOICE_COSTO_MAX_LLAMADA_USD`. Revísalo en el servidor.
+
+Pendiente para una llamada real: cuenta/proyecto de LiveKit y número (Twilio), `DEEPGRAM_API_KEY`, desplegar `voz-turno` y aplicar la migración `voz_hilos` en el Supabase vivo, crear `VOZ_TURNO_SECRET`, desplegar el worker en Fly con estas variables, y probar con llamadas supervisadas. Nada de esto se ha probado contra proveedores reales (solo dobles).
+
 ## Variables de entorno
 
 | Variable | Obligatoria | Qué es |

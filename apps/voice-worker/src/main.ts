@@ -5,7 +5,7 @@ import { OPCIONES_ESCALERA_PM } from "./llamada.ts";
 import { HERRAMIENTAS_VOZ_SOLO_LECTURA, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { SumideroLog } from "@atiende/domain-restaurantes";
 import { ClienteApi } from "./api-cliente.ts";
-import { cargarConfig } from "./config.ts";
+import { advertenciasConfig, cargarConfig } from "./config.ts";
 import { crearPuertoLlmOpenRouter, crearPuertoLlmVozV2 } from "./llm-openrouter.ts";
 import { cargarPregrabados } from "./pregrabados.ts";
 import { crearProveedorTokenVertex } from "./vertex-token.ts";
@@ -19,6 +19,8 @@ async function main(): Promise<void> {
   const base = cargarConfig(process.env);
   const pregrabados = await cargarPregrabados(base.assetsDir);
   const config = cargarConfig(process.env, { pregrabadosFaltantes: pregrabados.faltantes });
+
+  for (const a of advertenciasConfig(config)) logPlano("config_advertencia", { codigo: a.codigo, mensaje: a.mensaje });
 
   let worker: Worker;
   if (config.estado === "configurado" && config.livekit) {
@@ -41,7 +43,11 @@ async function main(): Promise<void> {
         pregrabados: pregrabados.audios,
         api,
         log: sumidero,
-        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, deepgramApiKey: config.deepgramApiKey, cascadaV2Habilitada: config.cascadaV2Habilitada, confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido" }, llm, llmV2, log: sumidero, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
+        ...(config.cerebro === "suelto" && config.vozTurno ? { cerebroSuelto: { url: config.vozTurno.url, secreto: config.vozTurno.secreto, aviso: config.vozTurno.aviso, silencioMs: config.vozTurno.silencioMs, timeoutMs: config.vozTurno.timeoutMs, registrarContacto: config.vozTurno.registrarContacto } } : {}),
+        crearEscalera: (ctx) => ctx?.llmVoz
+          // Cerebro suelto: SOLO la cascada propia (Deepgram STT/TTS) con el puerto de `voz-turno`; sin Gemini Live ni OpenRouter.
+          ? crearEscaleraPlataforma({ geminiApiKey: null, openrouterApiKey: null, deepgramApiKey: config.deepgramApiKey, cascadaV2Habilitada: true, llm: null, llmV2: ctx.llmVoz, log: sumidero }, OPCIONES_ESCALERA_PM)
+          : crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, deepgramApiKey: config.deepgramApiKey, cascadaV2Habilitada: config.cascadaV2Habilitada, confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido" }, llm, llmV2, log: sumidero, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
         ...(config.costoMaxLlamadaMicroUsd !== null ? { limites: { ...LIMITES_VOZ_PM, costoMaxMicroUsd: config.costoMaxLlamadaMicroUsd } } : {}),
       },
     });

@@ -175,7 +175,12 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.stt.enviarAudio(pcm16);
   }
 
-  /** El audio del agente sigue sonando en la linea (estimado: tiempo transcurrido desde el primer audio contra la duracion de lo generado). */
+  /**
+   * El audio del agente sigue sonando en la linea (estimado: tiempo transcurrido desde el primer audio contra la duracion de lo generado).
+   * Limitacion conocida: es una ESTIMACION. Si la linea acumula cola (jitter, backpressure del bombeo) el audio puede seguir sonando cuando el estimado ya vencio;
+   * una interrupcion en esa ventana tardia no corrige el historial (el cliente oyo menos de lo registrado) y no corta la cola. Se acepta: la ventana es corta y
+   * el siguiente turno del cliente aclara lo que no oyo.
+   */
   private reproduciendo(): boolean {
     const a = this.audio;
     return a !== null && a.t0 !== null && this.ahora() < a.t0 + a.totalMs;
@@ -364,7 +369,14 @@ class SesionCascadaV2 implements VozSesionLlamada {
         });
         // El costo se registra SIEMPRE que el proveedor lo reporto, aunque el cliente haya interrumpido mientras tanto (una llamada abortada antes de terminar no trae uso).
         this.registrarLlm(r, modelo, ttft, this.ahora() - t0);
-        if (!vigente()) break;
+        if (!vigente()) {
+          // Turno interno interrumpido que el puerto declaro sin habla: el mensaje interno tampoco debe quedar (si no, el siguiente turno llevaria dos `user` seguidos).
+          if (r.sinHabla === true && r.texto.trim() === "" && r.toolCalls.length === 0) {
+            const ultimo = this.mensajes[this.mensajes.length - 1];
+            if (ultimo?.role === "user" && ultimo.content === texto) this.mensajes.pop();
+          }
+          break;
+        }
         const truncada = r.finishReason === "length" && r.toolCalls.length === 0 && r.texto.trim() !== "";
         // Una respuesta cortada por el tope de tokens termina a media oracion: ese fragmento NO se dice; se cierra con una frase de respaldo.
         const resto = truncada ? (segmentador.vaciar(), null) : segmentador.vaciar();
@@ -377,6 +389,12 @@ class SesionCascadaV2 implements VozSesionLlamada {
           break;
         }
         const sinTexto = r.texto.trim() === "" && resto === null;
+        if (sinTexto && r.toolCalls.length === 0 && r.sinHabla === true) {
+          // Turno interno que el puerto declaro sin habla: no es una respuesta vacia del modelo (ni reintento ni frase de respaldo). Se retira el mensaje interno del historial.
+          const ultimo = this.mensajes[this.mensajes.length - 1];
+          if (ultimo?.role === "user" && ultimo.content === texto) this.mensajes.pop();
+          break;
+        }
         if (sinTexto && r.toolCalls.length === 0) {
           // Respuesta vacia (p. ej. el razonamiento agoto el tope: finish_reason "length"): un reintento; si vuelve vacia, una frase de respaldo. Nunca silencio.
           this.log("v2_respuesta_vacia", { proveedor: modelo, motivo: r.finishReason ?? "desconocido" });

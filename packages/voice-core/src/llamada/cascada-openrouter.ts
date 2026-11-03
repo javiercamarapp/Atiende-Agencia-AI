@@ -55,6 +55,11 @@ export interface RespuestaLlmVoz {
   readonly tokensCache?: number;
   /** Motivo de fin que reporto el proveedor (`stop`, `length`...). `length` con texto vacio = el razonamiento agoto el tope de tokens. */
   readonly finishReason?: string;
+  /**
+   * El puerto marca que este turno NO tiene nada que decir a proposito (turno interno sin habla): la sesion no reintenta ni dice la frase de respaldo, solo termina en silencio.
+   * Sin esta marca (o con `false`) una respuesta vacia se trata como siempre.
+   */
+  readonly sinHabla?: boolean;
 }
 export interface PuertoLlmVoz {
   completar(peticion: PeticionLlmVoz): Promise<RespuestaLlmVoz>;

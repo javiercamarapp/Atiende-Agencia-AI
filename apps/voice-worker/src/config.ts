@@ -1,6 +1,7 @@
 // Configuracion del worker, leida SOLO de variables de entorno. Si falta algo imprescindible el worker arranca en modo NO CONFIGURADO: registra
 // el motivo, responde 503 en /salud y NO contesta llamadas (nunca atiende a medias). Ningun valor secreto se registra ni se devuelve.
 import type { MensajeId } from "@atiende/voice-core";
+import { urlRegistrarContactoDe } from "./registrar-contacto.ts";
 
 export type ModoEntrada = "desborde" | "total" | "prueba";
 export const MODOS_ENTRADA: readonly ModoEntrada[] = ["desborde", "total", "prueba"];
@@ -52,6 +53,10 @@ export interface ConfigWorker {
   readonly assetsDir: string;
   readonly puertoSalud: number;
   readonly zonaHoraria: string;
+  /** `VOZ_CEREBRO`: `actual` (LLM y herramientas propias; por omision) o `suelto` (el cerebro es la Edge Function `voz-turno` del repo suelto). */
+  readonly cerebro: "actual" | "suelto";
+  /** Solo con `cerebro = suelto`: URL de `voz-turno`, su secreto (`VOZ_TURNO_SECRET`, nunca se registra), aviso de grabacion del worker y silencio (ms) antes de mandar `[silencio]`. `registrarContacto` (opcional: `VOICE_TOOL_SECRET` + URL derivada o `VOZ_REGISTRAR_CONTACTO_URL`) deja el aviso de devolver la llamada cuando el worker cuelga por una falla. */
+  readonly vozTurno: { readonly url: string; readonly secreto: string; readonly aviso: string | null; readonly silencioMs: number; readonly timeoutMs: number; readonly registrarContacto: { readonly url: string; readonly secreto: string } | null } | null;
 }
 
 /** Numero marcado en una forma canonica comparable: solo digitos, ultimos 10 (el plan de numeracion mexicano: 52 + 10 digitos). */
@@ -180,7 +185,44 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   } else if (backendCrudo !== "api") {
     motivos.push("GEMINI_BACKEND debe ser api o vertex.");
   }
-  if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
+  const cerebroCrudo = lleno(env.VOZ_CEREBRO) ? env.VOZ_CEREBRO.trim().toLowerCase() : "actual";
+  if (cerebroCrudo !== "actual" && cerebroCrudo !== "suelto") motivos.push("VOZ_CEREBRO debe ser actual o suelto.");
+  const cerebro: "actual" | "suelto" = cerebroCrudo === "suelto" ? "suelto" : "actual";
+  let vozTurno: ConfigWorker["vozTurno"] = null;
+  if (cerebro === "suelto") {
+    const base = sinDiagonalFinal((env.SUPABASE_URL ?? "").trim());
+    const url = lleno(env.VOZ_TURNO_URL) ? env.VOZ_TURNO_URL.trim() : base ? `${base}/functions/v1/voz-turno` : "";
+    if (!url) motivos.push("VOZ_CEREBRO=suelto: falta VOZ_TURNO_URL (o SUPABASE_URL).");
+    else if (!/^https?:\/\//.test(url)) motivos.push("VOZ_TURNO_URL debe empezar con https:// (http:// solo para localhost).");
+    // El secreto y lo que dice el cliente viajan en esta peticion: https obligatorio, salvo un servidor local de pruebas.
+    else if (/^http:\/\//.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(url)) motivos.push("VOZ_TURNO_URL debe usar https:// (http:// solo para localhost).");
+    const secretoTurno = (env.VOZ_TURNO_SECRET ?? "").trim();
+    if (!secretoTurno) motivos.push("VOZ_CEREBRO=suelto: falta VOZ_TURNO_SECRET.");
+    if (!deepgram) motivos.push("VOZ_CEREBRO=suelto: falta DEEPGRAM_API_KEY (la cascada propia es el unico escalon).");
+    let silencioMs = 8000;
+    if (lleno(env.VOZ_TURNO_SILENCIO_MS)) {
+      const ms = Number(env.VOZ_TURNO_SILENCIO_MS);
+      if (!Number.isInteger(ms) || ms < 3000 || ms > 30000) motivos.push("VOZ_TURNO_SILENCIO_MS debe ser un entero entre 3000 y 30000.");
+      else silencioMs = ms;
+    }
+    let timeoutMs = 35000;
+    if (lleno(env.VOZ_TURNO_TIMEOUT_MS)) {
+      const ms = Number(env.VOZ_TURNO_TIMEOUT_MS);
+      if (!Number.isInteger(ms) || ms < 30000 || ms > 60000) motivos.push("VOZ_TURNO_TIMEOUT_MS debe ser un entero entre 30000 y 60000 (el contrato pide >= 30 s).");
+      else timeoutMs = ms;
+    }
+    const secretoHerramientas = (env.VOICE_TOOL_SECRET ?? "").trim();
+    let urlRegistrar = lleno(env.VOZ_REGISTRAR_CONTACTO_URL) ? env.VOZ_REGISTRAR_CONTACTO_URL.trim() : urlRegistrarContactoDe(url);
+    // El secreto de herramientas viaja en esta peticion: mismo https obligatorio que voz-turno. Y si hay secreto pero no hay a donde mandar el aviso, se falla al arrancar (no en plena falla).
+    if (urlRegistrar && !/^https:\/\//i.test(urlRegistrar) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(urlRegistrar)) {
+      motivos.push("VOZ_REGISTRAR_CONTACTO_URL debe usar https:// (http:// solo para localhost).");
+      urlRegistrar = null;
+    } else if (secretoHerramientas && !urlRegistrar) {
+      motivos.push("VOICE_TOOL_SECRET sin destino: VOZ_TURNO_URL no termina en /voz-turno, define VOZ_REGISTRAR_CONTACTO_URL (o quita VOICE_TOOL_SECRET).");
+    }
+    const registrarContacto = secretoHerramientas && urlRegistrar ? { url: urlRegistrar, secreto: secretoHerramientas } : null;
+    if (url && secretoTurno) vozTurno = { url, secreto: secretoTurno, aviso: lleno(env.VOZ_AVISO_GRABACION) ? env.VOZ_AVISO_GRABACION.trim() : null, silencioMs, timeoutMs, registrarContacto };
+  } else if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");
   const vad: { silencioFinMs?: number; sensibilidadFin?: "END_SENSITIVITY_HIGH" | "END_SENSITIVITY_LOW" | null } = {};
   if (lleno(env.VOICE_VAD_SILENCIO_MS)) {
     const ms = Number(env.VOICE_VAD_SILENCIO_MS);
@@ -229,6 +271,8 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     topeMensualPlataformaMicroUsd: tope,
     assetsDir: lleno(env.VOICE_ASSETS_DIR) ? env.VOICE_ASSETS_DIR.trim() : "assets",
     puertoSalud: Number.isInteger(puerto) && puerto > 0 && puerto < 65536 ? puerto : 8080,
+    cerebro,
+    vozTurno,
     zonaHoraria: lleno(env.VOICE_TIMEZONE) ? env.VOICE_TIMEZONE.trim() : "America/Merida",
   };
 }
@@ -251,4 +295,16 @@ export function franjaDeHora(hora: number): "manana" | "tarde" | "noche" {
   if (hora >= 5 && hora < 12) return "manana";
   if (hora >= 12 && hora < 19) return "tarde";
   return "noche";
+}
+
+/** Advertencias que NO impiden arrancar (la config es valida) pero dejan un hueco operativo. Solo con `VOZ_CEREBRO=suelto`; con `actual` no hay ninguna. Sin valores de secretos. */
+export function advertenciasConfig(config: Pick<ConfigWorker, "cerebro" | "vozTurno">): { readonly codigo: string; readonly mensaje: string }[] {
+  const avisos: { codigo: string; mensaje: string }[] = [];
+  if (config.cerebro === "suelto" && config.vozTurno && config.vozTurno.registrarContacto === null) {
+    avisos.push({
+      codigo: "voice_tool_secret_ausente",
+      mensaje: "VOZ_CEREBRO=suelto sin VOICE_TOOL_SECRET: cuando una falla deje al cliente con «una persona le devolvera la llamada» NO se registrara el aviso y nadie devolvera la llamada. Es obligatoria para operar.",
+    });
+  }
+  return avisos;
 }

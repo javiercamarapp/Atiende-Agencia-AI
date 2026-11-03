@@ -6,7 +6,7 @@ import { DISPARADOR_SALUDO } from "../src/llamada.ts";
 import { cargarConfig, normalizarNumero } from "../src/config.ts";
 import type { EntradaDnis } from "../src/config.ts";
 import { infoDeParticipanteSip } from "../src/telefonia/sip-atributos.ts";
-import { INSTRUCCION_TELEFONO_NO_CONFIABLE, TOOL_CONFIRMAR_TELEFONO, numerosDeCabeceraDesvio, resolverTelefonoLlamante } from "../src/telefono-llamante.ts";
+import { INSTRUCCION_TELEFONO_NO_CONFIABLE, TOOL_CONFIRMAR_TELEFONO, numerosDeCabeceraDesvio, resolverTelefonoLlamante, telefonoDictadoPlausible } from "../src/telefono-llamante.ts";
 import { AgenteGuionado } from "./support/agente-guionado.ts";
 import { escenario } from "./support/escenario.ts";
 import { turnoCliente } from "./support/llamada.ts";
@@ -234,6 +234,19 @@ describe("de punta a punta: desvio SIN caller ID o con el de la sucursal", () =>
     await t.esperarFin();
   });
 
+  it("cerebro actual: el endurecimiento del telefono dictado (0/1 inicial, digito repetido) NO aplica; solo el cerebro suelto lo usa", async () => {
+    const api = await crearMundoApi({ numerosSucursal: [LINEA_SUCURSAL] });
+    const agente = new AgenteGuionado([{ cliente: "mi numero", agente: [{ tool: TOOL_CONFIRMAR_TELEFONO, args: { numero: "555 555 55 55" } }, { tool: "buscar_cliente", args: {} }] }]);
+    const t = await escenario(api, () => [agente.escalon()]);
+    const llamada = t.telefonia.llamar({ id: "llamada-actual-5", dnis: NUMERO_SUCURSAL, desde: undefined });
+    await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
+    await turnoCliente(llamada, api.reloj, () => agente.respondidos, 1);
+    expect(agente.resultados[0]!.resultado).toMatchObject({ ok: true });
+    expect(tokensPedidos(api.peticiones)).toBe(1);
+    llamada.clienteCuelga();
+    await t.esperarFin();
+  });
+
   it("si la API no puede emitir el token, el agente recibe un error honesto y el telefono sigue pendiente (se puede reintentar)", async () => {
     const api = await crearMundoApi({ envExtra: { VOICE_SECRET_FCO: "otro-secreto-que-la-api-no-acepta" } });
     const agente = new AgenteGuionado([{ cliente: "mi numero", agente: [{ tool: TOOL_CONFIRMAR_TELEFONO, args: { numero: "9991234567" } }, { tool: "buscar_cliente", args: {} }] }]);
@@ -245,5 +258,14 @@ describe("de punta a punta: desvio SIN caller ID o con el de la sucursal", () =>
     expect(agente.resultados[1]!.resultado).toMatchObject({ error: "telefono_pendiente" });
     llamada.clienteCuelga();
     await t.esperarFin();
+  });
+});
+
+describe("telefonoDictadoPlausible", () => {
+  it.each(["0991234567", "1991234567", "0000000000", "5555555555", "999123456", "99912345678", "99912a4567"])("rechaza %s", (n) => {
+    expect(telefonoDictadoPlausible(n)).toBe(false);
+  });
+  it.each(["9991234567", "5512345678", "8181234567"])("acepta %s", (n) => {
+    expect(telefonoDictadoPlausible(n)).toBe(true);
   });
 });
