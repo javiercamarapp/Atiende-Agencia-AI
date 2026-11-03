@@ -212,7 +212,14 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
       else timeoutMs = ms;
     }
     const secretoHerramientas = (env.VOICE_TOOL_SECRET ?? "").trim();
-    const urlRegistrar = lleno(env.VOZ_REGISTRAR_CONTACTO_URL) ? env.VOZ_REGISTRAR_CONTACTO_URL.trim() : urlRegistrarContactoDe(url);
+    let urlRegistrar = lleno(env.VOZ_REGISTRAR_CONTACTO_URL) ? env.VOZ_REGISTRAR_CONTACTO_URL.trim() : urlRegistrarContactoDe(url);
+    // El secreto de herramientas viaja en esta peticion: mismo https obligatorio que voz-turno. Y si hay secreto pero no hay a donde mandar el aviso, se falla al arrancar (no en plena falla).
+    if (urlRegistrar && !/^https:\/\//i.test(urlRegistrar) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(urlRegistrar)) {
+      motivos.push("VOZ_REGISTRAR_CONTACTO_URL debe usar https:// (http:// solo para localhost).");
+      urlRegistrar = null;
+    } else if (secretoHerramientas && !urlRegistrar) {
+      motivos.push("VOICE_TOOL_SECRET sin destino: VOZ_TURNO_URL no termina en /voz-turno, define VOZ_REGISTRAR_CONTACTO_URL (o quita VOICE_TOOL_SECRET).");
+    }
     const registrarContacto = secretoHerramientas && urlRegistrar ? { url: urlRegistrar, secreto: secretoHerramientas } : null;
     if (url && secretoTurno) vozTurno = { url, secreto: secretoTurno, aviso: lleno(env.VOZ_AVISO_GRABACION) ? env.VOZ_AVISO_GRABACION.trim() : null, silencioMs, timeoutMs, registrarContacto };
   } else if (!gemini && !vertex && !openrouter) motivos.push("Falta GEMINI_API_KEY u OPENROUTER_API_KEY (ninguna escalera de voz puede abrir).");

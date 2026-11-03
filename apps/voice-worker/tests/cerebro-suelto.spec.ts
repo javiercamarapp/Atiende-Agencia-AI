@@ -159,6 +159,21 @@ describe("config: VOZ_CEREBRO", () => {
     expect(cargarConfig(e).vozTurno?.registrarContacto).toBeNull();
     expect(cargarConfig({ ...e, VOICE_TOOL_SECRET: "t" }).vozTurno?.registrarContacto).toEqual({ url: "https://x.supabase.co/functions/v1/registrar-contacto", secreto: "t" });
   });
+
+  it("VOZ_REGISTRAR_CONTACTO_URL exige https salvo localhost; con VOICE_TOOL_SECRET y sin URL derivable ni configurada falla al arrancar", () => {
+    const e = { ...base, VOZ_CEREBRO: "suelto", VOZ_TURNO_URL: "https://x.supabase.co/functions/v1/voz-turno", VOZ_TURNO_SECRET: "x", DEEPGRAM_API_KEY: "d", VOICE_TOOL_SECRET: "t" };
+    const con = (url: string) => cargarConfig({ ...e, VOZ_REGISTRAR_CONTACTO_URL: url }).motivos.join(" ");
+    expect(con("http://ejemplo.com/functions/v1/registrar-contacto")).toContain("VOZ_REGISTRAR_CONTACTO_URL debe usar https");
+    expect(con("ftp://x/registrar")).toContain("VOZ_REGISTRAR_CONTACTO_URL");
+    expect(con("https://ejemplo.com/functions/v1/registrar-contacto")).not.toContain("VOZ_REGISTRAR_CONTACTO_URL");
+    expect(con("http://localhost:54321/functions/v1/registrar-contacto")).not.toContain("VOZ_REGISTRAR_CONTACTO_URL");
+    // URL de voz-turno sin el sufijo /voz-turno: no se puede derivar
+    const sinDerivar = { ...e, VOZ_TURNO_URL: "https://x.supabase.co/otra-ruta" };
+    expect(cargarConfig(sinDerivar).motivos.join(" ")).toContain("VOZ_REGISTRAR_CONTACTO_URL");
+    expect(cargarConfig({ ...sinDerivar, VOZ_REGISTRAR_CONTACTO_URL: "https://x.supabase.co/functions/v1/registrar-contacto" }).motivos.join(" ")).not.toContain("VOZ_REGISTRAR_CONTACTO_URL");
+    // sin VOICE_TOOL_SECRET no se arma el aviso y no es error
+    expect(cargarConfig({ ...sinDerivar, VOICE_TOOL_SECRET: "" }).motivos.join(" ")).not.toContain("VOZ_REGISTRAR_CONTACTO_URL");
+  });
 });
 
 describe("cerebro suelto: despedida repetida al interrumpir un cierre", () => {
