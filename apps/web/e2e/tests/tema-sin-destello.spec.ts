@@ -1,5 +1,5 @@
 // ds3 / 0.1 (ThemeBoot externo): el tema se aplica ANTES del primer pintado en rutas sin ThemeSelector ni shell (login y paginas
-// publicas), sin destello (E24) y sin `data-theme`. La bandera de diseno (`?diseno=ds3`) llega a <html> y se recuerda.
+// publicas), sin destello (E24) y con el puente `data-theme` igual a `.dark` (solo con ds3). La bandera de diseno (`?diseno=ds3`) llega a <html> y se recuerda.
 // Los proyectos "-oscuro" siguen al sistema (la fixture guarda `atiende-tema=sistema` y el navegador emula colorScheme dark).
 import type { Page } from "@playwright/test";
 import { expect, test } from "../helpers/fixtures.ts";
@@ -38,7 +38,7 @@ for (const ruta of RUTAS_SIN_SELECTOR) {
     await page.goto(ruta);
     const alInicio = await leerCaptura(page);
     expect(alInicio.dark, "html.dark en DOMContentLoaded").toBe(oscuro);
-    expect(alInicio.tema, "html no lleva data-theme").toBeNull();
+    expect(alInicio.tema, "puente data-theme (solo con ds3) igual a la clase dark").toBe(oscuro ? "dark" : "light");
     await page.waitForLoadState("networkidle");
     await afirmarModo(page, oscuro ? "oscuro" : "claro");
     const alFinal = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

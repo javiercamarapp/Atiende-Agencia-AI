@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { aplicarBanderaDiseno, aplicarTema, leerTema, suscribirTemaSistema } from "../src/lib/tema";
+import { aplicarBanderaDiseno, aplicarTema, leerTema, rutaPreOrgConDiseno, sincronizarDisenoOrganizacion, suscribirTemaSistema } from "../src/lib/tema";
 
 // Ruta relativa a este archivo (funciona corriendo vitest desde la raiz o desde packages/ui).
 const RUTA_SCRIPT = join(__dirname, "../../../apps/web/public/theme-boot.js");
@@ -33,6 +33,7 @@ function estado() {
     oscuro: document.documentElement.classList.contains("dark"),
     color: document.querySelector('meta[name="theme-color"]')?.getAttribute("content"),
     diseno: document.documentElement.dataset.diseno ?? null,
+    tema: document.documentElement.getAttribute("data-theme"),
   };
 }
 
@@ -44,7 +45,9 @@ beforeEach(() => {
   document.head.innerHTML = `<meta name="theme-color" content="${META_BASE}">`;
   document.documentElement.className = "";
   document.documentElement.removeAttribute("data-diseno");
+  document.documentElement.removeAttribute("data-theme");
   window.localStorage.clear();
+  window.sessionStorage.clear();
   window.history.replaceState(null, "", "/");
 });
 afterEach(() => {
@@ -53,16 +56,16 @@ afterEach(() => {
 });
 
 describe("/theme-boot.js", () => {
-  it("pesa 600 B o menos, es JS plano sin defer ni datos del entorno", () => {
-    expect(Buffer.byteLength(SCRIPT, "utf8")).toBeLessThanOrEqual(600);
-    expect(SCRIPT).not.toMatch(/data-theme|dataset\.theme/);
+  it("pesa 900 B o menos (600 + bandera por organizacion, interruptor del login y puente data-theme), JS plano sin datos del entorno", () => {
+    expect(Buffer.byteLength(SCRIPT, "utf8")).toBeLessThanOrEqual(900);
+    expect(SCRIPT).not.toMatch(/import\.meta|process\.env/);
   });
 
   it("con la bandera apagada no cambia nada, ni con tema oscuro guardado", () => {
     sistema(true);
     window.localStorage.setItem("atiende-tema", "oscuro");
     correrScript();
-    expect(estado()).toEqual({ oscuro: false, color: META_BASE, diseno: null });
+    expect(estado()).toEqual({ oscuro: false, color: META_BASE, diseno: null, tema: null });
   });
 
   const casos: Array<[string | null, boolean, boolean]> = [
@@ -81,17 +84,19 @@ describe("/theme-boot.js", () => {
     correrScript();
     const delScript = estado();
     document.documentElement.className = "";
+    document.documentElement.removeAttribute("data-theme");
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", META_BASE);
     aplicarTema(leerTema());
     expect(estado()).toEqual(delScript);
     expect(delScript.oscuro).toBe(esperado);
     expect(delScript.color).toBe(esperado ? "#0e0e10" : "#ffffff");
+    expect(delScript.tema).toBe(esperado ? "dark" : "light");
   });
 
   it("aplicarTema no toca theme-color con la bandera apagada", () => {
     sistema(true);
     aplicarTema("oscuro");
-    expect(estado()).toEqual({ oscuro: true, color: META_BASE, diseno: null });
+    expect(estado()).toEqual({ oscuro: true, color: META_BASE, diseno: null, tema: null });
   });
 
   it("sin localStorage no revienta y deja el tema claro", () => {
@@ -175,12 +180,97 @@ describe("/theme-boot.js", () => {
     expect(estado().oscuro).toBe(true);
   });
 
-  it("no usa data-theme en ningun caso", () => {
+  it("puente data-theme: solo con ds3 (sin la bandera <html> nunca lo lleva)", () => {
     sistema(true);
-    encender();
     window.localStorage.setItem("atiende-tema", "oscuro");
     correrScript();
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+    encender();
+    correrScript();
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  });
+
+  it("diseno de la organizacion (atiende-diseno-org) enciende la bandera; la manual y ?diseno=off mandan sobre ella", () => {
+    sistema(false);
+    window.localStorage.setItem("atiende-diseno-org", "ds3");
+    correrScript();
+    expect(estado().diseno).toBe("ds3");
+    document.documentElement.removeAttribute("data-diseno");
+    expect(aplicarBanderaDiseno("", "/restaurantes/pm")).toBe(true);
+
+    document.documentElement.removeAttribute("data-diseno");
+    window.history.replaceState(null, "", "/restaurantes/pm?diseno=off");
+    correrScript();
+    expect(estado().diseno).toBeNull();
+    expect(aplicarBanderaDiseno("?diseno=off", "/restaurantes/pm")).toBe(false);
+    expect(window.localStorage.getItem("atiende-diseno-org")).toBe("ds3");
+  });
+
+  const rutasLogin: Array<[string, string, boolean]> = [
+    ["/restaurantes/login", "restaurantes", true],
+    ["/restaurantes/restablecer-contrasena", "restaurantes,citas", true],
+    ["/citas/login", "restaurantes", false],
+    ["/citas/login", "*", true],
+    ["/rentas/registro", "*", true],
+    ["/restaurantes/pm", "*", false],
+    ["/restaurantes/pm/login", "*", false],
+    ["/restaurantes/login", "", false],
+    ["/restaurantes/login", "%VITE_DISENO_LOGIN%", false],
+  ];
+  it.each(rutasLogin)("interruptor del login: %s con lista «%s» -> %s (script y helper coinciden)", (ruta, lista, esperado) => {
+    sistema(false);
+    document.head.insertAdjacentHTML("beforeend", `<meta name="atiende-diseno-login" content="${lista}">`);
+    window.history.replaceState(null, "", ruta);
+    correrScript();
+    expect(estado().diseno !== null).toBe(esperado);
+    expect(rutaPreOrgConDiseno(ruta, lista)).toBe(esperado);
+    document.documentElement.removeAttribute("data-diseno");
+    expect(aplicarBanderaDiseno("", ruta)).toBe(esperado);
+  });
+
+  it("?diseno=off apaga tambien el interruptor del login", () => {
+    sistema(false);
+    document.head.insertAdjacentHTML("beforeend", '<meta name="atiende-diseno-login" content="*">');
+    window.history.replaceState(null, "", "/restaurantes/login?diseno=off");
+    correrScript();
+    expect(estado().diseno).toBeNull();
+    expect(aplicarBanderaDiseno("?diseno=off", "/restaurantes/login")).toBe(false);
+  });
+});
+
+describe("sincronizarDisenoOrganizacion", () => {
+  it("undefined (sesion vieja) no toca nada ni pide recarga", () => {
+    window.localStorage.setItem("atiende-diseno-org", "ds3");
+    expect(sincronizarDisenoOrganizacion(undefined)).toBe(false);
+    expect(window.localStorage.getItem("atiende-diseno-org")).toBe("ds3");
+  });
+
+  it("ds3 con lo pintado en actual: guarda el valor y pide recarga; ya pintado en ds3: no", () => {
+    expect(sincronizarDisenoOrganizacion("ds3")).toBe(true);
+    expect(window.localStorage.getItem("atiende-diseno-org")).toBe("ds3");
+    document.documentElement.dataset.diseno = "ds3";
+    expect(sincronizarDisenoOrganizacion("ds3")).toBe(false);
+  });
+
+  it("null borra el valor de organizacion y pide recarga si estaba pintado ds3 (salvo la vista previa manual)", () => {
+    window.localStorage.setItem("atiende-diseno-org", "ds3");
+    document.documentElement.dataset.diseno = "ds3";
+    expect(sincronizarDisenoOrganizacion(null)).toBe(true);
+    expect(window.localStorage.getItem("atiende-diseno-org")).toBeNull();
+    window.localStorage.setItem("atiende-diseno", "ds3");
+    expect(sincronizarDisenoOrganizacion(null)).toBe(false);
+  });
+
+  it("con VITE_DISENO_DEFAULT=ds3 nunca pide recarga (ya se pinta ds3 siempre)", () => {
+    expect(sincronizarDisenoOrganizacion(null, "ds3")).toBe(false);
+    expect(sincronizarDisenoOrganizacion("ds3", "ds3")).toBe(false);
+  });
+
+  it("sin almacenamiento no pide recarga (evita el bucle)", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("bloqueado");
+    });
+    expect(sincronizarDisenoOrganizacion("ds3")).toBe(false);
   });
 });
 

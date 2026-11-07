@@ -75,6 +75,13 @@ export class ProductionCoreRepository implements CoreRepository {
     );
   }
 
+  // Misma sesion de sistema que findMembershipsByUserId (el login corre antes de que exista auth.uid()).
+  findDisenoPorOrganizacion(organizationIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    return this.engine.withAppSession({ userId: null }, (session) =>
+      new PostgresCoreRepository(session).findDisenoPorOrganizacion(organizationIds),
+    );
+  }
+
   // Fase 10 — lado del INVITADO (sin sesión autenticada todavía, mismo momento que
   // login): sesión de sistema igual que los 3 métodos de arriba. `acceptStaffInvite`
   // alcanza a escribir `core.staff_user`/`core.membership` porque llama a la función

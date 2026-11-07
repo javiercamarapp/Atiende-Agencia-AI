@@ -306,6 +306,9 @@ export interface CoreRepository {
   findStaffByEmail(email: string): Promise<StaffUserRow | null>;
   findStaffById(id: string): Promise<StaffUserRow | null>;
   findMembershipsByUserId(userId: string): Promise<readonly MembershipRow[]>;
+  /** Diseno del panel por organizacion (`core.organization.diseno`, migracion 0060): solo las organizaciones pedidas que
+   *  tienen un valor (hoy solo `ds3`). Mapa vacio contra la base sin migrar (42703). Solo presentacion: nunca autoriza nada. */
+  findDisenoPorOrganizacion(organizationIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
   /** Lectura pública (sin sesión autenticada) para que la UI muestre a quién/qué
    *  organización invita el token ANTES de pedir nombre/password — `null` si el
    *  token no existe; el llamador decide qué hacer con un estado no-`pending` o ya
