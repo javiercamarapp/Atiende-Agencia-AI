@@ -43,6 +43,7 @@ import type {
   SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
   UpsertOrganizationBillingInput,
+  ActivacionPorPago,
 } from "./core-repository.ts";
 import {
   MembershipRemovalError,
@@ -1001,6 +1002,20 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
     const row = rows[0];
     if (!row) throw new Error("upsertOrganizationBilling: la organización dejó de existir entre el upsert y la lectura (no debería pasar nunca).");
     return mapOrganizationBilling(row);
+  }
+
+  async activateOrganizationOnPayment(organizationId: string): Promise<ActivacionPorPago> {
+    // Base sin la 0072 (42883): vacio honesto, nunca un 500 del webhook. SAVEPOINT por si la sesion es compartida.
+    return runWithSavepointFallback<ActivacionPorPago>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ resultado: string }>(`select core.organization_activate_on_payment($1) as resultado;`, [organizationId]);
+        const r = rows[0]?.resultado;
+        return r === "activada" || r === "ya_activa" || r === "suspendida" || r === "no_existe" ? r : "no_existe";
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "organization_activate_on_payment"),
+      fallback: async () => "no_disponible",
+    });
   }
 
   async markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {
