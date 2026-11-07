@@ -9,7 +9,7 @@
 import { useEffect, useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
+import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon, useI18n } from "@atiende/ui";
 import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
 import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
@@ -80,7 +80,10 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
   const [enviadoA, setEnviadoA] = useState<string | null>(null);
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const locale = searchParams.get("lang") === "en" ? "en" : "es";
+  // i18n ES/EN: `?lang=` manda; sin el, la preferencia guardada de la consola (IdiomaProvider).
+  const { idioma, cambiarIdioma } = useI18n();
+  const lang = searchParams.get("lang");
+  const locale = lang === "en" || lang === "es" ? lang : idioma;
   const en = locale === "en";
   const escritorio = useEscritorio();
   const tr = (es: string, english: string) => en ? english : es;
@@ -92,6 +95,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
     const params = new URLSearchParams(searchParams);
     params.set("lang", next);
     setSearchParams(params, { replace: true });
+    cambiarIdioma(next);
   }
   const idCorreo = useId();
   const idEstado = `${idCorreo}-estado`;
