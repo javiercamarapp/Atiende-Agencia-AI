@@ -5,6 +5,12 @@ import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
+/**
+ * Grupo del menu de la pantalla activa (lo provee `VerticalShell`). Con la bandera ds3 el PageHeader lo muestra como antetitulo cuando la
+ * pantalla no pasa `eyebrow` propio. Se pinta por CSS (data-eyebrow) para no duplicar el texto del menu en el DOM.
+ */
+export const GrupoNavContext = React.createContext<string | null>(null);
+
 export interface PageHeaderMiga {
   readonly etiqueta: string;
   /** Ruta de react-router. La ultima miga (pagina actual) no lleva `to`. */
@@ -43,6 +49,7 @@ export interface PageHeaderProps {
  * Es el unico `<h1>` de la pantalla; `BarraPagina` pinta el nombre de la pagina en un `<p>`.
  */
 export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, eyebrow, guia, className }: PageHeaderProps) {
+  const grupoNav = React.useContext(GrupoNavContext);
   return (
     <header className={cn("ds3-encabezado grid gap-2.5", className)}>
       {migas && migas.length > 0 && (
@@ -81,7 +88,11 @@ export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, 
 
       <div className="ds3-encabezado-fila flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between md:gap-3 min-w-0">
         <div className="ds3-encabezado-texto min-w-0">
-          {eyebrow !== undefined && <p className="ds3-encabezado-eyebrow text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">{eyebrow}</p>}
+          {eyebrow !== undefined ? (
+            <p className="ds3-encabezado-eyebrow text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">{eyebrow}</p>
+          ) : grupoNav ? (
+            <p hidden data-eyebrow={grupoNav} data-testid="encabezado-eyebrow-derivado" className="ds3-solo ds3-encabezado-eyebrow ds3-eyebrow-derivado" />
+          ) : null}
           <h1 className="ds3-encabezado-titulo font-display text-xl font-semibold truncate text-foreground">{titulo}</h1>
           {descripcion !== undefined && <p className="ds3-encabezado-descripcion text-ui text-muted-foreground mt-1 truncate">{descripcion}</p>}
           {guia && guia.length > 0 && (
