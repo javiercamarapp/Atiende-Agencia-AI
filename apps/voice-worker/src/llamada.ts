@@ -38,6 +38,10 @@ export function disparadorDeApertura(apertura: AperturaPrivacidad | null): strin
  * (`afirmaPedidoRegistrado`, la misma guardia de WhatsApp) no se dice hasta que crear_pedido tuvo exito. */
 export const CONFIRMACION_VOZ_PM = { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido", escalar: "escalar_a_humano", afirmaRegistro: afirmaPedidoRegistrado } as const;
 
+/** Una respuesta ambigua a la pregunta de grabacion con al menos estas palabras ya es el cliente siguiendo con su pedido: no se repregunta. */
+export const PALABRAS_RESPUESTA_CON_CONTENIDO = 4;
+const palabrasDe = (t: string): number => t.trim().split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+
 /** Cuantas veces se repite la pregunta de grabacion ante una respuesta ambigua antes de atender la llamada sin grabar. */
 export const REINTENTOS_CONSENTIMIENTO = 2;
 
@@ -290,6 +294,13 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       const r = await deps.api.consentimientoGrabacion({ organizationId, conversationId, respuesta: texto });
       if (r.consentimiento === "pendiente") {
         intentosConsentimiento += 1;
+        // El cliente siguio con lo suyo (su pedido, una pregunta) en vez de contestar: NO se repregunta (chocaba con el turno del pedido y el agente decia
+        // «no lo escuché bien»); la llamada sigue sin grabar, que es lo conservador. Solo una respuesta corta y confusa («¿mande?») repite la pregunta.
+        if (palabrasDe(texto) >= PALABRAS_RESPUESTA_CON_CONTENIDO) {
+          consentimientoResuelto = true;
+          log("consentimiento_resuelto", { resultado: "sin_respuesta" });
+          return;
+        }
         if (intentosConsentimiento >= REINTENTOS_CONSENTIMIENTO) consentimientoResuelto = true; // sin respuesta clara: se atiende sin grabar
         else (sesionActual as VozSesionLlamada | null)?.enviarTexto(`(El cliente no respondió con claridad a la pregunta de grabación. Repítala tal cual: «${r.respuestaSugerida}»)`);
         return;
