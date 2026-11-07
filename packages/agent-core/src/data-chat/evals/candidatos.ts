@@ -101,6 +101,10 @@ export const CANDIDATOS: readonly ModeloCandidato[] = [
   { id: "meta-llama/llama-4-scout", etiqueta: "Llama 4 Scout", params: base(), routing: ruta(["deepinfra", "google-vertex"]), roles: ["respaldo"], fases: SOLO_PILOTO, precio: { entrada: 0.1, salida: 0.3 }, hostEeuu: true, origen: "baratos" },
   { id: "bytedance-seed/seed-2.0-mini", etiqueta: "Seed 2.0 mini", params: base(), routing: ruta(), roles: ["respaldo"], fases: SOLO_PILOTO, precio: { entrada: 0.1, salida: 0.4 }, hostEeuu: false, origen: "baratos", noElegible: "sin proveedor de EE.UU. permitido por el gateway con endpoint ZDR hoy (solo hosts fuera de la lista)" },
   { id: "google/gemini-3.5-flash-lite", etiqueta: "Gemini 3.5 Flash-Lite (minimal)", params: base({ temperature: "omit", reasoningEffort: "minimal" }), routing: ruta(["google-vertex", "google-ai-studio"]), roles: ["respaldo"], fases: SOLO_PILOTO, precio: { entrada: 0.3, salida: 2.5 }, hostEeuu: true, origen: "baratos" },
+  // ---- modelos por actividad (6-nov-2026): baratos con endpoint ZDR en proveedores de EE.UU. (https://openrouter.ai/api/v1/endpoints/zdr) ----
+  { id: "anthropic/claude-haiku-5.5", etiqueta: "Claude Haiku 5.5", params: base({ temperature: "omit" }), routing: ruta(["amazon-bedrock", "google-vertex"]), roles: ["respaldo", "cfo_superadmin"], fases: SOLO_PILOTO, precio: { entrada: 0.1, salida: 0.5 }, hostEeuu: true, origen: "baratos" },
+  { id: "xiaomi/mimo-v2.6-flash", etiqueta: "MiMo V2.6 Flash", params: base({ reasoningEffort: "low" }), routing: ruta(["deepinfra"]), roles: ["respaldo"], fases: SOLO_PILOTO, precio: { entrada: 0.14, salida: 0.28 }, hostEeuu: true, origen: "baratos" },
+  { id: "google/gemini-3.1-flash-lite", etiqueta: "Gemini 3.1 Flash-Lite", params: base(), routing: ruta(["google-vertex", "google-ai-studio"]), roles: ["respaldo"], fases: SOLO_PILOTO, precio: { entrada: 0.25, salida: 1.5 }, hostEeuu: true, origen: "baratos" },
   { id: "openai/gpt-4.1-nano", etiqueta: "GPT-4.1 nano", params: base(), routing: ruta(["openai", "azure"]), roles: ["respaldo"], fases: SOLO_PILOTO, precio: { entrada: 0.1, salida: 0.4 }, hostEeuu: true, origen: "baratos" },
 ];
 
