@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
 import { decidirBloqueoAlergia, evidenciaAlergiaEnSesion, MARCA_AVISO_URGENTE, notaAlergiaDelPedido, notaPreferenciaDelPedido, notasConAlergia, notasConPreferencia, rechazoAlergiaSinConfirmar, type EstadoAlergia, type MensajeSalud } from "../whatsapp/cerebro-v2/salud.ts";
 import type { AvisoDelTelefono } from "../repository.ts";
+import { avisoCreadoUrgente, planDeAviso } from "../whatsapp/cerebro-v2/avisos.ts";
 import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
@@ -2471,14 +2472,18 @@ async function dispatchTool(
       // T7-038: si ya hay una cotizacion vigente el aviso no puede decir «no se ha cotizado».
       const totalCotizado = esEscalada && ctx.flow && detalleDelModelo ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.quotedTotal : undefined;
       const detalleModelo = corregirAvisoCotizado(detalleDelModelo, totalCotizado);
-      await registerCallbackRequest(repo, {
+      const mensajeAviso = ctx.avisoUrgente ? conMarcaUrgente(componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? "")) : componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? "");
+      // Cerebro v2 (suelto B7): dedupe por CATEGORIA contra los avisos abiertos del telefono (30 min, misma sucursal). «cubierto» = no se registra nada;
+      // «anexar» = se registra con la razon del aviso abierto para que callback_registrar_agente (047) le agregue la nota en vez de crear otro.
+      const plan = esEscalada && ctx.cerebroV2 && ctx.channel === "whatsapp" ? await planDeAvisoV2(repo, ctx, reason ?? "", mensajeAviso ?? "") : null;
+      if (plan?.accion !== "cubierto") await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
         customerName: textoOpcional(input.customer_name)?.trim() || "Cliente", // "" (el modelo no sabe el nombre) -> "Cliente": antes lanzaba y el cliente leia "Error interno"
         customerPhone: ctx.phone,
-        reason,
+        reason: plan?.accion === "anexar" ? plan.razonAbierta : reason,
         sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,
-        message: ctx.avisoUrgente ? conMarcaUrgente(componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? "")) : componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? ""),
+        message: plan?.accion === "anexar" && plan.razonAbierta !== reason ? `[${reason ?? ""}] ${mensajeAviso}` : mensajeAviso,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
         ...(ctx.avisoUrgente ? { urgente: true } : {}),
       });
@@ -2854,6 +2859,40 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
  * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
  * transaccion abortada ni en una excepcion que tumbe el resto del turno.
  */
+/**
+ * Cerebro v2: la razon del monorrepo (`escalada:<motivo>`) con el vocabulario del suelto para avisoAbiertoQueCubre/planDeAviso: alergia/salud y
+ * transferencia son `alto_riesgo:*`; una cancelacion (el resumen habla de cancelar) es `alto_riesgo:cancelacion` y el resto de cancelacion_modificacion es
+ * `modificacion_pedido` (post-venta, como la queja). Pura.
+ */
+export function razonDelSueltoParaDedupe(reason: string | null | undefined, mensaje: string | null | undefined): string {
+  const r = String(reason ?? "");
+  if (r === "escalada:alergia_salud") return /alerg/i.test(String(mensaje ?? "").normalize("NFD")) ? "alto_riesgo:alergia" : "alto_riesgo:salud";
+  if (r === "escalada:transferencia") return "alto_riesgo:transferencia_realizada";
+  if (r === "escalada:cancelacion_modificacion") return ES_CANCELACION.test(String(mensaje ?? "")) ? "alto_riesgo:cancelacion" : "modificacion_pedido";
+  return r;
+}
+
+type PlanAvisoV2 = { readonly accion: "registrar" } | { readonly accion: "cubierto" } | { readonly accion: "anexar"; readonly razonAbierta: string };
+
+/** planDeAviso del suelto sobre los avisos del telefono (migracion 193). Sin la lectura (base sin migrar): «registrar», como siempre. Un aviso URGENTE no se
+ * anexa a uno abierto que no lo era (perderia la notificacion critica): se registra. */
+async function planDeAvisoV2(repo: RestaurantesRepository, ctx: AgentToolContext, reason: string, mensaje: string): Promise<PlanAvisoV2> {
+  if (!repo.listarAvisosDelTelefono || !ctx.phone || !reason) return { accion: "registrar" };
+  const filas = await repo.listarAvisosDelTelefono(ctx.organizationId, ctx.phone, 1);
+  if (!filas) return { accion: "registrar" };
+  const original = new Map(filas.map((f) => [f.id, f.reason ?? ""]));
+  const plan = planDeAviso(
+    filas.map((f) => ({ id: f.id, reason: razonDelSueltoParaDedupe(f.reason, f.message), message: f.message, branch_id: f.property_id, created_at: f.created_at, resolved: f.resolved })),
+    razonDelSueltoParaDedupe(reason, mensaje),
+    Date.now(),
+    { branchId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null, message: mensaje },
+  );
+  if (plan.accion === "registrar") return plan;
+  if (ctx.avisoUrgente && !avisoCreadoUrgente(plan.fila.message)) return { accion: "registrar" };
+  if (plan.accion === "cubierto") return { accion: "cubierto" };
+  return { accion: "anexar", razonAbierta: original.get(String(plan.fila.id)) ?? reason };
+}
+
 /** Razones de callback que son aviso de alergia (monorrepo: escalar_a_humano con motivo alergia_salud; suelto: alto_riesgo:alergia). */
 const RAZONES_AVISO_ALERGIA = new Set(["escalada:alergia_salud", "alto_riesgo:alergia"]);
 

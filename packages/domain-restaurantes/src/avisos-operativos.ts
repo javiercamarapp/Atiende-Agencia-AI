@@ -12,6 +12,7 @@
 // Base sin migrar: el candidato lanza 42883 dentro de un SAVEPOINT y el barrido devuelve `disponible: false`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { ALERTA_MINUTOS_POR_OMISION, llaveConNivel, nivelDebido } from "./whatsapp/cerebro-v2/avisos.ts";
 
 export type TipoAvisoOperativo =
   | "restaurantes.pedido.entrega_tardia"
@@ -81,4 +82,32 @@ export async function barrerAvisosOperativos(session: TenantDbSession, options: 
     else errores += 1;
   }
   return { disponible: true, candidatos: candidatos.length, emitidas, sinNuevas, errores };
+}
+
+/**
+ * Cerebro v2 (suelto, alertas-operativas.ts: «repeticion cada 10 min hasta el nivel 3»): cada aviso URGENTE (marca al inicio) sin resolver de una organizacion con
+ * cerebro_v2, creado hace 10 min o mas y en las ultimas 24 h (lo elige la base: `restaurantes.avisos_urgentes_sin_resolver`, migracion 193), vuelve a
+ * notificar con severidad critica y la llave del nivel que toca (nivelDebido / llaveConNivel: el nivel 1 es la notificacion del alta, misma llave). El
+ * correo al dueño del nivel 3 del suelto no existe aqui (hueco conocido: no hay canal de correo de avisos). Base sin la 193 (42883): nada que barrer.
+ */
+export async function barrerAvisosUrgentesSinResolver(session: TenantDbSession, ahora: Date): Promise<ResultadoBarridoAvisos> {
+  type Fila = { id: string; organization_id: string; property_id: string | null; created_at: string | Date };
+  const filas = await runWithSavepointFallback<Fila[] | null>({
+    session,
+    primary: async () => (await session.query<Fila>(`select id, organization_id, property_id, created_at from restaurantes.avisos_urgentes_sin_resolver($1::timestamptz, $2::int);`, [ahora.toISOString(), ALERTA_MINUTOS_POR_OMISION])).rows,
+    isRecoverable: (err) => isMigrationPendingError(err),
+    fallback: async () => null,
+  });
+  if (filas === null) return SIN_BARRIDO;
+  let emitidas = 0;
+  let sinNuevas = 0;
+  let errores = 0;
+  for (const f of filas) {
+    const nivel = nivelDebido(new Date(f.created_at), ahora, ALERTA_MINUTOS_POR_OMISION);
+    const r = await emitirNotificacion(session, { evento: "restaurantes.callback.pendiente", organizationId: f.organization_id, propertyId: f.property_id, clave: llaveConNivel(f.id, nivel), entidadTipo: "callback_request", entidadId: f.id, severidad: "critica" });
+    if (r.estado === "emitida") emitidas += 1;
+    else if (r.estado === "sin_nuevas") sinNuevas += 1;
+    else errores += 1;
+  }
+  return { disponible: true, candidatos: filas.length, emitidas, sinNuevas, errores };
 }
