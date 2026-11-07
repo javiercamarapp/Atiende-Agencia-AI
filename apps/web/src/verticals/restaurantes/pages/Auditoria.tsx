@@ -19,7 +19,8 @@
 //    trae todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, DataTable, Input, Label, Selector, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, DataTable, Input, Label, Selector, PageContainer, StatusBadge, localeActivo, useT } from "@atiende/ui";
+import { restaurantesAuditoria } from "@atiende/ui/i18n/restaurantes/auditoria";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -31,7 +32,7 @@ const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function formatearFechaHora(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
+    return new Date(iso).toLocaleString(localeActivo(), { dateStyle: "medium", timeStyle: "short" });
   } catch {
     return iso;
   }
@@ -46,6 +47,7 @@ function etiquetaAccion(action: string): string {
 }
 
 export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesAuditoria);
   const puedeLeer = AUDITORIA_LECTURA_ROLES.has(role);
 
   const [tipo, setTipo] = useState<AuditLogEntityType | "">("");
@@ -85,7 +87,7 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
         setTotal(pagina.total);
         setNextOffset(pagina.nextOffset);
       } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar la bitácora de auditoría.");
+        if (!cancelado) setError(err instanceof Error ? err.message : t("restaurantes.auditoria.error.cargar"));
       }
     })();
     return () => {
@@ -107,7 +109,7 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
       setNextOffset(pagina.nextOffset);
     } catch (err) {
       if (generacion === generacionRef.current) {
-        setError(err instanceof Error ? err.message : "No se pudo cargar más de la bitácora.");
+        setError(err instanceof Error ? err.message : t("restaurantes.auditoria.error.cargarMas"));
       }
     } finally {
       // Incondicional (a diferencia de una versión anterior de este mismo patrón
@@ -123,39 +125,42 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
   return (
     <PageContainer padding="none">
       <header>
-        <h1 className="sr-only">Auditoría</h1>
-        <p className="m-0 text-ui text-muted-foreground">Qué hizo cada miembro del staff: precios, promociones, pedidos cancelados, repartidor y staff.</p>
+        <h1 className="sr-only">{t("restaurantes.auditoria.titulo")}</h1>
+        <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.auditoria.descripcion")}</p>
       </header>
 
       {!puedeLeer ? (
         <Callout tone="info">
-          Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden leer la bitácora de auditoría — tu rol actual es{" "}
+          {t("restaurantes.auditoria.soloRoles.inicio")}
+          {/* // i18n-ignorar: owner/admin son los nombres de rol del sistema, iguales en ambos idiomas */}
+          <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong>
+          {t("restaurantes.auditoria.soloRoles.fin")}
           <strong className="text-foreground">{role}</strong>.
         </Callout>
       ) : (
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Filtros</CardTitle>
+              <CardTitle>{t("restaurantes.auditoria.filtros")}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
-                Tipo de acción
+                {t("restaurantes.auditoria.tipoAccion")}
                 <Selector value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")}>
-                  <option value="">Todos</option>
-                  {AUDIT_LOG_ENTITY_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {AUDIT_LOG_ENTITY_TYPE_LABELS[t]}
+                  <option value="">{t("restaurantes.auditoria.todos")}</option>
+                  {AUDIT_LOG_ENTITY_TYPES.map((tp) => (
+                    <option key={tp} value={tp}>
+                      {AUDIT_LOG_ENTITY_TYPE_LABELS[tp]}
                     </option>
                   ))}
                 </Selector>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[160px]`}>
-                Desde
+                {t("restaurantes.auditoria.desde")}
                 <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[160px]`}>
-                Hasta
+                {t("restaurantes.auditoria.hasta")}
                 <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
               </Label>
             </CardContent>
@@ -176,30 +181,30 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
           {!error && items !== null && !disponible && (
             <EstadoVacio
               icon={ClipboardList}
-              titulo="Bitácora no disponible aún"
-              mensaje="La bitácora de auditoría todavía no está habilitada en esta base de datos. La acción que buscas se completó con normalidad -- solo el registro no quedó guardado."
+              titulo={t("restaurantes.auditoria.noDisponible.titulo")}
+              mensaje={t("restaurantes.auditoria.noDisponible.mensaje")}
             />
           )}
 
           {!error && items !== null && disponible && items.length === 0 && (
-            <EstadoVacio icon={ClipboardList} titulo="Sin acciones registradas" mensaje="Todavía no hay ninguna acción del staff registrada con estos filtros." />
+            <EstadoVacio icon={ClipboardList} titulo={t("restaurantes.auditoria.vacio.titulo")} mensaje={t("restaurantes.auditoria.vacio.mensaje")} />
           )}
 
           {!error && items !== null && disponible && items.length > 0 && (
             <Card>
               <CardHeader className="p-3 pb-2">
-                <CardTitle>Acciones del staff</CardTitle>
+                <CardTitle>{t("restaurantes.auditoria.tabla.titulo")}</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <DataTable<AuditLogEntry>
-                  etiqueta="Acciones del staff de esta sucursal"
+                  etiqueta={t("restaurantes.auditoria.tabla.aria")}
                   filas={items}
                   obtenerId={(item) => item.id}
                   paginacion={false}
                   columnas={[
                     {
                       id: "cuando",
-                      encabezado: "Cuándo",
+                      encabezado: t("restaurantes.auditoria.col.cuando"),
                       principal: true,
                       className: "whitespace-nowrap",
                       celda: (item) => <span className="text-xs text-muted-foreground">{formatearFechaHora(item.creadoEn)}</span>,
@@ -209,7 +214,7 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
                       // todavía (mismo hueco conocido que rentas dejó documentado). Mostrar el uuid completo, con truncamiento
                       // visual + title, es mejor que omitir por completo QUIÉN hizo la acción.
                       id: "quien",
-                      encabezado: "Quién",
+                      encabezado: t("restaurantes.auditoria.col.quien"),
                       celda: (item) => (
                         <span className="block max-w-[110px] truncate font-mono text-xs text-muted-foreground" title={item.actorUserId}>
                           {item.actorUserId}
@@ -218,7 +223,7 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
                     },
                     {
                       id: "accion",
-                      encabezado: "Acción",
+                      encabezado: t("restaurantes.auditoria.col.accion"),
                       celda: (item) => (
                         <div className="flex flex-col gap-1">
                           <StatusBadge tone="neutral" dot={false} className="w-fit text-2xs">
@@ -230,9 +235,9 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
                         </div>
                       ),
                     },
-                    { id: "campo", encabezado: "Campo", celda: (item) => <span className="text-xs">{item.campo ?? "—"}</span> },
-                    { id: "antes", encabezado: "Antes", celda: (item) => <span className="text-xs text-muted-foreground">{item.antes ?? "—"}</span> },
-                    { id: "despues", encabezado: "Después", celda: (item) => <span className="text-xs">{item.despues ?? "—"}</span> },
+                    { id: "campo", encabezado: t("restaurantes.auditoria.col.campo"), celda: (item) => <span className="text-xs">{item.campo ?? "—"}</span> },
+                    { id: "antes", encabezado: t("restaurantes.auditoria.col.antes"), celda: (item) => <span className="text-xs text-muted-foreground">{item.antes ?? "—"}</span> },
+                    { id: "despues", encabezado: t("restaurantes.auditoria.col.despues"), celda: (item) => <span className="text-xs">{item.despues ?? "—"}</span> },
                   ]}
                 />
               </CardContent>
@@ -241,12 +246,10 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
           {!error && items !== null && disponible && items.length > 0 && (
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>
-                {items.length} de {total}
-              </span>
+              <span>{t("restaurantes.auditoria.conteo", { n: String(items.length), total: String(total) })}</span>
               {nextOffset !== null && (
                 <Button type="button" variant="outline" size="sm" onClick={cargarMas} loading={cargandoMas}>
-                  Cargar más
+                  {t("restaurantes.auditoria.cargarMas")}
                 </Button>
               )}
             </div>
