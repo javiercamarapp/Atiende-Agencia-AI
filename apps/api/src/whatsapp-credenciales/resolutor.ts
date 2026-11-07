@@ -52,6 +52,12 @@ export interface OpcionesResolutorCredencialesMeta {
 
 const TTL_POR_OMISION_MS = 60_000;
 
+interface Instantanea {
+  readonly hasta: number;
+  readonly credenciales: readonly CredencialMeta[];
+  readonly porNumero: ReadonlyMap<string, CredencialMeta>;
+}
+
 export function crearResolutorCredencialesMeta(opts: OpcionesResolutorCredencialesMeta): ResolutorCredencialesMeta {
   const ttl = opts.ttlMs ?? TTL_POR_OMISION_MS;
   const ahora = opts.ahoraMs ?? Date.now;
@@ -66,12 +72,8 @@ export function crearResolutorCredencialesMeta(opts: OpcionesResolutorCredencial
           credencialId,
         }),
       ));
-  let cache: {
-    readonly hasta: number;
-    readonly credenciales: readonly CredencialMeta[];
-    readonly porNumero: ReadonlyMap<string, CredencialMeta>;
-  } | null = null;
-  let enCurso: Promise<NonNullable<typeof cache>> | null = null;
+  let cache: Instantanea | null = null;
+  let enCurso: Promise<Instantanea> | null = null;
   let generacion = 0;
 
   function descifrar(f: FilaCredencialSistema): CredencialMeta | null {
@@ -92,7 +94,7 @@ export function crearResolutorCredencialesMeta(opts: OpcionesResolutorCredencial
     }
   }
 
-  async function cargar(): Promise<NonNullable<typeof cache>> {
+  async function cargar(): Promise<Instantanea> {
     if (cache && cache.hasta > ahora()) return cache;
     if (enCurso) return enCurso;
     const miGeneracion = generacion;
@@ -101,7 +103,7 @@ export function crearResolutorCredencialesMeta(opts: OpcionesResolutorCredencial
         const credenciales = (await opts.leer()).map(descifrar).filter((c): c is CredencialMeta => c !== null);
         const porNumero = new Map<string, CredencialMeta>();
         for (const c of credenciales) for (const n of c.phoneNumberIds) porNumero.set(n, c);
-        const nueva = { hasta: ahora() + ttl, credenciales, porNumero };
+        const nueva: Instantanea = { hasta: ahora() + ttl, credenciales, porNumero };
         if (miGeneracion === generacion) cache = nueva;
         return nueva;
       } finally {
