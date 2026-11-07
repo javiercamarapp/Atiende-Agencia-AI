@@ -40,6 +40,7 @@ import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConRes
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { AgentToolOutcome } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
+import { loteAdmiteResumenSinVuelta, type LlamadaDelLote } from "./cerebro-v2/resumen-sin-vuelta.ts";
 import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
 import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
@@ -703,6 +704,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
     /** Solo con `contextoPrecargado` encendido: que llamadas hizo el servidor antes de la primera vuelta. */
     precargado: { cliente: boolean; productos: number; sucursal?: boolean } | null;
+    /** Cerebro v2: el resumen de cotizar_pedido salio del servidor sin otra llamada al modelo (ver `resumenSinVuelta`). */
+    resumenDelServidor: boolean;
   }
 
   async function ejecutarTurno(
@@ -1259,9 +1262,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
       let modeloRespaldo: string | null = null;
+      // Cerebro v2 (decision B): texto que el servidor ya tiene listo para el cliente (el resumen canonico de cotizar_pedido con todos los datos); la vuelta siguiente lo
+      // usa en lugar de llamar al modelo y pasa por las mismas guardas del texto final.
+      let textoDelServidor: string | null = null;
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        const eraTextoDelServidor = textoDelServidor !== null;
         // Con llamadas deterministas ya preparadas (el intento real fallo por tope/proveedor), la causa real queda en la telemetria: no se pisa con la del reloj.
-        if (Date.now() >= deadline) {
+        if (!eraTextoDelServidor && Date.now() >= deadline) {
           if (llamadasDeterministas === null) {
             tele.resultado = "presupuesto_agotado";
             tele.causaError = "tope_turno";
@@ -1271,12 +1278,16 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
         if (huboFalloDeHerramienta) tele.motivoEscaladaDeRol = "fallo_crear_pedido";
-        tele.vueltas += 1;
+        if (!eraTextoDelServidor) tele.vueltas += 1;
         if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
         let completion: { text: string; toolCalls?: LlmToolCall[]; model?: string; providerId?: string };
         const eraCierreDeterminista = llamadasDeterministas !== null;
-        if (llamadasDeterministas !== null) {
+        if (textoDelServidor !== null) {
+          completion = { text: textoDelServidor, toolCalls: [] };
+          textoDelServidor = null;
+          tele.resumenDelServidor = true;
+        } else if (llamadasDeterministas !== null) {
           completion = { text: "", toolCalls: llamadasDeterministas };
           llamadasDeterministas = null;
         } else try {
@@ -1380,7 +1391,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
 
         // Las llamadas del cierre determinista las arma el servidor: ningun modelo respondio, la telemetria de modelo conserva lo del intento real.
-        if (!eraCierreDeterminista) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
+        if (!eraCierreDeterminista && !eraTextoDelServidor) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           let base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
@@ -1521,6 +1532,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
+        // Cerebro v2: las herramientas de ESTA respuesta, para decidir si el resumen sale del servidor sin otra vuelta (ver resumen-sin-vuelta.ts).
+        const loteDeVuelta: LlamadaDelLote[] = [];
 
         for (const [indice, call] of toolCalls.entries()) {
           let input: Record<string, unknown> = {};
@@ -1711,7 +1724,22 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "crear_pedido" && isToolErrorResult(result) && (fallaSistema || argumentosInvalidos)) {
             huboFalloDeHerramienta = true;
           }
+          loteDeVuelta.push({ name: call.name, input, result, error: isToolErrorResult(result) || argumentosInvalidos });
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+        }
+        // Cerebro v2 (decision B): la respuesta fue lecturas + cotizar_pedido con todos los datos del cierre y nada que explicar antes del resumen. La vuelta siguiente solo
+        // copiaria `resumen_canonico` tal cual (lo exige la instruccion de la herramienta): el servidor lo entrega y se ahorra esa llamada al modelo. La cotizacion debe
+        // ser la VIGENTE de este turno en el estado fresco del flujo y el plan de cierre debe estar completo (nombre, pago y, a domicilio, direccion y colonia).
+        if (
+          cerebroV2 && perfil === "taqueria_pm" && !preview && !eraCierreDeterminista && cierreMaquinaActiva() &&
+          orderId === null && escalarMotivo === null && cotizacionDelTurno !== null && resumenCanonicoDelTurno !== null &&
+          loteDeVuelta.length === toolCalls.length && loteAdmiteResumenSinVuelta(loteDeVuelta, pendientes.map((m) => m.content))
+        ) {
+          const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+          const plan = fresco?.state === "cotizado" && fresco.context?.quoteHash === cotizacionDelTurno
+            ? planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined })
+            : null;
+          if (plan?.ok && fresco?.context?.resumenCanonico === resumenCanonicoDelTurno.texto) textoDelServidor = resumenCanonicoDelTurno.texto;
         }
         // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
         if (eraCierreDeterminista && !cierreAdelantado) {
@@ -1750,7 +1778,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null, resumenDelServidor: false };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1795,6 +1823,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
             ...(tele.precargado ? { precargado: tele.precargado } : {}),
+            ...(tele.resumenDelServidor ? { resumenDelServidor: true } : {}),
             telefonoHash,
           });
         }

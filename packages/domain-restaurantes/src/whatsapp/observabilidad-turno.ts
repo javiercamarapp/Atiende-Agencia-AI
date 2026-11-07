@@ -160,6 +160,8 @@ export interface EventoTurnoWhatsApp {
   readonly motivoEscaladaDeRol: "fallo_crear_pedido" | null;
   /** Solo con el contexto precargado encendido (R11 A): consultas de lectura que el servidor hizo antes de la primera vuelta (cliente conocido y numero de busquedas de producto). */
   readonly precargado?: { readonly cliente: boolean; readonly productos: number; readonly sucursal?: boolean };
+  /** Cerebro v2: el resumen de cotizar_pedido lo entrego el servidor sin otra llamada al modelo (ausente = no). */
+  readonly resumenDelServidor?: true;
   readonly telefonoHash: string | null;
 }
 
