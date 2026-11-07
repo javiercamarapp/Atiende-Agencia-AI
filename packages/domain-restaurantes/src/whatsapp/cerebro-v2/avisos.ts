@@ -632,3 +632,38 @@ export function prefijoNivel(nivel: number): string {
 export function nivelDeAlerta(valor: unknown): number {
   return typeof valor === "number" && Number.isInteger(valor) && valor >= 1 && valor <= 3 ? valor : 1;
 }
+
+// ── Correos de aviso fuera del panel (alertas-ruteo.ts + send-order-notification del suelto) ───────────────────────────────────────────────────────
+// Niveles 1 y 2 (el aviso y su repetición a los 10 min): el personal de ESA sucursal y el de alcance general sin ser dueño. Nivel 3: los mismos + el dueño.
+// Red de seguridad: sin nadie en los niveles 1-2, al dueño de una vez. Los repartidores nunca reciben avisos. Puro.
+
+/** Fila de `restaurantes.equipo_para_avisos_correo` (migración 194): membresía del monorrepo (rol de la vertical y del plataforma, sucursales). */
+export interface MiembroDelEquipo {
+  readonly email: string | null;
+  readonly vertical_role: string | null;
+  readonly platform_role: string | null;
+  /** null o vacío = alcance general (todas las sucursales). */
+  readonly property_ids: readonly string[] | null;
+}
+
+/**
+ * El equipo del monorrepo en el vocabulario del suelto para una sucursal: dueño = rol owner (de la vertical o de la plataforma); un miembro con sucursales
+ * que incluyen la del aviso cuenta como de esa sucursal; uno con otras sucursales, como de otra; sin sucursales, de alcance general. Pura.
+ */
+export function destinatariosDelEquipo(equipo: readonly MiembroDelEquipo[], branchId: string | null | undefined): MiembroAlerta[] {
+  return equipo.map((m) => {
+    const ids = m.property_ids ?? [];
+    const role = m.vertical_role === "owner" || m.platform_role === "owner" ? "owner" : String(m.vertical_role ?? "");
+    const branch_id = ids.length === 0 ? null : branchId && ids.includes(branchId) ? branchId : `otra:${ids[0]}`;
+    return { role, branch_id, notify: true, email: m.email };
+  });
+}
+
+/** El correo de un aviso del agente sin atender (sin PII: ni teléfono ni texto del cliente; el detalle se lee en el panel). Puro. */
+export function correoDeAviso(a: { readonly nivel: number; readonly minutos: number; readonly urgente: boolean }): { subject: string; html: string; text: string } {
+  const minutos = Math.max(0, Math.round(a.minutos));
+  const asunto = `${prefijoNivel(a.nivel)}${a.urgente ? "URGENTE: " : ""}Un cliente de WhatsApp espera a una persona`;
+  const text = `${a.urgente ? "Aviso URGENTE del agente de WhatsApp. " : ""}Un cliente espera respuesta de una persona desde hace ${minutos} min. Ábralo en el panel (Avisos del agente) y márquelo como atendido al resolverlo.${a.nivel >= 3 ? " Este aviso ya se escaló al dueño." : ""}`;
+  const html = `<p>${text}</p>`;
+  return { subject: asunto, html, text };
+}

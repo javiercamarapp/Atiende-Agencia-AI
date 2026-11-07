@@ -385,8 +385,8 @@ export {
   listarUmbralesEntrega,
 } from "./avisos-preferencias.ts";
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
-export { barrerAvisosOperativos, barrerAvisosUrgentesSinResolver, listarCandidatosAvisos } from "./avisos-operativos.ts";
-export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+export { barrerAvisosOperativos, barrerAvisosPorCorreo, barrerAvisosUrgentesSinResolver, listarCandidatosAvisos } from "./avisos-operativos.ts";
+export type { CandidatoAviso, ResultadoBarridoAvisos, ResultadoBarridoCorreo, TipoAvisoOperativo } from "./avisos-operativos.ts";
 export { diaMerida } from "./alertas-duenio/dia.ts";
 export { emitirAlertasProveedor, evaluarSaludProveedor, GRAPH_CODIGO_TOKEN_INVALIDO, UMBRAL_FALLAS_PROVEEDOR } from "./alertas-duenio/proveedor.ts";
 export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedor } from "./alertas-duenio/proveedor.ts";

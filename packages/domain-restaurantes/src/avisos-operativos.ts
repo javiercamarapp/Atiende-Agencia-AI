@@ -12,7 +12,8 @@
 // Base sin migrar: el candidato lanza 42883 dentro de un SAVEPOINT y el barrido devuelve `disponible: false`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
-import { ALERTA_MINUTOS_POR_OMISION, llaveConNivel, nivelDebido } from "./whatsapp/cerebro-v2/avisos.ts";
+import { createHash } from "node:crypto";
+import { ALERTA_MINUTOS_POR_OMISION, correoDeAviso, destinatariosAlerta, destinatariosDelEquipo, llaveConNivel, nivelDebido, type MiembroDelEquipo } from "./whatsapp/cerebro-v2/avisos.ts";
 
 export type TipoAvisoOperativo =
   | "restaurantes.pedido.entrega_tardia"
@@ -110,4 +111,73 @@ export async function barrerAvisosUrgentesSinResolver(session: TenantDbSession, 
     else errores += 1;
   }
   return { disponible: true, candidatos: filas.length, emitidas, sinNuevas, errores };
+}
+
+export interface ResultadoBarridoCorreo {
+  /** `false` = la base aun no tiene la migracion 194 (no hay nada que barrer). */
+  readonly disponible: boolean;
+  readonly candidatos: number;
+  /** Correos encolados en esta corrida (uno por aviso, nivel y destinatario; el outbox deduplica por llave). */
+  readonly encolados: number;
+  /** Avisos sin nadie a quien avisar (ni personal ni dueño con correo). */
+  readonly sinDestinatario: number;
+  readonly errores: number;
+}
+
+/**
+ * Cerebro v2 (suelto alertas-operativas.ts + alertas-ruteo.ts): los avisos del agente sin atender salen del panel por CORREO con la escalera del suelto: nivel 1
+ * a los 10 min (los URGENTES de inmediato), repeticion a los 20 (nivel 2) y escalada al dueño a los 30 (nivel 3); el de posible baja solo el nivel 1. Los
+ * candidatos y el equipo los decide la base (migracion 194: solo organizaciones con cerebro_v2 Y `avisos_correo_escalera`, solo sesion de sistema); el ruteo es
+ * `destinatariosAlerta` del suelto. Se encola en el outbox de correo existente con llave `aviso-correo:<id>:n<nivel>:<huella del correo>` (idempotente: dos
+ * barridos no duplican). Cada aviso en su SAVEPOINT. Base sin la 194 (42883): nada que barrer.
+ */
+export async function barrerAvisosPorCorreo(session: TenantDbSession, ahora: Date): Promise<ResultadoBarridoCorreo> {
+  type Fila = { id: string; organization_id: string; property_id: string | null; created_at: string | Date; urgente: boolean; solo_primer_aviso: boolean };
+  const filas = await runWithSavepointFallback<Fila[] | null>({
+    session,
+    primary: async () => (await session.query<Fila>(`select id, organization_id, property_id, created_at, urgente, solo_primer_aviso from restaurantes.avisos_para_correo($1::timestamptz, $2::int);`, [ahora.toISOString(), ALERTA_MINUTOS_POR_OMISION])).rows,
+    isRecoverable: (err) => isMigrationPendingError(err),
+    fallback: async () => null,
+  });
+  if (filas === null) return { disponible: false, candidatos: 0, encolados: 0, sinDestinatario: 0, errores: 0 };
+  const equipos = new Map<string, readonly MiembroDelEquipo[]>();
+  let encolados = 0;
+  let sinDestinatario = 0;
+  let errores = 0;
+  for (const f of filas) {
+    try {
+      await runWithSavepointFallback<void>({
+        session,
+        primary: async () => {
+          let equipo = equipos.get(f.organization_id);
+          if (!equipo) {
+            equipo = (await session.query<MiembroDelEquipo>(`select email, vertical_role, platform_role, property_ids from restaurantes.equipo_para_avisos_correo($1::uuid);`, [f.organization_id])).rows;
+            equipos.set(f.organization_id, equipo);
+          }
+          const creado = new Date(f.created_at);
+          const nivel = f.solo_primer_aviso ? 1 : nivelDebido(creado, ahora, ALERTA_MINUTOS_POR_OMISION);
+          const { correos } = destinatariosAlerta(destinatariosDelEquipo(equipo, f.property_id), f.property_id, nivel);
+          if (correos.length === 0) {
+            sinDestinatario += 1;
+            return;
+          }
+          const correo = correoDeAviso({ nivel, minutos: (ahora.getTime() - creado.getTime()) / 60_000, urgente: f.urgente });
+          let deEste = 0;
+          for (const to of correos) {
+            const huella = createHash("sha256").update(to).digest("hex").slice(0, 16);
+            await session.query(`select restaurantes.enqueue_messaging_outbox($1, $2, $3, $4, $5::jsonb);`, [f.organization_id, "email", "alerta.aviso_sin_atender", `aviso-correo:${f.id}:n${nivel}:${huella}`, JSON.stringify({ to, ...correo })]);
+            deEste += 1;
+          }
+          encolados += deEste;
+        },
+        isRecoverable: () => true,
+        fallback: async () => {
+          errores += 1;
+        },
+      });
+    } catch {
+      errores += 1;
+    }
+  }
+  return { disponible: true, candidatos: filas.length, encolados, sinDestinatario, errores };
 }

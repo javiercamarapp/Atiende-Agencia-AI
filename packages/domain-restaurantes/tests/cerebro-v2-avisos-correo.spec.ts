@@ -81,7 +81,7 @@ describe("barrido de avisos por correo en el tick (cerebro v2 + opción por orga
     const r = await barrerAvisosPorCorreo(session, ahora);
     expect(r).toMatchObject({ disponible: true, candidatos: 3, encolados: 3 + 2 + 2, errores: 0 });
     expect(encolados.every((e) => e.canal === "email" && e.org === ORG && e.evento === "alerta.aviso_sin_atender")).toBe(true);
-    const de = (id: string) => encolados.filter((e) => e.llave.includes(id));
+    const de = (sufijo: string) => encolados.filter((e) => e.llave.startsWith(`aviso-correo:00000000-0000-4000-8000-0000000000${sufijo}:`));
     expect(de("e1").map((e) => e.payload.to).sort()).toEqual(["duena@ejemplo.mx", "general@ejemplo.mx", "gerente.t7@ejemplo.mx"]);
     expect(de("e1").every((e) => /:n3:/.test(e.llave) && String(e.payload.subject).startsWith("[ESCALADA AL DUEÑO] "))).toBe(true);
     expect(de("e2").map((e) => e.payload.to).sort()).toEqual(["general@ejemplo.mx", "gerente.t7@ejemplo.mx"]);
