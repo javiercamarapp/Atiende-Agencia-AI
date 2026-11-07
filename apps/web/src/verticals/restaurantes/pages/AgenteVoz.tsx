@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
@@ -180,14 +180,12 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
   return (
     <div className="relative min-h-[620px] h-full">
       <PageContainer padding="none">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="sr-only">Agente de voz</h1>
-            <p className="text-ui text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
-          </div>
-          {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle). */}
-          <div className="md:hidden">{botonVistaPrevia}</div>
-        </div>
+        {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle); en escritorio vive en la barra. */}
+        <PageHeader
+          titulo="Agente de voz"
+          descripcion="Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal."
+          acciones={<div className="md:hidden">{botonVistaPrevia}</div>}
+        />
 
         <div role="tablist" aria-label="Secciones del agente de voz" onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
           {PESTANAS.map((p) => (

@@ -4,7 +4,7 @@
 // "Costo LLM promedio por pedido" es un promedio del periodo, no el costo real de cada pedido. Sin dato = "—" con su razón.
 import { useCallback, useEffect, useState } from "react";
 import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp, Wrench } from "lucide-react";
-import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, PageHeader, StatCard, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import { fetchWhatsappKpi } from "../lib/whatsapp-kpi-client.ts";
 import type { WhatsappEntrega, WhatsappEntregaDiaSerie, WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
@@ -135,26 +135,26 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
     <>
     {/* pb-24: el globo flotante «Probar conversación» (fixed, 56 px + 24 px de margen) no debe tapar el ultimo texto de la pagina. */}
     <PageContainer padding="none" className={puedeVer ? "pb-24" : undefined}>
-      <header className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-display truncate text-xl font-semibold">Indicadores del agente de WhatsApp</h1>
-          <p className="mt-1 truncate text-ui text-muted-foreground">Conversaciones, pedidos, handoff y costo del agente, por día local de la sucursal.</p>
-        </div>
-        {puedeVer ? (
-          <div className="shrink-0">
-            <label htmlFor="periodo-whatsapp" className="sr-only">
-              Periodo
-            </label>
-            <Selector id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))}>
-              {PERIODOS.map((p) => (
-                <option key={p.dias} value={p.dias}>
-                  {p.etiqueta}
-                </option>
-              ))}
-            </Selector>
-          </div>
-        ) : null}
-      </header>
+      <PageHeader
+        titulo="Indicadores del agente de WhatsApp"
+        descripcion="Conversaciones, pedidos, handoff y costo del agente, por día local de la sucursal."
+        acciones={
+          puedeVer ? (
+            <>
+              <label htmlFor="periodo-whatsapp" className="sr-only">
+                Periodo
+              </label>
+              <Selector id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))} wrapperClassName="w-auto" className="rounded-full">
+                {PERIODOS.map((p) => (
+                  <option key={p.dias} value={p.dias}>
+                    {p.etiqueta}
+                  </option>
+                ))}
+              </Selector>
+            </>
+          ) : undefined
+        }
+      />
 
       {!puedeVer ? (
         <Callout tone="info">

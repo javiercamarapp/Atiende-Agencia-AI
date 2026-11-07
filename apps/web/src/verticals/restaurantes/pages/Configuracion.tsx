@@ -18,7 +18,7 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Selector, PageContainer, useConfirm, StatusBadge, FormField } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Selector, PageContainer, PageHeader, useConfirm, StatusBadge, FormField } from "@atiende/ui";
 import { Clock, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
@@ -168,7 +168,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
   if (!canManage) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Configuración</h1>
+        <PageHeader titulo="Configuración" />
         <Callout tone="info">Editar la configuración de WhatsApp y las zonas conocidas está reservado a dueños y administradores. Tu rol actual es «{role}».</Callout>
       </PageContainer>
     );
@@ -176,7 +176,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Configuración</h1>
+      <PageHeader titulo="Configuración" />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
