@@ -18,7 +18,7 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, PageHeader, StatusBadge, formatMoney } from "@atiende/ui";
 import { CalendarRange, Plus } from "lucide-react";
 import {
   createPromotion,
@@ -114,7 +114,7 @@ export function PromocionesPage(ctx: RestaurantesShellContext) {
   if (!puedeEn(ctx.role, "promociones.ver")) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Promociones</h1>
+        <PageHeader titulo="Promociones" />
         <Callout tone="info">Solo el dueño o un administrador puede ver y gestionar las promociones.</Callout>
       </PageContainer>
     );
@@ -257,19 +257,21 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
 
   return (
     <PageContainer padding="none">
-      <header className="flex flex-wrap items-center justify-end gap-3">
-        <h1 className="sr-only">Promociones</h1>
-        <Button
-          type="button"
-          onClick={() => {
-            setErrorCrear(null);
-            setModalCrearAbierto(true);
-          }}
-        >
-          <Plus />
-          Crear un código nuevo
-        </Button>
-      </header>
+      <PageHeader
+        titulo="Promociones"
+        acciones={
+          <Button
+            type="button"
+            onClick={() => {
+              setErrorCrear(null);
+              setModalCrearAbierto(true);
+            }}
+          >
+            <Plus />
+            Crear un código nuevo
+          </Button>
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
