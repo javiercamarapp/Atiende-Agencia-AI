@@ -12,8 +12,13 @@ import type { ConfigPlataformaVoz, PuertoLlmVoz } from "@atiende/voice-core";
  * mandarla deja la ruta sin endpoints (404, docs/LLM-GATEWAY.md). Para uno que la acepta, la temperatura pedida si es un numero finito (0 incluido) y, si no, no se manda.
  * NOTA para la cascada v2: este puerto no manda `provider.zdr` ni `only` (rutas de EE.UU.), y el modelo por omision `google/gemini-3.8-flash` con `temperature: 0` solo lo
  * aceptan los endpoints de Google AI Studio (no los de Vertex). */
+/** Modelos que aceptan temperatura aunque ya no esten en la lista elegible del panel (`MODELOS_AGENTE`): el modelo POR OMISION de la cascada v1
+ *  (Gemini 3.8 Flash) salio de la lista con la migracion 104 (modelos por actividad), pero la voz no cambia en ese PR: conserva su temperatura. */
+const ACEPTAN_TEMPERATURA_FUERA_DE_LISTA: ReadonlySet<string> = new Set([VOZ_PLATAFORMA.cascada.modeloLlm]);
+
 export function temperaturaParaModelo(modelo: string, temperatura: number | null | undefined): number | "omit" | undefined {
-  if (!modeloAgentePorId(modelo)?.aceptaTemperatura) return "omit";
+  const acepta = modeloAgentePorId(modelo)?.aceptaTemperatura ?? ACEPTAN_TEMPERATURA_FUERA_DE_LISTA.has(modelo);
+  if (!acepta) return "omit";
   return typeof temperatura === "number" && Number.isFinite(temperatura) ? temperatura : undefined;
 }
 
