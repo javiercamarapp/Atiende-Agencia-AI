@@ -8,7 +8,8 @@ import { decidirSalud } from "./salud.ts";
 import { TRANSFERENCIA_REALIZADA_REPLY, esTransferenciaRealizada } from "./pago.ts";
 import { RAZON_CANCELACION, decidirCancelacion, respuestaConPreguntaAlFinal } from "./cancelacion.ts";
 import type { DecisionCancelacion } from "./cancelacion.ts";
-import { declaraAlergia, MARCA_AVISO_URGENTE } from "./salud.ts";
+import { declaraAlergia, esCortesiaSola, MARCA_AVISO_URGENTE, riesgosDeSalud } from "./salud.ts";
+import { hayResidualConContenido } from "./residual.ts";
 import type { MensajeHilo } from "./texto-plano.ts";
 
 export interface AvisoAntesDelModelo {
@@ -75,7 +76,16 @@ function avisoDeCancelacion(op: { readonly operacion: string; readonly motivo: s
 export function decidirAntesDelModelo(pendientes: readonly string[], ctx: ContextoAntesDelModelo): DecisionAntesDelModelo {
   const textos = pendientes.map((t) => String(t ?? "")).filter((t) => t.trim() !== "");
   const avisos: AvisoAntesDelModelo[] = [];
-  const salud = decidirSalud(textos, { pedidoEnCurso: ctx.pedidoEnCurso, ...(ctx.clienteEnIngles !== undefined ? { clienteEnIngles: ctx.clienteEnIngles } : {}) });
+  // R87-N (suelto): ¿la ráfaga trae algo más que atender aparte del riesgo de salud? Mismo cálculo que el núcleo (hayResidualConContenido): disparadores = los textos
+  // con el riesgo; no cuentan la cortesía ni la cláusula que es el riesgo mismo (u otro riesgo de alto nivel que ya tiene su camino).
+  const disparadoresSalud = new Set(textos.filter((t) => riesgosDeSalud(t).length > 0));
+  const residualConContenido = disparadoresSalud.size > 0 && hayResidualConContenido(
+    textos,
+    disparadoresSalud,
+    (t) => esCortesiaSola(t),
+    (c) => esCortesiaSola(c) || riesgosDeSalud(c).length > 0 || declaraAlergia(c) || (ctx.otroRiesgo ? ctx.otroRiesgo(c) !== null : false),
+  );
+  const salud = decidirSalud(textos, { pedidoEnCurso: ctx.pedidoEnCurso, residualConContenido, ...(ctx.clienteEnIngles !== undefined ? { clienteEnIngles: ctx.clienteEnIngles } : {}) });
   // Decision del dueño (7-nov): toda ALERGIA declarada escala como URGENTE (marca al inicio y notificacion critica); la salud conserva la urgencia del suelto.
   for (const a of salud.avisos) {
     const urgente = a.urgente || a.intent === "alergia";

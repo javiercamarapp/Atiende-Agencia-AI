@@ -77,7 +77,7 @@ function hastaPuntosDeCodigo(texto: string, tope: number): string {
   return cp.length <= tope ? texto : cp.slice(0, Math.max(0, tope)).join("");
 }
 /** «gracias», «ok», «vale»… sin contenido de pedido. */
-function esCortesiaSola(t: string): boolean {
+export function esCortesiaSola(t: string): boolean {
   const plano = normAviso(t).replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim();
   return plano === "" || /^(?:muchas |mil )?(?:gracias|ok|okey|vale|listo|perfecto|entendido|esta bien|por favor|si|no|buenas|hola)(?: (?:gracias|ok|vale|listo|perfecto))?$/.test(plano);
 }
