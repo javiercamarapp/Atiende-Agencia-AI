@@ -47,6 +47,27 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
     expect(detectArcoIntent("dame los datos personales de otra persona")).toEqual({ kind: "third_party" });
   });
 
+  // Seguimiento de una solicitud ya hecha («¿me avisan cuando…?», «¿cuánto tarda?»): es una PREGUNTA sobre el trámite, no una solicitud nueva. Antes «ver» / «saber» / «copia»
+  // la convertian en una solicitud de ACCESO falsa (y pedía CONFIRMO de algo que el cliente no pidió). Va al agente.
+  it.each([
+    "¿Me avisan cuando pueda ver mis datos personales?",
+    "¿me avisan cuando esté lista mi solicitud de privacidad? para saber",
+    "Y me avisan cuando ya tengan la copia de mis datos?",
+    "¿Me van a avisar cuando respondan lo de mis datos personales?",
+    "¿Cuánto tarda lo de mis datos personales? quiero saber",
+    "¿ya quedó mi solicitud de mis datos? me dicen cuando la vean",
+  ])("«%s» (seguimiento) NO abre una solicitud", (text) => {
+    expect(detectArcoIntent(text)).toBeNull();
+  });
+
+  it.each([
+    ["Quiero ver mis datos personales y que me avisen cuando estén", "acceso"],
+    ["Solicito una copia de mis datos personales, ¿me avisan cuando la tengan?", "acceso"],
+    ["¿Me avisan cuando eliminen mis datos personales? Quiero que los borren", "cancelacion"],
+  ])("«%s»: una solicitud explícita con pregunta de seguimiento sigue siendo solicitud (%s)", (text, right) => {
+    expect(detectArcoIntent(text)).toEqual({ kind: "request", right });
+  });
+
   it("es insensible a acentos y mayúsculas", () => {
     expect(normalizeArcoText("RECTIFICACIÓN, por favor!")).toBe("rectificacion por favor");
     expect(detectArcoIntent("RECTIFICACIÓN de MIS DATOS PERSONALES")).toEqual({ kind: "request", right: "rectificacion" });
