@@ -1,5 +1,5 @@
 // Empaqueta el worker en UN archivo (dist/main.mjs), igual que la funcion de Vercel (scripts/build-vercel-function.mjs en la raiz): los paquetes del
-// workspace (@atiende/*) y las dependencias de npm se incluyen, EXCEPTO los dos SDK de LiveKit, que traen un binario nativo (rtc-node) y se instalan en
+// workspace (@atiende/*) y las dependencias de npm se incluyen, EXCEPTO los paquetes de LiveKit con binario nativo (rtc-node y la cancelacion de ruido Krisp) y se instalan en
 // la imagen junto al bundle (ver Dockerfile). Uso (desde la raiz del repo): `npm run bundle -w @atiende/voice-worker`.
 import { build } from "esbuild";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,14 +16,14 @@ await build({
   format: "esm",
   target: "node22",
   outfile: join(raiz, "dist/main.mjs"),
-  external: ["@livekit/rtc-node", "livekit-server-sdk"],
+  external: ["@livekit/rtc-node", "livekit-server-sdk", "@livekit/noise-cancellation-node"],
   logLevel: "info",
   // Las dependencias CommonJS (pg, etc.) usan `require` para built-ins de Node: se inyecta un `require` real (mismo arreglo que la funcion de Vercel).
   banner: { js: "import { createRequire as __atiendeCreateRequire } from 'node:module'; const require = __atiendeCreateRequire(import.meta.url);" },
 });
 
 // Manifiesto de lo que queda FUERA del bundle, con las versiones EXACTAS que resolvio el lockfile del repo: la imagen instala solo eso (reproducible).
-const externos = ["@livekit/rtc-node", "livekit-server-sdk"];
+const externos = ["@livekit/rtc-node", "livekit-server-sdk", "@livekit/noise-cancellation-node"];
 const dependencies = {};
 for (const nombre of externos) {
   const ruta = [join(raiz, "node_modules", nombre, "package.json"), join(raiz, "../../node_modules", nombre, "package.json")].find((r) => {
