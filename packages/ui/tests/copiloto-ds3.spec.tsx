@@ -38,7 +38,12 @@ describe("temas sugeridos (ds3)", () => {
     expect(temas.hidden).toBe(true);
     expect(temas.className).toContain("ds3-solo");
     const botones = Array.from(temas.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"));
-    expect(botones.map((b) => b.textContent)).toEqual(["Ventas", "Operación", "Clientes"]);
+    // Titulo por CSS (data-titulo) y nombre accesible por aria-label: ningun texto extra en el DOM sin la bandera.
+    expect(botones.map((b) => [b.getAttribute("aria-label"), b.dataset.titulo, b.textContent])).toEqual([
+      ["Ventas", "Ventas", ""],
+      ["Operación", "Operación", ""],
+      ["Clientes", "Clientes", ""],
+    ]);
     expect(botones.map((b) => b.dataset.serie)).toEqual(["1", "2", "3"]);
     expect(botones[0]?.getAttribute("aria-pressed")).toBe("true");
     clic(botones[1] as HTMLButtonElement);
