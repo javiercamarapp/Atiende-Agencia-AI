@@ -121,9 +121,12 @@ describe("cifra.css: reglas de paridad, todas bajo la bandera", () => {
     expect(regla('html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] :is(.ds3-stat-label, .ds3-kpi-label)::before')).toMatch(/background-color: hsl\(var\(--kpi-color\)\);/);
   });
 
-  it("valor KPI 26/700 tracking -0.52 px", () => {
+  it("valor KPI 26/700 tracking -0.52 px; se ajusta al ancho de la tarjeta y nunca se corta con «…»", () => {
     const v = regla('html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) {');
-    expect(v).toMatch(/font-size: 26px;/);
+    expect(v).toMatch(/font-size: min\(26px, 10cqi\);/);
+    expect(v).toMatch(/text-overflow: clip;/);
+    expect(regla('html[data-diseno="ds3"] .cifra {')).not.toMatch(/ellipsis/);
+    expect(css).toMatch(/\.cifra\[data-abrev\]::after \{ content: attr\(data-abrev\); content: attr\(data-abrev\) \/ ""; \}/);
     expect(v).toMatch(/font-weight: 700;/);
     expect(v).toMatch(/letter-spacing: -0\.52px;/);
   });

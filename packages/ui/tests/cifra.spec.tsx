@@ -10,6 +10,7 @@ import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CIFRA_CONTEO_MS, Cifra, CifraTexto, KpiTile, StatCard, curvaRovaq, formatearCifra, partesCifra, partirTextoCifra } from "../src/index";
+import { abreviatura } from "../src/components/Cifra";
 import { Activity } from "lucide-react";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -73,6 +74,22 @@ describe("formato puro", () => {
     }
   });
 
+  it("compacto sin error de flotante: 4,350,000 con 2 decimales = 4.35 M (no 4.34)", () => {
+    expect(formatearCifra(4_350_000, { variante: "compacto", decimales: 2 })).toBe("4.35 M");
+  });
+
+  it("abreviatura movil: solo cifras largas de 10 000 o mas, sin sufijo; nunca un corte con «…»", () => {
+    expect(abreviatura(partirTextoCifra("$12,345,678.90")!)).toBe("$12.3 M");
+    expect(abreviatura(partirTextoCifra("US$1,204,000.00")!)).toBe("US$1.2 M");
+    expect(abreviatura(partirTextoCifra("$4,500.00")!)).toBeUndefined();
+    expect(abreviatura(partirTextoCifra("1,234,567%")!)).toBeUndefined();
+    const { el } = montar(<CifraTexto texto="$12,345,678.90" />);
+    const c = el.querySelector(".cifra")!;
+    expect(c.getAttribute("data-abrev")).toBe("$12.3 M");
+    expect(c.getAttribute("title")).toBe("$12,345,678.90");
+    expect(c.textContent).toBe("$12,345,678.90");
+  });
+
   it("compacto: $1.2 M con el valor completo aparte; trunca (no infla) y quita el .0", () => {
     const p = partesCifra(1_234_567, { variante: "compacto", moneda: "MXN" });
     expect(p.texto).toBe("$1.2 M");
@@ -106,6 +123,14 @@ describe("partirTextoCifra (texto que ya formateo la pagina)", () => {
 
   it("un texto que no es cifra simple devuelve null (se pinta tal cual)", () => {
     for (const t of ["18 de 24", "318.5 min", "—", "3 h 20 min", "Sin datos"]) expect(partirTextoCifra(t)).toBeNull();
+  });
+
+  it("mas de 3 digitos sin separador («2026», «12345») no es monto: sin partir ni contar (no aparecen comas)", () => {
+    expect(partirTextoCifra("2026")).toBeNull();
+    expect(partirTextoCifra("12345")).toBeNull();
+    expect(partirTextoCifra("999")).not.toBeNull();
+    const { el } = montar(<CifraTexto texto="2026" />);
+    expect(el.textContent).toBe("2026");
   });
 });
 
@@ -277,6 +302,15 @@ describe("movimiento", () => {
       Object.defineProperty(navigator, "webdriver", { configurable: true, get: () => true });
       montar(<Cifra valor={500} />);
       expect(cola.length).toBe(0);
+    });
+
+    it("una transicion que cruza el cero no cuenta (el signo no se anima)", () => {
+      entorno();
+      const m = montar(<Cifra valor={-5} />);
+      terminar();
+      m.rerender(<Cifra valor={10} />);
+      expect(cola.length).toBe(0);
+      expect(m.el.textContent).toBe("10");
     });
 
     it("animar={false} y «—» nunca cuentan", () => {
