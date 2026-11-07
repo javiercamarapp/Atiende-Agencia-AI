@@ -790,6 +790,21 @@ async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolCo
   if (!asignada || asignada.propertyId === ctx.entryPropertyId) return null;
   const delChat = await repo.findBranchById(organizationId, ctx.entryPropertyId);
   const tel = asignada.phone ? ` (${asignada.phone})` : "";
+  // C3 PED-15 (cerebro v2, decision del dueño): el pedido NO se rechaza ni se manda a llamar a la otra sucursal (el cliente se iba sin pedir): se toma aqui mismo y se
+  // asigna a la sucursal que cubre el domicilio, diciendole al cliente cual lo entrega y en cuanto tiempo (el tiempo de ESA sucursal, no el de este chat).
+  if (ctx.cerebroV2 && confirmada) {
+    const tiempo = (await repo.findWhatsAppAgentConfig(organizationId, asignada.propertyId).catch(() => null))?.deliveryTimeText?.trim() || null;
+    return {
+      branch_slug: asignada.slug,
+      branch_name: asignada.name,
+      tomar_pedido: true,
+      ...(tiempo ? { tiempo_entrega: tiempo } : {}),
+      ...(delChat ? { chat_de: delChat.name } : {}),
+      aviso:
+        `Ese domicilio lo entrega ${asignada.name}. Tome el pedido con branch_slug ${asignada.slug} desde este mismo chat (cotizar_pedido y crear_pedido con esa sucursal) y dígale al cliente que su pedido lo entrega ${asignada.name}` +
+        `${tiempo ? ` y llega en ${tiempo}` : " (el tiempo estimado lo da consultar_sucursal de esa sucursal)"}. No lo mande a llamar a otro número ni le diga que este chat no toma pedidos para esa sucursal.`,
+    };
+  }
   if (!confirmada) {
     return {
       branch_slug: asignada.slug,
@@ -826,7 +841,8 @@ async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolC
  * limita aqui: la sucursal la decide la zona (`buscar_sucursal_cercana`). Sin sucursal de entrada (numero unico, vista previa del dueno) no hay nada que comparar.
  */
 async function assertRecogerEnSucursalDeEntrada(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, canal: unknown): Promise<void> {
-  if (ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
+  // C3 PED-15 (cerebro v2): el pedido para recoger se toma para la sucursal que el cliente elija (el modelo le dice donde recoge); H17 ya no rechaza.
+  if (ctx.cerebroV2 || ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
   const branch = await repo.findBranch(ctx.organizationId, { slug: branchSlug });
   if (!branch || branch.propertyId === ctx.entryPropertyId) return;
   // H17 es una regla del perfil `taqueria_pm`: otro perfil conserva el comportamiento de siempre (T-ZS06/P29: entrar por el numero de la sucursal A y pedir en la B).

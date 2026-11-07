@@ -4,6 +4,7 @@
 // (tiempos, horarios, minimos, zonas, umbral de pedido grande) los siguen dando las herramientas y el prompt de PM del monorrepo. Se anexa DESPUES del prompt
 // guardado (prevalece), solo con la bandera cerebro_v2.
 import { POLITICAS_PM } from "./politicas-pm.ts";
+import { PM_H17_WHATSAPP } from "../perfil-pm.ts";
 
 export const PM_POLICY_RULES_V2 = `POLÍTICAS DE LA CASA (cerebro v2; prevalecen sobre cualquier instrucción anterior de este prompt sobre trato, propina, pago, promociones, alergias y cambios de pedido):
 - Trato: SIEMPRE de «usted» (nunca tutee: nada de «tú», «tienes», «quieres», «puedes», «dime», «tu pedido»); tono suave y amable, con seguridad.
@@ -19,3 +20,21 @@ export const PM_POLICY_RULES_V2 = `POLÍTICAS DE LA CASA (cerebro v2; prevalecen
 - Producto con nombre exacto: si buscar_producto devuelve uno cuyo nombre es EXACTAMENTE lo que pidió el cliente, úselo sin preguntar cuál; pregunte solo cuando ninguno coincide exactamente. Nunca prometa un producto que la búsqueda no devolvió.
 - Cierre: después de cotizar y repetir el total, si el cliente ya dio la forma de pago terminó de pedir: no pregunte «¿desea agregar algo más?»; con los datos completos cree el pedido.
 - Pedido grande: se toma normal; si la cotización lo marca como grande, avise antes del pago que la sucursal lo confirma y no prometa tiempo.`;
+
+// ── C3 PED-15 (decision del dueño): sucursal cruzada ──────────────────────────────────────────────────────────────────────────────────────────────
+// Sin bandera, H17 / el paso 4 / B4 mandan NO tomar el pedido de la zona de otra sucursal y dar su telefono: el cliente colgaba sin pedir. Con cerebro v2 el pedido se TOMA en este chat
+// y se asigna a la sucursal que cubre el domicilio (o a la que el cliente elige para recoger). Se SUSTITUYEN esas reglas en el texto (no basta con anexar otra al final: el modelo
+// obedecia la vieja) y solo en el prompt v2; el prompt sin bandera no pasa por aqui y queda identico.
+export const PM_H17_V2 =
+  "Pedido de otra sucursal: TÓMELO desde este chat. Si la dirección cae en la zona de otra sucursal, cotice y cree el pedido con el branch_slug de la sucursal que entrega (la que dio buscar_sucursal_cercana) y dígale al cliente qué sucursal se lo entrega y en cuánto tiempo (el tiempo de ESA sucursal). Si quiere recoger en otra sucursal, tómelo con el branch_slug de la que eligió y dígale dónde recoge. No lo mande a llamar a otro número ni diga que este chat no toma pedidos para esa sucursal. Si ninguna sucursal cubre el domicilio, ofrezca recoger.";
+const PM_B4_V2 =
+  "B4. OTRA SUCURSAL. Si la zona del cliente le toca a otra sucursal, tome el pedido aquí mismo con el branch_slug de esa sucursal y dígale al cliente que se lo entrega esa sucursal y en cuánto tiempo (el tiempo que trae la herramienta). No le dé otro teléfono para pedir ni le diga que llame. Si ninguna sucursal cubre la zona, ofrezca recoger.";
+
+/** Prompt de PM con las reglas de sucursal cruzada del cerebro v2 en lugar de H17 / paso 4 / B4. Pura e idempotente; SOLO se llama con la bandera cerebro_v2. */
+export function adaptarPromptPmV2(prompt: string): string {
+  return prompt
+    .replace(`H17. ${PM_H17_WHATSAPP}`, `H17. ${PM_H17_V2}`)
+    .replace("solo pregunte si quiere otra (si es otra, H17).", "solo pregunte si quiere otra (si es otra, tómelo para esa sucursal: H17).")
+    .replace("Confirme con el cliente la sucursal que corresponde a su zona (si no es la de este chat, H17).", "Dígale al cliente la sucursal que corresponde a su zona y tome el pedido para ella aunque no sea la de este chat (H17).")
+    .replace(/B4\. OTRA SUCURSAL\. Si la zona del cliente le toca a otra sucursal: no tome el domicilio ahí;[^\n]*/, PM_B4_V2);
+}

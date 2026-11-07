@@ -59,7 +59,7 @@ import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado,
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { decidirAntesDelModelo, respuestaFinalV2 } from "./cerebro-v2/antes-del-modelo.ts";
 import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-pm.ts";
-import { PM_POLICY_RULES_V2 } from "./cerebro-v2/prompt-v2.ts";
+import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts";
 import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, promesaDeProductoSinBuscar } from "./cerebro-v2/texto-final.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
@@ -997,7 +997,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
       const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
+      // C3 PED-15: con cerebro v2 el prompt de PM cambia H17 / paso 4 / B4 (tomar el pedido de la zona de otra sucursal); sin la bandera el prompt es el mismo texto de siempre.
+      const systemFinal = [cerebroV2 && perfil === "taqueria_pm" ? adaptarPromptPmV2(systemPrompt) : systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
