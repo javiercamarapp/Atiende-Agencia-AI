@@ -86,13 +86,21 @@ describe("ds3/shell.css: guard de la hoja del shell", () => {
     expect(conImportant).toEqual([]);
   });
 
-  it("duraciones de transicion y animacion <= 400 ms (la respiracion del logo y el seguro del arranque son las unicas excepciones)", () => {
+  it("duraciones de transicion y animacion <= 400 ms (solo los bucles `infinite`, como la respiracion de un logo, pueden durar mas; un retardo no es duracion)", () => {
     const largas: string[] = [];
     raiz.walkDecls((d) => {
-      if (!/^(transition|animation)(-duration|-delay)?$/.test(d.prop)) return;
-      const valorTexto = d.value;
-      if (/ds3-respira|ds3-arranque-tope/.test(valorTexto)) return;
-      if (ms(valorTexto).some((n) => n > 400)) largas.push(`${(d.parent as Rule).selector} { ${d.prop}: ${valorTexto} }`);
+      const sel = (d.parent as Rule).selector;
+      if (d.prop === "transition-duration" || d.prop === "animation-duration") {
+        if (ms(d.value).some((n) => n > 400)) largas.push(`${sel} { ${d.prop}: ${d.value} }`);
+        return;
+      }
+      if (d.prop !== "transition" && d.prop !== "animation") return;
+      for (const parte of d.value.split(/,(?![^(]*\))/)) {
+        if (d.prop === "animation" && /\binfinite\b/.test(parte)) continue;
+        // En el shorthand el PRIMER tiempo es la duracion; el segundo, el retardo.
+        const duracion = ms(parte)[0];
+        if (duracion !== undefined && duracion > 400) largas.push(`${sel} { ${d.prop}: ${parte.trim()} }`);
+      }
     });
     expect(largas).toEqual([]);
   });
@@ -134,8 +142,22 @@ describe("ds3/shell.css: marco (escritorio >= 768)", () => {
     expect(valor(".ds3-no.ds3-no", "display")).toBe("none");
   });
 
-  it("forced-colors: las tarjetas conservan su contorno con el color del sistema", () => {
+  it("forced-colors: SOLO en escritorio y con la misma especificidad que el marco, las tarjetas conservan su contorno del sistema", () => {
     const b = bloques.find((x) => x.media.includes("forced-colors: active") && x.selector.includes(".ds3-shell-marco"));
     expect(b?.decl.border).toBe("1px solid CanvasText");
+    expect(b?.media).toContain("min-width: 768px");
+    expect(b?.selector).toContain(".ds3-shell-marco.ds3-shell-marco");
+    expect(b?.selector).toContain(".ds3-sidebar.ds3-sidebar");
+  });
+
+  it("el panel del Copiloto de superadmin no rompe el lienzo: sin margen vertical, alto 100dvh-32 y, cerrado, cancela el gap", () => {
+    expect(valor(".ds3-shell.ds3-shell > .copiloto-panel-lateral", "height", "min-width: 768px")).toBe("calc(100dvh - 32px)");
+    expect(valor(".ds3-shell.ds3-shell > .copiloto-panel-lateral", "margin-top", "min-width: 768px")).toBe("0");
+    expect(valor(".ds3-shell.ds3-shell > .copiloto-panel-lateral", "margin-right", "min-width: 768px")).toBe("0");
+    expect(valor('.copiloto-panel-lateral[data-abierto="false"]', "margin-left", "min-width: 768px")).toBe("-16px");
+  });
+
+  it("entrada de pagina de 250 ms, solo transform", () => {
+    expect(valor(".ds3-shell-pagina.ds3-shell-pagina", "animation")).toBe("ds3-entrada 250ms cubic-bezier(0.22, 1, 0.36, 1)");
   });
 });
