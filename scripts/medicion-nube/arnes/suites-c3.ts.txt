@@ -1,0 +1,424 @@
+// SUITE C3 (banco ciego 3, 80 escenarios) portada desde wt-medir21/scripts/medicion (core en memoria) a este arnes (API REAL + Postgres efimero +
+// catalogo real-dump + Meta simulado). Veredicto DETERMINISTA, sin juez LLM (puerto de lib/verificar.mjs sobre el estado de la BD). Ver ../README.md (seccion C3) y ../C3-CONCILIACION.md.
+//
+// Diferencias de mecanica respecto al arnes de origen (todas documentadas en README.md, seccion C3):
+//  - El cliente escribe al numero de WhatsApp de la ORGANIZACION (whatsapp_channel_config sin mapeo de sucursal, prep-canales-c3.sql): el agente no
+//    tiene "sucursal de este chat" y elige la sucursal por la direccion (buscar_sucursal_cercana), como en el banco original.
+//  - Reloj POR CONVERSACION (AsyncLocalStorage, stack.ts `conRelojPropio`) con el desplazamiento de 7*k dias del arnes (mismo dia y hora local).
+//  - Pedidos previos (`cliente.existente`) sembrados por la ruta de herramientas de voz (call-token -> quote -> confirm -> orders), con estado y antiguedad
+//    ajustados despues (como setup-orders.ts); direcciones guardadas por SQL.
+//  - INVALIDA (no FALLA) cuando el turno del agente fallo por el proveedor (telemetria error_proveedor / presupuesto_agotado, "fetch failed") o el
+//    cliente simulado no pudo responder; se guarda la causa para poder recontar con el criterio estricto del origen.
+//  - QA_C3_SECO=1: corrida SECA sin LLM (sin cliente ni agente): buscar_sucursal_cercana y cotizar_pedido reales por escenario + siembra de previos.
+import { createHmac, randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import type { Stack } from "./stack.ts";
+import { APP_SECRET, ORG_ID, cabeceraReloj, conRelojPropio } from "./stack.ts";
+import { gasto } from "./llm.ts";
+import { newPhone, snapshot, relojReal, stats } from "./lib.ts";
+
+const ORG_SLUG = "los-taquitos-de-pm";
+/** Numero de WhatsApp de la ORGANIZACION en la copia efimera (prep-canales-c3.sql): sin fila en whatsapp_branch_channel. */
+export const PNID_ORG = process.env.QA_C3_PNID ?? "5550009999";
+const H_TOOL = { "content-type": "application/json", "x-atiende-tool-secret": "qa-voice-tool-secret-local" };
+const MODELO_CLIENTE = process.env.QA_C3_CLIENTE ?? "anthropic/claude-haiku-5.5"; // el mismo cliente simulado que el arnes de origen
+const FIN = "<FIN>";
+const PEDIDO_GRANDE = 4000, MINIMO_DOMICILIO = 200, RADIO_ZONA_KM = 8;
+const PROMO_SUC = new Set(["fco-montejo", "pensiones", "galerias"]); // PP / decision 31-oct: promos solo en esas sucursales
+
+const norm = (s: unknown) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const sinTilde = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+function hav(a: number, b: number, c: number, d: number) { const r = (x: number) => (x * Math.PI) / 180; const x = Math.cos(r(a)) * Math.cos(r(c)) * Math.cos(r(d) - r(b)) + Math.sin(r(a)) * Math.sin(r(c)); return 6371 * Math.acos(Math.max(-1, Math.min(1, x))); }
+const merida = (ms: number) => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms)).map((x) => [x.type, x.value])); return { dow: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday!), min: Number(p.hour) * 60 + Number(p.minute), hhmm: `${p.hour}:${p.minute}` }; };
+
+// ---------- banco ----------
+export function cargarBanco(): any {
+  const ruta = process.env.QA_C3_JSON ?? fileURLToPath(new URL("./ciego-3.json", import.meta.url));
+  return JSON.parse(readFileSync(ruta, "utf8"));
+}
+
+// ---------- telemetria por telefono (HMAC igual que observabilidadTurnosRestaurantes de deps.ts) ----------
+const LLAVE_TEL = createHmac("sha256", APP_SECRET).update("restaurantes-log-telefono-v1").digest("hex");
+const hashTel = (t: string) => `tel_${createHmac("sha256", LLAVE_TEL).update(t.replace(/[^\d+]/g, "")).digest("hex").slice(0, 16)}`;
+const telPorHash = new Map<string, any[]>();
+{
+  const w = process.stdout.write.bind(process.stdout); let resto = "";
+  process.stdout.write = ((chunk: any, ...a: any[]) => {
+    try {
+      resto += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+      const ls = resto.split("\n"); resto = ls.pop() ?? "";
+      for (const l of ls) if (l.startsWith('{"ts"') && l.includes('"evento":"whatsapp_turno"')) { const j = JSON.parse(l); if (j.telefonoHash) (telPorHash.get(j.telefonoHash) ?? telPorHash.set(j.telefonoHash, []).get(j.telefonoHash)!).push({ resultado: j.resultado, latenciaTotalMs: j.latenciaTotalMs, causaError: j.causaError ?? null, motivoEscalacion: j.motivoEscalacion ?? null, modelo: j.modeloRespondioLlm ?? null }); }
+    } catch { /* best-effort */ }
+    return (w as any)(chunk, ...a);
+  }) as any;
+}
+const telDe = (phone: string) => [...(telPorHash.get(hashTel(phone)) ?? []), ...(telPorHash.get(hashTel("+" + phone.replace(/\D/g, ""))) ?? [])];
+const RESULTADOS_PROVEEDOR = new Set(["error_proveedor", "presupuesto_agotado"]);
+
+// ---------- datos de referencia de la BD ----------
+interface Ref { suc: Map<string, { slug: string; status: string; lat: number | null; lng: number | null; acepta: boolean | null; horario: any[] }>; slugDe: Map<string, string>; precio: Map<string, number>; prodPorNombre: Map<string, any[]>; prodPorId: Map<string, any>; catPorId: Map<string, any>; minutos: Set<number> }
+async function referencia(s: Stack): Promise<Ref> {
+  const q = async (sql: string) => (await s.pool.query(sql)).rows as any[];
+  const suc = new Map<string, any>(); const slugDe = new Map<string, string>();
+  for (const r of await q(`select bd.property_id, bd.slug, bd.lat::float lat, bd.lng::float lng, p.status, bp.acepta_domicilio, bp.horario from restaurantes.branch_detail bd join core.property p on p.id = bd.property_id left join restaurantes.branch_policy bp on bp.property_id = bd.property_id`)) {
+    suc.set(r.slug, { slug: r.slug, status: r.status, lat: r.lat, lng: r.lng, acepta: r.acepta_domicilio, horario: r.horario ?? [] }); slugDe.set(r.property_id, r.slug);
+  }
+  const precio = new Map<string, number>(); for (const r of await q(`select property_id, product_id, price::float p from restaurantes.branch_products`)) precio.set(`${slugDe.get(r.property_id)}:${r.product_id}`, r.p);
+  const prodPorNombre = new Map<string, any[]>(); const prodPorId = new Map<string, any>();
+  for (const r of await q(`select id, name, description, category_id, no_domicilio from restaurantes.products`)) { r.pack = Number(/orden de (\d+)/i.exec(`${r.name} ${r.description ?? ""}`)?.[1] ?? 1); prodPorId.set(r.id, r); (prodPorNombre.get(norm(r.name)) ?? prodPorNombre.set(norm(r.name), []).get(norm(r.name))!).push(r); }
+  const catPorId = new Map<string, any>(); for (const r of await q(`select id, name, no_domicilio from restaurantes.categories`)) catPorId.set(r.id, r);
+  // Minutos que el agente puede decir: 10/25/30 del origen + los de los textos de tiempos configurados (delivery_time_text) de la cuenta real.
+  const minutos = new Set([10, 25, 30]);
+  for (const r of await q(`select delivery_time_text t from restaurantes.whatsapp_agent_config`)) for (const m of String(r.t ?? "").matchAll(/\d+/g)) minutos.add(Number(m[0]));
+  return { suc, slugDe, precio, prodPorNombre, prodPorId, catPorId, minutos };
+}
+function abierta(ref: Ref, slug: string | undefined, ms: number): boolean | null {
+  const h = slug ? ref.suc.get(slug)?.horario : null; if (!h || !h.length) return null;
+  const { dow, min } = merida(ms); const hm = (x: string) => { const [a, b] = x.split(":").map(Number); return a! * 60 + (b ?? 0); };
+  return h.some((b: any) => { const a = hm(b.abre), c = hm(b.cierra), d: number[] = b.dias ?? [0, 1, 2, 3, 4, 5, 6]; return c <= a ? (d.includes(dow) && min >= a) || (d.includes((dow + 6) % 7) && min < c) : d.includes(dow) && min >= a && min < c; });
+}
+function esAlcohol(nombre: string, cat: string | null | undefined) { return /^(cervezas|licores y cocktails)$/i.test(cat ?? "") && !/(?:\bsin\s+alcohol\b|\b0[.,]0\b)/i.test(nombre); } // = requiresAdultConfirmation de product-search.ts
+
+// ---------- API de herramientas (siembra y corrida seca) ----------
+async function api(s: Stack, path: string, body: unknown, extra: Record<string, string> = {}) {
+  const r = await fetch(`${s.api}/v1/restaurantes/${ORG_SLUG}${path}`, { method: "POST", headers: { ...H_TOOL, ...extra, ...cabeceraReloj() }, body: JSON.stringify(body) });
+  const txt = await r.text(); let j: any = null; try { j = JSON.parse(txt); } catch { /* texto */ }
+  return { status: r.status, j, txt };
+}
+const coloniaDeDireccion = (dir: string) => (dir.split(",")[1] ?? "").trim();
+async function cercana(s: Stack, colonia: string) {
+  const r = await api(s, "/branches/nearest", { colonia });
+  if (r.status !== 200) return { estado: `http_${r.status}`, detalle: r.txt.slice(0, 160) };
+  return { estado: r.j?.estado ?? (r.j?.encontrada ? "asignada" : "no_encontrada"), slug: r.j?.branch_slug ?? r.j?.sugerida?.branch_slug ?? null, km: r.j?.distancia_km ?? r.j?.distancia_aprox_km ?? null };
+}
+/** Lineas para cotizar_pedido. `requested_quantity` va en PIEZAS: el banco cuenta ORDENES (el catalogo guarda ordenes), asi que se multiplica por el
+ *  tamano del paquete que el servidor indica ("solo se vende en ordenes de N piezas"). Tortilla: la del escenario o, si el servidor la exige, maiz. */
+function lineas(ref: Ref, slug: string, items: { nombre: string; cantidad: number; tortilla?: string }[], pack: Map<string, number>, conTortilla: boolean) {
+  return items.map((i) => {
+    const p = (ref.prodPorNombre.get(norm(i.nombre)) ?? []).find((x) => ref.precio.has(`${slug}:${x.id}`));
+    return { product_id: p?.id, product_name: i.nombre, requested_quantity: i.cantidad * (pack.get(norm(i.nombre)) ?? p?.pack ?? 1), ...(i.tortilla ? { tortilla: i.tortilla } : conTortilla ? { tortilla: "maiz" } : {}) };
+  });
+}
+async function cotizar(s: Stack, ref: Ref, slug: string, canal: string, colonia: string | null, items: { nombre: string; cantidad: number; tortilla?: string }[], pago: string | null, extra: Record<string, string> = {}) {
+  const pack = new Map<string, number>(); let conTortilla = false; let ultimo: any = null;
+  for (let intento = 0; intento < 10; intento++) {
+    const body = { branch_slug: slug, canal, ...(canal === "domicilio" && colonia ? { colonia_entrega: colonia } : {}), ...(canal === "recoger" ? { minutos_para_recoger: 40 } : {}), items: lineas(ref, slug, items, pack, conTortilla), payment_method: pago ?? "efectivo", adult_confirmed: true };
+    const r = await api(s, "/orders/quote", body, extra); ultimo = { r, body };
+    if (r.status === 200) return { ok: true, total: r.j?.quote?.total ?? null, body };
+    const msg = String(r.j?.message ?? r.txt);
+    const m = /^(.+?) solo se vende en [oó]rdenes de (\d+) piezas/.exec(msg);
+    if (m && !pack.has(norm(m[1]))) { pack.set(norm(m[1]), Number(m[2])); continue; }
+    if (/tortilla/i.test(msg) && !conTortilla) { conTortilla = true; continue; }
+    break;
+  }
+  return { ok: false, error: `HTTP ${ultimo.r.status} ${String(ultimo.r.j?.message ?? ultimo.r.txt).slice(0, 220)}`, body: ultimo.body };
+}
+const ESTADO_PREVIO: Record<string, string> = { completed: "entregado", delivered: "entregado" }; // el origen escribe en ingles; en el destino un domicilio terminado es `entregado`
+/** Siembra el cliente existente: pedido(s) previo(s) por la ruta de herramientas + direcciones guardadas. Devuelve los ids sembrados (no cuentan como pedidos del chat). */
+async function sembrarCliente(s: Stack, ref: Ref, phone: string, cli: any): Promise<{ ids: string[]; nota: string }> {
+  const ids: string[] = []; const notas: string[] = [];
+  const dir0: string = cli.direcciones?.[0] ?? "Calle 60 #455 x 51 y 53, Centro";
+  const col = coloniaDeDireccion(dir0); const cerca = await cercana(s, col);
+  const slug = cerca.slug && ref.suc.get(cerca.slug)?.status === "active" ? cerca.slug : "garcia-lavin";
+  for (const [i, pp] of (cli.pedidos_previos ?? []).entries()) {
+    const callId = `call-qa-c3-${Date.now()}-${i}-${Math.floor(Math.random() * 1e6)}`;
+    const t = await api(s, "/voice/call-token", { call_id: callId, caller_phone: phone, branch_slug: slug });
+    if (t.status !== 200 || !t.j?.call_token) throw new Error(`semilla: call-token HTTP ${t.status} ${t.txt.slice(0, 160)}`);
+    const hdr = { "x-atiende-call-token": t.j.call_token };
+    const items = (pp.items ?? []).map((x: any) => ({ nombre: x.name, cantidad: x.quantity }));
+    const q = await cotizar(s, ref, slug, "domicilio", col, items, "efectivo", hdr);
+    if (!q.ok) throw new Error(`semilla: cotizar en ${slug}: ${q.error}`);
+    await api(s, "/orders/confirm", {}, hdr);
+    const body = { ...q.body, customer_name: cli.nombre ?? "Cliente QA", customer_address: dir0 };
+    delete (body as any).minutos_para_recoger;
+    const r = await api(s, "/orders", body, hdr);
+    if (r.status >= 300) throw new Error(`semilla: crear pedido HTTP ${r.status} ${r.txt.slice(0, 200)}`);
+    const p10 = phone.replace(/\D/g, "").slice(-10);
+    const nuevo = (await s.pool.query(`select id, total::float total from restaurantes.orders where customer_phone like $1 and not (id = any($2::uuid[])) order by created_at desc limit 1`, [`%${p10}`, ids])).rows[0];
+    if (!nuevo) throw new Error("semilla: el pedido previo no quedo en la BD");
+    await s.pool.query(`update restaurantes.orders set created_at = $2::timestamptz, status = $3 where id = $1`, [nuevo.id, new Date(Date.now() - (pp.hace_min ?? 10080) * 60000).toISOString(), ESTADO_PREVIO[pp.status] ?? pp.status ?? "entregado"]);
+    ids.push(nuevo.id); notas.push(`${slug} $${nuevo.total} (origen $${pp.total}) ${ESTADO_PREVIO[pp.status] ?? pp.status} hace ${pp.hace_min} min`);
+  }
+  // direcciones guardadas del cliente (las del escenario, la primera por omision)
+  const cid = (await s.pool.query(`select customer_id from restaurantes.orders where id = any($1::uuid[]) and customer_id is not null limit 1`, [ids])).rows[0]?.customer_id;
+  if (cid) {
+    if (cli.nombre) await s.pool.query(`update restaurantes.customers set name = $2 where id = $1`, [cid, cli.nombre]);
+    for (const [i, d] of (cli.direcciones ?? []).entries()) await s.pool.query(`insert into restaurantes.customer_addresses (customer_id, address, is_default) values ($1, $2, $3) on conflict (customer_id, address) do update set is_default = excluded.is_default`, [cid, d, i === 0]);
+  } else notas.push("SIN customer_id en el pedido previo (direcciones no guardadas)");
+  return { ids, nota: notas.join("; ") };
+}
+
+// ---------- cliente simulado (puerto de lib/cliente.mjs) ----------
+const textoLinea = (l: any) => (typeof l === "string" ? l : l.texto);
+function promptCliente(e: any) {
+  const p = e.persona ?? {};
+  const hechos = Object.entries(p.hechos ?? {}).map(([k, v]) => `- ${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
+  const pasos = (e.guion ?? []).map((l: any, i: number) => `${i + 1}. ${textoLinea(l)}`).join("\n");
+  return `Eres un cliente real de una taqueria en Merida, Yucatan, escribiendo por WhatsApp. Eres tu, no un asistente.
+${p.descripcion ?? "Cliente comun."}
+Estilo: ${p.estilo ?? "mensajes cortos, informal, sin signos de apertura, a veces sin acentos"}.
+
+HECHOS que conoces y no cambian (nombre, direccion, lo que quieres pedir, como pagas):
+${hechos || "- (ninguno)"}
+
+INTENCIONES en orden (guia, NO las copies literal; adaptalas a lo que el agente te pregunte):
+${pasos}
+
+REGLAS:
+- Manda UN mensaje corto por turno. Nunca escribas como asistente ni expliques que eres una simulacion.
+- Contesta lo que te pregunten usando tus HECHOS. Si preguntan algo que no esta en tus hechos, da lo minimo y consistente.
+- NO digas "si" a todo: si el resumen o total del agente no coincide con tus hechos (cantidad, producto, direccion, nombre, sucursal), corrigelo con tus palabras.
+- No inventes productos, cantidades ni datos que contradigan tus hechos.
+- Cuando tu objetivo ya quedo cumplido (pedido confirmado, o ya te dijeron lo que querias saber, o te negaron lo que no se puede) y no tienes mas que decir, responde exactamente ${FIN}.
+- Si el agente repite lo mismo o no avanza dos veces seguidas, insiste una vez y luego responde ${FIN}.`;
+}
+async function chatCliente(messages: { role: string; content: string }[]): Promise<string> {
+  let err = "";
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", signal: AbortSignal.timeout(30000), headers: { authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ model: MODELO_CLIENTE, messages, max_tokens: 900, temperature: 0.3, usage: { include: true }, provider: { data_collection: "deny" } }) });
+      if (r.status === 402 || r.status === 401 || r.status === 403) throw new Error(`cliente HTTP ${r.status}`);
+      if (!r.ok) { err = `HTTP ${r.status}`; await new Promise((x) => setTimeout(x, 1500 * (i + 1))); continue; }
+      const j = (await r.json()) as any; gasto.usd += j.usage?.cost ?? 0; gasto.calls++;
+      return String(j.choices?.[0]?.message?.content ?? "");
+    } catch (e) { err = (e as Error).message; if (/HTTP 40[123]/.test(err)) break; await new Promise((x) => setTimeout(x, 1500 * (i + 1))); }
+  }
+  throw new Error(`cliente simulado sin respuesta: ${err}`);
+}
+async function siguienteMensaje(e: any, turnos: { cliente: string; agente: string }[], i: number, modo: string): Promise<string | null> {
+  if (modo === "guion") { const l = e.guion?.[i]; return l === undefined ? null : textoLinea(l); }
+  if (i === 0 && e.guion?.[0]) return textoLinea(e.guion[0]);
+  const msgs = [{ role: "system", content: promptCliente(e) }];
+  for (const t of turnos) { if (t.cliente) msgs.push({ role: "assistant", content: t.cliente }); msgs.push({ role: "user", content: t.agente.trim() || "(el restaurante no respondio este mensaje)" }); }
+  const crudo = (await chatCliente(msgs)).trim();
+  if (!crudo || crudo.includes(FIN)) return null;
+  return crudo.replace(/^["“]|["”]$/g, "");
+}
+
+// ---------- verificacion (puerto de lib/verificar.mjs) ----------
+const PROMO = /\bpromo(?:s|ci[oó]n|ciones)?(?![a-záéíóúñ])|\b2\s*x\s*1\b|\bdos\s+por\s+uno\b|\bnachos\s*\+\s*aguas\b/i;
+const PROMO_ACLARA = /no\s+aplica|(?:solo|s[oó]lo|[uú]nicamente|exclusivamente)\s+(?:valen?\s+|aplican?\s+)?(?:para\s+|en\s+)?(?:(?:los\s+)?pedidos\s+(?:a|para)\s+)?recog|pedidos\s+(?:a|para)\s+recoger|para\s+recoger/i;
+const PROMO_NEGATIVA = /no\s+(?:aplica|hay|tiene|manejamos|participa|cuenta|est[aá])|sin\s+promo|(?:solo|[uú]nicamente)\s+(?:aplica|valen?|en)[^.!?\n]*(?:pensiones|montejo|galer[ií]as|participantes)/i;
+const TIEMPO = /(\d+)(?:\s*(?:a|-|y)\s*(\d+))?\s*(?:min\b|minutos?)/gi;
+const NEGA_CUENTA = String.raw`(?<!\bno\s+(?:contamos\s+con|tenemos|manejamos|aceptamos|ofrecemos|damos|hay|se\s+cuenta\s+con|disponemos\s+de|trabajamos\s+con)[^.!?\n]{0,30})`;
+const TRANSFER_OFRECE = new RegExp(String.raw`${NEGA_CUENTA}\bclabe\b|${NEGA_CUENTA}cuenta\s+(?:bancaria|para\s+(?:el\s+)?dep[oó]sito)|(?:s[ií]|claro)[,.!\s]+(?:aceptamos|puedes?\s+pagar|se\s+puede)[^.!?\n]{0,30}(?:transferencia|dep[oó]sito)`, "i");
+interface Chk { id: string; ok: boolean; detalle?: string; tipo: string }
+const check = (id: string, ok: unknown, detalle: string, tipo = "politica"): Chk => ({ id, ok: !!ok, ...(ok ? {} : { detalle }), tipo });
+
+export function verificarC3(e: any, ref: Ref, nuevos: any[], turnos: { cliente: string; agente: string; pedido_creado?: boolean }[], escal: { n: number; razones: string[] }, colonias: any[], creadoEn: Map<string, number>): { veredicto: string; fallas: string[]; comprobaciones: Chk[] } {
+  const esp = e.esperado ?? {}; const out: Chk[] = [];
+  const respuestas = turnos.map((t) => t.agente ?? ""); const textoAgente = respuestas.join("\n"); const textoCliente = turnos.map((t) => t.cliente ?? "").join("\n");
+  const sucDe = (o: any) => ref.slugDe.get(o.property_id);
+  const precioCat = (slug: string | undefined, pid: string) => ref.precio.get(`${slug}:${pid}`);
+  const recogida = (o: any) => o.hora_recogida ?? o.programado_para ?? null;
+  if (typeof esp.pedidos === "number") out.push(check("pedidos_n", nuevos.length === esp.pedidos, `pedidos creados=${nuevos.length}, esperados=${esp.pedidos}`, "dinero"));
+  const o1 = nuevos[0];
+  if (o1 && typeof esp.pedidos === "number" && esp.pedidos >= 1) {
+    const suc = sucDe(o1); const items: any[] = o1.items ?? [];
+    if (Array.isArray(esp.items)) {
+      const faltan: string[] = [];
+      for (const it of esp.items) {
+        const re = it.producto_re ? new RegExp(it.producto_re, "i") : null;
+        const h = items.find((x) => (re ? re.test(x.name) : norm(x.name) === norm(it.producto)));
+        if (!h) faltan.push(`falta ${it.producto ?? it.producto_re}`);
+        else if (h.quantity !== it.cantidad) faltan.push(`${h.name}: cantidad ${h.quantity}, esperada ${it.cantidad}`);
+        else if (it.tortilla && h.tortilla !== it.tortilla) faltan.push(`${h.name}: tortilla ${h.tortilla ?? "ninguna"}, esperada ${it.tortilla}`);
+      }
+      if (!esp.items_extra_ok && items.length > esp.items.length) faltan.push(`renglones de mas: ${items.length} vs ${esp.items.length}`);
+      out.push(check("items", !faltan.length, faltan.join("; "), "dinero"));
+    }
+    const malos: string[] = []; let suma = 0;
+    for (const x of items) { const p = precioCat(suc, x.id); if (p == null || x.price !== p) malos.push(`${x.name}: precio ${x.price}, catalogo ${p}`); suma += (p ?? x.price) * x.quantity; }
+    suma = Math.round(suma * 100) / 100;
+    if (Math.abs(suma - o1.total) > 0.001) malos.push(`total ${o1.total} != suma de catalogo ${suma}`);
+    if (esp.total_fijo === true && typeof esp.total_mxn === "number" && Math.abs(o1.total - esp.total_mxn) > 0.001) malos.push(`total ${o1.total} != esperado ${esp.total_mxn}`);
+    if (Array.isArray(esp.items) && !esp.items_extra_ok && esp.total_fijo !== true) {
+      let t = 0; for (const it of esp.items) { const p = it.producto ? (ref.prodPorNombre.get(norm(it.producto)) ?? []).find((x) => precioCat(suc, x.id) != null) : null; const pr = p ? precioCat(suc, p.id) : null; if (pr != null) t += pr * it.cantidad; }
+      if (t > 0 && Math.abs(Math.round(t * 100) / 100 - o1.total) > 0.001) malos.push(`total ${o1.total} != esperado por catalogo ${t}`);
+    }
+    out.push(check("precio_total", !malos.length, malos.join("; "), "dinero"));
+    if (esp.sucursal) out.push(check("sucursal", suc === esp.sucursal, `sucursal=${suc}, esperada=${esp.sucursal}`));
+    if (esp.entrega) out.push(check("entrega", o1.canal === esp.entrega, `entrega=${o1.canal}, esperada=${esp.entrega}`));
+    if (o1.canal === "recoger") {
+      out.push(check("recoger_sin_direccion", !o1.customer_address && !!recogida(o1), `direccion=${o1.customer_address}, hora_recogida=${recogida(o1)}`));
+      if (esp.hora_recoger) { const h = recogida(o1) ? merida(Date.parse(recogida(o1))).hhmm : null; out.push(check("hora_recoger", h === esp.hora_recoger, `hora=${h}, esperada=${esp.hora_recoger}`)); }
+    } else out.push(check("domicilio_con_direccion", !!(o1.customer_address && String(o1.customer_address).trim().length >= 6), `direccion="${o1.customer_address}"`));
+    if (esp.pago !== undefined && esp.pago !== null) out.push(check("pago", o1.payment_method === esp.pago, `pago=${o1.payment_method}, esperado=${esp.pago}`));
+    if (esp.nombre_re) out.push(check("nombre", new RegExp(esp.nombre_re, "i").test(o1.customer_name ?? ""), `nombre=${o1.customer_name}`));
+    if (esp.notas_re) out.push(check("notas", new RegExp(esp.notas_re, "i").test(o1.notes ?? ""), `notas=${o1.notes}`));
+  }
+  for (const o of nuevos) {
+    const suc = sucDe(o); const creado = creadoEn.get(o.id) ?? Date.now();
+    out.push(check("pago_permitido", [null, "efectivo", "tarjeta"].includes(o.payment_method), `payment_method=${o.payment_method}`));
+    const grande = o.total > PEDIDO_GRANDE;
+    out.push(check("estado_por_monto", o.status === (grande ? "por_aprobar" : "pending"), `total=${o.total}, status=${o.status}`, "dinero"));
+    if (o.canal !== "recoger") {
+      out.push(check("minimo_domicilio", o.total >= MINIMO_DOMICILIO, `domicilio de $${o.total} < minimo $${MINIMO_DOMICILIO}`));
+      const alcohol = (o.items ?? []).filter((x: any) => { const p = ref.prodPorId.get(x.id); const cat = p ? ref.catPorId.get(p.category_id) : null; return p?.no_domicilio || cat?.no_domicilio || esAlcohol(x.name, cat?.name); });
+      out.push(check("alcohol_no_a_domicilio", !alcohol.length, `alcohol en domicilio: ${alcohol.map((x: any) => x.name).join(", ")}`));
+      out.push(check("sucursal_acepta_domicilio", ref.suc.get(suc ?? "")?.acepta !== false, `${suc} no acepta domicilio`));
+      out.push(check("sucursal_abierta", abierta(ref, suc, creado) !== false, `pedido a domicilio con ${suc} cerrada (${merida(creado).hhmm})`));
+      const col = e.cliente?.colonia_entrega ?? e.zona?.colonia ?? e.persona?.hechos?.colonia;
+      if (col) {
+        const q = norm(col); const hit = colonias.filter((x) => q.includes(norm(x.nombre)) || norm(x.nombre).includes(q)).sort((a, b) => b.nombre.length - a.nombre.length)[0];
+        if (hit) { const km = [...ref.suc.values()].filter((b) => b.status === "active" && b.lat != null).map((b) => hav(hit.lat, hit.lng, b.lat!, b.lng!)); if (km.length) { const m = Math.min(...km); out.push(check("zona_8km", m <= RADIO_ZONA_KM, `entrega a "${col}" a ${m.toFixed(1)} km de la sucursal mas cercana (> ${RADIO_ZONA_KM})`)); } }
+      }
+    } else {
+      const rec = recogida(o) ? Date.parse(recogida(o)) : NaN;
+      out.push(check("recoger_espera_minima", rec - creado >= 24 * 60000, `hora de recoger con menos de 25 minutos de espera (${Number.isNaN(rec) ? "sin hora" : Math.round((rec - creado) / 60000) + " min"})`));
+      out.push(check("recoger_en_horario", Number.isNaN(rec) || abierta(ref, suc, rec) !== false, `hora de recoger fuera de horario de ${suc}`));
+    }
+    if (grande) {
+      const i = turnos.findIndex((t) => t.pedido_creado); const despues = i >= 0 ? turnos.slice(i).map((t) => t.agente ?? "").join("\n") : textoAgente;
+      out.push(check("grande_sin_tiempo", !/\b\d+\s*(?:a|-)\s*\d+\s*min|\b\d+\s*minutos/i.test(despues), "se prometio tiempo en un pedido por_aprobar"));
+    }
+  }
+  {
+    const conPromo = respuestas.filter((r) => PROMO.test(r));
+    if (conPromo.length) {
+      out.push(check("promo_no_ofrecida_sin_pedirla", PROMO.test(textoCliente) || /oferta|descuento|2\s*por\s*1/i.test(textoCliente), "el agente ofrecio una promo sin que el cliente la pidiera"));
+      const aDom = nuevos.some((o) => o.canal !== "recoger") || (nuevos.length === 0 && !/recog/i.test(textoCliente));
+      if (aDom) out.push(check("promo_no_a_domicilio", conPromo.every((r) => PROMO_ACLARA.test(r)), "se ofrecio/aplico una promo en un contexto de domicilio sin aclarar que es solo para recoger"));
+      for (const o of nuevos.filter((x) => x.canal === "recoger")) { const s = sucDe(o); if (s && !PROMO_SUC.has(s)) out.push(check("promo_solo_sucursales_con_promo", conPromo.every((r) => PROMO_NEGATIVA.test(r)), `se hablo de promo en ${s} sin decir que ahi no aplica (solo Fco. de Montejo, Pensiones y Galerias)`)); }
+    }
+  }
+  if (nuevos.length > 1) { const f = nuevos.map((o) => JSON.stringify([o.property_id, (o.items ?? []).map((x: any) => [x.id, x.quantity])])); out.push(check("sin_duplicados", new Set(f).size === f.length, "pedido duplicado (mismos renglones)", "dinero")); }
+  {
+    const dijo = /propin/i.test(textoCliente); const malas = turnos.filter((t) => /propin/i.test(t.agente ?? "") && !/propin/i.test(t.cliente ?? ""));
+    out.push(check("propina_no_ofrecida", dijo || !malas.length, "el agente menciono la propina sin que el cliente la mencionara"));
+    if (dijo) out.push(check("propina_no_suma_al_total", !respuestas.some((r) => /propin/i.test(r) && /\b(?:se\s+suma|incluid[ao]|se\s+cobra|se\s+agrega)\b[^.!?\n]*(?:total|pedido)|total[^.!?\n]*propin/i.test(r) && !/no\s+se\s+(?:suma|cobra|agrega|incluye)/i.test(r)), "el agente sumo la propina al total"));
+  }
+  out.push(check("transferencia_no_ofrecida", !TRANSFER_OFRECE.test(textoAgente), "el agente ofrecio/acepto transferencia o dio datos de cuenta"));
+  {
+    const raros: number[] = []; const NIEGA = /\bno\b|m[ií]nimo|lo\s+m[aá]s\s+pronto|a\s+partir\s+de|imposible|no\s+alcanz/i; const delCliente = new Set<number>();
+    for (const t of turnos) {
+      for (const m of String(t.cliente ?? "").matchAll(TIEMPO)) for (const n of [m[1], m[2]].filter(Boolean).map(Number)) delCliente.add(n);
+      for (const o of String(t.agente ?? "").split(/[.!?\n]+/)) { const exime = NIEGA.test(o); for (const m of o.matchAll(TIEMPO)) for (const n of [m[1], m[2]].filter(Boolean).map(Number)) if (!ref.minutos.has(n) && !(exime && delCliente.has(n)) && n >= 5) raros.push(n); }
+    }
+    out.push(check("tiempos_no_inventados", !raros.length || e.tiempos_libres === true, `minutos que no vienen de las herramientas: ${[...new Set(raros)].join(", ")}`));
+  }
+  out.push(check("sin_mensaje_de_error", !/problema t[eé]cnico|se me complic[oó]/i.test(textoAgente), "el cliente recibio un mensaje de error tecnico", "flujo"));
+  if (typeof esp.handoffs === "number") out.push(check("escalaciones_n", escal.n === esp.handoffs, `escalaciones=${escal.n} (${escal.razones.join("|")}), esperadas=${esp.handoffs}`));
+  if (typeof esp.handoffs_max === "number") out.push(check("escalaciones_max", escal.n <= esp.handoffs_max, `escalaciones=${escal.n} (${escal.razones.join("|")}), maximo=${esp.handoffs_max}`));
+  if (typeof esp.handoffs_min === "number") out.push(check("escalaciones_min", escal.n >= esp.handoffs_min, `escalaciones=${escal.n}, minimo=${esp.handoffs_min}`));
+  if (esp.escalacion_razon_re) out.push(check("escalacion_razon", escal.razones.some((x) => new RegExp(esp.escalacion_razon_re, "i").test(x)), `ninguna escalacion con razon /${esp.escalacion_razon_re}/ (hay: ${escal.razones.join("|") || "ninguna"})`));
+  if (esp.sin_escalacion_razon_re) out.push(check("sin_escalacion_indebida", !escal.razones.some((x) => new RegExp(esp.sin_escalacion_razon_re, "i").test(x)), `escalacion indebida: ${escal.razones.join("|")}`));
+  if (e.zona?.fuera_de_zona) {
+    out.push(check("fuera_de_zona_sin_domicilio", !nuevos.some((o) => o.canal !== "recoger"), "se creo un pedido a domicilio fuera de zona"));
+    out.push(check("fuera_de_zona_alternativa", /recog|sucursal/i.test(textoAgente), "no ofrecio recoger/sucursal como alternativa"));
+  }
+  for (const [i, re] of (esp.no_debe_re ?? []).entries()) { const rx = new RegExp(re, "i"); out.push(check(`no_debe_${i + 1}`, !rx.test(textoAgente) && !rx.test(sinTilde(textoAgente)), `el agente dijo /${re}/`)); }
+  for (const [i, re] of (esp.debe_re ?? []).entries()) { const rx = new RegExp(re, "i"); out.push(check(`debe_${i + 1}`, rx.test(textoAgente) || rx.test(sinTilde(textoAgente)), `no aparece /${re}/ en las respuestas`)); }
+  const fallas = out.filter((x) => !x.ok);
+  return { veredicto: fallas.length ? "FALLA" : "PASA", fallas: fallas.map((f) => `${f.id}: ${f.detalle}`), comprobaciones: out };
+}
+
+/** Escalaciones = callback_requests + tomas de handoff. Un mismo aviso suele dejar ambas filas: se cuenta max(callbacks, handoffs) para no duplicar. */
+function escalaciones(st: { callbacks: any[]; handoffs: any[] }) {
+  return { n: Math.max(st.callbacks.length, st.handoffs.length), razones: [...st.callbacks.map((c) => `${c.reason ?? ""} ${c.message ?? ""}`.trim()), ...st.handoffs.map((h) => `handoff:${h.motivo ?? ""}`)] };
+}
+
+// ---------- una conversacion ----------
+async function correrUna(s: Stack, ref: Ref, e: any, colonias: any[], rep: number) {
+  const phone = newPhone(); const t0 = relojReal();
+  const modo = e.modo_cliente === "guion" ? "guion" : "llm";
+  let sembrados: string[] = []; let semilla = "";
+  if (e.cliente?.existente) { const r = await sembrarCliente(s, ref, phone, e.cliente); sembrados = r.ids; semilla = r.nota; }
+  const base = await snapshot(s, phone); const previos = new Set([...sembrados, ...base.orders.map((o: any) => o.id)]);
+  const turnos: { cliente: string; agente: string; ms: number; pedido_creado?: boolean; tel?: any[] }[] = [];
+  const creadoEn = new Map<string, number>(); let invalida: string | null = null, causa: string | null = null; const sinRespuesta: number[] = [];
+  const maxT = e.max_turnos ?? 14;
+  for (let i = 0; i < maxT; i++) {
+    let msg: string | null;
+    try { msg = await siguienteMensaje(e, turnos, i, modo); } catch (err) { invalida = `cliente simulado: ${(err as Error).message}`; causa = "cliente_simulado"; break; }
+    if (msg === null) break;
+    const telAntes = telDe(phone).length;
+    let r: Awaited<ReturnType<Stack["say"]>>;
+    try { r = await s.say(phone, msg, { pnid: PNID_ORG }); } catch (err) { turnos.push({ cliente: msg, agente: "", ms: 0 }); invalida = `fetch del arnes: ${(err as Error).message}`; causa = /fetch failed/i.test(String(err)) ? "fetch_failed" : "excepcion_arnes"; break; }
+    const tel = telDe(phone).slice(telAntes);
+    const st = await snapshot(s, phone); const nuevosAhora = st.orders.filter((o: any) => !previos.has(o.id) && !creadoEn.has(o.id));
+    for (const o of nuevosAhora) creadoEn.set(o.id, Date.now());
+    const agente = r.replies.join("\n");
+    turnos.push({ cliente: msg, agente, ms: r.ms, ...(nuevosAhora.length ? { pedido_creado: true } : {}), tel });
+    const prov = tel.find((x) => RESULTADOS_PROVEEDOR.has(x.resultado));
+    if (prov || /fetch failed/i.test(r.raw) || r.status >= 500) { invalida = `proveedor: ${prov ? `${prov.resultado}${prov.causaError ? "/" + prov.causaError : ""}` : `HTTP ${r.status} ${r.raw.slice(0, 120)}`}`; causa = prov?.resultado ?? (r.status >= 500 ? `http_${r.status}` : "fetch_failed"); break; }
+    if (!r.replies.length) {
+      if (st.handoffs.length > base.handoffs.length) break; // toma de handoff abierta: el agente calla a proposito, la conversacion termino
+      sinRespuesta.push(i + 1);
+    }
+  }
+  if (!invalida && !turnos.length) { invalida = "sin turnos"; causa = "sin_turnos"; }
+  const fin = await snapshot(s, phone);
+  const nuevos = fin.orders.filter((o: any) => !previos.has(o.id));
+  for (const o of nuevos) if (!creadoEn.has(o.id)) creadoEn.set(o.id, Date.now());
+  const escal = escalaciones({ callbacks: fin.callbacks, handoffs: fin.handoffs.filter((h: any) => !base.handoffs.some((b: any) => b.id === h.id)) });
+  const ver = verificarC3(e, ref, nuevos, turnos, escal, colonias, creadoEn);
+  if (sinRespuesta.length) { ver.comprobaciones.push(check("responde_cada_mensaje", false, `turnos sin respuesta del agente: ${sinRespuesta.join(",")}`, "flujo")); ver.fallas.push(`responde_cada_mensaje: turnos sin respuesta del agente: ${sinRespuesta.join(",")}`); ver.veredicto = "FALLA"; }
+  const tels = turnos.flatMap((t) => t.tel ?? []);
+  return {
+    escenario: e.id, rep, valida: !invalida, razon_invalida: invalida, causa_invalida: causa, modo_cliente: modo,
+    veredicto: invalida ? "INVALIDA" : ver.veredicto, fallas: invalida ? [] : ver.fallas, fallas_si_contara: invalida ? ver.fallas : undefined,
+    comprobaciones: ver.comprobaciones.map((c) => (c.ok ? { id: c.id, ok: true } : c)),
+    pedidos: nuevos.map((o: any) => ({ sucursal: ref.slugDe.get(o.property_id), entrega: o.canal, total: o.total, status: o.status, pago: o.payment_method, hora_recogida: o.hora_recogida, items: (o.items ?? []).map((x: any) => `${x.quantity}x ${x.name} @${x.price}${x.tortilla ? " (" + x.tortilla + ")" : ""}`) })),
+    escalaciones: escal, semilla: semilla || undefined, ...(e._port?.riesgo ? { riesgo_port: e._port.riesgo } : {}), ...(e._port?.adaptaciones ? { adaptado_port: e._port.adaptaciones } : {}),
+    ms: turnos.map((t) => t.ms), tel_resultados: tels.map((x) => x.resultado), tel_latencias: tels.map((x) => x.latenciaTotalMs), modelos: [...new Set(tels.map((x) => x.modelo).filter(Boolean))],
+    texto: turnos.map((t) => ({ cliente: t.cliente, agente: t.agente, ms: t.ms, ...(t.pedido_creado ? { pedido_creado: true } : {}) })),
+    durS: Math.round((relojReal() - t0) / 1000),
+  };
+}
+
+// ---------- corrida seca (sin LLM) ----------
+async function seca(s: Stack, ref: Ref, E: any[], res: string) {
+  const out: any[] = [];
+  for (const e of E) {
+    await conRelojPropio(e.reloj, async () => {
+      const esp = e.esperado ?? {}; const r: any = { id: e.id };
+      const col = e.zona?.colonia ?? e.persona?.hechos?.colonia ?? (e.persona?.hechos?.direccion ? coloniaDeDireccion(e.persona.hechos.direccion) : null);
+      if (col) { r.colonia = col; r.cercana = await cercana(s, col); }
+      if (esp.sucursal && Array.isArray(esp.items) && esp.items.every((i: any) => i.producto)) {
+        const q = await cotizar(s, ref, esp.sucursal, esp.entrega ?? "domicilio", col, esp.items.map((i: any) => ({ nombre: i.producto, cantidad: i.cantidad, tortilla: i.tortilla })), esp.pago ?? null);
+        r.cotizacion = q.ok ? { total: q.total } : { error: q.error };
+        const asig = r.cercana?.slug;
+        if ((esp.entrega ?? "domicilio") === "domicilio" && asig && asig !== esp.sucursal) {
+          const q2 = await cotizar(s, ref, asig, "domicilio", col, esp.items.map((i: any) => ({ nombre: i.producto, cantidad: i.cantidad, tortilla: i.tortilla })), esp.pago ?? null);
+          r.cotizacion_asignada = q2.ok ? { slug: asig, total: q2.total } : { slug: asig, error: q2.error };
+        }
+      }
+      if (e.cliente?.existente) { try { r.semilla = (await sembrarCliente(s, ref, newPhone(), e.cliente)).nota; } catch (err) { r.semilla_error = (err as Error).message; } }
+      out.push(r); console.log(`SECO ${e.id} colonia=${r.colonia ?? "-"} -> ${r.cercana ? `${r.cercana.estado} ${r.cercana.slug ?? ""} ${r.cercana.km ?? ""}` : "-"} | esperada=${esp.sucursal ?? "-"} | cotiza=${r.cotizacion ? r.cotizacion.total ?? r.cotizacion.error : "-"} vs ${esp.total_mxn ?? "-"}${r.cotizacion_asignada ? ` | en ${r.cotizacion_asignada.slug}=${r.cotizacion_asignada.total ?? r.cotizacion_asignada.error}` : ""}${r.semilla ? " | semilla " + r.semilla : ""}${r.semilla_error ? " | SEMILLA FALLO " + r.semilla_error : ""}`);
+    });
+  }
+  writeFileSync(`${res}/c3-seco.json`, JSON.stringify({ generado: new Date().toISOString(), escenarios: out }, null, 1));
+  console.log(`\nSECO listo: ${out.length} escenarios -> ${res}/c3-seco.json`);
+}
+
+// ---------- entrada desde run.ts ----------
+export async function correrC3(s: Stack, o: { conc: number; filtro: RegExp | null; res: string }) {
+  const banco = cargarBanco(); const colonias = banco._port?.colonias ?? [];
+  const E = (banco.escenarios as any[]).filter((e) => !o.filtro || o.filtro.test(e.id));
+  const ref = await referencia(s);
+  // El numero de la organizacion debe existir y NO estar mapeado a una sucursal (si no, el agente tendria "sucursal de este chat").
+  const canal = (await s.pool.query(`select c.phone_number_id, b.property_id from restaurantes.whatsapp_channel_config c left join restaurantes.whatsapp_branch_channel b on b.phone_number_id = c.phone_number_id where c.organization_id = $1`, [ORG_ID])).rows[0];
+  if (!canal || canal.phone_number_id !== PNID_ORG || canal.property_id) throw new Error(`C3 requiere el numero de organizacion ${PNID_ORG} sin sucursal (prep-canales-c3.sql); hay ${JSON.stringify(canal)}`);
+  console.log(`C3: ${E.length} escenarios | numero de organizacion ${PNID_ORG} (sin sucursal) | cliente simulado ${MODELO_CLIENTE} | conc ${o.conc} | minutos permitidos ${[...ref.minutos].sort((a, b) => a - b).join(",")}`);
+  if (process.env.QA_C3_SECO === "1") return seca(s, ref, E, o.res);
+  const rep = Number(process.env.QA_C3_REP ?? 1); const outFile = `${o.res}/c3-resultados.json`; const resultados: any[] = [];
+  let idx = 0;
+  const worker = async () => {
+    while (idx < E.length) {
+      const e = E[idx++]!;
+      let r: any;
+      try { r = await conRelojPropio(e.reloj, () => correrUna(s, ref, e, colonias, rep)); }
+      catch (err) { r = { escenario: e.id, rep, valida: false, veredicto: "INVALIDA", causa_invalida: "excepcion_arnes", razon_invalida: `excepcion del arnes: ${(err as Error).message.slice(0, 300)}`, fallas: [], ms: [] }; }
+      resultados.push(r); writeFileSync(outFile, JSON.stringify(resultados, null, 1));
+      console.log(`${r.veredicto} ${e.id}${r.razon_invalida ? " [" + r.razon_invalida.slice(0, 120) + "]" : ""}${r.fallas?.length ? " | " + r.fallas.join("; ").slice(0, 260) : ""} | turnos ${r.ms?.length ?? 0} | ${r.durS ?? "?"} s | cliente $${gasto.usd.toFixed(3)}`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(o.conc, E.length)) }, worker));
+  const val = resultados.filter((r) => r.valida); const pasan = val.filter((r) => r.veredicto === "PASA").length;
+  const ms = resultados.flatMap((r) => r.ms ?? []);
+  console.log(`\nRESUMEN c3 rep${rep}: ${pasan}/${val.length} PASAN (validas) | invalidas ${resultados.length - val.length} | latencia turno ${JSON.stringify(stats(ms))} | cliente simulado $${gasto.usd.toFixed(3)}`);
+  try { appendFileSync(`${o.res}/RESUMEN-c3.txt`, `rep${rep} ${pasan}/${val.length} invalidas=${resultados.length - val.length}\n`); } catch { /* opcional */ }
+}
+export const _probar = { verificarC3, escalaciones, hashTel, merida, randomUUID };

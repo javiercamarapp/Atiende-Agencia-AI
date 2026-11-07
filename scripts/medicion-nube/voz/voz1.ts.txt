@@ -1,0 +1,154 @@
+// Corredor del banco «voz-1» (repo suelto: scripts/medicion/escenarios/voz-1.mjs, 49 escenarios sinteticos de llamadas) contra la RUTA del monorrepo
+// POST /v1/restaurantes/voz/turno, sobre la API real + Postgres local que levanta el arnes (`startStack` de ../arnes/stack.ts, sin modificarlo).
+// Uso (lo arma correr-voz1-local.sh): vite-node voz1.ts [filtroRegex] ; env VOZ1_BANCO_DIR (carpeta scripts/medicion del suelto), VOZ1_RUIDO (limpio|ruido),
+// VOZ1_REPS (1), QA_RES_DIR (salida). El cliente es el GUION fijo del banco (sin cliente simulado por LLM: el unico gasto es el agente).
+//
+// Que verifica (mismo criterio que lib/verificar.mjs + lib/voz-checks.mjs del suelto, sobre lo que el monorrepo expone):
+//   pedidos_n, items (producto y cantidad), entrega, pago, sucursal, hora_recoger, nombre, notas, escalaciones (n / max / min / razon), debe_re / no_debe_re
+//   sobre las respuestas habladas, sin_mensaje_de_error, propina_no_ofrecida, transferencia_no_ofrecida, y voz_longitud / voz_sin_simbolos / voz_una_pregunta.
+// Diferencias declaradas (no se ocultan en el veredicto): voz-checks se aplica al texto YA limpio para TTS (el suelto media el crudo del modelo: aqui la
+// limpieza del servidor ya quito simbolos, asi que voz_sin_simbolos mide la ruta, no al modelo); los escenarios con `cliente` sembrado (cliente que ya
+// pidio antes) corren sin esa semilla y se marcan `semilla_no_portada`; precio contra catalogo, zona de 8 km, promos y tiempos no se portaron (los mide
+// el arnes de WhatsApp con su catalogo real).
+import { writeFileSync, mkdirSync } from "node:fs";
+import { startStack, conRelojPropio, cabeceraReloj, ORG_ID, PROP } from "./stack.ts";
+
+const BANCO = process.env.VOZ1_BANCO_DIR ?? `${process.env.HOME}/atiende-loop/work/wt-suelto-voz/scripts/medicion`;
+const RUIDO = process.env.VOZ1_RUIDO === "limpio" ? "limpio" : "ruido";
+const REPS = Math.max(1, Number(process.env.VOZ1_REPS ?? 1));
+const RES = process.env.QA_RES_DIR ?? "./results-voz1";
+const filtro = process.argv[2] ? new RegExp(process.argv[2]) : null;
+/** Secretos de PRUEBA por sucursal (solo en la copia efimera; prep-voz1.sql guarda su sha256). */
+const SECRETO_DE = (slug: string): string => `qa-voz-turno-${slug}`;
+
+const { ESCENARIOS_VOZ } = (await import(`${BANCO}/escenarios/voz-1.mjs`)) as { ESCENARIOS_VOZ: any[] };
+const { aDictado, semillaDe, SILENCIO } = (await import(`${BANCO}/lib/dictado.mjs`)) as { aDictado: (t: string, o: object) => string; semillaDe: (...p: unknown[]) => number; SILENCIO: string };
+const { verificarVoz } = (await import(`${BANCO}/lib/voz-checks.mjs`)) as { verificarVoz: (t: { agente: string }[]) => { id: string; ok: boolean; detalle?: string }[] };
+
+mkdirSync(RES, { recursive: true });
+const s = await startStack();
+const slugDe = new Map<string, string>((await s.pool.query(`select property_id, slug from restaurantes.branch_detail where organization_id = $1`, [ORG_ID])).rows.map((r: any) => [r.property_id, r.slug]));
+const sinTilde = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "");
+const norm = (t: string) => sinTilde(String(t ?? "")).toLowerCase().replace(/\s+/g, " ").trim();
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const hhmmMerida = (v: unknown) => (v ? new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(String(v))) : null);
+const TRANSFER_OFRECE = /\bclabe\b|cuenta\s+(?:bancaria|para\s+(?:el\s+)?dep[oó]sito)|(?:s[ií]|claro)[,.!\s]+(?:aceptamos|puedes?\s+pagar|se\s+puede)[^.!?\n]{0,30}(?:transferencia|dep[oó]sito)/i;
+
+interface Turno { cliente: string; agente: string; status: number; ms: number; fin: boolean; pedido_id: string | null }
+
+async function post(secreto: string, cuerpo: object): Promise<{ status: number; json: any; retryAfter: number | null; ms: number }> {
+  const t0 = Date.now();
+  const r = await fetch(`${s.api}/v1/restaurantes/voz/turno`, { method: "POST", headers: { "content-type": "application/json", "x-voz-turno-secret": secreto, ...cabeceraReloj() }, body: JSON.stringify(cuerpo) });
+  const json = await r.json().catch(() => ({}));
+  return { status: r.status, json, retryAfter: r.headers.get("retry-after") ? Number(r.headers.get("retry-after")) : null, ms: Date.now() - t0 };
+}
+
+/** Un turno con la misma politica de reintento que el worker (409 en proceso / se adelanto, 429 corto, 503 sin fin). */
+async function turno(secreto: string, cuerpo: object) {
+  for (let i = 0; i < 40; i++) {
+    const r = await post(secreto, cuerpo);
+    if (r.status === 409 && /en proceso|se adelant/i.test(String(r.json?.error ?? ""))) { await dormir(i === 0 ? 700 : 2000); continue; }
+    if (r.status === 429 && (r.retryAfter ?? 3) <= 5) { await dormir((r.retryAfter ?? 3) * 1000); continue; }
+    if (r.status === 503 && r.json?.fin !== true) { await dormir((r.retryAfter ?? 3) * 1000); continue; }
+    return r;
+  }
+  return { status: 0, json: { error: "reintentos agotados" }, retryAfter: null, ms: 0 };
+}
+
+async function correrEscenario(e: any, rep: number) {
+  const slugEntrada = e.esperado?.sucursal && [...slugDe.values()].includes(e.esperado.sucursal) ? e.esperado.sucursal : "garcia-lavin";
+  const secreto = SECRETO_DE(slugEntrada);
+  const telefono = `99${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+  const callId = `voz1.${e.id}.${rep}.${Date.now().toString(36)}`.slice(0, 128);
+  const turnos: Turno[] = [];
+  const t0 = new Date();
+  let apertura = "";
+  let falla: string | null = null;
+  await conRelojPropio(e.reloj, async () => {
+    const a = await turno(secreto, { call_id: callId, telefono, seq: 0, texto: "" });
+    if (a.status !== 200) { falla = `apertura http ${a.status}: ${JSON.stringify(a.json).slice(0, 200)}`; return; }
+    apertura = a.json.texto;
+    for (let i = 0; i < (e.guion ?? []).length; i++) {
+      const l = e.guion[i];
+      const texto = typeof l === "object" && l.silencio ? SILENCIO : typeof l === "object" && l.crudo ? l.texto : aDictado(typeof l === "string" ? l : l.texto, { nivel: RUIDO, semilla: semillaDe(e.id, rep, i) });
+      const r = await turno(secreto, { call_id: callId, telefono, seq: i + 1, texto });
+      turnos.push({ cliente: texto, agente: String(r.json?.texto ?? ""), status: r.status, ms: r.ms, fin: r.json?.fin === true, pedido_id: r.json?.pedido_id ?? null });
+      if (r.status !== 200) { falla = `turno ${i + 1} http ${r.status}: ${String(r.json?.error ?? r.json?.message ?? "").slice(0, 200)}`; break; }
+      if (r.json?.fin === true) break;
+    }
+  });
+  const pedidos = (await s.pool.query(`select o.id, o.property_id, o.total::float total, o.canal, o.source, o.items, o.payment_method, o.customer_name, o.notes, o.hora_recogida, o.status from restaurantes.orders o where o.customer_phone like $1 and o.created_at >= $2 order by o.created_at`, [`%${telefono}`, t0])).rows;
+  const callbacks = (await s.pool.query(`select reason, message from restaurantes.callback_requests where customer_phone like $1`, [`%${telefono}`])).rows;
+  return { e, rep, telefono, callId, apertura, turnos, pedidos, callbacks, falla };
+}
+
+function verificar(c: Awaited<ReturnType<typeof correrEscenario>>) {
+  const esp = c.e.esperado ?? {};
+  const out: { id: string; ok: boolean; detalle?: string }[] = [];
+  const chk = (id: string, ok: boolean, detalle: string) => out.push({ id, ok: !!ok, ...(ok ? {} : { detalle }) });
+  const respuestas = c.turnos.map((t) => t.agente);
+  const textoAgente = respuestas.join("\n");
+  const textoCliente = c.turnos.map((t) => t.cliente).join("\n");
+  if (c.falla) chk("http", false, c.falla);
+  if (typeof esp.pedidos === "number") chk("pedidos_n", c.pedidos.length === esp.pedidos, `pedidos creados=${c.pedidos.length}, esperados=${esp.pedidos}`);
+  const o1 = c.pedidos[0];
+  if (o1 && typeof esp.pedidos === "number" && esp.pedidos >= 1) {
+    if (Array.isArray(esp.items)) {
+      const faltan: string[] = [];
+      for (const it of esp.items) {
+        const re = it.producto_re ? new RegExp(it.producto_re, "i") : null;
+        const h = (o1.items ?? []).find((x: any) => (re ? re.test(x.name) : norm(x.name) === norm(it.producto)));
+        if (!h) faltan.push(`falta ${it.producto ?? it.producto_re}`);
+        else if (h.quantity !== it.cantidad) faltan.push(`${h.name}: cantidad ${h.quantity}, esperada ${it.cantidad}`);
+        else if (it.tortilla && h.tortilla && h.tortilla !== it.tortilla) faltan.push(`${h.name}: tortilla ${h.tortilla}, esperada ${it.tortilla}`);
+      }
+      if (!esp.items_extra_ok && (o1.items ?? []).length > esp.items.length) faltan.push(`renglones de mas: ${(o1.items ?? []).length} vs ${esp.items.length}`);
+      chk("items", faltan.length === 0, faltan.join("; "));
+    }
+    if (esp.sucursal) chk("sucursal", slugDe.get(o1.property_id) === esp.sucursal, `sucursal=${slugDe.get(o1.property_id)}, esperada=${esp.sucursal}`);
+    if (esp.entrega) chk("entrega", o1.canal === esp.entrega, `entrega=${o1.canal}, esperada=${esp.entrega}`);
+    if (esp.hora_recoger) chk("hora_recoger", hhmmMerida(o1.hora_recogida) === esp.hora_recoger, `hora=${hhmmMerida(o1.hora_recogida)}, esperada=${esp.hora_recoger}`);
+    if (esp.pago !== undefined && esp.pago !== null) chk("pago", o1.payment_method === esp.pago, `pago=${o1.payment_method}, esperado=${esp.pago}`);
+    if (esp.nombre_re) chk("nombre", new RegExp(esp.nombre_re, "i").test(o1.customer_name ?? ""), `nombre=${o1.customer_name}`);
+    if (esp.notas_re) chk("notas", new RegExp(esp.notas_re, "i").test(o1.notes ?? ""), `notas=${o1.notes}`);
+    chk("origen_voz", c.pedidos.every((o: any) => o.source === "voice"), `source=${c.pedidos.map((o: any) => o.source).join(",")}`);
+  }
+  const cb = c.callbacks;
+  const razones = cb.map((x: any) => x.reason).join("|") || "ninguna";
+  if (typeof esp.handoffs === "number") chk("escalaciones_n", cb.length === esp.handoffs, `callbacks=${cb.length} (${razones}), esperados=${esp.handoffs}`);
+  if (typeof esp.handoffs_max === "number") chk("escalaciones_max", cb.length <= esp.handoffs_max, `callbacks=${cb.length} (${razones}), maximo=${esp.handoffs_max}`);
+  if (typeof esp.handoffs_min === "number") chk("escalaciones_min", cb.length >= esp.handoffs_min, `callbacks=${cb.length}, minimo=${esp.handoffs_min}`);
+  if (esp.escalacion_razon_re) chk("escalacion_razon", cb.some((x: any) => new RegExp(esp.escalacion_razon_re, "i").test(`${x.reason} ${x.message}`)), `ninguna escalacion con razon /${esp.escalacion_razon_re}/ (hay: ${razones})`);
+  for (const [i, re] of (esp.no_debe_re ?? []).entries()) { const rx = new RegExp(re, "i"); chk(`no_debe_${i + 1}`, !rx.test(textoAgente) && !rx.test(sinTilde(textoAgente)), `el agente dijo /${re}/`); }
+  for (const [i, re] of (esp.debe_re ?? []).entries()) { const rx = new RegExp(re, "i"); chk(`debe_${i + 1}`, rx.test(textoAgente) || rx.test(sinTilde(textoAgente)), `no aparece /${re}/ en las respuestas`); }
+  chk("sin_mensaje_de_error", !/problema t[eé]cnico|se me complic[oó]/i.test(textoAgente), "el cliente recibio un mensaje de error tecnico");
+  const malas = c.turnos.filter((t) => /propin/i.test(t.agente) && !/propin/i.test(t.cliente));
+  chk("propina_no_ofrecida", /propin/i.test(textoCliente) || malas.length === 0, "el agente menciono la propina sin que el cliente la mencionara");
+  chk("transferencia_no_ofrecida", !TRANSFER_OFRECE.test(textoAgente), "el agente ofrecio/acepto transferencia o dio datos de cuenta");
+  for (const v of verificarVoz(c.turnos.map((t) => ({ agente: t.agente })))) chk(v.id, v.ok, v.detalle ?? "");
+  return out;
+}
+
+const escenarios = ESCENARIOS_VOZ.filter((e) => !filtro || filtro.test(e.id));
+console.log(`voz-1 contra /v1/restaurantes/voz/turno: ${escenarios.length} escenarios x ${REPS} rep, ruido=${RUIDO}`);
+const resultados: any[] = [];
+const latencias: number[] = [];
+for (let rep = 1; rep <= REPS; rep++) {
+  for (const e of escenarios) {
+    const c = await correrEscenario(e, rep);
+    const checks = verificar(c);
+    const pasa = checks.every((x) => x.ok);
+    latencias.push(...c.turnos.filter((t) => t.status === 200).map((t) => t.ms));
+    resultados.push({
+      id: e.id, rep, prioridad: e.prioridad, veredicto: pasa ? "PASA" : "FALLA", semilla_no_portada: Boolean(e.cliente), fallas: checks.filter((x) => !x.ok),
+      apertura: c.apertura, turnos: c.turnos, pedidos: c.pedidos.map((o: any) => ({ sucursal: slugDe.get(o.property_id), entrega: o.canal, source: o.source, total: o.total, pago: o.payment_method, items: (o.items ?? []).map((x: any) => `${x.quantity}x ${x.name}`) })),
+      callbacks: c.callbacks.map((x: any) => x.reason),
+    });
+    console.log(`${pasa ? "PASA " : "FALLA"} ${e.id} rep${rep}${pasa ? "" : " :: " + checks.filter((x) => !x.ok).map((x) => `${x.id}(${x.detalle})`).join("; ").slice(0, 400)}`);
+  }
+}
+const pct = (p: number) => { const a = [...latencias].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : 0; };
+const pasan = resultados.filter((r) => r.veredicto === "PASA").length;
+writeFileSync(`${RES}/voz1-resultados.json`, JSON.stringify({ meta: { ruido: RUIDO, reps: REPS, filtro: process.argv[2] ?? null, prop_t7: PROP.T7 }, resultados }, null, 2));
+console.log(`RESUMEN voz-1 ruta: ${pasan}/${resultados.length} PASA | latencia turno p50=${pct(0.5)} ms p95=${pct(0.95)} ms`);
+await s.stop();

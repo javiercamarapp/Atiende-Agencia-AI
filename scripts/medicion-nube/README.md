@@ -57,3 +57,36 @@ El job `preparar` tambien aborta si `limit_remaining` de la llave es menor que `
 
 `analiza-r21.py` (comparacion ON/OFF con Fisher/bootstrap) no se copio: depende de `analiza-cierre.py` y de la estructura de carpetas local. Descargar los
 artefactos (`gh run download`) y usarlo localmente si hace falta.
+
+## Suite C3 (banco ciego 3) en la Mac — `correr-c3-local.sh`
+
+Banco ciego C3 (80 escenarios, `arnes/ciego-3.fuente.json` = copia literal de `wt-medir21/scripts/medicion/escenarios/ciego-3.json`) portado a este arnes:
+API real + Postgres efimero + catalogo `real-dump` + Meta simulado. **Veredicto determinista, sin juez LLM** (`arnes/suites-c3.ts.txt`, puerto de
+`lib/verificar.mjs` sobre `restaurantes.orders`, `callback_requests` y `conversation_handoff`). Cliente simulado = `anthropic/claude-haiku-5.5` con
+`persona.descripcion` + `hechos` + guion como intenciones (o el guion literal si el escenario trae `modo_cliente: "guion"`), igual que el origen.
+
+```
+# seco (sin LLM, sin gasto): herramientas reales por escenario -> c3-seco.json; despues regenerar el banco portado
+SECO=1 ETQ=c3-seco bash scripts/medicion-nube/correr-c3-local.sh
+python3 scripts/medicion-nube/c3-conciliar.py --seco <salida>/c3-seco.json --escribir
+# medicion (gasta): espera a que no corra otra medicion; corte duro por TOPE_USD sobre el uso de la llave
+QA_WA_MODEL=openai/gpt-6-luna TOPE_USD=1.5 REPS=1 CONC=2 [FILTRO='^C3-PED-'] bash scripts/medicion-nube/correr-c3-local.sh
+python3 scripts/medicion-nube/agregar-c3.py <OUT_BASE>/<ETQ>     # (lo corre solo al final)
+```
+
+Mecanica que cambia respecto al origen (decisiones del puerto):
+- **Numero de la organizacion** (`arnes/prep-canales-c3.sql`): el cliente escribe a `5550009999`, que esta en `whatsapp_channel_config` y NO en
+  `whatsapp_branch_channel`; `resolveWhatsAppChannel` devuelve `propertyId: null`, el agente no tiene "sucursal de este chat" y elige por la direccion
+  (`buscar_sucursal_cercana`), como el banco espera. Las demas suites siguen usando los numeros por sucursal de `prep-canales.sql`.
+- **Reloj por conversacion** (`stack.ts`: `conRelojPropio`/`cabeceraReloj`, AsyncLocalStorage + cabecera `x-qa-reloj`): cada escenario corre con su
+  propio `reloj` (desplazado 7*k dias como todo el arnes), lo que permite `CONC=2` con 80 relojes distintos. Sin contexto, el reloj global de siempre.
+- **Clientes existentes**: los pedidos previos se crean por la ruta de herramientas de voz en la sucursal que asigna la herramienta a la direccion
+  guardada, y despues se ajustan `created_at`/`status` (`completed` -> `entregado`); las direcciones van a `customer_addresses` por SQL.
+- **Escalaciones** = `max(callback_requests, conversation_handoff nuevos)` (un aviso suele dejar las dos filas). Silencio del agente con toma de
+  handoff abierta = fin de la conversacion; silencio sin toma = FALLA `responde_cada_mensaje`.
+- **INVALIDA** cuando el turno del agente fallo por el proveedor (telemetria `error_proveedor`/`presupuesto_agotado`, atribuida por el HMAC del
+  telefono como en `deps.ts`), "fetch failed", HTTP 5xx o el cliente simulado no respondio. `agregar-c3.py` imprime ademas el conteo ESTRICTO del
+  origen (proveedor = FALLA) para comparar con la referencia 364/400 (91 %).
+- **Tiempos permitidos**: 10/25/30 del origen + los numeros de `delivery_time_text` de la cuenta real (35, 40, 45, 50, 60, 75, 90).
+- No se porta `cotiza_antes_de_crear` (no hay traza de herramientas por conversacion sin `QA_TRACE`; el servidor ya exige cotizacion confirmada).
+- Conciliacion de catalogo y adaptaciones (A1-A4): `c3-conciliar.py` y su salida `C3-CONCILIACION.md`; cada escenario adaptado lleva `_port`.

@@ -1,0 +1,826 @@
+{
+ "generado": "2026-11-07T00:57:17.531Z",
+ "escenarios": [
+  {
+   "id": "C3-PED-01-cochinita-sopa-de-lima-vista-alegre",
+   "colonia": "Vista Alegre",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 573
+   }
+  },
+  {
+   "id": "C3-PED-02-tacos-de-cochinita-san-ramon",
+   "colonia": "San Ramón Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": 1.5
+   },
+   "cotizacion": {
+    "total": 431
+   }
+  },
+  {
+   "id": "C3-PED-03-papadzules-codzitos-ezn",
+   "colonia": "Emiliano Zapata Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 1.8
+   },
+   "cotizacion": {
+    "total": 385
+   }
+  },
+  {
+   "id": "C3-PED-04-flautas-de-poc-chuc-itzimna",
+   "colonia": "Itzimná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 3.3
+   },
+   "cotizacion": {
+    "total": 642
+   }
+  },
+  {
+   "id": "C3-PED-05-kilo-de-pastor-temozon",
+   "colonia": "Temozón Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": 1.7
+   },
+   "cotizacion": {
+    "total": 1006
+   }
+  },
+  {
+   "id": "C3-PED-06-kilo-y-medio-de-arrachera-cholul",
+   "colonia": "Cholul",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": 2.6
+   },
+   "cotizacion": {
+    "total": 2100
+   }
+  },
+  {
+   "id": "C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas",
+   "colonia": "Las Américas",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.7
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Las Américas está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 1575
+   }
+  },
+  {
+   "id": "C3-PED-08-kilo-y-cuarto-de-costilla-centro",
+   "colonia": "Centro",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 5.1
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Centro está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "prol-montejo",
+    "total": 1187.5
+   }
+  },
+  {
+   "id": "C3-PED-09-tres-cuartos-de-chuleta-con-guarniciones-cordemex",
+   "colonia": "Cordemex",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 2.1
+   },
+   "cotizacion": {
+    "total": 977.5
+   }
+  },
+  {
+   "id": "C3-PED-10-dos-kilos-de-pastor-a-recoger-fco-montejo",
+   "cotizacion": {
+    "total": 1800
+   }
+  },
+  {
+   "id": "C3-PED-11-tacos-individuales-con-dos-tortillas-cholul",
+   "colonia": "Cholul",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": 2.6
+   },
+   "cotizacion": {
+    "total": 548
+   }
+  },
+  {
+   "id": "C3-PED-12-tacos-por-orden-arrachera-chorizo-y-cervezas-sin-alcohol",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 818
+   }
+  },
+  {
+   "id": "C3-PED-13-gringas-y-mestiza-xcumpich",
+   "colonia": "Xcumpich",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": null
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Xcumpich está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 602
+   }
+  },
+  {
+   "id": "C3-PED-14-alambre-de-arrachera-y-alambre-suizo-de-bistec-vista-alegre",
+   "colonia": "Vista Alegre",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 710
+   }
+  },
+  {
+   "id": "C3-PED-15-suizos-de-chile-poblano-y-chorizo-chuburna",
+   "colonia": "Chuburná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 2
+   },
+   "cotizacion": {
+    "total": 519
+   }
+  },
+  {
+   "id": "C3-PED-16-postres-y-queso-fundido-itzimna",
+   "colonia": "Itzimná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 3.3
+   },
+   "cotizacion": {
+    "total": 516
+   }
+  },
+  {
+   "id": "C3-PED-17-jericallas-y-queso-napolitano-fdm",
+   "colonia": "Francisco de Montejo",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.4
+   },
+   "cotizacion": {
+    "total": 358
+   }
+  },
+  {
+   "id": "C3-PED-18-bebidas-preparadas-y-papas-pensiones",
+   "colonia": "Residencial Pensiones",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "pensiones",
+    "km": 2.4
+   },
+   "cotizacion": {
+    "total": 571
+   }
+  },
+  {
+   "id": "C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas",
+   "colonia": "Las Américas",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.7
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Las Américas está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 991
+   }
+  },
+  {
+   "id": "C3-PED-20-parrillada-para-4-temozon",
+   "colonia": "Temozón Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": 1.7
+   },
+   "cotizacion": {
+    "total": 1463
+   }
+  },
+  {
+   "id": "C3-PED-21-boyo-hamburguesas-san-ramon",
+   "colonia": "San Ramón Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": 1.5
+   },
+   "cotizacion": {
+    "total": 695
+   }
+  },
+  {
+   "id": "C3-PED-22-dos-quesobich-y-horchata-altabrisa",
+   "colonia": "Altabrisa",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": 1.1
+   },
+   "cotizacion": {
+    "total": 519
+   }
+  },
+  {
+   "id": "C3-PED-23-chetacos-ezn",
+   "colonia": "Emiliano Zapata Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 1.8
+   },
+   "cotizacion": {
+    "total": 717
+   }
+  },
+  {
+   "id": "C3-PED-24-frances-suizo-y-papa-de-bistec-cordemex",
+   "colonia": "Cordemex",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 2.1
+   },
+   "cotizacion": {
+    "total": 619
+   }
+  },
+  {
+   "id": "C3-PED-25-recoger-altabrisa-20-30",
+   "cotizacion": {
+    "total": 577
+   }
+  },
+  {
+   "id": "C3-PED-26-recoger-pensiones-14-15",
+   "cotizacion": {
+    "total": 359
+   }
+  },
+  {
+   "id": "C3-PED-27-recoger-prol-montejo-noche-22-30",
+   "cotizacion": {
+    "total": 358
+   }
+  },
+  {
+   "id": "C3-PED-28-recoger-garcia-lavin-12-45-recien-abierto",
+   "cotizacion": {
+    "total": 494
+   }
+  },
+  {
+   "id": "C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas",
+   "colonia": "Las Américas",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.7
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Las Américas está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 336
+   }
+  },
+  {
+   "id": "C3-PED-30-cambia-de-direccion-chuburna-a-itzimna",
+   "colonia": "Itzimná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 3.3
+   },
+   "cotizacion": {
+    "total": 314
+   }
+  },
+  {
+   "id": "C3-PED-31-cambia-de-efectivo-a-tarjeta-montebello",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 336
+   }
+  },
+  {
+   "id": "C3-PED-32-corrige-su-nombre-xcumpich",
+   "colonia": "Xcumpich",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": null
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Xcumpich está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 463
+   }
+  },
+  {
+   "id": "C3-PED-33-baja-de-dos-papas-a-una-ezn",
+   "colonia": "Emiliano Zapata Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 1.8
+   },
+   "cotizacion": {
+    "total": 422
+   }
+  },
+  {
+   "id": "C3-PED-34-agrega-un-flan-despues-del-resumen-montebello",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 315
+   }
+  },
+  {
+   "id": "C3-PED-35-itzimna-pide-garcia-lavin",
+   "colonia": "Itzimná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 3.3
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Itzimná está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "prol-montejo",
+    "total": 395
+   }
+  },
+  {
+   "id": "C3-PED-36-cordemex-pide-pensiones-y-paga-exacto",
+   "colonia": "Cordemex",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 2.1
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Revolución Cordemex está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 411
+   }
+  },
+  {
+   "id": "C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich",
+   "colonia": "Xcumpich",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": null
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Xcumpich está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 336
+   },
+   "semilla": "fco-montejo $336 (origen $336) entregado hace 7200 min"
+  },
+  {
+   "id": "C3-PED-38-recurrente-direccion-nueva-dictada-sin-puntuacion",
+   "colonia": "García Ginerés",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "pensiones",
+    "km": 3
+   },
+   "cotizacion": {
+    "total": 367
+   },
+   "semilla": "fco-montejo $367 (origen $367) entregado hace 11520 min"
+  },
+  {
+   "id": "C3-PED-39-recurrente-lo-mismo-pero-a-recoger-altabrisa",
+   "cotizacion": {
+    "total": 292
+   },
+   "semilla": "altabrisa $292 (origen $292) entregado hace 8640 min"
+  },
+  {
+   "id": "C3-PED-40-alambres-sin-cebolla-y-salsas-gratis-temozon",
+   "colonia": "Temozón Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": 1.7
+   },
+   "cotizacion": {
+    "total": 538
+   }
+  },
+  {
+   "id": "C3-POL-01-minimo-se-completa-con-una-quesadilla",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 235
+   }
+  },
+  {
+   "id": "C3-POL-02-minimo-prefiere-recoger-sin-minimo",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 144
+   }
+  },
+  {
+   "id": "C3-POL-03-fuera-de-zona-kanasin",
+   "colonia": "Kanasín",
+   "cercana": {
+    "estado": "no_reconocida",
+    "slug": null,
+    "km": null
+   }
+  },
+  {
+   "id": "C3-POL-04-fuera-de-zona-uman-recoge-en-pensiones",
+   "colonia": "Umán",
+   "cercana": {
+    "estado": "no_reconocida",
+    "slug": null,
+    "km": null
+   },
+   "cotizacion": {
+    "total": 412
+   }
+  },
+  {
+   "id": "C3-POL-05-cervezas-a-domicilio-no-se-quitan",
+   "colonia": "Itzimná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 3.3
+   },
+   "cotizacion": {
+    "total": 382
+   }
+  },
+  {
+   "id": "C3-POL-06-margaritas-para-recoger-con-confirmacion-de-edad",
+   "cotizacion": {
+    "total": 546
+   }
+  },
+  {
+   "id": "C3-POL-07-promo-preguntada-a-domicilio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 424
+   }
+  },
+  {
+   "id": "C3-POL-08-promo-en-sucursal-sin-promos-altabrisa",
+   "cotizacion": {
+    "total": 307
+   }
+  },
+  {
+   "id": "C3-POL-09-hasta-que-hora-abren-hoy"
+  },
+  {
+   "id": "C3-POL-10-escribe-antes-de-abrir"
+  },
+  {
+   "id": "C3-POL-11-pregunta-por-transferencia-y-paga-con-tarjeta",
+   "colonia": "Itzimná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 3.3
+   },
+   "cotizacion": {
+    "total": 269
+   }
+  },
+  {
+   "id": "C3-POL-12-ya-transferi-pasa-con-una-persona"
+  },
+  {
+   "id": "C3-POL-13-propina-voluntaria-y-no-se-suma",
+   "colonia": "Cordemex",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 2.1
+   },
+   "cotizacion": {
+    "total": 388
+   }
+  },
+  {
+   "id": "C3-POL-14-pedido-grande-por-aprobar",
+   "colonia": "Temozón Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": 1.7
+   },
+   "cotizacion": {
+    "total": 4150
+   }
+  },
+  {
+   "id": "C3-POL-15-pedido-de-exactamente-4000-no-es-grande",
+   "colonia": "Cordemex",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 2.1
+   },
+   "cotizacion": {
+    "total": 4000
+   }
+  },
+  {
+   "id": "C3-POL-16-pide-un-repartidor-en-especifico",
+   "colonia": "Emiliano Zapata Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 1.8
+   },
+   "cotizacion": {
+    "total": 276
+   }
+  },
+  {
+   "id": "C3-ESC-01-estado-pedido-recibido-hace-25-min",
+   "semilla": "altabrisa $262 (origen $262) pending hace 25 min"
+  },
+  {
+   "id": "C3-ESC-02-estado-pedido-en-camino",
+   "semilla": "fco-montejo $306 (origen $306) en_camino hace 40 min"
+  },
+  {
+   "id": "C3-ESC-03-demora-de-85-min-y-pide-descuento",
+   "semilla": "fco-montejo $438 (origen $438) pending hace 85 min"
+  },
+  {
+   "id": "C3-ESC-04-faltante-en-el-pedido",
+   "semilla": "pensiones $558 (origen $558) entregado hace 35 min"
+  },
+  {
+   "id": "C3-ESC-05-producto-equivocado",
+   "semilla": "fco-montejo $284 (origen $284) entregado hace 30 min"
+  },
+  {
+   "id": "C3-ESC-06-cobro-doble-en-la-tarjeta",
+   "semilla": "prol-montejo $619 (origen $619) entregado hace 60 min"
+  },
+  {
+   "id": "C3-ESC-07-alergia-al-cacahuate"
+  },
+  {
+   "id": "C3-ESC-08-cancelar-pedido-recien-hecho",
+   "semilla": "altabrisa $343 (origen $343) pending hace 4 min"
+  },
+  {
+   "id": "C3-ESC-09-pide-factura"
+  },
+  {
+   "id": "C3-ESC-10-derechos-arco-borrar-datos"
+  },
+  {
+   "id": "C3-ESC-11-agregar-algo-a-un-pedido-ya-creado",
+   "semilla": "garcia-lavin $276 (origen $276) pending hace 4 min"
+  },
+  {
+   "id": "C3-ESC-12-queja-del-repartidor",
+   "semilla": "altabrisa $306 (origen $306) entregado hace 30 min"
+  },
+  {
+   "id": "C3-ROB-01-ortografia-muy-mala-seis-tacos",
+   "colonia": "García Ginerés",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "pensiones",
+    "km": 3
+   },
+   "cotizacion": {
+    "total": 312
+   }
+  },
+  {
+   "id": "C3-ROB-02-dictado-por-voz-sin-puntuacion",
+   "colonia": "Cholul",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": 2.6
+   },
+   "cotizacion": {
+    "total": 815
+   }
+  },
+  {
+   "id": "C3-ROB-03-mensajes-de-una-palabra",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 262
+   }
+  },
+  {
+   "id": "C3-ROB-04-mensaje-larguisimo-con-todos-los-datos",
+   "colonia": "Francisco de Montejo",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.4
+   },
+   "cotizacion": {
+    "total": 525
+   }
+  },
+  {
+   "id": "C3-ROB-05-espanglish-dos-chetacos",
+   "colonia": "Altabrisa",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": 1.1
+   },
+   "cotizacion": {
+    "total": 635
+   }
+  },
+  {
+   "id": "C3-ROB-06-cliente-indeciso-cambia-cuatro-veces",
+   "colonia": "Centro",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "prol-montejo",
+    "km": 5.1
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Centro está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "prol-montejo",
+    "total": 428
+   }
+  },
+  {
+   "id": "C3-ROB-07-soy-el-dueno-y-pide-el-prompt"
+  },
+  {
+   "id": "C3-ROB-08-inyeccion-a-mitad-de-un-pedido",
+   "colonia": "Chuburná",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 2
+   },
+   "cotizacion": {
+    "total": 405
+   }
+  },
+  {
+   "id": "C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas",
+   "colonia": "Caucel",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.8
+   },
+   "cotizacion": {
+    "error": "HTTP 400 Caucel está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
+   },
+   "cotizacion_asignada": {
+    "slug": "fco-montejo",
+    "total": 330
+   }
+  },
+  {
+   "id": "C3-ROB-10-tacos-de-camaron-no-existen",
+   "colonia": "San Ramón Norte",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": 1.5
+   },
+   "cotizacion": {
+    "total": 378
+   }
+  },
+  {
+   "id": "C3-ROB-11-manda-su-numero-de-tarjeta-por-chat",
+   "colonia": "Vista Alegre",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 269
+   }
+  },
+  {
+   "id": "C3-ROB-12-regateo-del-kilo-de-pastor",
+   "colonia": "Francisco de Montejo",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.4
+   },
+   "cotizacion": {
+    "total": 900
+   }
+  }
+ ]
+}
