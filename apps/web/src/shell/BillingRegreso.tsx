@@ -5,7 +5,8 @@
 // Pantalla publica y minima: no lee sesion ni llama a la API. El estado real de la suscripcion lo escribe el webhook de Stripe (puede
 // tardar unos segundos) y se ve en la pantalla «Plan y uso» de la vertical; aqui solo se explica eso y se manda al login de la vertical
 // (que ya entra directo si la sesion sigue abierta). La vertical llega en la URL de regreso y se valida contra la lista cerrada; el
-// session_id de Stripe se ignora (nunca se muestra).
+// session_id de Stripe se ignora (nunca se muestra). Con metodos asincronos (OXXO/SPEI) Stripe regresa a success_url ANTES de cobrar, asi
+// que el texto nunca afirma que el pago ya se confirmo.
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@atiende/ui";
 import { MarcoPublico } from "../components/MarcoPublico.tsx";
@@ -23,10 +24,10 @@ export function BillingRegresoPage({ resultado }: { readonly resultado: "exito" 
   const exito = resultado === "exito";
   return (
     <MarcoPublico
-      titulo={exito ? "Pago recibido" : "No se completó el pago"}
+      titulo={exito ? "Gracias por tu pago" : "No se completó el pago"}
       descripcion={
         exito
-          ? "Stripe confirmó tu pago. Tu plan se activa en cuanto recibimos su aviso, normalmente en unos segundos."
+          ? "Recibimos tu pago o está en proceso. Con tarjeta, tu plan se activa en unos segundos; con OXXO o transferencia (SPEI), en cuanto el banco confirme el cobro."
           : "Cancelaste el pago en Stripe. No se hizo ningún cargo y tu cuenta sigue igual."
       }
     >
