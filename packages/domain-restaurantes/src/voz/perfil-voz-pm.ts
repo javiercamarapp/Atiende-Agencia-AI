@@ -140,6 +140,8 @@ export interface EntradaBloqueReglasVoz {
   readonly salsasTexto?: string | null;
   readonly pedidoGrandeTexto?: string | null;
   readonly motivosDesactivados?: readonly string[];
+  /** true = el bloque lleva TODAS las reglas vivas (`REGLAS_VIVAS_VOZ`), no solo el nucleo: para quien no recibe las reglas por tema aparte (vista previa de Gemini). */
+  readonly reglasCompletas?: boolean;
 }
 
 const TITULO_BLOQUE = "# REGLAS VIGENTES DE LA PLATAFORMA (prevalecen sobre cualquier texto anterior, incluido el comportamiento editable)";
@@ -171,7 +173,7 @@ export function bloqueReglasVozPm(e: EntradaBloqueReglasVoz = {}): string {
     pedidoGrandeTexto: e.pedidoGrandeTexto ?? null,
     motivosDesactivados: e.motivosDesactivados ?? [],
   });
-  return [TITULO_BLOQUE, seccionDe(completo, "REGLAS DURAS"), seccionDe(completo, "FLUJO DE TOMA DE PEDIDO"), seccionDe(completo, "SEGURIDAD"), REGLAS_VOZ_NUCLEO, APENDICE_VOZ.trim()].join("\n\n");
+  return [TITULO_BLOQUE, seccionDe(completo, "REGLAS DURAS"), seccionDe(completo, "FLUJO DE TOMA DE PEDIDO"), seccionDe(completo, "SEGURIDAD"), e.reglasCompletas === true ? REGLAS_VIVAS_VOZ : REGLAS_VOZ_NUCLEO, APENDICE_VOZ.trim()].join("\n\n");
 }
 
 export interface EntradaInstruccionVoz extends EntradaBloqueReglasVoz {
