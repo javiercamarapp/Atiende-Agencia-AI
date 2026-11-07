@@ -30,7 +30,11 @@ export const DISPARADOR_SALUDO = "(La llamada acaba de conectarse. Salude al cli
 /** Frase que dispara el saludo y, si la API trajo el guion de apertura, le pide al agente decirlo TAL CUAL (aviso de privacidad + grabacion). */
 export function disparadorDeApertura(apertura: AperturaPrivacidad | null): string {
   if (!apertura) return DISPARADOR_SALUDO;
-  const espera = apertura.pideConsentimientoGrabacion ? " Después de decirlo, espere la respuesta del cliente sobre la grabación antes de tomar el pedido." : "";
+  // El sistema (no el modelo) interpreta la respuesta de grabacion: si el cliente sigue con su pedido, la llamada queda SIN grabar y el modelo no debe repreguntar
+  // (E2E r2 7-nov-2026: «espere la respuesta antes de tomar el pedido» hacia que el modelo preguntara «¿autoriza grabar…?» dos o tres veces).
+  const espera = apertura.pideConsentimientoGrabacion
+    ? " Pregunte por la grabación una sola vez: el sistema registra la respuesta. Si el cliente contesta con su pedido u otra cosa, no vuelva a preguntar por la grabación: atiéndalo sin grabar y siga con su pedido."
+    : "";
   return `${DISPARADOR_SALUDO} Después del saludo diga al cliente, tal cual y sin cambiar nada, este aviso: «${apertura.guion}».${espera}`;
 }
 
