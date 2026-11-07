@@ -64,7 +64,7 @@ export interface OAuthStateClaims {
   readonly orgSlug?: string;
   /** Solo `purpose: "signup"` (registro autoservicio): token de un solo uso de la solicitud de registro, cuyo hash guarda la base
    *  (0077). Viaja solo dentro de este `state` firmado por el servidor; nunca en claro en la base ni en logs. */
-  readonly registroToken?: string;
+  readonly registroNonce?: string;
 }
 
 function secretKey(secret: string): Uint8Array {
