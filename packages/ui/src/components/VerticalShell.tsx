@@ -12,7 +12,7 @@
 // safe-area (`--safe-area-*`, que valen algo gracias a `viewport-fit=cover` en index.html).
 import * as React from "react";
 import { flushSync } from "react-dom";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { CircleHelp, Compass, Ellipsis, ShieldCheck } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
 import { BottomNav, CampanaMovil, MAS_ABRIR_EVENTO, MobileHeader, type BottomNavItem, type CampanaMovilProps } from "./BottomNav";
@@ -22,7 +22,6 @@ import { EstadoError } from "./EstadoError";
 import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
-import { Button } from "./ui/button";
 import { GrupoNavContext } from "./PageHeader";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
@@ -192,27 +191,9 @@ export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundar
   }
 }
 
-export interface VerticalNoEncontradoProps {
-  /** Ruta del panel a la que vuelve el enlace (la landing de la vertical). */
-  readonly volverA: string;
-  readonly volverEtiqueta?: string;
-}
-
-/** 404 dentro del shell: la navegacion sigue disponible y hay un enlace de regreso al panel. */
-export function VerticalNoEncontrado({ volverA, volverEtiqueta = "Volver al panel" }: VerticalNoEncontradoProps) {
-  return (
-    <EstadoVacio
-      icon={Compass}
-      titulo="Página no encontrada"
-      mensaje="La dirección que abriste no existe en este panel o cambió de lugar."
-      accion={
-        <Button asChild variant="outline" size="sm">
-          <Link to={volverA}>{volverEtiqueta}</Link>
-        </Button>
-      }
-    />
-  );
-}
+// VerticalNoEncontrado vive en su propio modulo para que la entrada de la app (App.tsx) lo importe sin arrastrar el shell
+// completo (Sidebar, BottomNav, menus) al chunk de arranque; aqui solo se re-exporta para no romper importaciones existentes.
+export { VerticalNoEncontrado, type VerticalNoEncontradoProps } from "./VerticalNoEncontrado";
 
 // ---- Shell ------------------------------------------------------------------
 

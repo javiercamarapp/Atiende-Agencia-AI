@@ -24,8 +24,16 @@ export interface OpcionesStt {
   readonly hzEntrada: number;
 }
 
+/** Proveedor que atiende una etapa en este momento (para el costo por componente; con respaldo puede cambiar a media llamada). */
+export type ProveedorStt = "deepgram" | "elevenlabs";
+export type ProveedorTts = "deepgram-aura-2" | "elevenlabs-tts";
+
 export interface SesionStt {
   enviarAudio(pcm16: Uint8Array): void;
+  /** Proveedor vigente; sin el metodo, Deepgram (los adaptadores anteriores). */
+  proveedor?(): ProveedorStt;
+  /** El proveedor vigente recibio `keyterms` (cobra el add-on). */
+  conKeyterms?(): boolean;
   cerrar(): Promise<void>;
 }
 
@@ -50,6 +58,8 @@ export interface SesionTts {
   sintetizar(texto: string, senal: AbortSignal): AsyncIterable<Uint8Array>;
   /** Cuantas sintesis mas admite el proveedor ahora sin agotar su limite de peticiones (Deepgram: 20 `Flush` por 60 s). Con pocas disponibles el nucleo junta frases en una sola. */
   flushesDisponibles?(): number;
+  /** Proveedor vigente; sin el metodo, Deepgram Aura-2. */
+  proveedor?(): ProveedorTts;
   cerrar(): Promise<void>;
 }
 
@@ -66,6 +76,10 @@ export interface ContextoTurnoLlm {
   readonly vuelta: number;
   /** Modelo por omision del motor. */
   readonly modeloPorDefecto: string;
+  /** Lo que dijo el cliente en este turno (ya transcrito); solo para decidir el nivel del modelo, nunca se registra. */
+  readonly textoCliente?: string;
+  /** Hay un resumen de pedido esperando la respuesta del cliente (un «si» puede crear el pedido): nunca va al modelo rapido. */
+  readonly pedidoEnJuego?: boolean;
 }
 
 /** Cola asincrona de un productor y un consumidor (frases del LLM -> TTS, audio del socket -> iterador). */
