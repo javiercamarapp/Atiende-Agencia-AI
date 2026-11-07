@@ -310,3 +310,11 @@ export {
 export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadActivada, PropiedadCreada } from "./alta-propiedad-repository.ts";
 export { hayOnboardingEvento, registrarOnboardingEvento } from "./onboarding-evento.ts";
 export type { OnboardingEventoInput, ResultadoRegistroEvento, TipoOnboardingEvento } from "./onboarding-evento.ts";
+export type { GuardarProgresoGuia, ModoRecorrido, OnboardingProgresoRepository, ProgresoGuia } from "./onboarding-progreso-repository.ts";
+export {
+  InMemoryOnboardingProgresoRepository,
+  OnboardingProgresoInvalidoError,
+  OnboardingProgresoProhibidoError,
+  PostgresOnboardingProgresoRepository,
+  validarProgresoGuia,
+} from "./onboarding-progreso-repository.ts";
