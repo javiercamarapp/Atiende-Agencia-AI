@@ -8,6 +8,7 @@ import type { AppDeps } from "../../../deps.ts";
 import { restaurantesAdminKpisRoutes } from "./admin-kpis.ts";
 import { restaurantesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { restaurantesAdminCatalogRoutes } from "./admin-catalog.ts";
+import { restaurantesAdminMenuImportarRoutes } from "./admin-menu-importar.ts";
 import { restaurantesAdminPromotionsRoutes } from "./admin-promotions.ts";
 import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
 import { restaurantesOperacionAndamiajeRoutes } from "./operacion-andamiaje.ts";
@@ -59,6 +60,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminDataChatRoutes(deps));
   // Fase 5 — back-office CORE (catálogo/sucursales/pedidos/clientes, ver diseño §1).
   app.route("/", restaurantesAdminCatalogRoutes(deps));
+  app.route("/", restaurantesAdminMenuImportarRoutes(deps));
   // Fase 11 — promociones/marketing: CRUD admin real de código de descuento (ver
   // domain-restaurantes/src/promotions.ts).
   app.route("/", restaurantesAdminPromotionsRoutes(deps));
