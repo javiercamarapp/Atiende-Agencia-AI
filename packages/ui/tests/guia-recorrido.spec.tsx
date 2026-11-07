@@ -6,6 +6,7 @@
 import { act } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GuiaRecorrido, GUIA_ABRIR_EVENTO_RECORRIDO, iniciarRecorridoGuia } from "../src/components/guia/GuiaRecorrido";
+import { vaciarGuardadoGuia } from "../src/components/guia/eventos";
 import { PrimerosPasos, hitosNuevos, resumirPrimerosPasos, type PrimerPaso } from "../src/components/guia/PrimerosPasos";
 import type { SeccionMenu } from "../src/components/guia/motor";
 import type { ProgresoLocal, ServidorProgreso } from "../src/components/guia/estado";
@@ -191,6 +192,29 @@ describe("GuiaRecorrido", () => {
     expect(document.querySelector(".guia-invitacion")).toBeNull();
     abrirMenu();
     expect(document.querySelector("#guia-menu")?.textContent).toContain("Volver a mostrar la invitación");
+  });
+
+  it("lo pendiente se envia al desmontar (cambio de consola) con keepalive: no se pierde el ultimo cambio", async () => {
+    const servidor = servidorFalso();
+    guia(servidor);
+    await esperar();
+    clic(document.querySelector('.guia-invitacion [data-guia-modo="corto"]')!);
+    tecla(document.body, "Escape");
+    const antes = (servidor.guardar as ReturnType<typeof vi.fn>).mock.calls.length;
+    montado!.unmount();
+    montado = undefined;
+    const llamadas = (servidor.guardar as ReturnType<typeof vi.fn>).mock.calls;
+    expect(llamadas.length).toBe(antes + 1);
+    expect(llamadas.at(-1)).toEqual([expect.objectContaining({ activo: false }), { keepalive: true }]);
+  });
+
+  it("vaciarGuardadoGuia (al cerrar sesion) envia lo pendiente ya", async () => {
+    const servidor = servidorFalso();
+    guia(servidor);
+    await esperar();
+    clic(document.querySelector('.guia-invitacion [data-guia-modo="corto"]')!);
+    act(() => vaciarGuardadoGuia());
+    expect((servidor.guardar as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1]).toEqual({ keepalive: true });
   });
 
   it("iniciarRecorridoGuia (desde «Primeros pasos») empieza directo", async () => {

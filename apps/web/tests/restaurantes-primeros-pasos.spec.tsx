@@ -91,18 +91,50 @@ describe("RestaurantesPrimerosPasosPage", () => {
     expect(t).toContain("Listo para operar");
     expect(t).toContain("1 de 4 puntos listos");
     expect(t).toContain("Falta en: Pensiones");
-    // ds3: tarjetas con el patrón /setup de Rovaq (quién lo cierra, estado, avance honesto solo con lo que este rol puede hacer).
-    expect(t).toContain("Quién lo cierra: Dueño");
-    expect(t).toContain("Quién lo cierra: Meta (WhatsApp Business)");
-    expect(t).toContain("En espera");
-    expect(t).toContain("0 de 2 que puedes hacer ahora");
-    expect(t).toContain("1 en espera");
-    expect(rendered.container.querySelector('[data-guia-paso="coordenadas"]')?.hasAttribute("data-siguiente")).toBe(true);
+    expect(t).toContain("Lo cierra: Dueño");
+    expect(t).toContain("Lo cierra: Meta (WhatsApp Business)");
+    expect(t).toContain("Depende de un tercero");
     const enlaces = Array.from(rendered.container.querySelectorAll("a")).map((a) => a.getAttribute("href"));
     expect(enlaces).toContain("/restaurantes/demo/sucursales");
     expect(enlaces).toContain("/restaurantes/demo/configuracion");
-    // Un punto ya hecho (o de la plataforma) no ofrece enlace.
+    // Un punto ya hecho no ofrece enlace ni "Lo cierra".
     expect(enlaces).not.toContain("/restaurantes/demo/productos");
+  });
+
+  it("con la bandera ds3: patrón /setup de Rovaq (quién lo cierra, en espera, avance propio, recomendado) y «Hacer el recorrido»", async () => {
+    document.documentElement.setAttribute("data-diseno", "ds3");
+    try {
+      fetchMock.mockResolvedValue(json(CHECKLIST));
+      rendered = renderComponent(
+        <MemoryRouter>
+          <RestaurantesPrimerosPasosPage {...CTX} />
+        </MemoryRouter>,
+      );
+      await esperar();
+      const t = rendered.container.textContent ?? "";
+      expect(t).toContain("Listo para operar");
+      expect(t).toContain("Quién lo cierra: Dueño");
+      expect(t).toContain("Quién lo cierra: Meta (WhatsApp Business)");
+      expect(t).toContain("En espera");
+      expect(t).toContain("0 de 2 que puedes hacer ahora");
+      expect(t).toContain("1 en espera");
+      expect(rendered.container.querySelector('[data-guia-paso="coordenadas"]')?.hasAttribute("data-siguiente")).toBe(true);
+      expect(Array.from(rendered.container.querySelectorAll("button")).some((b) => b.textContent === "Hacer el recorrido")).toBe(true);
+    } finally {
+      document.documentElement.removeAttribute("data-diseno");
+    }
+  });
+
+  it("sin la bandera ds3: la lista de siempre y sin «Hacer el recorrido» (la guía no existe sin ds3)", async () => {
+    fetchMock.mockResolvedValue(json(CHECKLIST));
+    rendered = renderComponent(
+      <MemoryRouter>
+        <RestaurantesPrimerosPasosPage {...CTX} />
+      </MemoryRouter>,
+    );
+    await esperar();
+    expect(rendered.container.querySelector(".guia-pp")).toBeNull();
+    expect(rendered.container.textContent).not.toContain("Hacer el recorrido");
   });
 
   it("bloqueado: avisa los obligatorios pendientes", async () => {

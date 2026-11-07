@@ -403,7 +403,7 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
                     columnas={[
                       { id: "fecha", encabezado: "Fecha", principal: true, valorOrden: (m) => m.fecha, celda: (m) => formatFechaSolo(m.fecha) },
                       { id: "desc", encabezado: "Descripción", celda: (m) => m.descripcion },
-                      { id: "monto", encabezado: "Monto", alinear: "right", valorOrden: (m) => m.monto, celda: (m) => <span className="font-mono text-xs">{formatMoney(m.monto)}</span> },
+                      { id: "monto", encabezado: "Monto", alinear: "right", valorOrden: (m) => m.monto, celda: (m) => <span className="tabular-nums text-xs">{formatMoney(m.monto)}</span> },
                       { id: "estado", encabezado: "Estado", celda: (m) => <StatusBadge tone={TONO_ESTADO_MOV[m.estado]}>{ETIQUETA_ESTADO_MOV[m.estado]}</StatusBadge> },
                     ]}
                   />
@@ -422,7 +422,7 @@ function MovimientoCelda({ m }: { m: MovimientoSesion | undefined }) {
   if (!m) return <span className="text-muted-foreground">Movimiento no disponible</span>;
   return (
     <span className="text-xs">
-      {formatFechaSolo(m.fecha)} · {m.descripcion || "Sin descripción"} · <span className="font-mono">{formatMoney(m.monto)}</span>
+      {formatFechaSolo(m.fecha)} · {m.descripcion || "Sin descripción"} · <span className="tabular-nums">{formatMoney(m.monto)}</span>
     </span>
   );
 }

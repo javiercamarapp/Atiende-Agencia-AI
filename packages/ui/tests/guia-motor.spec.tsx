@@ -22,6 +22,8 @@ import {
   puedeTomarFoco,
   reducir,
   reducirViaje,
+  rectResaltado,
+  recortarAVentana,
   rutaRelativa,
   siguienteDelPaso,
   slugDe,
@@ -230,8 +232,26 @@ describe("colocarTarjeta: la tarjeta NUNCA tapa el elemento resaltado (bug de Ro
       }
     }
   });
-  it("objetivo enorme: elige la posicion con menos area tapada y lo dice", () => {
+  it("objetivo enorme que llena la ventana: elige la posicion con menos area tapada y lo dice", () => {
     expect(colocarTarjeta({ left: 0, top: 0, width: 1440, height: 900 }, C, V).tapa).toBe(true);
+  });
+  it("tabla de 1200x2000 (mas alta que la ventana): se resalta su franja superior visible y la tarjeta NO la tapa", () => {
+    for (const top of [-600, 0, 120]) {
+      const tabla = { left: 260, top, width: 1200, height: 2000 };
+      const foco = rectResaltado(tabla, V, C.height);
+      expect(foco.height).toBeLessThan(V.height - C.height);
+      const p = colocarTarjeta(foco, C, V);
+      expect(p.tapa, `top ${top}`).toBe(false);
+      expect(toca(foco, p)).toBe(false);
+    }
+  });
+  it("rectResaltado sin alto de tarjeta: a lo sumo el 45 % de la ventana; un objetivo que cabe queda igual", () => {
+    expect(rectResaltado({ left: 0, top: 0, width: 300, height: 2000 }, V).height).toBe(405);
+    expect(rectResaltado({ left: 10, top: 10, width: 300, height: 40 }, V)).toEqual({ left: 10, top: 10, width: 300, height: 40 });
+  });
+  it("recortarAVentana: solo la parte visible; fuera de la ventana, null", () => {
+    expect(recortarAVentana({ left: -10, top: -20, width: 100, height: 100 }, V)).toEqual({ left: 0, top: 0, width: 90, height: 80 });
+    expect(recortarAVentana({ left: 0, top: 2000, width: 10, height: 10 }, V)).toBeNull();
   });
   it("sin objetivo: centrada", () => {
     expect(colocarTarjeta(null, C, V)).toMatchObject({ left: 530, top: 257, centrada: true, tapa: false });

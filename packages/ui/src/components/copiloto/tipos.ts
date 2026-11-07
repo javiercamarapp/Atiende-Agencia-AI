@@ -86,6 +86,10 @@ export interface CopilotoMensaje {
   readonly limiteDiario?: number;
   /** El usuario detuvo el turno: no se guarda en el servidor. */
   readonly cancelado?: boolean;
+  /** Pasos que el servidor reporto en vivo (herramienta y cuanto tardo, medido en el navegador). Solo en respuestas de esta sesion. */
+  readonly traza?: readonly { readonly herramienta: string; readonly ms: number | null }[];
+  /** Tiempo total del turno medido en el navegador (ms). */
+  readonly duracionMs?: number;
 }
 
 export interface ConversacionCompleta {

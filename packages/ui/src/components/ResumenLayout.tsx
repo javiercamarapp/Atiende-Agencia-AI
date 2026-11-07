@@ -18,6 +18,13 @@ export interface ResumenLayoutProps {
   readonly saludo: string;
   readonly nombre: string;
   readonly subtitulo?: string;
+  /**
+   * ds3 (Rovaq «Hoy»): frase con las cifras clave en negritas (`<strong>`). Bajo html[data-diseno="ds3"] sustituye al subtitulo y al
+   * odometro del destacado (Rovaq no tiene odometro; la cifra va en la frase y en la tira de KPI). Sin la bandera no se ve.
+   */
+  readonly frase?: ReactNode;
+  /** Eyebrow ds3 (MAYUSCULAS, = grupo del menu). Por omision «Resumen». Sin la bandera no se ve. */
+  readonly eyebrow?: string;
   /** Pieza a la derecha de la cabecera (`Odometro`, chip, CTA). Una sola accion primaria por vista. */
   readonly destacado?: ReactNode;
   /** `StatCard`s; se pintan en la rejilla de 2 / 4 columnas. */
@@ -35,22 +42,33 @@ function hayContenido(nodo: ReactNode): boolean {
   return true;
 }
 
-export function ResumenLayout({ saludo, nombre, subtitulo, destacado, kpis, acciones, children, className }: ResumenLayoutProps) {
+export function ResumenLayout({ saludo, nombre, subtitulo, frase, eyebrow = "Resumen", destacado, kpis, acciones, children, className }: ResumenLayoutProps) {
   const hayCuerpo = hayContenido(kpis) || hayContenido(acciones) || hayContenido(children);
+  const conFrase = hayContenido(frase);
+  // Las piezas ds3 (eyebrow, frase) se pintan siempre y las muestra/oculta cifra.css bajo html[data-diseno="ds3"] (sin rama de JS);
+  // los estilos se enganchan a `data-parte` para no cambiar las clases de Likida que fija resumen-piezas.spec.
   return (
-    <div className={cn("min-w-0", className)}>
+    <div className={cn("ds3-resumen min-w-0", className)} data-con-frase={conFrase ? "" : undefined}>
       <div className="flex min-w-0 flex-col gap-2.5 pb-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0">
-          <h1 className="truncate font-display text-xl font-semibold text-foreground">
+          <p data-parte="eyebrow" className="hidden" aria-hidden="true">
+            {eyebrow}
+          </p>
+          <h1 data-parte="titulo" className="truncate font-display text-xl font-semibold text-foreground">
             {saludo}, {nombre}
           </h1>
-          {subtitulo !== undefined && <p className="mt-1 truncate text-ui text-muted-foreground">{subtitulo}</p>}
+          {subtitulo !== undefined && <p data-parte="subtitulo" className="mt-1 truncate text-ui text-muted-foreground">{subtitulo}</p>}
+          {conFrase && (
+            <p data-parte="frase" className="hidden" data-testid="resumen-frase">
+              {frase}
+            </p>
+          )}
         </div>
-        {hayContenido(destacado) && <div className="flex shrink-0 items-center gap-2.5 sm:pt-1">{destacado}</div>}
+        {hayContenido(destacado) && <div data-parte="destacado" className="flex shrink-0 items-center gap-2.5 sm:pt-1">{destacado}</div>}
       </div>
       {hayCuerpo && (
         <div className="space-y-2.5">
-          {hayContenido(kpis) && <div className="grid grid-cols-2 gap-2 md:grid-cols-4 max-md:[&>:last-child:nth-child(odd)]:col-span-2 md:[&>:last-child:nth-child(4n+3)]:col-span-2">{kpis}</div>}
+          {hayContenido(kpis) && <div data-parte="kpis" className="grid grid-cols-2 gap-2 md:grid-cols-4 max-md:[&>:last-child:nth-child(odd)]:col-span-2 md:[&>:last-child:nth-child(4n+3)]:col-span-2">{kpis}</div>}
           {hayContenido(acciones) && <div className="flex flex-wrap justify-end gap-2">{acciones}</div>}
           {children}
         </div>

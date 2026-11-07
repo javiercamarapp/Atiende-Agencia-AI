@@ -62,8 +62,10 @@ test.describe("guia @ds3", () => {
     // Esc cierra y conserva el paso; el progreso viaja al servidor.
     await page.keyboard.press("Escape");
     await expect(tarjeta).toHaveCount(0);
-    await expect.poll(async () => (await mock.buscar({ metodo: "PUT", ruta: "/v1/onboarding/progreso" })).length).toBeGreaterThan(0);
-    const ultimo = (await mock.buscar({ metodo: "PUT", ruta: "/v1/onboarding/progreso" })).at(-1)!.cuerpo as Record<string, unknown>;
+    // El PUT de Esc sale tras el debounce (400 ms): se espera a que el ULTIMO PUT ya sea el de cierre (los de pasos previos traen activo:true).
+    const ultimoPut = async () => (await mock.buscar({ metodo: "PUT", ruta: "/v1/onboarding/progreso" })).at(-1)?.cuerpo as Record<string, unknown> | undefined;
+    await expect.poll(async () => (await ultimoPut())?.activo).toBe(false);
+    const ultimo = (await ultimoPut())!;
     expect(ultimo).toMatchObject({ pista: "restaurantes.owner", org: restaurantes.orgSlug, modo: "corto", activo: false });
 
     // Menu de la guia: rol, recorridos, retomar y saltar a una pantalla.

@@ -25,6 +25,8 @@ export function esVerticalCuenta(valor: string): valor is VerticalCuenta {
 }
 
 export class CuentaError extends Error {}
+/** 429 del servidor: la UI muestra su propio aviso (traducido) de esperar antes de reintentar. */
+export class DemasiadosIntentosError extends CuentaError {}
 
 export interface GoogleIdentity {
   readonly id: string;
@@ -110,6 +112,20 @@ export async function solicitarRestablecerContrasena(fetchImpl: typeof fetch, ap
     body: JSON.stringify({ email: email.trim(), vertical }),
   });
   if (!res.ok) throw new CuentaError(await readWriteErrorMessage(res, "No se pudo solicitar el enlace. Intenta de nuevo en unos minutos."));
+}
+
+/**
+ * Reenvio PUBLICO (sin sesion) del correo de verificacion: POST /auth/email-verification/reenviar. El servidor responde el mismo 200
+ * exista o no la cuenta (anti-enumeracion), asi que aqui no hay nada que distinguir en el exito. 429 -> DemasiadosIntentosError.
+ */
+export async function reenviarVerificacionCorreoPublico(fetchImpl: typeof fetch, apiBaseUrl: string, email: string, vertical: VerticalCuenta): Promise<void> {
+  const res = await fetchImpl(`${apiBaseUrl}/auth/email-verification/reenviar`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: email.trim(), vertical }),
+  });
+  if (res.status === 429) throw new DemasiadosIntentosError(await readWriteErrorMessage(res, "Demasiados intentos. Intenta de nuevo en unos minutos."));
+  if (!res.ok) throw new CuentaError(await readWriteErrorMessage(res, "No se pudo reenviar el correo. Intenta de nuevo en unos minutos."));
 }
 
 export async function confirmarRestablecerContrasena(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, newPassword: string): Promise<void> {

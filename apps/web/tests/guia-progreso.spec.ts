@@ -45,5 +45,8 @@ describe("servidorProgresoGuia", () => {
     const [, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.method).toBe("PUT");
     expect(JSON.parse(String(init.body))).toEqual({ pista: "restaurantes.owner", org: "taqueria", modo: "corto", paso: "pedidos.que", visto: true, omitido: false, descartado: false, activo: true, terminado: false });
+    expect(init.keepalive).toBeUndefined();
+    await s.guardar({ visto: true, omitido: false, descartado: false, paso: null, activo: false, modo: "corto", terminado: false, actualizado: 2 }, { keepalive: true });
+    expect((f.mock.calls[1] as unknown as [string, RequestInit])[1].keepalive).toBe(true);
   });
 });

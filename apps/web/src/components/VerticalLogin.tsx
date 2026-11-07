@@ -6,70 +6,41 @@
 //
 // Los metodos son props: una vertical que no ofrece Google o magic link (o que
 // agregue contrasena el dia de manana) los enciende/apaga sin copiar la pantalla.
+//
+// Decision del dueno (6-nov): el inicio de sesion de las 6 verticales es el de Rovaq AI (`VerticalLoginDs3`, misma API y
+// mismos metodos de acceso) para TODOS, sin bandera: el login ocurre antes de conocer la organizacion, asi que una bandera
+// por organizacion no puede aplicar. La pantalla anterior (`VerticalLoginLegado`) queda solo como interruptor de emergencia
+// de build: `VITE_LOGIN_LEGADO=1` (apagado por omision).
 import { useEffect, useId, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
+import type { FormEvent } from "react";
 import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
 import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
 import { LoginArtwork, LOGIN_STORIES } from "./LoginArtwork.tsx";
+import { VerticalLoginDs3 } from "./VerticalLoginDs3.tsx";
+import { esCorreoValido, useEscritorio, type VerticalLoginProps } from "./login-comun.ts";
 import "../pages/login.css";
 
-export interface VerticalLoginHero {
-  /** Ruta relativa a `import.meta.env.BASE_URL` (p. ej. "images/login-hero-citas.jpg"). */
-  readonly imagen: string;
-  readonly alt: string;
-  readonly kicker: string;
-  readonly texto: ReactNode;
-  /** Lamina con foto a la derecha (como el login del repo suelto de Restaurantes) en vez del panel editorial. Solo la vertical que lo pide cambia. */
-  readonly lamina?: boolean;
-  /** Leyenda y texto alternativo de la lamina en ingles (la rama editorial ya trae los suyos). */
-  readonly laminaEn?: { readonly kicker: string; readonly texto: ReactNode; readonly alt: string };
-  /** Dimensiones de la imagen de la lamina (evita saltos de layout). */
-  readonly laminaAncho?: number;
-  readonly laminaAlto?: number;
+export { esCorreoValido, type VerticalLoginHero, type VerticalLoginProps } from "./login-comun.ts";
+
+type EntornoVite = { env?: { VITE_LOGIN_LEGADO?: string } };
+
+/** Interruptor de emergencia: solo `"1"` vuelve a la pantalla anterior; vacio o cualquier otro valor = login de Rovaq. */
+export function loginLegadoActivo(valor: string | undefined = (import.meta as unknown as EntornoVite).env?.VITE_LOGIN_LEGADO): boolean {
+  return (valor ?? "").trim() === "1";
 }
 
-/** `true` solo en escritorio (>= lg). La lamina con foto no se monta en movil: un <img> dentro de `hidden` se descarga igual. */
-function useEscritorio(): boolean {
-  const consulta = "(min-width: 1024px)";
-  const [escritorio, setEscritorio] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(consulta).matches);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return undefined;
-    const m = window.matchMedia(consulta);
-    const alCambiar = () => setEscritorio(m.matches);
-    alCambiar();
-    m.addEventListener("change", alCambiar);
-    return () => m.removeEventListener("change", alCambiar);
-  }, []);
-  return escritorio;
+const LOGIN_LEGADO = loginLegadoActivo();
+
+/** La constante se lee una vez al cargar el modulo: en una sesion siempre se monta la misma pantalla (los hooks no se mezclan). */
+export function VerticalLogin(props: VerticalLoginProps) {
+  return LOGIN_LEGADO ? <VerticalLoginLegado {...props} /> : <VerticalLoginDs3 {...props} />;
 }
 
-export interface VerticalLoginProps {
-  readonly apiBaseUrl: string;
-  /** Identificador de la vertical que reciben el inicio con Google y el magic link ("citas"). */
-  readonly vertical: string;
-  /** Nombre visible en el titulo: "{tr("Bienvenido a atiende", "Welcome to atiende")} {en ? englishNames[vertical] ?? nombre : nombre}". */
-  readonly nombre: string;
-  readonly descripcion: string;
-  /** @default "Acceso al panel" */
-  readonly kicker?: string;
-  /** @default "tu@negocio.com" */
-  readonly placeholderCorreo?: string;
-  /** `olvidoContrasena` (por defecto activo): enlace "¿Olvidaste tu contraseña?" (PL-21); se apaga solo si la vertical no usa contraseña. */
-  readonly metodos?: { readonly google?: boolean; readonly magicLink?: boolean; readonly olvidoContrasena?: boolean };
-  readonly hero: VerticalLoginHero;
-  /** Reemplaza el pie por defecto ("Pídele a tu negocio que te dé de alta"); p. ej. rentas ofrece alta autoservicio. */
-  readonly pie?: ReactNode;
-}
-
-export function esCorreoValido(correo: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim());
-}
-
-export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicker = "Acceso al panel", placeholderCorreo = "tu@negocio.com", metodos, hero, pie }: VerticalLoginProps) {
+export function VerticalLoginLegado({ apiBaseUrl, vertical, nombre, descripcion, kicker = "Acceso al panel", placeholderCorreo = "tu@negocio.com", metodos, hero, pie }: VerticalLoginProps) {
   const conGoogle = metodos?.google ?? true;
   const conMagicLink = metodos?.magicLink ?? true;
   const conOlvido = (metodos?.olvidoContrasena ?? true) && esVerticalCuenta(vertical);

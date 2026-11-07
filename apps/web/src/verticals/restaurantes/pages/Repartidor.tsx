@@ -30,7 +30,7 @@
 // (repartidor-client.ts) y, si aplica, `clearSession` + `navigate("/restaurantes/
 // login", { replace: true })` — igual que el `useEffect` de "sin sesión" que ya tenía
 // esta página unas líneas abajo.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Button,
@@ -39,7 +39,6 @@ import {
   EstadoCargando,
   EstadoError,
   EstadoVacio,
-  GuiaRecorrido,
   PageContainer,
   StatusBadge,
   Tabs,
@@ -54,7 +53,8 @@ import {
 import { AlertTriangle, MapPin, Map as MapIcon, Phone } from "lucide-react";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import { servidorProgresoGuia } from "../../../lib/guia-progreso.ts";
-import { GUIA_REPARTIDOR, menuRepartidor } from "../guia-restaurantes.ts";
+import { GuiaDiferida } from "../../../components/GuiaDiferida.tsx";
+import { etiquetaRol } from "../../../lib/roles.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { fetchBranches } from "../dashboard-client.ts";
 import { fetchAssignedOrders, isSessionExpiredEventForRepartidor, nuevaLlaveIdempotencia, pedirTelefonoCliente, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
@@ -358,17 +358,26 @@ export function RepartidorPedidosPage() {
         identidad={identidadDeSesion(session)}
         legado={<RepartidorPedidosView apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} />}
       />
-      <GuiaRecorrido
-        sections={menuRepartidor(orgSlug)}
-        base={`/restaurantes/${orgSlug}`}
-        pista="restaurantes.repartidor"
-        persona={session.email}
-        organizacion={orgSlug}
-        organizacionNombre={orgSlug}
-        rolEtiqueta="Repartidor"
-        contenido={GUIA_REPARTIDOR}
-        servidor={servidorProgresoGuia(fetch, apiBaseUrl, session.token, "restaurantes.repartidor", orgSlug)}
-      />
+      <GuiaRepartidor apiBaseUrl={apiBaseUrl} token={session.token} email={session.email} orgSlug={orgSlug} />
     </>
+  );
+}
+
+/** ds3 «Guía» del repartidor (su panel no tiene sidebar): una sola pantalla; contenido y componente se cargan solo con la bandera ds3. */
+function GuiaRepartidor({ apiBaseUrl, token, email, orgSlug }: { apiBaseUrl: string; token: string; email: string; orgSlug: string }) {
+  const sections = useMemo(() => [{ title: "Repartidor", items: [{ to: `/restaurantes/${orgSlug}/repartidor`, label: "Mis entregas" }] }], [orgSlug]);
+  const servidor = useMemo(() => servidorProgresoGuia(fetch, apiBaseUrl, token, "restaurantes.repartidor", orgSlug), [apiBaseUrl, token, orgSlug]);
+  return (
+    <GuiaDiferida
+      sections={sections}
+      base={`/restaurantes/${orgSlug}`}
+      pista="restaurantes.repartidor"
+      persona={email}
+      organizacion={orgSlug}
+      organizacionNombre={orgSlug}
+      rolEtiqueta={etiquetaRol("repartidor")}
+      cargar={() => import("../guia-restaurantes.ts").then((m) => ({ contenido: m.GUIA_REPARTIDOR }))}
+      servidor={servidor}
+    />
   );
 }
