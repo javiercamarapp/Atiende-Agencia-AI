@@ -329,13 +329,14 @@ select * from despachos.conciliacion_match_deshacer('00000000-0000-0000-0000-000
 select count(*) as motivo_original_deberia_ser_1 from despachos.conciliacion_match where sesion_id = '00000000-0000-0000-0000-000000d35e01' and motivo_deshacer = 'primer motivo valido';
 rollback;
 
+-- D-P3-11: se re-concilia contra un CFDI cuyo total cubre el movimiento (contra uno de 580 el tope de la 025 rechaza un movimiento de 1160).
 \echo '37. tras deshacer el movimiento se puede conciliar de nuevo (el indice parcial lo libera)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d35c01', true);
 select * from despachos.conciliacion_matches_confirmar('00000000-0000-0000-0000-000000d35e01', '[{"movimiento_id": "00000000-0000-0000-0000-000000d35f01", "invoice_id": "00000000-0000-0000-0000-000000d35d01", "nivel": 1, "confianza": 100, "origen": "motor"}]'::jsonb);
 select * from despachos.conciliacion_match_deshacer('00000000-0000-0000-0000-000000d35b01', (select id from despachos.conciliacion_match where sesion_id = '00000000-0000-0000-0000-000000d35e01'), 'motivo valido uno');
-select * from despachos.conciliacion_matches_confirmar('00000000-0000-0000-0000-000000d35e01', '[{"movimiento_id": "00000000-0000-0000-0000-000000d35f01", "invoice_id": "00000000-0000-0000-0000-000000d35d02", "nivel": 2, "confianza": 85, "origen": "motor"}]'::jsonb);
+select * from despachos.conciliacion_matches_confirmar('00000000-0000-0000-0000-000000d35e01', '[{"movimiento_id": "00000000-0000-0000-0000-000000d35f01", "invoice_id": "00000000-0000-0000-0000-000000d35d01", "nivel": 2, "confianza": 85, "origen": "motor"}]'::jsonb);
 select count(*) as vigentes_deberia_ser_1 from despachos.conciliacion_match where sesion_id = '00000000-0000-0000-0000-000000d35e01' and deshecho_en is null;
 rollback;
 

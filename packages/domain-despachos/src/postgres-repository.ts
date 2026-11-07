@@ -628,7 +628,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
     return rows[0] ? mapInvoice(rows[0]) : null;
   }
 
-  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]> {
+  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string; readonly fechaDesde?: string; readonly fechaHasta?: string }): Promise<readonly InvoiceRecord[]> {
     // Filtro por período (migración 006, corregido — ver repository.ts): resuelto
     // directo contra la columna real `fecha` (fecha de emisión del CFDI), nunca
     // contra el jsonb `diot.proveedoresReportables` (que solo existe para un CFDI
@@ -644,6 +644,14 @@ export class PostgresDespachosRepository implements DespachosRepository {
     if (filter?.periodo !== undefined) {
       params.push(filter.periodo);
       conditions.push(`to_char(fecha, 'YYYY-MM') = $${params.length}`);
+    }
+    if (filter?.fechaDesde !== undefined) {
+      params.push(filter.fechaDesde);
+      conditions.push(`fecha >= $${params.length}::date`);
+    }
+    if (filter?.fechaHasta !== undefined) {
+      params.push(filter.fechaHasta);
+      conditions.push(`fecha <= $${params.length}::date`);
     }
     const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where ${conditions.join(" and ")} order by created_at desc;`, params);
     return rows.map(mapInvoice);

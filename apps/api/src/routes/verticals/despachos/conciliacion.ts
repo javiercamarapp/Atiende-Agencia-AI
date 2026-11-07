@@ -32,6 +32,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { registrarConciliacionPersistida } from "./conciliacion-persistida.ts";
+import type { PilotoConciliacion } from "./conciliacion-piloto.ts";
 
 interface MovimientoBody {
   readonly fecha?: unknown;
@@ -109,11 +110,16 @@ function invoiceARegistroConciliable(inv: InvoiceRecord): RegistroConciliable {
     descripcion: inv.emisorNombre,
     referencia: inv.folioFiscal,
     folioFiscal: inv.folioFiscal,
+    // D-P3-11: sentido del CFDI (D-22). Sin dato (CFDI anterior a la migración 018 o aún sin clasificar: `undefined`/`null`) no se filtra, como antes; `indeterminado` SÍ se
+    // propone pero solo con revisión humana, y el piloto automático exige una dirección explícita (emitido/recibido).
+    ...(inv.direccion === undefined || inv.direccion === null ? {} : { direccion: inv.direccion }),
   };
 }
 
 export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
+  // D-P3-12: lo asigna el registro de la conciliación persistida (al final); los handlers lo leen al atender cada request.
+  const pilotoRef: { actual?: PilotoConciliacion } = {};
 
   app.use("/despachos/:propertyId/conciliacion/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -127,7 +133,7 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const invoices = await repo.listInvoices(propertyId);
-    const registros = invoices.map(invoiceARegistroConciliable);
+    const registros = invoices.filter((i) => i.estadoSat !== "cancelado").map(invoiceARegistroConciliable);
 
     const resultado = conciliarMovimientos(movimientos, registros, {
       dateToleranceDays: optionalNumber(raw.dateToleranceDays, "dateToleranceDays", 3),
@@ -240,7 +246,12 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       }),
     );
     if (resultado === null) throw Errors.serviceUnavailable("Guardar estados de cuenta aún no está disponible en esta base de datos: falta aplicar la migración 015 (libro de movimientos importados).");
-    return c.json({ ...resultado, totalMovimientos: parseo.movimientos.length }, resultado.insertados > 0 ? 201 : 200);
+    // D-P3-12: piloto automático (sesión del periodo, propuestas guardadas, autoconfirmación de nivel 1 si el cliente la encendió, avisos). Nunca falla el guardado.
+    const conciliacion =
+      pilotoRef.actual && resultado.insertados > 0
+        ? await pilotoRef.actual.trasImportar(c, { propertyId: c.req.param("propertyId"), cuenta: parseo.cuenta ?? null, periodos: parseo.movimientos.map((m) => m.fecha.slice(0, 7)) })
+        : null;
+    return c.json({ ...resultado, totalMovimientos: parseo.movimientos.length, conciliacion }, resultado.insertados > 0 ? 201 : 200);
   });
 
   /** Alertas de antigüedad/comisión/duplicados sobre un lote de movimientos ya
@@ -296,7 +307,7 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   });
 
   // D-35 + D-02: sesiones persistidas, confirmar/deshacer y nivel 4 (LLM) con aprobación humana. Comparten la cadena de middleware de arriba.
-  registrarConciliacionPersistida(app, deps, invoiceARegistroConciliable);
+  pilotoRef.actual = registrarConciliacionPersistida(app, deps, invoiceARegistroConciliable);
 
   return app;
 }

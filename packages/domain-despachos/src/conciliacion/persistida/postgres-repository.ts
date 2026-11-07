@@ -4,13 +4,19 @@
 // nunca a un 500. Los SQLSTATE de las funciones definer se traducen a errores de dominio tipados.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { leerPropuestasGuardadas } from "./propuestas-guardadas.ts";
+import type { PropuestasGuardadas } from "./propuestas-guardadas.ts";
 import {
+  ConciliacionCfdiCanceladoError,
   ConciliacionConflictoError,
   ConciliacionDatosInvalidosError,
   ConciliacionNoDisponibleError,
   ConciliacionNoEncontradaError,
   ConciliacionPeriodoCerradoError,
+  ConciliacionPilotoApagadoError,
+  ConciliacionSignoInvertidoError,
   ConciliacionSinPermisoError,
+  ConciliacionTopeCfdiExcedidoError,
   ConciliacionTopeExcedidoError,
 } from "./types.ts";
 import type {
@@ -19,6 +25,7 @@ import type {
   MatchConciliacion,
   MovimientoGuardado,
   NuevaSugerencia,
+  ParAutopiloto,
   ParConfirmar,
   SesionConciliacion,
   SesionConResumen,
@@ -50,6 +57,15 @@ export function traducirErrorConciliacion(err: unknown): unknown {
       return new ConciliacionNoEncontradaError(mensaje);
     case "54000":
       return new ConciliacionTopeExcedidoError(mensaje);
+    // Migración 025 (D-P3-11/12): SQLSTATE propios de integridad del CFDI y del piloto automático -> 409.
+    case "CF001":
+      return new ConciliacionCfdiCanceladoError();
+    case "CF002":
+      return new ConciliacionTopeCfdiExcedidoError();
+    case "CF003":
+      return new ConciliacionSignoInvertidoError(/dirección/.test(mensaje) ? "La dirección del CFDI (emitido/recibido) no está definida: el piloto automático no lo confirma." : undefined);
+    case "CF004":
+      return new ConciliacionPilotoApagadoError();
     default:
       return err;
   }
@@ -88,7 +104,7 @@ interface MatchRaw {
   invoice_id: string;
   nivel: number | null;
   confianza: string | number | null;
-  origen: "motor" | "llm_aprobado" | "manual";
+  origen: "motor" | "llm_aprobado" | "manual" | "autopiloto";
   confirmado_por: string | null;
   confirmado_en: string | Date;
   deshecho_por: string | null;
@@ -308,6 +324,60 @@ export class PostgresConciliacionPersistidaRepository implements ConciliacionPer
         [propertyId, sugerenciaId, aprobar],
       );
       return { estado: rows[0]!.out_estado, matchId: rows[0]!.out_match_id };
+    });
+  }
+
+  leerPropuestas(sesionId: string): Promise<LecturaConciliacion<PropuestasGuardadas | null>> {
+    // Columna de la migración 025: contra la base sin migrar (42703) -> "no disponible" (la ruta calcula al vuelo, como antes).
+    return this.lectura<PropuestasGuardadas | null>("propuestas", null, async () => {
+      const { rows } = await this.db.query<{ propuestas: unknown }>("select propuestas from despachos.conciliacion_sesion where id = $1;", [sesionId]);
+      return rows[0]?.propuestas == null ? null : leerPropuestasGuardadas(rows[0].propuestas);
+    });
+  }
+
+  guardarPropuestas(propertyId: string, sesionId: string, propuestas: PropuestasGuardadas): Promise<void> {
+    return this.escritura("propuestas_guardar", async () => {
+      await this.db.query("select despachos.conciliacion_sesion_propuestas_guardar($1::uuid, $2::uuid, $3::jsonb);", [propertyId, sesionId, JSON.stringify(propuestas)]);
+    });
+  }
+
+  asegurarSesion(propertyId: string, periodo: string, cuenta: string | null): Promise<{ sesion: SesionConciliacion; creada: boolean; movimientos: number }> {
+    return this.escritura("asegurar", async () => {
+      const { rows } = await this.db.query<{ out_sesion_id: string; out_creada: boolean; out_movimientos: number }>("select out_sesion_id, out_creada, out_movimientos from despachos.conciliacion_sesion_asegurar($1::uuid, $2, $3);", [propertyId, periodo, cuenta]);
+      const fila = rows[0]!;
+      const s = await this.db.query<SesionRaw>(`select ${SESION_COLS} from despachos.conciliacion_sesion where id = $1;`, [fila.out_sesion_id]);
+      return { sesion: mapSesion(s.rows[0]!), creada: fila.out_creada === true, movimientos: Number(fila.out_movimientos) };
+    });
+  }
+
+  async autoconfirmarNivel1Activo(propertyId: string): Promise<boolean> {
+    const r = await this.lectura<boolean>("autoconfirmar_leer", false, async () => {
+      const { rows } = await this.db.query<{ activo: boolean }>("select conciliacion_autoconfirmar_nivel1 as activo from despachos.property_config where property_id = $1;", [propertyId]);
+      return rows[0]?.activo === true;
+    });
+    return r.datos;
+  }
+
+  configurarAutoconfirmarNivel1(propertyId: string, organizationId: string, activo: boolean): Promise<boolean> {
+    // Misma tabla y policies que la zona horaria (012): solo el `admin` de la organización escribe; RLS rechaza al resto (0 filas / 42501).
+    return this.escritura("autoconfirmar_escribir", async () => {
+      const { rows } = await this.db.query<{ property_id: string }>(
+        `insert into despachos.property_config (property_id, organization_id, conciliacion_autoconfirmar_nivel1) values ($1::uuid, $2::uuid, $3::boolean)
+         on conflict (property_id) do update set conciliacion_autoconfirmar_nivel1 = excluded.conciliacion_autoconfirmar_nivel1, updated_at = now()
+         returning property_id;`,
+        [propertyId, organizationId, activo],
+      );
+      return rows.length === 1;
+    });
+  }
+
+  confirmarAutopiloto(_propertyId: string, sesionId: string, pares: readonly ParAutopiloto[]): Promise<readonly MatchConciliacion[]> {
+    if (pares.length === 0) return Promise.resolve([]);
+    return this.escritura("autopiloto", async () => {
+      const payload = pares.map((p) => ({ movimiento_id: p.movimientoId, invoice_id: p.invoiceId, confianza: p.confianza }));
+      const { rows } = await this.db.query<{ out_match_id: string }>("select out_match_id from despachos.conciliacion_autopiloto_confirmar($1::uuid, $2::jsonb);", [sesionId, JSON.stringify(payload)]);
+      const m = await this.db.query<MatchRaw>(`select ${MATCH_COLS} from despachos.conciliacion_match where id = any($1::uuid[]) order by confirmado_en, id;`, [rows.map((r) => r.out_match_id)]);
+      return m.rows.map(mapMatch);
     });
   }
 }
