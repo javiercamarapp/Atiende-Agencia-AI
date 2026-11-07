@@ -172,7 +172,7 @@ export function prometeTransferenciaVoz(texto: string): boolean {
 export function quitarTransferenciaVoz(texto: string): string {
   // Corte lineal tras el signo (CodeQL js/polynomial-redos: la mirada atras con \s+ era polinomial en espacios largos).
   const frases = String(texto ?? "").trim().replace(/([.!?])\s+/g, "$1\u0000").split("\u0000");
-  let puesta = /devuelv\w*\s+(?:la|su)\s+llamada/i.test(texto);
+  let puesta = /devuelv\w{0,12}\s{1,3}(?:la|su)\s{1,3}llamada/i.test(texto);
   const salida: string[] = [];
   for (const f of frases) {
     if (!prometeTransferenciaVoz(f)) {

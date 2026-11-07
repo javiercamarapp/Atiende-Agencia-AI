@@ -459,8 +459,22 @@ const AFIRMACION_INICIAL = /^[\s¡!]*(?:si\s*[,.;:!]+\s*)+/;
 const COMO_CANCELAR =
   /\bcomo\s+(?:(?:le\s+)?(?:hago|hacemos|puedo|podemos|debo|se\s+puede)\s+(?:para\s+)?)?(?:(?:me|nos|se|lo|la|le)\s+)*(?:cancel|anul)/;
 /** Un trozo entre comas que es solo cortesía o vocativo («porfa», «por favor», «oigan»): no cierra la pregunta. */
-const TROZO_CORTESIA =
-  /^\s*(?:(?:porfa|porfavor|por\s+favor|plis|pls|gracias|oigan|oiga|oye|amigo|amiga|joven|senorita|senor|ok|ya|y|pues)\b\s*)*(?:[¿?]+\s*)*$/; // CodeQL js/polynomial-redos: sin espacios ambiguos entre palabras y signos
+/** Palabras de cortesia/relleno de un trozo (R66): sin expresion regular con cuantificadores anidados (CodeQL js/redos). */
+const PALABRAS_CORTESIA = new Set(["porfa", "porfavor", "plis", "pls", "gracias", "oigan", "oiga", "oye", "amigo", "amiga", "joven", "senorita", "senor", "ok", "ya", "y", "pues"]);
+/** ¿El trozo es solo cortesia («porfa», «gracias», «por favor», «ok?») seguida de signos de pregunta? Misma salida que la expresion del suelto. Pura. */
+function esTrozoCortesia(trozo: string): boolean {
+  let t = trozo;
+  let fin = t.length;
+  while (fin > 0 && /[¿?\s]/.test(t[fin - 1] ?? "")) fin--;
+  t = t.slice(0, fin);
+  const palabras = t.split(/\s+/).filter((p) => p !== "");
+  for (let i = 0; i < palabras.length; i++) {
+    const p = palabras[i]!;
+    if (p === "por" && palabras[i + 1] === "favor") { i++; continue; }
+    if (!PALABRAS_CORTESIA.has(p)) return false;
+  }
+  return true;
+}
 /**
  * La parte de una frase que pregunta: desde el «¿» (si lo hay) o, con solo «?», el último trozo entre comas con contenido
  * y la cortesía que lo sigue («cancelen mi pedido, ¿cuánto tardan?» pregunta solo «¿cuánto tardan?»; «oye, me lo cancelan,
@@ -473,7 +487,7 @@ function partePregunta(frase: string): [string, string] {
   if (abre >= 0) return [frase.slice(0, abre), frase.slice(abre)];
   const trozos = frase.split(/(?<=,)/);
   let k = trozos.length - 1;
-  while (k > 0 && TROZO_CORTESIA.test(trozos[k] ?? "")) k--;
+  while (k > 0 && esTrozoCortesia(trozos[k] ?? "")) k--;
   return [trozos.slice(0, k).join(""), trozos.slice(k).join("")];
 }
 export function sinCancelacionEnPregunta(plano: string): string {
