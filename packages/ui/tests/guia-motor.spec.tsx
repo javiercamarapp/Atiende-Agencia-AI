@@ -1,3 +1,4 @@
+// Archivo .tsx a proposito: importa modulos de la guia que usan `window` (lib DOM), igual que tema-boot.spec.tsx; el typecheck raiz (sin DOM) solo toma tests .ts.
 // ds3 «Guía»: motor puro del recorrido (maquina de estados, viaje automatico, construccion desde el menu real, geometria que no tapa
 // el foco), progreso local/servidor y paridad de textos ES/EN.
 import { readFileSync } from "node:fs";
@@ -30,9 +31,9 @@ import {
   type ContenidoConsola,
   type Rect,
   type SeccionMenu,
-} from "../src/components/guia/motor";
-import { claveProgreso, hashCorto, leerLocal, guardarLocal, limpiarProgresoGuia, normalizar, PROGRESO_VACIO, reconciliar, type Almacen } from "../src/components/guia/estado";
-import { interpolar, TEXTOS_GUIA, traductorGuia } from "../src/components/guia/textos";
+} from "../src/components/guia/motor.ts";
+import { claveProgreso, hashCorto, leerLocal, guardarLocal, limpiarProgresoGuia, normalizar, PROGRESO_VACIO, reconciliar, type Almacen } from "../src/components/guia/estado.ts";
+import { interpolar, TEXTOS_GUIA, traductorGuia } from "../src/components/guia/textos.ts";
 
 const BASE = "/restaurantes/taqueria";
 const MENU: SeccionMenu[] = [
