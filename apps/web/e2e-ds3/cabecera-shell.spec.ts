@@ -26,7 +26,8 @@ for (const consola of CONSOLAS) {
     await expect(guia).toBeVisible();
     const g = await guia.boundingBox();
     expect(g && Math.round(g.height), `${consola}: «Guía» de 28`).toBe(28);
-    const titulo = await page.getByTestId("barra-pagina-titulo").boundingBox();
+    // Bloque visible del titulo (icono + nombre): en el Resumen el <p> del diseno actual queda oculto y se ve el nombre de la pagina.
+    const titulo = await page.locator(".ds3-cabecera-titulo").boundingBox();
     expect(titulo && g && g.x > titulo.x, `${consola}: «Guía» va despues del titulo`).toBe(true);
   });
 }
