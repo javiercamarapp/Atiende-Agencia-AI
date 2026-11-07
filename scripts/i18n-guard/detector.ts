@@ -39,7 +39,7 @@ export const ATRIBUTOS_VISIBLES: ReadonlySet<string> = new Set([
 ]);
 
 /** Nombres compuestos que tambien son texto visible: `volverEtiqueta`, `confirmLabel`, `tituloVacio`, `mensajeError`... */
-const SUFIJO_VISIBLE = /(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion|subtitulo|ayuda|tooltip)$|^(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion)[A-Z]/i;
+const SUFIJO_VISIBLE = /(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion|subtitulo|ayuda|tooltip|rotulo)$|^(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion)[A-Z]/i;
 
 export function nombreVisible(nombre: string): boolean {
   return ATRIBUTOS_VISIBLES.has(nombre) || SUFIJO_VISIBLE.test(nombre);
@@ -47,6 +47,8 @@ export function nombreVisible(nombre: string): boolean {
 
 const ESPANOL = /[áéíóúñÁÉÍÓÚÑ¿¡]/;
 const LETRAS = /\p{L}{2,}/u;
+/** Una clave del catalogo (`nav.resumen`, `shell.tema.claro`): es un identificador, no texto. */
+const CLAVE_CATALOGO = /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$/;
 const FUNCIONES_TRADUCCION = new Set(["t", "traducir"]);
 
 export interface Hallazgo {
@@ -134,7 +136,7 @@ export function detectar(codigo: string, nombre = "archivo.tsx"): Hallazgo[] {
       // Clave de objeto (`{ "Hola": 1 }`) o indice: no es texto mostrado.
       if (n.parent && ts.isPropertyAssignment(n.parent) && n.parent.name === n) return;
       if (n.parent && (ts.isElementAccessExpression(n.parent) || ts.isLiteralTypeNode(n.parent))) return;
-      if (LETRAS.test(texto) && !esArgumentoDeTraduccion(n) && (esVisible(n) || ESPANOL.test(texto))) anotar(n, texto);
+      if (LETRAS.test(texto) && !CLAVE_CATALOGO.test(texto) && !esArgumentoDeTraduccion(n) && (esVisible(n) || ESPANOL.test(texto))) anotar(n, texto);
       if (!ts.isTemplateExpression(n)) return;
     }
     ts.forEachChild(n, visitar);

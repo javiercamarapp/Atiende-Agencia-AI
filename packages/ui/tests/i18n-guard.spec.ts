@@ -37,7 +37,8 @@ describe("detector de textos escritos a mano", () => {
         const c = <div className="flex items-center" data-testid="pedidos" />;
         const u = \`/restaurantes/\${slug}/pedidos\`;
         const v = t("nav.resumen", { nombre: "Más" });
-        console.warn("falló");`),
+        console.warn("falló");
+        const o = [{ rotulo: "shell.tema.claro" }];`),
     ).toEqual([]);
   });
 

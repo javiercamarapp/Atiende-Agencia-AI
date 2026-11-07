@@ -15,7 +15,26 @@ const variables = (m: Mensaje): string[] => [...new Set(textos(m).flatMap((t) =>
  * Textos que son iguales en los dos idiomas a proposito (nombres propios, siglas, la propia etiqueta del idioma). Agregar aqui
  * exige que la palabra realmente se diga igual en ingles; si no, traducela.
  */
-const IGUALES_PERMITIDOS = new Set<string>(["Español (ES)", "English (EN)"]);
+const IGUALES_PERMITIDOS = new Set<string>([
+  "Español (ES)",
+  "English (EN)",
+  // Siglas y nombres propios que se dicen igual en ingles.
+  "CFO",
+  "CFDI",
+  "P&L",
+  "WhatsApp",
+  "Model Ops",
+  "Orgs",
+  "Radar",
+  "{vertical} · {nombre}",
+  // Prestamos del ingles que el espanol de la consola ya usa tal cual.
+  "Staff",
+  "Housekeeping",
+  "Bookkeeping",
+  "Revenue",
+  "Tickets",
+  "Auditor",
+]);
 
 describe("catalogo i18n", () => {
   it("cada modulo tiene las mismas claves en es y en", () => {
