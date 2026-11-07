@@ -4,6 +4,10 @@
 // Reglas: intervalo base de 20 s; cada fallo seguido DUPLICA la espera hasta un tope de 2 min (backoff) y un
 // exito la restablece; con la pestana oculta no se consulta (al volver se consulta de inmediato); nunca hay dos
 // consultas simultaneas; se encadena un setTimeout despues de cada consulta (no un setInterval que se acumula).
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
+
+const tr = traductorActivo(restaurantesPedidos);
 
 export const SONDEO_BASE_MS = 20_000;
 export const SONDEO_MAX_MS = 120_000;
@@ -23,11 +27,11 @@ export function idsNuevos(vistos: ReadonlySet<string> | null, actuales: readonly
 
 /** "hace 8 s" / "hace 3 min"; `null` = aun no hay una consulta exitosa. */
 export function etiquetaActualizado(ultimaMs: number | null, ahoraMs: number): string {
-  if (ultimaMs === null) return "Sin actualizar todavía";
+  if (ultimaMs === null) return tr("restaurantes.pedidos.sondeo.sinActualizar");
   const s = Math.max(0, Math.round((ahoraMs - ultimaMs) / 1000));
-  if (s < 5) return "Actualizado ahora";
-  if (s < 60) return `Actualizado hace ${s} s`;
-  return `Actualizado hace ${Math.floor(s / 60)} min`;
+  if (s < 5) return tr("restaurantes.pedidos.sondeo.ahora");
+  if (s < 60) return tr("restaurantes.pedidos.sondeo.haceS", { s });
+  return tr("restaurantes.pedidos.sondeo.haceMin", { min: Math.floor(s / 60) });
 }
 
 /** "en 2 h 15 min" / "en 40 min" / "ya es la hora" para la cuenta regresiva de un pedido programado. */
@@ -36,12 +40,13 @@ export function faltaPara(programadoPara: string | null | undefined, ahoraMs: nu
   const objetivo = Date.parse(programadoPara);
   if (Number.isNaN(objetivo)) return null;
   const min = Math.ceil((objetivo - ahoraMs) / 60_000);
-  if (min <= 0) return "ya es la hora";
-  if (min < 60) return `en ${min} min`;
+  if (min <= 0) return tr("restaurantes.pedidos.falta.yaEsLaHora");
+  if (min < 60) return tr("restaurantes.pedidos.falta.min", { min });
   const h = Math.floor(min / 60);
   const m = min % 60;
-  if (h >= 24) return `en ${Math.floor(h / 24)} d ${h % 24} h`;
-  return m === 0 ? `en ${h} h` : `en ${h} h ${m} min`;
+  if (h >= 24) return tr("restaurantes.pedidos.falta.dias", { d: Math.floor(h / 24), h: h % 24 });
+  return m === 0 ? tr("restaurantes.pedidos.falta.horas", { h }) : tr("restaurantes.pedidos.falta.horasMin", { h, m });
+
 }
 
 // ---- Preferencia de sonido (por organizacion + sucursal, en este navegador) ----

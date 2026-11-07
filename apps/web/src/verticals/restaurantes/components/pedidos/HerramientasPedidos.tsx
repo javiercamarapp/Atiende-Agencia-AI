@@ -1,7 +1,8 @@
 // Herramientas del tablero de Pedidos que el repo suelto no tiene (sondeo, sonido, auto-impresion, reglas del autopiloto y tiempo prometido),
 // compactadas en un solo boton con menu para que la barra superior quede como la del original («N en total» + las 3 pildoras).
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
-import { Button, Checkbox, Popover, PopoverContent, PopoverTrigger, StatusBadge } from "@atiende/ui";
+import { Button, Checkbox, Popover, PopoverContent, PopoverTrigger, StatusBadge, useT } from "@atiende/ui";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 
 export interface HerramientasPedidosProps {
   /** Texto del indicador: «Actualizado hace 5 s · cada 20 s», «En pausa (pestaña oculta)»… */
@@ -21,6 +22,7 @@ export interface HerramientasPedidosProps {
 }
 
 export function HerramientasPedidos(p: HerramientasPedidosProps) {
+  const t = useT(restaurantesPedidos);
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span role="status" aria-live="polite" data-testid="indicador-actualizacion" className="inline-flex items-center gap-1.5 text-eyebrow tabular-nums text-muted-foreground">
@@ -29,39 +31,39 @@ export function HerramientasPedidos(p: HerramientasPedidosProps) {
       </span>
       {p.nuevos > 0 && (
         <StatusBadge tone="neutral" dot={false} data-testid="aviso-nuevos">
-          {p.nuevos} pedido{p.nuevos === 1 ? "" : "s"} nuevo{p.nuevos === 1 ? "" : "s"}
+          {t("restaurantes.pedidos.herramientas.nuevos", { count: p.nuevos })}
         </StatusBadge>
       )}
       <Popover>
         <PopoverTrigger asChild>
-          <Button type="button" size="sm" variant="ghost" className="h-7 rounded-full px-2.5 text-eyebrow" aria-label="Herramientas de pedidos">
+          <Button type="button" size="sm" variant="ghost" className="h-7 rounded-full px-2.5 text-eyebrow" aria-label={t("restaurantes.pedidos.herramientas.aria")}>
             <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-            Herramientas
+            {t("restaurantes.pedidos.herramientas.boton")}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80 space-y-3">
           <Button type="button" size="xs" variant="outline" onClick={p.onActualizar} disabled={p.consultando}>
             <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-            Actualizar ahora
+            {t("restaurantes.pedidos.herramientas.actualizar")}
           </Button>
           <Checkbox
             id="sonido-pedidos"
             checked={p.sonido && p.sonidoPermitido}
             disabled={!p.sonidoPermitido}
             onChange={(e) => p.onSonido(e.target.checked)}
-            label={p.sonidoPermitido ? "Sonido al llegar un pedido nuevo" : "Sonido al llegar un pedido nuevo (apagado en tus Avisos)"}
+            label={t(p.sonidoPermitido ? "restaurantes.pedidos.herramientas.sonido" : "restaurantes.pedidos.herramientas.sonidoApagado")}
             wrapperClassName="text-xs text-foreground"
           />
           <Checkbox
             id="auto-imprimir-cocina"
             checked={p.autoImprimir}
             onChange={(e) => p.onAutoImprimir(e.target.checked)}
-            label="Imprimir ticket de cocina automáticamente al llegar un pedido (esta sucursal, este equipo)"
+            label={t("restaurantes.pedidos.herramientas.autoImprimir")}
             wrapperClassName="text-xs text-foreground"
           />
           {p.autoImprimir && (
             <p className="m-0 text-xs text-muted-foreground">
-              Revisando pedidos nuevos cada {p.intervaloAutoImpresionS} s mientras esta pantalla esté abierta. Para imprimir sin diálogo, configura el navegador en modo de impresión silenciosa.
+              {t("restaurantes.pedidos.herramientas.autoRevisando", { s: p.intervaloAutoImpresionS })}
             </p>
           )}
           {p.tiempoPrometido && (
@@ -72,7 +74,8 @@ export function HerramientasPedidos(p: HerramientasPedidosProps) {
           {p.onReglas && (
             <Button type="button" size="sm" variant="outline" className="w-full" onClick={p.onReglas}>
               <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-              Reglas del autopiloto
+              {t("restaurantes.pedidos.herramientas.reglas")}
+
             </Button>
           )}
         </PopoverContent>

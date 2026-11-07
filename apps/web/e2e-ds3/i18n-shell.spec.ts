@@ -78,7 +78,7 @@ for (const consola of CONSOLAS) {
 
     await page.evaluate(() => window.localStorage.setItem("atiende-idioma", "en"));
     await page.reload();
-    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
     await expect(page.getByRole("complementary", { name: "Main navigation" }).or(page.getByRole("navigation", { name: "Mobile navigation" })).first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Skip to content" })).toBeAttached();
     await capturar("en");

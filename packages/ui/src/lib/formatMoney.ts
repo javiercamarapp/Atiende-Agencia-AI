@@ -1,3 +1,6 @@
+import { idiomaActivo } from "../i18n/activo.ts";
+import { crearFormatos } from "../i18n/formato.ts";
+
 /**
  * auditoria-2/frontend [BAJO]: ninguna pantalla usaba separador de miles -- 15
  * ocurrencias de `` `$${x.toFixed(2 o 0)}` `` concatenado a mano en
@@ -10,6 +13,9 @@
  * dinero (`roundCurrency`) -- esta función nunca calcula, solo formatea un número que
  * el backend ya calculó.
  */
+//
+// i18n (P2-4 de la revision #744/#748): delega en `crearFormatos(idiomaActivo())`, el mismo formateador de `useFormatos()`, para que
+// haya UN solo formato canonico. En espanol da exactamente lo de siempre (es-MX); en ingles, en-US (mismos separadores).
 export function formatMoney(amount: number, decimals: 0 | 2 = 2): string {
-  return amount.toLocaleString("es-MX", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return crearFormatos(idiomaActivo()).numero(amount, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
