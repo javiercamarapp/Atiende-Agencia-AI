@@ -1,4 +1,4 @@
-// Stack ElevenLabs en las rutas de voz: voz telefonica por sucursal (migracion 101) en el panel, y lo que el contexto de la llamada le da al worker
+// Stack ElevenLabs en las rutas de voz: voz telefonica por sucursal (migracion 103) en el panel, y lo que el contexto de la llamada le da al worker
 // (keyterms del menu, voz telefonica y modelo de los ajustes). Dobles en memoria, sin red.
 import { describe, expect, it } from "vitest";
 import { InMemoryAjustesAgenteRepository, InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository } from "@atiende/domain-restaurantes";
@@ -69,7 +69,7 @@ describe("voz telefonica (ElevenLabs) en el panel", () => {
     expect(r.status).toBe(403);
   });
 
-  it("base sin la 101: GET avisa vozTelefonoDisponible=false y un PUT que la manda responde 503 (nunca guarda a medias)", async () => {
+  it("base sin la 103: GET avisa vozTelefonoDisponible=false y un PUT que la manda responde 503 (nunca guarda a medias)", async () => {
     const { ctx, app, base, voz } = await construir();
     voz.migradaVozTelefono = false;
     expect(await (await app.request(`${base}/config`, authedGet(ctx.staff.owner.token))).json()).toMatchObject({ vozTelefono: null, vozTelefonoDisponible: false });

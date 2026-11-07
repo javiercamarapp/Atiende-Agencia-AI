@@ -9,6 +9,7 @@ import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { executeAgentToolSafely } from "../agent-tools/registry.ts";
 import { esSoloSticker } from "./channel-config.ts";
+import { sanearTexto } from "./eco-app.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { QUOTE_TTL_MS } from "../agent-tools/order-flow.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
@@ -179,6 +180,9 @@ async function agenteApagadoEnSucursal(repo: RestaurantesRepository, propertyId:
   }
 }
 
+/** Hora real con la que se guarda cada mensaje del hilo (PR-4): el panel la muestra por mensaje. */
+const ahoraIso = (): string => new Date().toISOString();
+
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
@@ -241,7 +245,7 @@ export async function handleInboundWhatsAppMessage(
     // sí pueda registrar el fallo.
     return await repo.runWithRowSavepoint(async () => {
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
-      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) };
+      const userMessage: ConversationMessage = { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(sanearTexto(body)), args.botonId), at: ahoraIso() };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
       // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
@@ -258,6 +262,8 @@ export async function handleInboundWhatsAppMessage(
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, body, handoff, handoffGate))) {
+          // PM PR-2 (coexistencia): con la toma abierta por el eco de la app el asistente calla y el panel se entera de que el cliente escribio (el mensaje ya quedo guardado). Un fallo del aviso nunca afecta el turno.
+          if (handoff === "tomada" && handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
           // Paquete C (G7-8-10): con la toma pendiente por OTRO motivo (cambio, cancelacion...) una queja con detalle no puede quedarse sin su aviso `queja`.
           if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body, messageId, propertyId: propertyId ?? null });
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
@@ -267,7 +273,7 @@ export async function handleInboundWhatsAppMessage(
           const acuse = permitido && (textoEstado !== null || acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId)));
           const textoAcuse = textoEstado !== null ? textoEstado : acuse ? textoParaTomaPendiente(body, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE) : ACUSE_HANDOFF_PENDIENTE;
           if (acuse) {
-            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse, at: ahoraIso() }], null, null, null);
             if (deliverReply) {
               await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
                 to: phone,
@@ -318,6 +324,14 @@ export async function handleInboundWhatsAppMessage(
                 messageId,
               });
 
+      // PM PR-2 (carrera): el personal pudo contestar desde la app MIENTRAS el modelo pensaba (la toma por eco se abrio en otra transaccion). Se vuelve a mirar justo antes de enviar:
+      // si la toma ya es de la app, la respuesta del asistente se descarta (el mensaje del cliente y el del personal ya estan en el hilo) y el panel se entera. Un turno que creo un pedido o escalo se entrega igual.
+      if (!arco && !apagado && limite === null && !turn.orderId && !turn.escalacion && !turn.accionMutante && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
+        if (handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
+
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
       // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
       // en la misma transaccion; si el turno falla, el registro se revierte con el savepoint y el
@@ -326,11 +340,12 @@ export async function handleInboundWhatsAppMessage(
       if (privacy) {
         const config = await privacy.getPrivacyConfig(organizationId);
         const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
-        const isFirstContact = claimed ?? messagesAfterUser.length === 1;
+        // Lo que el personal escribio desde la app (eco) no es una respuesta del asistente: no cuenta como «ya hubo contacto» para el aviso de privacidad.
+        const isFirstContact = claimed ?? messagesAfterUser.filter((m) => m.autor !== "humano_app").length === 1;
         if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
       }
 
-      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply };
+      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true, at: ahoraIso() } : { role: "assistant", content: reply, at: ahoraIso() };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
@@ -667,6 +682,8 @@ export type RecepcionConEspera =
   | { readonly estado: "fallo"; readonly retryable: true };
 
 /** Mensajes del cliente despues de la ultima respuesta del agente (todos, si el agente aun no ha contestado). */
+// Nota PR-2: un mensaje del personal desde la app (eco, role assistant) CUENTA como respuesta: lo que el cliente escribio antes de el ya tuvo contestacion humana; lo que escriba
+// despues, mientras el asistente callaba, vuelve a ser «sin responder» para el asistente cuando la toma regresa (y la campana avisa si quedo uno pendiente).
 export function mensajesSinResponder(messages: readonly ConversationMessage[]): readonly ConversationMessage[] {
   let ultimaRespuesta = -1;
   messages.forEach((m, i) => {
@@ -719,7 +736,7 @@ export async function recibirMensajeConEspera(
   try {
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
-      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(body), args.botonId) });
+      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(sanearTexto(body)), args.botonId), at: ahoraIso() });
       const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -788,6 +805,8 @@ export async function responderTrasEspera(
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
           if (handoff && !(await siAlResumenConTomaPendiente(repo, organizationId, phone, textoPendiente, handoff, handoffGate))) {
+            // PM PR-2 (coexistencia): toma abierta por el eco de la app -> el asistente calla y el panel se entera de que el cliente escribio.
+            if (handoff === "tomada" && handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
             // PM R18 (G7-8-10): esta es la ruta de produccion (espera de mensajes). Con la toma pendiente por OTRO motivo una queja con detalle tambien deja su aviso `queja` (antes solo lo hacia la ruta directa).
             if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body: textoPendiente, messageId: pasada === 1 ? messageId : `${messageId}:p${pasada}`, propertyId: propertyId ?? null });
             const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
@@ -795,7 +814,7 @@ export async function responderTrasEspera(
             const permitido = textoEstado !== null || (handoff === "pendiente" && handoffGate.acusePendiente ? await recordatorioPermitido(repo, organizationId, phone) : false);
             if (!permitido || (textoEstado === null && !acuseBase && (await agenteApagadoEnSucursal(repo, propertyId)))) return { salida: { ok: true, retryable: false }, silencio: true };
             const textoAcuse = textoEstado ?? textoParaTomaPendiente(textoPendiente, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE);
-            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse }], null, null, null);
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse, at: ahoraIso() }], null, null, null);
             if (deliverReply) {
               await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
                 to: phone,
@@ -824,16 +843,21 @@ export async function responderTrasEspera(
                 messageId,
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
+        // PM PR-2 (carrera): el personal pudo contestar desde la app mientras el modelo pensaba; se mira otra vez justo antes de guardar/enviar (ver la ruta directa).
+        if (!arco && !apagado && !turn.orderId && !turn.escalacion && !turn.accionMutante && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {
+          if (handoffGate.avisarClienteConTomaDeApp) await handoffGate.avisarClienteConTomaDeApp(organizationId, phone).catch(() => undefined);
+          return { salida: { ok: true, retryable: false }, silencio: true };
+        }
         if (turn.escalacion?.motivo === "falla_sistema") falloDelSistema = true;
         let reply = turn.reply;
         if (privacy) {
           const config = await privacy.getPrivacyConfig(organizationId);
           const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
           // Con varios mensajes antes de la primera respuesta el historial ya no tiene 1 solo: "primer contacto" = el agente nunca ha contestado.
-          const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
+          const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant" && m.autor !== "humano_app");
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
-        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true } : { role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true, at: ahoraIso() } : { role: "assistant", content: reply, at: ahoraIso() }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
         const abreToma = Boolean(turn.escalacion && handoffGate && (await escalacionAbreToma(repo, organizationId, phone, turn, historial)));
         if (turn.escalacion && handoffGate && abreToma) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });

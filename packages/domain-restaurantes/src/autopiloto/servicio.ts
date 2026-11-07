@@ -529,6 +529,17 @@ export async function devolverHandoffsVencidos(deps: AutopilotoServicioDeps, aho
       entidadTipo: "conversation_handoff",
       entidadId: h.handoffId,
     });
+    // PM PR-2: la toma de la app regreso con un mensaje del cliente SIN responder (escribio mientras el asistente callaba): el asistente no lo reprocesa solo, la campana avisa.
+    if (h.clienteSinResponder) {
+      await emitirNotificacion(deps.db, {
+        evento: "restaurantes.handoff.devuelto_con_cliente_esperando",
+        organizationId: h.organizationId,
+        propertyId: h.propertyId,
+        clave: h.handoffId,
+        entidadTipo: "conversation_handoff",
+        entidadId: h.handoffId,
+      });
+    }
   }
   return { disponible: true, devueltos: r.valor.length };
 }

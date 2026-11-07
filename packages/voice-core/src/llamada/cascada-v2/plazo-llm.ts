@@ -17,6 +17,9 @@ export interface OpcionesPlazoLlm {
   readonly modeloRespaldo: string | null;
   /** Se llama UNA vez cuando vence el plazo sin texto (la sesion dice la frase de espera). */
   readonly alVencer?: () => void;
+  /** `false` = si la principal FALLA antes de hablar NO se lanza el respaldo (sube su error). Por omision `true`. La sesion lo apaga en la vuelta con herramienta forzada:
+   * ahi un 400/422 significa "tool_choice no admitido" y se decide arriba (reintento sin forzar), no con otro modelo. */
+  readonly respaldoEnFalla?: boolean;
   /** Se llama cuando el respaldo gana (para el registro). */
   readonly alGanarRespaldo?: (motivo: "plazo" | "falla") => void;
   /** Temporizador inyectable (pruebas). */
@@ -108,7 +111,7 @@ export function completarConPlazo(llm: PuertoLlmVoz, peticion: PeticionLlmVoz & 
               return;
             }
             if (ganadora !== null) return; // la otra ya gano: su resultado resuelve
-            if (cual === "principal" && !respaldoLanzado) {
+            if (cual === "principal" && !respaldoLanzado && o.respaldoEnFalla !== false) {
               respaldoLanzado = true;
               lanzar("respaldo");
               return;

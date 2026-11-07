@@ -93,7 +93,7 @@ Cascada (no voz a voz), decidida con la medición de `PRUEBAS-STT-TTS-NOV.md`:
 - **Telefonía:** sin cambios (Twilio MX SIP -> LiveKit).
 
 Variables para encenderlo: `ELEVENLABS_API_KEY`, `DEEPGRAM_API_KEY`, `OPENROUTER_API_KEY`, `VOZ_CASCADA_V2_HABILITADA=1`, `VOZ_ESCALERA=cascada-v2,cascada-openrouter`
-(y `VOZ_RUIDO` si se quiere otro modo). La voz telefónica por sucursal necesita la migración 101 (`branch_voice_config.tts_voice_id`); sin ella se usa Regina.
+(y `VOZ_RUIDO` si se quiere otro modo). La voz telefónica por sucursal necesita la migración 103 (`branch_voice_config.tts_voice_id`); sin ella se usa Regina.
 
 ## Pasos para la primera llamada real
 

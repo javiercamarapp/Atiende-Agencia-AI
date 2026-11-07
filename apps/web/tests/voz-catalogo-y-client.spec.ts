@@ -86,7 +86,7 @@ describe("voz-client (contrato real de apps/api voz-admin.ts)", () => {
     expect(r).toEqual({ vozId: "Puck", promptSistema: ENTRADA.promptSistema, mensajeInicial: ENTRADA.mensajeInicial, mensajeInicialInterrumpible: true, habilitado: true, vozTelefono: null, vozTelefonoDisponible: false });
   });
 
-  it("voz telefonica (migracion 101): se lee del GET y el PUT la manda SOLO si la base ya la admite", async () => {
+  it("voz telefonica (migracion 103): se lee del GET y el PUT la manda SOLO si la base ya la admite", async () => {
     const f1 = vi.fn(async () => JSON_RESP({ ...WIRE_CONFIG, vozTelefono: "sDh3eviBhiuHKi0MjTNq", vozTelefonoDisponible: true })) as unknown as typeof fetch;
     await expect(fetchVozConfig(f1, "http://api.local", "tok", "prop-1")).resolves.toMatchObject({ vozTelefono: "sDh3eviBhiuHKi0MjTNq", vozTelefonoDisponible: true });
     const cuerpos: Record<string, unknown>[] = [];

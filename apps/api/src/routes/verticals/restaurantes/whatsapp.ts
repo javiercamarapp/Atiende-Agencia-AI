@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, extractMetaEchoes, registrarEcoDeApp, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { extractMetaStatuses } from "@atiende/whatsapp-gateway";
 import type { EventoEntregaFallida } from "@atiende/domain-restaurantes";
@@ -116,13 +116,17 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       let processedAny = false;
       // Correos de respaldo encolados por entregas fallidas (el WhatsApp no llego): se despachan al final aunque el webhook solo traiga statuses.
       let correosDeRespaldo = 0;
+      // Coexistencia: un eco de la app que no se pudo guardar pide reintento de Meta (el wamid vuelve a reclamarse sin duplicar).
+      let ecoFallo = false;
       const channelCache = new Map<string, Awaited<ReturnType<typeof repo.resolveWhatsAppChannel>>>();
       for (const batch of splitMetaPayloadByChannel(payload)) {
         if (!batch.phoneNumberId) continue;
         const incomingMessages = extractMetaInboundMessages(batch.payload);
         // Estados de entrega de mensajes SALIENTES (delivered/read/failed): no son mensajes del cliente.
         const estadosEntrega = extractMetaStatuses(batch.payload);
-        if (incomingMessages.length === 0 && estadosEntrega.length === 0) continue;
+        // Coexistencia (`smb_message_echoes`): lo que el personal contesta desde la app de WhatsApp Business. `history` y `smb_app_state_sync` siguen acusandose sin escribir (PR-14).
+        const { ecos } = extractMetaEchoes(batch.payload);
+        if (incomingMessages.length === 0 && estadosEntrega.length === 0 && ecos.length === 0) continue;
         if (!channelCache.has(batch.phoneNumberId)) channelCache.set(batch.phoneNumberId, await repo.resolveWhatsAppChannel(batch.phoneNumberId));
         const channel = channelCache.get(batch.phoneNumberId) ?? null;
         const organizationId = channel?.organizationId ?? null;
@@ -143,7 +147,12 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           );
           correosDeRespaldo += resumen.correosEncolados;
         }
-        // Un webhook solo de statuses no toca el ledger de entrada ni el turno del agente.
+        for (const eco of ecos) {
+          // El tenant y la sucursal salen del `phone_number_id` firmado, igual que los mensajes de clientes.
+          const resultado = await registrarEcoDeApp(repo, { organizationId, propertyId: channel?.propertyId ?? null, eco, handoffGate: deps.handoffGate?.(db) });
+          if (resultado === "fallo") ecoFallo = true;
+        }
+        // Un webhook solo de statuses (o solo de ecos) no toca el ledger de entrada de clientes ni el turno del agente.
         if (incomingMessages.length === 0) continue;
         processedAny = true;
         const phoneNumberIdOfBatch = batch.phoneNumberId;
@@ -230,7 +239,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // Nada que procesar (sin mensajes de texto validos o ningun numero reconocido): ack silencioso.
       if (!processedAny) {
         if (correosDeRespaldo > 0) await triggerRestaurantesEmailDispatchInline(deps, db, repo);
-        return { ack: true as const };
+        return ecoFallo ? { ack: false as const, hadRetryableFailure: true } : { ack: true as const };
       }
 
       // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
@@ -243,7 +252,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       await triggerRestaurantesWhatsAppDispatchInline(deps, db, repo);
       await triggerRestaurantesEmailDispatchInline(deps, db, repo);
 
-      return { ack: false as const, hadRetryableFailure };
+      return { ack: false as const, hadRetryableFailure: hadRetryableFailure || ecoFallo };
     });
     if (fase1.ack) return c.json({ ok: true });
     let hadRetryableFailure = fase1.hadRetryableFailure;

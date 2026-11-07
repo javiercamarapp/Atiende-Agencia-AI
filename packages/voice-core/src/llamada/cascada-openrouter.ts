@@ -39,6 +39,8 @@ export interface PeticionLlmVoz {
   readonly onTextDelta?: (delta: string) => void;
   /** Esfuerzo de razonamiento para este turno (`reasoning.effort` de OpenRouter); sin valor, el del puerto. */
   readonly esfuerzo?: "low" | "medium" | "high";
+  /** Fuerza que el modelo llame a ESTA herramienta (`tool_choice`). La cascada v2 lo usa UNA vez, tras confirmar el resumen con la compuerta abierta, para que el modelo cree el pedido en vez de releer el resumen (bucle R1). */
+  readonly herramientaForzada?: string;
 }
 export interface RespuestaLlmVoz {
   readonly texto: string;

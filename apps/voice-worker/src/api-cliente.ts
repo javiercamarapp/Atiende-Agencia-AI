@@ -36,7 +36,7 @@ export interface ContextoLlamada {
   readonly sonido: SonidoLlamada | null;
   /** Temperatura de la voz (0..1) de los ajustes del agente; null = la de la plataforma. */
   readonly temperatura: number | null;
-  /** Nombres de los platillos de la sucursal para los `keyterms` del STT; vacio = la API no los manda (API vieja) o no hay menu. */
+  /** Nombres y apodos del menu (hasta 50) para los keyterms del STT; vacio si la API no lo manda (API vieja). */
   readonly vocabulario: readonly string[];
   /** Voz telefonica de la sucursal (id de ElevenLabs, 20 alfanumericos); null = la de la plataforma (Regina). */
   readonly vozTelefono: string | null;
@@ -47,25 +47,15 @@ export interface ContextoLlamada {
 const VOZ_ELEVENLABS_RE = /^[A-Za-z0-9]{20}$/;
 const MODELO_OPENROUTER_RE = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/;
 
-/** Lista de terminos del menu: solo textos cortos, sin repetir, hasta 80 (el adaptador del STT aplica su propio tope). Cualquier otra forma = vacia. */
-export function leerVocabulario(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  const vistos = new Set<string>();
-  const out: string[] = [];
-  for (const t of v) {
-    if (typeof t !== "string") continue;
-    const limpio = t.replace(/\s+/g, " ").trim();
-    if (limpio === "" || limpio.length > 60 || vistos.has(limpio.toLowerCase())) continue;
-    vistos.add(limpio.toLowerCase());
-    out.push(limpio);
-    if (out.length >= 80) break;
-  }
-  return out;
-}
-
 export interface SonidoLlamada {
   readonly fondo: { readonly activo: boolean; readonly volumen: number; readonly preset: PresetAmbiente };
   readonly tecleo: { readonly activo: boolean; readonly volumen: number };
+}
+
+/** Vocabulario del menu: solo textos cortos, hasta 50. Cualquier otra forma = sin vocabulario. */
+export function leerVocabulario(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((t): t is string => typeof t === "string" && t.trim() !== "" && t.length <= 60).slice(0, 50);
 }
 
 /** Valida lo que manda la API (nunca confia en el cuerpo): cualquier cosa fuera de rango o de forma se descarta como "sin sonido". */

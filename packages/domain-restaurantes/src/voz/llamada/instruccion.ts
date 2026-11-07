@@ -15,6 +15,7 @@ import type { RestaurantesRepository } from "../../repository.ts";
 import type { CustomerLookupResult } from "../../types.ts";
 import { APENDICE_VOZ, instruccionVozConReglas } from "../perfil-voz-pm.ts";
 import type { VozConfig } from "../types.ts";
+import { vocabularioMenuVoz } from "./vocabulario.ts";
 
 export interface EntradaInstruccionLlamada {
   readonly organizationId: string;
@@ -30,6 +31,8 @@ export interface InstruccionLlamada {
   /** Hora local (0-23) de la sucursal: elige el saludo pregrabado y la franja del KPI. */
   readonly horaLocal: number;
   readonly zonaHoraria: string;
+  /** Nombres y apodos del menu de la sucursal (tope 50) para los keyterms del STT. Vacio si el catalogo no se pudo leer. */
+  readonly vocabulario: readonly string[];
 }
 
 function horaLocalEn(timezone: string, ahora: Date): number {
@@ -98,5 +101,12 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
     });
   }
   if (editable === "" && inicial !== "") instruccion += `\n\n# PRIMER MENSAJE\nAl contestar, diga exactamente: "${inicial}"`;
-  return { instruccion, horaLocal: horaLocalEn(zonaHoraria, e.ahora), zonaHoraria };
+  // Sin catalogo (o si la consulta falla) la llamada se atiende igual, solo sin pista de vocabulario.
+  let vocabulario: string[] = [];
+  try {
+    vocabulario = vocabularioMenuVoz(await repo.listAvailableProductsForBranch(e.propertyId));
+  } catch {
+    vocabulario = [];
+  }
+  return { instruccion, horaLocal: horaLocalEn(zonaHoraria, e.ahora), zonaHoraria, vocabulario };
 }

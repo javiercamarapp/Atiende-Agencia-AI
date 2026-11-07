@@ -66,7 +66,7 @@ interface ConfigBody {
   readonly mensajeInicial?: unknown;
   /** Opcional (migracion 053): ausente = se conserva lo guardado (un cliente anterior a la bandera no la pisa). */
   readonly mensajeInicialInterrumpible?: unknown;
-  /** Opcional (migracion 101): voz telefonica de ElevenLabs del catalogo, o null (la de la plataforma). Ausente = se conserva lo guardado. */
+  /** Opcional (migracion 103): voz telefonica de ElevenLabs del catalogo, o null (la de la plataforma). Ausente = se conserva lo guardado. */
   readonly vozTelefono?: unknown;
 }
 
@@ -204,11 +204,11 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       return asServiceUnavailable(err);
     }
 
-    // Voz telefonica (101): solo si el cliente la manda. Base sin la 101 -> 503 honesto (la configuracion de arriba ya quedo guardada en la misma transaccion,
+    // Voz telefonica (103): solo si el cliente la manda. Base sin la 103 -> 503 honesto (la configuracion de arriba ya quedo guardada en la misma transaccion,
     // que el 503 revierte: nunca se guarda a medias).
     let telefono = repo.getVozTelefono ? await repo.getVozTelefono(propertyId) : { disponible: false, valor: null };
     if (vozTelefonoPedida !== undefined) {
-      if (!repo.setVozTelefono) throw Errors.serviceUnavailable("La voz telefónica no está disponible aún: requiere la migración 101.");
+      if (!repo.setVozTelefono) throw Errors.serviceUnavailable("La voz telefónica no está disponible aún: requiere la migración 103.");
       try {
         await repo.setVozTelefono(organizationId, propertyId, vozTelefonoPedida);
       } catch (err) {

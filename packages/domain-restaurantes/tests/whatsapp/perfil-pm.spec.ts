@@ -234,13 +234,13 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
   it("el combo del martes lo aplica cotizar_pedido (CR09): el agente dice lo que devuelve y no lo promete si la cotizacion no lo muestra", () => {
     expect(p).not.toContain("la confirma la sucursal al recoger");
     expect(p).not.toMatch(/no lo prometa ni lo aplique|cotice los nachos a precio de lista/);
-    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía POR CADA orden completa de nachos, solo para recoger: 2 órdenes = 4 aguas\): lo aplica cotizar_pedido; diga lo que devuelve y cuente las aguas por orden\./);
+    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía POR CADA orden completa de nachos, solo para recoger y solo en las sucursales de H3: 2 órdenes = 4 aguas\): lo aplica cotizar_pedido; diga lo que devuelve y cuente las aguas por orden\./);
     expect(p).toMatch(/Si el cliente pide el combo y la cotización no lo muestra .* no lo prometa/);
   });
 
-  it("las promociones por omision valen en TODAS las sucursales: lunes 2x1 y martes nachos con 2 aguas, solo recoger (CR07/CR08)", () => {
-    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
-    expect(PM_PROMOS_POR_OMISION).not.toMatch(/Francisco de Montejo|Pensiones|Galerías/);
+  it("las promociones por omision valen solo en Francisco de Montejo, Pensiones y Galerias: lunes 2x1 y martes nachos con 2 aguas, solo recoger (R22 #4)", () => {
+    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías");
+    expect(PM_PROMOS_POR_OMISION).not.toMatch(/todas las sucursales/);
   });
 
   it("ya no afirma 'Precios iguales' ni prohibe dar horarios por sucursal: el horario y el precio los da la herramienta", () => {
@@ -257,8 +257,9 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/Playa, Chicxulub \(969 688 4195\): de temporada/);
   });
 
-  it("H2 conserva la prohibicion de alcohol para recoger y H8 las alergias (sin cambios hasta P17)", () => {
-    expect(p).toContain("adquirirlo directamente en la sucursal al recoger");
+  it("H2 ya no prohibe el alcohol para recoger (sin respaldo del dueno; solo a domicilio) y H8 conserva las alergias", () => {
+    expect(p).not.toContain("adquirirlo directamente en la sucursal al recoger");
+    expect(p).toMatch(/H2\. Nada de alcohol a domicilio/);
     expect(p).toMatch(/H8\. No decida usted:.*alergias\. Todo eso se escala/);
     expect(p).toContain("alergia_salud");
   });
@@ -279,7 +280,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
 
   it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {
     expect(p).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo/);
-    expect(p).toMatch(/no lo rechace; tome todos los datos y escale \(pedido_grande\) para que la sucursal lo confirme/);
+    expect(p).toMatch(/se toma como CUALQUIER pedido: no lo rechace ni escale antes de cotizar/);
   });
 
   it("hora de recogida con el parametro estructurado hora_recogida, no en notes", () => {
@@ -291,7 +292,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
 
   it("nunca inventar folio, lluvia, repartidor, precio viejo, presentaciones y alias", () => {
     expect(p).toMatch(/Nunca invente un folio/);
-    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia puede tardar un poco más que lo normal: el tiempo de la sucursal \(paso 8\) más unos 20 minutos/);
+    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia la entrega tarda de 1 hora a 1 hora 20 minutos/);
     expect(p).toMatch(/no la mencione por su cuenta/);
     expect(p).toMatch(/El cliente no elige repartidor/);
     expect(p).toContain("El precio vigente es de $X");
@@ -327,11 +328,11 @@ describe("QA-PM-R4: reglas de prompt de WhatsApp que no entran a la voz (limite 
     const p = promptPm();
     expect(p).toContain("propina_porcentaje");
     expect(p).toMatch(/NO conteste "sí" ni garantice ese plazo/);
-    expect(p).toMatch(/NUNCA diga "a partir de las 12 del día"/);
+    expect(p).not.toMatch(/a partir de las 12 del día/);
     expect(p).toMatch(/YA SALIÓ a reparto \(o está entregado\), no dé minutos/);
     expect(p).toMatch(/3 o 4 platillos con su precio REAL/);
     expect(p).toMatch(/dígalo usted antes de que el cliente lo deduzca/);
-    expect(p).toMatch(/Antes de escalar, cotice con cotizar_pedido/);
+    expect(p).toMatch(/cotice con cotizar_pedido, dígale el total exacto de la cotización/);
     expect(p).toMatch(/no repita el rechazo ni el teléfono de la otra/);
   });
   it("la voz NO recibe esas reglas (tope de 8000 caracteres)", () => {

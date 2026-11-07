@@ -220,11 +220,11 @@ describe("lo que el guion atribuye al agente esta en su prompt y en sus datos", 
     expect(prompt).toContain("tiempos_entrega");
   });
 
-  it("las salsas basicas, el pin opcional (una sola vez), la repeticion en lista, la propina solo con tarjeta y 'ofrezca recoger' (escenarios 1, 2 y 5) estan en el prompt", () => {
+  it("las salsas basicas, el pin opcional (una sola vez), la repeticion en lista, la propina (nunca se pregunta) y 'ofrezca recoger' (escenarios 1, 2 y 5) estan en el prompt", () => {
     expect(prompt).toContain("roja, verde, cebolla con cilantro y limones");
     expect(prompt).toMatch(/PIN A REPARTO \(ayuda opcional, no requisito\): ofrézcalo UNA SOLA VEZ/);
     expect(prompt).toContain("Permítame repetirle su pedido");
-    expect(prompt).toContain("No pregunte propina con efectivo");
+    expect(prompt).toContain("NUNCA pregunte por la propina, ni con tarjeta ni con efectivo");
     expect(prompt).toMatch(/ofrezca recoger en la sucursal de este chat/);
     expect(prompt).toContain("CLIENTE RECURRENTE");
   });

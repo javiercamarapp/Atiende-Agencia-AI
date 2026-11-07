@@ -192,7 +192,7 @@ export function restaurantesConversacionesAdminRoutes(deps: AppDeps): Hono<CoreA
         canal: d.canal,
         conversationId: d.conversationId,
         transcripcionDisponible: d.transcripcionDisponible,
-        mensajes: d.mensajes.map((m) => ({ rol: m.rol, texto: m.texto, creadoEn: m.createdAt })),
+        mensajes: d.mensajes.map((m) => ({ rol: m.rol, texto: m.texto, creadoEn: m.createdAt, ...(m.rol === "humano" ? { autorId: m.autorId ?? null, autor: m.autorNombre ?? null } : {}) })),
         handoff: d.handoff
           ? { handoffId: d.handoff.handoffId, estado: d.handoff.estado, solicitadoPor: d.handoff.solicitadoPor, motivo: d.handoff.motivo, solicitadaEn: d.handoff.solicitadaAt, ultimoClienteEn: d.handoff.ultimoClienteAt, tomadaPor: d.handoff.tomadaPor, tomadaPorNombre: d.handoff.tomadaPorNombre, tomadaEn: d.handoff.tomadaAt }
           : null,

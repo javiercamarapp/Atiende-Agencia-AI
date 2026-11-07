@@ -247,7 +247,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                   <p role="note" data-testid="aviso-voz-telefono" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                     {config.estado === "listo" && config.datos === null
                       ? "Guarde primero la configuración de voz de esta sucursal para elegir la voz telefónica. Mientras tanto se usa Regina, la voz de la plataforma."
-                      : "No disponible aún: requiere la migración 101 en la base. Mientras tanto la llamada usa Regina, la voz de la plataforma."}
+                      : "No disponible aún: requiere la migración 103 en la base. Mientras tanto la llamada usa Regina, la voz de la plataforma."}
                   </p>
                 )}
               </div>

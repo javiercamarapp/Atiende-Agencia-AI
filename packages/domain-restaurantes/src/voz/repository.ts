@@ -8,11 +8,11 @@ import type { VozCerrarConversacionInput, VozConversacionResumen, VozResultado }
  * (`RepositorioLlamadasVoz`) con los resultados y el pedido propios de restaurantes. */
 export type VozRepository = RepositorioLlamadasVoz<VozResultado, VozConversacionResumen, VozCerrarConversacionInput> & VozTelefonoRepositorio;
 
-/** Voz TELEFONICA de la sucursal (ElevenLabs, migracion 101 `branch_voice_config.tts_voice_id`). Opcional: un adaptador sin estos metodos = "no disponible aun". */
+/** Voz TELEFONICA de la sucursal (ElevenLabs, migracion 103 `branch_voice_config.tts_voice_id`). Opcional: un adaptador sin estos metodos = "no disponible aun". */
 export interface VozTelefonoRepositorio {
-  /** Voz guardada; `disponible: false` con la base sin la 101 (el worker usa la de la plataforma). */
+  /** Voz guardada; `disponible: false` con la base sin la 103 (el worker usa la de la plataforma). */
   getVozTelefono?(propertyId: string): Promise<{ readonly disponible: boolean; readonly valor: string | null }>;
   /** Guarda (o borra con null) la voz de una sucursal que YA tiene fila de configuracion. `false` = no habia fila (guarde antes la configuracion de voz).
-   * Base sin la 101 -> `VozNoDisponibleError` (503 honesto). */
+   * Base sin la 103 -> `VozNoDisponibleError` (503 honesto). */
   setVozTelefono?(organizationId: string, propertyId: string, voz: string | null): Promise<boolean>;
 }

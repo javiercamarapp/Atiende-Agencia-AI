@@ -241,7 +241,7 @@ export class PostgresVozRepository implements VozRepository {
         const { rows } = await this.db.query<{ tts_voice_id: string | null }>(`select tts_voice_id from restaurantes.branch_voice_config where property_id = $1;`, [propertyId]);
         return { disponible: true, valor: rows[0]?.tts_voice_id ?? null };
       },
-      // Base sin la 101 (42703) o sin la 025 (42P01): la voz de la plataforma, nunca un 500.
+      // Base sin la 103 (42703) o sin la 025 (42P01): la voz de la plataforma, nunca un 500.
       isRecoverable: esBaseSinMigrar,
       fallback: async () => ({ disponible: false, valor: null }),
     });

@@ -72,7 +72,7 @@ export class InMemoryVozRepository implements VozRepository {
     return out;
   }
 
-  /** Voz telefonica por sucursal (migracion 101). `migradaVozTelefono = false` simula la base sin la 101. */
+  /** Voz telefonica por sucursal (migracion 103). `migradaVozTelefono = false` simula la base sin la 103. */
   migradaVozTelefono = true;
   private readonly vocesTelefono = new Map<string, string | null>();
 

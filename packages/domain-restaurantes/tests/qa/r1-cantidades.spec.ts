@@ -53,8 +53,11 @@ describe("viaje-12: una cantidad no numerica por WhatsApp se rechaza en vez de c
 });
 
 describe("agentes-22: la propina no puede superar el total del pedido", () => {
-  async function crearConPropina(propina: number) {
+  // R22 #1: la politica de PM es «nunca»; estas pruebas cubren el TOPE de propina, que solo existe donde la politica la registra (solo_tarjeta), asi que fijan esa politica en T7.
+  async function crearConPropina(propina: number, politica: "solo_tarjeta" | "nunca" = "solo_tarjeta") {
     const b = await banco();
+    const repoPoliticas = b.w.repo as unknown as { branchPolicies: Map<string, Record<string, unknown>> };
+    b.w.repo.seedBranchPolicy(b.t7, { ...repoPoliticas.branchPolicies.get(b.t7), propinaPolitica: politica } as never);
     const ctx = (turn: string) => ({ organizationId: b.w.organizationId, channel: "whatsapp" as const, phone: "+5219990000039", flow: { key: "wa:+5219990000039", turn } });
     const { executeAgentToolSafely } = await import("../../src/agent-tools/registry.ts");
     const items = [{ product_id: b.pid("Taco Al Pastor (individual)"), product_name: "Taco Al Pastor (individual)", requested_quantity: 6, tortilla: "maiz" }];
@@ -66,6 +69,11 @@ describe("agentes-22: la propina no puede superar el total del pedido", () => {
     const r = await crearConPropina(5000);
     expect(r.orderId).toBeNull();
     expect((r.result as { error: string }).error).toMatch(/propina no puede ser mayor/);
+  });
+  it("R22 #1: con la politica «nunca» (la de PM) cualquier propina se rechaza y el pedido no se crea", async () => {
+    const r = await crearConPropina(50, "nunca");
+    expect(r.orderId).toBeNull();
+    expect((r.result as { error: string }).error).toMatch(/no registra propina/);
   });
   it("una propina razonable ($50 sobre $252) y una igual al total se aceptan", async () => {
     expect((await crearConPropina(50)).orderId).toBeTruthy();

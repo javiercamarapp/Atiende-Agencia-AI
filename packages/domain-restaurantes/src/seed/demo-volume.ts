@@ -578,7 +578,7 @@ export async function* generarVolumenDemo(repoBase: RestaurantesRepository, opti
       // como ultimo recurso, se pasa a recoger. Lo que el motor no acepta NUNCA se escribe.
       let prepared: Awaited<ReturnType<typeof prepareCreateOrder>> | null = null;
       let canalFinal: CanalPedido = canalElegido;
-      let propina: number | null = null;
+      const propina: number | null = null as number | null; // R22 #1: siempre null (politica «nunca»); tipado number|null para el mensaje de notas y la fila
       for (let intento = 0; intento < 6 && !prepared; intento += 1) {
         let items: { productId: string; requestedQuantity: number; tortilla?: "maiz" | "harina" | "mixta" }[];
         let alcohol = false;
@@ -598,7 +598,9 @@ export async function* generarVolumenDemo(repoBase: RestaurantesRepository, opti
           });
           alcohol = [...elegidos.values()].some((c) => c.requiresAdult);
         }
-        propina = paymentMethod === "tarjeta" && rng.chance(0.45) ? rng.pick([10, 15, 20, 30, 40]) : null;
+        // R22 #1: la politica de PM es propina «nunca» (el agente no la pregunta ni la registra; con tarjeta la maneja la terminal): se conservan las mismas tiradas del
+        // generador para que el resto de la muestra siga siendo determinista, pero el pedido ya no lleva propina.
+        void (paymentMethod === "tarjeta" && rng.chance(0.45) ? rng.pick([10, 15, 20, 30, 40]) : null);
         try {
           prepared = await prepareCreateOrder(
             repo,

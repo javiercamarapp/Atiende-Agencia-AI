@@ -1,8 +1,6 @@
-// Stack ElevenLabs en el worker: `ELEVENLABS_API_KEY`, `VOZ_ESCALERA`, `VOZ_RUIDO` (Krisp), y los campos nuevos del contexto de la API (keyterms del menu, voz
-// telefonica y modelo de los ajustes). Ninguna llave aparece en los motivos ni en los logs.
+// Stack ElevenLabs en el worker: `ELEVENLABS_API_KEY`, `VOZ_ESCALERA`, `VOZ_RUIDO` (Krisp). Ninguna llave aparece en los motivos ni en los logs.
 import { describe, expect, it } from "vitest";
 import { cargarConfig } from "../src/config.ts";
-import { leerVocabulario } from "../src/api-cliente.ts";
 import { cargarCancelacionRuido } from "../src/telefonia/ruido.ts";
 
 const ORG = "00000000-0000-4000-8000-000000000001";
@@ -68,14 +66,5 @@ describe("VOZ_RUIDO (cancelacion de ruido de LiveKit)", () => {
     let intentos = 0;
     expect(await cargarCancelacionRuido("ninguno", () => undefined, async () => (intentos++, { TelephonyBackgroundVoiceCancellation: () => ({ moduleId: "x", options: {} }), NoiseCancellation: () => ({ moduleId: "x", options: {} }) }))).toBeNull();
     expect(intentos).toBe(0);
-  });
-});
-
-describe("vocabulario del menu para los keyterms", () => {
-  it("solo textos cortos, sin repetir (sin importar mayusculas), con espacios normalizados y tope de 80", () => {
-    expect(leerVocabulario(["Cochinita  pibil", "cochinita pibil", "", 7, "x".repeat(61), "Panuchos"])).toEqual(["Cochinita pibil", "Panuchos"]);
-    expect(leerVocabulario(Array.from({ length: 100 }, (_, i) => `platillo ${i}`))).toHaveLength(80);
-    expect(leerVocabulario("cochinita")).toEqual([]);
-    expect(leerVocabulario(undefined)).toEqual([]);
   });
 });

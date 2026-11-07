@@ -112,19 +112,19 @@ describe("Extra Salsa y Extra Piña (decision del 2-oct)", () => {
   });
 });
 
-describe("promociones: lunes 2x1 sin restriccion de sucursal y combo del martes (CR07, CR08, CR09)", () => {
+describe("promociones: lunes 2x1 y combo del martes, solo en T2, T3 y T4 (CR09; alcance por sucursal R22)", () => {
   const plan = buildPmSeedPlan(data, agent);
 
-  it("LUNES2X1PM no tiene restriccion de sucursal ni en los datos ni en el plan", () => {
+  it("LUNES2X1PM solo vale en T2, T3 y T4 (Francisco de Montejo, Pensiones y Galerias), en los datos y en el plan", () => {
     const lunes = data.promociones.find((p) => p.codigo === "LUNES2X1PM")!;
-    expect(lunes.sucursales).toBeUndefined();
-    expect(plan.promotions.find((p) => p.code === "LUNES2X1PM")!.branchIds).toBeNull();
+    expect(lunes.sucursales).toEqual(["T2", "T3", "T4"]);
+    expect(plan.promotions.find((p) => p.code === "LUNES2X1PM")!.branchIds).toEqual(["T2", "T3", "T4"]);
     expect(lunes.canales).toEqual(["recoger"]);
   });
 
-  it("existe la cortesia del martes: solo recoger, nachos de pastor (orden completa), 2 aguas a elegir entre Jamaica, Horchata y Te, auto_apply, todas las sucursales", () => {
+  it("existe la cortesia del martes: solo recoger, nachos de pastor (orden completa), 2 aguas a elegir entre Jamaica, Horchata y Te, auto_apply, solo T2, T3 y T4", () => {
     const martes = plan.promotions.find((p) => p.code === "MARTESNACHOSPM")!;
-    expect(martes).toMatchObject({ type: "cortesia", daysOfWeek: [2], channels: ["recoger"], autoApply: true, branchIds: null, courtesyQuantity: 2 });
+    expect(martes).toMatchObject({ type: "cortesia", daysOfWeek: [2], channels: ["recoger"], autoApply: true, branchIds: ["T2", "T3", "T4"], courtesyQuantity: 2 });
     expect(martes.productNames).toEqual(["Nachos de Pastor"]);
     expect(martes.courtesyProductNames).toEqual(["Agua de Jamaica", "Horchata", "Té"]);
     expect(plan.promotions.every((p) => !p.channels.includes("domicilio"))).toBe(true);
@@ -177,22 +177,25 @@ describe("promociones: lunes 2x1 sin restriccion de sucursal y combo del martes 
     }
 
     it("martes + recoger + nachos de pastor + 2 aguas elegidas: las 2 aguas salen a $0 (total = solo los nachos)", async () => {
-      const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Horchata", 1]]);
+      const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Horchata", 1]], "pensiones");
       expect(q.subtotal).toBe(328 + 60 + 60);
       expect(q.descuento).toBe(120);
       expect(q.total).toBe(328);
       expect(q.promocionAplicada).toMatchObject({ code: "MARTESNACHOSPM", type: "cortesia" });
     });
 
-    it("el combo vale en CUALQUIER sucursal (T1, T3 y T7), no solo en la de la fase 1", async () => {
-      for (const slug of ["prol-montejo", "pensiones", "garcia-lavin"]) {
+    it("R22 #4: el combo vale en Pensiones (T3) y NO en Prolongacion Montejo (T1) ni Garcia Lavin (T7): ahi se cobran las aguas", async () => {
+      const q3 = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Té", 1]], "pensiones");
+      expect(q3.total).toBe(328);
+      for (const slug of ["prol-montejo", "garcia-lavin"]) {
         const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1], ["Agua de Jamaica", 1], ["Té", 1]], slug);
-        expect(q.total, slug).toBe(328);
+        expect(q.descuento, slug).toBe(0);
+        expect(q.promocionAplicada, slug).toBeNull();
       }
     });
 
     it("martes + recoger + nachos sin aguas: no hay descuento y la cotizacion sugiere elegir las aguas del combo", async () => {
-      const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1]]);
+      const q = await cotizar(MARTES_19H, "recoger", [["Nachos de Pastor", 1]], "pensiones");
       expect(q.total).toBe(328);
       expect(q.promocionAplicada).toBeNull();
       expect(q.promocionesSugeridas[0]).toMatchObject({ motivo: "falta_elegir_cortesia", cortesiaPorUnidad: 2 });

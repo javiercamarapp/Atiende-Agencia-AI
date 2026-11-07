@@ -32,7 +32,7 @@ describe.each(["whatsapp", "voz"] as const)("%s", (channel) => {
       const s = setup(channel);
       expect((await s.crear({ minutos_para_recoger: v })).orderId).not.toBeNull();
     });
-    it.each([1, 40, "45", 240])("plazo valido %s sigue funcionando", async (v) => {
+    it.each([25, 40, "45", 240])("plazo valido %s sigue funcionando", async (v) => {
       const s = setup(channel);
       expect((await s.cotizar({ minutos_para_recoger: v })).result).toBeDefined();
     });

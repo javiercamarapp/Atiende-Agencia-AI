@@ -32,9 +32,9 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(plan.whatsappAgent.salsasText).toContain("guacamolera");
   });
 
-  it("las promociones que anuncia el agente son SOLO las cargadas (lunes 2x1 y martes nachos con 2 aguas, solo recoger, todas las sucursales)", () => {
-    expect(plan.whatsappAgent.promosText).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
-    expect(plan.whatsappAgent.promosText).not.toMatch(/Montejo|Pensiones|Galer/);
+  it("las promociones que anuncia el agente son SOLO las cargadas (lunes 2x1 y martes nachos con 2 aguas, solo recoger, solo en T2, T3 y T4)", () => {
+    expect(plan.whatsappAgent.promosText).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías");
+    expect(plan.whatsappAgent.promosText).not.toMatch(/todas las sucursales/);
     expect(plan.promotions.map((p) => p.code)).toEqual(["LUNES2X1PM", "MARTESNACHOSPM"]);
     // Nunca se anuncia lo que la base no cargo: sin el combo cargado, mencionar el martes invalida el seed; igual con el 2x1.
     const sinCombo = clone(data) as { -readonly [K in keyof PmSeedData]: PmSeedData[K] };
@@ -71,10 +71,10 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     const prompt = buildSystemPrompt(config, [{ id: "p1", name: "Victory Altabrisa", slug: "altabrisa", address: null }] as never, { isNew: true }, new Date("2026-10-05T15:00:00Z"), null);
     expect(prompt).toMatch(/Nada de alcohol a domicilio/);
     expect(prompt).toMatch(/\$200/);
-    expect(prompt).toMatch(/Propina solo con tarjeta/i);
+    expect(prompt).toMatch(/Propina: nunca la pregunte/i);
     expect(prompt).toMatch(/órdenes de 3/);
     expect(prompt).toMatch(/usted/i);
-    expect(prompt).toContain("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
+    expect(prompt).toContain("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías");
     expect(prompt).not.toMatch(/la confirma la sucursal al recoger|no lo prometa ni lo aplique/);
     expect(prompt).toMatch(/Combo del martes[^.\n]*lo aplica cotizar_pedido/);
     expect(prompt).toContain("Los Taquitos de PM");
@@ -170,7 +170,7 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
     expect(renderSchemaPreflightSql()).toContain("038_promociones_por_sucursal.sql");
   });
 
-  it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger en Pensiones (T3) Y en Prolongacion Montejo (T1); a domicilio o en otro dia no", async () => {
+  it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger en Pensiones (T3) y NO en Prolongacion Montejo (T1) ni Garcia Lavin (T7); a domicilio o en otro dia no", async () => {
     const plan = buildPmSeedPlan(data, agent);
     const world = await buildInMemoryPmWorld(plan);
     const lunes = new Date("2026-10-13T01:00:00Z"); // lunes 12-oct 19:00 en Merida (T3 abre a las 18:00)
@@ -197,11 +197,11 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
     expect(conPromo.total).toBeCloseTo(base.total - conPromo.discount, 2);
     const domicilio = await prepareCreateOrder(world.repo, pedido("domicilio"), { asOf: lunes });
     expect(domicilio.discount).toBe(0);
-    // CR07/CR08: el dueño da el 2x1 para TODAS las sucursales (cuestionario l.99); la restriccion a T2, T3 y T4 era del menu impreso de 2025.
+    // R22 #4 (decision del dueño 30-oct-2026): el 2x1 solo vale en T2, T3 y T4; en las demas sucursales no hay descuento.
     for (const slug of ["prol-montejo", "garcia-lavin"]) {
       const enSucursal = await prepareCreateOrder(world.repo, pedido("recoger", slug), { asOf: lunes });
-      expect(enSucursal.discount, slug).toBeGreaterThan(0);
-      expect(enSucursal.appliedPromotion?.code, slug).toBe("LUNES2X1PM");
+      expect(enSucursal.discount, slug).toBe(0);
+      expect(enSucursal.appliedPromotion, slug).toBeFalsy();
     }
   });
 });

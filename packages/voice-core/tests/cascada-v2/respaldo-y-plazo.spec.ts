@@ -181,6 +181,17 @@ describe("plazo al primer token con peticion de respaldo (hedge)", () => {
     expect(pedidos).toEqual(["openai/gpt-6-luna", "anthropic/claude-haiku-5.5"]);
   });
 
+  it("con respaldoEnFalla=false (vuelta con herramienta forzada) una falla del principal sube tal cual, sin pedir al respaldo", async () => {
+    const { llm, pedidos } = llmPorModelo({
+      "openai/gpt-6-luna": async () => {
+        throw Object.assign(new Error("x"), { status: 400 });
+      },
+      "anthropic/claude-haiku-5.5": async () => ({ texto: "ok" }),
+    });
+    await expect(completarConPlazo(llm, PET, { plazoMs: 2_500, modeloRespaldo: "anthropic/claude-haiku-5.5", respaldoEnFalla: false, temporizador: relojManual() })).rejects.toMatchObject({ status: 400 });
+    expect(pedidos).toEqual(["openai/gpt-6-luna"]);
+  });
+
   it("si fallan las dos, sube el error del principal", async () => {
     const { llm } = llmPorModelo({
       "openai/gpt-6-luna": async () => {

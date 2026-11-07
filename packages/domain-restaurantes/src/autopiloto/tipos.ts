@@ -159,6 +159,8 @@ export interface HandoffDevuelto {
   readonly minutos: number;
   /** `true` si salio la frase fija al cliente (solo dentro de la ventana de 24 h). */
   readonly avisado: boolean;
+  /** PM PR-2: la toma era de la app (eco) y el ULTIMO mensaje del hilo es del cliente, sin respuesta: el asistente no lo reprocesa solo, se avisa a la campana. Base sin la 101 -> `false`. */
+  readonly clienteSinResponder: boolean;
 }
 
 /** Toma de conversacion PENDIENTE (nadie la tomo) que ya paso el umbral: se avisa al owner una sola vez (QA R2 viaje-06). */

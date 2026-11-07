@@ -22,7 +22,7 @@ export interface VozConfig {
   readonly habilitado: boolean;
   /** Voz de la llamada telefónica (ElevenLabs, ver voz-telefono-catalogo.ts); null = la de la plataforma. Ausente = la API no la conoce. */
   readonly vozTelefono?: string | null;
-  /** La base ya tiene la columna de la voz telefónica (migración 101). Sin ella el panel no la ofrece (estado honesto). */
+  /** La base ya tiene la columna de la voz telefónica (migración 103). Sin ella el panel no la ofrece (estado honesto). */
   readonly vozTelefonoDisponible?: boolean;
 }
 
@@ -99,7 +99,7 @@ interface ConfigWire {
   readonly mensajeInicial: string;
   /** Migración 053; una API anterior no lo manda (= interrumpible, como siempre). */
   readonly mensajeInicialInterrumpible?: boolean;
-  /** Migración 101; una API anterior no los manda. */
+  /** Migración 103; una API anterior no los manda. */
   readonly vozTelefono?: string | null;
   readonly vozTelefonoDisponible?: boolean;
 }
@@ -133,7 +133,7 @@ export async function updateVozConfig(fetchImpl: typeof fetch, apiBaseUrl: strin
     comportamiento: input.promptSistema,
     mensajeInicial: input.mensajeInicial,
     mensajeInicialInterrumpible: input.mensajeInicialInterrumpible,
-    // La voz telefónica solo viaja si la base ya la admite (migración 101): contra la base sin migrar el guardado de siempre sigue funcionando.
+    // La voz telefónica solo viaja si la base ya la admite (migración 103): contra la base sin migrar el guardado de siempre sigue funcionando.
     ...(input.vozTelefonoDisponible === true && input.vozTelefono !== undefined ? { vozTelefono: input.vozTelefono } : {}),
   };
   return configDesdeWire(await pedir<ConfigWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "PUT", body }));

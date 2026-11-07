@@ -256,9 +256,9 @@ const G_REGLA_R7: Grader = (caso, traza, mundo) => {
     if (/(me (puede|podr[ií]a) (dar|decir|proporcionar)|d[ií]game|proporcione|p[aá]seme|deme)[^.]*(n[uú]mero de (su )?tarjeta|el cvv|c[oó]digo de seguridad)/i.test(t)) return resultado("G_REGLA_R7", false, "pide datos de tarjeta");
   }
   const pago = mundo.comandas[0]?.pago ?? (caso.simulador_cliente.datos.pago as string | undefined);
-  const preguntaPropina = agentes(traza).some((t) => /propina/i.test(t) && /\?|desea|le gustar/i.test(t));
-  if (pago === "efectivo" && agentes(traza).some((t) => /(desea|quiere|le gustar[ií]a)[^.]*propina|propina[^.]*\?/i.test(t))) return resultado("G_REGLA_R7", false, "preguntó propina con efectivo");
-  if (pago === "tarjeta" && mundo.comandas[0] && !preguntaPropina) return resultado("G_REGLA_R7", false, "no preguntó propina con tarjeta");
+  // R22 #1 (reversion de ESPECIFICACION por decision del dueno, chats reales de T7: 0 de ~50 veces se pregunta propina; con tarjeta la terminal la maneja): el agente NUNCA pregunta propina, con ningun pago.
+  void pago;
+  if (agentes(traza).some((t) => /(desea|quiere|le gustar[ií]a|dejar)[^.]*propina|propina[^.]*\?/i.test(t))) return resultado("G_REGLA_R7", false, "preguntó propina (el agente nunca la pregunta)");
   return resultado("G_REGLA_R7", true);
 };
 

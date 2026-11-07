@@ -6,8 +6,8 @@
 --      con el suyo), 279 productos (237 + 40 fracciones de kilo + Extra Salsa y Extra Pina), 42 de alcohol no_domicilio,
 --      1628 precios por sucursal (T1 278 + T2 265 + T3 265 + T5 264 + T7 278 + T8 278), TODAS con la lista T1-2026 (T5 con el
 --      precio de su menu impreso), fracciones de kilo a precio proporcional (redondeo $0.50).
---   B. Reglas del modelo: politica (horario 12:00-01:00, minimo $200, propina solo tarjeta), promocion
---      2x1 del lunes y combo de cortesia del martes (nachos de pastor + 2 aguas), ambos solo recoger y en todas las sucursales, voz deshabilitada, zonas de sucursales con coordenadas, asignacion
+--   B. Reglas del modelo: politica (horario 12:00-01:00, minimo $200, propina nunca), promocion
+--      2x1 del lunes y combo de cortesia del martes (nachos de pastor + 2 aguas), ambos solo recoger y solo en Francisco de Montejo, Pensiones y Galerias, voz deshabilitada, zonas de sucursales con coordenadas, asignacion
 --      por colonia con la funcion SQL real.
 --   C. Idempotencia: ejecutar dos veces no duplica nada; no reactiva la voz ni reinicia usos de la
 --      promocion; reparar un precio alterado; renombrar por slug estable una sucursal sembrada por la version anterior;
@@ -145,7 +145,7 @@ select count(*)::int as productos_de_t2_t3_sin_precio_en_t1_deberia_ser_0
     and not exists (select 1 from restaurantes.branch_products t1 join restaurantes.branch_detail bd1 on bd1.property_id = t1.property_id where bd1.organization_id = o.id and bd1.slug = 'prol-montejo' and t1.product_id = bp.product_id);
 rollback;
 
-\echo '=== B1. Politica en las 7 sucursales: minimo a domicilio $200, propina solo con tarjeta y horario propio verificado el 23-oct-2026 (T1 lun-jue 18-01 y vie-dom 12-01; T2 lun-vie 18-24 y sab-dom 12-24; T3 todos los dias 18-24; T4 12-21; T5, T7 y T8 12-01 general) ==='
+\echo '=== B1. Politica en las 7 sucursales: minimo a domicilio $200, propina nunca (R22) y horario propio verificado el 23-oct-2026 (T1 lun-vie 18-01 [viernes PENDIENTE] y sab-dom 12-01; T2 lun-vie 18-24 y sab-dom 12-24; T3 todos los dias 18-24; T4 12-21; T5 temporada 18-01; T7 y T8 12-01 general) ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as politicas_correctas_deberia_ser_7
@@ -153,18 +153,18 @@ select count(*)::int as politicas_correctas_deberia_ser_7
   join core.organization o on o.id = bp.organization_id
   join restaurantes.branch_detail bd on bd.property_id = bp.property_id
   join (values
-    ('prol-montejo',  '[{"dias":[1,2,3,4],"abre":"18:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"},{"dias":[0,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
+    ('prol-montejo',  '[{"dias":[1,2,3,4,5],"abre":"18:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"},{"dias":[0,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
     ('fco-montejo',   '[{"dias":[1,2,3,4,5],"abre":"18:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"},{"dias":[0,6],"abre":"12:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"}]'::jsonb),
     ('pensiones',     '[{"dias":[0,1,2,3,4,5,6],"abre":"18:00","cierra":"00:00","ultimoPedidoDomicilio":"22:15","ultimoPedidoRecoger":"23:30"}]'::jsonb),
     ('galerias',      '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"21:00","ultimoPedidoRecoger":"20:30"}]'::jsonb),
-    ('playa',         '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00"}]'::jsonb),
+    ('playa',         '[{"dias":[0,1,2,3,4,5,6],"abre":"18:00","cierra":"01:00"}]'::jsonb),
     ('garcia-lavin',  '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb),
     ('altabrisa',     '[{"dias":[0,1,2,3,4,5,6],"abre":"12:00","cierra":"01:00","ultimoPedidoDomicilio":"23:15","ultimoPedidoRecoger":"00:30"}]'::jsonb)
   ) as e(slug, horario) on e.slug = bd.slug and e.horario = bp.horario
-  where o.slug = 'los-taquitos-de-pm' and bp.pedido_minimo_domicilio = 200 and bp.pedido_minimo_recoger is null and bp.propina_politica = 'solo_tarjeta';
+  where o.slug = 'los-taquitos-de-pm' and bp.pedido_minimo_domicilio = 200 and bp.pedido_minimo_recoger is null and bp.propina_politica = 'nunca';
 rollback;
 
-\echo '=== B1b. Directorio y domicilio (migracion 057): Galerias visible e informativa, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='
+\echo '=== B1b. Directorio y domicilio (migracion 057): Galerias visible, informativa y sin domicilio, Playa (Chicxulub) visible + solo recoger + de temporada, Pensiones sin restriccion de dias (PREGUNTA B13), el resto por omision ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as directorio_correcto_deberia_ser_7
@@ -173,7 +173,7 @@ select count(*)::int as directorio_correcto_deberia_ser_7
   join restaurantes.branch_detail bd on bd.property_id = bp.property_id
   where o.slug = 'los-taquitos-de-pm'
     and case bd.slug
-      when 'galerias' then bp.visible_en_directorio is true and bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
+      when 'galerias' then bp.visible_en_directorio is true and not bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
       when 'playa' then bp.visible_en_directorio is true and not bp.acepta_domicilio and bp.dias_domicilio is null and bp.de_temporada
       else bp.visible_en_directorio is null and bp.acepta_domicilio and bp.dias_domicilio is null and not bp.de_temporada
     end;
@@ -194,21 +194,23 @@ select public.seed_pm_demo();
 select count(*)::int as promos_auto_apply_deberia_ser_1 from restaurantes.promotions p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.code = 'LUNES2X1PM' and p.auto_apply;
 rollback;
 
-\echo '=== B2c. CR07/CR08: el 2x1 queda SIN alcance por sucursal (property_ids null = todas): la restriccion a T2, T3 y T4 era del menu impreso de 2025 ==='
+\echo '=== B2c. R22: el 2x1 queda con alcance a T2, T3 y T4 (property_ids = fco-montejo, pensiones, galerias): nunca en prol-montejo, garcia-lavin, altabrisa ni playa ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as alcance_2x1_todas_las_sucursales_deberia_ser_1
+select count(*)::int as alcance_2x1_t2_t3_t4_deberia_ser_1
   from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id
-  where o.slug = 'los-taquitos-de-pm' and pm.code = 'LUNES2X1PM' and pm.property_ids is null;
+  where o.slug = 'los-taquitos-de-pm' and pm.code = 'LUNES2X1PM'
+    and (select array_agg(bd.slug order by bd.slug) from restaurantes.branch_detail bd where bd.property_id = any(pm.property_ids)) = array['fco-montejo', 'galerias', 'pensiones']::text[];
 rollback;
 
-\echo '=== B2d. CR09: el combo del martes se carga como cortesia automatica, solo recoger, todas las sucursales: nachos de pastor (orden completa) dispara 2 aguas de Jamaica, Horchata o Te ==='
+\echo '=== B2d. CR09: el combo del martes se carga como cortesia automatica, solo recoger, solo en fco-montejo, pensiones y galerias: nachos de pastor (orden completa) dispara 2 aguas de Jamaica, Horchata o Te ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as combo_martes_correcto_deberia_ser_1
   from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id
   where o.slug = 'los-taquitos-de-pm' and pm.code = 'MARTESNACHOSPM' and pm.type = 'cortesia' and pm.value = 1 and pm.auto_apply and pm.is_active
-    and pm.channels = array['recoger']::text[] and pm.days_of_week = array[2]::smallint[] and pm.property_ids is null
+    and pm.channels = array['recoger']::text[] and pm.days_of_week = array[2]::smallint[]
+    and (select array_agg(bd.slug order by bd.slug) from restaurantes.branch_detail bd where bd.property_id = any(pm.property_ids)) = array['fco-montejo', 'galerias', 'pensiones']::text[]
     and pm.courtesy_quantity = 2
     and (select array_agg(pr.name order by pr.name) from restaurantes.products pr where pr.id = any(pm.product_ids)) = array['Nachos de Pastor']::text[]
     and (select array_agg(pr.name order by pr.name) from restaurantes.products pr where pr.id = any(pm.courtesy_product_ids)) = array['Agua de Jamaica', 'Horchata', 'Té']::text[];
@@ -430,8 +432,8 @@ select public.seed_pm_demo();
 update core.property set name = 'T4 (pendiente de datos)' where name = 'Galerías' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
 update restaurantes.branch_detail set slug = 't4-pendiente' where slug = 'galerias' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
 update core.property set name = 'Victory Platz (García Lavín)' where name = 'García Lavín (Victory Platz)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
--- version anterior del seed: el 2x1 con alcance a T2, T3 y T4 (migracion 038); el seed actual lo deja sin alcance (todas las sucursales).
-update restaurantes.promotions set property_ids = (select array_agg(bd.property_id) from restaurantes.branch_detail bd where bd.slug in ('fco-montejo', 'pensiones', 'galerias') and bd.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
+-- version anterior del seed (CR07/CR08): el 2x1 SIN alcance por sucursal (property_ids null); el seed actual lo deja con alcance a T2, T3 y T4 (R22).
+update restaurantes.promotions set property_ids = null where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
 select public.seed_pm_demo();
 select (
   (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 7
@@ -439,7 +441,7 @@ select (
   and (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.name in ('Galerías', 'García Lavín (Victory Platz)')) = 2
   and (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.name in ('T4 (pendiente de datos)', 'Victory Platz (García Lavín)')) = 0
   and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm' and bd.slug in ('t4-pendiente')) = 0
-  and (select property_ids is null from restaurantes.promotions where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm'))
+  and (select cardinality(property_ids) = 3 from restaurantes.promotions where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm'))
 )::int as seed_renombra_por_slug_y_repara_alcance_deberia_ser_1;
 rollback;
 
@@ -571,7 +573,7 @@ select (
   where o.slug = 'los-taquitos-de-pm' and c.property_id is null and c.perfil = 'taqueria_pm' and c.tone_style = 'formal_directo'
     and c.business_name = 'Los Taquitos de PM' and c.agent_name is null and c.enabled
     and c.escalation_reasons_off = '{}' and c.delivery_time_text = 'de 40 a 50 minutos para recoger y a domicilio; más en hora pico'
-    and c.promos_text ilike '%lunes 2x1%' and c.promos_text ilike '%martes nachos de pastor con 2 aguas%' and c.promos_text ilike '%todas las sucursales%'
+    and c.promos_text ilike '%lunes 2x1%' and c.promos_text ilike '%martes nachos de pastor con 2 aguas%' and c.promos_text ilike '%solo en Francisco de Montejo, Pensiones y Galer%'
     and c.salsas_text ilike '%guacamolera%' and c.reply_debounce_seconds = 6
 )::int as config_agente_deberia_ser_1;
 rollback;
