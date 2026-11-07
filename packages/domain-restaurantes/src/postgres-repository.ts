@@ -1803,6 +1803,23 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows[0] ? mapBranch(rows[0]) : null;
   }
 
+  async listarSucursalesSoloVentaLocal(organizationId: string): Promise<readonly string[]> {
+    // Migracion 105: contra la base sin la columna (42703) ninguna sucursal es solo venta local. SAVEPOINT: corre dentro de la transaccion del turno.
+    return runWithSavepointFallback<readonly string[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_solo_venta_local",
+      primary: async () => {
+        const { rows } = await this.db.query<{ property_id: string }>(
+          `select property_id from restaurantes.branch_policy where organization_id = $1 and solo_venta_local;`,
+          [organizationId],
+        );
+        return rows.map((r) => r.property_id);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => [],
+    });
+  }
+
   async listBranchesForOrganizationAdmin(organizationId: string): Promise<readonly Branch[]> {
     const { rows } = await this.db.query<BranchRow>(
       `select p.id as property_id, p.organization_id, p.name, bd.slug, p.status, bd.phone, bd.address, bd.lat, bd.lng

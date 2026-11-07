@@ -23,7 +23,9 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { ADMIN_ROLES, type RoomSummary, type RoomTypeSummary } from "@atiende/domain-hoteles";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio, type TenantDbSession } from "@atiende/core-tenancy";
+import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { ADMIN_ROLES, INVENTARIO_MAX_NOCHES, type AjustarInventarioTipoResultado, type HotelesRepository, type RoomSummary, type RoomTypeSummary } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -56,6 +58,48 @@ interface CrearTarifaBody {
   readonly cerradoSalida?: unknown;
 }
 
+interface GenerarInventarioBody {
+  readonly desde?: unknown;
+  readonly hasta?: unknown;
+}
+
+/** Noches que se generan por omision (hoy + 364): un año de inventario, dentro del tope de la funcion SQL. */
+const INVENTARIO_NOCHES_POR_OMISION = 365;
+
+const sumarDias = (fecha: string, dias: number): string => new Date(Date.parse(`${fecha}T00:00:00Z`) + dias * 86_400_000).toISOString().slice(0, 10);
+/** Zona del hotel cuando la propiedad no tiene `hoteles.property_config.timezone` (o la base no tiene la migracion 030). */
+const ZONA_HORARIA_HOTEL_POR_OMISION = "America/Merida";
+
+/**
+ * «Hoy» en la zona horaria de la propiedad, nunca el dia UTC del proceso: en Mexico, desde las 18:00 locales el dia UTC ya es mañana y
+ * la noche de hoy quedaria sin inventario (la primera reserva de esa noche fallaria con `sin_disponibilidad`). `findPropertyTimezone`
+ * ya degrada a null con SAVEPOINT si falta la migracion 030; un valor que no es IANA cae al default de plataforma.
+ */
+async function hoyEnPropiedad(repo: HotelesRepository, propertyId: string): Promise<string> {
+  const tz = await repo.findPropertyTimezone(propertyId);
+  return hoyFechaNegocio(resolverZonaHorariaNegocio(tz ?? ZONA_HORARIA_HOTEL_POR_OMISION));
+}
+
+function pgCode(err: unknown): string | undefined {
+  return err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : undefined;
+}
+
+/**
+ * Onboarding P0: tras dar de alta una habitacion, el inventario de SU tipo se ajusta solo en el año siguiente (best-effort, con SAVEPOINT
+ * en la sesion del request): asi la primera reserva funciona sin un paso extra. Es incremental (+1 sobre las noches existentes, crea solo
+ * las faltantes; nunca por debajo de booked_rooms): no recalcula toda la propiedad ni pisa un total capturado a mano. Contra una base sin
+ * la migracion 050 o ante cualquier error no cambia la respuesta del alta.
+ */
+async function ajustarInventarioTrasAlta(db: TenantDbSession, repo: HotelesRepository, propertyId: string, roomTypeId: string): Promise<AjustarInventarioTipoResultado | null> {
+  const desde = await hoyEnPropiedad(repo, propertyId);
+  return runWithSavepointFallback<AjustarInventarioTipoResultado | null>({
+    session: db,
+    primary: () => repo.ajustarInventarioTipo({ propertyId, roomTypeId, delta: 1, desde, hasta: sumarDias(desde, INVENTARIO_NOCHES_POR_OMISION - 1) }),
+    isRecoverable: () => true,
+    fallback: async () => null,
+  });
+}
+
 function serializeRoomType(rt: RoomTypeSummary) {
   return { id: rt.id, nombre: rt.name, capacidadMaxima: rt.maxOccupancy };
 }
@@ -71,11 +115,13 @@ export function hotelesAdminCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   const habitacionesDeUnTipoPath = "/hoteles/:propertyId/tipos-habitacion/:roomTypeId/habitaciones";
   const habitacionesPath = "/hoteles/:propertyId/habitaciones";
   const tarifasPath = "/hoteles/:propertyId/tarifas";
+  const inventarioPath = "/hoteles/:propertyId/inventario/generar";
 
   app.use(tiposHabitacionPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(habitacionesDeUnTipoPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(habitacionesPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(tarifasPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(inventarioPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   // `GET .../tipos-habitacion` (catálogo de solo lectura) ya vive en reservas.ts --
   // este POST es el único handler nuevo en esta ruta.
@@ -131,7 +177,8 @@ export function hotelesAdminCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
 
     try {
       const room = await repo.insertRoom({ propertyId, organizationId, roomTypeId, code: codigo });
-      return c.json(serializeRoom(room), 201);
+      const inventario = await ajustarInventarioTrasAlta(c.get("db"), repo, propertyId, roomTypeId);
+      return c.json({ ...serializeRoom(room), inventarioGenerado: inventario !== null }, 201);
     } catch (err) {
       if (err instanceof Error && err.message.startsWith("codigo_duplicado")) throw Errors.conflict(err.message);
       throw err;
@@ -185,6 +232,34 @@ export function hotelesAdminCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     });
 
     return c.json({ roomTypeId: raw.roomTypeId, fechaInicio: raw.fechaInicio, fechaFin: raw.fechaFin, precio: raw.precio, moneda, nochesSembradas: datesWritten }, 201);
+  });
+
+  // Onboarding P0: inventario (hoteles.availability) generado desde las habitaciones fisicas de cada tipo. Antes ningun codigo de producto
+  // escribia esa tabla y toda reserva fallaba con `sin_disponibilidad`. Idempotente: re-ejecutar recalcula total_rooms (nunca por debajo de
+  // booked_rooms) y conserva las noches ya reservadas. Es la recalculacion explicita de toda la propiedad; `desde` por omision = hoy en la
+  // zona del hotel. La autoridad real (owner/gm de la propiedad) la repite la funcion SQL (`hoteles.can_manage_catalog`).
+  app.post(inventarioPath, async (c) => {
+    assertVerticalRole(c, ADMIN_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const raw = await readJsonCapped<GenerarInventarioBody>(c.req.raw, 1024).catch(() => ({}) as GenerarInventarioBody);
+    const desde = raw.desde === undefined ? await hoyEnPropiedad(deps.hotelesRepo(c.get("db")), propertyId) : raw.desde;
+    if (typeof desde !== "string" || !DATE_RE.test(desde)) throw Errors.validation("desde: formato esperado YYYY-MM-DD.");
+    const hasta = raw.hasta === undefined ? sumarDias(desde, INVENTARIO_NOCHES_POR_OMISION - 1) : raw.hasta;
+    if (typeof hasta !== "string" || !DATE_RE.test(hasta)) throw Errors.validation("hasta: formato esperado YYYY-MM-DD.");
+    if (hasta < desde) throw Errors.validation("hasta debe ser igual o posterior a desde.");
+    if (Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000) + 1 > INVENTARIO_MAX_NOCHES) {
+      throw Errors.validation(`El rango no puede superar ${INVENTARIO_MAX_NOCHES} noches por llamada.`);
+    }
+
+    try {
+      const r = await deps.hotelesRepo(c.get("db")).generarInventario({ propertyId, desde, hasta });
+      return c.json({ desde, hasta, tiposDeHabitacion: r.tipos, noches: r.noches, filasActualizadas: r.filas });
+    } catch (err) {
+      if (isMigrationPendingError(err)) throw Errors.serviceUnavailable("La generación de inventario todavía no está disponible en este ambiente (falta la migración 050 de hoteles).");
+      if (pgCode(err) === "42501") throw Errors.forbidden();
+      if (pgCode(err) === "22023") throw Errors.validation("Rango inválido: no puede empezar en el pasado ni pasar de 400 noches.");
+      throw err;
+    }
   });
 
   return app;

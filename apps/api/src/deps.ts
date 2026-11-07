@@ -14,6 +14,7 @@ import type {
   CfoZoneRepository,
   ConsolaRepository,
   OrgEquipoRepository,
+  AltaPropiedadRepository,
   LoginChoferRepository,
   OrgFichaRepository,
   FichasAgenteRepository,
@@ -718,6 +719,9 @@ export interface AppDeps {
    *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la
    *  lectura responde `disponible: false` y las mutaciones 503 honesto, nunca un 500. */
   readonly orgEquipoRepo?: (db: TenantDbSession) => OrgEquipoRepository;
+  /** Onboarding P0: alta de sucursal/propiedad (dueño o superadmin), migracion 0071 y routes/alta-sucursal.ts. Fabrica por sesion del caller.
+   *  OPCIONAL: ausente o migracion sin aplicar -> 503 honesto, nunca un 500. */
+  readonly altaPropiedadRepo?: (db: TenantDbSession) => AltaPropiedadRepository;
   /** Login del repartidor por celular + codigo de WhatsApp (docs/LOGIN-CHOFER-WHATSAPP.md, migracion 0059). Fabrica por sesion: el login y la
    *  verificacion usan `withAppSession({ userId: null })`; el registro del telefono, la sesion del encargado/admin. OPCIONAL: ausente o migracion
    *  sin aplicar -> "no disponible aun" (503), nunca un 500. Ademas exige `env.loginChoferWhatsapp` (apagado por omision). */

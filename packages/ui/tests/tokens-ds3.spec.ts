@@ -97,6 +97,8 @@ const COLORES = [
   "--border", "--border-strong", "--line2", "--input", "--control-off", "--foreground", "--foreground-2", "--secondary",
   "--secondary-foreground", "--muted", "--muted-foreground", "--faint", "--accent", "--accent-foreground",
   "--action", "--action-foreground", "--action-hover", "--ring",
+  "--highlight", "--highlight-foreground", "--highlight-line", "--highlight-ink", "--highlight-soft",
+  "--chart-bar", "--chart-accent", "--chart-seq-1", "--chart-seq-2", "--chart-seq-3", "--chart-seq-4", "--chart-seq-5",
   "--primary", "--primary-foreground", "--primary-soft", "--primary-soft-hover", "--primary-ink",
   "--solido", "--solido-foreground", "--menu-activo", "--menu-activo-foreground", "--marca-atiende",
   "--success-tint", "--success-ink", "--success", "--warning-tint", "--warning-ink", "--warning",
@@ -154,7 +156,8 @@ describe("hex de referencia del diseno (tolerancia <= 1/255 por canal)", () => {
   const claroHex: Array<[string, string]> = [
     ["--background", "#f7f7f8"], ["--canvas", "#f7f7f8"], ["--card", "#ffffff"], ["--sunken", "#f1f1f2"], ["--soft", "#f1f1f2"],
     ["--border", "#e6e6e8"], ["--border-strong", "#d6d6d9"], ["--input", "#818188"], ["--foreground", "#0e0e10"],
-    ["--secondary-foreground", "#3a3a40"], ["--muted-foreground", "#5a5a61"], ["--action", "#0e0e10"], ["--action-hover", "#2a2a2f"],
+    ["--secondary-foreground", "#3a3a40"], ["--muted-foreground", "#5a5a61"], ["--action", "#1d4fd7"], ["--action-hover", "#1a47c1"], ["--ring", "#1d4fd7"],
+    ["--highlight", "#26b2f2"], ["--highlight-line", "#0b85bd"], ["--highlight-ink", "#09709f"], ["--highlight-soft", "#e7f6fe"],
     ["--primary", "#1d4fd7"], ["--primary-soft", "#e9eefc"], ["--primary-soft-hover", "#d7e0f9"], ["--primary-ink", "#163ba2"],
     ["--chart-1", "#1d4fd7"], ["--chart-2", "#f25d22"], ["--chart-3", "#1f7a55"], ["--chart-4", "#d9a441"], ["--chart-5", "#087b9b"],
     ["--chart-6", "#a6264a"], ["--chart-7", "#7b5cd6"], ["--chart-8", "#0e0e10"],
@@ -162,7 +165,8 @@ describe("hex de referencia del diseno (tolerancia <= 1/255 por canal)", () => {
   const oscuroHex: Array<[string, string]> = [
     ["--background", "#0e0e10"], ["--sunken", "#0e0e10"], ["--card", "#17171a"], ["--soft", "#1f1f23"], ["--border", "#26262b"],
     ["--border-strong", "#34343a"], ["--input", "#8b8b93"], ["--foreground", "#f4f4f5"], ["--secondary-foreground", "#d4d4d8"],
-    ["--muted-foreground", "#a3a3ab"], ["--action", "#f4f4f5"], ["--action-hover", "#ffffff"], ["--primary", "#639cf8"],
+    ["--muted-foreground", "#a3a3ab"], ["--action", "#639cf8"], ["--action-hover", "#80aff9"], ["--ring", "#639cf8"],
+    ["--highlight", "#26b2f2"], ["--highlight-ink", "#78cff7"], ["--highlight-soft", "#152932"], ["--primary", "#639cf8"],
     ["--primary-soft", "#151d32"], ["--primary-soft-hover", "#1c2540"], ["--primary-ink", "#9ec1fa"], ["--chart-1", "#639cf8"],
     ["--chart-8", "#f4f4f5"],
   ];
@@ -208,7 +212,7 @@ describe("contraste WCAG de los pares de §2.1 (valores reales de index.css)", (
     ["muted sobre sunken", "--muted-foreground", "--sunken", 4.5],
     ["muted sobre soft", "--muted-foreground", "--soft", 4.5],
     ["faint sobre card", "--faint", "--card", 4.5],
-    ["texto de accion sobre accion", "--action-foreground", "--action", 7],
+    ["texto de accion sobre accion (AA; el azul mide 6,65 claro / 7,02 oscuro)", "--action-foreground", "--action", 4.5],
     ["texto de accion sobre su hover", "--action-foreground", "--action-hover", 7],
     ["primary-foreground sobre primary", "--primary-foreground", "--primary", 4.5],
     ["primary-ink sobre su tinte", "--primary-ink", "--primary-soft", 4.5],
@@ -227,6 +231,16 @@ describe("contraste WCAG de los pares de §2.1 (valores reales de index.css)", (
     ["ring (foco) sobre fondo", "--ring", "--background", 3],
     ["ring (foco) sobre card", "--ring", "--card", 3],
     ["ring (foco) sobre sunken", "--ring", "--sunken", 3],
+    ["ring (foco) sobre soft", "--ring", "--soft", 3],
+    ["ring (foco) sobre el tinte del primario", "--ring", "--primary-soft", 3],
+    ["texto sobre el relleno celeste", "--highlight-foreground", "--highlight", 4.5],
+    ["texto celeste sobre card", "--highlight-ink", "--card", 4.5],
+    ["texto celeste sobre fondo", "--highlight-ink", "--background", 4.5],
+    ["texto celeste sobre su tinte", "--highlight-ink", "--highlight-soft", 4.5],
+    ["trazo celeste sobre card (1.4.11)", "--highlight-line", "--card", 3],
+    ["trazo celeste sobre fondo", "--highlight-line", "--background", 3],
+    ["trazo celeste sobre sunken", "--highlight-line", "--sunken", 3],
+    ["barra de serie unica sobre card", "--chart-bar", "--card", 3],
     ["borde de campo sobre card (1.4.11)", "--input", "--card", 3],
     ["borde de campo sobre fondo", "--input", "--background", 3],
     ["borde de campo sobre sunken", "--input", "--sunken", 3],
@@ -264,9 +278,26 @@ describe("contraste WCAG de los pares de §2.1 (valores reales de index.css)", (
     }
   });
 
-  it("el acento marca UNA cosa: hover nunca danger y --highlight no existe (seria un segundo acento)", () => {
-    expect(css).not.toMatch(/--highlight\s*:/);
+  it("el acento marca UNA cosa: hover nunca danger; --highlight (celeste, decision del dueno 6-nov) solo existe bajo ds3", () => {
     expect(ds3Claro["--primary"]).not.toBe(ds3Claro["--danger-ink"]);
+    expect(ds3Claro["--highlight"]).not.toBe(ds3Claro["--danger-ink"]);
+    expect(raizClaro["--highlight"]).toBeUndefined();
+    expect(tokens(".dark")["--highlight"]).toBeUndefined();
+  });
+
+  it("el celeste de relleno NO llega a 3:1 sobre blanco (2,41): por eso nunca es texto ni trazo fino", () => {
+    expect(Math.abs(ratio(claro, "--highlight", "--card") - 2.41)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(ratio(claro, "--highlight-line", "--card") - 4.13)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(ratio(claro, "--highlight-ink", "--card") - 5.51)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(ratio(oscuro, "--highlight", "--card") - 7.42)).toBeLessThanOrEqual(0.05);
+  });
+
+  it("guard: ninguna regla usa --highlight (relleno) como color de texto, stroke o fill de texto", () => {
+    const usos: string[] = [];
+    raiz.walkDecls((d) => {
+      if (/^(color|-webkit-text-fill-color|caret-color|text-decoration-color)$/.test(d.prop) && /var\(--highlight\)/.test(d.value)) usos.push(`${d.prop}: ${d.value}`);
+    });
+    expect(usos).toEqual([]);
   });
 });
 
@@ -615,11 +646,63 @@ describe("movimiento (§2.6)", () => {
   });
 });
 
-describe("acento y accion: el azul marca UNA cosa, la accion principal es la tinta", () => {
-  it("--action es la tinta (claro) / casi blanco (oscuro); NO es el azul", () => {
-    expect(ds3Claro["--action"]).toBe(ds3Claro["--foreground"]);
-    expect(ds3OscuroSolo["--action"]).toBe(ds3OscuroSolo["--foreground"]);
-    expect(ds3Claro["--action"]).not.toBe(ds3Claro["--primary"]);
+describe("paleta de Atiende (decision del dueno 6-nov): solo el color difiere de Vexa", () => {
+  it("--action y --ring son el azul de Atiende (224 76% 48% claro / 217 91% 68% oscuro), igual que --primary", () => {
+    expect(ds3Claro["--action"]).toBe("224 76% 48%");
+    expect(ds3OscuroSolo["--action"]).toBe("217 91% 68%");
+    for (const t of [ds3Claro, ds3OscuroSolo]) {
+      expect(t["--action"]).toBe(t["--primary"]);
+      expect(t["--ring"]).toBe(t["--primary"]);
+      expect(t["--sidebar-ring"]).toBe(t["--ring"]);
+      expect(t["--chart-bar"]).toBe(t["--primary"]);
+    }
+  });
+  it("--highlight es el celeste 199 89% 55% en los dos temas y --chart-accent lo repite", () => {
+    for (const t of [ds3Claro, ds3OscuroSolo]) {
+      expect(t["--highlight"]).toBe("199 89% 55%");
+      expect(t["--chart-accent"]).toBe(t["--highlight"]);
+    }
+  });
+  it("neutros = Vexa: fondo, card, bordes y textos no cambian de matiz (240, gris frio)", () => {
+    for (const k of ["--background", "--card", "--border", "--border-strong", "--foreground", "--muted-foreground"]) {
+      for (const t of [claro, oscuro]) {
+        const [h, s] = parseHsl(t[k]!);
+        if (s > 0) expect(h, k).toBe(240);
+      }
+    }
+  });
+  it("escala secuencial azul -> celeste: monotona en luminancia (claro decrece, oscuro crece) y dentro de la familia (matiz 195-225)", () => {
+    const lum = (t: Record<string, string>) => [1, 2, 3, 4, 5].map((n) => contraste(parseHsl(t[`--chart-seq-${n}`]!), [0, 0, 0]));
+    const c = lum(claro);
+    const o = lum(oscuro);
+    for (let i = 1; i < 5; i++) {
+      expect(c[i]!, `claro seq-${i + 1}`).toBeLessThan(c[i - 1]!);
+      expect(o[i]!, `oscuro seq-${i + 1}`).toBeGreaterThan(o[i - 1]!);
+    }
+    for (const t of [claro, oscuro]) for (let n = 1; n <= 5; n++) {
+      const h = parseHsl(t[`--chart-seq-${n}`]!)[0];
+      expect(h).toBeGreaterThanOrEqual(195);
+      expect(h).toBeLessThanOrEqual(225);
+    }
+  });
+  it("las categoricas 2..8 conservan los tonos de Vexa (legibilidad); ninguna es el rojo senal #e8241c", () => {
+    for (const n of [2, 3, 4, 5, 6, 7]) {
+      const [h] = parseHsl(claro[`--chart-${n}`]!);
+      expect(Math.abs(h - 2), `serie ${n}`).toBeGreaterThan(5);
+    }
+  });
+  it("puente Vexa: --ui-*, --ux-accent* y --login-particle-* existen bajo la bandera y los de color apuntan a tokens", () => {
+    const puente = ["--ui-canvas", "--ui-surface", "--ui-soft", "--ui-sunken", "--ui-elevated", "--ui-border", "--ui-line-strong", "--ui-input",
+      "--ui-secondary", "--ui-action", "--ui-action-hover", "--ui-action-ink", "--ui-nav-active", "--ui-nav-text", "--ui-focus", "--ui-danger",
+      "--ui-danger-soft", "--ui-warning", "--ui-warning-soft", "--ui-chart", "--ui-chart-muted", "--ui-highlight", "--ux-accent", "--ux-accent-on",
+      "--ux-accent-soft", "--ux-accent-hover", "--ux-accent-line"];
+    for (const k of puente) expect(ds3Claro[k], k).toMatch(/^hsl\(var\(--[a-z0-9-]+\)( \/ [\d.]+)?\)$/);
+    expect(ds3Claro["--ui-highlight"]).toBe("hsl(var(--highlight))");
+    expect(ds3Claro["--ui-focus"]).toBe("hsl(var(--ring))");
+    expect(ds3Claro["--ux-accent"]).toBe("hsl(var(--primary))");
+    for (const k of ["glow", "wash", "clear", "front", "middle", "rear", "ambient"]) expect(ds3Claro[`--login-particle-${k}`], k).toMatch(/^hsl\(/);
+    // Ninguno existe fuera de la bandera.
+    for (const k of [...puente, "--login-particle-front"]) expect(raizClaro[k], k).toBeUndefined();
   });
   it("el sidebar usa el mismo acento que --primary en los dos modos", () => {
     expect(ds3Claro["--sidebar-primary"]).toBe(ds3Claro["--primary"]);

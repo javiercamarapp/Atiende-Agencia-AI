@@ -1697,6 +1697,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return branch && branch.organizationId === organizationId ? branch : null;
   }
 
+  async listarSucursalesSoloVentaLocal(organizationId: string): Promise<readonly string[]> {
+    return [...this.branches.values()].filter((b) => b.organizationId === organizationId && this.branchPolicies.get(b.propertyId)?.soloVentaLocal === true).map((b) => b.propertyId);
+  }
+
   async listBranchesForOrganizationAdmin(organizationId: string): Promise<readonly Branch[]> {
     return [...this.branches.values()].filter((b) => b.organizationId === organizationId).sort((a, b) => a.name.localeCompare(b.name, "es-MX"));
   }

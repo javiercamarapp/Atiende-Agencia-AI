@@ -436,6 +436,9 @@ export interface RestaurantesRepository {
    * de administración — a diferencia de `listBranchesForOrganization` (solo
    * activas, para el bloque del prompt del agente). */
   listBranchesForOrganizationAdmin(organizationId: string): Promise<readonly Branch[]>;
+  /** `property_id` de las sucursales "solo venta local" (`branch_policy.solo_venta_local`, migracion 105): cuentan para reportes (tableros, CFO,
+   * SoftRestaurant) pero los agentes y el pedido en linea nunca las ofrecen. Base sin la migracion 105 = lista vacia (ninguna lo es). */
+  listarSucursalesSoloVentaLocal(organizationId: string): Promise<readonly string[]>;
   /** Edita SOLO los campos que vive `restaurantes.branch_detail` (teléfono/
    * dirección/coordenadas/slug/orden) — `core.property.status`/`name` no son
    * editables por staff todavía: ese esquema es compartido por TODAS las

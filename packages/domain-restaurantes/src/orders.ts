@@ -24,6 +24,7 @@ import { applyPromotionToOrder, normalizePromotionCode, renglonesConPromocionApl
 import { extraerPackSize, matchesProductSearch, nombraElPlatilloDeMediaOrden, ORDEN_COMPLETA, ordenarPorRelevancia, pesoDeProductoEnGramos, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN, aplicarRestas, variantesMasPermisivas } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
+import { buscarSucursalParaClientes } from "./solo-venta-local.ts";
 
 /** Relleno exacto (tras normalizar) o remisiones a algo que el servidor no tiene como direccion («la de siempre», «ya te la di»): el agente debe volver a pedirla. */
 const DIRECCION_DE_RELLENO = /^(?:no\s*se|nose|n\/?a|na|ninguna?|nada|sin\s+(?:direccion|dato|datos)|desconocid[oa]|pendiente|despues|luego|ahorita|aqui|alla|x+|\?+|la\s+(?:de\s+siempre|misma|de\s+antes|que\s+(?:ya\s+)?(?:tienes|sabes|te\s+di))|ya\s+(?:la\s+sabes|te\s+la\s+(?:di|dije|mande|pase)|la\s+tienes)|donde\s+siempre|la\s+conoces)$/;
@@ -416,7 +417,7 @@ export async function prepareCreateOrder(
 ): Promise<PreparedOrder> {
   const payload = validateCreateOrderPayload(rawInput);
 
-  const branch = await repo.findBranch(payload.organizationId, { slug: payload.branchSlug, name: payload.branchName });
+  const branch = await buscarSucursalParaClientes(repo, payload.organizationId, { slug: payload.branchSlug, name: payload.branchName });
   if (!branch || branch.status !== "active") {
     throw new OrderValidationError(`Sucursal '${payload.branchSlug ?? payload.branchName}' no encontrada o inactiva`);
   }
@@ -849,7 +850,7 @@ export async function quoteOrder(
     readonly horaRecogida?: string;
   },
 ): Promise<OrderQuote & QuotePolicyInfo & QuotePromotionInfo> {
-  const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
+  const branch = await buscarSucursalParaClientes(repo, args.organizationId, { slug: args.branchSlug });
   if (!branch || branch.status !== "active") {
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   }

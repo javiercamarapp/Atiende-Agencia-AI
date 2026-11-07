@@ -233,6 +233,13 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
         saludo={saludoEnZona(ahora, resumen.zona)}
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
         subtitulo={subtitulo}
+        frase={
+          abiertasN === null ? undefined : (
+            <>
+              {fechaLargaEnZona(ahora, resumen.zona)}: <strong>{plural(abiertasN, "convocatoria abierta", "convocatorias abiertas")}</strong>.
+            </>
+          )
+        }
         // El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra viaja en el subtítulo.
         destacado={<Odometro valor={abiertasN} digitos={Math.max(3, String(abiertasN ?? 0).length)} etiqueta="Convocatorias abiertas" tamano="md" sinDato={SIN_LECTURA} />}
         kpis={kpis}

@@ -106,6 +106,7 @@ import type {
   RequestedOrderItemInput,
   TortillaChoice,
 } from "../types.ts";
+import { buscarSucursalParaClientes, resumenSucursalesParaClientes } from "../solo-venta-local.ts";
 
 /** Canales del agente: WhatsApp y llamada. El pedido en linea (checkout web) ya no existe. */
 export type AgentChannel = "whatsapp" | "voz";
@@ -806,7 +807,7 @@ async function tiempoDeSucursalCotizada(repo: RestaurantesRepository, ctx: Agent
 /** La sucursal asignada al domicilio cuando NO es la de este chat (`entryPropertyId`); `null` si coincide o no hay sucursal de entrada. */
 async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string, confirmada = true): Promise<Record<string, unknown> | null> {
   if (!ctx.entryPropertyId) return null;
-  const asignada = await repo.findBranch(organizationId, { slug: branchSlug });
+  const asignada = await buscarSucursalParaClientes(repo, organizationId, { slug: branchSlug });
   if (!asignada || asignada.propertyId === ctx.entryPropertyId) return null;
   const delChat = await repo.findBranchById(organizationId, ctx.entryPropertyId);
   const tel = asignada.phone ? ` (${asignada.phone})` : "";
@@ -876,7 +877,7 @@ async function escaladaDeZonaInnecesaria(repo: RestaurantesRepository, ctx: Agen
 /** Una tool apunta a otra sucursal que la fijada por el contexto -> se rechaza (aislamiento entre sucursales). */
 async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, branchName?: string): Promise<void> {
   if (!ctx.lockedPropertyId) return;
-  const branch = await repo.findBranch(ctx.organizationId, branchSlug ? { slug: branchSlug } : { name: branchName });
+  const branch = await buscarSucursalParaClientes(repo, ctx.organizationId, branchSlug ? { slug: branchSlug } : { name: branchName });
   if (branch && branch.propertyId !== ctx.lockedPropertyId) {
     throw new OrderValidationError("Esta llamada o conversación pertenece a otra sucursal; no se puede operar sobre la sucursal indicada.");
   }
@@ -891,12 +892,12 @@ async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolC
 async function assertRecogerEnSucursalDeEntrada(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, canal: unknown): Promise<void> {
   // C3 PED-15 (cerebro v2): el pedido para recoger se toma para la sucursal que el cliente elija (el modelo le dice donde recoge); H17 ya no rechaza.
   if (ctx.cerebroV2 || ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
-  const branch = await repo.findBranch(ctx.organizationId, { slug: branchSlug });
+  const branch = await buscarSucursalParaClientes(repo, ctx.organizationId, { slug: branchSlug });
   if (!branch || branch.propertyId === ctx.entryPropertyId) return;
   // H17 es una regla del perfil `taqueria_pm`: otro perfil conserva el comportamiento de siempre (T-ZS06/P29: entrar por el numero de la sucursal A y pedir en la B).
   const perfil = (await repo.findWhatsAppAgentConfig(ctx.organizationId, ctx.entryPropertyId))?.perfil ?? "generico";
   if (perfil !== "taqueria_pm") return;
-  const propia = (await repo.listBranchesForOrganization(ctx.organizationId)).find((b) => b.propertyId === ctx.entryPropertyId);
+  const propia = (await resumenSucursalesParaClientes(repo, ctx.organizationId)).find((b) => b.propertyId === ctx.entryPropertyId);
   throw new OrderValidationError(
     `Este chat es de ${propia?.name ?? "otra sucursal"}: el pedido para recoger en ${branch.name} no se toma aquí (H17). Dele al cliente el teléfono de ${branch.name}${branch.phone ? ` (${branch.phone})` : ""} y dígale con calidez que ahí lo atienden; si prefiere, ofrezca recoger en ${propia?.name ?? "la sucursal de este chat"}.`,
   );
@@ -1172,7 +1173,7 @@ function exigirPagoDichoPorElCliente(ctx: AgentToolContext, name: string, input:
 /** Zona horaria de la sucursal por su slug (la de plataforma si no hay dato o la base no tiene la migracion de zona). `null` = la sucursal no existe: otra regla se encarga del error. */
 async function zonaDeSucursal(repo: RestaurantesRepository, ctx: AgentToolContext, slug: unknown): Promise<string | null> {
   if (typeof slug !== "string" || slug.trim() === "") return null;
-  const branch = await repo.findBranch(ctx.organizationId, { slug });
+  const branch = await buscarSucursalParaClientes(repo, ctx.organizationId, { slug });
   if (!branch) return null;
   return resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
 }
@@ -1348,7 +1349,7 @@ async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: Ag
   const items = (input.items as Record<string, unknown>[]).filter((i) => i && typeof i === "object" && Number.isInteger(i.requested_quantity));
   if (items.length === 0) return;
   try {
-    const branch = await repo.findBranch(ctx.organizationId, { slug: input.branch_slug });
+    const branch = await buscarSucursalParaClientes(repo, ctx.organizationId, { slug: input.branch_slug });
     if (!branch) return;
     const { items: resueltos, products } = await resolveBranchOrderItems(
       repo,
@@ -2023,7 +2024,7 @@ async function dispatchTool(
     case "consultar_sucursal": {
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
-      const branch = await repo.findBranch(organizationId, { slug: branchSlug });
+      const branch = await buscarSucursalParaClientes(repo, organizationId, { slug: branchSlug });
       if (!branch || branch.status !== "active") throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada o inactiva`);
       const policy = await repo.findBranchPolicy(branch.propertyId);
       let abierto: boolean | null = null;
@@ -2212,7 +2213,7 @@ async function dispatchTool(
     case "buscar_producto": {
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
-      const branch = await repo.findBranch(organizationId, { slug: branchSlug });
+      const branch = await buscarSucursalParaClientes(repo, organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
       const buscarUna = async (consulta: string) => {
       const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: consulta, ...(ctx.cerebroV2 ? { cerebroV2: true } : {}) });
@@ -2559,7 +2560,7 @@ async function solicitarAgregadoPedido(repo: RestaurantesRepository, ctx: AgentT
  */
 async function enviarMenuPdf(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const slug = typeof input.branch_slug === "string" ? input.branch_slug.trim() : "";
-  const branch = slug ? await repo.findBranch(ctx.organizationId, { slug }) : null;
+  const branch = slug ? await buscarSucursalParaClientes(repo, ctx.organizationId, { slug }) : null;
   if (!branch || branch.status !== "active") {
     throw new OrderValidationError(`Sucursal '${slug}' no encontrada o inactiva: use un branch_slug de la lista de sucursales (o pregunte al cliente de cuál quiere el menú).`);
   }
@@ -2799,7 +2800,7 @@ export const MENSAJE_PEDIDO_GRANDE_PENDIENTE = "Su pedido es grande, así que la
 
 /** Deja el aviso `escalada:pedido_grande` (con el resumen) para la sucursal: lo usan el pedido NO creado y el creado `por_aprobar`. */
 async function avisarPedidoGrandeASucursal(repo: RestaurantesRepository, ctx: AgentToolContext, input: CreateOrderInput, retenido: PedidoGrandeRetenidoError, propertyId: string | null | undefined, prefijo = ""): Promise<void> {
-  const branch = propertyId ? null : await repo.findBranch(ctx.organizationId, { slug: input.branchSlug, name: input.branchName });
+  const branch = propertyId ? null : await buscarSucursalParaClientes(repo, ctx.organizationId, { slug: input.branchSlug, name: input.branchName });
   await registerCallbackRequest(repo, {
     organizationId: ctx.organizationId,
     propertyId: ctx.lockedPropertyId ?? propertyId ?? branch?.propertyId ?? null,

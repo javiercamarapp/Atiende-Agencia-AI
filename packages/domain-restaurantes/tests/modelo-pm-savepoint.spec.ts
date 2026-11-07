@@ -149,6 +149,8 @@ describe("catalogo con no_domicilio", () => {
   it("base SIN migrar: quoteOrder sigue cotizando en la MISMA transaccion (nunca 25P02)", async () => {
     const branchRow = { property_id: PROPERTY_ID, organization_id: ORG_ID, name: "Sucursal", slug: "suc", status: "active", phone: null, address: null, lat: null, lng: null };
     const session = new AbortAwareFakeSession([
+      // Migracion 105 (solo venta local): sin branch_policy la lectura cae a "ninguna sucursal" dentro de SAVEPOINT.
+      { match: /solo_venta_local/i, respond: () => sinTabla("branch_policy") },
       { match: /no_domicilio/i, respond: () => sinColumna("no_domicilio") },
       { match: /from restaurantes\.branch_products bp/i, respond: () => [{ ...PRODUCT_ROW, id: "00000000-0000-4000-8000-0000000000c1", name: "Coca-Cola", category_name: "Bebidas", price: "45" }] },
       { match: /from restaurantes\.branch_policy where property_id/i, respond: () => sinTabla("branch_policy") },
