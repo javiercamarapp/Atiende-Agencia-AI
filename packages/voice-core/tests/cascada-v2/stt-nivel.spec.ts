@@ -68,6 +68,11 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
   it("con platica de fondo constante, un parcial y un segmento al nivel del fondo NO cortan ni abren turno", async () => {
     const t = await abrir();
     t.audio(4, 600);
+    t.audio(1, 3000);
+    t.parcial("hola buenas tardes");
+    t.commit("Hola, buenas tardes.");
+    t.vistos.length = 0;
+    t.audio(4, 600);
     t.parcial("lo de la bodega");
     t.commit("Lo de la bodega.");
     expect(t.vistos.filter((v) => v.startsWith("parcial:") || v.startsWith("final:"))).toEqual([]);
@@ -99,6 +104,13 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
     expect(t.vistos).toContain("final:quiero tres tacos");
   });
 
+  it("sin referencia del cliente (primer segmento) un segmento nunca se descarta, aunque suene al nivel del piso: solo se frenan los parciales", async () => {
+    const t = await abrir();
+    t.audio(6, 3000);
+    t.commit("Quiero tres tacos de pastor y una coca para recoger.");
+    expect(t.vistos).toContain("final:Quiero tres tacos de pastor y una coca para recoger.");
+  });
+
   it("en una linea limpia (piso bajo) un cliente que habla bajito pasa siempre", async () => {
     const t = await abrir();
     t.audio(4, 0);
@@ -120,8 +132,14 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
   it("nunca deja la llamada sorda: tras `descartesMax` segmentos descartados seguidos se apaga en esa llamada", async () => {
     const t = await abrir();
     t.audio(4, 600);
-    for (let i = 0; i < COMPUERTA_NIVEL_ELEVENLABS.descartesMax; i++) t.commit(`fondo ${i}.`);
-    expect(t.vistos.filter((v) => v.startsWith("final:"))).toEqual([]);
+    t.audio(1, 3000);
+    t.commit("Hola, buenas tardes.");
+    t.audio(4, 600);
+    for (let i = 0; i < COMPUERTA_NIVEL_ELEVENLABS.descartesMax; i++) {
+      t.audio(1, 600);
+      t.commit(`fondo ${i}.`);
+    }
+    expect(t.vistos.filter((v) => v.startsWith("final:"))).toEqual(["final:Hola, buenas tardes."]);
     expect(t.vistos).toContain("descartado:compuerta_nivel_apagada");
     t.commit("Hola, ¿me escucha?");
     expect(t.vistos).toContain("final:Hola, ¿me escucha?");

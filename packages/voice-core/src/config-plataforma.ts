@@ -96,6 +96,11 @@ export interface ConfigElevenLabs {
      * cliente Y con logprob medio por debajo de `logprobMax`, una vez aceptados `segmentosMin`. null = apagada (por omision; ver `COMPUERTA_FONDO_ELEVENLABS`). `filter_background_audio` NO se usa: medido el 6-nov-2026
      * con 100 clips, el WER pasa de 23.7 % a 24.0 % y el limpio de 8.9 % a 14.0 %. */
     readonly compuertaFondo: { readonly dbBajoVoz: number; readonly logprobMax: number; readonly segmentosMin: number } | null;
+    /** Compuerta por NIVEL (no cambia el protocolo): el STT mide el audio que envia. Un parcial o segmento cuyo nivel (p80 de 300 ms) queda a menos de `dbSobrePiso` dB
+     * del piso de ruido (p20 de los ultimos 10 s) Y, si ya hay referencia, `dbBajoCliente` dB por debajo de la voz del cliente (mediana de sus segmentos aceptados) es
+     * platica de fondo: no corta al agente ni mantiene abierto el turno; con referencia (un segmento del cliente ya aceptado) tampoco abre turno. Tras `descartesMax` descartes seguidos se apaga en esa llamada (nunca sorda).
+     * En linea limpia el piso es muy bajo y nunca actua. null = apagada. */
+    readonly compuertaNivel?: { readonly dbSobrePiso: number; readonly dbBajoCliente: number; readonly descartesMax: number } | null;
   };
   readonly tts: {
     /** `model_id` (eleven_v4_turbo: el unico modelo rapido que leyo bien «#512 x 45» y «$345» en la medicion). */
@@ -208,6 +213,10 @@ export interface ConfigCascadaV2 {
  * el protocolo de Scribe RT, y no hay una E2E que muestre beneficio; la alineacion de tiempos por sesion no esta confirmada con la API real. */
 export const COMPUERTA_FONDO_ELEVENLABS = Object.freeze({ dbBajoVoz: 12, logprobMax: -1.4, segmentosMin: 2 });
 
+/** Compuerta por nivel del STT de ElevenLabs (E2E r2 7-nov-2026: con platica a 10 dB la condicion 4 dio 0/12). Medido sobre la cama de restaurante del arnes: la platica
+ * llega a 57-59 dB (p80 de 300 ms) sobre un piso de ~52; el cliente a 63-74 dB. */
+export const COMPUERTA_NIVEL_ELEVENLABS = Object.freeze({ dbSobrePiso: 8, dbBajoCliente: 7, descartesMax: 3 });
+
 export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
   escalera: ESCALERA_VOZ,
   gemini: Object.freeze({
@@ -251,7 +260,7 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
     // ElevenLabs (lista del 6-nov-2026, PRUEBAS-STT-TTS-NOV.md): Scribe v2 Realtime 0.39 US$/h + keyterms 0.08 US$/h; eleven_v4_turbo 0.04 US$ por 1 000 caracteres (creditos del plan).
     elevenlabs: Object.freeze({
-      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08, compuertaFondo: null }),
+      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08, compuertaFondo: null, compuertaNivel: COMPUERTA_NIVEL_ELEVENLABS }),
       tts: Object.freeze({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", idioma: "es", hzSalida: 24_000, usdPorMilCaracteres: 0.04, fraseTimeoutMs: 8_000, primerByteTimeoutMs: 2_500 }),
     }),
     // Cerebro de dos niveles de PM (decision del dueno, 6-nov-2026; opt-in con VOZ_CEREBRO_DOS_NIVELES=1): rapido google/gemini-3.5-flash-lite para turnos faciles,
