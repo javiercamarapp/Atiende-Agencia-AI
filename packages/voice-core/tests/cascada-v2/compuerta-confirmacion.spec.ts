@@ -638,3 +638,35 @@ describe("bucle R1: tras el «si» y confirmar_resumen exitoso, la vuelta siguie
     expect(logs).not.toContain("v2_crear_forzado_rechazado");
   });
 });
+
+// E2E 7-nov-2026 (r2): el cliente contesta «sí» en cuanto oye el TOTAL, encima del «¿Es correcto?» final. Antes, cualquier interrupcion borraba el resumen leido
+// (huellaOida = null) y el «sí» ya no abria la compuerta: el modelo confirmaba y nunca creaba. Ahora cuenta lo que el cliente SI oyo completo.
+describe("compuerta confirmar -> crear: «sí» encima de la pregunta final, con el total ya oido", () => {
+  const confirmaYCrea = paso("", tc("c", "confirmar_resumen"), tc("p", "crear_pedido"));
+
+  it("el total ya sono completo y el cliente dice «sí» encima del «¿Es correcto?» -> UN pedido", async () => {
+    const { srv, cliente, logs } = await armar([...cotizaYLee, confirmaYCrea, paso("Listo, su pedido quedó registrado.")]);
+    await cliente("seis de bistec a domicilio");
+    reloj += 0.3; // la primera frase (con el total) ya termino de sonar; «¿Es correcto?» aun suena
+    await cliente("sí, es correcto", false);
+    expect(srv.s.pedidos).toBe(1);
+    expect(logs).toContain("v2_resumen_oido_al_interrumpir");
+  });
+
+  it("el «sí» llega ANTES de que termine la frase del total -> no cuenta (sigue sin pedido)", async () => {
+    const { srv, cliente } = await armar([...cotizaYLee, confirmaYCrea, paso("Releo.")]);
+    await cliente("seis de bistec a domicilio");
+    reloj += 0.1; // la frase del total aun suena
+    await cliente("sí", false);
+    expect(srv.s.pedidos).toBe(0);
+  });
+
+  it("interrumpir una lectura que NO trae el total conserva el comportamiento anterior (el resumen deja de contar)", async () => {
+    const { srv, cliente } = await armar([...cotizaYLee, paso("Perfecto. ¿Algo más para su pedido? ¿Le agrego bebidas?"), confirmaYCrea, paso("Releo.")]);
+    await cliente("seis de bistec a domicilio");
+    await cliente("eh, una pregunta");
+    reloj += 0.3;
+    await cliente("sí", false);
+    expect(srv.s.pedidos).toBe(0);
+  });
+});
