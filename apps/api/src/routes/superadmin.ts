@@ -24,7 +24,7 @@ import {
   requireAdminAccess,
 } from "@atiende/core-authz";
 import { Errors } from "../errors.ts";
-import { stepUpMiddleware } from "../superadmin-seguridad/step-up.ts";
+import { mfaEnrollmentGate, stepUpMiddleware } from "../superadmin-seguridad/step-up.ts";
 import { zonaCfoMiddleware } from "../superadmin-seguridad/zona-cfo.ts";
 import { COPILOTO_CHAT_PATH_RE } from "./superadmin-copiloto.ts";
 import type { AppDeps } from "../deps.ts";
@@ -243,6 +243,10 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // bitacora de cada consulta financiera. Va ANTES del step-up comun para que una consulta rechazada por
   // falta de step-up tambien quede registrada.
   app.use("/superadmin/*", zonaCfoMiddleware(deps));
+  // MFA obligatoria (por omision en produccion): sin factor TOTP activo, ninguna ruta de superadmin
+  // responde salvo ver el estado, enrolar y activar. Va despues de la zona CFO (que registra sus propias
+  // denegaciones) y antes del step-up de las acciones sensibles.
+  app.use("/superadmin/*", mfaEnrollmentGate(deps));
   app.use("/superadmin/*", stepUpMiddleware(deps));
 
   app.get("/superadmin/organizations", async (c) => {
