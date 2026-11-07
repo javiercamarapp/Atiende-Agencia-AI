@@ -8,11 +8,12 @@
 // el index.html nuevo. El reintento corto de importarConRecuperacion solo corre dentro de esa ventana (o sin helper de
 // Vite, p. ej. en tests). Pasada la ventana, un chunk que falla de forma persistente (sin conexión) puede provocar una
 // recarga por navegación: no hay bucle. Si ni así carga, el ErrorBoundary de la raíz pinta un error con "Recargar".
-// Limitación conocida: ErrorBoundaryRaiz no reinicia su estado al navegar; el botón recarga la página.
+// Limitación conocida: ErrorBoundaryRaiz no reinicia su estado al navegar; el botón recarga la página. Si ni la recarga basta (una
+// respuesta inválida guardada en la caché del navegador), «Limpiar caché y recargar» vacía CacheStorage y los service workers (@atiende/ui RecuperarCarga).
 // Nada de las paginas publicas debe precargar chunks con import() especulativo: el mismo evento recargaría con un formulario abierto.
 import { Component, lazy } from "react";
 import type { ErrorInfo, ReactNode } from "react";
-import { EstadoError } from "@atiende/ui/arranque";
+import { RecuperarCarga } from "@atiende/ui/arranque";
 
 const CLAVE_RECARGA = "atiende:recarga-por-chunk";
 /** Ventana en la que NO se vuelve a recargar automáticamente (evita bucles si el chunk sigue sin existir). */
@@ -95,11 +96,7 @@ export class ErrorBoundaryRaiz extends Component<{ children: ReactNode }, { erro
     // React.lazy cachea el rechazo: reintentar el render no sirve; la recuperación real es recargar la página.
     return (
       <div data-atiende-error-raiz>
-        <EstadoError
-          titulo="No pudimos cargar esta pantalla"
-          mensaje="Puede que haya una versión nueva de la aplicación o que falle la conexión. Recarga la página para continuar."
-          onReintentar={() => window.location.reload()}
-        />
+        <RecuperarCarga />
       </div>
     );
   }
