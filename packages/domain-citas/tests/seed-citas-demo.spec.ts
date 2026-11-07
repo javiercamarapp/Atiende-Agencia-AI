@@ -126,6 +126,10 @@ describe("SQL del seed", () => {
     expect(sql).not.toMatch(/insert into core\.staff_user/i);
   });
 
+  it("la organizacion demo nace 'active' explicito: no es una prueba (sin fecha de fin de la 0072 ni avisos de prueba)", () => {
+    expect(sql).toContain("insert into core.organization (vertical, name, slug, status) values ('citas', neg->>'nombre', neg->>'slug', 'active')");
+  });
+
   it("valida el correo del owner y la fecha base antes de generar SQL (sin inyeccion)", () => {
     expect(() => renderCitasSeedPlpgsql(plan, { ownerEmail: "x'; drop table core.organization; --@a.com" })).toThrow(/ownerEmail/);
     expect(() => renderCitasSeedPlpgsql(plan, { ownerEmail: "a@b.com", fechaBase: "2026-03-04'; --" })).toThrow(/fechaBase/);
