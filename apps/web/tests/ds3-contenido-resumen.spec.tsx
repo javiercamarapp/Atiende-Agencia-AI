@@ -220,12 +220,29 @@ describe("un solo item activo", () => {
   });
 });
 
+/** Parte una lista de selectores por las comas de nivel superior (no las de dentro de :is()/:not()/:has(), aunque se aniden). */
+function partesDeNivelSuperior(lista: string): string[] {
+  const partes: string[] = [];
+  let nivel = 0;
+  let actual = "";
+  for (const c of lista) {
+    if (c === "(") nivel++;
+    if (c === ")") nivel--;
+    if (c === "," && nivel === 0) {
+      partes.push(actual.trim());
+      actual = "";
+    } else actual += c;
+  }
+  partes.push(actual.trim());
+  return partes;
+}
+
 describe("ds3/contenido.css", () => {
   const selectores = [...CSS.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(^|\})\s*([^{}@]+)\{/g)].map((m) => m[2]!.trim());
 
   it("toda regla esta bajo html[data-diseno=\"ds3\"] y no hay colores literales", () => {
     expect(selectores.length).toBeGreaterThan(10);
-    for (const s of selectores) for (const parte of s.split(/,\s*(?![^()]*\))/)) expect(parte.startsWith('html[data-diseno="ds3"]'), parte).toBe(true);
+    for (const s of selectores) for (const parte of partesDeNivelSuperior(s)) expect(parte.startsWith('html[data-diseno="ds3"]'), parte).toBe(true);
     expect(CSS.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
   });
 

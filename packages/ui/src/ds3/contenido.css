@@ -116,3 +116,131 @@ html[data-diseno="ds3"] .ds3-eyebrow-pagina.ds3-solo:has(+ .ds3-shell-pagina :is
 html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] .ds3-eyebrow-pagina.ds3-solo {
   display: none;
 }
+
+/* ---- 3. Controles en azul suave (Rovaq: segmented de 30 px y primario suave) ---------------------------------------
+ * Periodo (RadioSegmentado / GlobalFilter): UNA pildora de 1 px con padding 2; cada opcion de 28 px, radio 8, 12/500; la activa en
+ * azul suave (--primary-soft + tinta azul + anillo de 1 px al 30 %), nunca azul solido. En una sola linea: si no cabe (390 px) se
+ * desliza en horizontal dentro de su pildora en vez de partirse en renglones.
+ */
+html[data-diseno="ds3"] .ds3-segmentado.ds3-segmentado,
+html[data-diseno="ds3"] :has(> [data-ds3-segmento]) {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  /* Al inicio: con justify-end el desborde quedaria del lado izquierdo, fuera del alcance del scroll. */
+  justify-content: flex-start;
+  gap: 2px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background-color: hsl(var(--card));
+}
+html[data-diseno="ds3"] .ds3-segmentado.ds3-segmentado > label,
+html[data-diseno="ds3"] [data-ds3-segmento][data-ds3-segmento] {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: hsl(var(--foreground-2));
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+html[data-diseno="ds3"] .ds3-segmentado.ds3-segmentado > label:hover,
+html[data-diseno="ds3"] [data-ds3-segmento][data-ds3-segmento]:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+html[data-diseno="ds3"] .ds3-segmentado.ds3-segmentado > label:has(> input:checked),
+html[data-diseno="ds3"] [data-ds3-segmento][data-ds3-segmento][aria-current="true"] {
+  background-color: hsl(var(--primary-soft));
+  color: hsl(var(--primary-ink));
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.3);
+}
+/* La barra que contiene el segmentado (periodo + «Actualizar») va en una sola linea y nunca mas ancha que su columna. */
+html[data-diseno="ds3"] :has(> .ds3-segmentado) { flex-wrap: nowrap; min-width: 0; max-width: 100%; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="destacado"],
+html[data-diseno="ds3"] .ds3-resumen [data-parte="destacado"] > * { min-width: 0; max-width: 100%; }
+
+/* Primario solido suelto (enlace o boton pintado a mano con bg-primary): en ds3 es el primario suave de Rovaq. Los controles con
+   estado propio (switch, checkbox, radio, pestana) y el Button de @atiende/ui (ya ds3) quedan fuera. */
+html[data-diseno="ds3"] main :is(a, button).bg-primary.text-primary-foreground:not(.ds3-btn, [role="switch"], [role="checkbox"], [role="radio"], [role="tab"]) {
+  background-color: hsl(var(--primary-soft));
+  color: hsl(var(--primary-ink));
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.3);
+}
+/* Chips y botones sueltos con `rounded-lg` (bajo ds3 = 16 px): radio de control 8, como los del sistema. */
+html[data-diseno="ds3"] main :is(a, button).rounded-lg:not(.ds3-btn, .ds3-nav-item) { border-radius: 8px; }
+
+/* Aviso de agregados por validar (restaurantes): callout de Rovaq, 1 px teñido de azul suave, texto 13/600 y CTA primario suave de
+   30 px y radio 8 (no la pildora solida de 48 px). Nunca encima de la conversacion del chat, en ningun ancho. */
+html[data-diseno="ds3"] .ds3-aviso.ds3-aviso {
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid hsl(var(--primary) / 0.3);
+  border-radius: 12px;
+  background-color: hsl(var(--primary-soft));
+}
+html[data-diseno="ds3"] .ds3-aviso-texto.ds3-aviso-texto {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 19px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+html[data-diseno="ds3"] .ds3-aviso-texto.ds3-aviso-texto svg { width: 16px; height: 16px; color: hsl(var(--primary-ink)); }
+html[data-diseno="ds3"] .ds3-aviso-cta.ds3-aviso-cta {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background-color: hsl(var(--card));
+  color: hsl(var(--primary-ink));
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.3);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+html[data-diseno="ds3"] .ds3-aviso-cta.ds3-aviso-cta:hover { background-color: hsl(var(--primary-soft-hover)); }
+html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] .ds3-aviso.ds3-aviso { display: none; }
+
+/* ---- 4. Tarjetas: radio 12, padding 14 (12 en movil, --pad-card), 1 px, sin sombra -----------------------------------
+ * El Card de @atiende/ui ya trae radio y borde (index.css); aqui se unifica el relleno que cada uso ponia a mano (p-2/p-3/p-4/p-5) y
+ * se alinean las tarjetas hechas a mano (`.card` suelta o div con borde + bg-card + rounded-lg/xl/2xl).
+ */
+html[data-diseno="ds3"] main .ds3-card.ds3-card:is(.p-2, .p-3, .p-4, .p-5):not(.ds3-stat) { padding: var(--pad-card); }
+html[data-diseno="ds3"] main :is(div, section, article, form, li):is(.card, .border.bg-card:is(.rounded-lg, .rounded-xl, .rounded-2xl)):not(.ds3-card, .ds3-aviso) {
+  border-width: 1px;
+  border-color: hsl(var(--border));
+  border-radius: 12px;
+  box-shadow: none;
+}
+html[data-diseno="ds3"] main :is(div, section, article, form):is(.card, .border.bg-card:is(.rounded-xl, .rounded-2xl)):is(.p-3, .p-4, .p-5):not(.ds3-card, .ds3-aviso) {
+  padding: var(--pad-card);
+}
+
+/* ---- 5. Tablas: cabecera Hanken 13/600 teñida (no mono 10 MAYUSCULAS) y la tabla siempre dentro de una tarjeta ----------- */
+html[data-diseno="ds3"] main th {
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: hsl(var(--foreground-2));
+}
+html[data-diseno="ds3"] main thead th { background-color: hsl(var(--soft)); }
+html[data-diseno="ds3"] main div.overflow-x-auto:has(> table):not(.card *, .ds3-card *, .bg-card *) {
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background-color: hsl(var(--card));
+}
