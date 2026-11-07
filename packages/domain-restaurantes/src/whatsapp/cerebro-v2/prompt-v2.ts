@@ -34,8 +34,12 @@ const PM_B4_V2 =
 
 const PASO5_PIEZAS_SIN_BANDERA =
   "Si dice piezas de algo que se vende por orden (gringas y mestizas de 2; alambres, suizos en tacos y papadzules de 5), haga UNA sola pregunta y nunca decida usted cuántas órdenes son: «Las gringas se venden por orden y cada orden trae 2. ¿Cuántas órdenes le anoto? 3 órdenes serían 6 gringas» (con alambres, suizos o papadzules cambie el nombre y 2 por 5, y pregunte también con o sin queso en el alambre).";
+// C3 PED-28: el ejemplo «3 órdenes de gringas, que son 6 gringas» (y «dos gringas = 4») hacía que el agente dijera «2 órdenes de mestiza (4 mestizas)»; el cliente leía que le cobraban
+// 4 y bajaba a 1 orden. Con v2 el ejemplo cuenta tacos por orden y las piezas nunca se llaman gringas/mestizas.
+const ORDENES_EJEMPLO_SIN_BANDERA = "multiplique por el pack_size y repítalo («3 órdenes de gringas, que son 6 gringas»), sin volver a preguntar.";
+const ORDENES_EJEMPLO_V2 = "multiplique por el pack_size (ese número va solo en requested_quantity) y repítalo en órdenes («3 órdenes de gringa, de 2 tacos cada una»), sin volver a preguntar.";
 const PASO5_PIEZAS_V2 =
-  "GRINGAS Y MESTIZAS: cada gringa o mestiza que pide el cliente («dos gringas de costilla», «una mestiza de pastor») es UNA orden (platillo de 2 tacos) al precio de la orden: requested_quantity = 2 × lo que dijo (una mestiza = 2, dos gringas = 4) y dígalo como órdenes; NO pregunte si son piezas u órdenes ni diga que no se venden sueltas, salvo que el cliente hable explícitamente de tacos o piezas sueltas. Si dice piezas de algo que se vende por orden (alambres, suizos en tacos y papadzules de 5), haga UNA sola pregunta y nunca decida usted cuántas órdenes son: «Los alambres se venden por orden y cada orden trae 5. ¿Cuántas órdenes le anoto?» (pregunte también con o sin queso en el alambre).";
+  "GRINGAS Y MESTIZAS: cada gringa o mestiza que pide el cliente («dos gringas de costilla», «una mestiza de pastor») es UNA orden (platillo de 2 tacos) al precio de la orden: requested_quantity = 2 × lo que dijo (una mestiza = 2, dos gringas = 4) y dígalo como órdenes con sus tacos («2 órdenes de mestiza de bistec (2 tacos cada una)»); nunca llame «gringas» o «mestizas» a las piezas («4 mestizas») ni le diga al cliente el número de requested_quantity; NO pregunte si son piezas u órdenes ni diga que no se venden sueltas, salvo que el cliente hable explícitamente de tacos o piezas sueltas. Si dice piezas de algo que se vende por orden (alambres, suizos en tacos y papadzules de 5), haga UNA sola pregunta y nunca decida usted cuántas órdenes son: «Los alambres se venden por orden y cada orden trae 5. ¿Cuántas órdenes le anoto?» (pregunte también con o sin queso en el alambre).";
 
 // C3 PED-32: con el pedido tomado para otra sucursal, el modelo dio el tiempo de la que entrega y en el resumen los TIEMPOS DE ESTA SUCURSAL (los del chat, en hora pico).
 // Los tiempos del prompt se marcan como de la sucursal de ESTE chat y, con otra sucursal, rige el tiempo_entrega de buscar_sucursal_cercana / cotizar_pedido.
@@ -58,5 +62,6 @@ export function adaptarPromptPmV2(prompt: string): string {
     .replace(", zona_ambigua (el cliente insiste en otra sucursal para domicilio)", "")
     // C3 PED-13: gringas y mestizas se piden por platillo (cada una es una orden de 2 tacos); el paso 5 mandaba preguntar piezas y el cliente acababa quitando la mestiza.
     .replace(PASO5_PIEZAS_SIN_BANDERA, PASO5_PIEZAS_V2)
+    .replace(ORDENES_EJEMPLO_SIN_BANDERA, ORDENES_EJEMPLO_V2)
     .replace("Quesadillas y bistec van en órdenes de 3; gringas y mestizas en órdenes de 2.", "Quesadillas y bistec van en órdenes de 3; cada gringa o mestiza es una orden de 2 tacos.");
 }

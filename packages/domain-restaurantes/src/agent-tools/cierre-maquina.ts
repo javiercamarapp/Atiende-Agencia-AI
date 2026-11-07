@@ -418,6 +418,8 @@ export interface LineaResumen {
   readonly tortilla?: string | null;
   /** R22 (R4): piezas por orden del catalogo (`packSize`) cuando el renglon se vende por ordenes; el resumen muestra «1 orden (2 piezas)». Ausente = sin dato: se muestra «N × nombre». */
   readonly piezasPorOrden?: number | null;
+  /** C3 PED-28 (cerebro v2): gringa o mestiza pedida por platillo: el renglón dice «2 órdenes (2 tacos cada una)», nunca las piezas («4 piezas» se leía como 4 mestizas). */
+  readonly tacosCadaUna?: boolean;
 }
 
 export interface EntradaResumen {
@@ -637,7 +639,12 @@ function acotarLista(items: readonly string[]): string {
 export function resumenCanonico(e: EntradaResumen): string {
   // Un nombre que ya dice sus piezas («Tacos de Bistec (orden de 3)») no se repite: sale «1 × nombre» como siempre.
   const piezasEnElNombre = (l: LineaResumen): boolean => new RegExp(String.raw`\(orden de ${l.piezasPorOrden ?? 0}\)`, "i").test(l.name);
-  const etiquetaDe = (l: LineaResumen): string | null => (piezasEnElNombre(l) ? null : etiquetaOrdenConPiezas(l.quantity, l.piezasPorOrden));
+  const etiquetaDe = (l: LineaResumen): string | null =>
+    piezasEnElNombre(l)
+      ? null
+      : l.tacosCadaUna && l.piezasPorOrden && l.piezasPorOrden > 1 && Number.isInteger(l.quantity) && l.quantity >= 1
+        ? `${l.quantity} ${l.quantity === 1 ? `orden (${l.piezasPorOrden} tacos)` : `órdenes (${l.piezasPorOrden} tacos cada una)`}`
+        : etiquetaOrdenConPiezas(l.quantity, l.piezasPorOrden);
   const renglones = e.lineas.map((l) => `• ${etiquetaDe(l) ? `${etiquetaDe(l)} de` : `${l.quantity} ×`} ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
   const detalles: string[] = [];
   if (e.basicas && e.basicas.length > 0) detalles.push(`Salsas básicas incluidas: ${acotarLista(e.basicas)}`);

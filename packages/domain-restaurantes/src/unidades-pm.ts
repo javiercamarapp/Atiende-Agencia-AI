@@ -268,11 +268,16 @@ export function gringasYMestizasPedidas(texto: string): GringaOMestizaPedida[] {
 export function bloqueGringasYMestizasComoOrdenes(mensajes: readonly string[]): string {
   const pedidas = mensajes.flatMap((m) => gringasYMestizasPedidas(m));
   if (pedidas.length === 0) return "";
-  const lineas = pedidas.map((p) => `- ${p.cantidad} ${p.producto} = ${p.cantidad} ${p.cantidad === 1 ? "orden" : "órdenes"} (platillos de ${PIEZAS_POR_ORDEN_GRINGA_MESTIZA} tacos): requested_quantity ${p.cantidad * PIEZAS_POR_ORDEN_GRINGA_MESTIZA}.`);
+  // C3 PED-28: la frase para el cliente va aparte del requested_quantity. Con solo «requested_quantity 4» el agente dijo «2 órdenes (4 mestizas)» y el cliente bajó a 1 orden.
+  const lineas = pedidas.map((p) => {
+    const singular = p.producto.replace(/^(gringa|mestiza)s\b/, "$1");
+    const ordenes = `${p.cantidad} ${p.cantidad === 1 ? "orden" : "órdenes"} de ${singular} (${PIEZAS_POR_ORDEN_GRINGA_MESTIZA} tacos${p.cantidad === 1 ? "" : " cada una"})`;
+    return `- ${p.cantidad} ${p.producto} = ${ordenes}: requested_quantity ${p.cantidad * PIEZAS_POR_ORDEN_GRINGA_MESTIZA}. Al cliente dígale «${ordenes}».`;
+  });
   return [
     "REGLA DEL SERVIDOR PARA ESTE TURNO (gringas y mestizas):",
     ...lineas,
-    `Cada gringa o mestiza que nombra el cliente es UNA orden (platillo de ${PIEZAS_POR_ORDEN_GRINGA_MESTIZA} tacos) al precio de la orden. NO pregunte si son piezas u órdenes ni diga que no se venden sueltas: cotícelas así y dígalas como órdenes. Solo si el cliente habla explícitamente de tacos o piezas sueltas, aclare.`,
+    `Cada gringa o mestiza que nombra el cliente es UNA orden (platillo de ${PIEZAS_POR_ORDEN_GRINGA_MESTIZA} tacos) al precio de la orden. NO pregunte si son piezas u órdenes ni diga que no se venden sueltas: cotícelas así y dígalas como órdenes. Nunca le diga al cliente el número de requested_quantity ni llame «gringas» o «mestizas» a las piezas. Solo si el cliente habla explícitamente de tacos o piezas sueltas, aclare.`,
   ].join("\n");
 }
 

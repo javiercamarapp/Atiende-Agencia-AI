@@ -1582,8 +1582,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const resumenBase =
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
           ? {
+              // C3 PED-28 (cerebro v2): las gringas y mestizas se dicen «N órdenes (2 tacos cada una)», no «(4 piezas)» (ver `tacosCadaUna`).
               // R15/T7-001: la tortilla de un KILO no vive en el renglon cotizado (`tortilla` es null): sale de lo que el cliente eligio (`quotedItems[idx].tortillaKilo`, por indice: dos renglones del mismo producto con tortillas distintas no se mezclan).
-              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, piezasPorOrden: piezasPorOrdenDe(l.name, l.packSize), lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
+              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, piezasPorOrden: piezasPorOrdenDe(l.name, l.packSize), ...(ctx.cerebroV2 && /^(?:gringa|mestiza)/i.test(l.name) ? { tacosCadaUna: true } : {}), lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
               ...detallesDeResumen(input, previoVigente?.resumenBase),
               total: quotedQuote.total,
               descuento: quotedQuote.descuento,
