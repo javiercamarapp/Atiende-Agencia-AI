@@ -1,5 +1,6 @@
 // Arma la escalera de la plataforma a partir de las credenciales: es lo que usa el worker de voz (y el simulador "real") de CUALQUIER vertical.
 // Ninguna vertical elige proveedor: todas pasan por aqui, con `VOZ_PLATAFORMA`.
+import type { ReglaConfirmacion } from "./llamada/cascada-v2/herramientas.ts";
 import { VOZ_PLATAFORMA } from "./config-plataforma.ts";
 import type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
 import { crearEscaleraLlamada } from "./escalera.ts";
@@ -36,7 +37,7 @@ export interface DepsPlataformaVoz extends CredencialesVoz {
    * `llmV2` SIN estado (el puerto de OpenRouter): un puerto con estado no admite dos peticiones del mismo turno. Apagado por omision. */
   readonly dosNiveles?: boolean;
   /** Ver `CascadaV2Opciones.confirmacionAntesDeCrear` (restaurantes: confirmar_resumen / crear_pedido). */
-  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
+  readonly confirmacionAntesDeCrear?: ReglaConfirmacion;
   readonly crearSocketDeepgram?: CrearSocketDeepgram;
   /** Registro de eventos de la cascada v2 (sin PII: modelo, tokens, latencias). */
   readonly log?: SumideroLog;

@@ -177,6 +177,8 @@ export interface ConfigCascadaV2 {
     /** Silencio minimo (ms) del agente en un turno antes de decir la frase de espera. Independiente del plazo del hedge: con el hedge a 2.5 s la frase sonaba
      * en casi cada turno y el cliente contestaba «si» encima de la respuesta real (E2E del 6-nov-2026). */
     readonly esperaMinMs: number;
+    /** Lo que se dice si el modelo solo afirmo el registro del pedido sin que crear_pedido tuviera exito (la afirmacion no se dice). */
+    readonly fraseSinRegistro: string;
     /** `reasoning.effort` de OpenRouter para los modelos Anthropic (Sonnet 5.5 tiene razonamiento obligatorio: `none` se rechaza). */
     readonly esfuerzo: "low" | "medium" | "high";
     /** RETENCION CERO (decision de Javier, 14-oct-2026): el cerebro de voz solo se enruta a endpoints con Zero Data Retention de OpenRouter (`provider.zdr: true`),
@@ -247,7 +249,7 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // Cerebro de dos niveles de PM (decision del dueno, 6-nov-2026; opt-in con VOZ_CEREBRO_DOS_NIVELES=1): rapido google/gemini-3.5-flash-lite para turnos faciles,
     // preciso openai/gpt-6-luna para el resto y anthropic/claude-haiku-5.5 como peticion de respaldo si el primero no da su primer token en 2.5 s. Los tres tienen
     // endpoint ZDR en OpenRouter (/api/v1/endpoints/zdr, leido el 6-nov-2026): gpt-6-luna solo en Azure, por eso `azure` entra a la lista.
-    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", dosNiveles: Object.freeze({ modelo: "openai/gpt-6-luna", modeloRapido: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500 }), frasesEspera: Object.freeze(["Mmm, permítame.", "Un segundito.", "Déjeme ver."]), esperaMinMs: 4_000, esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock", "azure"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
+    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", dosNiveles: Object.freeze({ modelo: "openai/gpt-6-luna", modeloRapido: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500 }), frasesEspera: Object.freeze(["Mmm, permítame.", "Un segundito.", "Déjeme ver."]), esperaMinMs: 4_000, fraseSinRegistro: "Para registrar su pedido, ¿me lo confirma con un sí?", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock", "azure"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
     frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
     // Piso por minuto (SUPUESTO a reemplazar con la medicion del smoke): Deepgram STT ~4 800 (+1 300 de keyterms) + Aura-2 ~600 caracteres/min (~18 000) + LLM ~24 000 micro-USD
     // (Sonnet 5.5 con esfuerzo bajo; con ~10 000 se subestimaba).

@@ -141,3 +141,14 @@ describe("«queda registrado» solo despues de que crear_pedido tuvo exito", () 
     expect(JSON.stringify(llm.peticiones.at(-1)!.mensajes)).not.toMatch(/registrado/);
   });
 });
+
+describe("afirma el registro sin llamar crear, con el «si» al resumen leido", () => {
+  it("se fuerza el registro real y la frase suena solo despues de crear", async () => {
+    const { s, tts, cliente } = await armar([...cotizaYLee, paso("Listo, su pedido quedó registrado."), paso("", tc("c", "confirmar_resumen")), paso("", tc("p", "crear_pedido")), paso("Lo esperamos.")]);
+    await cliente("seis de bistec para recoger, pago en efectivo");
+    await cliente("sí");
+    expect(s.pedidos).toBe(1);
+    expect(tts.frases.slice(0, s.frasesAlCrear).join(" ")).not.toMatch(/registrado/);
+    expect(tts.frases.join(" ")).toMatch(/registrado/);
+  });
+});

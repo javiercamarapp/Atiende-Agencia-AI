@@ -23,7 +23,7 @@ import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
 import { crearSegmentadorFrases } from "./frases.ts";
 import { contieneTotal, esAfirmacion, esRechazo } from "./afirmacion.ts";
-import { ejecutarHerramientas, type EstadoEspera } from "./herramientas.ts";
+import { compuertaAbierta, ejecutarHerramientas, type EstadoEspera, type ReglaConfirmacion } from "./herramientas.ts";
 import { ColaAsync } from "./puertos.ts";
 import type { ContextoTurnoLlm, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts } from "./puertos.ts";
 import { crearSttDeepgram, keytermsDe } from "./deepgram-stt.ts";
@@ -62,7 +62,7 @@ export interface CascadaV2Opciones {
   /** Herramientas de solo lectura que pueden correr en paralelo al inicio de un turno (el resto, en serie). */
   readonly herramientasEnParalelo?: ReadonlySet<string>;
   /** Si el modelo pide `confirmar` y `crear` en la MISMA respuesta, solo se ejecuta `confirmar`: `crear` espera la confirmacion del cliente en un turno posterior (restaurantes: confirmar_resumen / crear_pedido). */
-  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
+  readonly confirmacionAntesDeCrear?: ReglaConfirmacion;
   /** Tope de vueltas modelo -> herramienta -> modelo dentro de un turno. */
   readonly vueltasToolMax?: number;
   /** Modelo del LLM por omision (de lo contrario `config.cascadaV2.llm.modelo`). */
@@ -145,6 +145,9 @@ class SesionCascadaV2 implements VozSesionLlamada {
   /** `ejecutarHerramientas` enciende `cierreListo` sobre el mismo objeto; leerlo por un metodo evita que TS lo estreche a `false` por la asignacion de inicio de turno. */
   private cierreListo(): boolean {
     return this.esperandoAlCliente.cierreListo === true;
+  }
+  private confirmadoEnTurno(): boolean {
+    return this.esperandoAlCliente.confirmadoEnTurno === true;
   }
   /** El proveedor rechazo `tool_choice` forzado (400/422): no se vuelve a intentar en esta sesion. */
   private forzadoRechazado = false;
@@ -430,12 +433,23 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.esperandoAlCliente.afirmacion = esAfirmacion(texto);
     this.esperandoAlCliente.cierreListo = false;
     this.esperandoAlCliente.forzadoEnTurno = false;
+    this.esperandoAlCliente.confirmadoEnTurno = false;
+    this.esperandoAlCliente.crearEnTurno = null;
+    this.esperandoAlCliente.forzarSiguiente = null;
     // Un rechazo/cancelacion deja sin vigencia el resumen leido (ver el cierre del turno).
     const rechazo = !this.esperandoAlCliente.afirmacion && esRechazo(texto);
     let habladoTurno = "";
+    const inicioMensajesTurno = this.mensajes.length;
+    // Frases que AFIRMAN el registro del pedido escritas antes de que crear_pedido tuviera exito: se retienen; suenan tras el exito o nunca.
+    const afirmaRegistro = this.o.confirmacionAntesDeCrear?.afirmaRegistro;
+    const retenidas: FraseLlm[] = [];
 
     const cola = new ColaAsync<FraseLlm>();
     const empujar = (f: FraseLlm): void => {
+      if (afirmaRegistro && f.espera !== true && this.esperandoAlCliente.pedidoCreado !== true && f.frase.trim() !== "" && afirmaRegistro(f.frase)) {
+        retenidas.push(f);
+        return;
+      }
       if (f.frase.trim() !== "") habladoTurno += ` ${f.frase}`;
       if (this.esperandoAlCliente.cotizoEnTurno === true && f.frase.trim() !== "") this.esperandoAlCliente.habladoTrasCotizar = `${this.esperandoAlCliente.habladoTrasCotizar ?? ""} ${f.frase}`;
       cola.push(f);
@@ -464,6 +478,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     try {
       let vuelta = 0;
       let vacios = 0;
+      let forzadosEscalar = 0;
       let forzarCrear: string | undefined;
       while (vuelta <= this.o.vueltasToolMax) {
         this.vueltaActual = vuelta;
@@ -518,6 +533,15 @@ class SesionCascadaV2 implements VozSesionLlamada {
         this.mensajes.push({ role: "assistant", content: r.texto, ...(r.toolCalls.length ? { toolCalls: r.toolCalls } : {}) });
         if (r.toolCalls.length === 0) {
           this.indiceRespuestaFinal = this.mensajes.length - 1;
+          // Afirmo «quedó registrado» sin llamar crear y el cliente SI confirmo el resumen leido: se registra de verdad (vuelta forzada) en vez de callarlo.
+          const regla = this.o.confirmacionAntesDeCrear;
+          if (regla && retenidas.length > 0 && compuertaAbierta(this.esperandoAlCliente) && forzadosEscalar < 2 && vuelta < this.o.vueltasToolMax) {
+            forzadosEscalar += 1;
+            forzarCrear = this.confirmadoEnTurno() ? regla.crear : regla.confirmar;
+            this.log("v2_crear_forzado", { herramienta: forzarCrear, motivo: "afirmo_registro_sin_crear" });
+            vuelta += 1;
+            continue;
+          }
           break;
         }
         // El historial queda consistente aunque el cliente interrumpa a media herramienta: SIEMPRE se anotan las respuestas de las herramientas pedidas
@@ -530,8 +554,19 @@ class SesionCascadaV2 implements VozSesionLlamada {
           log: (evento, campos) => this.log(evento, campos ?? {}),
         });
         for (const res of resultados) this.mensajes.push({ role: "tool", toolCallId: res.llamada.id, content: JSON.stringify(res.salida ?? null) });
+        // El pedido ya existe: lo retenido («quedó registrado») ya es cierto y se dice ahora, despues del exito.
+        if (this.esperandoAlCliente.pedidoCreado === true && retenidas.length > 0) for (const f of retenidas.splice(0)) empujar(f);
+        // Escalacion bloqueada con la compuerta abierta: la vuelta siguiente DEBE registrar el pedido (confirmar y luego crear).
+        const forzar = this.esperandoAlCliente.forzarSiguiente ?? null;
+        if (forzar !== null && this.o.confirmacionAntesDeCrear && forzadosEscalar < 2) {
+          forzadosEscalar += 1;
+          this.esperandoAlCliente.forzarSiguiente = null;
+          forzarCrear = forzar;
+          if (forzar === this.o.confirmacionAntesDeCrear.crear) this.esperandoAlCliente.forzadoEnTurno = true;
+          this.log("v2_crear_forzado", { herramienta: forzar, motivo: "escalar_sin_crear" });
+        }
         // Bucle R1: el «si» ya confirmo el resumen (compuerta abierta) y el modelo solo llamo confirmar: la vuelta siguiente DEBE llamar crear (una sola vez; la compuerta sigue valiendo).
-        if (this.cierreListo() && this.o.confirmacionAntesDeCrear) {
+        if (this.cierreListo() && this.o.confirmacionAntesDeCrear && forzarCrear === undefined) {
           forzarCrear = this.o.confirmacionAntesDeCrear.crear;
           this.esperandoAlCliente.cierreListo = false;
           this.esperandoAlCliente.forzadoEnTurno = true;
@@ -544,6 +579,26 @@ class SesionCascadaV2 implements VozSesionLlamada {
       errorLlm = err;
     }
     if (tEspera !== null) reloj.quitar(tEspera);
+    if (retenidas.length > 0) {
+      // Afirmo el registro sin pedido creado: nunca se dice ni queda en el historial (el modelo no debe creer que ya lo dijo).
+      this.log("v2_registro_sin_crear", { motivo: this.esperandoAlCliente.crearEnTurno ?? "sin_crear" });
+      const quitar = retenidas.map((f) => f.frase.trim());
+      for (let i = inicioMensajesTurno; i < this.mensajes.length; i++) {
+        const m = this.mensajes[i]!;
+        if (m.role !== "assistant" || typeof m.content !== "string") continue;
+        let c = m.content;
+        for (const q of quitar) c = c.split(q).join(" ");
+        c = c.replace(/\s+/g, " ").trim();
+        if (c !== m.content) this.mensajes[i] = { ...m, content: c };
+      }
+      if (habladoTurno.trim() === "" && errorLlm === null && vigente()) {
+        const f = cfg.llm.fraseSinRegistro;
+        empujar({ frase: f, vuelta: this.vueltaActual });
+        const i = this.indiceRespuestaFinal;
+        if (i !== null && this.mensajes[i]?.role === "assistant") this.mensajes[i] = { ...this.mensajes[i]!, content: f } as MensajeLlmVoz;
+        else this.mensajes.push({ role: "assistant", content: f });
+      }
+    }
     cola.cerrar();
     await bombeo;
 
