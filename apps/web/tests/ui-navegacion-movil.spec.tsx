@@ -136,11 +136,33 @@ describe("BottomNav: la barra del panel del chofer de Likida (UNI-1)", () => {
     expect(destino.querySelector("span")!.className).toContain("text-xs");
   });
 
-  it("nunca más de 4 destinos curados más 'Más' (5 lugares), aunque el shell pase más", () => {
+  it("nunca más de 4 destinos curados más 'Más' (5 lugares sin «Preguntar»), aunque el shell pase más", () => {
     const nav = render("/h/demo");
     expect(BOTTOM_NAV_MAX_DESTINOS).toBe(4);
     expect([...nav.querySelectorAll("a span")].map((s) => s.textContent)).toEqual(["Resumen", "Reservas", "Clientes", "Cobros"]);
     expect(nav.querySelectorAll("li")).toHaveLength(5);
+  });
+
+  // Decisión de Omar 7-nov-2026: «Preguntar» (chat de datos) es el 5.o destino fijo, entre los 4 curados y «Más»; solo-ds3 (oculto
+  // sin la bandera, asi la barra actual sigue en 4 + «Más») y solo si el shell lo pasa (roles con acceso).
+  it("con `preguntar`: 4 destinos curados + «Preguntar» (solo ds3) + «Más» = 6 lugares; activo en su ruta", () => {
+    rendered = renderComponent(
+      <MemoryRouter initialEntries={["/h/demo/copiloto"]}>
+        <BottomNav items={ITEMS} moreSections={TODAS} preguntar={{ to: "/h/demo/copiloto" }} />
+      </MemoryRouter>,
+    );
+    const nav = rendered.container.querySelector("nav")!;
+    const lugares = [...nav.querySelectorAll<HTMLLIElement>(":scope > ul > li")];
+    expect(lugares).toHaveLength(6);
+    expect(lugares.map((li) => li.textContent)).toEqual(["Resumen", "Reservas", "Clientes", "Cobros", "Preguntar", "Más"]);
+    const li = lugares[4]!;
+    expect(li.hidden).toBe(true);
+    expect(li.className).toContain("ds3-solo");
+    const a = li.querySelector("a")!;
+    expect(a.getAttribute("href")).toBe("/h/demo/copiloto");
+    expect(a.getAttribute("aria-current")).toBe("page");
+    expect(a.className).toContain("ds3-barra-destino");
+    expect(lugares[5]!.querySelector("button")!.className).toContain("ds3-barra-mas");
   });
 
   it("activo = aria-current + negrita + trazo 2.25; inactivo = font-medium y trazo 1.75 (nunca color solo)", () => {

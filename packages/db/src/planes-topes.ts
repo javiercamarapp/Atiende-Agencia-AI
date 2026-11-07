@@ -85,7 +85,8 @@ export interface AvisoPrueba {
   readonly organizationName: string;
   readonly vertical: string;
   readonly slug: string;
-  readonly diasAntes: 7 | 3 | 1;
+  /** 7, 3 o 1 = dias que faltan; 0 = la prueba ya termino (aviso unico, migracion 0072; la organizacion NO se apaga). */
+  readonly diasAntes: 7 | 3 | 1 | 0;
   readonly trialEndsAt: string;
   readonly esReintento: boolean;
 }
@@ -218,7 +219,8 @@ export async function listarUsoSuperadmin(session: TenantDbSession, callerId: st
   });
 }
 
-/** Reclama los avisos de fin de prueba de HOY (7/3/1 dias) y los reintentos de correo pendientes. Cada aviso exitoso sale una vez. */
+/** Reclama los avisos de fin de prueba de HOY (7/3/1 dias; 0 = ya termino, con la 0072) y los reintentos de correo pendientes. Cada aviso
+ *  exitoso sale una vez. Desde la 0072 las organizaciones demo no se reclaman. */
 export type ReclamoAvisosPrueba = { readonly disponible: boolean; readonly avisos: readonly AvisoPrueba[] };
 
 export async function reclamarAvisosPrueba(session: TenantDbSession, now: Date = new Date()): Promise<ReclamoAvisosPrueba> {
@@ -231,7 +233,7 @@ export async function reclamarAvisosPrueba(session: TenantDbSession, now: Date =
         organizationName: String(r.organization_name),
         vertical: String(r.vertical),
         slug: String(r.slug),
-        diasAntes: Number(r.dias_antes) as 7 | 3 | 1,
+        diasAntes: Number(r.dias_antes) as 7 | 3 | 1 | 0,
         trialEndsAt: iso(r.trial_ends_at),
         esReintento: r.es_reintento === true,
       }));

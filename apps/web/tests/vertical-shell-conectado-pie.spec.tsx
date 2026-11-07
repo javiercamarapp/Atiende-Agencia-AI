@@ -34,7 +34,11 @@ function conexion(disponible: boolean): ChatDatosConexion {
   } as unknown as ChatDatosConexion;
 }
 
-async function montar(chat: ChatDatosConexion | undefined, sidebarPie?: { label: string; to: string }[]): Promise<RenderedComponent> {
+async function montar(
+  chat: ChatDatosConexion | undefined,
+  sidebarPie?: { label: string; to: string }[],
+  extra: { copilotoHref?: string; ocultarChat?: boolean } = {},
+): Promise<RenderedComponent> {
   installMatchMediaStub();
   installMemoryLocalStorage();
   const r = renderComponent(
@@ -51,6 +55,7 @@ async function montar(chat: ChatDatosConexion | undefined, sidebarPie?: { label:
         onLogout={() => {}}
         header={{ icon: null, title: "Prueba" }}
         sidebarPie={sidebarPie}
+        {...extra}
       >
         <div>contenido</div>
       </VerticalShellConectado>
@@ -160,7 +165,33 @@ describe("VerticalShellConectado — encabezado delgado: campana, chat y fecha v
     expect(hoja.textContent).toContain("Notificaciones");
     expect(hoja.textContent).toContain("Pregúntale a tus datos");
     const header = rendered.container.querySelector('[data-testid="mobile-header"]')!;
-    expect(header.querySelector('[aria-label^="Notificaciones"]')).toBeNull();
+    // Decisión de Omar 7-nov-2026: la campana va en el encabezado móvil (solo ds3: existe oculta sin la bandera).
+    const campana = header.querySelector<HTMLAnchorElement>('a[data-testid="movil-campana"]')!;
+    expect(campana.getAttribute("aria-label")).toMatch(/^Notificaciones/);
+    expect(campana.hidden).toBe(true);
     expect(header.querySelector('button[aria-label="Abrir menú de cuenta"]')).not.toBeNull();
+  });
+});
+
+// Decisión de Omar 7-nov-2026: «Preguntar» es el 5.o destino fijo de la barra móvil (solo ds3) para quien puede usar el chat de datos.
+describe("VerticalShellConectado — «Preguntar» en la barra móvil", () => {
+  const preguntar = (root: HTMLElement) => root.querySelector<HTMLAnchorElement>('nav[aria-label="Navegación móvil"] a[data-testid="barra-preguntar"]');
+
+  it("con la página del Copiloto y el asistente confirmado, la barra enlaza «Preguntar» a esa página (oculto sin la bandera)", async () => {
+    rendered = await montar(conexion(true), undefined, { copilotoHref: "/x/copiloto" });
+    const enlace = preguntar(rendered.container)!;
+    expect(enlace.getAttribute("href")).toBe("/x/copiloto");
+    expect(enlace.closest("li")!.hidden).toBe(true);
+  });
+
+  it("sin acceso (ocultarChat), sin asistente confirmado o sin página del Copiloto no hay «Preguntar»", async () => {
+    rendered = await montar(conexion(true), undefined, { copilotoHref: "/x/copiloto", ocultarChat: true });
+    expect(preguntar(rendered.container)).toBeNull();
+    rendered.unmount();
+    rendered = await montar(conexion(false), undefined, { copilotoHref: "/x/copiloto" });
+    expect(preguntar(rendered.container)).toBeNull();
+    rendered.unmount();
+    rendered = await montar(conexion(true));
+    expect(preguntar(rendered.container)).toBeNull();
   });
 });

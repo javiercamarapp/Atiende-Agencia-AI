@@ -115,6 +115,10 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       onLogout={() => void handleLogout()}
       loggingOut={loggingOut}
       header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", resumenTo: "/superadmin" }}
+      // ds3 (decision de Omar 7-nov-2026): campana con contador en la cabecera movil y «Preguntar» (el Copiloto de plataforma) como
+      // destino fijo de la barra inferior. Sin la bandera existen ocultos.
+      notificaciones={{ to: "/superadmin/notificaciones", contador: notif.unreadCount, hayNoLeidas: notif.hayNoLeidas }}
+      preguntarHref={RUTA_COPILOTO}
       panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
     >
       <div className="grid min-w-0 gap-4">
