@@ -21,7 +21,9 @@
     "apps/web/src/verticals/restaurantes/RestaurantesShell.tsx",
     "apps/web/src/superadmin/rutas-i18n.ts",
     "packages/ui/src/components/SelectorIdioma.tsx",
-    "packages/ui/src/components/VerticalNoEncontrado.tsx"
+    "packages/ui/src/components/VerticalNoEncontrado.tsx",
+    "apps/web/src/verticals/restaurantes/pages/ResumenGeneral.tsx",
+    "apps/web/src/verticals/restaurantes/lib/resumen-general.ts"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes"
