@@ -8,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecuperarCarga } from "../src/components/RecuperarCarga";
 import { RutaBoundary } from "../src/components/VerticalShell";
 import { esErrorDeCarga, limpiarCacheYRecargar, type EntornoRecuperacion } from "../src/lib/recuperar-carga";
+import { registrarModuloEs } from "../src/i18n/mensajes/index.ts";
+import { shell } from "../src/i18n/mensajes/shell.ts";
+
+// RutaBoundary suelto (sin VerticalShell, que es quien registra los textos del shell).
+registrarModuloEs(shell);
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
