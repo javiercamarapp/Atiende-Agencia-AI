@@ -32,7 +32,7 @@ async function setup(opciones: { sinRepo?: boolean; noMigrado?: boolean; google?
     "fetch",
     vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
-      if (u.startsWith("https://api.resend.com")) {
+      if (new URL(u).hostname === "api.resend.com") {
         correos.push(JSON.parse(String(init?.body)) as Correo);
         return new Response("{}", { status: 200 });
       }
