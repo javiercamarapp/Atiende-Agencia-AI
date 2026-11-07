@@ -376,6 +376,13 @@ html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
   html[data-diseno="ds3"] .ds3-guia.ds3-solo[hidden]:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
   html[data-diseno="ds3"] .ds3-guia svg { width: 14px; height: 14px; }
   html[data-diseno="ds3"] .ds3-cabecera-acciones.ds3-cabecera-acciones { order: 2; margin-left: auto; }
+  /* Nombre de la pagina tambien en el Resumen (la barra del diseno actual lleva ahi el titulo de la consola). */
+  html[data-diseno="ds3"] .ds3-cabecera-titulo-ds3.ds3-solo[hidden] { display: block; min-width: 0; }
+  html[data-diseno="ds3"] .ds3-cabecera-titulo-ds3.ds3-solo[hidden]::before { content: attr(data-titulo); }
+  /* Pantalla de chat (Pregúntale a tus datos / Copiloto): sin encabezado en escritorio y sin banners sobre la conversacion. */
+  html[data-diseno="ds3"] .ds3-cabecera-zona.ds3-cabecera-zona[data-sin-cabecera] { display: none; }
+  html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] [data-testid="banner-plan"],
+  html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] [data-testid="banner-agregados-global"] { display: none; }
 }
 
 /* PageHeader: flex con wrap y acciones a la derecha; eyebrow 12/600 mayusculas, H1 20/600, descripcion de UNA linea 13/1.4.
@@ -389,6 +396,9 @@ html[data-diseno="ds3"] .ds3-encabezado-fila.ds3-encabezado-fila {
   gap: 12px 24px;
 }
 html[data-diseno="ds3"] .ds3-encabezado-texto.ds3-encabezado-texto { flex: 1 1 320px; }
+/* Antetitulo derivado del grupo del menu (cuando la pantalla no trae uno propio): texto por CSS desde data-eyebrow. */
+html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden]::before { content: attr(data-eyebrow); }
 html[data-diseno="ds3"] .ds3-encabezado-eyebrow.ds3-encabezado-eyebrow {
   margin: 0 0 5px;
   font-size: 12px;
