@@ -190,7 +190,12 @@ const etiquetaDe = (renglon: string): string | null => {
   return m ? (m[1] ?? m[2] ?? m[3] ?? "").trim().toUpperCase() : null;
 };
 /** Titulo comparable de un encabezado «# TITULO (aclaracion)»: sin el parentesis final, en mayusculas. */
-const tituloDe = (encabezado: string): string => encabezado.replace(/^#\s+/, "").replace(/\s*\(.*$/, "").trim().toUpperCase();
+const tituloDe = (encabezado: string): string => {
+  // Sin regex con cuantificadores anidados (CodeQL: texto de entrada con muchos espacios o parentesis): cortes por indice.
+  const sinGato = encabezado.startsWith("#") ? encabezado.slice(1) : encabezado;
+  const p = sinGato.indexOf("(");
+  return (p < 0 ? sinGato : sinGato.slice(0, p)).trim().toUpperCase();
+};
 
 /** Quita del texto editable lo que el BLOQUE ya dice en una seccion con el MISMO titulo: el renglon identico y la regla con la misma etiqueta (la version del
  * bloque prevalece, como ya declara su titulo; dos versiones de H3 se contradecian). Lo propio del dueno (otra etiqueta, renglon sin etiqueta distinto, otras

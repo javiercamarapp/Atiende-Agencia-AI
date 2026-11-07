@@ -25,7 +25,7 @@ describe("reglas condicionales en la sesion v2", () => {
     expect(llm.peticiones.every((p) => p.system === "BASE")).toBe(true);
     expect(JSON.stringify(llm.peticiones[0]!.mensajes)).not.toContain("KILOS");
     expect(ultima.split("KILOS").length - 1).toBe(1);
-    expect(ultima).toContain(TITULO_REGLAS_CONDICIONALES.replace(/"/g, '\\"'));
+    expect(ultima).toContain(JSON.stringify(TITULO_REGLAS_CONDICIONALES).slice(1, -1));
     expect(ultima).not.toContain("COMBO DEL MARTES");
   });
 });
