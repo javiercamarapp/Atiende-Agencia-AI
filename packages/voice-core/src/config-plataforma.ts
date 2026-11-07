@@ -75,6 +75,39 @@ export interface PromocionPrecio {
   readonly terminaEn: string;
 }
 
+export interface ConfigElevenLabs {
+  readonly stt: {
+    /** `model_id` del WebSocket `/v1/speech-to-text/realtime`. */
+    readonly modelo: string;
+    /** `language_code` (ISO 639-1). */
+    readonly idioma: string;
+    /** Silencio (s) con el que el VAD del servidor confirma el segmento (`vad_silence_threshold_secs`, `commit_strategy=vad`). Equivale al `min_silence_duration` de Silero (0.55 s). */
+    readonly vadSilencioS: number;
+    /** Espera minima (ms) desde el ultimo segmento confirmado antes de cerrar el turno: si el cliente sigue hablando dentro de esta ventana, el turno continua (min endpointing 0.4 s). */
+    readonly finTurnoMinMs: number;
+    /** Espera maxima (ms) con texto parcial sin confirmar: pasado este tiempo sin cambios se fuerza el commit (max endpointing 3.0 s: la gente piensa mientras dicta). */
+    readonly finTurnoMaxMs: number;
+    /** Tope de terminos del menu enviados como `keyterms`. */
+    readonly keytermsMax: number;
+    /** US$ por HORA de audio en streaming y el add-on de keyterms (lista del 6-nov-2026; Scribe v2 Realtime 0.39 + 0.08 US$/h). */
+    readonly usdPorHora: number;
+    readonly usdPorHoraKeyterms: number;
+  };
+  readonly tts: {
+    /** `model_id` (eleven_v4_turbo: el unico modelo rapido que leyo bien «#512 x 45» y «$345» en la medicion). */
+    readonly modelo: string;
+    /** Voz por omision: Regina - Contact Center (mexicana, biblioteca de ElevenLabs). La sucursal la cambia con su voz telefonica (`tts_voice_id`). */
+    readonly voz: string;
+    readonly idioma: string;
+    /** PCM lineal a la tasa de salida de la sala (24 kHz): `output_format=pcm_24000`, sin remuestrear. */
+    readonly hzSalida: number;
+    /** US$ por 1 000 caracteres (se descuenta de los creditos del plan). */
+    readonly usdPorMilCaracteres: number;
+    /** Tope de espera (ms) por trozo de audio de una frase. */
+    readonly fraseTimeoutMs: number;
+  };
+}
+
 export interface ConfigCascadaV2 {
   readonly deepgram: {
     /** Modelo de STT en streaming: Nova-3 monolingue, codigos `es` / `es-419` (docs de Deepgram; `es-MX` no figura para Nova-3). */
@@ -111,16 +144,25 @@ export interface ConfigCascadaV2 {
     /** Tope de espera (ms) por trozo/fin de una frase: si Deepgram nunca manda `Flushed`, la frase falla con `tts_timeout` y la escalera decide. */
     readonly fraseTimeoutMs: number;
   };
+  /** ElevenLabs (stack elegido el 6-nov-2026 con la medicion `PRUEBAS-STT-TTS-NOV.md`): Scribe v2 Realtime como STT y `eleven_v4_turbo` como TTS. Deepgram queda de RESPALDO
+   * automatico de cada etapa (Nova-3 y Aura-2) dentro de la misma sesion; sin `ELEVENLABS_API_KEY` la cascada v2 usa Deepgram como siempre. */
+  readonly elevenlabs: ConfigElevenLabs;
   readonly heygen: {
     /** US$ por MILLON de caracteres, precio de lista. */
     readonly usdPorMillonCaracteres: number;
     readonly promocion: PromocionPrecio;
   };
   readonly llm: {
-    /** Cerebro por omision del motor (decision de Javier, 13-oct): Sonnet 5.5 con esfuerzo BAJO. */
+    /** Cerebro PRECISO por omision (decision del dueno, 6-nov-2026: openai/gpt-6-luna; antes Sonnet 5.5 con esfuerzo bajo). */
     readonly modelo: string;
-    /** Modelo configurable para turnos faciles (el escalamiento por turno es P3; aqui solo queda disponible para el selector). */
+    /** Modelo RAPIDO de los turnos faciles (saludo y respuestas cortas sin pedido en juego); `modelo` es el PRECISO (todo lo demas). */
     readonly modeloFacil: string;
+    /** Modelo de la peticion de RESPALDO (hedge) cuando el primero no da su primer token a tiempo o falla antes de hablar. */
+    readonly modeloRespaldo: string;
+    /** Plazo (ms) al primer token: vencido sin texto ni herramientas, se lanza en paralelo la peticion de respaldo y gana la que hable primero. */
+    readonly plazoPrimerTokenMs: number;
+    /** Frases cortas de espera que se dicen (una por turno) al vencer el plazo, para que el cliente no oiga silencio. */
+    readonly frasesEspera: readonly string[];
     /** `reasoning.effort` de OpenRouter para los modelos Anthropic (Sonnet 5.5 tiene razonamiento obligatorio: `none` se rechaza). */
     readonly esfuerzo: "low" | "medium" | "high";
     /** RETENCION CERO (decision de Javier, 14-oct-2026): el cerebro de voz solo se enruta a endpoints con Zero Data Retention de OpenRouter (`provider.zdr: true`),
@@ -183,7 +225,15 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     heygen: Object.freeze({ usdPorMillonCaracteres: 30, promocion: Object.freeze({ precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" }) }),
     // OpenRouter, leido el 2026-10-13 (/api/v1/models/<id>/endpoints): Haiku 5.5 US$0.10 / 0.50 por millon (cache 0.01); Sonnet 5.5 US$2 / 10 (cache 0.10).
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
-    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
+    // ElevenLabs (lista del 6-nov-2026, PRUEBAS-STT-TTS-NOV.md): Scribe v2 Realtime 0.39 US$/h + keyterms 0.08 US$/h; eleven_v4_turbo 0.04 US$ por 1 000 caracteres (creditos del plan).
+    elevenlabs: Object.freeze({
+      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08 }),
+      tts: Object.freeze({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", idioma: "es", hzSalida: 24_000, usdPorMilCaracteres: 0.04, fraseTimeoutMs: 8_000 }),
+    }),
+    // Cerebro de dos niveles (decision del dueno, 6-nov-2026): rapido google/gemini-3.5-flash-lite para turnos faciles, preciso openai/gpt-6-luna para el resto, y
+    // anthropic/claude-haiku-5.5 como peticion de respaldo si el primero no da su primer token en 2.5 s. Los tres tienen endpoint ZDR en OpenRouter
+    // (/api/v1/endpoints/zdr, leido el 6-nov-2026): gpt-6-luna solo en Azure, por eso `azure` entra a la lista.
+    llm: Object.freeze({ modelo: "openai/gpt-6-luna", modeloFacil: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500, frasesEspera: Object.freeze(["Mmm, permítame.", "Un segundito.", "Déjeme ver."]), esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock", "azure"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
     frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
     // Piso por minuto (SUPUESTO a reemplazar con la medicion del smoke): Deepgram STT ~4 800 (+1 300 de keyterms) + Aura-2 ~600 caracteres/min (~18 000) + LLM ~24 000 micro-USD
     // (Sonnet 5.5 con esfuerzo bajo; con ~10 000 se subestimaba).
@@ -249,6 +299,19 @@ export function costoDeepgramMicroUsd(duracionS: number, config: ConfigPlataform
 export function costoDeepgramAura2MicroUsd(caracteres: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
   if (typeof caracteres !== "number" || !Number.isFinite(caracteres) || caracteres <= 0) return 0;
   return Math.ceil(caracteres * microUsd(config.cascadaV2.deepgramAura2.usdPorMilCaracteres) / 1000);
+}
+
+/** Costo estimado de ElevenLabs Scribe v2 Realtime (micro-USD, entero hacia arriba) por `duracionS` segundos de audio enviados; `conKeyterms` suma el add-on. */
+export function costoElevenLabsSttMicroUsd(duracionS: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA, conKeyterms = false): number {
+  if (typeof duracionS !== "number" || !Number.isFinite(duracionS) || duracionS <= 0) return 0;
+  const { usdPorHora, usdPorHoraKeyterms } = config.cascadaV2.elevenlabs.stt;
+  return Math.ceil((duracionS * (microUsd(usdPorHora) + (conKeyterms === true ? microUsd(usdPorHoraKeyterms) : 0))) / 3600);
+}
+
+/** Costo estimado de ElevenLabs TTS (micro-USD, entero hacia arriba) por `caracteres` sintetizados. */
+export function costoElevenLabsTtsMicroUsd(caracteres: number, config: ConfigPlataformaVoz = VOZ_PLATAFORMA): number {
+  if (typeof caracteres !== "number" || !Number.isFinite(caracteres) || caracteres <= 0) return 0;
+  return Math.ceil(caracteres * microUsd(config.cascadaV2.elevenlabs.tts.usdPorMilCaracteres) / 1000);
 }
 
 /** US$ por millon de caracteres de HeyGen en el instante `reloj()`: el precio promocional hasta su fecha de fin (exclusiva) y el de lista despues. */

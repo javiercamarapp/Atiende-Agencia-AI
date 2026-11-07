@@ -78,7 +78,7 @@ function parsearComponentes(value: unknown, donde: string, escalon: EscalonVoz, 
   const lista = value.map((c, j) => {
     const o = (c !== null && typeof c === "object" && !Array.isArray(c) ? c : {}) as Record<string, unknown>;
     const motivo = motivoComponenteInvalido({ proveedor: o.proveedor, unidad: o.unidad, costoReal: o.costoReal });
-    if (motivo === "proveedor") throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, deepgram-aura-2, heygen u openrouter:<modelo> (hasta 80 caracteres).`);
+    if (motivo === "proveedor") throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, deepgram-aura-2, elevenlabs, elevenlabs-tts, heygen u openrouter:<modelo> (hasta 80 caracteres).`);
     if (motivo === "unidad") throw Errors.validation(`${donde}[${j}].unidad: no corresponde al proveedor (deepgram: segundo; los demás: unidad).`);
     if (motivo === "costoReal") throw Errors.validation(`${donde}[${j}].costoReal: debe ser booleano y solo openrouter:<modelo> reporta su costo.`);
     const proveedor = o.proveedor as string;
