@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import "../i18n/mensajes/comun.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 /**
  * Grupo del menu de la pantalla activa (lo provee `VerticalShell`). Con la bandera ds3 el PageHeader lo muestra como antetitulo cuando la
@@ -52,7 +52,7 @@ export interface PageHeaderProps {
  */
 export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, eyebrow, guia, className }: PageHeaderProps) {
   const grupoNav = React.useContext(GrupoNavContext);
-  const t = useT();
+  const t = useT(comun);
   return (
     <header className={cn("ds3-encabezado grid gap-2.5", className)}>
       {migas && migas.length > 0 && (

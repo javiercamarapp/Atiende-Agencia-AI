@@ -8,7 +8,7 @@
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/datos.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export type Rango = "7" | "30" | "todo";
 
@@ -54,7 +54,7 @@ export interface GlobalFilterProps {
 }
 
 export function GlobalFilter({ base, r, extra, className }: GlobalFilterProps) {
-  const t = useT();
+  const t = useT(datos);
   return (
     <div role="group" aria-label={t("datos.rango.etiqueta")} className={cn("inline-flex shrink-0 items-center gap-1 rounded-full bg-canvas p-0.5", className)}>
       {OPCIONES.map((o) => {

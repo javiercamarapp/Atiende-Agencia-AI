@@ -5,7 +5,7 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n/proveedor";
-import "../../i18n/mensajes/comun.ts";
+import { comun } from "../../i18n/mensajes/comun.ts";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
@@ -96,5 +96,5 @@ export { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHe
 
 /** Nombre accesible del boton de cierre, en el idioma de la consola. */
 function TextoCerrar() {
-  return <span className="sr-only">{useT()("comun.cerrar")}</span>;
+  return <span className="sr-only">{useT(comun)("comun.cerrar")}</span>;
 }

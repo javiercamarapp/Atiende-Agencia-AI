@@ -4,7 +4,7 @@ import { CifraTexto } from "./Cifra";
 import { Card } from "./ui/card";
 import { useT } from "../i18n/proveedor";
 import type { Traductor } from "../i18n/traducir.ts";
-import "../i18n/mensajes/datos.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 type IconType = React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -67,7 +67,7 @@ export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota: del
   const mostrarSinDato = Boolean(sinDato);
   // CargandoLogo es un div role=status: no puede vivir dentro de un <p>.
   const Valor = cargando ? "div" : "p";
-  const t = useT();
+  const t = useT(datos);
   const deltaNota = deltaNotaProp ?? t("datos.kpi.vsPeriodoAnterior");
   const pie = pieDe({ t, mostrarSinDato, sinDato, delta, deltaNota, nota });
   return (

@@ -3,7 +3,7 @@ import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
 import { CARGA_TOPE_MS, faseCarga, useCargaCoordinada, type CargaTamano } from "../lib/carga-coordinador";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/comun.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 export type CargandoLogoTamano = CargaTamano;
 
@@ -36,7 +36,7 @@ const CONTENEDOR: Record<CargandoLogoTamano, string> = {
  * conserva el `min-height` que le ponga quien llama (via `className`), asi no hay salto de layout.
  */
 export function CargandoLogo({ tamano = "panel", etiqueta: etiquetaProp, decorativo = false, alTope, className, ...resto }: Props) {
-  const t = useT();
+  const t = useT(comun);
   const etiqueta = etiquetaProp ?? t("comun.cargando");
   const { visible } = useCargaCoordinada(tamano);
   const dibujo = useRef<HTMLSpanElement>(null);

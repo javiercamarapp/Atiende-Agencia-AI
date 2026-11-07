@@ -5,7 +5,8 @@ import { IconoDeCarga } from "../CargandoDelegado";
 import { leerDisenoDs3 } from "../../lib/diseno";
 import { leerIdioma } from "../../lib/idioma";
 import { traducir } from "../../i18n/traducir.ts";
-import "../../i18n/mensajes/comun.ts";
+import { comun } from "../../i18n/mensajes/comun.ts";
+import { registrarModuloEs } from "../../i18n/mensajes/index.ts";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
@@ -112,6 +113,7 @@ export const DURACION_NOTIFY_MS = { success: 4000, info: 4000, warning: 6000, er
 type TipoNotify = keyof typeof DURACION_NOTIFY_MS;
 
 function opcionesSonner(tipo: TipoNotify, o: NotifyOpciones | undefined) {
+  registrarModuloEs(comun);
   const accion = o?.deshacer ?? o?.accion;
   const duration = o?.duracion ?? (accion ? Infinity : DURACION_NOTIFY_MS[tipo]);
   return {

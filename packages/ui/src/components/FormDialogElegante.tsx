@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { type TamanoModal } from "./ui/superficies";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/datos.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export interface FormDialogEleganteProps {
   readonly open: boolean;
@@ -49,7 +49,7 @@ export function FormDialogElegante({
   tamano = "md",
   bloquearCierre = false,
 }: FormDialogEleganteProps) {
-  const t = useT();
+  const t = useT(datos);
   const textoBotonGuardar = textoBotonGuardarProp ?? t("datos.guardarCambios");
   const pie =
     footer ?? (

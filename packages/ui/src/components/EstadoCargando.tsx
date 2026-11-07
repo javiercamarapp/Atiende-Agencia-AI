@@ -3,7 +3,7 @@ import { RegionCargando } from "./CargandoDelegado";
 import { Skeleton } from "./ui/skeleton";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/comun.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 export type EstadoCargandoVariante = "bloque" | "pantalla" | "tabla" | "tarjeta";
 
@@ -32,7 +32,7 @@ export function EstadoCargando({
   filas?: number;
   className?: string;
 }) {
-  const t = useT();
+  const t = useT(comun);
   const etiqueta = etiquetaProp ?? t("comun.cargando");
   if (variante === "pantalla") {
     return (

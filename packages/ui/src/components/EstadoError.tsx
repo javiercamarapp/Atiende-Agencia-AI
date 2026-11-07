@@ -2,7 +2,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/comun.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 /**
  * `EstadoError` identico al de Likida (kit.tsx; spec UNI-3c 6.5): tarjeta p-4 con
@@ -32,7 +32,7 @@ export function EstadoError({
   compacto?: boolean;
   className?: string;
 }) {
-  const t = useT();
+  const t = useT(comun);
   const titulo = tituloProp ?? t("comun.error.titulo");
   const descripcion =
     mensaje ??

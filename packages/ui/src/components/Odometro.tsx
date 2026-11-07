@@ -8,7 +8,7 @@ import { cn } from "../lib/utils";
 import { formatMoney } from "../lib/formatMoney";
 import { useT } from "../i18n/proveedor";
 import { Cifra, type CifraTamano } from "./Cifra";
-import "../i18n/mensajes/datos.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export type OdometroTamano = "md" | "lg";
 
@@ -42,7 +42,7 @@ export function avanceHaciaMeta(valor: number, meta: number): number {
 const ROTULO = "whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 
 export function Odometro({ valor, prefijo, etiqueta, sinDato: sinDatoProp, tamano = "md", meta, className }: OdometroProps) {
-  const t = useT();
+  const t = useT(datos);
   const sinDato = sinDatoProp ?? t("datos.sinMedir");
   const contenedor = cn("hidden shrink-0 flex-col items-end gap-2 sm:flex", className);
   const medible = valor !== null && Number.isFinite(valor) && valor >= 0;

@@ -6,8 +6,8 @@ import { AtiendeMark } from "./AtiendeLogo";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/comun.ts";
-import "../i18n/mensajes/datos.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export interface FormDialogPaso {
   readonly id: string;
@@ -66,7 +66,7 @@ export function FormDialog({
   altoMinimoClase,
   bloquearCierre = false,
 }: FormDialogProps) {
-  const t = useT();
+  const t = useT(comun, datos);
   const textoBotonGuardar = textoBotonGuardarProp ?? t("datos.guardarCambios");
   const indiceActivo = pasos ? pasos.findIndex((p) => p.id === pasoActivo) : -1;
 

@@ -4,7 +4,7 @@ import { cva } from "class-variance-authority";
 
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/comun.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 export const CALLOUT_TONES = ["neutral", "info", "success", "warning", "danger"] as const;
 export type CalloutTone = (typeof CALLOUT_TONES)[number];
@@ -48,7 +48,7 @@ export interface CalloutProps extends Omit<React.HTMLAttributes<HTMLDivElement>,
  * role="status" (no interrumpe al lector de pantalla).
  */
 export function Callout({ tone = "info", titulo, icon, accion, onDismiss, className, children, role, ...props }: CalloutProps) {
-  const t = useT();
+  const t = useT(comun);
   const { Icono, clase } = iconoPorTono[tone];
   return (
     <div role={role ?? (tone === "danger" ? "alert" : "status")} data-tone={tone} className={cn(calloutVariants({ tone }), className)} {...props}>

@@ -10,7 +10,7 @@ import { CifraTexto } from "./Cifra";
 import { Card } from "./ui/card";
 import { SparklineConsola, Tendencia } from "./graficas";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/datos.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export interface KpiTileProps {
   /** Elemento ya armado (`<Icon className="size-[15px]" strokeWidth={1.75} />`). */
@@ -32,7 +32,7 @@ export interface KpiTileProps {
 }
 
 export function KpiTile({ icono, etiqueta, valor, formato = "numero", tendencia, sparkline, vacio, nota, cargando = false, className }: KpiTileProps) {
-  const t = useT();
+  const t = useT(datos);
   const noMedible = valor === null || !Number.isFinite(valor);
   const texto = noMedible ? "—" : resolverFormato(formato)(valor);
   return (

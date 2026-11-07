@@ -9,7 +9,7 @@ import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { AtiendeWordmark } from "../AtiendeLogo";
 import { useT } from "../../i18n/proveedor";
-import "../../i18n/mensajes/comun.ts";
+import { comun } from "../../i18n/mensajes/comun.ts";
 
 /** Anchos unicos de las superposiciones (px). Un ancho heredado se redondea al estandar con `tamanoDrawerPara`. */
 export const ANCHOS_SUPERPOSICION = {
@@ -234,5 +234,5 @@ export function Modal({ open, onOpenChange, titulo, subtitulo, pie, notaPie, tam
 
 /** Nombre accesible del boton de cierre, en el idioma de la consola. */
 function TextoCerrar() {
-  return <span className="sr-only">{useT()("comun.cerrar")}</span>;
+  return <span className="sr-only">{useT(comun)("comun.cerrar")}</span>;
 }

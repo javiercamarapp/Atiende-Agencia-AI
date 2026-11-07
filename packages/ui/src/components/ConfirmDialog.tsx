@@ -17,7 +17,7 @@ import { FormField } from "./ui/form-field";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/comun.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 export type ConfirmTono = "default" | "danger";
 
@@ -92,7 +92,7 @@ export function ConfirmDialog({
   botonesGrandes = false,
   onConfirm,
 }: ConfirmDialogProps) {
-  const t = useT();
+  const t = useT(comun);
   const confirmar = confirmarProp ?? t("comun.confirmar");
   const cancelar = cancelarProp ?? t("comun.cancelar");
   const [valor, setValor] = React.useState(campo?.valorInicial ?? "");

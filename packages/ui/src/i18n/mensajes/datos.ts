@@ -1,5 +1,4 @@
 import type { ModuloEs } from "../tipos.ts";
-import { registrarModuloEs } from "./index.ts";
 
 /** Componentes de datos (tabla, KPIs, odometro, filtro de rango, formularios largos): viajan con las pantallas que los usan,
  * no con el bundle de arranque. */
@@ -34,5 +33,3 @@ export const datos = {
   "datos.agente.sinCorridas": "Sin corridas registradas.",
   "datos.sinMedir": "sin medir",
 } as const satisfies ModuloEs;
-
-registrarModuloEs(datos);

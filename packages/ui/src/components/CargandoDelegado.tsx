@@ -5,7 +5,7 @@ import { DISENO_DS3 } from "../lib/diseno";
 import { useCargaRetenida, type CargaTamano } from "../lib/carga-coordinador";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/comun.ts";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 /**
  * Adaptadores de carga (ds3 / 2.2). Con la bandera APAGADA renderizan EXACTAMENTE lo que renderizaban los consumidores
@@ -76,7 +76,7 @@ export function RegionCargando({
   pulso?: boolean;
   children?: ReactNode;
 }) {
-  const t = useT();
+  const t = useT(comun);
   if (DISENO_DS3) return <CargandoLogo tamano={tamano} etiqueta={etiqueta ?? etiquetaDs3 ?? t("comun.cargando")} className={claseDs3} />;
   return (
     <div role="status" aria-busy={ocupado ? "true" : undefined} aria-label={etiqueta} className={cn(pulso && "animate-pulse", className)}>

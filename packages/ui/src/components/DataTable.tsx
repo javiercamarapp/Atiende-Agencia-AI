@@ -9,7 +9,7 @@ import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/datos.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export type DataTableEstado = "loading" | "error" | "empty" | "ok";
 export type DataTableDireccion = "asc" | "desc";
@@ -143,7 +143,7 @@ export function DataTable<T>({
   vista = "auto",
   className,
 }: DataTableProps<T>) {
-  const t = useT();
+  const t = useT(datos);
   const vacio = vacioProp ?? { mensaje: t("datos.tabla.vacio") };
   const esEscritorio = useEsEscritorio();
   const comoTarjetas = vista === "tarjetas" || (vista === "auto" && !esEscritorio);
