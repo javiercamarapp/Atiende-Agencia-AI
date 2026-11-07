@@ -145,7 +145,13 @@ test.describe("copiloto ds3 en todos los ámbitos @copiloto @ds3", () => {
 
   test("abrir OTRA organizacion por su slug no muestra su chat ni consulta datos de nadie", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("restaurantes", "owner");
+    // El Resumen de la organizacion PROPIA sigue pidiendo sus graficas fijadas (GET .../chat-datos/pins) tras pintar el sidebar;
+    // se espera a que termine antes de contar, para que solo cuente lo que dispare la organizacion ajena.
+    await page.waitForLoadState("networkidle");
     const antes = (await mock.buscar({ ruta: /chat-datos/ })).length;
+    // La API simulada no modela membresias: devuelve sucursales para CUALQUIER slug. La real (admin-kpis.ts) responde 403
+    // «No perteneces a esta organización» en GET /v1/restaurantes/:orgSlug/admin/branches; se reproduce aqui esa respuesta.
+    await mock.inyectarFalla({ metodo: "GET", ruta: "/v1/restaurantes/otra-organizacion-ajena/admin/branches", status: 403, cuerpo: { message: "No perteneces a esta organización." } });
     await page.goto("/restaurantes/otra-organizacion-ajena/copiloto");
     await expect(page.getByTestId("copiloto-temas")).toHaveCount(0);
     await expect(page.getByRole("form", { name: "Preguntar al Copiloto" })).toHaveCount(0);
