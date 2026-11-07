@@ -16,6 +16,9 @@ const PANTALLAS: ReadonlyArray<{ readonly id: string; readonly ruta: string; rea
   { id: "resumen", ruta: "/resumen", es: /Citas esta semana|Por confirmar|Clientes nuevos|Ver agenda/, en: /Appointments this week|To confirm|New customers/ },
   { id: "agenda", ruta: "/agenda", es: /Todos los proveedores|Nueva cita|Lista de espera/, en: /All providers|New appointment|Waitlist/ },
   { id: "clientes", ruta: "/clientes", es: /Buscar cliente|Contacto|Anterior|Siguiente/, en: /Customers|Contact/ },
+  // Disponibilidad y Staff no entran: la API simulada no sirve el detalle del proveedor ni las invitaciones (cubiertas en i18n-citas-ajustes.spec.tsx).
+  { id: "servicios", ruta: "/servicios", es: /Nuevo servicio|Crear servicio|Duración \(min\)/, en: /New service|Create service/ },
+  { id: "avisos", ruta: "/avisos", es: /Citas por confirmar|Recordatorios de 24 h|Escalaciones de crisis/, en: /Appointments to confirm|24-hour reminders|Crisis escalations/ },
 ];
 
 test.beforeEach(async ({ page }) => {
