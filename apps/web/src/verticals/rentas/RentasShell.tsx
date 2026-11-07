@@ -53,9 +53,9 @@ import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId, resolveActivePropertyId } from "./lib/property-selection.ts";
-import "@atiende/ui/i18n/nav";
-import "@atiende/ui/i18n/shell";
-import "@atiende/ui/i18n/consola";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Propiedad con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type PropiedadOption = PropertyOption & { readonly name: string };
@@ -181,7 +181,7 @@ export interface RentasShellProps {
 
 export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RentasShellProps) {
   // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
-  const t = useT();
+  const t = useT(nav, shell, consola);
   useDocumentTitle(t("consola.vertical.rentas"), orgSlug);
   const s = useVerticalSession({ adapter: RENTAS_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 

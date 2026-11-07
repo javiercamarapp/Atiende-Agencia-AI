@@ -12,7 +12,7 @@ import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
 import { CentroNotificaciones, type CentroNotificacionesProps } from "./CentroNotificaciones";
-import "../i18n/mensajes/notif.ts";
+import { notif } from "../i18n/mensajes/notif.ts";
 
 export interface NotificationBellProps {
   /** Ruta de la pagina de notificaciones de la consola (p. ej. `/restaurantes/mi-org/notificaciones`). */
@@ -28,7 +28,7 @@ export interface NotificationBellProps {
 }
 
 export function NotificationBell({ href, hayNoLeidas, className, centro }: NotificationBellProps) {
-  const t = useT();
+  const t = useT(notif);
   if (centro) return <CentroNotificaciones href={href} hayNoLeidas={hayNoLeidas} className={className} {...centro} />;
   return (
     <Link

@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Skeleton } from "./ui/skeleton";
 import { useT } from "../i18n/proveedor";
 import { RegionCargando } from "./CargandoDelegado";
-import "../i18n/mensajes/notif.ts";
+import { notif } from "../i18n/mensajes/notif.ts";
 
 export type CentroSeveridad = "info" | "atencion" | "critica";
 
@@ -53,7 +53,7 @@ const ROTULO = { info: "notif.severidad.info", atencion: "notif.severidad.atenci
  */
 export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir, onReintentar, onLeer, onMarcarTodas, className }: CentroNotificacionesProps) {
   const [abierto, setAbierto] = React.useState(false);
-  const t = useT();
+  const t = useT(notif);
   const cambiar = (v: boolean) => {
     setAbierto(v);
     if (v) onAbrir?.();

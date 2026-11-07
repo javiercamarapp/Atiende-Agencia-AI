@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Clave } from "../i18n/mensajes/index.ts";
 import { useI18n } from "../i18n/proveedor";
-import "../i18n/mensajes/shell.ts";
+import { shell } from "../i18n/mensajes/shell.ts";
 import { IDIOMAS, IDIOMA_CAMBIO_EVENTO, leerIdioma, type Idioma } from "../lib/idioma";
 import { cn } from "../lib/utils";
 
@@ -16,7 +16,7 @@ const ROTULO: Record<Idioma, Clave> = { es: "shell.idioma.es", en: "shell.idioma
 export function SelectorIdioma({ className }: { className?: string }) {
   const [idioma, setIdioma] = useState<Idioma>("es");
   // Pasa por el proveedor (cambiarIdioma): guarda, anuncia y llama a `persistir` cuando exista.
-  const { t, cambiarIdioma } = useI18n();
+  const { t, cambiarIdioma } = useI18n(shell);
 
   useEffect(() => {
     setIdioma(leerIdioma());

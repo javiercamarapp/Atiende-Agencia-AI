@@ -26,9 +26,9 @@ import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
 import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
 import { CLAVE_SECCION_SUPERADMIN, claveRutaSuperadmin } from "./rutas-i18n.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
-import "@atiende/ui/i18n/nav";
-import "@atiende/ui/i18n/shell";
-import "@atiende/ui/i18n/consola";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -64,7 +64,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   const [resuelto, setResuelto] = useState(false);
   const [copilotoAbierto, setCopilotoAbierto] = useState(false);
   const { pathname } = useLocation();
-  const t = useT();
+  const t = useT(nav, shell, consola);
   const SECTIONS = useMemo(() => construirSecciones(t), [t]);
   const PIE_BASE = useMemo(() => construirPie(t), [t]);
   const MOBILE_ITEMS = useMemo(() => construirMovil(t), [t]);

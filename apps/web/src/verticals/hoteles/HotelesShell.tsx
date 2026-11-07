@@ -51,9 +51,9 @@ import { COPILOTO_HOTELES_ROLES } from "./pages/Copiloto.tsx";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
-import "@atiende/ui/i18n/nav";
-import "@atiende/ui/i18n/shell";
-import "@atiende/ui/i18n/consola";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Hotel (property) con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type HotelOption = PropertyOption & { readonly name: string };
@@ -164,7 +164,7 @@ const HOUSEKEEPING_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "fro
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
-  const t = useT();
+  const t = useT(nav, shell, consola);
   useDocumentTitle(t("consola.vertical.hoteles"), orgSlug);
   // Fail-closed: si la organización activa no aparece en la sesión (no debería pasar, ver decideHotelesLandingPath),
   // cae al rol operativo MÁS bajo de HOTEL_ROLES (nunca uno que active gates administrativos/de F&B de más).

@@ -1,5 +1,4 @@
 import type { ModuloEs } from "../tipos.ts";
-import { registrarModuloEs } from "./index.ts";
 
 /** Campana y centro de notificaciones: viaja con su chunk (no esta en el de arranque). */
 export const notif = {
@@ -16,5 +15,3 @@ export const notif = {
   "notif.severidad.atencion": "Requiere atención",
   "notif.severidad.critica": "Crítica",
 } as const satisfies ModuloEs;
-
-registrarModuloEs(notif);

@@ -59,9 +59,9 @@ import { SUGERENCIAS_RESTAURANTES, ejecutarConsultaDirecta, fetchDataChatDisponi
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { PuertaOnboarding } from "./PuertaOnboarding.tsx";
 import { BannerAgregados } from "./components/operacion/BannerAgregados.tsx";
-import "@atiende/ui/i18n/nav";
-import "@atiende/ui/i18n/shell";
-import "@atiende/ui/i18n/consola";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de restaurantes. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const RESTAURANTES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -229,7 +229,7 @@ function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
 
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
-  const t = useT();
+  const t = useT(nav, shell, consola);
   useDocumentTitle(t("consola.vertical.restaurantes"), orgSlug);
   // Ambito visual del repo suelto (UNI-R0b): tokens, botones en pildora y overlays; el sidebar conserva su paleta.
   useAmbitoVertical("restaurantes");

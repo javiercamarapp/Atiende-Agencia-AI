@@ -3,7 +3,7 @@ import { Sun, Monitor, Moon } from "lucide-react";
 import type { Clave } from "../i18n/mensajes/index.ts";
 import { useT } from "../i18n/proveedor";
 import { CLAVE_TEMA, aplicarTema, leerTema, suscribirTemaSistema, type Tema } from "../lib/tema.js";
-import "../i18n/mensajes/shell.ts";
+import { shell } from "../i18n/mensajes/shell.ts";
 
 // El tema (leer/aplicar/suscribir) vive en lib/tema.ts, compartido con ThemeBoot y /theme-boot.js.
 // Portado 1:1 desde atiende-restaurantes (src/components/ThemeSelector.tsx):
@@ -18,7 +18,7 @@ const OPCIONES: Array<{ valor: Tema; Icono: typeof Sun; rotulo: Clave }> = [
 
 export function ThemeSelector({ tamano = "normal" }: { tamano?: "normal" | "compacto" } = {}) {
   const compacto = tamano === "compacto";
-  const tr = useT();
+  const tr = useT(shell);
   const [tema, setTema] = useState<Tema>("claro");
 
   useEffect(() => {

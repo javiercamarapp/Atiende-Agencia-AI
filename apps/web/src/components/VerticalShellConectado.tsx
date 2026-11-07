@@ -12,7 +12,7 @@ import { useChatDatosDisponible } from "./BotonChatDatos.tsx";
 import { BannerPlan } from "./BannerPlan.tsx";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
-import "@atiende/ui/i18n/nav";
+import { nav } from "@atiende/ui/i18n/nav";
 
 export type VerticalShellConectadoProps = VerticalShellProps & {
   readonly apiBaseUrl: string;
@@ -39,7 +39,7 @@ export function seguridadHrefDe(notificacionesHref: string): string {
 
 export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, children, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
-  const t = useT();
+  const t = useT(nav);
   const chat = ocultarChat ? undefined : chatProp;
   // Pildora "Pregúntale a tus datos" del pie del Sidebar (gemela de la de Likida): abre el panel real (o la pagina del Copiloto) y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
   const chatDisponible = useChatDatosDisponible(chat);
