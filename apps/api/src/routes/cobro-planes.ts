@@ -48,6 +48,10 @@ export function serializarTarifa(t: TarifaPlanRow) {
     cuotaAltaMxn: pesos(t.cuotaAltaCentavos),
     tasaIvaPct: t.tasaIvaBp / 100,
     organizacionExclusivaId: t.organizacionExclusivaId,
+    cuotaAltaPorSucursalMxn: pesos(t.cuotaAltaPorSucursalCentavos),
+    margenMinimoPct: t.margenMinimoPct,
+    tramosSucursal: t.tramosSucursal.map((tr) => ({ desde: tr.desde, hasta: tr.hasta, precioMxn: pesos(tr.precioCentavos), minutosVozIncluidosPorSucursal: tr.minutosVozIncluidosPorSucursal, conversacionesWaIncluidasPorSucursal: tr.conversacionesWaIncluidasPorSucursal })),
+    bandasUso: t.bandasUso.map((b) => ({ metrica: b.metrica, desde: b.desde, hasta: b.hasta, precioMxn: pesos(b.precioCentavos), costoUnitarioMxn: b.costoUnitarioMxn })),
   };
 }
 

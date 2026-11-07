@@ -311,11 +311,23 @@ export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, 
 export { hayOnboardingEvento, registrarOnboardingEvento } from "./onboarding-evento.ts";
 export type { OnboardingEventoInput, ResultadoRegistroEvento, TipoOnboardingEvento } from "./onboarding-evento.ts";
 export type {
+  BandaUsoRow,
+  ClaveCostoUnitario,
   CobroAvailability,
   CobroPlanesRepository,
+  ConsumoDetalleRow,
+  CotizacionRow,
+  RegistrarCotizacionInput,
+  CostoUnitarioRow,
+  DiaConsumoRow,
+  MesHistorialRow,
+  MetricaBolsa,
+  OrganizacionMedidaRow,
+  SucursalConsumoRow,
+  TramoSucursalRow,
   TarifaOrganizacionRow,
   TarifaPlanInput,
   TarifaPlanRow,
   UsoFacturableRow,
 } from "./cobro-planes-medidos-repository.ts";
-export { InMemoryCobroPlanesRepository, mapTarifaPlan, PostgresCobroPlanesRepository } from "./cobro-planes-medidos-repository.ts";
+export { CLAVES_COSTO_UNITARIO, InMemoryCobroPlanesRepository, mapConsumoDetalle, mapTarifaPlan, PostgresCobroPlanesRepository } from "./cobro-planes-medidos-repository.ts";
