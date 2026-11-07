@@ -306,8 +306,9 @@ export async function bloqueConocimientoDelTurno(repo: RestaurantesRepository, o
   }
 }
 
-export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = "", estadoSucursalAhora = "", agregadosActivos = false): string {
-  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque, estadoSucursalAhora, agregadosActivos)}\n\n${NOTA_DE_VOZ_RULES}`;
+/** `prefijoEstable`: lo que depende del reloj va al final (cache de prompt del proveedor); el cerebro v2 lo pasa siempre, el resto solo con `WHATSAPP_PROMPT_PREFIJO_ESTABLE`. */
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = "", estadoSucursalAhora = "", agregadosActivos = false, prefijoEstable = false): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque, estadoSucursalAhora, agregadosActivos, prefijoEstable)}\n\n${NOTA_DE_VOZ_RULES}`;
 }
 
 /**
@@ -357,7 +358,7 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
   }
 }
 
-function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string, estadoSucursalAhora: string, agregadosActivos = false): string {
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string, estadoSucursalAhora: string, agregadosActivos = false, prefijoEstable = false): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
@@ -378,7 +379,7 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       pedidoGrandeTexto: config.largeOrderText ?? null,
       urlFacturacion: config.invoiceUrl ?? null,
       conocimientoBloque,
-      ...(prefijoEstableActivo() ? { prefijoEstable: true } : {}),
+      ...(prefijoEstable || prefijoEstableActivo() ? { prefijoEstable: true } : {}),
       ...(agregadosActivos ? { agregadosActivos: true } : {}),
     });
   }
@@ -747,7 +748,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Base sin migrar o sin entradas = bloque vacio (el prompt es identico al de antes); la lectura corre en SAVEPOINT dentro del repositorio.
       const conocimientoBloque = await bloqueConocimientoDelTurno(repo, organizationId, activeEntryBranch?.propertyId ?? entryPropertyId ?? null, config.timezone, now());
       const estadoSucursal = config.perfil === "taqueria_pm" ? await estadoSucursalParaPrompt(repo, activeEntryBranch, now()) : "";
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal, Boolean(options.agregados));
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal, Boolean(options.agregados), cerebroV2);
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
