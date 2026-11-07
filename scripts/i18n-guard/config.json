@@ -1,7 +1,9 @@
 {
   "alcance": [
     "packages/ui/src/i18n",
-    "apps/web/src/main.tsx"
+    "apps/web/src/main.tsx",
+    "apps/web/src/verticals/restaurantes/pages/ResumenGeneral.tsx",
+    "apps/web/src/verticals/restaurantes/lib/resumen-general.ts"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes"

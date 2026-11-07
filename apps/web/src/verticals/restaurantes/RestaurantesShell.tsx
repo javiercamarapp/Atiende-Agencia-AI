@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
   BellRing,
+  Building2,
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
@@ -124,6 +125,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
       // CHAT-08: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas (spec de diseño §203).
       items: [
         { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
+        // Resumen general: todas las sucursales en una vista (mismo permiso que el CFO, `cfo.ver`: dueño/admin; el API responde 403 a los demás).
+        ...(canSeeCfo ? [{ to: `${base}/general`, label: "Resumen general", icon: Building2 }] : []),
         ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
         // CFO-07: tablero financiero (solo owner/admin, `cfo.ver`; staff y repartidor no lo ven y el API les responde 403).
         ...(canSeeCfo ? [{ to: `${base}/cfo`, label: "CFO", icon: LineChart }] : []),
