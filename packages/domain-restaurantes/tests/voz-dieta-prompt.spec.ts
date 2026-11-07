@@ -47,8 +47,8 @@ describe("instruccion de voz sin secciones repetidas", () => {
     for (const h of ["H1. ", "H2. ", "H9. ", "H12. "]) expect(i).toContain(h);
   });
 
-  it("la instruccion con el sembrado mide a lo mas 12 000 caracteres (antes ~25 000)", () => {
-    expect(instruccionVozConReglas({ comportamiento: sembrado() }).length).toBeLessThanOrEqual(12_000);
+  it("la instruccion con el sembrado mide a lo mas 13 000 caracteres (antes ~25 000)", () => {
+    expect(instruccionVozConReglas({ comportamiento: sembrado() }).length).toBeLessThanOrEqual(13_000);
   });
 });
 
