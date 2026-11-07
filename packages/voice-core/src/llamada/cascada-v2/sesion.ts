@@ -199,6 +199,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
           parcial: (texto) => this.alParcial(texto),
           turnoFinal: (texto) => this.alTurnoFinal(texto),
           caido: (codigo) => this.falla(new ErrorEtapa("stt", codigo.replace(/^stt_/, ""))),
+          descartado: (motivo) => this.log("v2_stt_descartado", { motivo }),
         },
       ),
       tts.abrir({ voz: this.vozTts, hzSalida: c.deepgramAura2.hzSalida }),
@@ -283,6 +284,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
 
   private alParcial(texto: string): void {
     if (texto.trim() === "" || this.asentimientoMientrasPiensa(texto)) return;
+    // Una sola palabra en el parcial (un «oye» de la mesa de al lado, un golpe transcrito) no corta al agente: hacen falta dos. El turno final siempre corta.
+    if (texto.trim().split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length < 2) return;
     this.interrumpir();
   }
 

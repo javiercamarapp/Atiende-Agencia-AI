@@ -383,7 +383,7 @@ describe("asentimientos mientras el agente piensa (tras la frase de espera)", ()
     await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, manejadoresFalsos().h);
     stt.eventos!.turnoFinal("cuanto es de tres tacos");
     await turnoMicrotareas(20);
-    stt.eventos!.parcial("sí");
+    stt.eventos!.parcial("sí claro");
     expect(llm.senales[0]!.aborted).toBe(true);
     lento.abrir();
     await prov.inactivo();
