@@ -63,5 +63,8 @@ export function adaptarPromptPmV2(prompt: string): string {
     // C3 PED-13: gringas y mestizas se piden por platillo (cada una es una orden de 2 tacos); el paso 5 mandaba preguntar piezas y el cliente acababa quitando la mestiza.
     .replace(PASO5_PIEZAS_SIN_BANDERA, PASO5_PIEZAS_V2)
     .replace(ORDENES_EJEMPLO_SIN_BANDERA, ORDENES_EJEMPLO_V2)
-    .replace("Quesadillas y bistec van en órdenes de 3; gringas y mestizas en órdenes de 2.", "Quesadillas y bistec van en órdenes de 3; cada gringa o mestiza es una orden de 2 tacos.");
+    .replace("Quesadillas y bistec van en órdenes de 3; gringas y mestizas en órdenes de 2.", "Quesadillas y bistec van en órdenes de 3; cada gringa o mestiza es una orden de 2 tacos.")
+    // Default del dueño (7-nov, conflicto base vs v2): la propina NUNCA se sugiere ni se agrega; una sola regla (la de PM_POLICY_RULES_V2: voluntaria, al repartidor, fuera del total).
+    .replace("Solo si el cliente la menciona, dígale que se da en la terminal (con tarjeta) o en efectivo al repartidor.", "Si el cliente la menciona: es voluntaria, se la da directo al repartidor y no se suma al total.")
+    .replace("Propina: nunca la pregunte; si el cliente la menciona, se da en la terminal (tarjeta) o en efectivo al repartidor.", "Propina: ver POLÍTICAS DE LA CASA.");
 }

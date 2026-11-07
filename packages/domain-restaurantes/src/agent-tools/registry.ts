@@ -1120,11 +1120,18 @@ async function exigirOffsetDeLaSucursal(repo: RestaurantesRepository, ctx: Agent
   }
 }
 
+function sinPropina(entrada: Record<string, unknown>): Record<string, unknown> {
+  const { propina: _propina, propina_porcentaje: _pct, ...resto } = entrada;
+  return resto;
+}
+
 export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>, opts: InvokeAgentToolOpts = {}): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   // `plazo_minutos_servidor` es un campo INTERNO que solo pone `conHoraDeRecogidaRelativa`: lo que mande el modelo se descarta.
-  const { plazo_minutos_servidor: _interno, ...entrada } = rawInput;
+  const { plazo_minutos_servidor: _interno, ...entradaCruda } = rawInput;
+  // Cerebro v2 (default del dueño, 7-nov): la propina NUNCA se agrega al pedido (política PM «nunca»: voluntaria, directo al repartidor). Lo que mande el modelo se descarta.
+  const entrada = ctx.cerebroV2 && (name === "cotizar_pedido" || name === "crear_pedido") ? sinPropina(entradaCruda) : entradaCruda;
   // QA-PM-R4-reglas-11: una hora_recogida que no es texto (un epoch numerico) se ignoraba en silencio y el pedido salia sin hora (cocina lo trata como "para ya").
   if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.hora_recogida !== undefined && entrada.hora_recogida !== null && typeof entrada.hora_recogida !== "string") {
     throw new OrderValidationError("hora_recogida debe ser texto en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00), no un número. Si el cliente dio un plazo (\"en 40 minutos\"), mande minutos_para_recoger.");

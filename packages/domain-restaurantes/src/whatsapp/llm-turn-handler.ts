@@ -1614,7 +1614,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           // Propina dicha en porcentaje ("de propina 10%") que el modelo no mando: el servidor la completa (solo tarjeta; el resto de la regla de propina sigue en el servidor).
           // Solo si el modelo NO mando propina (ni 0): el ultimo mensaje del cliente acepta un porcentaje en afirmativo.
-          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
+          if (result === undefined && !cerebroV2 && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
             const pct = porcentajePropinaDichoPorElCliente([...messages].reverse().find((m) => m.role === "user")?.content);
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
