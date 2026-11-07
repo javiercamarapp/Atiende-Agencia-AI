@@ -30,13 +30,39 @@ Verificación contra Postgres real: `scripts/verify-superadmin-mfa-switches-orgs
   gestión de organización.
 - Política:
 
-  | Situación | Acción sensible |
-  |---|---|
-  | superadmin con factor activo | exige `x-stepup-token` válido (403 `stepup_required`) |
-  | sin factor, `SUPERADMIN_MFA_REQUIRED` apagada (default) | sin cambios: nada que hoy funcione se rompe antes de enrolar |
-  | sin factor, `SUPERADMIN_MFA_REQUIRED=1` | 403 `mfa_enrollment_required` |
-  | migración 0025 sin aplicar o repo sin cablear, `REQUIRED` apagada | sin cambios (camino previo) |
-  | migración 0025 sin aplicar o repo sin cablear, `REQUIRED=1` | 503 (falla cerrado; no degrada en silencio) |
+  | Situación | Acción sensible | Cualquier otra ruta `/superadmin/*` |
+  |---|---|---|
+  | superadmin con factor activo | exige `x-stepup-token` válido (403 `stepup_required`) | responde normal |
+  | sin factor, MFA **no** obligatoria | sin cambios | sin cambios |
+  | sin factor (o solo pendiente), MFA obligatoria | 403 `mfa_enrollment_required` | 403 `mfa_enrollment_required`, salvo `GET /superadmin/mfa/estado`, `POST /superadmin/mfa/enrolar` y `POST /superadmin/mfa/verificar` |
+  | migración 0025 sin aplicar o repo sin cablear, MFA no obligatoria | sin cambios (camino previo) | sin cambios |
+  | migración 0025 sin aplicar o repo sin cablear, MFA obligatoria | 503 (falla cerrado) | 503 (falla cerrado) |
+
+- **Cuándo es obligatoria** (`resolverMfaObligatoria`, `apps/api/src/env.ts`):
+  `SUPERADMIN_MFA_REQUIRED=1`/`true` la activa y `0`/`false` la apaga en cualquier ambiente.
+  **Sin la variable es obligatoria en producción** (`VERCEL_ENV=production`) y opcional en
+  previews, desarrollo y pruebas.
+- La compuerta de enrolamiento es `mfaEnrollmentGate` (`apps/api/src/superadmin-seguridad/step-up.ts`),
+  montada en `routes/superadmin.ts` después de la zona CFO y antes del step-up. Enrolar no
+  reemplaza un factor activo (la función SQL lo rechaza), así que las tres rutas exentas no
+  sirven para cambiar el TOTP de quien ya enroló.
+- La web (`SuperAdminShell`) consulta el estado y, mientras falte enrolar, manda a
+  `/superadmin/seguridad` desde cualquier página.
+
+### Enrolar sin quedarse fuera (procedimiento)
+
+1. Antes del despliegue que la vuelve obligatoria: cada superadmin entra a
+   `/superadmin/seguridad`, enrola su autenticador y lo activa con el primer código. Comprobar
+   en la base que todos los superadmins tengan factor `active` (conteo, sin PII).
+2. Si un superadmin no alcanzó a enrolar: la compuerta le deja ver Seguridad, enrolar y
+   activar; con eso queda dentro. No hace falta apagar nada.
+3. Si alguien pierde el dispositivo: otro superadmin con factor activo hace
+   `POST /superadmin/mfa/reset` (con su propio step-up) y la persona vuelve al paso 2.
+4. **Escape de emergencia** (todos los superadmins sin acceso a su TOTP, o la llave de cifrado
+   cambió): poner `SUPERADMIN_MFA_REQUIRED=0` en Vercel (Production) y redesplegar. Vuelve el
+   camino anterior: sin factor no se exige nada; con factor activo, el step-up se sigue pidiendo
+   en lo sensible. El factor ilegible lo restablece otro superadmin, o una persona con acceso a la
+   base, de forma auditada. Al terminar, quitar la variable (o ponerla en `1`).
 
 - Recuperación: otro superadmin restablece el factor (`POST /superadmin/mfa/reset`,
   motivo ≥ 20 caracteres, exige su propio step-up, nunca el propio). No hay códigos de
@@ -81,5 +107,6 @@ Verificación contra Postgres real: `scripts/verify-superadmin-mfa-switches-orgs
 2. Aplicar `0025` a la base (`supabase db push`, lo corre una persona). Sin esto, MFA,
    interruptores y gestión de organizaciones muestran "no disponible aún".
 3. Cada superadmin enrola su autenticador en `/superadmin/seguridad`.
-4. Opcional, **solo cuando todos enrolaron**: definir `SUPERADMIN_MFA_ENCRYPTION_KEY`
-   (antes de enrolar, o re-enrolar después) y `SUPERADMIN_MFA_REQUIRED=1` en Vercel.
+4. Recomendado: definir `SUPERADMIN_MFA_ENCRYPTION_KEY` (antes de enrolar, o re-enrolar
+   después). Desde el PR de MFA obligatoria, producción la exige sin configurar nada
+   (ver "Enrolar sin quedarse fuera").
