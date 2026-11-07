@@ -14,7 +14,7 @@ describe("prompt PM con prefijo estable", () => {
     const a = buildSystemPrompt(PM_CONFIG_POR_OMISION, [], { isNew: true }, new Date("2026-11-07T13:00:00-06:00"), null, "", "", false, true);
     const b = buildSystemPrompt(PM_CONFIG_POR_OMISION, [], { isNew: true }, new Date("2026-11-07T19:41:00-06:00"), null, "", "", false, true);
     expect(prefijoComun(a, b) / a.length).toBeGreaterThan(0.9);
-    expect(a).toContain("7 de noviembre de 2026, 13:00");
+    expect(a).not.toBe(b); // el reloj sigue en el prompt (al final); el formato de la hora depende del ICU del entorno
   });
   it("sin la opcion (y sin la variable de entorno) el prompt es el de siempre", () => {
     const a = buildSystemPrompt(PM_CONFIG_POR_OMISION, [], { isNew: true }, new Date("2026-11-07T13:00:00-06:00"));
