@@ -5,6 +5,7 @@
 // across TODO su historial real) y tier (percentil real, calc_customer_tier). Esta es
 // la "memoria de cliente por teléfono" que el brief pide preservar explícitamente.
 import { buscarPedidoReciente } from "./pedido-reciente.ts";
+import { adjuntarPerfilHistorico } from "./historico/uso.ts";
 import { proponerGustos } from "./cliente-360/gustos.ts";
 import { cargarMemoria, evaluarReincidencia } from "./cliente-360/memoria.ts";
 import { fusionarRenglonesPorProducto } from "./promotions.ts";
@@ -92,7 +93,9 @@ export async function lookupCustomerConPedidoReciente(repo: RestaurantesReposito
   const base = await lookupCustomer(repo, organizationId, phone);
   if (base.isNew) return base;
   const pedidoReciente = await buscarPedidoReciente(repo, organizationId, phone, now);
-  return pedidoReciente === undefined ? base : { ...base, pedidoReciente };
+  const conPedido = pedidoReciente === undefined ? base : { ...base, pedidoReciente };
+  // Perfil 360 con historial importado (migracion 140): aditivo; sin historial devuelve el mismo objeto.
+  return adjuntarPerfilHistorico(repo, organizationId, phone, conPedido, now);
 }
 
 /**

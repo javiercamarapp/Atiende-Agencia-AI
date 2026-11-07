@@ -13,6 +13,7 @@ import { descripcionSeguraDeError } from "./log-seguro.ts";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import * as cliente360 from "./cliente-360/postgres.ts";
+import { getPerfilHistorico as getPerfilHistoricoPg } from "./historico/postgres.ts";
 import type { CustomerAddressChanges, CustomerPolicy, CustomerProfilePatch, OrderClosureInput, PreferenceAction } from "./cliente-360/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
@@ -972,6 +973,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   // ---- Cliente 360 (migracion 049): delegan en cliente-360/postgres.ts (funciones security definer + SAVEPOINT) ----
   getCustomerMemory(organizationId: string, phone: string) {
     return cliente360.getCustomerMemory(this.db, organizationId, phone);
+  }
+  getPerfilHistorico(organizationId: string, phone: string) {
+    return getPerfilHistoricoPg(this.db, organizationId, phone);
   }
   registerOrderClosure(input: OrderClosureInput) {
     return cliente360.registerOrderClosure(this.db, input);

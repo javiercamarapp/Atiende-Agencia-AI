@@ -35,3 +35,9 @@ scripts/eval-copiloto/salida/
 # Audios pregrabados de la llamada (se generan una vez con `npm run voz:pregrabados` y viajan en la imagen del worker; no se versionan)
 apps/voice-worker/assets/*.wav
 apps/web/bundle-manifest.json
+
+# Datos de clientes reales: NUNCA al repo (el repo es publico). El importador de historial se prueba solo con datos sinteticos.
+datos-clientes-pm/
+reporte-importacion-*.json
+reporte-importacion-*.md
+base-clientes-*.csv

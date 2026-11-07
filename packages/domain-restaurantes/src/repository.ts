@@ -10,6 +10,7 @@
 import type { LecturaResumenConfig, ResumenConfig, VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
+import type { EntradaPerfil } from "./historico/perfil.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
   CustomerAddressChanges,
@@ -248,6 +249,8 @@ export interface RestaurantesRepository {
   /** Memoria del cliente por telefono de 10 digitos: domicilios, pedidos anteriores, gustos y reincidencia. `null` = cliente
    * nuevo; `undefined` = la base todavia no la ofrece (migracion 049 sin aplicar): el llamador cae al camino anterior. */
   getCustomerMemory(organizationId: string, phone: string): Promise<CustomerMemory | null | undefined>;
+  /** Historial IMPORTADO del cliente (migracion 140) por telefono de 10 digitos. `null` = sin historial; `undefined` = base sin migrar. Opcional: los repositorios que no lo implementan siguen igual. */
+  getPerfilHistorico?(organizationId: string, phone: string): Promise<EntradaPerfil | null | undefined>;
   /** Cierre del ciclo tras crear un pedido (domicilio y gustos). Idempotente por pedido. `undefined` = base sin migrar. */
   registerOrderClosure(input: OrderClosureInput): Promise<{ readonly applied: boolean } | undefined>;
   /** Ficha del cliente para el staff. `null` si no existe en la organizacion. Lanza `ClienteMemoriaNoDisponibleError` sin la 049. */
