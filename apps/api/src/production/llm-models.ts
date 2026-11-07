@@ -367,6 +367,10 @@ export const ACTIVIDAD_POR_ROL: Readonly<Record<string, ActividadLlm>> = {
   "plataforma:demo_publica": "demo_publica",
 };
 
+/** Modelos con entrada de AUDIO verificada (`architecture.input_modalities` de OpenRouter, 6-nov-2026) y que la aceptan por la API de chat
+ *  (`input_audio`): una actividad de modalidad "audio" solo puede usar estos. MiMo V2.6 Flash lista audio pero DeepInfra rechaza `input_audio` (422). */
+export const MODELOS_CON_AUDIO: ReadonlySet<string> = new Set(["google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "google/gemini-3.8-flash"]);
+
 /** Actividad de un rol: clave exacta > "*:sufijo". `undefined` = rol sin actividad declarada (usa `DEFAULT_ROUTE`). */
 export function actividadDeRol(role: string): ActividadLlm | undefined {
   const suffix = role.includes(":") ? role.slice(role.indexOf(":") + 1) : role;
@@ -522,6 +526,17 @@ export function parseLlmModelsJson(raw: string | null | undefined): { config: Ll
         if ("error" in resolved) errors.push(`${where}.models[${i}]: ${resolved.error}`);
       });
     }
+    // Decisiones del dueno (WhatsApp): no se sobreescriben por variable de entorno, ni con clave exacta ni con "*:sufijo".
+    const actividad = actividadDeRol(key);
+    if (actividad && ACTIVIDADES_LLM[actividad].decision === "dueno") {
+      errors.push(`${where}: la actividad "${actividad}" es decision del dueno (${ACTIVIDADES_LLM[actividad].route.models.map((m) => m.model).join(" -> ")}); LLM_MODELS_JSON no la cambia`);
+    }
+    // Una actividad de audio solo acepta modelos con entrada de audio.
+    if (actividad && ACTIVIDADES_LLM[actividad].modalidad === "audio") {
+      models.forEach((m, i) => {
+        if (m && !MODELOS_CON_AUDIO.has(m.model)) errors.push(`${where}.models[${i}]: "${m.model}" no acepta audio (actividad "${actividad}")`);
+      });
+    }
     if (errors.length > before || models.some((m) => m === null)) continue;
     roles[key] = { models: models as LlmRungConfig[], ...(routing ? { routing } : {}) };
   }
@@ -529,9 +544,15 @@ export function parseLlmModelsJson(raw: string | null | undefined): { config: Ll
 }
 
 /** Resuelve la ruta de un rol: clave exacta > "*:sufijo" > "*" (de LLM_MODELS_JSON) > defaults versionados
- *  (clave exacta > "*:sufijo") > perfil economico. */
+ *  (clave exacta > "*:sufijo") > perfil economico. Dos candados sobre LLM_MODELS_JSON (incluido el comodin "*"):
+ *  - una actividad con `decision: "dueno"` (WhatsApp) NUNCA toma una ruta de la variable;
+ *  - una actividad de audio solo toma una ruta de la variable si TODOS sus modelos aceptan audio (`MODELOS_CON_AUDIO`). */
 export function resolveRoleRoute(role: string, overrides: LlmModelsConfig | undefined): LlmRouteConfig {
   const o = overrides?.roles ?? {};
   const suffix = role.includes(":") ? role.slice(role.indexOf(":") + 1) : role;
-  return o[role] ?? o[`*:${suffix}`] ?? o["*"] ?? DEFAULT_ROLE_ROUTES[role] ?? DEFAULT_ROLE_ROUTES[`*:${suffix}`] ?? DEFAULT_ROUTE;
+  const actividad = actividadDeRol(role);
+  const cfg = actividad ? ACTIVIDADES_LLM[actividad] : undefined;
+  const candidatos = cfg?.decision === "dueno" ? [] : [o[role], o[`*:${suffix}`], o["*"]];
+  const override = candidatos.find((r): r is LlmRouteConfig => r !== undefined && (cfg?.modalidad !== "audio" || r.models.every((m) => MODELOS_CON_AUDIO.has(m.model))));
+  return override ?? DEFAULT_ROLE_ROUTES[role] ?? DEFAULT_ROLE_ROUTES[`*:${suffix}`] ?? DEFAULT_ROUTE;
 }
