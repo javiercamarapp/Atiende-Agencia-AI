@@ -13,7 +13,9 @@
 --     a una organizacion a un modelo que nadie eligio, la cascada con un modelo retirado pasa a la DECISION DEL DUENO para la voz: el rapido,
 --     Gemini 3.5 Flash-Lite (el preciso, Luna, sigue siendo elegible en el panel). Su temperatura de voz se conserva en el respaldo; el
 --     voice-worker la omite porque 3.5 Flash-Lite no la admite.
---  3. CHECK por columna con la lista exacta. Un valor fuera de la lista muere en la base aunque alguien salte la validacion de la API.
+--     Lo mismo para DeepSeek V4.1 Flash en la voz (#719 lo marcaba apto): su ZDR solo existe en DeepInfra/Together/Fireworks/Baseten/
+--     Parasail/CoreWeave, fuera de los proveedores de voz (Vertex/Bedrock/Azure), y cada turno daba 404. Sigue elegible para WhatsApp.
+--  3. CHECK por columna con la lista exacta: WhatsApp = IDS_MODELOS_AGENTE; voz = IDS_MODELOS_VOZ_AGENTE (las filas con `vozZdr`). Un valor fuera de la lista muere en la base aunque alguien salte la validacion de la API.
 --     Cambiar la lista del codigo exige una migracion nueva con el CHECK actualizado en el MISMO PR (regla del dueno).
 --
 -- Antes de aplicar, conteo de SOLO LECTURA de las filas que cambian (ver el cuerpo del PR #750).
@@ -46,7 +48,7 @@ select organization_id, whatsapp_model, whatsapp_temperature, voice_cascade_mode
  where (whatsapp_model is not null
         and whatsapp_model not in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'deepseek/deepseek-v4.1-flash', 'google/gemini-3.5-flash-lite'))
     or (voice_cascade_model is not null
-        and voice_cascade_model not in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'deepseek/deepseek-v4.1-flash', 'google/gemini-3.5-flash-lite'))
+        and voice_cascade_model not in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'google/gemini-3.5-flash-lite'))
 on conflict (organization_id) do nothing;
 
 update restaurantes.agent_runtime_settings
@@ -58,15 +60,15 @@ update restaurantes.agent_runtime_settings
 update restaurantes.agent_runtime_settings
    set voice_cascade_model = 'google/gemini-3.5-flash-lite'
  where voice_cascade_model is not null
-   and voice_cascade_model not in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'deepseek/deepseek-v4.1-flash', 'google/gemini-3.5-flash-lite');
+   and voice_cascade_model not in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'google/gemini-3.5-flash-lite');
 
 alter table restaurantes.agent_runtime_settings
   add constraint agent_runtime_settings_whatsapp_model_permitido
     check (whatsapp_model is null or whatsapp_model in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'deepseek/deepseek-v4.1-flash', 'google/gemini-3.5-flash-lite')),
   add constraint agent_runtime_settings_voice_cascade_model_permitido
-    check (voice_cascade_model is null or voice_cascade_model in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'deepseek/deepseek-v4.1-flash', 'google/gemini-3.5-flash-lite'));
+    check (voice_cascade_model is null or voice_cascade_model in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'google/gemini-3.5-flash-lite'));
 
 comment on constraint agent_runtime_settings_whatsapp_model_permitido on restaurantes.agent_runtime_settings is
   'Lista cerrada MODELOS_AGENTE (domain-restaurantes): solo modelos baratos con endpoint ZDR. Cambiarla exige migracion nueva en el mismo PR.';
 comment on constraint agent_runtime_settings_voice_cascade_model_permitido on restaurantes.agent_runtime_settings is
-  'Lista cerrada MODELOS_AGENTE (domain-restaurantes): solo modelos baratos con endpoint ZDR. Cambiarla exige migracion nueva en el mismo PR.';
+  'Lista cerrada IDS_MODELOS_VOZ_AGENTE (domain-restaurantes, vozZdr): modelos baratos con endpoint ZDR en Vertex/Bedrock/Azure. Cambiarla exige migracion nueva en el mismo PR.';

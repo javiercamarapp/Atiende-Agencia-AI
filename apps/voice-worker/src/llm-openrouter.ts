@@ -58,8 +58,11 @@ export function crearPuertoLlmOpenRouter(apiKey: string, fetchImpl?: typeof fetc
   };
 }
 
-/** Prefijos de modelos que aceptan `reasoning.effort` y el punto de cache explicito del system prompt (Anthropic en OpenRouter). Con `require_parameters: true` mandar `reasoning` a un modelo que no lo lista deja la ruta sin endpoints (404). */
-const PREFIJOS_CON_ESFUERZO = ["anthropic/"] as const;
+/** Prefijos de modelos que aceptan `reasoning.effort` en OpenRouter. Con `require_parameters: true` mandar `reasoning` a un modelo que no lo lista deja la ruta sin endpoints (404).
+ * OpenAI entra el 6-nov-2026: GPT-6 Luna (endpoint ZDR de Azure) lista `reasoning`, y SIN esfuerzo bajo su primer token tardo 5.7-6.4 s contra 1.1-1.3 s con `low` (medicion real). */
+const PREFIJOS_CON_ESFUERZO = ["anthropic/", "openai/"] as const;
+/** Punto de cache explicito del system prompt: solo Anthropic (OpenAI y Google cachean solos). */
+const PREFIJOS_CON_CACHE_EXPLICITO = ["anthropic/"] as const;
 
 export interface OpcionesPuertoLlmVozV2 {
   /** Modelo cuando la peticion no trae `modeloPreferido`; por omision `VOZ_PLATAFORMA.cascadaV2.llm.modelo`. */
@@ -77,9 +80,9 @@ const SIN_ENDPOINT_ZDR_RE = /zero.?data.?retention|data policy|\bzdr\b/i;
  * Puerto LLM de la cascada v2 (streaming) sobre OpenRouter, con la MISMA `OPENROUTER_API_KEY` del texto.
  *  - Streaming: pasa `onTextDelta` a `OpenRouterProvider` (SSE) para que el nucleo sintetice por frase mientras el modelo escribe.
  *  - Modelo POR PETICION (`modeloPreferido`): un proveedor por (modelo, esfuerzo), reutilizado entre turnos (P3 lo usara para escalar).
- *  - Esfuerzo bajo: `reasoning: { effort: "low" }` (Sonnet 5.5 tiene razonamiento obligatorio; `none` se rechazaria). Solo se manda a modelos Anthropic.
+ *  - Esfuerzo bajo: `reasoning: { effort: "low" }` (Sonnet 5.5 tiene razonamiento obligatorio; `none` se rechazaria). Se manda a modelos Anthropic y OpenAI (GPT-6 Luna).
  *  - NUNCA manda `temperature` (Anthropic y OpenAI la rechazan con `require_parameters: true`; aqui ningun modelo la recibe).
- *  - Retencion cero (ZDR): `provider.zdr = true` y `only` = proveedores ZDR de la plataforma (Vertex, Bedrock); sin endpoint ZDR para el modelo, 404 -> `v2_llm_sin_zdr`.
+ *  - Retencion cero (ZDR): `provider.zdr = true` y `only` = proveedores ZDR de la plataforma (Vertex, Bedrock, Azure); sin endpoint ZDR para el modelo, 404 -> `v2_llm_sin_zdr`.
  *  - Cache del system prompt: punto de cache explicito en modelos Anthropic; `tokensCache` de la respuesta permite verificar la lectura de cache.
  *  - Tope de salida corto (`topeSalidaTokens`, incluye el razonamiento).
  */
@@ -89,8 +92,9 @@ export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, op
   const proveedoresZdr = opciones.proveedoresZdr && opciones.proveedoresZdr.length > 0 ? opciones.proveedoresZdr : cfg.proveedoresZdr;
   const proveedores = new Map<string, OpenRouterProvider>();
   const proveedorDe = (modelo: string, esfuerzo: "low" | "medium" | "high"): OpenRouterProvider => {
-    const esAnthropic = PREFIJOS_CON_ESFUERZO.some((p) => modelo.startsWith(p));
-    const clave = `${modelo}|${esAnthropic ? esfuerzo : "-"}`;
+    const conEsfuerzo = PREFIJOS_CON_ESFUERZO.some((p) => modelo.startsWith(p));
+    const conCache = PREFIJOS_CON_CACHE_EXPLICITO.some((p) => modelo.startsWith(p));
+    const clave = `${modelo}|${conEsfuerzo ? esfuerzo : "-"}`;
     let p = proveedores.get(clave);
     if (!p) {
       p = new OpenRouterProvider({
@@ -100,7 +104,7 @@ export function crearPuertoLlmVozV2(apiKey: string, fetchImpl?: typeof fetch, op
         // RETENCION CERO (14-oct-2026): solo endpoints ZDR de Vertex/Bedrock (`provider.zdr` + `only`). `allowFallbacks` queda en true SOLO para saltar entre esos dos
         // proveedores permitidos; nunca sale de la lista. Si OpenRouter no tiene endpoint ZDR para el modelo responde 404 y la sesion cae con `v2_llm_sin_zdr`.
         routing: { zdr: true, only: proveedoresZdr, allowFallbacks: true },
-        params: { temperature: "omit", maxTokens: cfg.topeSalidaTokens, ...(esAnthropic ? { reasoningEffort: esfuerzo, cacheSystemPrompt: true } : {}) },
+        params: { temperature: "omit", maxTokens: cfg.topeSalidaTokens, ...(conEsfuerzo ? { reasoningEffort: esfuerzo } : {}), ...(conCache ? { cacheSystemPrompt: true } : {}) },
         // Un turno de voz que tarda mas de 10 s (el streaming cuenta hasta el ultimo trozo) ya perdio al cliente: mejor fallar y que la escalera decida.
         timeoutMs: 10_000,
         maxRetries: 0,

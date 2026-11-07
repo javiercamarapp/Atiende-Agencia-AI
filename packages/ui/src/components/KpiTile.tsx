@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { resolverFormato, type FormatoPreset } from "../lib/formato-preset";
 import { CargandoLogo } from "./CargandoLogo";
+import { CifraTexto } from "./Cifra";
 import { Card } from "./ui/card";
 import { SparklineConsola, Tendencia } from "./graficas";
 
@@ -42,7 +43,7 @@ export function KpiTile({ icono, etiqueta, valor, formato = "numero", tendencia,
             title={noMedible || cargando ? undefined : texto}
             aria-label={noMedible ? `${etiqueta}: sin dato` : undefined}
           >
-            {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${etiqueta}`} /> : texto}
+            {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${etiqueta}`} /> : noMedible ? texto : <CifraTexto texto={texto} />}
           </div>
           <div className="ds3-kpi-label mt-0.5 line-clamp-2 text-xs text-muted-foreground">{etiqueta}</div>
         </div>

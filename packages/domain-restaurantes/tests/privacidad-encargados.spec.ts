@@ -8,14 +8,26 @@ describe("encargadosEnUso", () => {
   it("sin WhatsApp ni voz (solo pedidos en linea): ningun encargado", () => {
     expect(ids({ whatsappConectado: false, vozHabilitada: false })).toEqual([]);
   });
-  it("solo WhatsApp: modelo de lenguaje y Meta", () => {
-    expect(ids({ whatsappConectado: true, vozHabilitada: false })).toEqual(["openrouter", "meta_whatsapp"]);
+  it("solo WhatsApp: modelo de lenguaje, Meta, base de datos y alojamiento (nada de voz)", () => {
+    expect(ids({ whatsappConectado: true, vozHabilitada: false })).toEqual(["openrouter", "meta_whatsapp", "supabase", "vercel"]);
   });
-  it("solo voz: modelo de lenguaje, Gemini, Twilio y LiveKit (sin Meta)", () => {
-    expect(ids({ whatsappConectado: false, vozHabilitada: true })).toEqual(["openrouter", "gemini", "twilio", "livekit"]);
+  it("solo voz: ElevenLabs con Deepgram de respaldo, Gemini, Twilio, LiveKit y Fly.io (sin Meta)", () => {
+    expect(ids({ whatsappConectado: false, vozHabilitada: true })).toEqual(["openrouter", "elevenlabs", "deepgram", "gemini", "twilio", "livekit", "fly_io", "supabase", "vercel"]);
   });
-  it("ambos: los cinco, sin duplicar el modelo de lenguaje", () => {
-    expect(ids({ whatsappConectado: true, vozHabilitada: true })).toEqual(["openrouter", "gemini", "twilio", "livekit", "meta_whatsapp"]);
+  it("ambos: todos, sin duplicar el modelo de lenguaje ni la infraestructura", () => {
+    expect(ids({ whatsappConectado: true, vozHabilitada: true })).toEqual(["openrouter", "elevenlabs", "deepgram", "gemini", "twilio", "livekit", "fly_io", "meta_whatsapp", "supabase", "vercel"]);
+  });
+  it("ElevenLabs declara que puede conservar los datos y enlaza su politica en vez de inventar un plazo", () => {
+    const el = encargadosEnUso({ whatsappConectado: false, vozHabilitada: true }).find((e) => e.id === "elevenlabs");
+    expect(el?.pais).toBe("Estados Unidos");
+    expect(el?.finalidad).toMatch(/nombre, dirección, teléfono, pedido/);
+    expect(el?.finalidad).toMatch(/conservar/);
+    expect(el?.politicaPropia).toBe("https://elevenlabs.io/privacy-policy");
+    expect(el?.finalidad).not.toMatch(/\d+ días|certificad/i);
+  });
+  it("OpenRouter declara retencion cero solo cuando el modelo lo ofrece", () => {
+    const or = encargadosEnUso({ whatsappConectado: true, vozHabilitada: false }).find((e) => e.id === "openrouter");
+    expect(or?.finalidad).toMatch(/retención cero de datos cuando el modelo lo ofrece/);
   });
   it("cada encargado lleva finalidad y pais", () => {
     for (const e of encargadosEnUso({ whatsappConectado: true, vozHabilitada: true })) {

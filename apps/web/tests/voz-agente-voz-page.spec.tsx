@@ -177,6 +177,20 @@ describe("pestaña Voz (sin clonación)", () => {
     expect(texto()).toContain("Sin resultados");
   });
 
+  it("voz de la llamada telefonica: con la base migrada (103) ofrece el selector con la voz guardada; sin ella, un aviso honesto", async () => {
+    await pintar({ config: { status: 200, body: { ...CONFIG, vozTelefono: "sDh3eviBhiuHKi0MjTNq", vozTelefonoDisponible: true } } });
+    await irA("Voz");
+    expect(rendered!.container.querySelector('[data-testid="selector-voz-telefono"]')).not.toBeNull();
+    expect(rendered!.container.querySelector('[data-testid="aviso-voz-telefono"]')).toBeNull();
+    expect(texto()).toContain("Voz de la llamada telefónica");
+    rendered!.unmount();
+    rendered = undefined;
+    await pintar();
+    await irA("Voz");
+    expect(rendered!.container.querySelector('[data-testid="selector-voz-telefono"]')).toBeNull();
+    expect(rendered!.container.querySelector('[data-testid="aviso-voz-telefono"]')!.textContent).toMatch(/No disponible aún: requiere la migración 103/);
+  });
+
   it("marca la voz guardada, deja elegir otra y guarda con PUT del cuerpo exacto", async () => {
     await pintar({ put: (body) => ({ status: 200, body: { ...CONFIG, ...body } }) });
     await irA("Voz");

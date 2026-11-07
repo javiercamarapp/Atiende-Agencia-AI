@@ -248,6 +248,14 @@ update restaurantes.agent_runtime_settings set voice_cascade_model = 'google/gem
 where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
 rollback;
 
+\echo '--- 21d. (migracion 104) DeepSeek V4.1 Flash en la cascada de voz (ZDR fuera de Vertex/Bedrock/Azure, vozZdr=false): RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.agent_runtime_settings set voice_cascade_model = 'deepseek/deepseek-v4.1-flash', updated_by = '00000000-0000-0000-0000-0000000d0c01'
+where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
+rollback;
+
 \echo '--- 22. temperatura fuera de 0..1: RECHAZADO ---'
 begin;
 set local role authenticated;

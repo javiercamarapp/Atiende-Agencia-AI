@@ -65,12 +65,13 @@ test.describe("restaurantes: ajustes del agente", () => {
     await page.getByRole("radiogroup", { name: "Ritmo de habla" }).locator("label", { hasText: "Pausado" }).click();
     await page.getByRole("radiogroup", { name: "Estilo de habla" }).locator("label", { hasText: "Cálido" }).click();
     await page.getByRole("radiogroup", { name: "Temperatura de la voz" }).locator("label", { hasText: /^0\.2$/ }).click();
-    await elegirValor(page.locator("#ajustes-modelo-cascada"), "deepseek/deepseek-v4.1-flash");
-    await expect(page.getByTestId("costo-cascada")).toContainText("≈ US$2.64 por 1,000 minutos");
+    // La cascada de voz solo ofrece modelos con endpoint ZDR en Vertex/Bedrock/Azure (vozZdr): DeepSeek V4.1 Flash queda solo para WhatsApp.
+    await elegirValor(page.locator("#ajustes-modelo-cascada"), "anthropic/claude-haiku-5.5");
+    await expect(page.getByTestId("costo-cascada")).toContainText("≈ US$1.85 por 1,000 minutos");
     await page.getByRole("button", { name: "Guardar ajustes" }).click();
     await expect(page.getByText("Ajustes guardados")).toBeVisible();
     const [put] = await mock.buscar({ metodo: "PUT", ruta: "/admin/agente/ajustes" });
-    expect(put!.cuerpo).toMatchObject({ vozFondoActivo: true, vozFondoVolumen: 12, vozRitmo: "pausado", vozEstilo: "calido", vozTemperatura: 0.2, vozModeloCascada: "deepseek/deepseek-v4.1-flash" });
+    expect(put!.cuerpo).toMatchObject({ vozFondoActivo: true, vozFondoVolumen: 12, vozRitmo: "pausado", vozEstilo: "calido", vozTemperatura: 0.2, vozModeloCascada: "anthropic/claude-haiku-5.5" });
   });
 
   test("voz y saludo de la sucursal: guarda sobre la configuracion vigente y avisa si el saludo no dice 'asistente virtual'", async ({ page, iniciarSesion, mock }) => {

@@ -106,7 +106,7 @@ describe("turno completo", () => {
     stt.eventos!.turnoFinal("dos");
     await inactivo();
     expect(llm.peticiones.map((p) => p.modeloPreferido)).toEqual([MODELO, "anthropic/claude-haiku-5.5"]);
-    expect(vistos).toEqual([{ turno: 1, vuelta: 0, modeloPorDefecto: MODELO }, { turno: 2, vuelta: 0, modeloPorDefecto: MODELO }]);
+    expect(vistos).toEqual([{ turno: 1, vuelta: 0, modeloPorDefecto: MODELO, textoCliente: "uno", pedidoEnJuego: false }, { turno: 2, vuelta: 0, modeloPorDefecto: MODELO, textoCliente: "dos", pedidoEnJuego: false }]);
   });
 });
 
@@ -144,7 +144,7 @@ describe("por frase: el primer audio sale antes de que el LLM termine de escribi
     const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts: new TtsFalso(), ahora: AHORA, log: (l) => lineas.push({ evento: l.evento, campos: { ...l.campos } }) });
     const m = manejadoresFalsos();
     await prov.abrirSesion(APERTURA, m.h);
-    stt.eventos!.turnoFinal("hola");
+    stt.eventos!.turnoFinal("quiero dos tacos");
     await prov.inactivo();
     const l = lineas.find((x) => x.evento === "v2_llm")!;
     expect(l.campos).toMatchObject({ proveedor: MODELO, tokensEntrada: 1200, tokensSalida: 20, tokensCache: 1100, ms: 0, ttftMs: 0 });
@@ -450,7 +450,7 @@ describe("costo por componente", () => {
     const m = manejadoresFalsos();
     const sesion = await escalera.abrirSesion(APERTURA, m.h);
     sesion.enviarAudio!(new Uint8Array(16_000 * 2)); // 1 s de audio PCM16 a 16 kHz
-    stt.eventos!.turnoFinal("hola buenas");
+    stt.eventos!.turnoFinal("quiero dos tacos");
     await prov.inactivo();
     await turnoMicrotareas(60);
     const porProveedor = Object.fromEntries(m.costos.map((c) => [c.proveedor, c]));
@@ -651,7 +651,7 @@ describe("costo del LLM", () => {
     const compuertaLlm = compuerta();
     const llm = llmFalso([async () => (await compuertaLlm.promesa, { texto: "nunca se dice", costoMicroUsd: 700, costoReal: true })]);
     const { stt, costos, inactivo } = await armar(llm);
-    stt.eventos!.turnoFinal("hola");
+    stt.eventos!.turnoFinal("quiero dos tacos");
     await vi.waitFor(() => expect(llm.peticiones).toHaveLength(1));
     stt.eventos!.parcial("espera"); // el cliente interrumpe mientras el LLM sigue
     compuertaLlm.abrir();

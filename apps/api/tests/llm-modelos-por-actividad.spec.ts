@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildOpenRouterProviderPrefs } from "@atiende/agent-core";
-import { IDS_MODELOS_AGENTE, MODELOS_AGENTE, modeloAlternoParaTope } from "@atiende/domain-restaurantes";
+import { IDS_MODELOS_AGENTE, IDS_MODELOS_VOZ_AGENTE, MODELOS_AGENTE, modeloAlternoParaTope } from "@atiende/domain-restaurantes";
 import {
   ACTIVIDADES_LLM,
   ALLOWED_PROVIDER_HOSTS,
@@ -168,8 +168,14 @@ describe("panel del agente y CHECK de la base van juntos", () => {
 
   it("el CHECK de la migracion 104 lista exactamente los ids del panel (cambiar uno exige migracion nueva)", () => {
     const sql = readFileSync(path.resolve(AQUI, "../../../packages/domain-restaurantes/migrations/104_modelos_agente_zdr_baratos.sql"), "utf8");
-    const checks = [...sql.matchAll(/check \((?:whatsapp_model|voice_cascade_model) is null or (?:whatsapp_model|voice_cascade_model) in \(([^)]*)\)\)/g)];
-    expect(checks.length).toBe(2);
-    for (const c of checks) expect(c[1]!.split(",").map((s) => s.trim().replace(/'/g, ""))).toEqual([...IDS_MODELOS_AGENTE]);
+    const ids = (col: string) => {
+      const c = [...sql.matchAll(new RegExp(`check \\(${col} is null or ${col} in \\(([^)]*)\\)\\)`, "g"))];
+      expect(c.length, col).toBe(1);
+      return c[0]![1]!.split(",").map((s) => s.trim().replace(/'/g, ""));
+    };
+    expect(ids("whatsapp_model")).toEqual([...IDS_MODELOS_AGENTE]);
+    // La voz solo acepta las filas con vozZdr (ZDR en Vertex/Bedrock/Azure): DeepSeek V4.1 Flash queda fuera del CHECK de voice_cascade_model.
+    expect(ids("voice_cascade_model")).toEqual([...IDS_MODELOS_VOZ_AGENTE]);
+    expect(IDS_MODELOS_VOZ_AGENTE).not.toContain("deepseek/deepseek-v4.1-flash");
   });
 });

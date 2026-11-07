@@ -1,0 +1,205 @@
+/*
+ * Cifras y montos premium (ds3, «sin estilo reloj»). Hoja propia del lote para no chocar con las demas lineas del rediseno; se importa
+ * despues de @atiende/ui/styles.css (apps/web/src/index.css). Las clases `cifra*` las pone <Cifra>/<CifraTexto> (components/Cifra.tsx).
+ *
+ * Sin la bandera solo aplica la escala de tamanos (la piden de forma explicita quienes pasan `tamano`, p. ej. el destacado que
+ * sustituyo al odometro); todo lo demas vive bajo html[data-diseno="ds3"]. Referencia: Rovaq (.pc-kpi-valor 26/700 -0.02em tabular,
+ * `small` 13/500 muted; .delta pildora 20 px 600/12; movimiento cubic-bezier(.22,1,.36,1) 250-360 ms).
+ */
+
+/* ---- Escala de tamanos 12/13/14 (tabla, pie) y 20/28/36 (KPI, destacado). ---- */
+.cifra[data-tamano="12"] { font-size: 0.75rem; line-height: 1rem; }
+.cifra[data-tamano="13"] { font-size: 0.8125rem; line-height: 1.125rem; }
+.cifra[data-tamano="14"] { font-size: 0.875rem; line-height: 1.25rem; }
+.cifra[data-tamano="20"] { font-size: 1.25rem; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
+.cifra[data-tamano="28"] { font-size: 1.75rem; line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; }
+.cifra[data-tamano="36"] { font-size: 2.25rem; line-height: 1.05; font-weight: 600; letter-spacing: -0.03em; }
+
+/* ---- ds3: la bandera del conteo vive aqui (Cifra.tsx la lee con getComputedStyle; sin ella no hay conteo). ---- */
+html[data-diseno="ds3"] { --cifra-conteo: 1; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-diseno="ds3"] { --cifra-conteo: 0; }
+}
+
+/* Sans proporcional de la casa (Hanken Grotesk) con cifras tabulares solo dentro de la cifra (alinea KPI y evita que el conteo
+   baile); nunca mono ni tracking abierto. inline-block para la entrada fade-rise. Una cifra NUNCA se corta con «…» (se leeria
+   como otra cantidad): el KPI ajusta la letra al ancho de su tarjeta y en movil se abrevia (data-abrev, mas abajo). */
+html[data-diseno="ds3"] .cifra {
+  display: inline-block;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  animation: cifra-entra 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+html[data-diseno="ds3"] .cifra-vacia { color: hsl(var(--faint)); font-weight: 500; }
+
+/* Signo de moneda, decimales y sufijo (%, k, M): mas chicos, peso 500 y tinta tenue, como el `small` de Rovaq. Solo en cifras
+   protagonistas (sin tamano = heredan el del KPI, o 20/28/36); en 12/13/14 (tablas) se dejan del mismo cuerpo para leer de corrido. */
+html[data-diseno="ds3"] .cifra:not([data-tamano="12"], [data-tamano="13"], [data-tamano="14"]) :is(.cifra-simbolo, .cifra-decimales, .cifra-sufijo) {
+  font-size: 0.6em;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .cifra:not([data-tamano="12"], [data-tamano="13"], [data-tamano="14"]) .cifra-simbolo { margin-right: 0.1em; vertical-align: 0.42em; }
+html[data-diseno="ds3"] .cifra:not([data-tamano="12"], [data-tamano="13"], [data-tamano="14"]) .cifra-sufijo { margin-left: 0.06em; }
+
+@keyframes cifra-entra {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-diseno="ds3"] .cifra { animation: none; }
+}
+
+/* ---- Delta en pildora (Rovaq .delta): color = bueno/malo, flecha y texto = direccion (nunca solo color). ---- */
+html[data-diseno="ds3"] .ds3-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  height: 1.25rem;
+  padding: 0 0.5rem 0 0.375rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background-color: hsl(var(--soft));
+  color: hsl(var(--foreground-2));
+  white-space: nowrap;
+}
+html[data-diseno="ds3"] .ds3-delta[data-tono="bueno"] { background-color: hsl(var(--success-tint)); color: hsl(var(--success-ink)); }
+html[data-diseno="ds3"] .ds3-delta[data-tono="malo"] { background-color: hsl(var(--danger-tint)); color: hsl(var(--danger-ink)); }
+
+/* ======================================================================================================================
+   Resumen y tira de KPI (paridad Rovaq «Hoy», PARIDAD-ATIENDE-ROVAQ #5/#6/#18). Valores en px de Rovaq, sin compensar la raiz.
+   ResumenLayout pinta siempre el eyebrow y la frase (ocultos con `hidden`); aqui se muestran solo bajo ds3. Los ganchos son
+   `data-parte` para no tocar las clases de Likida.
+   ====================================================================================================================== */
+
+/* Encabezado: eyebrow 12/600 MAYUSCULAS tracking 0.72 px muted; H1 20/600/-0.5. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="eyebrow"] {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  line-height: 16.8px;
+  font-weight: 600;
+  letter-spacing: 0.72px;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="titulo"] {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+
+/* Con frase: la frase (cifras clave en negritas) sustituye al subtitulo y al odometro; Rovaq no tiene odometro. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="frase"] {
+  display: block;
+  margin-top: 4px;
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 19.5px;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="frase"] strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+html[data-diseno="ds3"] .ds3-resumen[data-con-frase] [data-parte="subtitulo"],
+html[data-diseno="ds3"] .ds3-resumen[data-con-frase] [data-parte="destacado"] [data-testid="odometro"],
+html[data-diseno="ds3"] .ds3-resumen[data-con-frase] [data-parte="destacado"] .ds3-resumen-movil {
+  display: none;
+}
+
+/* Tira de KPI: UNA tarjeta con N celdas separadas por filetes de 1 px, borde superior de 3 px del color de la metrica, punto del
+   mismo color en la etiqueta, sin chip de icono. Cada celda pinta su filete izquierdo y superior y se corre 1 px: el contenedor
+   (overflow hidden) recorta los del borde exterior, asi una fila incompleta no deja huecos grises. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background-color: hsl(var(--card));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > * {
+  --kpi-color: var(--chart-1);
+  min-width: 0;
+  margin: -1px 0 0 -1px;
+  border-top: 1px solid hsl(var(--border));
+  border-left: 1px solid hsl(var(--border));
+  box-shadow: inset 0 3px 0 hsl(var(--kpi-color));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 2) { --kpi-color: var(--chart-2); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 3) { --kpi-color: var(--chart-3); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 4) { --kpi-color: var(--chart-4); }
+/* La celda puede ser la tarjeta misma (StatCard directo) o un envoltorio (enlace, div) con la tarjeta dentro. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > * .ds3-stat {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  padding: 17px 14px 14px;
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > .ds3-stat {
+  border-width: 1px 0 0 1px;
+  border-radius: 0;
+  padding: 17px 14px 14px;
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] :is(.ds3-stat-chip, .ds3-kpi-chip) { display: none; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] :is(.ds3-stat-label, .ds3-kpi-label)::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 9999px;
+  vertical-align: 1px;
+  background-color: hsl(var(--kpi-color));
+}
+
+/* Valor KPI de Rovaq en toda tarjeta ds3: 26/700, tracking -0.52 px; baja con el ancho de la tarjeta (container query) en vez de
+   cortarse con «…» (movil: tope 21 px, una linea). */
+html[data-diseno="ds3"] .ds3-stat { container-type: inline-size; }
+html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  font-size: min(26px, 10cqi);
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.52px;
+}
+@media (max-width: 639.98px) {
+  html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) { font-size: min(21px, 11cqi); line-height: 1.15; }
+  /* Rovaq movil-contenido.css: la cifra larga se ve abreviada; el texto completo queda en el DOM (lector) y en el titulo. */
+  html[data-diseno="ds3"] .cifra[data-abrev] > span { font-size: 0 !important; }
+  html[data-diseno="ds3"] .cifra[data-abrev]::after { content: attr(data-abrev); content: attr(data-abrev) / ""; }
+}
+
+/* Sello de clase «● Observado · fuente · cuando» (Rovaq KindBadge), solo cuando la pagina lo trae. */
+html[data-diseno="ds3"] .ds3-sello {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-sello::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: hsl(var(--success-ink));
+}
+html[data-diseno="ds3"] .ds3-sello[data-clase="estimado"]::before { background-color: hsl(var(--chart-4)); }
+html[data-diseno="ds3"] .ds3-sello[data-clase="inferido"]::before { background-color: hsl(var(--chart-7)); }

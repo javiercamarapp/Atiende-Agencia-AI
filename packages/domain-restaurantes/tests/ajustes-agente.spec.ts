@@ -11,6 +11,7 @@ import {
   ajustesDeLlamada,
   costoEstimadoModelo,
   esModeloAgentePermitido,
+  esModeloVozZdr,
   modeloAgentePorId,
   temperaturaEfectivaWhatsapp,
   validarAjustesAgente,
@@ -40,6 +41,18 @@ describe("lista permitida de modelos", () => {
       "deepseek/deepseek-v4.1-flash": true,
       "google/gemini-3.5-flash-lite": false,
     });
+  });
+
+  it("voz: solo los modelos con endpoint ZDR en Vertex/Bedrock/Azure sirven para la cascada (DeepSeek V4.1 Flash solo WhatsApp)", () => {
+    expect(Object.fromEntries(MODELOS_AGENTE.map((m) => [m.id, m.vozZdr]))).toEqual({
+      "openai/gpt-6-luna": true,
+      "anthropic/claude-haiku-5.5": true,
+      "deepseek/deepseek-v4.1-flash": false,
+      "google/gemini-3.5-flash-lite": true,
+    });
+    expect(esModeloVozZdr("deepseek/deepseek-v4.1-flash")).toBe(false);
+    expect(esModeloVozZdr("anthropic/claude-sonnet-5.5")).toBe(false);
+    expect(esModeloVozZdr("openai/gpt-6-luna")).toBe(true);
   });
 
   it("modelos por actividad: la lista no ofrece premium ni modelos sin retencion cero", () => {

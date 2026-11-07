@@ -9,7 +9,7 @@ import { AjustesAgentePage } from "../src/verticals/restaurantes/pages/AjustesAg
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { costoPorMil, pasoDeTemperatura, temperaturaDePaso } from "../src/verticals/restaurantes/voz/formato-ajustes.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
-import { elegirValor, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
+import { elegirValor, etiquetasDeOpciones, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 beforeAll(prepararJsdomParaRadix);
 
@@ -19,9 +19,9 @@ let fetchMock: ReturnType<typeof vi.fn>;
 const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "owner", staffFullName: "Gaby", staffEmail: "g@example.com" };
 
 const MODELOS = [
-  { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma.", aceptaTemperatura: false, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" },
-  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "El mas barato.", aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 760, costoVozMicroUsdPorMinuto: 1400, precioVerificadoEn: "2026-10-02" },
-  { id: "anthropic/claude-haiku-5.5", etiqueta: "Claude Haiku 5.5", nivel: "economico", descripcion: "El respaldo de Luna.", aceptaTemperatura: false, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 16000, costoVozMicroUsdPorMinuto: 29000, precioVerificadoEn: "2026-10-01" },
+  { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma.", aceptaTemperatura: false, vozZdr: true, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" },
+  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "El mas barato.", aceptaTemperatura: true, vozZdr: false, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 760, costoVozMicroUsdPorMinuto: 1400, precioVerificadoEn: "2026-10-02" },
+  { id: "anthropic/claude-haiku-5.5", etiqueta: "Claude Haiku 5.5", nivel: "economico", descripcion: "El respaldo de Luna.", aceptaTemperatura: false, vozZdr: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 16000, costoVozMicroUsdPorMinuto: 29000, precioVerificadoEn: "2026-10-01" },
 ];
 
 const AJUSTES = { whatsappModelo: null, whatsappTemperatura: null, vozModeloCascada: null, vozTemperatura: null, vozRitmo: "normal", vozEstilo: "neutro", vozFondoActivo: false, vozFondoVolumen: 8 };
@@ -126,6 +126,16 @@ describe("AjustesAgentePage — carga y estados honestos", () => {
     expect(q('[data-testid="aplica-fondo"]')?.textContent).toMatch(/servicio de llamadas/);
     expect(q('[data-testid="aplica-cascada"]')?.textContent).toMatch(/servicio de llamadas/);
     expect(llamadas("GET", "/admin/agente/ajustes")).toHaveLength(1);
+  });
+
+  it("la cascada de voz solo ofrece modelos con retencion cero (vozZdr); WhatsApp los ofrece todos", async () => {
+    montar();
+    await esperar();
+    const voz = await etiquetasDeOpciones(q("#ajustes-modelo-cascada") as HTMLElement);
+    const wa = await etiquetasDeOpciones(q("#ajustes-modelo-whatsapp") as HTMLElement);
+    expect(voz.some((t) => t.includes("DeepSeek V4.1 Flash"))).toBe(false);
+    expect(voz.some((t) => t.includes("Claude Haiku 5.5"))).toBe(true);
+    expect(wa.some((t) => t.includes("DeepSeek V4.1 Flash"))).toBe(true);
   });
 
   it("el modelo predeterminado no admite temperatura: lo dice en vez de ofrecer un control que no hace nada", async () => {

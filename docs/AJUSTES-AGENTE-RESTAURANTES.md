@@ -28,7 +28,8 @@ no usa el modelo elegido.
 
 **Lista (6-nov-2026, modelos por actividad)**: solo modelos baratos con endpoint de retención cero (ZDR) en proveedores de EE.UU.: GPT-6 Luna (predeterminado),
 Claude Haiku 5.5, DeepSeek V4.1 Flash y Gemini 3.5 Flash-Lite. Salieron Claude Sonnet 5.5 (premium), Gemini 2.5 Flash-Lite y Muse Spark 1.3 (sin endpoint ZDR) y
-Gemini 3.8 Flash (gama media). La base acota los mismos ids con un CHECK (migración 104). Antes, la 104 respalda las filas con un modelo retirado en
+Gemini 3.8 Flash (gama media). Para la cascada de voz solo se ofrecen las filas con `vozZdr` (endpoint ZDR en Vertex/Bedrock/Azure, los proveedores del
+worker de voz): Luna, Haiku 5.5 y Gemini 3.5 Flash-Lite; DeepSeek V4.1 Flash queda solo para WhatsApp. La base acota los mismos ids con un CHECK por columna (migración 104). Antes, la 104 respalda las filas con un modelo retirado en
 `restaurantes.respaldo_104_modelos_agente` (privada) y luego: en WhatsApp las regresa a null (= Luna -> Haiku 5.5, decisión del dueño); en la cascada de voz las pasa a
 Gemini 3.5 Flash-Lite (el rápido decidido por el dueño), porque null en voz sería Gemini 3.8 Flash. Rollback manual:
 `scripts/rollback/migraciones/104_modelos_agente_zdr_baratos.down.sql`. Cambiar la lista exige una migración nueva en el mismo PR. El respaldo por tope de tiempo es Luna <-> Haiku 5.5.

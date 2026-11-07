@@ -32,7 +32,7 @@ update restaurantes.agent_runtime_settings s
   from restaurantes.respaldo_104_modelos_agente r
  where s.organization_id = r.organization_id
    and r.voice_cascade_model is not null
-   and r.voice_cascade_model not in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'deepseek/deepseek-v4.1-flash', 'google/gemini-3.5-flash-lite')
+   and r.voice_cascade_model not in ('openai/gpt-6-luna', 'anthropic/claude-haiku-5.5', 'google/gemini-3.5-flash-lite')
    and s.voice_cascade_model = 'google/gemini-3.5-flash-lite';
 
 -- Verificacion (solo lectura): cuantas filas quedaron con un modelo retirado restaurado.

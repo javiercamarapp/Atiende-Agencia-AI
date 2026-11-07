@@ -60,6 +60,9 @@ function montar(fallarEnMedicion: number | null) {
     async listWhatsappBranchChannels() {
       return [];
     },
+    async listarSucursalesSoloVentaLocal() {
+      return [];
+    },
     async getWhatsappChannelConfig() {
       return { phoneNumberId: null };
     },

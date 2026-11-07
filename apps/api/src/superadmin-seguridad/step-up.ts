@@ -47,6 +47,8 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones$/, label: "invitar a una persona al equipo de una organizacion" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones\/[^/]+\/reenviar$/, label: "reenviar una invitacion de equipo (token nuevo)" },
   { method: "DELETE", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones\/[^/]+$/, label: "revocar una invitacion de equipo" },
+  // Onboarding P0: alta asistida de la primera sucursal/propiedad de una organizacion (migracion 0071).
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/propiedades$/, label: "dar de alta una sucursal o propiedad de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/costos\/tipo-cambio$/, label: "cambiar el tipo de cambio del reporte de costos" },
   { method: "PUT", pattern: /^\/superadmin\/pyl\/infra$/, label: "capturar la infraestructura compartida del P&L" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },
