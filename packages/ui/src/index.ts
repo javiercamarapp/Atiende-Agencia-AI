@@ -1,6 +1,8 @@
 export { cn } from "./lib/utils.js";
 export { GRAFICA_TEMA, duracionEntradaGrafica } from "./lib/graficas-tema.js";
 export { formatMoney } from "./lib/formatMoney.js";
+export { Cifra, CifraTexto, type CifraProps, type CifraTextoProps, type CifraTamano } from "./components/Cifra.js";
+export { CIFRA_CONTEO_MS, SIN_CIFRA, curvaRovaq, formatearCifra, partesCifra, partirTextoCifra, type CifraLocale, type CifraVariante, type OpcionesCifra, type PartesCifra } from "./lib/cifra.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
 export { useAmbitoVertical, ATRIBUTO_AMBITO } from "./lib/ambito.js";
 
@@ -38,7 +40,7 @@ export { CLAVE_IDIOMA, IDIOMAS, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma,
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
 export { aplicarTema, aplicarBanderaDiseno, leerTema, sincronizarDisenoOrganizacion, type Tema } from "./lib/tema.js";
 export { DISENO_DS3, disenoPorDefecto, leerDisenoDs3 } from "./lib/diseno.js";
-export { StatCard, TrendStatCard, type StatCardVariante } from "./components/StatCard.js";
+export { StatCard, TrendStatCard, type StatCardSello, type StatCardVariante } from "./components/StatCard.js";
 export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
