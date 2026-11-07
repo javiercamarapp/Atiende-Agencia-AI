@@ -3,12 +3,14 @@
 // pedido nuevo. Sondeo cada 15 s. Sin datos de ejemplo: lee `GET admin/operacion/cola`; si el servidor aun no lo implementa (501) o falla,
 // lo dice con claridad y no pinta nada falso.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Tabs, TabsList, TabsTrigger, notify } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Tabs, TabsList, TabsTrigger, notify, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import type { ColaSalida, TarjetaPedido as TarjetaPedidoDato } from "@atiende/domain-restaurantes/operacion";
 import { Hourglass, Inbox, Volume2, VolumeX, WifiOff } from "lucide-react";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 import { TarjetaPedido } from "../components/operacion/TarjetaPedido.tsx";
-import { AVISO_SONIDO_LIMITES, SILENCIO_MS, crearAlertaRepetida, vibrarAviso } from "../lib/alerta-pedido-nuevo.ts";
+import { SILENCIO_MS, crearAlertaRepetida, vibrarAviso } from "../lib/alerta-pedido-nuevo.ts";
 import { aceptarPedido, entregarEnMostrador, ErrorOperacion, fetchCola, marcarListo, nuevaLlave } from "../lib/operacion-client.ts";
 import { PESTANAS_COLA, conteosPorPestana, minutosVivos, ordenarCola, pestanaDe } from "../lib/operacion-presentacion.ts";
 import type { PestanaCola } from "../lib/operacion-presentacion.ts";
@@ -29,14 +31,15 @@ function almacenamiento(): Storage | null {
   }
 }
 
-const TEXTO_WAKE: Readonly<Record<EstadoWakeLock, string>> = {
-  inactivo: "La pantalla puede apagarse.",
-  activo: "La pantalla se mantiene encendida.",
-  no_soportado: "Este navegador no puede mantener la pantalla encendida: desactiva el bloqueo automático.",
-  denegado: "El navegador no permitió mantener la pantalla encendida: desactiva el bloqueo automático.",
+const TEXTO_WAKE: Readonly<Record<EstadoWakeLock, Clave>> = {
+  inactivo: "restaurantes.operacion.cola.wake.inactivo",
+  activo: "restaurantes.operacion.cola.wake.activo",
+  no_soportado: "restaurantes.operacion.cola.wake.no_soportado",
+  denegado: "restaurantes.operacion.cola.wake.denegado",
 };
 
 export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+  const t = useT(restaurantesOperacion);
   const [cola, setCola] = useState<ColaSalida | null>(null);
   const [consultadoEnMs, setConsultadoEnMs] = useState<number>(() => Date.now());
   const [ultimaOk, setUltimaOk] = useState<number | null>(null);
@@ -75,8 +78,8 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
       if (e instanceof TypeError) {
         // Fallo de red: se conserva lo ultimo visto y se avisa; sin nada previo que mostrar, la pantalla pide reintentar.
         setSinConexion(true);
-        setError(new Error("Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo."));
-      } else setError(e instanceof Error ? e : new Error("No se pudo cargar la cola."));
+        setError(new Error(t("restaurantes.operacion.sinConexionServidor")));
+      } else setError(e instanceof Error ? e : new Error(t("restaurantes.operacion.cola.errorCarga")));
       throw e;
     }
   }, [apiBaseUrl, fetchImpl, propertyId, token]);
@@ -131,14 +134,14 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
       else if (accion === "listo") await marcarListo(fetchImpl, apiBaseUrl, token, propertyId, p.id, llave);
       else await entregarEnMostrador(fetchImpl, apiBaseUrl, token, propertyId, p.id, llave);
       llaves.current.delete(clave);
-      notify.success(`Pedido #${p.numero}: ${accion === "aceptar" ? "aceptado" : accion === "listo" ? "listo" : "entregado"}.`);
+      notify.success(t(accion === "aceptar" ? "restaurantes.operacion.cola.toast.aceptar" : accion === "listo" ? "restaurantes.operacion.cola.toast.listo" : "restaurantes.operacion.cola.toast.entregar", { numero: String(p.numero) }));
     } catch (e) {
       if (e instanceof ErrorOperacion && e.esEstadoCambio) {
         llaves.current.delete(clave);
-        notify.info(`El pedido #${p.numero} ya cambió de estado; se actualizó la cola.`);
+        notify.info(t("restaurantes.operacion.cola.yaCambio", { numero: String(p.numero) }));
       } else {
         if (e instanceof ErrorOperacion && e.status >= 400 && e.status < 500) llaves.current.delete(clave);
-        notify.error(e instanceof ErrorOperacion ? e.message : "No hay conexión. La acción no se aplicó; vuelve a tocar el botón.");
+        notify.error(e instanceof ErrorOperacion ? e.message : t("restaurantes.operacion.errorSinRed"));
       }
     } finally {
       setOcupados((s) => {
@@ -160,8 +163,8 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
   if (cola === null && error === null) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Cola de pedidos</h1>
-        <EstadoCargando variante="tarjeta" etiqueta="Cargando la cola de pedidos…" />
+        <h1 className="sr-only">{t("restaurantes.operacion.cola.titulo")}</h1>
+        <EstadoCargando variante="tarjeta" etiqueta={t("restaurantes.operacion.cola.cargando")} />
       </PageContainer>
     );
   }
@@ -169,9 +172,9 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
     const noDisponible = error instanceof ErrorOperacion && error.esNoDisponible;
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Cola de pedidos</h1>
+        <h1 className="sr-only">{t("restaurantes.operacion.cola.titulo")}</h1>
         {noDisponible ? (
-          <EstadoVacio icon={Hourglass} titulo="Cola de pedidos" mensaje="No disponible aún: esta pantalla se activa cuando el servidor del panel del operador esté listo." />
+          <EstadoVacio icon={Hourglass} titulo={t("restaurantes.operacion.cola.titulo")} mensaje={t("restaurantes.operacion.cola.noDisponible")} />
         ) : (
           <EstadoError mensaje={error.message} onReintentar={() => void cargar().catch(() => undefined)} />
         )}
@@ -183,7 +186,7 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
     <PageContainer padding="none">
       <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3 pb-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="sr-only">Cola de pedidos</h1>
+          <h1 className="sr-only">{t("restaurantes.operacion.cola.titulo")}</h1>
           <span className="ml-auto text-sm text-muted-foreground" aria-live="off">
             {etiquetaActualizado(ultimaOk, ahoraMs)}
           </span>
@@ -192,7 +195,7 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
         {sinConexion && (
           <div role="status" className="flex items-center gap-2 rounded-lg border-2 border-warning bg-warning-tint p-3 text-base text-warning">
             <WifiOff className="size-5 shrink-0" aria-hidden="true" />
-            Sin conexión — reintentando. Lo que ves puede estar desactualizado.
+            {t("restaurantes.operacion.sinConexionReintentando")}
           </div>
         )}
         {error && cola !== null && !sinConexion && <EstadoError compacto mensaje={error.message} onReintentar={() => void cargar().catch(() => undefined)} />}
@@ -201,7 +204,7 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
           {sinReconocer.length > 0 && (
             <div role="alert" className="space-y-2 rounded-lg border-2 border-primary bg-card p-3">
               <p className="text-lg font-bold text-foreground">
-                {sinReconocer.length === 1 ? `Pedido nuevo #${sinReconocer[0]!.numero}` : `${sinReconocer.length} pedidos nuevos sin atender`}
+                {sinReconocer.length === 1 ? t("restaurantes.operacion.cola.nuevoUno", { numero: String(sinReconocer[0]!.numero) }) : t("restaurantes.operacion.cola.nuevosVarios", { n: sinReconocer.length })}
               </p>
               {sonido && silenciadaHasta <= ahoraMs ? (
                 <Button
@@ -213,10 +216,10 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
                     setSilenciadaHasta(Date.now() + SILENCIO_MS);
                   }}
                 >
-                  Silenciar 5 minutos
+                  {t("restaurantes.operacion.cola.silenciar")}
                 </Button>
               ) : null}
-              {sonido && silenciadaHasta > ahoraMs && <p className="text-sm text-muted-foreground">Sonido en silencio por 5 minutos.</p>}
+              {sonido && silenciadaHasta > ahoraMs && <p className="text-sm text-muted-foreground">{t("restaurantes.operacion.silenciado5")}</p>}
             </div>
           )}
         </div>
@@ -224,24 +227,24 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
         <div className="space-y-2 rounded-lg border border-border bg-card p-3">
           {sonido ? (
             <Button type="button" variant="outline" className="h-auto min-h-14 w-full whitespace-normal py-2 text-lg" onClick={desactivarSonido} iconLeft={<Volume2 className="size-5" aria-hidden="true" />}>
-              Sonido activado · Desactivar
+              {t("restaurantes.operacion.sonidoActivado")}
             </Button>
           ) : (
             <Button type="button" className="h-auto min-h-14 w-full whitespace-normal py-2 text-lg" onClick={() => void activarSonido()} iconLeft={<VolumeX className="size-5" aria-hidden="true" />}>
-              Activar sonido y mantener pantalla encendida
+              {t("restaurantes.operacion.cola.activarSonido")}
             </Button>
           )}
-          {sonido && <p className="text-sm text-muted-foreground">{TEXTO_WAKE[wake]}</p>}
-          <p className="text-sm text-muted-foreground">{AVISO_SONIDO_LIMITES}</p>
+          {sonido && <p className="text-sm text-muted-foreground">{t(TEXTO_WAKE[wake])}</p>}
+          <p className="text-sm text-muted-foreground">{t("restaurantes.operacion.avisoSonidoLimites")}</p>
         </div>
 
         <Tabs value={pestana} onValueChange={(v) => setPestana(v as PestanaCola)}>
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
-            {PESTANAS_COLA.map((t) => (
-              <TabsTrigger key={t.valor} value={t.valor} className="h-12 text-base" data-testid={`pestana-${t.valor}`}>
-                {t.etiqueta}
-                <StatusBadge tone={t.valor === "nuevos" && conteos.nuevos > 0 ? "danger" : "neutral"} dot={false} className="ml-1.5 text-sm" aria-label={`${conteos[t.valor]} pedidos`}>
-                  {conteos[t.valor]}
+            {PESTANAS_COLA.map((pes) => (
+              <TabsTrigger key={pes.valor} value={pes.valor} className="h-12 text-base" data-testid={`pestana-${pes.valor}`}>
+                {pes.etiqueta}
+                <StatusBadge tone={pes.valor === "nuevos" && conteos.nuevos > 0 ? "danger" : "neutral"} dot={false} className="ml-1.5 text-sm" aria-label={t("restaurantes.operacion.cola.conteoAria", { n: conteos[pes.valor] })}>
+                  {conteos[pes.valor]}
                 </StatusBadge>
               </TabsTrigger>
             ))}
@@ -249,9 +252,10 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
         </Tabs>
 
         {visibles.length === 0 ? (
-          <EstadoVacio icon={Inbox} titulo="Sin pedidos aquí" mensaje={`No hay pedidos en «${PESTANAS_COLA.find((t) => t.valor === pestana)?.etiqueta}» por ahora.`} />
+          <EstadoVacio icon={Inbox} titulo={t("restaurantes.operacion.cola.vacioTitulo")} mensaje={t("restaurantes.operacion.cola.vacio", { pestana: String(PESTANAS_COLA.find((x) => x.valor === pestana)?.etiqueta) })} />
         ) : (
-          <ul className="space-y-3" aria-label={`Pedidos: ${PESTANAS_COLA.find((t) => t.valor === pestana)?.etiqueta}`}>
+          <ul className="space-y-3" aria-label={t("restaurantes.operacion.cola.listaAria", { pestana: String(PESTANAS_COLA.find((x) => x.valor === pestana)?.etiqueta) })}>
+
             {visibles.map((p) => (
               <li key={p.id}>
                 <TarjetaPedido
