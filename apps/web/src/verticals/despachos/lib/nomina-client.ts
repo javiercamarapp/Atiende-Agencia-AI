@@ -15,11 +15,22 @@
 // dejar que el usuario confirme antes de generar el XML.
 import { postJson } from "./admin-client.ts";
 
+export type Periodicidad = "mensual" | "quincenal";
+
 export interface PayrollPeriodInputBody {
   readonly month?: number;
   readonly year?: number;
   readonly diasPagados?: number;
   readonly salarioDiarioDefault?: number;
+  /** YYYY-MM-DD; el servidor usa el último día del mes si falta. Define UMA, subsidio e IMSS vigentes. */
+  readonly fechaPago?: string;
+  readonly periodicidad?: Periodicidad;
+}
+
+export interface ConceptosInputBody {
+  readonly aguinaldo?: number;
+  readonly primaVacacional?: number;
+  readonly ptu?: number;
 }
 
 export interface EmployeePayrollInputBody {
@@ -28,13 +39,60 @@ export interface EmployeePayrollInputBody {
   readonly salarioBruto?: number;
   readonly percepciones?: number;
   readonly salarioDiario?: number;
+  readonly antiguedadAnios?: number;
+  readonly fechaInicioRelLaboral?: string;
+  readonly sbc?: number;
+  /** Prima de riesgo de trabajo como fracción (0.0054355 = 0.54355 %). */
+  readonly primaRt?: number;
+  readonly conceptos?: ConceptosInputBody;
+}
+
+export interface ImssObreroRamas {
+  readonly eymExcedente: number;
+  readonly prestacionesDinero: number;
+  readonly gmp: number;
+  readonly invalidezVida: number;
+  readonly ceav: number;
+  readonly total: number;
+}
+
+export interface ImssPatronalRamas {
+  readonly cuotaFija: number;
+  readonly eymExcedente: number;
+  readonly prestacionesDinero: number;
+  readonly gmp: number;
+  readonly invalidezVida: number;
+  readonly riesgoTrabajo: number;
+  readonly guarderias: number;
+  readonly retiro: number;
+  readonly ceav: number;
+  readonly total: number;
+}
+
+export interface ImssDesglose {
+  readonly umaDiaria: number;
+  readonly sbcDiario: number;
+  readonly sbcTopado: boolean;
+  readonly diasPagados: number;
+  readonly obrero: ImssObreroRamas;
+  readonly patronal: ImssPatronalRamas;
+  readonly infonavit: number;
+}
+
+export interface Exento {
+  readonly total: number;
+  readonly exento: number;
+  readonly gravado: number;
 }
 
 export interface PayrollTaxes {
   readonly isr: number;
+  readonly isrCausado: number;
+  readonly subsidioCausado: number;
   readonly imssPatronal: number;
   readonly imssObrero: number;
   readonly infonavit: number;
+  readonly imss: ImssDesglose;
   readonly total: number;
 }
 
@@ -42,18 +100,36 @@ export interface EmployeePayroll {
   readonly employeeId: string;
   readonly nombre: string;
   readonly salarioDiario: number;
+  readonly sbcDiario: number;
+  readonly factorIntegracion: number | null;
+  readonly antiguedadAnios: number;
   readonly salarioBruto: number;
   readonly percepciones: number;
+  readonly conceptos: {
+    readonly aguinaldo: Exento;
+    readonly primaVacacional: Exento;
+    readonly ptu: Exento;
+    readonly tiempoExtra: Exento;
+    readonly descuentoIncapacidad: number;
+    readonly totalPercibido: number;
+    readonly totalExento: number;
+    readonly totalGravado: number;
+  };
   readonly deducciones: number;
   readonly taxes: PayrollTaxes;
   readonly neto: number;
   readonly diasPagados: number;
+  readonly periodicidad: Periodicidad;
+  readonly fechaPago: string;
 }
 
 export interface PayrollPeriodResultado {
   readonly month: number;
   readonly year: number;
+  readonly fechaPago: string;
+  readonly periodicidad: Periodicidad;
   readonly employees: readonly EmployeePayroll[];
+  readonly totalSubsidioCausado: number;
   readonly totalBruto: number;
   readonly totalNeto: number;
   readonly totalDeducciones: number;
@@ -74,7 +150,7 @@ export async function calcularNomina(
   apiBaseUrl: string,
   token: string,
   propertyId: string,
-  input: { readonly period: PayrollPeriodInputBody; readonly employees: readonly EmployeePayrollInputBody[]; readonly tenantId?: number | null },
+  input: { readonly period: PayrollPeriodInputBody; readonly employees: readonly EmployeePayrollInputBody[] },
 ): Promise<PayrollPeriodResultado> {
   return postJson<PayrollPeriodResultado>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/nomina/calcular`, token, input);
 }
@@ -90,6 +166,7 @@ export interface EmisorXmlNominaBody {
   readonly lugarExpedicion: string;
   readonly noCertificado?: string;
   readonly certificado?: string;
+  readonly registroPatronal?: string;
 }
 
 export interface EmployeeXmlNominaBody extends EmployeePayrollInputBody {
@@ -106,13 +183,14 @@ export interface EmployeeXmlNominaBody extends EmployeePayrollInputBody {
   readonly tipoRegimen: string;
   readonly periodicidadPago: string;
   readonly claveEntFed: string;
+  readonly numSeguridadSocial?: string;
+  readonly riesgoPuesto?: string;
 }
 
 export interface GenerarXmlNominaInput {
-  readonly period: PayrollPeriodInputBody & { readonly tipoNomina?: TipoNomina; readonly serie?: string };
+  readonly period: PayrollPeriodInputBody & { readonly tipoNomina?: TipoNomina; readonly serie?: string; readonly fechaInicialPago?: string; readonly fechaFinalPago?: string };
   readonly employees: readonly EmployeeXmlNominaBody[];
   readonly emisor: EmisorXmlNominaBody;
-  readonly tenantId?: number | null;
 }
 
 export interface ComprobanteNomina {

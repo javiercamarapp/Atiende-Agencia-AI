@@ -1,0 +1,14 @@
+id: lft-76-127
+tipo: norma
+ordenamiento: "LFT"
+articulo_o_regla: "76, 117-127"
+resumen: "Vacaciones por antigüedad (12 días el primer año, +2 por año hasta 20, luego +2 cada 5 años) y tope de la PTU por trabajador (tres meses de salario o promedio de tres años)."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFT.pdf"
+vigencia: "Art. 76 reformado (DOF 27-dic-2022, vigente 2023); fecha no comprobada contra fuente oficial."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "VALIDAR CON FISCALISTA: escalera de vacaciones y regla de lo más favorable al trabajador en el tope de PTU."
+usado_en_codigo:
+  - "src/nomina/prestaciones.ts:20"
+  - "src/nomina/prestaciones.ts:76"
