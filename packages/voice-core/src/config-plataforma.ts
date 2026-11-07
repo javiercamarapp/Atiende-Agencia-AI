@@ -92,6 +92,10 @@ export interface ConfigElevenLabs {
     /** US$ por HORA de audio en streaming y el add-on de keyterms (lista del 6-nov-2026; Scribe v2 Realtime 0.39 + 0.08 US$/h). */
     readonly usdPorHora: number;
     readonly usdPorHoraKeyterms: number;
+    /** Compuerta de voz de fondo (pide `include_timestamps`): descarta un segmento confirmado `dbBajoVoz` dB por debajo de la mediana de los segmentos aceptados del
+     * cliente Y con logprob medio por debajo de `logprobMax`, una vez aceptados `segmentosMin`. null = apagada. `filter_background_audio` NO se usa: medido el 6-nov-2026
+     * con 100 clips, el WER pasa de 23.7 % a 24.0 % y el limpio de 8.9 % a 14.0 %. */
+    readonly compuertaFondo: { readonly dbBajoVoz: number; readonly logprobMax: number; readonly segmentosMin: number } | null;
   };
   readonly tts: {
     /** `model_id` (eleven_v4_turbo: el unico modelo rapido que leyo bien «#512 x 45» y «$345» en la medicion). */
@@ -243,7 +247,7 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
     // ElevenLabs (lista del 6-nov-2026, PRUEBAS-STT-TTS-NOV.md): Scribe v2 Realtime 0.39 US$/h + keyterms 0.08 US$/h; eleven_v4_turbo 0.04 US$ por 1 000 caracteres (creditos del plan).
     elevenlabs: Object.freeze({
-      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08 }),
+      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08, compuertaFondo: Object.freeze({ dbBajoVoz: 12, logprobMax: -1.4, segmentosMin: 2 }) }),
       tts: Object.freeze({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", idioma: "es", hzSalida: 24_000, usdPorMilCaracteres: 0.04, fraseTimeoutMs: 8_000, primerByteTimeoutMs: 2_500 }),
     }),
     // Cerebro de dos niveles de PM (decision del dueno, 6-nov-2026; opt-in con VOZ_CEREBRO_DOS_NIVELES=1): rapido google/gemini-3.5-flash-lite para turnos faciles,

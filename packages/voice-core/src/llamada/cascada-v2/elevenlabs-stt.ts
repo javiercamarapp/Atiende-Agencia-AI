@@ -59,6 +59,8 @@ export function urlSttElevenLabs(c: ConfigElevenLabs["stt"], opciones: OpcionesS
     commit_strategy: "vad",
     vad_silence_threshold_secs: String(c.vadSilencioS),
   });
+  // Tiempos y logprob por palabra: los usa la compuerta de voz de fondo (`compuertaFondo`).
+  if (c.compuertaFondo) q.set("include_timestamps", "true");
   for (const t of keytermsElevenLabs(opciones.vocabulario, c.keytermsMax)) q.append("keyterms", t);
   return `${ELEVENLABS_STT_URL}?${q.toString()}`;
 }
@@ -196,8 +198,60 @@ class SesionElevenLabsStt implements SesionStt {
         const texto = typeof msg.text === "string" ? msg.text.trim() : "";
         if (tipo === "partial_transcript") this.alParcial(texto);
         else if (tipo === "committed_transcript") this.alConfirmado(texto);
+        else if (tipo === "committed_transcript_with_timestamps") this.alConfirmadoConTiempos(texto, (msg as { words?: unknown }).words);
       });
     });
+  }
+
+  /** RMS por trama de 20 ms de TODO el audio enviado (indice = trama desde el inicio de la sesion; los tiempos de Scribe cuentan desde ahi). */
+  private readonly niveles: number[] = [];
+  private acumE = 0;
+  private acumN = 0;
+  /** Nivel (dB) de los ultimos segmentos aceptados del cliente. */
+  private readonly nivelesCliente: number[] = [];
+
+  private medirAudio(pcm16: Uint8Array): void {
+    if (!this.o.config.compuertaFondo) return;
+    const v = new DataView(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
+    const porTrama = this.hz / 50;
+    for (let i = 0; i + 1 < pcm16.byteLength; i += 2) {
+      const x = v.getInt16(i, true);
+      this.acumE += x * x;
+      this.acumN += 1;
+      if (this.acumN >= porTrama) {
+        this.niveles.push(Math.sqrt(this.acumE / this.acumN));
+        this.acumE = 0;
+        this.acumN = 0;
+      }
+    }
+  }
+
+  /** Segunda copia del commit, con tiempos y logprob: decide si el segmento era voz de fondo y, si lo era, lo quita del turno antes de que cierre. */
+  private alConfirmadoConTiempos(texto: string, words: unknown): void {
+    const g = this.o.config.compuertaFondo;
+    if (!g || texto === "" || !Array.isArray(words)) return;
+    const ps = (words as { type?: unknown; start?: unknown; end?: unknown; logprob?: unknown }[]).filter((w) => w?.type !== "spacing" && typeof w?.start === "number" && typeof w?.end === "number");
+    if (ps.length === 0) return;
+    const tramas: number[] = [];
+    for (const w of ps) for (let k = Math.floor((w.start as number) * 50); k <= Math.floor((w.end as number) * 50) && k < this.niveles.length; k++) tramas.push(this.niveles[k]!);
+    if (tramas.length === 0) return;
+    tramas.sort((a, b) => b - a);
+    const alto = tramas.slice(0, Math.max(1, Math.ceil(tramas.length / 2)));
+    const nivelDb = 20 * Math.log10(Math.max(1, alto.reduce((a, b) => a + b, 0) / alto.length));
+    const lps = ps.map((w) => w.logprob).filter((x): x is number => typeof x === "number");
+    const logprob = lps.length ? lps.reduce((a, b) => a + b, 0) / lps.length : 0;
+    const ref = [...this.nivelesCliente].sort((a, b) => a - b)[Math.floor(this.nivelesCliente.length / 2)];
+    const fondo = this.nivelesCliente.length >= g.segmentosMin && ref !== undefined && nivelDb < ref - g.dbBajoVoz && logprob < g.logprobMax;
+    if (!fondo) {
+      this.nivelesCliente.push(nivelDb);
+      if (this.nivelesCliente.length > 5) this.nivelesCliente.shift();
+      return;
+    }
+    // Se quita del turno en curso (el commit sin tiempos ya lo habia sumado).
+    const c = this.confirmado;
+    if (c.endsWith(texto)) this.confirmado = c.slice(0, c.length - texto.length).trim();
+    if (this.confirmado === "" && this.parcial === "") this.quitarFinMin();
+    this.eventos.descartado?.("voz_de_fondo");
   }
 
   private unir(a: string, b: string): string {
@@ -277,6 +331,7 @@ class SesionElevenLabsStt implements SesionStt {
   }
 
   private enviar(pcm16: Uint8Array, commit: boolean): void {
+    this.medirAudio(pcm16);
     try {
       this.socket.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: aBase64(pcm16), commit, sample_rate: this.hz }));
     } catch {

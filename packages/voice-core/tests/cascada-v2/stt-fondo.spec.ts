@@ -16,7 +16,11 @@ function reloj() {
     poner: (fn: () => void, ms: number): unknown => (p.set(++n, { fn, ms }), n),
     quitar: (id: unknown): void => void p.delete(id as number),
     vencer(ms: number): void {
-      for (const [id, x] of [...p]) if (x.ms === ms) (p.delete(id), x.fn());
+      for (const [id, x] of [...p]) {
+        if (x.ms !== ms) continue;
+        p.delete(id);
+        x.fn();
+      }
     },
   };
 }
