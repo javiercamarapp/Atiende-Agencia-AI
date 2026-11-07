@@ -3,7 +3,8 @@
 // vacío honesto hasta que exista backend: nunca se muestran llamadas inventadas.
 import { useEffect, useState } from "react";
 import { MessageSquareText } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, TranscripcionEnVivo } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, TranscripcionEnVivo, useT } from "@atiende/ui";
+import { restaurantesIndicadoresVoz } from "@atiende/ui/i18n/restaurantes/indicadoresVoz";
 import type { LineaTranscripcion } from "@atiende/ui";
 import type { ConversacionVoz } from "../lib/voz-client.ts";
 import { etiquetaResultado, formatoCostoUsd, formatoDuracion, formatoInstante } from "./formato-voz.ts";
@@ -15,6 +16,7 @@ function aLineas(c: ConversacionVoz): readonly LineaTranscripcion[] {
 }
 
 export function PestanaConversaciones({ conversaciones, onReintentar, cargarDetalle }: { readonly conversaciones: Carga<readonly ConversacionVoz[]>; readonly onReintentar: () => void; readonly cargarDetalle?: (id: string) => Promise<ConversacionVoz> }) {
+  const t = useT(restaurantesIndicadoresVoz);
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
   // La transcripción NO viene en el listado: se pide al abrir una conversación.
   const [detalle, setDetalle] = useState<Carga<ConversacionVoz>>({ estado: "cargando" });
@@ -28,7 +30,7 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
         if (!cancelado) setDetalle({ estado: "listo", datos: d });
       },
       (err: unknown) => {
-        if (!cancelado) setDetalle(desdeError(err, "No se pudo cargar la transcripción."));
+        if (!cancelado) setDetalle(desdeError(err, t("restaurantes.indicadoresVoz.conv.errorTranscripcion")));
       },
     );
     return () => {
@@ -36,14 +38,14 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
     };
   }, [abiertaId]);
 
-  if (conversaciones.estado === "cargando") return <EstadoCargando etiqueta="Cargando conversaciones…" />;
+  if (conversaciones.estado === "cargando") return <EstadoCargando etiqueta={t("restaurantes.indicadoresVoz.conv.cargando")} />;
   if (conversaciones.estado === "no_disponible") {
-    return <EstadoVacio icon={MessageSquareText} titulo="Historial no disponible todavía" mensaje="El servicio de voz aún no está activo para este negocio, así que todavía no se guardan conversaciones. Cuando lo esté, aquí verás cada llamada con su transcripción, duración, costo y resultado." />;
+    return <EstadoVacio icon={MessageSquareText} titulo={t("restaurantes.indicadoresVoz.conv.noDisponible")} mensaje={t("restaurantes.indicadoresVoz.conv.noDisponible.mensaje")} />;
   }
   if (conversaciones.estado === "error") return <EstadoError mensaje={conversaciones.mensaje} onReintentar={onReintentar} />;
 
   const lista = conversaciones.datos;
-  if (lista.length === 0) return <EstadoVacio icon={MessageSquareText} titulo="Sin conversaciones" mensaje="Todavía no hay conversaciones de voz registradas para esta sucursal." />;
+  if (lista.length === 0) return <EstadoVacio icon={MessageSquareText} titulo={t("restaurantes.indicadoresVoz.conv.vacio")} mensaje={t("restaurantes.indicadoresVoz.conv.vacio.mensaje")} />;
 
   const abierta = lista.find((c) => c.id === abiertaId) ?? null;
   if (abierta) {
@@ -51,19 +53,19 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
     return (
       <div className="space-y-3">
         <Button type="button" variant="ghost" size="sm" onClick={() => setAbiertaId(null)}>
-          ‹ Volver a la lista
+          {t("restaurantes.indicadoresVoz.conv.volver")}
         </Button>
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-          <Dato titulo="Fecha" valor={formatoInstante(abierta.iniciadaEn)} />
-          <Dato titulo="Duración" valor={formatoDuracion(abierta.duracionSegundos)} />
-          <Dato titulo="Costo" valor={formatoCostoUsd(abierta.costoUsd)} />
-          <Dato titulo="Resultado" valor={etiquetaResultado(abierta.resultado)} />
+          <Dato titulo={t("restaurantes.indicadoresVoz.conv.fecha")} valor={formatoInstante(abierta.iniciadaEn)} />
+          <Dato titulo={t("restaurantes.indicadoresVoz.conv.duracion")} valor={formatoDuracion(abierta.duracionSegundos)} />
+          <Dato titulo={t("restaurantes.indicadoresVoz.col.costo")} valor={formatoCostoUsd(abierta.costoUsd)} />
+          <Dato titulo={t("restaurantes.indicadoresVoz.conv.resultado")} valor={etiquetaResultado(abierta.resultado)} />
         </dl>
         <div className="rounded-xl border border-border p-4">
-          {cargarDetalle && detalle.estado === "cargando" ? <EstadoCargando etiqueta="Cargando transcripción…" /> : null}
+          {cargarDetalle && detalle.estado === "cargando" ? <EstadoCargando etiqueta={t("restaurantes.indicadoresVoz.conv.cargandoTranscripcion")} /> : null}
           {cargarDetalle && detalle.estado === "error" ? <EstadoError mensaje={detalle.mensaje} onReintentar={() => setAbiertaId(abierta.id)} /> : null}
-          {cargarDetalle && detalle.estado === "no_disponible" ? <p className="text-xs text-muted-foreground">La transcripción todavía no está disponible.</p> : null}
-          {!cargarDetalle || detalle.estado === "listo" ? lineas.length === 0 ? <p className="text-xs text-muted-foreground">Esta conversación no incluye transcripción.</p> : <TranscripcionEnVivo lineas={lineas} /> : null}
+          {cargarDetalle && detalle.estado === "no_disponible" ? <p className="text-xs text-muted-foreground">{t("restaurantes.indicadoresVoz.conv.transcripcionNoDisponible")}</p> : null}
+          {!cargarDetalle || detalle.estado === "listo" ? lineas.length === 0 ? <p className="text-xs text-muted-foreground">{t("restaurantes.indicadoresVoz.conv.sinTranscripcion")}</p> : <TranscripcionEnVivo lineas={lineas} /> : null}
         </div>
       </div>
     );
@@ -72,27 +74,27 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
   return (
     <Card>
       <CardHeader className="p-3 pb-2">
-        <CardTitle>Conversaciones de voz</CardTitle>
+        <CardTitle>{t("restaurantes.indicadoresVoz.conv.titulo")}</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <DataTable<ConversacionVoz>
-          etiqueta="Conversaciones de voz de esta sucursal"
+          etiqueta={t("restaurantes.indicadoresVoz.conv.tabla")}
           filas={lista}
           obtenerId={(c) => c.id}
           atributosFila={(c) => ({ "data-conversacion": c.id })}
           columnas={[
-            { id: "fecha", encabezado: "Fecha", principal: true, celda: (c) => formatoInstante(c.iniciadaEn) },
-            { id: "duracion", encabezado: "Duración", className: "tabular-nums", celda: (c) => formatoDuracion(c.duracionSegundos) },
-            { id: "costo", encabezado: "Costo", className: "tabular-nums", celda: (c) => formatoCostoUsd(c.costoUsd) },
-            { id: "resultado", encabezado: "Resultado", celda: (c) => etiquetaResultado(c.resultado) },
+            { id: "fecha", encabezado: t("restaurantes.indicadoresVoz.conv.fecha"), principal: true, celda: (c) => formatoInstante(c.iniciadaEn) },
+            { id: "duracion", encabezado: t("restaurantes.indicadoresVoz.conv.duracion"), className: "tabular-nums", celda: (c) => formatoDuracion(c.duracionSegundos) },
+            { id: "costo", encabezado: t("restaurantes.indicadoresVoz.col.costo"), className: "tabular-nums", celda: (c) => formatoCostoUsd(c.costoUsd) },
+            { id: "resultado", encabezado: t("restaurantes.indicadoresVoz.conv.resultado"), celda: (c) => etiquetaResultado(c.resultado) },
             {
               id: "acciones",
-              encabezado: <span className="sr-only">Acciones</span>,
-              etiqueta: "Acciones",
+              encabezado: <span className="sr-only">{t("restaurantes.indicadoresVoz.conv.acciones")}</span>,
+              etiqueta: t("restaurantes.indicadoresVoz.conv.acciones"),
               alinear: "right",
               celda: (c) => (
                 <Button type="button" variant="outline" size="sm" onClick={() => setAbiertaId(c.id)}>
-                  Ver transcripción
+                  {t("restaurantes.indicadoresVoz.conv.verTranscripcion")}
                 </Button>
               ),
             },

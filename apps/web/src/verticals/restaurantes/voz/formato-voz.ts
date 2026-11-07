@@ -1,6 +1,8 @@
 // Formato de datos de conversaciones de voz. Los instantes (con hora) se muestran en
 // una zona explícita (America/Mexico_City, el mismo valor por defecto que usa
-// lib/formato-fecha.ts), nunca en la zona local del navegador.
+// lib/formato-fecha.ts), nunca en la zona local del navegador. Locale y etiquetas siguen al idioma de la consola.
+import { etiquetasTraducidas, localeActivo, traductorActivo } from "@atiende/ui";
+import { restaurantesIndicadoresVoz } from "@atiende/ui/i18n/restaurantes/indicadoresVoz";
 import type { ResultadoConversacion } from "../lib/voz-client.ts";
 
 export function formatoDuracion(segundos: number | null): string {
@@ -19,15 +21,16 @@ export function formatoCostoUsd(costo: number | null): string {
 export function formatoInstante(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("es-MX", { timeZone: "America/Mexico_City", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString(localeActivo(), { timeZone: "America/Mexico_City", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-const ETIQUETAS_RESULTADO: Readonly<Record<ResultadoConversacion, string>> = {
-  pedido_creado: "Pedido creado",
-  escalado: "Escalada a una persona",
-  abandonado: "Abandonada",
-};
+const ETIQUETAS_RESULTADO: Readonly<Record<ResultadoConversacion, string>> = etiquetasTraducidas(
+  ["pedido_creado", "escalado", "abandonado"],
+  (r) => `restaurantes.indicadoresVoz.resultado.${r}` as const,
+  restaurantesIndicadoresVoz,
+);
+const tr = traductorActivo(restaurantesIndicadoresVoz);
 
 export function etiquetaResultado(resultado: ResultadoConversacion | null): string {
-  return resultado ? ETIQUETAS_RESULTADO[resultado] : "Sin clasificar";
+  return resultado ? ETIQUETAS_RESULTADO[resultado] : tr("restaurantes.indicadoresVoz.resultado.sinClasificar");
 }
