@@ -14,7 +14,8 @@ describe("VOZ_PLATAFORMA.cascadaV2", () => {
     const v2 = VOZ_PLATAFORMA.cascadaV2;
     expect(v2.deepgram).toMatchObject({ modelo: "nova-3", usdPorMinuto: 0.0048, usdPorMinutoAnterior: 0.0077, usdPorMinutoKeyterms: 0.0013 });
     expect(v2.heygen).toMatchObject({ usdPorMillonCaracteres: 30, promocion: { precio: 15, terminaEn: "2026-11-01T00:00:00-06:00" } });
-    expect(v2.llm).toMatchObject({ modelo: "openai/gpt-6-luna", modeloFacil: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500, esfuerzo: "low", fuenteCosto: "openrouter-usage-cost" });
+    expect(v2.llm).toMatchObject({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low", fuenteCosto: "openrouter-usage-cost" });
+    expect(v2.llm.dosNiveles).toEqual({ modelo: "openai/gpt-6-luna", modeloRapido: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500 });
     expect(v2.elevenlabs.stt).toMatchObject({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08 });
     expect(v2.elevenlabs.tts).toMatchObject({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", hzSalida: 24_000, usdPorMilCaracteres: 0.04 });
   });

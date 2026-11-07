@@ -123,6 +123,23 @@ describe("ElevenLabs Scribe v2 Realtime (STT)", () => {
     expect(b.vistos.at(-1)).toBe("caido:stt_el_ws_1011");
   });
 
+  it("un tipo de mensaje NUEVO e informativo (sin `error`) se ignora: no tumba la sesion", async () => {
+    const { vistos, socket } = await abrirStt();
+    socket.texto({ message_type: "vad_metrics", speech_prob: 0.3 });
+    expect(vistos.some((v) => v.startsWith("caido"))).toBe(false);
+    socket.texto({ message_type: "algo_nuevo", error: "x" });
+    expect(vistos.at(-1)).toBe("caido:stt_el_algo_nuevo");
+  });
+
+  it("commit forzado sin confirmacion del servidor: al segundo se cierra el turno con el parcial (nunca queda abierto)", async () => {
+    const { reloj, vistos, socket } = await abrirStt();
+    socket.texto({ message_type: "partial_transcript", text: "en la calle sesenta" });
+    reloj.vencer(C.stt.finTurnoMaxMs);
+    expect(socket.json.at(-1)).toMatchObject({ commit: true });
+    reloj.vencer(1_000);
+    expect(vistos.at(-1)).toBe("final:en la calle sesenta");
+  });
+
   it("al cerrar no avisa caida", async () => {
     const { sesion, socket, vistos } = await abrirStt();
     await sesion.cerrar();
@@ -180,6 +197,25 @@ describe("ElevenLabs eleven_v4_turbo (TTS)", () => {
     expect(p.url).toBe("https://api.elevenlabs.io/v1/text-to-speech/9Godp7dNohUvXk6qp0gS/stream?output_format=pcm_24000");
     expect(JSON.parse(String(p.init.body))).toEqual({ text: "Son $345 a la calle 60 #512 x 45.", model_id: "eleven_v4_turbo", language_code: "es" });
     expect(s.proveedor?.()).toBe("elevenlabs-tts");
+  });
+
+  it("si ElevenLabs acepta y no responde, la frase falla con tts_el_timeout al vencer el tope del primer byte (y el respaldo la repite)", async () => {
+    const f = fetchFalso([() => new Response("{}"), (_u, init) => new Promise<Response>((_r, rej) => init.signal?.addEventListener("abort", () => rej(new Error("abortado"))))]);
+    const s = await crearTtsElevenLabs({ apiKey: LLAVE, config: { ...C.tts, primerByteTimeoutMs: 30 }, fetchFn: f.fn }).abrir({ voz: "9Godp7dNohUvXk6qp0gS", hzSalida: 24_000 });
+    const consumir = async () => {
+      for await (const _ of s.sintetizar("hola", new AbortController().signal)) void _;
+    };
+    await expect(consumir()).rejects.toThrow("tts_el_timeout");
+    // Con el respaldo (Aura-2 falso) la frase se repite y la llamada sigue con voz.
+    const { ttsConRespaldo } = await import("../../src/index.ts");
+    const { TtsFalso } = await import("./dobles.ts");
+    const aura = new TtsFalso();
+    const f2 = fetchFalso([() => new Response("{}"), (_u, init) => new Promise<Response>((_r, rej) => init.signal?.addEventListener("abort", () => rej(new Error("abortado"))))]);
+    const env = await ttsConRespaldo(crearTtsElevenLabs({ apiKey: LLAVE, config: { ...C.tts, primerByteTimeoutMs: 30 }, fetchFn: f2.fn }), aura, "aura-2-estrella-es").abrir({ voz: "9Godp7dNohUvXk6qp0gS", hzSalida: 24_000 });
+    const trozos: number[][] = [];
+    for await (const t of env.sintetizar("hola", new AbortController().signal)) trozos.push([...t]);
+    expect(trozos.length).toBeGreaterThan(0);
+    expect(aura.frases).toEqual(["hola"]);
   });
 
   it("un HTTP de error falla con codigo corto; abortar (barge-in) corta sin error", async () => {

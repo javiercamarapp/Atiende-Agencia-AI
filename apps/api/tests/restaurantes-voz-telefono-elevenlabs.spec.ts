@@ -1,7 +1,7 @@
 // Stack ElevenLabs en las rutas de voz: voz telefonica por sucursal (migracion 103) en el panel, y lo que el contexto de la llamada le da al worker
 // (keyterms del menu, voz telefonica y modelo de los ajustes). Dobles en memoria, sin red.
 import { describe, expect, it } from "vitest";
-import { InMemoryAjustesAgenteRepository, InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository } from "@atiende/domain-restaurantes";
+import { AJUSTES_AGENTE_POR_DEFECTO, InMemoryAjustesAgenteRepository, InMemoryVozKpiRepository, InMemoryVozLlamadaRepository, InMemoryVozRepository } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
@@ -97,6 +97,24 @@ describe("contexto de la llamada para la cascada v2", () => {
     expect(c.vocabulario).toEqual(["Cochinita pibil", "Panuchos"]);
     expect(c.vozTelefono).toBe(ALEJANDRO);
     expect(c.modeloVoz).toBe("openai/gpt-6-luna");
+  });
+
+  it("un modelo guardado SIN endpoint de retencion cero (p. ej. un valor viejo) NO llega a la llamada: modeloVoz null (el worker usa el de la plataforma)", async () => {
+    const { ctx, contexto, ajustes } = await construir();
+    for (const sinZdr of ["meta/muse-spark-1.3", "google/gemini-2.5-flash-lite"]) {
+      await ajustes.guardar(ctx.organizationId, ctx.staff.owner.id, { ...(await ajustes.leer(ctx.organizationId)).valor, vozModeloCascada: sinZdr });
+      expect((await (await contexto()).json()).modeloVoz).toBeNull();
+    }
+  });
+
+  it("el panel ya no deja guardar para la voz un modelo sin retencion cero (400) y marca cada modelo con vozZdr", async () => {
+    const { ctx, app } = await construir();
+    const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/agente`;
+    const vista = await (await app.request(`${base}/ajustes`, authedGet(ctx.staff.owner.token))).json();
+    const porId = Object.fromEntries(vista.modelos.map((m: { id: string; vozZdr: boolean }) => [m.id, m.vozZdr]));
+    expect(porId).toMatchObject({ "openai/gpt-6-luna": true, "meta/muse-spark-1.3": false, "google/gemini-2.5-flash-lite": false });
+    expect((await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "meta/muse-spark-1.3" }, "PUT"))).status).toBe(400);
+    expect((await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "openai/gpt-6-luna" }, "PUT"))).status).toBe(200);
   });
 
   it("si leer el menu falla, la llamada NO se cae: vocabulario vacio; sin voz ni modelo guardados, null", async () => {

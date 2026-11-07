@@ -68,7 +68,7 @@ describe("turno completo", () => {
     const p = llm.peticiones[0]!;
     expect(p.system).toBe(APERTURA.instruccion);
     expect(p.mensajes).toEqual([{ role: "user", content: "quiero dos tacos de cochinita" }]);
-    expect(p.modeloPreferido).toBe("openai/gpt-6-luna");
+    expect(p.modeloPreferido).toBe("anthropic/claude-sonnet-5.5");
     expect(p.esfuerzo).toBe("low");
     expect(p.temperatura).toBeUndefined();
     expect(typeof p.onTextDelta).toBe("function");
@@ -105,7 +105,7 @@ describe("turno completo", () => {
     await inactivo();
     stt.eventos!.turnoFinal("dos");
     await inactivo();
-    expect(llm.peticiones.map((p) => p.modeloPreferido)).toEqual([MODELO, "google/gemini-3.5-flash-lite"]);
+    expect(llm.peticiones.map((p) => p.modeloPreferido)).toEqual([MODELO, "anthropic/claude-haiku-5.5"]);
     expect(vistos).toEqual([{ turno: 1, vuelta: 0, modeloPorDefecto: MODELO, textoCliente: "uno", pedidoEnJuego: false }, { turno: 2, vuelta: 0, modeloPorDefecto: MODELO, textoCliente: "dos", pedidoEnJuego: false }]);
   });
 });

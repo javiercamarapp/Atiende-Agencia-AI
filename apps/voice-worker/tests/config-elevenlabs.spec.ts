@@ -43,8 +43,9 @@ describe("VOZ_ESCALERA", () => {
 });
 
 describe("VOZ_RUIDO (cancelacion de ruido de LiveKit)", () => {
-  it("por omision Krisp BVC telefonico; acepta krisp y ninguno; otro valor es un error de configuracion", () => {
-    expect(cargarConfig(ENV_BASE).ruido).toBe("krisp-telefonia");
+  it("por omision APAGADO (ninguno: no cambia el audio de las llamadas sin pedirlo); acepta krisp-telefonia y krisp; otro valor es un error de configuracion", () => {
+    expect(cargarConfig(ENV_BASE).ruido).toBe("ninguno");
+    expect(cargarConfig({ ...ENV_BASE, VOZ_RUIDO: "krisp-telefonia" }).ruido).toBe("krisp-telefonia");
     expect(cargarConfig({ ...ENV_BASE, VOZ_RUIDO: "KRISP" }).ruido).toBe("krisp");
     expect(cargarConfig({ ...ENV_BASE, VOZ_RUIDO: "ninguno" }).ruido).toBe("ninguno");
     expect(cargarConfig({ ...ENV_BASE, VOZ_RUIDO: "viva" }).estado).toBe("no_configurado");
@@ -66,5 +67,13 @@ describe("VOZ_RUIDO (cancelacion de ruido de LiveKit)", () => {
     let intentos = 0;
     expect(await cargarCancelacionRuido("ninguno", () => undefined, async () => (intentos++, { TelephonyBackgroundVoiceCancellation: () => ({ moduleId: "x", options: {} }), NoiseCancellation: () => ({ moduleId: "x", options: {} }) }))).toBeNull();
     expect(intentos).toBe(0);
+  });
+});
+
+describe("VOZ_CEREBRO_DOS_NIVELES", () => {
+  it("apagado por omision; 1/true/si lo encienden", () => {
+    expect(cargarConfig(ENV_BASE).cerebroDosNiveles).toBe(false);
+    for (const v of ["1", "true", "si"]) expect(cargarConfig({ ...ENV_BASE, VOZ_CEREBRO_DOS_NIVELES: v }).cerebroDosNiveles).toBe(true);
+    expect(cargarConfig({ ...ENV_BASE, VOZ_CEREBRO_DOS_NIVELES: "0" }).cerebroDosNiveles).toBe(false);
   });
 });

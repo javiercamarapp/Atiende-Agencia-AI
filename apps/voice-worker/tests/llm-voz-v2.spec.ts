@@ -29,12 +29,12 @@ const delta = (content: string) => ({ model: "anthropic/claude-sonnet-5.5", choi
 const uso = { usage: { prompt_tokens: 1200, completion_tokens: 30, cost: 0.0042, prompt_tokens_details: { cached_tokens: 1100 } }, choices: [{ delta: {}, finish_reason: "stop" }] };
 
 describe("puerto LLM de voz v2", () => {
-  it("manda el modelo de la plataforma (GPT-6 Luna) con esfuerzo BAJO, tope de salida corto, streaming y SIN temperature", async () => {
+  it("manda el modelo de la plataforma (Sonnet 5.5) con esfuerzo BAJO, tope de salida corto, streaming y SIN temperature", async () => {
     const { fn, cuerpos } = fetchSse([delta("Claro."), uso]);
     await crearPuertoLlmVozV2("llave-de-prueba", fn).completar({ ...BASE, onTextDelta: () => undefined });
     const c = cuerpos[0]!;
-    expect(c.model).toBe("openai/gpt-6-luna");
-    expect(c.reasoning).toEqual({ effort: "low" }); // sin esfuerzo bajo, GPT-6 Luna tardo ~6 s al primer token (medicion del 6-nov-2026)
+    expect(c.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(c.reasoning).toEqual({ effort: "low" });
     expect(c.max_tokens).toBe(VOZ_PLATAFORMA.cascadaV2.llm.topeSalidaTokens);
     expect(c.stream).toBe(true);
     expect(c.usage).toEqual({ include: true });
@@ -57,6 +57,8 @@ describe("puerto LLM de voz v2", () => {
     expect(cuerpos[1]!.reasoning).toEqual({ effort: "medium" });
     await puerto.completar({ ...BASE, modeloPreferido: "google/gemini-3.5-flash-lite", onTextDelta: () => undefined });
     expect(cuerpos[2]).not.toHaveProperty("reasoning");
+    await puerto.completar({ ...BASE, modeloPreferido: "openai/gpt-6-luna", onTextDelta: () => undefined });
+    expect(cuerpos[3]!.reasoning).toEqual({ effort: "low" }); // sin esfuerzo bajo, GPT-6 Luna tardo ~6 s al primer token (medicion del 6-nov-2026)
   });
 
   it("marca el system prompt con un punto de cache explicito (solo Anthropic) y deja el resto igual", async () => {
@@ -64,7 +66,7 @@ describe("puerto LLM de voz v2", () => {
     const puerto = crearPuertoLlmVozV2("k", fn);
     await puerto.completar({ ...BASE, modeloPreferido: "anthropic/claude-haiku-5.5", onTextDelta: () => undefined });
     await puerto.completar({ ...BASE, modeloPreferido: "google/gemini-3.8-flash", onTextDelta: () => undefined });
-    await puerto.completar({ ...BASE, onTextDelta: () => undefined });
+    await puerto.completar({ ...BASE, modeloPreferido: "openai/gpt-6-luna", onTextDelta: () => undefined });
     expect((cuerpos[2]!.messages as { content: unknown }[])[0]!.content).toBe(BASE.system); // GPT-6 Luna: cache automatica, sin cache_control
     const m0 = cuerpos[0]!.messages as { role: string; content: unknown }[];
     expect(m0[0]).toEqual({ role: "system", content: [{ type: "text", text: BASE.system, cache_control: { type: "ephemeral" } }] });
@@ -77,7 +79,7 @@ describe("puerto LLM de voz v2", () => {
     const { fn } = fetchSse([delta("Claro, "), delta("con gusto."), uso]);
     const r = await crearPuertoLlmVozV2("k", fn).completar({ ...BASE, onTextDelta: (d) => trozos.push(d) });
     expect(trozos).toEqual(["Claro, ", "con gusto."]);
-    expect(r).toMatchObject({ texto: "Claro, con gusto.", toolCalls: [], costoMicroUsd: 4200, costoReal: true, modelo: "openai/gpt-6-luna", tokensEntrada: 1200, tokensSalida: 30, tokensCache: 1100 });
+    expect(r).toMatchObject({ texto: "Claro, con gusto.", toolCalls: [], costoMicroUsd: 4200, costoReal: true, modelo: "anthropic/claude-sonnet-5.5", tokensEntrada: 1200, tokensSalida: 30, tokensCache: 1100 });
   });
 
   it("devuelve el motivo de fin (finish_reason) y usa el piso de 1 500 tokens de salida: con razonamiento, un tope chico deja el contenido vacio", async () => {

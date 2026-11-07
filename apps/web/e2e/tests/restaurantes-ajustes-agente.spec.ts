@@ -65,12 +65,12 @@ test.describe("restaurantes: ajustes del agente", () => {
     await page.getByRole("radiogroup", { name: "Ritmo de habla" }).locator("label", { hasText: "Pausado" }).click();
     await page.getByRole("radiogroup", { name: "Estilo de habla" }).locator("label", { hasText: "Cálido" }).click();
     await page.getByRole("radiogroup", { name: "Temperatura de la voz" }).locator("label", { hasText: /^0\.2$/ }).click();
-    await elegirValor(page.locator("#ajustes-modelo-cascada"), "google/gemini-2.5-flash-lite");
+    await elegirValor(page.locator("#ajustes-modelo-cascada"), "deepseek/deepseek-v4.1-flash");
     await expect(page.getByTestId("costo-cascada")).toContainText("≈ US$1.40 por 1,000 minutos");
     await page.getByRole("button", { name: "Guardar ajustes" }).click();
     await expect(page.getByText("Ajustes guardados")).toBeVisible();
     const [put] = await mock.buscar({ metodo: "PUT", ruta: "/admin/agente/ajustes" });
-    expect(put!.cuerpo).toMatchObject({ vozFondoActivo: true, vozFondoVolumen: 12, vozRitmo: "pausado", vozEstilo: "calido", vozTemperatura: 0.2, vozModeloCascada: "google/gemini-2.5-flash-lite" });
+    expect(put!.cuerpo).toMatchObject({ vozFondoActivo: true, vozFondoVolumen: 12, vozRitmo: "pausado", vozEstilo: "calido", vozTemperatura: 0.2, vozModeloCascada: "deepseek/deepseek-v4.1-flash" });
   });
 
   test("voz y saludo de la sucursal: guarda sobre la configuracion vigente y avisa si el saludo no dice 'asistente virtual'", async ({ page, iniciarSesion, mock }) => {

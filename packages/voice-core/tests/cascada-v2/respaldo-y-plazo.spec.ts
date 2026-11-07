@@ -5,6 +5,8 @@ import type { EventosStt, PeticionLlmVoz, PuertoLlmVoz, RespuestaLlmVoz } from "
 import { SttFalso, TtsFalso, audioDe, compuerta, escribe, fabricaSockets, llmFalso, manejadoresFalsos, turnoMicrotareas } from "./dobles.ts";
 
 const LLM = VOZ_PLATAFORMA.cascadaV2.llm;
+/** Lo que el worker enciende con VOZ_CEREBRO_DOS_NIVELES=1 (ver `crearEscalonesPlataforma`). */
+const DOS_NIVELES = { modeloLlm: LLM.dosNiveles.modelo, modeloRapido: LLM.dosNiveles.modeloRapido, plazoLlm: { plazoMs: LLM.dosNiveles.plazoPrimerTokenMs, modeloRespaldo: LLM.dosNiveles.modeloRespaldo } } as const;
 
 function eventos() {
   const vistos: string[] = [];
@@ -132,7 +134,7 @@ describe("plazo al primer token con peticion de respaldo (hedge)", () => {
     const reloj = relojManual();
     const { llm, pedidos } = llmPorModelo({ "openai/gpt-6-luna": async (p) => (p.onTextDelta?.("Claro."), { texto: "Claro." }) });
     let vencio = false;
-    const r = await completarConPlazo(llm, { ...PET, onTextDelta: () => undefined }, { plazoMs: 2_500, modeloRespaldo: LLM.modeloRespaldo, alVencer: () => (vencio = true), temporizador: reloj });
+    const r = await completarConPlazo(llm, { ...PET, onTextDelta: () => undefined }, { plazoMs: 2_500, modeloRespaldo: LLM.dosNiveles.modeloRespaldo, alVencer: () => (vencio = true), temporizador: reloj });
     expect(r).toMatchObject({ modelo: "openai/gpt-6-luna", respaldo: false });
     reloj.vencer();
     expect(pedidos).toEqual(["openai/gpt-6-luna"]);
@@ -221,7 +223,7 @@ describe("plazo al primer token con peticion de respaldo (hedge)", () => {
     const stt = new SttFalso();
     const tts = new TtsFalso();
     const m = manejadoresFalsos();
-    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts, temporizador: reloj });
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts, temporizador: reloj, ...DOS_NIVELES });
     await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, m.h);
     stt.eventos!.turnoFinal("cuanto es de dos tortas de cochinita");
     await turnoMicrotareas(40);
@@ -231,10 +233,59 @@ describe("plazo al primer token con peticion de respaldo (hedge)", () => {
     expect(tts.frases.join(" ")).toContain("Son 345 pesos.");
     lento.abrir();
   });
+
+  it("si el cliente interrumpe mientras suena la frase de espera, la frase NO entra al historial del modelo", async () => {
+    const reloj = relojManual();
+    const lento = compuerta();
+    const { llm } = llmPorModelo({
+      "openai/gpt-6-luna": async () => (await lento.promesa, { texto: "" }),
+      "anthropic/claude-haiku-5.5": async () => (await lento.promesa, { texto: "" }),
+    });
+    const stt = new SttFalso();
+    const pet: PeticionLlmVoz[] = [];
+    const llmTraza: PuertoLlmVoz = { completar: (p) => (pet.push({ ...p, mensajes: [...p.mensajes] }), llm.completar(p)) };
+    let n = 0;
+    const tts = new TtsFalso(async function* (_f, senal) {
+      yield audioDe(1);
+      // Solo la frase de espera "sigue sonando" hasta que el cliente interrumpe; las demas terminan de inmediato.
+      if (++n === 1) await new Promise<void>((r) => senal.addEventListener("abort", () => r(), { once: true }));
+    });
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm: llmTraza, stt, tts, temporizador: reloj, ...DOS_NIVELES, ahora: () => 1_000_000 });
+    await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, manejadoresFalsos().h);
+    stt.eventos!.turnoFinal("cuanto es de dos tortas de cochinita");
+    await turnoMicrotareas(40);
+    reloj.vencer();
+    await turnoMicrotareas(40);
+    expect(tts.frases[0]).toMatch(/permítame|segundito|Déjeme/);
+    stt.eventos!.turnoFinal("no, mejor tres");
+    lento.abrir();
+    await prov.inactivo();
+    const ultima = pet.at(-1)!;
+    expect(JSON.stringify(ultima.mensajes)).not.toMatch(/permítame|segundito|Déjeme ver/);
+  });
+
+  it("sin dos niveles (por omision) un puerto CON ESTADO recibe UNA sola peticion por turno aunque tarde mas del plazo (nunca hay hedge)", async () => {
+    const reloj = relojManual();
+    const lento = compuerta();
+    let llamadas = 0;
+    const conEstado: PuertoLlmVoz = { completar: async (p) => (llamadas += 1, await lento.promesa, p.onTextDelta?.("Listo."), { texto: "Listo.", toolCalls: [], costoMicroUsd: 0 }) };
+    const stt = new SttFalso();
+    const tts = new TtsFalso();
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm: conEstado, stt, tts, temporizador: reloj });
+    await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, manejadoresFalsos().h);
+    stt.eventos!.turnoFinal("hola, quiero tres tacos");
+    await turnoMicrotareas(40);
+    expect(reloj.pendientes).toHaveLength(0); // ni siquiera se programa el plazo
+    reloj.vencer();
+    lento.abrir();
+    await prov.inactivo();
+    expect(llamadas).toBe(1);
+    expect(tts.frases).toEqual(["Listo."]); // sin frase de espera
+  });
 });
 
 describe("nivel del modelo por turno (rapido vs preciso)", () => {
-  const F = LLM.modeloFacil;
+  const F = LLM.dosNiveles.modeloRapido;
   const base = { modeloPorDefecto: LLM.modelo };
   it.each([
     [{ turno: 1, vuelta: 0, textoCliente: "(La llamada acaba de conectarse.)" }, F],
@@ -244,14 +295,26 @@ describe("nivel del modelo por turno (rapido vs preciso)", () => {
     [{ turno: 2, vuelta: 1, textoCliente: "hola" }, undefined],
     [{ turno: 4, vuelta: 0, textoCliente: "ok", pedidoEnJuego: true }, undefined],
     [{ turno: 4, vuelta: 0, textoCliente: "si" }, undefined],
+    [{ turno: 5, vuelta: 0, textoCliente: "eso es todo" }, undefined],
+    [{ turno: 5, vuelta: 0, textoCliente: "nada mas" }, undefined],
   ])("%j -> %s", (c, esperado) => {
     expect(elegirNivelModelo({ ...base, ...c }, F)).toBe(esperado);
+  });
+
+  it("sin modeloRapido (por omision) todos los turnos van al modelo por omision, tambien la cortesia", async () => {
+    const llm = llmFalso([escribe(["Claro."])]);
+    const stt = new SttFalso();
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts: new TtsFalso() });
+    await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, manejadoresFalsos().h);
+    stt.eventos!.turnoFinal("hola, buenas tardes");
+    await prov.inactivo();
+    expect(llm.peticiones.map((p) => p.modeloPreferido)).toEqual([LLM.modelo]);
   });
 
   it("el modelo elegido en los ajustes del agente reemplaza al preciso; el rapido sigue siendo el de la plataforma", async () => {
     const llm = llmFalso([escribe(["Claro."])]);
     const stt = new SttFalso();
-    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts: new TtsFalso(), plazoLlm: false });
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts: new TtsFalso(), ...DOS_NIVELES, plazoLlm: false });
     await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [], modeloLlm: "deepseek/deepseek-v4.1-flash" }, manejadoresFalsos().h);
     stt.eventos!.turnoFinal("quiero tres panuchos");
     await prov.inactivo();
