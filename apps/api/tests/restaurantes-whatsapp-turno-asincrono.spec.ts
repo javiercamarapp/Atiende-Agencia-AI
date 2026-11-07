@@ -106,6 +106,18 @@ describe("webhook de WhatsApp de restaurantes: turno asincrono", () => {
     await expect(s.restaurantesRepo.claimWhatsAppMessage(s.organizationId, "wamid.1", "x".repeat(64))).resolves.toBe(true);
   });
 
+  it("la fase A deja la sucursal de entrada en la conversacion: si el primer turno muere, el barredor sabe con que numero contestar", async () => {
+    const roto: WhatsAppTurnHandler = {
+      async handleInboundMessage() {
+        throw new Error("la funcion murio");
+      },
+    };
+    const s = await setup({ asincrono: true, conSegundoPlano: true, handler: roto });
+    expect((await s.app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload("wamid.1", "Hola")))).status).toBe(200);
+    const conversaciones = (s.restaurantesRepo as unknown as { whatsappConversations: Map<string, { propertyId: string | null }> }).whatsappConversations;
+    expect(conversaciones.get(`${s.organizationId}:+5219991234567`)?.propertyId).toBe(s.propertyId);
+  });
+
   it("manda el indicador de «escribiendo» al tomar el turno asincrono; si falla, el turno sigue", async () => {
     const avisos: Array<{ phoneNumberId: string; messageId: string }> = [];
     const s = await setup({
