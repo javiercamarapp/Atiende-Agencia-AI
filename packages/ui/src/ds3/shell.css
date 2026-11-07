@@ -329,3 +329,107 @@ html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
   html[data-diseno="ds3"] .ds3-nav-item[aria-current="page"],
   html[data-diseno="ds3"] .ds3-pie-fila[aria-current="page"] { border-left: 2px solid Highlight; }
 }
+
+/* ---- 3. Encabezado de 44 px, cabecera de pagina y barra de alcance -------------------------------------------------
+ * Encabezado (escritorio): icono de la pantalla (15, gris) + titulo 13/500 con elipsis + boton «Guía» (pildora de 28) a su lado;
+ * acciones de la pagina a la derecha. Sin campana, fecha ni migas. La cabecera interna se aplana (display: contents) para que
+ * titulo, Guía y acciones sean una sola fila con la zona.
+ */
+@media (min-width: 768px) {
+  html[data-diseno="ds3"] .ds3-cabecera-zona.ds3-cabecera-zona {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    padding: 0 20px;
+    border-bottom: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+  }
+  html[data-diseno="ds3"] .ds3-cabecera.ds3-cabecera { display: contents; }
+  html[data-diseno="ds3"] .ds3-cabecera-titulo.ds3-cabecera-titulo {
+    order: 0;
+    min-width: 0;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+  }
+  html[data-diseno="ds3"] .ds3-cabecera-titulo svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  html[data-diseno="ds3"] .ds3-guia.ds3-solo[hidden] {
+    order: 1;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px 0 8px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground-2));
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color var(--dur-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1), color var(--dur-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-diseno="ds3"] .ds3-guia.ds3-solo[hidden]:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-guia.ds3-solo[hidden]:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  html[data-diseno="ds3"] .ds3-guia svg { width: 14px; height: 14px; }
+  html[data-diseno="ds3"] .ds3-cabecera-acciones.ds3-cabecera-acciones { order: 2; margin-left: auto; }
+  /* Nombre de la pagina tambien en el Resumen (la barra del diseno actual lleva ahi el titulo de la consola). */
+  html[data-diseno="ds3"] .ds3-cabecera-titulo-ds3.ds3-solo[hidden] { display: block; min-width: 0; }
+  html[data-diseno="ds3"] .ds3-cabecera-titulo-ds3.ds3-solo[hidden]::before { content: attr(data-titulo); }
+  /* Pantalla de chat (Pregúntale a tus datos / Copiloto): sin encabezado en escritorio y sin banners sobre la conversacion. */
+  html[data-diseno="ds3"] .ds3-cabecera-zona.ds3-cabecera-zona[data-sin-cabecera] { display: none; }
+  html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] [data-testid="banner-plan"],
+  html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] [data-testid="banner-agregados-global"] { display: none; }
+}
+
+/* PageHeader: flex con wrap y acciones a la derecha; eyebrow 12/600 mayusculas, H1 20/600, descripcion de UNA linea 13/1.4.
+   Ritmo de 12 con lo que sigue. En <= 640 las acciones pasan a una fila completa alineada a la izquierda. */
+html[data-diseno="ds3"] .ds3-encabezado.ds3-encabezado { gap: 8px; margin-bottom: 12px; }
+html[data-diseno="ds3"] .ds3-encabezado-fila.ds3-encabezado-fila {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px 24px;
+}
+html[data-diseno="ds3"] .ds3-encabezado-texto.ds3-encabezado-texto { flex: 1 1 320px; }
+/* Antetitulo derivado del grupo del menu (cuando la pantalla no trae uno propio): texto por CSS desde data-eyebrow. */
+html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden]::before { content: attr(data-eyebrow); }
+html[data-diseno="ds3"] .ds3-encabezado-eyebrow.ds3-encabezado-eyebrow {
+  margin: 0 0 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-encabezado-titulo.ds3-encabezado-titulo {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+html[data-diseno="ds3"] .ds3-encabezado-descripcion.ds3-encabezado-descripcion {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-encabezado-acciones.ds3-encabezado-acciones { margin-left: auto; padding-top: 0; gap: 8px; }
+@media (max-width: 640px) {
+  html[data-diseno="ds3"] .ds3-encabezado-acciones.ds3-encabezado-acciones { flex-basis: 100%; margin-left: 0; justify-content: flex-start; }
+}
+html[data-diseno="ds3"] .ds3-popover-guia.ds3-popover-guia { width: min(340px, calc(100vw - 24px)); padding: 12px; border-radius: 12px; }
+
+/* Barra de alcance: una fila de 32 sin wrap (scroll-x interno, sin barra visible), margen de 12 con el contenido. */
+html[data-diseno="ds3"] .ds3-alcance.ds3-alcance { min-height: 32px; gap: 8px; margin-bottom: 12px; }
+html[data-diseno="ds3"] .ds3-alcance-filtros.ds3-alcance-filtros { height: 32px; border-radius: 8px; }
+/* La raiz ds3 mide 13 px: las alturas en rem de Tailwind encogen, asi que los controles de la barra fijan su alto en px. */
+html[data-diseno="ds3"] .ds3-alcance-filtros.ds3-alcance-filtros { padding: 0 10px; font-size: 13px; }
+html[data-diseno="ds3"] .ds3-alcance-chip.ds3-alcance-chip { height: 28px; font-size: 12px; }
+html[data-diseno="ds3"] .ds3-alcance-chip button { width: 24px; height: 24px; }

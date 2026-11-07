@@ -65,7 +65,7 @@ export {
   type DataTableProps,
   type DataTableValorOrden,
 } from "./components/DataTable.js";
-export { PageHeader, type PageHeaderAtras, type PageHeaderMiga, type PageHeaderProps } from "./components/PageHeader.js";
+export { PageHeader, GrupoNavContext, type PageHeaderAtras, type PageHeaderMiga, type PageHeaderProps } from "./components/PageHeader.js";
 export { PageContainer, type PageContainerProps } from "./components/PageContainer.js";
 export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
 export { Sidebar, categoriaDeRuta, type SidebarItem, type SidebarSection, type SidebarProps, type SidebarPiePildora, type SidebarUser } from "./components/Sidebar.js";
@@ -82,12 +82,14 @@ export {
   RutaBoundary,
   construirMigas,
   VERTICAL_SHELL_MAIN_ID,
+  GUIA_ABRIR_EVENTO,
   type VerticalMiga,
   type VerticalNoEncontradoProps,
   type VerticalShellEstadoProps,
   type VerticalShellProps,
 } from "./components/VerticalShell.js";
 export { BarraPagina, type BarraPaginaProps } from "./components/BarraPagina.js";
+export { BarraAlcance, BarraAlcanceEspaciador, BotonFiltros, ChipFiltro, type BarraAlcanceProps, type BotonFiltrosProps, type ChipFiltroProps } from "./components/BarraAlcance.js";
 export {
   ChatDatosDialog,
   formatChatCell,

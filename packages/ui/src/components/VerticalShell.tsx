@@ -13,7 +13,7 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
-import { Compass, ShieldCheck } from "lucide-react";
+import { CircleHelp, Compass, ShieldCheck } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
 import { BottomNav, MobileHeader, type BottomNavItem } from "./BottomNav";
 import { BarraPagina } from "./BarraPagina";
@@ -23,8 +23,15 @@ import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
 import { Button } from "./ui/button";
+import { GrupoNavContext } from "./PageHeader";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
+
+/**
+ * Evento que anuncia «abrir la guia de esta pantalla» (boton «Guía» del encabezado ds3). El recorrido guiado es de otro carril:
+ * se engancha escuchando este evento en `window` (`detail.ruta` = pathname) o pasando `onGuia` al shell.
+ */
+export const GUIA_ABRIR_EVENTO = "atiende:guia:abrir";
 
 // ---- Migas ----------------------------------------------------------------
 
@@ -247,6 +254,11 @@ export interface VerticalShellProps {
    * Va como ultima fila del pie del sidebar y de la hoja «Más». Sin el, no se pinta.
    */
   readonly adminHref?: string;
+  /**
+   * Accion del boton «Guía» del encabezado ds3 (punto de enganche del recorrido guiado). Sin ella el boton anuncia
+   * `GUIA_ABRIR_EVENTO` en `window`. Sin la bandera ds3 el boton existe oculto.
+   */
+  readonly onGuia?: () => void;
   readonly children: React.ReactNode;
 }
 
@@ -266,6 +278,7 @@ export function VerticalShell({
   panelLateral,
   organizacion,
   adminHref,
+  onGuia,
   children,
 }: VerticalShellProps) {
   const pie: SidebarPiePildora[] | undefined = adminHref
@@ -302,6 +315,10 @@ export function VerticalShell({
   const barraDeConsola = sobrescrito?.titulo === "";
   const IconoBarra = barraDeConsola ? undefined : (sobrescrito?.icono ?? barraDeRuta?.icon);
   const tituloBarra = barraDeConsola ? header.title : (sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title);
+  // ds3: el encabezado lleva SIEMPRE el nombre de la pagina (tambien en el Resumen); el de la consola queda solo si la ruta no es del menu.
+  const tituloDs3 = sobrescrito?.titulo || activo?.item.label || header.title;
+  // ds3: grupo del menu de la pantalla activa, antetitulo del PageHeader.
+  const grupoNav = activo ? activo.grupo : null;
   const iconoBarra = IconoBarra ? <IconoBarra className="size-[15px] text-muted-foreground" strokeWidth={1.75} /> : header.icon;
   const selectores =
     organizationSelector || branchSelector ? (
@@ -337,9 +354,28 @@ export function VerticalShell({
 
       {/* Marco de Likida: columna de contenido gris tenue (--sunken = --g1) con hairline y esquinas
           redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
-      <div ref={fijarMarco} className="ds3-shell-marco relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
-        <div className="hidden md:block shrink-0">
-          <BarraPagina icon={iconoBarra} title={tituloBarra} acciones={accionesBarra} comoH1={sinH1} />
+      <div ref={fijarMarco} data-pantalla={barraDeConsola ? "chat" : undefined} className="ds3-shell-marco relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
+        {/* ds3: la zona es la barra de 44 px (la cabecera interna se aplana con display:contents) y el boton «Guía» queda junto al
+            titulo; vive FUERA de [data-testid="barra-pagina"] para que la barra del diseno actual siga sin botones propios. */}
+        <div className="ds3-cabecera-zona hidden md:block shrink-0" data-sin-cabecera={barraDeConsola ? "" : undefined}>
+          <BarraPagina
+            icon={iconoBarra}
+            title={tituloBarra}
+            tituloDs3={tituloDs3 !== tituloBarra ? tituloDs3 : undefined}
+            acciones={accionesBarra}
+            comoH1={sinH1}
+            className="ds3-cabecera"
+          />
+          <button
+            type="button"
+            hidden
+            data-testid="barra-guia"
+            onClick={() => (onGuia ? onGuia() : window.dispatchEvent(new CustomEvent(GUIA_ABRIR_EVENTO, { detail: { ruta: pathname } })))}
+            className="ds3-solo ds3-guia"
+          >
+            <CircleHelp aria-hidden="true" strokeWidth={1.75} />
+            Guía
+          </button>
         </div>
         {/* `key` fuerza el remontaje de las paginas hijas cuando cambia la sucursal activa. */}
         <main
@@ -354,7 +390,9 @@ export function VerticalShell({
             <TituloBarraContext.Provider value={fijarTitulo}>
               <AccionesBarraContext.Provider value={fijarAcciones}>
                 <MarcoShellContext.Provider value={marco}>
-                  <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                  <GrupoNavContext.Provider value={grupoNav}>
+                    <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                  </GrupoNavContext.Provider>
                 </MarcoShellContext.Provider>
               </AccionesBarraContext.Provider>
             </TituloBarraContext.Provider>
