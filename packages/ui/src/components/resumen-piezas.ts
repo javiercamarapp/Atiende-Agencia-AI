@@ -8,3 +8,6 @@ export * from "./PillLink.js";
 export * from "./Odometro.js";
 export * from "./RadioSegmentado.js";
 export * from "./BarraAccionesInferior.js";
+export * from "./InfoCalculo.js";
+export * from "./ds3-contenido-textos.js";
+export * from "./ds3-error-textos.js";
