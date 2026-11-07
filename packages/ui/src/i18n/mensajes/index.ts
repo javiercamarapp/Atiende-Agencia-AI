@@ -12,6 +12,7 @@
  */
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
 import type { comun } from "./comun.ts";
+import type { ModulosRestaurantes } from "./restaurantes/index.ts";
 
 /**
  * Modulos que van en el bundle de arranque. Vacio a proposito: la entrada esta en su tope de bundle, asi que TODO modulo es
@@ -25,7 +26,7 @@ export const MODULOS = {} as const;
  * (`readonly <area>: typeof <area>` con `import type`). Quien lo usa lo pasa a `useT(<area>)` / `useI18n(<area>)`, que registra su
  * espanol en el render (fuera de React: `registrarModuloEs(<area>)`). El archivo del modulo NO tiene efectos al importarse.
  */
-interface ModulosDeArea {
+interface ModulosDeArea extends ModulosRestaurantes {
   readonly comun: typeof comun;
 }
 
