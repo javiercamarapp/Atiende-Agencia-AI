@@ -299,6 +299,9 @@ html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
     letter-spacing: 0.02em;
   }
   html[data-diseno="ds3"] .ds3-cuenta-organizacion.ds3-solo[hidden] { display: block; }
+  /* Rol bajo el nombre: 12 px en caja normal (no mayusculas), gris. Contraido: solo el boton de salir (sin monograma). */
+  html[data-diseno="ds3"] .ds3-cuenta-texto.ds3-cuenta-texto > p:last-child { font-size: 12px; line-height: 1.35; text-transform: none; color: hsl(var(--muted-foreground)); }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-monograma.ds3-monograma { display: none; }
   html[data-diseno="ds3"] .ds3-cuenta-salir.ds3-cuenta-salir {
     width: 32px;
     height: 32px;
