@@ -16,6 +16,8 @@ import type { CustomerLookupResult } from "../../types.ts";
 import { APENDICE_VOZ, instruccionVozConReglas } from "../perfil-voz-pm.ts";
 import type { VozConfig } from "../types.ts";
 import { vocabularioMenuVoz } from "./vocabulario.ts";
+import { instruccionConIdiomas } from "../../paridad-menor/idiomas-voz.ts";
+import type { ConfigIdiomasVoz } from "../../paridad-menor/idiomas-voz.ts";
 
 export interface EntradaInstruccionLlamada {
   readonly organizationId: string;
@@ -24,6 +26,8 @@ export interface EntradaInstruccionLlamada {
   readonly telefono: string | null;
   readonly config: VozConfig;
   readonly ahora: Date;
+  /** F4c: idiomas de la sucursal (migracion 181). Ausente, null o por omision (solo es-MX, sin deteccion) = la instruccion NO cambia ni un byte. */
+  readonly idiomas?: ConfigIdiomasVoz | null;
 }
 
 export interface InstruccionLlamada {
@@ -101,6 +105,8 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
     });
   }
   if (editable === "" && inicial !== "") instruccion += `\n\n# PRIMER MENSAJE\nAl contestar, diga exactamente: "${inicial}"`;
+  // F4c: el bloque de idiomas va al FINAL (despues del bloque de reglas y del primer mensaje) y declara que no cambia ninguna regla; con el idioma por omision es "".
+  instruccion = instruccionConIdiomas(instruccion, e.idiomas);
   // Sin catalogo (o si la consulta falla) la llamada se atiende igual, solo sin pista de vocabulario.
   let vocabulario: string[] = [];
   try {

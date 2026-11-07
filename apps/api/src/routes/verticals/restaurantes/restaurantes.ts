@@ -35,6 +35,7 @@ import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
 import { restaurantesAdminAgregadosRoutes } from "./admin-agregados.ts";
 import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
+import { restaurantesParidadMenorRoutes } from "./paridad-menor.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesAgentePreviewRoutes } from "./agente-preview.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
@@ -115,6 +116,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Configuracion del Resumen (migración 096): minutos por conversacion (horas ahorradas) y metas de IA.
   app.route("/", restaurantesResumenConfigRoutes(deps));
   app.route("/", restaurantesAjustesAgenteRoutes(deps));
+  // F4c (paridad menor): borrar producto, idiomas de voz, archivos de conocimiento, tono y mensaje del dueno.
+  app.route("/", restaurantesParidadMenorRoutes(deps));
   app.route("/", restaurantesAjustesLlamadaInternoRoutes(deps));
   // Worker de telefonía (migración 067): contexto de la llamada, costo por escalón, modo de entrada y KPI de desborde/latencia.
   app.route("/", restaurantesVozLlamadaRoutes(deps));

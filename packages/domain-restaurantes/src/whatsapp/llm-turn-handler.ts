@@ -58,6 +58,8 @@ import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
+import { bloquePersonalizacionPrompt } from "../paridad-menor/personalizacion-agente.ts";
+import type { PersonalizacionAgente } from "../paridad-menor/personalizacion-agente.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { RESPUESTA_TOQUE_RETENIDO, quitarMarcadoresDeToque, contenidoParaElModelo, pareceResumenParaConfirmar, respuestaDeToqueQueNoSigue, toqueDeMensaje, vigenciaDelToque } from "./botones-confirmacion.ts";
@@ -504,6 +506,8 @@ export interface WhatsAppLlmAgentOptions {
   /** Ajustes del agente de la organizacion (modelo elegido y temperatura efectiva). Ausente o `null` = el modelo y la temperatura de siempre. Nunca debe
    * lanzar: un fallo aqui no puede tumbar el turno (el llamador degrada a los valores de siempre). */
   readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
+  /** F4c: tono y mensaje adicional del dueno (migracion 183). Ausente / null / sin tono ni mensaje = el prompt es IDENTICO al de antes (huellas en tests/paridad-menor-golden-prompts.spec.ts). */
+  readonly leerPersonalizacion?: (organizationId: string) => Promise<PersonalizacionAgente | null>;
   /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
   readonly autopiloto?: AutopilotoTurnoHooks;
   /** Agregados por validar (migracion 099): habilita `solicitar_agregado_pedido` con solicitud real y la regla del prompt que lo manda usar. Ausente = el agente escala como siempre. */
@@ -722,7 +726,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Base sin migrar o sin entradas = bloque vacio (el prompt es identico al de antes); la lectura corre en SAVEPOINT dentro del repositorio.
       const conocimientoBloque = await bloqueConocimientoDelTurno(repo, organizationId, activeEntryBranch?.propertyId ?? entryPropertyId ?? null, config.timezone, now());
       const estadoSucursal = config.perfil === "taqueria_pm" ? await estadoSucursalParaPrompt(repo, activeEntryBranch, now()) : "";
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal, Boolean(options.agregados));
+      // F4c: tono y mensaje del dueno (migracion 183). En el perfil PM el bloque lleva el tono y el mensaje; en el generico el tono ya entra por `TONO DE VOZ REQUERIDO` (se sustituye en la config del
+      // prompt) y el bloque lleva solo el mensaje. Todo va ANTES de las reglas duras. Sin personalizacion (o si la lectura falla) el prompt no cambia ni un byte.
+      const personalizacion = options.leerPersonalizacion ? await options.leerPersonalizacion(organizationId).catch(() => null) : null;
+      const esPm = config.perfil === "taqueria_pm";
+      const bloqueDueno = bloquePersonalizacionPrompt(personalizacion, personalizacion?.tono ? TONE_INSTRUCTIONS[personalizacion.tono] : null, { incluirTono: esPm });
+      const conocimientoYDueno = [conocimientoBloque, bloqueDueno].filter((b) => b !== "").join("\n\n");
+      const configPrompt = !esPm && personalizacion?.tono ? { ...config, toneStyle: personalizacion.tono } : config;
+      const systemPrompt = buildSystemPrompt(configPrompt, branches, customer, now(), activeEntryBranch, conocimientoYDueno, estadoSucursal, Boolean(options.agregados));
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de

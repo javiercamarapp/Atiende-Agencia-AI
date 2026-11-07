@@ -57,7 +57,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, contextoPrecargadoDeEntorno, PostgresAgregadosRepository, crearHookAgregados, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, contextoPrecargadoDeEntorno, PostgresAgregadosRepository, crearHookAgregados, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf, PostgresProductoBajaRepository, PostgresIdiomasVozRepository, PostgresPersonalizacionAgenteRepository, PostgresArchivosConocimientoRepository } from "@atiende/domain-restaurantes";
 import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
@@ -185,6 +185,11 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
     leerAjustes: async (organizationId) => {
       const lectura = await new PostgresAjustesAgenteRepository(db).leer(organizationId);
       return lectura.configurados ? { modelo: lectura.valor.whatsappModelo, temperatura: temperaturaEfectivaWhatsapp(lectura.valor) } : null;
+    },
+    // F4c: tono y mensaje adicional del dueno (migracion 183). El repositorio degrada con SAVEPOINT a "sin personalizacion" contra la base sin migrar.
+    leerPersonalizacion: async (organizationId) => {
+      const lectura = await new PostgresPersonalizacionAgenteRepository(db).leer(organizationId);
+      return lectura.configurada ? lectura.valor : null;
     },
   });
 }
@@ -400,6 +405,11 @@ export function buildProductionDeps(): AppDeps {
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
     ajustesAgenteRepo: (db) => new PostgresAjustesAgenteRepository(db),
+    // F4c (paridad menor). Sin extractor de texto real configurado la carga de archivos responde "no disponible aun" (ver `extractorTextoConocimiento` en deps.ts).
+    productoBajaRepo: (db) => new PostgresProductoBajaRepository(db),
+    idiomasVozRepo: (db) => new PostgresIdiomasVozRepository(db),
+    personalizacionAgenteRepo: (db) => new PostgresPersonalizacionAgenteRepository(db),
+    archivosConocimientoRepo: (db) => new PostgresArchivosConocimientoRepository(db),
     vozLlamadaRepo: (db) => new PostgresVozLlamadaRepository(db),
     // KPI de voz, costo y alertas (migración 035): cada consulta degrada con SAVEPOINT contra la base sin migrar.
     vozKpiRepo: (db) => new PostgresVozKpiRepository(db),
