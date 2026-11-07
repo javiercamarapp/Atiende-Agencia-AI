@@ -4,7 +4,8 @@
 // Ninguna cifra se calcula aqui: la pagina pinta lo que arma la API; un campo sin dato es «—» con su
 // motivo, nunca un cero.
 import { useMemo, useState } from "react";
-import { AlertTriangle, BadgeDollarSign, Banknote, Clock, Download, Gauge, Landmark, Percent, PiggyBank, Repeat, TrendingUp, Users } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, BadgeDollarSign, Banknote, Clock, Download, Gauge, Landmark, Lightbulb, Percent, PiggyBank, Repeat, TrendingUp, Users } from "lucide-react";
 import {
   BarrasAgrupadas,
   Button,
@@ -40,8 +41,9 @@ import {
   fetchCockpit,
   guardarCaptura,
   guardarSupuesto,
+  pedirRecomendaciones,
 } from "../lib/cfo-cockpit-client.ts";
-import type { Agregado, AlertaCockpit, BanderaCliente, Captura, FilaEconomia, RespuestaCockpit, TipoCaptura, ValorSupuesto } from "../lib/cfo-cockpit-client.ts";
+import type { Agregado, AlertaCockpit, BanderaCliente, Captura, FilaEconomia, RespuestaCockpit, RespuestaRecomendaciones, TipoCaptura, ValorSupuesto } from "../lib/cfo-cockpit-client.ts";
 import { useCarga } from "../lib/use-carga.ts";
 
 type Cockpit = Extract<RespuestaCockpit, { disponible: true }>;
@@ -276,6 +278,66 @@ function Comparativos({ c }: { readonly c: Cockpit }) {
   );
 }
 
+export function Recomendaciones({ mes, apiBaseUrl, token }: { readonly mes: string; readonly apiBaseUrl: string; readonly token: string }) {
+  const [estado, setEstado] = useState<{ readonly cargando: boolean; readonly datos: RespuestaRecomendaciones | null; readonly error: string | null }>({ cargando: false, datos: null, error: null });
+  async function generar() {
+    setEstado({ cargando: true, datos: null, error: null });
+    try {
+      setEstado({ cargando: false, datos: await pedirRecomendaciones(apiBaseUrl, token, mes), error: null });
+    } catch (err) {
+      setEstado({ cargando: false, datos: null, error: err instanceof Error ? err.message : "No se pudieron generar." });
+    }
+  }
+  const d = estado.datos;
+  const hechos = new Map((d?.hechos ?? []).map((h) => [h.id, h.texto]));
+  return (
+    <div className="space-y-3">
+      <ChartCard
+        titulo="Recomendaciones"
+        subtitulo="Las cifras se calculan en el servidor; el modelo solo las explica y prioriza. Una recomendación con una cifra que no está en sus hechos se descarta."
+        tamano="M"
+        accion={
+          <Button size="sm" onClick={() => void generar()} disabled={estado.cargando}>
+            <Lightbulb className="size-4" /> {d ? "Volver a generar" : "Generar"}
+          </Button>
+        }
+      >
+        {estado.cargando ? (
+          <EstadoCargando />
+        ) : estado.error ? (
+          <EstadoError compacto mensaje={estado.error} onReintentar={() => void generar()} />
+        ) : !d ? (
+          <p className="text-xs text-muted-foreground">Genera las recomendaciones del mes. Sin modelo disponible salen de reglas deterministas.</p>
+        ) : !d.disponible ? (
+          <Callout tone="warning" titulo="No disponible aún">{d.mensaje}</Callout>
+        ) : (d.recomendaciones ?? []).length === 0 ? (
+          <EstadoVacio icon={Lightbulb} titulo="Sin recomendaciones" mensaje="No hay nada que destacar este mes con los datos que existen." />
+        ) : (
+          <div className="space-y-2" data-testid="cfo-recomendaciones">
+            <p className="text-xs text-muted-foreground">
+              {d.fuente === "modelo" ? `Redactadas por ${d.modelo ?? "el modelo"}` : "Reglas deterministas (sin modelo)"}
+              {d.descartadas ? ` · ${d.descartadas} descartadas por citar cifras que no están en los hechos` : ""}
+            </p>
+            {(d.recomendaciones ?? []).map((r, i) => (
+              <Callout key={`${i}-${r.titulo}`} tone={r.prioridad <= 2 ? "warning" : "info"} titulo={`${r.prioridad}. ${r.titulo}`}>
+                <p>{r.explicacion}</p>
+                <p className="font-medium">{r.accion}</p>
+                <p className="text-xs text-muted-foreground">De dónde sale: {r.hechos.map((h) => hechos.get(h) ?? h).join(" · ")}</p>
+              </Callout>
+            ))}
+          </div>
+        )}
+      </ChartCard>
+      <Callout tone="info" titulo="Pregúntale a tus datos">
+        El Copiloto de superadmin ya responde con las mismas cifras de esta pantalla (herramientas «Economía por cliente» y «Métricas SaaS»); cada consulta financiera pide MFA y queda en la bitácora de la zona CFO.{" "}
+        <Link to="/superadmin/copiloto" className="font-medium text-primary underline-offset-2 hover:underline">
+          Abrir el Copiloto
+        </Link>
+      </Callout>
+    </div>
+  );
+}
+
 function filaSupuesto(etiqueta: string, v: ValorSupuesto | null, unidad: string): readonly (string | number | null)[] {
   return [etiqueta, v === null ? "sin dato" : `${num(v.valor, 4)} ${unidad}`, v === null ? "Captúralo con su fuente" : `${v.origen} · ${v.fuente}`];
 }
@@ -501,6 +563,7 @@ function Contenido({ c, apiBaseUrl, token, onCambio }: { readonly c: Cockpit; re
           <TabsTrigger value="resumen">Resumen</TabsTrigger>
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
           <TabsTrigger value="comparativos">Comparativos</TabsTrigger>
+          <TabsTrigger value="recomendaciones">Recomendaciones</TabsTrigger>
           <TabsTrigger value="supuestos">Supuestos y capturas</TabsTrigger>
         </TabsList>
         <TabsContent value="resumen">
@@ -511,6 +574,9 @@ function Contenido({ c, apiBaseUrl, token, onCambio }: { readonly c: Cockpit; re
         </TabsContent>
         <TabsContent value="comparativos">
           <Comparativos c={c} />
+        </TabsContent>
+        <TabsContent value="recomendaciones">
+          <Recomendaciones mes={c.mes} apiBaseUrl={apiBaseUrl} token={token} />
         </TabsContent>
         <TabsContent value="supuestos">
           <SupuestosYCapturas c={c} apiBaseUrl={apiBaseUrl} token={token} onCambio={onCambio} />
