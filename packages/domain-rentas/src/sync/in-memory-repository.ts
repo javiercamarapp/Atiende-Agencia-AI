@@ -243,6 +243,18 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
     return encontrada ? encontrada.id : null;
   }
 
+  async guardarDatosCanalOcupacion(ocupacionId: string, datos: { readonly codigoConfirmacion: string | null; readonly telefonoUltimos4: string | null }): Promise<boolean> {
+    if (datos.codigoConfirmacion === null && datos.telefonoUltimos4 === null) return false;
+    const ocupacion = this.calendarStore.getOcupacion(ocupacionId);
+    if (!ocupacion) return false;
+    const codigo = datos.codigoConfirmacion ?? ocupacion.codigoConfirmacion ?? null;
+    const telefono = datos.telefonoUltimos4 ?? ocupacion.telefonoUltimos4 ?? null;
+    if (codigo === (ocupacion.codigoConfirmacion ?? null) && telefono === (ocupacion.telefonoUltimos4 ?? null)) return false;
+    ocupacion.codigoConfirmacion = codigo;
+    ocupacion.telefonoUltimos4 = telefono;
+    return true;
+  }
+
   async contarOcupacionesActivasDelCanal(unidadId: string, canalId: string): Promise<number> {
     return [...this.calendarStore.ocupaciones.values()].filter((o) => o.unidadId === unidadId && o.canalOrigenId === canalId && o.estado !== "cancelado" && o.bloqueante && o.capa === "reserva").length;
   }

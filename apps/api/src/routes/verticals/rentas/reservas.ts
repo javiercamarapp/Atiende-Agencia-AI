@@ -14,8 +14,9 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ApiError } from "@atiende/core-auth";
-import { CANCELAR_ROLES, cancelarOcupacion, crearReservaConfirmada, ESCRITURA_CALENDARIO_ROLES, modificarFechasReserva, RentasDomainError, tryEnqueueReservaEmail } from "@atiende/domain-rentas";
-import type { RangoFechas } from "@atiende/domain-rentas";
+import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { calcularCotizacion, calcularMovimientoReserva, CANCELAR_ROLES, cancelarOcupacion, crearReservaConfirmada, ESCRITURA_CALENDARIO_ROLES, modificarFechasReserva, RentasDomainError, tryEnqueueReservaEmail } from "@atiende/domain-rentas";
+import type { NewReservaFinancieroInput, RangoFechas, RentasRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -82,6 +83,11 @@ export function mapRentasDomainError(err: RentasDomainError): ApiError {
     // ---- finanzas (Rn-18, ver ../../../../packages/domain-rentas/src/finanzas/regla-comision-por-defecto.ts) ----
     case "regla_comision_no_configurada":
       return Errors.rentasComisionCanalSinRegla(err.message);
+    // ---- importacion del reporte de pagos de la OTA (Rn-P3-06) ----
+    case "formato_reporte_no_soportado":
+      return new ApiError(422, "formato_reporte_no_soportado", err.message);
+    case "reporte_invalido":
+      return Errors.validation(err.message);
     default: {
       // Exhaustividad: si RentasErrorCode gana un valor nuevo sin actualizar este
       // mapeo, TypeScript marca `err.code` aquí como no asignable a `never`.
@@ -95,10 +101,111 @@ interface ReservaBody {
   readonly rango?: unknown;
   readonly huespedNombre?: unknown;
   readonly huespedContacto?: unknown;
+  // Rn-P3-07 -- movimiento financiero automatico de la reserva directa (todo opcional; sin monto nada cambia).
+  readonly montoBrutoCentavos?: unknown;
+  readonly moneda?: unknown;
+  readonly cotizar?: unknown;
+  readonly comisionGestorBasisPoints?: unknown;
+  readonly comisionGestorBase?: unknown;
+}
+
+interface MovimientoDirectoPedido {
+  readonly modo: "monto" | "cotizacion";
+  readonly montoBrutoCentavos: number | null;
+  readonly moneda: string | null;
+  readonly comisionGestorBasisPoints: number;
+  readonly comisionGestorBase: "bruto" | "neto_de_canal";
+}
+
+/** Valida los campos opcionales del movimiento automatico ANTES de crear la reserva. `null` = no se pidio movimiento. */
+function leerMovimientoDirecto(raw: ReservaBody): MovimientoDirectoPedido | null {
+  const pideMonto = raw.montoBrutoCentavos !== undefined && raw.montoBrutoCentavos !== null;
+  const pideCotizar = raw.cotizar === true;
+  if (!pideMonto && !pideCotizar) {
+    if (raw.moneda !== undefined || raw.comisionGestorBasisPoints !== undefined || raw.comisionGestorBase !== undefined) {
+      throw Errors.validation("moneda y comision del gestor solo aplican junto con montoBrutoCentavos o cotizar:true.");
+    }
+    return null;
+  }
+  if (pideMonto && pideCotizar) throw Errors.validation("Envia montoBrutoCentavos o cotizar:true, no ambos.");
+  const bp = raw.comisionGestorBasisPoints;
+  if (typeof bp !== "number" || !Number.isInteger(bp) || bp < 0 || bp > 10000) throw Errors.validation("comisionGestorBasisPoints: se esperaba un entero entre 0 y 10000 (se pide junto con el monto: no se asume 0 %).");
+  if (raw.comisionGestorBase !== "bruto" && raw.comisionGestorBase !== "neto_de_canal") throw Errors.validation("comisionGestorBase: se esperaba 'bruto' | 'neto_de_canal'.");
+  if (pideMonto) {
+    const m = raw.montoBrutoCentavos;
+    if (typeof m !== "number" || !Number.isInteger(m) || m < 0) throw Errors.validation("montoBrutoCentavos: se esperaba un entero >= 0 (centavos, nunca decimal).");
+    if (typeof raw.moneda !== "string" || !/^[A-Z]{3}$/.test(raw.moneda)) throw Errors.validation("moneda: se esperaba un codigo ISO 4217 de 3 letras mayusculas.");
+    return { modo: "monto", montoBrutoCentavos: m, moneda: raw.moneda, comisionGestorBasisPoints: bp, comisionGestorBase: raw.comisionGestorBase };
+  }
+  if (raw.moneda !== undefined) throw Errors.validation("Con cotizar:true la moneda sale de la tarifa de la unidad: no la envies.");
+  return { modo: "cotizacion", montoBrutoCentavos: null, moneda: null, comisionGestorBasisPoints: bp, comisionGestorBase: raw.comisionGestorBase };
 }
 
 interface ModificarReservaBody {
   readonly rango?: unknown;
+}
+
+interface DatosMovimientoDirecto {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly ocupacionId: string;
+  readonly canalId: string;
+  readonly userId: string;
+  readonly monto: { readonly montoBrutoCentavos: number; readonly moneda: string };
+  readonly pedido: MovimientoDirectoPedido;
+}
+
+/** Rn-P3-07 -- crea el `reserva_financiero` de una reserva directa con la regla del canal `manual` (0 pb por defecto, o la configurada).
+ *  La columna `origen` es de la migracion 035: contra la base sin migrar se reintenta SIN ella (SAVEPOINT; el movimiento se crea igual). */
+async function crearMovimientoDeReservaDirecta(db: Parameters<typeof runWithSavepointFallback>[0]["session"], repo: RentasRepository, d: DatosMovimientoDirecto) {
+  const comisionCanal = await repo.findReglaComisionCanal(d.propertyId, d.canalId);
+  const calculo = calcularMovimientoReserva({
+    ocupacionUnidadId: d.ocupacionId,
+    moneda: d.monto.moneda,
+    montoBrutoCentavos: d.monto.montoBrutoCentavos,
+    comisionCanal,
+    comisionGestor: { basisPoints: d.pedido.comisionGestorBasisPoints, base: d.pedido.comisionGestorBase },
+    gastos: [],
+    impuestos: [],
+  });
+  const base: NewReservaFinancieroInput = {
+    organizationId: d.organizationId,
+    propertyId: d.propertyId,
+    ocupacionId: d.ocupacionId,
+    moneda: d.monto.moneda,
+    montoBrutoCentavos: d.monto.montoBrutoCentavos,
+    yaNetoDeComision: comisionCanal.yaNetoDeComision,
+    comisionCanalBasisPoints: comisionCanal.comisionBasisPoints,
+    comisionCanalFuente: calculo.comisionCanalFuente,
+    comisionCanalCentavos: calculo.comisionCanalCentavos,
+    comisionGestorBasisPoints: d.pedido.comisionGestorBasisPoints,
+    comisionGestorBase: d.pedido.comisionGestorBase,
+    comisionGestorCentavos: calculo.comisionGestorCentavos,
+    montoRecibidoCentavos: calculo.montoRecibidoCentavos,
+    gastos: [],
+    gastosCentavos: 0,
+    impuestos: [],
+    impuestosCentavos: 0,
+    netoCentavos: calculo.netoCentavos,
+    createdBy: d.userId,
+  };
+  await runWithSavepointFallback({
+    session: db,
+    primary: () => repo.insertReservaFinanciero({ ...base, origen: "directa_automatica" }),
+    isRecoverable: (err) => isMigrationPendingError(err),
+    fallback: () => repo.insertReservaFinanciero(base),
+  });
+  await repo.registrarAuditoria({
+    organizationId: d.organizationId,
+    actorUserId: d.userId,
+    action: "reserva.movimiento_financiero_registrado",
+    entityType: "reserva",
+    entityId: d.ocupacionId,
+    campo: "montoBrutoCentavos,netoCentavos",
+    antes: null,
+    despues: `bruto=${d.monto.montoBrutoCentavos} neto=${calculo.netoCentavos} ${d.monto.moneda} (automatico, reserva directa)`,
+  });
+  return { moneda: d.monto.moneda, montoBrutoCentavos: d.monto.montoBrutoCentavos, comisionCanalCentavos: calculo.comisionCanalCentavos, comisionGestorCentavos: calculo.comisionGestorCentavos, netoCentavos: calculo.netoCentavos, origen: "directa_automatica" as const };
 }
 
 export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -127,9 +234,21 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const rango = requireRango(raw.rango);
     const huespedNombre = requireOptionalString(raw.huespedNombre, "huespedNombre", 200);
     const huespedContacto = requireOptionalString(raw.huespedContacto, "huespedContacto", 200);
+    const pedidoMovimiento = leerMovimientoDirecto(raw);
 
     const canalManual = await repo.findCanalPorCodigo("manual");
     if (!canalManual) throw new Error("Catálogo rentas.canal sin sembrar: falta el canal 'manual'.");
+
+    // Con cotizar:true el monto sale del cotizador y se resuelve ANTES de crear nada: sin tarifa configurada se rechaza la peticion
+    // completa (422) en vez de crear una reserva que quedaria sin movimiento sin que nadie se entere.
+    let montoMovimiento: { montoBrutoCentavos: number; moneda: string } | null = null;
+    if (pedidoMovimiento?.modo === "monto") montoMovimiento = { montoBrutoCentavos: pedidoMovimiento.montoBrutoCentavos!, moneda: pedidoMovimiento.moneda! };
+    if (pedidoMovimiento?.modo === "cotizacion") {
+      const contexto = await repo.loadPricingContext(propertyId, unidadId);
+      if (!contexto) throw new ApiError(422, "cotizacion_no_disponible", "La unidad no tiene una tarifa base configurada: no se puede cotizar. Configura la tarifa o envia montoBrutoCentavos.");
+      const cotizacion = calcularCotizacion({ contexto, rango, reglaCanal: await repo.loadReglaCanalPricing(unidadId, canalManual.codigo) });
+      montoMovimiento = { montoBrutoCentavos: cotizacion.totalCentavos, moneda: cotizacion.moneda };
+    }
 
     try {
       const resultado = await crearReservaConfirmada(db, {
@@ -174,7 +293,12 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // sistema (runRentasEmailDispatch ya pasa el guard auth.uid() is null).
       c.get("postCommitTasks").push(() => runRentasEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
 
-      return c.json({ id: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length }, 201);
+      // Rn-P3-07 -- movimiento financiero en la MISMA transaccion que la reserva (si el insert falla, la reserva no se crea).
+      const movimiento = montoMovimiento && pedidoMovimiento
+        ? await crearMovimientoDeReservaDirecta(c.get("db"), repo, { organizationId, propertyId, ocupacionId: resultado.ocupacionId, canalId: canalManual.id, userId: c.get("userId"), monto: montoMovimiento, pedido: pedidoMovimiento })
+        : null;
+
+      return c.json({ id: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length, ...(movimiento ? { movimiento } : {}) }, 201);
     } catch (err) {
       if (err instanceof RentasDomainError) throw mapRentasDomainError(err);
       throw err;

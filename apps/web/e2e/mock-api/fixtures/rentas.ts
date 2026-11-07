@@ -2,6 +2,7 @@
 import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
+import { rutasRentasPrecheckin } from "./rentas-precheckin.ts";
 
 const PROP = propiedadDe("rentas");
 const ORG = orgDe("rentas");
@@ -228,6 +229,7 @@ export const rutasRentasLimpieza: readonly Ruta[] = [
 ];
 
 export const rutasRentas: readonly Ruta[] = [
+  ...rutasRentasPrecheckin,
   ...rutasRentasLimpieza,
   { metodo: "GET", patron: `${R}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${R}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },

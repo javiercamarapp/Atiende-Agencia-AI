@@ -8,7 +8,7 @@ import type { AccesoCipher, CampoAcceso } from "./cipher.ts";
 import { AccesoNoDisponibleError } from "./errores.ts";
 import type { RentasAccesoRepository } from "./repository.ts";
 import { POLITICA_ACCESO_POR_DEFECTO } from "./tipos.ts";
-import type { ResumenBarridoCifrado, EventoAccesoRecord, ReservaAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
+import type { ResumenBarridoCifrado, EventoAccesoRecord, ReservaAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PendienteEntregaOta, PoliticaAcceso, ReservaParaMensajeOta, ResultadoAcceso, ResultadoConfirmarPago, ResultadoEntregaManual } from "./tipos.ts";
 import type { EntradaInstruccion, EntradaPolitica } from "./validacion.ts";
 
 /** Fila como la guarda la base tras la migracion 028: SOLO sobres cifrados (nunca el texto plano). */
@@ -147,10 +147,59 @@ export class InMemoryRentasAccesoRepository implements RentasAccesoRepository {
     return { disponible: true, valor: this.reservasProximas.slice(0, limite).map((r) => ({ ...r, pagoConfirmado: this.pagosConfirmados.has(r.ocupacionId), liberada: this.liberadas.has(r.ocupacionId) })) };
   }
 
+  /** Rn-P3-09: reservas sembradas por el test para el mensaje manual (la base real las lee de rentas.ocupacion). */
+  readonly reservasParaMensaje = new Map<string, ReservaParaMensajeOta & { propertyId: string }>();
+  /** Avisos in-app emitidos por la corrida (ocupacionId). Modela el dedupe por reserva de core.emit_notification. */
+  readonly avisosOmitidaSinContacto: { ocupacionId: string; organizationId: string; propertyId: string }[] = [];
+  readonly entregadasManual = new Set<string>();
+
+  async listarPendientesEntrega(propertyId: string, limite: number): Promise<ResultadoAcceso<readonly PendienteEntregaOta[]>> {
+    if (!this.migracion025Disponible) return { disponible: false };
+    const omitidas = this.bitacora.filter((b) => b.propertyId === propertyId && b.evento === "omitida_sin_contacto");
+    const filas: PendienteEntregaOta[] = [];
+    for (const r of this.reservasProximas) {
+      const o = omitidas.filter((b) => b.ocupacionId === r.ocupacionId).at(-1);
+      if (!o || this.liberadas.has(r.ocupacionId) || this.entregadasManual.has(r.ocupacionId)) continue;
+      filas.push({ ocupacionId: r.ocupacionId, unidadId: r.unidadId, unidadNombre: r.unidadNombre, canal: r.canal, checkIn: r.checkIn, checkOut: r.checkOut, huespedNombre: r.huespedNombre, omitidaEn: o.creadoEn });
+    }
+    return { disponible: true, valor: filas.slice(0, limite) };
+  }
+
+  async obtenerReservaParaMensaje(propertyId: string, ocupacionId: string): Promise<ResultadoAcceso<ReservaParaMensajeOta | null>> {
+    if (!this.migracion025Disponible) return { disponible: false };
+    const r = this.reservasParaMensaje.get(ocupacionId);
+    if (!r || r.propertyId !== propertyId) return { disponible: true, valor: null };
+    const { propertyId: _p, ...valor } = r;
+    return { disponible: true, valor };
+  }
+
+  async marcarEntregadaManual(ocupacionId: string, propertyId: string): Promise<ResultadoEntregaManual> {
+    if (!this.migracion025Disponible) return "no_disponible";
+    if (!this.reservasConocidas.has(ocupacionId)) return "no_encontrada";
+    const propiedad = this.propertyDeReserva(ocupacionId);
+    if (propiedad !== "" && propiedad !== propertyId) return "no_encontrada";
+    if (this.entregadasManual.has(ocupacionId) || this.liberadas.has(ocupacionId)) return "ya_entregada";
+    this.entregadasManual.add(ocupacionId);
+    const r = this.reservasProximas.find((x) => x.ocupacionId === ocupacionId);
+    this.bitacora.push({ id: `b${++this.seq}`, propertyId: r ? this.propertyDeReserva(ocupacionId) : "", ocupacionId, evento: "entregada_manual", canal: null, creadoEn: new Date().toISOString() });
+    return "entregada";
+  }
+
+  private propertyDeReserva(ocupacionId: string): string {
+    return this.reservasParaMensaje.get(ocupacionId)?.propertyId ?? this.pendientes.find((x) => x.ocupacionId === ocupacionId)?.propertyId ?? "";
+  }
+
+  async avisarOmitidaSinContacto(ocupacionId: string, organizationId: string, propertyId: string): Promise<boolean> {
+    this.llamadas.push("avisarOmitidaSinContacto");
+    if (this.avisosOmitidaSinContacto.some((a) => a.ocupacionId === ocupacionId)) return false;
+    this.avisosOmitidaSinContacto.push({ ocupacionId, organizationId, propertyId });
+    return true;
+  }
+
   async siguienteLiberacion(excluir: readonly string[]): Promise<LiberacionPendiente | null> {
     this.llamadas.push("siguienteLiberacion");
     this.requiere();
-    return this.pendientes.find((p) => !this.liberadas.has(p.ocupacionId) && !excluir.includes(p.ocupacionId)) ?? null;
+    return this.pendientes.find((p) => !this.liberadas.has(p.ocupacionId) && !this.entregadasManual.has(p.ocupacionId) && !excluir.includes(p.ocupacionId)) ?? null;
   }
 
   async marcarLiberada(ocupacionId: string): Promise<boolean> {

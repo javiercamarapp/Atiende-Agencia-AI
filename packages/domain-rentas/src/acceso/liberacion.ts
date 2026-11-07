@@ -74,7 +74,9 @@ async function procesarSiguiente(ctx: ContextoLiberacion, excluir: readonly stri
   }
   const contacto = cand.huespedContacto;
   if (!contacto || !EMAIL_RE.test(contacto)) {
-    await ctx.acceso.registrarEvento(cand.ocupacionId, "omitida_sin_contacto");
+    // Rn-P3-09: solo la PRIMERA omision de las ultimas 24 h avisa (el registro se topa a una por dia); el aviso en si se deduplica por reserva.
+    const nueva = await ctx.acceso.registrarEvento(cand.ocupacionId, "omitida_sin_contacto");
+    if (nueva) await ctx.acceso.avisarOmitidaSinContacto(cand.ocupacionId, cand.organizationId, cand.propertyId);
     return { tipo: "sin_contacto", id: cand.ocupacionId };
   }
 

@@ -224,6 +224,35 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
     return fila.rows[0]?.id ?? null;
   }
 
+  /** `false` tras el primer 42703: la base no tiene la migracion 035; no se vuelve a intentar en esta instancia (evita un error por evento). */
+  private datosCanalDisponible = true;
+
+  async guardarDatosCanalOcupacion(ocupacionId: string, datos: { readonly codigoConfirmacion: string | null; readonly telefonoUltimos4: string | null }): Promise<boolean> {
+    if (datos.codigoConfirmacion === null && datos.telefonoUltimos4 === null) return false;
+    if (!this.datosCanalDisponible) return false;
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      primary: async () => {
+        const r = await this.db.query<{ id: string }>(
+          `UPDATE rentas.ocupacion
+              SET codigo_confirmacion = coalesce($2::text, codigo_confirmacion),
+                  telefono_ultimos4 = coalesce($3::text, telefono_ultimos4)
+            WHERE id = $1
+              AND (codigo_confirmacion IS DISTINCT FROM coalesce($2::text, codigo_confirmacion)
+                   OR telefono_ultimos4 IS DISTINCT FROM coalesce($3::text, telefono_ultimos4))
+           RETURNING id`,
+          [ocupacionId, datos.codigoConfirmacion, datos.telefonoUltimos4],
+        );
+        return r.rows.length > 0;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => {
+        this.datosCanalDisponible = false;
+        return false;
+      },
+    });
+  }
+
   async contarOcupacionesActivasDelCanal(unidadId: string, canalId: string): Promise<number> {
     const fila = await this.db.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM rentas.ocupacion

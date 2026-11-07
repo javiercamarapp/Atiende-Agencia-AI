@@ -4,8 +4,9 @@
 // rentas.acceso_siguiente_liberacion (migración 025), que resuelve la zona con la base
 // de zonas de Postgres. Este paquete orquesta: entrega el correo y marca la liberación.
 
-export type EventoBitacoraAcceso = "liberada" | "omitida_sin_contacto" | "omitida_sin_instrucciones" | "error_envio";
-export type EventoOmitidoAcceso = Exclude<EventoBitacoraAcceso, "liberada">;
+export type EventoBitacoraAcceso = "liberada" | "omitida_sin_contacto" | "omitida_sin_instrucciones" | "error_envio" | "entregada_manual" | "precheckin_capturado";
+/** Eventos que la corrida de liberacion registra por su cuenta (sesion de sistema). Los otros dos los escriben el staff (entrega manual) y el pre-check-in publico. */
+export type EventoOmitidoAcceso = "omitida_sin_contacto" | "omitida_sin_instrucciones" | "error_envio";
 
 export interface PoliticaAcceso {
   readonly propertyId: string;
@@ -77,6 +78,31 @@ export interface ReservaAccesoRecord {
   readonly pagoConfirmado: boolean;
   readonly liberada: boolean;
 }
+
+/** Rn-P3-09 -- reserva confirmada y proxima cuyo acceso se omitio por falta de correo del huesped y que nadie ha entregado todavia. */
+export interface PendienteEntregaOta {
+  readonly ocupacionId: string;
+  readonly unidadId: string;
+  readonly unidadNombre: string;
+  readonly canal: string;
+  readonly checkIn: string;
+  readonly checkOut: string;
+  readonly huespedNombre: string | null;
+  /** Ultima vez que la corrida la omitio (ISO). */
+  readonly omitidaEn: string;
+}
+
+/** Datos de la reserva para armar el mensaje manual de acceso (sin el secreto: ese viene de `obtenerInstruccion`). */
+export interface ReservaParaMensajeOta {
+  readonly ocupacionId: string;
+  readonly unidadId: string;
+  readonly unidadNombre: string;
+  readonly checkIn: string;
+  readonly checkOut: string;
+  readonly huespedNombre: string | null;
+}
+
+export type ResultadoEntregaManual = "entregada" | "ya_entregada" | "no_encontrada" | "no_disponible";
 
 /** Resultado de una operación de staff contra una base que puede no tener aún la migración 025. */
 export type ResultadoAcceso<T> = { readonly disponible: true; readonly valor: T } | { readonly disponible: false };

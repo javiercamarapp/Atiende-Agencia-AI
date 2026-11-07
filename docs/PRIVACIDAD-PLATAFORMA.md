@@ -68,6 +68,22 @@ antes del corte y que no coinciden por contacto o nombre con una solicitud ARCO 
 del corte y cuyas instrucciones no se tocaron desde antes del corte; cada borrado deja un evento `purga_retencion` sin contenido en
 `rentas.acceso_instruccion_bitacora`. Ambas corren en simulación salvo `ejecutar=1` y se registran en `core.purge_run_log`.
 
+Rentas, pre-check-in público (migración rentas 036, Rn-P3-08): el huésped de una OTA (Airbnb, Booking, Vrbo) entra con el enlace fijo de la propiedad
+(`/rentas/precheckin/<id de la propiedad>`), escribe el código de confirmación y los últimos 4 dígitos de su teléfono (ambos vienen del feed iCal, ver
+`rentas.ocupacion.codigo_confirmacion` y `telefono_ultimos4`) y deja su correo y, opcionalmente, su WhatsApp.
+
+| Dato | Dónde queda | Finalidad | Retención |
+|---|---|---|---|
+| Correo del huésped | `rentas.guest_minimo.contacto` (solo si la reserva no tenía ya un correo válido; nunca se sobrescribe el del staff) | Enviarle las instrucciones de acceso antes de su llegada y el recordatorio de check-in | `rentas_huesped_pii`: se anonimiza con el resto del huésped |
+| WhatsApp (opcional) | `rentas.precheckin_captura.whatsapp` | Puerto para entregar el acceso por ese canal cuando exista (no se usa todavía para enviar nada) | `rentas_huesped_pii`: la purga lo pone en nulo cuando la salida es anterior al corte |
+| Últimos 4 dígitos del teléfono | `rentas.ocupacion.telefono_ultimos4` (del iCal, migración 035) | Emparejar al huésped con su reserva | `rentas_huesped_pii`: en nulo cuando la salida es anterior al corte |
+| Evidencia de aceptación (fecha, versión del aviso, versión del reglamento) | `rentas.precheckin_captura` | Probar qué aceptó el huésped y cuándo; sin datos personales | Se conserva (no contiene datos personales) |
+
+Lo que **no** se guarda: el código de confirmación ni el teléfono de un intento fallido (la base solo recibe el hash del código para contar
+intentos), el token en claro (solo su hash; vence a los 15 minutos y es de un solo uso) ni identificación oficial (por omisión no se pide: minimización).
+Nada de esto se escribe en logs. El texto del aviso que ve el huésped es un resumen versionado (`AVISO_PRECHECKIN_VERSION`); **el texto legal definitivo
+es una decisión pendiente de Javier** y, al cambiarlo, se sube la versión.
+
 **Hueco conocido: citas no tiene clase de retención ni purga.** El historial de conversaciones de WhatsApp (`citas.whatsapp_conversations.messages`),
 las escalaciones de crisis (`citas.emergency_escalations`: teléfono, canal y etiqueta de la señal; el extracto del mensaje se guarda vacío en ambos canales) y las notas
 de conversación (`citas.conversation_note`) se conservan hasta que alguien los borre: no hay fila de citas en `core.retention_class` y ningún cron los

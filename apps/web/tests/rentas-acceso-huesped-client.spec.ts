@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { confirmarPagoReserva, fetchBitacoraAcceso, fetchInstruccionAcceso, fetchPoliticaAcceso, fetchReservasAcceso, guardarInstruccionAcceso, guardarPoliticaAcceso } from "../src/verticals/rentas/lib/acceso-client.ts";
+import { confirmarPagoReserva, fetchBitacoraAcceso, fetchConfigPrecheckin, fetchInstruccionAcceso, fetchMensajeOta, fetchPendientesEntrega, fetchPoliticaAcceso, fetchReservasAcceso, guardarInstruccionAcceso, guardarPoliticaAcceso, guardarReglamentoPrecheckin, marcarEntregadaManual } from "../src/verticals/rentas/lib/acceso-client.ts";
 
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -40,5 +40,39 @@ describe("acceso-client", () => {
     expect((await fetchBitacoraAcceso(fetchImpl, "http://api.local", "tok", "p1")).eventos[0]).toEqual({ id: "e1", reservaId: "r1", evento: "liberada", creadoEn: "2026-10-01T10:00:00Z" });
     expect(urls).toContain("POST http://api.local/rentas/p1/reservas/r1/pago-confirmado");
     expect(urls).toContain("GET http://api.local/rentas/p1/acceso-huesped/bitacora?limite=30");
+  });
+});
+
+describe("acceso-client -- Rn-P3-08/09", () => {
+  it("config de pre-check-in, reglamento (PUT), pendientes, mensaje para la OTA y entrega manual (snake_case <-> camelCase)", async () => {
+    const urls: string[] = [];
+    const bodies: unknown[] = [];
+    const config = { disponible: true, enlace_publico: "https://app.atiende.ai/rentas/precheckin/p1", texto_sugerido: "Hola", reglamento: "No fiestas.", reglamento_version: 2 };
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(`${init?.method ?? "GET"} ${url}`);
+      if (init?.body) bodies.push(JSON.parse(String(init.body)));
+      if (url.endsWith("/acceso-huesped/precheckin")) return ok(config);
+      if (url.endsWith("/acceso-huesped/pendientes")) return ok({ disponible: true, pendientes: [{ reserva_id: "r1", unidad_id: "u1", unidad_nombre: "Casa", canal: "airbnb", check_in: "2027-03-10", check_out: "2027-03-12", huesped_nombre: null, omitida_en: "2027-03-09T10:00:00Z" }] });
+      if (url.endsWith("/acceso-mensaje")) return ok({ disponible: true, mensaje: "Hola" });
+      return ok({ reserva_id: "r1", entregada: true, nueva: true });
+    }) as unknown as typeof fetch;
+    expect(await fetchConfigPrecheckin(fetchImpl, "http://api.local", "tok", "p1")).toEqual({ disponible: true, enlacePublico: config.enlace_publico, textoSugerido: "Hola", reglamento: "No fiestas.", reglamentoVersion: 2 });
+    await guardarReglamentoPrecheckin(fetchImpl, "http://api.local", "tok", "p1", "No fiestas.");
+    expect((await fetchPendientesEntrega(fetchImpl, "http://api.local", "tok", "p1")).pendientes[0]).toEqual({ reservaId: "r1", unidadId: "u1", unidadNombre: "Casa", canal: "airbnb", checkIn: "2027-03-10", checkOut: "2027-03-12", huespedNombre: null, omitidaEn: "2027-03-09T10:00:00Z" });
+    expect(await fetchMensajeOta(fetchImpl, "http://api.local", "tok", "p1", "r1")).toBe("Hola");
+    await marcarEntregadaManual(fetchImpl, "http://api.local", "tok", "p1", "r1");
+    expect(urls).toEqual([
+      "GET http://api.local/rentas/p1/acceso-huesped/precheckin",
+      "PUT http://api.local/rentas/p1/acceso-huesped/precheckin",
+      "GET http://api.local/rentas/p1/acceso-huesped/pendientes",
+      "GET http://api.local/rentas/p1/reservas/r1/acceso-mensaje",
+      "POST http://api.local/rentas/p1/reservas/r1/entrega-manual",
+    ]);
+    expect(bodies[0]).toEqual({ reglamento: "No fiestas." });
+  });
+
+  it("el mensaje es null cuando la base no tiene la migracion (disponible:false)", async () => {
+    const fetchImpl = vi.fn(async () => ok({ disponible: false, mensaje: null })) as unknown as typeof fetch;
+    expect(await fetchMensajeOta(fetchImpl, "http://api.local", "tok", "p1", "r1")).toBeNull();
   });
 });

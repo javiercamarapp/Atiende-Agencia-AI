@@ -70,7 +70,8 @@ export function rentasFinanzasPayoutsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   const app = new Hono<CoreAuthHonoEnv>();
 
   const base = "/rentas/:propertyId/payouts";
-  const detallePath = `${base}/:id`;
+  // El id es un uuid: sin esta restriccion `/payouts/importar-csv` (Rn-P3-06) tambien casaria con `:id` y el middleware correria dos veces.
+  const detallePath = `${base}/:id{[0-9a-fA-F-]{36}}`;
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(detallePath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 

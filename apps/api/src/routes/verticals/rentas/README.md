@@ -94,9 +94,15 @@ techo mínimo de roles.
 
 - `acceso-huesped.ts`: política por property, instrucciones por unidad (el secreto, con
   `Cache-Control: no-store`), pago confirmado por reserva y bitácora (roles `ACCESO_HUESPED_ROLES`),
-  más el cron `GET|POST /internal/rentas/acceso-huesped` (migración 025; NO está en `vercel.json`,
-  ver `docs/DEPLOY.md`). Contra la base sin migrar responde `disponible: false`/409 y el cron `ok`
+  más el cron `GET|POST /internal/rentas/acceso-huesped` (migración 025; cada hora en `vercel.json`, ver `docs/CRONS.md`). Contra la base sin migrar responde `disponible: false`/409 y el cron `ok`
   sin hacer nada.
+- `precheckin-publico.ts` (Rn-P3-08, migración 036): pre-check-in PÚBLICO del huésped, sin sesión: `GET /rentas/precheckin/:propertyId`,
+  `POST .../verificar` (código de confirmación + últimos 4 dígitos del teléfono) y `POST .../capturar` (correo, WhatsApp opcional, aviso de
+  privacidad y reglamento). Montado antes de las rutas de staff `/rentas/:propertyId/...` (misma forma de ruta). Rate limit por IP y property,
+  mismo resultado exista o no la reserva, piso de tiempo, bloqueo de 1 h tras 5 fallos por código, token de un solo uso, `no-store` y nada de PII en
+  logs. Los endpoints de staff viven en `acceso-huesped.ts`: `GET|PUT .../acceso-huesped/precheckin` (enlace fijo, texto sugerido y reglamento),
+  `GET .../acceso-huesped/pendientes` (Rn-P3-09: accesos omitidos por falta de correo), `GET .../reservas/:id/acceso-mensaje` (mensaje con las
+  instrucciones descifradas, bitácora `lectura_admin`) y `POST .../reservas/:id/entrega-manual` (`entregada_manual`).
 - `limpieza.ts`: `POST .../unidades/:unidadId/incidencias/:incidenciaId/confirmar-bloqueo` confirma el
   bloqueo de mantenimiento de una incidencia grave (solo roles de gestión; nunca cancela reservas).
 

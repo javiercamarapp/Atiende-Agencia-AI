@@ -40,7 +40,18 @@ import type {
   IncidenciaMantenimientoRecord,
   ItemInventarioRecord,
   MessagingOutboxChannel,
+  MotivoRevisionMovimiento,
   MovimientoFinancieroReserva,
+  NewImportacionPagosInput,
+  NewLineaImportadaInput,
+  OrigenMovimiento,
+  ActualizarLineaImportadaInput,
+  CandidataImportacion,
+  LineaColaImportacion,
+  LineaImportadaExistente,
+  MovimientoEnRevision,
+  OrganizacionConReservasSinMovimiento,
+  ReservaSinMovimiento,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
   NewOwnerStatementInput,
@@ -95,6 +106,21 @@ interface StoredReservaFinanciero {
   ocupacionId: string;
   createdAt: string;
   movimiento: MovimientoFinancieroReserva;
+  origen: OrigenMovimiento;
+  requiereRevision: boolean;
+  motivoRevision: MotivoRevisionMovimiento | null;
+}
+
+interface StoredImportacionPagos extends NewImportacionPagosInput {
+  id: string;
+  creadoEn: string;
+}
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
+interface StoredLineaImportada extends Mutable<NewLineaImportadaInput> {
+  id: string;
+  creadaEn: string;
 }
 
 interface StoredTarifaBase {
@@ -265,7 +291,20 @@ export class InMemoryRentasRepository implements RentasRepository {
   // una secuencia real de Postgres).
   private auditLogSeq = 0;
 
-  constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {}
+  constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {
+    // Equivalente del trigger de la migracion 035: cambiar fechas o cancelar una reserva marca su movimiento `requiere_revision`
+    // (nunca recalcula montos).
+    calendarStore.suscribirCambioOcupacion((ocupacionId, cambio) => {
+      const fila = this.reservasFinancieroPorOcupacion.get(ocupacionId);
+      if (!fila) return;
+      fila.requiereRevision = true;
+      fila.motivoRevision = cambio === "cancelacion" ? "reserva_cancelada" : "reserva_modificada";
+    });
+  }
+
+  // ---- Importacion del reporte de pagos (Rn-P3-06) ----
+  readonly importacionesPagos: StoredImportacionPagos[] = [];
+  readonly lineasImportadas = new Map<string, StoredLineaImportada>(); // key: propertyId|canalId|huella
 
   // ---- seeding ----
 
@@ -820,8 +859,126 @@ export class InMemoryRentasRepository implements RentasRepository {
       impuestosCentavos: input.impuestosCentavos,
       netoCentavos: input.netoCentavos,
     };
-    this.reservasFinancieroPorOcupacion.set(input.ocupacionId, { id, organizationId: input.organizationId, propertyId: input.propertyId, ocupacionId: input.ocupacionId, createdAt, movimiento });
+    this.reservasFinancieroPorOcupacion.set(input.ocupacionId, {
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      ocupacionId: input.ocupacionId,
+      createdAt,
+      movimiento,
+      origen: input.origen ?? "manual",
+      requiereRevision: input.requiereRevision ?? false,
+      motivoRevision: input.requiereRevision ? (input.motivoRevision ?? null) : null,
+    });
     return { id, createdAt };
+  }
+
+  // ---- RentasRepository: importacion de pagos y aviso de sin movimiento (Rn-P3-06/07) ----
+
+  async bloquearImportacionPagos(): Promise<void> {
+    // En memoria las operaciones del repositorio ya son atomicas por turno del event loop.
+  }
+
+  async findCandidatasImportacion(propertyId: string, canalId: string, codigos: readonly string[]): Promise<readonly CandidataImportacion[]> {
+    const buscados = new Set(codigos);
+    const resultado: CandidataImportacion[] = [];
+    for (const o of this.calendarStore.ocupaciones.values()) {
+      if (o.propertyId !== propertyId || o.canalOrigenId !== canalId || o.capa !== "reserva" || !o.codigoConfirmacion || !buscados.has(o.codigoConfirmacion)) continue;
+      const rf = this.reservasFinancieroPorOcupacion.get(o.id);
+      resultado.push({ ocupacionId: o.id, codigoConfirmacion: o.codigoConfirmacion, estado: o.estado, moneda: rf?.movimiento.moneda ?? null, tieneMovimiento: rf !== undefined, montoRecibidoCentavos: rf?.movimiento.montoRecibidoCentavos ?? null });
+    }
+    return resultado;
+  }
+
+  async findLineasImportadas(propertyId: string, canalId: string, huellas: readonly string[]): Promise<readonly LineaImportadaExistente[]> {
+    const resultado: LineaImportadaExistente[] = [];
+    for (const h of huellas) {
+      const l = this.lineasImportadas.get(`${propertyId}|${canalId}|${h}`);
+      if (l) resultado.push({ id: l.id, huella: l.huella, resultado: l.resultado, nota: l.nota });
+    }
+    return resultado;
+  }
+
+  async insertImportacionPagos(input: NewImportacionPagosInput): Promise<{ id: string; creadoEn: string }> {
+    const id = randomUUID();
+    const creadoEn = new Date().toISOString();
+    this.importacionesPagos.push({ ...input, id, creadoEn });
+    return { id, creadoEn };
+  }
+
+  async insertLineaImportada(input: NewLineaImportadaInput): Promise<void> {
+    const key = `${input.propertyId}|${input.canalId}|${input.huella}`;
+    if (this.lineasImportadas.has(key)) throw new Error(`importacion_pagos_linea_unique: la huella ${input.huella} ya existe.`);
+    this.lineasImportadas.set(key, { ...input, id: randomUUID(), creadaEn: new Date().toISOString() });
+  }
+
+  async actualizarLineaImportada(input: ActualizarLineaImportadaInput): Promise<void> {
+    for (const l of this.lineasImportadas.values()) {
+      if (l.id === input.id) {
+        l.ocupacionId = input.ocupacionId;
+        l.resultado = input.resultado;
+        l.nota = input.nota;
+        return;
+      }
+    }
+  }
+
+  async listColaImportacion(propertyId: string, limit: number): Promise<readonly LineaColaImportacion[]> {
+    const canales = new Map([...this.calendarStore.canales.values()].map((c) => [c.id, c.codigo]));
+    return [...this.lineasImportadas.values()]
+      .filter((l) => l.propertyId === propertyId && (l.resultado === "pendiente" || l.resultado === "discrepancia"))
+      .sort((a, b) => (a.creadaEn < b.creadaEn ? 1 : -1))
+      .slice(0, limit)
+      .map((l) => ({
+        id: l.id,
+        canalCodigo: canales.get(l.canalId) ?? "desconocido",
+        codigoConfirmacion: l.codigoConfirmacion,
+        tipoLinea: l.tipoLinea,
+        fecha: l.fecha,
+        moneda: l.moneda,
+        montoNetoCentavos: l.montoNetoCentavos,
+        resultado: l.resultado as "pendiente" | "discrepancia",
+        nota: l.nota,
+        ocupacionId: l.ocupacionId,
+        creadaEn: l.creadaEn,
+      }));
+  }
+
+  private reservasSinMovimiento(propertyId: string | null, desde: string, hasta: string): ReservaSinMovimiento[] {
+    const canales = new Map([...this.calendarStore.canales.values()].map((c) => [c.id, c.codigo]));
+    return [...this.calendarStore.ocupaciones.values()]
+      .filter((o) => (propertyId === null || o.propertyId === propertyId) && o.capa === "reserva" && o.estado === "confirmado" && o.inicio >= desde && o.inicio < hasta && !this.reservasFinancieroPorOcupacion.has(o.id))
+      .sort((a, b) => (a.inicio < b.inicio ? -1 : 1))
+      .map((o) => ({ ocupacionId: o.id, unidadId: o.unidadId, inicio: o.inicio, fin: o.fin, canalCodigo: o.canalOrigenId ? (canales.get(o.canalOrigenId) ?? null) : null }));
+  }
+
+  async listReservasSinMovimiento(propertyId: string, desde: string, hasta: string, limit: number) {
+    const todas = this.reservasSinMovimiento(propertyId, desde, hasta);
+    return { total: todas.length, items: todas.slice(0, limit) };
+  }
+
+  async listMovimientosEnRevision(propertyId: string, limit: number): Promise<readonly MovimientoEnRevision[]> {
+    return [...this.reservasFinancieroPorOcupacion.values()]
+      .filter((r) => r.propertyId === propertyId && r.requiereRevision && r.motivoRevision)
+      .slice(0, limit)
+      .map((r) => ({ ocupacionId: r.ocupacionId, motivo: r.motivoRevision!, moneda: r.movimiento.moneda, netoCentavos: r.movimiento.netoCentavos, origen: r.origen }));
+  }
+
+  async marcarMovimientoRevisado(propertyId: string, ocupacionId: string): Promise<boolean> {
+    const fila = this.reservasFinancieroPorOcupacion.get(ocupacionId);
+    if (!fila || fila.propertyId !== propertyId || !fila.requiereRevision) return false;
+    fila.requiereRevision = false;
+    fila.motivoRevision = null;
+    return true;
+  }
+
+  async listOrganizacionesConReservasSinMovimiento(desde: string, hasta: string): Promise<readonly OrganizacionConReservasSinMovimiento[]> {
+    const porOrg = new Map<string, number>();
+    for (const r of this.reservasSinMovimiento(null, desde, hasta)) {
+      const o = this.calendarStore.getOcupacion(r.ocupacionId)!;
+      porOrg.set(o.organizationId, (porOrg.get(o.organizationId) ?? 0) + 1);
+    }
+    return [...porOrg.entries()].map(([organizationId, cantidad]) => ({ organizationId, cantidad }));
   }
 
   async findReservaFinanciero(propertyId: string, ocupacionId: string): Promise<MovimientoFinancieroReserva | null> {
@@ -840,6 +997,10 @@ export class InMemoryRentasRepository implements RentasRepository {
 
   async listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): Promise<readonly ReservaProximaCheckIn[]> {
     return this.calendarStore.listReservasProximasACheckIn(desdeFecha, hastaFecha).map((r) => ({ ocupacionId: r.id, organizationId: r.organizationId }));
+  }
+
+  async listReservasProximasACheckInVentana(ahora: Date, desdeHoras: number, hastaHoras: number, horaCheckIn: string, zonaPorDefecto: string): Promise<readonly ReservaProximaCheckIn[]> {
+    return this.calendarStore.listReservasProximasACheckInVentana(ahora, desdeHoras, hastaHoras, horaCheckIn, zonaPorDefecto).map((r) => ({ ocupacionId: r.id, organizationId: r.organizationId }));
   }
 
   async marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): Promise<void> {

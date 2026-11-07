@@ -97,6 +97,12 @@ function anioFechaLocalValido(fecha: FechaLocal): boolean {
   return Number(fecha.slice(0, 4)) >= 1;
 }
 
+/** Rn-P3-05 -- guarda codigo de confirmacion y ultimos 4 del telefono del evento en la ocupacion (no-op sin datos o sin migracion 035). */
+async function guardarDatosCanal(ctx: ContextoSincronizacion, ocupacionId: string | null | undefined, evento: VEventNormalizado): Promise<void> {
+  if (!ocupacionId || (evento.codigoConfirmacion === null && evento.telefonoUltimos4 === null)) return;
+  await ctx.syncRepo.guardarDatosCanalOcupacion(ocupacionId, { codigoConfirmacion: evento.codigoConfirmacion, telefonoUltimos4: evento.telefonoUltimos4 });
+}
+
 async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEventNormalizado, hashesRecientes: readonly string[], resumen: ResultadoImportarCiclo): Promise<void> {
   const rango = extraerRango(evento, ctx.zonaHorariaPropiedad);
 
@@ -153,6 +159,8 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
       ultimaAccion: resolucion.accion,
       sobrescribirVersion: false,
     });
+    // Rellena el codigo en reservas importadas antes de la migracion 035 (el evento no cambio, pero el dato faltaba).
+    await guardarDatosCanal(ctx, previa?.ocupacionId, evento);
     return;
   }
 
@@ -183,6 +191,7 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
   if (previa?.ocupacionId) {
     const modificado = await modificarFechasReserva(ctx.db, previa.ocupacionId, rango);
     if (modificado.conflicto) resumen.conflictosDetectados++;
+    await guardarDatosCanal(ctx, previa.ocupacionId, evento);
     await ctx.syncRepo.upsertEventoImportado(ctx.feed.unidadId, ctx.feed.canalId, { uid: entrante.uid, sequence: entrante.sequence, dtstamp: entrante.dtstamp, hashContenido: entrante.hash, ocupacionId: previa.ocupacionId, ultimaAccion: "aplicar", sobrescribirVersion: true });
   } else {
     // Recuperación de bookkeeping perdido: `crearReservaConfirmada` (efecto de
@@ -195,6 +204,7 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
     // consigo misma.
     const ocupacionRecuperada = await ctx.syncRepo.buscarOcupacionActivaParaRecuperarBookkeeping(ctx.feed.unidadId, ctx.feed.canalId, evento.uid, rango);
     if (ocupacionRecuperada) {
+      await guardarDatosCanal(ctx, ocupacionRecuperada, evento);
       await ctx.syncRepo.upsertEventoImportado(ctx.feed.unidadId, ctx.feed.canalId, { uid: entrante.uid, sequence: entrante.sequence, dtstamp: entrante.dtstamp, hashContenido: entrante.hash, ocupacionId: ocupacionRecuperada, ultimaAccion: "aplicar", sobrescribirVersion: true });
     } else {
       const estadoOcupacion = evento.status === "TENTATIVE" ? "provisional" : "confirmado";
@@ -210,6 +220,7 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
       });
       if (creado.conflicto) resumen.conflictosDetectados++;
       resumen.reservasNuevas++;
+      await guardarDatosCanal(ctx, creado.ocupacionId, evento);
       await ctx.syncRepo.upsertEventoImportado(ctx.feed.unidadId, ctx.feed.canalId, { uid: entrante.uid, sequence: entrante.sequence, dtstamp: entrante.dtstamp, hashContenido: entrante.hash, ocupacionId: creado.ocupacionId, ultimaAccion: "aplicar", sobrescribirVersion: true });
     }
   }
