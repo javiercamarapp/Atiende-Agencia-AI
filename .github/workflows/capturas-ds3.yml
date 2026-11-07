@@ -1,9 +1,7 @@
-name: Verificacion visual ds3 (capturas, medidor y regla de specs)
+name: Verificacion visual ds3 (capturas y medidor)
 
-# Herramientas de verificacion del rediseno ds3 (lote 0.4). NO es un check requerido y NO forma parte de `ci-checks`:
-# informativo, igual que e2e.yml. Dos jobs:
-#   - solo-agrega-specs: en PRs con la etiqueta `ds3`, falla si el PR modifica/borra/renombra un spec existente
-#     (regla de oro de los lotes 0-10) o si un spec nuevo usa skip/only.
+# Herramientas de verificacion visual del diseno (lote 0.4). NO es un check requerido y NO forma parte de `ci-checks`:
+# informativo, igual que e2e.yml. Un job:
 #   - capturas-ds3: corre apps/web/playwright.ds3.config.ts (barrido de rutas con el medidor + carga/fps) contra la API
 #     simulada, en modo INFORMATIVO (reporta defectos, no falla por ellos), y sube PNG + medidas.json + catalogo.zip.
 #     Manual (workflow_dispatch) o en PRs con la etiqueta `ds3`.
@@ -25,11 +23,6 @@ on:
         type: choice
         options: [despues, antes]
         default: despues
-      diseno:
-        description: "Bandera de diseno (ds3 = diseno nuevo; vacio = diseno actual)"
-        type: choice
-        options: ["", ds3]
-        default: ""
       matriz:
         description: "Proyectos: humo (4) o completa (8, nocturno)"
         type: choice
@@ -49,23 +42,6 @@ permissions:
   contents: read
 
 jobs:
-  solo-agrega-specs:
-    name: solo-agrega-specs (etiqueta ds3)
-    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ds3')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout (historial completo para el diff)
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Specs solo se agregan
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/diseno/solo-agrega-specs.sh "origin/${BASE_REF}"
-
   capturas-ds3:
     name: capturas-ds3 (barrido + medidor + carga/fps)
     if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ds3')
@@ -75,8 +51,10 @@ jobs:
       DS3_INFORMATIVO: "1"
       DS3_CAPTURAS: "1"
       DS3_SALIDA: ${{ github.workspace }}/evidencia-ds3
+      # El diseno nuevo es el de todos: los specs de e2e-ds3 siempre miden en modo ds3 (sus ramas «sin bandera» se retiran
+      # cuando se fusionen los PRs de ds3 abiertos que aun las usan).
+      E2E_DISENO: ds3
       DS3_ETAPA: ${{ inputs.etapa || 'despues' }}
-      E2E_DISENO: ${{ inputs.diseno || '' }}
       DS3_MATRIZ: ${{ inputs.matriz == 'completa' && 'completa' || '' }}
       DS3_BARRIDO: ${{ inputs.barrido == 'completo' && 'completo' || '' }}
     steps:
