@@ -58,6 +58,7 @@ import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selec
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { AltaPrimerCliente } from "./pages/Cartera.tsx";
 import { COPILOTO_DESPACHOS_ROLES } from "./pages/Copiloto.tsx";
+import { GUIA_DESPACHOS, esencialesDespachos } from "./guia-despachos.ts";
 
 /** Adaptador de sesión de despachos. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const DESPACHOS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -122,7 +123,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "configuracion", label: "Configuración" },
 ];
 
-function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSection[] {
+export function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSection[] {
   const to = (path: string) => `/despachos/${orgSlug}/${path}`;
   const item = (path: string) => {
     const found = NAV_ITEMS.find((i) => i.to === path)!;
@@ -241,6 +242,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       branchSelector={contribuyenteSelector("despachos-contribuyente-activo")}
       mobileSelector={contribuyenteSelector("despachos-contribuyente-activo-movil")}
       contentKey={propertyId}
+      guia={{ contenido: GUIA_DESPACHOS, esenciales: esencialesDespachos(role) }}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
       {/* D-30: dialogo de segundo factor de las acciones sensibles (lib/step-up.ts); se monta una sola vez por shell. */}
