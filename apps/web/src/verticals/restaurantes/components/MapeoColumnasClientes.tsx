@@ -2,10 +2,11 @@
 // ejemplos reales de cada columna, aviso si la columna del telefono no trae telefonos, columnas repetidas y la vista previa de los
 // primeros renglones tal como se leerian. Solo presenta: la logica vive en lib/mapeo-columnas-clientes.ts y la autoridad es el servidor.
 import { useMemo } from "react";
-import { Callout, FormField, Selector, useT } from "@atiende/ui";
+import { Callout, DataTable, FormField, Selector, useT } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { mapeoClientes } from "@atiende/ui/i18n/mapeoClientes";
 import { CAMPOS_IMPORTACION } from "../lib/clientes-importacion.ts";
-import type { CampoImportacion, MapeoColumnas } from "../lib/clientes-importacion.ts";
+import type { CampoImportacion, FilaCruda, MapeoColumnas } from "../lib/clientes-importacion.ts";
 import { UMBRAL_TELEFONO, calidadTelefono, camposFaltantes, camposRepetidos, ejemplosDeColumna, vistaPreviaLocal } from "../lib/mapeo-columnas-clientes.ts";
 
 export interface MapeoColumnasClientesProps {
@@ -44,6 +45,12 @@ export function MapeoColumnasClientes({ encabezados, filasDatos, columnas, mapeo
   const telefonoDudoso = calidad !== null && calidad.conValor > 0 && calidad.plausibles / calidad.conValor < UMBRAL_TELEFONO;
   const vista = vistaPreviaLocal(filasDatos, mapeo);
   const camposVista = CAMPOS_IMPORTACION.filter((c) => mapeo[c] !== null);
+  const columnasVista: DataTableColumna<FilaCruda & { readonly i: number }>[] = camposVista.map((c) => ({
+    id: c,
+    encabezado: t(CLAVE_CAMPO[c]),
+    celda: (f) => f[c] || "—",
+    className: "max-w-48 truncate text-xs",
+  }));
 
   return (
     <div className="flex flex-col gap-3" data-testid="mapeo-columnas-clientes">
@@ -77,30 +84,14 @@ export function MapeoColumnasClientes({ encabezados, filasDatos, columnas, mapeo
       {camposVista.length > 0 && vista.length > 0 && (
         <div className="flex flex-col gap-1.5" data-testid="mapeo-vista-local">
           <p className="m-0 text-xs font-medium text-muted-foreground">{t("mapeoClientes.vista.titulo")}</p>
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-muted/40 text-muted-foreground">
-                <tr>
-                  {camposVista.map((c) => (
-                    <th key={c} scope="col" className="px-2.5 py-1.5 font-medium">
-                      {t(CLAVE_CAMPO[c])}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {vista.map((fila, i) => (
-                  <tr key={i} className="border-t border-border">
-                    {camposVista.map((c) => (
-                      <td key={c} className="max-w-48 truncate px-2.5 py-1.5 text-foreground">
-                        {fila[c] || "—"}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            etiqueta={t("mapeoClientes.vista.titulo")}
+            columnas={columnasVista}
+            filas={vista.map((fila, i) => ({ ...fila, i }))}
+            obtenerId={(f) => String(f.i)}
+            paginacion={false}
+            vista="tabla"
+          />
         </div>
       )}
     </div>
