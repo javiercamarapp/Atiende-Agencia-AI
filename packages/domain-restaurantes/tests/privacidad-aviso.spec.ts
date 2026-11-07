@@ -58,9 +58,20 @@ describe("guion de apertura de la llamada", () => {
     const text = voiceOpeningScript(CONFIG);
     expect(text).toContain("asistente virtual");
     expect(text).toContain("inteligencia artificial");
-    expect(text).toContain("¿Autoriza que esta llamada se grabe");
-    expect(text).toContain("lo atiendo igual, sin grabar");
+    expect(text).toContain("¿Autoriza grabar la llamada");
+    expect(text).toContain("le atiendo sin grabar");
     expect(text).toContain("15 días");
+  });
+
+  it("CORTO (E2E 6-nov-2026: el aviso largo se comia el inicio de la llamada): a lo mas 45 palabras, el consentimiento en UNA pregunta y el aviso del proveedor de voz (#743)", () => {
+    for (const config of [CONFIG, { ...CONFIG, noticeUrl: "https://x.mx/aviso" }]) {
+      const text = voiceOpeningScript(config);
+      expect(text.split(/\s+/).length).toBeLessThanOrEqual(45);
+      expect(text.match(/¿/g) ?? []).toHaveLength(1);
+      expect(text).toContain("Su voz la procesa un proveedor externo para entenderle.");
+      expect(text).toMatch(/solo para (tomar y entregar )?su pedido/);
+      expect(text).toMatch(/aviso (completo|integral)/);
+    }
   });
 
   it("con retencion de voz 0: avisa que NO se graba y no pide consentimiento", () => {
