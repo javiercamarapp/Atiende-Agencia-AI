@@ -2,6 +2,7 @@
 // en el bundle de arranque); aqui, que solo importa SuperAdminShell (chunk perezoso), se asocia cada (ruta, etiqueta) y cada
 // titulo de seccion con su clave del catalogo. La prueba i18n-shell exige que no falte ninguna.
 import type { Clave } from "@atiende/ui";
+import "@atiende/ui/i18n/nav";
 
 export const CLAVE_RUTA_SUPERADMIN: Readonly<Record<string, Clave>> = {
   "/superadmin|Resumen": "nav.resumen",
